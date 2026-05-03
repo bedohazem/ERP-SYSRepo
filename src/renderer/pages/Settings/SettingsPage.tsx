@@ -1,0 +1,649 @@
+import { useEffect, useState } from 'react';
+
+type BarcodeItemPosition =
+  | 'top'
+  | 'top-left'
+  | 'top-right'
+  | 'above_barcode'
+  | 'below_barcode'
+  | 'bottom'
+  | 'bottom-left'
+  | 'bottom-right'
+  | 'hidden';
+
+type BarcodeItemAlign = 'left' | 'center' | 'right';
+
+type BarcodePrintSettings = {
+  barcode_label_width_mm: number;
+  barcode_label_height_mm: number;
+  barcode_copies: number;
+  barcode_auto_print_after_save: boolean;
+
+  barcode_name_font_size: number;
+  barcode_name_position: BarcodeItemPosition;
+  barcode_name_align: BarcodeItemAlign;
+
+  barcode_price_font_size: number;
+  barcode_price_position: BarcodeItemPosition;
+  barcode_price_align: BarcodeItemAlign;
+
+  barcode_size_font_size: number;
+  barcode_size_position: BarcodeItemPosition;
+  barcode_size_align: BarcodeItemAlign;
+
+  barcode_color_font_size: number;
+  barcode_color_position: BarcodeItemPosition;
+  barcode_color_align: BarcodeItemAlign;
+
+  barcode_value_font_size: number;
+  barcode_value_position: BarcodeItemPosition;
+  barcode_value_align: BarcodeItemAlign;
+
+  barcode_svg_height: number;
+};
+
+const defaultSettings: BarcodePrintSettings = {
+  barcode_label_width_mm: 35,
+  barcode_label_height_mm: 25,
+  barcode_copies: 1,
+  barcode_auto_print_after_save: false,
+
+  barcode_name_font_size: 8,
+  barcode_name_position: 'top',
+  barcode_name_align: 'center',
+
+  barcode_price_font_size: 7,
+  barcode_price_position: 'bottom',
+  barcode_price_align: 'center',
+
+  barcode_size_font_size: 6,
+  barcode_size_position: 'above_barcode',
+  barcode_size_align: 'center',
+
+  barcode_color_font_size: 6,
+  barcode_color_position: 'above_barcode',
+  barcode_color_align: 'center',
+
+  barcode_value_font_size: 7,
+  barcode_value_position: 'below_barcode',
+  barcode_value_align: 'center',
+
+  barcode_svg_height: 22
+};
+
+export default function SettingsPage() {
+  const [settings, setSettings] = useState<BarcodePrintSettings>(defaultSettings);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void loadSettings();
+  }, []);
+
+
+  function showMessage(type: 'success' | 'error', text: string) {
+    setPageMessage({ type, text });
+
+    setTimeout(() => {
+      setPageMessage(null);
+    }, 1800);
+  }
+
+  async function loadSettings() {
+    try {
+      const [barcodeData, loyaltyData] = await Promise.all([
+        window.api.getBarcodePrintSettings(),
+        window.api.getLoyaltySettings()
+      ]);
+
+      setSettings(barcodeData);
+      setLoyaltySettings(loyaltyData);
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+      showMessage('error', 'حدث خطأ أثناء تحميل الإعدادات');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveSettings() {
+    setSaving(true);
+
+    try {
+      await window.api.saveBarcodePrintSettings(settings);
+      showMessage('success', 'تم حفظ إعدادات الطباعة بنجاح');
+    } catch (error) {
+      console.error('Failed to save barcode print settings:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات الطباعة');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function setField<K extends keyof BarcodePrintSettings>(
+    key: K,
+    value: BarcodePrintSettings[K]
+  ) {
+    setSettings((prev) => ({
+      ...prev,
+      [key]: value
+    }));
+  }
+
+  const [savingLoyalty, setSavingLoyalty] = useState(false);
+  const [pageMessage, setPageMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+    const [loyaltySettings, setLoyaltySettings] = useState({
+      loyalty_enabled: true,
+      loyalty_earn_amount: 100,
+      loyalty_earn_points: 1,
+      loyalty_point_value: 1,
+      loyalty_min_redeem_points: 1
+    });
+
+  async function saveLoyaltySettings() {
+    if (savingLoyalty) return;
+
+    setSavingLoyalty(true);
+
+    try {
+      const saved = await window.api.saveLoyaltySettings({
+        loyalty_enabled: Boolean(loyaltySettings.loyalty_enabled),
+        loyalty_earn_amount: Math.max(1, Number(loyaltySettings.loyalty_earn_amount || 1)),
+        loyalty_earn_points: Math.max(1, Number(loyaltySettings.loyalty_earn_points || 1)),
+        loyalty_point_value: Math.max(0, Number(loyaltySettings.loyalty_point_value || 0)),
+        loyalty_min_redeem_points: Math.max(
+          1,
+          Number(loyaltySettings.loyalty_min_redeem_points || 1)
+        )
+      });
+
+      setLoyaltySettings(saved);
+      showMessage('success', 'تم حفظ إعدادات نقاط الولاء');
+    } catch (error) {
+      console.error('Failed to save loyalty settings:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات النقاط');
+    } finally {
+      setSavingLoyalty(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="glass-card" style={{ borderRadius: '24px', padding: '24px' }}>
+        جاري تحميل الإعدادات...
+      </div>
+    );
+  }
+  
+
+    return (
+      <div style={{ display: 'grid', gap: '16px' }}>
+        {pageMessage && (
+          <div
+            style={{
+              position: 'fixed',
+              top: '24px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 99999,
+              padding: '12px 18px',
+              borderRadius: '14px',
+              background:
+                pageMessage.type === 'error'
+                  ? 'rgba(239,68,68,0.95)'
+                  : 'rgba(16,185,129,0.95)',
+              color: '#fff',
+              fontWeight: 800,
+              boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
+              pointerEvents: 'none'
+            }}
+          >
+            {pageMessage.text}
+          </div>
+        )}
+        <div className="glass-card" style={{ borderRadius: '24px', padding: '24px' }}>
+          <h2 style={{ marginTop: 0 }}>إعدادات طباعة الباركود</h2>
+          <p style={{ color: '#94a3b8' }}>
+            اضبط هنا مقاس الليبل ومكان كل عنصر داخله.
+          </p>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '16px',
+              marginTop: '20px'
+            }}
+          >
+            <div>
+              <label style={labelStyle}>عرض الليبل (مم)</label>
+              <input
+                type="number"
+                value={settings.barcode_label_width_mm}
+                onChange={(e) =>
+                  setField('barcode_label_width_mm', Number(e.target.value))
+                }
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>ارتفاع الليبل (مم)</label>
+              <input
+                type="number"
+                value={settings.barcode_label_height_mm}
+                onChange={(e) =>
+                  setField('barcode_label_height_mm', Number(e.target.value))
+                }
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>عدد النسخ</label>
+              <input
+                type="number"
+                min={1}
+                value={settings.barcode_copies}
+                onChange={(e) => setField('barcode_copies', Number(e.target.value))}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>ارتفاع صورة الباركود</label>
+              <input
+                type="number"
+                min={10}
+                value={settings.barcode_svg_height}
+                onChange={(e) => setField('barcode_svg_height', Number(e.target.value))}
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginTop: '16px' }}>
+            <label style={checkboxRowStyle}>
+              <input
+                type="checkbox"
+                checked={settings.barcode_auto_print_after_save}
+                onChange={(e) =>
+                  setField('barcode_auto_print_after_save', e.target.checked)
+                }
+              />
+              <span>طباعة تلقائية بعد حفظ المنتج</span>
+            </label>
+          </div>
+
+          <div style={{ marginTop: '24px', display: 'grid', gap: '16px' }}>
+            <BarcodeItemEditor
+              title="اسم المنتج"
+              fontSize={settings.barcode_name_font_size}
+              position={settings.barcode_name_position}
+              align={settings.barcode_name_align}
+              onFontSizeChange={(value) => setField('barcode_name_font_size', value)}
+              onPositionChange={(value) => setField('barcode_name_position', value)}
+              onAlignChange={(value) => setField('barcode_name_align', value)}
+            />
+
+            <BarcodeItemEditor
+              title="السعر"
+              fontSize={settings.barcode_price_font_size}
+              position={settings.barcode_price_position}
+              align={settings.barcode_price_align}
+              onFontSizeChange={(value) => setField('barcode_price_font_size', value)}
+              onPositionChange={(value) => setField('barcode_price_position', value)}
+              onAlignChange={(value) => setField('barcode_price_align', value)}
+            />
+
+            <BarcodeItemEditor
+              title="المقاس"
+              fontSize={settings.barcode_size_font_size}
+              position={settings.barcode_size_position}
+              align={settings.barcode_size_align}
+              onFontSizeChange={(value) => setField('barcode_size_font_size', value)}
+              onPositionChange={(value) => setField('barcode_size_position', value)}
+              onAlignChange={(value) => setField('barcode_size_align', value)}
+            />
+
+            <BarcodeItemEditor
+              title="اللون"
+              fontSize={settings.barcode_color_font_size}
+              position={settings.barcode_color_position}
+              align={settings.barcode_color_align}
+              onFontSizeChange={(value) => setField('barcode_color_font_size', value)}
+              onPositionChange={(value) => setField('barcode_color_position', value)}
+              onAlignChange={(value) => setField('barcode_color_align', value)}
+            />
+
+            <BarcodeItemEditor
+              title="رقم الباركود"
+              fontSize={settings.barcode_value_font_size}
+              position={settings.barcode_value_position}
+              align={settings.barcode_value_align}
+              onFontSizeChange={(value) => setField('barcode_value_font_size', value)}
+              onPositionChange={(value) => setField('barcode_value_position', value)}
+              onAlignChange={(value) => setField('barcode_value_align', value)}
+            />
+          </div>
+
+          <div style={{ marginTop: '24px', display: 'flex', gap: '12px' }}>
+            <button
+              onClick={() => void saveSettings()}
+              disabled={saving}
+              style={primaryButtonStyle}
+            >
+              {saving ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
+            </button>
+          </div>
+        </div>
+        <div
+          className="glass-card"
+          style={{
+            padding: '22px',
+            borderRadius: '18px',
+            display: 'grid',
+            gap: '18px',
+            marginTop: '18px',
+            direction: 'rtl'
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '14px',
+              flexWrap: 'wrap'
+            }}
+          >
+            <div>
+              <h3 style={{ margin: '0 0 6px' }}>إعدادات نقاط الولاء</h3>
+              <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>
+                حدد العميل يكسب كام نقطة، وقيمة النقطة عند استخدامها كخصم.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={loyaltySettings.loyalty_enabled}
+              onClick={() =>
+                setLoyaltySettings((prev) => ({
+                  ...prev,
+                  loyalty_enabled: !prev.loyalty_enabled
+                }))
+              }
+              style={{
+                width: '54px',
+                height: '28px',
+                borderRadius: '999px',
+                border: 'none',
+                padding: '3px',
+                cursor: 'pointer',
+                background: loyaltySettings.loyalty_enabled ? '#2563eb' : '#64748b',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: loyaltySettings.loyalty_enabled ? 'flex-end' : 'flex-start',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <span
+                style={{
+                  width: '22px',
+                  height: '22px',
+                  borderRadius: '50%',
+                  background: '#fff',
+                  display: 'block',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.25)'
+                }}
+              />
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gap: '14px'
+            }}
+          >
+            <div style={loyaltyFieldStyle}>
+              <label style={labelStyle}>كل كام جنيه شراء؟</label>
+              <input
+                type="number"
+                min={1}
+                value={loyaltySettings.loyalty_earn_amount}
+                onChange={(e) =>
+                  setLoyaltySettings((p) => ({
+                    ...p,
+                    loyalty_earn_amount: Number(e.target.value)
+                  }))
+                }
+                style={inputStyle}
+              />
+              <small style={hintStyle}>مثال: 1000 يعني كل 1000 جنيه</small>
+            </div>
+
+            <div style={loyaltyFieldStyle}>
+              <label style={labelStyle}>يكسب كام نقطة؟</label>
+              <input
+                type="number"
+                min={1}
+                value={loyaltySettings.loyalty_earn_points}
+                onChange={(e) =>
+                  setLoyaltySettings((p) => ({
+                    ...p,
+                    loyalty_earn_points: Number(e.target.value)
+                  }))
+                }
+                style={inputStyle}
+              />
+              <small style={hintStyle}>مثال: 10 نقاط لكل 1000 جنيه</small>
+            </div>
+
+            <div style={loyaltyFieldStyle}>
+              <label style={labelStyle}>قيمة النقطة بالجنيه</label>
+              <input
+                type="number"
+                min={0}
+                value={loyaltySettings.loyalty_point_value}
+                onChange={(e) =>
+                  setLoyaltySettings((p) => ({
+                    ...p,
+                    loyalty_point_value: Number(e.target.value)
+                  }))
+                }
+                style={inputStyle}
+              />
+              <small style={hintStyle}>مثال: كل نقطة = 10 جنيه خصم</small>
+            </div>
+
+            <div style={loyaltyFieldStyle}>
+              <label style={labelStyle}>أقل عدد نقاط للاستخدام</label>
+              <input
+                type="number"
+                min={1}
+                value={loyaltySettings.loyalty_min_redeem_points}
+                onChange={(e) =>
+                  setLoyaltySettings((p) => ({
+                    ...p,
+                    loyalty_min_redeem_points: Number(e.target.value)
+                  }))
+                }
+                style={inputStyle}
+              />
+              <small style={hintStyle}>أقل رصيد نقاط يسمح للعميل يستخدمه كخصم</small>
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: '14px',
+              borderRadius: '14px',
+              background: 'rgba(37,99,235,0.10)',
+              border: '1px solid rgba(37,99,235,0.25)',
+              color: '#bfdbfe',
+              fontWeight: 700,
+              lineHeight: 1.8
+            }}
+          >
+            مثال النظام الحالي:
+            كل {loyaltySettings.loyalty_earn_amount} جنيه =
+            {' '}{loyaltySettings.loyalty_earn_points} نقطة،
+            وكل نقطة = {loyaltySettings.loyalty_point_value} جنيه خصم.
+            أقل استخدام = {loyaltySettings.loyalty_min_redeem_points} نقطة.
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <button
+              type="button"
+              onClick={saveLoyaltySettings}
+              disabled={savingLoyalty}
+              style={{
+                ...primaryButtonStyle,
+                opacity: savingLoyalty ? 0.6 : 1,
+                cursor: savingLoyalty ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {savingLoyalty ? 'جاري الحفظ...' : 'حفظ إعدادات النقاط'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+}
+
+function BarcodeItemEditor(props: {
+  title: string;
+  fontSize: number;
+  position: BarcodeItemPosition;
+  align: BarcodeItemAlign;
+  onFontSizeChange: (value: number) => void;
+  onPositionChange: (value: BarcodeItemPosition) => void;
+  onAlignChange: (value: BarcodeItemAlign) => void;
+}) {
+  return (
+    <div
+      className="glass-card"
+      style={{
+        borderRadius: '18px',
+        padding: '16px',
+        display: 'grid',
+        gap: '12px'
+      }}
+    >
+      <div style={{ fontSize: '16px', fontWeight: 700 }}>{props.title}</div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: '12px'
+        }}
+      >
+        <div>
+          <label style={labelStyle}>حجم الخط</label>
+          <input
+            type="number"
+            value={props.fontSize}
+            onChange={(e) => props.onFontSizeChange(Number(e.target.value))}
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <label style={labelStyle}>المكان</label>
+          <select
+            value={props.position}
+            onChange={(e) =>
+              props.onPositionChange(e.target.value as BarcodeItemPosition)
+            }
+            style={inputStyle}
+          >
+            <option value="top">أعلى</option>
+            <option value="top-left">أعلى يسار</option>
+            <option value="top-right">أعلى يمين</option>
+            <option value="above_barcode">فوق الباركود</option>
+            <option value="below_barcode">تحت الباركود</option>
+            <option value="bottom">أسفل</option>
+            <option value="bottom-left">أسفل يسار</option>
+            <option value="bottom-right">أسفل يمين</option>
+            <option value="hidden">إخفاء</option>
+          </select>
+        </div>
+
+        <div>
+          <label style={labelStyle}>المحاذاة</label>
+          <select
+            value={props.align}
+            onChange={(e) =>
+              props.onAlignChange(e.target.value as BarcodeItemAlign)
+            }
+            style={inputStyle}
+          >
+            <option value="left">يسار</option>
+            <option value="center">وسط</option>
+            <option value="right">يمين</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  marginBottom: '8px',
+  color: '#cbd5e1',
+  fontSize: '14px'
+};
+
+const checkboxRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  color: '#e5e7eb'
+};
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  height: '48px',
+  borderRadius: '14px',
+  border: '1px solid rgba(255,255,255,0.08)',
+  background: 'rgba(255,255,255,0.04)',
+  color: '#fff',
+  padding: '0 14px',
+  outline: 'none'
+};
+
+const primaryButtonStyle: React.CSSProperties = {
+  border: 'none',
+  height: '48px',
+  borderRadius: '14px',
+  background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
+  color: '#fff',
+  fontWeight: 700,
+  padding: '0 18px',
+  cursor: 'pointer'
+};
+
+
+const loyaltyFieldStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: '8px',
+  padding: '14px',
+  borderRadius: '14px',
+  background: 'rgba(255,255,255,0.035)',
+  border: '1px solid rgba(255,255,255,0.08)'
+};
+
+const hintStyle: React.CSSProperties = {
+  color: '#94a3b8',
+  fontSize: '12px',
+  lineHeight: 1.6
+};

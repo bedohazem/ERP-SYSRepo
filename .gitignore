@@ -1,0 +1,17 @@
+# TypeScript / Node.js
+node_modules/
+dist/
+build/
+.npm
+*.log
+
+# Java
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# OS files
+.DS_Store
+Thumbs.db
