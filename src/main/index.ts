@@ -6,6 +6,10 @@ import { registerProductsIpc } from './ipc/products.ipc';
 import { registerSettingsIpc } from './ipc/settings.ipc';
 import { registerSalesIpc } from './ipc/sales.ipc';
 import { registerCustomersIpc } from './ipc/customers.ipc';
+import { registerReportsIpc } from './ipc/reports.ipc';
+import { registerInventoryIpc } from './ipc/inventory.ipc';
+import { registerSuppliersIpc } from './ipc/suppliers.ipc';
+import { registerPurchasesIpc } from './ipc/purchases.ipc';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -49,7 +53,10 @@ app.whenReady().then(() => {
   registerSettingsIpc();
   registerSalesIpc();
   registerCustomersIpc();
-
+  registerReportsIpc();
+  registerInventoryIpc();
+  registerSuppliersIpc();
+  registerPurchasesIpc();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

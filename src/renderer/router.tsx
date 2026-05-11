@@ -6,20 +6,16 @@ import ProductsPage from './pages/Products/ProductsPage';
 import SettingsPage from './pages/Settings/SettingsPage';
 import SalesPage from './pages/Sales/SalesPage';
 import CustomersPage from './pages/Customers/CustomersPage';
-
+import InvoicesPage from './pages/Invoices/InvoicesPage';
+import ReportsPage from './pages/Reports/ReportsPage';
+import InventoryPage from './pages/Inventory/InventoryPage';
+import SuppliersPage from './pages/Suppliers/SuppliersPage';
+import PurchasesPage from './pages/Purchases/PurchasesPage';
+import PurchaseHistoryPage from './pages/Purchases/PurchaseHistoryPage';
 
 function DashboardPage() {
   return <div>دي لوحة التحكم</div>;
 }
-
-function SuppliersPage() {
-  return <div>دي صفحة الموردين</div>;
-}
-
-function ReportsPage() {
-  return <div>دي صفحة التقارير</div>;
-}
-
 function withShell(title: string, element: React.ReactNode) {
   return <AppShell title={title}>{element}</AppShell>;
 }
@@ -38,8 +34,16 @@ export const router = createHashRouter([
     element: withShell('المنتجات', <ProductsPage />)
   },
   {
+    path: '/inventory',
+    element: withShell('المخزون', <InventoryPage />)
+  },
+  {
     path: '/sales',
     element: withShell('المبيعات', <SalesPage />)
+  },
+  {
+    path: '/invoices',
+    element: withShell('سجل الفواتير', <InvoicesPage />)
   },
   {
     path: '/customers',
@@ -48,6 +52,14 @@ export const router = createHashRouter([
   {
     path: '/suppliers',
     element: withShell('الموردين', <SuppliersPage />)
+  },
+  {
+    path: '/purchases',
+    element: withShell('فواتير الشراء', <PurchasesPage />)
+  },
+  {
+    path: '/purchase-history',
+    element: withShell('سجل الشراء', <PurchaseHistoryPage />)
   },
   {
     path: '/reports',

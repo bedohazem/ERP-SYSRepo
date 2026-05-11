@@ -37,6 +37,16 @@ export type CreateProductInput = {
   variants: ProductVariantInput[];
 };
 
+const STOCK_SUM_SQL = `
+  IFNULL(SUM(
+    CASE
+      WHEN sm.type = 'in' THEN sm.quantity
+      WHEN sm.type = 'out' THEN -sm.quantity
+      ELSE 0
+    END
+  ), 0)
+`;
+
 export function getCategories(): CategoryRow[] {
   const db = getDb();
 
@@ -98,7 +108,7 @@ export function getProductVariants(productId: number, includeInactive = true) {
         v.sell_price,
         v.min_stock,
         v.is_active,
-        IFNULL(SUM(sm.quantity), 0) as stock
+        ${STOCK_SUM_SQL} as stock
       FROM product_variants v
       LEFT JOIN stock_movements sm ON sm.variant_id = v.id
       WHERE v.product_id = ?
@@ -165,7 +175,7 @@ export function createProduct(input: CreateProductInput) {
       `
       INSERT INTO stock_movements
       (variant_id, type, quantity, reference_id, reference_type, notes)
-      VALUES (?, 'opening', ?, ?, 'product_opening', ?)
+      VALUES (?, 'in', ?, ?, 'opening_stock', ?)
       `
     );
 
@@ -183,8 +193,17 @@ export function createProduct(input: CreateProductInput) {
       const variantId = Number(variantResult.lastInsertRowid);
       const openingQty = Number(variant.opening_qty ?? 0);
 
-      if (openingQty !== 0) {
-        insertMovement.run(variantId, openingQty, productId, 'Opening balance');
+      if (!Number.isFinite(openingQty) || openingQty < 0) {
+        throw new Error('كمية المخزون الافتتاحي غير صحيحة');
+      }
+
+      if (openingQty > 0) {
+        insertMovement.run(
+          variantId,
+          openingQty,
+          productId,
+          'رصيد افتتاحي عند إنشاء المنتج'
+        );
       }
     }
 
@@ -321,7 +340,7 @@ export function searchSaleVariants(query: string, limit = 30): SaleSearchVariant
         v.buy_price,
         v.min_stock,
         v.is_active,
-        IFNULL(SUM(sm.quantity), 0) as stock
+        ${STOCK_SUM_SQL} as stock
       FROM product_variants v
       INNER JOIN products p ON p.id = v.product_id
       LEFT JOIN stock_movements sm ON sm.variant_id = v.id
@@ -371,7 +390,7 @@ export function getVariantByBarcode(barcode: string): SaleSearchVariantRow | und
         v.buy_price,
         v.min_stock,
         v.is_active,
-        IFNULL(SUM(sm.quantity), 0) as stock
+        ${STOCK_SUM_SQL} as stock
       FROM product_variants v
       INNER JOIN products p ON p.id = v.product_id
       LEFT JOIN stock_movements sm ON sm.variant_id = v.id

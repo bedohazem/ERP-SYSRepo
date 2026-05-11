@@ -1,5 +1,11 @@
 import { ipcMain } from 'electron';
-import { createSale } from '../database/repositories/sales.repo';
+import {
+  createSale,
+  getSaleReceipt,
+  listSales,
+  createSaleReturn
+} from '../database/repositories/sales.repo';
+
 import { getVariantByBarcode, searchSaleVariants } from '../database/repositories/product.repo';
 
 export function registerSalesIpc(): void {
@@ -14,4 +20,17 @@ export function registerSalesIpc(): void {
   ipcMain.handle('sales:create', (_, input) => {
     return createSale(input);
   });
+
+  ipcMain.handle('sales:get-receipt', (_, saleId: number) => {
+    return getSaleReceipt(Number(saleId));
+  });
+
+  ipcMain.handle('sales:list', (_, input) => {
+    return listSales(input);
+  });
+
+  ipcMain.handle('sales:return', (_, input) => {
+    return createSaleReturn(input);
+  });
+
 }

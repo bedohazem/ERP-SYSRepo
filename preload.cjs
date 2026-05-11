@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('api', {
   searchSaleVariants: (query) => ipcRenderer.invoke('sales:search-variants', query),
   getVariantByBarcode: (barcode) => ipcRenderer.invoke('sales:get-variant-by-barcode', barcode),
   createSale: (input) => ipcRenderer.invoke('sales:create', input),
+  getSaleReceipt: (saleId) => ipcRenderer.invoke('sales:get-receipt', saleId),
+  listSales: (input) => ipcRenderer.invoke('sales:list', input),
+  createSaleReturn: (input) => ipcRenderer.invoke('sales:return', input),
 
   getCustomers: () => ipcRenderer.invoke('customers:list'),
   searchCustomers: (query) => ipcRenderer.invoke('customers:search', query),
@@ -28,8 +31,28 @@ contextBridge.exposeInMainWorld('api', {
   deleteCustomer: (id) => ipcRenderer.invoke('customers:delete', id),
   getCustomerHistory: (customerId) => ipcRenderer.invoke('customers:history', customerId),
   adjustCustomerPoints: (input) => ipcRenderer.invoke('customers:adjust-points', input),
+  recordCustomerPayment: (input) => ipcRenderer.invoke('customers:record-payment', input),
+  getCustomerStatement: (customerId) => ipcRenderer.invoke('customers:statement', customerId),
 
   getLoyaltySettings: () => ipcRenderer.invoke('settings:get-loyalty'),
   saveLoyaltySettings: (input) => ipcRenderer.invoke('settings:save-loyalty', input),
+
+  getReportsSummary: (input) => ipcRenderer.invoke('reports:summary', input),
+
+  getInventoryList: (input) => ipcRenderer.invoke('inventory:list', input),
+  adjustVariantStock: (input) => ipcRenderer.invoke('inventory:adjust-stock', input),
+  getStockMovements: (input) => ipcRenderer.invoke('inventory:movements', input),
   
+  getSuppliers: (search) => ipcRenderer.invoke('suppliers:list', search),
+  getSupplierById: (id) => ipcRenderer.invoke('suppliers:get-by-id', id),
+  createSupplier: (input) => ipcRenderer.invoke('suppliers:create', input),
+  updateSupplier: (input) => ipcRenderer.invoke('suppliers:update', input),
+  deleteSupplier: (id) => ipcRenderer.invoke('suppliers:delete', id),
+
+  createPurchaseInvoice: (input) => ipcRenderer.invoke('purchases:create', input),
+  listPurchaseInvoices: (input) => ipcRenderer.invoke('purchases:list', input),
+  getPurchaseInvoice: (purchaseId) => ipcRenderer.invoke('purchases:get-by-id', purchaseId),
+  recordSupplierPayment: (input) => ipcRenderer.invoke('suppliers:record-payment', input),
+  getSupplierStatement: (supplierId) => ipcRenderer.invoke('suppliers:statement', supplierId),
+
 });

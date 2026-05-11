@@ -127,15 +127,124 @@ export function getDb(): Database.Database {
         FOREIGN KEY (sale_id) REFERENCES sales(id)
       );
 
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        phone TEXT UNIQUE,
+        email TEXT,
+        address TEXT,
+        notes TEXT,
+        total_purchased REAL DEFAULT 0,
+        balance REAL DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS purchase_invoices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_id INTEGER NOT NULL,
+        total_amount REAL NOT NULL DEFAULT 0,
+        paid_amount REAL NOT NULL DEFAULT 0,
+        remaining_amount REAL NOT NULL DEFAULT 0,
+        payment_status TEXT NOT NULL DEFAULT 'unpaid',
+        payment_method TEXT DEFAULT 'cash',
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS purchase_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        purchase_id INTEGER NOT NULL,
+        variant_id INTEGER NOT NULL,
+        product_name TEXT NOT NULL,
+        barcode TEXT,
+        size TEXT,
+        color TEXT,
+        quantity REAL NOT NULL,
+        unit_cost REAL NOT NULL,
+        line_total REAL NOT NULL,
+        FOREIGN KEY (purchase_id) REFERENCES purchase_invoices(id),
+        FOREIGN KEY (variant_id) REFERENCES product_variants(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS supplier_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_id INTEGER NOT NULL,
+        purchase_id INTEGER,
+        amount REAL NOT NULL,
+        payment_method TEXT DEFAULT 'cash',
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+        FOREIGN KEY (purchase_id) REFERENCES purchase_invoices(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS customer_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL,
+        sale_id INTEGER,
+        amount REAL NOT NULL,
+        payment_method TEXT DEFAULT 'cash',
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (customer_id) REFERENCES customers(id),
+        FOREIGN KEY (sale_id) REFERENCES sales(id)
+      );
+
     `);
     
       safeAddColumn(db, 'sales', 'loyalty_points_earned', 'INTEGER DEFAULT 0');
       safeAddColumn(db, 'sales', 'loyalty_points_redeemed', 'INTEGER DEFAULT 0');
       safeAddColumn(db, 'sales', 'loyalty_discount_value', 'REAL DEFAULT 0');
+      safeAddColumn(db, 'sales', 'parent_sale_id', 'INTEGER');
+      safeAddColumn(db, 'sales', 'return_reason', 'TEXT');
+      safeAddColumn(db, 'sales', 'type', `TEXT DEFAULT 'sale'`);
+      safeAddColumn(db, 'suppliers', 'email', 'TEXT');
+      safeAddColumn(db, 'suppliers', 'address', 'TEXT');
+      safeAddColumn(db, 'suppliers', 'notes', 'TEXT');
+      safeAddColumn(db, 'suppliers', 'total_purchased', 'REAL DEFAULT 0');
+      safeAddColumn(db, 'suppliers', 'balance', 'REAL DEFAULT 0');
+      safeAddColumn(db, 'suppliers', 'is_active', 'INTEGER DEFAULT 1');
+      safeAddColumn(db, 'suppliers', 'updated_at', 'TEXT');
+      safeAddColumn(db, 'purchase_invoices', 'payment_method', `TEXT DEFAULT 'cash'`);
+      safeAddColumn(db, 'purchase_invoices', 'notes', 'TEXT');
+      safeAddColumn(db, 'supplier_payments', 'purchase_id', 'INTEGER');
+      safeAddColumn(db, 'supplier_payments', 'payment_method', `TEXT DEFAULT 'cash'`);
+      safeAddColumn(db, 'supplier_payments', 'notes', 'TEXT');
+
+      safeAddColumn(db, 'customers', 'balance', 'REAL DEFAULT 0');
+
+      safeAddColumn(db, 'sales', 'remaining_amount', 'REAL DEFAULT 0');
+      safeAddColumn(db, 'sales', 'payment_status', `TEXT DEFAULT 'paid'`);
+
+      safeAddColumn(db, 'customer_payments', 'sale_id', 'INTEGER');
+      safeAddColumn(db, 'customer_payments', 'payment_method', `TEXT DEFAULT 'cash'`);
+      safeAddColumn(db, 'customer_payments', 'notes', 'TEXT');
+
+      normalizeStockMovementTypes(db);
 
       seedAdminUser(db);
+      
       seedDefaultCategories(db);
       seedDefaultAppSettings(db);
+
+      db.prepare(`
+        UPDATE sales
+        SET
+          remaining_amount = CASE
+            WHEN IFNULL(grand_total, 0) - IFNULL(paid, 0) > 0
+            THEN IFNULL(grand_total, 0) - IFNULL(paid, 0)
+            ELSE 0
+          END,
+          payment_status = CASE
+            WHEN IFNULL(paid, 0) >= IFNULL(grand_total, 0) THEN 'paid'
+            WHEN IFNULL(paid, 0) > 0 THEN 'partial'
+            ELSE 'unpaid'
+          END
+        WHERE IFNULL(type, 'sale') = 'sale'
+      `).run();
   }
 
   return db;
@@ -156,6 +265,42 @@ function safeAddColumn(
   if (!exists) {
     database.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
   }
+}
+
+function normalizeStockMovementTypes(database: Database.Database): void {
+  // أي رصيد افتتاحي قديم كان متسجل opening هنحوّله لـ in
+  // عشان كل حسابات المخزون تبقى موحدة
+  database
+    .prepare(
+      `
+      UPDATE stock_movements
+      SET type = 'in',
+          reference_type = COALESCE(NULLIF(reference_type, ''), 'opening_stock')
+      WHERE type IN ('opening', 'product_opening', 'opening_stock')
+      `
+    )
+    .run();
+
+  // احتياطي لو أي نسخة قديمة كانت مسمية البيع أو المرتجع بأسماء مختلفة
+  database
+    .prepare(
+      `
+      UPDATE stock_movements
+      SET type = 'out'
+      WHERE type IN ('sale_out', 'sales_out')
+      `
+    )
+    .run();
+
+  database
+    .prepare(
+      `
+      UPDATE stock_movements
+      SET type = 'in'
+      WHERE type IN ('return_in', 'sale_return', 'return')
+      `
+    )
+    .run();
 }
 
 function seedAdminUser(database: Database.Database): void {

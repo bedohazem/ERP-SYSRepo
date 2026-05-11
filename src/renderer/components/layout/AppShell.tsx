@@ -13,9 +13,13 @@ type MenuItem = {
 const menuItems: MenuItem[] = [
   { to: '/dashboard', label: 'الرئيسية', icon: '🏠' ,title: 'الرئيسية'},
   { to: '/sales', label: 'المبيعات', icon: '🧾' ,title: 'المبيعات'},
+  { to: '/invoices', label: 'سجل الفواتير', icon: '📄' ,title: 'سجل الفواتير'},
   { to: '/products', label: 'المنتجات', icon: '👕' ,title: 'المنتجات'},
+  { to: '/inventory', label: 'المخزون', icon: '📦', title: 'المخزون' },
   { to: '/customers', label: 'العملاء', icon: '👤' ,title: 'العملاء'},
   { to: '/suppliers', label: 'الموردين', icon: '🚚' ,title: 'الموردين'},
+  { to: '/purchases', label: 'فواتير الشراء', icon: '🛒', title: 'فواتير الشراء' },
+  { to: '/purchase-history', label: 'سجل الشراء', icon: '📑', title: 'سجل الشراء' },
   { to: '/reports', label: 'التقارير', icon: '📊' ,title: 'التقارير'},
   { to: '/settings', label: 'الإعدادات', icon: '⚙️' ,title: 'الإعدادات'}
 ];

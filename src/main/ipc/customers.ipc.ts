@@ -7,7 +7,9 @@ import {
   getCustomerHistory,
   getCustomers,
   searchCustomers,
-  updateCustomer
+  updateCustomer,
+  recordCustomerPayment,
+  getCustomerStatement
 } from '../database/repositories/customers.repo';
 
 export function registerCustomersIpc(): void {
@@ -42,4 +44,13 @@ export function registerCustomersIpc(): void {
   ipcMain.handle('customers:adjust-points', (_, input) => {
     return adjustCustomerPoints(input);
   });
+
+  ipcMain.handle('customers:record-payment', (_, input) => {
+    return recordCustomerPayment(input);
+  });
+
+  ipcMain.handle('customers:statement', (_, customerId: number) => {
+    return getCustomerStatement(Number(customerId));
+  });
+  
 }

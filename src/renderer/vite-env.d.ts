@@ -120,6 +120,63 @@ declare global {
         grand_total?: number;
       }>;
 
+      getSaleReceipt: (saleId: number) => Promise<{
+        sale: any;
+        items: any[];
+        loyalty: any[];
+      }>;
+
+      listSales: (input?: {
+        search?: string;
+        date_from?: string;
+        date_to?: string;
+        limit?: number;
+        offset?: number;
+      }) => Promise<{
+        rows: Array<{
+          id: number;
+          customer_id: number | null;
+          user_id: number | null;
+          sub_total: number;
+          discount_value: number;
+          grand_total: number;
+          paid: number;
+          change_amount: number;
+          payment_method: string;
+          notes?: string | null;
+          loyalty_points_earned: number;
+          loyalty_points_redeemed: number;
+          loyalty_discount_value: number;
+          created_at: string;
+          customer_name?: string | null;
+          customer_phone?: string | null;
+          cashier_name?: string | null;
+          items_count: number;
+        }>;
+        total: number;
+        limit: number;
+        offset: number;
+      }>;
+
+      createSaleReturn: (input: {
+        original_sale_id: number;
+        user_id: number;
+        reason?: string | null;
+        paid_amount?: number;
+        remaining_amount?: number;
+        payment_status?: string;
+        items: Array<{
+          sale_item_id: number;
+          variant_id: number;
+          quantity: number;
+        }>;
+      }) => Promise<{
+        returnSaleId: number;
+        originalSaleId: number;
+        refundAmount: number;
+        loyalty_points_reversed: number;
+      }>;
+
       // =========================
       // Customers
       // =========================
@@ -143,6 +200,47 @@ declare global {
         notes?: string | null;
       }) => Promise<Customer>;
 
+      recordCustomerPayment: (input: {
+        customer_id: number;
+        sale_id?: number | null;
+        amount: number;
+        payment_method?: string;
+        notes?: string | null;
+      }) => Promise<{
+        ok: boolean;
+        customer_id: number;
+        paid_amount: number;
+        allocations?: Array<{
+          sale_id: number | null;
+          amount: number;
+        }>;
+      }>;
+
+      getCustomerStatement: (customerId: number) => Promise<{
+        customer: any;
+        sales: any[];
+        payments: any[];
+        entries: Array<{
+          id: string;
+          type: 'sale' | 'payment';
+          title: string;
+          debit: number;
+          credit: number;
+          sale_id?: number | null;
+          payment_status?: string;
+          payment_method?: string;
+          notes?: string | null;
+          created_at: string;
+        }>;
+        summary: {
+          total_sales: number;
+          total_paid: number;
+          balance: number;
+          open_sales: number;
+        };
+      }>;
+
+
       // =========================
       // Loyalty Settings
       // =========================
@@ -151,6 +249,212 @@ declare global {
       saveLoyaltySettings: (
         input: LoyaltySettings
       ) => Promise<LoyaltySettings>;
+
+      // =========================
+      // Reports
+      // =========================
+      getReportsSummary: (input?: {
+        date_from?: string;
+        date_to?: string;
+      }) => Promise<{
+        summary: {
+          sales_count: number;
+          returns_count: number;
+          gross_sales: number;
+          total_returns: number;
+          loyalty_discounts: number;
+          net_sales: number;
+          gross_profit_before_discounts: number;
+          net_profit_after_discounts: number;
+        };
+        topProducts: Array<any>;
+        dailySales: Array<any>;
+        paymentMethods: Array<any>;
+        lowStock: Array<any>;
+        topCustomers: Array<any>;
+      }>;
+
+      // =========================
+      // Inventory
+      // =========================
+        getInventoryList: (input?: {
+          search?: string;
+          status?: 'all' | 'available' | 'low' | 'out' | 'negative';
+        }) => Promise<
+          Array<{
+            variant_id: number;
+            product_id: number;
+            product_name: string;
+            barcode?: string | null;
+            size?: string | null;
+            color?: string | null;
+            buy_price: number;
+            sell_price: number;
+            min_stock: number;
+            is_active: number;
+            product_is_active: number;
+            stock: number;
+          }>
+        >;
+
+        adjustVariantStock: (input: {
+          variant_id: number;
+          target_stock: number;
+          notes?: string | null;
+        }) => Promise<{
+          success: boolean;
+          variant_id: number;
+          old_stock: number;
+          new_stock: number;
+          diff: number;
+        }>;
+
+        getStockMovements: (input: {
+          variant_id?: number;
+          search?: string;
+          limit?: number;
+        }) => Promise<
+          Array<{
+            id: number;
+            variant_id: number;
+            type: 'in' | 'out';
+            quantity: number;
+            signed_quantity: number;
+            reference_id?: number | null;
+            reference_type?: string | null;
+            notes?: string | null;
+            created_at: string;
+            product_name: string;
+            barcode?: string | null;
+            size?: string | null;
+            color?: string | null;
+          }>
+        >;
+
+        
+        // =========================
+        // Suppliers
+        // =========================
+          getSuppliers: (search?: string) => Promise<
+            Array<{
+              id: number;
+              name: string;
+              phone?: string | null;
+              email?: string | null;
+              address?: string | null;
+              notes?: string | null;
+              total_purchased: number;
+              balance: number;
+              is_active: number;
+              created_at: string;
+              updated_at?: string | null;
+            }>
+          >;
+
+          getSupplierById: (id: number) => Promise<any>;
+
+          createSupplier: (input: {
+            name: string;
+            phone?: string | null;
+            email?: string | null;
+            address?: string | null;
+            notes?: string | null;
+          }) => Promise<any>;
+
+          updateSupplier: (input: {
+            id: number;
+            name: string;
+            phone?: string | null;
+            email?: string | null;
+            address?: string | null;
+            notes?: string | null;
+          }) => Promise<any>;
+
+          deleteSupplier: (id: number) => Promise<{ ok: boolean }
+        >;
+
+
+        // =========================
+        // Purchases
+        // =========================
+          createPurchaseInvoice: (input: {
+            supplier_id: number;
+            paid_amount?: number;
+            payment_method?: string;
+            notes?: string | null;
+            items: Array<{
+              variant_id: number;
+              quantity: number;
+              unit_cost: number;
+            }>;
+          }) => Promise<{
+            purchaseId: number;
+            total_amount: number;
+            paid_amount: number;
+            remaining_amount: number;
+            payment_status: string;
+          }>;
+
+          listPurchaseInvoices: (input?: {
+            search?: string;
+            limit?: number;
+            offset?: number;
+          }) => Promise<{
+            rows: any[];
+            total: number;
+            limit: number;
+            offset: number;
+          }>;
+
+          getPurchaseInvoice: (purchaseId: number) => Promise<{
+            purchase: any;
+            items: any[];
+            payments: any[];
+          }>;
+
+          recordSupplierPayment: (input: {
+            supplier_id: number;
+            purchase_id?: number | null;
+            amount: number;
+            payment_method?: string;
+            notes?: string | null;
+          }) => Promise<{
+            ok: boolean;
+            supplier_id: number;
+            paid_amount: number;
+            allocations?: Array<{
+              purchase_id: number | null;
+              amount: number;
+            }>;
+          }>;
+
+          getSupplierStatement: (supplierId: number) => Promise<{
+            supplier: any;
+            purchases: any[];
+            payments: any[];
+            entries: Array<{
+              id: string;
+              type: 'purchase' | 'payment';
+              title: string;
+              debit: number;
+              credit: number;
+              purchase_id?: number | null;
+              payment_status?: string;
+              payment_method?: string;
+              notes?: string | null;
+              created_at: string;
+            }>;
+            summary: {
+              total_purchased: number;
+              total_paid: number;
+              balance: number;
+              open_purchases: number;
+            };
+          }>;
+
+
+
+    
     };
   }
 

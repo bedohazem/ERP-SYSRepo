@@ -9,6 +9,7 @@ type CustomerRow = {
   notes?: string | null;
   points_balance: number;
   total_spent: number;
+  balance: number;
   sales_count?: number;
   last_sale_at?: string | null;
 };
@@ -35,6 +36,15 @@ export default function CustomersPage() {
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  const [statementData, setStatementData] = useState<any | null>(null);
+  const [statementLoading, setStatementLoading] = useState(false);
+
+  const [paymentCustomer, setPaymentCustomer] = useState<CustomerRow | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [savingPayment, setSavingPayment] = useState(false);
+
   const editingCustomer = useMemo(
     () => customers.find((c) => c.id === editingId),
     [customers, editingId]
@@ -48,7 +58,23 @@ export default function CustomersPage() {
         ? await window.api.searchCustomers(searchValue)
         : await window.api.getCustomers();
 
-      setCustomers(Array.isArray(data) ? data : []);
+      setCustomers(
+        Array.isArray(data)
+          ? data.map((customer: any) => ({
+              id: Number(customer.id),
+              name: customer.name || '',
+              phone: customer.phone || null,
+              email: customer.email || null,
+              address: customer.address || null,
+              notes: customer.notes || null,
+              points_balance: Number(customer.points_balance || 0),
+              total_spent: Number(customer.total_spent || 0),
+              balance: Number(customer.balance || 0),
+              sales_count: Number(customer.sales_count || 0),
+              last_sale_at: customer.last_sale_at || null
+            }))
+          : []
+      );
     } catch (error) {
       console.error('Failed to load customers:', error);
       setMessage('حدث خطأ أثناء تحميل العملاء');
@@ -176,6 +202,108 @@ export default function CustomersPage() {
       setMessage('حدث خطأ أثناء تعديل النقاط');
     }
   }
+
+  async function openStatement(customer: CustomerRow) {
+  setStatementLoading(true);
+
+  try {
+    const data = await window.api.getCustomerStatement(customer.id);
+    setStatementData(data);
+  } catch (error) {
+    console.error('Failed to load customer statement:', error);
+    setMessage('حدث خطأ أثناء تحميل كشف الحساب');
+  } finally {
+    setStatementLoading(false);
+  }
+}
+
+function openCustomerPayment(customer: CustomerRow) {
+  setPaymentCustomer(customer);
+  setPaymentAmount(String(Number(customer.balance || 0)));
+  setPaymentMethod('cash');
+  setPaymentNotes('');
+}
+
+async function saveCustomerPayment() {
+  if (!paymentCustomer || savingPayment) return;
+
+  const amount = Number(paymentAmount || 0);
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    setMessage('اكتب مبلغ صحيح');
+    return;
+  }
+
+  setSavingPayment(true);
+
+  try {
+    const result = await window.api.recordCustomerPayment({
+      customer_id: paymentCustomer.id,
+      amount,
+      payment_method: paymentMethod,
+      notes: paymentNotes.trim() || null
+    });
+
+    setMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`);
+
+    setPaymentCustomer(null);
+    setPaymentAmount('');
+    setPaymentNotes('');
+
+    await loadCustomers();
+
+    if (statementData?.customer?.id === paymentCustomer.id) {
+      const data = await window.api.getCustomerStatement(paymentCustomer.id);
+      setStatementData(data);
+    }
+  } catch (error) {
+    console.error('Failed to save customer payment:', error);
+    setMessage('حدث خطأ أثناء تسجيل الدفعة');
+  } finally {
+    setSavingPayment(false);
+  }
+}
+
+function money(value: unknown) {
+  return `${Number(value || 0).toFixed(2)} ج.م`;
+}
+
+function InfoCard({ title, value }: { title: string; value: string }) {
+  return (
+    <div
+      style={{
+        padding: '14px',
+        borderRadius: '14px',
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        display: 'grid',
+        gap: '8px'
+      }}
+    >
+      <span style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</span>
+      <strong style={{ color: '#fff', fontSize: '18px' }}>{value}</strong>
+    </div>
+  );
+}
+
+function formatDate(value?: string) {
+  if (!value) return '—';
+
+  try {
+    const raw = String(value);
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
+
+    return new Date(normalized).toLocaleString('ar-EG', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return value;
+  }
+}
 
   return (
     <div style={{ display: 'grid', gap: '18px' }}>
@@ -322,6 +450,7 @@ export default function CustomersPage() {
               <th style={thStyle}>الهاتف</th>
               <th style={thStyle}>النقاط</th>
               <th style={thStyle}>إجمالي المشتريات</th>
+              <th style={thStyle}>الرصيد</th>
               <th style={thStyle}>عدد الفواتير</th>
               <th style={thStyle}>آخر شراء</th>
               <th style={thStyle}>إجراءات</th>
@@ -335,6 +464,9 @@ export default function CustomersPage() {
                 <td style={tdStyle}>{customer.phone || '—'}</td>
                 <td style={tdStyle}>{customer.points_balance || 0}</td>
                 <td style={tdStyle}>{Number(customer.total_spent || 0).toFixed(2)} ج.م</td>
+                <td style={{...tdStyle, color: Number(customer.balance || 0) > 0 ? '#fca5a5' : '#6ee7b7', fontWeight: 900}}>
+                    {money(customer.balance || 0)}
+                </td>
                 <td style={tdStyle}>{customer.sales_count || 0}</td>
                 <td style={tdStyle}>{customer.last_sale_at || '—'}</td>
                 <td style={tdStyle}>
@@ -345,6 +477,29 @@ export default function CustomersPage() {
                     <button onClick={() => openHistory(customer.id)} style={smallButtonStyle}>
                       الهيستوري
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openStatement(customer)}
+                      style={smallButtonStyle}
+                    >
+                      كشف حساب
+                    </button>
+
+                    {Number(customer.balance || 0) > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => openCustomerPayment(customer)}
+                        style={{
+                          ...smallButtonStyle,
+                          borderColor: '#22c55e',
+                          color: '#86efac',
+                          background: 'rgba(34,197,94,0.10)'
+                        }}
+                      >
+                        تسجيل دفعة
+                      </button>
+                    )}
                     <button
                       onClick={() => deleteCustomer(customer.id)}
                       style={{
@@ -478,6 +633,241 @@ export default function CustomersPage() {
           </div>
         </div>
       )}
+
+
+        {statementData && (
+          <div style={modalOverlayStyle}>
+            <div style={{ ...modalStyle, width: '900px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '12px',
+                  marginBottom: '18px'
+                }}
+              >
+                <div>
+                  <h3 style={{ margin: '0 0 6px' }}>
+                    كشف حساب: {statementData.customer?.name}
+                  </h3>
+                  <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700 }}>
+                    متابعة فواتير العميل والمدفوعات والرصيد الحالي
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setStatementData(null)}
+                  style={closeButtonStyle}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: '12px',
+                  marginBottom: '18px'
+                }}
+              >
+                <InfoCard title="إجمالي المبيعات" value={money(statementData.summary.total_sales)} />
+                <InfoCard title="إجمالي المدفوع" value={money(statementData.summary.total_paid)} />
+                <InfoCard title="الرصيد الحالي" value={money(statementData.summary.balance)} />
+                <InfoCard title="فواتير مفتوحة" value={String(statementData.summary.open_sales)} />
+              </div>
+
+              {Number(statementData.summary.balance || 0) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '16px' }}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openCustomerPayment({
+                        id: statementData.customer.id,
+                        name: statementData.customer.name,
+                        phone: statementData.customer.phone,
+                        email: statementData.customer.email,
+                        address: statementData.customer.address,
+                        notes: statementData.customer.notes,
+                        points_balance: statementData.customer.points_balance,
+                        total_spent: statementData.customer.total_spent,
+                        balance: statementData.customer.balance,
+                        sales_count: statementData.customer.sales_count,
+                        last_sale_at: statementData.customer.last_sale_at
+                      })
+                    }
+                    style={primaryButtonStyle}
+                  >
+                    تسجيل دفعة
+                  </button>
+                </div>
+              )}
+
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+                  <thead>
+                    <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
+                      <th style={thStyle}>التاريخ</th>
+                      <th style={thStyle}>البيان</th>
+                      <th style={thStyle}>مدين</th>
+                      <th style={thStyle}>دائن</th>
+                      <th style={thStyle}>ملاحظات</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {statementLoading && (
+                      <tr>
+                        <td colSpan={5} style={{ ...tdStyle, textAlign: 'center' }}>
+                          جاري التحميل...
+                        </td>
+                      </tr>
+                    )}
+
+                    {!statementLoading &&
+                      statementData.entries.map((entry: any) => (
+                        <tr
+                          key={entry.id}
+                          style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                        >
+                          <td style={tdStyle}>{formatDate(entry.created_at)}</td>
+                          <td style={tdStyle}>
+                            <strong>{entry.title}</strong>
+                          </td>
+                          <td
+                            style={{
+                              ...tdStyle,
+                              color: entry.debit > 0 ? '#fca5a5' : '#e5e7eb'
+                            }}
+                          >
+                            {entry.debit > 0 ? money(entry.debit) : '—'}
+                          </td>
+                          <td
+                            style={{
+                              ...tdStyle,
+                              color: entry.credit > 0 ? '#6ee7b7' : '#e5e7eb'
+                            }}
+                          >
+                            {entry.credit > 0 ? money(entry.credit) : '—'}
+                          </td>
+                          <td style={tdStyle}>{entry.notes || '—'}</td>
+                        </tr>
+                      ))}
+
+                    {!statementLoading && statementData.entries.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={5}
+                          style={{
+                            ...tdStyle,
+                            textAlign: 'center',
+                            color: '#94a3b8',
+                            padding: '24px'
+                          }}
+                        >
+                          لا توجد حركات
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+
+        {paymentCustomer && (
+          <div style={modalOverlayStyle}>
+            <div style={modalStyle}>
+              <h3 style={{ margin: '0 0 8px' }}>تسجيل دفعة من العميل</h3>
+
+              <p style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700 }}>
+                {paymentCustomer.name}
+              </p>
+
+              <div style={{ display: 'grid', gap: '14px' }}>
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>الرصيد الحالي</label>
+                  <input
+                    value={money(paymentCustomer.balance)}
+                    readOnly
+                    style={{ ...inputStyle, opacity: 0.7 }}
+                  />
+                </div>
+
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>مبلغ الدفعة</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={paymentCustomer.balance}
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    style={inputStyle}
+                    autoFocus
+                  />
+                </div>
+
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>طريقة الدفع</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="cash">كاش</option>
+                    <option value="card">كارت</option>
+                    <option value="wallet">محفظة</option>
+                    <option value="bank_transfer">تحويل بنكي</option>
+                  </select>
+                </div>
+
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>ملاحظات</label>
+                  <input
+                    placeholder="مثال: دفعة من حساب العميل"
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '10px',
+                  justifyContent: 'flex-start',
+                  marginTop: '22px'
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={saveCustomerPayment}
+                  disabled={savingPayment}
+                  style={{
+                    ...primaryButtonStyle,
+                    opacity: savingPayment ? 0.6 : 1,
+                    cursor: savingPayment ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {savingPayment ? 'جاري الحفظ...' : 'حفظ الدفعة'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentCustomer(null)}
+                  style={secondaryOutlineButtonStyle}
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 }
@@ -556,4 +946,49 @@ const historyRowStyle: React.CSSProperties = {
   borderRadius: '10px',
   background: 'rgba(255,255,255,0.04)',
   color: '#e5e7eb'
+};
+
+const modalOverlayStyle: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(0,0,0,0.60)',
+  zIndex: 99999,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '20px'
+};
+
+const modalStyle: React.CSSProperties = {
+  width: '480px',
+  maxWidth: '100%',
+  maxHeight: '88vh',
+  overflowY: 'auto',
+  borderRadius: '18px',
+  border: '1px solid rgba(255,255,255,0.10)',
+  background: '#111827',
+  padding: '22px',
+  direction: 'rtl',
+  boxShadow: '0 24px 70px rgba(0,0,0,0.55)'
+};
+
+const fieldStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: '8px'
+};
+
+const labelStyle: React.CSSProperties = {
+  color: '#cbd5e1',
+  fontWeight: 800
+};
+
+const closeButtonStyle: React.CSSProperties = {
+  width: '34px',
+  height: '34px',
+  borderRadius: '50%',
+  border: '1px solid rgba(255,255,255,0.12)',
+  background: 'rgba(255,255,255,0.05)',
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: '20px'
 };

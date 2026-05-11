@@ -40,6 +40,43 @@ type LoyaltySettings = {
   loyalty_min_redeem_points: number;
 };
 
+type SaleReceipt = {
+  sale: {
+    id: number;
+    customer_name?: string | null;
+    customer_phone?: string | null;
+    cashier_name?: string | null;
+    sub_total: number;
+    discount_value?: number;
+    grand_total: number;
+    paid?: number;
+    change_amount?: number;
+    payment_method?: string | null;
+    loyalty_points_earned?: number;
+    loyalty_points_redeemed?: number;
+    loyalty_discount_value?: number;
+    created_at?: string | null;
+  };
+  items: Array<{
+    id: number;
+    product_name: string;
+    barcode?: string | null;
+    size?: string | null;
+    color?: string | null;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }>;
+  loyalty: Array<{
+    id: number;
+    type: 'earn' | 'redeem' | 'adjust' | string;
+    points: number;
+    amount?: number;
+    notes?: string | null;
+    created_at?: string | null;
+  }>;
+};
+
 type InvoiceTab = {
   id: number;
   title: string;
@@ -48,6 +85,8 @@ type InvoiceTab = {
   productDraft: string;
   customer: CustomerOption | null;
   loyaltyPointsDraft: string;
+  paidDraft: string;
+  paymentMethod: string;
 };
 
 type DropdownRect = {
@@ -71,7 +110,9 @@ const createInvoice = (id: number): InvoiceTab => ({
   barcodeDraft: '',
   productDraft: '',
   customer: null,
-  loyaltyPointsDraft: ''
+  loyaltyPointsDraft: '',
+  paidDraft: '',
+  paymentMethod: 'cash'
 });
 
 function normalizeCustomer(customer: any): CustomerOption {
@@ -92,6 +133,42 @@ function normalizeCustomer(customer: any): CustomerOption {
 function normalizePositiveInt(value: string | number): number {
   const n = Math.floor(Number(value));
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function money(value: number | string | null | undefined): string {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n.toFixed(2) : '0.00';
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function formatReceiptDate(value?: string | null): string {
+  if (!value) return '—';
+
+  try {
+    const raw = String(value);
+
+    const normalized = raw.includes('T')
+      ? raw
+      : raw.replace(' ', 'T') + 'Z';
+
+    return new Date(normalized).toLocaleString('ar-EG', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return value;
+  }
 }
 
 export default function SalesPage() {
@@ -125,6 +202,8 @@ export default function SalesPage() {
     type: 'error' | 'success';
     text: string;
   } | null>(null);
+
+  const [receiptData, setReceiptData] = useState<SaleReceipt | null>(null);
 
   const [dropdownRect, setDropdownRect] = useState<DropdownRect | null>(null);
 
@@ -171,6 +250,19 @@ export default function SalesPage() {
   const redeemPoints = Math.min(requestedRedeemPoints, maxRedeemPoints);
   const loyaltyDiscountValue = redeemPoints * pointValue;
   const grandTotal = Math.max(0, subTotal - loyaltyDiscountValue);
+
+  const paidAmount =
+    activeInvoice.paidDraft.trim() === ''
+      ? grandTotal
+      : Math.min(
+          Math.max(Number(activeInvoice.paidDraft || 0), 0),
+          grandTotal
+        );
+
+  const remainingAmount = Math.max(0, grandTotal - paidAmount);
+
+  const paymentStatus =
+    remainingAmount === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
 
   const estimatedEarnedPoints = useMemo(() => {
     if (!loyaltyEnabled) return 0;
@@ -225,7 +317,7 @@ export default function SalesPage() {
 
   function focusMainInput() {
     requestAnimationFrame(() => {
-      if (showAddCustomerModal) return;
+      if (showAddCustomerModal || receiptData) return;
 
       if (barcodeMode) {
         barcodeInputRef.current?.focus();
@@ -450,6 +542,114 @@ export default function SalesPage() {
     }
   }
 
+  function buildReceiptPrintHtml(receipt: SaleReceipt) {
+    const rows = receipt.items
+      .map(
+        (item) => `
+          <tr>
+            <td>${escapeHtml(item.product_name)} ${escapeHtml(item.size || '')} ${escapeHtml(item.color || '')}</td>
+            <td>${escapeHtml(item.quantity)}</td>
+            <td>${money(item.unit_price)}</td>
+            <td>${money(item.line_total)}</td>
+          </tr>
+        `
+      )
+      .join('');
+
+    return `
+      <!doctype html>
+      <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="UTF-8" />
+          <title>فاتورة #${escapeHtml(receipt.sale.id)}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              padding: 14px;
+              font-family: Arial, Tahoma, sans-serif;
+              color: #111;
+              background: #fff;
+              font-size: 12px;
+            }
+            .receipt { width: 280px; margin: 0 auto; }
+            h2, p { margin: 0; }
+            .center { text-align: center; }
+            .muted { color: #555; font-size: 11px; }
+            .line { border-top: 1px dashed #777; margin: 10px 0; }
+            .row { display: flex; justify-content: space-between; gap: 8px; margin: 5px 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+            th, td { padding: 5px 0; border-bottom: 1px dashed #ddd; text-align: right; vertical-align: top; }
+            th { font-size: 11px; color: #333; }
+            .total { font-weight: 800; font-size: 14px; }
+            @media print { body { padding: 0; } .receipt { width: 100%; } }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="center">
+              <h2>فاتورة بيع</h2>
+              <p class="muted">رقم الفاتورة: #${escapeHtml(receipt.sale.id)}</p>
+              <p class="muted">${escapeHtml(formatReceiptDate(receipt.sale.created_at))}</p>
+            </div>
+
+            <div class="line"></div>
+
+            <div class="row"><span>العميل</span><strong>${escapeHtml(receipt.sale.customer_name || 'عميل نقدي')}</strong></div>
+            <div class="row"><span>الكاشير</span><strong>${escapeHtml(receipt.sale.cashier_name || '-')}</strong></div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>الصنف</th>
+                  <th>كمية</th>
+                  <th>سعر</th>
+                  <th>إجمالي</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+
+            <div class="line"></div>
+
+            <div class="row"><span>الإجمالي قبل الخصم</span><strong>${money(receipt.sale.sub_total)} ج.م</strong></div>
+            <div class="row"><span>خصم النقاط</span><strong>${money(receipt.sale.loyalty_discount_value)} ج.م</strong></div>
+            <div class="row total"><span>الإجمالي النهائي</span><strong>${money(receipt.sale.grand_total)} ج.م</strong></div>
+
+            <div class="line"></div>
+
+            <div class="row"><span>نقاط مستخدمة</span><strong>${escapeHtml(receipt.sale.loyalty_points_redeemed || 0)}</strong></div>
+            <div class="row"><span>نقاط مكتسبة</span><strong>${escapeHtml(receipt.sale.loyalty_points_earned || 0)}</strong></div>
+
+            <div class="line"></div>
+            <p class="center muted">شكرًا لتعاملكم معنا</p>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
+  function printReceipt() {
+    if (!receiptData) return;
+
+    const popup = window.open('', '_blank', 'width=420,height=700');
+
+    if (!popup) {
+      showMessage('error', 'المتصفح منع فتح نافذة الطباعة', false);
+      return;
+    }
+
+    popup.document.open();
+    popup.document.write(buildReceiptPrintHtml(receiptData));
+    popup.document.close();
+    popup.focus();
+
+    setTimeout(() => {
+      popup.print();
+      popup.close();
+    }, 350);
+  }
+
   async function saveSale() {
     if (saving) return;
 
@@ -472,6 +672,11 @@ export default function SalesPage() {
       updateActiveInvoice({ loyaltyPointsDraft: String(maxRedeemPoints) });
     }
 
+    if (remainingAmount > 0 && !activeInvoice.customer) {
+      showMessage('error', 'لا يمكن البيع آجل بدون اختيار عميل');
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -481,9 +686,11 @@ export default function SalesPage() {
         sub_total: subTotal,
         discount_value: 0,
         grand_total: grandTotal,
-        paid: grandTotal,
+        paid: paidAmount,
+        remaining_amount: remainingAmount,
+        payment_status: paymentStatus,
         change_amount: 0,
-        payment_method: 'cash',
+        payment_method: activeInvoice.paymentMethod || 'cash',
         notes: null,
         loyalty_points_redeemed: redeemPoints,
         loyalty_discount_value: loyaltyDiscountValue,
@@ -498,19 +705,28 @@ export default function SalesPage() {
         }))
       });
 
-      const earned = Number(result?.loyalty_points_earned || 0);
-      const successText = earned > 0
-        ? `تم حفظ الفاتورة رقم ${result.saleId} وكسب العميل ${earned} نقطة`
-        : `تم حفظ الفاتورة رقم ${result.saleId}`;
+      try {
+        const receipt = await window.api.getSaleReceipt(Number(result.saleId));
+        setReceiptData(receipt);
+      } catch (receiptError) {
+        console.error('Failed to load receipt:', receiptError);
 
-      showMessage('success', successText);
+        const earned = Number(result?.loyalty_points_earned || 0);
+        const successText = earned > 0
+          ? `تم حفظ الفاتورة رقم ${result.saleId} وكسب العميل ${earned} نقطة`
+          : `تم حفظ الفاتورة رقم ${result.saleId}`;
+
+        showMessage('success', successText);
+      }
 
       updateActiveInvoice({
         cart: [],
         barcodeDraft: '',
         productDraft: '',
         customer: null,
-        loyaltyPointsDraft: ''
+        loyaltyPointsDraft: '',
+        paidDraft: '',
+        paymentMethod: 'cash'
       });
 
       setProductResults([]);
@@ -573,7 +789,7 @@ export default function SalesPage() {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (showAddCustomerModal) return;
+      if (showAddCustomerModal || receiptData) return;
 
       if (e.key === 'F5') {
         e.preventDefault();
@@ -617,6 +833,7 @@ export default function SalesPage() {
     saving,
     barcodeMode,
     showAddCustomerModal,
+    receiptData,
     grandTotal,
     redeemPoints,
     loyaltyDiscountValue
@@ -1224,6 +1441,126 @@ export default function SalesPage() {
             direction: 'ltr'
           }}
         >
+
+          <div
+            className="glass-card"
+            style={{
+              marginTop: '22px',
+              padding: '18px',
+              borderRadius: '16px',
+              display: 'grid',
+              gap: '14px',
+              direction: 'rtl',
+              background: 'rgba(255,255,255,0.03)'
+            }}
+          >
+            <h3 style={{ margin: 0 }}>الدفع</h3>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '12px'
+              }}
+            >
+              <div style={{ display: 'grid', gap: '8px' }}>
+                <label style={{ color: '#cbd5e1', fontWeight: 800 }}>
+                  الإجمالي المطلوب
+                </label>
+                <input
+                  value={`${grandTotal.toFixed(2)} ج.م`}
+                  readOnly
+                  style={{ ...tableInputStyle, opacity: 0.7 }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gap: '8px' }}>
+                <label style={{ color: '#cbd5e1', fontWeight: 800 }}>
+                  المدفوع الآن
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={grandTotal}
+                  value={activeInvoice.paidDraft}
+                  onChange={(e) =>
+                    updateActiveInvoice({
+                      paidDraft: e.target.value
+                    })
+                  }
+                  placeholder={grandTotal.toFixed(2)}
+                  style={tableInputStyle}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gap: '8px' }}>
+                <label style={{ color: '#cbd5e1', fontWeight: 800 }}>
+                  المتبقي على العميل
+                </label>
+                <input
+                  value={`${remainingAmount.toFixed(2)} ج.م`}
+                  readOnly
+                  style={{
+                    ...tableInputStyle,
+                    opacity: 0.7,
+                    color: remainingAmount > 0 ? '#fca5a5' : '#6ee7b7',
+                    fontWeight: 900
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gap: '8px' }}>
+                <label style={{ color: '#cbd5e1', fontWeight: 800 }}>
+                  طريقة الدفع
+                </label>
+                <select
+                  value={activeInvoice.paymentMethod}
+                  onChange={(e) =>
+                    updateActiveInvoice({
+                      paymentMethod: e.target.value
+                    })
+                  }
+                  style={tableInputStyle}
+                >
+                  <option value="cash">كاش</option>
+                  <option value="card">كارت</option>
+                  <option value="wallet">محفظة</option>
+                  <option value="bank_transfer">تحويل بنكي</option>
+                </select>
+              </div>
+            </div>
+
+            {remainingAmount > 0 && !activeInvoice.customer && (
+              <div
+                style={{
+                  padding: '12px',
+                  borderRadius: '12px',
+                  background: 'rgba(239,68,68,0.10)',
+                  border: '1px solid rgba(239,68,68,0.25)',
+                  color: '#fca5a5',
+                  fontWeight: 800
+                }}
+              >
+                لا يمكن حفظ فاتورة آجل بدون اختيار عميل.
+              </div>
+            )}
+
+            {remainingAmount > 0 && activeInvoice.customer && (
+              <div
+                style={{
+                  padding: '12px',
+                  borderRadius: '12px',
+                  background: 'rgba(249,115,22,0.10)',
+                  border: '1px solid rgba(249,115,22,0.25)',
+                  color: '#fdba74',
+                  fontWeight: 800
+                }}
+              >
+                سيتم تسجيل {remainingAmount.toFixed(2)} ج.م على حساب العميل.
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
@@ -1282,6 +1619,183 @@ export default function SalesPage() {
               {item.sell_price} ج
             </button>
           ))}
+        </div>
+      )}
+
+      {receiptData && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.58)',
+            zIndex: 100000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div
+            style={{
+              width: '760px',
+              maxWidth: '100%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              borderRadius: '20px',
+              border: '1px solid rgba(255,255,255,0.10)',
+              background: '#111827',
+              boxShadow: '0 28px 80px rgba(0,0,0,0.58)',
+              padding: '22px',
+              direction: 'rtl',
+              color: '#fff'
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                gap: '14px',
+                marginBottom: '18px'
+              }}
+            >
+              <div style={{ display: 'grid', gap: '6px' }}>
+                <h3 style={{ margin: 0 }}>تم حفظ الفاتورة #{receiptData.sale.id}</h3>
+                <span style={{ color: '#94a3b8', fontSize: '13px' }}>
+                  {formatReceiptDate(receiptData.sale.created_at)}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setReceiptData(null);
+                  setTimeout(focusMainInput, 0);
+                }}
+                style={miniCloseButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '10px',
+                marginBottom: '16px'
+              }}
+            >
+              <div style={receiptInfoCardStyle}>
+                <span>العميل</span>
+                <strong>{receiptData.sale.customer_name || 'عميل نقدي'}</strong>
+              </div>
+
+              <div style={receiptInfoCardStyle}>
+                <span>الكاشير</span>
+                <strong>{receiptData.sale.cashier_name || '—'}</strong>
+              </div>
+
+              <div style={receiptInfoCardStyle}>
+                <span>طريقة الدفع</span>
+                <strong>{receiptData.sale.payment_method || 'cash'}</strong>
+              </div>
+            </div>
+
+            <div
+              style={{
+                borderRadius: '14px',
+                border: '1px solid rgba(255,255,255,0.08)',
+                overflow: 'hidden',
+                marginBottom: '16px'
+              }}
+            >
+              <div style={receiptTableHeaderStyle}>
+                <div>الصنف</div>
+                <div>الكمية</div>
+                <div>السعر</div>
+                <div>الإجمالي</div>
+              </div>
+
+              {receiptData.items.map((item) => (
+                <div key={item.id} style={receiptTableRowStyle}>
+                  <div style={{ display: 'grid', gap: '4px' }}>
+                    <strong>{item.product_name}</strong>
+                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                      {item.size || '—'} / {item.color || '—'}
+                    </span>
+                  </div>
+
+                  <div>{item.quantity}</div>
+                  <div>{money(item.unit_price)} ج.م</div>
+                  <div>{money(item.line_total)} ج.م</div>
+                </div>
+              ))}
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                gap: '10px',
+                marginBottom: '18px'
+              }}
+            >
+              <div style={receiptInfoCardStyle}>
+                <span>الإجمالي قبل الخصم</span>
+                <strong>{money(receiptData.sale.sub_total)} ج.م</strong>
+              </div>
+
+              <div style={receiptInfoCardStyle}>
+                <span>خصم النقاط</span>
+                <strong>{money(receiptData.sale.loyalty_discount_value)} ج.م</strong>
+              </div>
+
+              <div style={{ ...receiptInfoCardStyle, borderColor: 'rgba(16,185,129,0.40)' }}>
+                <span>الإجمالي النهائي</span>
+                <strong>{money(receiptData.sale.grand_total)} ج.م</strong>
+              </div>
+
+              <div style={receiptInfoCardStyle}>
+                <span>النقاط</span>
+                <strong>
+                  +{receiptData.sale.loyalty_points_earned || 0} / -
+                  {receiptData.sale.loyalty_points_redeemed || 0}
+                </strong>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+                justifyContent: 'flex-start',
+                flexWrap: 'wrap'
+              }}
+            >
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={printReceipt}
+                style={primaryButtonStyle}
+              >
+                طباعة الفاتورة
+              </button>
+
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setReceiptData(null);
+                  setTimeout(focusMainInput, 0);
+                }}
+                style={secondaryOutlineButtonStyle}
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1481,6 +1995,36 @@ const summaryStyle: CSSProperties = {
   gap: '16px',
   flexWrap: 'wrap',
   direction: 'rtl'
+};
+
+const receiptInfoCardStyle: CSSProperties = {
+  borderRadius: '12px',
+  padding: '12px',
+  background: 'rgba(255,255,255,0.04)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  display: 'grid',
+  gap: '6px',
+  color: '#cbd5e1'
+};
+
+const receiptTableHeaderStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 90px 110px 120px',
+  gap: '10px',
+  padding: '12px',
+  background: 'rgba(255,255,255,0.05)',
+  color: '#cbd5e1',
+  fontWeight: 800
+};
+
+const receiptTableRowStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '1fr 90px 110px 120px',
+  gap: '10px',
+  padding: '12px',
+  borderTop: '1px solid rgba(255,255,255,0.06)',
+  alignItems: 'center',
+  color: '#e5e7eb'
 };
 
 const loyaltyPanelStyle: CSSProperties = {
