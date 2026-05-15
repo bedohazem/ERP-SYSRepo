@@ -1,7 +1,9 @@
 import React from 'react';
+import RouterGuard from './router-guard';
 import { createHashRouter } from 'react-router-dom';
 import AppShell from './components/layout/AppShell';
 import LoginPage from './pages/Auth/LoginPage';
+import DashboardPage from './pages/Dashboard/DashboardPage';
 import ProductsPage from './pages/Products/ProductsPage';
 import SettingsPage from './pages/Settings/SettingsPage';
 import SalesPage from './pages/Sales/SalesPage';
@@ -12,12 +14,23 @@ import InventoryPage from './pages/Inventory/InventoryPage';
 import SuppliersPage from './pages/Suppliers/SuppliersPage';
 import PurchasesPage from './pages/Purchases/PurchasesPage';
 import PurchaseHistoryPage from './pages/Purchases/PurchaseHistoryPage';
+import CashPage from './pages/Cash/CashPage';
+import ExpensesPage from './pages/Expenses/ExpensesPage';
+import UsersPage from './pages/Users/UsersPage';
 
-function DashboardPage() {
-  return <div>دي لوحة التحكم</div>;
-}
-function withShell(title: string, element: React.ReactNode) {
-  return <AppShell title={title}>{element}</AppShell>;
+
+type Role = 'admin' | 'cashier';
+
+function withShell(
+  title: string,
+  element: React.ReactNode,
+  allowedRoles?: Role[]
+) {
+  return (
+    <RouterGuard allowedRoles={allowedRoles}>
+      <AppShell title={title}>{element}</AppShell>
+    </RouterGuard>
+  );
 }
 
 export const router = createHashRouter([
@@ -27,46 +40,59 @@ export const router = createHashRouter([
   },
   {
     path: '/dashboard',
-    element: withShell('الرئيسية', <DashboardPage />)
+    element: withShell('الرئيسية', <DashboardPage />, ['admin', 'cashier'])
   },
   {
     path: '/products',
-    element: withShell('المنتجات', <ProductsPage />)
+    element: withShell('المنتجات', <ProductsPage />, ['admin'])
   },
   {
     path: '/inventory',
-    element: withShell('المخزون', <InventoryPage />)
+    element: withShell('المخزون', <InventoryPage />, ['admin'])
   },
   {
     path: '/sales',
-    element: withShell('المبيعات', <SalesPage />)
+    element: withShell('المبيعات', <SalesPage />, ['admin', 'cashier'])
   },
   {
     path: '/invoices',
-    element: withShell('سجل الفواتير', <InvoicesPage />)
+    element: withShell('سجل الفواتير', <InvoicesPage />, ['admin', 'cashier'])
   },
   {
     path: '/customers',
-    element: withShell('العملاء', <CustomersPage />)
+    element: withShell('العملاء', <CustomersPage />, ['admin', 'cashier'])
   },
   {
     path: '/suppliers',
-    element: withShell('الموردين', <SuppliersPage />)
+    element: withShell('الموردين', <SuppliersPage />, ['admin', 'cashier'])
   },
   {
     path: '/purchases',
-    element: withShell('فواتير الشراء', <PurchasesPage />)
+    element: withShell('فواتير الشراء', <PurchasesPage />, ['admin', 'cashier'])
   },
   {
     path: '/purchase-history',
-    element: withShell('سجل الشراء', <PurchaseHistoryPage />)
+    element: withShell('سجل الشراء', <PurchaseHistoryPage />, ['admin', 'cashier'])
   },
   {
     path: '/reports',
-    element: withShell('التقارير', <ReportsPage />)
+    element: withShell('التقارير', <ReportsPage />, ['admin'])
   },
   {
     path: '/settings',
-    element: withShell('الإعدادات', <SettingsPage />)
-  }
+    element: withShell('الإعدادات', <SettingsPage />, ['admin'])
+  },
+  {
+    path: '/cash',
+    element: withShell('الخزنة', <CashPage />, ['admin'])
+  },
+  {
+    path: '/expenses',
+    element: withShell('المصروفات', <ExpensesPage />, ['admin'])
+  },  
+  {
+    path: '/users',
+    element: withShell('المستخدمين', <UsersPage />, ['admin'])
+  },
+
 ]);

@@ -10,6 +10,8 @@ import { registerReportsIpc } from './ipc/reports.ipc';
 import { registerInventoryIpc } from './ipc/inventory.ipc';
 import { registerSuppliersIpc } from './ipc/suppliers.ipc';
 import { registerPurchasesIpc } from './ipc/purchases.ipc';
+import { registerCashIpc } from './ipc/cash.ipc';
+import { registerExpenseIpc } from './ipc/expense.ipc';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -57,6 +59,8 @@ app.whenReady().then(() => {
   registerInventoryIpc();
   registerSuppliersIpc();
   registerPurchasesIpc();
+  registerCashIpc();
+  registerExpenseIpc();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

@@ -4,6 +4,12 @@ contextBridge.exposeInMainWorld('api', {
   login: (data) => ipcRenderer.invoke('auth:login', data),
   register: (data) => ipcRenderer.invoke('auth:register', data),
 
+  getUsers: (search) => ipcRenderer.invoke('users:list', search),
+  createSystemUser: (input) => ipcRenderer.invoke('users:create', input),
+  updateSystemUser: (input) => ipcRenderer.invoke('users:update', input),
+  setUserActive: (userId, isActive) => ipcRenderer.invoke('users:set-active', userId, isActive),
+  resetUserPassword: (userId, password) => ipcRenderer.invoke('users:reset-password', userId, password),
+
   getCategories: () => ipcRenderer.invoke('products:get-categories'),
   getProducts: (payload) => ipcRenderer.invoke('products:list', payload),
   getProductVariants: (payload) => ipcRenderer.invoke('products:get-variants', payload),
@@ -37,6 +43,9 @@ contextBridge.exposeInMainWorld('api', {
   getLoyaltySettings: () => ipcRenderer.invoke('settings:get-loyalty'),
   saveLoyaltySettings: (input) => ipcRenderer.invoke('settings:save-loyalty', input),
 
+  backupDatabase: () => ipcRenderer.invoke('settings:backup-database'),
+  restoreDatabase: () => ipcRenderer.invoke('settings:restore-database'),
+
   getReportsSummary: (input) => ipcRenderer.invoke('reports:summary', input),
 
   getInventoryList: (input) => ipcRenderer.invoke('inventory:list', input),
@@ -54,5 +63,12 @@ contextBridge.exposeInMainWorld('api', {
   getPurchaseInvoice: (purchaseId) => ipcRenderer.invoke('purchases:get-by-id', purchaseId),
   recordSupplierPayment: (input) => ipcRenderer.invoke('suppliers:record-payment', input),
   getSupplierStatement: (supplierId) => ipcRenderer.invoke('suppliers:statement', supplierId),
+
+  getCashSummary: () => ipcRenderer.invoke('cash:summary'),
+  getCashMovements: () => ipcRenderer.invoke('cash:list'),
+  createCashMovement: (input) => ipcRenderer.invoke('cash:create-movement', input),
+
+  createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
+  getExpenses: () => ipcRenderer.invoke('expenses:list'),
 
 });

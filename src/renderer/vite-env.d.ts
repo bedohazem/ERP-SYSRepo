@@ -46,6 +46,7 @@ export {};
 declare global {
   interface Window {
     api: {
+
       // =========================
       // Auth
       // =========================
@@ -72,6 +73,33 @@ declare global {
         success: boolean;
         message?: string;
       }>;
+
+      getUsers: (search?: string) => Promise<SystemUser[]>;
+
+      createSystemUser: (input: {
+        name: string;
+        username: string;
+        password: string;
+        role: 'admin' | 'cashier';
+      }) => Promise<MutationResult<SystemUser>>;
+
+      updateSystemUser: (input: {
+        id: number;
+        name: string;
+        username: string;
+        role: 'admin' | 'cashier';
+        is_active: number;
+      }) => Promise<MutationResult<SystemUser>>;
+
+      setUserActive: (
+        userId: number,
+        isActive: number
+      ) => Promise<MutationResult<SystemUser>>;
+
+      resetUserPassword: (
+        userId: number,
+        password: string
+      ) => Promise<MutationResult<SystemUser>>;
 
       // =========================
       // Products
@@ -249,6 +277,24 @@ declare global {
       saveLoyaltySettings: (
         input: LoyaltySettings
       ) => Promise<LoyaltySettings>;
+
+      //==========================
+      //Backups
+      //==========================
+      backupDatabase: () => Promise<{
+        success: boolean;
+        canceled?: boolean;
+        path?: string;
+        message?: string;
+      }>;
+
+      restoreDatabase: () => Promise<{
+        success: boolean;
+        canceled?: boolean;
+        path?: string;
+        safetyBackupPath?: string;
+        message?: string;
+      }>;
 
       // =========================
       // Reports
@@ -453,6 +499,27 @@ declare global {
           }>;
 
 
+        // =========================
+        // Cash Movements
+        // =========================
+          getCashSummary: () => Promise<{
+            total_in: number;
+            total_out: number;
+            balance: number;
+          }>;
+
+          getCashMovements: () => Promise<any[]>;
+
+          createCashMovement: (input: any) => Promise<any>;
+        
+
+        // =========================
+        // Expenses
+        // =========================
+          getExpenses: () => Promise<any[]>;
+          createExpense: (input: any) => Promise<any>;
+
+
 
     
     };
@@ -521,4 +588,20 @@ declare global {
       created_at: string;
     }>;
   };
+
+  type SystemUser = {
+    id: number;
+    name: string;
+    username: string;
+    role: 'admin' | 'cashier' | string;
+    is_active: number;
+    created_at: string;
+  };
+
+  type MutationResult<T = any> = {
+    success: boolean;
+    message?: string;
+    user?: T;
+  };
+
 } 

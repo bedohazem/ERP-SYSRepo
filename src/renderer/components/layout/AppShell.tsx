@@ -3,25 +3,31 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import { useAppStore } from '../../store/app.store';
 
+type Role = 'admin' | 'cashier';
+
 type MenuItem = {
   to: string;
   label: string;
   icon: string;
   title: string;
+  roles?: Role[];
 };
 
 const menuItems: MenuItem[] = [
-  { to: '/dashboard', label: 'الرئيسية', icon: '🏠' ,title: 'الرئيسية'},
-  { to: '/sales', label: 'المبيعات', icon: '🧾' ,title: 'المبيعات'},
-  { to: '/invoices', label: 'سجل الفواتير', icon: '📄' ,title: 'سجل الفواتير'},
-  { to: '/products', label: 'المنتجات', icon: '👕' ,title: 'المنتجات'},
-  { to: '/inventory', label: 'المخزون', icon: '📦', title: 'المخزون' },
-  { to: '/customers', label: 'العملاء', icon: '👤' ,title: 'العملاء'},
-  { to: '/suppliers', label: 'الموردين', icon: '🚚' ,title: 'الموردين'},
-  { to: '/purchases', label: 'فواتير الشراء', icon: '🛒', title: 'فواتير الشراء' },
-  { to: '/purchase-history', label: 'سجل الشراء', icon: '📑', title: 'سجل الشراء' },
-  { to: '/reports', label: 'التقارير', icon: '📊' ,title: 'التقارير'},
-  { to: '/settings', label: 'الإعدادات', icon: '⚙️' ,title: 'الإعدادات'}
+  { to: '/dashboard', label: 'الرئيسية', icon: '🏠' ,title: 'الرئيسية',roles: ['admin', 'cashier']},
+  { to: '/sales', label: 'المبيعات', icon: '🧾' ,title: 'المبيعات',roles: ['admin', 'cashier']},
+  { to: '/invoices', label: 'سجل الفواتير', icon: '📄' ,title: 'سجل الفواتير',roles: ['admin', 'cashier']},
+  { to: '/products', label: 'المنتجات', icon: '👕' ,title: 'المنتجات',roles: ['admin']},
+  { to: '/inventory', label: 'المخزون', icon: '📦', title: 'المخزون', roles: ['admin'] },
+  { to: '/customers', label: 'العملاء', icon: '👤' ,title: 'العملاء',roles: ['admin', 'cashier']},
+  { to: '/suppliers', label: 'الموردين', icon: '🚚' ,title: 'الموردين',roles: ['admin', 'cashier']},
+  { to: '/purchases', label: 'فواتير الشراء', icon: '🛒', title: 'فواتير الشراء', roles: ['admin', 'cashier'] },
+  { to: '/purchase-history', label: 'سجل الشراء', icon: '📑', title: 'سجل الشراء', roles: ['admin', 'cashier'] },
+  { to: '/users', label: 'المستخدمين', icon: '👥', title: 'المستخدمين', roles: ['admin'] },
+  { to: '/reports', label: 'التقارير', icon: '📊' ,title: 'التقارير', roles: ['admin']},
+  { to: '/expenses', label: 'المصروفات', icon: '💳' ,title: 'المصروفات', roles: ['admin']},
+  { to: '/cash', label: 'الخزنة', icon: '💵' ,title: 'الخزنة', roles: ['admin']},
+  { to: '/settings', label: 'الإعدادات', icon: '⚙️' ,title: 'الإعدادات', roles: ['admin']}
 ];
 
 export default function AppShell({
@@ -32,6 +38,13 @@ export default function AppShell({
   children: ReactNode;
 }) {
   const user = useAuthStore((s) => s.user);
+  
+  const userRole: Role = user?.role === 'admin' ? 'admin' : 'cashier';
+
+  const visibleMenuItems = menuItems.filter((item) =>
+    item.roles ? item.roles.includes(userRole) : true
+  );
+
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
 
@@ -161,7 +174,7 @@ export default function AppShell({
         </div>
 
         <nav style={{ display: 'grid', gap: '10px' }}>
-          {menuItems.map((item) => (
+          {visibleMenuItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

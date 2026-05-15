@@ -4,9 +4,20 @@ import { app } from 'electron';
 
 let db: Database.Database;
 
+export function getDbPath(): string {
+  return path.join(app.getPath('userData'), 'erp.db');
+}
+
+export function closeDb(): void {
+  if (db) {
+    db.close();
+    db = undefined as unknown as Database.Database;
+  }
+}
+
 export function getDb(): Database.Database {
   if (!db) {
-    const dbPath = path.join(app.getPath('userData'), 'erp.db');
+    const dbPath = getDbPath();
 
     db = new Database(dbPath);
 
@@ -191,6 +202,38 @@ export function getDb(): Database.Database {
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (customer_id) REFERENCES customers(id),
         FOREIGN KEY (sale_id) REFERENCES sales(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS cash_movements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        type TEXT NOT NULL,
+        amount REAL NOT NULL DEFAULT 0,
+
+        direction TEXT NOT NULL, 
+        payment_method TEXT DEFAULT 'cash',
+
+        reference_id INTEGER,
+        reference_type TEXT,
+
+        notes TEXT,
+
+        created_by INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS expenses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        category TEXT,
+        amount REAL NOT NULL DEFAULT 0,
+        payment_method TEXT DEFAULT 'cash',
+        notes TEXT,
+        created_by INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (created_by) REFERENCES users(id)
       );
 
     `);

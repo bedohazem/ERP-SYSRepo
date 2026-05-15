@@ -75,6 +75,8 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<BarcodePrintSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
 
   useEffect(() => {
     void loadSettings();
@@ -171,6 +173,66 @@ export default function SettingsPage() {
     }
   }
 
+  async function backupDatabase() {
+    if (backupLoading) return;
+
+    setBackupLoading(true);
+
+    try {
+      const result = await window.api.backupDatabase();
+
+      if (result.canceled) {
+        return;
+      }
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل حفظ النسخة الاحتياطية');
+        return;
+      }
+
+      showMessage('success', 'تم حفظ النسخة الاحتياطية بنجاح');
+    } catch (error) {
+      console.error('Failed to backup database:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ النسخة الاحتياطية');
+    } finally {
+      setBackupLoading(false);
+    }
+  }
+
+  async function restoreDatabase() {
+    if (restoreLoading) return;
+
+    const confirmed = confirm(
+      'تحذير: استرجاع نسخة احتياطية سيستبدل بيانات البرنامج الحالية. هل أنت متأكد؟'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setRestoreLoading(true);
+
+    try {
+      const result = await window.api.restoreDatabase();
+
+      if (result.canceled) {
+        return;
+      }
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل استرجاع النسخة الاحتياطية');
+        return;
+      }
+
+      showMessage('success', 'تم استرجاع النسخة الاحتياطية بنجاح. يفضل إعادة تشغيل البرنامج.');
+    } catch (error) {
+      console.error('Failed to restore database:', error);
+      showMessage('error', 'حدث خطأ أثناء استرجاع النسخة الاحتياطية');
+    } finally {
+      setRestoreLoading(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="glass-card" style={{ borderRadius: '24px', padding: '24px' }}>
@@ -205,6 +267,67 @@ export default function SettingsPage() {
             {pageMessage.text}
           </div>
         )}
+
+        <div
+          className="glass-card"
+          style={{
+            borderRadius: '24px',
+            padding: '24px',
+            display: 'grid',
+            gap: '16px',
+            direction: 'rtl'
+          }}
+        >
+          <div>
+            <h2 style={{ margin: '0 0 8px' }}>النسخ الاحتياطي واسترجاع البيانات</h2>
+            <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.8 }}>
+              احفظ نسخة من قاعدة البيانات أو استرجع نسخة قديمة عند الحاجة.
+            </p>
+          </div>
+
+          <div
+            style={{
+              padding: '14px',
+              borderRadius: '14px',
+              background: 'rgba(245,158,11,0.10)',
+              border: '1px solid rgba(245,158,11,0.25)',
+              color: '#fde68a',
+              fontWeight: 700,
+              lineHeight: 1.8
+            }}
+          >
+            نصيحة: اعمل نسخة احتياطية يوميًا قبل إغلاق المحل، واحتفظ بها على فلاشة أو Google Drive.
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={backupDatabase}
+              disabled={backupLoading}
+              style={{
+                ...primaryButtonStyle,
+                opacity: backupLoading ? 0.6 : 1,
+                cursor: backupLoading ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {backupLoading ? 'جاري الحفظ...' : 'حفظ نسخة احتياطية'}
+            </button>
+
+            <button
+              type="button"
+              onClick={restoreDatabase}
+              disabled={restoreLoading}
+              style={{
+                ...dangerButtonStyle,
+                opacity: restoreLoading ? 0.6 : 1,
+                cursor: restoreLoading ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {restoreLoading ? 'جاري الاسترجاع...' : 'استرجاع نسخة احتياطية'}
+            </button>
+          </div>
+        </div>
+
         <div className="glass-card" style={{ borderRadius: '24px', padding: '24px' }}>
           <h2 style={{ marginTop: 0 }}>إعدادات طباعة الباركود</h2>
           <p style={{ color: '#94a3b8' }}>
@@ -646,4 +769,15 @@ const hintStyle: React.CSSProperties = {
   color: '#94a3b8',
   fontSize: '12px',
   lineHeight: 1.6
+};
+
+const dangerButtonStyle: React.CSSProperties = {
+  border: '1px solid rgba(239,68,68,0.35)',
+  height: '48px',
+  borderRadius: '14px',
+  background: 'rgba(239,68,68,0.14)',
+  color: '#fca5a5',
+  fontWeight: 700,
+  padding: '0 18px',
+  cursor: 'pointer'
 };

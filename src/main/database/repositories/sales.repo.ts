@@ -1,4 +1,5 @@
 import { getDb } from '../db';
+import { createCashMovement } from './cash.repo';
 
 export type CreateSaleLineInput = {
   variant_id: number;
@@ -143,7 +144,7 @@ export function createSale(input: CreateSaleInput) {
         )
         VALUES (
           'sale',
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `)
       .run(
@@ -164,6 +165,19 @@ export function createSale(input: CreateSaleInput) {
       );
 
     const saleId = Number(saleResult.lastInsertRowid);
+
+    if (paidAmount > 0) {
+      createCashMovement({
+        type: 'sale',
+        direction: 'in',
+        amount: paidAmount,
+        payment_method: input.payment_method || 'cash',
+        reference_id: saleId,
+        reference_type: 'sale',
+        notes: `تحصيل فاتورة بيع رقم ${saleId}`,
+        created_by: input.user_id
+      });
+    }
 
     const insertItem = db.prepare(`
       INSERT INTO sale_items (
@@ -563,6 +577,7 @@ export function createSaleReturn(input: {
     `);
 
     let returnSubTotal = 0;
+    
 
     const preparedItems = input.items
       .map((item) => {
@@ -619,6 +634,7 @@ export function createSaleReturn(input: {
       throw new Error('لا توجد كميات صالحة للمرتجع');
     }
 
+    
     const originalGrandTotal = Number(originalSale.grand_total || 0);
     const originalSubTotal = Number(originalSale.sub_total || 0);
 
@@ -676,6 +692,19 @@ export function createSaleReturn(input: {
       );
 
     const returnSaleId = Number(returnSaleResult.lastInsertRowid);
+
+    if (refundAmount > 0) {
+      createCashMovement({
+        type: 'sale_return',
+        direction: 'out',
+        amount: refundAmount,
+        payment_method: originalSale.payment_method || 'cash',
+        reference_id: returnSaleId,
+        reference_type: 'sale_return',
+        notes: `مرتجع فاتورة رقم ${originalSaleId}`,
+        created_by: userId
+      });
+    }
 
     const insertReturnItem = db.prepare(`
       INSERT INTO sale_items (

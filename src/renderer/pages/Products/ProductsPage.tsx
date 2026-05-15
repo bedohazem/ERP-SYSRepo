@@ -442,7 +442,7 @@ export default function ProductsPage() {
       .join('');
 
     const content = `
-      <html dir="ltr">rro
+      <html dir="ltr">
         <head>
           <title>طباعة باركود</title>
           <style>

@@ -1,4 +1,5 @@
 import { getDb } from '../db';
+import { createCashMovement } from './cash.repo';
 
 export type CustomerInput = {
   name: string;
