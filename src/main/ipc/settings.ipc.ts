@@ -1,4 +1,5 @@
 import { BrowserWindow, app, dialog, ipcMain } from 'electron';
+import type { OpenDialogOptions, SaveDialogOptions } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -49,16 +50,20 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle('settings:backup-database', async (event) => {
     try {
-      const parentWindow = BrowserWindow.fromWebContents(event.sender) || undefined;
+      const parentWindow = BrowserWindow.fromWebContents(event.sender);
 
-      const result = await dialog.showSaveDialog(parentWindow, {
+      const options: SaveDialogOptions = {
         title: 'حفظ نسخة احتياطية',
         defaultPath: path.join(app.getPath('documents'), getDefaultBackupName()),
         filters: [
           { name: 'SQLite Database', extensions: ['db'] },
           { name: 'All Files', extensions: ['*'] }
         ]
-      });
+      };
+
+      const result = parentWindow
+        ? await dialog.showSaveDialog(parentWindow, options)
+        : await dialog.showSaveDialog(options);
 
       if (result.canceled || !result.filePath) {
         return {
@@ -87,16 +92,20 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle('settings:restore-database', async (event) => {
     try {
-      const parentWindow = BrowserWindow.fromWebContents(event.sender) || undefined;
+      const parentWindow = BrowserWindow.fromWebContents(event.sender);
 
-      const result = await dialog.showOpenDialog(parentWindow, {
+      const options: OpenDialogOptions = {
         title: 'اختيار نسخة احتياطية للاسترجاع',
         properties: ['openFile'],
         filters: [
           { name: 'SQLite Database', extensions: ['db'] },
           { name: 'All Files', extensions: ['*'] }
         ]
-      });
+      };
+
+      const result = parentWindow
+        ? await dialog.showOpenDialog(parentWindow, options)
+        : await dialog.showOpenDialog(options);
 
       if (result.canceled || !result.filePaths[0]) {
         return {
