@@ -8,7 +8,8 @@ contextBridge.exposeInMainWorld('api', {
   createSystemUser: (input) => ipcRenderer.invoke('users:create', input),
   updateSystemUser: (input) => ipcRenderer.invoke('users:update', input),
   setUserActive: (userId, isActive) => ipcRenderer.invoke('users:set-active', userId, isActive),
-  resetUserPassword: (userId, password) => ipcRenderer.invoke('users:reset-password', userId, password),
+  resetUserPassword: (userId, password, actorId) => ipcRenderer.invoke('users:reset-password', userId, password, actorId),
+  
 
   getCategories: () => ipcRenderer.invoke('products:get-categories'),
   getProducts: (payload) => ipcRenderer.invoke('products:list', payload),
@@ -64,11 +65,13 @@ contextBridge.exposeInMainWorld('api', {
   recordSupplierPayment: (input) => ipcRenderer.invoke('suppliers:record-payment', input),
   getSupplierStatement: (supplierId) => ipcRenderer.invoke('suppliers:statement', supplierId),
 
-  getCashSummary: () => ipcRenderer.invoke('cash:summary'),
-  getCashMovements: () => ipcRenderer.invoke('cash:list'),
+  getCashSummary: (input) => ipcRenderer.invoke('cash:summary', input),
+  getCashMovements: (input) => ipcRenderer.invoke('cash:list', input),
   createCashMovement: (input) => ipcRenderer.invoke('cash:create-movement', input),
 
   createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
   getExpenses: () => ipcRenderer.invoke('expenses:list'),
+
+  getActivityLogs: (input) => ipcRenderer.invoke('activity:list', input),
 
 });

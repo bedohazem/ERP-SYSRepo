@@ -27,8 +27,11 @@ const menuItems: MenuItem[] = [
   { to: '/reports', label: 'التقارير', icon: '📊' ,title: 'التقارير', roles: ['admin']},
   { to: '/expenses', label: 'المصروفات', icon: '💳' ,title: 'المصروفات', roles: ['admin']},
   { to: '/cash', label: 'الخزنة', icon: '💵' ,title: 'الخزنة', roles: ['admin']},
-  { to: '/settings', label: 'الإعدادات', icon: '⚙️' ,title: 'الإعدادات', roles: ['admin']}
+  { to: '/settings', label: 'الإعدادات', icon: '⚙️' ,title: 'الإعدادات', roles: ['admin']},
+  { to: '/activity', label: 'سجل العمليات', icon: '🕘', title: 'سجل العمليات', roles: ['admin'] },
+  
 ];
+
 
 export default function AppShell({
   title,

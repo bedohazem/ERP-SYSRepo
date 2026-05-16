@@ -17,7 +17,7 @@ import PurchaseHistoryPage from './pages/Purchases/PurchaseHistoryPage';
 import CashPage from './pages/Cash/CashPage';
 import ExpensesPage from './pages/Expenses/ExpensesPage';
 import UsersPage from './pages/Users/UsersPage';
-
+import ActivityLogPage from './pages/Activity/ActivityLogPage';
 
 type Role = 'admin' | 'cashier';
 
@@ -94,5 +94,9 @@ export const router = createHashRouter([
     path: '/users',
     element: withShell('المستخدمين', <UsersPage />, ['admin'])
   },
-
+  {
+    path: '/activity',
+    element: withShell('سجل العمليات', <ActivityLogPage />, ['admin'])
+  },
+  
 ]);

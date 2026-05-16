@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useAuthStore } from '../../store/auth.store';
 
 type Expense = {
   id: number;
@@ -16,6 +17,7 @@ export default function ExpensesPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const currentUser = useAuthStore((s) => s.user);
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
@@ -65,7 +67,7 @@ export default function ExpensesPage() {
         amount: parsedAmount,
         payment_method: paymentMethod,
         notes: notes.trim() || null,
-        created_by: 1
+        created_by: currentUser?.id ?? null
       });
 
       setTitle('');

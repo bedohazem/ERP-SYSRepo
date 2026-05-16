@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron';
+import { getActorId, logAction } from './activity-helper';
 import {
   createSale,
   getSaleReceipt,
@@ -18,7 +19,23 @@ export function registerSalesIpc(): void {
   });
 
   ipcMain.handle('sales:create', (_, input) => {
-    return createSale(input);
+    const result = createSale(input);
+
+    logAction({
+      actor_id: getActorId(input),
+      action: 'sale_created',
+      entity: 'sales',
+      entity_id: result.saleId,
+      details: {
+        customer_id: input.customer_id ?? null,
+        grand_total: result.grand_total ?? input.grand_total,
+        paid: input.paid,
+        payment_method: input.payment_method,
+        items_count: input.items?.length || 0
+      }
+    });
+
+    return result;
   });
 
   ipcMain.handle('sales:get-receipt', (_, saleId: number) => {
@@ -30,7 +47,22 @@ export function registerSalesIpc(): void {
   });
 
   ipcMain.handle('sales:return', (_, input) => {
-    return createSaleReturn(input);
+    const result = createSaleReturn(input);
+
+    logAction({
+      actor_id: getActorId(input),
+      action: 'sale_return_created',
+      entity: 'sales',
+      entity_id: result.returnSaleId,
+      details: {
+        original_sale_id: result.originalSaleId,
+        refund_amount: result.refundAmount,
+        reason: input.reason,
+        items_count: input.items?.length || 0
+      }
+    });
+
+    return result;
   });
 
 }

@@ -7,12 +7,12 @@ import {
 } from '../database/repositories/cash.repo';
 
 export function registerCashIpc(): void {
-  ipcMain.handle('cash:summary', () => {
-    return getCashSummary();
+  ipcMain.handle('cash:summary', (_, input) => {
+    return getCashSummary(input);
   });
 
-  ipcMain.handle('cash:list', () => {
-    return listCashMovements();
+  ipcMain.handle('cash:list', (_, input) => {
+    return listCashMovements(input);
   });
 
   ipcMain.handle('cash:create-movement', (_, input) => {

@@ -1,5 +1,6 @@
 import { getDb } from '../db';
 import { createCashMovement } from './cash.repo';
+import { createActivityLog } from './activity.repo';
 
 export type CreateExpenseInput = {
   title: string;
@@ -48,6 +49,21 @@ export function createExpense(input: CreateExpenseInput) {
       );
 
     const expenseId = Number(result.lastInsertRowid);
+
+
+    createActivityLog({
+      user_id: input.created_by ?? null,
+      action: 'expense_created',
+      entity: 'expenses',
+      entity_id: expenseId,
+      details: JSON.stringify({
+        title,
+        category: input.category?.trim() || null,
+        amount,
+        payment_method: input.payment_method || 'cash',
+        notes: input.notes?.trim() || null
+      })
+    });
 
     createCashMovement({
       type: 'expense',

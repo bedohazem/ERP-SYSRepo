@@ -236,6 +236,17 @@ export function getDb(): Database.Database {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
 
+      CREATE TABLE IF NOT EXISTS activity_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        action TEXT NOT NULL,
+        entity TEXT,
+        entity_id INTEGER,
+        details TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+
     `);
     
       safeAddColumn(db, 'sales', 'loyalty_points_earned', 'INTEGER DEFAULT 0');

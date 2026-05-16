@@ -1,5 +1,6 @@
 import { BrowserWindow, app, dialog, ipcMain } from 'electron';
 import type { OpenDialogOptions, SaveDialogOptions } from 'electron';
+import { getActorId, logAction } from './activity-helper';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -32,6 +33,7 @@ function getDefaultBackupName() {
 }
 
 export function registerSettingsIpc(): void {
+
   ipcMain.handle('settings:get-barcode-print', () => {
     return getBarcodePrintSettings();
   });
@@ -48,7 +50,7 @@ export function registerSettingsIpc(): void {
     return saveLoyaltySettings(input);
   });
 
-  ipcMain.handle('settings:backup-database', async (event) => {
+  ipcMain.handle('settings:backup-database', async (event,input?: { actor_id?: number }) => {
     try {
       const parentWindow = BrowserWindow.fromWebContents(event.sender);
 
@@ -77,6 +79,17 @@ export function registerSettingsIpc(): void {
 
       await db.backup(result.filePath);
 
+
+      logAction({
+        actor_id: getActorId(input),
+        action: 'database_backup_created',
+        entity: 'settings',
+        entity_id: null,
+        details: {
+          path: result.filePath
+        }
+      });
+
       return {
         success: true,
         path: result.filePath,
@@ -90,7 +103,7 @@ export function registerSettingsIpc(): void {
     }
   });
 
-  ipcMain.handle('settings:restore-database', async (event) => {
+  ipcMain.handle('settings:restore-database', async (event,input?: { actor_id?: number }) => {
     try {
       const parentWindow = BrowserWindow.fromWebContents(event.sender);
 
@@ -128,6 +141,17 @@ export function registerSettingsIpc(): void {
       fs.copyFileSync(selectedFile, targetDbPath);
 
       getDb();
+
+      logAction({
+        actor_id: getActorId(input),
+        action: 'database_restored',
+        entity: 'settings',
+        entity_id: null,
+        details: {
+          restored_from: selectedFile,
+          safety_backup: backupBeforeRestorePath
+        }
+      });
 
       return {
         success: true,

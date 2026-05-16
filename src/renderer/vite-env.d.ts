@@ -297,6 +297,14 @@ declare global {
       }>;
 
       // =========================
+      // Logs
+      // =========================
+      getActivityLogs: (input?: {
+        search?: string;
+        limit?: number;
+      }) => Promise<ActivityLog[]>;
+
+      // =========================
       // Reports
       // =========================
       getReportsSummary: (input?: {
@@ -502,13 +510,29 @@ declare global {
         // =========================
         // Cash Movements
         // =========================
-          getCashSummary: () => Promise<{
+        
+          getCashSummary: (input?: {
+            date_from?: string;
+            date_to?: string;
+            type?: string;
+            direction?: 'all' | 'in' | 'out';
+            payment_method?: string;
+            search?: string;
+          }) => Promise<{
             total_in: number;
             total_out: number;
             balance: number;
+            movements_count: number;
           }>;
 
-          getCashMovements: () => Promise<any[]>;
+          getCashMovements: (input?: {
+            date_from?: string;
+            date_to?: string;
+            type?: string;
+            direction?: 'all' | 'in' | 'out';
+            payment_method?: string;
+            search?: string;
+          }) => Promise<any[]>;
 
           createCashMovement: (input: any) => Promise<any>;
         
@@ -602,6 +626,18 @@ declare global {
     success: boolean;
     message?: string;
     user?: T;
+  };
+
+  type ActivityLog = {
+    id: number;
+    user_id?: number | null;
+    action: string;
+    entity?: string | null;
+    entity_id?: number | null;
+    details?: string | null;
+    created_at: string;
+    user_name?: string | null;
+    username?: string | null;
   };
 
 } 
