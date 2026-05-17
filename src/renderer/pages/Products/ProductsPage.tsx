@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import BarcodePreview from '../../components/products/BarcodePreview';
 
 type Category = {
@@ -93,7 +93,30 @@ type BarcodePrintSettings = {
   barcode_svg_height: number;
 };
 
+function escapeHtml(value: string) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeJs(value: string) {
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"');
+}
+
+function money(value: unknown) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? n.toFixed(2) : '0.00';
+}
+
 export default function ProductsPage() {
+  const pageRef = useRef<HTMLDivElement | null>(null);
+
+  const [isCompact, setIsCompact] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -131,52 +154,7 @@ export default function ProductsPage() {
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [includeInactive, setIncludeInactive] = useState(false);
-  
   const [includeInactiveVariants, setIncludeInactiveVariants] = useState(true);
-  
-  async function loadData() {
-    try {
-      const [cats, prods, barcodeSettings] = await Promise.all([
-        window.api.getCategories(),
-        window.api.getProducts({
-          search,
-          includeInactive
-        }),
-        window.api.getBarcodePrintSettings()
-      ]);
-
-      setCategories(cats);
-      setProducts(prods);
-      setPrintSettings(barcodeSettings);
-
-
-    } catch (error) {
-      console.error('Failed to load products page data:', error);
-    }
-  }
-
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  useEffect(() => {
-    const handle = setTimeout(() => {
-      void window.api
-        .getProducts({
-          search,
-          includeInactive
-        })
-        .then(setProducts)
-        .catch((error) => console.error('Failed to search products:', error));
-    }, 250);
-
-    return () => clearTimeout(handle);
-  }, [search, includeInactive]);
-
-  useEffect(() => {
-  setVariantsMap({});
-  setExpandedId(null);
-  }, [includeInactiveVariants]);
 
   const canSave = useMemo(() => {
     if (!name.trim()) return false;
@@ -192,6 +170,73 @@ export default function ProductsPage() {
     );
   }, [name, variants]);
 
+  async function loadData() {
+    try {
+      const [cats, prods, barcodeSettings] = await Promise.all([
+        window.api.getCategories(),
+        window.api.getProducts({
+          search,
+          includeInactive
+        }),
+        window.api.getBarcodePrintSettings()
+      ]);
+
+      setCategories(Array.isArray(cats) ? cats : []);
+      setProducts(Array.isArray(prods) ? prods : []);
+      setPrintSettings(barcodeSettings);
+    } catch (error) {
+      console.error('Failed to load products page data:', error);
+      alert('حدث خطأ أثناء تحميل المنتجات');
+    }
+  }
+
+  useEffect(() => {
+    const element = pageRef.current;
+
+    if (!element) return;
+
+    function updateCompact(width: number) {
+      setIsCompact(width <= 900);
+    }
+
+    updateCompact(element.getBoundingClientRect().width);
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+
+      if (entry) {
+        updateCompact(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      void window.api
+        .getProducts({
+          search,
+          includeInactive
+        })
+        .then((data) => setProducts(Array.isArray(data) ? data : []))
+        .catch((error) => console.error('Failed to search products:', error));
+    }, 250);
+
+    return () => clearTimeout(handle);
+  }, [search, includeInactive]);
+
+  useEffect(() => {
+    setVariantsMap({});
+    setExpandedId(null);
+  }, [includeInactiveVariants]);
+
   function updateVariant(index: number, key: keyof VariantForm, value: string) {
     setVariants((prev) =>
       prev.map((item, i) => (i === index ? { ...item, [key]: value } : item))
@@ -206,8 +251,15 @@ export default function ProductsPage() {
     setVariants((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function resetCreateForm() {
+    setName('');
+    setCategoryId('');
+    setDescription('');
+    setVariants([emptyVariant()]);
+  }
+
   async function handleSave() {
-    if (!canSave) return;
+    if (!canSave || loading) return;
 
     setLoading(true);
 
@@ -228,10 +280,7 @@ export default function ProductsPage() {
         }))
       });
 
-      setName('');
-      setCategoryId('');
-      setDescription('');
-      setVariants([emptyVariant()]);
+      resetCreateForm();
       setShowCreate(false);
 
       await reloadPrintSettings();
@@ -256,17 +305,18 @@ export default function ProductsPage() {
       setLoadingVariants(productId);
 
       try {
-       const data = await window.api.getProductVariants({
+        const data = await window.api.getProductVariants({
           productId,
           includeInactive: includeInactiveVariants
         });
 
         setVariantsMap((prev) => ({
           ...prev,
-          [productId]: data
+          [productId]: Array.isArray(data) ? data : []
         }));
       } catch (error) {
         console.error('Failed to load product variants:', error);
+        alert('حدث خطأ أثناء تحميل الـ variants');
       } finally {
         setLoadingVariants(null);
       }
@@ -276,6 +326,7 @@ export default function ProductsPage() {
   function generateBarcodeValue(): string {
     const now = Date.now().toString().slice(-8);
     const random = Math.floor(1000 + Math.random() * 9000).toString();
+
     return `29${now}${random}`;
   }
 
@@ -352,6 +403,7 @@ export default function ProductsPage() {
     function alignToCss(position: BarcodeItemPosition, align: BarcodeItemAlign) {
       if (position.endsWith('-left')) return 'left';
       if (position.endsWith('-right')) return 'right';
+
       return align;
     }
 
@@ -534,10 +586,7 @@ export default function ProductsPage() {
               text-overflow: ellipsis;
             }
 
-            .price-item {
-              font-weight: bold;
-            }
-
+            .price-item,
             .name-item {
               font-weight: bold;
             }
@@ -556,6 +605,7 @@ export default function ProductsPage() {
             }
           </style>
         </head>
+
         <body>
           ${labelsHtml}
 
@@ -595,21 +645,6 @@ export default function ProductsPage() {
     printWindow.document.write(content);
     printWindow.document.close();
   }
-  
-  function escapeHtml(value: string) {
-    return value
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  function escapeJs(value: string) {
-    return value
-      .replace(/\\/g, '\\\\')
-      .replace(/"/g, '\\"');
-  }
 
   async function openEditProduct(product: Product) {
     setEditingProductId(product.id);
@@ -624,7 +659,7 @@ export default function ProductsPage() {
       });
 
       setEditVariants(
-        data.map((v) => ({
+        (Array.isArray(data) ? data : []).map((v: ProductVariant) => ({
           id: v.id,
           barcode: v.barcode ?? '',
           size: v.size ?? '',
@@ -667,6 +702,7 @@ export default function ProductsPage() {
 
   async function handleSaveEdit() {
     if (!editingProductId) return;
+
     if (!editName.trim()) {
       alert('اسم المنتج مطلوب');
       return;
@@ -703,9 +739,10 @@ export default function ProductsPage() {
           productId: editingProductId,
           includeInactive: includeInactiveVariants
         });
+
         setVariantsMap((prev) => ({
           ...prev,
-          [editingProductId]: refreshed
+          [editingProductId]: Array.isArray(refreshed) ? refreshed : []
         }));
       }
 
@@ -747,7 +784,7 @@ export default function ProductsPage() {
 
       setVariantsMap((prev) => ({
         ...prev,
-        [productId]: refreshed
+        [productId]: Array.isArray(refreshed) ? refreshed : []
       }));
     } catch (error) {
       console.error('Failed to toggle variant active state:', error);
@@ -755,29 +792,42 @@ export default function ProductsPage() {
     }
   }
 
+  const productGridMinWidth = isCompact ? '760px' : '920px';
 
-
-
-
+  const variantGridColumns = isCompact
+  ? '220px 90px 110px 100px 90px 100px 120px'
+  : '1.5fr 0.8fr 0.8fr 0.8fr 0.7fr 100px 120px';
 
   return (
-    <div style={{ display: 'grid', gap: '16px',minHeight: 0 }}>
+    <div
+      ref={pageRef}
+      style={{
+        display: 'grid',
+        gap: '16px',
+        minHeight: 0,
+        width: '100%',
+        maxWidth: '100%',
+        overflow: 'hidden'
+      }}
+    >
       <div
         className="glass-card"
         style={{
           borderRadius: '24px',
-          padding: '20px',
+          padding: isCompact ? '14px' : '20px',
           display: 'grid',
-          gap: '12px'
+          gap: '12px',
+          maxWidth: '100%',
+          overflow: 'hidden'
         }}
       >
         <div
           style={{
-            display: 'flex',
+            display: 'grid',
+            gridTemplateColumns: isCompact ? '1fr' : 'minmax(260px, 1fr) auto',
             alignItems: 'center',
-            justifyContent: 'space-between',
             gap: '12px',
-            flexWrap: 'wrap'
+            maxWidth: '100%'
           }}
         >
           <input
@@ -787,53 +837,61 @@ export default function ProductsPage() {
             style={inputStyle}
           />
 
-          <button onClick={() => setShowCreate(true)} style={primaryButtonStyle}>
+          <button
+            type="button"
+            onClick={() => setShowCreate(true)}
+            style={{
+              ...primaryButtonStyle,
+              width: isCompact ? '100%' : undefined
+            }}
+          >
             + إضافة منتج
           </button>
         </div>
 
-        <label
+        <div
           style={{
             display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            color: '#cbd5e1'
+            gap: '12px',
+            flexWrap: 'wrap',
+            color: '#cbd5e1',
+            direction: 'rtl'
           }}
         >
-          <input
-            type="checkbox"
-            checked={includeInactive}
-            onChange={(e) => setIncludeInactive(e.target.checked)}
-          />
-          <span>عرض المنتجات الموقوفة</span>
-        </label>
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            color: '#cbd5e1'
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={includeInactiveVariants}
-            onChange={(e) => setIncludeInactiveVariants(e.target.checked)}
-          />
-          <span>عرض الـ variants الموقوفة</span>
-        </label>
+          <label style={checkboxLabelStyle}>
+            <input
+              type="checkbox"
+              checked={includeInactive}
+              onChange={(e) => setIncludeInactive(e.target.checked)}
+            />
+            <span>عرض المنتجات الموقوفة</span>
+          </label>
 
+          <label style={checkboxLabelStyle}>
+            <input
+              type="checkbox"
+              checked={includeInactiveVariants}
+              onChange={(e) => setIncludeInactiveVariants(e.target.checked)}
+            />
+            <span>عرض الـ variants الموقوفة</span>
+          </label>
+        </div>
       </div>
 
       <div
         className="glass-card"
-        style={{ borderRadius: '24px', padding: '20px' }}
+        style={{
+          borderRadius: '24px',
+          padding: isCompact ? '14px' : '20px',
+          maxWidth: '100%',
+          overflow: 'hidden'
+        }}
       >
         <div style={{ fontSize: '20px', fontWeight: 700, marginBottom: '16px' }}>
           المنتجات
         </div>
 
-        <div style={{ display: 'grid', gap: '12px' }}>
+        <div style={{ display: 'grid', gap: '12px', maxWidth: '100%' }}>
           {products.length === 0 ? (
             <div style={{ color: '#94a3b8' }}>لا توجد منتجات حتى الآن</div>
           ) : (
@@ -847,23 +905,34 @@ export default function ProductsPage() {
                   className="soft-card"
                   style={{
                     borderRadius: '18px',
-                    padding: '16px',
+                    padding: isCompact ? '12px' : '16px',
                     display: 'grid',
-                    gap: '12px'
+                    gap: '12px',
+                    maxWidth: '100%',
+                    overflow: 'hidden'
                   }}
                 >
                   <div
                     onClick={() => void toggleExpand(product.id)}
                     style={{
-                      display: 'flex',
+                      display: 'grid',
+                      gridTemplateColumns: isCompact ? '1fr' : 'minmax(0, 1fr) auto',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
                       gap: '12px',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      minWidth: 0
                     }}
                   >
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '16px' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: '16px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
                         {product.name}
                       </div>
 
@@ -893,7 +962,8 @@ export default function ProductsPage() {
                           style={{
                             color: '#cbd5e1',
                             fontSize: '13px',
-                            marginTop: '6px'
+                            marginTop: '6px',
+                            overflowWrap: 'anywhere'
                           }}
                         >
                           {product.description}
@@ -901,58 +971,60 @@ export default function ProductsPage() {
                       ) : null}
                     </div>
 
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        flexWrap: 'wrap',
+                        justifyContent: isCompact ? 'flex-start' : 'flex-end'
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void openEditProduct(product);
+                        }}
+                        style={secondarySmallButtonStyle}
+                      >
+                        تعديل
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleToggleProductActive(product.id, product.is_active);
+                        }}
+                        style={{
+                          ...dangerButtonStyle,
+                          height: '40px',
+                          padding: '0 12px',
+                          color: product.is_active ? '#fca5a5' : '#86efac',
+                          border: product.is_active
+                            ? '1px solid rgba(239,68,68,0.25)'
+                            : '1px solid rgba(34,197,94,0.25)',
+                          background: product.is_active
+                            ? 'rgba(239,68,68,0.12)'
+                            : 'rgba(34,197,94,0.12)'
+                        }}
+                      >
+                        {product.is_active ? 'تعطيل' : 'تفعيل'}
+                      </button>
+
                       <div
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '10px'
+                          gap: '12px',
+                          color: '#60a5fa',
+                          fontWeight: 600
                         }}
                       >
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void openEditProduct(product);
-                          }}
-                          style={secondarySmallButtonStyle}
-                        >
-                          تعديل
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleToggleProductActive(product.id, product.is_active);
-                          }}
-                          style={{
-                            ...dangerButtonStyle,
-                            height: '40px',
-                            padding: '0 12px',
-                            color: product.is_active ? '#fca5a5' : '#86efac',
-                            border: product.is_active
-                              ? '1px solid rgba(239,68,68,0.25)'
-                              : '1px solid rgba(34,197,94,0.25)',
-                            background: product.is_active
-                              ? 'rgba(239,68,68,0.12)'
-                              : 'rgba(34,197,94,0.12)'
-                          }}
-                        >
-                          {product.is_active ? 'تعطيل' : 'تفعيل'}
-                        </button>
-
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px',
-                            color: '#60a5fa',
-                            fontWeight: 600
-                          }}
-                        >
-                          <span>#{product.id}</span>
-                          <span>{isOpen ? '▲' : '▼'}</span>
-                        </div>
+                        <span>#{product.id}</span>
+                        <span>{isOpen ? '▲' : '▼'}</span>
+                      </div>
                     </div>
                   </div>
 
@@ -961,7 +1033,9 @@ export default function ProductsPage() {
                       style={{
                         marginTop: '4px',
                         borderTop: '1px solid rgba(255,255,255,0.08)',
-                        paddingTop: '12px'
+                        paddingTop: '12px',
+                        maxWidth: '100%',
+                        overflow: 'hidden'
                       }}
                     >
                       {loadingVariants === product.id ? (
@@ -969,154 +1043,212 @@ export default function ProductsPage() {
                       ) : productVariants.length === 0 ? (
                         <div style={{ color: '#94a3b8' }}>لا توجد variants لهذا المنتج</div>
                       ) : (
-                        <div style={{ display: 'grid', gap: '10px' }}>
+                        <div style={{ overflowX: 'auto', maxWidth: '100%', direction: 'rtl'}}>
                           <div
                             style={{
                               display: 'grid',
-                              gridTemplateColumns: '1.6fr 1fr 1fr 1fr 1fr',
                               gap: '10px',
-                              padding: '10px 12px',
-                              borderRadius: '12px',
-                              background: 'rgba(37,99,235,0.10)',
-                              fontSize: '13px',
-                              fontWeight: 700,
-                              color: '#cbd5e1'
+                              minWidth: productGridMinWidth
                             }}
                           >
-                            <div>الباركود</div>
-                            <div>المقاس</div>
-                            <div>اللون</div>
-                            <div>سعر البيع</div>
-                            <div>المخزون</div>
+                            <div
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns:
+                                  '1.5fr 0.8fr 0.8fr 0.8fr 0.7fr auto 110px',
+                                gap: '10px',
+                                padding: '10px 12px',
+                                borderRadius: '12px',
+                                background: 'rgba(37,99,235,0.10)',
+                                fontSize: '13px',
+                                fontWeight: 700,
+                                color: '#cbd5e1',
+                                alignItems: 'center'
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: variantGridColumns,
+                                  gap: '10px',
+                                  padding: '10px 12px',
+                                  borderRadius: '12px',
+                                  background: 'rgba(37,99,235,0.10)',
+                                  fontSize: '13px',
+                                  fontWeight: 700,
+                                  color: '#cbd5e1',
+                                  minWidth: 0,
+                                  alignItems: 'center'
+                                }}
+                              >
+                                <div>الباركود</div>
+                                <div>المقاس</div>
+                                <div>اللون</div>
+                                <div>سعر البيع</div>
+                                <div>المخزون</div>
+                                <div>إجراء</div>
+                                <div>الحالة</div>
+                              </div>
+                            </div>
+
+                            {productVariants.map((variant) => {
+                              const isLowStock =
+                                Number(variant.stock) <= Number(variant.min_stock);
+
+                              return (
+                                <div
+                                  key={variant.id}
+                                  style={{
+                                    display: 'grid',
+                                    gap: '12px',
+                                    padding: '12px',
+                                    borderRadius: '14px',
+                                    background: 'rgba(255,255,255,0.03)',
+                                    border: '1px solid rgba(255,255,255,0.06)'
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      display: 'grid',
+                                      gridTemplateColumns: variantGridColumns,
+                                      gap: '10px',
+                                      fontSize: '13px',
+                                      alignItems: 'center',
+                                      minWidth: 0
+                                    }}
+                                  >
+                                    <div>{variant.barcode || '—'}</div>
+                                    <div>{variant.size || '—'}</div>
+                                    <div>{variant.color || '—'}</div>
+                                    <div>{money(variant.sell_price)} ج</div>
+                                    <div
+                                      style={{
+                                        color: isLowStock ? '#f87171' : '#34d399',
+                                        fontWeight: 700
+                                      }}
+                                    >
+                                      {variant.stock}
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void handleToggleVariantActive(
+                                          product.id,
+                                          variant.id,
+                                          variant.is_active
+                                        )
+                                      }
+                                      style={{
+                                        ...dangerButtonStyle,
+                                        height: '38px',
+                                        padding: '0 10px',
+                                        color: variant.is_active ? '#fca5a5' : '#86efac',
+                                        border: variant.is_active
+                                          ? '1px solid rgba(239,68,68,0.25)'
+                                          : '1px solid rgba(34,197,94,0.25)',
+                                        background: variant.is_active
+                                          ? 'rgba(239,68,68,0.12)'
+                                          : 'rgba(34,197,94,0.12)'
+                                      }}
+                                    >
+                                      {variant.is_active ? 'تعطيل' : 'تفعيل'}
+                                    </button>
+
+                                    <div
+                                      style={{
+                                        color: variant.is_active ? '#34d399' : '#f87171',
+                                        fontSize: '12px',
+                                        fontWeight: 700
+                                      }}
+                                    >
+                                      {variant.is_active ? 'Variant نشط' : 'Variant موقوف'}
+                                    </div>
+                                  </div>
+
+                                  <div
+                                    style={{
+                                      borderTop: '1px solid rgba(255,255,255,0.08)',
+                                      paddingTop: '12px',
+                                      display: 'grid',
+                                      gridTemplateColumns: isCompact ? '1fr' : 'minmax(220px, 1fr) auto',
+                                      gap: '12px',
+                                      alignItems: 'center',
+                                      direction: 'rtl',
+                                      maxWidth: '100%',
+                                      overflow: 'hidden'
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        minWidth: 0,
+                                        overflowX: 'auto',
+                                        display: 'flex',
+                                        justifyContent: isCompact ? 'center' : 'flex-start'
+                                      }}
+                                    >
+                                      <BarcodePreview value={variant.barcode} />
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      disabled={!printSettings}
+                                      onClick={() =>
+                                        printBarcodeLabel({
+                                          productName: product.name,
+                                          barcode: variant.barcode,
+                                          size: variant.size,
+                                          color: variant.color,
+                                          price: variant.sell_price
+                                        })
+                                      }
+                                      style={{
+                                        ...secondaryButtonStyle,
+                                        opacity: printSettings ? 1 : 0.6,
+                                        width: isCompact ? '100%' : undefined,
+                                        whiteSpace: 'nowrap'
+                                      }}
+                                    >
+                                      طباعة الباركود
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-
-            {productVariants.map((variant) => {
-              const isLowStock = Number(variant.stock) <= Number(variant.min_stock);
-
-              return (
-                  <div
-                    style={{
-                      display: 'grid',
-                      gap: '16px',
-                      minHeight: 'max-content',
-                      paddingBottom: '24px'
-                    }}
-                  >
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1.6fr 1fr 1fr 1fr 1fr auto',
-                      gap: '10px',
-                      fontSize: '13px',
-                      alignItems: 'center'
-                    }}
-                  >
-                    <div>{variant.barcode || '—'}</div>
-                    <div>{variant.size || '—'}</div>
-                    <div>{variant.color || '—'}</div>
-                    <div>{variant.sell_price} ج</div>
-                    <div
-                      style={{
-                        color: isLowStock ? '#f87171' : '#34d399',
-                        fontWeight: 700
-                      }}
-                    >
-                      {variant.stock}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void handleToggleVariantActive(product.id, variant.id, variant.is_active)
-                      }
-                      style={{
-                        ...dangerButtonStyle,
-                        height: '38px',
-                        padding: '0 10px',
-                        color: variant.is_active ? '#fca5a5' : '#86efac',
-                        border: variant.is_active
-                          ? '1px solid rgba(239,68,68,0.25)'
-                          : '1px solid rgba(34,197,94,0.25)',
-                        background: variant.is_active
-                          ? 'rgba(239,68,68,0.12)'
-                          : 'rgba(34,197,94,0.12)'
-                      }}
-                    >
-                      {variant.is_active ? 'تعطيل' : 'تفعيل'}
-                    </button>
-
-                    <div
-                        style={{
-                          color: variant.is_active ? '#34d399' : '#f87171',
-                          fontSize: '12px',
-                          fontWeight: 700
-                        }}
-                      >
-                        {variant.is_active ? 'Variant نشط' : 'Variant موقوف'}
-                      </div>
-                    </div>
-
-                  <div
-                    style={{
-                      borderTop: '1px solid rgba(255,255,255,0.08)',
-                      paddingTop: '10px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: '12px'
-                    }}
-                  >
-                    <BarcodePreview value={variant.barcode} />
-
-                    <button
-                      type="button"
-                      disabled={!printSettings}
-                      onClick={() =>
-                        printBarcodeLabel({
-                          productName: product.name,
-                          barcode: variant.barcode,
-                          size: variant.size,
-                          color: variant.color,
-                          price: variant.sell_price
-                        })
-                      }
-                      style={{
-                        ...secondaryButtonStyle,
-                        opacity: printSettings ? 1 : 0.6
-                      }}
-                    >
-                      طباعة الباركود
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-                  );
-                })
-              )}
-            </div>           
-            </div>
-      
+              );
+            })
+          )}
+        </div>
+      </div>
 
-        {showCreate && (
-          <div
-            className="glass-card"
-            style={{
-              borderRadius: '24px',
-              padding: '20px',
-              display: 'grid',
-              gap: '16px',
-              boxSizing: 'border-box'
-            }}
-          >
+      {showCreate && (
+        <div
+          className="glass-card"
+          style={{
+            borderRadius: '24px',
+            padding: isCompact ? '14px' : '20px',
+            display: 'grid',
+            gap: '16px',
+            boxSizing: 'border-box',
+            maxWidth: '100%',
+            overflow: 'hidden'
+          }}
+        >
           <div style={{ fontSize: '20px', fontWeight: 700 }}>إضافة منتج جديد</div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '14px'
+            }}
+          >
             <div>
               <label style={labelStyle}>اسم المنتج</label>
               <input
@@ -1143,40 +1275,47 @@ export default function ProductsPage() {
             </div>
           </div>
 
-              <div>
-                <label style={labelStyle}>الوصف</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  style={{ ...inputStyle, height: '100px', paddingTop: '14px' }}
-                />
-              </div>
+          <div>
+            <label style={labelStyle}>الوصف</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              style={{ ...inputStyle, height: '100px', paddingTop: '14px', resize: 'vertical' }}
+            />
+          </div>
 
-              <div style={{ fontSize: '18px', fontWeight: 700 }}>الـ Variants</div>
+          <div style={{ fontSize: '18px', fontWeight: 700 }}>الـ Variants</div>
 
-              <div style={{ display: 'grid', gap: '14px' }}>
-                {variants.map((variant, index) => (
-                  <div
-                    key={index}
-                    className="soft-card"
-                    style={{
-                      borderRadius: '18px',
-                      padding: '16px',
-                      display: 'grid',
-                      gap: '14px'
-                    }}
-                  >
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                      gap: '12px'
-                    }}
-                  >
+          <div style={{ display: 'grid', gap: '14px' }}>
+            {variants.map((variant, index) => (
+              <div
+                key={index}
+                className="soft-card"
+                style={{
+                  borderRadius: '18px',
+                  padding: isCompact ? '12px' : '16px',
+                  display: 'grid',
+                  gap: '14px',
+                  overflow: 'hidden'
+                }}
+              >
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+                    gap: '12px'
+                  }}
+                >
                   <div>
                     <label style={labelStyle}>الباركود</label>
 
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: isCompact ? '1fr' : 'minmax(0, 1fr) auto',
+                        gap: '8px'
+                      }}
+                    >
                       <input
                         value={variant.barcode}
                         onChange={(e) => updateVariant(index, 'barcode', e.target.value)}
@@ -1215,7 +1354,7 @@ export default function ProductsPage() {
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
                     gap: '12px'
                   }}
                 >
@@ -1263,6 +1402,7 @@ export default function ProductsPage() {
                 {variants.length > 1 && (
                   <div>
                     <button
+                      type="button"
                       onClick={() => removeVariant(index)}
                       style={dangerButtonStyle}
                     >
@@ -1274,12 +1414,13 @@ export default function ProductsPage() {
             ))}
           </div>
 
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button onClick={addVariant} style={secondaryButtonStyle}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button type="button" onClick={addVariant} style={secondaryButtonStyle}>
               + إضافة variant
             </button>
 
             <button
+              type="button"
               onClick={() => void handleSave()}
               disabled={!canSave || loading}
               style={{
@@ -1291,23 +1432,29 @@ export default function ProductsPage() {
             </button>
 
             <button
-              onClick={() => setShowCreate(false)}
+              type="button"
+              onClick={() => {
+                resetCreateForm();
+                setShowCreate(false);
+              }}
               style={secondaryButtonStyle}
             >
               إلغاء
             </button>
           </div>
         </div>
-        )}
+      )}
 
-        {editingProductId && (
+      {editingProductId && (
         <div
           className="glass-card"
           style={{
             borderRadius: '24px',
-            padding: '20px',
+            padding: isCompact ? '14px' : '20px',
             display: 'grid',
-            gap: '16px'
+            gap: '16px',
+            maxWidth: '100%',
+            overflow: 'hidden'
           }}
         >
           <div style={{ fontSize: '20px', fontWeight: 700 }}>تعديل المنتج</div>
@@ -1315,7 +1462,7 @@ export default function ProductsPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
               gap: '14px'
             }}
           >
@@ -1350,7 +1497,7 @@ export default function ProductsPage() {
             <textarea
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
-              style={{ ...inputStyle, height: '100px', paddingTop: '14px' }}
+              style={{ ...inputStyle, height: '100px', paddingTop: '14px', resize: 'vertical' }}
             />
           </div>
 
@@ -1363,15 +1510,16 @@ export default function ProductsPage() {
                 className="soft-card"
                 style={{
                   borderRadius: '18px',
-                  padding: '16px',
+                  padding: isCompact ? '12px' : '16px',
                   display: 'grid',
-                  gap: '14px'
+                  gap: '14px',
+                  overflow: 'hidden'
                 }}
               >
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
                     gap: '12px'
                   }}
                 >
@@ -1412,7 +1560,7 @@ export default function ProductsPage() {
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
                     gap: '12px'
                   }}
                 >
@@ -1456,28 +1604,27 @@ export default function ProductsPage() {
             ))}
           </div>
 
-          <div style={{ display: 'flex', gap: '12px' }}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             <button
               type="button"
               onClick={() => void handleSaveEdit()}
               disabled={savingEdit}
-              style={primaryButtonStyle}
+              style={{
+                ...primaryButtonStyle,
+                opacity: savingEdit ? 0.6 : 1
+              }}
             >
               {savingEdit ? 'جاري حفظ التعديلات...' : 'حفظ التعديلات'}
             </button>
 
-            <button
-              type="button"
-              onClick={closeEditProduct}
-              style={secondaryButtonStyle}
-            >
+            <button type="button" onClick={closeEditProduct} style={secondaryButtonStyle}>
               إلغاء
             </button>
           </div>
         </div>
-        )}
-      </div>
-    );
+      )}
+    </div>
+  );
 }
 
 const labelStyle: React.CSSProperties = {
@@ -1485,6 +1632,13 @@ const labelStyle: React.CSSProperties = {
   marginBottom: '8px',
   color: '#cbd5e1',
   fontSize: '14px'
+};
+
+const checkboxLabelStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  color: '#cbd5e1'
 };
 
 const inputStyle: React.CSSProperties = {
@@ -1495,7 +1649,9 @@ const inputStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.04)',
   color: '#fff',
   padding: '0 14px',
-  outline: 'none'
+  outline: 'none',
+  boxSizing: 'border-box',
+  minWidth: 0
 };
 
 const primaryButtonStyle: React.CSSProperties = {
@@ -1505,7 +1661,8 @@ const primaryButtonStyle: React.CSSProperties = {
   background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
   color: '#fff',
   fontWeight: 700,
-  padding: '0 18px'
+  padding: '0 18px',
+  cursor: 'pointer'
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
@@ -1515,7 +1672,8 @@ const secondaryButtonStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.04)',
   color: '#fff',
   fontWeight: 600,
-  padding: '0 18px'
+  padding: '0 18px',
+  cursor: 'pointer'
 };
 
 const dangerButtonStyle: React.CSSProperties = {
@@ -1525,12 +1683,13 @@ const dangerButtonStyle: React.CSSProperties = {
   background: 'rgba(239,68,68,0.12)',
   color: '#fca5a5',
   fontWeight: 600,
-  padding: '0 14px'
+  padding: '0 14px',
+  cursor: 'pointer'
 };
 
 const secondarySmallButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.08)',
-  height: '48px',
+  height: '40px',
   minWidth: '88px',
   borderRadius: '12px',
   background: 'rgba(255,255,255,0.04)',

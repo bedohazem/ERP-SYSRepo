@@ -173,6 +173,7 @@ function formatReceiptDate(value?: string | null): string {
 
 export default function SalesPage() {
   const user = useAuthStore((s) => s.user);
+  const [isCompact, setIsCompact] = useState(false);
 
   const [invoices, setInvoices] = useState<InvoiceTab[]>([createInvoice(1)]);
   const [activeInvoiceId, setActiveInvoiceId] = useState(1);
@@ -211,6 +212,7 @@ export default function SalesPage() {
   const productInputRef = useRef<HTMLInputElement | null>(null);
   const firstQtyInputRef = useRef<HTMLInputElement | null>(null);
   const customerWrapperRef = useRef<HTMLDivElement | null>(null);
+  const pageRef = useRef<HTMLDivElement | null>(null);
 
   const activeInvoice =
     invoices.find((x) => x.id === activeInvoiceId) ?? invoices[0];
@@ -279,9 +281,13 @@ export default function SalesPage() {
     return Math.floor(grandTotal / earnAmount) * earnPoints;
   }, [grandTotal, loyaltyEnabled, loyaltySettings]);
 
-  const salesGridColumns = barcodeMode
-    ? '44px 160px minmax(320px, 1fr) 110px 120px 130px'
-    : '44px minmax(420px, 1fr) 110px 120px 130px';
+  const salesGridColumns = isCompact
+    ? barcodeMode
+      ? '40px 120px minmax(240px, 1fr) 82px 90px 105px'
+      : '40px minmax(260px, 1fr) 82px 90px 105px'
+    : barcodeMode
+      ? '44px 160px minmax(320px, 1fr) 110px 120px 130px'
+      : '44px minmax(420px, 1fr) 110px 120px 130px';
 
   const tableHeaderStyle: CSSProperties = {
     display: 'grid',
@@ -847,6 +853,30 @@ export default function SalesPage() {
   }, []);
 
   useEffect(() => {
+    const element = pageRef.current;
+
+    if (!element) return;
+
+    function updateCompact(width: number) {
+      setIsCompact(width <= 980);
+    }
+
+    updateCompact(element.getBoundingClientRect().width);
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) {
+        updateCompact(entry.contentRect.width);
+      }
+    });
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
+
+
+  useEffect(() => {
     if (!customerDropdownOpen) return;
 
     const handle = setTimeout(() => {
@@ -874,7 +904,17 @@ export default function SalesPage() {
   }, []);
 
   return (
-    <div style={{ display: 'grid', gap: '18px', minHeight: 0, overflow: 'visible' }}>
+    <div
+      ref={pageRef}
+      style={{
+        display: 'grid',
+        gap: '18px',
+        minHeight: 0,
+        width: '100%',
+        maxWidth: '100%',
+        overflow: 'hidden'
+      }}
+    >
       {pageMessage && (
         <div
           style={{
@@ -904,20 +944,24 @@ export default function SalesPage() {
         style={{
           borderRadius: '18px',
           padding: '14px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          display: 'grid',
+          gridTemplateColumns: isCompact ? '1fr' : 'auto minmax(0, 1fr)',
           gap: '12px',
-          flexWrap: 'wrap',
           direction: 'ltr',
-          overflow: 'visible'
+          overflow: 'hidden',
+          maxWidth: '100%',
+          minWidth: 0
         }}
       >
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={addInvoice}
-          style={primaryButtonStyle}
+          style={{
+            ...primaryButtonStyle,
+            width: isCompact ? '100%' : undefined,
+            justifySelf: isCompact ? 'stretch' : 'start'
+          }}
         >
           + فاتورة جديدة F9
         </button>
@@ -926,8 +970,13 @@ export default function SalesPage() {
           style={{
             display: 'flex',
             gap: '8px',
-            flexWrap: 'wrap',
-            direction: 'rtl'
+            flexWrap: 'nowrap',
+            direction: 'rtl',
+            overflowX: 'auto',
+            maxWidth: '100%',
+            width: '100%',
+            paddingBottom: '4px',
+            minWidth: 0
           }}
         >
           {invoices.map((invoice) => {
@@ -985,21 +1034,25 @@ export default function SalesPage() {
         className="glass-card"
         style={{
           borderRadius: '18px',
-          padding: '28px',
+          padding: isCompact ? '14px' : '28px',
           minHeight: 0,
-          overflow: 'visible'
+          width: '100%',
+          maxWidth: '100%',
+          overflow: 'hidden',
+          boxSizing: 'border-box'
         }}
       >
         <h2 style={{ margin: '0 0 24px', textAlign: 'right' }}>فاتورة بيع</h2>
 
         <div
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
+            display: 'grid',
+            gridTemplateColumns: isCompact ? '1fr' : 'minmax(280px, 1fr) auto',
             alignItems: 'center',
             gap: '16px',
-            flexWrap: 'wrap',
-            marginBottom: '20px'
+            marginBottom: '20px',
+            maxWidth: '100%',
+            minWidth: 0
           }}
         >
           <div
@@ -1009,7 +1062,9 @@ export default function SalesPage() {
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
-              marginLeft: 'auto'
+              width: isCompact ? '100%' : '420px',
+              maxWidth: '100%',
+              minWidth: 0
             }}
           >
             <div
@@ -1017,7 +1072,8 @@ export default function SalesPage() {
                 display: 'flex',
                 alignItems: 'center',
                 direction: 'ltr',
-                width: '360px',
+                width: '100%',
+                minWidth: 0,
                 height: '46px',
                 borderRadius: '12px',
                 border: customerDropdownOpen
@@ -1137,7 +1193,8 @@ export default function SalesPage() {
                   position: 'absolute',
                   top: '54px',
                   left: 0,
-                  width: '360px',
+                  width: '100%',
+                  minWidth: 0,
                   maxHeight: '260px',
                   overflowY: 'auto',
                   borderRadius: '14px',
@@ -1259,17 +1316,26 @@ export default function SalesPage() {
           </div>
         </div>
 
-        <div style={summaryStyle}>
-          <div>
+        <div
+          style={{
+            ...summaryStyle,
+            display: 'grid',
+            gridTemplateColumns: isCompact
+              ? 'repeat(2, minmax(0, 1fr))'
+              : 'repeat(4, minmax(0, 1fr))',
+            overflow: 'hidden'
+          }}
+        >
+          <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
             عدد الأصناف | <span>{activeInvoice.cart.length}</span>
           </div>
-          <div>
+          <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
             الإجمالي قبل الخصم | <span>{subTotal.toFixed(2)} ج.م</span>
           </div>
-          <div>
+          <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
             خصم النقاط | <span>{loyaltyDiscountValue.toFixed(2)} ج.م</span>
           </div>
-          <div>
+          <div style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
             المطلوب دفعه | <span>{grandTotal.toFixed(2)} ج.م</span>
           </div>
         </div>
@@ -1311,8 +1377,25 @@ export default function SalesPage() {
           </div>
         )}
 
-        <div style={{ overflowX: 'auto', overflowY: 'visible', width: '100%' }}>
-          <div style={{ minWidth: barcodeMode ? '920px' : '760px' }}>
+        <div
+          style={{
+            overflowX: 'auto',
+            overflowY: 'visible',
+            width: '100%',
+            maxWidth: '100%'
+          }}
+        >
+          <div
+            style={{
+              minWidth: barcodeMode
+                ? isCompact
+                  ? '640px'
+                  : '920px'
+                : isCompact
+                  ? '540px'
+                  : '760px'
+            }}
+          >
             <div style={tableHeaderStyle}>
               <div></div>
               {barcodeMode && <div>باركود (F6)</div>}
@@ -1436,12 +1519,15 @@ export default function SalesPage() {
         <div
           style={{
             marginTop: '24px',
-            display: 'flex',
-            justifyContent: 'flex-start',
-            direction: 'ltr'
+            display: 'grid',
+            gridTemplateColumns: isCompact ? '1fr' : 'minmax(280px, 1fr) 160px',
+            gap: '14px',
+            alignItems: 'end',
+            direction: 'rtl',
+            maxWidth: '100%',
+            minWidth: 0
           }}
         >
-
           <div
             className="glass-card"
             style={{
@@ -1568,7 +1654,8 @@ export default function SalesPage() {
             disabled={saving || activeInvoice.cart.length === 0}
             style={{
               ...secondaryOutlineButtonStyle,
-              minWidth: '150px',
+              minWidth: isCompact ? '100%' : '150px',
+              width: isCompact ? '100%' : undefined,
               opacity: saving || activeInvoice.cart.length === 0 ? 0.6 : 1,
               cursor:
                 saving || activeInvoice.cart.length === 0
@@ -1988,12 +2075,9 @@ const summaryStyle: CSSProperties = {
   borderRadius: '14px',
   padding: '18px',
   marginBottom: '16px',
-  display: 'flex',
-  justifyContent: 'space-between',
   fontSize: '18px',
   fontWeight: 800,
-  gap: '16px',
-  flexWrap: 'wrap',
+  gap: '12px',
   direction: 'rtl'
 };
 
