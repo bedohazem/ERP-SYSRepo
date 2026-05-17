@@ -110,6 +110,236 @@ export default function ExpensesPage() {
     }
   }
 
+    function getPaymentMethodLabel(value: string) {
+    if (value === 'cash') return 'كاش';
+    if (value === 'card') return 'كارت';
+    if (value === 'wallet') return 'محفظة';
+    if (value === 'bank_transfer') return 'تحويل بنكي';
+    if (value === 'bank') return 'بنك';
+    return value || '—';
+  }
+
+  function printExpensesReport() {
+    const printWindow = window.open('', '_blank', 'width=1100,height=800');
+
+    if (!printWindow) {
+      alert('المتصفح منع فتح نافذة الطباعة');
+      return;
+    }
+
+    const rowsHtml = expenses
+      .map(
+        (expense) => `
+          <tr>
+            <td>${escapeHtml(expense.title || '—')}</td>
+            <td>${escapeHtml(expense.category || '—')}</td>
+            <td class="money">${money(expense.amount)}</td>
+            <td>${escapeHtml(getPaymentMethodLabel(expense.payment_method))}</td>
+            <td>${escapeHtml(expense.notes || '—')}</td>
+            <td>${escapeHtml(expense.created_by_name || '—')}</td>
+            <td>${escapeHtml(formatDate(expense.created_at))}</td>
+          </tr>
+        `
+      )
+      .join('');
+
+    const html = `
+      <!doctype html>
+      <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="UTF-8" />
+          <title>كشف المصروفات</title>
+          <style>
+            * {
+              box-sizing: border-box;
+            }
+
+            body {
+              margin: 0;
+              padding: 28px;
+              font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+              color: #111827;
+              background: #ffffff;
+              direction: rtl;
+            }
+
+            .header {
+              display: flex;
+              justify-content: space-between;
+              gap: 16px;
+              align-items: flex-start;
+              border-bottom: 2px solid #e5e7eb;
+              padding-bottom: 18px;
+              margin-bottom: 18px;
+            }
+
+            h1 {
+              margin: 0 0 8px;
+              font-size: 28px;
+            }
+
+            .muted {
+              color: #6b7280;
+              font-size: 13px;
+              line-height: 1.8;
+            }
+
+            .summary {
+              display: grid;
+              grid-template-columns: repeat(2, 1fr);
+              gap: 12px;
+              margin: 18px 0;
+            }
+
+            .card {
+              border: 1px solid #e5e7eb;
+              border-radius: 14px;
+              padding: 14px;
+              background: #f9fafb;
+            }
+
+            .card-title {
+              color: #6b7280;
+              font-size: 13px;
+              margin-bottom: 8px;
+              font-weight: 700;
+            }
+
+            .card-value {
+              font-size: 22px;
+              font-weight: 900;
+            }
+
+            .money {
+              color: #b91c1c;
+              font-weight: 900;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 12px;
+            }
+
+            th,
+            td {
+              border: 1px solid #e5e7eb;
+              padding: 9px;
+              text-align: right;
+              font-size: 12px;
+              vertical-align: top;
+            }
+
+            th {
+              background: #f3f4f6;
+              font-weight: 900;
+            }
+
+            td:nth-child(5) {
+              max-width: 360px;
+              white-space: normal;
+              line-height: 1.6;
+            }
+
+            .empty {
+              text-align: center;
+              color: #6b7280;
+              padding: 28px;
+              border: 1px solid #e5e7eb;
+              border-radius: 12px;
+              background: #f9fafb;
+            }
+
+            .footer {
+              margin-top: 18px;
+              padding-top: 12px;
+              border-top: 1px solid #e5e7eb;
+              color: #6b7280;
+              font-size: 12px;
+              display: flex;
+              justify-content: space-between;
+              gap: 12px;
+            }
+
+            @media print {
+              body {
+                padding: 16px;
+              }
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="header">
+            <div>
+              <h1>كشف المصروفات</h1>
+              <div class="muted">
+                ERP Store<br />
+                تاريخ الطباعة: ${escapeHtml(new Date().toLocaleString('ar-EG'))}
+              </div>
+            </div>
+
+            <div class="muted">
+              المستخدم: ${escapeHtml(currentUser?.name || '—')}<br />
+              عدد المصروفات: ${expenses.length}
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="card">
+              <div class="card-title">إجمالي المصروفات</div>
+              <div class="card-value money">${money(totalExpenses)}</div>
+            </div>
+
+            <div class="card">
+              <div class="card-title">عدد العمليات</div>
+              <div class="card-value">${expenses.length}</div>
+            </div>
+          </div>
+
+          ${
+            expenses.length
+              ? `
+                <table>
+                  <thead>
+                    <tr>
+                      <th>المصروف</th>
+                      <th>التصنيف</th>
+                      <th>المبلغ</th>
+                      <th>طريقة الدفع</th>
+                      <th>ملاحظات</th>
+                      <th>المستخدم</th>
+                      <th>التاريخ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rowsHtml}
+                  </tbody>
+                </table>
+              `
+              : '<div class="empty">لا توجد مصروفات مسجلة</div>'
+          }
+
+          <div class="footer">
+            <div>تم إنشاء التقرير من نظام ERP Store</div>
+            <div>صفحة المصروفات</div>
+          </div>
+
+          <script>
+            window.onload = function () {
+              window.focus();
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  }
+
   return (
     <div style={{ display: 'grid', gap: '18px' }}>
 
@@ -158,13 +388,28 @@ export default function ExpensesPage() {
           </p>
         </div>
 
-        <div style={{ textAlign: 'left' }}>
-          <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '4px' }}>
-            إجمالي المصروفات
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={printExpensesReport}
+            style={{
+              ...primaryButtonStyle,
+              background: 'rgba(16,185,129,0.14)',
+              border: '1px solid rgba(16,185,129,0.32)',
+              color: '#6ee7b7'
+            }}
+          >
+            طباعة الكشف
+          </button>
+
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '4px' }}>
+              إجمالي المصروفات
+            </div>
+            <strong style={{ color: '#f87171', fontSize: '24px' }}>
+              {money(totalExpenses)}
+            </strong>
           </div>
-          <strong style={{ color: '#f87171', fontSize: '24px' }}>
-            {money(totalExpenses)}
-          </strong>
         </div>
       </div>
 
@@ -312,7 +557,7 @@ export default function ExpensesPage() {
                 <td style={{ ...tdStyle, color: '#f87171', fontWeight: 900 }}>
                   {money(expense.amount)}
                 </td>
-                <td style={tdStyle}>{expense.payment_method}</td>
+                <td style={tdStyle}>{getPaymentMethodLabel(expense.payment_method)}</td>
                 <td style={tdStyle}>{expense.created_by_name || '—'}</td>
                 <td style={{ ...tdStyle, color: '#94a3b8' }}>{formatDate(expense.created_at)}</td>
               </tr>
@@ -338,6 +583,15 @@ export default function ExpensesPage() {
       </div>
     </div>
   );
+}
+
+function escapeHtml(value: string) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 const labelStyle: React.CSSProperties = {

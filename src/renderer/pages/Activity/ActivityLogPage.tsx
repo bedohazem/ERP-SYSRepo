@@ -62,6 +62,248 @@ export default function ActivityLogPage() {
     void loadLogs(emptyFilters);
   }
 
+  function printActivityReport() {
+    const printWindow = window.open('', '_blank', 'width=1100,height=800');
+
+    if (!printWindow) {
+      alert('المتصفح منع فتح نافذة الطباعة');
+      return;
+    }
+
+    const filtersText = [
+      dateFrom ? `من تاريخ: ${dateFrom}` : null,
+      dateTo ? `إلى تاريخ: ${dateTo}` : null,
+      action !== 'all' ? `نوع العملية: ${getActionLabel(action)}` : null,
+      entity !== 'all' ? `الموديول: ${getEntityLabel(entity)}` : null,
+      search.trim() ? `بحث: ${search.trim()}` : null
+    ].filter(Boolean);
+
+    const rowsHtml = logs
+      .map(
+        (item) => `
+          <tr>
+            <td>${item.id}</td>
+            <td>${escapeHtml(getActionLabel(item.action))}</td>
+            <td>${escapeHtml(getEntityLabel(item.entity))}</td>
+            <td>${item.entity_id || '—'}</td>
+            <td>${escapeHtml(formatDetails(item.details))}</td>
+            <td>${escapeHtml(item.user_name || item.username || '—')}</td>
+            <td>${escapeHtml(formatDate(item.created_at))}</td>
+          </tr>
+        `
+      )
+      .join('');
+
+    const html = `
+      <!doctype html>
+      <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="UTF-8" />
+          <title>سجل العمليات</title>
+          <style>
+            * {
+              box-sizing: border-box;
+            }
+
+            body {
+              margin: 0;
+              padding: 28px;
+              font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+              color: #111827;
+              background: #ffffff;
+              direction: rtl;
+            }
+
+            .header {
+              display: flex;
+              justify-content: space-between;
+              gap: 16px;
+              align-items: flex-start;
+              border-bottom: 2px solid #e5e7eb;
+              padding-bottom: 18px;
+              margin-bottom: 18px;
+            }
+
+            h1 {
+              margin: 0 0 8px;
+              font-size: 28px;
+            }
+
+            .muted {
+              color: #6b7280;
+              font-size: 13px;
+              line-height: 1.8;
+            }
+
+            .summary {
+              display: grid;
+              grid-template-columns: repeat(2, 1fr);
+              gap: 12px;
+              margin: 18px 0;
+            }
+
+            .card {
+              border: 1px solid #e5e7eb;
+              border-radius: 14px;
+              padding: 14px;
+              background: #f9fafb;
+            }
+
+            .card-title {
+              color: #6b7280;
+              font-size: 13px;
+              margin-bottom: 8px;
+              font-weight: 700;
+            }
+
+            .card-value {
+              font-size: 22px;
+              font-weight: 900;
+            }
+
+            .filters {
+              border: 1px solid #e5e7eb;
+              border-radius: 12px;
+              padding: 12px;
+              background: #f9fafb;
+              margin-bottom: 18px;
+              color: #374151;
+              font-size: 13px;
+              line-height: 1.8;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 12px;
+            }
+
+            th,
+            td {
+              border: 1px solid #e5e7eb;
+              padding: 9px;
+              text-align: right;
+              font-size: 12px;
+              vertical-align: top;
+            }
+
+            th {
+              background: #f3f4f6;
+              font-weight: 900;
+            }
+
+            td:nth-child(5) {
+              max-width: 360px;
+              white-space: normal;
+              line-height: 1.6;
+            }
+
+            .empty {
+              text-align: center;
+              color: #6b7280;
+              padding: 28px;
+              border: 1px solid #e5e7eb;
+              border-radius: 12px;
+              background: #f9fafb;
+            }
+
+            .footer {
+              margin-top: 18px;
+              padding-top: 12px;
+              border-top: 1px solid #e5e7eb;
+              color: #6b7280;
+              font-size: 12px;
+              display: flex;
+              justify-content: space-between;
+              gap: 12px;
+            }
+
+            @media print {
+              body {
+                padding: 16px;
+              }
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="header">
+            <div>
+              <h1>سجل العمليات</h1>
+              <div class="muted">
+                ERP Store<br />
+                تاريخ الطباعة: ${escapeHtml(new Date().toLocaleString('ar-EG'))}
+              </div>
+            </div>
+
+            <div class="muted">
+              عدد العمليات: ${logs.length}
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="card">
+              <div class="card-title">عدد النتائج</div>
+              <div class="card-value">${logs.length}</div>
+            </div>
+
+            <div class="card">
+              <div class="card-title">نوع التقرير</div>
+              <div class="card-value">سجل العمليات</div>
+            </div>
+          </div>
+
+          <div class="filters">
+            ${
+              filtersText.length
+                ? filtersText.map((item) => `<div>${escapeHtml(String(item))}</div>`).join('')
+                : '<div>بدون فلاتر</div>'
+            }
+          </div>
+
+          ${
+            logs.length
+              ? `
+                <table>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>العملية</th>
+                      <th>الموديول</th>
+                      <th>رقم المرجع</th>
+                      <th>التفاصيل</th>
+                      <th>المستخدم</th>
+                      <th>التاريخ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rowsHtml}
+                  </tbody>
+                </table>
+              `
+              : '<div class="empty">لا توجد عمليات مطابقة للفلتر</div>'
+          }
+
+          <div class="footer">
+            <div>تم إنشاء التقرير من نظام ERP Store</div>
+            <div>صفحة سجل العمليات</div>
+          </div>
+
+          <script>
+            window.onload = function () {
+              window.focus();
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  }
+
   useEffect(() => {
     void loadLogs({
       action: 'all',
@@ -213,6 +455,20 @@ export default function ActivityLogPage() {
           <button type="button" onClick={clearFilters} style={secondaryButtonStyle}>
             مسح الفلتر
           </button>
+
+          <button
+            type="button"
+            onClick={printActivityReport}
+            style={{
+              ...primaryButtonStyle,
+              background: 'rgba(16,185,129,0.14)',
+              border: '1px solid rgba(16,185,129,0.32)',
+              color: '#6ee7b7'
+            }}
+          >
+            طباعة السجل
+          </button>
+          
         </div>
       </div>
 
@@ -292,6 +548,15 @@ export default function ActivityLogPage() {
       </div>
     </div>
   );
+}
+
+function escapeHtml(value: string) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

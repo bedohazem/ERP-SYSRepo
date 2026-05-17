@@ -168,6 +168,271 @@ export default function CashPage() {
     return `${Number(value || 0).toFixed(2)} ج.م`;
   }
 
+  function printCashReport() {
+    const printWindow = window.open('', '_blank', 'width=1100,height=800');
+
+    if (!printWindow) {
+      alert('المتصفح منع فتح نافذة الطباعة');
+      return;
+    }
+
+    const filtersText = [
+      dateFrom ? `من تاريخ: ${dateFrom}` : null,
+      dateTo ? `إلى تاريخ: ${dateTo}` : null,
+      filterType !== 'all' ? `نوع العملية: ${getTypeLabel(filterType)}` : null,
+      filterDirection !== 'all'
+        ? `الاتجاه: ${filterDirection === 'in' ? 'داخل' : 'خارج'}`
+        : null,
+      filterPaymentMethod !== 'all'
+        ? `طريقة الدفع: ${getPaymentMethodLabel(filterPaymentMethod)}`
+        : null,
+      search.trim() ? `بحث: ${search.trim()}` : null
+    ].filter(Boolean);
+
+    const rowsHtml = movements
+      .map(
+        (item) => `
+          <tr>
+            <td>${getTypeLabel(item.type)}</td>
+            <td class="${item.direction === 'in' ? 'in' : 'out'}">
+              ${item.direction === 'in' ? 'داخل' : 'خارج'}
+            </td>
+            <td class="${item.direction === 'in' ? 'in' : 'out'}">
+              ${money(item.amount)}
+            </td>
+            <td>${getPaymentMethodLabel(item.payment_method)}</td>
+            <td>${escapeHtml(item.notes || '—')}</td>
+            <td>${escapeHtml(item.created_by_name || '—')}</td>
+            <td>${formatDate(item.created_at)}</td>
+          </tr>
+        `
+      )
+      .join('');
+
+    const html = `
+      <!doctype html>
+      <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="UTF-8" />
+          <title>كشف الخزنة</title>
+          <style>
+            * {
+              box-sizing: border-box;
+            }
+
+            body {
+              margin: 0;
+              padding: 28px;
+              font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+              color: #111827;
+              background: #ffffff;
+              direction: rtl;
+            }
+
+            .header {
+              display: flex;
+              justify-content: space-between;
+              gap: 16px;
+              align-items: flex-start;
+              border-bottom: 2px solid #e5e7eb;
+              padding-bottom: 18px;
+              margin-bottom: 18px;
+            }
+
+            h1 {
+              margin: 0 0 8px;
+              font-size: 28px;
+            }
+
+            .muted {
+              color: #6b7280;
+              font-size: 13px;
+              line-height: 1.7;
+            }
+
+            .summary {
+              display: grid;
+              grid-template-columns: repeat(3, 1fr);
+              gap: 12px;
+              margin: 18px 0;
+            }
+
+            .card {
+              border: 1px solid #e5e7eb;
+              border-radius: 14px;
+              padding: 14px;
+              background: #f9fafb;
+            }
+
+            .card-title {
+              color: #6b7280;
+              font-size: 13px;
+              margin-bottom: 8px;
+              font-weight: 700;
+            }
+
+            .card-value {
+              font-size: 22px;
+              font-weight: 900;
+            }
+
+            .in {
+              color: #047857;
+              font-weight: 900;
+            }
+
+            .out {
+              color: #b91c1c;
+              font-weight: 900;
+            }
+
+            .filters {
+              border: 1px solid #e5e7eb;
+              border-radius: 12px;
+              padding: 12px;
+              background: #f9fafb;
+              margin-bottom: 18px;
+              color: #374151;
+              font-size: 13px;
+              line-height: 1.8;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 12px;
+            }
+
+            th,
+            td {
+              border: 1px solid #e5e7eb;
+              padding: 9px;
+              text-align: right;
+              font-size: 12px;
+              vertical-align: top;
+            }
+
+            th {
+              background: #f3f4f6;
+              font-weight: 900;
+            }
+
+            .empty {
+              text-align: center;
+              color: #6b7280;
+              padding: 28px;
+              border: 1px solid #e5e7eb;
+              border-radius: 12px;
+              background: #f9fafb;
+            }
+
+            .footer {
+              margin-top: 18px;
+              padding-top: 12px;
+              border-top: 1px solid #e5e7eb;
+              color: #6b7280;
+              font-size: 12px;
+              display: flex;
+              justify-content: space-between;
+              gap: 12px;
+            }
+
+            @media print {
+              body {
+                padding: 16px;
+              }
+
+              .no-print {
+                display: none;
+              }
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="header">
+            <div>
+              <h1>كشف حركة الخزنة</h1>
+              <div class="muted">
+                ERP Store<br />
+                تاريخ الطباعة: ${new Date().toLocaleString('ar-EG')}
+              </div>
+            </div>
+
+            <div class="muted">
+              المستخدم: ${escapeHtml(currentUser?.name || '—')}<br />
+              عدد الحركات: ${movements.length}
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="card">
+              <div class="card-title">إجمالي الداخل</div>
+              <div class="card-value in">${money(summary?.total_in)}</div>
+            </div>
+
+            <div class="card">
+              <div class="card-title">إجمالي الخارج</div>
+              <div class="card-value out">${money(summary?.total_out)}</div>
+            </div>
+
+            <div class="card">
+              <div class="card-title">رصيد الخزنة</div>
+              <div class="card-value">${money(summary?.balance)}</div>
+            </div>
+          </div>
+
+          <div class="filters">
+            ${
+              filtersText.length
+                ? filtersText.map((item) => `<div>${escapeHtml(String(item))}</div>`).join('')
+                : '<div>بدون فلاتر</div>'
+            }
+          </div>
+
+          ${
+            movements.length
+              ? `
+                <table>
+                  <thead>
+                    <tr>
+                      <th>النوع</th>
+                      <th>الحركة</th>
+                      <th>المبلغ</th>
+                      <th>طريقة الدفع</th>
+                      <th>ملاحظات</th>
+                      <th>المستخدم</th>
+                      <th>التاريخ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rowsHtml}
+                  </tbody>
+                </table>
+              `
+              : '<div class="empty">لا توجد حركات خزنة مطابقة للفلتر مطابقة للفلتر</div>'
+          }
+
+          <div class="footer">
+            <div>تم إنشاء التقرير من نظام ERP Store</div>
+            <div>صفحة الخزنة</div>
+          </div>
+
+          <script>
+            window.onload = function () {
+              window.focus();
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+  }
+
   return (
     <div style={{ display: 'grid', gap: '18px' }}>
       <div
@@ -399,6 +664,20 @@ export default function CashPage() {
           >
             مسح الفلتر
           </button>
+
+          <button
+            type="button"
+            onClick={printCashReport}
+            style={{
+              ...primaryButtonStyle,
+              background: 'rgba(16,185,129,0.14)',
+              border: '1px solid rgba(16,185,129,0.32)',
+              color: '#6ee7b7'
+            }}
+          >
+            طباعة الكشف
+          </button>
+
         </div>
       </div>
 
@@ -510,6 +789,15 @@ export default function CashPage() {
       </div>
     </div>
   );
+}
+
+function escapeHtml(value: string) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function SummaryCard({

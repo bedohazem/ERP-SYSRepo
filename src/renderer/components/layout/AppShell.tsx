@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import { useAppStore } from '../../store/app.store';
@@ -14,24 +14,22 @@ type MenuItem = {
 };
 
 const menuItems: MenuItem[] = [
-  { to: '/dashboard', label: 'الرئيسية', icon: '🏠' ,title: 'الرئيسية',roles: ['admin', 'cashier']},
-  { to: '/sales', label: 'المبيعات', icon: '🧾' ,title: 'المبيعات',roles: ['admin', 'cashier']},
-  { to: '/invoices', label: 'سجل الفواتير', icon: '📄' ,title: 'سجل الفواتير',roles: ['admin', 'cashier']},
-  { to: '/products', label: 'المنتجات', icon: '👕' ,title: 'المنتجات',roles: ['admin']},
+  { to: '/dashboard', label: 'الرئيسية', icon: '🏠', title: 'الرئيسية', roles: ['admin', 'cashier'] },
+  { to: '/sales', label: 'المبيعات', icon: '🧾', title: 'المبيعات', roles: ['admin', 'cashier'] },
+  { to: '/invoices', label: 'سجل الفواتير', icon: '📄', title: 'سجل الفواتير', roles: ['admin', 'cashier'] },
+  { to: '/products', label: 'المنتجات', icon: '👕', title: 'المنتجات', roles: ['admin'] },
   { to: '/inventory', label: 'المخزون', icon: '📦', title: 'المخزون', roles: ['admin'] },
-  { to: '/customers', label: 'العملاء', icon: '👤' ,title: 'العملاء',roles: ['admin', 'cashier']},
-  { to: '/suppliers', label: 'الموردين', icon: '🚚' ,title: 'الموردين',roles: ['admin', 'cashier']},
+  { to: '/customers', label: 'العملاء', icon: '👤', title: 'العملاء', roles: ['admin', 'cashier'] },
+  { to: '/suppliers', label: 'الموردين', icon: '🚚', title: 'الموردين', roles: ['admin', 'cashier'] },
   { to: '/purchases', label: 'فواتير الشراء', icon: '🛒', title: 'فواتير الشراء', roles: ['admin', 'cashier'] },
   { to: '/purchase-history', label: 'سجل الشراء', icon: '📑', title: 'سجل الشراء', roles: ['admin', 'cashier'] },
   { to: '/users', label: 'المستخدمين', icon: '👥', title: 'المستخدمين', roles: ['admin'] },
-  { to: '/reports', label: 'التقارير', icon: '📊' ,title: 'التقارير', roles: ['admin']},
-  { to: '/expenses', label: 'المصروفات', icon: '💳' ,title: 'المصروفات', roles: ['admin']},
-  { to: '/cash', label: 'الخزنة', icon: '💵' ,title: 'الخزنة', roles: ['admin']},
-  { to: '/settings', label: 'الإعدادات', icon: '⚙️' ,title: 'الإعدادات', roles: ['admin']},
+  { to: '/reports', label: 'التقارير', icon: '📊', title: 'التقارير', roles: ['admin'] },
+  { to: '/expenses', label: 'المصروفات', icon: '💳', title: 'المصروفات', roles: ['admin'] },
+  { to: '/cash', label: 'الخزنة', icon: '💵', title: 'الخزنة', roles: ['admin'] },
   { to: '/activity', label: 'سجل العمليات', icon: '🕘', title: 'سجل العمليات', roles: ['admin'] },
-  
+  { to: '/settings', label: 'الإعدادات', icon: '⚙️', title: 'الإعدادات', roles: ['admin'] }
 ];
-
 
 export default function AppShell({
   title,
@@ -41,42 +39,83 @@ export default function AppShell({
   children: ReactNode;
 }) {
   const user = useAuthStore((s) => s.user);
-  
+  const logout = useAuthStore((s) => s.logout);
+  const navigate = useNavigate();
+
+  const { sidebarOpen, toggleSidebar } = useAppStore();
+
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   const userRole: Role = user?.role === 'admin' ? 'admin' : 'cashier';
 
   const visibleMenuItems = menuItems.filter((item) =>
     item.roles ? item.roles.includes(userRole) : true
   );
 
-  const logout = useAuthStore((s) => s.logout);
-  const navigate = useNavigate();
+  const effectiveSidebarOpen = isMobile ? true : sidebarOpen;
 
-  const { sidebarOpen, toggleSidebar } = useAppStore();
+  useEffect(() => {
+    function handleResize() {
+      const nextIsMobile = window.innerWidth <= 900;
+      setIsMobile(nextIsMobile);
+
+      if (!nextIsMobile) {
+        setMobileMenuOpen(false);
+      }
+    }
+
+    handleResize();
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  function handleLogout() {
+    logout();
+    navigate('/');
+  }
 
   return (
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: sidebarOpen ? '280px 1fr' : '92px 1fr',
-        gridTemplateAreas: '"sidebar main"',
+        gridTemplateColumns: isMobile ? '1fr' : sidebarOpen ? '280px 1fr' : '92px 1fr',
+        gridTemplateAreas: isMobile ? '"main"' : '"sidebar main"',
         minHeight: '100vh',
         height: '100vh',
-        gap: '16px',
-        padding: '16px',
+        gap: isMobile ? '10px' : '16px',
+        padding: isMobile ? '10px' : '16px',
         background: '#08152f',
         color: '#fff',
         fontFamily: 'Segoe UI, Tahoma, sans-serif',
         transition: 'grid-template-columns 0.25s ease',
         overflow: 'hidden',
-         boxSizing: 'border-box'
+        boxSizing: 'border-box'
       }}
     >
+      {isMobile && mobileMenuOpen && (
+        <button
+          type="button"
+          aria-label="إغلاق القائمة"
+          onClick={() => setMobileMenuOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9998,
+            border: 'none',
+            background: 'rgba(0,0,0,0.55)',
+            cursor: 'pointer'
+          }}
+        />
+      )}
+
       <main
         style={{
           gridArea: 'main',
           display: 'grid',
-          gridTemplateRows: '88px minmax(0, 1fr)',
-          gap: '16px',
+          gridTemplateRows: isMobile ? 'auto minmax(0, 1fr)' : '88px minmax(0, 1fr)',
+          gap: isMobile ? '10px' : '16px',
           minWidth: 0,
           minHeight: 0,
           overflow: 'hidden'
@@ -86,27 +125,49 @@ export default function AppShell({
           style={{
             background: 'rgba(17,24,39,0.85)',
             border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '24px',
-            padding: '20px 24px',
+            borderRadius: isMobile ? '18px' : '24px',
+            padding: isMobile ? '14px' : '20px 24px',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between'
+            justifyContent: 'space-between',
+            gap: '12px',
+            flexWrap: 'wrap'
           }}
         >
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>
               أهلاً بك
             </div>
-            <h1 style={{ margin: 0, fontSize: '28px' }}>{title}</h1>
+
+            <h1
+              style={{
+                margin: 0,
+                fontSize: isMobile ? '21px' : '28px',
+                lineHeight: 1.25,
+                wordBreak: 'break-word'
+              }}
+            >
+              {title}
+            </h1>
           </div>
+
+          {isMobile && (
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              style={mobileMenuButtonStyle}
+            >
+              ☰
+            </button>
+          )}
         </header>
 
         <section
           style={{
             background: 'rgba(17,24,39,0.7)',
             border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '24px',
-            padding: '24px',
+            borderRadius: isMobile ? '18px' : '24px',
+            padding: isMobile ? '12px' : '24px',
             minHeight: 0,
             overflowY: 'auto',
             overflowX: 'hidden',
@@ -119,10 +180,22 @@ export default function AppShell({
 
       <aside
         style={{
-          gridArea: 'sidebar',
-          background: 'rgba(10,20,40,0.92)',
+          gridArea: isMobile ? undefined : 'sidebar',
+          position: isMobile ? 'fixed' : 'static',
+          top: isMobile ? '10px' : undefined,
+          bottom: isMobile ? '10px' : undefined,
+          right: isMobile ? '10px' : undefined,
+          zIndex: isMobile ? 9999 : undefined,
+          width: isMobile ? 'min(320px, calc(100vw - 20px))' : undefined,
+          transform: isMobile
+            ? mobileMenuOpen
+              ? 'translateX(0)'
+              : 'translateX(120%)'
+            : 'none',
+          transition: 'transform 0.25s ease',
+          background: 'rgba(10,20,40,0.96)',
           border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '24px',
+          borderRadius: isMobile ? '18px' : '24px',
           padding: '16px 12px',
           display: 'flex',
           flexDirection: 'column',
@@ -136,12 +209,12 @@ export default function AppShell({
           style={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: sidebarOpen ? 'space-between' : 'center',
+            justifyContent: effectiveSidebarOpen ? 'space-between' : 'center',
             gap: '10px',
             marginBottom: '18px'
           }}
         >
-          {sidebarOpen ? (
+          {effectiveSidebarOpen ? (
             <div>
               <h2 style={{ margin: 0, fontSize: '22px', textAlign: 'right' }}>ERP Store</h2>
               <div
@@ -158,8 +231,15 @@ export default function AppShell({
           ) : null}
 
           <button
-            onClick={toggleSidebar}
-            title={sidebarOpen ? 'إخفاء القائمة' : 'إظهار القائمة'}
+            type="button"
+            onClick={() => {
+              if (isMobile) {
+                setMobileMenuOpen(false);
+              } else {
+                toggleSidebar();
+              }
+            }}
+            title={isMobile ? 'إغلاق القائمة' : sidebarOpen ? 'إخفاء القائمة' : 'إظهار القائمة'}
             style={{
               width: '42px',
               height: '42px',
@@ -172,7 +252,7 @@ export default function AppShell({
               flexShrink: 0
             }}
           >
-            {sidebarOpen ? '‹' : '›'}
+            {isMobile ? '×' : sidebarOpen ? '‹' : '›'}
           </button>
         </div>
 
@@ -182,13 +262,18 @@ export default function AppShell({
               key={item.to}
               to={item.to}
               title={item.title}
+              onClick={() => {
+                if (isMobile) {
+                  setMobileMenuOpen(false);
+                }
+              }}
               style={({ isActive }) => ({
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: sidebarOpen ? 'flex-start' : 'center',
+                justifyContent: effectiveSidebarOpen ? 'flex-start' : 'center',
                 gap: '12px',
-                minHeight: '52px',
-                padding: sidebarOpen ? '12px 14px' : '12px',
+                minHeight: '50px',
+                padding: effectiveSidebarOpen ? '12px 14px' : '12px',
                 borderRadius: '16px',
                 textDecoration: 'none',
                 color: '#fff',
@@ -205,32 +290,30 @@ export default function AppShell({
                 {item.icon}
               </span>
 
-              {sidebarOpen ? (
+              {effectiveSidebarOpen ? (
                 <span style={{ whiteSpace: 'nowrap', overflow: 'hidden' }}>{item.label}</span>
               ) : null}
             </NavLink>
           ))}
         </nav>
 
-        <div style={{ marginTop: 'auto', display: 'grid', gap: '12px' }}>
+        <div style={{ marginTop: 'auto', display: 'grid', gap: '12px', paddingTop: '16px' }}>
           <div
             style={{
               borderRadius: '18px',
-              padding: sidebarOpen ? '16px' : '12px 8px',
+              padding: effectiveSidebarOpen ? '16px' : '12px 8px',
               background:
                 'linear-gradient(135deg, rgba(37,99,235,0.18), rgba(139,92,246,0.12))',
               border: '1px solid rgba(255,255,255,0.08)',
-              textAlign: sidebarOpen ? 'right' : 'center'
+              textAlign: effectiveSidebarOpen ? 'right' : 'center'
             }}
           >
-            {sidebarOpen ? (
+            {effectiveSidebarOpen ? (
               <>
                 <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>
                   المستخدم الحالي
                 </div>
-                <div style={{ fontWeight: 700, fontSize: '16px' }}>
-                  {user?.name || '—'}
-                </div>
+                <div style={{ fontWeight: 700, fontSize: '16px' }}>{user?.name || '—'}</div>
                 <div style={{ color: '#60a5fa', fontSize: '13px', marginTop: '4px' }}>
                   {user?.role === 'admin' ? 'مدير النظام' : 'كاشير'}
                 </div>
@@ -241,10 +324,8 @@ export default function AppShell({
           </div>
 
           <button
-            onClick={() => {
-              logout();
-              navigate('/');
-            }}
+            type="button"
+            onClick={handleLogout}
             title="تسجيل خروج"
             style={{
               width: '100%',
@@ -257,10 +338,22 @@ export default function AppShell({
               cursor: 'pointer'
             }}
           >
-            {sidebarOpen ? 'تسجيل خروج' : '⎋'}
+            {effectiveSidebarOpen ? 'تسجيل خروج' : '⎋'}
           </button>
         </div>
       </aside>
     </div>
   );
 }
+
+const mobileMenuButtonStyle: React.CSSProperties = {
+  width: '42px',
+  height: '42px',
+  borderRadius: '12px',
+  border: '1px solid rgba(255,255,255,0.10)',
+  background: 'rgba(255,255,255,0.06)',
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: '20px',
+  fontWeight: 900
+};

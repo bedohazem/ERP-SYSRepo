@@ -44,6 +44,9 @@ export default function CustomersPage() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [savingPayment, setSavingPayment] = useState(false);
+  
+  const [deleteTarget, setDeleteTarget] = useState<CustomerRow | null>(null);
+  const [deletingCustomer, setDeletingCustomer] = useState(false);
 
   const editingCustomer = useMemo(
     () => customers.find((c) => c.id === editingId),
@@ -141,18 +144,55 @@ export default function CustomersPage() {
     }
   }
 
-  async function deleteCustomer(id: number) {
-    const confirmed = window.confirm('هل أنت متأكد من حذف العميل؟');
-    if (!confirmed) return;
+  function requestDeleteCustomer(customer: CustomerRow) {
+    setDeleteTarget(customer);
+  }
+
+  async function confirmDeleteCustomer() {
+    if (!deleteTarget || deletingCustomer) return;
+
+    const deletedId = deleteTarget.id;
+
+    setDeletingCustomer(true);
 
     try {
-      await window.api.deleteCustomer(id);
+      await window.api.deleteCustomer(deletedId);
+
+      if (selectedCustomer?.customer?.id === deletedId) {
+        setSelectedCustomer(null);
+        setPointsAdjust('');
+        setPointsNotes('');
+      }
+
+      if (statementData?.customer?.id === deletedId) {
+        setStatementData(null);
+      }
+
+      if (paymentCustomer?.id === deletedId) {
+        setPaymentCustomer(null);
+        setPaymentAmount('');
+        setPaymentNotes('');
+      }
+
+      if (editingId === deletedId) {
+        setEditingId(null);
+        setForm(emptyForm);
+      }
+
+      setDeleteTarget(null);
       setMessage('تم حذف العميل');
       await loadCustomers();
     } catch (error) {
       console.error('Failed to delete customer:', error);
       setMessage('حدث خطأ أثناء حذف العميل');
+    } finally {
+      setDeletingCustomer(false);
     }
+  }
+
+  function cancelDeleteCustomer() {
+    if (deletingCustomer) return;
+    setDeleteTarget(null);
   }
 
   async function openHistory(customerId: number) {
@@ -365,7 +405,7 @@ function formatDate(value?: string) {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(220px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
             gap: '12px'
           }}
         >
@@ -501,7 +541,8 @@ function formatDate(value?: string) {
                       </button>
                     )}
                     <button
-                      onClick={() => deleteCustomer(customer.id)}
+                      type="button"
+                      onClick={() => requestDeleteCustomer(customer)}
                       style={{
                         ...smallButtonStyle,
                         borderColor: '#ef4444',
@@ -860,6 +901,60 @@ function formatDate(value?: string) {
                 <button
                   type="button"
                   onClick={() => setPaymentCustomer(null)}
+                  style={secondaryOutlineButtonStyle}
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {deleteTarget && (
+          <div style={modalOverlayStyle}>
+            <div style={modalStyle}>
+              <h3 style={{ margin: '0 0 10px' }}>تأكيد حذف العميل</h3>
+
+              <p style={{ margin: '0 0 18px', color: '#94a3b8', lineHeight: 1.8 }}>
+                هل أنت متأكد من حذف العميل{' '}
+                <strong style={{ color: '#fff' }}>{deleteTarget.name}</strong>؟
+              </p>
+
+              <div
+                style={{
+                  padding: '12px',
+                  borderRadius: '12px',
+                  background: 'rgba(239,68,68,0.10)',
+                  border: '1px solid rgba(239,68,68,0.25)',
+                  color: '#fca5a5',
+                  marginBottom: '18px',
+                  lineHeight: 1.8
+                }}
+              >
+                سيتم إخفاء العميل من القائمة، ولن يظهر في البحث العادي.
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-start' }}>
+                <button
+                  type="button"
+                  onClick={confirmDeleteCustomer}
+                  disabled={deletingCustomer}
+                  style={{
+                    ...primaryButtonStyle,
+                    background: 'rgba(239,68,68,0.16)',
+                    border: '1px solid rgba(239,68,68,0.35)',
+                    color: '#fca5a5',
+                    opacity: deletingCustomer ? 0.6 : 1,
+                    cursor: deletingCustomer ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {deletingCustomer ? 'جاري الحذف...' : 'تأكيد الحذف'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={cancelDeleteCustomer}
+                  disabled={deletingCustomer}
                   style={secondaryOutlineButtonStyle}
                 >
                   إلغاء
