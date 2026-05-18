@@ -265,6 +265,11 @@ export default function AppShell({
               onClick={() => {
                 if (isMobile) {
                   setMobileMenuOpen(false);
+                  return;
+                }
+
+                if (sidebarOpen) {
+                  toggleSidebar();
                 }
               }}
               style={({ isActive }) => ({

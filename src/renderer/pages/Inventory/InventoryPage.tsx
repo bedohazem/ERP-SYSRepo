@@ -248,10 +248,31 @@ export default function InventoryPage() {
         style={{
           padding: '18px',
           borderRadius: '18px',
-          overflowX: 'auto'
+          overflowX: 'auto',
+          maxWidth: '100%'
         }}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+        <table
+          style={{
+            width: '100%',
+            minWidth: '1120px',
+            borderCollapse: 'collapse',
+            direction: 'rtl'
+          }}
+        >
+          <colgroup>
+            <col style={{ width: '18%' }} />
+            <col style={{ width: '13%' }} />
+            <col style={{ width: '7%' }} />
+            <col style={{ width: '8%' }} />
+            <col style={{ width: '7%' }} />
+            <col style={{ width: '8%' }} />
+            <col style={{ width: '9%' }} />
+            <col style={{ width: '9%' }} />
+            <col style={{ width: '9%' }} />
+            <col style={{ width: '12%' }} />
+          </colgroup>
+
           <thead>
             <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
               <th style={thStyle}>المنتج</th>
@@ -282,7 +303,9 @@ export default function InventoryPage() {
                   key={item.variant_id}
                   style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                 >
-                  <td style={tdStyle}>{item.product_name}</td>
+                  <td style={tdStyle} title={item.product_name}>
+                    {item.product_name}
+                  </td>
                   <td style={tdStyle}>{item.barcode || '—'}</td>
                   <td style={tdStyle}>{item.size || '—'}</td>
                   <td style={tdStyle}>{item.color || '—'}</td>
@@ -302,7 +325,14 @@ export default function InventoryPage() {
                   <td style={tdStyle}>{money(item.buy_price)}</td>
                   <td style={tdStyle}>{money(item.sell_price)}</td>
                   <td style={tdStyle}>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '8px',
+                        flexWrap: 'nowrap',
+                        alignItems: 'center'
+                      }}
+                    >
                       <button
                         type="button"
                         onClick={() => openAdjust(item)}
@@ -744,7 +774,8 @@ const thStyle: React.CSSProperties = {
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
-  whiteSpace: 'nowrap'
+  whiteSpace: 'nowrap',
+  verticalAlign: 'middle'
 };
 
 const modalOverlayStyle: React.CSSProperties = {
