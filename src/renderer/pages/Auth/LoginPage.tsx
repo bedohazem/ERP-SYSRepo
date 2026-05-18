@@ -52,21 +52,24 @@ async function handleLogin() {
   return (
     <div
       style={{
-        minHeight: '100%',
+        minHeight: '100vh',
         display: 'grid',
-        placeItems: 'center'
+        placeItems: 'center',
+        padding: '32px',
+        background:
+          'radial-gradient(circle at top right, rgba(37,99,235,0.18), transparent 28%), radial-gradient(circle at bottom left, rgba(139,92,246,0.18), transparent 26%)'
       }}
     >
       <div
         style={{
           width: '100%',
-          maxWidth: '1100px',
-          minHeight: '620px',
+          maxWidth: '1180px',
+          minHeight: '680px',
           display: 'grid',
-          gridTemplateColumns: '1.05fr 0.95fr',
+          gridTemplateColumns: '1fr 0.9fr',
           background: 'rgba(17,24,39,0.85)',
           border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '32px',
+          borderRadius: '34px',
           overflow: 'hidden',
           boxShadow: '0 20px 60px rgba(0,0,0,0.35)'
         }}
@@ -256,7 +259,6 @@ async function handleLogin() {
 
               <button
                 type="submit"
-                onClick={handleLogin}
                 disabled={loading}
                 style={{
                   border: 'none',
@@ -296,8 +298,6 @@ async function handleLogin() {
                 fontSize: '13px'
               }}
             >
-              بيانات تجربة حالية:
-              <span style={{ color: '#fff' }}> admin / 1234</span>
             </div>
           </div>
         </div>

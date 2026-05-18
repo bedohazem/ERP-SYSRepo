@@ -32,6 +32,8 @@ function createWindow(): void {
     }
   });
 
+  mainWindow.maximize();
+
   const isDev = !app.isPackaged;
 
   if (isDev) {
