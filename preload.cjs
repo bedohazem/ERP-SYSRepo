@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('api', {
 
   backupDatabase: () => ipcRenderer.invoke('settings:backup-database'),
   restoreDatabase: () => ipcRenderer.invoke('settings:restore-database'),
+  resetDatabase: () => ipcRenderer.invoke('settings:reset-database'),
 
   getReportsSummary: (input) => ipcRenderer.invoke('reports:summary', input),
 

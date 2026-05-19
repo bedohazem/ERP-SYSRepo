@@ -9,7 +9,7 @@ import {
   saveBarcodePrintSettings,
   saveLoyaltySettings
 } from '../database/repositories/settings.repo';
-import { closeDb, getDb, getDbPath } from '../database/db';
+import { closeDb, getDb, getDbPath, resetDatabaseData } from '../database/db';
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -172,4 +172,96 @@ export function registerSettingsIpc(): void {
       };
     }
   });
+
+  ipcMain.handle('settings:reset-database', async (event, input?: { actor_id?: number }) => {
+    try {
+      const parentWindow = BrowserWindow.fromWebContents(event.sender);
+      const saveResult = parentWindow
+        ? await dialog.showSaveDialog(parentWindow, {
+            title: 'اختيار مكان حفظ نسخة الأمان قبل التصفير',
+            defaultPath: path.join(app.getPath('documents'), getDefaultBackupName()),
+            filters: [
+              { name: 'SQLite Database', extensions: ['db'] },
+              { name: 'Backup Files', extensions: ['bak'] },
+              { name: 'All Files', extensions: ['*'] }
+            ]
+          })
+        : await dialog.showSaveDialog({
+            title: 'اختيار مكان حفظ نسخة الأمان قبل التصفير',
+            defaultPath: path.join(app.getPath('documents'), getDefaultBackupName()),
+            filters: [
+              { name: 'SQLite Database', extensions: ['db'] },
+              { name: 'Backup Files', extensions: ['bak'] },
+              { name: 'All Files', extensions: ['*'] }
+            ]
+          });
+
+      if (saveResult.canceled || !saveResult.filePath) {
+        return {
+          success: false,
+          canceled: true,
+          message: 'تم إلغاء التصفير لأنك لم تختر مكان حفظ نسخة الأمان'
+        };
+      }
+
+      const safetyBackupPath = saveResult.filePath;
+      const confirmResult = parentWindow
+        ? await dialog.showMessageBox(parentWindow, {
+            type: 'warning',
+            buttons: ['إلغاء', 'تصفير البرنامج'],
+            defaultId: 0,
+            cancelId: 0,
+            title: 'تصفير البرنامج',
+            message: 'هل أنت متأكد من تصفير البرنامج؟',
+            detail:
+              'سيتم مسح كل المنتجات والمبيعات والفواتير والعملاء والموردين وحركات المخزون. سيتم إنشاء نسخة أمان قبل المسح.'
+          })
+        : await dialog.showMessageBox({
+            type: 'warning',
+            buttons: ['إلغاء', 'تصفير البرنامج'],
+            defaultId: 0,
+            cancelId: 0,
+            title: 'تصفير البرنامج',
+            message: 'هل أنت متأكد من تصفير البرنامج؟',
+            detail:
+              'سيتم مسح كل المنتجات والمبيعات والفواتير والعملاء والموردين وحركات المخزون. سيتم إنشاء نسخة أمان قبل المسح.'
+          });
+
+      if (confirmResult.response !== 1) {
+        return {
+          success: false,
+          canceled: true,
+          message: 'تم إلغاء تصفير البرنامج'
+        };
+      }
+
+      const db = getDb();
+
+      await db.backup(safetyBackupPath);
+
+      resetDatabaseData();
+
+      logAction({
+        actor_id: getActorId(input),
+        action: 'database_reset',
+        entity: 'settings',
+        entity_id: null,
+        details: {
+          safety_backup: safetyBackupPath
+        }
+      });
+
+      return {
+        success: true,
+        safetyBackupPath,
+        message: 'تم تصفير البرنامج بنجاح'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: getErrorMessage(error)
+      };
+    }
+  });
+
 }

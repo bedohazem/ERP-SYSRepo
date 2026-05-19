@@ -77,6 +77,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => {
     void loadSettings();
@@ -233,6 +234,34 @@ export default function SettingsPage() {
     }
   }
 
+  async function resetDatabase() {
+    if (resetLoading) return;
+
+    setResetLoading(true);
+
+    try {
+      const result = await window.api.resetDatabase();
+
+      if (result.canceled) {
+        return;
+      }
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل تصفير البرنامج');
+        return;
+      }
+
+      showMessage(
+        'success',
+        'تم تصفير البرنامج بنجاح. تم إنشاء نسخة أمان قبل المسح. يفضل إعادة تشغيل البرنامج.'
+      );
+    } catch (error) {
+      console.error('Failed to reset database:', error);
+      showMessage('error', 'حدث خطأ أثناء تصفير البرنامج');
+    } finally {
+      setResetLoading(false);
+    }
+  }
   if (loading) {
     return (
       <div className="glass-card" style={{ borderRadius: '24px', padding: '24px' }}>
@@ -324,6 +353,22 @@ export default function SettingsPage() {
               }}
             >
               {restoreLoading ? 'جاري الاسترجاع...' : 'استرجاع نسخة احتياطية'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void resetDatabase()}
+              disabled={resetLoading}
+              style={{
+                ...dangerButtonStyle,
+                opacity: resetLoading ? 0.6 : 1,
+                cursor: resetLoading ? 'not-allowed' : 'pointer',
+                background: 'rgba(127,29,29,0.35)',
+                border: '1px solid rgba(248,113,113,0.45)',
+                color: '#fecaca'
+              }}
+            >
+              {resetLoading ? 'جاري التصفير...' : 'تصفير البرنامج ومسح كل البيانات'}
             </button>
           </div>
         </div>

@@ -304,6 +304,47 @@ export function getDb(): Database.Database {
   return db;
 }
 
+export function resetDatabaseData(): void {
+  const database = getDb();
+
+  database.transaction(() => {
+    database.exec(`
+      PRAGMA foreign_keys = OFF;
+
+      DELETE FROM activity_logs;
+      DELETE FROM expenses;
+      DELETE FROM cash_movements;
+
+      DELETE FROM supplier_payments;
+      DELETE FROM purchase_items;
+      DELETE FROM purchase_invoices;
+      DELETE FROM suppliers;
+
+      DELETE FROM customer_payments;
+      DELETE FROM loyalty_transactions;
+      DELETE FROM sale_items;
+      DELETE FROM sales;
+      DELETE FROM customers;
+
+      DELETE FROM stock_movements;
+      DELETE FROM product_variants;
+      DELETE FROM products;
+      DELETE FROM categories;
+
+      DELETE FROM app_settings;
+      DELETE FROM users;
+
+      DELETE FROM sqlite_sequence;
+
+      PRAGMA foreign_keys = ON;
+    `);
+
+    seedAdminUser(database);
+    seedDefaultCategories(database);
+    seedDefaultAppSettings(database);
+  })();
+}
+
 function safeAddColumn(
   database: Database.Database,
   table: string,

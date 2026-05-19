@@ -296,6 +296,13 @@ declare global {
         message?: string;
       }>;
 
+      resetDatabase: () => Promise<{
+        success: boolean;
+        canceled?: boolean;
+        message?: string;
+        safetyBackupPath?: string;
+      }>;
+
       // =========================
       // Logs
       // =========================
