@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
   updateProduct: (input) => ipcRenderer.invoke('products:update', input),
   updateVariant: (input) => ipcRenderer.invoke('products:update-variant', input),
   toggleProductActive: (productId, isActive) => ipcRenderer.invoke('products:toggle-active', productId, isActive),
+  addProductVariant: (input) => ipcRenderer.invoke('products:add-variant', input),
 
   getBarcodePrintSettings: () => ipcRenderer.invoke('settings:get-barcode-print'),
   saveBarcodePrintSettings: (input) => ipcRenderer.invoke('settings:save-barcode-print', input),

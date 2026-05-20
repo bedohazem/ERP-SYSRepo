@@ -8,7 +8,8 @@ import {
   toggleVariantActive,
   updateProduct,
   updateVariant,
-  toggleProductActive
+  toggleProductActive,
+  addProductVariant
 } from '../database/repositories/product.repo';
 
 export function registerProductsIpc(): void {
@@ -43,6 +44,36 @@ export function registerProductsIpc(): void {
   });
 
     return result;
+  });
+
+  ipcMain.handle('products:add-variant', (_, input) => {
+    try {
+      const result = addProductVariant(input);
+
+      logAction({
+        actor_id: getActorId(input),
+        action: 'variant_created',
+        entity: 'product_variants',
+        entity_id: result.variantId,
+        details: {
+          product_id: input.product_id,
+          barcode: input.barcode,
+          size: input.size,
+          color: input.color,
+          buy_price: input.buy_price,
+          sell_price: input.sell_price,
+          min_stock: input.min_stock,
+          opening_qty: input.opening_qty ?? 0
+        }
+      });
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'حدث خطأ أثناء إضافة الصنف'
+      };
+    }
   });
 
   ipcMain.handle('products:update', (_, input) => {

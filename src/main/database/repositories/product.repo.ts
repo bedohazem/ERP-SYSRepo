@@ -214,6 +214,80 @@ export function createProduct(input: CreateProductInput) {
   return { success: true, productId };
 }
 
+export type AddProductVariantInput = {
+  product_id: number;
+  barcode: string;
+  size: string;
+  color: string;
+  buy_price: number;
+  sell_price: number;
+  min_stock: number;
+  opening_qty?: number;
+};
+
+export function addProductVariant(input: AddProductVariantInput) {
+  const db = getDb();
+
+  const tx = db.transaction(() => {
+    const product = db
+      .prepare(`SELECT id FROM products WHERE id = ? LIMIT 1`)
+      .get(input.product_id);
+
+    if (!product) {
+      throw new Error('المنتج غير موجود');
+    }
+
+    const variantResult = db
+      .prepare(
+        `
+        INSERT INTO product_variants
+        (product_id, barcode, size, color, buy_price, sell_price, min_stock, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+        `
+      )
+      .run(
+        input.product_id,
+        input.barcode.trim(),
+        input.size.trim(),
+        input.color.trim(),
+        input.buy_price,
+        input.sell_price,
+        input.min_stock
+      );
+
+    const variantId = Number(variantResult.lastInsertRowid);
+    const openingQty = Number(input.opening_qty ?? 0);
+
+    if (!Number.isFinite(openingQty) || openingQty < 0) {
+      throw new Error('كمية المخزون الافتتاحي غير صحيحة');
+    }
+
+    if (openingQty > 0) {
+      db.prepare(
+        `
+        INSERT INTO stock_movements
+        (variant_id, type, quantity, reference_id, reference_type, notes)
+        VALUES (?, 'in', ?, ?, 'opening_stock', ?)
+        `
+      ).run(
+        variantId,
+        openingQty,
+        input.product_id,
+        'رصيد افتتاحي عند إضافة صنف جديد'
+      );
+    }
+
+    return variantId;
+  });
+
+  const variantId = tx();
+
+  return {
+    success: true,
+    variantId
+  };
+}
+
 
 export type UpdateProductInput = {
   id: number;

@@ -126,6 +126,21 @@ declare global {
         isActive: boolean | number
       ) => Promise<any>;
 
+      addProductVariant: (input: {
+        product_id: number;
+        barcode: string;
+        size: string;
+        color: string;
+        buy_price: number;
+        sell_price: number;
+        min_stock: number;
+        opening_qty?: number;
+      }) => Promise<{
+        success: boolean;
+        variantId?: number;
+        message?: string;
+      }>;
+
       // =========================
       // Barcode Print Settings
       // =========================
