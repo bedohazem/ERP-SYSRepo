@@ -108,11 +108,12 @@ export default function InvoicesPage() {
     printWindow.document.open();
     printWindow.document.write(html);
     printWindow.document.close();
+    printWindow.focus();
 
-    printWindow.onload = () => {
-      printWindow.focus();
+    setTimeout(() => {
       printWindow.print();
-    };
+      printWindow.close();
+    }, 350);
   }
 
   async function openReturnPopup(saleId: number) {
@@ -845,97 +846,187 @@ function escapeHtml(value: unknown) {
     .replace(/'/g, '&#039;');
 }
 
-function buildReceiptHtml(receipt: ReceiptData) {
-  const sale = receipt.sale;
-  const rows = (receipt.items ?? [])
-    .map(
-      (item) => `
-        <tr>
-          <td>${escapeHtml(item.product_name)}</td>
-          <td>${escapeHtml(item.quantity)}</td>
-          <td>${Number(item.unit_price || 0).toFixed(2)}</td>
-          <td>${Number(item.line_total || 0).toFixed(2)}</td>
-        </tr>
-      `
-    )
-    .join('');
+  function buildReceiptHtml(receipt: ReceiptData) {
+    const rows = (receipt.items ?? [])
+      .map(
+        (item) => `
+          <tr>
+            <td>
+              ${escapeHtml(item.product_name)}
+              ${item.size ? `<div class="muted">المقاس: ${escapeHtml(item.size)}</div>` : ''}
+              ${item.color ? `<div class="muted">اللون: ${escapeHtml(item.color)}</div>` : ''}
+            </td>
+            <td>${escapeHtml(item.quantity)}</td>
+            <td>${Number(item.unit_price || 0).toFixed(2)}</td>
+            <td>${Number(item.line_total || 0).toFixed(2)}</td>
+          </tr>
+        `
+      )
+      .join('');
 
-  return `
-    <!doctype html>
-    <html dir="rtl">
-      <head>
-        <meta charset="utf-8" />
-        <title>فاتورة #${escapeHtml(sale.id)}</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            width: 80mm;
-            margin: 0 auto;
-            padding: 10px;
-            color: #000;
-          }
-          h2, p { margin: 4px 0; text-align: center; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-          th, td {
-            border-bottom: 1px dashed #999;
-            padding: 6px 2px;
-            font-size: 12px;
-            text-align: right;
-          }
-          .summary {
-            margin-top: 10px;
-            font-size: 13px;
-          }
-          .line {
-            display: flex;
-            justify-content: space-between;
-            padding: 4px 0;
-          }
-          .total {
-            font-weight: bold;
-            border-top: 1px solid #000;
-            margin-top: 6px;
-            padding-top: 6px;
-          }
-          @media print {
-            body { width: 80mm; }
-            button { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        <h2>فاتورة بيع</h2>
-        <p>رقم الفاتورة: ${escapeHtml(sale.id)}</p>
-        <p>التاريخ: ${escapeHtml(formatDate(sale.created_at))}</p>
-        <p>العميل: ${escapeHtml(sale.customer_name || 'عميل نقدي')}</p>
-        <p>الكاشير: ${escapeHtml(sale.cashier_name || '—')}</p>
+    const sale = receipt.sale;
 
-        <table>
-          <thead>
-            <tr>
-              <th>الصنف</th>
-              <th>الكمية</th>
-              <th>السعر</th>
-              <th>الإجمالي</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+    return `
+      <!doctype html>
+      <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="UTF-8" />
+          <title>فاتورة #${escapeHtml(sale.id)}</title>
 
-        <div class="summary">
-          <div class="line"><span>قبل الخصم</span><span>${Number(sale.sub_total || 0).toFixed(2)}</span></div>
-          <div class="line"><span>خصم عادي</span><span>${Number(sale.discount_value || 0).toFixed(2)}</span></div>
-          <div class="line"><span>خصم النقاط</span><span>${Number(sale.loyalty_discount_value || 0).toFixed(2)}</span></div>
-          <div class="line total"><span>الإجمالي</span><span>${Number(sale.grand_total || 0).toFixed(2)}</span></div>
-          <div class="line"><span>نقاط مكتسبة</span><span>${Number(sale.loyalty_points_earned || 0)}</span></div>
-          <div class="line"><span>نقاط مستخدمة</span><span>${Number(sale.loyalty_points_redeemed || 0)}</span></div>
-        </div>
+          <style>
+            * {
+              box-sizing: border-box;
+            }
 
-        <p style="margin-top: 14px;">شكراً لزيارتكم</p>
-      </body>
-    </html>
-  `;
-}
+            body {
+              margin: 0;
+              padding: 14px;
+              font-family: Arial, Tahoma, sans-serif;
+              color: #111;
+              background: #fff;
+              font-size: 12px;
+            }
+
+            .receipt {
+              width: 280px;
+              margin: 0 auto;
+            }
+
+            h2,
+            p {
+              margin: 0;
+            }
+
+            .center {
+              text-align: center;
+            }
+
+            .muted {
+              color: #555;
+              font-size: 11px;
+              line-height: 1.5;
+            }
+
+            .line {
+              border-top: 1px dashed #777;
+              margin: 10px 0;
+            }
+
+            .row {
+              display: flex;
+              justify-content: space-between;
+              gap: 8px;
+              margin: 5px 0;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 8px;
+            }
+
+            th,
+            td {
+              padding: 5px 0;
+              border-bottom: 1px dashed #ddd;
+              text-align: right;
+              vertical-align: top;
+            }
+
+            th {
+              font-size: 11px;
+              color: #333;
+            }
+
+            .total {
+              font-weight: 800;
+              font-size: 14px;
+            }
+
+            @media print {
+              body {
+                padding: 0;
+              }
+
+              .receipt {
+                width: 100%;
+              }
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="receipt">
+            <div class="center">
+              <h2>فاتورة بيع</h2>
+              <p class="muted">رقم الفاتورة: #${escapeHtml(sale.id)}</p>
+              <p class="muted">${escapeHtml(formatDate(sale.created_at))}</p>
+            </div>
+
+            <div class="line"></div>
+
+            <div class="row">
+              <span>العميل</span>
+              <strong>${escapeHtml(sale.customer_name || 'عميل نقدي')}</strong>
+            </div>
+
+            <div class="row">
+              <span>الكاشير</span>
+              <strong>${escapeHtml(sale.cashier_name || '-')}</strong>
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>الصنف</th>
+                  <th>كمية</th>
+                  <th>سعر</th>
+                  <th>إجمالي</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                ${rows}
+              </tbody>
+            </table>
+
+            <div class="line"></div>
+
+            <div class="row">
+              <span>الإجمالي قبل الخصم</span>
+              <strong>${Number(sale.sub_total || 0).toFixed(2)} ج.م</strong>
+            </div>
+
+            <div class="row">
+              <span>خصم النقاط</span>
+              <strong>${Number(sale.loyalty_discount_value || 0).toFixed(2)} ج.م</strong>
+            </div>
+
+            <div class="row total">
+              <span>الإجمالي النهائي</span>
+              <strong>${Number(sale.grand_total || 0).toFixed(2)} ج.م</strong>
+            </div>
+
+            <div class="line"></div>
+
+            <div class="row">
+              <span>نقاط مستخدمة</span>
+              <strong>${escapeHtml(sale.loyalty_points_redeemed || 0)}</strong>
+            </div>
+
+            <div class="row">
+              <span>نقاط مكتسبة</span>
+              <strong>${escapeHtml(sale.loyalty_points_earned || 0)}</strong>
+            </div>
+
+            <div class="line"></div>
+
+            <p class="center muted">شكرًا لتعاملكم معنا</p>
+          </div>
+        </body>
+      </html>
+    `;
+  }
 
 const inputStyle: React.CSSProperties = {
   height: '44px',
