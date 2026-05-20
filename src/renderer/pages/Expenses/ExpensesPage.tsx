@@ -123,7 +123,7 @@ export default function ExpensesPage() {
     const printWindow = window.open('', '_blank', 'width=1100,height=800');
 
     if (!printWindow) {
-      alert('المتصفح منع فتح نافذة الطباعة');
+      showMessage('error', 'تعذر فتح نافذة الطباعة');
       return;
     }
 

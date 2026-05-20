@@ -116,16 +116,23 @@ return Number.isFinite(n) ? n.toFixed(2) : '0.00';
 export default function ProductsPage() {
 const pageRef = useRef<HTMLDivElement | null>(null);
 
+const [isCompact, setIsCompact] = useState(false);
 const [pageWidth, setPageWidth] = useState(
   typeof window !== 'undefined' ? window.innerWidth : 1200
 );
 
+const isNarrowDesktop = pageWidth < 1200;
+const isWideDesktop = pageWidth >= 1200;
 
 const [categories, setCategories] = useState<Category[]>([]);
 const [products, setProducts] = useState<Product[]>([]);
 const [search, setSearch] = useState('');
 const [showCreate, setShowCreate] = useState(false);
 const [loading, setLoading] = useState(false);
+const [pageMessage, setPageMessage] = useState<{
+  type: 'success' | 'error';
+  text: string;
+} | null>(null);
 
 const [name, setName] = useState('');
 const [categoryId, setCategoryId] = useState('');
@@ -173,6 +180,14 @@ const canSave = useMemo(() => {
   );
 }, [name, variants]);
 
+function showMessage(type: 'success' | 'error', text: string) {
+  setPageMessage({ type, text });
+
+  setTimeout(() => {
+    setPageMessage(null);
+  }, 1800);
+}
+
 async function loadData() {
   try {
     const [cats, prods, barcodeSettings] = await Promise.all([
@@ -189,7 +204,7 @@ async function loadData() {
     setPrintSettings(barcodeSettings);
   } catch (error) {
     console.error('Failed to load products page data:', error);
-    alert('حدث خطأ أثناء تحميل المنتجات');
+    showMessage('error', 'حدث خطأ أثناء تحميل المنتجات');
   }
 }
 
@@ -202,6 +217,7 @@ useEffect(() => {
     const safeWidth = width || window.innerWidth;
 
     setPageWidth(safeWidth);
+    setIsCompact(safeWidth <= 900);
   }
 
   updateCompact(element.getBoundingClientRect().width);
@@ -292,7 +308,7 @@ async function handleSave() {
     await loadData();
   } catch (error) {
     console.error('Failed to save product:', error);
-    alert('حدث خطأ أثناء حفظ المنتج');
+    showMessage('error', 'حدث خطأ أثناء حفظ المنتج');
   } finally {
     setLoading(false);
   }
@@ -321,7 +337,7 @@ async function toggleExpand(productId: number) {
       }));
     } catch (error) {
       console.error('Failed to load product variants:', error);
-      alert('حدث خطأ أثناء تحميل الـ variants');
+      showMessage('error', 'حدث خطأ أثناء تحميل الـ variants');
     } finally {
       setLoadingVariants(null);
     }
@@ -352,12 +368,12 @@ function printBarcodeLabel(input: {
   price: number;
 }) {
   if (!input.barcode?.trim()) {
-    alert('لا يوجد باركود للطباعة');
+    showMessage('error', 'لا يوجد باركود للطباعة');
     return;
   }
 
   if (!printSettings) {
-    alert('إعدادات الطباعة غير جاهزة');
+    showMessage('error', 'إعدادات الطباعة غير جاهزة');
     return;
   }
 
@@ -642,7 +658,7 @@ function printBarcodeLabel(input: {
   const printWindow = window.open('', '_blank', 'width=500,height=700');
 
   if (!printWindow) {
-    alert('تعذر فتح نافذة الطباعة');
+    showMessage('error', 'تعذر فتح نافذة الطباعة');
     return;
   }
 
@@ -677,7 +693,7 @@ async function openEditProduct(product: Product) {
     );
   } catch (error) {
     console.error('Failed to load edit variants:', error);
-    alert('حدث خطأ أثناء تحميل بيانات المنتج');
+    showMessage('error', 'حدث خطأ أثناء تحميل بيانات المنتج');
   }
 }
 
@@ -709,7 +725,7 @@ async function handleSaveEdit() {
   if (!editingProductId) return;
 
   if (!editName.trim()) {
-    alert('اسم المنتج مطلوب');
+    showMessage('error', 'اسم المنتج مطلوب');
     return;
   }
 
@@ -754,7 +770,7 @@ async function handleSaveEdit() {
     closeEditProduct();
   } catch (error) {
     console.error('Failed to save edit product:', error);
-    alert('حدث خطأ أثناء حفظ التعديلات');
+    showMessage('error', 'حدث خطأ أثناء حفظ التعديلات');
   } finally {
     setSavingEdit(false);
   }
@@ -770,7 +786,7 @@ async function handleToggleProductActive(productId: number, currentState: number
     }
   } catch (error) {
     console.error('Failed to toggle product active state:', error);
-    alert('حدث خطأ أثناء تحديث حالة المنتج');
+    showMessage('error', 'حدث خطأ أثناء تحديث حالة المنتج');
   }
 }
 
@@ -793,17 +809,15 @@ async function handleToggleVariantActive(
     }));
   } catch (error) {
     console.error('Failed to toggle variant active state:', error);
-    alert('حدث خطأ أثناء تحديث حالة الـ variant');
+    showMessage('error', 'حدث خطأ أثناء تحديث حالة الـ variant');
   }
 }
 
-const isNarrowDesktop = pageWidth < 1050;
-
-const productGridMinWidth = isNarrowDesktop ? '820px' : '100%';
+const productGridMinWidth = isNarrowDesktop ? '900px' : '100%';
 
 const variantGridColumns = isNarrowDesktop
-  ? '150px 60px 75px 80px 80px 60px 80px 95px'
-  : 'minmax(160px, 1.3fr) 65px 85px 90px 90px 65px 90px 105px';
+  ? '220px 90px 110px 100px 90px 100px 120px'
+  : '1.5fr 0.8fr 0.8fr 0.8fr 0.7fr 110px 130px';
 
 return (
   <div
@@ -817,6 +831,30 @@ return (
       overflow: 'hidden'
     }}
   >
+    {pageMessage && (
+      <div
+        style={{
+          position: 'fixed',
+          top: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 99999,
+          padding: '12px 18px',
+          borderRadius: '14px',
+          background:
+            pageMessage.type === 'error'
+              ? 'rgba(239,68,68,0.95)'
+              : 'rgba(16,185,129,0.95)',
+          color: '#fff',
+          fontWeight: 800,
+          boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
+          pointerEvents: 'none'
+        }}
+      >
+        {pageMessage.text}
+      </div>
+    )}
+
     <div
       className="glass-card"
       style={{
@@ -831,7 +869,7 @@ return (
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(320px, 1fr) auto',
+          gridTemplateColumns: isCompact ? '1fr' : 'minmax(260px, 1fr) auto',
           alignItems: 'center',
           gap: '12px',
           maxWidth: '100%'
@@ -912,7 +950,7 @@ return (
                 className="soft-card"
                 style={{
                   borderRadius: '18px',
-                  padding: isNarrowDesktop ? '14px' : '16px',
+                  padding: isCompact ? '12px' : '16px',
                   display: 'grid',
                   gap: '12px',
                   maxWidth: '100%',
@@ -923,7 +961,7 @@ return (
                   onClick={() => void toggleExpand(product.id)}
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 1fr) auto',
+                    gridTemplateColumns: isCompact ? '1fr' : 'minmax(0, 1fr) auto',
                     alignItems: 'center',
                     gap: '12px',
                     cursor: 'pointer',
@@ -984,7 +1022,7 @@ return (
                       alignItems: 'center',
                       gap: '10px',
                       flexWrap: 'wrap',
-                      justifyContent: 'flex-end'
+                      justifyContent: isCompact ? 'flex-start' : 'flex-end'
                     }}
                   >
                     <button
@@ -1166,7 +1204,7 @@ return (
                                     borderTop: '1px solid rgba(255,255,255,0.08)',
                                     paddingTop: '12px',
                                     display: 'grid',
-                                    gridTemplateColumns: 'minmax(260px, 1fr) auto',
+                                    gridTemplateColumns: isCompact ? '1fr' : 'minmax(220px, 1fr) auto',
                                     gap: '12px',
                                     alignItems: 'center',
                                     direction: 'rtl',
@@ -1179,7 +1217,7 @@ return (
                                       minWidth: 0,
                                       overflowX: 'auto',
                                       display: 'flex',
-                                      justifyContent: 'flex-start'
+                                      justifyContent: isCompact ? 'center' : 'flex-start'
                                     }}
                                   >
                                     <BarcodePreview value={variant.barcode} />
@@ -1288,7 +1326,7 @@ return (
               className="soft-card"
               style={{
                 borderRadius: '18px',
-                padding: isNarrowDesktop ? '14px' : '16px',
+                padding: isCompact ? '12px' : '16px',
                 display: 'grid',
                 gap: '14px',
                 overflow: 'hidden'
@@ -1307,7 +1345,7 @@ return (
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'minmax(0, 1fr) auto',
+                      gridTemplateColumns: isCompact ? '1fr' : 'minmax(0, 1fr) auto',
                       gap: '8px'
                     }}
                   >
@@ -1505,7 +1543,7 @@ return (
               className="soft-card"
               style={{
                 borderRadius: '18px',
-                padding: isNarrowDesktop ? '14px' : '16px',
+                padding: isCompact ? '12px' : '16px',
                 display: 'grid',
                 gap: '14px',
                 overflow: 'hidden'

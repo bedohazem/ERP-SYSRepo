@@ -25,6 +25,16 @@ export default function CashPage() {
   const [movements, setMovements] = useState<CashMovement[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [confirmOverdrawOpen, setConfirmOverdrawOpen] = useState(false);
+
+  function showMessage(type: 'success' | 'error', text: string) {
+    setMessage({ type, text });
+
+    setTimeout(() => {
+      setMessage(null);
+    }, 1800);
+  }
 
   const [movementType, setMovementType] = useState<'deposit' | 'withdraw'>('deposit');
   const [amount, setAmount] = useState('');
@@ -58,30 +68,30 @@ export default function CashPage() {
       setMovements(movementsData);
     } catch (error) {
       console.error(error);
-      alert('حدث خطأ أثناء تحميل بيانات الخزنة');
+      showMessage('error', 'حدث خطأ أثناء تحميل بيانات الخزنة');
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleCreateMovement() {
+  async function saveCashMovement(allowOverdraw = false) {
     const parsedAmount = Number(amount);
 
     if (!parsedAmount || parsedAmount <= 0) {
-      alert('اكتب مبلغ صحيح');
+      showMessage('error', 'اكتب مبلغ صحيح');
       return;
     }
 
     const direction = movementType === 'deposit' ? 'in' : 'out';
 
-    if (direction === 'out' && summary && parsedAmount > Number(summary.balance || 0)) {
-      const confirmed = confirm(
-        'المبلغ أكبر من رصيد الخزنة الحالي. هل تريد تسجيل السحب anyway؟'
-      );
-
-      if (!confirmed) {
-        return;
-      }
+    if (
+      !allowOverdraw &&
+      direction === 'out' &&
+      summary &&
+      parsedAmount > Number(summary.balance || 0)
+    ) {
+      setConfirmOverdrawOpen(true);
+      return;
     }
 
     setSaving(true);
@@ -98,18 +108,28 @@ export default function CashPage() {
         created_by: currentUser?.id ?? null
       });
 
+      setConfirmOverdrawOpen(false);
       setMovementType('deposit');
       setAmount('');
       setPaymentMethod('cash');
       setNotes('');
 
+      showMessage('success', 'تم حفظ حركة الخزنة بنجاح');
       await loadData();
     } catch (error) {
       console.error(error);
-      alert('حدث خطأ أثناء حفظ حركة الخزنة');
+      showMessage('error', 'حدث خطأ أثناء حفظ حركة الخزنة');
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleCreateMovement() {
+    void saveCashMovement(false);
+  }
+
+  function confirmOverdrawMovement() {
+    void saveCashMovement(true);
   }
 
   useEffect(() => {
@@ -172,7 +192,7 @@ export default function CashPage() {
     const printWindow = window.open('', '_blank', 'width=1100,height=800');
 
     if (!printWindow) {
-      alert('المتصفح منع فتح نافذة الطباعة');
+      showMessage('error', 'تعذر فتح نافذة الطباعة');
       return;
     }
 
@@ -435,6 +455,30 @@ export default function CashPage() {
 
   return (
     <div style={{ display: 'grid', gap: '18px' }}>
+      {message && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 99999,
+            padding: '12px 18px',
+            borderRadius: '14px',
+            background:
+              message.type === 'error'
+                ? 'rgba(239,68,68,0.95)'
+                : 'rgba(16,185,129,0.95)',
+            color: '#fff',
+            fontWeight: 800,
+            boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
+            pointerEvents: 'none'
+          }}
+        >
+          {message.text}
+        </div>
+      )}
+
       <div
         style={{
           display: 'grid',
@@ -787,6 +831,56 @@ export default function CashPage() {
           </tbody>
         </table>
       </div>
+      {confirmOverdrawOpen && (
+        <div style={modalOverlayStyle}>
+          <div style={modalStyle}>
+            <h3 style={{ margin: '0 0 8px' }}>تأكيد السحب</h3>
+
+            <p style={{ margin: '0 0 18px', color: '#cbd5e1', lineHeight: 1.8 }}>
+              المبلغ أكبر من رصيد الخزنة الحالي. هل تريد تسجيل السحب؟
+            </p>
+
+            <div
+              style={{
+                padding: '12px',
+                borderRadius: '12px',
+                background: 'rgba(239,68,68,0.12)',
+                border: '1px solid rgba(239,68,68,0.25)',
+                color: '#fecaca',
+                fontWeight: 800,
+                marginBottom: '18px'
+              }}
+            >
+              رصيد الخزنة: {money(summary?.balance)} — مبلغ السحب: {money(amount)}
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={confirmOverdrawMovement}
+                disabled={saving}
+                style={{
+                  ...dangerButtonStyle,
+                  opacity: saving ? 0.6 : 1,
+                  cursor: saving ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {saving ? 'جاري الحفظ...' : 'تسجيل السحب'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setConfirmOverdrawOpen(false)}
+                disabled={saving}
+                style={secondaryButtonStyle}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -860,6 +954,50 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 900,
   padding: '0 18px',
   cursor: 'pointer'
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+  border: '1px solid rgba(255,255,255,0.12)',
+  height: '44px',
+  borderRadius: '12px',
+  background: 'rgba(255,255,255,0.06)',
+  color: '#fff',
+  fontWeight: 900,
+  padding: '0 18px',
+  cursor: 'pointer'
+};
+
+const dangerButtonStyle: React.CSSProperties = {
+  border: '1px solid rgba(239,68,68,0.35)',
+  height: '44px',
+  borderRadius: '12px',
+  background: 'rgba(239,68,68,0.14)',
+  color: '#fca5a5',
+  fontWeight: 900,
+  padding: '0 18px',
+  cursor: 'pointer'
+};
+
+const modalOverlayStyle: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(0,0,0,0.60)',
+  zIndex: 99999,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '20px'
+};
+
+const modalStyle: React.CSSProperties = {
+  width: '480px',
+  maxWidth: '100%',
+  borderRadius: '20px',
+  border: '1px solid rgba(255,255,255,0.10)',
+  background: '#111827',
+  padding: '22px',
+  direction: 'rtl',
+  boxShadow: '0 24px 70px rgba(0,0,0,0.55)'
 };
 
 const thStyle: React.CSSProperties = {

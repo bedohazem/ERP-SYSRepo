@@ -32,6 +32,8 @@ export default function UsersPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
+  const [activeConfirmUser, setActiveConfirmUser] = useState<SystemUser | null>(null);
+  const [savingActive, setSavingActive] = useState(false);
   const [pageMessage, setPageMessage] = useState<{
     type: 'success' | 'error';
     text: string;
@@ -59,7 +61,7 @@ export default function UsersPage() {
       setUsers(result);
     } catch (error) {
       console.error('Failed to load users:', error);
-      alert('حدث خطأ أثناء تحميل المستخدمين');
+      showMessage('error', 'حدث خطأ أثناء تحميل المستخدمين');
     } finally {
       setLoading(false);
     }
@@ -67,17 +69,17 @@ export default function UsersPage() {
 
   async function handleSave() {
     if (!form.name.trim()) {
-      alert('اكتب اسم المستخدم');
+      showMessage('error', 'اكتب اسم المستخدم');
       return;
     }
 
     if (!form.username.trim()) {
-      alert('اكتب اسم الدخول');
+      showMessage('error', 'اكتب اسم الدخول');
       return;
     }
 
     if (!editing && form.password.trim().length < 4) {
-      alert('كلمة المرور يجب ألا تقل عن 4 أحرف');
+      showMessage('error', 'كلمة المرور يجب ألا تقل عن 4 أحرف');
       return;
     }
 
@@ -100,44 +102,66 @@ export default function UsersPage() {
           });
 
       if (!result.success) {
-        alert(result.message || 'فشل حفظ المستخدم');
+        showMessage('error', result.message || 'فشل حفظ المستخدم');
         return;
       }
 
+      showMessage('success', editing ? 'تم حفظ تعديل المستخدم بنجاح' : 'تم إضافة المستخدم بنجاح');
       setForm(emptyForm);
       await loadUsers();
     } catch (error) {
       console.error('Failed to save user:', error);
-      alert('حدث خطأ أثناء حفظ المستخدم');
+      showMessage('error', 'حدث خطأ أثناء حفظ المستخدم');
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleToggleActive(user: SystemUser) {
+  function openActiveConfirm(user: SystemUser) {
     const nextActive = user.is_active ? 0 : 1;
 
     if (user.id === currentUser?.id && nextActive === 0) {
-      alert('لا يمكنك تعطيل حسابك الحالي');
+      showMessage('error', 'لا يمكنك تعطيل حسابك الحالي');
       return;
     }
 
-    const confirmMessage = nextActive
-      ? `تفعيل المستخدم "${user.name}"؟`
-      : `تعطيل المستخدم "${user.name}"؟`;
+    setActiveConfirmUser(user);
+  }
 
-    if (!confirm(confirmMessage)) {
-      return;
+  function closeActiveConfirm() {
+    if (savingActive) return;
+    setActiveConfirmUser(null);
+  }
+
+  async function confirmToggleActive() {
+    if (!activeConfirmUser) return;
+    if (savingActive) return;
+
+    const nextActive = activeConfirmUser.is_active ? 0 : 1;
+
+    setSavingActive(true);
+
+    try {
+      const result = await window.api.setUserActive(activeConfirmUser.id, nextActive);
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل تحديث حالة المستخدم');
+        return;
+      }
+
+      showMessage(
+        'success',
+        nextActive ? 'تم تفعيل المستخدم بنجاح' : 'تم تعطيل المستخدم بنجاح'
+      );
+
+      setActiveConfirmUser(null);
+      await loadUsers();
+    } catch (error) {
+      console.error('Failed to update user active state:', error);
+      showMessage('error', 'حدث خطأ أثناء تحديث حالة المستخدم');
+    } finally {
+      setSavingActive(false);
     }
-
-    const result = await window.api.setUserActive(user.id, nextActive);
-
-    if (!result.success) {
-      alert(result.message || 'فشل تحديث حالة المستخدم');
-      return;
-    }
-
-    await loadUsers();
   }
 
   function openPasswordModal(user: SystemUser) {
@@ -408,7 +432,7 @@ export default function UsersPage() {
 
                           <button
                             type="button"
-                            onClick={() => handleToggleActive(user)}
+                            onClick={() => openActiveConfirm(user)}
                             style={user.is_active ? dangerButtonStyle : successButtonStyle}
                           >
                             {user.is_active ? 'تعطيل' : 'تفعيل'}
@@ -476,6 +500,47 @@ export default function UsersPage() {
               </button>
 
               <button type="button" onClick={closePasswordModal} style={secondaryButtonStyle}>
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeConfirmUser && (
+        <div style={modalOverlayStyle}>
+          <div style={modalStyle}>
+            <h3 style={{ margin: '0 0 8px' }}>
+              {activeConfirmUser.is_active ? 'تعطيل مستخدم' : 'تفعيل مستخدم'}
+            </h3>
+
+            <p style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700, lineHeight: 1.8 }}>
+              هل أنت متأكد من {activeConfirmUser.is_active ? 'تعطيل' : 'تفعيل'} المستخدم:
+              <br />
+              <span style={{ color: '#fff' }}>
+                {activeConfirmUser.name} - {activeConfirmUser.username}
+              </span>
+            </p>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => void confirmToggleActive()}
+                disabled={savingActive}
+                style={{
+                  ...(activeConfirmUser.is_active ? dangerButtonStyle : successButtonStyle),
+                  opacity: savingActive ? 0.6 : 1,
+                  cursor: savingActive ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {savingActive
+                  ? 'جاري الحفظ...'
+                  : activeConfirmUser.is_active
+                    ? 'تعطيل المستخدم'
+                    : 'تفعيل المستخدم'}
+              </button>
+
+              <button type="button" onClick={closeActiveConfirm} style={secondaryButtonStyle}>
                 إلغاء
               </button>
             </div>

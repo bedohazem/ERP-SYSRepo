@@ -12,6 +12,18 @@ type ActivityFilters = {
 export default function ActivityLogPage() {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(false);
+  const [pageMessage, setPageMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+  function showMessage(type: 'success' | 'error', text: string) {
+    setPageMessage({ type, text });
+
+    setTimeout(() => {
+      setPageMessage(null);
+    }, 1800);
+  }
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -40,7 +52,7 @@ export default function ActivityLogPage() {
       setLogs(data || []);
     } catch (error) {
       console.error(error);
-      alert('حدث خطأ أثناء تحميل سجل العمليات');
+      showMessage('error', 'حدث خطأ أثناء تحميل سجل العمليات');
     } finally {
       setLoading(false);
     }
@@ -66,7 +78,7 @@ export default function ActivityLogPage() {
     const printWindow = window.open('', '_blank', 'width=1100,height=800');
 
     if (!printWindow) {
-      alert('المتصفح منع فتح نافذة الطباعة');
+      showMessage('error', 'تعذر فتح نافذة الطباعة');
       return;
     }
 
@@ -314,6 +326,29 @@ export default function ActivityLogPage() {
 
   return (
     <div style={{ display: 'grid', gap: '18px' }}>
+      {pageMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 99999,
+            padding: '12px 18px',
+            borderRadius: '14px',
+            background:
+              pageMessage.type === 'error'
+                ? 'rgba(239,68,68,0.95)'
+                : 'rgba(16,185,129,0.95)',
+            color: '#fff',
+            fontWeight: 800,
+            boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
+            pointerEvents: 'none'
+          }}
+        >
+          {pageMessage.text}
+        </div>
+      )}
       <div
         className="glass-card"
         style={{
