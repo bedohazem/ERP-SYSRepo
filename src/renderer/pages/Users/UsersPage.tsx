@@ -28,6 +28,23 @@ export default function UsersPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [passwordUser, setPasswordUser] = useState<SystemUser | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [pageMessage, setPageMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
+  function showMessage(type: 'success' | 'error', text: string) {
+    setPageMessage({ type, text });
+
+    setTimeout(() => {
+      setPageMessage(null);
+    }, 1800);
+  }
+
 
   const isAdmin = currentUser?.role === 'admin';
   const editing = Boolean(form.id);
@@ -123,26 +140,52 @@ export default function UsersPage() {
     await loadUsers();
   }
 
-  async function handleResetPassword(user: SystemUser) {
-    const password = prompt(`كلمة المرور الجديدة للمستخدم "${user.name}"`);
+  function openPasswordModal(user: SystemUser) {
+    setPasswordUser(user);
+    setNewPassword('');
+    setConfirmPassword('');
+  }
 
-    if (!password) {
+  function closePasswordModal() {
+    setPasswordUser(null);
+    setNewPassword('');
+    setConfirmPassword('');
+  }
+
+  async function saveNewPassword() {
+    if (!passwordUser) return;
+    if (savingPassword) return;
+
+    const password = newPassword.trim();
+
+    if (password.length < 4) {
+      showMessage('error', 'كلمة المرور يجب ألا تقل عن 4 أحرف');
       return;
     }
 
-    if (password.trim().length < 4) {
-      alert('كلمة المرور يجب ألا تقل عن 4 أحرف');
+    if (password !== confirmPassword.trim()) {
+      showMessage('error', 'كلمة المرور وتأكيدها غير متطابقين');
       return;
     }
 
-    const result = await window.api.resetUserPassword(user.id, password);
+    setSavingPassword(true);
 
-    if (!result.success) {
-      alert(result.message || 'فشل تغيير كلمة المرور');
-      return;
+    try {
+      const result = await window.api.resetUserPassword(passwordUser.id, password);
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل تغيير كلمة المرور');
+        return;
+      }
+
+      closePasswordModal();
+      showMessage('success', 'تم تغيير كلمة المرور بنجاح');
+    } catch (error) {
+      console.error('Failed to reset password:', error);
+      showMessage('error', 'حدث خطأ أثناء تغيير كلمة المرور');
+    } finally {
+      setSavingPassword(false);
     }
-
-    alert('تم تغيير كلمة المرور بنجاح');
   }
 
   function startEdit(user: SystemUser) {
@@ -180,6 +223,29 @@ export default function UsersPage() {
 
   return (
     <div className="fade-slide-in" style={{ display: 'grid', gap: '18px' }}>
+      {pageMessage && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 99999,
+            padding: '12px 18px',
+            borderRadius: '14px',
+            background:
+              pageMessage.type === 'error'
+                ? 'rgba(239,68,68,0.95)'
+                : 'rgba(16,185,129,0.95)',
+            color: '#fff',
+            fontWeight: 800,
+            boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
+            pointerEvents: 'none'
+          }}
+        >
+          {pageMessage.text}
+        </div>
+      )}
       <section className="glass-card" style={headerStyle}>
         <div>
           <h2 style={{ margin: '0 0 8px' }}>إدارة المستخدمين</h2>
@@ -334,7 +400,7 @@ export default function UsersPage() {
 
                           <button
                             type="button"
-                            onClick={() => handleResetPassword(user)}
+                            onClick={() => openPasswordModal(user)}
                             style={smallButtonStyle}
                           >
                             كلمة المرور
@@ -357,6 +423,65 @@ export default function UsersPage() {
           </div>
         </div>
       </section>
+
+      {passwordUser && (
+        <div style={modalOverlayStyle}>
+          <div style={modalStyle}>
+            <h3 style={{ margin: '0 0 8px' }}>تغيير كلمة المرور</h3>
+
+            <p style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700 }}>
+              المستخدم: {passwordUser.name} - {passwordUser.username}
+            </p>
+
+            <div style={{ display: 'grid', gap: '14px' }}>
+              <Field label="كلمة المرور الجديدة">
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="4 أحرف على الأقل"
+                  style={inputStyle}
+                  autoFocus
+                />
+              </Field>
+
+              <Field label="تأكيد كلمة المرور">
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="أعد كتابة كلمة المرور"
+                  style={inputStyle}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      void saveNewPassword();
+                    }
+                  }}
+                />
+              </Field>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => void saveNewPassword()}
+                disabled={savingPassword}
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: savingPassword ? 0.6 : 1,
+                  cursor: savingPassword ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {savingPassword ? 'جاري الحفظ...' : 'حفظ كلمة المرور'}
+              </button>
+
+              <button type="button" onClick={closePasswordModal} style={secondaryButtonStyle}>
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -512,4 +637,26 @@ const inactiveBadgeStyle: CSSProperties = {
   background: 'rgba(239,68,68,0.16)',
   color: '#fca5a5',
   fontWeight: 900
+};
+
+const modalOverlayStyle: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(0,0,0,0.60)',
+  zIndex: 99999,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '20px'
+};
+
+const modalStyle: CSSProperties = {
+  width: '460px',
+  maxWidth: '100%',
+  borderRadius: '20px',
+  border: '1px solid rgba(255,255,255,0.10)',
+  background: '#111827',
+  padding: '22px',
+  direction: 'rtl',
+  boxShadow: '0 24px 70px rgba(0,0,0,0.55)'
 };
