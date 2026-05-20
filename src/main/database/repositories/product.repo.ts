@@ -17,6 +17,8 @@ export type ProductRow = {
   description: string | null;
   is_active: number;
   created_at: string;
+  variants_count: number;
+  active_variants_count: number;
 };
 
 export type ProductVariantInput = {
@@ -77,7 +79,21 @@ export function getProducts(search = '', includeInactive = false): ProductRow[] 
         p.image_path,
         p.description,
         p.is_active,
-        p.created_at
+        p.created_at,
+
+        (
+          SELECT COUNT(*)
+          FROM product_variants v
+          WHERE v.product_id = p.id
+        ) as variants_count,
+
+        (
+          SELECT COUNT(*)
+          FROM product_variants v
+          WHERE v.product_id = p.id
+            AND v.is_active = 1
+        ) as active_variants_count
+
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
       WHERE
@@ -85,11 +101,21 @@ export function getProducts(search = '', includeInactive = false): ProductRow[] 
         AND (
           p.name LIKE ?
           OR IFNULL(c.name, '') LIKE ?
+          OR EXISTS (
+            SELECT 1
+            FROM product_variants v
+            WHERE v.product_id = p.id
+              AND (
+                IFNULL(v.barcode, '') LIKE ?
+                OR IFNULL(v.size, '') LIKE ?
+                OR IFNULL(v.color, '') LIKE ?
+              )
+          )
         )
       ORDER BY p.id DESC
       `
     )
-    .all(query, query) as ProductRow[];
+    .all(query, query, query, query, query) as ProductRow[];
 }
 
 export function getProductVariants(productId: number, includeInactive = true) {

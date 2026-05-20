@@ -16,6 +16,8 @@ image_path: string | null;
 description: string | null;
 is_active: number;
 created_at: string;
+variants_count: number;
+active_variants_count: number;
 };
 
 type ProductVariant = {
@@ -311,6 +313,8 @@ export default function ProductsPage() {
         ...prev,
         [editingProductId]: Array.isArray(refreshed) ? refreshed : []
       }));
+
+      await loadData();
 
       setNewEditVariant(emptyVariant());
       showMessage('success', 'تم إضافة الصنف بنجاح');
@@ -943,6 +947,7 @@ export default function ProductsPage() {
         ...prev,
         [productId]: Array.isArray(refreshed) ? refreshed : []
       }));
+      await loadData();
     } catch (error) {
       console.error('Failed to toggle variant active state:', error);
       showMessage('error', 'حدث خطأ أثناء تحديث حالة الـ variant');
@@ -1014,7 +1019,7 @@ export default function ProductsPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ابحث باسم المنتج أو التصنيف..."
+            placeholder="ابحث باسم المنتج أو التصنيف أو الباركود أو المقاس أو اللون..."
             style={inputStyle}
           />
 
@@ -1179,6 +1184,43 @@ export default function ProductsPage() {
                         }}
                       >
                         التصنيف: {product.category_name || '—'}
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: '8px',
+                          flexWrap: 'wrap',
+                          marginTop: '8px'
+                        }}
+                      >
+                        <span
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '999px',
+                            background: 'rgba(37,99,235,0.14)',
+                            border: '1px solid rgba(37,99,235,0.25)',
+                            color: '#bfdbfe',
+                            fontSize: '12px',
+                            fontWeight: 800
+                          }}
+                        >
+                          الأصناف: {Number(product.variants_count || 0)}
+                        </span>
+
+                        <span
+                          style={{
+                            padding: '5px 10px',
+                            borderRadius: '999px',
+                            background: 'rgba(16,185,129,0.12)',
+                            border: '1px solid rgba(16,185,129,0.25)',
+                            color: '#86efac',
+                            fontSize: '12px',
+                            fontWeight: 800
+                          }}
+                        >
+                          النشطة: {Number(product.active_variants_count || 0)}
+                        </span>
                       </div>
 
                       {product.description ? (
