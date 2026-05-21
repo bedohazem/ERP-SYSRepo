@@ -152,6 +152,7 @@ declare global {
       // Sales
       // =========================
       searchSaleVariants: (query: string) => Promise<any[]>;
+      getSaleReturnHistory: (saleId: number) => Promise<any[]>;
 
       getVariantByBarcode: (barcode: string) => Promise<any | null>;
 
@@ -195,6 +196,10 @@ declare global {
           customer_phone?: string | null;
           cashier_name?: string | null;
           items_count: number;
+          total_quantity: number;
+          returned_quantity: number;
+          return_count: number;
+          total_return_amount: number;
         }>;
         total: number;
         limit: number;
@@ -205,19 +210,47 @@ declare global {
         original_sale_id: number;
         user_id: number;
         reason?: string | null;
-        paid_amount?: number;
-        remaining_amount?: number;
-        payment_status?: string;
         items: Array<{
           sale_item_id: number;
           variant_id: number;
           quantity: number;
         }>;
       }) => Promise<{
+        returnId?: number;
+        returnCode?: string;
         returnSaleId: number;
         originalSaleId: number;
         refundAmount: number;
         loyalty_points_reversed: number;
+      }>;
+
+      listSaleReturns: (input?: {
+        search?: string;
+        date_from?: string;
+        date_to?: string;
+        limit?: number;
+        offset?: number;
+      }) => Promise<{
+        rows: Array<{
+          id: number;
+          code: string;
+          original_sale_id: number;
+          customer_name?: string | null;
+          customer_phone?: string | null;
+          cashier_name?: string | null;
+          sub_total: number;
+          loyalty_discount_value: number;
+          refund_amount: number;
+          payment_method: string;
+          reason?: string | null;
+          loyalty_points_reversed: number;
+          created_at: string;
+          items_count: number;
+          total_quantity: number;
+        }>;
+        total: number;
+        limit: number;
+        offset: number;
       }>;
 
       // =========================

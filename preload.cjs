@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('api', {
   getSaleReceipt: (saleId) => ipcRenderer.invoke('sales:get-receipt', saleId),
   listSales: (input) => ipcRenderer.invoke('sales:list', input),
   createSaleReturn: (input) => ipcRenderer.invoke('sales:return', input),
+  listSaleReturns: (input) => ipcRenderer.invoke('sales:list-returns', input),
+  getSaleReturnHistory: (saleId) => ipcRenderer.invoke('sales:return-history', saleId),
 
   getCustomers: () => ipcRenderer.invoke('customers:list'),
   searchCustomers: (query) => ipcRenderer.invoke('customers:search', query),

@@ -386,12 +386,11 @@ const items = db
       si.unit_price,
       si.line_total,
       IFNULL((
-        SELECT SUM(rsi.quantity)
-        FROM sales rs
-        JOIN sale_items rsi ON rsi.sale_id = rs.id
-        WHERE rs.parent_sale_id = si.sale_id
-          AND IFNULL(rs.type, '') = 'return'
-          AND rsi.variant_id = si.variant_id
+        SELECT SUM(sri.quantity)
+        FROM sale_returns sr
+        JOIN sale_return_items sri ON sri.return_id = sr.id
+        WHERE sr.original_sale_id = si.sale_id
+          AND sri.original_sale_item_id = si.id
       ), 0) AS returned_quantity
     FROM sale_items si
     WHERE si.sale_id = ?
@@ -485,7 +484,29 @@ export function listSales(input?: {
         c.name AS customer_name,
         c.phone AS customer_phone,
         u.name AS cashier_name,
-        COUNT(si.id) AS items_count
+        COUNT(si.id) AS items_count,
+
+        IFNULL(SUM(si.quantity), 0) AS total_quantity,
+
+        IFNULL((
+          SELECT SUM(sri.quantity)
+          FROM sale_returns sr
+          JOIN sale_return_items sri ON sri.return_id = sr.id
+          WHERE sr.original_sale_id = s.id
+        ), 0) AS returned_quantity,
+
+        IFNULL((
+          SELECT COUNT(*)
+          FROM sale_returns sr
+          WHERE sr.original_sale_id = s.id
+        ), 0) AS return_count,
+
+        IFNULL((
+          SELECT SUM(sr.refund_amount)
+          FROM sale_returns sr
+          WHERE sr.original_sale_id = s.id
+        ), 0) AS total_return_amount
+
       FROM sales s
       LEFT JOIN customers c ON c.id = s.customer_id
       LEFT JOIN users u ON u.id = s.user_id
@@ -568,16 +589,14 @@ export function createSaleReturn(input: {
     `);
 
     const getAlreadyReturnedQty = db.prepare(`
-      SELECT IFNULL(SUM(si.quantity), 0) AS returned_qty
-      FROM sales r
-      JOIN sale_items si ON si.sale_id = r.id
-      WHERE r.parent_sale_id = ?
-        AND IFNULL(r.type, '') = 'return'
-        AND si.variant_id = ?
+      SELECT IFNULL(SUM(sri.quantity), 0) AS returned_qty
+      FROM sale_returns sr
+      JOIN sale_return_items sri ON sri.return_id = sr.id
+      WHERE sr.original_sale_id = ?
+        AND sri.original_sale_item_id = ?
     `);
 
     let returnSubTotal = 0;
-    
 
     const preparedItems = input.items
       .map((item) => {
@@ -598,7 +617,7 @@ export function createSaleReturn(input: {
 
         const alreadyReturned = getAlreadyReturnedQty.get(
           originalSaleId,
-          originalItem.variant_id
+          originalItem.id
         ) as { returned_qty: number };
 
         const maxReturnable =
@@ -634,8 +653,6 @@ export function createSaleReturn(input: {
       throw new Error('لا توجد كميات صالحة للمرتجع');
     }
 
-    
-    const originalGrandTotal = Number(originalSale.grand_total || 0);
     const originalSubTotal = Number(originalSale.sub_total || 0);
 
     const ratio =
@@ -653,45 +670,36 @@ export function createSaleReturn(input: {
 
     const refundAmount = Math.max(0, returnSubTotal - loyaltyDiscountPart);
 
-    const returnSaleResult = db
+    const returnResult = db
       .prepare(`
-        INSERT INTO sales (
-          type,
-          parent_sale_id,
+        INSERT INTO sale_returns (
+          original_sale_id,
           customer_id,
           user_id,
           sub_total,
-          discount_value,
-          grand_total,
-          paid,
-          change_amount,
+          loyalty_discount_value,
+          refund_amount,
           payment_method,
+          reason,
           notes,
-          return_reason,
-          loyalty_points_earned,
-          loyalty_points_redeemed,
-          loyalty_discount_value
+          loyalty_points_reversed
         )
-        VALUES (
-          'return',
-          ?, ?, ?, ?, 0, ?, ?, 0, ?, ?, ?, ?, 0, ?
-        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         originalSaleId,
         originalSale.customer_id ?? null,
         userId,
         returnSubTotal,
-        refundAmount,
+        loyaltyDiscountPart,
         refundAmount,
         originalSale.payment_method || 'cash',
-        `مرتجع من فاتورة رقم ${originalSaleId}`,
         reason,
-        -loyaltyPointsToReverse,
-        loyaltyDiscountPart
+        `مرتجع من فاتورة رقم ${originalSaleId}`,
+        loyaltyPointsToReverse
       );
 
-    const returnSaleId = Number(returnSaleResult.lastInsertRowid);
+    const returnId = Number(returnResult.lastInsertRowid);
 
     if (refundAmount > 0) {
       createCashMovement({
@@ -699,16 +707,17 @@ export function createSaleReturn(input: {
         direction: 'out',
         amount: refundAmount,
         payment_method: originalSale.payment_method || 'cash',
-        reference_id: returnSaleId,
+        reference_id: returnId,
         reference_type: 'sale_return',
-        notes: `مرتجع فاتورة رقم ${originalSaleId}`,
+        notes: `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
         created_by: userId
       });
     }
 
     const insertReturnItem = db.prepare(`
-      INSERT INTO sale_items (
-        sale_id,
+      INSERT INTO sale_return_items (
+        return_id,
+        original_sale_item_id,
         variant_id,
         product_name,
         barcode,
@@ -719,7 +728,7 @@ export function createSaleReturn(input: {
         unit_price,
         line_total
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const insertStockMovement = db.prepare(`
@@ -731,12 +740,13 @@ export function createSaleReturn(input: {
         reference_type,
         notes
       )
-      VALUES (?, 'in', ?, ?, 'return', ?)
+      VALUES (?, 'in', ?, ?, 'sale_return', ?)
     `);
 
     for (const item of preparedItems) {
       insertReturnItem.run(
-        returnSaleId,
+        returnId,
+        item.originalItem.id,
         item.originalItem.variant_id,
         item.originalItem.product_name,
         item.originalItem.barcode ?? null,
@@ -751,8 +761,8 @@ export function createSaleReturn(input: {
       insertStockMovement.run(
         item.originalItem.variant_id,
         item.quantity,
-        returnSaleId,
-        `مرتجع من فاتورة رقم ${originalSaleId}`
+        returnId,
+        `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`
       );
     }
 
@@ -782,15 +792,17 @@ export function createSaleReturn(input: {
         VALUES (?, ?, 'adjust', ?, ?, ?)
       `).run(
         originalSale.customer_id,
-        returnSaleId,
+        originalSaleId,
         -loyaltyPointsToReverse,
         refundAmount,
-        `خصم نقاط بسبب مرتجع فاتورة رقم ${originalSaleId}`
+        `خصم نقاط بسبب مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`
       );
     }
 
     return {
-      returnSaleId,
+      returnId,
+      returnCode: `RET-${String(returnId).padStart(5, '0')}`,
+      returnSaleId: returnId,
       originalSaleId,
       refundAmount,
       loyalty_points_reversed: loyaltyPointsToReverse
@@ -798,4 +810,159 @@ export function createSaleReturn(input: {
   });
 
   return tx();
+}
+
+export function getSaleReturnHistory(originalSaleId: number) {
+  const db = getDb();
+
+  const returns = db
+    .prepare(`
+      SELECT
+        sr.id,
+        sr.original_sale_id,
+        sr.customer_id,
+        sr.user_id,
+        sr.sub_total,
+        sr.loyalty_discount_value,
+        sr.refund_amount,
+        sr.payment_method,
+        sr.reason AS return_reason,
+        sr.notes,
+        sr.loyalty_points_reversed,
+        sr.created_at,
+        c.name AS customer_name,
+        u.name AS cashier_name,
+        COUNT(sri.id) AS items_count,
+        IFNULL(SUM(sri.quantity), 0) AS total_quantity
+      FROM sale_returns sr
+      LEFT JOIN customers c ON c.id = sr.customer_id
+      LEFT JOIN users u ON u.id = sr.user_id
+      LEFT JOIN sale_return_items sri ON sri.return_id = sr.id
+      WHERE sr.original_sale_id = ?
+      GROUP BY sr.id
+      ORDER BY sr.id DESC
+    `)
+    .all(originalSaleId) as any[];
+
+  const getItems = db.prepare(`
+    SELECT
+      id,
+      return_id,
+      original_sale_item_id,
+      variant_id,
+      product_name,
+      barcode,
+      size,
+      color,
+      quantity,
+      unit_price,
+      line_total
+    FROM sale_return_items
+    WHERE return_id = ?
+    ORDER BY id ASC
+  `);
+
+  return returns.map((item) => ({
+    ...item,
+    code: `RET-${String(item.id).padStart(5, '0')}`,
+    grand_total: item.refund_amount,
+    items: getItems.all(item.id)
+  }));
+}
+
+export function listSaleReturns(input?: {
+  search?: string;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const db = getDb();
+
+  const search = input?.search?.trim() || '';
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
+  const offset = Math.max(Number(input?.offset || 0), 0);
+
+  const where: string[] = [];
+  const params: any[] = [];
+
+  if (search) {
+    where.push(`
+      (
+        CAST(sr.id AS TEXT) LIKE ?
+        OR CAST(sr.original_sale_id AS TEXT) LIKE ?
+        OR c.name LIKE ?
+        OR c.phone LIKE ?
+        OR u.name LIKE ?
+        OR IFNULL(sr.reason, '') LIKE ?
+      )
+    `);
+
+    const q = `%${search}%`;
+    params.push(q, q, q, q, q, q);
+  }
+
+  if (input?.date_from) {
+    where.push(`sr.created_at >= ?`);
+    params.push(`${input.date_from} 00:00:00`);
+  }
+
+  if (input?.date_to) {
+    where.push(`sr.created_at <= ?`);
+    params.push(`${input.date_to} 23:59:59`);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const rows = db
+    .prepare(`
+      SELECT
+        sr.id,
+        sr.original_sale_id,
+        sr.customer_id,
+        sr.user_id,
+        sr.sub_total,
+        sr.loyalty_discount_value,
+        sr.refund_amount,
+        sr.payment_method,
+        sr.reason,
+        sr.notes,
+        sr.loyalty_points_reversed,
+        sr.created_at,
+        c.name AS customer_name,
+        c.phone AS customer_phone,
+        u.name AS cashier_name,
+        COUNT(sri.id) AS items_count,
+        IFNULL(SUM(sri.quantity), 0) AS total_quantity
+      FROM sale_returns sr
+      LEFT JOIN customers c ON c.id = sr.customer_id
+      LEFT JOIN users u ON u.id = sr.user_id
+      LEFT JOIN sale_return_items sri ON sri.return_id = sr.id
+      ${whereSql}
+      GROUP BY sr.id
+      ORDER BY sr.id DESC
+      LIMIT ?
+      OFFSET ?
+    `)
+    .all(...params, limit, offset);
+
+  const totalRow = db
+    .prepare(`
+      SELECT COUNT(*) AS total
+      FROM sale_returns sr
+      LEFT JOIN customers c ON c.id = sr.customer_id
+      LEFT JOIN users u ON u.id = sr.user_id
+      ${whereSql}
+    `)
+    .get(...params) as { total: number };
+
+  return {
+    rows: (rows as any[]).map((row) => ({
+      ...row,
+      code: `RET-${String(row.id).padStart(5, '0')}`
+    })),
+    total: totalRow.total,
+    limit,
+    offset
+  };
 }

@@ -17,6 +17,30 @@ type SaleRow = {
   loyalty_points_redeemed: number;
   created_at: string;
   items_count: number;
+  total_quantity: number;
+  returned_quantity: number;
+  return_count: number;
+  total_return_amount: number;
+};
+
+type InvoicesTab = 'sales' | 'returns';
+
+type ReturnRow = {
+  id: number;
+  code: string;
+  original_sale_id: number;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  cashier_name?: string | null;
+  sub_total: number;
+  loyalty_discount_value: number;
+  refund_amount: number;
+  payment_method: string;
+  reason?: string | null;
+  loyalty_points_reversed: number;
+  created_at: string;
+  items_count: number;
+  total_quantity: number;
 };
 
 type ReceiptData = {
@@ -41,13 +65,19 @@ type ReturnDraftItem = {
 export default function InvoicesPage() {
   const [rows, setRows] = useState<SaleRow[]>([]);
   const [total, setTotal] = useState(0);
+  const [activeTab, setActiveTab] = useState<InvoicesTab>('sales');
+  const [returnRows, setReturnRows] = useState<ReturnRow[]>([]);
+  const [returnsTotal, setReturnsTotal] = useState(0);
+  const [returnsLoading, setReturnsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(null);
+  const [selectedReturnHistory, setSelectedReturnHistory] = useState<any[]>([]);
   const [message, setMessage] = useState('');
   const user = useAuthStore((s) => s.user);
+  
 
   const [returnReceipt, setReturnReceipt] = useState<ReceiptData | null>(null);
   const [returnItems, setReturnItems] = useState<ReturnDraftItem[]>([]);
@@ -78,18 +108,51 @@ export default function InvoicesPage() {
     }
   }
 
+  async function loadReturns() {
+    setReturnsLoading(true);
+
+    try {
+      const result = await window.api.listSaleReturns({
+        search,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+        limit: 100,
+        offset: 0
+      });
+
+      setReturnRows(Array.isArray(result.rows) ? result.rows : []);
+      setReturnsTotal(Number(result.total || 0));
+    } catch (error) {
+      console.error('Failed to load returns:', error);
+      setMessage('حدث خطأ أثناء تحميل سجل المرتجعات');
+      setReturnRows([]);
+      setReturnsTotal(0);
+    } finally {
+      setReturnsLoading(false);
+    }
+  }
+
   useEffect(() => {
     const handle = setTimeout(() => {
-      void loadInvoices();
+      if (activeTab === 'sales') {
+        void loadInvoices();
+      } else {
+        void loadReturns();
+      }
     }, 250);
 
     return () => clearTimeout(handle);
-  }, [search, dateFrom, dateTo]);
+  }, [search, dateFrom, dateTo, activeTab]);
 
   async function openReceipt(saleId: number) {
     try {
-      const receipt = await window.api.getSaleReceipt(saleId);
+      const [receipt, history] = await Promise.all([
+        window.api.getSaleReceipt(saleId),
+        window.api.getSaleReturnHistory(saleId)
+      ]);
+
       setSelectedReceipt(receipt);
+      setSelectedReturnHistory(Array.isArray(history) ? history : []);
     } catch (error) {
       console.error('Failed to open receipt:', error);
       setMessage('حدث خطأ أثناء فتح الفاتورة');
@@ -201,12 +264,24 @@ export default function InvoicesPage() {
         items: selectedItems
         });
 
-        setMessage(`تم عمل مرتجع رقم ${result.returnSaleId}`);
+        setMessage(`تم عمل مرتجع ${result.returnCode || `RET-${String(result.returnSaleId).padStart(5, '0')}`}`);
         setReturnReceipt(null);
         setReturnItems([]);
         setReturnReason('');
 
         await loadInvoices();
+        await loadReturns();
+
+        if (returnReceipt?.sale?.id) {
+          const [receipt, history] = await Promise.all([
+            window.api.getSaleReceipt(Number(returnReceipt.sale.id)),
+            window.api.getSaleReturnHistory(Number(returnReceipt.sale.id))
+          ]);
+
+          setSelectedReceipt(receipt);
+          setSelectedReturnHistory(Array.isArray(history) ? history : []);
+        }
+        
     } catch (error) {
         console.error('Failed to create return:', error);
         setMessage('حدث خطأ أثناء حفظ المرتجع');
@@ -303,7 +378,17 @@ export default function InvoicesPage() {
             style={inputStyle}
           />
 
-          <button type="button" onClick={loadInvoices} style={primaryButtonStyle}>
+          <button
+            type="button"
+            onClick={() => {
+              if (activeTab === 'sales') {
+                void loadInvoices();
+              } else {
+                void loadReturns();
+              }
+            }}
+            style={primaryButtonStyle}
+          >
             تحديث
           </button>
         </div>
@@ -312,127 +397,293 @@ export default function InvoicesPage() {
       <div
         className="glass-card"
         style={{
-          padding: '18px',
           borderRadius: '18px',
-          overflowX: 'auto'
+          padding: '10px',
+          display: 'flex',
+          gap: '10px',
+          flexWrap: 'wrap',
+          direction: 'rtl'
         }}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
-          <thead>
-            <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
-              <th style={thStyle}>رقم</th>
-              <th style={thStyle}>التاريخ</th>
-              <th style={thStyle}>العميل</th>
-              <th style={thStyle}>الكاشير</th>
-              <th style={thStyle}>الأصناف</th>
-              <th style={thStyle}>قبل الخصم</th>
-              <th style={thStyle}>خصم النقاط</th>
-              <th style={thStyle}>الإجمالي</th>
-              <th style={thStyle}>النقاط</th>
-              <th style={thStyle}>إجراءات</th>
-            </tr>
-          </thead>
+        <button
+          type="button"
+          onClick={() => setActiveTab('sales')}
+          style={tabButtonStyle(activeTab === 'sales')}
+        >
+          سجل المبيعات
+        </button>
 
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan={10} style={{ ...tdStyle, textAlign: 'center' }}>
-                  جاري التحميل...
-                </td>
+        <button
+          type="button"
+          onClick={() => setActiveTab('returns')}
+          style={tabButtonStyle(activeTab === 'returns')}
+        >
+          سجل المرتجعات
+        </button>
+      </div>
+      {activeTab === 'sales' && (
+        <div
+          className="glass-card"
+          style={{
+            padding: '18px',
+            borderRadius: '18px',
+            overflowX: 'auto'
+          }}
+        >
+          <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+            <thead>
+              <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
+                <th style={thStyle}>رقم</th>
+                <th style={thStyle}>التاريخ</th>
+                <th style={thStyle}>العميل</th>
+                <th style={thStyle}>الكاشير</th>
+                <th style={thStyle}>الأصناف</th>
+                <th style={thStyle}>المرتجع</th>
+                <th style={thStyle}>قبل الخصم</th>
+                <th style={thStyle}>خصم النقاط</th>
+                <th style={thStyle}>الإجمالي</th>
+                <th style={thStyle}>النقاط</th>
+                <th style={thStyle}>إجراءات</th>
               </tr>
-            )}
+            </thead>
 
-            {!loading &&
-              rows.map((sale) => (
-                <tr
-                  key={sale.id}
-                  style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
-                >
-                  <td style={tdStyle}>#{sale.id}</td>
-                  <td style={tdStyle}>{formatDate(sale.created_at)}</td>
-                  <td style={tdStyle}>
-                    <div style={{ display: 'grid', gap: '4px' }}>
-                      <strong>{sale.customer_name || 'عميل نقدي'}</strong>
-                      {sale.customer_phone && (
-                        <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-                          {sale.customer_phone}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td style={tdStyle}>{sale.cashier_name || '—'}</td>
-                  <td style={tdStyle}>{sale.items_count || 0}</td>
-                  <td style={tdStyle}>{money(sale.sub_total)}</td>
-                  <td style={tdStyle}>{money(sale.loyalty_discount_value || 0)}</td>
-                  <td style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}>
-                    {money(sale.grand_total)}
-                  </td>
-                  <td style={tdStyle}>
-                    <span style={{ color: '#22c55e' }}>
-                      +{sale.loyalty_points_earned || 0}
-                    </span>
-                    {' / '}
-                    <span style={{ color: '#f87171' }}>
-                      -{sale.loyalty_points_redeemed || 0}
-                    </span>
-                  </td>
-                  <td style={tdStyle}>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        onClick={() => openReceipt(sale.id)}
-                        style={smallButtonStyle}
-                      >
-                        عرض
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const receipt = await window.api.getSaleReceipt(sale.id);
-                          printReceipt(receipt);
-                        }}
-                        style={smallButtonStyle}
-                      >
-                        طباعة
-                      </button>
-
-                    <button
-                      type="button"
-                      onClick={() => openReturnPopup(sale.id)}
-                      style={{
-                          ...smallButtonStyle,
-                          borderColor: '#f97316',
-                          color: '#fdba74',
-                          background: 'rgba(249,115,22,0.10)'
-                      }}
-                      >
-                      مرتجع
-                    </button>
-                      
-                    </div>
+            <tbody>
+              {loading && (
+                <tr>
+                  <td colSpan={11} style={{ ...tdStyle, textAlign: 'center' }}>
+                    جاري التحميل...
                   </td>
                 </tr>
-              ))}
+              )}
 
-            {!loading && rows.length === 0 && (
-              <tr>
-                <td
-                  colSpan={10}
-                  style={{
-                    ...tdStyle,
-                    textAlign: 'center',
-                    color: '#94a3b8',
-                    padding: '28px'
-                  }}
-                >
-                  لا توجد فواتير
-                </td>
+              {!loading &&
+                rows.map((sale) => (
+                  <tr
+                    key={sale.id}
+                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                  >
+                    <td style={tdStyle}>#{sale.id}</td>
+                    <td style={tdStyle}>{formatDate(sale.created_at)}</td>
+                    <td style={tdStyle}>
+                      <div style={{ display: 'grid', gap: '4px' }}>
+                        <strong>{sale.customer_name || 'عميل نقدي'}</strong>
+                        {sale.customer_phone && (
+                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                            {sale.customer_phone}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={tdStyle}>{sale.cashier_name || '—'}</td>
+                    <td style={tdStyle}>{sale.items_count || 0}</td>
+                    <td style={tdStyle}>
+                      {Number(sale.returned_quantity || 0) > 0 ? (
+                        <div style={{ display: 'grid', gap: '4px' }}>
+                          <strong style={{ color: '#fdba74' }}>
+                            مرتجع {Number(sale.returned_quantity || 0)} من أصل {Number(sale.total_quantity || 0)}
+                          </strong>
+                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                            عدد المرتجعات: {Number(sale.return_count || 0)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span style={{ color: '#64748b' }}>—</span>
+                      )}
+                    </td>
+                    <td style={tdStyle}>{money(sale.sub_total)}</td>
+                    <td style={tdStyle}>{money(sale.loyalty_discount_value || 0)}</td>
+                    <td style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}>
+                      {money(sale.grand_total)}
+                    </td>
+                    <td style={tdStyle}>
+                      <span style={{ color: '#22c55e' }}>
+                        +{sale.loyalty_points_earned || 0}
+                      </span>
+                      {' / '}
+                      <span style={{ color: '#f87171' }}>
+                        -{sale.loyalty_points_redeemed || 0}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => openReceipt(sale.id)}
+                          style={smallButtonStyle}
+                        >
+                          عرض
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const receipt = await window.api.getSaleReceipt(sale.id);
+                            printReceipt(receipt);
+                          }}
+                          style={smallButtonStyle}
+                        >
+                          طباعة
+                        </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openReturnPopup(sale.id)}
+                        style={{
+                            ...smallButtonStyle,
+                            borderColor: '#f97316',
+                            color: '#fdba74',
+                            background: 'rgba(249,115,22,0.10)'
+                        }}
+                        >
+                        مرتجع
+                      </button>
+                        
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+              {!loading && rows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={10}
+                    style={{
+                      ...tdStyle,
+                      textAlign: 'center',
+                      color: '#94a3b8',
+                      padding: '28px'
+                    }}
+                  >
+                    لا توجد فواتير
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}  
+
+      {activeTab === 'returns' && (
+        <div
+          className="glass-card"
+          style={{
+            padding: '18px',
+            borderRadius: '18px',
+            overflowX: 'auto'
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: '12px',
+              flexWrap: 'wrap',
+              marginBottom: '14px',
+              direction: 'rtl'
+            }}
+          >
+            <h3 style={{ margin: 0 }}>سجل المرتجعات</h3>
+
+            <div style={{ color: '#cbd5e1', fontWeight: 800 }}>
+              عدد المرتجعات: {returnsTotal}
+            </div>
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+            <thead>
+              <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
+                <th style={thStyle}>رقم المرتجع</th>
+                <th style={thStyle}>الفاتورة الأصلية</th>
+                <th style={thStyle}>التاريخ</th>
+                <th style={thStyle}>العميل</th>
+                <th style={thStyle}>المستخدم</th>
+                <th style={thStyle}>الأصناف</th>
+                <th style={thStyle}>الكمية</th>
+                <th style={thStyle}>قيمة المرتجع</th>
+                <th style={thStyle}>السبب</th>
+                <th style={thStyle}>إجراءات</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+
+            <tbody>
+              {returnsLoading && (
+                <tr>
+                  <td colSpan={10} style={{ ...tdStyle, textAlign: 'center' }}>
+                    جاري التحميل...
+                  </td>
+                </tr>
+              )}
+
+              {!returnsLoading &&
+                returnRows.map((ret) => (
+                  <tr
+                    key={ret.id}
+                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                  >
+                    <td style={{ ...tdStyle, fontWeight: 900, color: '#fdba74' }}>
+                      {ret.code}
+                    </td>
+
+                    <td style={tdStyle}>#{ret.original_sale_id}</td>
+
+                    <td style={tdStyle}>{formatDate(ret.created_at)}</td>
+
+                    <td style={tdStyle}>
+                      <div style={{ display: 'grid', gap: '4px' }}>
+                        <strong>{ret.customer_name || 'عميل نقدي'}</strong>
+                        {ret.customer_phone && (
+                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                            {ret.customer_phone}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    <td style={tdStyle}>{ret.cashier_name || '—'}</td>
+
+                    <td style={tdStyle}>{ret.items_count || 0}</td>
+
+                    <td style={tdStyle}>{Number(ret.total_quantity || 0)}</td>
+
+                    <td style={{ ...tdStyle, color: '#fca5a5', fontWeight: 900 }}>
+                      {money(ret.refund_amount)}
+                    </td>
+
+                    <td style={tdStyle}>{ret.reason || '—'}</td>
+
+                    <td style={tdStyle}>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => openReceipt(ret.original_sale_id)}
+                          style={smallButtonStyle}
+                        >
+                          عرض الفاتورة
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+              {!returnsLoading && returnRows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={10}
+                    style={{
+                      ...tdStyle,
+                      textAlign: 'center',
+                      color: '#94a3b8',
+                      padding: '28px'
+                    }}
+                  >
+                    لا توجد مرتجعات
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {selectedReceipt && (
         <div
@@ -517,6 +768,7 @@ export default function InvoicesPage() {
                   <th style={thStyle}>المقاس</th>
                   <th style={thStyle}>اللون</th>
                   <th style={thStyle}>الكمية</th>
+                  <th style={thStyle}>المرتجع</th>
                   <th style={thStyle}>السعر</th>
                   <th style={thStyle}>الإجمالي</th>
                 </tr>
@@ -532,12 +784,94 @@ export default function InvoicesPage() {
                     <td style={tdStyle}>{item.size || '—'}</td>
                     <td style={tdStyle}>{item.color || '—'}</td>
                     <td style={tdStyle}>{item.quantity}</td>
+                    <td style={tdStyle}>
+                      {Number(item.returned_quantity || 0) > 0 ? (
+                        <span style={{ color: '#fdba74', fontWeight: 900 }}>
+                          {Number(item.returned_quantity || 0)} من أصل {Number(item.quantity || 0)}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                     <td style={tdStyle}>{money(item.unit_price)}</td>
                     <td style={tdStyle}>{money(item.line_total)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+
+            {selectedReturnHistory.length > 0 && (
+              <div
+                style={{
+                  marginTop: '18px',
+                  padding: '14px',
+                  borderRadius: '14px',
+                  background: 'rgba(249,115,22,0.10)',
+                  border: '1px solid rgba(249,115,22,0.25)',
+                  display: 'grid',
+                  gap: '12px'
+                }}
+              >
+                <div style={{ color: '#fed7aa', fontWeight: 900 }}>
+                  سجل المرتجعات على هذه الفاتورة
+                </div>
+
+                {selectedReturnHistory.map((ret) => (
+                  <div
+                    key={ret.id}
+                    style={{
+                      padding: '12px',
+                      borderRadius: '12px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      display: 'grid',
+                      gap: '8px'
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        flexWrap: 'wrap',
+                        color: '#fff',
+                        fontWeight: 800
+                      }}
+                    >
+                      <span>مرتجع #{ret.id}</span>
+                      <span>{formatDate(ret.created_at)}</span>
+                      <span>{money(ret.grand_total)}</span>
+                    </div>
+
+                    <div style={{ color: '#94a3b8', fontWeight: 700 }}>
+                      السبب: {ret.return_reason || '—'} | المستخدم: {ret.cashier_name || '—'}
+                    </div>
+
+                    <div style={{ display: 'grid', gap: '6px' }}>
+                      {(ret.items || []).map((item: any) => (
+                        <div
+                          key={item.id}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            gap: '10px',
+                            color: '#e5e7eb',
+                            fontSize: '13px'
+                          }}
+                        >
+                          <span>
+                            {item.product_name} {item.size || ''} {item.color || ''}
+                          </span>
+                          <strong>
+                            كمية: {Number(item.quantity || 0)} | {money(item.line_total)}
+                          </strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div
               style={{
@@ -635,6 +969,8 @@ export default function InvoicesPage() {
                   setReturnReceipt(null);
                   setReturnItems([]);
                   setReturnReason('');
+                  setSelectedReceipt(null);
+                  setSelectedReturnHistory([]);
                 }}
                 style={closeButtonStyle}
               >
@@ -1105,3 +1441,21 @@ const statCardStyle: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.08)',
   color: '#94a3b8'
 };
+
+function tabButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    border: active
+      ? '1px solid rgba(96,165,250,0.55)'
+      : '1px solid rgba(255,255,255,0.10)',
+    minHeight: '44px',
+    borderRadius: '14px',
+    background: active
+      ? 'linear-gradient(135deg, rgba(37,99,235,0.95), rgba(124,58,237,0.95))'
+      : 'rgba(255,255,255,0.05)',
+    color: '#fff',
+    fontWeight: 900,
+    padding: '0 18px',
+    cursor: 'pointer',
+    boxShadow: active ? '0 12px 26px rgba(37,99,235,0.22)' : 'none'
+  };
+}

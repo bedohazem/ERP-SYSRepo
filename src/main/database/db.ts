@@ -247,6 +247,41 @@ export function getDb(): Database.Database {
         FOREIGN KEY (user_id) REFERENCES users(id)
       );
 
+      CREATE TABLE IF NOT EXISTS sale_returns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        original_sale_id INTEGER NOT NULL,
+        customer_id INTEGER,
+        user_id INTEGER REFERENCES users(id),
+        sub_total REAL NOT NULL DEFAULT 0,
+        loyalty_discount_value REAL NOT NULL DEFAULT 0,
+        refund_amount REAL NOT NULL DEFAULT 0,
+        payment_method TEXT DEFAULT 'cash',
+        reason TEXT,
+        notes TEXT,
+        loyalty_points_reversed INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (original_sale_id) REFERENCES sales(id) ON DELETE CASCADE,
+        FOREIGN KEY (customer_id) REFERENCES customers(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS sale_return_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        return_id INTEGER NOT NULL,
+        original_sale_item_id INTEGER NOT NULL,
+        variant_id INTEGER,
+        product_name TEXT NOT NULL,
+        barcode TEXT,
+        size TEXT,
+        color TEXT,
+        quantity REAL NOT NULL,
+        unit_cost REAL NOT NULL DEFAULT 0,
+        unit_price REAL NOT NULL,
+        line_total REAL NOT NULL,
+        FOREIGN KEY (return_id) REFERENCES sale_returns(id) ON DELETE CASCADE,
+        FOREIGN KEY (original_sale_item_id) REFERENCES sale_items(id),
+        FOREIGN KEY (variant_id) REFERENCES product_variants(id)
+      );
+
     `);
     
       safeAddColumn(db, 'sales', 'loyalty_points_earned', 'INTEGER DEFAULT 0');
@@ -322,6 +357,8 @@ export function resetDatabaseData(): void {
 
       DELETE FROM customer_payments;
       DELETE FROM loyalty_transactions;
+      DELETE FROM sale_return_items;
+      DELETE FROM sale_returns;
       DELETE FROM sale_items;
       DELETE FROM sales;
       DELETE FROM customers;

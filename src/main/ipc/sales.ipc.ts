@@ -4,10 +4,15 @@ import {
   createSale,
   getSaleReceipt,
   listSales,
-  createSaleReturn
+  createSaleReturn,
+  getSaleReturnHistory,
+  listSaleReturns
 } from '../database/repositories/sales.repo';
 
-import { getVariantByBarcode, searchSaleVariants } from '../database/repositories/product.repo';
+import {
+  getVariantByBarcode,
+  searchSaleVariants
+} from '../database/repositories/product.repo';
 
 export function registerSalesIpc(): void {
   ipcMain.handle('sales:search-variants', (_, query: string) => {
@@ -42,19 +47,28 @@ export function registerSalesIpc(): void {
     return getSaleReceipt(Number(saleId));
   });
 
+  ipcMain.handle('sales:return-history', (_, saleId: number) => {
+    return getSaleReturnHistory(Number(saleId));
+  });
+
   ipcMain.handle('sales:list', (_, input) => {
     return listSales(input);
   });
 
+  ipcMain.handle('sales:list-returns', (_, input) => {
+    return listSaleReturns(input);
+  });
+
   ipcMain.handle('sales:return', (_, input) => {
-    const result = createSaleReturn(input);
+    const result = createSaleReturn(input) as any;
 
     logAction({
       actor_id: getActorId(input),
       action: 'sale_return_created',
-      entity: 'sales',
-      entity_id: result.returnSaleId,
+      entity: 'sale_returns',
+      entity_id: result.returnId ?? result.returnSaleId,
       details: {
+        return_code: result.returnCode,
         original_sale_id: result.originalSaleId,
         refund_amount: result.refundAmount,
         reason: input.reason,
@@ -64,5 +78,4 @@ export function registerSalesIpc(): void {
 
     return result;
   });
-
 }
