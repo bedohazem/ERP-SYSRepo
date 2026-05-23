@@ -1,4 +1,4 @@
-import { BrowserWindow, app, dialog, ipcMain } from 'electron';
+import { BrowserWindow, app, dialog, ipcMain, nativeImage } from 'electron';
 import type { OpenDialogOptions, SaveDialogOptions } from 'electron';
 import { getActorId, logAction } from './activity-helper';
 import fs from 'node:fs';
@@ -7,9 +7,13 @@ import {
   getBarcodePrintSettings,
   getLoyaltySettings,
   saveBarcodePrintSettings,
-  saveLoyaltySettings
+  saveLoyaltySettings,
+  getAppLicenseStatus,
+  activateApp,
+  saveAppLogoUrl
 } from '../database/repositories/settings.repo';
 import { closeDb, getDb, getDbPath, resetDatabaseData } from '../database/db';
+
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -30,6 +34,34 @@ function getDefaultBackupName() {
   ].join('-');
 
   return `erp-backup-${stamp}.db`;
+}
+
+function getImageMimeType(filePath: string) {
+  const ext = path.extname(filePath).toLowerCase();
+
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.png') return 'image/png';
+
+  return 'image/png';
+}
+
+function updateOpenWindowsIcon(logoUrl: string) {
+  if (!logoUrl.startsWith('data:image')) return;
+
+  const image = nativeImage.createFromDataURL(logoUrl);
+
+  if (image.isEmpty()) return;
+
+  const appIcon = image.resize({
+    width: 256,
+    height: 256,
+    quality: 'best'
+  });
+
+  BrowserWindow.getAllWindows().forEach((window) => {
+    window.setIcon(appIcon);
+  });
 }
 
 export function registerSettingsIpc(): void {
@@ -264,4 +296,71 @@ export function registerSettingsIpc(): void {
     }
   });
 
+  ipcMain.handle('settings:get-license-status', () => {
+    return getAppLicenseStatus();
+  });
+
+  ipcMain.handle('settings:activate-app', (_, code: string) => {
+    return activateApp(code);
+  });
+
+  ipcMain.handle('settings:save-app-logo-url', (_, url: string) => {
+    const saved = saveAppLogoUrl(url);
+
+    if (String(url || '').startsWith('data:image')) {
+      updateOpenWindowsIcon(url);
+    }
+
+    return saved;
+  });
+
+  ipcMain.handle('settings:choose-app-logo', async (event) => {
+    try {
+      const parentWindow = BrowserWindow.fromWebContents(event.sender);
+
+      const result = parentWindow
+        ? await dialog.showOpenDialog(parentWindow, {
+            title: 'اختيار صورة التطبيق',
+            properties: ['openFile'],
+            filters: [
+              { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }
+            ]
+          })
+        : await dialog.showOpenDialog({
+            title: 'اختيار صورة التطبيق',
+            properties: ['openFile'],
+            filters: [
+              { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }
+            ]
+          });
+
+      if (result.canceled || !result.filePaths[0]) {
+        return {
+          success: false,
+          canceled: true
+        };
+      }
+
+      const selectedPath = result.filePaths[0];
+      const mimeType = getImageMimeType(selectedPath);
+      const buffer = fs.readFileSync(selectedPath);
+
+      const logoUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
+
+      const saved = saveAppLogoUrl(logoUrl);
+      updateOpenWindowsIcon(logoUrl);
+
+      return {
+        success: true,
+        logoUrl,
+        status: saved.status
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: getErrorMessage(error)
+      };
+    }
+  });
+  
 }

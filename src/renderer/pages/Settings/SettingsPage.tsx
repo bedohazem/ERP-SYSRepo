@@ -71,6 +71,16 @@ const defaultSettings: BarcodePrintSettings = {
   barcode_svg_height: 22
 };
 
+type AppLicenseStatus = {
+  activated: boolean;
+  trial_started_at: string;
+  trial_days: number;
+  trial_expires_at: string;
+  days_left: number;
+  expired: boolean;
+  app_logo_url: string;
+};
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<BarcodePrintSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
@@ -78,6 +88,12 @@ export default function SettingsPage() {
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+
+  const [licenseStatus, setLicenseStatus] = useState<AppLicenseStatus | null>(null);
+  const [activationCode, setActivationCode] = useState('');
+  const [appLogoUrl, setAppLogoUrl] = useState('');
+  const [savingActivation, setSavingActivation] = useState(false);
+  const [savingLogo, setSavingLogo] = useState(false);
 
   useEffect(() => {
     void loadSettings();
@@ -94,13 +110,16 @@ export default function SettingsPage() {
 
   async function loadSettings() {
     try {
-      const [barcodeData, loyaltyData] = await Promise.all([
+      const [barcodeData, loyaltyData, licenseData] = await Promise.all([
         window.api.getBarcodePrintSettings(),
-        window.api.getLoyaltySettings()
+        window.api.getLoyaltySettings(),
+        window.api.getLicenseStatus()
       ]);
 
       setSettings(barcodeData);
       setLoyaltySettings(loyaltyData);
+      setLicenseStatus(licenseData);
+      setAppLogoUrl(licenseData.app_logo_url || '');
     } catch (error) {
       console.error('Failed to load settings:', error);
       showMessage('error', 'حدث خطأ أثناء تحميل الإعدادات');
@@ -269,6 +288,92 @@ export default function SettingsPage() {
       </div>
     );
   }
+
+
+  async function handleActivateApp() {
+    if (savingActivation) return;
+
+    const code = activationCode.trim();
+
+    if (!code) {
+      showMessage('error', 'اكتب كود التفعيل');
+      return;
+    }
+
+    setSavingActivation(true);
+
+    try {
+      const result = await window.api.activateApp(code);
+
+      if (!result.success) {
+        showMessage('error', result.message || 'كود التفعيل غير صحيح');
+        return;
+      }
+
+      if (result.status) {
+        setLicenseStatus(result.status);
+      }
+
+      setActivationCode('');
+      showMessage('success', 'تم تفعيل البرنامج بنجاح');
+    } catch (error) {
+      console.error('Failed to activate app:', error);
+      showMessage('error', 'حدث خطأ أثناء تفعيل البرنامج');
+    } finally {
+      setSavingActivation(false);
+    }
+  }
+
+  async function handleSaveAppLogoUrl() {
+    if (savingLogo) return;
+
+    setSavingLogo(true);
+
+    try {
+      const result = await window.api.saveAppLogoUrl(appLogoUrl.trim());
+      setLicenseStatus(result.status);
+      showMessage('success', 'تم حفظ رابط صورة التطبيق');
+    } catch (error) {
+      console.error('Failed to save app logo url:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ رابط الصورة');
+    } finally {
+      setSavingLogo(false);
+    }
+  }
+
+  async function handleChooseAppLogo() {
+    if (savingLogo) return;
+
+    setSavingLogo(true);
+
+    try {
+      const result = await window.api.chooseAppLogo();
+
+      if (result.canceled) {
+        return;
+      }
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل اختيار صورة التطبيق');
+        return;
+      }
+
+      if (result.logoUrl) {
+        setAppLogoUrl(result.logoUrl);
+      }
+
+      if (result.status) {
+        setLicenseStatus(result.status);
+      }
+
+      showMessage('success', 'تم اختيار صورة التطبيق بنجاح');
+    } catch (error) {
+      console.error('Failed to choose app logo:', error);
+      showMessage('error', 'حدث خطأ أثناء اختيار صورة التطبيق');
+    } finally {
+      setSavingLogo(false);
+    }
+  }
   
 
     return (
@@ -371,6 +476,163 @@ export default function SettingsPage() {
               {resetLoading ? 'جاري التصفير...' : 'تصفير البرنامج ومسح كل البيانات'}
             </button>
           </div>
+        </div>
+
+        <div
+          className="glass-card"
+          style={{
+            borderRadius: '24px',
+            padding: '24px',
+            display: 'grid',
+            gap: '16px',
+            direction: 'rtl'
+          }}
+        >
+          <div>
+            <h2 style={{ margin: '0 0 8px' }}>تفعيل البرنامج وشكل التطبيق</h2>
+            <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.8 }}>
+              إدارة كود التفعيل، فترة التجربة، ورابط صورة التطبيق الخارجية.
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '12px'
+            }}
+          >
+            <div style={statCardStyle}>
+              الحالة
+              <strong style={{ color: licenseStatus?.activated ? '#6ee7b7' : '#fdba74' }}>
+                {licenseStatus?.activated ? 'مفعل' : licenseStatus?.expired ? 'انتهت التجربة' : 'تجربة'}
+              </strong>
+            </div>
+
+            <div style={statCardStyle}>
+              الأيام المتبقية
+              <strong>{licenseStatus?.activated ? '∞' : licenseStatus?.days_left ?? 0}</strong>
+            </div>
+
+            <div style={statCardStyle}>
+              مدة التجربة
+              <strong>{licenseStatus?.trial_days ?? 7} أيام</strong>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(220px, 1fr) auto',
+              gap: '12px',
+              alignItems: 'end'
+            }}
+          >
+            <div>
+              <label style={labelStyle}>كود التفعيل</label>
+              <input
+                value={activationCode}
+                onChange={(e) => setActivationCode(e.target.value)}
+                placeholder="اكتب كود التفعيل"
+                style={inputStyle}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleActivateApp()}
+              disabled={savingActivation}
+              style={{
+                ...primaryButtonStyle,
+                opacity: savingActivation ? 0.6 : 1,
+                cursor: savingActivation ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {savingActivation ? 'جاري التفعيل...' : 'تفعيل'}
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(220px, 1fr) auto auto',
+              gap: '12px',
+              alignItems: 'end'
+            }}
+          >
+            <div>
+              <label style={labelStyle}>رابط / مسار صورة التطبيق</label>
+              <input
+                value={appLogoUrl}
+                onChange={(e) => setAppLogoUrl(e.target.value)}
+                placeholder="اختار صورة من الجهاز أو ضع رابط صورة"
+                style={inputStyle}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleChooseAppLogo()}
+              disabled={savingLogo}
+              style={{
+                ...primaryButtonStyle,
+                opacity: savingLogo ? 0.6 : 1,
+                cursor: savingLogo ? 'not-allowed' : 'pointer'
+              }}
+            >
+              اختيار صورة
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void handleSaveAppLogoUrl()}
+              disabled={savingLogo}
+              style={{
+                ...primaryButtonStyle,
+                opacity: savingLogo ? 0.6 : 1,
+                cursor: savingLogo ? 'not-allowed' : 'pointer'
+              }}
+            >
+              حفظ
+            </button>
+          </div>
+
+          {appLogoUrl.trim() && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                padding: '14px',
+                borderRadius: '16px',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)'
+              }}
+            >
+              <img
+                key={appLogoUrl}
+                src={appLogoUrl}
+                alt="App Logo"
+                style={{
+                  width: '72px',
+                  height: '72px',
+                  borderRadius: '18px',
+                  objectFit: 'cover',
+                  background: 'rgba(255,255,255,0.08)'
+                }}
+                onLoad={(e) => {
+                  e.currentTarget.style.display = 'block';
+                }}
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+
+              <div style={{ color: '#94a3b8', fontWeight: 700 }}>
+                معاينة الصورة الخارجية
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="glass-card" style={{ borderRadius: '24px', padding: '24px' }}>
@@ -825,4 +1087,15 @@ const dangerButtonStyle: React.CSSProperties = {
   fontWeight: 700,
   padding: '0 18px',
   cursor: 'pointer'
+};
+
+const statCardStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: '8px',
+  padding: '14px',
+  borderRadius: '16px',
+  background: 'rgba(255,255,255,0.05)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  color: '#94a3b8',
+  fontWeight: 800
 };

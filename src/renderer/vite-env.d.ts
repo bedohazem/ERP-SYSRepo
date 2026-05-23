@@ -597,9 +597,62 @@ declare global {
         // =========================
           getExpenses: () => Promise<any[]>;
           createExpense: (input: any) => Promise<any>;
+          
+        // =========================
+        // Activation Code
+        // =========================
+        getLicenseStatus: () => Promise<{
+          activated: boolean;
+          trial_started_at: string;
+          trial_days: number;
+          trial_expires_at: string;
+          days_left: number;
+          expired: boolean;
+          app_logo_url: string;
+        }>;
 
+        activateApp: (code: string) => Promise<{
+          success: boolean;
+          message?: string;
+          status?: {
+            activated: boolean;
+            trial_started_at: string;
+            trial_days: number;
+            trial_expires_at: string;
+            days_left: number;
+            expired: boolean;
+            app_logo_url: string;
+          };
+        }>;
 
-
+        saveAppLogoUrl: (url: string) => Promise<{
+          success: boolean;
+          status: {
+            activated: boolean;
+            trial_started_at: string;
+            trial_days: number;
+            trial_expires_at: string;
+            days_left: number;
+            expired: boolean;
+            app_logo_url: string;
+          };
+        }>;
+       
+        chooseAppLogo: () => Promise<{
+          success: boolean;
+          canceled?: boolean;
+          logoUrl?: string;
+          message?: string;
+          status?: {
+            activated: boolean;
+            trial_started_at: string;
+            trial_days: number;
+            trial_expires_at: string;
+            days_left: number;
+            expired: boolean;
+            app_logo_url: string;
+          };
+        }>;
     
     };
   }

@@ -442,6 +442,7 @@ export default function InvoicesPage() {
                 <th style={thStyle}>قبل الخصم</th>
                 <th style={thStyle}>خصم النقاط</th>
                 <th style={thStyle}>الإجمالي</th>
+                <th style={thStyle}>طريقة الدفع</th>
                 <th style={thStyle}>النقاط</th>
                 <th style={thStyle}>إجراءات</th>
               </tr>
@@ -450,7 +451,7 @@ export default function InvoicesPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={11} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={12} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
@@ -491,9 +492,25 @@ export default function InvoicesPage() {
                       )}
                     </td>
                     <td style={tdStyle}>{money(sale.sub_total)}</td>
+
                     <td style={tdStyle}>{money(sale.loyalty_discount_value || 0)}</td>
                     <td style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}>
                       {money(sale.grand_total)}
+                    </td>
+                    <td style={tdStyle}>
+                      <span
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: '999px',
+                          background: 'rgba(37,99,235,0.14)',
+                          border: '1px solid rgba(37,99,235,0.25)',
+                          color: '#bfdbfe',
+                          fontWeight: 900,
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {getPaymentMethodLabel(sale.payment_method)}
+                      </span>
                     </td>
                     <td style={tdStyle}>
                       <span style={{ color: '#22c55e' }}>
@@ -546,7 +563,7 @@ export default function InvoicesPage() {
               {!loading && rows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={12}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -1171,6 +1188,16 @@ function formatDate(value?: string) {
   } catch {
     return value;
   }
+}
+
+function getPaymentMethodLabel(value?: string | null) {
+  if (value === 'cash') return 'كاش';
+  if (value === 'card') return 'كارت';
+  if (value === 'wallet') return 'محفظة';
+  if (value === 'bank_transfer') return 'تحويل بنكي';
+  if (value === 'bank') return 'بنك';
+
+  return value || '—';
 }
 
 function escapeHtml(value: unknown) {

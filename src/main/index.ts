@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, nativeImage } from 'electron';
 import path from 'node:path';
 import { getDb } from './database/db';
 import { registerAuthIpc } from './ipc/auth.ipc';
@@ -13,11 +13,49 @@ import { registerPurchasesIpc } from './ipc/purchases.ipc';
 import { registerCashIpc } from './ipc/cash.ipc';
 import { registerExpenseIpc } from './ipc/expense.ipc';
 import { registerActivityIpc } from './ipc/activity.ipc';
+import { getAppLicenseStatus } from './database/repositories/settings.repo';
 
 let mainWindow: BrowserWindow | null = null;
 
+if (process.platform === 'win32') {
+  app.setAppUserModelId('ERP.SYS.Desktop.DynamicLogo');
+}
+
+function getSavedAppIcon() {
+  try {
+    const status = getAppLicenseStatus();
+    const logoUrl = status.app_logo_url || '';
+
+    if (!logoUrl.startsWith('data:image')) {
+      return nativeImage.createEmpty();
+    }
+
+    const image = nativeImage.createFromDataURL(logoUrl);
+
+    if (image.isEmpty()) {
+      return nativeImage.createEmpty();
+    }
+
+    return image.resize({
+      width: 256,
+      height: 256,
+      quality: 'best'
+    });
+  } catch (error) {
+    console.error('Failed to load saved app icon:', error);
+    return nativeImage.createEmpty();
+  }
+}
+
+const appIconPath = path.join(process.cwd(), 'build', 'icon.ico');
+
+if (process.platform === 'win32') {
+  app.setAppUserModelId('ERP.SYS.Desktop');
+}
+
 function createWindow(): void {
   const preloadPath = path.join(process.cwd(), 'preload.cjs');
+  const appIcon = getSavedAppIcon();
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -25,12 +63,18 @@ function createWindow(): void {
     minWidth: 390,
     minHeight: 650,
     backgroundColor: '#0f172a',
+    title: 'ERP SYS',
+    icon: appIcon.isEmpty() ? undefined : appIcon,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: preloadPath
     }
   });
+
+  if (!appIcon.isEmpty()) {
+    mainWindow.setIcon(appIcon);
+  }
 
   mainWindow.maximize();
 

@@ -41,6 +41,9 @@ export default function AppShell({
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+  const [licenseStatus, setLicenseStatus] = useState<any>(null);
+  const [licenseCode, setLicenseCode] = useState('');
+  const [activatingLicense, setActivatingLicense] = useState(false);
 
   const { sidebarOpen, toggleSidebar } = useAppStore();
 
@@ -71,10 +74,31 @@ export default function AppShell({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    void window.api.getLicenseStatus().then(setLicenseStatus).catch(() => null);
+  }, []);
+
   function handleLogout() {
     logout();
     navigate('/');
   }
+
+  async function activateLicenseFromLock() {
+  if (activatingLicense) return;
+
+  setActivatingLicense(true);
+
+  try {
+    const result = await window.api.activateApp(licenseCode);
+
+    if (result.success && result.status) {
+      setLicenseStatus(result.status);
+      setLicenseCode('');
+    }
+  } finally {
+    setActivatingLicense(false);
+  }
+}
 
   return (
     <div
@@ -174,6 +198,63 @@ export default function AppShell({
             boxSizing: 'border-box'
           }}
         >
+            {licenseStatus?.expired && !licenseStatus?.activated ? (
+              <div
+                className="glass-card"
+                style={{
+                  borderRadius: '24px',
+                  padding: '28px',
+                  maxWidth: '520px',
+                  margin: '40px auto',
+                  display: 'grid',
+                  gap: '16px',
+                  direction: 'rtl',
+                  textAlign: 'right'
+                }}
+              >
+                <h2 style={{ margin: 0 }}>انتهت فترة التجربة</h2>
+
+                <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.8 }}>
+                  انتهت فترة التجربة المجانية 7 أيام. أدخل كود التفعيل للمتابعة.
+                </p>
+
+                <input
+                  value={licenseCode}
+                  onChange={(e) => setLicenseCode(e.target.value)}
+                  placeholder="كود التفعيل"
+                  style={{
+                    height: '46px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    background: 'rgba(255,255,255,0.06)',
+                    color: '#fff',
+                    outline: 'none',
+                    padding: '0 12px',
+                    textAlign: 'right'
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => void activateLicenseFromLock()}
+                  disabled={activatingLicense}
+                  style={{
+                    height: '46px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
+                    color: '#fff',
+                    fontWeight: 900,
+                    cursor: activatingLicense ? 'not-allowed' : 'pointer',
+                    opacity: activatingLicense ? 0.6 : 1
+                  }}
+                >
+                  {activatingLicense ? 'جاري التفعيل...' : 'تفعيل البرنامج'}
+                </button>
+              </div>
+            ) : (
+              children
+            )}
           {children}
         </section>
       </main>

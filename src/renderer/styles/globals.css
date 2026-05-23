@@ -169,3 +169,17 @@ a {
     transform: translateY(0) scale(1);
   }
 }
+
+select {
+  color-scheme: dark;
+}
+
+select option {
+  background-color: #111827;
+  color: #f8fafc;
+}
+
+select option:checked {
+  background-color: #2563eb;
+  color: #ffffff;
+}

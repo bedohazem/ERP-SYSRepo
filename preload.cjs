@@ -78,4 +78,9 @@ contextBridge.exposeInMainWorld('api', {
 
   getActivityLogs: (input) => ipcRenderer.invoke('activity:list', input),
 
+  getLicenseStatus: () => ipcRenderer.invoke('settings:get-license-status'),
+  activateApp: (code) => ipcRenderer.invoke('settings:activate-app', code),
+  saveAppLogoUrl: (url) => ipcRenderer.invoke('settings:save-app-logo-url', url),
+  chooseAppLogo: () => ipcRenderer.invoke('settings:choose-app-logo'),
+
 });

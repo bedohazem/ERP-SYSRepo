@@ -87,6 +87,8 @@ type InvoiceTab = {
   loyaltyPointsDraft: string;
   paidDraft: string;
   paymentMethod: string;
+  discountType: 'amount' | 'percent';
+  discountDraft: string;
 };
 
 type DropdownRect = {
@@ -112,7 +114,9 @@ const createInvoice = (id: number): InvoiceTab => ({
   customer: null,
   loyaltyPointsDraft: '',
   paidDraft: '',
-  paymentMethod: 'cash'
+  paymentMethod: 'cash',
+  discountType: 'amount',
+  discountDraft: ''
 });
 
 function normalizeCustomer(customer: any): CustomerOption {
@@ -182,6 +186,7 @@ export default function SalesPage() {
   const [productResults, setProductResults] = useState<SaleVariant[]>([]);
   const [saving, setSaving] = useState(false);
   const [barcodeMode, setBarcodeMode] = useState(true);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(false);
@@ -226,6 +231,20 @@ export default function SalesPage() {
     [activeInvoice.cart]
   );
 
+  const normalDiscountValue = useMemo(() => {
+    const discountNumber = Number(activeInvoice.discountDraft || 0);
+    const value = Number.isFinite(discountNumber) ? Math.max(0, discountNumber) : 0;
+
+    if (activeInvoice.discountType === 'percent') {
+      const percent = Math.min(value, 100);
+      return Math.min(subTotal, (subTotal * percent) / 100);
+    }
+
+    return Math.min(subTotal, value);
+  }, [activeInvoice.discountDraft, activeInvoice.discountType, subTotal]);
+
+  const totalAfterNormalDiscount = Math.max(0, subTotal - normalDiscountValue);
+
   const selectedCustomerPoints = Number(
     activeInvoice.customer?.points_balance ?? 0
   );
@@ -243,7 +262,7 @@ export default function SalesPage() {
   );
 
   const maxRedeemByTotal =
-    pointValue > 0 ? Math.floor(subTotal / pointValue) : 0;
+    pointValue > 0 ? Math.floor(totalAfterNormalDiscount / pointValue) : 0;
 
   const maxRedeemPoints = loyaltyEnabled
     ? Math.max(0, Math.min(selectedCustomerPoints, maxRedeemByTotal))
@@ -251,20 +270,40 @@ export default function SalesPage() {
 
   const redeemPoints = Math.min(requestedRedeemPoints, maxRedeemPoints);
   const loyaltyDiscountValue = redeemPoints * pointValue;
-  const grandTotal = Math.max(0, subTotal - loyaltyDiscountValue);
+  const grandTotal = Math.max(0, totalAfterNormalDiscount - loyaltyDiscountValue);
 
-  const paidAmount =
-    activeInvoice.paidDraft.trim() === ''
-      ? grandTotal
-      : Math.min(
-          Math.max(Number(activeInvoice.paidDraft || 0), 0),
-          grandTotal
-        );
+  const paidReceivedRaw = activeInvoice.paidDraft.trim() === ''
+    ? grandTotal
+    : Number(activeInvoice.paidDraft || 0);
 
-  const remainingAmount = Math.max(0, grandTotal - paidAmount);
+  const paidReceived = Number.isFinite(paidReceivedRaw)
+    ? Math.max(0, paidReceivedRaw)
+    : 0;
 
-  const paymentStatus =
-    remainingAmount === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
+  const paidAmount = Math.min(paidReceived, grandTotal);
+  const changeAmount = Math.max(0, paidReceived - grandTotal);
+  const remainingAmount = Math.max(0, grandTotal - paidReceived);
+  
+
+  const paymentStatus = remainingAmount === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
+
+  function openPaymentModal() {
+    if (!user?.id) {
+      showMessage('error', 'المستخدم غير مسجل');
+      return;
+    }
+
+    if (activeInvoice.cart.length === 0) {
+      showMessage('error', 'لا توجد أصناف في الفاتورة');
+      return;
+    }
+
+    updateActiveInvoice({
+      paidDraft: activeInvoice.paidDraft.trim() || String(grandTotal.toFixed(2))
+    });
+
+    setShowPaymentModal(true);
+  }
 
   const estimatedEarnedPoints = useMemo(() => {
     if (!loyaltyEnabled) return 0;
@@ -323,7 +362,7 @@ export default function SalesPage() {
 
   function focusMainInput() {
     requestAnimationFrame(() => {
-      if (showAddCustomerModal || receiptData) return;
+      if (showAddCustomerModal || showPaymentModal || receiptData) return;
 
       if (barcodeMode) {
         barcodeInputRef.current?.focus();
@@ -619,6 +658,7 @@ export default function SalesPage() {
             <div class="line"></div>
 
             <div class="row"><span>الإجمالي قبل الخصم</span><strong>${money(receipt.sale.sub_total)} ج.م</strong></div>
+            <div class="row"><span>خصم عادي</span><strong>${money(receipt.sale.discount_value)} ج.م</strong></div>
             <div class="row"><span>خصم النقاط</span><strong>${money(receipt.sale.loyalty_discount_value)} ج.م</strong></div>
             <div class="row total"><span>الإجمالي النهائي</span><strong>${money(receipt.sale.grand_total)} ج.م</strong></div>
 
@@ -679,7 +719,7 @@ export default function SalesPage() {
     }
 
     if (remainingAmount > 0 && !activeInvoice.customer) {
-      showMessage('error', 'لا يمكن البيع آجل بدون اختيار عميل');
+      showMessage('error', 'لا يمكن تسجيل مديونية بدون اختيار عميل');
       return;
     }
 
@@ -690,12 +730,12 @@ export default function SalesPage() {
         user_id: user.id,
         customer_id: activeInvoice.customer?.id ?? null,
         sub_total: subTotal,
-        discount_value: 0,
+        discount_value: normalDiscountValue,
         grand_total: grandTotal,
         paid: paidAmount,
         remaining_amount: remainingAmount,
         payment_status: paymentStatus,
-        change_amount: 0,
+        change_amount: changeAmount,
         payment_method: activeInvoice.paymentMethod || 'cash',
         notes: null,
         loyalty_points_redeemed: redeemPoints,
@@ -713,6 +753,7 @@ export default function SalesPage() {
 
       try {
         const receipt = await window.api.getSaleReceipt(Number(result.saleId));
+        setShowPaymentModal(false);
         setReceiptData(receipt);
       } catch (receiptError) {
         console.error('Failed to load receipt:', receiptError);
@@ -722,6 +763,7 @@ export default function SalesPage() {
           ? `تم حفظ الفاتورة رقم ${result.saleId} وكسب العميل ${earned} نقطة`
           : `تم حفظ الفاتورة رقم ${result.saleId}`;
 
+        setShowPaymentModal(false);
         showMessage('success', successText);
       }
 
@@ -732,7 +774,9 @@ export default function SalesPage() {
         customer: null,
         loyaltyPointsDraft: '',
         paidDraft: '',
-        paymentMethod: 'cash'
+        paymentMethod: 'cash',
+        discountType: 'amount',
+        discountDraft: '',
       });
 
       setProductResults([]);
@@ -797,6 +841,22 @@ export default function SalesPage() {
     function handleKeyDown(e: KeyboardEvent) {
       if (showAddCustomerModal || receiptData) return;
 
+      if (showPaymentModal) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setShowPaymentModal(false);
+          return;
+        }
+
+        if (e.key === 'F12') {
+          e.preventDefault();
+          if (!saving) void saveSale();
+          return;
+        }
+
+        return;
+      }
+
       if (e.key === 'F5') {
         e.preventDefault();
         firstQtyInputRef.current?.focus();
@@ -826,7 +886,7 @@ export default function SalesPage() {
 
       if (e.key === 'F12') {
         e.preventDefault();
-        if (!saving) void saveSale();
+        if (!saving) openPaymentModal();
       }
     }
 
@@ -834,15 +894,23 @@ export default function SalesPage() {
     return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, [
     activeInvoiceId,
-    activeInvoice.cart,
+    activeInvoice,
     subTotal,
     saving,
     barcodeMode,
     showAddCustomerModal,
+    showPaymentModal,
     receiptData,
     grandTotal,
     redeemPoints,
-    loyaltyDiscountValue
+    loyaltyDiscountValue,
+    normalDiscountValue,
+    paidAmount,
+    changeAmount,
+    remainingAmount,
+    paymentStatus,
+    requestedRedeemPoints,
+    maxRedeemPoints
   ]);
 
   useEffect(() => {
@@ -1519,142 +1587,20 @@ export default function SalesPage() {
         <div
           style={{
             marginTop: '24px',
-            display: 'grid',
-            gridTemplateColumns: isCompact ? '1fr' : 'minmax(280px, 1fr) 160px',
-            gap: '14px',
-            alignItems: 'end',
+            display: 'flex',
+            justifyContent: 'flex-start',
             direction: 'rtl',
-            maxWidth: '100%',
-            minWidth: 0
+            maxWidth: '100%'
           }}
         >
-          <div
-            className="glass-card"
-            style={{
-              marginTop: '22px',
-              padding: '18px',
-              borderRadius: '16px',
-              display: 'grid',
-              gap: '14px',
-              direction: 'rtl',
-              background: 'rgba(255,255,255,0.03)'
-            }}
-          >
-            <h3 style={{ margin: 0 }}>الدفع</h3>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: '12px'
-              }}
-            >
-              <div style={{ display: 'grid', gap: '8px' }}>
-                <label style={{ color: '#cbd5e1', fontWeight: 800 }}>
-                  الإجمالي المطلوب
-                </label>
-                <input
-                  value={`${grandTotal.toFixed(2)} ج.م`}
-                  readOnly
-                  style={{ ...tableInputStyle, opacity: 0.7 }}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gap: '8px' }}>
-                <label style={{ color: '#cbd5e1', fontWeight: 800 }}>
-                  المدفوع الآن
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={grandTotal}
-                  value={activeInvoice.paidDraft}
-                  onChange={(e) =>
-                    updateActiveInvoice({
-                      paidDraft: e.target.value
-                    })
-                  }
-                  placeholder={grandTotal.toFixed(2)}
-                  style={tableInputStyle}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gap: '8px' }}>
-                <label style={{ color: '#cbd5e1', fontWeight: 800 }}>
-                  المتبقي على العميل
-                </label>
-                <input
-                  value={`${remainingAmount.toFixed(2)} ج.م`}
-                  readOnly
-                  style={{
-                    ...tableInputStyle,
-                    opacity: 0.7,
-                    color: remainingAmount > 0 ? '#fca5a5' : '#6ee7b7',
-                    fontWeight: 900
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gap: '8px' }}>
-                <label style={{ color: '#cbd5e1', fontWeight: 800 }}>
-                  طريقة الدفع
-                </label>
-                <select
-                  value={activeInvoice.paymentMethod}
-                  onChange={(e) =>
-                    updateActiveInvoice({
-                      paymentMethod: e.target.value
-                    })
-                  }
-                  style={tableInputStyle}
-                >
-                  <option value="cash">كاش</option>
-                  <option value="card">كارت</option>
-                  <option value="wallet">محفظة</option>
-                  <option value="bank_transfer">تحويل بنكي</option>
-                </select>
-              </div>
-            </div>
-
-            {remainingAmount > 0 && !activeInvoice.customer && (
-              <div
-                style={{
-                  padding: '12px',
-                  borderRadius: '12px',
-                  background: 'rgba(239,68,68,0.10)',
-                  border: '1px solid rgba(239,68,68,0.25)',
-                  color: '#fca5a5',
-                  fontWeight: 800
-                }}
-              >
-                لا يمكن حفظ فاتورة آجل بدون اختيار عميل.
-              </div>
-            )}
-
-            {remainingAmount > 0 && activeInvoice.customer && (
-              <div
-                style={{
-                  padding: '12px',
-                  borderRadius: '12px',
-                  background: 'rgba(249,115,22,0.10)',
-                  border: '1px solid rgba(249,115,22,0.25)',
-                  color: '#fdba74',
-                  fontWeight: 800
-                }}
-              >
-                سيتم تسجيل {remainingAmount.toFixed(2)} ج.م على حساب العميل.
-              </div>
-            )}
-          </div>
-
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => void saveSale()}
+            onClick={openPaymentModal}
             disabled={saving || activeInvoice.cart.length === 0}
             style={{
               ...secondaryOutlineButtonStyle,
-              minWidth: isCompact ? '100%' : '150px',
+              minWidth: isCompact ? '100%' : '180px',
               width: isCompact ? '100%' : undefined,
               opacity: saving || activeInvoice.cart.length === 0 ? 0.6 : 1,
               cursor:
@@ -1835,6 +1781,11 @@ export default function SalesPage() {
               </div>
 
               <div style={receiptInfoCardStyle}>
+                <span>خصم عادي</span>
+                <strong>{money(receiptData.sale.discount_value)} ج.م</strong>
+              </div>
+
+              <div style={receiptInfoCardStyle}>
                 <span>خصم النقاط</span>
                 <strong>{money(receiptData.sale.loyalty_discount_value)} ج.م</strong>
               </div>
@@ -1979,6 +1930,267 @@ export default function SalesPage() {
           </div>
         </div>
       )}
+
+      {showPaymentModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.62)',
+            zIndex: 100000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div
+            style={{
+              width: '520px',
+              maxWidth: '100%',
+              borderRadius: '22px',
+              background: 'linear-gradient(180deg, rgba(17,24,39,0.98), rgba(15,23,42,0.98))',
+              color: '#f8fafc',
+              padding: '22px',
+              direction: 'rtl',
+              boxShadow: '0 28px 80px rgba(0,0,0,0.55)',
+              border: '1px solid rgba(255,255,255,0.10)',
+              display: 'grid',
+              gap: '14px'
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '14px 16px',
+                borderRadius: '14px',
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.10)',
+                fontWeight: 900,
+                fontSize: '20px'
+              }}
+            >
+              <span>الإجمالي</span>
+              <strong>{money(grandTotal)} ج.م</strong>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => updateActiveInvoice({ discountType: 'amount' })}
+                style={{
+                  ...paymentToggleButtonStyle,
+                background:
+                  activeInvoice.discountType === 'amount'
+                    ? 'rgba(124,58,237,0.28)'
+                    : 'rgba(255,255,255,0.06)',
+                borderColor:
+                  activeInvoice.discountType === 'amount'
+                    ? '#8b5cf6'
+                    : 'rgba(255,255,255,0.12)',
+                color: '#f8fafc'
+                }}
+              >
+                خصم جنيه
+              </button>
+
+              <button
+                type="button"
+                onClick={() => updateActiveInvoice({ discountType: 'percent' })}
+                style={{
+                  ...paymentToggleButtonStyle,
+                background:
+                  activeInvoice.discountType === 'percent'
+                    ? 'rgba(124,58,237,0.28)'
+                    : 'rgba(255,255,255,0.06)',
+                borderColor:
+                  activeInvoice.discountType === 'percent'
+                    ? '#8b5cf6'
+                    : 'rgba(255,255,255,0.12)',
+                color: '#f8fafc'
+                }}
+              >
+                خصم %
+              </button>
+            </div>
+
+            <label style={paymentLabelStyle}>
+              الخصم
+              <input
+                type="number"
+                min={0}
+                value={activeInvoice.discountDraft}
+                onChange={(e) => updateActiveInvoice({ discountDraft: e.target.value })}
+                placeholder={activeInvoice.discountType === 'percent' ? 'مثال: 10%' : 'مثال: 50'}
+                style={paymentInputStyle}
+              />
+            </label>
+
+            <label style={paymentLabelStyle}>
+              المدفوع
+              <input
+                type="number"
+                min={0}
+                autoFocus
+                value={activeInvoice.paidDraft}
+                onChange={(e) => updateActiveInvoice({ paidDraft: e.target.value })}
+                style={{
+                  ...paymentInputStyle,
+                  borderColor: '#7c3aed'
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    void saveSale();
+                  }
+
+                  if (e.key === 'Escape') {
+                    setShowPaymentModal(false);
+                  }
+                }}
+              />
+            </label>
+
+            <label style={paymentLabelStyle}>
+              طريقة الدفع
+              <select
+                value={activeInvoice.paymentMethod}
+                onChange={(e) => updateActiveInvoice({ paymentMethod: e.target.value })}
+                style={paymentInputStyle}
+              >
+                <option value="cash">كاش</option>
+                <option value="card">كارت</option>
+                <option value="wallet">محفظة</option>
+                <option value="bank_transfer">تحويل بنكي</option>
+              </select>
+            </label>
+
+            <div
+              style={{
+                padding: '14px',
+                borderRadius: '14px',
+                background: changeAmount > 0
+                  ? 'rgba(16,185,129,0.10)'
+                  : remainingAmount > 0
+                    ? 'rgba(249,115,22,0.10)'
+                    : 'rgba(255,255,255,0.06)',
+                border: changeAmount > 0
+                  ? '1px solid rgba(16,185,129,0.25)'
+                  : remainingAmount > 0
+                    ? '1px solid rgba(249,115,22,0.25)'
+                    : '1px solid rgba(255,255,255,0.10)',
+                display: 'grid',
+                gap: '8px',
+                fontWeight: 900
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>الإجمالي قبل الخصومات</span>
+                <strong>{money(subTotal)} ج.م</strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>الخصم</span>
+                <strong>{money(normalDiscountValue)} ج.م</strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>خصم النقاط</span>
+                <strong>{money(loyaltyDiscountValue)} ج.م</strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>المطلوب</span>
+                <strong>{money(grandTotal)} ج.م</strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>الباقي للعميل</span>
+                <strong style={{ color: '#16a34a' }}>{money(changeAmount)} ج.م</strong>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>مديونية على العميل</span>
+                <strong style={{ color: '#ea580c' }}>{money(remainingAmount)} ج.م</strong>
+              </div>
+            </div>
+
+            {remainingAmount > 0 && !activeInvoice.customer && (
+              <div
+                style={{
+                  padding: '12px',
+                  borderRadius: '12px',
+                  background: 'rgba(239,68,68,0.12)',
+                  border: '1px solid rgba(239,68,68,0.28)',
+                  color: '#fca5a5',
+                  fontWeight: 900,
+                  textAlign: 'center'
+                }}
+              >
+                لازم تختار عميل لتسجيل المديونية.
+              </div>
+            )}
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '12px',
+                marginTop: '6px'
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowPaymentModal(false)}
+                style={{
+                  height: '46px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(124,58,237,0.70)',
+                  background: 'rgba(255,255,255,0.04)',
+                  color: '#c4b5fd',
+                  fontWeight: 900,
+                  cursor: 'pointer'
+                }}
+              >
+                ESC / إلغاء
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void saveSale()}
+                disabled={saving || (remainingAmount > 0 && !activeInvoice.customer)}
+                style={{
+                  height: '46px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #6d5dfc, #7c3aed)',
+                  color: '#fff',
+                  fontWeight: 900,
+                  cursor:
+                    saving || (remainingAmount > 0 && !activeInvoice.customer)
+                      ? 'not-allowed'
+                      : 'pointer',
+                  opacity:
+                    saving || (remainingAmount > 0 && !activeInvoice.customer)
+                      ? 0.6
+                      : 1
+                }}
+              >
+                {saving ? 'جاري الدفع...' : 'F12 / دفع الفاتورة'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -2123,4 +2335,36 @@ const loyaltyPanelStyle: CSSProperties = {
   gap: '14px',
   flexWrap: 'wrap',
   direction: 'rtl'
+};
+
+const paymentInputStyle: React.CSSProperties = {
+  height: '48px',
+  borderRadius: '10px',
+  border: '1px solid rgba(255,255,255,0.12)',
+  background: 'rgba(255,255,255,0.06)',
+  color: '#f8fafc',
+  outline: 'none',
+  padding: '0 12px',
+  textAlign: 'right',
+  fontSize: '18px',
+  fontWeight: 900,
+  boxSizing: 'border-box',
+  colorScheme: 'dark'
+};
+
+const paymentLabelStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: '6px',
+  color: '#cbd5e1',
+  fontWeight: 900
+};
+
+const paymentToggleButtonStyle: React.CSSProperties = {
+  height: '38px',
+  borderRadius: '999px',
+  border: '1px solid #e5e7eb',
+  padding: '0 14px',
+  color: '#111827',
+  fontWeight: 900,
+  cursor: 'pointer'
 };

@@ -279,3 +279,85 @@ export function saveLoyaltySettings(input: LoyaltySettings) {
 
   return getLoyaltySettings();
 }
+
+export type AppLicenseStatus = {
+  activated: boolean;
+  trial_started_at: string;
+  trial_days: number;
+  trial_expires_at: string;
+  days_left: number;
+  expired: boolean;
+  app_logo_url: string;
+};
+
+const ACTIVATION_CODE = 'ERP-STORE-2026';
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function diffDays(from: Date, to: Date) {
+  const ms = to.getTime() - from.getTime();
+  return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+}
+
+export function getAppLicenseStatus(): AppLicenseStatus {
+  const now = new Date();
+
+  let trialStartedAt = getSetting('app_trial_started_at', '');
+
+  if (!trialStartedAt) {
+    trialStartedAt = now.toISOString();
+    saveSetting('app_trial_started_at', trialStartedAt);
+  }
+
+  const activated = getSetting('app_activated', 'false') === 'true';
+  const trialDays = Number(getSetting('app_trial_days', '7'));
+  const appLogoUrl = getSetting('app_logo_url', '');
+
+  const startDate = new Date(trialStartedAt);
+  const expiresAt = addDays(startDate, trialDays);
+  const daysLeft = activated ? trialDays : diffDays(now, expiresAt);
+  const expired = !activated && now.getTime() > expiresAt.getTime();
+
+  return {
+    activated,
+    trial_started_at: trialStartedAt,
+    trial_days: trialDays,
+    trial_expires_at: expiresAt.toISOString(),
+    days_left: daysLeft,
+    expired,
+    app_logo_url: appLogoUrl
+  };
+}
+
+export function activateApp(code: string) {
+  const cleanCode = String(code || '').trim();
+
+  if (cleanCode !== ACTIVATION_CODE) {
+    return {
+      success: false,
+      message: 'كود التفعيل غير صحيح'
+    };
+  }
+
+  saveSetting('app_activated', 'true');
+  saveSetting('app_activated_at', new Date().toISOString());
+
+  return {
+    success: true,
+    message: 'تم تفعيل البرنامج بنجاح',
+    status: getAppLicenseStatus()
+  };
+}
+
+export function saveAppLogoUrl(url: string) {
+  saveSetting('app_logo_url', String(url || '').trim());
+
+  return {
+    success: true,
+    status: getAppLicenseStatus()
+  };
+}

@@ -13,11 +13,20 @@ export default function LoginPage() {;
   const loginStore = useAuthStore((s) => s.login);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [appLogoUrl, setAppLogoUrl] = useState('');
 
 const usernameRef = useRef<HTMLInputElement>(null);
 
 useEffect(() => {
   usernameRef.current?.focus();
+
+  void window.api.getLicenseStatus()
+    .then((status) => {
+      setAppLogoUrl(status.app_logo_url || '');
+    })
+    .catch(() => {
+      setAppLogoUrl('');
+    });
 }, []);
 
 async function handleLogin() {
@@ -81,19 +90,41 @@ async function handleLogin() {
               'radial-gradient(circle at top right, rgba(37,99,235,0.30), transparent 30%), radial-gradient(circle at bottom left, rgba(139,92,246,0.24), transparent 28%), linear-gradient(180deg, rgba(15,23,42,0.96), rgba(17,24,39,0.96))'
           }}
         >
+
           <div
             style={{
-              width: '68px',
-              height: '68px',
-              borderRadius: '22px',
+              width: '180px',
+              height: '180px',
+              borderRadius: '26px',
               display: 'grid',
               placeItems: 'center',
-              fontSize: '30px',
+              fontSize: '38px',
               background: 'linear-gradient(135deg, #2563eb, #8b5cf6)',
-              boxShadow: '0 16px 40px rgba(37,99,235,0.35)'
+              boxShadow: '0 18px 45px rgba(37,99,235,0.38)',
+              overflow: 'hidden',
+
+              // يحركها ناحية الشمال
+              marginRight: 'auto',
+              marginLeft: '180px'
             }}
           >
-            👕
+            {appLogoUrl ? (
+              <img
+                key={appLogoUrl}
+                src={appLogoUrl}
+                alt="App Logo"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            ) : (
+              '👕'
+            )}
           </div>
 
           <h1
