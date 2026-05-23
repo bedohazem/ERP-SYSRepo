@@ -47,6 +47,7 @@ export default function AppShell({
   const [isMobile, setIsMobile] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [appLogoUrl, setAppLogoUrl] = useState('');
+  const [appName, setAppName] = useState('ERP Store');
 
   const userRole: Role = user?.role === 'admin' ? 'admin' : 'cashier';
 
@@ -77,9 +78,11 @@ export default function AppShell({
       .getLicenseStatus()
       .then((status) => {
         setAppLogoUrl(status.app_logo_url || '');
+        setAppName(status.app_name || 'ERP Store');
       })
       .catch(() => {
         setAppLogoUrl('');
+        setAppName('ERP Store');
       });
   }, []);
 
@@ -87,6 +90,23 @@ export default function AppShell({
     logout();
     navigate('/');
   }
+
+  useEffect(() => {
+    function handleLicenseChanged(event: Event) {
+      const customEvent = event as CustomEvent<any>;
+
+      if (customEvent.detail) {
+        setAppLogoUrl(customEvent.detail.app_logo_url || '');
+        setAppName(customEvent.detail.app_name || 'ERP Store');
+      }
+    }
+
+    window.addEventListener('license-status-changed', handleLicenseChanged);
+
+    return () => {
+      window.removeEventListener('license-status-changed', handleLicenseChanged);
+    };
+  }, []);
 
   return (
     <div
@@ -238,7 +258,7 @@ export default function AppShell({
             >
               <div>
                 <h2 style={{ margin: 0, fontSize: '22px', textAlign: 'right' }}>
-                  ERP Store
+                  {appName}
                 </h2>
 
                 <div

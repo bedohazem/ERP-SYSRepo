@@ -56,6 +56,8 @@ if (process.platform === 'win32') {
 function createWindow(): void {
   const preloadPath = path.join(process.cwd(), 'preload.cjs');
   const appIcon = getSavedAppIcon();
+  const appStatus = getAppLicenseStatus();
+  const appName = appStatus.app_name || 'ERP Store';
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -63,7 +65,7 @@ function createWindow(): void {
     minWidth: 390,
     minHeight: 650,
     backgroundColor: '#0f172a',
-    title: 'ERP SYS',
+    title: appName,
     icon: appIcon.isEmpty() ? undefined : appIcon,
     webPreferences: {
       nodeIntegration: false,
@@ -86,6 +88,10 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow?.setTitle(appName);
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;

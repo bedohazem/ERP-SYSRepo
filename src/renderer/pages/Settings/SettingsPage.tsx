@@ -81,6 +81,8 @@ type AppLicenseStatus = {
   app_logo_url: string;
 };
 
+type SettingsTab = 'store' | 'backup' | 'loyalty' | 'barcode';
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<BarcodePrintSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
@@ -97,6 +99,11 @@ export default function SettingsPage() {
 
   const [deactivatingApp, setDeactivatingApp] = useState(false);
   const [confirmDeactivateApp, setConfirmDeactivateApp] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>('store');
+
+  const [appName, setAppName] = useState('');
+  const [savingAppName, setSavingAppName] = useState(false);
 
   useEffect(() => {
     void loadSettings();
@@ -123,6 +130,7 @@ export default function SettingsPage() {
       setLoyaltySettings(loyaltyData);
       setLicenseStatus(licenseData);
       setAppLogoUrl(licenseData.app_logo_url || '');
+      setAppName(licenseData.app_name || 'ERP Store');
     } catch (error) {
       console.error('Failed to load settings:', error);
       showMessage('error', 'حدث خطأ أثناء تحميل الإعدادات');
@@ -423,6 +431,40 @@ export default function SettingsPage() {
     setDeactivatingApp(false);
   }
 }
+
+  async function handleSaveAppName() {
+    if (savingAppName) return;
+
+    const cleanName = appName.trim();
+
+    if (!cleanName) {
+      showMessage('error', 'اكتب اسم المحل');
+      return;
+    }
+
+    setSavingAppName(true);
+
+    try {
+      const result = await window.api.saveAppName(cleanName);
+
+      setLicenseStatus(result.status);
+      setAppName(result.status.app_name || cleanName);
+      document.title = result.status.app_name || 'ERP Store';
+
+      window.dispatchEvent(
+        new CustomEvent('license-status-changed', {
+          detail: result.status
+        })
+      );
+
+      showMessage('success', 'تم حفظ اسم المحل');
+    } catch (error) {
+      console.error('Failed to save app name:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ اسم المحل');
+    } finally {
+      setSavingAppName(false);
+    }
+  }
   
 
     return (
@@ -451,6 +493,50 @@ export default function SettingsPage() {
           </div>
         )}
 
+        <div
+          className="glass-card"
+          style={{
+            borderRadius: '18px',
+            padding: '10px',
+            display: 'flex',
+            gap: '10px',
+            flexWrap: 'wrap',
+            direction: 'rtl'
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setActiveTab('store')}
+            style={tabButtonStyle(activeTab === 'store')}
+          >
+            إعدادات المحل
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('backup')}
+            style={tabButtonStyle(activeTab === 'backup')}
+          >
+            النسخ والبيانات
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('loyalty')}
+            style={tabButtonStyle(activeTab === 'loyalty')}
+          >
+            نقاط الولاء
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('barcode')}
+            style={tabButtonStyle(activeTab === 'barcode')}
+          >
+            طباعة الباركود
+          </button>
+        </div>
+      {activeTab === 'backup' && (    
         <div
           className="glass-card"
           style={{
@@ -526,7 +612,8 @@ export default function SettingsPage() {
             </button>
           </div>
         </div>
-
+      )}
+      {activeTab === 'store' && (
         <div
           className="glass-card"
           style={{
@@ -538,9 +625,9 @@ export default function SettingsPage() {
           }}
         >
           <div>
-            <h2 style={{ margin: '0 0 8px' }}>تفعيل البرنامج وشكل التطبيق</h2>
+            <h2 style={{ margin: '0 0 8px' }}>إعدادات المحل</h2>
             <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.8 }}>
-              إدارة كود التفعيل، فترة التجربة، ورابط صورة التطبيق الخارجية.
+              إدارة تفعيل البرنامج وصورة التطبيق التي تظهر في اللوجن والواجهة.
             </p>
           </div>
 
@@ -629,6 +716,38 @@ export default function SettingsPage() {
           <div
             style={{
               display: 'grid',
+              gridTemplateColumns: 'minmax(220px, 1fr) auto',
+              gap: '12px',
+              alignItems: 'end'
+            }}
+          >
+            <div>
+              <label style={labelStyle}>اسم المحل</label>
+              <input
+                value={appName}
+                onChange={(e) => setAppName(e.target.value)}
+                placeholder="مثال: Lamar Store"
+                style={inputStyle}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleSaveAppName()}
+              disabled={savingAppName}
+              style={{
+                ...primaryButtonStyle,
+                opacity: savingAppName ? 0.6 : 1,
+                cursor: savingAppName ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {savingAppName ? 'جاري الحفظ...' : 'حفظ الاسم'}
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
               gridTemplateColumns: 'minmax(220px, 1fr) auto auto',
               gap: '12px',
               alignItems: 'end'
@@ -708,7 +827,8 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
-
+      )}
+      {activeTab === 'barcode' && (
         <div className="glass-card" style={{ borderRadius: '24px', padding: '24px' }}>
           <h2 style={{ marginTop: 0 }}>إعدادات طباعة الباركود</h2>
           <p style={{ color: '#94a3b8' }}>
@@ -845,14 +965,15 @@ export default function SettingsPage() {
             </button>
           </div>
         </div>
+      )}
+      {activeTab === 'loyalty' && (   
         <div
           className="glass-card"
           style={{
             padding: '22px',
             borderRadius: '18px',
             display: 'grid',
-            gap: '18px',
-            marginTop: '18px',
+            gap: '18px',       
             direction: 'rtl'
           }}
         >
@@ -1018,6 +1139,7 @@ export default function SettingsPage() {
             </button>
           </div>
         </div>
+      )}
       </div>
     );
 }
@@ -1173,3 +1295,21 @@ const statCardStyle: React.CSSProperties = {
   color: '#94a3b8',
   fontWeight: 800
 };
+
+function tabButtonStyle(active: boolean): React.CSSProperties {
+  return {
+    border: active
+      ? '1px solid rgba(96,165,250,0.55)'
+      : '1px solid rgba(255,255,255,0.10)',
+    minHeight: '44px',
+    borderRadius: '14px',
+    background: active
+      ? 'linear-gradient(135deg, rgba(37,99,235,0.95), rgba(124,58,237,0.95))'
+      : 'rgba(255,255,255,0.05)',
+    color: '#fff',
+    fontWeight: 900,
+    padding: '0 18px',
+    cursor: 'pointer',
+    boxShadow: active ? '0 12px 26px rgba(37,99,235,0.22)' : 'none'
+  };
+}

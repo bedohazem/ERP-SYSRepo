@@ -609,6 +609,7 @@ declare global {
           days_left: number;
           expired: boolean;
           app_logo_url: string;
+          app_name: string;
         }>;
 
         activateApp: (code: string) => Promise<{
@@ -622,6 +623,7 @@ declare global {
             days_left: number;
             expired: boolean;
             app_logo_url: string;
+            app_name: string;
           };
         }>;
 
@@ -635,6 +637,7 @@ declare global {
             days_left: number;
             expired: boolean;
             app_logo_url: string;
+            app_name: string;
           };
         }>;
        
@@ -651,6 +654,7 @@ declare global {
             days_left: number;
             expired: boolean;
             app_logo_url: string;
+            app_name: string;
           };
         }>;
 
@@ -665,6 +669,21 @@ declare global {
             days_left: number;
             expired: boolean;
             app_logo_url: string;
+            app_name: string;
+          };
+        }>;
+
+        saveAppName: (name: string) => Promise<{
+          success: boolean;
+          status: {
+            activated: boolean;
+            trial_started_at: string;
+            trial_days: number;
+            trial_expires_at: string;
+            days_left: number;
+            expired: boolean;
+            app_logo_url: string;
+            app_name: string;
           };
         }>;
         

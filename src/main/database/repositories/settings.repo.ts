@@ -288,6 +288,7 @@ export type AppLicenseStatus = {
   days_left: number;
   expired: boolean;
   app_logo_url: string;
+  app_name: string;
 };
 
 const ACTIVATION_CODE = 'ERP-STORE-2026';
@@ -317,6 +318,7 @@ export function getAppLicenseStatus(): AppLicenseStatus {
   const activated = getSetting('app_activated', 'false') === 'true';
   const trialDays = Number(getSetting('app_trial_days', '7'));
   const appLogoUrl = getSetting('app_logo_url', '');
+  const appName = getSetting('app_name', 'ERP Store');
 
   let trialStartedAt = getSetting('app_trial_started_at', '');
 
@@ -347,7 +349,8 @@ export function getAppLicenseStatus(): AppLicenseStatus {
     trial_expires_at: expiresAt.toISOString(),
     days_left: daysLeft,
     expired,
-    app_logo_url: appLogoUrl
+    app_logo_url: appLogoUrl,
+    app_name: appName
   };
 }
 
@@ -384,6 +387,16 @@ export function deactivateApp() {
 
 export function saveAppLogoUrl(url: string) {
   saveSetting('app_logo_url', String(url || '').trim());
+
+  return {
+    success: true,
+    status: getAppLicenseStatus()
+  };
+}
+export function saveAppName(name: string) {
+  const cleanName = String(name || '').trim() || 'ERP Store';
+
+  saveSetting('app_name', cleanName);
 
   return {
     success: true,

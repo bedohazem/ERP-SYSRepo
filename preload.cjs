@@ -83,5 +83,6 @@ contextBridge.exposeInMainWorld('api', {
   deactivateApp: () => ipcRenderer.invoke('settings:deactivate-app'),
   saveAppLogoUrl: (url) => ipcRenderer.invoke('settings:save-app-logo-url', url),
   chooseAppLogo: () => ipcRenderer.invoke('settings:choose-app-logo'),
+  saveAppName: (name) => ipcRenderer.invoke('settings:save-app-name', name),
 
 });

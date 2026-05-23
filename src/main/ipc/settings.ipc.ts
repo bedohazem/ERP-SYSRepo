@@ -11,7 +11,8 @@ import {
   getAppLicenseStatus,
   activateApp,
   saveAppLogoUrl,
-  deactivateApp
+  deactivateApp,
+  saveAppName
 } from '../database/repositories/settings.repo';
 import { closeDb, getDb, getDbPath, resetDatabaseData } from '../database/db';
 
@@ -366,6 +367,16 @@ export function registerSettingsIpc(): void {
         message: getErrorMessage(error)
       };
     }
+  });
+
+  ipcMain.handle('settings:save-app-name', (_, name: string) => {
+    const saved = saveAppName(name);
+
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.setTitle(saved.status.app_name || 'ERP Store');
+    });
+
+    return saved;
   });
   
 }

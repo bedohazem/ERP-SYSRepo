@@ -8,6 +8,7 @@ type LicenseStatus = {
   days_left: number;
   expired: boolean;
   app_logo_url: string;
+  app_name: string;
 };
 
 export default function LicenseGate({ children }: { children: ReactNode }) {
@@ -19,12 +20,17 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
 
   const licenseTimerRef = useRef<number | null>(null);
 
+  function applyAppTitle(name?: string) {
+    document.title = name?.trim() || 'ERP Store';
+  }
+
   async function loadLicenseStatus() {
     setLoading(true);
 
     try {
       const data = await window.api.getLicenseStatus();
       setStatus(data);
+      applyAppTitle(data.app_name);
       scheduleLicenseCheck(data);
     } catch (error) {
       console.error('Failed to load license status:', error);
@@ -48,6 +54,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
 
       if (customEvent.detail) {
         setStatus(customEvent.detail);
+        applyAppTitle(customEvent.detail.app_name);
         scheduleLicenseCheck(customEvent.detail);
         return;
       }

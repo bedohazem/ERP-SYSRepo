@@ -14,48 +14,52 @@ export default function LoginPage() {;
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [appLogoUrl, setAppLogoUrl] = useState('');
+  const [appName, setAppName] = useState('ERP Store');
 
-const usernameRef = useRef<HTMLInputElement>(null);
+  const usernameRef = useRef<HTMLInputElement>(null);
 
-useEffect(() => {
-  usernameRef.current?.focus();
 
-  void window.api.getLicenseStatus()
-    .then((status) => {
-      setAppLogoUrl(status.app_logo_url || '');
-    })
-    .catch(() => {
-      setAppLogoUrl('');
-    });
-}, []);
+  useEffect(() => {
+    usernameRef.current?.focus();
 
-async function handleLogin() {
-  setError('');
-  setLoading(true);
+    void window.api.getLicenseStatus()
+      .then((status) => {
+        setAppLogoUrl(status.app_logo_url || '');
+        setAppName(status.app_name || 'ERP Store');
+      })
+      .catch(() => {
+        setAppLogoUrl('');
+        setAppName('ERP Store');
+      });
+  }, []);
 
-  try {
-    
-    const res = await window.api.login({
-      username,
-      password
-    });
+  async function handleLogin() {
+    setError('');
+    setLoading(true);
 
-    if (!res.success) {
-      setError(res.message || 'فشل تسجيل الدخول');
-      return;
+    try {
+      
+      const res = await window.api.login({
+        username,
+        password
+      });
+
+      if (!res.success) {
+        setError(res.message || 'فشل تسجيل الدخول');
+        return;
+      }
+
+      if (res.user) {
+        loginStore(res.user);
+        navigate('/dashboard');
+      }
+    } catch (error) {
+    console.error('Login error:', error);
+    setError('خطأ في الاتصال بالنظام');
+    }finally {
+      setLoading(false);
     }
-
-    if (res.user) {
-      loginStore(res.user);
-      navigate('/dashboard');
-    }
-  } catch (error) {
-  console.error('Login error:', error);
-  setError('خطأ في الاتصال بالنظام');
-  }finally {
-    setLoading(false);
   }
-}
 
 
   return (
@@ -134,7 +138,7 @@ async function handleLogin() {
               lineHeight: 1.15
             }}
           >
-            ERP Store
+            {appName}
           </h1>
 
           <p
