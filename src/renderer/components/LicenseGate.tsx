@@ -11,6 +11,11 @@ type LicenseStatus = {
   app_name: string;
 };
 
+const SUPPORT_NAME = 'بشمهندس عبدالرحمن';
+const SUPPORT_PHONE_DISPLAY = '01155559287';
+const SUPPORT_PHONE_DISPLAY2 = '01068377869';
+const SUPPORT_WHATSAPP_RAW = '201155559287'; // رقم واتساب بدون +
+
 export default function LicenseGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<LicenseStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -181,6 +186,62 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
         <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.8, textAlign: 'center' }}>
           انتهت فترة التجربة المجانية. أدخل كود التفعيل للمتابعة.
         </p>
+        
+        <div
+          style={{
+            padding: '14px',
+            borderRadius: '16px',
+            background: 'rgba(37,99,235,0.10)',
+            border: '1px solid rgba(37,99,235,0.25)',
+            display: 'grid',
+            gap: '10px',
+            textAlign: 'center'
+          }}
+        >
+          <div style={{ color: '#bfdbfe', fontWeight: 900 }}>
+            للتفعيل تواصل مع {SUPPORT_NAME}
+          </div>
+
+          <div style={{ color: '#e5e7eb', fontWeight: 800 }}>
+            Phone Number / WhatsApp: {SUPPORT_PHONE_DISPLAY}
+          </div>
+          <div style={{ color: '#e5e7eb', fontWeight: 800 }}>
+            Phone Number 2: {SUPPORT_PHONE_DISPLAY2}
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '10px'
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                window.open(`tel:${SUPPORT_PHONE_DISPLAY}`, '_blank');
+              }}
+              style={contactButtonStyle}
+            >
+              اتصال
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                window.open(`https://wa.me/${SUPPORT_WHATSAPP_RAW}`, '_blank');
+              }}
+              style={{
+                ...contactButtonStyle,
+                background: 'rgba(16,185,129,0.16)',
+                border: '1px solid rgba(16,185,129,0.35)',
+                color: '#6ee7b7'
+              }}
+            >
+              واتساب
+            </button>
+          </div>
+        </div>
 
         <input
           value={activationCode}
@@ -264,4 +325,14 @@ const inputStyle: React.CSSProperties = {
   padding: '0 14px',
   textAlign: 'right',
   fontWeight: 800
+};
+
+const contactButtonStyle: React.CSSProperties = {
+  height: '42px',
+  borderRadius: '12px',
+  border: '1px solid rgba(96,165,250,0.35)',
+  background: 'rgba(37,99,235,0.16)',
+  color: '#bfdbfe',
+  fontWeight: 900,
+  cursor: 'pointer'
 };
