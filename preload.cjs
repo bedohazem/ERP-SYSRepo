@@ -80,6 +80,7 @@ contextBridge.exposeInMainWorld('api', {
 
   getLicenseStatus: () => ipcRenderer.invoke('settings:get-license-status'),
   activateApp: (code) => ipcRenderer.invoke('settings:activate-app', code),
+  deactivateApp: () => ipcRenderer.invoke('settings:deactivate-app'),
   saveAppLogoUrl: (url) => ipcRenderer.invoke('settings:save-app-logo-url', url),
   chooseAppLogo: () => ipcRenderer.invoke('settings:choose-app-logo'),
 

@@ -10,7 +10,8 @@ import {
   saveLoyaltySettings,
   getAppLicenseStatus,
   activateApp,
-  saveAppLogoUrl
+  saveAppLogoUrl,
+  deactivateApp
 } from '../database/repositories/settings.repo';
 import { closeDb, getDb, getDbPath, resetDatabaseData } from '../database/db';
 
@@ -302,6 +303,10 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle('settings:activate-app', (_, code: string) => {
     return activateApp(code);
+  });
+
+  ipcMain.handle('settings:deactivate-app', () => {
+    return deactivateApp();
   });
 
   ipcMain.handle('settings:save-app-logo-url', (_, url: string) => {

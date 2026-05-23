@@ -41,14 +41,12 @@ export default function AppShell({
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
-  const [licenseStatus, setLicenseStatus] = useState<any>(null);
-  const [licenseCode, setLicenseCode] = useState('');
-  const [activatingLicense, setActivatingLicense] = useState(false);
 
   const { sidebarOpen, toggleSidebar } = useAppStore();
 
   const [isMobile, setIsMobile] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [appLogoUrl, setAppLogoUrl] = useState('');
 
   const userRole: Role = user?.role === 'admin' ? 'admin' : 'cashier';
 
@@ -75,30 +73,20 @@ export default function AppShell({
   }, []);
 
   useEffect(() => {
-    void window.api.getLicenseStatus().then(setLicenseStatus).catch(() => null);
+    void window.api
+      .getLicenseStatus()
+      .then((status) => {
+        setAppLogoUrl(status.app_logo_url || '');
+      })
+      .catch(() => {
+        setAppLogoUrl('');
+      });
   }, []);
 
   function handleLogout() {
     logout();
     navigate('/');
   }
-
-  async function activateLicenseFromLock() {
-  if (activatingLicense) return;
-
-  setActivatingLicense(true);
-
-  try {
-    const result = await window.api.activateApp(licenseCode);
-
-    if (result.success && result.status) {
-      setLicenseStatus(result.status);
-      setLicenseCode('');
-    }
-  } finally {
-    setActivatingLicense(false);
-  }
-}
 
   return (
     <div
@@ -198,63 +186,6 @@ export default function AppShell({
             boxSizing: 'border-box'
           }}
         >
-            {licenseStatus?.expired && !licenseStatus?.activated ? (
-              <div
-                className="glass-card"
-                style={{
-                  borderRadius: '24px',
-                  padding: '28px',
-                  maxWidth: '520px',
-                  margin: '40px auto',
-                  display: 'grid',
-                  gap: '16px',
-                  direction: 'rtl',
-                  textAlign: 'right'
-                }}
-              >
-                <h2 style={{ margin: 0 }}>انتهت فترة التجربة</h2>
-
-                <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.8 }}>
-                  انتهت فترة التجربة المجانية 7 أيام. أدخل كود التفعيل للمتابعة.
-                </p>
-
-                <input
-                  value={licenseCode}
-                  onChange={(e) => setLicenseCode(e.target.value)}
-                  placeholder="كود التفعيل"
-                  style={{
-                    height: '46px',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    background: 'rgba(255,255,255,0.06)',
-                    color: '#fff',
-                    outline: 'none',
-                    padding: '0 12px',
-                    textAlign: 'right'
-                  }}
-                />
-
-                <button
-                  type="button"
-                  onClick={() => void activateLicenseFromLock()}
-                  disabled={activatingLicense}
-                  style={{
-                    height: '46px',
-                    borderRadius: '12px',
-                    border: 'none',
-                    background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
-                    color: '#fff',
-                    fontWeight: 900,
-                    cursor: activatingLicense ? 'not-allowed' : 'pointer',
-                    opacity: activatingLicense ? 0.6 : 1
-                  }}
-                >
-                  {activatingLicense ? 'جاري التفعيل...' : 'تفعيل البرنامج'}
-                </button>
-              </div>
-            ) : (
-              children
-            )}
           {children}
         </section>
       </main>
@@ -296,20 +227,37 @@ export default function AppShell({
           }}
         >
           {effectiveSidebarOpen ? (
-            <div>
-              <h2 style={{ margin: 0, fontSize: '22px', textAlign: 'right' }}>ERP Store</h2>
-              <div
-                style={{
-                  color: '#94a3b8',
-                  fontSize: '13px',
-                  marginTop: '6px',
-                  textAlign: 'right'
-                }}
-              >
-                نظام إدارة محل الملابس
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                justifyContent: 'flex-end',
+                width: '100%'
+              }}
+            >
+              <div>
+                <h2 style={{ margin: 0, fontSize: '22px', textAlign: 'right' }}>
+                  ERP Store
+                </h2>
+
+                <div
+                  style={{
+                    color: '#94a3b8',
+                    fontSize: '13px',
+                    marginTop: '6px',
+                    textAlign: 'right'
+                  }}
+                >
+                  نظام إدارة محل الملابس
+                </div>
               </div>
+
+              <LogoBox appLogoUrl={appLogoUrl} size={42} />
             </div>
-          ) : null}
+          ) : (
+            <LogoBox appLogoUrl={appLogoUrl} size={42} />
+          )}
 
           <button
             type="button"
@@ -377,7 +325,9 @@ export default function AppShell({
               </span>
 
               {effectiveSidebarOpen ? (
-                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden' }}>{item.label}</span>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                  {item.label}
+                </span>
               ) : null}
             </NavLink>
           ))}
@@ -399,7 +349,11 @@ export default function AppShell({
                 <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>
                   المستخدم الحالي
                 </div>
-                <div style={{ fontWeight: 700, fontSize: '16px' }}>{user?.name || '—'}</div>
+
+                <div style={{ fontWeight: 700, fontSize: '16px' }}>
+                  {user?.name || '—'}
+                </div>
+
                 <div style={{ color: '#60a5fa', fontSize: '13px', marginTop: '4px' }}>
                   {user?.role === 'admin' ? 'مدير النظام' : 'كاشير'}
                 </div>
@@ -432,6 +386,47 @@ export default function AppShell({
   );
 }
 
+function LogoBox({
+  appLogoUrl,
+  size
+}: {
+  appLogoUrl: string;
+  size: number;
+}) {
+  return (
+    <div
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: '12px',
+        background: 'linear-gradient(135deg, #2563eb, #8b5cf6)',
+        overflow: 'hidden',
+        display: 'grid',
+        placeItems: 'center',
+        flexShrink: 0
+      }}
+    >
+      {appLogoUrl ? (
+        <img
+          key={appLogoUrl}
+          src={appLogoUrl}
+          alt="App Logo"
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover'
+          }}
+          onError={(e) => {
+            e.currentTarget.style.display = 'none';
+          }}
+        />
+      ) : (
+        <span style={{ fontSize: '20px' }}>👕</span>
+      )}
+    </div>
+  );
+}
+
 const mobileMenuButtonStyle: React.CSSProperties = {
   width: '42px',
   height: '42px',
@@ -440,6 +435,5 @@ const mobileMenuButtonStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.06)',
   color: '#fff',
   cursor: 'pointer',
-  fontSize: '20px',
-  fontWeight: 900
+  fontSize: '20px'
 };

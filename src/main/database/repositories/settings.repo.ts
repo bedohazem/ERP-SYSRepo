@@ -291,10 +291,18 @@ export type AppLicenseStatus = {
 };
 
 const ACTIVATION_CODE = 'ERP-STORE-2026';
+const USE_TEST_TRIAL_MINUTES = false;
+const TEST_TRIAL_MINUTES = 2;
 
 function addDays(date: Date, days: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
+  return next;
+}
+
+function addMinutes(date: Date, minutes: number) {
+  const next = new Date(date);
+  next.setMinutes(next.getMinutes() + minutes);
   return next;
 }
 
@@ -306,21 +314,31 @@ function diffDays(from: Date, to: Date) {
 export function getAppLicenseStatus(): AppLicenseStatus {
   const now = new Date();
 
+  const activated = getSetting('app_activated', 'false') === 'true';
+  const trialDays = Number(getSetting('app_trial_days', '7'));
+  const appLogoUrl = getSetting('app_logo_url', '');
+
   let trialStartedAt = getSetting('app_trial_started_at', '');
 
+  // أول مرة فقط يسجل بداية التجربة
   if (!trialStartedAt) {
     trialStartedAt = now.toISOString();
     saveSetting('app_trial_started_at', trialStartedAt);
   }
 
-  const activated = getSetting('app_activated', 'false') === 'true';
-  const trialDays = Number(getSetting('app_trial_days', '7'));
-  const appLogoUrl = getSetting('app_logo_url', '');
-
   const startDate = new Date(trialStartedAt);
-  const expiresAt = addDays(startDate, trialDays);
-  const daysLeft = activated ? trialDays : diffDays(now, expiresAt);
+
+  const expiresAt = USE_TEST_TRIAL_MINUTES
+    ? addMinutes(startDate, TEST_TRIAL_MINUTES)
+    : addDays(startDate, trialDays);
+
   const expired = !activated && now.getTime() > expiresAt.getTime();
+
+  const daysLeft = activated
+    ? trialDays
+    : USE_TEST_TRIAL_MINUTES
+      ? Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60)))
+      : diffDays(now, expiresAt);
 
   return {
     activated,
@@ -349,6 +367,17 @@ export function activateApp(code: string) {
   return {
     success: true,
     message: 'تم تفعيل البرنامج بنجاح',
+    status: getAppLicenseStatus()
+  };
+}
+
+export function deactivateApp() {
+  saveSetting('app_activated', 'false');
+  saveSetting('app_deactivated_at', new Date().toISOString());
+
+  return {
+    success: true,
+    message: 'تم إلغاء تفعيل البرنامج',
     status: getAppLicenseStatus()
   };
 }

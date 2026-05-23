@@ -95,6 +95,9 @@ export default function SettingsPage() {
   const [savingActivation, setSavingActivation] = useState(false);
   const [savingLogo, setSavingLogo] = useState(false);
 
+  const [deactivatingApp, setDeactivatingApp] = useState(false);
+  const [confirmDeactivateApp, setConfirmDeactivateApp] = useState(false);
+
   useEffect(() => {
     void loadSettings();
   }, []);
@@ -312,6 +315,12 @@ export default function SettingsPage() {
 
       if (result.status) {
         setLicenseStatus(result.status);
+
+        window.dispatchEvent(
+          new CustomEvent('license-status-changed', {
+            detail: result.status
+          })
+        );
       }
 
       setActivationCode('');
@@ -374,6 +383,46 @@ export default function SettingsPage() {
       setSavingLogo(false);
     }
   }
+
+
+  async function handleDeactivateApp() {
+  if (deactivatingApp) return;
+
+  if (!confirmDeactivateApp) {
+    setConfirmDeactivateApp(true);
+    showMessage('error', 'اضغط مرة أخرى لتأكيد إلغاء التفعيل');
+    return;
+  }
+
+  setDeactivatingApp(true);
+
+  try {
+    const result = await window.api.deactivateApp();
+
+    if (!result.success) {
+      showMessage('error', result.message || 'فشل إلغاء التفعيل');
+      return;
+    }
+
+    if (result.status) {
+      setLicenseStatus(result.status);
+
+      window.dispatchEvent(
+        new CustomEvent('license-status-changed', {
+          detail: result.status
+        })
+      );
+    }
+
+    setConfirmDeactivateApp(false);
+    showMessage('success', 'تم إلغاء تفعيل البرنامج');
+  } catch (error) {
+    console.error('Failed to deactivate app:', error);
+    showMessage('error', 'حدث خطأ أثناء إلغاء التفعيل');
+  } finally {
+    setDeactivatingApp(false);
+  }
+}
   
 
     return (
@@ -523,7 +572,7 @@ export default function SettingsPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'minmax(220px, 1fr) auto',
+              gridTemplateColumns: 'minmax(220px, 1fr) auto auto',
               gap: '12px',
               alignItems: 'end'
             }}
@@ -550,6 +599,31 @@ export default function SettingsPage() {
             >
               {savingActivation ? 'جاري التفعيل...' : 'تفعيل'}
             </button>
+          {licenseStatus?.activated && (
+            <button
+              type="button"
+              onClick={() => void handleDeactivateApp()}
+              disabled={deactivatingApp}
+              style={{
+                ...dangerButtonStyle,
+                opacity: deactivatingApp ? 0.6 : 1,
+                cursor: deactivatingApp ? 'not-allowed' : 'pointer',
+                background: confirmDeactivateApp
+                  ? 'rgba(127,29,29,0.55)'
+                  : 'rgba(239,68,68,0.12)',
+                border: confirmDeactivateApp
+                  ? '1px solid rgba(248,113,113,0.65)'
+                  : '1px solid rgba(239,68,68,0.35)',
+                color: '#fecaca'
+              }}
+            >
+              {deactivatingApp
+                ? 'جاري إلغاء التفعيل...'
+                : confirmDeactivateApp
+                  ? 'تأكيد إلغاء التفعيل'
+                  : 'إلغاء التفعيل'}
+            </button>
+          )}
           </div>
 
           <div

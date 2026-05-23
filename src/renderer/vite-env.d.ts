@@ -653,6 +653,21 @@ declare global {
             app_logo_url: string;
           };
         }>;
+
+        deactivateApp: () => Promise<{
+          success: boolean;
+          message?: string;
+          status?: {
+            activated: boolean;
+            trial_started_at: string;
+            trial_days: number;
+            trial_expires_at: string;
+            days_left: number;
+            expired: boolean;
+            app_logo_url: string;
+          };
+        }>;
+        
     
     };
   }
