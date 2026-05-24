@@ -14,6 +14,7 @@ import { registerCashIpc } from './ipc/cash.ipc';
 import { registerExpenseIpc } from './ipc/expense.ipc';
 import { registerActivityIpc } from './ipc/activity.ipc';
 import { getAppLicenseStatus } from './database/repositories/settings.repo';
+import { createDailyAutoBackup } from './database/auto-backup';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -102,6 +103,8 @@ app.whenReady().then(() => {
 
 
   getDb();
+  void createDailyAutoBackup();
+  
   registerAuthIpc();
   createWindow();
   registerProductsIpc();
