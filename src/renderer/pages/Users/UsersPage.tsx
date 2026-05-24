@@ -57,8 +57,18 @@ export default function UsersPage() {
     setLoading(true);
 
     try {
-      const result = await window.api.getUsers(search);
-      setUsers(result);
+      const result = await window.api.getUsers({
+        search,
+        actor_id: currentUser?.id
+      });
+
+      if (!result.success) {
+        showMessage('error', result.message || 'غير مصرح بتحميل المستخدمين');
+        setUsers([]);
+        return;
+      }
+
+      setUsers(result.users);
     } catch (error) {
       console.error('Failed to load users:', error);
       showMessage('error', 'حدث خطأ أثناء تحميل المستخدمين');
@@ -92,13 +102,15 @@ export default function UsersPage() {
             name: form.name,
             username: form.username,
             role: form.role,
-            is_active: form.is_active
+            is_active: form.is_active,
+            actor_id: currentUser?.id
           })
         : await window.api.createSystemUser({
             name: form.name,
             username: form.username,
             password: form.password,
-            role: form.role
+            role: form.role,
+            actor_id: currentUser?.id
           });
 
       if (!result.success) {
@@ -142,7 +154,11 @@ export default function UsersPage() {
     setSavingActive(true);
 
     try {
-      const result = await window.api.setUserActive(activeConfirmUser.id, nextActive);
+      const result = await window.api.setUserActive(
+        activeConfirmUser.id,
+        nextActive,
+        currentUser?.id
+      );
 
       if (!result.success) {
         showMessage('error', result.message || 'فشل تحديث حالة المستخدم');
@@ -195,7 +211,11 @@ export default function UsersPage() {
     setSavingPassword(true);
 
     try {
-      const result = await window.api.resetUserPassword(passwordUser.id, password);
+     const result = await window.api.resetUserPassword(
+      passwordUser.id,
+      password,
+      currentUser?.id
+    );
 
       if (!result.success) {
         showMessage('error', result.message || 'فشل تغيير كلمة المرور');

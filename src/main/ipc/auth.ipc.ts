@@ -8,6 +8,7 @@ import {
   setUserActive,
   updateUser
 } from '../database/repositories/user.repo';
+import { requireAdmin } from './permission-helper';
 
 type AuthPayload = {
   name?: string;
@@ -68,12 +69,27 @@ export function registerAuthIpc(): void {
     };
   });
 
-  ipcMain.handle('users:list', (_, search?: string) => {
-    return listUsers(search || '');
+  ipcMain.handle('users:list', (_, input?: { search?: string; actor_id?: number }) => {
+    try {
+      requireAdmin(getActorId(input));
+
+      return {
+        success: true,
+        users: listUsers(input?.search || '')
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: getErrorMessage(error),
+        users: []
+      };
+    }
   });
 
-  ipcMain.handle('users:create', (_, data: AuthPayload) => {
+  ipcMain.handle('users:create', (_, data: AuthPayload & { actor_id?: number }) => {
     try {
+      requireAdmin(getActorId(data));
+
       const user = createUser(
         data.name ?? '',
         data.username,
@@ -107,6 +123,8 @@ export function registerAuthIpc(): void {
 
   ipcMain.handle('users:update', (_, input) => {
     try {
+      requireAdmin(getActorId(input));
+
       const user = updateUser(input);
 
       logAction({
@@ -136,6 +154,8 @@ export function registerAuthIpc(): void {
 
   ipcMain.handle('users:set-active', (_, userId: number, isActive: number, actorId?: number) => {
       try {
+        requireAdmin(actorId);
+
         const user = setUserActive(userId, isActive);
 
         logAction({
@@ -164,6 +184,8 @@ export function registerAuthIpc(): void {
 
   ipcMain.handle('users:reset-password', (_, userId: number, password: string, actorId?: number) => {
     try {
+      requireAdmin(actorId);
+      
       const user = resetUserPassword(userId, password);
 
       logAction({

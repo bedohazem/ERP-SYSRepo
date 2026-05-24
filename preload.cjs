@@ -4,10 +4,10 @@ contextBridge.exposeInMainWorld('api', {
   login: (data) => ipcRenderer.invoke('auth:login', data),
   register: (data) => ipcRenderer.invoke('auth:register', data),
 
-  getUsers: (search) => ipcRenderer.invoke('users:list', search),
+  getUsers: (input) => ipcRenderer.invoke('users:list', input),
   createSystemUser: (input) => ipcRenderer.invoke('users:create', input),
   updateSystemUser: (input) => ipcRenderer.invoke('users:update', input),
-  setUserActive: (userId, isActive) => ipcRenderer.invoke('users:set-active', userId, isActive),
+  setUserActive: (userId, isActive, actorId) => ipcRenderer.invoke('users:set-active', userId, isActive, actorId),
   resetUserPassword: (userId, password, actorId) => ipcRenderer.invoke('users:reset-password', userId, password, actorId),
   
 

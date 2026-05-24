@@ -74,13 +74,21 @@ declare global {
         message?: string;
       }>;
 
-      getUsers: (search?: string) => Promise<SystemUser[]>;
+      getUsers: (input?: {
+        search?: string;
+        actor_id?: number;
+      }) => Promise<{
+        success: boolean;
+        message?: string;
+        users: SystemUser[];
+      }>;
 
       createSystemUser: (input: {
         name: string;
         username: string;
         password: string;
         role: 'admin' | 'cashier';
+        actor_id?: number;
       }) => Promise<MutationResult<SystemUser>>;
 
       updateSystemUser: (input: {
@@ -89,16 +97,19 @@ declare global {
         username: string;
         role: 'admin' | 'cashier';
         is_active: number;
+        actor_id?: number;
       }) => Promise<MutationResult<SystemUser>>;
 
       setUserActive: (
         userId: number,
-        isActive: number
+        isActive: number,
+        actorId?: number
       ) => Promise<MutationResult<SystemUser>>;
 
       resetUserPassword: (
         userId: number,
-        password: string
+        password: string,
+        actorId?: number
       ) => Promise<MutationResult<SystemUser>>;
 
       // =========================
