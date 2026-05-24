@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'node:path';
 import { app } from 'electron';
+import { hashPassword } from '../security/password';
 
 let db: Database.Database;
 
@@ -449,7 +450,7 @@ function seedAdminUser(database: Database.Database): void {
       INSERT INTO users (name, username, password, role, is_active)
       VALUES (?, ?, ?, ?, ?)
     `)
-    .run('Administrator', 'admin', '1234', 'admin', 1);
+    .run('Administrator', 'admin', hashPassword('1234'), 'admin', 1);
 
   console.log('Seeded default admin user: admin / 1234');
 }

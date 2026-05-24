@@ -6,9 +6,11 @@ import {
   listUsers,
   resetUserPassword,
   setUserActive,
-  updateUser
+  updateUser,
+  upgradeUserPasswordHash
 } from '../database/repositories/user.repo';
 import { requireAdmin } from './permission-helper';
+import { isPasswordHashed, verifyPassword } from '../security/password';
 
 type AuthPayload = {
   name?: string;
@@ -54,8 +56,12 @@ export function registerAuthIpc(): void {
       return { success: false, message: 'المستخدم غير موجود أو غير مفعل' };
     }
 
-    if (user.password !== data.password) {
+    if (!verifyPassword(data.password, user.password)) {
       return { success: false, message: 'كلمة المرور غير صحيحة' };
+    }
+
+    if (!isPasswordHashed(user.password)) {
+      upgradeUserPasswordHash(user.id, data.password);
     }
 
     return {

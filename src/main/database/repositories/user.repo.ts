@@ -1,4 +1,5 @@
 import { getDb } from '../db';
+import { hashPassword } from '../../security/password';
 
 export type UserRow = {
   id: number;
@@ -146,7 +147,7 @@ export function createUser(
       VALUES (?, ?, ?, ?, 1)
       `
     )
-    .run(cleanName, cleanUsername, cleanPassword, cleanRole);
+    .run(cleanName, cleanUsername, hashPassword(cleanPassword), cleanRole);
 
   const created = getUserByIdInternal(Number(result.lastInsertRowid));
 
@@ -239,7 +240,10 @@ export function resetUserPassword(userId: number, password: string): PublicUserR
     throw new Error('المستخدم غير موجود');
   }
 
-  db.prepare(`UPDATE users SET password = ? WHERE id = ?`).run(cleanPassword, userId);
+  db.prepare(`UPDATE users SET password = ? WHERE id = ?`).run(
+    hashPassword(cleanPassword),
+    userId
+  );
 
   const updated = getUserByIdInternal(userId);
 
@@ -256,4 +260,13 @@ export function findUserByUsername(username: string): UserRow | undefined {
   return db
     .prepare(`SELECT * FROM users WHERE username = ? AND is_active = 1`)
     .get(username) as UserRow | undefined;
+}
+
+export function upgradeUserPasswordHash(userId: number, password: string): void {
+  const db = getDb();
+
+  db.prepare(`UPDATE users SET password = ? WHERE id = ?`).run(
+    hashPassword(password.trim()),
+    userId
+  );
 }
