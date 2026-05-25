@@ -8,6 +8,8 @@
     "dev:electron": "wait-on tcp:3000 && electron .",
     "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:electron\"",
     "build:renderer": "vite build",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run build:renderer",
     "rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {

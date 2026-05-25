@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import BarcodePreview from '../../components/products/BarcodePreview';
+import { useAuthStore } from '../../store/auth.store';
 
 type Category = {
 id: number;
@@ -119,6 +120,7 @@ type ProductsTab = 'list' | 'create' | 'edit';
 type ProductEditMode = 'edit' | 'addVariant';
 
 export default function ProductsPage() {
+  const currentUser = useAuthStore((s) => s.user);
   const pageRef = useRef<HTMLDivElement | null>(null);
   const [isCompact, setIsCompact] = useState(false);
   const [pageWidth, setPageWidth] = useState(
@@ -155,6 +157,7 @@ export default function ProductsPage() {
   const [editName, setEditName] = useState('');
   const [editCategoryId, setEditCategoryId] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  
   const [editVariants, setEditVariants] = useState<
     Array<{
       id: number;
@@ -281,7 +284,8 @@ export default function ProductsPage() {
         buy_price: buyPrice,
         sell_price: sellPrice,
         min_stock: minStock,
-        opening_qty: openingQty
+        opening_qty: openingQty,
+        actor_id: currentUser?.id
       });
 
       if (!result.success) {
@@ -419,6 +423,7 @@ export default function ProductsPage() {
         category_id: categoryId ? Number(categoryId) : null,
         description: description.trim() || null,
         image_path: null,
+        actor_id: currentUser?.id,
         variants: variants.map((v) => ({
           barcode: v.barcode.trim(),
           size: v.size.trim(),
@@ -875,6 +880,7 @@ export default function ProductsPage() {
       await window.api.updateProduct({
         id: editingProductId,
         name: editName.trim(),
+        actor_id: currentUser?.id,
         category_id: editCategoryId ? Number(editCategoryId) : null,
         description: editDescription.trim() || null,
         image_path: null
@@ -884,6 +890,7 @@ export default function ProductsPage() {
         await window.api.updateVariant({
           id: variant.id,
           barcode: variant.barcode.trim(),
+          actor_id: currentUser?.id,
           size: variant.size.trim(),
           color: variant.color.trim(),
           buy_price: Number(variant.buy_price),
@@ -918,7 +925,7 @@ export default function ProductsPage() {
 
   async function handleToggleProductActive(productId: number, currentState: number) {
     try {
-      await window.api.toggleProductActive(productId, currentState ? 0 : 1);
+      await window.api.toggleProductActive(productId, currentState ? 0 : 1, currentUser?.id);
       await loadData();
 
       if (expandedId === productId) {
@@ -936,7 +943,7 @@ export default function ProductsPage() {
     currentState: number
   ) {
     try {
-      await window.api.toggleVariantActive(variantId, currentState ? 0 : 1);
+      await window.api.toggleVariantActive(variantId, currentState ? 0 : 1, currentUser?.id);
 
       const refreshed = await window.api.getProductVariants({
         productId,

@@ -123,7 +123,8 @@ declare global {
 
       toggleVariantActive: (
         variantId: number,
-        isActive: boolean | number
+        isActive: boolean | number,
+        actorId?: number
       ) => Promise<any>;
 
       createProduct: (input: any) => Promise<any>;
@@ -134,7 +135,8 @@ declare global {
 
       toggleProductActive: (
         productId: number,
-        isActive: boolean | number
+        isActive: boolean | number,
+        actorId?: number
       ) => Promise<any>;
 
       addProductVariant: (input: {
@@ -146,6 +148,7 @@ declare global {
         sell_price: number;
         min_stock: number;
         opening_qty?: number;
+        actor_id?: number;
       }) => Promise<{
         success: boolean;
         variantId?: number;
@@ -340,14 +343,14 @@ declare global {
       //==========================
       //Backups
       //==========================
-      backupDatabase: () => Promise<{
+      backupDatabase: (input?: { actor_id?: number }) => Promise<{
         success: boolean;
         canceled?: boolean;
         path?: string;
         message?: string;
       }>;
 
-      restoreDatabase: () => Promise<{
+      restoreDatabase: (input?: { actor_id?: number }) => Promise<{
         success: boolean;
         canceled?: boolean;
         path?: string;
@@ -355,7 +358,7 @@ declare global {
         message?: string;
       }>;
 
-      resetDatabase: () => Promise<{
+      resetDatabase: (input?: { actor_id?: number }) => Promise<{
         success: boolean;
         canceled?: boolean;
         message?: string;
@@ -638,7 +641,7 @@ declare global {
           };
         }>;
 
-        saveAppLogoUrl: (url: string) => Promise<{
+        saveAppLogoUrl: (url: string, input?: { actor_id?: number }) => Promise<{
           success: boolean;
           status: {
             activated: boolean;
@@ -652,7 +655,7 @@ declare global {
           };
         }>;
        
-        chooseAppLogo: () => Promise<{
+        chooseAppLogo: (input?: { actor_id?: number }) => Promise<{
           success: boolean;
           canceled?: boolean;
           logoUrl?: string;
@@ -684,7 +687,7 @@ declare global {
           };
         }>;
 
-        saveAppName: (name: string) => Promise<{
+        saveAppName: (name: string, input?: { actor_id?: number }) => Promise<{
           success: boolean;
           status: {
             activated: boolean;

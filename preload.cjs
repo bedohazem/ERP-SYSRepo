@@ -14,11 +14,11 @@ contextBridge.exposeInMainWorld('api', {
   getCategories: () => ipcRenderer.invoke('products:get-categories'),
   getProducts: (payload) => ipcRenderer.invoke('products:list', payload),
   getProductVariants: (payload) => ipcRenderer.invoke('products:get-variants', payload),
-  toggleVariantActive: (variantId, isActive) => ipcRenderer.invoke('products:toggle-variant-active', variantId, isActive),
+  toggleVariantActive: (variantId, isActive, actorId) => ipcRenderer.invoke('products:toggle-variant-active', variantId, isActive, actorId),
   createProduct: (input) => ipcRenderer.invoke('products:create', input),
   updateProduct: (input) => ipcRenderer.invoke('products:update', input),
   updateVariant: (input) => ipcRenderer.invoke('products:update-variant', input),
-  toggleProductActive: (productId, isActive) => ipcRenderer.invoke('products:toggle-active', productId, isActive),
+  toggleProductActive: (productId, isActive, actorId) => ipcRenderer.invoke('products:toggle-active', productId, isActive, actorId),
   addProductVariant: (input) => ipcRenderer.invoke('products:add-variant', input),
 
   getBarcodePrintSettings: () => ipcRenderer.invoke('settings:get-barcode-print'),
@@ -47,9 +47,9 @@ contextBridge.exposeInMainWorld('api', {
   getLoyaltySettings: () => ipcRenderer.invoke('settings:get-loyalty'),
   saveLoyaltySettings: (input) => ipcRenderer.invoke('settings:save-loyalty', input),
 
-  backupDatabase: () => ipcRenderer.invoke('settings:backup-database'),
-  restoreDatabase: () => ipcRenderer.invoke('settings:restore-database'),
-  resetDatabase: () => ipcRenderer.invoke('settings:reset-database'),
+  backupDatabase: (input) => ipcRenderer.invoke('settings:backup-database', input),
+  restoreDatabase: (input) => ipcRenderer.invoke('settings:restore-database', input),
+  resetDatabase: (input) => ipcRenderer.invoke('settings:reset-database', input),
 
   getReportsSummary: (input) => ipcRenderer.invoke('reports:summary', input),
 
@@ -81,8 +81,8 @@ contextBridge.exposeInMainWorld('api', {
   getLicenseStatus: () => ipcRenderer.invoke('settings:get-license-status'),
   activateApp: (code) => ipcRenderer.invoke('settings:activate-app', code),
   deactivateApp: () => ipcRenderer.invoke('settings:deactivate-app'),
-  saveAppLogoUrl: (url) => ipcRenderer.invoke('settings:save-app-logo-url', url),
-  chooseAppLogo: () => ipcRenderer.invoke('settings:choose-app-logo'),
-  saveAppName: (name) => ipcRenderer.invoke('settings:save-app-name', name),
+  saveAppLogoUrl: (url, input) => ipcRenderer.invoke('settings:save-app-logo-url', url, input),
+  chooseAppLogo: (input) => ipcRenderer.invoke('settings:choose-app-logo', input),
+  saveAppName: (name, input) => ipcRenderer.invoke('settings:save-app-name', name, input),
 
 });

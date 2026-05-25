@@ -15,6 +15,7 @@ import {
   saveAppName
 } from '../database/repositories/settings.repo';
 import { closeDb, getDb, getDbPath, resetDatabaseData } from '../database/db';
+import { requireAdmin } from './permission-helper';
 
 
 function getErrorMessage(error: unknown) {
@@ -139,6 +140,7 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle('settings:restore-database', async (event,input?: { actor_id?: number }) => {
     try {
+      requireAdmin(getActorId(input));
       const parentWindow = BrowserWindow.fromWebContents(event.sender);
 
       const options: OpenDialogOptions = {
@@ -209,6 +211,7 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle('settings:reset-database', async (event, input?: { actor_id?: number }) => {
     try {
+      requireAdmin(getActorId(input));
       const parentWindow = BrowserWindow.fromWebContents(event.sender);
       const saveResult = parentWindow
         ? await dialog.showSaveDialog(parentWindow, {
@@ -310,15 +313,25 @@ export function registerSettingsIpc(): void {
     return deactivateApp();
   });
 
-  ipcMain.handle('settings:save-app-logo-url', (_, url: string) => {
-    const saved = saveAppLogoUrl(url);
+  ipcMain.handle('settings:save-app-logo-url', (_, url: string, input?: { actor_id?: number }) => {
+      try {
+        requireAdmin(getActorId(input));
 
-    if (String(url || '').startsWith('data:image')) {
-      updateOpenWindowsIcon(url);
+        const saved = saveAppLogoUrl(url);
+
+        if (String(url || '').startsWith('data:image')) {
+          updateOpenWindowsIcon(url);
+        }
+
+        return saved;
+      } catch (error) {
+        return {
+          success: false,
+          message: getErrorMessage(error)
+        };
+      }
     }
-
-    return saved;
-  });
+  );
 
   ipcMain.handle('settings:choose-app-logo', async (event) => {
     try {
@@ -369,14 +382,23 @@ export function registerSettingsIpc(): void {
     }
   });
 
-  ipcMain.handle('settings:save-app-name', (_, name: string) => {
-    const saved = saveAppName(name);
+  ipcMain.handle('settings:save-app-name', (_, name: string, input?: { actor_id?: number }) => {
+    try {
+      requireAdmin(getActorId(input));
 
-    BrowserWindow.getAllWindows().forEach((window) => {
-      window.setTitle(saved.status.app_name || 'ERP Store');
-    });
+      const saved = saveAppName(name);
 
-    return saved;
+      BrowserWindow.getAllWindows().forEach((window) => {
+        window.setTitle(saved.status.app_name || 'ERP Store');
+      });
+
+      return saved;
+    } catch (error) {
+      return {
+        success: false,
+        message: getErrorMessage(error)
+      };
+    }
   });
   
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAuthStore } from '../../store/auth.store';
 
 type BarcodeItemPosition =
   | 'top'
@@ -104,6 +105,7 @@ export default function SettingsPage() {
 
   const [appName, setAppName] = useState('');
   const [savingAppName, setSavingAppName] = useState(false);
+  const currentUser = useAuthStore((s) => s.user);
 
   useEffect(() => {
     void loadSettings();
@@ -210,7 +212,8 @@ export default function SettingsPage() {
     setBackupLoading(true);
 
     try {
-      const result = await window.api.backupDatabase();
+      const result = await window.api.backupDatabase({ actor_id: currentUser?.id })
+
 
       if (result.canceled) {
         return;
@@ -244,7 +247,7 @@ export default function SettingsPage() {
     setRestoreLoading(true);
 
     try {
-      const result = await window.api.restoreDatabase();
+      const result = await window.api.restoreDatabase({ actor_id: currentUser?.id })
 
       if (result.canceled) {
         return;
@@ -270,7 +273,7 @@ export default function SettingsPage() {
     setResetLoading(true);
 
     try {
-      const result = await window.api.resetDatabase();
+      const result = await window.api.resetDatabase({ actor_id: currentUser?.id })
 
       if (result.canceled) {
         return;
@@ -347,7 +350,7 @@ export default function SettingsPage() {
     setSavingLogo(true);
 
     try {
-      const result = await window.api.saveAppLogoUrl(appLogoUrl.trim());
+      const result = await window.api.saveAppLogoUrl(appLogoUrl.trim(), { actor_id: currentUser?.id });
       setLicenseStatus(result.status);
       showMessage('success', 'تم حفظ رابط صورة التطبيق');
     } catch (error) {
@@ -364,7 +367,7 @@ export default function SettingsPage() {
     setSavingLogo(true);
 
     try {
-      const result = await window.api.chooseAppLogo();
+      const result = await window.api.chooseAppLogo({ actor_id: currentUser?.id })
 
       if (result.canceled) {
         return;
@@ -445,7 +448,7 @@ export default function SettingsPage() {
     setSavingAppName(true);
 
     try {
-      const result = await window.api.saveAppName(cleanName);
+      const result = await window.api.saveAppName(cleanName, { actor_id: currentUser?.id });
 
       setLicenseStatus(result.status);
       setAppName(result.status.app_name || cleanName);
