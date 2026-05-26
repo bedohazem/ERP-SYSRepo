@@ -477,34 +477,123 @@ export function getCustomerStatement(customerId: number) {
     `)
     .all(id) as any[];
 
-  const entries = [
-    ...sales.map((sale) => ({
-      id: `sale-${sale.id}`,
-      type: 'sale',
-      title: `فاتورة بيع #${sale.id}`,
-      debit: Number(sale.grand_total || 0),
-      credit: 0,
-      sale_id: sale.id,
-      payment_status: sale.payment_status,
-      notes: sale.notes,
-      created_at: sale.created_at
-    })),
+  function isReturnSettlement(payment: any) {
+    return String(payment.notes || '').startsWith('تسوية مديونية بسبب مرتجع');
+  }
 
-    ...payments.map((payment) => ({
-      id: `payment-${payment.id}`,
+  const normalPaymentsBySale = new Map<number, number>();
+  const allPaymentsBySale = new Map<number, number>();
+
+  for (const payment of payments) {
+    const saleId = Number(payment.sale_id || 0);
+    const amount = Number(payment.amount || 0);
+
+    if (!saleId || amount <= 0) continue;
+
+    allPaymentsBySale.set(
+      saleId,
+      Number(allPaymentsBySale.get(saleId) || 0) + amount
+    );
+
+    if (!isReturnSettlement(payment)) {
+      normalPaymentsBySale.set(
+        saleId,
+        Number(normalPaymentsBySale.get(saleId) || 0) + amount
+      );
+    }
+  }
+
+  const saleEntries = sales.map((sale) => ({
+    id: `sale-${sale.id}`,
+    type: 'sale',
+    title: `فاتورة بيع #${sale.id}`,
+    debit: Number(sale.grand_total || 0),
+    credit: 0,
+    sale_id: sale.id,
+    payment_status: sale.payment_status,
+    notes: sale.notes,
+    created_at: sale.created_at
+  }));
+
+  const initialPaymentEntries = sales
+    .map((sale) => {
+      const normalLaterPaid = Number(normalPaymentsBySale.get(Number(sale.id)) || 0);
+
+      const initialPaid = Math.max(
+        0,
+        Number(sale.paid || 0) - normalLaterPaid
+      );
+
+      return {
+        sale,
+        initialPaid
+      };
+    })
+    .filter((item) => item.initialPaid > 0)
+    .map(({ sale, initialPaid }) => ({
+      id: `sale-paid-${sale.id}`,
       type: 'payment',
-      title: payment.sale_id
-        ? `دفعة على فاتورة #${payment.sale_id}`
-        : 'دفعة عميل',
+      title: `دفعة وقت البيع على فاتورة #${sale.id}`,
       debit: 0,
-      credit: Number(payment.amount || 0),
-      sale_id: payment.sale_id,
-      payment_method: payment.payment_method,
-      notes: payment.notes,
-      created_at: payment.created_at
-    }))
+      credit: initialPaid,
+      sale_id: sale.id,
+      payment_method: sale.payment_method,
+      notes: 'دفعة مسجلة وقت إنشاء الفاتورة',
+      created_at: sale.created_at
+    }));
+
+  const paymentEntries = payments.map((payment) => ({
+    id: `payment-${payment.id}`,
+    type: 'payment',
+    title: payment.sale_id
+      ? `دفعة على فاتورة #${payment.sale_id}`
+      : 'دفعة عميل',
+    debit: 0,
+    credit: Number(payment.amount || 0),
+    sale_id: payment.sale_id,
+    payment_method: payment.payment_method,
+    notes: payment.notes,
+    created_at: payment.created_at
+  }));
+
+  const entries = [
+    ...saleEntries,
+    ...initialPaymentEntries,
+    ...paymentEntries
   ].sort((a, b) => {
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
+  const totalSales = sales.reduce(
+    (sum, sale) => sum + Number(sale.grand_total || 0),
+    0
+  );
+
+  const totalInitialPaid = initialPaymentEntries.reduce(
+    (sum, entry) => sum + Number(entry.credit || 0),
+    0
+  );
+
+  const totalLaterPayments = payments.reduce(
+    (sum, payment) => sum + Number(payment.amount || 0),
+    0
+  );
+
+  const openSales = sales.filter((sale) => {
+    const saleId = Number(sale.id);
+    const initialPaidEntry = initialPaymentEntries.find(
+      (entry) => Number(entry.sale_id) === saleId
+    );
+
+    const initialPaid = Number(initialPaidEntry?.credit || 0);
+    const allPayments = Number(allPaymentsBySale.get(saleId) || 0);
+
+    const effectiveRemaining = Math.max(
+      0,
+      Number(sale.grand_total || 0) - initialPaid - allPayments
+    );
+
+    return effectiveRemaining > 0;
   });
 
   return {
@@ -513,10 +602,10 @@ export function getCustomerStatement(customerId: number) {
     payments,
     entries,
     summary: {
-      total_sales: sales.reduce((sum, s) => sum + Number(s.grand_total || 0), 0),
-      total_paid: payments.reduce((sum, p) => sum + Number(p.amount || 0), 0),
+      total_sales: totalSales,
+      total_paid: totalInitialPaid + totalLaterPayments,
       balance: Number(customer.balance || 0),
-      open_sales: sales.filter((s) => Number(s.remaining_amount || 0) > 0).length
+      open_sales: openSales.length
     }
   };
 }
