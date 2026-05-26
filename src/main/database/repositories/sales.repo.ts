@@ -668,7 +668,18 @@ export function createSaleReturn(input: {
       (Number(originalSale.loyalty_discount_value || 0) * ratio).toFixed(2)
     );
 
-    const refundAmount = Math.max(0, returnSubTotal - loyaltyDiscountPart);
+    const returnValue = Math.max(0, returnSubTotal - loyaltyDiscountPart);
+
+    const originalRemainingAmount = Math.max(
+      0,
+      Number(originalSale.remaining_amount || 0)
+    );
+
+    const debtReductionAmount = originalSale.customer_id
+      ? Math.min(returnValue, originalRemainingAmount)
+      : 0;
+
+    const cashRefundAmount = Math.max(0, returnValue - debtReductionAmount);
 
     const returnResult = db
       .prepare(`
@@ -692,7 +703,7 @@ export function createSaleReturn(input: {
         userId,
         returnSubTotal,
         loyaltyDiscountPart,
-        refundAmount,
+        cashRefundAmount,
         originalSale.payment_method || 'cash',
         reason,
         `مرتجع من فاتورة رقم ${originalSaleId}`,
@@ -701,17 +712,64 @@ export function createSaleReturn(input: {
 
     const returnId = Number(returnResult.lastInsertRowid);
 
-    if (refundAmount > 0) {
+    if (cashRefundAmount  > 0) {
       createCashMovement({
         type: 'sale_return',
         direction: 'out',
-        amount: refundAmount,
+        amount: cashRefundAmount,
         payment_method: originalSale.payment_method || 'cash',
         reference_id: returnId,
         reference_type: 'sale_return',
         notes: `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
         created_by: userId
       });
+    }
+
+    if (originalSale.customer_id && debtReductionAmount > 0) {
+      const newSaleRemainingAmount = Math.max(
+        0,
+        originalRemainingAmount - debtReductionAmount
+      );
+
+      const newSalePaymentStatus =
+        newSaleRemainingAmount === 0
+          ? 'paid'
+          : Number(originalSale.paid || 0) > 0
+            ? 'partial'
+            : 'unpaid';
+
+      db.prepare(`
+        UPDATE sales
+        SET
+          remaining_amount = ?,
+          payment_status = ?
+        WHERE id = ?
+      `).run(newSaleRemainingAmount, newSalePaymentStatus, originalSaleId);
+
+      db.prepare(`
+        UPDATE customers
+        SET
+          balance = MAX(IFNULL(balance, 0) - ?, 0),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(debtReductionAmount, originalSale.customer_id);
+
+      db.prepare(`
+        INSERT INTO customer_payments (
+          customer_id,
+          sale_id,
+          amount,
+          payment_method,
+          notes
+        )
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        originalSale.customer_id,
+        originalSaleId,
+        debtReductionAmount,
+        originalSale.payment_method || 'cash',
+        `تسوية مديونية بسبب مرتجع RET-${String(returnId).padStart(5, '0')}`
+      );
     }
 
     const insertReturnItem = db.prepare(`
@@ -776,7 +834,7 @@ export function createSaleReturn(input: {
         WHERE id = ?
       `).run(
         loyaltyPointsToReverse,
-        refundAmount,
+        returnValue,
         originalSale.customer_id
       );
 
@@ -794,7 +852,7 @@ export function createSaleReturn(input: {
         originalSale.customer_id,
         originalSaleId,
         -loyaltyPointsToReverse,
-        refundAmount,
+        returnValue,
         `خصم نقاط بسبب مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`
       );
     }
@@ -804,7 +862,9 @@ export function createSaleReturn(input: {
       returnCode: `RET-${String(returnId).padStart(5, '0')}`,
       returnSaleId: returnId,
       originalSaleId,
-      refundAmount,
+      refundAmount: cashRefundAmount,
+      debt_reduction_amount: debtReductionAmount,
+      return_value: returnValue,
       loyalty_points_reversed: loyaltyPointsToReverse
     };
   });

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useAuthStore } from '../../store/auth.store';
 
 type Supplier = {
   id: number;
@@ -23,6 +24,7 @@ type PurchaseLine = VariantRow & {
 };
 
 export default function PurchasesPage() {
+  const currentUser = useAuthStore((s) => s.user);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierId, setSupplierId] = useState<number | ''>('');
   const [supplierSearch, setSupplierSearch] = useState('');
@@ -152,6 +154,7 @@ export default function PurchasesPage() {
         paid_amount: Number(paidAmount || 0),
         payment_method: paymentMethod,
         notes: notes.trim() || null,
+        actor_id: currentUser?.id,
         items: lines.map((line) => ({
           variant_id: line.variant_id,
           quantity: Number(line.quantity || 0),

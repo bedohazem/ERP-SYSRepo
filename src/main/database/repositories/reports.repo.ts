@@ -5,8 +5,8 @@ type ReportFilter = {
   date_to?: string;
 };
 
-function buildDateWhere(alias = 's', input?: ReportFilter) {
-  const where: string[] = [];
+function buildWhere(alias: string, input?: ReportFilter, extra: string[] = []) {
+  const where: string[] = [...extra];
   const params: any[] = [];
 
   if (input?.date_from) {
@@ -27,117 +27,149 @@ function buildDateWhere(alias = 's', input?: ReportFilter) {
 
 export function getReportsSummary(input?: ReportFilter) {
   const db = getDb();
-  const { whereSql, params } = buildDateWhere('s', input);
 
-  const summary = db
+  const salesWhere = buildWhere('s', input, [`IFNULL(s.type, 'sale') = 'sale'`]);
+  const returnsWhere = buildWhere('sr', input);
+  const combinedWhere = buildWhere('x', input);
+
+  const salesSummary = db
     .prepare(`
       SELECT
-        COUNT(CASE WHEN IFNULL(s.type, 'sale') = 'sale' THEN 1 END) AS sales_count,
-        COUNT(CASE WHEN IFNULL(s.type, 'sale') = 'return' THEN 1 END) AS returns_count,
-
-        IFNULL(SUM(CASE WHEN IFNULL(s.type, 'sale') = 'sale' THEN s.grand_total ELSE 0 END), 0) AS gross_sales,
-        IFNULL(SUM(CASE WHEN IFNULL(s.type, 'sale') = 'return' THEN s.grand_total ELSE 0 END), 0) AS total_returns,
-
-        IFNULL(SUM(CASE WHEN IFNULL(s.type, 'sale') = 'sale' THEN s.loyalty_discount_value ELSE 0 END), 0) AS loyalty_discounts,
-
-        IFNULL(SUM(
-          CASE
-            WHEN IFNULL(s.type, 'sale') = 'sale' THEN s.grand_total
-            WHEN IFNULL(s.type, 'sale') = 'return' THEN -s.grand_total
-            ELSE 0
-          END
-        ), 0) AS net_sales
+        COUNT(*) AS sales_count,
+        IFNULL(SUM(s.grand_total), 0) AS gross_sales,
+        IFNULL(SUM(s.loyalty_discount_value), 0) AS loyalty_discounts
       FROM sales s
-      ${whereSql}
+      ${salesWhere.whereSql}
     `)
-    .get(...params) as any;
+    .get(...salesWhere.params) as any;
 
-const profitRow = db
-  .prepare(`
-    SELECT
-      IFNULL(SUM(
-        CASE
-          WHEN IFNULL(x.type, 'sale') = 'sale'
-            THEN x.items_profit_before_discount
-          WHEN IFNULL(x.type, 'sale') = 'return'
-            THEN -x.items_profit_before_discount
-          ELSE 0
-        END
-      ), 0) AS gross_profit_before_discounts,
-
-      IFNULL(SUM(
-        CASE
-          WHEN IFNULL(x.type, 'sale') = 'sale'
-            THEN x.grand_total - x.total_cost
-          WHEN IFNULL(x.type, 'sale') = 'return'
-            THEN -(x.grand_total - x.total_cost)
-          ELSE 0
-        END
-      ), 0) AS net_profit_after_discounts
-    FROM (
+  const returnsSummary = db
+    .prepare(`
       SELECT
-        s.id,
-        s.type,
-        s.grand_total,
-        IFNULL(SUM(si.unit_cost * si.quantity), 0) AS total_cost,
-        IFNULL(SUM((si.unit_price - si.unit_cost) * si.quantity), 0) AS items_profit_before_discount
-      FROM sales s
-      JOIN sale_items si ON si.sale_id = s.id
-      ${whereSql}
-      GROUP BY s.id
-    ) x
-  `)
-  .get(...params) as any;
+        COUNT(*) AS returns_count,
+        IFNULL(SUM(sr.refund_amount), 0) AS total_returns
+      FROM sale_returns sr
+      ${returnsWhere.whereSql}
+    `)
+    .get(...returnsWhere.params) as any;
+
+  const salesProfitRow = db
+    .prepare(`
+      SELECT
+        IFNULL(SUM(x.items_profit_before_discount), 0) AS gross_profit_before_discounts,
+        IFNULL(SUM(x.grand_total - x.total_cost), 0) AS net_profit_after_discounts
+      FROM (
+        SELECT
+          s.id,
+          s.grand_total,
+          IFNULL(SUM(si.unit_cost * si.quantity), 0) AS total_cost,
+          IFNULL(SUM((si.unit_price - si.unit_cost) * si.quantity), 0) AS items_profit_before_discount
+        FROM sales s
+        JOIN sale_items si ON si.sale_id = s.id
+        ${salesWhere.whereSql}
+        GROUP BY s.id
+      ) x
+    `)
+    .get(...salesWhere.params) as any;
+
+  const returnsProfitRow = db
+    .prepare(`
+      SELECT
+        IFNULL(SUM(x.items_profit_before_discount), 0) AS returned_profit_before_discounts,
+        IFNULL(SUM(x.refund_amount - x.total_cost), 0) AS returned_profit_after_discounts
+      FROM (
+        SELECT
+          sr.id,
+          sr.refund_amount,
+          IFNULL(SUM(sri.unit_cost * sri.quantity), 0) AS total_cost,
+          IFNULL(SUM((sri.unit_price - sri.unit_cost) * sri.quantity), 0) AS items_profit_before_discount
+        FROM sale_returns sr
+        JOIN sale_return_items sri ON sri.return_id = sr.id
+        ${returnsWhere.whereSql}
+        GROUP BY sr.id
+      ) x
+    `)
+    .get(...returnsWhere.params) as any;
+
+  const grossSales = Number(salesSummary.gross_sales || 0);
+  const totalReturns = Number(returnsSummary.total_returns || 0);
+
+  const grossProfitBeforeDiscounts =
+    Number(salesProfitRow.gross_profit_before_discounts || 0) -
+    Number(returnsProfitRow.returned_profit_before_discounts || 0);
+
+  const netProfitAfterDiscounts =
+    Number(salesProfitRow.net_profit_after_discounts || 0) -
+    Number(returnsProfitRow.returned_profit_after_discounts || 0);
 
   const topProducts = db
     .prepare(`
       SELECT
-        si.variant_id,
-        si.product_name,
-        si.size,
-        si.color,
-        IFNULL(SUM(
-          CASE
-            WHEN IFNULL(s.type, 'sale') = 'sale' THEN si.quantity
-            WHEN IFNULL(s.type, 'sale') = 'return' THEN -si.quantity
-            ELSE 0
-          END
-        ), 0) AS net_quantity,
-        IFNULL(SUM(
-          CASE
-            WHEN IFNULL(s.type, 'sale') = 'sale' THEN si.line_total
-            WHEN IFNULL(s.type, 'sale') = 'return' THEN -si.line_total
-            ELSE 0
-          END
-        ), 0) AS net_total
-      FROM sale_items si
-      JOIN sales s ON s.id = si.sale_id
-      ${whereSql}
-      GROUP BY si.variant_id, si.product_name, si.size, si.color
+        x.variant_id,
+        x.product_name,
+        x.size,
+        x.color,
+        IFNULL(SUM(x.quantity), 0) AS net_quantity,
+        IFNULL(SUM(x.total), 0) AS net_total
+      FROM (
+        SELECT
+          si.variant_id,
+          si.product_name,
+          si.size,
+          si.color,
+          si.quantity AS quantity,
+          si.line_total AS total,
+          s.created_at
+        FROM sale_items si
+        JOIN sales s ON s.id = si.sale_id
+        WHERE IFNULL(s.type, 'sale') = 'sale'
+
+        UNION ALL
+
+        SELECT
+          sri.variant_id,
+          sri.product_name,
+          sri.size,
+          sri.color,
+          -sri.quantity AS quantity,
+          -sri.line_total AS total,
+          sr.created_at
+        FROM sale_return_items sri
+        JOIN sale_returns sr ON sr.id = sri.return_id
+      ) x
+      ${combinedWhere.whereSql}
+      GROUP BY x.variant_id, x.product_name, x.size, x.color
       HAVING net_quantity > 0
       ORDER BY net_quantity DESC
       LIMIT 10
     `)
-    .all(...params);
+    .all(...combinedWhere.params);
 
   const dailySales = db
     .prepare(`
       SELECT
-        date(s.created_at) AS day,
-        IFNULL(SUM(
-          CASE
-            WHEN IFNULL(s.type, 'sale') = 'sale' THEN s.grand_total
-            WHEN IFNULL(s.type, 'sale') = 'return' THEN -s.grand_total
-            ELSE 0
-          END
-        ), 0) AS total
-      FROM sales s
-      ${whereSql}
-      GROUP BY date(s.created_at)
+        date(x.created_at) AS day,
+        IFNULL(SUM(x.amount), 0) AS total
+      FROM (
+        SELECT
+          s.created_at,
+          s.grand_total AS amount
+        FROM sales s
+        WHERE IFNULL(s.type, 'sale') = 'sale'
+
+        UNION ALL
+
+        SELECT
+          sr.created_at,
+          -sr.refund_amount AS amount
+        FROM sale_returns sr
+      ) x
+      ${combinedWhere.whereSql}
+      GROUP BY date(x.created_at)
       ORDER BY day ASC
       LIMIT 60
     `)
-    .all(...params);
+    .all(...combinedWhere.params);
 
   const paymentMethods = db
     .prepare(`
@@ -146,12 +178,11 @@ const profitRow = db
         COUNT(*) AS count,
         IFNULL(SUM(s.grand_total), 0) AS total
       FROM sales s
-      ${whereSql}
-        ${whereSql ? 'AND' : 'WHERE'} IFNULL(s.type, 'sale') = 'sale'
+      ${salesWhere.whereSql}
       GROUP BY IFNULL(s.payment_method, 'cash')
       ORDER BY total DESC
     `)
-    .all(...params);
+    .all(...salesWhere.params);
 
   const lowStock = db
     .prepare(`
@@ -187,32 +218,46 @@ const profitRow = db
         c.id,
         c.name,
         c.phone,
-        COUNT(s.id) AS sales_count,
-        IFNULL(SUM(s.grand_total), 0) AS total_spent
+        IFNULL(SUM(x.sales_count), 0) AS sales_count,
+        IFNULL(SUM(x.amount), 0) AS total_spent
       FROM customers c
-      JOIN sales s ON s.customer_id = c.id
-      ${whereSql}
-        ${whereSql ? 'AND' : 'WHERE'} IFNULL(s.type, 'sale') = 'sale'
+      JOIN (
+        SELECT
+          s.customer_id,
+          s.created_at,
+          s.grand_total AS amount,
+          1 AS sales_count
+        FROM sales s
+        WHERE IFNULL(s.type, 'sale') = 'sale'
+          AND s.customer_id IS NOT NULL
+
+        UNION ALL
+
+        SELECT
+          sr.customer_id,
+          sr.created_at,
+          -sr.refund_amount AS amount,
+          0 AS sales_count
+        FROM sale_returns sr
+        WHERE sr.customer_id IS NOT NULL
+      ) x ON x.customer_id = c.id
+      ${combinedWhere.whereSql}
       GROUP BY c.id
       ORDER BY total_spent DESC
       LIMIT 10
     `)
-    .all(...params);
+    .all(...combinedWhere.params);
 
   return {
     summary: {
-      sales_count: Number(summary.sales_count || 0),
-      returns_count: Number(summary.returns_count || 0),
-      gross_sales: Number(summary.gross_sales || 0),
-      total_returns: Number(summary.total_returns || 0),
-      loyalty_discounts: Number(summary.loyalty_discounts || 0),
-      net_sales: Number(summary.net_sales || 0),
-      gross_profit_before_discounts: Number(
-        profitRow.gross_profit_before_discounts || 0
-      ),
-      net_profit_after_discounts: Number(
-        profitRow.net_profit_after_discounts || 0
-      )
+      sales_count: Number(salesSummary.sales_count || 0),
+      returns_count: Number(returnsSummary.returns_count || 0),
+      gross_sales: grossSales,
+      total_returns: totalReturns,
+      loyalty_discounts: Number(salesSummary.loyalty_discounts || 0),
+      net_sales: grossSales - totalReturns,
+      gross_profit_before_discounts: grossProfitBeforeDiscounts,
+      net_profit_after_discounts: netProfitAfterDiscounts
     },
     topProducts,
     dailySales,

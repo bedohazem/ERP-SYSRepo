@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useAuthStore } from '../../store/auth.store';
 
 type CustomerRow = {
   id: number;
@@ -23,6 +24,7 @@ const emptyForm = {
 };
 
 export default function CustomersPage() {
+  const currentUser = useAuthStore((s) => s.user);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [query, setQuery] = useState('');
   const [form, setForm] = useState(emptyForm);
@@ -281,7 +283,9 @@ async function saveCustomerPayment() {
       customer_id: paymentCustomer.id,
       amount,
       payment_method: paymentMethod,
-      notes: paymentNotes.trim() || null
+      notes: paymentNotes.trim() || null,
+      actor_id: currentUser?.id
+
     });
 
     setMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`);

@@ -415,6 +415,17 @@ export function recordCustomerPayment(input: {
       WHERE id = ?
     `).run(totalPaid, customerId);
 
+    createCashMovement({
+      type: 'customer_payment',
+      direction: 'in',
+      amount: totalPaid,
+      payment_method: input.payment_method || 'cash',
+      reference_id: saleId,
+      reference_type: saleId ? 'sale' : 'customer_payment',
+      notes: input.notes?.trim() || 'دفعة من عميل',
+      created_by: (input as any).actor_id ?? null
+    });
+
     return {
       ok: true,
       customer_id: customerId,

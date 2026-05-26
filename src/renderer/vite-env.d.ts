@@ -296,6 +296,7 @@ declare global {
         amount: number;
         payment_method?: string;
         notes?: string | null;
+        actor_id?: number;
       }) => Promise<{
         ok: boolean;
         customer_id: number;
@@ -505,6 +506,7 @@ declare global {
             paid_amount?: number;
             payment_method?: string;
             notes?: string | null;
+            actor_id?: number;
             items: Array<{
               variant_id: number;
               quantity: number;
@@ -541,6 +543,7 @@ declare global {
             amount: number;
             payment_method?: string;
             notes?: string | null;
+            actor_id?: number;
           }) => Promise<{
             ok: boolean;
             supplier_id: number;

@@ -1,4 +1,5 @@
 import { getDb } from '../db';
+import { createCashMovement } from './cash.repo';
 
 export type CreatePurchaseInput = {
   supplier_id: number;
@@ -189,6 +190,17 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         input.payment_method || 'cash',
         `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}`
       );
+
+      createCashMovement({
+        type: 'supplier_payment',
+        direction: 'out',
+        amount: paidAmount,
+        payment_method: input.payment_method || 'cash',
+        reference_id: purchaseId,
+        reference_type: 'purchase_invoice',
+        notes: `دفع فاتورة شراء رقم ${purchaseId}`,
+        created_by: (input as any).actor_id ?? null
+      });
     }
 
     return {
@@ -487,6 +499,17 @@ export function recordSupplierPayment(input: {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(totalPaid, supplierId);
+
+    createCashMovement({
+      type: 'supplier_payment',
+      direction: 'out',
+      amount: totalPaid,
+      payment_method: input.payment_method || 'cash',
+      reference_id: purchaseId,
+      reference_type: purchaseId ? 'purchase_invoice' : 'supplier_payment',
+      notes: input.notes?.trim() || 'دفعة للمورد',
+      created_by: (input as any).actor_id ?? null
+    });
 
     return {
       ok: true,

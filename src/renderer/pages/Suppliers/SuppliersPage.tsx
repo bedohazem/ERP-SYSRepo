@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useAuthStore } from '../../store/auth.store';
 
 type Supplier = {
   id: number;
@@ -21,6 +22,7 @@ const emptyForm = {
 };
 
 export default function SuppliersPage() {
+  const currentUser = useAuthStore((s) => s.user);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [search, setSearch] = useState('');
   const [form, setForm] = useState(emptyForm);
@@ -173,7 +175,8 @@ export default function SuppliersPage() {
         supplier_id: paymentSupplier.id,
         amount,
         payment_method: paymentMethod,
-        notes: paymentNotes.trim() || null
+        notes: paymentNotes.trim() || null,
+        actor_id: currentUser?.id
       });
 
       showMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`);
