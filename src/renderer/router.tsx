@@ -88,7 +88,7 @@ export const router = createHashRouter([
   },
   {
     path: '/expenses',
-    element: withShell('المصروفات', <ExpensesPage />, ['admin'])
+    element: withShell('المصروفات', <ExpensesPage />, ['admin', 'cashier'])
   },  
   {
     path: '/users',

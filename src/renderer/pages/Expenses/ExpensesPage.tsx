@@ -19,6 +19,7 @@ export default function ExpensesPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role === 'admin';
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
@@ -381,6 +382,7 @@ export default function ExpensesPage() {
         </div>
 
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+        {isAdmin && (
           <button
             type="button"
             onClick={printExpensesReport}
@@ -393,6 +395,7 @@ export default function ExpensesPage() {
           >
             طباعة الكشف
           </button>
+        )}
 
           <div style={{ textAlign: 'left' }}>
             <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '4px' }}>

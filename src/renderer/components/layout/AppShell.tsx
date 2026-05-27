@@ -25,7 +25,7 @@ const menuItems: MenuItem[] = [
   { to: '/purchase-history', label: 'سجل الشراء', icon: '📑', title: 'سجل الشراء', roles: ['admin', 'cashier'] },
   { to: '/users', label: 'المستخدمين', icon: '👥', title: 'المستخدمين', roles: ['admin'] },
   { to: '/reports', label: 'التقارير', icon: '📊', title: 'التقارير', roles: ['admin'] },
-  { to: '/expenses', label: 'المصروفات', icon: '💳', title: 'المصروفات', roles: ['admin'] },
+  { to: '/expenses', label: 'المصروفات', icon: '💳', title: 'المصروفات', roles: ['admin', 'cashier'] },
   { to: '/cash', label: 'الخزنة', icon: '💵', title: 'الخزنة', roles: ['admin'] },
   { to: '/activity', label: 'سجل العمليات', icon: '🕘', title: 'سجل العمليات', roles: ['admin'] },
   { to: '/settings', label: 'الإعدادات', icon: '⚙️', title: 'الإعدادات', roles: ['admin'] }

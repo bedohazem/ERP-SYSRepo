@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getPaymentMethodLabel } from '../../utils/payment-method';
+import { useAuthStore } from '../../store/auth.store';
 
 type ReportsData = {
   summary: {
@@ -25,6 +26,21 @@ type DashboardState = {
   today: ReportsData;
   month: ReportsData;
   overview: ReportsData;
+};
+
+type CashierDailyRevenue = {
+  salesIn: number;
+  customerPaymentsIn: number;
+  depositsIn: number;
+
+  returnsOut: number;
+  supplierPaymentsOut: number;
+  expensesOut: number;
+  withdrawsOut: number;
+
+  totalIn: number;
+  totalOut: number;
+  netCash: number;
 };
 
 const emptyReports: ReportsData = {
@@ -53,11 +69,27 @@ const emptyDashboard: DashboardState = {
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const isCashier = user?.role !== 'admin';
   const [data, setData] = useState<DashboardState>(emptyDashboard);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [lastUpdated, setLastUpdated] = useState('');
 
+  const [cashierRevenue, setCashierRevenue] = useState<CashierDailyRevenue>({
+    salesIn: 0,
+    customerPaymentsIn: 0,
+    depositsIn: 0,
+
+    returnsOut: 0,
+    supplierPaymentsOut: 0,
+    expensesOut: 0,
+    withdrawsOut: 0,
+
+    totalIn: 0,
+    totalOut: 0,
+    netCash: 0
+  });
   const todayKey = useMemo(() => getLocalDateKey(new Date()), []);
   const monthStartKey = useMemo(() => getMonthStartKey(new Date()), []);
 
@@ -66,13 +98,95 @@ export default function DashboardPage() {
     setMessage('');
 
     try {
-      const [today, month, overview] = await Promise.all([
+      const [
+        today,
+        month,
+        overview,
+
+        todaySalesCash,
+        todayCustomerPayments,
+        todayDeposits,
+
+        todayReturns,
+        todaySupplierPayments,
+        todayExpenses,
+        todayWithdraws
+      ] = await Promise.all([
         window.api.getReportsSummary({ date_from: todayKey, date_to: todayKey }),
         window.api.getReportsSummary({ date_from: monthStartKey, date_to: todayKey }),
-        window.api.getReportsSummary()
+        window.api.getReportsSummary(),
+
+        window.api.getCashSummary({
+          date_from: todayKey,
+          date_to: todayKey,
+          type: 'sale'
+        }),
+
+        window.api.getCashSummary({
+          date_from: todayKey,
+          date_to: todayKey,
+          type: 'customer_payment'
+        }),
+
+        window.api.getCashSummary({
+          date_from: todayKey,
+          date_to: todayKey,
+          type: 'deposit'
+        }),
+
+        window.api.getCashSummary({
+          date_from: todayKey,
+          date_to: todayKey,
+          type: 'sale_return'
+        }),
+
+        window.api.getCashSummary({
+          date_from: todayKey,
+          date_to: todayKey,
+          type: 'supplier_payment'
+        }),
+
+        window.api.getCashSummary({
+          date_from: todayKey,
+          date_to: todayKey,
+          type: 'expense'
+        }),
+
+        window.api.getCashSummary({
+          date_from: todayKey,
+          date_to: todayKey,
+          type: 'withdraw'
+        })
       ]);
 
       setData({ today, month, overview });
+
+      const salesIn = Number(todaySalesCash?.total_in || 0);
+      const customerPaymentsIn = Number(todayCustomerPayments?.total_in || 0);
+      const depositsIn = Number(todayDeposits?.total_in || 0);
+
+      const returnsOut = Number(todayReturns?.total_out || 0);
+      const supplierPaymentsOut = Number(todaySupplierPayments?.total_out || 0);
+      const expensesOut = Number(todayExpenses?.total_out || 0);
+      const withdrawsOut = Number(todayWithdraws?.total_out || 0);
+
+      const totalIn = salesIn + customerPaymentsIn + depositsIn;
+      const totalOut = returnsOut + supplierPaymentsOut + expensesOut + withdrawsOut;
+
+      setCashierRevenue({
+        salesIn,
+        customerPaymentsIn,
+        depositsIn,
+
+        returnsOut,
+        supplierPaymentsOut,
+        expensesOut,
+        withdrawsOut,
+
+        totalIn,
+        totalOut,
+        netCash: totalIn - totalOut
+      });
 
       setLastUpdated(
         new Date().toLocaleTimeString('ar-EG', {
@@ -96,6 +210,22 @@ export default function DashboardPage() {
   const bestProduct = data.month.topProducts[0];
   const bestCustomer = data.month.topCustomers[0];
   const lowStockCount = data.overview.lowStock.length;
+
+  if (isCashier) {
+    return (
+      <CashierRevenueView
+        todayKey={todayKey}
+        cashierName={user?.name || user?.username || 'الكاشير'}
+        revenue={cashierRevenue}
+        salesCount={data.today.summary.sales_count}
+        returnsCount={data.today.summary.returns_count}
+        lastUpdated={lastUpdated}
+        loading={loading}
+        onRefresh={loadDashboard}
+        onNewSale={() => navigate('/sales')}
+      />
+    );
+  }
 
   return (
     <div className="fade-slide-in" style={{ display: 'grid', gap: '18px' }}>
@@ -788,3 +918,197 @@ const toastStyle: CSSProperties = {
   boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
   pointerEvents: 'none'
 };
+
+function CashierRevenueView({
+  todayKey,
+  cashierName,
+  revenue,
+  salesCount,
+  returnsCount,
+  lastUpdated,
+  loading,
+  onRefresh,
+  onNewSale
+}: {
+  todayKey: string;
+  cashierName: string;
+  revenue: CashierDailyRevenue;
+  salesCount: number;
+  returnsCount: number;
+  lastUpdated: string;
+  loading: boolean;
+  onRefresh: () => void;
+  onNewSale: () => void;
+}) {
+  return (
+    <div style={{ display: 'grid', gap: '18px' }}>
+      <section
+        className="glass-card"
+        style={{
+          padding: '22px',
+          borderRadius: '22px',
+          display: 'grid',
+          gap: '18px',
+          direction: 'rtl'
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '14px',
+            alignItems: 'center',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div>
+            <div style={{ color: '#93c5fd', fontWeight: 900, marginBottom: '6px' }}>
+              ملخص اليوم للكاشير
+            </div>
+
+            <h2 style={{ margin: 0, fontSize: '30px' }}>إيرادات اليوم</h2>
+
+            <p style={{ margin: '8px 0 0', color: '#94a3b8', fontWeight: 700 }}>
+              التاريخ: {todayKey} • الكاشير: {cashierName}
+            </p>
+
+            <p style={{ margin: '6px 0 0', color: '#64748b', fontWeight: 700 }}>
+              {lastUpdated ? `آخر تحديث: ${lastUpdated}` : 'يتم تحميل البيانات الآن...'}
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button type="button" onClick={onRefresh} style={primaryButtonStyle}>
+              {loading ? 'جاري التحديث...' : 'تحديث'}
+            </button>
+
+            <button type="button" onClick={onNewSale} style={secondaryButtonStyle}>
+              فاتورة جديدة
+            </button>
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: '26px',
+            borderRadius: '22px',
+            background: 'linear-gradient(135deg, rgba(34,197,94,0.22), rgba(37,99,235,0.16))',
+            border: '1px solid rgba(34,197,94,0.25)',
+            textAlign: 'center'
+          }}
+        >
+          <div style={{ color: '#bbf7d0', fontWeight: 900, marginBottom: '10px' }}>
+            صافي إيراد اليوم
+          </div>
+
+          <strong
+            style={{
+              display: 'block',
+              fontSize: '44px',
+              color: '#fff',
+              lineHeight: 1.2
+            }}
+          >
+            {money(revenue.netCash)}
+          </strong>
+
+          <div style={{ color: '#94a3b8', fontWeight: 800, marginTop: '10px' }}>
+             إجمالي الداخل - إجمالي الخارج  
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '12px'
+          }}
+        >
+          <CashierMiniCard
+            title="مبيعات اليوم"
+            value={money(revenue.salesIn)}
+            subtitle={`${salesCount} فاتورة بيع`}
+          />
+
+          <CashierMiniCard
+            title="دفعات العملاء"
+            value={money(revenue.customerPaymentsIn)}
+            subtitle="تحصيل مديونيات"
+          />
+
+          <CashierMiniCard
+            title="إيداعات يدوية"
+            value={money(revenue.depositsIn)}
+            subtitle="أي فلوس دخلت يدويًا"
+          />
+
+          <CashierMiniCard
+            title="مرتجعات البيع"
+            value={money(revenue.returnsOut)}
+            subtitle={`${returnsCount} عملية مرتجع`}
+          />
+
+          <CashierMiniCard
+            title="دفعات الموردين"
+            value={money(revenue.supplierPaymentsOut)}
+            subtitle="فلوس خرجت للموردين"
+          />
+
+          <CashierMiniCard
+            title="المصروفات"
+            value={money(revenue.expensesOut)}
+            subtitle="مصاريف اليوم"
+          />
+
+          <CashierMiniCard
+            title="سحب يدوي"
+            value={money(revenue.withdrawsOut)}
+            subtitle="أي فلوس اتسحبت يدويًا"
+          />
+
+          <CashierMiniCard
+            title="إجمالي الداخل"
+            value={money(revenue.totalIn)}
+            subtitle="قبل خصم الخارج"
+          />
+
+          <CashierMiniCard
+            title="إجمالي الخارج"
+            value={money(revenue.totalOut)}
+            subtitle="مرتجعات + مصاريف + موردين"
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function CashierMiniCard({
+  title,
+  value,
+  subtitle
+}: {
+  title: string;
+  value: string;
+  subtitle: string;
+}) {
+  return (
+    <div
+      className="glass-card"
+      style={{
+        padding: '16px',
+        borderRadius: '16px',
+        display: 'grid',
+        gap: '8px',
+        textAlign: 'right',
+        border: '1px solid rgba(255,255,255,0.08)'
+      }}
+    >
+      <div style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</div>
+      <strong style={{ color: '#f8fafc', fontSize: '22px' }}>{value}</strong>
+      <div style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>
+        {subtitle}
+      </div>
+    </div>
+  );
+}
