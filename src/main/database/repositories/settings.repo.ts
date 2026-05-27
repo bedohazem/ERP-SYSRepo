@@ -19,6 +19,9 @@ export type BarcodePrintSettings = {
   barcode_copies: number;
   barcode_auto_print_after_save: boolean;
 
+  barcode_content_offset_x_mm: number;
+  barcode_content_offset_y_mm: number;
+
   barcode_name_font_size: number;
   barcode_name_position: BarcodeItemPosition;
   barcode_name_align: BarcodeItemAlign;
@@ -47,6 +50,9 @@ const DEFAULT_SETTINGS: BarcodePrintSettings = {
   barcode_label_height_mm: 25,
   barcode_copies: 1,
   barcode_auto_print_after_save: false,
+
+  barcode_content_offset_x_mm: 0,
+  barcode_content_offset_y_mm: 0,
 
   barcode_name_font_size: 8,
   barcode_name_position: 'top',
@@ -110,6 +116,15 @@ return {
   barcode_auto_print_after_save: toBool(
     map.get('barcode_auto_print_after_save'),
     DEFAULT_SETTINGS.barcode_auto_print_after_save
+  ),
+
+  barcode_content_offset_x_mm: toNumber(
+    map.get('barcode_content_offset_x_mm'),
+    DEFAULT_SETTINGS.barcode_content_offset_x_mm
+  ),
+  barcode_content_offset_y_mm: toNumber(
+    map.get('barcode_content_offset_y_mm'),
+    DEFAULT_SETTINGS.barcode_content_offset_y_mm
   ),
 
   barcode_name_font_size: toNumber(
@@ -198,6 +213,9 @@ export function saveBarcodePrintSettings(input: BarcodePrintSettings) {
     stmt.run('barcode_label_height_mm', String(input.barcode_label_height_mm));
     stmt.run('barcode_copies', String(input.barcode_copies));
     stmt.run( 'barcode_auto_print_after_save', String(input.barcode_auto_print_after_save));
+
+    stmt.run('barcode_content_offset_x_mm', String(input.barcode_content_offset_x_mm));
+    stmt.run('barcode_content_offset_y_mm', String(input.barcode_content_offset_y_mm));
 
     stmt.run('barcode_name_font_size', String(input.barcode_name_font_size));
     stmt.run('barcode_name_position', String(input.barcode_name_position));

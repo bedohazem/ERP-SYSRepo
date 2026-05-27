@@ -20,6 +20,9 @@ type BarcodePrintSettings = {
   barcode_copies: number;
   barcode_auto_print_after_save: boolean;
 
+  barcode_content_offset_x_mm: number;
+  barcode_content_offset_y_mm: number;
+
   barcode_name_font_size: number;
   barcode_name_position: BarcodeItemPosition;
   barcode_name_align: BarcodeItemAlign;
@@ -48,6 +51,9 @@ const defaultSettings: BarcodePrintSettings = {
   barcode_label_height_mm: 25,
   barcode_copies: 1,
   barcode_auto_print_after_save: false,
+
+  barcode_content_offset_x_mm: 0,
+  barcode_content_offset_y_mm: 0,
 
   barcode_name_font_size: 8,
   barcode_name_position: 'top',
@@ -891,6 +897,39 @@ export default function SettingsPage() {
                 style={inputStyle}
               />
             </div>
+
+            <div>
+              <label style={labelStyle}>تحريك المحتوى يمين / شمال (مم)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={settings.barcode_content_offset_x_mm}
+                onChange={(e) =>
+                  setField('barcode_content_offset_x_mm', Number(e.target.value))
+                }
+                style={inputStyle}
+              />
+              <small style={hintStyle}>
+                موجب = يمين، سالب = شمال
+              </small>
+            </div>
+
+            <div>
+              <label style={labelStyle}>تحريك المحتوى فوق / تحت (مم)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={settings.barcode_content_offset_y_mm}
+                onChange={(e) =>
+                  setField('barcode_content_offset_y_mm', Number(e.target.value))
+                }
+                style={inputStyle}
+              />
+              <small style={hintStyle}>
+                موجب = تحت، سالب = فوق
+              </small>
+            </div>
+            
           </div>
 
           <div style={{ marginTop: '16px' }}>

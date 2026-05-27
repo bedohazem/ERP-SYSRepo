@@ -19,6 +19,9 @@ type BarcodePrintSettings = {
   barcode_copies: number;
   barcode_auto_print_after_save: boolean;
 
+  barcode_content_offset_x_mm: number;
+  barcode_content_offset_y_mm: number;
+
   barcode_name_font_size: number;
   barcode_name_position: BarcodeItemPosition;
   barcode_name_align: BarcodeItemAlign;

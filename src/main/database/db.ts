@@ -493,6 +493,9 @@ function seedDefaultAppSettings(database: Database.Database): void {
 { key: 'barcode_copies', value: '1' },
 { key: 'barcode_auto_print_after_save', value: 'false' },
 
+{ key: 'barcode_content_offset_x_mm', value: '0' },
+{ key: 'barcode_content_offset_y_mm', value: '0' },
+
 { key: 'barcode_name_font_size', value: '8' },
 { key: 'barcode_name_position', value: 'top' },
 { key: 'barcode_name_align', value: 'center' },

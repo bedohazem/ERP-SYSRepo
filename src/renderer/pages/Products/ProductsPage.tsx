@@ -73,6 +73,9 @@ barcode_label_height_mm: number;
 barcode_copies: number;
 barcode_auto_print_after_save: boolean;
 
+barcode_content_offset_x_mm: number;
+barcode_content_offset_y_mm: number;
+
 barcode_name_font_size: number;
 barcode_name_position: BarcodeItemPosition;
 barcode_name_align: BarcodeItemAlign;
@@ -522,6 +525,8 @@ export default function ProductsPage() {
     const heightMm = Number(printSettings.barcode_label_height_mm || 25);
     const copies = Math.max(1, Number(printSettings.barcode_copies || 1));
     const svgHeight = Math.max(10, Number(printSettings.barcode_svg_height || 22));
+    const contentOffsetX = Number(printSettings.barcode_content_offset_x_mm || 0);
+    const contentOffsetY = Number(printSettings.barcode_content_offset_y_mm || 0);
 
     const itemDefs = [
       {
@@ -641,15 +646,17 @@ export default function ProductsPage() {
       .map(
         () => `
           <div class="label">
-            ${renderTripleRow('top-left', 'top', 'top-right', 'row-top')}
-            ${renderSingleZone('above_barcode')}
+            <div class="label-content">
+              ${renderTripleRow('top-left', 'top', 'top-right', 'row-top')}
+              ${renderSingleZone('above_barcode')}
 
-            <div class="barcode-zone">
-              <svg class="barcode"></svg>
+              <div class="barcode-zone">
+                <svg class="barcode"></svg>
+              </div>
+
+              ${renderSingleZone('below_barcode')}
+              ${renderTripleRow('bottom-left', 'bottom', 'bottom-right', 'row-bottom')}
             </div>
-
-            ${renderSingleZone('below_barcode')}
-            ${renderTripleRow('bottom-left', 'bottom', 'bottom-right', 'row-bottom')}
           </div>
         `
       )
@@ -683,12 +690,19 @@ export default function ProductsPage() {
               width: ${widthMm}mm;
               height: ${heightMm}mm;
               box-sizing: border-box;
+              page-break-after: always;
+              overflow: hidden;
+              position: relative;
+            }
+            .label-content {
+              width: 100%;
+              height: 100%;
+              box-sizing: border-box;
               padding: 1.5mm;
               display: grid;
               grid-template-rows: auto auto auto auto;
               gap: 0.4mm;
-              page-break-after: always;
-              overflow: hidden;
+              transform: translate(${contentOffsetX}mm, ${contentOffsetY}mm);
             }
 
             .label:last-child {
