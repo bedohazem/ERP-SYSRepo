@@ -412,7 +412,7 @@ export default function PurchasesPage() {
           </div>
 
           <div style={fieldStyle}>
-            <label style={labelStyle}>المتبقي على المورد</label>
+            <label style={labelStyle}>المتبقي للمورد</label>
             <input value={money(remaining)} readOnly style={{ ...inputStyle, opacity: 0.7 }} />
           </div>
 
@@ -424,9 +424,9 @@ export default function PurchasesPage() {
               style={inputStyle}
             >
               <option value="cash">كاش</option>
-              <option value="card">كارت</option>
+              <option value="card">كارت / فيزا</option>
               <option value="wallet">محفظة</option>
-              <option value="bank_transfer">تحويل بنكي</option>
+              <option value="bank_transfer">تحويل بنكي / انستا باي</option>
             </select>
           </div>
         </div>

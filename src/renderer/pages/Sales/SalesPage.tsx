@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useAuthStore } from '../../store/auth.store';
+import { getPaymentMethodLabel } from '../../utils/payment-method';
 
 type SaleVariant = {
   variant_id: number;
@@ -642,6 +643,7 @@ export default function SalesPage() {
 
             <div class="row"><span>العميل</span><strong>${escapeHtml(receipt.sale.customer_name || 'عميل نقدي')}</strong></div>
             <div class="row"><span>الكاشير</span><strong>${escapeHtml(receipt.sale.cashier_name || '-')}</strong></div>
+            <div class="row"><span>طريقة الدفع</span><strong>${escapeHtml(getPaymentMethodLabel(receipt.sale.payment_method))}</strong></div>
 
             <table>
               <thead>
@@ -1732,7 +1734,7 @@ export default function SalesPage() {
 
               <div style={receiptInfoCardStyle}>
                 <span>طريقة الدفع</span>
-                <strong>{receiptData.sale.payment_method || 'cash'}</strong>
+                <strong>{getPaymentMethodLabel(receiptData.sale.payment_method)}</strong>
               </div>
             </div>
 
@@ -2067,9 +2069,9 @@ export default function SalesPage() {
                 style={paymentInputStyle}
               >
                 <option value="cash">كاش</option>
-                <option value="card">كارت</option>
+                <option value="card">كارت / فيزا</option>
                 <option value="wallet">محفظة</option>
-                <option value="bank_transfer">تحويل بنكي</option>
+                <option value="bank_transfer">تحويل بنكي / انستا باي</option>
               </select>
             </label>
 

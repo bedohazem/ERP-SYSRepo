@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getPaymentMethodLabel } from '../../utils/payment-method';
 
 type ReportsData = {
   summary: {
@@ -179,7 +180,7 @@ export default function ReportsPage() {
           emptyText="لا توجد بيانات"
           columns={['الطريقة', 'العدد', 'الإجمالي']}
           rows={data.paymentMethods.map((x) => [
-            paymentName(x.payment_method),
+            getPaymentMethodLabel(x.payment_method),
             x.count,
             money(x.total)
           ])}
@@ -321,13 +322,6 @@ function ReportTable({
 
 function money(value: unknown) {
   return `${Number(value || 0).toFixed(2)} ج.م`;
-}
-
-function paymentName(value: string) {
-  if (value === 'cash') return 'كاش';
-  if (value === 'card') return 'كارت';
-  if (value === 'wallet') return 'محفظة';
-  return value || 'كاش';
 }
 
 function formatDateOnly(value?: string) {

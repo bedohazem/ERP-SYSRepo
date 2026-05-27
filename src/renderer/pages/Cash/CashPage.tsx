@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/auth.store';
+import { getPaymentMethodLabel } from '../../utils/payment-method';
 
 type CashSummary = {
   total_in: number;
@@ -155,14 +156,6 @@ export default function CashPage() {
       default:
         return type;
     }
-  }
-
-  function getPaymentMethodLabel(value: string) {
-    if (value === 'cash') return 'كاش';
-    if (value === 'card') return 'كارت';
-    if (value === 'wallet') return 'محفظة';
-    if (value === 'bank') return 'بنك';
-    return value || '—';
   }
 
   function formatDate(value?: string) {
@@ -561,9 +554,9 @@ export default function CashPage() {
               style={inputStyle}
             >
               <option value="cash">كاش</option>
-              <option value="card">كارت</option>
+              <option value="card">كارت / فيزا</option>
               <option value="wallet">محفظة</option>
-              <option value="bank">بنك</option>
+              <option value="bank">تحويل بنكي / انستا باي</option>
             </select>
           </Field>
 
@@ -670,9 +663,9 @@ export default function CashPage() {
             >
               <option value="all">الكل</option>
               <option value="cash">كاش</option>
-              <option value="card">كارت</option>
+              <option value="card">كارت / فيزا</option>
               <option value="wallet">محفظة</option>
-              <option value="bank">بنك</option>
+              <option value="bank">تحويل بنكي / انستا باي</option>
             </select>
           </Field>
 

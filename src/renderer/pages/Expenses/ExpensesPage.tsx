@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuthStore } from '../../store/auth.store';
+import { getPaymentMethodLabel } from '../../utils/payment-method';
 
 type Expense = {
   id: number;
@@ -108,15 +109,6 @@ export default function ExpensesPage() {
     } catch {
       return value;
     }
-  }
-
-    function getPaymentMethodLabel(value: string) {
-    if (value === 'cash') return 'كاش';
-    if (value === 'card') return 'كارت';
-    if (value === 'wallet') return 'محفظة';
-    if (value === 'bank_transfer') return 'تحويل بنكي';
-    if (value === 'bank') return 'بنك';
-    return value || '—';
   }
 
   function printExpensesReport() {
@@ -477,9 +469,9 @@ export default function ExpensesPage() {
               style={inputStyle}
             >
               <option value="cash">كاش</option>
-              <option value="card">كارت</option>
+              <option value="card">كارت / فيزا</option>
               <option value="wallet">محفظة</option>
-              <option value="bank_transfer">تحويل بنكي</option>
+              <option value="bank_transfer">تحويل بنكي / انستا باي</option>
             </select>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getPaymentMethodLabel } from '../../utils/payment-method';
 
 type PurchaseRow = {
   id: number;
@@ -195,6 +196,7 @@ export default function PurchaseHistoryPage() {
               <th style={thStyle}>الإجمالي</th>
               <th style={thStyle}>المدفوع</th>
               <th style={thStyle}>المتبقي</th>
+              <th style={thStyle}>طريقة الدفع</th>
               <th style={thStyle}>الحالة</th>
               <th style={thStyle}>إجراءات</th>
             </tr>
@@ -203,7 +205,7 @@ export default function PurchaseHistoryPage() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={9} style={{ ...tdStyle, textAlign: 'center' }}>
+                <td colSpan={10} style={{ ...tdStyle, textAlign: 'center' }}>
                   جاري التحميل...
                 </td>
               </tr>
@@ -239,6 +241,11 @@ export default function PurchaseHistoryPage() {
                   >
                     {money(row.remaining_amount)}
                   </td>
+
+                  <td style={tdStyle}>
+                    {getPaymentMethodLabel(row.payment_method)}
+                  </td>
+
                   <td style={tdStyle}>
                     <PaymentStatusBadge status={row.payment_status} />
                   </td>
@@ -331,6 +338,7 @@ export default function PurchaseHistoryPage() {
               <InfoCard title="الإجمالي" value={money(selectedPurchase.purchase.total_amount)} />
               <InfoCard title="المدفوع" value={money(selectedPurchase.purchase.paid_amount)} />
               <InfoCard title="المتبقي" value={money(selectedPurchase.purchase.remaining_amount)} />
+              <InfoCard title="طريقة الدفع" value={getPaymentMethodLabel(selectedPurchase.purchase.payment_method)}/>
               <InfoCard title="الحالة" value={paymentStatusName(selectedPurchase.purchase.payment_status)} />
             </div>
 
@@ -614,12 +622,9 @@ function paymentStatusName(status: string) {
 }
 
 function paymentMethodName(value?: string | null) {
-  if (value === 'cash') return 'كاش';
-  if (value === 'card') return 'كارت';
-  if (value === 'wallet') return 'محفظة';
-  if (value === 'bank_transfer') return 'تحويل بنكي';
-  return value || 'كاش';
+  return getPaymentMethodLabel(value);
 }
+
 
 function money(value: unknown) {
   return `${Number(value || 0).toFixed(2)} ج.م`;

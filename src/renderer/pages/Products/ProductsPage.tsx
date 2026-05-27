@@ -418,7 +418,7 @@ export default function ProductsPage() {
     setLoading(true);
 
     try {
-      await window.api.createProduct({
+      const result = await window.api.createProduct({
         name: name.trim(),
         category_id: categoryId ? Number(categoryId) : null,
         description: description.trim() || null,
@@ -435,12 +435,18 @@ export default function ProductsPage() {
         }))
       });
 
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل حفظ المنتج');
+        return;
+      }
+
       resetCreateForm();
       setShowCreate(false);
       setActiveTab('list');
 
       await reloadPrintSettings();
       await loadData();
+      showMessage('success', 'تم حفظ المنتج بنجاح');
     } catch (error) {
       console.error('Failed to save product:', error);
       showMessage('error', 'حدث خطأ أثناء حفظ المنتج');
@@ -877,27 +883,37 @@ export default function ProductsPage() {
     setSavingEdit(true);
 
     try {
-      await window.api.updateProduct({
+      const productResult = await window.api.updateProduct({
         id: editingProductId,
         name: editName.trim(),
-        actor_id: currentUser?.id,
         category_id: editCategoryId ? Number(editCategoryId) : null,
         description: editDescription.trim() || null,
-        image_path: null
+        image_path: null,
+        actor_id: currentUser?.id
       });
 
+      if (!productResult.success) {
+        showMessage('error', productResult.message || 'فشل تعديل المنتج');
+        return;
+      }
+
       for (const variant of editVariants) {
-        await window.api.updateVariant({
+        const variantResult = await window.api.updateVariant({
           id: variant.id,
           barcode: variant.barcode.trim(),
-          actor_id: currentUser?.id,
           size: variant.size.trim(),
           color: variant.color.trim(),
           buy_price: Number(variant.buy_price),
           sell_price: Number(variant.sell_price),
           min_stock: Number(variant.min_stock || 5),
-          is_active: variant.is_active
+          is_active: variant.is_active,
+          actor_id: currentUser?.id
         });
+
+        if (!variantResult.success) {
+          showMessage('error', variantResult.message || 'فشل تعديل أحد الأصناف');
+          return;
+        }
       }
 
       await loadData();

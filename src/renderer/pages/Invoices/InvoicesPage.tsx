@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/auth.store';
+import { getPaymentMethodLabel } from '../../utils/payment-method';
 
 type SaleRow = {
   id: number;
@@ -1188,16 +1189,6 @@ function formatDate(value?: string) {
   } catch {
     return value;
   }
-}
-
-function getPaymentMethodLabel(value?: string | null) {
-  if (value === 'cash') return 'كاش';
-  if (value === 'card') return 'كارت';
-  if (value === 'wallet') return 'محفظة';
-  if (value === 'bank_transfer') return 'تحويل بنكي';
-  if (value === 'bank') return 'بنك';
-
-  return value || '—';
 }
 
 function escapeHtml(value: unknown) {

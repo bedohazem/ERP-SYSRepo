@@ -61,12 +61,12 @@ export function listActivityLogs(input?: ActivityLogFilter) {
   const limit = Math.min(Math.max(Number(input?.limit || 300), 1), 1000);
 
   if (input?.date_from) {
-    where.push(`datetime(al.created_at) >= datetime(?)`);
+    where.push(`datetime(al.created_at, 'localtime') >= datetime(?)`);
     params.push(`${input.date_from} 00:00:00`);
   }
 
   if (input?.date_to) {
-    where.push(`datetime(al.created_at) <= datetime(?)`);
+    where.push(`datetime(al.created_at, 'localtime') <= datetime(?)`);
     params.push(`${input.date_to} 23:59:59`);
   }
 

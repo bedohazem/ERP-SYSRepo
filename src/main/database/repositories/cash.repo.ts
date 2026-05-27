@@ -39,12 +39,12 @@ function buildCashWhere(input?: CashFilterInput) {
   const params: any[] = [];
 
   if (input?.date_from) {
-    where.push(`datetime(cm.created_at) >= datetime(?)`);
+    where.push(`datetime(cm.created_at, 'localtime') >= datetime(?)`);
     params.push(`${input.date_from} 00:00:00`);
   }
 
   if (input?.date_to) {
-    where.push(`datetime(cm.created_at) <= datetime(?)`);
+    where.push(`datetime(cm.created_at, 'localtime') <= datetime(?)`);
     params.push(`${input.date_to} 23:59:59`);
   }
 

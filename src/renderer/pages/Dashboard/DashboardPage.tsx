@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getPaymentMethodLabel } from '../../utils/payment-method';
 
 type ReportsData = {
   summary: {
@@ -441,7 +442,7 @@ function PaymentBreakdown({ rows }: { rows: any[] }) {
 
         return (
           <div key={row.payment_method} style={paymentRowStyle}>
-            <span>{paymentName(row.payment_method)}</span>
+            <span>{getPaymentMethodLabel(row.payment_method)}</span>
             <strong>{money(rowTotal)}</strong>
             <span style={{ color: '#94a3b8' }}>{percent}%</span>
           </div>
@@ -565,12 +566,6 @@ function money(value: unknown) {
   return `${Number(value || 0).toFixed(2)} ج.م`;
 }
 
-function paymentName(value: string) {
-  if (value === 'cash') return 'كاش';
-  if (value === 'card') return 'كارت';
-  if (value === 'wallet') return 'محفظة';
-  return value || 'كاش';
-}
 
 function formatDateOnly(value?: string) {
   if (!value) return '—';

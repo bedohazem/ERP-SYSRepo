@@ -714,7 +714,7 @@ function paymentName(value: string) {
   if (value === 'cash') return 'كاش';
   if (value === 'card') return 'كارت';
   if (value === 'wallet') return 'محفظة';
-  if (value === 'bank') return 'بنك';
+  if (value === 'bank' || value === 'bank_transfer') return 'تحويل بنكي / انستا باي';
   return value;
 }
 

@@ -453,12 +453,12 @@ export function listSales(input?: {
   }
 
   if (input?.date_from) {
-    where.push(`s.created_at >= ?`);
+    where.push(`datetime(s.created_at, 'localtime') >= datetime(?)`);
     params.push(`${input.date_from} 00:00:00`);
   }
 
   if (input?.date_to) {
-    where.push(`s.created_at <= ?`);
+    where.push(`datetime(s.created_at, 'localtime') <= datetime(?)`);
     params.push(`${input.date_to} 23:59:59`);
   }
 
@@ -664,11 +664,18 @@ export function createSaleReturn(input: {
       Number(originalSale.loyalty_points_earned || 0) * ratio
     );
 
+    const saleDiscountPart = Number(
+      (Number(originalSale.discount_value || 0) * ratio).toFixed(2)
+    );
+
     const loyaltyDiscountPart = Number(
       (Number(originalSale.loyalty_discount_value || 0) * ratio).toFixed(2)
     );
 
-    const returnValue = Math.max(0, returnSubTotal - loyaltyDiscountPart);
+    const returnValue = Math.max(
+      0,
+      returnSubTotal - saleDiscountPart - loyaltyDiscountPart
+    );
 
     const originalRemainingAmount = Math.max(
       0,
@@ -703,7 +710,7 @@ export function createSaleReturn(input: {
         userId,
         returnSubTotal,
         loyaltyDiscountPart,
-        cashRefundAmount,
+        returnValue,
         originalSale.payment_method || 'cash',
         reason,
         `مرتجع من فاتورة رقم ${originalSaleId}`,
@@ -963,12 +970,12 @@ export function listSaleReturns(input?: {
   }
 
   if (input?.date_from) {
-    where.push(`sr.created_at >= ?`);
+    where.push(`datetime(s.created_at, 'localtime') >= datetime(?)`);
     params.push(`${input.date_from} 00:00:00`);
   }
 
   if (input?.date_to) {
-    where.push(`sr.created_at <= ?`);
+    where.push(`datetime(s.created_at, 'localtime') <= datetime(?)`);
     params.push(`${input.date_to} 23:59:59`);
   }
 

@@ -10,12 +10,12 @@ function buildWhere(alias: string, input?: ReportFilter, extra: string[] = []) {
   const params: any[] = [];
 
   if (input?.date_from) {
-    where.push(`datetime(${alias}.created_at) >= datetime(?)`);
+    where.push(`datetime(${alias}.created_at, 'localtime') >= datetime(?)`);
     params.push(`${input.date_from} 00:00:00`);
   }
 
   if (input?.date_to) {
-    where.push(`datetime(${alias}.created_at) <= datetime(?)`);
+    where.push(`datetime(${alias}.created_at, 'localtime') <= datetime(?)`);
     params.push(`${input.date_to} 23:59:59`);
   }
 
@@ -148,7 +148,7 @@ export function getReportsSummary(input?: ReportFilter) {
   const dailySales = db
     .prepare(`
       SELECT
-        date(x.created_at) AS day,
+        date(x.created_at, 'localtime') AS day,
         IFNULL(SUM(x.amount), 0) AS total
       FROM (
         SELECT
@@ -165,7 +165,7 @@ export function getReportsSummary(input?: ReportFilter) {
         FROM sale_returns sr
       ) x
       ${combinedWhere.whereSql}
-      GROUP BY date(x.created_at)
+      GROUP BY date(x.created_at, 'localtime')
       ORDER BY day ASC
       LIMIT 60
     `)

@@ -49,6 +49,57 @@ const STOCK_SUM_SQL = `
   ), 0)
 `;
 
+function ensureBarcodeAvailable(barcode: string, exceptVariantId?: number) {
+  const db = getDb();
+  const cleanBarcode = String(barcode || '').trim();
+
+  if (!cleanBarcode) {
+    throw new Error('الباركود مطلوب');
+  }
+
+  const existing = exceptVariantId
+    ? db
+        .prepare(`
+          SELECT id
+          FROM product_variants
+          WHERE barcode = ?
+            AND id <> ?
+          LIMIT 1
+        `)
+        .get(cleanBarcode, exceptVariantId)
+    : db
+        .prepare(`
+          SELECT id
+          FROM product_variants
+          WHERE barcode = ?
+          LIMIT 1
+        `)
+        .get(cleanBarcode);
+
+  if (existing) {
+    throw new Error(`الباركود "${cleanBarcode}" مستخدم بالفعل`);
+  }
+}
+
+function ensureInputBarcodesAreUnique(variants: ProductVariantInput[]) {
+  const seen = new Set<string>();
+
+  for (const variant of variants) {
+    const barcode = String(variant.barcode || '').trim();
+
+    if (!barcode) {
+      throw new Error('الباركود مطلوب');
+    }
+
+    if (seen.has(barcode)) {
+      throw new Error(`الباركود "${barcode}" مكرر في نفس المنتج`);
+    }
+
+    seen.add(barcode);
+    ensureBarcodeAvailable(barcode);
+  }
+}
+
 export function getCategories(): CategoryRow[] {
   const db = getDb();
 
@@ -172,6 +223,16 @@ export function toggleVariantActive(variantId: number, isActive: number) {
 export function createProduct(input: CreateProductInput) {
   const db = getDb();
 
+  if (!input.name?.trim()) {
+    throw new Error('اسم المنتج مطلوب');
+  }
+
+  if (!input.variants?.length) {
+    throw new Error('لازم تضيف صنف واحد على الأقل');
+  }
+
+  ensureInputBarcodesAreUnique(input.variants);
+
   const tx = db.transaction(() => {
     const productResult = db
       .prepare(
@@ -254,6 +315,9 @@ export type AddProductVariantInput = {
 export function addProductVariant(input: AddProductVariantInput) {
   const db = getDb();
 
+  const cleanBarcode = String(input.barcode || '').trim();
+  ensureBarcodeAvailable(cleanBarcode);
+
   const tx = db.transaction(() => {
     const product = db
       .prepare(`SELECT id FROM products WHERE id = ? LIMIT 1`)
@@ -273,7 +337,7 @@ export function addProductVariant(input: AddProductVariantInput) {
       )
       .run(
         input.product_id,
-        input.barcode.trim(),
+        cleanBarcode,
         input.size.trim(),
         input.color.trim(),
         input.buy_price,
@@ -361,6 +425,9 @@ export function updateProduct(input: UpdateProductInput) {
 export function updateVariant(input: UpdateVariantInput) {
   const db = getDb();
 
+  const cleanBarcode = String(input.barcode || '').trim();
+  ensureBarcodeAvailable(cleanBarcode, input.id);
+
   db.prepare(
     `
     UPDATE product_variants
@@ -375,7 +442,7 @@ export function updateVariant(input: UpdateVariantInput) {
     WHERE id = ?
     `
   ).run(
-    input.barcode.trim(),
+    cleanBarcode,
     input.size.trim(),
     input.color.trim(),
     input.buy_price,
