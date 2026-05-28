@@ -10,11 +10,13 @@
     "build:renderer": "vite build",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run build:renderer",
-    "rebuild": "electron-rebuild -f -w better-sqlite3"
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "license:code": "node scripts/generate-activation-code.cjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.8.0",
     "jsbarcode": "^3.12.3",
+    "node-machine-id": "^1.1.12",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.14.0",

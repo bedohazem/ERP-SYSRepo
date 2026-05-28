@@ -369,7 +369,6 @@ export function resetDatabaseData(): void {
       DELETE FROM products;
       DELETE FROM categories;
 
-      DELETE FROM app_settings;
       DELETE FROM users;
 
       DELETE FROM sqlite_sequence;

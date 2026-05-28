@@ -7,6 +7,9 @@ type LicenseStatus = {
   trial_expires_at: string;
   days_left: number;
   expired: boolean;
+  blocked?: boolean;
+  message?: string;
+  device_code?: string;
   app_logo_url: string;
   app_name: string;
 };
@@ -186,6 +189,50 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
         <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.8, textAlign: 'center' }}>
           انتهت فترة التجربة المجانية. أدخل كود التفعيل للمتابعة.
         </p>
+
+        {status?.message && (
+          <p
+            style={{
+              margin: 0,
+              color: '#fca5a5',
+              lineHeight: 1.8,
+              textAlign: 'center',
+              fontWeight: 800
+            }}
+          >
+            {status.message}
+          </p>
+        )}
+
+        {status?.device_code && (
+          <div
+            style={{
+              padding: '12px',
+              borderRadius: '14px',
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.10)',
+              textAlign: 'center',
+              display: 'grid',
+              gap: '8px'
+            }}
+          >
+            <div style={{ color: '#94a3b8', fontWeight: 800 }}>
+              كود الجهاز
+            </div>
+
+            <strong style={{ color: '#fff', fontSize: '20px', letterSpacing: '1px' }}>
+              {status.device_code}
+            </strong>
+
+            <button
+              type="button"
+              onClick={() => navigator.clipboard?.writeText(status.device_code || '')}
+              style={contactButtonStyle}
+            >
+              نسخ كود الجهاز
+            </button>
+          </div>
+        )}
         
         <div
           style={{

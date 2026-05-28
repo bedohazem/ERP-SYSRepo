@@ -1,4 +1,9 @@
 import { getDb } from '../db';
+import {
+  getDeviceLicenseStatus,
+  activateDevice,
+  deactivateDevice
+} from '../../security/device-license';
 
 export type BarcodeItemPosition =
   | 'top'
@@ -305,6 +310,9 @@ export type AppLicenseStatus = {
   trial_expires_at: string;
   days_left: number;
   expired: boolean;
+  blocked: boolean;
+  message: string;
+  device_code: string;
   app_logo_url: string;
   app_name: string;
 };
@@ -331,74 +339,46 @@ function diffDays(from: Date, to: Date) {
 }
 
 export function getAppLicenseStatus(): AppLicenseStatus {
-  const now = new Date();
+  const license = getDeviceLicenseStatus();
 
-  const activated = getSetting('app_activated', 'false') === 'true';
-  const trialDays = Number(getSetting('app_trial_days', '7'));
   const appLogoUrl = getSetting('app_logo_url', '');
   const appName = getSetting('app_name', 'ERP Store');
 
-  let trialStartedAt = getSetting('app_trial_started_at', '');
-
-  // أول مرة فقط يسجل بداية التجربة
-  if (!trialStartedAt) {
-    trialStartedAt = now.toISOString();
-    saveSetting('app_trial_started_at', trialStartedAt);
-  }
-
-  const startDate = new Date(trialStartedAt);
-
-  const expiresAt = USE_TEST_TRIAL_MINUTES
-    ? addMinutes(startDate, TEST_TRIAL_MINUTES)
-    : addDays(startDate, trialDays);
-
-  const expired = !activated && now.getTime() > expiresAt.getTime();
-
-  const daysLeft = activated
-    ? trialDays
-    : USE_TEST_TRIAL_MINUTES
-      ? Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60)))
-      : diffDays(now, expiresAt);
-
   return {
-    activated,
-    trial_started_at: trialStartedAt,
-    trial_days: trialDays,
-    trial_expires_at: expiresAt.toISOString(),
-    days_left: daysLeft,
-    expired,
+    activated: license.activated,
+    trial_started_at: license.trial_started_at,
+    trial_days: license.trial_days,
+    trial_expires_at: license.trial_expires_at,
+    days_left: license.days_left,
+    expired: license.expired,
+    blocked: license.blocked,
+    message: license.message,
+    device_code: license.device_code,
     app_logo_url: appLogoUrl,
     app_name: appName
   };
 }
 
 export function activateApp(code: string) {
-  const cleanCode = String(code || '').trim();
+  const result = activateDevice(code);
 
-  if (cleanCode !== ACTIVATION_CODE) {
-    return {
-      success: false,
-      message: 'كود التفعيل غير صحيح'
-    };
+  if (!result.success) {
+    return result;
   }
-
-  saveSetting('app_activated', 'true');
-  saveSetting('app_activated_at', new Date().toISOString());
 
   return {
     success: true,
-    message: 'تم تفعيل البرنامج بنجاح',
+    message: result.message,
     status: getAppLicenseStatus()
   };
 }
 
 export function deactivateApp() {
-  saveSetting('app_activated', 'false');
-  saveSetting('app_deactivated_at', new Date().toISOString());
+  const result = deactivateDevice();
 
   return {
     success: true,
-    message: 'تم إلغاء تفعيل البرنامج',
+    message: result.message,
     status: getAppLicenseStatus()
   };
 }
