@@ -306,7 +306,11 @@ function mergeRecords(records: LicenseRecord[]) {
   const trialExpiresAt = minDateIso(records.map((x) => x.trial_expires_at));
   const lastSeenAt = maxDateIso(records.map((x) => x.last_seen_at));
 
-  const activated = records.some((x) => x.activated);
+  const newestRecord = [...records].sort((a, b) => {
+    return new Date(b.last_seen_at).getTime() - new Date(a.last_seen_at).getTime();
+  })[0];
+
+  const activated = Boolean(newestRecord?.activated);
   const activatedAt =
     minDateIso(records.map((x) => x.activated_at || '').filter(Boolean)) || null;
 
@@ -346,17 +350,23 @@ export function getDeviceLicenseStatus(): LicenseStatus {
   const now = new Date();
   const results = readAllStores();
 
-  const tampered = results.some((x) => x.tampered);
-
-  if (tampered) {
-    return blockedStatus('تم اكتشاف تلاعب في ملفات التفعيل');
-  }
-
   const validRecords = results
     .map((x) => x.record)
     .filter(Boolean) as LicenseRecord[];
 
+  const tampered = results.some((x) => x.tampered);
+
+  // لو مفيش ولا نسخة صحيحة، وفيه ملف متلاعب فيه، اقفل البرنامج
+  if (tampered && validRecords.length === 0) {
+    return blockedStatus('تم اكتشاف تلاعب في ملفات التفعيل');
+  }
+
+  // لو فيه نسخة صحيحة، نصلّح باقي الأماكن بدل ما نقفل
   let record = validRecords.length ? mergeRecords(validRecords) : createTrialRecord();
+
+  if (tampered && validRecords.length > 0) {
+    writeAllStores(record);
+  }
 
   if (record.invalidated) {
     return blockedStatus('تم إلغاء صلاحية التجربة على هذا الجهاز');
@@ -411,6 +421,12 @@ export function activateDevice(code: string) {
   const status = getDeviceLicenseStatus();
   const expectedCode = generateActivationCodeForDevice(status.device_code);
 
+  console.log('DEVICE CODE:', status.device_code);
+  console.log('EXPECTED CODE:', expectedCode);
+  console.log('INPUT CODE:', code);
+  console.log('NORMALIZED EXPECTED:', normalizeCode(expectedCode));
+  console.log('NORMALIZED INPUT:', normalizeCode(code));
+
   if (normalizeCode(code) !== normalizeCode(expectedCode)) {
     return {
       success: false,
@@ -462,6 +478,7 @@ export function deactivateDevice() {
   });
 
   writeAllStores(record);
+  console.log('DEACTIVATE STATUS:', getDeviceLicenseStatus());
 
   return {
     success: true,

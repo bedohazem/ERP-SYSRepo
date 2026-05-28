@@ -97,6 +97,7 @@ export default function SettingsPage() {
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
 
   const [licenseStatus, setLicenseStatus] = useState<AppLicenseStatus | null>(null);
   const [activationCode, setActivationCode] = useState('');
@@ -403,43 +404,38 @@ export default function SettingsPage() {
 
 
   async function handleDeactivateApp() {
-  if (deactivatingApp) return;
+    if (deactivatingApp) return;
 
-  if (!confirmDeactivateApp) {
-    setConfirmDeactivateApp(true);
-    showMessage('error', 'اضغط مرة أخرى لتأكيد إلغاء التفعيل');
-    return;
-  }
+    setDeactivatingApp(true);
 
-  setDeactivatingApp(true);
+    try {
+      const result = await window.api.deactivateApp();
 
-  try {
-    const result = await window.api.deactivateApp();
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل إلغاء التفعيل');
+        return;
+      }
 
-    if (!result.success) {
-      showMessage('error', result.message || 'فشل إلغاء التفعيل');
-      return;
-    }
+      const freshStatus = await window.api.getLicenseStatus();
 
-    if (result.status) {
-      setLicenseStatus(result.status);
+      setLicenseStatus(freshStatus);
 
       window.dispatchEvent(
         new CustomEvent('license-status-changed', {
-          detail: result.status
+          detail: freshStatus
         })
       );
-    }
 
-    setConfirmDeactivateApp(false);
-    showMessage('success', 'تم إلغاء تفعيل البرنامج');
-  } catch (error) {
-    console.error('Failed to deactivate app:', error);
-    showMessage('error', 'حدث خطأ أثناء إلغاء التفعيل');
-  } finally {
-    setDeactivatingApp(false);
+      setShowDeactivateModal(false);
+      setConfirmDeactivateApp(false);
+      showMessage('success', 'تم إلغاء تفعيل البرنامج');
+    } catch (error) {
+      console.error('Failed to deactivate app:', error);
+      showMessage('error', 'حدث خطأ أثناء إلغاء التفعيل');
+    } finally {
+      setDeactivatingApp(false);
+    }
   }
-}
 
   async function handleSaveAppName() {
     if (savingAppName) return;
@@ -698,26 +694,15 @@ export default function SettingsPage() {
           {licenseStatus?.activated && (
             <button
               type="button"
-              onClick={() => void handleDeactivateApp()}
+              onClick={() => setShowDeactivateModal(true)}
               disabled={deactivatingApp}
               style={{
                 ...dangerButtonStyle,
                 opacity: deactivatingApp ? 0.6 : 1,
-                cursor: deactivatingApp ? 'not-allowed' : 'pointer',
-                background: confirmDeactivateApp
-                  ? 'rgba(127,29,29,0.55)'
-                  : 'rgba(239,68,68,0.12)',
-                border: confirmDeactivateApp
-                  ? '1px solid rgba(248,113,113,0.65)'
-                  : '1px solid rgba(239,68,68,0.35)',
-                color: '#fecaca'
+                cursor: deactivatingApp ? 'not-allowed' : 'pointer'
               }}
             >
-              {deactivatingApp
-                ? 'جاري إلغاء التفعيل...'
-                : confirmDeactivateApp
-                  ? 'تأكيد إلغاء التفعيل'
-                  : 'إلغاء التفعيل'}
+              {deactivatingApp ? 'جاري إلغاء التفعيل...' : 'إلغاء التفعيل'}
             </button>
           )}
           </div>
@@ -1179,6 +1164,70 @@ export default function SettingsPage() {
             >
               {savingLoyalty ? 'جاري الحفظ...' : 'حفظ إعدادات النقاط'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {showDeactivateModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 999999,
+            background: 'rgba(0,0,0,0.65)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: '20px'
+          }}
+        >
+          <div
+            className="glass-card"
+            style={{
+              width: 'min(460px, 100%)',
+              borderRadius: '22px',
+              padding: '22px',
+              direction: 'rtl',
+              display: 'grid',
+              gap: '14px',
+              border: '1px solid rgba(248,113,113,0.35)'
+            }}
+          >
+            <h3 style={{ margin: 0, color: '#fecaca' }}>تأكيد إلغاء التفعيل</h3>
+
+            <p style={{ margin: 0, color: '#cbd5e1', lineHeight: 1.8, fontWeight: 700 }}>
+              هل أنت متأكد إنك عايز تلغي تفعيل البرنامج؟ لو فترة التجربة منتهية، البرنامج هيقفل ويطلب كود تفعيل جديد.
+            </p>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-start' }}>
+              <button
+                type="button"
+                onClick={handleDeactivateApp}
+                disabled={deactivatingApp}
+                style={{
+                  ...dangerButtonStyle,
+                  opacity: deactivatingApp ? 0.6 : 1
+                }}
+              >
+                {deactivatingApp ? 'جاري الإلغاء...' : 'تأكيد إلغاء التفعيل'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowDeactivateModal(false)}
+                disabled={deactivatingApp}
+                style={{
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  background: 'rgba(255,255,255,0.06)',
+                  color: '#fff',
+                  borderRadius: '12px',
+                  padding: '11px 16px',
+                  fontWeight: 900,
+                  cursor: 'pointer'
+                }}
+              >
+                إلغاء
+              </button>
+            </div>
           </div>
         </div>
       )}

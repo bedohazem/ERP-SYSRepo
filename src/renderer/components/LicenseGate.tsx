@@ -220,7 +220,16 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
               كود الجهاز
             </div>
 
-            <strong style={{ color: '#fff', fontSize: '20px', letterSpacing: '1px' }}>
+            <strong
+              dir="ltr"
+              style={{
+                color: '#fff',
+                fontSize: '20px',
+                letterSpacing: '1px',
+                direction: 'ltr',
+                unicodeBidi: 'bidi-override'
+              }}
+            >
               {status.device_code}
             </strong>
 
