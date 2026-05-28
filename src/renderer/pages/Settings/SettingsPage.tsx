@@ -85,7 +85,11 @@ type AppLicenseStatus = {
   trial_expires_at: string;
   days_left: number;
   expired: boolean;
+  blocked?: boolean;
+  message?: string;
+  device_code?: string;
   app_logo_url: string;
+  app_name?: string;
 };
 
 type SettingsTab = 'store' | 'backup' | 'loyalty' | 'barcode';
@@ -417,6 +421,7 @@ export default function SettingsPage() {
       }
 
       const freshStatus = await window.api.getLicenseStatus();
+      console.log('FRESH STATUS IN RENDERER:', freshStatus);
 
       setLicenseStatus(freshStatus);
 
@@ -434,6 +439,22 @@ export default function SettingsPage() {
       showMessage('error', 'حدث خطأ أثناء إلغاء التفعيل');
     } finally {
       setDeactivatingApp(false);
+    }
+  }
+
+  async function copyDeviceCode() {
+    const code = licenseStatus?.device_code || '';
+
+    if (!code) {
+      showMessage('error', 'كود الجهاز غير متاح');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(code);
+      showMessage('success', 'تم نسخ كود الجهاز');
+    } catch {
+      showMessage('error', 'تعذر نسخ كود الجهاز');
     }
   }
 
@@ -658,6 +679,54 @@ export default function SettingsPage() {
             <div style={statCardStyle}>
               مدة التجربة
               <strong>{licenseStatus?.trial_days ?? 7} أيام</strong>
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: '14px',
+              borderRadius: '16px',
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              display: 'grid',
+              gap: '10px'
+            }}
+          >
+            <div style={{ color: '#94a3b8', fontWeight: 900 }}>
+              كود الجهاز
+            </div>
+
+            <div
+              dir="ltr"
+              style={{
+                fontSize: '20px',
+                fontWeight: 900,
+                letterSpacing: '1px',
+                color: '#f8fafc',
+                background: 'rgba(15,23,42,0.55)',
+                border: '1px solid rgba(148,163,184,0.18)',
+                borderRadius: '12px',
+                padding: '12px',
+                textAlign: 'center',
+                direction: 'ltr',
+                unicodeBidi: 'bidi-override'
+              }}
+            >
+              {licenseStatus?.device_code || '—'}
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => void copyDeviceCode()}
+                style={primaryButtonStyle}
+              >
+                نسخ كود الجهاز
+              </button>
+
+              <span style={{ color: '#64748b', fontWeight: 700, alignSelf: 'center' }}>
+                ابعت الكود ده لصاحب البرنامج للحصول على كود التفعيل.
+              </span>
             </div>
           </div>
 

@@ -628,6 +628,9 @@ declare global {
           trial_expires_at: string;
           days_left: number;
           expired: boolean;
+          blocked?: boolean;
+          message?: string;
+          device_code: string;
           app_logo_url: string;
           app_name: string;
         }>;
@@ -642,6 +645,9 @@ declare global {
             trial_expires_at: string;
             days_left: number;
             expired: boolean;
+            blocked?: boolean;
+            message?: string;
+            device_code: string;
             app_logo_url: string;
             app_name: string;
           };
@@ -656,6 +662,9 @@ declare global {
             trial_expires_at: string;
             days_left: number;
             expired: boolean;
+            blocked?: boolean;
+            message?: string;
+            device_code: string;
             app_logo_url: string;
             app_name: string;
           };
@@ -673,6 +682,9 @@ declare global {
             trial_expires_at: string;
             days_left: number;
             expired: boolean;
+            blocked?: boolean;
+            message?: string;
+            device_code: string;
             app_logo_url: string;
             app_name: string;
           };
@@ -688,6 +700,9 @@ declare global {
             trial_expires_at: string;
             days_left: number;
             expired: boolean;
+            blocked?: boolean;
+            message?: string;
+            device_code: string;
             app_logo_url: string;
             app_name: string;
           };
@@ -702,6 +717,9 @@ declare global {
             trial_expires_at: string;
             days_left: number;
             expired: boolean;
+            blocked?: boolean;
+            message?: string;
+            device_code: string;
             app_logo_url: string;
             app_name: string;
           };

@@ -20,6 +20,7 @@ type LicenseRecord = {
   trial_started_at: string;
   trial_expires_at: string;
   last_seen_at: string;
+  license_state_changed_at: string;
   activated: boolean;
   activated_at?: string | null;
   invalidated?: boolean;
@@ -38,6 +39,12 @@ type LicenseStatus = {
   device_code: string;
 };
 
+type LicenseStoreReadResult = {
+  record: LicenseRecord | null;
+  tampered: boolean;
+  fileExists: boolean;
+};
+
 function ensureDir(dir: string) {
   fs.mkdirSync(dir, { recursive: true });
 }
@@ -50,6 +57,50 @@ function hideFileIfWindows(filePath: string) {
   } catch {
     // تجاهل
   }
+}
+
+function makeFileWritableIfWindows(filePath: string) {
+  if (process.platform !== 'win32') return;
+
+  try {
+    if (fs.existsSync(filePath)) {
+      execFileSync('attrib', ['-h', '-r', '-s', filePath], { windowsHide: true });
+    }
+  } catch {
+    // تجاهل
+  }
+}
+
+function removeFileIfExists(filePath: string) {
+  try {
+    makeFileWritableIfWindows(filePath);
+
+    if (fs.existsSync(filePath)) {
+      fs.rmSync(filePath, { force: true });
+    }
+  } catch {
+    // تجاهل
+  }
+}
+
+function deleteRegistryStore() {
+  if (process.platform !== 'win32') return;
+
+  try {
+    execFileSync('reg', ['delete', REG_PATH, '/v', REG_VALUE, '/f'], {
+      windowsHide: true
+    });
+  } catch {
+    // تجاهل
+  }
+}
+
+function deleteAllLicenseStores() {
+  for (const filePath of getLicensePaths()) {
+    removeFileIfExists(filePath);
+  }
+
+  deleteRegistryStore();
 }
 
 function getUserLicensePath() {
@@ -128,10 +179,12 @@ function signLicense(data: Omit<LicenseRecord, 'signature'>) {
     .digest('hex');
 }
 
-function buildRecord(data: Omit<LicenseRecord, 'signature'>): LicenseRecord {
+function buildRecord(data: Omit<LicenseRecord, 'signature'> | LicenseRecord): LicenseRecord {
+  const { signature: _ignoredSignature, ...payload } = data as LicenseRecord;
+
   return {
-    ...data,
-    signature: signLicense(data)
+    ...payload,
+    signature: signLicense(payload)
   };
 }
 
@@ -155,22 +208,42 @@ function parseRecord(raw: string): LicenseRecord | null {
   }
 }
 
-function readFileStore(filePath: string) {
+function readFileStore(filePath: string): LicenseStoreReadResult {
   try {
-    if (!fs.existsSync(filePath)) {
-      return { record: null as LicenseRecord | null, tampered: false };
+    const fileExists = fs.existsSync(filePath);
+
+    if (!fileExists) {
+      return {
+        record: null,
+        tampered: false,
+        fileExists: false
+      };
     }
+
+    makeFileWritableIfWindows(filePath);
 
     const raw = fs.readFileSync(filePath, 'utf8');
     const record = parseRecord(raw);
 
     if (!record) {
-      return { record: null, tampered: true };
+      return {
+        record: null,
+        tampered: true,
+        fileExists: true
+      };
     }
 
-    return { record, tampered: false };
+    return {
+      record,
+      tampered: false,
+      fileExists: true
+    };
   } catch {
-    return { record: null, tampered: true };
+    return {
+      record: null,
+      tampered: true,
+      fileExists: true
+    };
   }
 }
 
@@ -178,13 +251,30 @@ function writeFileStore(filePath: string, record: LicenseRecord) {
   const dir = path.dirname(filePath);
   ensureDir(dir);
 
-  fs.writeFileSync(filePath, JSON.stringify(record, null, 2), 'utf8');
+  makeFileWritableIfWindows(filePath);
+
+  const payload = JSON.stringify(record, null, 2);
+  const tempPath = `${filePath}.tmp`;
+
+  removeFileIfExists(tempPath);
+
+  fs.writeFileSync(tempPath, payload, 'utf8');
+
+  makeFileWritableIfWindows(filePath);
+  removeFileIfExists(filePath);
+
+  fs.renameSync(tempPath, filePath);
+
   hideFileIfWindows(filePath);
 }
 
-function readRegistryStore() {
+function readRegistryStore(): LicenseStoreReadResult {
   if (process.platform !== 'win32') {
-    return { record: null as LicenseRecord | null, tampered: false };
+    return {
+      record: null,
+      tampered: false,
+      fileExists: false
+    };
   }
 
   try {
@@ -198,30 +288,50 @@ function readRegistryStore() {
       .find((x) => x.includes(REG_VALUE) && x.includes('REG_SZ'));
 
     if (!line) {
-      return { record: null, tampered: false };
+      return {
+        record: null,
+        tampered: false,
+        fileExists: false
+      };
     }
 
     const encoded = line.split('REG_SZ').pop()?.trim();
 
     if (!encoded) {
-      return { record: null, tampered: true };
+      return {
+        record: null,
+        tampered: true,
+        fileExists: true
+      };
     }
 
     const raw = Buffer.from(encoded, 'base64').toString('utf8');
     const record = parseRecord(raw);
 
     if (!record) {
-      return { record: null, tampered: true };
+      return {
+        record: null,
+        tampered: true,
+        fileExists: true
+      };
     }
 
-    return { record, tampered: false };
+    return {
+      record,
+      tampered: false,
+      fileExists: true
+    };
   } catch {
-    return { record: null, tampered: false };
+    return {
+      record: null,
+      tampered: false,
+      fileExists: false
+    };
   }
 }
 
 function writeRegistryStore(record: LicenseRecord) {
-  if (process.platform !== 'win32') return;
+  if (process.platform !== 'win32') return false;
 
   try {
     const raw = JSON.stringify(record);
@@ -232,8 +342,10 @@ function writeRegistryStore(record: LicenseRecord) {
       ['add', REG_PATH, '/v', REG_VALUE, '/t', 'REG_SZ', '/d', encoded, '/f'],
       { windowsHide: true }
     );
+
+    return true;
   } catch {
-    // تجاهل
+    return false;
   }
 }
 
@@ -248,19 +360,29 @@ function readAllStores() {
     ...readRegistryStore()
   };
 
-  return [...fileResults, registryResult];
+  const results = [...fileResults, registryResult];
+  return results;
 }
 
 function writeAllStores(record: LicenseRecord) {
+  let wroteAny = false;
+
   for (const filePath of getLicensePaths()) {
     try {
       writeFileStore(filePath, record);
-    } catch {
-      // تجاهل
+      wroteAny = true;
+    } catch (error) {
+      console.error('FAILED TO WRITE LICENSE FILE:', filePath, error);
     }
   }
 
-  writeRegistryStore(record);
+  if (writeRegistryStore(record)) {
+    wroteAny = true;
+  }
+
+  if (!wroteAny) {
+    throw new Error('فشل حفظ ملف التفعيل على الجهاز');
+  }
 }
 
 function createTrialRecord() {
@@ -276,6 +398,7 @@ function createTrialRecord() {
     trial_started_at: now.toISOString(),
     trial_expires_at: expiresAt.toISOString(),
     last_seen_at: now.toISOString(),
+    license_state_changed_at: now.toISOString(),
     activated: false,
     activated_at: null,
     invalidated: false
@@ -298,6 +421,15 @@ function maxDateIso(values: string[]) {
     .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
 }
 
+function getLicenseStateTime(record: LicenseRecord) {
+  return (
+    record.license_state_changed_at ||
+    record.activated_at ||
+    record.trial_started_at ||
+    '1970-01-01T00:00:00.000Z'
+  );
+}
+
 function mergeRecords(records: LicenseRecord[]) {
   const machineHash = getMachineHash();
   const deviceCode = getDeviceCodeFromHash(machineHash);
@@ -306,13 +438,20 @@ function mergeRecords(records: LicenseRecord[]) {
   const trialExpiresAt = minDateIso(records.map((x) => x.trial_expires_at));
   const lastSeenAt = maxDateIso(records.map((x) => x.last_seen_at));
 
-  const newestRecord = [...records].sort((a, b) => {
-    return new Date(b.last_seen_at).getTime() - new Date(a.last_seen_at).getTime();
+  const newestStateRecord = [...records].sort((a, b) => {
+    return (
+      new Date(getLicenseStateTime(b)).getTime() -
+      new Date(getLicenseStateTime(a)).getTime()
+    );
   })[0];
 
-  const activated = Boolean(newestRecord?.activated);
-  const activatedAt =
-    minDateIso(records.map((x) => x.activated_at || '').filter(Boolean)) || null;
+  const stateChangedAt = getLicenseStateTime(newestStateRecord);
+
+  const activated = Boolean(newestStateRecord?.activated);
+
+  const activatedAt = activated
+    ? newestStateRecord?.activated_at || stateChangedAt
+    : null;
 
   const invalidated = records.some((x) => x.invalidated);
 
@@ -323,6 +462,7 @@ function mergeRecords(records: LicenseRecord[]) {
     trial_started_at: trialStartedAt,
     trial_expires_at: trialExpiresAt,
     last_seen_at: lastSeenAt,
+    license_state_changed_at: stateChangedAt,
     activated,
     activated_at: activatedAt,
     invalidated
@@ -399,6 +539,10 @@ export function getDeviceLicenseStatus(): LicenseStatus {
 
   record = buildRecord({
     ...record,
+    license_state_changed_at:
+      record.license_state_changed_at ||
+      record.activated_at ||
+      record.trial_started_at,
     last_seen_at: now.toISOString()
   });
 
@@ -418,14 +562,9 @@ export function getDeviceLicenseStatus(): LicenseStatus {
 }
 
 export function activateDevice(code: string) {
-  const status = getDeviceLicenseStatus();
-  const expectedCode = generateActivationCodeForDevice(status.device_code);
-
-  console.log('DEVICE CODE:', status.device_code);
-  console.log('EXPECTED CODE:', expectedCode);
-  console.log('INPUT CODE:', code);
-  console.log('NORMALIZED EXPECTED:', normalizeCode(expectedCode));
-  console.log('NORMALIZED INPUT:', normalizeCode(code));
+  const machineHash = getMachineHash();
+  const deviceCode = getDeviceCodeFromHash(machineHash);
+  const expectedCode = generateActivationCodeForDevice(deviceCode);
 
   if (normalizeCode(code) !== normalizeCode(expectedCode)) {
     return {
@@ -435,50 +574,82 @@ export function activateDevice(code: string) {
   }
 
   const now = new Date();
-  const machineHash = getMachineHash();
-  const deviceCode = getDeviceCodeFromHash(machineHash);
+  const stateChangedAt = now.toISOString();
+
+  const results = readAllStores();
+  const validRecords = results
+    .map((x) => x.record)
+    .filter(Boolean) as LicenseRecord[];
+
+  const merged = validRecords.length ? mergeRecords(validRecords) : null;
+
+  const trialStartedAt = merged?.trial_started_at || now.toISOString();
+  const trialExpiresAt =
+    merged?.trial_expires_at || addDays(now, TRIAL_DAYS).toISOString();
 
   const record = buildRecord({
     schema_version: 1,
     machine_id_hash: machineHash,
     device_code: deviceCode,
-    trial_started_at: status.trial_started_at || now.toISOString(),
-    trial_expires_at: status.trial_expires_at || addDays(now, TRIAL_DAYS).toISOString(),
-    last_seen_at: now.toISOString(),
+    trial_started_at: trialStartedAt,
+    trial_expires_at: trialExpiresAt,
+    last_seen_at: stateChangedAt,
+    license_state_changed_at: stateChangedAt,
     activated: true,
-    activated_at: now.toISOString(),
+    activated_at: stateChangedAt,
     invalidated: false
   });
 
+  
+  deleteAllLicenseStores();
+
+  
   writeAllStores(record);
+
+  const status = getDeviceLicenseStatus();
+
+  
 
   return {
     success: true,
     message: 'تم تفعيل البرنامج بنجاح',
-    status: getDeviceLicenseStatus()
+    status
   };
 }
 
 export function deactivateDevice() {
-  const status = getDeviceLicenseStatus();
-  const now = new Date();
   const machineHash = getMachineHash();
   const deviceCode = getDeviceCodeFromHash(machineHash);
+  const now = new Date();
+  const stateChangedAt = now.toISOString();
+
+  const results = readAllStores();
+  const validRecords = results
+    .map((x) => x.record)
+    .filter(Boolean) as LicenseRecord[];
+
+  const merged = validRecords.length ? mergeRecords(validRecords) : null;
+
+  const trialStartedAt = merged?.trial_started_at || now.toISOString();
+  const trialExpiresAt =
+    merged?.trial_expires_at || addDays(now, TRIAL_DAYS).toISOString();
 
   const record = buildRecord({
     schema_version: 1,
     machine_id_hash: machineHash,
     device_code: deviceCode,
-    trial_started_at: status.trial_started_at || now.toISOString(),
-    trial_expires_at: status.trial_expires_at || addDays(now, TRIAL_DAYS).toISOString(),
-    last_seen_at: now.toISOString(),
+    trial_started_at: trialStartedAt,
+    trial_expires_at: trialExpiresAt,
+    last_seen_at: stateChangedAt,
+    license_state_changed_at: stateChangedAt,
     activated: false,
     activated_at: null,
     invalidated: false
   });
 
+  deleteAllLicenseStores();
+
   writeAllStores(record);
-  console.log('DEACTIVATE STATUS:', getDeviceLicenseStatus());
 
   return {
     success: true,
