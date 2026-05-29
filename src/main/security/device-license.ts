@@ -657,7 +657,3 @@ export function deactivateDevice() {
     status: getDeviceLicenseStatus()
   };
 }
-
-export function generateActivationCodeForDisplay(deviceCode: string) {
-  return generateActivationCodeForDevice(deviceCode);
-}

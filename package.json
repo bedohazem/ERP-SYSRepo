@@ -11,7 +11,6 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run build:renderer",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "license:code": "node scripts/generate-activation-code.cjs",
     "license:build": "electron-packager ./tools/license-generator \"ERP License Generator\" --platform=win32 --arch=x64 --out=tools/release --overwrite --asar --electron-version=38.0.0"
     
   },

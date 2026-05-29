@@ -317,27 +317,6 @@ export type AppLicenseStatus = {
   app_name: string;
 };
 
-const ACTIVATION_CODE = 'ERP-STORE-2026';
-const USE_TEST_TRIAL_MINUTES = false;
-const TEST_TRIAL_MINUTES = 2;
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function addMinutes(date: Date, minutes: number) {
-  const next = new Date(date);
-  next.setMinutes(next.getMinutes() + minutes);
-  return next;
-}
-
-function diffDays(from: Date, to: Date) {
-  const ms = to.getTime() - from.getTime();
-  return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
-}
-
 export function getAppLicenseStatus(): AppLicenseStatus {
   const license = getDeviceLicenseStatus();
 
