@@ -15,6 +15,7 @@ import { registerExpenseIpc } from './ipc/expense.ipc';
 import { registerActivityIpc } from './ipc/activity.ipc';
 import { getAppLicenseStatus } from './database/repositories/settings.repo';
 import { createDailyAutoBackup } from './database/auto-backup';
+import { registerStockCountIpc } from './ipc/stock-count.ipc';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -113,6 +114,7 @@ app.whenReady().then(() => {
   registerCustomersIpc();
   registerReportsIpc();
   registerInventoryIpc();
+  registerStockCountIpc();
   registerSuppliersIpc();
   registerPurchasesIpc();
   registerCashIpc();

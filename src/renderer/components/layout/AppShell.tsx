@@ -19,6 +19,7 @@ const menuItems: MenuItem[] = [
   { to: '/invoices', label: 'سجل الفواتير', icon: '📄', title: 'سجل الفواتير', roles: ['admin', 'cashier'] },
   { to: '/products', label: 'المنتجات', icon: '👕', title: 'المنتجات', roles: ['admin'] },
   { to: '/inventory', label: 'المخزون', icon: '📦', title: 'المخزون', roles: ['admin'] },
+  { to: '/stock-count', label: 'الجرد', icon: '🧮', title: 'الجرد', roles: ['admin', 'cashier'] },
   { to: '/customers', label: 'العملاء', icon: '👤', title: 'العملاء', roles: ['admin', 'cashier'] },
   { to: '/suppliers', label: 'الموردين', icon: '🚚', title: 'الموردين', roles: ['admin', 'cashier'] },
   { to: '/purchases', label: 'فواتير الشراء', icon: '🛒', title: 'فواتير الشراء', roles: ['admin', 'cashier'] },

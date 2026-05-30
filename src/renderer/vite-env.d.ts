@@ -460,6 +460,42 @@ declare global {
           }>
         >;
 
+        getStockCountSessions: () => Promise<any[]>;
+
+        getStockCountSession: (sessionId: number) => Promise<{
+          session: any;
+          items: any[];
+        }>;
+
+        createStockCountSession: (input: {
+          title: string;
+          notes?: string | null;
+          actor_id?: number;
+        }) => Promise<any>;
+
+        updateStockCountItem: (input: {
+          session_id: number;
+          item_id: number;
+          actual_stock: number;
+          notes?: string | null;
+        }) => Promise<any>;
+
+        scanStockCountBarcode: (input: {
+          session_id: number;
+          barcode: string;
+          quantity?: number;
+        }) => Promise<any>;
+
+        approveStockCountSession: (input: {
+          session_id: number;
+          actor_id?: number;
+        }) => Promise<any>;
+
+        cancelStockCountSession: (input: {
+          session_id: number;
+          actor_id?: number;
+        }) => Promise<any>;
+
         
         // =========================
         // Suppliers

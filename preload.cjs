@@ -56,6 +56,14 @@ contextBridge.exposeInMainWorld('api', {
   getInventoryList: (input) => ipcRenderer.invoke('inventory:list', input),
   adjustVariantStock: (input) => ipcRenderer.invoke('inventory:adjust-stock', input),
   getStockMovements: (input) => ipcRenderer.invoke('inventory:movements', input),
+
+  getStockCountSessions: () => ipcRenderer.invoke('stock-count:list'),
+  getStockCountSession: (sessionId) => ipcRenderer.invoke('stock-count:get', sessionId),
+  createStockCountSession: (input) => ipcRenderer.invoke('stock-count:create', input),
+  updateStockCountItem: (input) => ipcRenderer.invoke('stock-count:update-item', input),
+  scanStockCountBarcode: (input) => ipcRenderer.invoke('stock-count:scan', input),
+  approveStockCountSession: (input) => ipcRenderer.invoke('stock-count:approve', input),
+  cancelStockCountSession: (input) => ipcRenderer.invoke('stock-count:cancel', input),
   
   getSuppliers: (search) => ipcRenderer.invoke('suppliers:list', search),
   getSupplierById: (id) => ipcRenderer.invoke('suppliers:get-by-id', id),

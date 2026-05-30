@@ -78,6 +78,35 @@ export function getDb(): Database.Database {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS stock_count_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        notes TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        created_by INTEGER,
+        approved_by INTEGER,
+        canceled_by INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        approved_at TEXT,
+        canceled_at TEXT,
+        FOREIGN KEY (created_by) REFERENCES users(id),
+        FOREIGN KEY (approved_by) REFERENCES users(id),
+        FOREIGN KEY (canceled_by) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS stock_count_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
+        variant_id INTEGER NOT NULL,
+        system_stock REAL NOT NULL DEFAULT 0,
+        actual_stock REAL,
+        notes TEXT,
+        updated_at TEXT,
+        FOREIGN KEY (session_id) REFERENCES stock_count_sessions(id) ON DELETE CASCADE,
+        FOREIGN KEY (variant_id) REFERENCES product_variants(id),
+        UNIQUE(session_id, variant_id)
+      );
+
       CREATE TABLE IF NOT EXISTS sales (
         id INTEGER PRIMARY KEY,
         type TEXT NOT NULL DEFAULT 'sale',
@@ -363,6 +392,9 @@ export function resetDatabaseData(): void {
       DELETE FROM sale_items;
       DELETE FROM sales;
       DELETE FROM customers;
+
+      DELETE FROM stock_count_items;
+      DELETE FROM stock_count_sessions;
 
       DELETE FROM stock_movements;
       DELETE FROM product_variants;

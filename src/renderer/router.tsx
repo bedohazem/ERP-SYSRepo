@@ -18,6 +18,7 @@ import CashPage from './pages/Cash/CashPage';
 import ExpensesPage from './pages/Expenses/ExpensesPage';
 import UsersPage from './pages/Users/UsersPage';
 import ActivityLogPage from './pages/Activity/ActivityLogPage';
+import StockCountPage from './pages/StockCount/StockCountPage';
 
 type Role = 'admin' | 'cashier';
 
@@ -49,6 +50,10 @@ export const router = createHashRouter([
   {
     path: '/inventory',
     element: withShell('المخزون', <InventoryPage />, ['admin'])
+  },
+  {
+    path: '/stock-count',
+    element: withShell('الجرد', <StockCountPage />, ['admin', 'cashier'])
   },
   {
     path: '/sales',
