@@ -123,7 +123,9 @@ export function registerStockCountIpc(): void {
         action: 'stock_count_canceled',
         entity: 'stock_counts',
         entity_id: input.session_id,
-        details: {}
+        details: {
+          session_id: input.session_id
+        }
       });
 
       return result;

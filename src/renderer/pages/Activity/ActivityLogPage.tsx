@@ -436,6 +436,10 @@ export default function ActivityLogPage() {
 
               <option value="purchase_created">إنشاء فاتورة شراء</option>
 
+              <option value="stock_count_created">إنشاء جرد</option>
+              <option value="stock_count_approved">اعتماد جرد</option>
+              <option value="stock_count_canceled">إلغاء جرد</option>
+
               <option value="cash_in">دخول خزنة</option>
               <option value="cash_out">خروج خزنة</option>
               <option value="cash_deposit">إيداع خزنة</option>
@@ -448,6 +452,9 @@ export default function ActivityLogPage() {
               <option value="product_activated">تفعيل منتج</option>
               <option value="product_deactivated">تعطيل منتج</option>
               <option value="variant_updated">تعديل صنف</option>
+              <option value="variant_created">إضافة صنف</option>
+              <option value="variant_activated">تفعيل صنف</option>
+              <option value="variant_deactivated">تعطيل صنف</option>
 
               <option value="user_created">إضافة مستخدم</option>
               <option value="user_updated">تعديل مستخدم</option>
@@ -477,6 +484,8 @@ export default function ActivityLogPage() {
               <option value="expenses">المصروفات</option>
               <option value="products">المنتجات</option>
               <option value="product_variants">أصناف المنتجات</option>
+              <option value="sale_returns">مرتجعات البيع</option>
+              <option value="stock_counts">جلسات الجرد</option>
               <option value="users">المستخدمين</option>
               <option value="suppliers">الموردين</option>
               <option value="settings">الإعدادات</option>
@@ -687,7 +696,9 @@ function getActionLabel(action: string) {
       return 'تعطيل منتج';
     case 'variant_updated':
       return 'تعديل صنف';
-
+    case 'variant_created':
+     return 'إضافة صنف';
+      
     case 'user_created':
       return 'إضافة مستخدم';
     case 'user_updated':
@@ -735,6 +746,15 @@ function getActionLabel(action: string) {
     case 'database_reset':
       return 'تصفير البرنامج';
 
+    case 'stock_count_created':
+      return 'إنشاء جرد';
+
+    case 'stock_count_approved':
+      return 'اعتماد جرد';
+
+    case 'stock_count_canceled':
+      return 'إلغاء جرد';  
+
     default:
       return action;
   }
@@ -744,6 +764,8 @@ function getEntityLabel(entity?: string | null) {
   switch (entity) {
     case 'sales':
       return 'المبيعات';
+    case 'sale_returns':
+     return 'مرتجعات البيع';  
     case 'purchase_invoices':
       return 'المشتريات';
     case 'cash_movements':
@@ -760,6 +782,10 @@ function getEntityLabel(entity?: string | null) {
       return 'الموردين';
     case 'settings':
       return 'الإعدادات';
+
+    case 'stock_counts':
+      return 'الجرد';
+  
     default:
       return entity || '—';
   }
@@ -795,11 +821,24 @@ function formatDetails(value?: string | null) {
 
       parsed.payment_method ? `الدفع: ${paymentName(parsed.payment_method)}` : null,
       parsed.items_count ? `عدد الأصناف: ${parsed.items_count}` : null,
+      parsed.session_id ? `رقم الجلسة: ${parsed.session_id}` : null,
+      parsed.changed_items !== undefined ? `أصناف تم تعديلها: ${parsed.changed_items}` : null,
+      parsed.shortage_items !== undefined ? `أصناف عجز: ${parsed.shortage_items}` : null,
+      parsed.surplus_items !== undefined ? `أصناف زيادة: ${parsed.surplus_items}` : null,
+      parsed.total_shortage_qty !== undefined ? `إجمالي العجز: ${parsed.total_shortage_qty}` : null,
+      parsed.total_surplus_qty !== undefined ? `إجمالي الزيادة: ${parsed.total_surplus_qty}` : null,
+      parsed.buy_difference_value !== undefined ? `فرق الشراء: ${moneyValue(parsed.buy_difference_value)}` : null,
+      parsed.sell_difference_value !== undefined ? `فرق البيع: ${moneyValue(parsed.sell_difference_value)}` : null,
       parsed.quantity ? `الكمية: ${parsed.quantity}` : null,
-
       parsed.old_stock !== undefined ? `المخزون القديم: ${parsed.old_stock}` : null,
       parsed.new_stock !== undefined ? `المخزون الجديد: ${parsed.new_stock}` : null,
       parsed.diff !== undefined ? `الفرق: ${parsed.diff}` : null,
+
+      parsed.original_sale_id ? `فاتورة البيع الأصلية: #${parsed.original_sale_id}` : null,
+      parsed.return_id ? `رقم المرتجع: #${parsed.return_id}` : null,
+      parsed.refund_amount ? `المردود: ${moneyValue(parsed.refund_amount)}` : null,
+      parsed.reason ? `السبب: ${parsed.reason}` : null,
+      parsed.loyalty_points_reversed ? `نقاط ملغاة: ${parsed.loyalty_points_reversed}` : null,
 
       parsed.is_active !== undefined
         ? `الحالة: ${Number(parsed.is_active) === 1 ? 'مفعل' : 'معطل'}`
@@ -848,7 +887,18 @@ function formatUnknownDetails(parsed: Record<string, any>) {
     user_id: 'رقم المستخدم',
     email: 'البريد',
     address: 'العنوان',
-    description: 'الوصف'
+    description: 'الوصف',
+    session_id: 'رقم جلسة الجرد',
+    items_count: 'عدد الأصناف',
+    changed_items: 'أصناف تم تعديلها',
+    shortage_items: 'أصناف عجز',
+    surplus_items: 'أصناف زيادة',
+    total_shortage_qty: 'إجمالي العجز',
+    total_surplus_qty: 'إجمالي الزيادة',
+    matched_count: 'أصناف مطابقة',
+    counted_count: 'أصناف تم جردها',
+    buy_difference_value: 'فرق الشراء',
+    sell_difference_value: 'فرق البيع',
   };
 
   return Object.entries(parsed)
@@ -903,6 +953,7 @@ function getActionBadgeStyle(action: string): React.CSSProperties {
   const isDanger =
     action.includes('delete') ||
     action.includes('deactivated') ||
+    action.includes('canceled') ||
     action.includes('restored') ||
     action.includes('return') ||
     action.includes('out') ||
@@ -910,6 +961,7 @@ function getActionBadgeStyle(action: string): React.CSSProperties {
 
   const isSuccess =
     action.includes('created') ||
+    action.includes('approved') ||
     action.includes('activated') ||
     action.includes('deposit') ||
     action.includes('in') ||
