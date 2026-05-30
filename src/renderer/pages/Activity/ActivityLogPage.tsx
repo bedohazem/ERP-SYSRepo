@@ -11,6 +11,7 @@ type ActivityFilters = {
 
 export default function ActivityLogPage() {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [expandedDetails, setExpandedDetails] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [pageMessage, setPageMessage] = useState<{
     type: 'success' | 'error';
@@ -44,12 +45,20 @@ export default function ActivityLogPage() {
     };
   }
 
+  function toggleDetails(id: number) {
+    setExpandedDetails((prev) => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  }
+
   async function loadLogs(customFilters?: ActivityFilters) {
     setLoading(true);
 
     try {
       const data = await window.api.getActivityLogs(customFilters ?? getFilters());
       setLogs(data || []);
+      setExpandedDetails({});
     } catch (error) {
       console.error(error);
       showMessage('error', 'حدث خطأ أثناء تحميل سجل العمليات');
@@ -99,7 +108,7 @@ export default function ActivityLogPage() {
             <td>${escapeHtml(getEntityLabel(item.entity))}</td>
             <td>${item.entity_id || '—'}</td>
             <td>${escapeHtml(formatDetails(item.details))}</td>
-            <td>${escapeHtml(item.user_name || item.username || '—')}</td>
+            <td>${escapeHtml(formatLogUser(item))}</td>
             <td>${escapeHtml(formatDate(item.created_at))}</td>
           </tr>
         `
@@ -538,30 +547,66 @@ export default function ActivityLogPage() {
             )}
 
             {!loading &&
-              logs.map((item) => (
-                <tr key={item.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                  <td style={tdStyle}>{item.id}</td>
+              logs.map((item) => {
+                const detailsText = formatDetails(item.details);
+                const isExpanded = Boolean(expandedDetails[item.id]);
+                const canExpand = detailsText.length > 90;
 
-                  <td style={tdStyle}>
-                    <span style={getActionBadgeStyle(item.action)}>
-                      {getActionLabel(item.action)}
-                    </span>
-                  </td>
+                return (
+                  <tr key={item.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <td style={tdStyle}>{item.id}</td>
 
-                  <td style={tdStyle}>{getEntityLabel(item.entity)}</td>
-                  <td style={tdStyle}>{item.entity_id || '—'}</td>
+                    <td style={tdStyle}>
+                      <span style={getActionBadgeStyle(item.action)}>
+                        {getActionLabel(item.action)}
+                      </span>
+                    </td>
 
-                  <td style={{ ...tdStyle, maxWidth: '420px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {formatDetails(item.details)}
-                  </td>
+                    <td style={tdStyle}>{getEntityLabel(item.entity)}</td>
+                    <td style={tdStyle}>{item.entity_id || '—'}</td>
 
-                  <td style={tdStyle}>{item.user_name || item.username || '—'}</td>
+                    <td style={{ ...tdStyle, maxWidth: '420px' }}>
+                      <div
+                        title={!isExpanded ? detailsText : undefined}
+                        style={{
+                          lineHeight: 1.7,
+                          whiteSpace: isExpanded ? 'normal' : 'nowrap',
+                          overflow: isExpanded ? 'visible' : 'hidden',
+                          textOverflow: isExpanded ? 'clip' : 'ellipsis',
+                          wordBreak: 'break-word'
+                        }}
+                      >
+                        {detailsText}
+                      </div>
 
-                  <td style={{ ...tdStyle, color: '#94a3b8' }}>
-                    {formatDate(item.created_at)}
-                  </td>
-                </tr>
-              ))}
+                      {canExpand && (
+                        <button
+                          type="button"
+                          onClick={() => toggleDetails(item.id)}
+                          style={{
+                            marginTop: '6px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: '#93c5fd',
+                            fontWeight: 900,
+                            cursor: 'pointer',
+                            padding: 0
+                          }}
+                        >
+                          {isExpanded ? 'عرض أقل' : 'عرض المزيد'}
+                        </button>
+                      )}
+                    </td>
+
+                    <td style={tdStyle}>{formatLogUser(item)}</td>
+
+                    <td style={{ ...tdStyle, color: '#94a3b8' }}>
+                      {formatDate(item.created_at)}
+                    </td>
+                  </tr>
+                );
+              })
+            }
 
             {!loading && logs.length === 0 && (
               <tr>
@@ -585,8 +630,16 @@ export default function ActivityLogPage() {
   );
 }
 
-function escapeHtml(value: string) {
-  return String(value)
+function formatLogUser(item: ActivityLog) {
+  if (item.user_name || item.username) {
+    return item.user_name || item.username;
+  }
+
+  return 'غير محدد';
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? '—')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -658,6 +711,30 @@ function getActionLabel(action: string) {
     case 'database_restored':
       return 'Restore';
 
+    case 'variant_activated':
+      return 'تفعيل صنف';
+
+    case 'variant_deactivated':
+      return 'تعطيل صنف';
+
+    case 'customer_created':
+      return 'إضافة عميل';
+
+    case 'customer_updated':
+      return 'تعديل عميل';
+
+    case 'customer_deactivated':
+      return 'تعطيل عميل';
+
+    case 'customer_payment_created':
+      return 'دفعة عميل';
+
+    case 'supplier_payment_created':
+      return 'دفعة مورد';
+
+    case 'database_reset':
+      return 'تصفير البرنامج';
+
     default:
       return action;
   }
@@ -694,20 +771,105 @@ function formatDetails(value?: string | null) {
   try {
     const parsed = JSON.parse(value);
 
+    if (!parsed || typeof parsed !== 'object') {
+      return String(value);
+    }
+
     const parts = [
-      parsed.title || parsed.name || parsed.username || parsed.type || null,
-      parsed.amount ? `${Number(parsed.amount).toFixed(2)} ج.م` : null,
-      parsed.grand_total ? `الإجمالي ${Number(parsed.grand_total).toFixed(2)} ج.م` : null,
-      parsed.total_amount ? `الإجمالي ${Number(parsed.total_amount).toFixed(2)} ج.م` : null,
+      parsed.title ? `العنوان: ${parsed.title}` : null,
+      parsed.name ? `الاسم: ${parsed.name}` : null,
+      parsed.username ? `اسم المستخدم: ${parsed.username}` : null,
+      parsed.phone ? `الهاتف: ${parsed.phone}` : null,
+      parsed.role ? `الدور: ${roleName(parsed.role)}` : null,
+
+      parsed.product_name ? `المنتج: ${parsed.product_name}` : null,
+      parsed.barcode ? `الباركود: ${parsed.barcode}` : null,
+      parsed.size ? `المقاس: ${parsed.size}` : null,
+      parsed.color ? `اللون: ${parsed.color}` : null,
+
+      parsed.amount ? `المبلغ: ${moneyValue(parsed.amount)}` : null,
+      parsed.grand_total ? `الإجمالي: ${moneyValue(parsed.grand_total)}` : null,
+      parsed.total_amount ? `الإجمالي: ${moneyValue(parsed.total_amount)}` : null,
+      parsed.paid_amount ? `المدفوع: ${moneyValue(parsed.paid_amount)}` : null,
+      parsed.remaining_amount ? `المتبقي: ${moneyValue(parsed.remaining_amount)}` : null,
+
       parsed.payment_method ? `الدفع: ${paymentName(parsed.payment_method)}` : null,
       parsed.items_count ? `عدد الأصناف: ${parsed.items_count}` : null,
+      parsed.quantity ? `الكمية: ${parsed.quantity}` : null,
+
+      parsed.old_stock !== undefined ? `المخزون القديم: ${parsed.old_stock}` : null,
+      parsed.new_stock !== undefined ? `المخزون الجديد: ${parsed.new_stock}` : null,
+      parsed.diff !== undefined ? `الفرق: ${parsed.diff}` : null,
+
+      parsed.is_active !== undefined
+        ? `الحالة: ${Number(parsed.is_active) === 1 ? 'مفعل' : 'معطل'}`
+        : null,
+
+      parsed.path ? `المسار: ${parsed.path}` : null,
+      parsed.restored_from ? `استرجاع من: ${parsed.restored_from}` : null,
+      parsed.safety_backup ? `نسخة أمان: ${parsed.safety_backup}` : null,
+
       parsed.notes ? `ملاحظات: ${parsed.notes}` : null
     ].filter(Boolean);
 
-    return parts.length ? parts.join(' • ') : JSON.stringify(parsed);
+    if (parts.length) {
+      return parts.join(' • ');
+    }
+
+    return formatUnknownDetails(parsed);
   } catch {
     return value;
   }
+}
+
+function moneyValue(value: unknown) {
+  return `${Number(value || 0).toFixed(2)} ج.م`;
+}
+
+function roleName(value: string) {
+  if (value === 'admin') return 'مدير';
+  if (value === 'cashier') return 'كاشير';
+  return value;
+}
+
+function formatUnknownDetails(parsed: Record<string, any>) {
+  const labels: Record<string, string> = {
+    id: 'المعرف',
+    type: 'النوع',
+    action: 'العملية',
+    entity: 'الموديول',
+    entity_id: 'رقم المرجع',
+    customer_id: 'رقم العميل',
+    supplier_id: 'رقم المورد',
+    purchase_id: 'رقم الشراء',
+    sale_id: 'رقم البيع',
+    variant_id: 'رقم الصنف',
+    product_id: 'رقم المنتج',
+    user_id: 'رقم المستخدم',
+    email: 'البريد',
+    address: 'العنوان',
+    description: 'الوصف'
+  };
+
+  return Object.entries(parsed)
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .map(([key, value]) => {
+      const label = labels[key] || key;
+      return `${label}: ${formatDetailValue(value)}`;
+    })
+    .join(' • ') || '—';
+}
+
+function formatDetailValue(value: unknown) {
+  if (typeof value === 'boolean') {
+    return value ? 'نعم' : 'لا';
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+
+  return String(value);
 }
 
 function paymentName(value: string) {

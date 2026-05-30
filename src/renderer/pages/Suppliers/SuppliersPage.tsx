@@ -103,12 +103,16 @@ export default function SuppliersPage() {
       if (editingId) {
         await window.api.updateSupplier({
           id: editingId,
-          ...form
+          ...form,
+          actor_id: currentUser?.id
         });
 
         showMessage('تم تعديل المورد');
       } else {
-        await window.api.createSupplier(form);
+        await window.api.createSupplier({
+          ...form,
+          actor_id: currentUser?.id
+        });
         showMessage('تم إضافة المورد');
       }
 
@@ -128,7 +132,7 @@ export default function SuppliersPage() {
     if (!confirmed) return;
 
     try {
-      await window.api.deleteSupplier(id);
+      await window.api.deleteSupplier(id, currentUser?.id);
       showMessage('تم حذف المورد');
       await loadSuppliers();
     } catch (error) {

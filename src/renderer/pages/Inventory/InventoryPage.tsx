@@ -35,7 +35,7 @@ export default function InventoryPage() {
   const [rows, setRows] = useState<InventoryRow[]>([]);
   const [movements, setMovements] = useState<MovementRow[]>([]);
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<'all' | 'available' | 'low' | 'out' | 'negative'>('all');
+  const [status, setStatus] = useState<'all' | 'available' | 'low' | 'out'>('all');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -48,12 +48,21 @@ export default function InventoryPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const stats = useMemo(() => {
+    const positiveRows = rows.filter((x) => Number(x.stock || 0) > 0);
+
     return {
       total: rows.length,
-      available: rows.filter((x) => Number(x.stock) > Number(x.min_stock)).length,
-      low: rows.filter((x) => Number(x.stock) > 0 && Number(x.stock) <= Number(x.min_stock)).length,
-      out: rows.filter((x) => Number(x.stock) === 0).length,
-      negative: rows.filter((x) => Number(x.stock) < 0).length
+      available: rows.filter((x) => Number(x.stock || 0) > Number(x.min_stock || 0)).length,
+      low: rows.filter((x) => Number(x.stock || 0) > 0 && Number(x.stock || 0) <= Number(x.min_stock || 0)).length,
+      out: rows.filter((x) => Number(x.stock || 0) === 0).length,
+
+      totalBuyValue: positiveRows.reduce((sum, item) => {
+        return sum + Number(item.stock || 0) * Number(item.buy_price || 0);
+      }, 0),
+
+      totalSellValue: positiveRows.reduce((sum, item) => {
+        return sum + Number(item.stock || 0) * Number(item.sell_price || 0);
+      }, 0)
     };
   }, [rows]);
 
@@ -224,7 +233,6 @@ export default function InventoryPage() {
             <option value="available">متاح</option>
             <option value="low">مخزون منخفض</option>
             <option value="out">نافد</option>
-            <option value="negative">سالب</option>
           </select>
         </div>
       </div>
@@ -240,7 +248,8 @@ export default function InventoryPage() {
         <StatCard title="متاح" value={String(stats.available)} success />
         <StatCard title="منخفض" value={String(stats.low)} warning />
         <StatCard title="نافد" value={String(stats.out)} danger />
-        <StatCard title="سالب" value={String(stats.negative)} danger />
+        <StatCard title="إجمالي الشراء" value={money(stats.totalBuyValue)} />
+        <StatCard title="إجمالي البيع" value={money(stats.totalSellValue)} success />
       </div>
 
       <div

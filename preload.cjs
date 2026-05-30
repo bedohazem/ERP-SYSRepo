@@ -61,7 +61,7 @@ contextBridge.exposeInMainWorld('api', {
   getSupplierById: (id) => ipcRenderer.invoke('suppliers:get-by-id', id),
   createSupplier: (input) => ipcRenderer.invoke('suppliers:create', input),
   updateSupplier: (input) => ipcRenderer.invoke('suppliers:update', input),
-  deleteSupplier: (id) => ipcRenderer.invoke('suppliers:delete', id),
+  deleteSupplier: (id, actorId) => ipcRenderer.invoke('suppliers:delete', id, actorId),
 
   createPurchaseInvoice: (input) => ipcRenderer.invoke('purchases:create', input),
   listPurchaseInvoices: (input) => ipcRenderer.invoke('purchases:list', input),

@@ -12,7 +12,7 @@ const STOCK_SUM_SQL = `
 
 export function getInventoryList(input?: {
   search?: string;
-  status?: 'all' | 'available' | 'low' | 'out' | 'negative';
+  status?: 'all' | 'available' | 'low' | 'out' ;
 }) {
   const db = getDb();
 
@@ -48,10 +48,6 @@ export function getInventoryList(input?: {
 
   if (status === 'out') {
     havingSql = `HAVING stock = 0`;
-  }
-
-  if (status === 'negative') {
-    havingSql = `HAVING stock < 0`;
   }
 
   return db

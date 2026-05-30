@@ -428,6 +428,7 @@ declare global {
           variant_id: number;
           target_stock: number;
           notes?: string | null;
+          actor_id?: number;
         }) => Promise<{
           success: boolean;
           variant_id: number;
@@ -486,6 +487,7 @@ declare global {
             email?: string | null;
             address?: string | null;
             notes?: string | null;
+            actor_id?: number;
           }) => Promise<any>;
 
           updateSupplier: (input: {
@@ -495,11 +497,10 @@ declare global {
             email?: string | null;
             address?: string | null;
             notes?: string | null;
+            actor_id?: number;
           }) => Promise<any>;
 
-          deleteSupplier: (id: number) => Promise<{ ok: boolean }
-        >;
-
+          deleteSupplier: (id: number, actorId?: number) => Promise<{ ok: boolean }>;
 
         // =========================
         // Purchases
