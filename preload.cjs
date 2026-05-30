@@ -38,7 +38,7 @@ contextBridge.exposeInMainWorld('api', {
   getCustomerById: (id) => ipcRenderer.invoke('customers:get-by-id', id),
   createCustomer: (input) => ipcRenderer.invoke('customers:create', input),
   updateCustomer: (input) => ipcRenderer.invoke('customers:update', input),
-  deleteCustomer: (id) => ipcRenderer.invoke('customers:delete', id),
+  deleteCustomer: (id, actorId) => ipcRenderer.invoke('customers:delete', id, actorId),
   getCustomerHistory: (customerId) => ipcRenderer.invoke('customers:history', customerId),
   adjustCustomerPoints: (input) => ipcRenderer.invoke('customers:adjust-points', input),
   recordCustomerPayment: (input) => ipcRenderer.invoke('customers:record-payment', input),

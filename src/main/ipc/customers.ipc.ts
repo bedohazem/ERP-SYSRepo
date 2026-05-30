@@ -1,4 +1,6 @@
 import { ipcMain } from 'electron';
+import { requireAdmin } from './permission-helper';
+import { getActorId } from './activity-helper';
 import {
   adjustCustomerPoints,
   createCustomer,
@@ -33,7 +35,8 @@ export function registerCustomersIpc(): void {
     return updateCustomer(input);
   });
 
-  ipcMain.handle('customers:delete', (_, id: number) => {
+  ipcMain.handle('customers:delete', (_, id: number, actorId?: number) => {
+    requireAdmin(actorId ?? null);
     return deleteCustomer(Number(id));
   });
 
@@ -42,6 +45,7 @@ export function registerCustomersIpc(): void {
   });
 
   ipcMain.handle('customers:adjust-points', (_, input) => {
+    requireAdmin(getActorId(input));
     return adjustCustomerPoints(input);
   });
 

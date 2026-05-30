@@ -283,7 +283,7 @@ declare global {
 
       updateCustomer: (input: CustomerUpdateInput) => Promise<Customer>;
 
-      deleteCustomer: (id: number) => Promise<{ ok: boolean }>;
+      deleteCustomer: (id: number, actorId?: number) => Promise<{ ok: boolean }>;
 
       getCustomerHistory: (customerId: number) => Promise<CustomerHistory>;
 
@@ -291,6 +291,7 @@ declare global {
         customer_id: number;
         points: number;
         notes?: string | null;
+        actor_id?: number;
       }) => Promise<Customer>;
 
       recordCustomerPayment: (input: {

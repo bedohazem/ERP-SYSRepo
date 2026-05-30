@@ -25,6 +25,7 @@ const emptyForm = {
 
 export default function CustomersPage() {
   const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role === 'admin';
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [query, setQuery] = useState('');
   const [form, setForm] = useState(emptyForm);
@@ -158,7 +159,7 @@ export default function CustomersPage() {
     setDeletingCustomer(true);
 
     try {
-      await window.api.deleteCustomer(deletedId);
+      await window.api.deleteCustomer(deletedId, currentUser?.id);
 
       if (selectedCustomer?.customer?.id === deletedId) {
         setSelectedCustomer(null);
@@ -233,7 +234,8 @@ export default function CustomersPage() {
       await window.api.adjustCustomerPoints({
         customer_id: selectedCustomer.customer.id,
         points,
-        notes: pointsNotes.trim() || null
+        notes: pointsNotes.trim() || null,
+        actor_id: currentUser?.id
       });
 
       await openHistory(selectedCustomer.customer.id);
@@ -544,17 +546,19 @@ function formatDate(value?: string) {
                         تسجيل دفعة
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => requestDeleteCustomer(customer)}
-                      style={{
-                        ...smallButtonStyle,
-                        borderColor: '#ef4444',
-                        color: '#fca5a5'
-                      }}
-                    >
-                      حذف
-                    </button>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => requestDeleteCustomer(customer)}
+                        style={{
+                          ...smallButtonStyle,
+                          borderColor: '#ef4444',
+                          color: '#fca5a5'
+                        }}
+                      >
+                        حذف
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -623,6 +627,8 @@ function formatDate(value?: string) {
               </div>
             </div>
 
+        {isAdmin && (
+          <>
             <h4>تعديل النقاط يدويًا</h4>
             <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
               <input
@@ -641,6 +647,8 @@ function formatDate(value?: string) {
                 حفظ
               </button>
             </div>
+          </>
+        )}
 
             <h4>الفواتير</h4>
             <div style={{ display: 'grid', gap: '8px' }}>
