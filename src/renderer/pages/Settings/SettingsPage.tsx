@@ -117,8 +117,6 @@ export default function SettingsPage() {
 
   const [appName, setAppName] = useState('');
   const [savingAppName, setSavingAppName] = useState(false);
-  const [appTheme, setAppTheme] = useState<'dark' | 'light'>('dark');
-  const [savingAppTheme, setSavingAppTheme] = useState(false);
   const currentUser = useAuthStore((s) => s.user);
 
   useEffect(() => {
@@ -148,7 +146,6 @@ export default function SettingsPage() {
       setAppLogoUrl(licenseData.app_logo_url || '');
       setAppName(licenseData.app_name || 'ERP Store');
       const loadedTheme = licenseData.app_theme === 'light' ? 'light' : 'dark';
-      setAppTheme(loadedTheme);
       document.documentElement.setAttribute('data-theme', loadedTheme);
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -498,39 +495,6 @@ export default function SettingsPage() {
     }
   }
   
-  async function handleSaveAppTheme() {
-    if (savingAppTheme) return;
-
-    setSavingAppTheme(true);
-
-    try {
-      const result = await window.api.saveAppTheme(appTheme, {
-        actor_id: currentUser?.id
-      });
-
-      if (!result.success) {
-        showMessage('error', result.message || 'فشل حفظ وضع الواجهة');
-        return;
-      }
-
-      setLicenseStatus(result.status);
-      document.documentElement.setAttribute('data-theme', result.status.app_theme || 'dark');
-
-      window.dispatchEvent(
-        new CustomEvent('license-status-changed', {
-          detail: result.status
-        })
-      );
-
-      showMessage('success', 'تم حفظ وضع الواجهة');
-    } catch (error) {
-      console.error('Failed to save app theme:', error);
-      showMessage('error', 'حدث خطأ أثناء حفظ وضع الواجهة');
-    } finally {
-      setSavingAppTheme(false);
-    }
-  }
-
     return (
       <div style={{ display: 'grid', gap: '16px' }}>
         {pageMessage && (
@@ -812,44 +776,6 @@ export default function SettingsPage() {
               {deactivatingApp ? 'جاري إلغاء التفعيل...' : 'إلغاء التفعيل'}
             </button>
           )}
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(220px, 1fr) auto',
-              gap: '12px',
-              alignItems: 'end'
-            }}
-          >
-            <div>
-              <label style={labelStyle}>وضع الواجهة</label>
-              <select
-                value={appTheme}
-                onChange={(e) => {
-                  const nextTheme = e.target.value === 'light' ? 'light' : 'dark';
-                  setAppTheme(nextTheme);
-                  document.documentElement.setAttribute('data-theme', nextTheme);
-                }}
-                style={inputStyle}
-              >
-                <option value="dark">ليلي</option>
-                <option value="light">نهاري</option>
-              </select>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void handleSaveAppTheme()}
-              disabled={savingAppTheme}
-              style={{
-                ...primaryButtonStyle,
-                opacity: savingAppTheme ? 0.6 : 1,
-                cursor: savingAppTheme ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {savingAppTheme ? 'جاري الحفظ...' : 'حفظ الوضع'}
-            </button>
           </div>
 
           <div

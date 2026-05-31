@@ -61,6 +61,36 @@ export default function AppShell({
     document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
   );
 
+  function applyTheme(theme: 'dark' | 'light') {
+    setAppTheme(theme);
+    document.documentElement.setAttribute('data-theme', theme);
+  }
+
+  async function changeTheme(theme: 'dark' | 'light') {
+    applyTheme(theme);
+
+    try {
+      const result = await window.api.saveAppTheme(theme, {
+        actor_id: user?.id
+      });
+
+      if (result?.success === false) {
+        return;
+      }
+
+      if (result?.status?.app_theme) {
+        applyTheme(result.status.app_theme === 'light' ? 'light' : 'dark');
+
+        window.dispatchEvent(
+          new CustomEvent('license-status-changed', {
+            detail: result.status
+          })
+        );
+      }
+    } catch (error) {
+      console.error('Failed to save app theme:', error);
+    }
+  }
   const isLight = appTheme === 'light';
 
   const userRole: Role = user?.role === 'admin' ? 'admin' : 'cashier';
@@ -94,9 +124,7 @@ export default function AppShell({
         setAppLogoUrl(status.app_logo_url || '');
         setAppName(status.app_name || 'ERP Store');
         const nextTheme = status.app_theme === 'light' ? 'light' : 'dark';
-        setAppTheme(nextTheme);
-        document.documentElement.setAttribute('data-theme', nextTheme);
-        applyAppTheme(status.app_theme);
+        applyTheme(nextTheme);
       })
       .catch(() => {
         setAppLogoUrl('');
@@ -329,6 +357,35 @@ export default function AppShell({
           </button>
         </div>
 
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: effectiveSidebarOpen ? '1fr 1fr' : '1fr',
+            gap: '8px',
+            marginBottom: '12px'
+          }}
+        >
+          <button
+            type="button"
+            title="الوضع النهاري"
+            onClick={() => void changeTheme('light')}
+            style={themeButtonStyle(appTheme === 'light', effectiveSidebarOpen)}
+          >
+            ☀️
+            {effectiveSidebarOpen && <span>نهاري</span>}
+          </button>
+
+          <button
+            type="button"
+            title="الوضع الليلي"
+            onClick={() => void changeTheme('dark')}
+            style={themeButtonStyle(appTheme === 'dark', effectiveSidebarOpen)}
+          >
+            🌙
+            {effectiveSidebarOpen && <span>ليلي</span>}
+          </button>
+        </div>
+
         <nav style={{ display: 'grid', gap: '10px' }}>
           {visibleMenuItems.map((item) => (
             <NavLink
@@ -487,3 +544,25 @@ const mobileMenuButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontSize: '20px'
 };
+
+function themeButtonStyle(active: boolean, expanded: boolean): React.CSSProperties {
+  return {
+    minHeight: '42px',
+    borderRadius: '14px',
+    border: active
+      ? '1px solid rgba(37,99,235,0.45)'
+      : '1px solid rgba(255,255,255,0.10)',
+    background: active
+      ? 'linear-gradient(135deg, #2563eb, #7c3aed)'
+      : 'rgba(255,255,255,0.06)',
+    color: active ? '#ffffff' : 'var(--text)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    fontWeight: 900,
+    cursor: 'pointer',
+    padding: expanded ? '0 12px' : '0',
+    width: '100%'
+  };
+}

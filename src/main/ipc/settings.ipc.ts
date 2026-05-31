@@ -403,16 +403,14 @@ export function registerSettingsIpc(): void {
   });
 
   ipcMain.handle('settings:save-app-theme',(_, theme: 'dark' | 'light', input?: { actor_id?: number }) => {
-    try {
-      requireAdmin(getActorId(input));
-
-      return saveAppTheme(theme);
-    } catch (error) {
-      return {
-        success: false,
-        message: getErrorMessage(error)
-      };
-    }
+      try {
+        return saveAppTheme(theme);
+      } catch (error) {
+        return {
+          success: false,
+          message: getErrorMessage(error)
+        };
+      }
   });
   
 }
