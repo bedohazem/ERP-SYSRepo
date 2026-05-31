@@ -12,6 +12,7 @@ type LicenseStatus = {
   device_code?: string;
   app_logo_url: string;
   app_name: string;
+  app_theme?: 'dark' | 'light';
 };
 
 const SUPPORT_NAME = 'بشمهندس عبدالرحمن';
@@ -32,6 +33,13 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
     document.title = name?.trim() || 'ERP Store';
   }
 
+  function applyAppTheme(theme?: 'dark' | 'light') {
+    document.documentElement.setAttribute(
+      'data-theme',
+      theme === 'light' ? 'light' : 'dark'
+    );
+  }
+
   async function loadLicenseStatus() {
     setLoading(true);
 
@@ -39,6 +47,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
       const data = await window.api.getLicenseStatus();
       setStatus(data);
       applyAppTitle(data.app_name);
+      applyAppTheme(data.app_theme);
       scheduleLicenseCheck(data);
     } catch (error) {
       console.error('Failed to load license status:', error);
@@ -63,6 +72,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
       if (customEvent.detail) {
         setStatus(customEvent.detail);
         applyAppTitle(customEvent.detail.app_name);
+        applyAppTheme(customEvent.detail.app_theme);
         scheduleLicenseCheck(customEvent.detail);
         return;
       }
@@ -98,6 +108,8 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
 
       if (result.status) {
         setStatus(result.status);
+        applyAppTitle(result.status.app_name);
+        applyAppTheme(result.status.app_theme);
       }
 
       setActivationCode('');

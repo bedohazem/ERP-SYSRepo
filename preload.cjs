@@ -92,5 +92,6 @@ contextBridge.exposeInMainWorld('api', {
   saveAppLogoUrl: (url, input) => ipcRenderer.invoke('settings:save-app-logo-url', url, input),
   chooseAppLogo: (input) => ipcRenderer.invoke('settings:choose-app-logo', input),
   saveAppName: (name, input) => ipcRenderer.invoke('settings:save-app-name', name, input),
+  saveAppTheme: (theme, input) => ipcRenderer.invoke('settings:save-app-theme', theme, input),
 
 });

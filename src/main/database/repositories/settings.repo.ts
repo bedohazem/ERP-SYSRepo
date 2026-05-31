@@ -315,6 +315,7 @@ export type AppLicenseStatus = {
   device_code: string;
   app_logo_url: string;
   app_name: string;
+  app_theme: 'dark' | 'light';
 };
 
 export function getAppLicenseStatus(): AppLicenseStatus {
@@ -322,6 +323,7 @@ export function getAppLicenseStatus(): AppLicenseStatus {
 
   const appLogoUrl = getSetting('app_logo_url', '');
   const appName = getSetting('app_name', 'ERP Store');
+  const appTheme = getSetting('app_theme', 'dark') === 'light' ? 'light' : 'dark';
 
   return {
     activated: license.activated,
@@ -334,7 +336,8 @@ export function getAppLicenseStatus(): AppLicenseStatus {
     message: license.message,
     device_code: license.device_code,
     app_logo_url: appLogoUrl,
-    app_name: appName
+    app_name: appName,
+    app_theme: appTheme
   };
 }
 
@@ -374,6 +377,17 @@ export function saveAppName(name: string) {
   const cleanName = String(name || '').trim() || 'ERP Store';
 
   saveSetting('app_name', cleanName);
+
+  return {
+    success: true,
+    status: getAppLicenseStatus()
+  };
+}
+
+export function saveAppTheme(theme: 'dark' | 'light') {
+  const cleanTheme = theme === 'light' ? 'light' : 'dark';
+
+  saveSetting('app_theme', cleanTheme);
 
   return {
     success: true,

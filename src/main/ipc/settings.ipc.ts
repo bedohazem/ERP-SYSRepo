@@ -12,7 +12,8 @@ import {
   activateApp,
   saveAppLogoUrl,
   deactivateApp,
-  saveAppName
+  saveAppName,
+  saveAppTheme
 } from '../database/repositories/settings.repo';
 import { closeDb, getDb, getDbPath, resetDatabaseData } from '../database/db';
 import { requireAdmin } from './permission-helper';
@@ -393,6 +394,19 @@ export function registerSettingsIpc(): void {
       });
 
       return saved;
+    } catch (error) {
+      return {
+        success: false,
+        message: getErrorMessage(error)
+      };
+    }
+  });
+
+  ipcMain.handle('settings:save-app-theme',(_, theme: 'dark' | 'light', input?: { actor_id?: number }) => {
+    try {
+      requireAdmin(getActorId(input));
+
+      return saveAppTheme(theme);
     } catch (error) {
       return {
         success: false,

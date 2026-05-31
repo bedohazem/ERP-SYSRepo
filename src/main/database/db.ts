@@ -519,6 +519,9 @@ function seedDefaultCategories(database: Database.Database): void {
 
 function seedDefaultAppSettings(database: Database.Database): void {
   const defaults: Array<{ key: string; value: string }> = [
+
+{ key: 'app_theme', value: 'dark' },
+
 { key: 'barcode_label_width_mm', value: '35' },
 { key: 'barcode_label_height_mm', value: '25' },
 { key: 'barcode_copies', value: '1' },

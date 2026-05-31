@@ -25,6 +25,161 @@
   font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
 }
 
+/* =========================
+   Global Light Theme Fix
+   ========================= */
+
+html[data-theme='light'] {
+  --bg: #f8fafc;
+  --bg-soft: #ffffff;
+  --panel: rgba(255, 255, 255, 0.96);
+  --panel-2: rgba(248, 250, 252, 0.98);
+  --border: rgba(15, 23, 42, 0.12);
+
+  --text: #0f172a;
+  --muted: #475569;
+
+  --shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.12);
+  --shadow-md: 0 10px 30px rgba(15, 23, 42, 0.10);
+}
+
+html[data-theme='light'],
+html[data-theme='light'] body,
+html[data-theme='light'] #root {
+  color: #0f172a !important;
+  background:
+    radial-gradient(circle at top right, rgba(37, 99, 235, 0.10), transparent 25%),
+    radial-gradient(circle at bottom left, rgba(139, 92, 246, 0.08), transparent 22%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%) !important;
+}
+
+/* Cards */
+html[data-theme='light'] .glass-card,
+html[data-theme='light'] .soft-card {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.10) !important;
+}
+
+/* Main readable text inside cards */
+html[data-theme='light'] .glass-card :where(h1, h2, h3, h4, h5, h6, label, p, td, th, strong, small, div, span):not(button):not(button *),
+html[data-theme='light'] .soft-card :where(h1, h2, h3, h4, h5, h6, label, p, td, th, strong, small, div, span):not(button):not(button *) {
+  color: #0f172a !important;
+}
+
+/* Muted text becomes readable, not too pale */
+html[data-theme='light'] [style*="color: #94a3b8"],
+html[data-theme='light'] [style*="color:#94a3b8"],
+html[data-theme='light'] [style*="color: rgb(148, 163, 184)"],
+html[data-theme='light'] [style*="color: #64748b"],
+html[data-theme='light'] [style*="color:#64748b"],
+html[data-theme='light'] [style*="color: rgb(100, 116, 139)"],
+html[data-theme='light'] [style*="color: #cbd5e1"],
+html[data-theme='light'] [style*="color:#cbd5e1"],
+html[data-theme='light'] [style*="color: rgb(203, 213, 225)"] {
+  color: #334155 !important;
+}
+
+/* White text on white problem */
+html[data-theme='light'] [style*="color: #fff"],
+html[data-theme='light'] [style*="color:#fff"],
+html[data-theme='light'] [style*="color: #ffffff"],
+html[data-theme='light'] [style*="color:#ffffff"],
+html[data-theme='light'] [style*="color: rgb(255, 255, 255)"],
+html[data-theme='light'] [style*="color: #f8fafc"],
+html[data-theme='light'] [style*="color:#f8fafc"],
+html[data-theme='light'] [style*="color: rgb(248, 250, 252)"] {
+  color: #0f172a !important;
+}
+
+/* Keep gradient / primary buttons white */
+html[data-theme='light'] button[style*="linear-gradient"],
+html[data-theme='light'] button[style*="linear-gradient"] *,
+html[data-theme='light'] a[style*="linear-gradient"],
+html[data-theme='light'] a[style*="linear-gradient"] *,
+html[data-theme='light'] a[aria-current='page'],
+html[data-theme='light'] a[aria-current='page'] * {
+  color: #ffffff !important;
+}
+
+/* Normal secondary buttons like "فاتورة بيع جديدة" */
+html[data-theme='light'] button {
+  border-color: rgba(15, 23, 42, 0.14) !important;
+}
+
+html[data-theme='light'] button:not([style*="linear-gradient"]) {
+  color: #0f172a !important;
+}
+
+/* Inputs */
+html[data-theme='light'] input,
+html[data-theme='light'] select,
+html[data-theme='light'] textarea {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.16) !important;
+}
+
+html[data-theme='light'] input::placeholder,
+html[data-theme='light'] textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Tables */
+html[data-theme='light'] table,
+html[data-theme='light'] thead,
+html[data-theme='light'] tbody,
+html[data-theme='light'] tr {
+  border-color: rgba(15, 23, 42, 0.10) !important;
+}
+
+html[data-theme='light'] th,
+html[data-theme='light'] td {
+  color: #0f172a !important;
+}
+
+/* Sidebar links */
+html[data-theme='light'] aside {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-color: rgba(15, 23, 42, 0.10) !important;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12) !important;
+}
+
+html[data-theme='light'] aside a:not([aria-current='page']) {
+  color: #0f172a !important;
+  background: rgba(15, 23, 42, 0.035) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+html[data-theme='light'] aside a:not([aria-current='page']) * {
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] aside a[aria-current='page'] {
+  background: linear-gradient(135deg, #2563eb, #3b82f6) !important;
+  color: #ffffff !important;
+}
+
+/* Keep colored badges readable */
+html[data-theme='light'] [style*="rgba(16,185,129"],
+html[data-theme='light'] [style*="rgba(34,197,94"],
+html[data-theme='light'] [style*="rgba(239,68,68"],
+html[data-theme='light'] [style*="rgba(245,158,11"],
+html[data-theme='light'] [style*="rgba(37,99,235"] {
+  color: inherit;
+}
+
+/* Select dropdown */
+html[data-theme='light'] select {
+  color-scheme: light;
+}
+
+html[data-theme='light'] select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+
 * {
   box-sizing: border-box;
 }

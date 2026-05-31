@@ -3,6 +3,13 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import { useAppStore } from '../../store/app.store';
 
+
+type AppTheme = 'dark' | 'light';
+
+function applyAppTheme(theme?: AppTheme) {
+  document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+}
+
 type Role = 'admin' | 'cashier';
 
 type MenuItem = {
@@ -50,6 +57,12 @@ export default function AppShell({
   const [appLogoUrl, setAppLogoUrl] = useState('');
   const [appName, setAppName] = useState('ERP Store');
 
+  const [appTheme, setAppTheme] = useState<'dark' | 'light'>(
+    document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
+  );
+
+  const isLight = appTheme === 'light';
+
   const userRole: Role = user?.role === 'admin' ? 'admin' : 'cashier';
 
   const visibleMenuItems = menuItems.filter((item) =>
@@ -80,6 +93,10 @@ export default function AppShell({
       .then((status) => {
         setAppLogoUrl(status.app_logo_url || '');
         setAppName(status.app_name || 'ERP Store');
+        const nextTheme = status.app_theme === 'light' ? 'light' : 'dark';
+        setAppTheme(nextTheme);
+        document.documentElement.setAttribute('data-theme', nextTheme);
+        applyAppTheme(status.app_theme);
       })
       .catch(() => {
         setAppLogoUrl('');
@@ -99,6 +116,10 @@ export default function AppShell({
       if (customEvent.detail) {
         setAppLogoUrl(customEvent.detail.app_logo_url || '');
         setAppName(customEvent.detail.app_name || 'ERP Store');
+        const nextTheme = customEvent.detail.app_theme === 'light' ? 'light' : 'dark';
+        setAppTheme(nextTheme);
+        document.documentElement.setAttribute('data-theme', nextTheme);
+        applyAppTheme(customEvent.detail.app_theme);
       }
     }
 
@@ -119,8 +140,8 @@ export default function AppShell({
         height: '100vh',
         gap: isMobile ? '10px' : '16px',
         padding: isMobile ? '10px' : '16px',
-        background: '#08152f',
-        color: '#fff',
+        background: isLight ? '#eef2ff' : '#08152f',
+        color: isLight ? '#111827' : '#fff',
         fontFamily: 'Segoe UI, Tahoma, sans-serif',
         transition: 'grid-template-columns 0.25s ease',
         overflow: 'hidden',
@@ -156,8 +177,8 @@ export default function AppShell({
       >
         <header
           style={{
-            background: 'rgba(17,24,39,0.85)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: isLight ? 'rgba(255,255,255,0.96)' : 'rgba(17,24,39,0.85)',
+            border: isLight ? '1px solid rgba(15,23,42,0.10)' : '1px solid rgba(255,255,255,0.08)',
             borderRadius: isMobile ? '18px' : '24px',
             padding: isMobile ? '14px' : '20px 24px',
             display: 'flex',
@@ -168,7 +189,7 @@ export default function AppShell({
           }}
         >
           <div style={{ minWidth: 0 }}>
-            <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>
+             <div style={{ color: isLight ? '#64748b' : '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>
               أهلاً بك
             </div>
 
@@ -177,6 +198,7 @@ export default function AppShell({
                 margin: 0,
                 fontSize: isMobile ? '21px' : '28px',
                 lineHeight: 1.25,
+                color: isLight ? '#0f172a' : '#fff',
                 wordBreak: 'break-word'
               }}
             >
@@ -197,8 +219,8 @@ export default function AppShell({
 
         <section
           style={{
-            background: 'rgba(17,24,39,0.7)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: isLight ? 'rgba(248,250,252,0.95)' : 'rgba(17,24,39,0.7)',
+            border: isLight ? '1px solid rgba(15,23,42,0.10)' : '1px solid rgba(255,255,255,0.08)',
             borderRadius: isMobile ? '18px' : '24px',
             padding: isMobile ? '12px' : '24px',
             minHeight: 0,
@@ -226,8 +248,9 @@ export default function AppShell({
               : 'translateX(120%)'
             : 'none',
           transition: 'transform 0.25s ease',
-          background: 'rgba(10,20,40,0.96)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: isLight ? 'rgba(255,255,255,0.94)' : 'rgba(10,20,40,0.96)',
+          border: isLight ? '1px solid rgba(15,23,42,0.10)' : '1px solid rgba(255,255,255,0.08)',
+          boxShadow: isLight ? '0 18px 45px rgba(15,23,42,0.12)' : undefined,
           borderRadius: isMobile ? '18px' : '24px',
           padding: '16px 12px',
           display: 'flex',
@@ -294,9 +317,9 @@ export default function AppShell({
               width: '42px',
               height: '42px',
               borderRadius: '12px',
-              border: '1px solid rgba(255,255,255,0.08)',
-              background: 'rgba(255,255,255,0.05)',
-              color: '#fff',
+              border: isLight ? '1px solid rgba(15,23,42,0.10)' : '1px solid rgba(255,255,255,0.08)',
+              background: isLight ? 'rgba(15,23,42,0.04)' : 'rgba(255,255,255,0.05)',
+              color: isLight ? '#111827' : '#fff',
               cursor: 'pointer',
               fontSize: '18px',
               flexShrink: 0
@@ -331,11 +354,17 @@ export default function AppShell({
                 padding: effectiveSidebarOpen ? '12px 14px' : '12px',
                 borderRadius: '16px',
                 textDecoration: 'none',
-                color: '#fff',
+                color: isActive ? '#fff' : isLight ? '#334155' : '#fff',
                 background: isActive
                   ? 'linear-gradient(135deg, #2563eb, #3b82f6)'
-                  : 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.05)',
+                  : isLight
+                    ? 'rgba(15,23,42,0.04)'
+                    : 'rgba(255,255,255,0.04)',
+                border: isActive
+                  ? '1px solid rgba(37,99,235,0.30)'
+                  : isLight
+                    ? '1px solid rgba(15,23,42,0.06)'
+                    : '1px solid rgba(255,255,255,0.05)',
                 textAlign: 'right',
                 fontWeight: 600,
                 transition: '0.2s ease'

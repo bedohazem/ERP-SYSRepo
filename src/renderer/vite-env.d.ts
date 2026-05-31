@@ -671,6 +671,7 @@ declare global {
           device_code: string;
           app_logo_url: string;
           app_name: string;
+          app_theme: 'dark' | 'light';
         }>;
 
         activateApp: (code: string) => Promise<{
@@ -688,6 +689,7 @@ declare global {
             device_code: string;
             app_logo_url: string;
             app_name: string;
+            app_theme: 'dark' | 'light';
           };
         }>;
 
@@ -705,6 +707,7 @@ declare global {
             device_code: string;
             app_logo_url: string;
             app_name: string;
+            app_theme: 'dark' | 'light';
           };
         }>;
        
@@ -725,6 +728,7 @@ declare global {
             device_code: string;
             app_logo_url: string;
             app_name: string;
+            app_theme: 'dark' | 'light';
           };
         }>;
 
@@ -743,6 +747,7 @@ declare global {
             device_code: string;
             app_logo_url: string;
             app_name: string;
+            app_theme: 'dark' | 'light';
           };
         }>;
 
@@ -760,6 +765,29 @@ declare global {
             device_code: string;
             app_logo_url: string;
             app_name: string;
+            app_theme: 'dark' | 'light';
+          };
+        }>;
+
+        saveAppTheme: (
+          theme: 'dark' | 'light',
+          input?: { actor_id?: number }
+        ) => Promise<{
+          success: boolean;
+          message?: string;
+          status: {
+            activated: boolean;
+            trial_started_at: string;
+            trial_days: number;
+            trial_expires_at: string;
+            days_left: number;
+            expired: boolean;
+            blocked?: boolean;
+            message?: string;
+            device_code: string;
+            app_logo_url: string;
+            app_name: string;
+            app_theme: 'dark' | 'light';
           };
         }>;
         
