@@ -712,9 +712,14 @@ export default function StockCountPage() {
       )}
 
       {confirmAction && (
-        <div style={modalOverlayStyle}>
-          <div style={modalStyle}>
-            <h3 style={{ margin: 0, color: confirmAction === 'approve' ? '#86efac' : '#fca5a5' }}>
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div className="theme-modal-card stock-confirm-modal" style={modalStyle}>
+            <h3
+              className={`stock-confirm-title ${
+                confirmAction === 'approve' ? 'approve' : 'cancel'
+              }`}
+              style={{ margin: 0 }}
+            >
               {confirmAction === 'approve' ? 'تأكيد اعتماد الجرد' : 'تأكيد إلغاء الجرد'}
             </h3>
 
@@ -725,33 +730,35 @@ export default function StockCountPage() {
             </p>
 
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-start' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirmAction === 'approve') {
-                    void approveSession();
-                  } else {
-                    void cancelSession();
-                  }
-                }}
-                disabled={actionLoading}
-                style={confirmAction === 'approve' ? successButtonStyle : dangerButtonStyle}
-              >
-                {actionLoading
-                  ? 'جاري التنفيذ...'
-                  : confirmAction === 'approve'
-                    ? 'تأكيد الاعتماد'
-                    : 'تأكيد الإلغاء'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setConfirmAction(null)}
-                disabled={actionLoading}
-                style={secondaryButtonStyle}
-              >
-                رجوع
-              </button>
+            <button
+              type="button"
+              className={`stock-confirm-action ${
+                confirmAction === 'approve' ? 'approve' : 'cancel'
+              }`}
+              onClick={() => {
+                if (confirmAction === 'approve') {
+                  void approveSession();
+                } else {
+                  void cancelSession();
+                }
+              }}
+              disabled={actionLoading}
+              style={confirmAction === 'approve' ? successButtonStyle : dangerButtonStyle}
+            >
+              {actionLoading
+                ? 'جاري التنفيذ...'
+                : confirmAction === 'approve'
+                  ? 'تأكيد الاعتماد'
+                  : 'تأكيد الإلغاء'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmAction(null)}
+              disabled={actionLoading}
+              style={secondaryButtonStyle}
+            >
+              رجوع
+            </button>
             </div>
           </div>
         </div>

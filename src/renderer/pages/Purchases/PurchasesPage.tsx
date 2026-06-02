@@ -256,6 +256,7 @@ export default function PurchasesPage() {
 
           {productResults.length > 0 && (
             <div
+              className="theme-popover theme-dropdown purchase-product-dropdown"
               style={{
                 position: 'absolute',
                 top: '52px',
@@ -273,6 +274,7 @@ export default function PurchasesPage() {
               {productResults.map((item) => (
                 <button
                   key={item.variant_id}
+                  className="purchase-product-dropdown-item"
                   type="button"
                   onClick={() => addLine(item)}
                   style={{

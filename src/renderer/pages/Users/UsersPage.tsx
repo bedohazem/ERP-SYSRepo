@@ -469,9 +469,9 @@ export default function UsersPage() {
       </section>
 
       {passwordUser && (
-        <div style={modalOverlayStyle}>
-          <div style={modalStyle}>
-            <h3 style={{ margin: '0 0 8px' }}>تغيير كلمة المرور</h3>
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div className="theme-modal-card user-password-modal" style={modalStyle}>
+                  <h3 style={{ margin: '0 0 8px' }}>تغيير كلمة المرور</h3>
 
             <p style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700 }}>
               المستخدم: {passwordUser.name} - {passwordUser.username}
@@ -528,9 +528,14 @@ export default function UsersPage() {
       )}
 
       {activeConfirmUser && (
-        <div style={modalOverlayStyle}>
-          <div style={modalStyle}>
-            <h3 style={{ margin: '0 0 8px' }}>
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div className="theme-modal-card user-active-modal" style={modalStyle}>
+            <h3
+              className={`user-active-title ${
+                activeConfirmUser.is_active ? 'disable' : 'enable'
+              }`}
+              style={{ margin: '0 0 8px' }}
+            >
               {activeConfirmUser.is_active ? 'تعطيل مستخدم' : 'تفعيل مستخدم'}
             </h3>
 
@@ -545,6 +550,9 @@ export default function UsersPage() {
             <div style={{ display: 'flex', gap: '10px', marginTop: '20px', flexWrap: 'wrap' }}>
               <button
                 type="button"
+                  className={`user-active-action ${
+                    activeConfirmUser.is_active ? 'disable' : 'enable'
+                  }`}
                 onClick={() => void confirmToggleActive()}
                 disabled={savingActive}
                 style={{

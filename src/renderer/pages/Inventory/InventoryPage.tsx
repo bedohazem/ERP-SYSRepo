@@ -382,8 +382,8 @@ export default function InventoryPage() {
       </div>
 
       {adjustItem && (
-        <div style={modalOverlayStyle}>
-          <div style={modalStyle}>
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div className="theme-modal-card" style={modalStyle}>
             <h3 style={{ margin: '0 0 8px' }}>تسوية مخزون</h3>
 
             <p style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700 }}>
@@ -427,6 +427,7 @@ export default function InventoryPage() {
               </div>
 
               <div
+                className="theme-info-panel"
                 style={{
                   padding: '12px',
                   borderRadius: '12px',
@@ -473,8 +474,9 @@ export default function InventoryPage() {
       )}
 
       {historyItem && (
-        <div style={modalOverlayStyle}>
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
           <div
+            className="theme-modal-card"
             style={{
               ...modalStyle,
               width: '900px'
@@ -516,7 +518,7 @@ export default function InventoryPage() {
                     <th style={thStyle}>التاريخ</th>
                     <th style={thStyle}>النوع</th>
                     <th style={thStyle}>الكمية</th>
-                    <th style={thStyle}>المرجع</th>
+                    {/* <th style={thStyle}>المرجع</th> */}
                     <th style={thStyle}>ملاحظات</th>
                   </tr>
                 </thead>
@@ -551,10 +553,10 @@ export default function InventoryPage() {
                           {Number(movement.signed_quantity || 0) > 0 ? '+' : ''}
                           {Number(movement.signed_quantity || 0)}
                         </td>
-                        <td style={tdStyle}>
+                        {/* <td style={tdStyle}>
                           {movement.reference_type || '—'}
                           {movement.reference_id ? ` #${movement.reference_id}` : ''}
-                        </td>
+                        </td> */}
                         <td style={tdStyle}>{movement.notes || '—'}</td>
                       </tr>
                     ))}

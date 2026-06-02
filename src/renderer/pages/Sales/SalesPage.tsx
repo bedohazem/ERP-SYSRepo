@@ -1259,6 +1259,7 @@ export default function SalesPage() {
 
             {customerDropdownOpen && (
               <div
+                className="theme-popover theme-dropdown"
                 style={{
                   position: 'absolute',
                   top: '54px',
@@ -1618,6 +1619,7 @@ export default function SalesPage() {
 
       {productResults.length > 0 && dropdownRect && (
         <div
+          className="theme-popover theme-dropdown"
           style={{
             position: 'fixed',
             top: dropdownRect.top,
@@ -1659,6 +1661,7 @@ export default function SalesPage() {
 
       {receiptData && (
         <div
+          className="theme-modal-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -1671,6 +1674,7 @@ export default function SalesPage() {
           }}
         >
           <div
+            className="theme-modal-card"
             style={{
               width: '760px',
               maxWidth: '100%',
@@ -1841,6 +1845,7 @@ export default function SalesPage() {
 
       {showAddCustomerModal && (
         <div
+          className="theme-modal-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -1853,6 +1858,7 @@ export default function SalesPage() {
           }}
         >
           <div
+            className="theme-modal-card"
             style={{
               width: '420px',
               maxWidth: '100%',
@@ -1935,6 +1941,7 @@ export default function SalesPage() {
 
       {showPaymentModal && (
         <div
+          className="theme-modal-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -1947,6 +1954,7 @@ export default function SalesPage() {
           }}
         >
           <div
+            className="theme-modal-card"
             style={{
               width: '520px',
               maxWidth: '100%',
@@ -1988,38 +1996,22 @@ export default function SalesPage() {
             >
               <button
                 type="button"
+                className={`discount-toggle-button ${
+                  activeInvoice.discountType === 'amount' ? 'is-active' : ''
+                }`}
                 onClick={() => updateActiveInvoice({ discountType: 'amount' })}
-                style={{
-                  ...paymentToggleButtonStyle,
-                background:
-                  activeInvoice.discountType === 'amount'
-                    ? 'rgba(124,58,237,0.28)'
-                    : 'rgba(255,255,255,0.06)',
-                borderColor:
-                  activeInvoice.discountType === 'amount'
-                    ? '#8b5cf6'
-                    : 'rgba(255,255,255,0.12)',
-                color: '#f8fafc'
-                }}
+                style={paymentToggleButtonStyle}
               >
                 خصم جنيه
               </button>
 
               <button
                 type="button"
+                className={`discount-toggle-button ${
+                  activeInvoice.discountType === 'percent' ? 'is-active' : ''
+                }`}
                 onClick={() => updateActiveInvoice({ discountType: 'percent' })}
-                style={{
-                  ...paymentToggleButtonStyle,
-                background:
-                  activeInvoice.discountType === 'percent'
-                    ? 'rgba(124,58,237,0.28)'
-                    : 'rgba(255,255,255,0.06)',
-                borderColor:
-                  activeInvoice.discountType === 'percent'
-                    ? '#8b5cf6'
-                    : 'rgba(255,255,255,0.12)',
-                color: '#f8fafc'
-                }}
+                style={paymentToggleButtonStyle}
               >
                 خصم %
               </button>

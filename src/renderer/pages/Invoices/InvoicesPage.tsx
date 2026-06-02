@@ -705,6 +705,7 @@ export default function InvoicesPage() {
 
       {selectedReceipt && (
         <div
+          className="theme-modal-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -717,6 +718,7 @@ export default function InvoicesPage() {
           }}
         >
           <div
+            className="theme-modal-card"
             style={{
               width: '760px',
               maxWidth: '100%',
@@ -830,8 +832,10 @@ export default function InvoicesPage() {
                   gap: '12px'
                 }}
               >
-                <div style={{ color: '#fed7aa', fontWeight: 900 }}>
-                  سجل المرتجعات على هذه الفاتورة
+                <div
+                  className="theme-warning-panel" 
+                  style={{ color: '#fed7aa', fontWeight: 900 }}>
+                   سجل المرتجعات على هذه الفاتورة
                 </div>
 
                 {selectedReturnHistory.map((ret) => (
@@ -938,6 +942,7 @@ export default function InvoicesPage() {
 
       {returnReceipt && (
         <div
+          className="theme-modal-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -950,6 +955,7 @@ export default function InvoicesPage() {
           }}
         >
           <div
+            className="theme-modal-card"
             style={{
               width: '860px',
               maxWidth: '100%',
@@ -997,6 +1003,7 @@ export default function InvoicesPage() {
             </div>
 
             <div
+              className="theme-warning-panel"
               style={{
                 padding: '14px',
                 borderRadius: '14px',

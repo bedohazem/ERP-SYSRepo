@@ -1203,11 +1203,11 @@ export default function ProductsPage() {
                       </div>
 
                       <div
+                        className={`product-status-text ${product.is_active ? 'is-active' : 'is-inactive'}`}
                         style={{
-                          color: product.is_active ? '#34d399' : '#f87171',
                           fontSize: '12px',
                           marginTop: '6px',
-                          fontWeight: 700
+                          fontWeight: 900
                         }}
                       >
                         {product.is_active ? 'نشط' : 'موقوف'}
@@ -1296,6 +1296,7 @@ export default function ProductsPage() {
                       </button>
                       <button
                         type="button"
+                        className="product-action-button add-variant"
                         onClick={(e) => {
                           e.stopPropagation();
                           void openEditProduct(product, 'addVariant');
@@ -1311,6 +1312,7 @@ export default function ProductsPage() {
                       </button>
                       <button
                         type="button"
+                        className={`product-action-button ${product.is_active ? 'deactivate-product' : 'activate-product'}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           void handleToggleProductActive(product.id, product.is_active);
@@ -1438,6 +1440,7 @@ export default function ProductsPage() {
 
                                     <button
                                       type="button"
+                                      className={`product-action-button ${variant.is_active ? 'deactivate-product' : 'activate-product'}`}
                                       onClick={() =>
                                         void handleToggleVariantActive(
                                           product.id,
@@ -1462,8 +1465,8 @@ export default function ProductsPage() {
                                     </button>
 
                                     <div
+                                      className={`product-status-text ${variant.is_active ? 'is-active' : 'is-inactive'}`}
                                       style={{
-                                        color: variant.is_active ? '#34d399' : '#f87171',
                                         fontSize: '12px',
                                         fontWeight: 700
                                       }}

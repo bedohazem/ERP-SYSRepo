@@ -39,6 +39,8 @@ export default function SuppliersPage() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [savingPayment, setSavingPayment] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
+  const [deletingSupplier, setDeletingSupplier] = useState(false);
 
   const editingSupplier = useMemo(
     () => suppliers.find((x) => x.id === editingId),
@@ -127,17 +129,48 @@ export default function SuppliersPage() {
     }
   }
 
-  async function deleteSupplier(id: number) {
-    const confirmed = window.confirm('هل أنت متأكد من حذف المورد؟');
-    if (!confirmed) return;
+  function requestDeleteSupplier(supplier: Supplier) {
+    setDeleteTarget(supplier);
+  }
+
+  function cancelDeleteSupplier() {
+    if (deletingSupplier) return;
+    setDeleteTarget(null);
+  }
+
+  async function confirmDeleteSupplier() {
+    if (!deleteTarget || deletingSupplier) return;
+
+    const deletedId = deleteTarget.id;
+
+    setDeletingSupplier(true);
 
     try {
-      await window.api.deleteSupplier(id, currentUser?.id);
+      await window.api.deleteSupplier(deletedId, currentUser?.id);
+
+      if (statementData?.supplier?.id === deletedId) {
+        setStatementData(null);
+      }
+
+      if (paymentSupplier?.id === deletedId) {
+        setPaymentSupplier(null);
+        setPaymentAmount('');
+        setPaymentNotes('');
+      }
+
+      if (editingId === deletedId) {
+        setEditingId(null);
+        setForm(emptyForm);
+      }
+
+      setDeleteTarget(null);
       showMessage('تم حذف المورد');
       await loadSuppliers();
     } catch (error) {
       console.error('Failed to delete supplier:', error);
       showMessage('حدث خطأ أثناء حذف المورد');
+    } finally {
+      setDeletingSupplier(false);
     }
   }
 
@@ -206,6 +239,7 @@ export default function SuppliersPage() {
   function InfoCard({ title, value }: { title: string; value: string }) {
   return (
     <div
+      className="supplier-info-card"
       style={{
         padding: '14px',
         borderRadius: '14px',
@@ -430,7 +464,7 @@ function formatDate(value?: string) {
 
                       <button
                         type="button"
-                        onClick={() => deleteSupplier(supplier.id)}
+                        onClick={() => requestDeleteSupplier(supplier)}
                         style={{
                           ...smallButtonStyle,
                           borderColor: '#ef4444',
@@ -487,8 +521,11 @@ function formatDate(value?: string) {
         </table>
       </div>
       {statementData && (
-        <div style={modalOverlayStyle}>
-          <div style={{ ...modalStyle, width: '900px' }}>
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div
+            className="theme-modal-card supplier-statement-modal"
+            style={{ ...modalStyle, width: '900px' }}
+          >
             <div
               style={{
                 display: 'flex',
@@ -618,8 +655,8 @@ function formatDate(value?: string) {
       )}
 
       {paymentSupplier && (
-        <div style={modalOverlayStyle}>
-          <div style={modalStyle}>
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div className="theme-modal-card supplier-payment-modal" style={modalStyle}>
             <h3 style={{ margin: '0 0 8px' }}>تسجيل دفعة للمورد</h3>
 
             <p style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700 }}>
@@ -707,6 +744,62 @@ function formatDate(value?: string) {
         </div>
       )}
       
+
+      {deleteTarget && (
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div className="theme-modal-card supplier-delete-modal" style={modalStyle}>
+            <h3 style={{ margin: '0 0 10px' }}>تأكيد حذف المورد</h3>
+
+            <p style={{ margin: '0 0 18px', color: '#94a3b8', lineHeight: 1.8 }}>
+              هل أنت متأكد من حذف المورد{' '}
+              <strong style={{ color: '#fff' }}>{deleteTarget.name}</strong>؟
+            </p>
+
+            <div
+              className="theme-danger-panel"
+              style={{
+                padding: '12px',
+                borderRadius: '12px',
+                background: 'rgba(239,68,68,0.10)',
+                border: '1px solid rgba(239,68,68,0.25)',
+                color: '#fca5a5',
+                marginBottom: '18px',
+                lineHeight: 1.8
+              }}
+            >
+              سيتم إخفاء المورد من القائمة، ولن يظهر في البحث العادي.
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-start' }}>
+              <button
+                type="button"
+                className="supplier-delete-confirm-button"
+                onClick={confirmDeleteSupplier}
+                disabled={deletingSupplier}
+                style={{
+                  ...primaryButtonStyle,
+                  background: 'rgba(239,68,68,0.16)',
+                  border: '1px solid rgba(239,68,68,0.35)',
+                  color: '#fca5a5',
+                  opacity: deletingSupplier ? 0.6 : 1,
+                  cursor: deletingSupplier ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {deletingSupplier ? 'جاري الحذف...' : 'تأكيد الحذف'}
+              </button>
+
+              <button
+                type="button"
+                onClick={cancelDeleteSupplier}
+                disabled={deletingSupplier}
+                style={secondaryButtonStyle}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

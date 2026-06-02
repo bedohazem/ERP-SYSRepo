@@ -298,8 +298,11 @@ export default function PurchaseHistoryPage() {
       </div>
 
       {selectedPurchase && (
-        <div style={modalOverlayStyle}>
-          <div style={{ ...modalStyle, width: '850px' }}>
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div
+            className="theme-modal-card purchase-details-modal"
+            style={{ ...modalStyle, width: '850px' }}
+          >
             <div
               style={{
                 display: 'flex',
@@ -468,8 +471,8 @@ export default function PurchaseHistoryPage() {
       )}
 
       {paymentPurchase && (
-        <div style={modalOverlayStyle}>
-          <div style={modalStyle}>
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div className="theme-modal-card purchase-payment-modal" style={modalStyle}>
             <h3 style={{ margin: '0 0 8px' }}>تسجيل دفعة للمورد</h3>
 
             <p style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700 }}>
@@ -563,6 +566,7 @@ export default function PurchaseHistoryPage() {
 function InfoCard({ title, value }: { title: string; value: string }) {
   return (
     <div
+      className="purchase-info-card"
       style={{
         padding: '14px',
         borderRadius: '14px',

@@ -317,6 +317,7 @@ function money(value: unknown) {
 function InfoCard({ title, value }: { title: string; value: string }) {
   return (
     <div
+      className="customer-info-card"
       style={{
         padding: '14px',
         borderRadius: '14px',
@@ -577,6 +578,7 @@ function formatDate(value?: string) {
 
       {selectedCustomer && (
         <div
+          className="theme-modal-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -589,6 +591,7 @@ function formatDate(value?: string) {
           }}
         >
           <div
+            className="theme-modal-card customer-history-modal"
             style={{
               width: '850px',
               maxWidth: '100%',
@@ -653,7 +656,7 @@ function formatDate(value?: string) {
             <h4>الفواتير</h4>
             <div style={{ display: 'grid', gap: '8px' }}>
               {(selectedCustomer.sales ?? []).map((sale: any) => (
-                <div key={sale.id} style={historyRowStyle}>
+                <div key={sale.id} className="customer-history-row" style={historyRowStyle}>
                   <strong>فاتورة #{sale.id}</strong>
                   <span>{Number(sale.grand_total || 0).toFixed(2)} ج.م</span>
                   <span>+{sale.loyalty_points_earned || 0} نقطة</span>
@@ -666,7 +669,7 @@ function formatDate(value?: string) {
             <h4>حركات النقاط</h4>
             <div style={{ display: 'grid', gap: '8px' }}>
               {(selectedCustomer.loyalty ?? []).map((tx: any) => (
-                <div key={tx.id} style={historyRowStyle}>
+                <div key={tx.id} className="customer-history-row" style={historyRowStyle}>
                   <strong>{tx.type}</strong>
                   <span>{tx.points} نقطة</span>
                   <span>{tx.amount || 0} ج.م</span>
@@ -689,8 +692,11 @@ function formatDate(value?: string) {
 
 
         {statementData && (
-          <div style={modalOverlayStyle}>
-            <div style={{ ...modalStyle, width: '900px' }}>
+          <div className="theme-modal-overlay" style={modalOverlayStyle}>
+            <div
+              className="theme-modal-card customer-statement-modal"
+              style={{ ...modalStyle, width: '900px' }}
+            >
               <div
                 style={{
                   display: 'flex',
@@ -833,8 +839,8 @@ function formatDate(value?: string) {
 
 
         {paymentCustomer && (
-          <div style={modalOverlayStyle}>
-            <div style={modalStyle}>
+          <div className="theme-modal-overlay" style={modalOverlayStyle}>
+            <div className="theme-modal-card customer-payment-modal" style={modalStyle}>
               <h3 style={{ margin: '0 0 8px' }}>تسجيل دفعة من العميل</h3>
 
               <p style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700 }}>
@@ -923,8 +929,8 @@ function formatDate(value?: string) {
         )}
 
         {deleteTarget && (
-          <div style={modalOverlayStyle}>
-            <div style={modalStyle}>
+          <div className="theme-modal-overlay" style={modalOverlayStyle}>
+            <div className="theme-modal-card customer-delete-modal" style={modalStyle}>
               <h3 style={{ margin: '0 0 10px' }}>تأكيد حذف العميل</h3>
 
               <p style={{ margin: '0 0 18px', color: '#94a3b8', lineHeight: 1.8 }}>
@@ -933,6 +939,7 @@ function formatDate(value?: string) {
               </p>
 
               <div
+                className="theme-danger-panel"
                 style={{
                   padding: '12px',
                   borderRadius: '12px',

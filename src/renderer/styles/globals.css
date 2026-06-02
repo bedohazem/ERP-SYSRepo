@@ -338,3 +338,634 @@ select option:checked {
   background-color: #2563eb;
   color: #ffffff;
 }
+
+/* =========================================================
+   Light theme: popups / modals / dropdowns
+   نخلي العناصر اللي طالعة فوق الصفحة تتظبط بدون تعديل كل inline style
+   ========================================================= */
+
+html[data-theme='light'] .theme-modal-overlay {
+  background: rgba(15, 23, 42, 0.38) !important;
+  backdrop-filter: blur(3px);
+}
+
+html[data-theme='light'] .theme-modal-card,
+html[data-theme='light'] .theme-popover {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.18) !important;
+}
+
+html[data-theme='light'] .theme-modal-card *,
+html[data-theme='light'] .theme-popover * {
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .theme-modal-card [style*="color: #94a3b8"],
+html[data-theme='light'] .theme-modal-card [style*="color:#94a3b8"],
+html[data-theme='light'] .theme-modal-card [style*="color: #64748b"],
+html[data-theme='light'] .theme-modal-card [style*="color:#64748b"],
+html[data-theme='light'] .theme-popover [style*="color: #94a3b8"],
+html[data-theme='light'] .theme-popover [style*="color:#94a3b8"],
+html[data-theme='light'] .theme-popover [style*="color: #64748b"],
+html[data-theme='light'] .theme-popover [style*="color:#64748b"] {
+  color: #475569 !important;
+}
+
+html[data-theme='light'] .theme-modal-card input,
+html[data-theme='light'] .theme-modal-card select,
+html[data-theme='light'] .theme-modal-card textarea,
+html[data-theme='light'] .theme-popover input,
+html[data-theme='light'] .theme-popover select,
+html[data-theme='light'] .theme-popover textarea {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.16) !important;
+}
+
+html[data-theme='light'] .theme-modal-card input::placeholder,
+html[data-theme='light'] .theme-popover input::placeholder {
+  color: #64748b !important;
+}
+
+html[data-theme='light'] .theme-modal-card button:not([style*="linear-gradient"]),
+html[data-theme='light'] .theme-popover button:not([style*="linear-gradient"]) {
+  background: rgba(15, 23, 42, 0.04) !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+}
+
+html[data-theme='light'] .theme-modal-card button[style*="linear-gradient"],
+html[data-theme='light'] .theme-modal-card button[style*="linear-gradient"] *,
+html[data-theme='light'] .theme-popover button[style*="linear-gradient"],
+html[data-theme='light'] .theme-popover button[style*="linear-gradient"] * {
+  color: #ffffff !important;
+}
+
+/* Dropdown rows hover/readability */
+html[data-theme='light'] .theme-dropdown button {
+  background: transparent !important;
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .theme-dropdown button:hover {
+  background: rgba(37, 99, 235, 0.08) !important;
+}
+
+/* Payment discount toggle buttons */
+.discount-toggle-button {
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.discount-toggle-button:hover {
+  transform: translateY(-1px);
+}
+
+/* Dark mode */
+.discount-toggle-button {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #cbd5e1 !important;
+}
+
+.discount-toggle-button:hover {
+  background: rgba(124, 58, 237, 0.18) !important;
+  border-color: rgba(124, 58, 237, 0.55) !important;
+  color: #ffffff !important;
+}
+
+.discount-toggle-button.is-active {
+  background: linear-gradient(135deg, #6d5dfc, #7c3aed) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 24px rgba(124, 58, 237, 0.35) !important;
+}
+
+/* Light mode */
+html[data-theme='light'] .discount-toggle-button {
+  background: #f8fafc !important;
+  border-color: rgba(15, 23, 42, 0.14) !important;
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .discount-toggle-button:hover {
+  background: rgba(124, 58, 237, 0.10) !important;
+  border-color: rgba(124, 58, 237, 0.45) !important;
+  color: #5b21b6 !important;
+}
+
+html[data-theme='light'] .discount-toggle-button.is-active {
+  background: linear-gradient(135deg, #6d5dfc, #7c3aed) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 24px rgba(124, 58, 237, 0.28) !important;
+}
+
+/* =========================
+   Payment discount toggle fix
+   لازم تكون آخر theme.css عشان تكسب على modal button overrides
+   ========================= */
+
+.theme-modal-card button.discount-toggle-button {
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease !important;
+}
+
+/* غير المختار */
+.theme-modal-card button.discount-toggle-button:not(.is-active) {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #cbd5e1 !important;
+  box-shadow: none !important;
+}
+
+/* Hover لغير المختار */
+.theme-modal-card button.discount-toggle-button:not(.is-active):hover {
+  background: rgba(124, 58, 237, 0.18) !important;
+  border-color: rgba(124, 58, 237, 0.55) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+}
+
+/* المختار */
+.theme-modal-card button.discount-toggle-button.is-active {
+  background: linear-gradient(135deg, #6d5dfc, #7c3aed) !important;
+  border: 1px solid transparent !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 24px rgba(124, 58, 237, 0.35) !important;
+  transform: translateY(-1px);
+}
+
+/* Light mode */
+html[data-theme='light'] .theme-modal-card button.discount-toggle-button:not(.is-active) {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.14) !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+}
+
+html[data-theme='light'] .theme-modal-card button.discount-toggle-button:not(.is-active):hover {
+  background: rgba(124, 58, 237, 0.10) !important;
+  border-color: rgba(124, 58, 237, 0.45) !important;
+  color: #5b21b6 !important;
+  transform: translateY(-1px);
+}
+
+html[data-theme='light'] .theme-modal-card button.discount-toggle-button.is-active {
+  background: linear-gradient(135deg, #6d5dfc, #7c3aed) !important;
+  border: 1px solid transparent !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 24px rgba(124, 58, 237, 0.28) !important;
+  transform: translateY(-1px);
+}
+
+html[data-theme='light'] .theme-modal-card button.discount-toggle-button.is-active *,
+.theme-modal-card button.discount-toggle-button.is-active * {
+  color: #ffffff !important;
+}
+
+/* Invoice / return warning panels */
+html[data-theme='light'] .theme-warning-panel {
+  background: #fff7ed !important;
+  border-color: #fed7aa !important;
+  color: #9a3412 !important;
+}
+
+html[data-theme='light'] .theme-warning-panel * {
+  color: #9a3412 !important;
+}
+
+/* =========================
+   Products page status/actions
+   ========================= */
+
+.product-status-text.is-active {
+  color: #16a34a !important;
+}
+
+.product-status-text.is-inactive {
+  color: #dc2626 !important;
+}
+
+html[data-theme='light'] .product-status-text.is-active {
+  color: #15803d !important;
+}
+
+html[data-theme='light'] .product-status-text.is-inactive {
+  color: #b91c1c !important;
+}
+
+.product-action-button {
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.product-action-button:hover {
+  transform: translateY(-1px);
+}
+
+.product-action-button.add-variant {
+  background: rgba(16, 185, 129, 0.14) !important;
+  border-color: rgba(16, 185, 129, 0.38) !important;
+  color: #047857 !important;
+}
+
+.product-action-button.add-variant:hover {
+  background: rgba(16, 185, 129, 0.22) !important;
+  border-color: rgba(16, 185, 129, 0.58) !important;
+  color: #065f46 !important;
+  box-shadow: 0 10px 22px rgba(16, 185, 129, 0.18) !important;
+}
+
+.product-action-button.deactivate-product {
+  background: rgba(239, 68, 68, 0.14) !important;
+  border-color: rgba(239, 68, 68, 0.38) !important;
+  color: #b91c1c !important;
+}
+
+.product-action-button.deactivate-product:hover {
+  background: rgba(239, 68, 68, 0.22) !important;
+  border-color: rgba(239, 68, 68, 0.58) !important;
+  color: #991b1b !important;
+  box-shadow: 0 10px 22px rgba(239, 68, 68, 0.16) !important;
+}
+
+.product-action-button.activate-product {
+  background: rgba(34, 197, 94, 0.14) !important;
+  border-color: rgba(34, 197, 94, 0.40) !important;
+  color: #15803d !important;
+}
+
+.product-action-button.activate-product:hover {
+  background: rgba(34, 197, 94, 0.22) !important;
+  border-color: rgba(34, 197, 94, 0.60) !important;
+  color: #166534 !important;
+  box-shadow: 0 10px 22px rgba(34, 197, 94, 0.16) !important;
+}
+
+/* Inventory info panels */
+html[data-theme='light'] .theme-info-panel {
+  background: #eff6ff !important;
+  border-color: #bfdbfe !important;
+  color: #1d4ed8 !important;
+}
+
+html[data-theme='light'] .theme-info-panel * {
+  color: #1d4ed8 !important;
+}
+
+/* =========================
+   Stock count confirm modal
+   ========================= */
+
+html[data-theme='light'] .stock-confirm-modal {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18) !important;
+}
+
+.stock-confirm-title.approve,
+html[data-theme='light'] .stock-confirm-title.approve {
+  color: #15803d !important;
+}
+
+.stock-confirm-title.cancel,
+html[data-theme='light'] .stock-confirm-title.cancel {
+  color: #b91c1c !important;
+}
+
+html[data-theme='light'] .stock-confirm-modal p {
+  color: #475569 !important;
+}
+
+/* زر تأكيد الاعتماد */
+.stock-confirm-action.approve,
+html[data-theme='light'] .stock-confirm-action.approve {
+  background: rgba(16, 185, 129, 0.14) !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
+  color: #047857 !important;
+}
+
+.stock-confirm-action.approve:hover,
+html[data-theme='light'] .stock-confirm-action.approve:hover {
+  background: rgba(16, 185, 129, 0.22) !important;
+  border-color: rgba(16, 185, 129, 0.55) !important;
+  color: #065f46 !important;
+}
+
+/* زر تأكيد الإلغاء */
+.stock-confirm-action.cancel,
+html[data-theme='light'] .stock-confirm-action.cancel {
+  background: rgba(239, 68, 68, 0.14) !important;
+  border: 1px solid rgba(239, 68, 68, 0.35) !important;
+  color: #b91c1c !important;
+}
+
+.stock-confirm-action.cancel:hover,
+html[data-theme='light'] .stock-confirm-action.cancel:hover {
+  background: rgba(239, 68, 68, 0.22) !important;
+  border-color: rgba(239, 68, 68, 0.55) !important;
+  color: #991b1b !important;
+}
+
+/* =========================
+   Customers modals
+   ========================= */
+
+html[data-theme='light'] .customer-info-card {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.10) !important;
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .customer-info-card span {
+  color: #475569 !important;
+}
+
+html[data-theme='light'] .customer-info-card strong {
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .customer-history-row {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .customer-history-row * {
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .customer-statement-modal table tr {
+  border-color: rgba(15, 23, 42, 0.10) !important;
+}
+
+html[data-theme='light'] .customer-statement-modal td,
+html[data-theme='light'] .customer-statement-modal th,
+html[data-theme='light'] .customer-history-modal td,
+html[data-theme='light'] .customer-history-modal th {
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .theme-danger-panel {
+  background: #fef2f2 !important;
+  border-color: #fecaca !important;
+  color: #b91c1c !important;
+}
+
+html[data-theme='light'] .theme-danger-panel * {
+  color: #b91c1c !important;
+}
+
+/* زر الحذف داخل مودال حذف العميل */
+html[data-theme='light'] .customer-delete-modal button[style*="rgba(239,68,68"] {
+  background: rgba(239, 68, 68, 0.14) !important;
+  border-color: rgba(239, 68, 68, 0.35) !important;
+  color: #b91c1c !important;
+}
+
+/* Supplier delete modal */
+html[data-theme='light'] .supplier-delete-modal {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+}
+
+html[data-theme='light'] .supplier-delete-modal strong {
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .supplier-delete-confirm-button {
+  background: rgba(239, 68, 68, 0.14) !important;
+  border: 1px solid rgba(239, 68, 68, 0.35) !important;
+  color: #b91c1c !important;
+}
+
+html[data-theme='light'] .supplier-delete-confirm-button:hover {
+  background: rgba(239, 68, 68, 0.22) !important;
+  border-color: rgba(239, 68, 68, 0.55) !important;
+  color: #991b1b !important;
+}
+
+/* =========================
+   Supplier statement modal
+   ========================= */
+
+html[data-theme='light'] .supplier-statement-modal {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18) !important;
+}
+
+html[data-theme='light'] .supplier-statement-modal h3,
+html[data-theme='light'] .supplier-statement-modal strong,
+html[data-theme='light'] .supplier-statement-modal td,
+html[data-theme='light'] .supplier-statement-modal th {
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .supplier-statement-modal p,
+html[data-theme='light'] .supplier-statement-modal span {
+  color: #475569 !important;
+}
+
+html[data-theme='light'] .supplier-statement-modal table tr {
+  border-color: rgba(15, 23, 42, 0.10) !important;
+}
+
+html[data-theme='light'] .supplier-info-card {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.10) !important;
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .supplier-info-card span {
+  color: #475569 !important;
+}
+
+html[data-theme='light'] .supplier-info-card strong {
+  color: #0f172a !important;
+}
+
+/* =========================
+   Purchase product dropdown
+   ========================= */
+
+html[data-theme='light'] .purchase-product-dropdown {
+  background: #ffffff !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 20px 55px rgba(15, 23, 42, 0.16) !important;
+}
+
+html[data-theme='light'] .purchase-product-dropdown-item {
+  color: #0f172a !important;
+  background: transparent !important;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease;
+}
+
+html[data-theme='light'] .purchase-product-dropdown-item:hover {
+  background: rgba(37, 99, 235, 0.08) !important;
+}
+
+html[data-theme='light'] .purchase-product-dropdown-item strong {
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .purchase-product-dropdown-item span {
+  color: #475569 !important;
+}
+
+/* =========================
+   Purchase history modals
+   ========================= */
+
+html[data-theme='light'] .purchase-details-modal,
+html[data-theme='light'] .purchase-payment-modal {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18) !important;
+}
+
+html[data-theme='light'] .purchase-details-modal h3,
+html[data-theme='light'] .purchase-details-modal h4,
+html[data-theme='light'] .purchase-details-modal strong,
+html[data-theme='light'] .purchase-details-modal td,
+html[data-theme='light'] .purchase-details-modal th,
+html[data-theme='light'] .purchase-payment-modal h3,
+html[data-theme='light'] .purchase-payment-modal strong {
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .purchase-details-modal p,
+html[data-theme='light'] .purchase-details-modal span,
+html[data-theme='light'] .purchase-payment-modal p,
+html[data-theme='light'] .purchase-payment-modal label {
+  color: #475569 !important;
+}
+
+html[data-theme='light'] .purchase-details-modal table tr {
+  border-color: rgba(15, 23, 42, 0.10) !important;
+}
+
+html[data-theme='light'] .purchase-info-card {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.10) !important;
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .purchase-info-card span {
+  color: #475569 !important;
+}
+
+html[data-theme='light'] .purchase-info-card strong {
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .purchase-payment-modal input,
+html[data-theme='light'] .purchase-payment-modal select {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.16) !important;
+}
+
+html[data-theme='light'] .purchase-payment-modal input::placeholder {
+  color: #64748b !important;
+}
+
+
+/* =========================
+   Users page modals
+   ========================= */
+
+html[data-theme='light'] .user-password-modal,
+html[data-theme='light'] .user-active-modal {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.18) !important;
+}
+
+html[data-theme='light'] .user-password-modal h3,
+html[data-theme='light'] .user-password-modal strong,
+html[data-theme='light'] .user-active-modal h3,
+html[data-theme='light'] .user-active-modal strong,
+html[data-theme='light'] .user-active-modal span {
+  color: #0f172a !important;
+}
+
+html[data-theme='light'] .user-password-modal p,
+html[data-theme='light'] .user-password-modal label,
+html[data-theme='light'] .user-password-modal label span,
+html[data-theme='light'] .user-active-modal p {
+  color: #475569 !important;
+}
+
+html[data-theme='light'] .user-password-modal input {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.16) !important;
+}
+
+html[data-theme='light'] .user-password-modal input::placeholder {
+  color: #64748b !important;
+}
+
+/* عنوان التعطيل / التفعيل */
+.user-active-title.disable,
+html[data-theme='light'] .user-active-title.disable {
+  color: #b91c1c !important;
+}
+
+.user-active-title.enable,
+html[data-theme='light'] .user-active-title.enable {
+  color: #15803d !important;
+}
+
+/* زر تعطيل المستخدم */
+.user-active-action.disable,
+html[data-theme='light'] .user-active-action.disable {
+  background: rgba(239, 68, 68, 0.14) !important;
+  border: 1px solid rgba(239, 68, 68, 0.35) !important;
+  color: #b91c1c !important;
+}
+
+.user-active-action.disable:hover,
+html[data-theme='light'] .user-active-action.disable:hover {
+  background: rgba(239, 68, 68, 0.22) !important;
+  border-color: rgba(239, 68, 68, 0.55) !important;
+  color: #991b1b !important;
+}
+
+/* زر تفعيل المستخدم */
+.user-active-action.enable,
+html[data-theme='light'] .user-active-action.enable {
+  background: rgba(16, 185, 129, 0.14) !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
+  color: #047857 !important;
+}
+
+.user-active-action.enable:hover,
+html[data-theme='light'] .user-active-action.enable:hover {
+  background: rgba(16, 185, 129, 0.22) !important;
+  border-color: rgba(16, 185, 129, 0.55) !important;
+  color: #065f46 !important;
+}
