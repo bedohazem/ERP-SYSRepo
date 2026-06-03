@@ -806,6 +806,17 @@ declare global {
             app_theme: 'dark' | 'light';
           };
         }>;
+
+
+        // =========================
+        // Liabilities
+        // ==========================
+        getLiabilities: (input?: { search?: string; status?: string }) => Promise<any[]>;
+        createLiability: (input: any) => Promise<any>;
+        recordLiabilityPayment: (input: any) => Promise<any>;
+        getLiabilityStatement: (liabilityId: number) => Promise<any>;
+        cancelLiability: (input: any) => Promise<any>;
+        getLiabilitiesSummary: (input?: { date_from?: string; date_to?: string }) => Promise<any>;
         
     
     };

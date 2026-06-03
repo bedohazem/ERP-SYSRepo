@@ -221,6 +221,35 @@ export function getDb(): Database.Database {
         FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
         FOREIGN KEY (purchase_id) REFERENCES purchase_invoices(id)
       );
+          
+      CREATE TABLE IF NOT EXISTS store_liabilities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        party_name TEXT NOT NULL,
+        title TEXT NOT NULL,
+        category TEXT,
+        total_amount REAL NOT NULL DEFAULT 0,
+        paid_amount REAL NOT NULL DEFAULT 0,
+        remaining_amount REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'open',
+        due_date TEXT,
+        notes TEXT,
+        created_by INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS store_liability_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        liability_id INTEGER NOT NULL,
+        amount REAL NOT NULL DEFAULT 0,
+        payment_method TEXT DEFAULT 'cash',
+        notes TEXT,
+        created_by INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (liability_id) REFERENCES store_liabilities(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
 
       CREATE TABLE IF NOT EXISTS customer_payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -341,6 +370,15 @@ export function getDb(): Database.Database {
       safeAddColumn(db, 'customer_payments', 'sale_id', 'INTEGER');
       safeAddColumn(db, 'customer_payments', 'payment_method', `TEXT DEFAULT 'cash'`);
       safeAddColumn(db, 'customer_payments', 'notes', 'TEXT');
+
+      safeAddColumn(db, 'store_liabilities', 'category', 'TEXT');
+      safeAddColumn(db, 'store_liabilities', 'paid_amount', 'REAL DEFAULT 0');
+      safeAddColumn(db, 'store_liabilities', 'remaining_amount', 'REAL DEFAULT 0');
+      safeAddColumn(db, 'store_liabilities', 'status', `TEXT DEFAULT 'open'`);
+      safeAddColumn(db, 'store_liabilities', 'due_date', 'TEXT');
+      safeAddColumn(db, 'store_liabilities', 'updated_at', 'TEXT');
+      safeAddColumn(db, 'store_liability_payments', 'payment_method', `TEXT DEFAULT 'cash'`);
+      safeAddColumn(db, 'store_liability_payments', 'notes', 'TEXT');
 
       normalizeStockMovementTypes(db);
 

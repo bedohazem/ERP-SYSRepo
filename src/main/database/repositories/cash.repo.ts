@@ -7,9 +7,11 @@ export type CashMovementInput = {
     | 'sale_return'
     | 'customer_payment'
     | 'supplier_payment'
+    | 'liability_payment'
     | 'expense'
     | 'withdraw'
     | 'deposit';
+    
 
   direction: 'in' | 'out';
 

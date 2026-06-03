@@ -16,6 +16,7 @@ import { registerActivityIpc } from './ipc/activity.ipc';
 import { getAppLicenseStatus } from './database/repositories/settings.repo';
 import { createDailyAutoBackup } from './database/auto-backup';
 import { registerStockCountIpc } from './ipc/stock-count.ipc';
+import { registerLiabilitiesIpc } from './ipc/liabilities.ipc';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -87,7 +88,7 @@ app.whenReady().then(() => {
   registerCashIpc();
   registerExpenseIpc();
   registerActivityIpc();
-
+  registerLiabilitiesIpc();
 
   createWindow();
 

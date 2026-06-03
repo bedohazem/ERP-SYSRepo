@@ -102,6 +102,31 @@ export function getReportsSummary(input?: ReportFilter) {
     Number(salesProfitRow.net_profit_after_discounts || 0) -
     Number(returnsProfitRow.returned_profit_after_discounts || 0);
 
+
+  const expensesWhere = buildWhere('e', input);
+  const liabilityPaymentsWhere = buildWhere('p', input);
+
+  const expensesRow = db
+    .prepare(`
+      SELECT IFNULL(SUM(e.amount), 0) AS total_expenses
+      FROM expenses e
+      ${expensesWhere.whereSql}
+    `)
+    .get(...expensesWhere.params) as any;
+
+  const liabilityPaymentsRow = db
+    .prepare(`
+      SELECT IFNULL(SUM(p.amount), 0) AS total_liability_payments
+      FROM store_liability_payments p
+      ${liabilityPaymentsWhere.whereSql}
+    `)
+    .get(...liabilityPaymentsWhere.params) as any;
+
+  const totalExpenses = Number(expensesRow.total_expenses || 0);
+  const totalLiabilityPayments = Number(liabilityPaymentsRow.total_liability_payments || 0);
+
+  const finalNetProfit = netProfitAfterDiscounts - totalExpenses - totalLiabilityPayments;  
+
   const topProducts = db
     .prepare(`
       SELECT
@@ -257,7 +282,10 @@ export function getReportsSummary(input?: ReportFilter) {
       loyalty_discounts: Number(salesSummary.loyalty_discounts || 0),
       net_sales: grossSales - totalReturns,
       gross_profit_before_discounts: grossProfitBeforeDiscounts,
-      net_profit_after_discounts: netProfitAfterDiscounts
+      net_profit_after_discounts: netProfitAfterDiscounts,
+      total_expenses: totalExpenses,
+      total_liability_payments: totalLiabilityPayments,
+      final_net_profit: finalNetProfit
     },
     topProducts,
     dailySales,

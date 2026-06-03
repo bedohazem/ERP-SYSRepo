@@ -94,4 +94,11 @@ contextBridge.exposeInMainWorld('api', {
   saveAppName: (name, input) => ipcRenderer.invoke('settings:save-app-name', name, input),
   saveAppTheme: (theme, input) => ipcRenderer.invoke('settings:save-app-theme', theme, input),
 
+  getLiabilities: (input) => ipcRenderer.invoke('liabilities:list', input),
+  createLiability: (input) => ipcRenderer.invoke('liabilities:create', input),
+  recordLiabilityPayment: (input) => ipcRenderer.invoke('liabilities:record-payment', input),
+  getLiabilityStatement: (liabilityId) => ipcRenderer.invoke('liabilities:statement', liabilityId),
+  cancelLiability: (input) => ipcRenderer.invoke('liabilities:cancel', input),
+  getLiabilitiesSummary: (input) => ipcRenderer.invoke('liabilities:summary', input),
+
 });

@@ -153,6 +153,9 @@ export default function CashPage() {
         return 'سحب';
       case 'deposit':
         return 'إيداع';
+      case 'liability_payment':
+       return 'دفعة التزام';
+
       default:
         return type;
     }
@@ -640,6 +643,7 @@ export default function CashPage() {
               <option value="expense">مصروف</option>
               <option value="deposit">إيداع</option>
               <option value="withdraw">سحب</option>
+              <option value="liability_payment">دفعة التزام</option>
             </select>
           </Field>
 
