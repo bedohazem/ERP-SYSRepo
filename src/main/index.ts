@@ -19,36 +19,6 @@ import { registerStockCountIpc } from './ipc/stock-count.ipc';
 
 let mainWindow: BrowserWindow | null = null;
 
-if (process.platform === 'win32') {
-  app.setAppUserModelId('ERP.SYS.Desktop.DynamicLogo');
-}
-
-function getSavedAppIcon() {
-  try {
-    const status = getAppLicenseStatus();
-    const logoUrl = status.app_logo_url || '';
-
-    if (!logoUrl.startsWith('data:image')) {
-      return nativeImage.createEmpty();
-    }
-
-    const image = nativeImage.createFromDataURL(logoUrl);
-
-    if (image.isEmpty()) {
-      return nativeImage.createEmpty();
-    }
-
-    return image.resize({
-      width: 256,
-      height: 256,
-      quality: 'best'
-    });
-  } catch (error) {
-    console.error('Failed to load saved app icon:', error);
-    return nativeImage.createEmpty();
-  }
-}
-
 const appIconPath = path.join(process.cwd(), 'build', 'icon.ico');
 
 if (process.platform === 'win32') {
@@ -57,9 +27,9 @@ if (process.platform === 'win32') {
 
 function createWindow(): void {
   const preloadPath = path.join(process.cwd(), 'preload.cjs');
-  const appIcon = getSavedAppIcon();
   const appStatus = getAppLicenseStatus();
   const appName = appStatus.app_name || 'ERP Store';
+  const appIcon = nativeImage.createFromPath(appIconPath);
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -91,9 +61,9 @@ function createWindow(): void {
     void mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
 
-  mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow?.setTitle(appName);
-  });
+    mainWindow.webContents.on('did-finish-load', () => {
+      mainWindow?.setTitle(appName);
+    });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -102,12 +72,9 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
 
-
   getDb();
-  void createDailyAutoBackup();
-  
+
   registerAuthIpc();
-  createWindow();
   registerProductsIpc();
   registerSettingsIpc();
   registerSalesIpc();
@@ -120,6 +87,14 @@ app.whenReady().then(() => {
   registerCashIpc();
   registerExpenseIpc();
   registerActivityIpc();
+
+
+  createWindow();
+
+  setTimeout(() => {
+    void createDailyAutoBackup().finally(() => {
+    });
+  }, 10000);
   
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

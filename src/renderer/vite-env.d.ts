@@ -48,6 +48,22 @@ type BarcodePrintSettings = {
 export {};
 declare global {
   interface Window {
+    
+    __APP_LICENSE_STATUS__?: {
+      activated: boolean;
+      trial_started_at: string;
+      trial_days: number;
+      trial_expires_at: string;
+      days_left: number;
+      expired: boolean;
+      blocked?: boolean;
+      message?: string;
+      device_code?: string;
+      app_logo_url: string;
+      app_name: string;
+      app_theme?: 'dark' | 'light';
+    };
+
     api: {
 
       // =========================

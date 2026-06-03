@@ -45,6 +45,8 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
 
     try {
       const data = await window.api.getLicenseStatus();
+      window.__APP_LICENSE_STATUS__ = data;
+
       setStatus(data);
       applyAppTitle(data.app_name);
       applyAppTheme(data.app_theme);
@@ -70,6 +72,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
       const customEvent = event as CustomEvent<LicenseStatus>;
 
       if (customEvent.detail) {
+        window.__APP_LICENSE_STATUS__ = customEvent.detail;
         setStatus(customEvent.detail);
         applyAppTitle(customEvent.detail.app_name);
         applyAppTheme(customEvent.detail.app_theme);

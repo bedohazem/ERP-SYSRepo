@@ -26,10 +26,27 @@ export default function LoginPage() {;
   useEffect(() => {
     usernameRef.current?.focus();
 
-    void window.api.getLicenseStatus()
+    const cachedStatus = window.__APP_LICENSE_STATUS__;
+
+    if (cachedStatus) {
+      setAppLogoUrl(cachedStatus.app_logo_url || '');
+      setAppName(cachedStatus.app_name || 'ERP Store');
+
+      const nextTheme = cachedStatus.app_theme === 'light' ? 'light' : 'dark';
+      setAppTheme(nextTheme);
+      document.documentElement.setAttribute('data-theme', nextTheme);
+
+      return;
+    }
+
+    void window.api
+      .getLicenseStatus()
       .then((status) => {
+        window.__APP_LICENSE_STATUS__ = status;
+
         setAppLogoUrl(status.app_logo_url || '');
         setAppName(status.app_name || 'ERP Store');
+
         const nextTheme = status.app_theme === 'light' ? 'light' : 'dark';
         setAppTheme(nextTheme);
         document.documentElement.setAttribute('data-theme', nextTheme);
