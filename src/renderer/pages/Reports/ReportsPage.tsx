@@ -11,6 +11,9 @@ type ReportsData = {
     net_sales: number;
     gross_profit_before_discounts: number;
     net_profit_after_discounts: number;
+    total_expenses: number;
+    total_liability_payments: number;
+    final_net_profit: number;
   };
   topProducts: any[];
   dailySales: any[];
@@ -28,7 +31,10 @@ const emptyReports: ReportsData = {
     loyalty_discounts: 0,
     net_sales: 0,
     gross_profit_before_discounts: 0,
-    net_profit_after_discounts: 0
+    net_profit_after_discounts: 0,
+    total_expenses: 0,
+    total_liability_payments: 0,
+    final_net_profit: 0
   },
   topProducts: [],
   dailySales: [],
@@ -147,6 +153,23 @@ export default function ReportsPage() {
         <StatCard
           title="صافي الربح بعد الخصومات"
           value={money(data.summary.net_profit_after_discounts)}
+          success
+        />
+        <StatCard
+          title="المصروفات"
+          value={money(data.summary.total_expenses)}
+          danger
+        />
+
+        <StatCard
+          title="دفعات الالتزامات"
+          value={money(data.summary.total_liability_payments)}
+          danger
+        />
+
+        <StatCard
+          title="صافي الربح النهائي"
+          value={money(data.summary.final_net_profit)}
           success
         />
         <StatCard title="إجمالي المرتجعات" value={money(data.summary.total_returns)} danger />

@@ -57,11 +57,16 @@ export function getReportsSummary(input?: ReportFilter) {
     .prepare(`
       SELECT
         IFNULL(SUM(x.items_profit_before_discount), 0) AS gross_profit_before_discounts,
-        IFNULL(SUM(x.grand_total - x.total_cost), 0) AS net_profit_after_discounts
+        IFNULL(SUM(
+          x.items_profit_before_discount
+          - x.normal_discount
+          - x.loyalty_discount
+        ), 0) AS net_profit_after_discounts
       FROM (
         SELECT
           s.id,
-          s.grand_total,
+          IFNULL(s.discount_value, 0) AS normal_discount,
+          IFNULL(s.loyalty_discount_value, 0) AS loyalty_discount,
           IFNULL(SUM(si.unit_cost * si.quantity), 0) AS total_cost,
           IFNULL(SUM((si.unit_price - si.unit_cost) * si.quantity), 0) AS items_profit_before_discount
         FROM sales s

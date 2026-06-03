@@ -14,6 +14,9 @@ type ReportsData = {
     net_sales: number;
     gross_profit_before_discounts: number;
     net_profit_after_discounts: number;
+    total_expenses: number;
+    total_liability_payments: number;
+    final_net_profit: number;
   };
   topProducts: any[];
   dailySales: any[];
@@ -52,7 +55,10 @@ const emptyReports: ReportsData = {
     loyalty_discounts: 0,
     net_sales: 0,
     gross_profit_before_discounts: 0,
-    net_profit_after_discounts: 0
+    net_profit_after_discounts: 0,
+    total_expenses: 0,
+    total_liability_payments: 0,
+    final_net_profit: 0
   },
   topProducts: [],
   dailySales: [],
@@ -278,10 +284,26 @@ export default function DashboardPage() {
 
         <StatCard
           icon="💰"
-          title="صافي ربح الشهر"
-          value={money(data.month.summary.net_profit_after_discounts)}
-          subtitle="بعد الخصومات والمرتجعات"
+          title="صافي الربح النهائي"
+          value={money(data.month.summary.final_net_profit)}
+          subtitle="بعد الخصومات والمصروفات والالتزامات"
           tone="green"
+        />
+
+        <StatCard
+          icon="💳"
+          title="مصروفات الشهر"
+          value={money(data.month.summary.total_expenses)}
+          subtitle="إجمالي المصروفات المسجلة"
+          tone="red"
+        />
+
+        <StatCard
+          icon="📌"
+          title="دفعات الالتزامات"
+          value={money(data.month.summary.total_liability_payments)}
+          subtitle="سداد ديون والتزامات المحل"
+          tone="amber"
         />
 
         <StatCard
@@ -393,6 +415,13 @@ export default function DashboardPage() {
               title="فاتورة شراء"
               subtitle="تسجيل مشتريات من مورد"
               onClick={() => navigate('/purchases')}
+            />
+
+            <QuickAction
+              icon="📌"
+              title="التزامات المحل"
+              subtitle="إضافة التزام أو تسجيل دفعة"
+              onClick={() => navigate('/liabilities')}
             />
 
             <QuickAction

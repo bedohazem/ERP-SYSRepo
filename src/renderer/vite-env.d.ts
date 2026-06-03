@@ -410,6 +410,9 @@ declare global {
           net_sales: number;
           gross_profit_before_discounts: number;
           net_profit_after_discounts: number;
+          total_expenses: number;
+          total_liability_payments: number;
+          final_net_profit: number;
         };
         topProducts: Array<any>;
         dailySales: Array<any>;

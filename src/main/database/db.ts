@@ -412,11 +412,14 @@ export function resetDatabaseData(): void {
 
   database.transaction(() => {
     database.exec(`
-      PRAGMA foreign_keys = OFF;
+      
 
       DELETE FROM activity_logs;
       DELETE FROM expenses;
       DELETE FROM cash_movements;
+
+      DELETE FROM store_liability_payments;
+      DELETE FROM store_liabilities;
 
       DELETE FROM supplier_payments;
       DELETE FROM purchase_items;
@@ -443,7 +446,6 @@ export function resetDatabaseData(): void {
 
       DELETE FROM sqlite_sequence;
 
-      PRAGMA foreign_keys = ON;
     `);
 
     seedAdminUser(database);
