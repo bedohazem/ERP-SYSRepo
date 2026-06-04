@@ -182,6 +182,10 @@ export default function PurchasesPage() {
     try {
       const result = await window.api.createPurchaseInvoice({
         supplier_id: Number(supplierId),
+        sub_total: subTotal,
+        discount_type: discountType,
+        discount_input: Number(discountDraft || 0),
+        discount_value: discountValue,
         paid_amount: Number(paidAmount || 0),
         payment_method: paymentMethod,
         notes: notes.trim() || null,

@@ -565,6 +565,10 @@ declare global {
         // =========================
           createPurchaseInvoice: (input: {
             supplier_id: number;
+            sub_total?: number;
+            discount_type?: 'amount' | 'percent' | string;
+            discount_input?: number;
+            discount_value?: number;
             paid_amount?: number;
             payment_method?: string;
             notes?: string | null;

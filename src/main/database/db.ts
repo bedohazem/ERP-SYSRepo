@@ -186,6 +186,10 @@ export function getDb(): Database.Database {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         supplier_id INTEGER NOT NULL,
         total_amount REAL NOT NULL DEFAULT 0,
+        sub_total REAL NOT NULL DEFAULT 0,
+        discount_type TEXT DEFAULT 'amount',
+        discount_input REAL NOT NULL DEFAULT 0,
+        discount_value REAL NOT NULL DEFAULT 0,
         paid_amount REAL NOT NULL DEFAULT 0,
         remaining_amount REAL NOT NULL DEFAULT 0,
         payment_status TEXT NOT NULL DEFAULT 'unpaid',
@@ -358,6 +362,10 @@ export function getDb(): Database.Database {
       safeAddColumn(db, 'suppliers', 'updated_at', 'TEXT');
       safeAddColumn(db, 'purchase_invoices', 'payment_method', `TEXT DEFAULT 'cash'`);
       safeAddColumn(db, 'purchase_invoices', 'notes', 'TEXT');
+      safeAddColumn(db, 'purchase_invoices', 'sub_total', 'REAL DEFAULT 0');
+      safeAddColumn(db, 'purchase_invoices', 'discount_type', `TEXT DEFAULT 'amount'`);
+      safeAddColumn(db, 'purchase_invoices', 'discount_input', 'REAL DEFAULT 0');
+      safeAddColumn(db, 'purchase_invoices', 'discount_value', 'REAL DEFAULT 0');
       safeAddColumn(db, 'supplier_payments', 'purchase_id', 'INTEGER');
       safeAddColumn(db, 'supplier_payments', 'payment_method', `TEXT DEFAULT 'cash'`);
       safeAddColumn(db, 'supplier_payments', 'notes', 'TEXT');

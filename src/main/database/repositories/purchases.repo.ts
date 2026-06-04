@@ -4,6 +4,10 @@ import { createCashMovement } from './cash.repo';
 export type CreatePurchaseInput = {
   supplier_id: number;
   paid_amount?: number;
+  sub_total?: number;
+  discount_type?: 'amount' | 'percent' | string;
+  discount_input?: number;
+  discount_value?: number;
   payment_method?: string;
   notes?: string | null;
   items: Array<{
@@ -77,6 +81,18 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
     });
 
     const totalAmount = preparedItems.reduce((sum, item) => sum + item.lineTotal, 0);
+    const discountValueInput = Number(input.discount_value || 0);
+    const discountValue = Number.isFinite(discountValueInput)
+      ? Math.max(0, discountValueInput)
+      : 0;
+
+    const subTotalInput = Number(input.sub_total || 0);
+    const subTotal = Number.isFinite(subTotalInput) && subTotalInput > 0
+      ? subTotalInput
+      : totalAmount + discountValue;
+
+    const discountInput = Number(input.discount_input || 0);
+    const discountType = input.discount_type === 'percent' ? 'percent' : 'amount';
     const paidAmount = Math.min(Math.max(paidAmountInput, 0), totalAmount);
     const remainingAmount = Math.max(0, totalAmount - paidAmount);
 
@@ -88,17 +104,25 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         INSERT INTO purchase_invoices (
           supplier_id,
           total_amount,
+          sub_total,
+          discount_type,
+          discount_input,
+          discount_value,
           paid_amount,
           remaining_amount,
           payment_status,
           payment_method,
           notes
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         supplierId,
         totalAmount,
+        subTotal,
+        discountType,
+        discountInput,
+        discountValue,
         paidAmount,
         remainingAmount,
         paymentStatus,

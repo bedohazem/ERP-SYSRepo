@@ -7,6 +7,10 @@ type PurchaseRow = {
   supplier_name: string;
   supplier_phone?: string | null;
   total_amount: number;
+  sub_total?: number;
+  discount_type?: 'amount' | 'percent' | string;
+  discount_input?: number;
+  discount_value?: number;
   paid_amount: number;
   remaining_amount: number;
   payment_status: 'paid' | 'partial' | 'unpaid';
@@ -193,6 +197,8 @@ export default function PurchaseHistoryPage() {
               <th style={thStyle}>التاريخ</th>
               <th style={thStyle}>المورد</th>
               <th style={thStyle}>الأصناف</th>
+              <th style={thStyle}>قبل الخصم</th>
+              <th style={thStyle}>الخصم</th>
               <th style={thStyle}>الإجمالي</th>
               <th style={thStyle}>المدفوع</th>
               <th style={thStyle}>المتبقي</th>
@@ -205,7 +211,7 @@ export default function PurchaseHistoryPage() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={10} style={{ ...tdStyle, textAlign: 'center' }}>
+                <td colSpan={12} style={{ ...tdStyle, textAlign: 'center' }}>
                   جاري التحميل...
                 </td>
               </tr>
@@ -230,7 +236,22 @@ export default function PurchaseHistoryPage() {
                     </div>
                   </td>
                   <td style={tdStyle}>{row.items_count || 0}</td>
-                  <td style={tdStyle}>{money(row.total_amount)}</td>
+                  <td style={tdStyle}>
+                    {money(Number(row.sub_total || 0) > 0 ? row.sub_total : Number(row.total_amount || 0) + Number(row.discount_value || 0))}
+                  </td>
+
+                  <td style={tdStyle}>
+                    {money(row.discount_value || 0)}
+                    {row.discount_type === 'percent' && Number(row.discount_input || 0) > 0 ? (
+                      <span style={{ color: '#94a3b8', fontSize: '12px', marginRight: '6px' }}>
+                        ({Number(row.discount_input || 0)}%)
+                      </span>
+                    ) : null}
+                  </td>
+
+                  <td style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}>
+                    {money(row.total_amount)}
+                  </td>
                   <td style={tdStyle}>{money(row.paid_amount)}</td>
                   <td
                     style={{
@@ -281,7 +302,7 @@ export default function PurchaseHistoryPage() {
             {!loading && rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={12}
                   style={{
                     ...tdStyle,
                     textAlign: 'center',
@@ -338,7 +359,24 @@ export default function PurchaseHistoryPage() {
                 marginBottom: '18px'
               }}
             >
-              <InfoCard title="الإجمالي" value={money(selectedPurchase.purchase.total_amount)} />
+              <InfoCard
+                title="قبل الخصم"
+                value={money(
+                  Number(selectedPurchase.purchase.sub_total || 0) > 0
+                    ? selectedPurchase.purchase.sub_total
+                    : Number(selectedPurchase.purchase.total_amount || 0) + Number(selectedPurchase.purchase.discount_value || 0)
+                )}
+              />
+
+              <InfoCard
+                title="الخصم"
+                value={
+                  selectedPurchase.purchase.discount_type === 'percent'
+                    ? `${money(selectedPurchase.purchase.discount_value || 0)} (${Number(selectedPurchase.purchase.discount_input || 0)}%)`
+                    : money(selectedPurchase.purchase.discount_value || 0)
+                }
+              />
+              <InfoCard title="بعد الخصم" value={money(selectedPurchase.purchase.total_amount)} />
               <InfoCard title="المدفوع" value={money(selectedPurchase.purchase.paid_amount)} />
               <InfoCard title="المتبقي" value={money(selectedPurchase.purchase.remaining_amount)} />
               <InfoCard title="طريقة الدفع" value={getPaymentMethodLabel(selectedPurchase.purchase.payment_method)}/>
