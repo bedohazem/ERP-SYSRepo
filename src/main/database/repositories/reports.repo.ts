@@ -37,7 +37,9 @@ export function getReportsSummary(input?: ReportFilter) {
       SELECT
         COUNT(*) AS sales_count,
         IFNULL(SUM(s.grand_total), 0) AS gross_sales,
-        IFNULL(SUM(s.loyalty_discount_value), 0) AS loyalty_discounts
+        IFNULL(SUM(s.discount_value), 0) AS normal_discounts,
+        IFNULL(SUM(s.loyalty_discount_value), 0) AS loyalty_discounts,
+        IFNULL(SUM(s.discount_value + s.loyalty_discount_value), 0) AS total_discounts
       FROM sales s
       ${salesWhere.whereSql}
     `)
@@ -284,7 +286,9 @@ export function getReportsSummary(input?: ReportFilter) {
       returns_count: Number(returnsSummary.returns_count || 0),
       gross_sales: grossSales,
       total_returns: totalReturns,
+      normal_discounts: Number(salesSummary.normal_discounts || 0),
       loyalty_discounts: Number(salesSummary.loyalty_discounts || 0),
+      total_discounts: Number(salesSummary.total_discounts || 0),
       net_sales: grossSales - totalReturns,
       gross_profit_before_discounts: grossProfitBeforeDiscounts,
       net_profit_after_discounts: netProfitAfterDiscounts,

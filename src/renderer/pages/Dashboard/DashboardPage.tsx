@@ -10,7 +10,9 @@ type ReportsData = {
     returns_count: number;
     gross_sales: number;
     total_returns: number;
+    normal_discounts: number;
     loyalty_discounts: number;
+    total_discounts: number;
     net_sales: number;
     gross_profit_before_discounts: number;
     net_profit_after_discounts: number;
@@ -40,6 +42,7 @@ type CashierDailyRevenue = {
   supplierPaymentsOut: number;
   expensesOut: number;
   withdrawsOut: number;
+  liabilityPaymentsOut: number;
 
   totalIn: number;
   totalOut: number;
@@ -52,7 +55,9 @@ const emptyReports: ReportsData = {
     returns_count: 0,
     gross_sales: 0,
     total_returns: 0,
+    normal_discounts: 0,
     loyalty_discounts: 0,
+    total_discounts: 0,
     net_sales: 0,
     gross_profit_before_discounts: 0,
     net_profit_after_discounts: 0,
@@ -91,7 +96,7 @@ export default function DashboardPage() {
     supplierPaymentsOut: 0,
     expensesOut: 0,
     withdrawsOut: 0,
-
+    liabilityPaymentsOut: 0,
     totalIn: 0,
     totalOut: 0,
     netCash: 0
@@ -116,7 +121,8 @@ export default function DashboardPage() {
         todayReturns,
         todaySupplierPayments,
         todayExpenses,
-        todayWithdraws
+        todayWithdraws,
+        todayLiabilityPayments
       ] = await Promise.all([
         window.api.getReportsSummary({ date_from: todayKey, date_to: todayKey }),
         window.api.getReportsSummary({ date_from: monthStartKey, date_to: todayKey }),
@@ -162,6 +168,12 @@ export default function DashboardPage() {
           date_from: todayKey,
           date_to: todayKey,
           type: 'withdraw'
+        }),
+
+        window.api.getCashSummary({
+          date_from: todayKey,
+          date_to: todayKey,
+          type: 'liability_payment'
         })
       ]);
 
@@ -175,9 +187,9 @@ export default function DashboardPage() {
       const supplierPaymentsOut = Number(todaySupplierPayments?.total_out || 0);
       const expensesOut = Number(todayExpenses?.total_out || 0);
       const withdrawsOut = Number(todayWithdraws?.total_out || 0);
-
+      const liabilityPaymentsOut = Number(todayLiabilityPayments?.total_out || 0);
       const totalIn = salesIn + customerPaymentsIn + depositsIn;
-      const totalOut = returnsOut + supplierPaymentsOut + expensesOut + withdrawsOut;
+      const totalOut = returnsOut + supplierPaymentsOut + expensesOut + withdrawsOut + liabilityPaymentsOut;
 
       setCashierRevenue({
         salesIn,
@@ -188,6 +200,7 @@ export default function DashboardPage() {
         supplierPaymentsOut,
         expensesOut,
         withdrawsOut,
+        liabilityPaymentsOut,
 
         totalIn,
         totalOut,
@@ -225,6 +238,8 @@ export default function DashboardPage() {
         revenue={cashierRevenue}
         salesCount={data.today.summary.sales_count}
         returnsCount={data.today.summary.returns_count}
+        normalDiscounts={data.today.summary.normal_discounts}
+        loyaltyDiscounts={data.today.summary.loyalty_discounts}
         lastUpdated={lastUpdated}
         loading={loading}
         onRefresh={loadDashboard}
@@ -954,6 +969,8 @@ function CashierRevenueView({
   revenue,
   salesCount,
   returnsCount,
+  normalDiscounts,
+  loyaltyDiscounts,
   lastUpdated,
   loading,
   onRefresh,
@@ -964,6 +981,8 @@ function CashierRevenueView({
   revenue: CashierDailyRevenue;
   salesCount: number;
   returnsCount: number;
+  normalDiscounts: number;
+  loyaltyDiscounts: number;
   lastUpdated: string;
   loading: boolean;
   onRefresh: () => void;
@@ -1054,9 +1073,21 @@ function CashierRevenueView({
           }}
         >
           <CashierMiniCard
-            title="مبيعات اليوم"
+            title="تحصيل مبيعات اليوم"
             value={money(revenue.salesIn)}
             subtitle={`${salesCount} فاتورة بيع`}
+          />
+
+          <CashierMiniCard
+            title="خصومات عادية"
+            value={money(normalDiscounts)}
+            subtitle="خصومات مباشرة على الفواتير"
+          />
+
+          <CashierMiniCard
+            title="خصومات النقاط"
+            value={money(loyaltyDiscounts)}
+            subtitle="خصومات نقاط الولاء"
           />
 
           <CashierMiniCard
@@ -1084,6 +1115,12 @@ function CashierRevenueView({
           />
 
           <CashierMiniCard
+            title="دفعات الالتزامات"
+            value={money(revenue.liabilityPaymentsOut)}
+            subtitle="سداد التزامات على المحل"
+          />
+
+          <CashierMiniCard
             title="المصروفات"
             value={money(revenue.expensesOut)}
             subtitle="مصاريف اليوم"
@@ -1104,7 +1141,7 @@ function CashierRevenueView({
           <CashierMiniCard
             title="إجمالي الخارج"
             value={money(revenue.totalOut)}
-            subtitle="مرتجعات + مصاريف + موردين"
+            subtitle="مرتجعات + مصاريف + موردين + التزامات"
           />
         </div>
       </section>

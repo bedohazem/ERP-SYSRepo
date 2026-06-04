@@ -14,6 +14,8 @@ type ReportsData = {
     total_expenses: number;
     total_liability_payments: number;
     final_net_profit: number;
+    normal_discounts: number;
+    total_discounts: number;
   };
   topProducts: any[];
   dailySales: any[];
@@ -34,7 +36,9 @@ const emptyReports: ReportsData = {
     net_profit_after_discounts: 0,
     total_expenses: 0,
     total_liability_payments: 0,
-    final_net_profit: 0
+    final_net_profit: 0,
+    normal_discounts: 0,
+    total_discounts: 0
   },
   topProducts: [],
   dailySales: [],
@@ -176,6 +180,8 @@ export default function ReportsPage() {
         <StatCard title="عدد الفواتير" value={String(data.summary.sales_count)} />
         <StatCard title="عدد المرتجعات" value={String(data.summary.returns_count)} />
         <StatCard title="خصومات النقاط" value={money(data.summary.loyalty_discounts)} />
+        <StatCard title="خصومات عادية" value={money(data.summary.normal_discounts)} />
+        <StatCard title="إجمالي الخصومات" value={money(data.summary.total_discounts)} />
       </div>
 
       <div

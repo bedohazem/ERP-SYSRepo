@@ -406,7 +406,9 @@ declare global {
           returns_count: number;
           gross_sales: number;
           total_returns: number;
+          normal_discounts: number;
           loyalty_discounts: number;
+          total_discounts: number;
           net_sales: number;
           gross_profit_before_discounts: number;
           net_profit_after_discounts: number;
