@@ -438,9 +438,9 @@ export default function InvoicesPage() {
                 <th style={thStyle}>التاريخ</th>
                 <th style={thStyle}>العميل</th>
                 <th style={thStyle}>الكاشير</th>
-                <th style={thStyle}>الأصناف</th>
                 <th style={thStyle}>المرتجع</th>
                 <th style={thStyle}>قبل الخصم</th>
+                <th style={thStyle}>خصم عادي</th>
                 <th style={thStyle}>خصم النقاط</th>
                 <th style={thStyle}>الإجمالي</th>
                 <th style={thStyle}>طريقة الدفع</th>
@@ -477,7 +477,6 @@ export default function InvoicesPage() {
                       </div>
                     </td>
                     <td style={tdStyle}>{sale.cashier_name || '—'}</td>
-                    <td style={tdStyle}>{sale.items_count || 0}</td>
                     <td style={tdStyle}>
                       {Number(sale.returned_quantity || 0) > 0 ? (
                         <div style={{ display: 'grid', gap: '4px' }}>
@@ -493,7 +492,7 @@ export default function InvoicesPage() {
                       )}
                     </td>
                     <td style={tdStyle}>{money(sale.sub_total)}</td>
-
+                    <td style={tdStyle}>{money(sale.discount_value || 0)}</td>
                     <td style={tdStyle}>{money(sale.loyalty_discount_value || 0)}</td>
                     <td style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}>
                       {money(sale.grand_total)}
@@ -513,6 +512,7 @@ export default function InvoicesPage() {
                         {getPaymentMethodLabel(sale.payment_method)}
                       </span>
                     </td>
+
                     <td style={tdStyle}>
                       <span style={{ color: '#22c55e' }}>
                         +{sale.loyalty_points_earned || 0}

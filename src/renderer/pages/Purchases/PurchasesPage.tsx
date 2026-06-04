@@ -37,10 +37,13 @@ export default function PurchasesPage() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [notes, setNotes] = useState('');
 
+  const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
+  const [discountDraft, setDiscountDraft] = useState('');
+
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
-  const totalAmount = useMemo(
+  const subTotal = useMemo(
     () =>
       lines.reduce(
         (sum, line) => sum + Number(line.quantity || 0) * Number(line.unit_cost || 0),
@@ -48,6 +51,34 @@ export default function PurchasesPage() {
       ),
     [lines]
   );
+
+  const discountValue = useMemo(() => {
+    const raw = Number(discountDraft || 0);
+    const value = Number.isFinite(raw) ? Math.max(0, raw) : 0;
+
+    if (discountType === 'percent') {
+      return Math.min(subTotal, (subTotal * Math.min(value, 100)) / 100);
+    }
+
+    return Math.min(subTotal, value);
+  }, [discountDraft, discountType, subTotal]);
+
+  const totalAmount = Math.max(0, subTotal - discountValue);
+
+  function getDiscountedUnitCost(line: PurchaseLine) {
+    const qty = Number(line.quantity || 0);
+    const originalUnitCost = Number(line.unit_cost || 0);
+    const lineTotal = qty * originalUnitCost;
+
+    if (qty <= 0 || subTotal <= 0 || discountValue <= 0) {
+      return originalUnitCost;
+    }
+
+    const lineDiscount = (lineTotal / subTotal) * discountValue;
+    const discountedLineTotal = Math.max(0, lineTotal - lineDiscount);
+
+    return discountedLineTotal / qty;
+  }
 
   const paid = Math.min(Math.max(Number(paidAmount || 0), 0), totalAmount);
   const remaining = Math.max(0, totalAmount - paid);
@@ -158,7 +189,7 @@ export default function PurchasesPage() {
         items: lines.map((line) => ({
           variant_id: line.variant_id,
           quantity: Number(line.quantity || 0),
-          unit_cost: Number(line.unit_cost || 0)
+          unit_cost: Number(getDiscountedUnitCost(line).toFixed(4))
         }))
       });
 
@@ -173,6 +204,8 @@ export default function PurchasesPage() {
       setPaidAmount('');
       setNotes('');
       setProductSearch('');
+      setDiscountType('amount');
+      setDiscountDraft('');
     } catch (error) {
       console.error('Failed to save purchase:', error);
       showMessage('حدث خطأ أثناء حفظ فاتورة الشراء');
@@ -310,6 +343,7 @@ export default function PurchasesPage() {
                 <th style={thStyle}>المخزون الحالي</th>
                 <th style={thStyle}>الكمية</th>
                 <th style={thStyle}>سعر الشراء</th>
+                <th style={thStyle}>بعد الخصم</th>
                 <th style={thStyle}>الإجمالي</th>
                 <th style={thStyle}>حذف</th>
               </tr>
@@ -351,8 +385,12 @@ export default function PurchasesPage() {
                       style={{ ...inputStyle, width: '130px', textAlign: 'center' }}
                     />
                   </td>
+                  <td style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}>
+                    {money(getDiscountedUnitCost(line))}
+                  </td>
+
                   <td style={{ ...tdStyle, fontWeight: 900 }}>
-                    {money(Number(line.quantity || 0) * Number(line.unit_cost || 0))}
+                    {money(Number(line.quantity || 0) * getDiscountedUnitCost(line))}
                   </td>
                   <td style={tdStyle}>
                     <button
@@ -369,7 +407,7 @@ export default function PurchasesPage() {
               {lines.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -397,8 +435,43 @@ export default function PurchasesPage() {
             direction: 'rtl'
           }}
         >
+
           <div style={fieldStyle}>
-            <label style={labelStyle}>إجمالي الفاتورة</label>
+            <label style={labelStyle}>الإجمالي قبل الخصم</label>
+            <input value={money(subTotal)} readOnly style={{ ...inputStyle, opacity: 0.7 }} />
+          </div>
+
+          <div style={fieldStyle}>
+            <label style={labelStyle}>نوع الخصم</label>
+            <select
+              value={discountType}
+              onChange={(e) => setDiscountType(e.target.value as 'amount' | 'percent')}
+              style={inputStyle}
+            >
+              <option value="amount">خصم جنيه</option>
+              <option value="percent">خصم %</option>
+            </select>
+          </div>
+
+          <div style={fieldStyle}>
+            <label style={labelStyle}>الخصم</label>
+            <input
+              type="number"
+              min={0}
+              value={discountDraft}
+              onChange={(e) => setDiscountDraft(e.target.value)}
+              placeholder={discountType === 'percent' ? 'مثال: 5' : 'مثال: 100'}
+              style={inputStyle}
+            />
+          </div>
+
+          <div style={fieldStyle}>
+            <label style={labelStyle}>قيمة الخصم</label>
+            <input value={money(discountValue)} readOnly style={{ ...inputStyle, opacity: 0.7 }} />
+          </div>
+
+          <div style={fieldStyle}>
+            <label style={labelStyle}>الإجمالي بعد الخصم</label>
             <input value={money(totalAmount)} readOnly style={{ ...inputStyle, opacity: 0.7 }} />
           </div>
 
