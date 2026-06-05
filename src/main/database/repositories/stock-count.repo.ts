@@ -276,7 +276,7 @@ export function scanStockCountBarcode(input: {
 
   const sessionId = Number(input.session_id);
   const barcode = String(input.barcode || '').trim();
-  const quantity = Number(input.quantity || 1);
+  const quantity = input.quantity == null ? 1 : Number(input.quantity);
 
   if (!barcode) {
     throw new Error('الباركود مطلوب');
