@@ -87,6 +87,22 @@ function buildCashWhere(input?: CashFilterInput) {
 export function createCashMovement(input: CashMovementInput) {
   const db = getDb();
 
+  const amount = Number(input.amount || 0);
+  const type = String(input.type || '').trim();
+  const direction = input.direction;
+
+  if (!type) {
+    throw new Error('نوع حركة الخزنة مطلوب');
+  }
+
+  if (direction !== 'in' && direction !== 'out') {
+    throw new Error('اتجاه حركة الخزنة غير صحيح');
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('مبلغ حركة الخزنة غير صحيح');
+  }
+
   const result = db
     .prepare(`
       INSERT INTO cash_movements (
@@ -102,9 +118,9 @@ export function createCashMovement(input: CashMovementInput) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .run(
-      input.type,
-      Number(input.amount || 0),
-      input.direction,
+      type,
+      amount,
+      direction,
       input.payment_method || 'cash',
       input.reference_id ?? null,
       input.reference_type ?? null,
@@ -116,13 +132,13 @@ export function createCashMovement(input: CashMovementInput) {
 
   createActivityLog({
     user_id: input.created_by ?? null,
-    action: input.direction === 'in' ? 'cash_in' : 'cash_out',
+    action: direction === 'in' ? 'cash_in' : 'cash_out',
     entity: 'cash_movements',
     entity_id: movementId,
     details: JSON.stringify({
-      type: input.type,
-      amount: Number(input.amount || 0),
-      direction: input.direction,
+      type,
+      amount,
+      direction,
       payment_method: input.payment_method || 'cash',
       notes: input.notes ?? null
     })
