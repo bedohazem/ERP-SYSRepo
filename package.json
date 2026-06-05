@@ -13,10 +13,14 @@
     "test": "vitest",
     "test:watch": "vitest --watch",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "test:prepare": "npm rebuild better-sqlite3 --runtime=node --target=20.19.6 --dist-url=https://nodejs.org/download/release",
+    "test:ready": "npm run test:prepare && vitest --run",
+    "electron:prepare": "electron-rebuild -f -w better-sqlite3",
+    "dev:ready": "npm run electron:prepare && npm run dev",
     "license:build": "electron-packager ./tools/license-generator \"ERP License Generator\" --platform=win32 --arch=x64 --out=tools/release --overwrite --asar --electron-version=38.0.0"
   },
   "dependencies": {
-    "better-sqlite3": "^12.8.0",
+    "better-sqlite3": "11.10.0",
     "jsbarcode": "^3.12.3",
     "node-machine-id": "^1.1.12",
     "react": "^19.1.1",
