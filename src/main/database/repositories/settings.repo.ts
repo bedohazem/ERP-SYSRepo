@@ -204,8 +204,47 @@ return {
 };
 }
 
+function assertPositiveNumber(value: unknown, message: string) {
+  const numberValue = Number(value);
+
+  if (!Number.isFinite(numberValue) || numberValue <= 0) {
+    throw new Error(message);
+  }
+
+  return numberValue;
+}
+
+function assertFiniteNumber(value: unknown, message: string) {
+  const numberValue = Number(value);
+
+  if (!Number.isFinite(numberValue)) {
+    throw new Error(message);
+  }
+
+  return numberValue;
+}
+
+function validateBarcodePrintSettings(input: BarcodePrintSettings) {
+  assertPositiveNumber(input.barcode_label_width_mm, 'عرض ملصق الباركود غير صحيح');
+  assertPositiveNumber(input.barcode_label_height_mm, 'ارتفاع ملصق الباركود غير صحيح');
+  assertPositiveNumber(input.barcode_copies, 'عدد نسخ الباركود غير صحيح');
+
+  assertFiniteNumber(input.barcode_content_offset_x_mm, 'إزاحة الباركود الأفقية غير صحيحة');
+  assertFiniteNumber(input.barcode_content_offset_y_mm, 'إزاحة الباركود الرأسية غير صحيحة');
+
+  assertPositiveNumber(input.barcode_name_font_size, 'حجم خط اسم المنتج غير صحيح');
+  assertPositiveNumber(input.barcode_price_font_size, 'حجم خط السعر غير صحيح');
+  assertPositiveNumber(input.barcode_size_font_size, 'حجم خط المقاس غير صحيح');
+  assertPositiveNumber(input.barcode_color_font_size, 'حجم خط اللون غير صحيح');
+  assertPositiveNumber(input.barcode_value_font_size, 'حجم خط قيمة الباركود غير صحيح');
+
+  assertPositiveNumber(input.barcode_svg_height, 'ارتفاع الباركود غير صحيح');
+}
+
 export function saveBarcodePrintSettings(input: BarcodePrintSettings) {
   const db = getDb();
+
+  validateBarcodePrintSettings(input);
 
   const stmt = db.prepare(`
     INSERT INTO app_settings (key, value)
@@ -291,14 +330,32 @@ export function getLoyaltySettings(): LoyaltySettings {
 }
 
 export function saveLoyaltySettings(input: LoyaltySettings) {
+  const loyaltyEarnAmount = Number(input.loyalty_earn_amount || 100);
+  const loyaltyEarnPoints = Number(input.loyalty_earn_points || 1);
+  const loyaltyPointValue = Number(input.loyalty_point_value || 1);
+  const loyaltyMinRedeemPoints = Number(input.loyalty_min_redeem_points || 1);
+
+  if (!Number.isFinite(loyaltyEarnAmount) || loyaltyEarnAmount <= 0) {
+    throw new Error('قيمة كسب النقاط غير صحيحة');
+  }
+
+  if (!Number.isFinite(loyaltyEarnPoints) || loyaltyEarnPoints <= 0) {
+    throw new Error('عدد النقاط المكتسبة غير صحيح');
+  }
+
+  if (!Number.isFinite(loyaltyPointValue) || loyaltyPointValue <= 0) {
+    throw new Error('قيمة النقطة غير صحيحة');
+  }
+
+  if (!Number.isFinite(loyaltyMinRedeemPoints) || loyaltyMinRedeemPoints <= 0) {
+    throw new Error('الحد الأدنى لاستخدام النقاط غير صحيح');
+  }
+
   saveSetting('loyalty_enabled', String(Boolean(input.loyalty_enabled)));
-  saveSetting('loyalty_earn_amount', String(Number(input.loyalty_earn_amount || 100)));
-  saveSetting('loyalty_earn_points', String(Number(input.loyalty_earn_points || 1)));
-  saveSetting('loyalty_point_value', String(Number(input.loyalty_point_value || 1)));
-  saveSetting(
-    'loyalty_min_redeem_points',
-    String(Number(input.loyalty_min_redeem_points || 1))
-  );
+  saveSetting('loyalty_earn_amount', String(loyaltyEarnAmount));
+  saveSetting('loyalty_earn_points', String(loyaltyEarnPoints));
+  saveSetting('loyalty_point_value', String(loyaltyPointValue));
+  saveSetting('loyalty_min_redeem_points', String(loyaltyMinRedeemPoints));
 
   return getLoyaltySettings();
 }
