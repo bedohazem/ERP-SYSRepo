@@ -100,6 +100,24 @@ function ensureInputBarcodesAreUnique(variants: ProductVariantInput[]) {
   }
 }
 
+function validateVariantNumbers(variant: ProductVariantInput | AddProductVariantInput | UpdateVariantInput) {
+  const buyPrice = Number(variant.buy_price);
+  const sellPrice = Number(variant.sell_price);
+  const minStock = Number(variant.min_stock);
+
+  if (!Number.isFinite(buyPrice) || buyPrice < 0) {
+    throw new Error('سعر الشراء غير صحيح');
+  }
+
+  if (!Number.isFinite(sellPrice) || sellPrice < 0) {
+    throw new Error('سعر البيع غير صحيح');
+  }
+
+  if (!Number.isFinite(minStock) || minStock < 0) {
+    throw new Error('حد المخزون الأدنى غير صحيح');
+  }
+}
+
 export function getCategories(): CategoryRow[] {
   const db = getDb();
 
@@ -232,6 +250,10 @@ export function createProduct(input: CreateProductInput) {
   }
 
   ensureInputBarcodesAreUnique(input.variants);
+  
+  for (const variant of input.variants) {
+    validateVariantNumbers(variant);
+  }
 
   const tx = db.transaction(() => {
     const productResult = db
@@ -317,6 +339,7 @@ export function addProductVariant(input: AddProductVariantInput) {
 
   const cleanBarcode = String(input.barcode || '').trim();
   ensureBarcodeAvailable(cleanBarcode);
+  validateVariantNumbers(input);
 
   const tx = db.transaction(() => {
     const product = db
@@ -400,7 +423,10 @@ export type UpdateVariantInput = {
 
 export function updateProduct(input: UpdateProductInput) {
   const db = getDb();
-
+  const cleanName = input.name?.trim();
+  if (!cleanName) {
+    throw new Error('اسم المنتج مطلوب');
+  }
   db.prepare(
     `
     UPDATE products
@@ -412,7 +438,7 @@ export function updateProduct(input: UpdateProductInput) {
     WHERE id = ?
     `
   ).run(
-    input.name.trim(),
+    cleanName,
     input.category_id,
     input.description ?? null,
     input.image_path ?? null,
@@ -427,6 +453,7 @@ export function updateVariant(input: UpdateVariantInput) {
 
   const cleanBarcode = String(input.barcode || '').trim();
   ensureBarcodeAvailable(cleanBarcode, input.id);
+  validateVariantNumbers(input);
 
   db.prepare(
     `

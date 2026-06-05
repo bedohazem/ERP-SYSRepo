@@ -17,5 +17,5 @@
     "jsx": "react-jsx",
     "types": ["node"]
   },
-  "include": ["src", "vite.config.ts", "preload.cjs", "src/main/index.ts", "preload.cjs"]
+  "include": ["src", "vite.config.ts", "preload.cjs", "src/main/index.ts", "preload.cjs", "tests/setup.ts"]
 }
