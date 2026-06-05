@@ -378,6 +378,12 @@ export function recordSupplierPayment(input: {
       throw new Error('المورد غير موجود');
     }
 
+    const supplierBalance = Number(supplier.balance || 0);
+
+    if (amountInput > supplierBalance) {
+      throw new Error('قيمة الدفع أكبر من رصيد المورد');
+    }
+
     const insertPayment = db.prepare(`
       INSERT INTO supplier_payments (
         supplier_id,

@@ -6,7 +6,9 @@ import {
 } from '../../src/main/database/repositories/product.repo';
 import {
   createPurchaseInvoice,
-  getPurchaseInvoice
+  getPurchaseInvoice,
+  recordSupplierPayment,
+  getSupplierStatement
 } from '../../src/main/database/repositories/purchases.repo';
 
 type PurchaseVariantTestRow = {
@@ -124,6 +126,22 @@ function getStockByBarcode(barcode: string) {
   }
 
   return Number(variant.stock || 0);
+}
+
+function getSupplierPaymentsCount(supplierId: number) {
+  const db = getDb();
+
+  const row = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS count
+      FROM supplier_payments
+      WHERE supplier_id = ?
+      `
+    )
+    .get(supplierId) as { count: number };
+
+  return Number(row.count || 0);
 }
 
 describe('purchases repository', () => {
@@ -359,4 +377,168 @@ describe('purchases repository', () => {
 
     expect(updatedVariant.buy_price).toBe(130);
   });
+
+  it('records supplier payment and reduces supplier balance', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      paid_amount: 0,
+      payment_method: 'cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 5,
+          unit_cost: 100
+        }
+      ]
+    });
+
+    expect(purchase.total_amount).toBe(500);
+    expect(purchase.remaining_amount).toBe(500);
+    expect(getSupplierBalance(supplierId)).toBe(500);
+    expect(getCashMovementTotal('out')).toBe(0);
+    expect(getSupplierPaymentsCount(supplierId)).toBe(0);
+
+    const payment = recordSupplierPayment({
+      supplier_id: supplierId,
+      purchase_id: purchase.purchaseId,
+      amount: 200,
+      payment_method: 'cash',
+      notes: 'Partial supplier payment'
+    });
+
+    expect(payment.ok).toBe(true);
+
+    expect(getSupplierBalance(supplierId)).toBe(300);
+    expect(getCashMovementTotal('out')).toBe(200);
+    expect(getSupplierPaymentsCount(supplierId)).toBe(1);
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(invoice.payments).toHaveLength(1);
+    expect(invoice.payments[0].amount).toBe(200);
+  });  
+
+  it('records full supplier payment and clears supplier balance', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      paid_amount: 0,
+      payment_method: 'cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 5,
+          unit_cost: 100
+        }
+      ]
+    });
+
+    expect(getSupplierBalance(supplierId)).toBe(500);
+
+    const payment = recordSupplierPayment({
+      supplier_id: supplierId,
+      purchase_id: purchase.purchaseId,
+      amount: 500,
+      payment_method: 'cash',
+      notes: 'Full supplier payment'
+    });
+
+    expect(payment.ok).toBe(true);
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+    expect(getCashMovementTotal('out')).toBe(500);
+    expect(getSupplierPaymentsCount(supplierId)).toBe(1);
+  });
+
+  it('rejects supplier payment with invalid amount', () => {
+    const supplierId = createTestSupplier();
+
+    expect(() =>
+      recordSupplierPayment({
+        supplier_id: supplierId,
+        amount: 0,
+        payment_method: 'cash'
+      })
+    ).toThrow();
+  });
+
+  it('rejects supplier payment for missing supplier', () => {
+    expect(() =>
+      recordSupplierPayment({
+        supplier_id: 999999,
+        amount: 100,
+        payment_method: 'cash'
+      })
+    ).toThrow('المورد غير موجود');
+  });
+
+  it('rejects supplier payment greater than supplier balance', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    createPurchaseInvoice({
+      supplier_id: supplierId,
+      paid_amount: 0,
+      payment_method: 'cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 5,
+          unit_cost: 100
+        }
+      ]
+    });
+
+    expect(getSupplierBalance(supplierId)).toBe(500);
+
+    expect(() =>
+      recordSupplierPayment({
+        supplier_id: supplierId,
+        amount: 700,
+        payment_method: 'cash'
+      })
+    ).toThrow('قيمة الدفع أكبر من رصيد المورد');
+
+    expect(getSupplierBalance(supplierId)).toBe(500);
+    expect(getCashMovementTotal('out')).toBe(0);
+  });
+
+  it('returns supplier statement with purchases and payments', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      paid_amount: 100,
+      payment_method: 'cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 5,
+          unit_cost: 100
+        }
+      ]
+    });
+
+    recordSupplierPayment({
+      supplier_id: supplierId,
+      purchase_id: purchase.purchaseId,
+      amount: 200,
+      payment_method: 'cash',
+      notes: 'Second payment'
+    });
+
+    const statement = getSupplierStatement(supplierId) as any;
+
+    expect(statement.supplier.id).toBe(supplierId);
+    expect(statement.purchases.length).toBeGreaterThanOrEqual(1);
+    expect(statement.payments.length).toBeGreaterThanOrEqual(2);
+    expect(getSupplierBalance(supplierId)).toBe(200);
+  });
+  
 });
