@@ -193,25 +193,20 @@ export default function PurchaseHistoryPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
           <thead>
             <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
-              <th style={thStyle}>رقم</th>
-              <th style={thStyle}>التاريخ</th>
-              <th style={thStyle}>المورد</th>
-              <th style={thStyle}>الأصناف</th>
-              <th style={thStyle}>قبل الخصم</th>
-              <th style={thStyle}>الخصم</th>
-              <th style={thStyle}>الإجمالي</th>
-              <th style={thStyle}>المدفوع</th>
-              <th style={thStyle}>المتبقي</th>
-              <th style={thStyle}>طريقة الدفع</th>
-              <th style={thStyle}>الحالة</th>
-              <th style={thStyle}>إجراءات</th>
+            <th style={thStyle}>رقم</th>
+            <th style={thStyle}>المورد</th>
+            <th style={thStyle}>الأصناف</th>
+            <th style={thStyle}>المبلغ</th>
+            <th style={thStyle}>الدفع</th>
+            <th style={thStyle}>الحالة</th>
+            <th style={thStyle}>إجراءات</th>
             </tr>
           </thead>
 
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={12} style={{ ...tdStyle, textAlign: 'center' }}>
+                <td colSpan={7} style={{ ...tdStyle, textAlign: 'center' }}>
                   جاري التحميل...
                 </td>
               </tr>
@@ -224,9 +219,9 @@ export default function PurchaseHistoryPage() {
                   style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                 >
                   <td style={tdStyle}>#{row.id}</td>
-                  <td style={tdStyle}>{formatDate(row.created_at)}</td>
+
                   <td style={tdStyle}>
-                    <div style={{ display: 'grid', gap: '4px' }}>
+                    <div style={{ display: 'grid', gap: '4px', minWidth: '150px' }}>
                       <strong>{row.supplier_name}</strong>
                       {row.supplier_phone && (
                         <span style={{ color: '#94a3b8', fontSize: '12px' }}>
@@ -235,43 +230,63 @@ export default function PurchaseHistoryPage() {
                       )}
                     </div>
                   </td>
-                  <td style={tdStyle}>{row.items_count || 0}</td>
+
                   <td style={tdStyle}>
-                    {money(Number(row.sub_total || 0) > 0 ? row.sub_total : Number(row.total_amount || 0) + Number(row.discount_value || 0))}
+                    <strong>{row.items_count || 0}</strong>
                   </td>
 
                   <td style={tdStyle}>
-                    {money(row.discount_value || 0)}
-                    {row.discount_type === 'percent' && Number(row.discount_input || 0) > 0 ? (
-                      <span style={{ color: '#94a3b8', fontSize: '12px', marginRight: '6px' }}>
-                        ({Number(row.discount_input || 0)}%)
+                    <div style={{ display: 'grid', gap: '4px', minWidth: '130px' }}>
+                      <strong style={{ color: '#6ee7b7' }}>
+                        الاجمالي:{money(row.total_amount)}
+                      </strong>
+
+                      <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                        قبل الخصم: {money(
+                          Number(row.sub_total || 0) > 0
+                            ? row.sub_total
+                            : Number(row.total_amount || 0) + Number(row.discount_value || 0)
+                        )}
                       </span>
-                    ) : null}
-                  </td>
 
-                  <td style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}>
-                    {money(row.total_amount)}
-                  </td>
-                  <td style={tdStyle}>{money(row.paid_amount)}</td>
-                  <td
-                    style={{
-                      ...tdStyle,
-                      fontWeight: 900,
-                      color: Number(row.remaining_amount || 0) > 0 ? '#fca5a5' : '#6ee7b7'
-                    }}
-                  >
-                    {money(row.remaining_amount)}
+                      {Number(row.discount_value || 0) > 0 && (
+                        <span style={{ color: '#fbbf24', fontSize: '12px' }}>
+                          خصم: {money(row.discount_value || 0)}
+                          {row.discount_type === 'percent' && Number(row.discount_input || 0) > 0
+                            ? ` (${Number(row.discount_input || 0)}%)`
+                            : ''}
+                        </span>
+                      )}
+                    </div>
                   </td>
 
                   <td style={tdStyle}>
-                    {getPaymentMethodLabel(row.payment_method)}
+                    <div style={{ display: 'grid', gap: '4px', minWidth: '130px' }}>
+                      <span style={{ color: '#6ee7b7', fontWeight: 900 }}>
+                        مدفوع: {money(row.paid_amount)}
+                      </span>
+
+                      <span
+                        style={{
+                          color: Number(row.remaining_amount || 0) > 0 ? '#fca5a5' : '#94a3b8',
+                          fontSize: '12px',
+                          fontWeight: 800
+                        }}
+                      >
+                        متبقي: {money(row.remaining_amount)}
+                      </span>
+
+                      <span style={{ color: '#bfdbfe', fontSize: '12px' }}>
+                        {getPaymentMethodLabel(row.payment_method)}
+                      </span>
+                    </div>
                   </td>
 
                   <td style={tdStyle}>
                     <PaymentStatusBadge status={row.payment_status} />
                   </td>
                   <td style={tdStyle}>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap' }}>
                       <button
                         type="button"
                         onClick={() => openDetails(row.id)}
@@ -302,7 +317,7 @@ export default function PurchaseHistoryPage() {
             {!loading && rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={12}
+                  colSpan={7}
                   style={{
                     ...tdStyle,
                     textAlign: 'center',
@@ -765,15 +780,19 @@ const closeButtonStyle: React.CSSProperties = {
 };
 
 const thStyle: React.CSSProperties = {
-  padding: '12px',
-  fontWeight: 800,
-  whiteSpace: 'nowrap'
+  padding: '10px 8px',
+  fontWeight: 900,
+  whiteSpace: 'nowrap',
+  fontSize: '13px',
+  borderBottom: '1px solid rgba(255,255,255,0.08)'
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: '12px',
+  padding: '10px 8px',
   color: '#e5e7eb',
-  whiteSpace: 'nowrap'
+  whiteSpace: 'nowrap',
+  fontSize: '13px',
+  verticalAlign: 'middle'
 };
 
 const modalOverlayStyle: React.CSSProperties = {

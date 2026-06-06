@@ -240,7 +240,7 @@ export default function InventoryPage() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
           gap: '14px'
         }}
       >
@@ -264,35 +264,25 @@ export default function InventoryPage() {
         <table
           style={{
             width: '100%',
-            minWidth: '1120px',
+            minWidth: '680px',
             borderCollapse: 'collapse',
             direction: 'rtl'
           }}
         >
           <colgroup>
+            <col style={{ width: '34%' }} />
+            <col style={{ width: '14%' }} />
+            <col style={{ width: '14%' }} />
             <col style={{ width: '18%' }} />
-            <col style={{ width: '13%' }} />
-            <col style={{ width: '7%' }} />
-            <col style={{ width: '8%' }} />
-            <col style={{ width: '7%' }} />
-            <col style={{ width: '8%' }} />
-            <col style={{ width: '9%' }} />
-            <col style={{ width: '9%' }} />
-            <col style={{ width: '9%' }} />
-            <col style={{ width: '12%' }} />
+            <col style={{ width: '20%' }} />
           </colgroup>
 
           <thead>
             <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
               <th style={thStyle}>المنتج</th>
-              <th style={thStyle}>باركود</th>
-              <th style={thStyle}>المقاس</th>
-              <th style={thStyle}>اللون</th>
               <th style={thStyle}>المخزون</th>
-              <th style={thStyle}>الحد الأدنى</th>
               <th style={thStyle}>الحالة</th>
-              <th style={thStyle}>سعر الشراء</th>
-              <th style={thStyle}>سعر البيع</th>
+              <th style={thStyle}>الأسعار</th>
               <th style={thStyle}>إجراءات</th>
             </tr>
           </thead>
@@ -300,7 +290,7 @@ export default function InventoryPage() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={10} style={{ ...tdStyle, textAlign: 'center' }}>
+                <td colSpan={5} style={{ ...tdStyle, textAlign: 'center' }}>
                   جاري التحميل...
                 </td>
               </tr>
@@ -313,11 +303,19 @@ export default function InventoryPage() {
                   style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                 >
                   <td style={tdStyle} title={item.product_name}>
-                    {item.product_name}
+                    <div style={{ display: 'grid', gap: '4px', minWidth: '180px' }}>
+                      <strong>{item.product_name}</strong>
+
+                      <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                        {item.barcode || '—'}
+                      </span>
+
+                      <span style={{ color: '#64748b', fontSize: '12px' }}>
+                        {item.size || '—'} / {item.color || '—'}
+                      </span>
+                    </div>
                   </td>
-                  <td style={tdStyle}>{item.barcode || '—'}</td>
-                  <td style={tdStyle}>{item.size || '—'}</td>
-                  <td style={tdStyle}>{item.color || '—'}</td>
+
                   <td
                     style={{
                       ...tdStyle,
@@ -325,14 +323,26 @@ export default function InventoryPage() {
                       color: stockColor(item)
                     }}
                   >
-                    {Number(item.stock || 0)}
+                    <div style={{ display: 'grid', gap: '3px' }}>
+                      <strong>{Number(item.stock || 0)}</strong>
+
+                      <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                        حد أدنى: {item.min_stock}
+                      </span>
+                    </div>
                   </td>
-                  <td style={tdStyle}>{item.min_stock}</td>
+
                   <td style={tdStyle}>
                     <StatusBadge item={item} />
                   </td>
-                  <td style={tdStyle}>{money(item.buy_price)}</td>
-                  <td style={tdStyle}>{money(item.sell_price)}</td>
+
+                  <td style={tdStyle}>
+                    <div style={{ display: 'grid', gap: '4px', minWidth: '120px' }}>
+                      <span>شراء: {money(item.buy_price)}</span>
+                      <span style={{ color: '#6ee7b7' }}>بيع: {money(item.sell_price)}</span>
+                    </div>
+                  </td>
+
                   <td style={tdStyle}>
                     <div
                       style={{
@@ -365,7 +375,7 @@ export default function InventoryPage() {
             {!loading && rows.length === 0 && (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={5}
                   style={{
                     ...tdStyle,
                     textAlign: 'center',
@@ -624,7 +634,7 @@ function StatCard({
   return (
     <div className="glass-card" style={statCardStyle}>
       <div style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</div>
-      <strong style={{ color, fontSize: '24px' }}>{value}</strong>
+      <strong style={{ color, fontSize: '21px' }}>{value}</strong>
     </div>
   );
 }
@@ -725,7 +735,7 @@ const cardStyle: React.CSSProperties = {
 };
 
 const statCardStyle: React.CSSProperties = {
-  padding: '18px',
+  padding: '14px',
   borderRadius: '18px',
   display: 'grid',
   gap: '10px'
@@ -767,25 +777,31 @@ const secondaryButtonStyle: React.CSSProperties = {
 };
 
 const smallButtonStyle: React.CSSProperties = {
-  border: '1px solid rgba(124,58,237,0.55)',
-  borderRadius: '8px',
-  background: 'rgba(124,58,237,0.10)',
-  color: '#c4b5fd',
-  padding: '8px 10px',
+  border: '1px solid rgba(124,58,237,0.7)',
+  height: '34px',
+  borderRadius: '9px',
+  background: 'rgba(124,58,237,0.12)',
+  color: '#ddd6fe',
+  fontWeight: 900,
+  padding: '0 10px',
   cursor: 'pointer',
-  fontWeight: 700
+  whiteSpace: 'nowrap',
+  fontSize: '12px'
 };
 
 const thStyle: React.CSSProperties = {
-  padding: '12px',
-  fontWeight: 800,
-  whiteSpace: 'nowrap'
+  padding: '10px 8px',
+  fontWeight: 900,
+  whiteSpace: 'nowrap',
+  fontSize: '13px',
+  borderBottom: '1px solid rgba(255,255,255,0.08)'
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: '12px',
+  padding: '10px 8px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
+  fontSize: '13px',
   verticalAlign: 'middle'
 };
 

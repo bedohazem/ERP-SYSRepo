@@ -341,15 +341,12 @@ export default function PurchasesPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
             <thead>
               <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
-                <th style={thStyle}>الصنف</th>
-                <th style={thStyle}>المقاس</th>
-                <th style={thStyle}>اللون</th>
-                <th style={thStyle}>المخزون الحالي</th>
-                <th style={thStyle}>الكمية</th>
-                <th style={thStyle}>سعر الشراء</th>
-                <th style={thStyle}>بعد الخصم</th>
-                <th style={thStyle}>الإجمالي</th>
-                <th style={thStyle}>حذف</th>
+              <th style={thStyle}>الصنف</th>
+              <th style={thStyle}>الكمية</th>
+              <th style={thStyle}>سعر الشراء</th>
+              <th style={thStyle}>بعد الخصم</th>
+              <th style={thStyle}>الإجمالي</th>
+              <th style={thStyle}>حذف</th>
               </tr>
             </thead>
 
@@ -359,10 +356,19 @@ export default function PurchasesPage() {
                   key={line.variant_id}
                   style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                 >
-                  <td style={tdStyle}>{line.product_name}</td>
-                  <td style={tdStyle}>{line.size || '—'}</td>
-                  <td style={tdStyle}>{line.color || '—'}</td>
-                  <td style={tdStyle}>{line.stock}</td>
+                  <td style={tdStyle}>
+                    <div style={{ display: 'grid', gap: '4px', minWidth: '170px' }}>
+                      <strong>{line.product_name}</strong>
+                      <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                        {line.size || '—'} / {line.color || '—'} / مخزون: {line.stock}
+                      </span>
+                      {line.barcode && (
+                        <span style={{ color: '#64748b', fontSize: '11px' }}>
+                          {line.barcode}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td style={tdStyle}>
                     <input
                       type="number"
@@ -411,7 +417,7 @@ export default function PurchasesPage() {
               {lines.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={6}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -596,13 +602,16 @@ const dangerButtonStyle: React.CSSProperties = {
 };
 
 const thStyle: React.CSSProperties = {
-  padding: '12px',
+  padding: '10px 8px',
   fontWeight: 800,
-  whiteSpace: 'nowrap'
+  whiteSpace: 'nowrap',
+  fontSize: '13px'
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: '12px',
+  padding: '10px 8px',
   color: '#e5e7eb',
-  whiteSpace: 'nowrap'
+  whiteSpace: 'nowrap',
+  fontSize: '13px',
+  verticalAlign: 'middle'
 };

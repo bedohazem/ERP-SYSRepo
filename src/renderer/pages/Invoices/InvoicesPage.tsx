@@ -135,15 +135,14 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      if (activeTab === 'sales') {
-        void loadInvoices();
-      } else {
-        void loadReturns();
-      }
+      void Promise.all([
+        loadInvoices(),
+        loadReturns()
+      ]);
     }, 250);
 
     return () => clearTimeout(handle);
-  }, [search, dateFrom, dateTo, activeTab]);
+  }, [search, dateFrom, dateTo]);
 
   async function openReceipt(saleId: number) {
     try {
@@ -346,7 +345,9 @@ export default function InvoicesPage() {
           </div>
 
           <div style={{ color: '#cbd5e1', fontWeight: 800 }}>
-            عدد النتائج: {total}
+            {activeTab === 'sales'
+              ? `عدد الفواتير: ${total}`
+              : `عدد المرتجعات: ${returnsTotal}`}
           </div>
         </div>
 
@@ -382,11 +383,10 @@ export default function InvoicesPage() {
           <button
             type="button"
             onClick={() => {
-              if (activeTab === 'sales') {
-                void loadInvoices();
-              } else {
-                void loadReturns();
-              }
+              void Promise.all([
+                loadInvoices(),
+                loadReturns()
+              ]);
             }}
             style={primaryButtonStyle}
           >
@@ -434,137 +434,141 @@ export default function InvoicesPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
             <thead>
               <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
-                <th style={thStyle}>رقم</th>
-                <th style={thStyle}>التاريخ</th>
-                <th style={thStyle}>العميل</th>
-                <th style={thStyle}>الكاشير</th>
-                <th style={thStyle}>المرتجع</th>
-                <th style={thStyle}>قبل الخصم</th>
-                <th style={thStyle}>خصم عادي</th>
-                <th style={thStyle}>خصم النقاط</th>
-                <th style={thStyle}>الإجمالي</th>
-                <th style={thStyle}>طريقة الدفع</th>
-                <th style={thStyle}>النقاط</th>
-                <th style={thStyle}>إجراءات</th>
+              <th style={thStyle}>رقم</th>
+              <th style={thStyle}>العميل</th>
+              <th style={thStyle}>الكاشير</th>
+              <th style={thStyle}>المرتجع</th>
+              <th style={thStyle}>قبل الخصم</th>
+              <th style={thStyle}>الخصم</th>
+              <th style={thStyle}>الإجمالي</th>
+              <th style={thStyle}>الدفع / النقاط</th>
+              <th style={thStyle}>إجراءات</th>
               </tr>
             </thead>
 
             <tbody>
-              {loading && (
+              {loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={12} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={9} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
               )}
 
-              {!loading &&
-                rows.map((sale) => (
-                  <tr
-                    key={sale.id}
-                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
-                  >
-                    <td style={tdStyle}>#{sale.id}</td>
-                    <td style={tdStyle}>{formatDate(sale.created_at)}</td>
-                    <td style={tdStyle}>
-                      <div style={{ display: 'grid', gap: '4px' }}>
-                        <strong>{sale.customer_name || 'عميل نقدي'}</strong>
-                        {sale.customer_phone && (
-                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-                            {sale.customer_phone}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td style={tdStyle}>{sale.cashier_name || '—'}</td>
-                    <td style={tdStyle}>
-                      {Number(sale.returned_quantity || 0) > 0 ? (
-                        <div style={{ display: 'grid', gap: '4px' }}>
-                          <strong style={{ color: '#fdba74' }}>
-                            مرتجع {Number(sale.returned_quantity || 0)} من أصل {Number(sale.total_quantity || 0)}
-                          </strong>
-                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-                            عدد المرتجعات: {Number(sale.return_count || 0)}
-                          </span>
-                        </div>
-                      ) : (
-                        <span style={{ color: '#64748b' }}>—</span>
+              {rows.map((sale) => (
+                <tr
+                  key={sale.id}
+                  style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                >
+                  <td style={tdStyle}>#{sale.id}</td>
+                  <td style={tdStyle}>
+                    <div style={{ display: 'grid', gap: '4px' }}>
+                      <strong>{sale.customer_name || 'عميل نقدي'}</strong>
+                      {sale.customer_phone && (
+                        <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                          {sale.customer_phone}
+                        </span>
                       )}
-                    </td>
-                    <td style={tdStyle}>{money(sale.sub_total)}</td>
-                    <td style={tdStyle}>{money(sale.discount_value || 0)}</td>
-                    <td style={tdStyle}>{money(sale.loyalty_discount_value || 0)}</td>
-                    <td style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}>
-                      {money(sale.grand_total)}
-                    </td>
-                    <td style={tdStyle}>
+                    </div>
+                  </td>
+                  <td style={tdStyle}>{sale.cashier_name || '—'}</td>
+                  <td style={tdStyle}>
+                    {Number(sale.returned_quantity || 0) > 0 ? (
+                      <div style={{ display: 'grid', gap: '4px' }}>
+                        <strong style={{ color: '#fdba74' }}>
+                          مرتجع {Number(sale.returned_quantity || 0)} من أصل {Number(sale.total_quantity || 0)}
+                        </strong>
+                        <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                          عدد المرتجعات: {Number(sale.return_count || 0)}
+                        </span>
+                      </div>
+                    ) : (
+                      <span style={{ color: '#64748b' }}>—</span>
+                    )}
+                  </td>
+                  <td style={tdStyle}>{money(sale.sub_total)}</td>
+                  <td style={tdStyle}>
+                    <div style={{ display: 'grid', gap: '3px' }}>
+                      <strong>
+                        {money(Number(sale.discount_value || 0) + Number(sale.loyalty_discount_value || 0))}
+                      </strong>
+
+                      {(Number(sale.discount_value || 0) > 0 || Number(sale.loyalty_discount_value || 0) > 0) && (
+                        <span style={{ color: '#94a3b8', fontSize: '11px' }}>
+                          عادي: {money(sale.discount_value || 0)} / نقاط: {money(sale.loyalty_discount_value || 0)}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}>
+                    {money(sale.grand_total)}
+                  </td>
+                  <td style={tdStyle}>
+                    <div style={{ display: 'grid', gap: '5px' }}>
                       <span
                         style={{
-                          padding: '5px 10px',
+                          padding: '4px 8px',
                           borderRadius: '999px',
                           background: 'rgba(37,99,235,0.14)',
                           border: '1px solid rgba(37,99,235,0.25)',
                           color: '#bfdbfe',
                           fontWeight: 900,
-                          whiteSpace: 'nowrap'
+                          width: 'fit-content'
                         }}
                       >
                         {getPaymentMethodLabel(sale.payment_method)}
                       </span>
-                    </td>
 
-                    <td style={tdStyle}>
-                      <span style={{ color: '#22c55e' }}>
-                        +{sale.loyalty_points_earned || 0}
+                      <span style={{ fontSize: '12px' }}>
+                        <span style={{ color: '#22c55e' }}>+{sale.loyalty_points_earned || 0}</span>
+                        {' / '}
+                        <span style={{ color: '#f87171' }}>-{sale.loyalty_points_redeemed || 0}</span>
                       </span>
-                      {' / '}
-                      <span style={{ color: '#f87171' }}>
-                        -{sale.loyalty_points_redeemed || 0}
-                      </span>
-                    </td>
-                    <td style={tdStyle}>
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          onClick={() => openReceipt(sale.id)}
-                          style={smallButtonStyle}
-                        >
-                          عرض
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const receipt = await window.api.getSaleReceipt(sale.id);
-                            printReceipt(receipt);
-                          }}
-                          style={smallButtonStyle}
-                        >
-                          طباعة
-                        </button>
+                    </div>
+                  </td>
+                  <td style={tdStyle}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => openReceipt(sale.id)}
+                        style={smallButtonStyle}
+                      >
+                        عرض
+                      </button>
 
                       <button
                         type="button"
-                        onClick={() => openReturnPopup(sale.id)}
-                        style={{
-                            ...smallButtonStyle,
-                            borderColor: '#f97316',
-                            color: '#fdba74',
-                            background: 'rgba(249,115,22,0.10)'
+                        onClick={async () => {
+                          const receipt = await window.api.getSaleReceipt(sale.id);
+                          printReceipt(receipt);
                         }}
-                        >
-                        مرتجع
+                        style={smallButtonStyle}
+                      >
+                        طباعة
                       </button>
-                        
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+
+                    <button
+                      type="button"
+                      onClick={() => openReturnPopup(sale.id)}
+                      style={{
+                          ...smallButtonStyle,
+                          borderColor: '#f97316',
+                          color: '#fdba74',
+                          background: 'rgba(249,115,22,0.10)'
+                      }}
+                      >
+                      مرتجع
+                    </button>
+                      
+                    </div>
+                  </td>
+                </tr>
+              ))}
 
               {!loading && rows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={12}
+                    colSpan={9}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -601,92 +605,84 @@ export default function InvoicesPage() {
             }}
           >
             <h3 style={{ margin: 0 }}>سجل المرتجعات</h3>
-
-            <div style={{ color: '#cbd5e1', fontWeight: 800 }}>
-              عدد المرتجعات: {returnsTotal}
-            </div>
           </div>
 
           <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
             <thead>
               <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
-                <th style={thStyle}>رقم المرتجع</th>
-                <th style={thStyle}>الفاتورة الأصلية</th>
-                <th style={thStyle}>التاريخ</th>
-                <th style={thStyle}>العميل</th>
-                <th style={thStyle}>المستخدم</th>
-                <th style={thStyle}>الأصناف</th>
-                <th style={thStyle}>الكمية</th>
-                <th style={thStyle}>قيمة المرتجع</th>
-                <th style={thStyle}>السبب</th>
-                <th style={thStyle}>إجراءات</th>
+              <th style={thStyle}>المرتجع</th>
+              <th style={thStyle}>الفاتورة</th>
+              <th style={thStyle}>العميل</th>
+              <th style={thStyle}>المستخدم</th>
+              <th style={thStyle}>الأصناف / الكمية</th>
+              <th style={thStyle}>القيمة / السبب</th>
+              <th style={thStyle}>إجراءات</th>
               </tr>
             </thead>
 
             <tbody>
-              {returnsLoading && (
+              {returnsLoading && returnRows.length === 0 && (
                 <tr>
-                  <td colSpan={10} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
               )}
 
-              {!returnsLoading &&
-                returnRows.map((ret) => (
-                  <tr
-                    key={ret.id}
-                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
-                  >
-                    <td style={{ ...tdStyle, fontWeight: 900, color: '#fdba74' }}>
-                      {ret.code}
-                    </td>
-
-                    <td style={tdStyle}>#{ret.original_sale_id}</td>
-
-                    <td style={tdStyle}>{formatDate(ret.created_at)}</td>
-
-                    <td style={tdStyle}>
-                      <div style={{ display: 'grid', gap: '4px' }}>
-                        <strong>{ret.customer_name || 'عميل نقدي'}</strong>
-                        {ret.customer_phone && (
-                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-                            {ret.customer_phone}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    <td style={tdStyle}>{ret.cashier_name || '—'}</td>
-
-                    <td style={tdStyle}>{ret.items_count || 0}</td>
-
-                    <td style={tdStyle}>{Number(ret.total_quantity || 0)}</td>
-
-                    <td style={{ ...tdStyle, color: '#fca5a5', fontWeight: 900 }}>
-                      {money(ret.refund_amount)}
-                    </td>
-
-                    <td style={tdStyle}>{ret.reason || '—'}</td>
-
-                    <td style={tdStyle}>
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          onClick={() => openReceipt(ret.original_sale_id)}
-                          style={smallButtonStyle}
-                        >
-                          عرض الفاتورة
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+              {returnRows.map((ret) => (
+                <tr
+                  key={ret.id}
+                  style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                >
+                  <td style={{ ...tdStyle, fontWeight: 900, color: '#fdba74' }}>
+                    {ret.code}
+                  </td>
+                  <td style={tdStyle}>#{ret.original_sale_id}</td>
+                  <td style={tdStyle}>
+                    <div style={{ display: 'grid', gap: '4px' }}>
+                      <strong>{ret.customer_name || 'عميل نقدي'}</strong>
+                      {ret.customer_phone && (
+                        <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                          {ret.customer_phone}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td style={tdStyle}>{ret.cashier_name || '—'}</td>
+                  <td style={tdStyle}>
+                    <div style={{ display: 'grid', gap: '3px' }}>
+                      <strong>{ret.items_count || 0} صنف</strong>
+                      <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                        كمية: {Number(ret.total_quantity || 0)}
+                      </span>
+                    </div>
+                  </td>
+                  <td style={tdStyle}>
+                    <div style={{ display: 'grid', gap: '3px' }}>
+                      <strong style={{ color: '#fca5a5' }}>{money(ret.refund_amount)}</strong>
+                      <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                        {ret.reason || '—'}
+                      </span>
+                    </div>
+                  </td>
+                  <td style={tdStyle}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => openReceipt(ret.original_sale_id)}
+                        style={smallButtonStyle}
+                      >
+                        عرض الفاتورة
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
 
               {!returnsLoading && returnRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={7}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
