@@ -12,6 +12,8 @@ type SaleRow = {
   loyalty_discount_value: number;
   grand_total: number;
   paid: number;
+  remaining_amount: number;
+  payment_status: string;
   change_amount: number;
   payment_method: string;
   loyalty_points_earned: number;
@@ -159,8 +161,8 @@ export default function InvoicesPage() {
     }
   }
 
-  function printReceipt(receipt: ReceiptData) {
-    const html = buildReceiptHtml(receipt);
+  function printReceipt(receipt: ReceiptData, returnHistory: any[] = []) {
+    const html = buildReceiptHtml(receipt, returnHistory);
     const printWindow = window.open('', '_blank', 'width=420,height=700');
 
     if (!printWindow) {
@@ -501,10 +503,26 @@ export default function InvoicesPage() {
                     </div>
                   </td>
                   <td style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}>
-                    {money(sale.grand_total)}
+                    <div style={{ display: 'grid', gap: '4px', minWidth: '120px' }}>
+                      <strong>
+                        {money(Math.max(0, Number(sale.grand_total || 0) - Number(sale.total_return_amount || 0)))}
+                      </strong>
+
+                      {Number(sale.total_return_amount || 0) > 0 && (
+                        <>
+                          <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                            الأصل: {money(sale.grand_total)}
+                          </span>
+
+                          <span style={{ color: '#fdba74', fontSize: '12px' }}>
+                            مرتجع: {money(sale.total_return_amount)}
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </td>
                   <td style={tdStyle}>
-                    <div style={{ display: 'grid', gap: '5px' }}>
+                    <div style={{ display: 'grid', gap: '5px', minWidth: '135px' }}>
                       <span
                         style={{
                           padding: '4px 8px',
@@ -517,6 +535,26 @@ export default function InvoicesPage() {
                         }}
                       >
                         {getPaymentMethodLabel(sale.payment_method)}
+                      </span>
+
+                      <span style={{ color: '#6ee7b7', fontSize: '12px', fontWeight: 900 }}>
+                        مدفوع: {money(
+                          Math.max(
+                            0,
+                            Math.max(0, Number(sale.grand_total || 0) - Number(sale.total_return_amount || 0)) -
+                              Number(sale.remaining_amount || 0)
+                          )
+                        )}
+                      </span>
+
+                      <span
+                        style={{
+                          color: Number(sale.remaining_amount || 0) > 0 ? '#fca5a5' : '#94a3b8',
+                          fontSize: '12px',
+                          fontWeight: 900
+                        }}
+                      >
+                        باقي / مديونية: {money(sale.remaining_amount || 0)}
                       </span>
 
                       <span style={{ fontSize: '12px' }}>
@@ -539,8 +577,12 @@ export default function InvoicesPage() {
                       <button
                         type="button"
                         onClick={async () => {
-                          const receipt = await window.api.getSaleReceipt(sale.id);
-                          printReceipt(receipt);
+                          const [receipt, history] = await Promise.all([
+                            window.api.getSaleReceipt(sale.id),
+                            window.api.getSaleReturnHistory(sale.id)
+                          ]);
+
+                          printReceipt(receipt, Array.isArray(history) ? history : []);
                         }}
                         style={smallButtonStyle}
                       >
@@ -673,6 +715,20 @@ export default function InvoicesPage() {
                         style={smallButtonStyle}
                       >
                         عرض الفاتورة
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const [receipt, history] = await Promise.all([
+                            window.api.getSaleReceipt(ret.original_sale_id),
+                            window.api.getSaleReturnHistory(ret.original_sale_id)
+                          ]);
+
+                          printReceipt(receipt, Array.isArray(history) ? history : []);
+                        }}
+                        style={smallButtonStyle}
+                      >
+                        طباعة الفاتورة
                       </button>
                     </div>
                   </td>
@@ -918,7 +974,7 @@ export default function InvoicesPage() {
             >
               <button
                 type="button"
-                onClick={() => printReceipt(selectedReceipt)}
+                onClick={() => printReceipt(selectedReceipt, selectedReturnHistory)}
                 style={primaryButtonStyle}
               >
                 طباعة الفاتورة
@@ -1203,25 +1259,82 @@ function escapeHtml(value: unknown) {
     .replace(/'/g, '&#039;');
 }
 
-  function buildReceiptHtml(receipt: ReceiptData) {
+const ENGINEER_FOOTER = 'برمجة وتصميم: بشمهندس عبدالرحمن حازم - 01155559287/01068377869';
+
+function getPaymentStatusLabel(status?: string | null) {
+  if (status === 'paid') return 'مدفوعة';
+  if (status === 'partial') return 'مدفوعة جزئيًا';
+  if (status === 'unpaid') return 'غير مدفوعة';
+  return status || '—';
+}
+
+function getReturnAmount(item: any) {
+  return Number(item?.refund_amount ?? item?.grand_total ?? 0);
+}
+
+function getReceiptFinance(receipt: ReceiptData, returnHistory: any[] = []) {
+  const sale = receipt.sale;
+
+  const originalTotal = Number(sale.grand_total || 0);
+  const totalReturns = returnHistory.reduce(
+    (sum, item) => sum + getReturnAmount(item),
+    0
+  );
+
+  const netTotal = Math.max(0, originalTotal - totalReturns);
+  const remainingAmount = Math.max(0, Number(sale.remaining_amount || 0));
+  const netPaidAmount = Math.max(0, netTotal - remainingAmount);
+
+  const totalReturnedQuantity = (receipt.items ?? []).reduce(
+    (sum, item) => sum + Number(item.returned_quantity || 0),
+    0
+  );
+
+  return {
+    originalTotal,
+    totalReturns,
+    netTotal,
+    remainingAmount,
+    netPaidAmount,
+    totalReturnedQuantity,
+    paymentStatus: getPaymentStatusLabel(sale.payment_status)
+  };
+}
+
+  function buildReceiptHtml(receipt: ReceiptData, returnHistory: any[] = []) {
+    const sale = receipt.sale;
+    const finance = getReceiptFinance(receipt, returnHistory);
+
     const rows = (receipt.items ?? [])
-      .map(
-        (item) => `
-          <tr>
+      .map((item) => {
+        const originalQty = Number(item.quantity || 0);
+        const returnedQty = Number(item.returned_quantity || 0);
+        const netQty = Math.max(0, originalQty - returnedQty);
+        const unitPrice = Number(item.unit_price || 0);
+        const netLineTotal = netQty * unitPrice;
+
+        return `
+          <tr class="${returnedQty > 0 ? 'has-return' : ''}">
             <td>
               ${escapeHtml(item.product_name)}
               ${item.size ? `<div class="muted">المقاس: ${escapeHtml(item.size)}</div>` : ''}
               ${item.color ? `<div class="muted">اللون: ${escapeHtml(item.color)}</div>` : ''}
+              ${
+                returnedQty > 0
+                  ? `<div class="return-note">مرتجع: ${returnedQty} من أصل ${originalQty}</div>`
+                  : ''
+              }
             </td>
-            <td>${escapeHtml(item.quantity)}</td>
-            <td>${Number(item.unit_price || 0).toFixed(2)}</td>
-            <td>${Number(item.line_total || 0).toFixed(2)}</td>
+            <td>
+              ${netQty}
+              ${returnedQty > 0 ? `<div class="muted">الأصل: ${originalQty}</div>` : ''}
+            </td>
+            <td>${unitPrice.toFixed(2)}</td>
+            <td>${netLineTotal.toFixed(2)}</td>
           </tr>
-        `
-      )
+        `;
+      })
       .join('');
-
-    const sale = receipt.sale;
 
     return `
       <!doctype html>
@@ -1231,9 +1344,7 @@ function escapeHtml(value: unknown) {
           <title>فاتورة #${escapeHtml(sale.id)}</title>
 
           <style>
-            * {
-              box-sizing: border-box;
-            }
+            * { box-sizing: border-box; }
 
             body {
               margin: 0;
@@ -1249,14 +1360,9 @@ function escapeHtml(value: unknown) {
               margin: 0 auto;
             }
 
-            h2,
-            p {
-              margin: 0;
-            }
+            h2, p { margin: 0; }
 
-            .center {
-              text-align: center;
-            }
+            .center { text-align: center; }
 
             .muted {
               color: #555;
@@ -1282,8 +1388,7 @@ function escapeHtml(value: unknown) {
               margin-top: 8px;
             }
 
-            th,
-            td {
+            th, td {
               padding: 5px 0;
               border-bottom: 1px dashed #ddd;
               text-align: right;
@@ -1300,14 +1405,29 @@ function escapeHtml(value: unknown) {
               font-size: 14px;
             }
 
-            @media print {
-              body {
-                padding: 0;
-              }
+            .return-note {
+              color: #b45309;
+              font-size: 11px;
+              font-weight: 700;
+              line-height: 1.5;
+            }
 
-              .receipt {
-                width: 100%;
-              }
+            .has-return td {
+              background: #fff7ed;
+            }
+
+            .engineer-footer {
+              margin-top: 8px;
+              padding-top: 8px;
+              border-top: 1px dashed #bbb;
+              font-size: 10.5px;
+              color: #444;
+              line-height: 1.6;
+            }
+
+            @media print {
+              body { padding: 0; }
+              .receipt { width: 100%; }
             }
           </style>
         </head>
@@ -1330,6 +1450,11 @@ function escapeHtml(value: unknown) {
             <div class="row">
               <span>الكاشير</span>
               <strong>${escapeHtml(sale.cashier_name || '-')}</strong>
+            </div>
+
+            <div class="row">
+              <span>طريقة الدفع</span>
+              <strong>${escapeHtml(getPaymentMethodLabel(sale.payment_method))}</strong>
             </div>
 
             <table>
@@ -1355,13 +1480,56 @@ function escapeHtml(value: unknown) {
             </div>
 
             <div class="row">
+              <span>خصم عادي</span>
+              <strong>${Number(sale.discount_value || 0).toFixed(2)} ج.م</strong>
+            </div>
+
+            <div class="row">
               <span>خصم النقاط</span>
               <strong>${Number(sale.loyalty_discount_value || 0).toFixed(2)} ج.م</strong>
             </div>
 
             <div class="row total">
-              <span>الإجمالي النهائي</span>
-              <strong>${Number(sale.grand_total || 0).toFixed(2)} ج.م</strong>
+              <span>إجمالي الفاتورة</span>
+              <strong>${finance.originalTotal.toFixed(2)} ج.م</strong>
+            </div>
+
+            ${
+              finance.totalReturns > 0
+                ? `
+                  <div class="row">
+                    <span>إجمالي المرتجعات</span>
+                    <strong>${finance.totalReturns.toFixed(2)} ج.م</strong>
+                  </div>
+
+                  <div class="row total">
+                    <span>الصافي بعد المرتجع</span>
+                    <strong>${finance.netTotal.toFixed(2)} ج.م</strong>
+                  </div>
+
+                  <div class="row">
+                    <span>الكمية المرتجعة</span>
+                    <strong>${finance.totalReturnedQuantity}</strong>
+                  </div>
+                `
+                : ''
+            }
+
+            <div class="line"></div>
+
+            <div class="row">
+              <span>المدفوع</span>
+              <strong>${finance.netPaidAmount.toFixed(2)} ج.م</strong>
+            </div>
+
+            <div class="row">
+              <span>الباقي / المديونية</span>
+              <strong>${finance.remainingAmount.toFixed(2)} ج.م</strong>
+            </div>
+
+            <div class="row">
+              <span>حالة الدفع</span>
+              <strong>${escapeHtml(finance.paymentStatus)}</strong>
             </div>
 
             <div class="line"></div>
@@ -1379,6 +1547,7 @@ function escapeHtml(value: unknown) {
             <div class="line"></div>
 
             <p class="center muted">شكرًا لتعاملكم معنا</p>
+            <p class="center engineer-footer">${escapeHtml(ENGINEER_FOOTER)}</p>
           </div>
         </body>
       </html>

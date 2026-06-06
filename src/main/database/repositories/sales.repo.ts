@@ -475,6 +475,8 @@ export function listSales(input?: {
         s.grand_total,
         s.paid,
         s.change_amount,
+        s.remaining_amount,
+        s.payment_status,
         s.payment_method,
         s.notes,
         s.loyalty_points_earned,

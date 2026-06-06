@@ -51,6 +51,8 @@ type SaleReceipt = {
     discount_value?: number;
     grand_total: number;
     paid?: number;
+    remaining_amount?: number;
+    payment_status?: string;
     change_amount?: number;
     payment_method?: string | null;
     loyalty_points_earned?: number;
@@ -152,6 +154,15 @@ function escapeHtml(value: unknown) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+const ENGINEER_FOOTER = 'برمجة وتصميم: بشمهندس عبدالرحمن حازم - 01155559287/01068377869';
+
+function getPaymentStatusLabel(status?: string | null) {
+  if (status === 'paid') return 'مدفوعة';
+  if (status === 'partial') return 'مدفوعة جزئيًا';
+  if (status === 'unpaid') return 'غير مدفوعة';
+  return status || '—';
 }
 
 function formatReceiptDate(value?: string | null): string {
@@ -589,6 +600,9 @@ export default function SalesPage() {
   }
 
   function buildReceiptPrintHtml(receipt: SaleReceipt) {
+    const remainingAmount = Math.max(0, Number(receipt.sale.remaining_amount || 0));
+    const grandTotal = Number(receipt.sale.grand_total || 0);
+    const paidNetAmount = Math.max(0, grandTotal - remainingAmount);
     const rows = receipt.items
       .map(
         (item) => `
@@ -629,6 +643,14 @@ export default function SalesPage() {
             th { font-size: 11px; color: #333; }
             .total { font-weight: 800; font-size: 14px; }
             @media print { body { padding: 0; } .receipt { width: 100%; } }
+            .engineer-footer {
+              margin-top: 8px;
+              padding-top: 8px;
+              border-top: 1px dashed #bbb;
+              font-size: 10.5px;
+              color: #444;
+              line-height: 1.6;
+            }
           </style>
         </head>
         <body>
@@ -663,7 +685,9 @@ export default function SalesPage() {
             <div class="row"><span>خصم عادي</span><strong>${money(receipt.sale.discount_value)} ج.م</strong></div>
             <div class="row"><span>خصم النقاط</span><strong>${money(receipt.sale.loyalty_discount_value)} ج.م</strong></div>
             <div class="row total"><span>الإجمالي النهائي</span><strong>${money(receipt.sale.grand_total)} ج.م</strong></div>
-
+            <div class="row"><span>المدفوع</span><strong>${money(paidNetAmount)} ج.م</strong></div>
+            <div class="row"><span>الباقي / المديونية</span><strong>${money(remainingAmount)} ج.م</strong></div>
+            <div class="row"><span>حالة الدفع</span><strong>${escapeHtml(getPaymentStatusLabel(receipt.sale.payment_status))}</strong></div>
             <div class="line"></div>
 
             <div class="row"><span>نقاط مستخدمة</span><strong>${escapeHtml(receipt.sale.loyalty_points_redeemed || 0)}</strong></div>
@@ -671,6 +695,7 @@ export default function SalesPage() {
 
             <div class="line"></div>
             <p class="center muted">شكرًا لتعاملكم معنا</p>
+            <p class="center engineer-footer">${escapeHtml(ENGINEER_FOOTER)}</p>
           </div>
         </body>
       </html>

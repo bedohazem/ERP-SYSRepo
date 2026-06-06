@@ -218,6 +218,8 @@ declare global {
           discount_value: number;
           grand_total: number;
           paid: number;
+          remaining_amount: number;
+          payment_status: string;
           change_amount: number;
           payment_method: string;
           notes?: string | null;
