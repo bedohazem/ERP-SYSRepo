@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeImage } from 'electron';
+import { app, BrowserWindow, nativeImage, Menu } from 'electron';
 import path from 'node:path';
 import { getDb } from './database/db';
 import { registerAuthIpc } from './ipc/auth.ipc';
@@ -20,14 +20,17 @@ import { registerLiabilitiesIpc } from './ipc/liabilities.ipc';
 
 let mainWindow: BrowserWindow | null = null;
 
-const appIconPath = path.join(process.cwd(), 'build', 'icon.ico');
+const appRoot = app.isPackaged ? app.getAppPath() : process.cwd();
+const appIconPath = path.join(appRoot, 'build', 'icon.ico');
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('ERP.SYS.Desktop');
 }
 
+Menu.setApplicationMenu(null);
+
 function createWindow(): void {
-  const preloadPath = path.join(process.cwd(), 'preload.cjs');
+  const preloadPath = path.join(appRoot, 'preload.cjs');
   const appStatus = getAppLicenseStatus();
   const appName = appStatus.app_name || 'ERP Store';
   const appIcon = nativeImage.createFromPath(appIconPath);
@@ -39,6 +42,7 @@ function createWindow(): void {
     minHeight: 650,
     backgroundColor: '#0f172a',
     title: appName,
+    autoHideMenuBar: true,
     icon: appIcon.isEmpty() ? undefined : appIcon,
     webPreferences: {
       nodeIntegration: false,
@@ -46,6 +50,9 @@ function createWindow(): void {
       preload: preloadPath
     }
   });
+
+  mainWindow.setMenu(null);
+  mainWindow.setMenuBarVisibility(false);
 
   if (!appIcon.isEmpty()) {
     mainWindow.setIcon(appIcon);
@@ -59,7 +66,7 @@ function createWindow(): void {
     void mainWindow.loadURL('http://localhost:3000');
     
   } else {
-    void mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+    void mainWindow.loadFile(path.join(appRoot, 'dist', 'renderer', 'index.html'));
   }
 
     mainWindow.webContents.on('did-finish-load', () => {

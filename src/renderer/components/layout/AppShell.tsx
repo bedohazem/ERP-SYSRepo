@@ -37,7 +37,8 @@ const menuItems: MenuItem[] = [
   { to: '/expenses', label: 'المصروفات', icon: '💳', title: 'المصروفات', roles: ['admin', 'cashier'] },
   { to: '/cash', label: 'الخزنة', icon: '💵', title: 'الخزنة', roles: ['admin'] },
   { to: '/activity', label: 'سجل العمليات', icon: '🕘', title: 'سجل العمليات', roles: ['admin'] },
-  { to: '/settings', label: 'الإعدادات', icon: '⚙️', title: 'الإعدادات', roles: ['admin'] }
+  { to: '/settings', label: 'الإعدادات', icon: '⚙️', title: 'الإعدادات', roles: ['admin'] },
+  { to: '/about', label: 'الدعم', icon: 'ℹ️', title: 'عن البرنامج والدعم', roles: ['admin', 'cashier'] }
 ];
 
 export default function AppShell({

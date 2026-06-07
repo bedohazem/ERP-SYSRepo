@@ -17,7 +17,10 @@
     "test:ready": "npm run test:prepare && vitest --run",
     "electron:prepare": "electron-rebuild -f -w better-sqlite3",
     "dev:ready": "npm run electron:prepare && npm run dev",
-    "license:build": "electron-packager ./tools/license-generator \"ERP License Generator\" --platform=win32 --arch=x64 --out=tools/release --overwrite --asar --electron-version=38.0.0"
+    "license:build": "electron-packager ./tools/license-generator \"ERP License Generator\" --platform=win32 --arch=x64 --out=tools/release --overwrite --asar --electron-version=38.0.0",
+    "dist:dir": "npm run typecheck && npm run build:renderer && npm run build:main && npm run electron:prepare && electron-builder --win dir --x64",
+    "dist:win": "npm run typecheck && npm run build:renderer && npm run build:main && npm run electron:prepare && electron-builder --win nsis --x64",
+    "build:main": "node scripts/build-main.mjs"
   },
   "dependencies": {
     "better-sqlite3": "11.10.0",
@@ -26,6 +29,7 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.14.0",
+    "tsx": "^4.22.4",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
@@ -38,11 +42,47 @@
     "concurrently": "^9.2.1",
     "cross-env": "^10.0.0",
     "electron": "^38.0.0",
+    "electron-builder": "^26.15.0",
     "electron-packager": "^17.1.2",
-    "tsx": "^4.20.5",
+    "esbuild": "^0.28.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.3",
     "vitest": "^4.1.8",
     "wait-on": "^8.0.5"
+  },
+  "build": {
+    "appId": "com.abdelrahmanhazem.erpstore",
+    "productName": "ERP Store",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron-main.cjs",
+      "preload.cjs",
+      "dist/main/**/*",
+      "dist/renderer/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ERP Store",
+      "deleteAppDataOnUninstall": false
+    }
   }
 }
