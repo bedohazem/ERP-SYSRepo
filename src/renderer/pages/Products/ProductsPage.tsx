@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import BarcodePreview from '../../components/products/BarcodePreview';
 import { useAuthStore } from '../../store/auth.store';
+import JsBarcode from 'jsbarcode';
+
 
 type Category = {
 id: number;
@@ -527,6 +529,29 @@ export default function ProductsPage() {
     const svgHeight = Math.max(10, Number(printSettings.barcode_svg_height || 22));
     const contentOffsetX = Number(printSettings.barcode_content_offset_x_mm || 0);
     const contentOffsetY = Number(printSettings.barcode_content_offset_y_mm || 0);
+    
+    let barcodeSvg = '';
+
+      try {
+        const svgNode = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+
+        JsBarcode(svgNode, input.barcode, {
+          format: 'CODE128',
+          displayValue: false,
+          width: 1.05,
+          height: svgHeight,
+          margin: 0
+        });
+
+        svgNode.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        svgNode.setAttribute('class', 'barcode');
+
+        barcodeSvg = new XMLSerializer().serializeToString(svgNode);
+      } catch (error) {
+        console.error('Failed to generate barcode SVG:', error);
+        showMessage('error', 'فشل توليد الباركود للطباعة');
+        return;
+      }
 
     const itemDefs = [
       {
@@ -651,7 +676,7 @@ export default function ProductsPage() {
               ${renderSingleZone('above_barcode')}
 
               <div class="barcode-zone">
-                <svg class="barcode"></svg>
+                ${barcodeSvg}
               </div>
 
               ${renderSingleZone('below_barcode')}
@@ -785,20 +810,7 @@ export default function ProductsPage() {
         <body>
           ${labelsHtml}
 
-          <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
           <script>
-            const nodes = document.querySelectorAll('.barcode');
-
-            nodes.forEach((node) => {
-              JsBarcode(node, "${escapeJs(input.barcode)}", {
-                format: "CODE128",
-                displayValue: false,
-                width: 1.05,
-                height: ${svgHeight},
-                margin: 0
-              });
-            });
-
             window.onload = function () {
               setTimeout(function () {
                 window.print();
