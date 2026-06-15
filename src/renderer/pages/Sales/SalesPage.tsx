@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent
+} from 'react';
 import { useAuthStore } from '../../store/auth.store';
 import { getPaymentMethodLabel } from '../../utils/payment-method';
 
@@ -400,6 +407,48 @@ export default function SalesPage() {
     });
   }
 
+  function forceBarcodeFocus() {
+    window.focus();
+
+    setBarcodeMode(true);
+    setProductResults([]);
+    setDropdownRect(null);
+    setCustomerDropdownOpen(false);
+
+    const focus = () => {
+      const input = barcodeInputRef.current;
+
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    };
+
+    requestAnimationFrame(focus);
+    setTimeout(focus, 0);
+    setTimeout(focus, 80);
+    setTimeout(focus, 180);
+  }
+
+  function handlePageMouseDown(e: ReactMouseEvent<HTMLDivElement>) {
+    if (showAddCustomerModal || showPaymentModal || receiptData) return;
+
+    const target = e.target as HTMLElement | null;
+
+    if (!target) return;
+
+    const isInteractive = Boolean(
+      target.closest(
+        'input, textarea, select, button, a, [contenteditable="true"], .theme-popover, .theme-dropdown'
+      )
+    );
+
+    if (isInteractive) return;
+
+    e.preventDefault();
+    forceBarcodeFocus();
+  }
+
   function showMessage(
     type: 'error' | 'success',
     text: string,
@@ -555,14 +604,14 @@ export default function SalesPage() {
     updateActiveInvoice({ customer, loyaltyPointsDraft: '' });
     setCustomerSearch('');
     setCustomerDropdownOpen(false);
-    setTimeout(focusMainInput, 0);
+    forceBarcodeFocus();
   }
 
   function clearCustomer() {
     updateActiveInvoice({ customer: null, loyaltyPointsDraft: '' });
     setCustomerSearch('');
     setCustomerDropdownOpen(false);
-    setTimeout(focusMainInput, 0);
+    forceBarcodeFocus();
   }
 
   function openAddCustomerModal() {
@@ -604,7 +653,9 @@ export default function SalesPage() {
 
       setShowAddCustomerModal(false);
       setCustomerSearch('');
-      showMessage('success', 'تم إضافة العميل');
+      setCustomerDropdownOpen(false);
+      showMessage('success', 'تم إضافة العميل', false);
+      forceBarcodeFocus();
     } catch (error) {
       console.error('Failed to create customer:', error);
       showMessage('error', 'حدث خطأ أثناء إضافة العميل، تأكد أن رقم الهاتف غير مكرر', false);
@@ -1086,6 +1137,7 @@ export default function SalesPage() {
   return (
     <div
       ref={pageRef}
+      onMouseDown={handlePageMouseDown}
       style={{
         display: 'grid',
         gap: '18px',
@@ -1942,7 +1994,7 @@ export default function SalesPage() {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   setReceiptData(null);
-                  setTimeout(focusMainInput, 0);
+                  forceBarcodeFocus();
                 }}
                 style={secondaryOutlineButtonStyle}
               >
@@ -2003,6 +2055,12 @@ export default function SalesPage() {
                 onChange={(e) =>
                   setNewCustomer((prev) => ({ ...prev, phone: e.target.value }))
                 }
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void saveNewCustomer();
+                  }
+                }}
                 style={{
                   ...tableInputStyle,
                   textAlign: 'right',
@@ -2024,6 +2082,12 @@ export default function SalesPage() {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => void saveNewCustomer()}
                 disabled={savingNewCustomer}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void saveNewCustomer();
+                  }
+                }}
                 style={{
                   ...primaryButtonStyle,
                   opacity: savingNewCustomer ? 0.6 : 1,
@@ -2038,7 +2102,7 @@ export default function SalesPage() {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   setShowAddCustomerModal(false);
-                  setTimeout(focusMainInput, 0);
+                  forceBarcodeFocus();
                 }}
                 style={secondaryOutlineButtonStyle}
               >
