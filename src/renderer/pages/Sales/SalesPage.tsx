@@ -80,6 +80,12 @@ type SaleReceipt = {
   }>;
 };
 
+type StoreReceiptInfo = {
+  app_name?: string;
+  store_phone?: string;
+  store_address?: string;
+};
+
 type InvoiceTab = {
   id: number;
   title: string;
@@ -211,6 +217,14 @@ export default function SalesPage() {
     name: '',
     phone: ''
   });
+
+  const [storeInfo, setStoreInfo] = useState({
+    name: '',
+    address: '',
+    phone: ''
+  });
+
+  
 
   const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettings>(
     defaultLoyaltySettings
@@ -599,10 +613,26 @@ export default function SalesPage() {
     }
   }
 
-  function buildReceiptPrintHtml(receipt: SaleReceipt) {
+  function buildReceiptPrintHtml(
+    receipt: SaleReceipt,
+    storeInfo: StoreReceiptInfo = {}
+  ) {
     const remainingAmount = Math.max(0, Number(receipt.sale.remaining_amount || 0));
     const grandTotal = Number(receipt.sale.grand_total || 0);
     const paidNetAmount = Math.max(0, grandTotal - remainingAmount);
+
+    const storeName = String(storeInfo.app_name || 'ERP Store').trim();
+    const storePhone = String(storeInfo.store_phone || '').trim();
+    const storeAddress = String(storeInfo.store_address || '').trim();
+
+    const cleanStorePhone =
+      storePhone && storePhone !== storeName ? storePhone : '';
+
+    const cleanStoreAddress =
+      storeAddress && storeAddress !== storeName && storeAddress !== cleanStorePhone
+        ? storeAddress
+        : '';
+
     const rows = receipt.items
       .map(
         (item) => `
@@ -635,7 +665,34 @@ export default function SalesPage() {
             .receipt { width: 280px; margin: 0 auto; }
             h2, p { margin: 0; }
             .center { text-align: center; }
-            .muted { color: #555; font-size: 11px; }
+
+            .receipt-header {
+              text-align: center;
+              line-height: 1.5;
+            }
+
+            .store-name {
+              font-size: 18px;
+              font-weight: 800;
+              margin-bottom: 3px;
+            }
+
+            .store-info {
+              font-size: 11px;
+              color: #555;
+              font-weight: 500;
+            }
+
+            .receipt-title {
+              font-size: 14px;
+              font-weight: 800;
+              margin-bottom: 3px;
+            }
+
+            .muted {
+              color: #555;
+              font-size: 11px;
+            }
             .line { border-top: 1px dashed #777; margin: 10px 0; }
             .row { display: flex; justify-content: space-between; gap: 8px; margin: 5px 0; }
             table { width: 100%; border-collapse: collapse; margin-top: 8px; }
@@ -655,13 +712,19 @@ export default function SalesPage() {
         </head>
         <body>
           <div class="receipt">
-            <div class="center">
-              <h2>فاتورة بيع</h2>
-              <p class="muted">رقم الفاتورة: #${escapeHtml(receipt.sale.id)}</p>
-              <p class="muted">${escapeHtml(formatReceiptDate(receipt.sale.created_at))}</p>
-            </div>
+          <div class="receipt-header">
+            <div class="store-name">${escapeHtml(storeName)}</div>
+            ${cleanStorePhone ? `<div class="store-info">تليفون: ${escapeHtml(cleanStorePhone)}</div>` : ''}
+            ${cleanStoreAddress ? `<div class="store-info">العنوان: ${escapeHtml(cleanStoreAddress)}</div>` : ''}
 
             <div class="line"></div>
+
+            <div class="receipt-title">فاتورة بيع</div>
+            <div class="store-info">رقم الفاتورة: #${escapeHtml(receipt.sale.id)}</div>
+            <div class="store-info">${escapeHtml(formatReceiptDate(receipt.sale.created_at))}</div>
+          </div>
+
+          <div class="line"></div>
 
             <div class="row"><span>العميل</span><strong>${escapeHtml(receipt.sale.customer_name || 'عميل نقدي')}</strong></div>
             <div class="row"><span>الكاشير</span><strong>${escapeHtml(receipt.sale.cashier_name || '-')}</strong></div>
@@ -702,8 +765,22 @@ export default function SalesPage() {
     `;
   }
 
-  function printReceipt() {
+  async function printReceipt() {
     if (!receiptData) return;
+
+    let storeInfo: StoreReceiptInfo = {};
+
+    try {
+      const status = await window.api.getLicenseStatus();
+
+      storeInfo = {
+        app_name: status.app_name,
+        store_phone: status.store_phone,
+        store_address: status.store_address
+      };
+    } catch (error) {
+      console.error('Failed to load store receipt info:', error);
+    }
 
     const popup = window.open('', '_blank', 'width=420,height=700');
 
@@ -713,7 +790,7 @@ export default function SalesPage() {
     }
 
     popup.document.open();
-    popup.document.write(buildReceiptPrintHtml(receiptData));
+    popup.document.write(buildReceiptPrintHtml(receiptData, storeInfo));
     popup.document.close();
     popup.focus();
 
@@ -804,6 +881,14 @@ export default function SalesPage() {
         paymentMethod: 'cash',
         discountType: 'amount',
         discountDraft: '',
+      });
+
+      const licenseData = await window.api.getLicenseStatus();
+
+      setStoreInfo({
+        name: licenseData.app_name || 'اسم المحل',
+        address: '',
+        phone: ''
       });
 
       setProductResults([]);
@@ -1846,7 +1931,7 @@ export default function SalesPage() {
               <button
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={printReceipt}
+                onClick={() => void printReceipt()}
                 style={primaryButtonStyle}
               >
                 طباعة الفاتورة

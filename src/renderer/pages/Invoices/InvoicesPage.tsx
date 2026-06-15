@@ -52,6 +52,12 @@ type ReceiptData = {
   loyalty: any[];
 };
 
+type StoreReceiptInfo = {
+  app_name?: string;
+  store_phone?: string;
+  store_address?: string;
+};
+
 type ReturnDraftItem = {
   sale_item_id: number;
   variant_id: number;
@@ -161,8 +167,21 @@ export default function InvoicesPage() {
     }
   }
 
-  function printReceipt(receipt: ReceiptData, returnHistory: any[] = []) {
-    const html = buildReceiptHtml(receipt, returnHistory);
+  async function printReceipt(receipt: ReceiptData, returnHistory: any[] = []) {
+    let storeInfo: StoreReceiptInfo = {};
+      try {
+      const status = await window.api.getLicenseStatus();
+
+      storeInfo = {
+        app_name: status.app_name,
+        store_phone: status.store_phone,
+        store_address: status.store_address
+      };
+    } catch (error) {
+      console.error('Failed to load store receipt info:', error);
+    }
+
+    const html = buildReceiptHtml(receipt, returnHistory, storeInfo);
     const printWindow = window.open('', '_blank', 'width=420,height=700');
 
     if (!printWindow) {
@@ -582,7 +601,7 @@ export default function InvoicesPage() {
                             window.api.getSaleReturnHistory(sale.id)
                           ]);
 
-                          printReceipt(receipt, Array.isArray(history) ? history : []);
+                          void printReceipt(receipt, Array.isArray(history) ? history : []);
                         }}
                         style={smallButtonStyle}
                       >
@@ -724,7 +743,7 @@ export default function InvoicesPage() {
                             window.api.getSaleReturnHistory(ret.original_sale_id)
                           ]);
 
-                          printReceipt(receipt, Array.isArray(history) ? history : []);
+                          void printReceipt(receipt, Array.isArray(history) ? history : []);
                         }}
                         style={smallButtonStyle}
                       >
@@ -974,7 +993,7 @@ export default function InvoicesPage() {
             >
               <button
                 type="button"
-                onClick={() => printReceipt(selectedReceipt, selectedReturnHistory)}
+                onClick={() => void printReceipt(selectedReceipt, selectedReturnHistory)}
                 style={primaryButtonStyle}
               >
                 طباعة الفاتورة
@@ -1301,9 +1320,17 @@ function getReceiptFinance(receipt: ReceiptData, returnHistory: any[] = []) {
   };
 }
 
-  function buildReceiptHtml(receipt: ReceiptData, returnHistory: any[] = []) {
+  function buildReceiptHtml(
+    receipt: ReceiptData,
+    returnHistory: any[] = [],
+    storeInfo: StoreReceiptInfo = {}
+  ) {
     const sale = receipt.sale;
     const finance = getReceiptFinance(receipt, returnHistory);
+
+    const storeName = String(storeInfo.app_name || 'ERP Store').trim();
+    const storePhone = String(storeInfo.store_phone || '').trim();
+    const storeAddress = String(storeInfo.store_address || '').trim();
 
     const rows = (receipt.items ?? [])
       .map((item) => {
@@ -1435,12 +1462,14 @@ function getReceiptFinance(receipt: ReceiptData, returnHistory: any[] = []) {
         <body>
           <div class="receipt">
             <div class="center">
-              <h2>فاتورة بيع</h2>
+              <h2>${escapeHtml(storeName)}</h2>
+              ${storePhone ? `<p class="muted">تليفون: ${escapeHtml(storePhone)}</p>` : ''}
+              ${storeAddress ? `<p class="muted">العنوان: ${escapeHtml(storeAddress)}</p>` : ''}
+              <div class="line"></div>
+              <h3 style="margin: 0 0 4px; font-size: 14px;">فاتورة بيع</h3>
               <p class="muted">رقم الفاتورة: #${escapeHtml(sale.id)}</p>
               <p class="muted">${escapeHtml(formatDate(sale.created_at))}</p>
             </div>
-
-            <div class="line"></div>
 
             <div class="row">
               <span>العميل</span>

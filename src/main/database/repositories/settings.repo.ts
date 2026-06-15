@@ -372,6 +372,8 @@ export type AppLicenseStatus = {
   device_code: string;
   app_logo_url: string;
   app_name: string;
+  store_phone: string;
+  store_address: string;
   app_theme: 'dark' | 'light';
 };
 
@@ -380,6 +382,8 @@ export function getAppLicenseStatus(): AppLicenseStatus {
 
   const appLogoUrl = getSetting('app_logo_url', '');
   const appName = getSetting('app_name', 'ERP Store');
+  const storePhone = getSetting('store_phone', '');
+  const storeAddress = getSetting('store_address', '');
   const appTheme = getSetting('app_theme', 'dark') === 'light' ? 'light' : 'dark';
 
   return {
@@ -394,6 +398,8 @@ export function getAppLicenseStatus(): AppLicenseStatus {
     device_code: license.device_code,
     app_logo_url: appLogoUrl,
     app_name: appName,
+    store_phone: storePhone,
+    store_address: storeAddress,
     app_theme: appTheme
   };
 }
@@ -434,6 +440,19 @@ export function saveAppName(name: string) {
   const cleanName = String(name || '').trim() || 'ERP Store';
 
   saveSetting('app_name', cleanName);
+
+  return {
+    success: true,
+    status: getAppLicenseStatus()
+  };
+}
+
+export function saveStoreContactInfo(phone: string, address: string) {
+  const cleanPhone = String(phone || '').trim();
+  const cleanAddress = String(address || '').trim();
+
+  saveSetting('store_phone', cleanPhone);
+  saveSetting('store_address', cleanAddress);
 
   return {
     success: true,

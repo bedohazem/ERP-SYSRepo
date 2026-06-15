@@ -13,6 +13,7 @@ import {
   saveAppLogoUrl,
   deactivateApp,
   saveAppName,
+  saveStoreContactInfo,
   saveAppTheme
 } from '../database/repositories/settings.repo';
 import { closeDb, getDb, getDbPath, resetDatabaseData } from '../database/db';
@@ -400,6 +401,21 @@ export function registerSettingsIpc(): void {
         message: getErrorMessage(error)
       };
     }
+  });
+
+  ipcMain.handle(
+    'settings:save-store-contact-info',
+    (_, phone: string, address: string, input?: { actor_id?: number }) => {
+      try {
+        requireAdmin(getActorId(input));
+
+        return saveStoreContactInfo(phone, address);
+      } catch (error) {
+        return {
+          success: false,
+          message: getErrorMessage(error)
+        };
+      }
   });
 
   ipcMain.handle('settings:save-app-theme',(_, theme: 'dark' | 'light', input?: { actor_id?: number }) => {

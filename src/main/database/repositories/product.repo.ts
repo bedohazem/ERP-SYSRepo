@@ -135,7 +135,8 @@ export function getCategories(): CategoryRow[] {
 
 export function getProducts(search = '', includeInactive = false): ProductRow[] {
   const db = getDb();
-  const query = `%${search.trim()}%`;
+  const term = search.trim();
+  const query = `%${term}%`;
 
   return db
     .prepare(
@@ -184,7 +185,13 @@ export function getProducts(search = '', includeInactive = false): ProductRow[] 
       ORDER BY p.id DESC
       `
     )
-    .all(query, query, query, query, query) as ProductRow[];
+    .all(
+      query,
+      query,
+      term,   // للباركود
+      query,
+      query
+    ) as ProductRow[];
 }
 
 export function getProductVariants(productId: number, includeInactive = true) {

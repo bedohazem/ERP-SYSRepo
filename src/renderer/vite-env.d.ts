@@ -62,6 +62,8 @@ declare global {
       app_logo_url: string;
       app_name: string;
       app_theme?: 'dark' | 'light';
+      store_phone?: string;
+      store_address?: string;
     };
 
     api: {
@@ -699,6 +701,8 @@ declare global {
           app_logo_url: string;
           app_name: string;
           app_theme: 'dark' | 'light';
+          store_phone: string;
+          store_address: string;
         }>;
 
         activateApp: (code: string) => Promise<{
@@ -817,6 +821,12 @@ declare global {
             app_theme: 'dark' | 'light';
           };
         }>;
+
+        saveStoreContactInfo: (
+          phone: string,
+          address: string,
+          input: any
+        ) => Promise<any>;
 
 
         // =========================

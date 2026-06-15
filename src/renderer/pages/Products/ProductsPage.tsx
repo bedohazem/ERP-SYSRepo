@@ -1163,7 +1163,23 @@ export default function ProductsPage() {
           ) : (
             products.map((product) => {
               const isOpen = expandedId === product.id;
-              const productVariants = variantsMap[product.id] || [];
+              const searchValue = search.trim();
+
+              const productVariants = (variantsMap[product.id] || []).filter((variant) => {
+                if (!searchValue) return true;
+
+                // لو البحث باركود
+                if (/^\d+$/.test(searchValue)) {
+                  return variant.barcode === searchValue;
+                }
+
+                // البحث العادي
+                return (
+                  variant.barcode?.includes(searchValue) ||
+                  variant.size?.toLowerCase().includes(searchValue.toLowerCase()) ||
+                  variant.color?.toLowerCase().includes(searchValue.toLowerCase())
+                );
+              });
 
               return (
                 <div

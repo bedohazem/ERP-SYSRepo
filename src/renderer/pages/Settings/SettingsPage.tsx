@@ -90,6 +90,8 @@ type AppLicenseStatus = {
   device_code?: string;
   app_logo_url: string;
   app_name?: string;
+  store_phone?: string;
+  store_address?: string;
   app_theme?: 'dark' | 'light';
 };
 
@@ -117,6 +119,9 @@ export default function SettingsPage() {
 
   const [appName, setAppName] = useState('');
   const [savingAppName, setSavingAppName] = useState(false);
+  const [storePhone, setStorePhone] = useState('');
+  const [storeAddress, setStoreAddress] = useState('');
+  const [savingStoreContact, setSavingStoreContact] = useState(false);
   const currentUser = useAuthStore((s) => s.user);
 
   useEffect(() => {
@@ -145,6 +150,8 @@ export default function SettingsPage() {
       setLicenseStatus(licenseData);
       setAppLogoUrl(licenseData.app_logo_url || '');
       setAppName(licenseData.app_name || 'ERP Store');
+      setStorePhone(licenseData.store_phone || '');
+      setStoreAddress(licenseData.store_address || '');
       const loadedTheme = licenseData.app_theme === 'light' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', loadedTheme);
     } catch (error) {
@@ -494,6 +501,47 @@ export default function SettingsPage() {
       setSavingAppName(false);
     }
   }
+
+  async function handleSaveStoreContactInfo() {
+    if (savingStoreContact) return;
+
+    setSavingStoreContact(true);
+
+    try {
+      const result = await window.api.saveStoreContactInfo(
+        storePhone.trim(),
+        storeAddress.trim(),
+        { actor_id: currentUser?.id }
+      );
+
+      console.log('SAVE STORE CONTACT RESULT:', result);
+
+      if (!result?.success) {
+        showMessage('error', result?.message || 'فشل حفظ بيانات الفاتورة');
+        return;
+      }
+
+      setLicenseStatus(result.status);
+      setStorePhone(result.status?.store_phone || '');
+      setStoreAddress(result.status?.store_address || '');
+
+      window.dispatchEvent(
+        new CustomEvent('license-status-changed', {
+          detail: result.status
+        })
+      );
+
+      showMessage('success', 'تم حفظ بيانات الفاتورة');
+    } catch (error) {
+      console.error('FAILED SAVE STORE CONTACT INFO:', error);
+      showMessage(
+        'error',
+        error instanceof Error ? error.message : 'حدث خطأ أثناء حفظ بيانات الفاتورة'
+      );
+    } finally {
+      setSavingStoreContact(false);
+    }
+  }
   
     return (
       <div style={{ display: 'grid', gap: '16px' }}>
@@ -807,6 +855,48 @@ export default function SettingsPage() {
               }}
             >
               {savingAppName ? 'جاري الحفظ...' : 'حفظ الاسم'}
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(180px, 0.8fr) minmax(260px, 1.2fr) auto',
+              gap: '12px',
+              alignItems: 'end'
+            }}
+          >
+            <div>
+              <label style={labelStyle}>رقم المحل على الفاتورة</label>
+              <input
+                value={storePhone}
+                onChange={(e) => setStorePhone(e.target.value)}
+                placeholder="مثال: 01000000000"
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>عنوان المحل على الفاتورة</label>
+              <input
+                value={storeAddress}
+                onChange={(e) => setStoreAddress(e.target.value)}
+                placeholder="مثال: القاهرة - شارع ..."
+                style={inputStyle}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void handleSaveStoreContactInfo()}
+              disabled={savingStoreContact}
+              style={{
+                ...primaryButtonStyle,
+                opacity: savingStoreContact ? 0.6 : 1,
+                cursor: savingStoreContact ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {savingStoreContact ? 'جاري الحفظ...' : 'حفظ بيانات الفاتورة'}
             </button>
           </div>
 

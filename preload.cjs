@@ -92,6 +92,7 @@ contextBridge.exposeInMainWorld('api', {
   saveAppLogoUrl: (url, input) => ipcRenderer.invoke('settings:save-app-logo-url', url, input),
   chooseAppLogo: (input) => ipcRenderer.invoke('settings:choose-app-logo', input),
   saveAppName: (name, input) => ipcRenderer.invoke('settings:save-app-name', name, input),
+  saveStoreContactInfo: (phone, address, input) => ipcRenderer.invoke('settings:save-store-contact-info', phone, address, input),
   saveAppTheme: (theme, input) => ipcRenderer.invoke('settings:save-app-theme', theme, input),
 
   getLiabilities: (input) => ipcRenderer.invoke('liabilities:list', input),
