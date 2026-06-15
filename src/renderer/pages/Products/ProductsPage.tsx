@@ -176,7 +176,7 @@ export default function ProductsPage() {
   const [savingEdit, setSavingEdit] = useState(false);
 
   const [includeInactive, setIncludeInactive] = useState(false);
-  const [includeInactiveVariants, setIncludeInactiveVariants] = useState(true);
+  const [includeInactiveVariants, setIncludeInactiveVariants] = useState(false);
 
   const canSave = useMemo(() => {
     if (!name.trim()) return false;

@@ -49,6 +49,69 @@ const STOCK_SUM_SQL = `
   ), 0)
 `;
 
+function getCurrentVariantStock(db: ReturnType<typeof getDb>, variantId: number): number {
+  const row = db
+    .prepare(`
+      SELECT
+        IFNULL(SUM(
+          CASE
+            WHEN type = 'in' THEN quantity
+            WHEN type = 'out' THEN -quantity
+            ELSE 0
+          END
+        ), 0) AS stock
+      FROM stock_movements
+      WHERE variant_id = ?
+    `)
+    .get(variantId) as { stock: number } | undefined;
+
+  return Number(row?.stock || 0);
+}
+
+function zeroVariantStock(
+  db: ReturnType<typeof getDb>,
+  variantId: number,
+  notes: string
+) {
+  const currentStock = getCurrentVariantStock(db, variantId);
+
+  if (currentStock === 0) return;
+
+  db.prepare(`
+    INSERT INTO stock_movements (
+      variant_id,
+      type,
+      quantity,
+      reference_id,
+      reference_type,
+      notes
+    )
+    VALUES (?, ?, ?, NULL, 'deactivate_zero_stock', ?)
+  `).run(
+    variantId,
+    currentStock > 0 ? 'out' : 'in',
+    Math.abs(currentStock),
+    notes
+  );
+}
+
+function zeroProductVariantsStock(
+  db: ReturnType<typeof getDb>,
+  productId: number
+) {
+  const variants = db
+    .prepare(`SELECT id FROM product_variants WHERE product_id = ?`)
+    .all(productId) as Array<{ id: number }>;
+
+  for (const variant of variants) {
+    zeroVariantStock(
+      db,
+      Number(variant.id),
+      'تصفير مخزون بسبب تعطيل المنتج'
+    );
+  }
+}
+
 function ensureBarcodeAvailable(barcode: string, exceptVariantId?: number) {
   const db = getDb();
   const cleanBarcode = String(barcode || '').trim();
@@ -233,14 +296,27 @@ export function getProductVariants(productId: number, includeInactive = true) {
 
 export function toggleVariantActive(variantId: number, isActive: number) {
   const db = getDb();
+  const nextActive = Number(isActive) ? 1 : 0;
 
-  db.prepare(
-    `
-    UPDATE product_variants
-    SET is_active = ?
-    WHERE id = ?
-    `
-  ).run(isActive, variantId);
+  const tx = db.transaction(() => {
+    db.prepare(
+      `
+      UPDATE product_variants
+      SET is_active = ?
+      WHERE id = ?
+      `
+    ).run(nextActive, variantId);
+
+    if (!nextActive) {
+      zeroVariantStock(
+        db,
+        Number(variantId),
+        'تصفير مخزون بسبب تعطيل الصنف'
+      );
+    }
+  });
+
+  tx();
 
   return { success: true };
 }
@@ -462,43 +538,66 @@ export function updateVariant(input: UpdateVariantInput) {
   ensureBarcodeAvailable(cleanBarcode, input.id);
   validateVariantNumbers(input);
 
-  db.prepare(
-    `
-    UPDATE product_variants
-    SET
-      barcode = ?,
-      size = ?,
-      color = ?,
-      buy_price = ?,
-      sell_price = ?,
-      min_stock = ?,
-      is_active = ?
-    WHERE id = ?
-    `
-  ).run(
-    cleanBarcode,
-    input.size.trim(),
-    input.color.trim(),
-    input.buy_price,
-    input.sell_price,
-    input.min_stock,
-    input.is_active ?? 1,
-    input.id
-  );
+  const nextActive = input.is_active ?? 1;
+
+  const tx = db.transaction(() => {
+    db.prepare(
+      `
+      UPDATE product_variants
+      SET
+        barcode = ?,
+        size = ?,
+        color = ?,
+        buy_price = ?,
+        sell_price = ?,
+        min_stock = ?,
+        is_active = ?
+      WHERE id = ?
+      `
+    ).run(
+      cleanBarcode,
+      input.size.trim(),
+      input.color.trim(),
+      input.buy_price,
+      input.sell_price,
+      input.min_stock,
+      nextActive,
+      input.id
+    );
+
+    if (!Number(nextActive)) {
+      zeroVariantStock(
+        db,
+        Number(input.id),
+        'تصفير مخزون بسبب تعطيل الصنف'
+      );
+    }
+  });
+
+  tx();
 
   return { success: true };
 }
 
 export function toggleProductActive(productId: number, isActive: number) {
   const db = getDb();
+  const nextActive = Number(isActive) ? 1 : 0;
 
-  db.prepare(
-    `
-    UPDATE products
-    SET is_active = ?
-    WHERE id = ?
-    `
-  ).run(isActive, productId);
+  const tx = db.transaction(() => {
+    db.prepare(
+      `
+      UPDATE products
+      SET is_active = ?
+      WHERE id = ?
+      `
+    ).run(nextActive, productId);
+
+    if (!nextActive) {
+      zeroProductVariantsStock(db, Number(productId));
+    }
+  });
+
+  tx();
 
   return { success: true };
 }

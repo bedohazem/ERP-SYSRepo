@@ -68,7 +68,8 @@ export function getInventoryList(input?: {
       FROM product_variants v
       JOIN products p ON p.id = v.product_id
       LEFT JOIN stock_movements sm ON sm.variant_id = v.id
-      WHERE 1 = 1
+      WHERE p.is_active = 1
+        AND v.is_active = 1
         ${searchSql}
       GROUP BY v.id
       ${havingSql}

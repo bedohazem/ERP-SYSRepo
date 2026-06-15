@@ -449,6 +449,33 @@ export default function SalesPage() {
     forceBarcodeFocus();
   }
 
+  useEffect(() => {
+    function handleGlobalPointerDown(e: PointerEvent) {
+      if (showAddCustomerModal || showPaymentModal || receiptData) return;
+
+      const target = e.target as HTMLElement | null;
+
+      if (!target) return;
+
+      const isInteractive = Boolean(
+        target.closest(
+          'input, textarea, select, button, a, [contenteditable="true"], .theme-popover, .theme-dropdown, .theme-modal-overlay'
+        )
+      );
+
+      if (isInteractive) return;
+
+      e.preventDefault();
+      forceBarcodeFocus();
+    }
+
+    document.addEventListener('pointerdown', handleGlobalPointerDown, true);
+
+    return () => {
+      document.removeEventListener('pointerdown', handleGlobalPointerDown, true);
+    };
+  }, [showAddCustomerModal, showPaymentModal, receiptData, barcodeMode]);
+
   function showMessage(
     type: 'error' | 'success',
     text: string,
