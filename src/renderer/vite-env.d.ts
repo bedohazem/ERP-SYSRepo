@@ -567,86 +567,151 @@ declare global {
         // =========================
         // Purchases
         // =========================
-          createPurchaseInvoice: (input: {
-            supplier_id: number;
-            sub_total?: number;
-            discount_type?: 'amount' | 'percent' | string;
-            discount_input?: number;
-            discount_value?: number;
-            paid_amount?: number;
-            payment_method?: string;
-            notes?: string | null;
-            actor_id?: number;
-            items: Array<{
-              variant_id: number;
-              quantity: number;
-              unit_cost: number;
-            }>;
-          }) => Promise<{
-            purchaseId: number;
-            total_amount: number;
-            paid_amount: number;
-            remaining_amount: number;
-            payment_status: string;
+        createPurchaseInvoice: (input: {
+          supplier_id: number;
+          sub_total?: number;
+          discount_type?: 'amount' | 'percent' | string;
+          discount_input?: number;
+          discount_value?: number;
+          paid_amount?: number;
+          payment_method?: string;
+          notes?: string | null;
+          actor_id?: number;
+          items: Array<{
+            variant_id: number;
+            quantity: number;
+            unit_cost: number;
           }>;
+        }) => Promise<{
+          purchaseId: number;
+          total_amount: number;
+          paid_amount: number;
+          remaining_amount: number;
+          payment_status: string;
+        }>;
 
-          listPurchaseInvoices: (input?: {
-            search?: string;
-            limit?: number;
-            offset?: number;
-          }) => Promise<{
-            rows: any[];
-            total: number;
-            limit: number;
-            offset: number;
+        listPurchaseInvoices: (input?: {
+          search?: string;
+          limit?: number;
+          offset?: number;
+        }) => Promise<{
+          rows: any[];
+          total: number;
+          limit: number;
+          offset: number;
+        }>;
+
+        getPurchaseInvoice: (purchaseId: number) => Promise<{
+          purchase: any;
+          items: Array<{
+            id: number;
+            purchase_id: number;
+            variant_id: number;
+            product_name: string;
+            barcode?: string | null;
+            size?: string | null;
+            color?: string | null;
+            quantity: number;
+            unit_cost: number;
+            line_total: number;
+            returned_quantity?: number;
+            returnable_quantity?: number;
           }>;
+          payments: any[];
+          returns?: any[];
+        }>;
 
-          getPurchaseInvoice: (purchaseId: number) => Promise<{
-            purchase: any;
-            items: any[];
-            payments: any[];
+        cancelPurchaseInvoice: (input: {
+          purchase_id: number;
+          reason?: string;
+          actor_id?: number;
+        }) => Promise<{
+          ok: boolean;
+          purchase_id: number;
+          supplier_id: number;
+          reversed_total: number;
+          reversed_paid: number;
+          reversed_remaining: number;
+          items_count: number;
+        }>;
+
+        createPurchaseReturn: (input: {
+          purchase_id: number;
+          notes?: string | null;
+          actor_id?: number;
+          items: Array<{
+            purchase_item_id?: number;
+            variant_id?: number;
+            quantity: number;
           }>;
+        }) => Promise<{
+          ok: boolean;
+          return_id: number;
+          purchase_id: number;
+          supplier_id: number;
+          total_amount: number;
+          items_count: number;
+        }>;
 
-          recordSupplierPayment: (input: {
-            supplier_id: number;
-            purchase_id?: number | null;
+        listPurchaseReturns: (input?: {
+          search?: string;
+          limit?: number;
+          offset?: number;
+        }) => Promise<{
+          rows: any[];
+          total: number;
+          limit: number;
+          offset: number;
+        }>;
+
+        getPurchaseReturn: (returnId: number) => Promise<{
+          return: any;
+          items: any[];
+        }>;
+
+        recordSupplierPayment: (input: {
+          supplier_id: number;
+          purchase_id?: number | null;
+          amount: number;
+          payment_method?: string;
+          notes?: string | null;
+          actor_id?: number;
+        }) => Promise<{
+          ok: boolean;
+          supplier_id: number;
+          paid_amount: number;
+          allocations?: Array<{
+            purchase_id: number | null;
             amount: number;
+          }>;
+        }>;
+
+        getSupplierStatement: (supplierId: number) => Promise<{
+          supplier: any;
+          purchases: any[];
+          payments: any[];
+          returns?: any[];
+          entries: Array<{
+            id: string;
+            type: 'purchase' | 'payment' | 'purchase_return';
+            title: string;
+            debit: number;
+            credit: number;
+            purchase_id?: number | null;
+            return_id?: number;
+            payment_status?: string;
             payment_method?: string;
             notes?: string | null;
-            actor_id?: number;
-          }) => Promise<{
-            ok: boolean;
-            supplier_id: number;
-            paid_amount: number;
-            allocations?: Array<{
-              purchase_id: number | null;
-              amount: number;
-            }>;
+            created_at: string;
           }>;
-
-          getSupplierStatement: (supplierId: number) => Promise<{
-            supplier: any;
-            purchases: any[];
-            payments: any[];
-            entries: Array<{
-              id: string;
-              type: 'purchase' | 'payment';
-              title: string;
-              debit: number;
-              credit: number;
-              purchase_id?: number | null;
-              payment_status?: string;
-              payment_method?: string;
-              notes?: string | null;
-              created_at: string;
-            }>;
-            summary: {
-              total_purchased: number;
-              total_paid: number;
-              balance: number;
-              open_purchases: number;
-            };
-          }>;
+          summary: {
+            total_purchased: number;
+            total_paid: number;
+            total_returns?: number;
+            balance: number;
+            open_purchases: number;
+          };
+        }>;
 
 
         // =========================

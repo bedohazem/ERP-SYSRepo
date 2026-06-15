@@ -74,6 +74,10 @@ contextBridge.exposeInMainWorld('api', {
   createPurchaseInvoice: (input) => ipcRenderer.invoke('purchases:create', input),
   listPurchaseInvoices: (input) => ipcRenderer.invoke('purchases:list', input),
   getPurchaseInvoice: (purchaseId) => ipcRenderer.invoke('purchases:get-by-id', purchaseId),
+  cancelPurchaseInvoice: (input) => ipcRenderer.invoke('purchases:cancel', input),
+  createPurchaseReturn: (input) => ipcRenderer.invoke('purchases:returns:create', input),
+  listPurchaseReturns: (input) => ipcRenderer.invoke('purchases:returns:list', input),
+  getPurchaseReturn: (returnId) => ipcRenderer.invoke('purchases:returns:get-by-id', returnId),
   recordSupplierPayment: (input) => ipcRenderer.invoke('suppliers:record-payment', input),
   getSupplierStatement: (supplierId) => ipcRenderer.invoke('suppliers:statement', supplierId),
 

@@ -275,7 +275,16 @@ function formatDate(value?: string) {
 }
 
   return (
-    <div style={{ display: 'grid', gap: '18px' }}>
+    <div
+      style={{
+        display: 'grid',
+        gap: '18px',
+        height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
+        gridTemplateRows: 'auto auto minmax(0, 1fr)'
+      }}
+    >
       {message && (
         <div
           style={{
@@ -396,14 +405,18 @@ function formatDate(value?: string) {
       </div>
 
       <div
-        className="glass-card"
+        className="glass-card table-scroll"
         style={{
           padding: '18px',
           borderRadius: '18px',
-          overflowX: 'auto'
+          overflow: 'auto',
+          height: '100%',
+          minHeight: 0,
+          maxWidth: '100%',
+          boxSizing: 'border-box'
         }}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+        <table style={{ width: '100%',minWidth: '980px', borderCollapse: 'collapse', direction: 'rtl' }}>
           <thead>
             <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
               <th style={thStyle}>المورد</th>
@@ -831,7 +844,8 @@ const cardStyle: React.CSSProperties = {
   padding: '18px',
   borderRadius: '18px',
   display: 'grid',
-  gap: '14px'
+  gap: '14px',
+  overflow: 'visible'
 };
 
 const inputStyle: React.CSSProperties = {

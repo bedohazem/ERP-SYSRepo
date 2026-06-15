@@ -1003,10 +1003,16 @@ export default function ProductsPage() {
       style={{
         display: 'grid',
         gap: '16px',
-        minHeight: 0,
         width: '100%',
         maxWidth: '100%',
-        overflow: 'hidden'
+        height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
+        gridTemplateRows:
+          activeTab === 'list'
+            ? 'auto auto minmax(0, 1fr)'
+            : 'auto minmax(0, 1fr)',
+        alignContent: 'stretch'
       }}
     >
       {pageMessage && (
@@ -1032,75 +1038,75 @@ export default function ProductsPage() {
           {pageMessage.text}
         </div>
       )}
-
-      <div
-        className="glass-card"
-        style={{
-          borderRadius: '24px',
-          padding: isNarrowDesktop ? '16px' : '20px',
-          display: 'grid',
-          gap: '12px',
-          maxWidth: '100%',
-          overflow: 'hidden'
-        }}
-      >
+      {activeTab === 'list' && (
         <div
+          className="glass-card"
           style={{
+            borderRadius: '24px',
+            padding: isNarrowDesktop ? '16px' : '20px',
             display: 'grid',
-            gridTemplateColumns: isCompact ? '1fr' : 'minmax(260px, 1fr) auto',
-            alignItems: 'center',
             gap: '12px',
-            maxWidth: '100%'
+            maxWidth: '100%',
+            overflow: 'hidden'
           }}
         >
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="ابحث باسم المنتج أو التصنيف أو الباركود أو المقاس أو اللون..."
-            style={inputStyle}
-          />
-
-          <button
-            type="button"
-            onClick={openCreateTab}
+          <div
             style={{
-              ...primaryButtonStyle,
-              width: undefined
+              display: 'grid',
+              gridTemplateColumns: isCompact ? '1fr' : 'minmax(260px, 1fr) auto',
+              alignItems: 'center',
+              gap: '12px',
+              maxWidth: '100%'
             }}
           >
-            + إضافة منتج
-          </button>
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            gap: '12px',
-            flexWrap: 'wrap',
-            color: '#cbd5e1',
-            direction: 'rtl'
-          }}
-        >
-          <label style={checkboxLabelStyle}>
             <input
-              type="checkbox"
-              checked={includeInactive}
-              onChange={(e) => setIncludeInactive(e.target.checked)}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="ابحث باسم المنتج أو التصنيف أو الباركود أو المقاس أو اللون..."
+              style={inputStyle}
             />
-            <span>عرض المنتجات الموقوفة</span>
-          </label>
 
-          <label style={checkboxLabelStyle}>
-            <input
-              type="checkbox"
-              checked={includeInactiveVariants}
-              onChange={(e) => setIncludeInactiveVariants(e.target.checked)}
-            />
-            <span>عرض الـ variants الموقوفة</span>
-          </label>
+            <button
+              type="button"
+              onClick={openCreateTab}
+              style={{
+                ...primaryButtonStyle,
+                width: undefined
+              }}
+            >
+              + إضافة منتج
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              gap: '12px',
+              flexWrap: 'wrap',
+              color: '#cbd5e1',
+              direction: 'rtl'
+            }}
+          >
+            <label style={checkboxLabelStyle}>
+              <input
+                type="checkbox"
+                checked={includeInactive}
+                onChange={(e) => setIncludeInactive(e.target.checked)}
+              />
+              <span>عرض المنتجات الموقوفة</span>
+            </label>
+
+            <label style={checkboxLabelStyle}>
+              <input
+                type="checkbox"
+                checked={includeInactiveVariants}
+                onChange={(e) => setIncludeInactiveVariants(e.target.checked)}
+              />
+              <span>عرض الـ variants الموقوفة</span>
+            </label>
+          </div>
         </div>
-      </div>
-
+      )}  
       <div
         className="glass-card"
         style={{
@@ -1143,492 +1149,753 @@ export default function ProductsPage() {
           تعديل المنتج
         </button>
       </div>
-    {activeTab === 'list' && (    
-      <div
-        className="glass-card"
-        style={{
-          borderRadius: '24px',
-          padding: isNarrowDesktop ? '16px' : '20px',
-          maxWidth: '100%',
-          overflow: 'hidden'
-        }}
-      >
-        <div style={{ fontSize: '20px', fontWeight: 700, marginBottom: '16px' }}>
-          المنتجات
-        </div>
+      {activeTab === 'list' && (    
+        <div
+          className="glass-card fixed-table-card list-scroll"
+          style={{
+            borderRadius: '24px',
+            padding: isNarrowDesktop ? '16px' : '20px',
+            maxWidth: '100%',
+          }}
+        >
+          <div style={{ fontSize: '20px', fontWeight: 700, marginBottom: '16px' }}>
+            المنتجات
+          </div>
 
-        <div style={{ display: 'grid', gap: '12px', maxWidth: '100%' }}>
-          {products.length === 0 ? (
-            <div style={{ color: '#94a3b8' }}>لا توجد منتجات حتى الآن</div>
-          ) : (
-            products.map((product) => {
-              const isOpen = expandedId === product.id;
-              const searchValue = search.trim();
+          <div style={{ display: 'grid', gap: '12px', maxWidth: '100%' }}>
+            {products.length === 0 ? (
+              <div style={{ color: '#94a3b8' }}>لا توجد منتجات حتى الآن</div>
+            ) : (
+              products.map((product) => {
+                const isOpen = expandedId === product.id;
+                const searchValue = search.trim();
 
-              const productVariants = (variantsMap[product.id] || []).filter((variant) => {
-                if (!searchValue) return true;
+                const productVariants = (variantsMap[product.id] || []).filter((variant) => {
+                  if (!searchValue) return true;
 
-                // لو البحث باركود
-                if (/^\d+$/.test(searchValue)) {
-                  return variant.barcode === searchValue;
-                }
+                  // لو البحث باركود
+                  if (/^\d+$/.test(searchValue)) {
+                    return variant.barcode === searchValue;
+                  }
 
-                // البحث العادي
+                  // البحث العادي
+                  return (
+                    variant.barcode?.includes(searchValue) ||
+                    variant.size?.toLowerCase().includes(searchValue.toLowerCase()) ||
+                    variant.color?.toLowerCase().includes(searchValue.toLowerCase())
+                  );
+                });
+
                 return (
-                  variant.barcode?.includes(searchValue) ||
-                  variant.size?.toLowerCase().includes(searchValue.toLowerCase()) ||
-                  variant.color?.toLowerCase().includes(searchValue.toLowerCase())
-                );
-              });
-
-              return (
-                <div
-                  key={product.id}
-                  className="soft-card"
-                  style={{
-                    borderRadius: '18px',
-                    padding: isCompact ? '12px' : '16px',
-                    display: 'grid',
-                    gap: '12px',
-                    maxWidth: '100%',
-                    overflow: 'hidden'
-                  }}
-                >
                   <div
-                    onClick={() => void toggleExpand(product.id)}
+                    key={product.id}
+                    className="soft-card"
                     style={{
+                      borderRadius: '18px',
+                      padding: isCompact ? '12px' : '16px',
                       display: 'grid',
-                      gridTemplateColumns: isCompact ? '1fr' : 'minmax(0, 1fr) auto',
-                      alignItems: 'center',
                       gap: '12px',
-                      cursor: 'pointer',
-                      minWidth: 0
+                      maxWidth: '100%',
+                      overflow: 'hidden'
                     }}
                   >
-                    <div style={{ minWidth: 0 }}>
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          fontSize: '16px',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        {product.name}
-                      </div>
-
-                      <div
-                        className={`product-status-text ${product.is_active ? 'is-active' : 'is-inactive'}`}
-                        style={{
-                          fontSize: '12px',
-                          marginTop: '6px',
-                          fontWeight: 900
-                        }}
-                      >
-                        {product.is_active ? 'نشط' : 'موقوف'}
-                      </div>
-
-                      <div
-                        style={{
-                          color: '#94a3b8',
-                          fontSize: '13px',
-                          marginTop: '6px'
-                        }}
-                      >
-                        التصنيف: {product.category_name || '—'}
-                      </div>
-
-                      <div
-                        style={{
-                          display: 'flex',
-                          gap: '8px',
-                          flexWrap: 'wrap',
-                          marginTop: '8px'
-                        }}
-                      >
-                        <span
-                          style={{
-                            padding: '5px 10px',
-                            borderRadius: '999px',
-                            background: 'rgba(37,99,235,0.14)',
-                            border: '1px solid rgba(37,99,235,0.25)',
-                            color: '#bfdbfe',
-                            fontSize: '12px',
-                            fontWeight: 800
-                          }}
-                        >
-                          الأصناف: {Number(product.variants_count || 0)}
-                        </span>
-
-                        <span
-                          style={{
-                            padding: '5px 10px',
-                            borderRadius: '999px',
-                            background: 'rgba(16,185,129,0.12)',
-                            border: '1px solid rgba(16,185,129,0.25)',
-                            color: '#86efac',
-                            fontSize: '12px',
-                            fontWeight: 800
-                          }}
-                        >
-                          النشطة: {Number(product.active_variants_count || 0)}
-                        </span>
-                      </div>
-
-                      {product.description ? (
-                        <div
-                          style={{
-                            color: '#cbd5e1',
-                            fontSize: '13px',
-                            marginTop: '6px',
-                            overflowWrap: 'anywhere'
-                          }}
-                        >
-                          {product.description}
-                        </div>
-                      ) : null}
-                    </div>
-
                     <div
+                      onClick={() => void toggleExpand(product.id)}
                       style={{
-                        display: 'flex',
+                        display: 'grid',
+                        gridTemplateColumns: isCompact ? '1fr' : 'minmax(0, 1fr) auto',
                         alignItems: 'center',
-                        gap: '10px',
-                        flexWrap: 'wrap',
-                        justifyContent: isCompact ? 'flex-start' : 'flex-end'
+                        gap: '12px',
+                        cursor: 'pointer',
+                        minWidth: 0
                       }}
                     >
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontWeight: 700,
+                            fontSize: '16px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {product.name}
+                        </div>
 
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void openEditProduct(product, 'edit');
-                        }}
-                        style={secondarySmallButtonStyle}
-                      >
-                        تعديل
-                      </button>
-                      <button
-                        type="button"
-                        className="product-action-button add-variant"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void openEditProduct(product, 'addVariant');
-                        }}
-                        style={{
-                          ...secondarySmallButtonStyle,
-                          color: '#6ee7b7',
-                          border: '1px solid rgba(16,185,129,0.28)',
-                          background: 'rgba(16,185,129,0.10)'
-                        }}
-                      >
-                        + صنف
-                      </button>
-                      <button
-                        type="button"
-                        className={`product-action-button ${product.is_active ? 'deactivate-product' : 'activate-product'}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleToggleProductActive(product.id, product.is_active);
-                        }}
-                        style={{
-                          ...dangerButtonStyle,
-                          height: '40px',
-                          padding: '0 12px',
-                          color: product.is_active ? '#fca5a5' : '#86efac',
-                          border: product.is_active
-                            ? '1px solid rgba(239,68,68,0.25)'
-                            : '1px solid rgba(34,197,94,0.25)',
-                          background: product.is_active
-                            ? 'rgba(239,68,68,0.12)'
-                            : 'rgba(34,197,94,0.12)'
-                        }}
-                      >
-                        {product.is_active ? 'تعطيل' : 'تفعيل'}
-                      </button>
+                        <div
+                          className={`product-status-text ${product.is_active ? 'is-active' : 'is-inactive'}`}
+                          style={{
+                            fontSize: '12px',
+                            marginTop: '6px',
+                            fontWeight: 900
+                          }}
+                        >
+                          {product.is_active ? 'نشط' : 'موقوف'}
+                        </div>
+
+                        <div
+                          style={{
+                            color: '#94a3b8',
+                            fontSize: '13px',
+                            marginTop: '6px'
+                          }}
+                        >
+                          التصنيف: {product.category_name || '—'}
+                        </div>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '8px',
+                            flexWrap: 'wrap',
+                            marginTop: '8px'
+                          }}
+                        >
+                          <span
+                            style={{
+                              padding: '5px 10px',
+                              borderRadius: '999px',
+                              background: 'rgba(37,99,235,0.14)',
+                              border: '1px solid rgba(37,99,235,0.25)',
+                              color: '#bfdbfe',
+                              fontSize: '12px',
+                              fontWeight: 800
+                            }}
+                          >
+                            الأصناف: {Number(product.variants_count || 0)}
+                          </span>
+
+                          <span
+                            style={{
+                              padding: '5px 10px',
+                              borderRadius: '999px',
+                              background: 'rgba(16,185,129,0.12)',
+                              border: '1px solid rgba(16,185,129,0.25)',
+                              color: '#86efac',
+                              fontSize: '12px',
+                              fontWeight: 800
+                            }}
+                          >
+                            النشطة: {Number(product.active_variants_count || 0)}
+                          </span>
+                        </div>
+
+                        {product.description ? (
+                          <div
+                            style={{
+                              color: '#cbd5e1',
+                              fontSize: '13px',
+                              marginTop: '6px',
+                              overflowWrap: 'anywhere'
+                            }}
+                          >
+                            {product.description}
+                          </div>
+                        ) : null}
+                      </div>
 
                       <div
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '12px',
-                          color: '#60a5fa',
-                          fontWeight: 600
+                          gap: '10px',
+                          flexWrap: 'wrap',
+                          justifyContent: isCompact ? 'flex-start' : 'flex-end'
                         }}
                       >
-                        <span>#{product.id}</span>
-                        <span>{isOpen ? '▲' : '▼'}</span>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void openEditProduct(product, 'edit');
+                          }}
+                          style={secondarySmallButtonStyle}
+                        >
+                          تعديل
+                        </button>
+                        <button
+                          type="button"
+                          className="product-action-button add-variant"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void openEditProduct(product, 'addVariant');
+                          }}
+                          style={{
+                            ...secondarySmallButtonStyle,
+                            color: '#6ee7b7',
+                            border: '1px solid rgba(16,185,129,0.28)',
+                            background: 'rgba(16,185,129,0.10)'
+                          }}
+                        >
+                          + صنف
+                        </button>
+                        <button
+                          type="button"
+                          className={`product-action-button ${product.is_active ? 'deactivate-product' : 'activate-product'}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleToggleProductActive(product.id, product.is_active);
+                          }}
+                          style={{
+                            ...dangerButtonStyle,
+                            height: '40px',
+                            padding: '0 12px',
+                            color: product.is_active ? '#fca5a5' : '#86efac',
+                            border: product.is_active
+                              ? '1px solid rgba(239,68,68,0.25)'
+                              : '1px solid rgba(34,197,94,0.25)',
+                            background: product.is_active
+                              ? 'rgba(239,68,68,0.12)'
+                              : 'rgba(34,197,94,0.12)'
+                          }}
+                        >
+                          {product.is_active ? 'تعطيل' : 'تفعيل'}
+                        </button>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            color: '#60a5fa',
+                            fontWeight: 600
+                          }}
+                        >
+                          <span>#{product.id}</span>
+                          <span>{isOpen ? '▲' : '▼'}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {isOpen && (
-                    <div
-                      style={{
-                        marginTop: '4px',
-                        borderTop: '1px solid rgba(255,255,255,0.08)',
-                        paddingTop: '12px',
-                        maxWidth: '100%',
-                        overflow: 'hidden'
-                      }}
-                    >
-                      {loadingVariants === product.id ? (
-                        <div style={{ color: '#94a3b8' }}>جاري تحميل الـ variants...</div>
-                      ) : productVariants.length === 0 ? (
-                        <div style={{ color: '#94a3b8' }}>لا توجد variants لهذا المنتج</div>
-                      ) : (
-                        <div style={{ overflowX: 'auto', maxWidth: '100%', direction: 'rtl'}}>
-                          <div
-                            style={{
-                              display: 'grid',
-                              gap: '10px',
-                              minWidth: productGridMinWidth
-                            }}
-                          >
-                            
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: variantGridColumns,
-                                  gap: '10px',
-                                  padding: '10px 12px',
-                                  borderRadius: '12px',
-                                  background: 'rgba(37,99,235,0.10)',
-                                  fontSize: '13px',
-                                  fontWeight: 700,
-                                  color: '#cbd5e1',
-                                  minWidth: 0,
-                                  alignItems: 'center'
-                                }}
-                              >
-                                <div>الباركود</div>
-                                <div>المقاس</div>
-                                <div>اللون</div>
-                                <div>سعر الشراء</div>
-                                <div>سعر البيع</div>
-                                <div>المخزون</div>
-                                <div>إجراء</div>
-                                <div>الحالة</div>
-                              </div>
-                            
-
-                            {productVariants.map((variant) => {
-                              const isLowStock =
-                                Number(variant.stock) <= Number(variant.min_stock);
-
-                              return (
+                    {isOpen && (
+                      <div
+                        style={{
+                          marginTop: '4px',
+                          borderTop: '1px solid rgba(255,255,255,0.08)',
+                          paddingTop: '12px',
+                          maxWidth: '100%',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        {loadingVariants === product.id ? (
+                          <div style={{ color: '#94a3b8' }}>جاري تحميل الـ variants...</div>
+                        ) : productVariants.length === 0 ? (
+                          <div style={{ color: '#94a3b8' }}>لا توجد variants لهذا المنتج</div>
+                        ) : (
+                          <div style={{ overflowX: 'auto', maxWidth: '100%', direction: 'rtl'}}>
+                            <div
+                              style={{
+                                display: 'grid',
+                                gap: '10px',
+                                minWidth: productGridMinWidth
+                              }}
+                            >
+                              
                                 <div
-                                  key={variant.id}
                                   style={{
                                     display: 'grid',
-                                    gap: '12px',
-                                    padding: '12px',
-                                    borderRadius: '14px',
-                                    background: 'rgba(255,255,255,0.03)',
-                                    border: '1px solid rgba(255,255,255,0.06)'
+                                    gridTemplateColumns: variantGridColumns,
+                                    gap: '10px',
+                                    padding: '10px 12px',
+                                    borderRadius: '12px',
+                                    background: 'rgba(37,99,235,0.10)',
+                                    fontSize: '13px',
+                                    fontWeight: 700,
+                                    color: '#cbd5e1',
+                                    minWidth: 0,
+                                    alignItems: 'center'
                                   }}
                                 >
-                                  <div
-                                    style={{
-                                      display: 'grid',
-                                      gridTemplateColumns: variantGridColumns,
-                                      gap: '10px',
-                                      fontSize: '13px',
-                                      alignItems: 'center',
-                                      minWidth: 0
-                                    }}
-                                  >
-                                    <div>{variant.barcode || '—'}</div>
-                                    <div>{variant.size || '—'}</div>
-                                    <div>{variant.color || '—'}</div>
-                                    <div>{money(variant.buy_price)} ج</div>
-                                    <div>{money(variant.sell_price)} ج</div>
-                                    <div
-                                      style={{
-                                        color: isLowStock ? '#f87171' : '#34d399',
-                                        fontWeight: 700
-                                      }}
-                                    >
-                                      {variant.stock}
-                                    </div>
-
-                                    <button
-                                      type="button"
-                                      className={`product-action-button ${variant.is_active ? 'deactivate-product' : 'activate-product'}`}
-                                      onClick={() =>
-                                        void handleToggleVariantActive(
-                                          product.id,
-                                          variant.id,
-                                          variant.is_active
-                                        )
-                                      }
-                                      style={{
-                                        ...dangerButtonStyle,
-                                        height: '38px',
-                                        padding: '0 10px',
-                                        color: variant.is_active ? '#fca5a5' : '#86efac',
-                                        border: variant.is_active
-                                          ? '1px solid rgba(239,68,68,0.25)'
-                                          : '1px solid rgba(34,197,94,0.25)',
-                                        background: variant.is_active
-                                          ? 'rgba(239,68,68,0.12)'
-                                          : 'rgba(34,197,94,0.12)'
-                                      }}
-                                    >
-                                      {variant.is_active ? 'تعطيل' : 'تفعيل'}
-                                    </button>
-
-                                    <div
-                                      className={`product-status-text ${variant.is_active ? 'is-active' : 'is-inactive'}`}
-                                      style={{
-                                        fontSize: '12px',
-                                        fontWeight: 700
-                                      }}
-                                    >
-                                      {variant.is_active ? 'Variant نشط' : 'Variant موقوف'}
-                                    </div>
-                                  </div>
-
-                                  <div
-                                    style={{
-                                      borderTop: '1px solid rgba(255,255,255,0.08)',
-                                      paddingTop: '12px',
-                                      display: 'grid',
-                                      gridTemplateColumns: isCompact ? '1fr' : 'minmax(220px, 1fr) auto',
-                                      gap: '12px',
-                                      alignItems: 'center',
-                                      direction: 'rtl',
-                                      maxWidth: '100%',
-                                      overflow: 'hidden'
-                                    }}
-                                  >
-                                    <div
-                                      style={{
-                                        minWidth: 0,
-                                        overflowX: 'auto',
-                                        display: 'flex',
-                                        justifyContent: isCompact ? 'center' : 'flex-start'
-                                      }}
-                                    >
-                                      <BarcodePreview value={variant.barcode} />
-                                    </div>
-
-                                    <button
-                                      type="button"
-                                      disabled={!printSettings}
-                                      onClick={() =>
-                                        printBarcodeLabel({
-                                          productName: product.name,
-                                          barcode: variant.barcode,
-                                          size: variant.size,
-                                          color: variant.color,
-                                          price: variant.sell_price
-                                        })
-                                      }
-                                      style={{
-                                        ...secondaryButtonStyle,
-                                        opacity: printSettings ? 1 : 0.6,
-                                        width: undefined,
-                                        whiteSpace: 'nowrap'
-                                      }}
-                                    >
-                                      طباعة الباركود
-                                    </button>
-                                  </div>
+                                  <div>الباركود</div>
+                                  <div>المقاس</div>
+                                  <div>اللون</div>
+                                  <div>سعر الشراء</div>
+                                  <div>سعر البيع</div>
+                                  <div>المخزون</div>
+                                  <div>إجراء</div>
+                                  <div>الحالة</div>
                                 </div>
-                              );
-                            })}
+                              
+
+                              {productVariants.map((variant) => {
+                                const isLowStock =
+                                  Number(variant.stock) <= Number(variant.min_stock);
+
+                                return (
+                                  <div
+                                    key={variant.id}
+                                    style={{
+                                      display: 'grid',
+                                      gap: '12px',
+                                      padding: '12px',
+                                      borderRadius: '14px',
+                                      background: 'rgba(255,255,255,0.03)',
+                                      border: '1px solid rgba(255,255,255,0.06)'
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: variantGridColumns,
+                                        gap: '10px',
+                                        fontSize: '13px',
+                                        alignItems: 'center',
+                                        minWidth: 0
+                                      }}
+                                    >
+                                      <div>{variant.barcode || '—'}</div>
+                                      <div>{variant.size || '—'}</div>
+                                      <div>{variant.color || '—'}</div>
+                                      <div>{money(variant.buy_price)} ج</div>
+                                      <div>{money(variant.sell_price)} ج</div>
+                                      <div
+                                        style={{
+                                          color: isLowStock ? '#f87171' : '#34d399',
+                                          fontWeight: 700
+                                        }}
+                                      >
+                                        {variant.stock}
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        className={`product-action-button ${variant.is_active ? 'deactivate-product' : 'activate-product'}`}
+                                        onClick={() =>
+                                          void handleToggleVariantActive(
+                                            product.id,
+                                            variant.id,
+                                            variant.is_active
+                                          )
+                                        }
+                                        style={{
+                                          ...dangerButtonStyle,
+                                          height: '38px',
+                                          padding: '0 10px',
+                                          color: variant.is_active ? '#fca5a5' : '#86efac',
+                                          border: variant.is_active
+                                            ? '1px solid rgba(239,68,68,0.25)'
+                                            : '1px solid rgba(34,197,94,0.25)',
+                                          background: variant.is_active
+                                            ? 'rgba(239,68,68,0.12)'
+                                            : 'rgba(34,197,94,0.12)'
+                                        }}
+                                      >
+                                        {variant.is_active ? 'تعطيل' : 'تفعيل'}
+                                      </button>
+
+                                      <div
+                                        className={`product-status-text ${variant.is_active ? 'is-active' : 'is-inactive'}`}
+                                        style={{
+                                          fontSize: '12px',
+                                          fontWeight: 700
+                                        }}
+                                      >
+                                        {variant.is_active ? 'Variant نشط' : 'Variant موقوف'}
+                                      </div>
+                                    </div>
+
+                                    <div
+                                      style={{
+                                        borderTop: '1px solid rgba(255,255,255,0.08)',
+                                        paddingTop: '12px',
+                                        display: 'grid',
+                                        gridTemplateColumns: isCompact ? '1fr' : 'minmax(220px, 1fr) auto',
+                                        gap: '12px',
+                                        alignItems: 'center',
+                                        direction: 'rtl',
+                                        maxWidth: '100%',
+                                        overflow: 'hidden'
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          minWidth: 0,
+                                          overflowX: 'auto',
+                                          display: 'flex',
+                                          justifyContent: isCompact ? 'center' : 'flex-start'
+                                        }}
+                                      >
+                                        <BarcodePreview value={variant.barcode} />
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        disabled={!printSettings}
+                                        onClick={() =>
+                                          printBarcodeLabel({
+                                            productName: product.name,
+                                            barcode: variant.barcode,
+                                            size: variant.size,
+                                            color: variant.color,
+                                            price: variant.sell_price
+                                          })
+                                        }
+                                        style={{
+                                          ...secondaryButtonStyle,
+                                          opacity: printSettings ? 1 : 0.6,
+                                          width: undefined,
+                                          whiteSpace: 'nowrap'
+                                        }}
+                                      >
+                                        طباعة الباركود
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
-      </div>
-    )}
+      )}
 
       {activeTab === 'create' && (
-        <div
-          className="glass-card"
-          style={{
-            borderRadius: '24px',
-            padding: isNarrowDesktop ? '16px' : '20px',
-            display: 'grid',
-            gap: '16px',
-            boxSizing: 'border-box',
-            maxWidth: '100%',
-            overflow: 'hidden'
-          }}
-        >
-          <div style={{ fontSize: '20px', fontWeight: 700 }}>إضافة منتج جديد</div>
-
+        <div className="product-editor-screen">
           <div
+            className="glass-card product-editor-head"
             style={{
+              borderRadius: '24px',
+              padding: isNarrowDesktop ? '16px' : '20px',
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: '14px'
+              gap: '16px',
+              boxSizing: 'border-box',
+              maxWidth: '100%',
+              alignContent: 'start'
             }}
           >
+            <div style={{ fontSize: '20px', fontWeight: 700 }}>إضافة منتج جديد</div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '14px'
+              }}
+            >
+              <div>
+                <label style={labelStyle}>اسم المنتج</label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>التصنيف</label>
+                <select
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">بدون تصنيف</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div>
-              <label style={labelStyle}>اسم المنتج</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                style={inputStyle}
+              <label style={labelStyle}>الوصف</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  height: '86px',
+                  paddingTop: '14px',
+                  resize: 'vertical'
+                }}
               />
             </div>
+          </div>
+
+          <div className="product-editor-body-scroll">
+            <div
+              className="glass-card product-editor-body"
+              style={{
+                borderRadius: '24px',
+                padding: isNarrowDesktop ? '16px' : '20px'
+              }}
+            >
+              <div style={{ fontSize: '18px', fontWeight: 700 }}>الـ Variants</div>
+
+              <div style={{ display: 'grid', gap: '14px' }}>
+                {variants.map((variant, index) => (
+                  <div
+                    key={index}
+                    className="soft-card"
+                    style={{
+                      borderRadius: '18px',
+                      padding: isCompact ? '12px' : '16px',
+                      display: 'grid',
+                      gap: '14px',
+                      overflow: 'visible'
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+                        gap: '12px'
+                      }}
+                    >
+                      <div>
+                        <label style={labelStyle}>الباركود</label>
+
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: isCompact ? '1fr' : 'minmax(0, 1fr) auto',
+                            gap: '8px'
+                          }}
+                        >
+                          <input
+                            value={variant.barcode}
+                            onChange={(e) => updateVariant(index, 'barcode', e.target.value)}
+                            style={inputStyle}
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => updateVariant(index, 'barcode', generateBarcodeValue())}
+                            style={secondarySmallButtonStyle}
+                          >
+                            توليد
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>المقاس</label>
+                        <input
+                          value={variant.size}
+                          onChange={(e) => updateVariant(index, 'size', e.target.value)}
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>اللون</label>
+                        <input
+                          value={variant.color}
+                          onChange={(e) => updateVariant(index, 'color', e.target.value)}
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                        gap: '12px'
+                      }}
+                    >
+                      <div>
+                        <label style={labelStyle}>سعر الشراء</label>
+                        <input
+                          type="number"
+                          value={variant.buy_price}
+                          onChange={(e) => updateVariant(index, 'buy_price', e.target.value)}
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>سعر البيع</label>
+                        <input
+                          type="number"
+                          value={variant.sell_price}
+                          onChange={(e) => updateVariant(index, 'sell_price', e.target.value)}
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>حد المخزون</label>
+                        <input
+                          type="number"
+                          value={variant.min_stock}
+                          onChange={(e) => updateVariant(index, 'min_stock', e.target.value)}
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>الرصيد الافتتاحي</label>
+                        <input
+                          type="number"
+                          value={variant.opening_qty}
+                          onChange={(e) => updateVariant(index, 'opening_qty', e.target.value)}
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
+
+                    {variants.length > 1 && (
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => removeVariant(index)}
+                          style={dangerButtonStyle}
+                        >
+                          حذف هذا الـ variant
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <button type="button" onClick={addVariant} style={secondaryButtonStyle}>
+                  + إضافة variant
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void handleSave()}
+                  disabled={!canSave || loading}
+                  style={{
+                    ...primaryButtonStyle,
+                    opacity: !canSave || loading ? 0.6 : 1
+                  }}
+                >
+                  {loading ? 'جاري الحفظ...' : 'حفظ المنتج'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetCreateForm();
+                    setShowCreate(false);
+                    setActiveTab('list');
+                  }}
+                  style={secondaryButtonStyle}
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      
+      {activeTab === 'edit' && editingProductId && (
+        <div className="product-editor-screen">
+          <div
+            className="glass-card product-editor-head"
+            style={{
+              borderRadius: '24px',
+              padding: isNarrowDesktop ? '16px' : '20px',
+              display: 'grid',
+              gap: '16px',
+              boxSizing: 'border-box',
+              maxWidth: '100%',
+              alignContent: 'start'
+            }}
+          >
+            <div style={{ fontSize: '20px', fontWeight: 700 }}>
+              {productEditMode === 'addVariant' ? 'إضافة صنف للمنتج' : 'تعديل المنتج'}
+            </div>
+
+            {productEditMode === 'addVariant' && (
+              <div style={{ color: '#94a3b8', fontWeight: 700 }}>
+                المنتج: {editName || '—'}
+              </div>
+            )}
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '14px'
+              }}
+            >
+              <div>
+                <label style={labelStyle}>اسم المنتج</label>
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={labelStyle}>التصنيف</label>
+                <select
+                  value={editCategoryId}
+                  onChange={(e) => setEditCategoryId(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">بدون تصنيف</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
             <div>
-              <label style={labelStyle}>التصنيف</label>
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                style={inputStyle}
-              >
-                <option value="">بدون تصنيف</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
+              <label style={labelStyle}>الوصف</label>
+              <textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  height: '86px',
+                  paddingTop: '14px',
+                  resize: 'vertical'
+                }}
+              />
             </div>
           </div>
 
-          <div>
-            <label style={labelStyle}>الوصف</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              style={{ ...inputStyle, height: '100px', paddingTop: '14px', resize: 'vertical' }}
-            />
-          </div>
-
-          <div style={{ fontSize: '18px', fontWeight: 700 }}>الـ Variants</div>
-
-          <div style={{ display: 'grid', gap: '14px' }}>
-            {variants.map((variant, index) => (
+          <div className="product-editor-body-scroll">
+            <div
+              className="glass-card product-editor-body"
+              style={{
+                borderRadius: '24px',
+                padding: isNarrowDesktop ? '16px' : '20px'
+              }}
+            >
               <div
-                key={index}
                 className="soft-card"
                 style={{
                   borderRadius: '18px',
-                  padding: isCompact ? '12px' : '16px',
+                  padding: '16px',
                   display: 'grid',
                   gap: '14px',
-                  overflow: 'hidden'
+                  overflow: 'visible'
                 }}
               >
+                <div>
+                  <h3 style={{ margin: '0 0 6px' }}>إضافة صنف جديد للمنتج</h3>
+                  <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700 }}>
+                    أضف مقاس أو لون جديد لنفس المنتج بدون إنشاء منتج جديد.
+                  </p>
+                </div>
+
                 <div
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                     gap: '12px'
                   }}
                 >
@@ -1638,19 +1905,19 @@ export default function ProductsPage() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: isCompact ? '1fr' : 'minmax(0, 1fr) auto',
+                        gridTemplateColumns: 'minmax(0, 1fr) auto',
                         gap: '8px'
                       }}
                     >
                       <input
-                        value={variant.barcode}
-                        onChange={(e) => updateVariant(index, 'barcode', e.target.value)}
+                        value={newEditVariant.barcode}
+                        onChange={(e) => updateNewEditVariant('barcode', e.target.value)}
                         style={inputStyle}
                       />
 
                       <button
                         type="button"
-                        onClick={() => updateVariant(index, 'barcode', generateBarcodeValue())}
+                        onClick={() => updateNewEditVariant('barcode', generateBarcodeValue())}
                         style={secondarySmallButtonStyle}
                       >
                         توليد
@@ -1661,8 +1928,8 @@ export default function ProductsPage() {
                   <div>
                     <label style={labelStyle}>المقاس</label>
                     <input
-                      value={variant.size}
-                      onChange={(e) => updateVariant(index, 'size', e.target.value)}
+                      value={newEditVariant.size}
+                      onChange={(e) => updateNewEditVariant('size', e.target.value)}
                       style={inputStyle}
                     />
                   </div>
@@ -1670,26 +1937,18 @@ export default function ProductsPage() {
                   <div>
                     <label style={labelStyle}>اللون</label>
                     <input
-                      value={variant.color}
-                      onChange={(e) => updateVariant(index, 'color', e.target.value)}
+                      value={newEditVariant.color}
+                      onChange={(e) => updateNewEditVariant('color', e.target.value)}
                       style={inputStyle}
                     />
                   </div>
-                </div>
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                    gap: '12px'
-                  }}
-                >
                   <div>
                     <label style={labelStyle}>سعر الشراء</label>
                     <input
                       type="number"
-                      value={variant.buy_price}
-                      onChange={(e) => updateVariant(index, 'buy_price', e.target.value)}
+                      value={newEditVariant.buy_price}
+                      onChange={(e) => updateNewEditVariant('buy_price', e.target.value)}
                       style={inputStyle}
                     />
                   </div>
@@ -1698,8 +1957,8 @@ export default function ProductsPage() {
                     <label style={labelStyle}>سعر البيع</label>
                     <input
                       type="number"
-                      value={variant.sell_price}
-                      onChange={(e) => updateVariant(index, 'sell_price', e.target.value)}
+                      value={newEditVariant.sell_price}
+                      onChange={(e) => updateNewEditVariant('sell_price', e.target.value)}
                       style={inputStyle}
                     />
                   </div>
@@ -1708,8 +1967,8 @@ export default function ProductsPage() {
                     <label style={labelStyle}>حد المخزون</label>
                     <input
                       type="number"
-                      value={variant.min_stock}
-                      onChange={(e) => updateVariant(index, 'min_stock', e.target.value)}
+                      value={newEditVariant.min_stock}
+                      onChange={(e) => updateNewEditVariant('min_stock', e.target.value)}
                       style={inputStyle}
                     />
                   </div>
@@ -1718,371 +1977,154 @@ export default function ProductsPage() {
                     <label style={labelStyle}>الرصيد الافتتاحي</label>
                     <input
                       type="number"
-                      value={variant.opening_qty}
-                      onChange={(e) => updateVariant(index, 'opening_qty', e.target.value)}
+                      value={newEditVariant.opening_qty}
+                      onChange={(e) => updateNewEditVariant('opening_qty', e.target.value)}
                       style={inputStyle}
                     />
                   </div>
                 </div>
 
-                {variants.length > 1 && (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => removeVariant(index)}
-                      style={dangerButtonStyle}
-                    >
-                      حذف هذا الـ variant
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <button type="button" onClick={addVariant} style={secondaryButtonStyle}>
-              + إضافة variant
-            </button>
-
-            <button
-              type="button"
-              onClick={() => void handleSave()}
-              disabled={!canSave || loading}
-              style={{
-                ...primaryButtonStyle,
-                opacity: !canSave || loading ? 0.6 : 1
-              }}
-            >
-              {loading ? 'جاري الحفظ...' : 'حفظ المنتج'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                resetCreateForm();
-                setShowCreate(false);
-                setActiveTab('list');
-              }}
-              style={secondaryButtonStyle}
-            >
-              إلغاء
-            </button>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'edit' && editingProductId && (
-        <div
-          className="glass-card"
-          style={{
-            borderRadius: '24px',
-            padding: isNarrowDesktop ? '16px' : '20px',
-            display: 'grid',
-            gap: '16px',
-            maxWidth: '100%',
-            overflow: 'hidden'
-          }}
-        >
-          <div style={{ fontSize: '20px', fontWeight: 700 }}>
-            {productEditMode === 'addVariant' ? 'إضافة صنف للمنتج' : 'تعديل المنتج'}
-          </div>
-
-          {productEditMode === 'addVariant' && (
-            <div style={{ color: '#94a3b8', fontWeight: 700 }}>
-              المنتج: {editName || '—'}
-            </div>
-          )}
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: '14px'
-            }}
-          >
-            <div>
-              <label style={labelStyle}>اسم المنتج</label>
-              <input
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>التصنيف</label>
-              <select
-                value={editCategoryId}
-                onChange={(e) => setEditCategoryId(e.target.value)}
-                style={inputStyle}
-              >
-                <option value="">بدون تصنيف</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label style={labelStyle}>الوصف</label>
-            <textarea
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-              style={{ ...inputStyle, height: '100px', paddingTop: '14px', resize: 'vertical' }}
-            />
-          </div>
-
-          <div
-            className="soft-card"
-            style={{
-              borderRadius: '18px',
-              padding: '16px',
-              display: 'grid',
-              gap: '14px',
-              overflow: 'hidden'
-            }}
-          >
-            <div>
-              <h3 style={{ margin: '0 0 6px' }}>إضافة صنف جديد للمنتج</h3>
-              <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700 }}>
-                أضف مقاس أو لون جديد لنفس المنتج بدون إنشاء منتج جديد.
-              </p>
-            </div>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: '12px'
-              }}
-            >
-              <div>
-                <label style={labelStyle}>الباركود</label>
-
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'minmax(0, 1fr) auto',
-                    gap: '8px'
-                  }}
-                >
-                  <input
-                    value={newEditVariant.barcode}
-                    onChange={(e) => updateNewEditVariant('barcode', e.target.value)}
-                    style={inputStyle}
-                  />
-
+                <div>
                   <button
                     type="button"
-                    onClick={() => updateNewEditVariant('barcode', generateBarcodeValue())}
-                    style={secondarySmallButtonStyle}
+                    onClick={() => void addVariantToEditingProduct()}
+                    disabled={addingVariant}
+                    style={{
+                      ...primaryButtonStyle,
+                      opacity: addingVariant ? 0.6 : 1,
+                      cursor: addingVariant ? 'not-allowed' : 'pointer'
+                    }}
                   >
-                    توليد
+                    {addingVariant ? 'جاري الإضافة...' : '+ إضافة الصنف للمنتج'}
                   </button>
                 </div>
               </div>
 
-              <div>
-                <label style={labelStyle}>المقاس</label>
-                <input
-                  value={newEditVariant.size}
-                  onChange={(e) => updateNewEditVariant('size', e.target.value)}
-                  style={inputStyle}
-                />
+              <div style={{ fontSize: '18px', fontWeight: 700 }}>تعديل الـ Variants</div>
+
+              <div style={{ display: 'grid', gap: '14px' }}>
+                {editVariants.map((variant, index) => (
+                  <div
+                    key={variant.id}
+                    className="soft-card"
+                    style={{
+                      borderRadius: '18px',
+                      padding: isCompact ? '12px' : '16px',
+                      display: 'grid',
+                      gap: '14px',
+                      overflow: 'visible'
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+                        gap: '12px'
+                      }}
+                    >
+                      <div>
+                        <label style={labelStyle}>الباركود</label>
+                        <input
+                          value={variant.barcode}
+                          onChange={(e) =>
+                            updateEditVariant(index, 'barcode', e.target.value)
+                          }
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>المقاس</label>
+                        <input
+                          value={variant.size}
+                          onChange={(e) =>
+                            updateEditVariant(index, 'size', e.target.value)
+                          }
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>اللون</label>
+                        <input
+                          value={variant.color}
+                          onChange={(e) =>
+                            updateEditVariant(index, 'color', e.target.value)
+                          }
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                        gap: '12px'
+                      }}
+                    >
+                      <div>
+                        <label style={labelStyle}>سعر الشراء</label>
+                        <input
+                          type="number"
+                          value={variant.buy_price}
+                          onChange={(e) =>
+                            updateEditVariant(index, 'buy_price', e.target.value)
+                          }
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>سعر البيع</label>
+                        <input
+                          type="number"
+                          value={variant.sell_price}
+                          onChange={(e) =>
+                            updateEditVariant(index, 'sell_price', e.target.value)
+                          }
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>حد المخزون</label>
+                        <input
+                          type="number"
+                          value={variant.min_stock}
+                          onChange={(e) =>
+                            updateEditVariant(index, 'min_stock', e.target.value)
+                          }
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
 
-              <div>
-                <label style={labelStyle}>اللون</label>
-                <input
-                  value={newEditVariant.color}
-                  onChange={(e) => updateNewEditVariant('color', e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>سعر الشراء</label>
-                <input
-                  type="number"
-                  value={newEditVariant.buy_price}
-                  onChange={(e) => updateNewEditVariant('buy_price', e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>سعر البيع</label>
-                <input
-                  type="number"
-                  value={newEditVariant.sell_price}
-                  onChange={(e) => updateNewEditVariant('sell_price', e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>حد المخزون</label>
-                <input
-                  type="number"
-                  value={newEditVariant.min_stock}
-                  onChange={(e) => updateNewEditVariant('min_stock', e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>الرصيد الافتتاحي</label>
-                <input
-                  type="number"
-                  value={newEditVariant.opening_qty}
-                  onChange={(e) => updateNewEditVariant('opening_qty', e.target.value)}
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="button"
-                onClick={() => void addVariantToEditingProduct()}
-                disabled={addingVariant}
-                style={{
-                  ...primaryButtonStyle,
-                  opacity: addingVariant ? 0.6 : 1,
-                  cursor: addingVariant ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {addingVariant ? 'جاري الإضافة...' : '+ إضافة الصنف للمنتج'}
-              </button>
-            </div>
-          </div>
-
-          <div style={{ fontSize: '18px', fontWeight: 700 }}>تعديل الـ Variants</div>
-
-          <div style={{ display: 'grid', gap: '14px' }}>
-            {editVariants.map((variant, index) => (
-              <div
-                key={variant.id}
-                className="soft-card"
-                style={{
-                  borderRadius: '18px',
-                  padding: isCompact ? '12px' : '16px',
-                  display: 'grid',
-                  gap: '14px',
-                  overflow: 'hidden'
-                }}
-              >
-                <div
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveEdit()}
+                  disabled={savingEdit}
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-                    gap: '12px'
+                    ...primaryButtonStyle,
+                    opacity: savingEdit ? 0.6 : 1
                   }}
                 >
-                  <div>
-                    <label style={labelStyle}>الباركود</label>
-                    <input
-                      value={variant.barcode}
-                      onChange={(e) =>
-                        updateEditVariant(index, 'barcode', e.target.value)
-                      }
-                      style={inputStyle}
-                    />
-                  </div>
+                  {savingEdit ? 'جاري حفظ التعديلات...' : 'حفظ التعديلات'}
+                </button>
 
-                  <div>
-                    <label style={labelStyle}>المقاس</label>
-                    <input
-                      value={variant.size}
-                      onChange={(e) =>
-                        updateEditVariant(index, 'size', e.target.value)
-                      }
-                      style={inputStyle}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={labelStyle}>اللون</label>
-                    <input
-                      value={variant.color}
-                      onChange={(e) =>
-                        updateEditVariant(index, 'color', e.target.value)
-                      }
-                      style={inputStyle}
-                    />
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                    gap: '12px'
-                  }}
-                >
-                  <div>
-                    <label style={labelStyle}>سعر الشراء</label>
-                    <input
-                      type="number"
-                      value={variant.buy_price}
-                      onChange={(e) =>
-                        updateEditVariant(index, 'buy_price', e.target.value)
-                      }
-                      style={inputStyle}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={labelStyle}>سعر البيع</label>
-                    <input
-                      type="number"
-                      value={variant.sell_price}
-                      onChange={(e) =>
-                        updateEditVariant(index, 'sell_price', e.target.value)
-                      }
-                      style={inputStyle}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={labelStyle}>حد المخزون</label>
-                    <input
-                      type="number"
-                      value={variant.min_stock}
-                      onChange={(e) =>
-                        updateEditVariant(index, 'min_stock', e.target.value)
-                      }
-                      style={inputStyle}
-                    />
-                  </div>
-                </div>
+                <button type="button" onClick={closeEditProduct} style={secondaryButtonStyle}>
+                  إلغاء
+                </button>
               </div>
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={() => void handleSaveEdit()}
-              disabled={savingEdit}
-              style={{
-                ...primaryButtonStyle,
-                opacity: savingEdit ? 0.6 : 1
-              }}
-            >
-              {savingEdit ? 'جاري حفظ التعديلات...' : 'حفظ التعديلات'}
-            </button>
-
-            <button type="button" onClick={closeEditProduct} style={secondaryButtonStyle}>
-              إلغاء
-            </button>
+            </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }

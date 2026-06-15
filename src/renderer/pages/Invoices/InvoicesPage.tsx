@@ -317,7 +317,19 @@ export default function InvoicesPage() {
     );
 
   return (
-    <div style={{ display: 'grid', gap: '18px' }}>
+    <div
+    style={{
+      display: 'grid',
+      gap: '18px',
+      height: '100%',
+      minHeight: 0,
+      gridTemplateRows: 'auto auto minmax(0, 1fr)',
+      alignContent: 'stretch',
+      width: '100%',
+      boxSizing: 'border-box',
+      paddingLeft: '28px'
+    }}
+  >
       {message && (
         <div
           style={{
@@ -445,11 +457,15 @@ export default function InvoicesPage() {
       </div>
       {activeTab === 'sales' && (
         <div
-          className="glass-card"
+          className="glass-card invoice-list-scroll"
           style={{
             padding: '18px',
             borderRadius: '18px',
-            overflowX: 'auto'
+            overflow: 'auto',
+            height: '100%',
+            minHeight: 0,
+            width: '100%',
+            boxSizing: 'border-box'
           }}
         >
           <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
@@ -648,11 +664,15 @@ export default function InvoicesPage() {
 
       {activeTab === 'returns' && (
         <div
-          className="glass-card"
+          className="glass-card invoice-list-scroll"
           style={{
             padding: '18px',
             borderRadius: '18px',
-            overflowX: 'auto'
+            overflow: 'auto',
+            height: '100%',
+            minHeight: 0,
+            width: '100%',
+            boxSizing: 'border-box'
           }}
         >
           <div

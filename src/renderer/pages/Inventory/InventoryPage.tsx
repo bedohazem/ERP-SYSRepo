@@ -164,7 +164,16 @@ export default function InventoryPage() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: '18px' }}>
+      <div
+        style={{
+          display: 'grid',
+          gap: '18px',
+          height: '100%',
+          minHeight: 0,
+          overflow: 'hidden',
+          gridTemplateRows: 'auto auto minmax(0, 1fr)'
+        }}
+      >
       {message && (
         <div
           style={{
@@ -253,18 +262,21 @@ export default function InventoryPage() {
       </div>
 
       <div
-        className="glass-card"
+        className="glass-card table-scroll"
         style={{
           padding: '18px',
           borderRadius: '18px',
-          overflowX: 'auto',
-          maxWidth: '100%'
+          overflow: 'auto',
+          height: '100%',
+          minHeight: 0,
+          maxWidth: '100%',
+          boxSizing: 'border-box'
         }}
       >
         <table
           style={{
             width: '100%',
-            minWidth: '680px',
+            minWidth: '980px',
             borderCollapse: 'collapse',
             direction: 'rtl'
           }}

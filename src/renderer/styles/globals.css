@@ -969,3 +969,180 @@ html[data-theme='light'] .user-active-action.enable:hover {
   border-color: rgba(16, 185, 129, 0.55) !important;
   color: #065f46 !important;
 }
+
+.app-main-scroll,
+.app-sidebar-scroll,
+.invoice-list-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.app-main-scroll::-webkit-scrollbar,
+.app-sidebar-scroll::-webkit-scrollbar,
+.invoice-list-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.app-main-scroll,
+.app-sidebar-scroll,
+.page-scroll,
+.list-scroll,
+.table-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.app-main-scroll::-webkit-scrollbar,
+.app-sidebar-scroll::-webkit-scrollbar,
+.page-scroll::-webkit-scrollbar,
+.list-scroll::-webkit-scrollbar,
+.table-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.fixed-page {
+  display: grid;
+  gap: 18px;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
+}
+
+.fixed-page.with-tabs {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.fixed-page-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+.fixed-table-card {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.product-editor-layout {
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+  height: 100%;
+  align-content: start;
+}
+
+.product-sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.product-sticky-surface {
+  background: rgba(17, 24, 39, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  padding: 20px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+
+html[data-theme='light'] .product-sticky-surface {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(15, 23, 42, 0.10);
+}
+
+.product-editor-body {
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+  align-content: start;
+}
+
+.product-editor-screen {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.product-editor-head {
+  position: relative;
+  z-index: 5;
+}
+
+.product-editor-body-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  padding-bottom: 24px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.product-editor-body-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.purchase-page-fixed {
+  display: grid;
+  gap: 18px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.purchase-body-scroll {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.purchase-body-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.purchase-items-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.purchase-items-search-fixed {
+  position: relative;
+  z-index: 20;
+}
+
+.purchase-items-list-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.purchase-items-list-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}

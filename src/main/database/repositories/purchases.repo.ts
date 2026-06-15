@@ -17,7 +17,131 @@ export type CreatePurchaseInput = {
   }>;
 };
 
+export type CancelPurchaseInput = {
+  purchase_id: number;
+  reason?: string;
+  actor_id?: number | null;
+};
+
+export type CreatePurchaseReturnInput = {
+  purchase_id: number;
+  notes?: string | null;
+  actor_id?: number | null;
+  items: Array<{
+    purchase_item_id?: number;
+    variant_id?: number;
+    quantity: number;
+  }>;
+};
+
+function ensurePurchaseReturnSchema() {
+  const db = getDb();
+
+  function safeRun(sql: string) {
+    try {
+      db.prepare(sql).run();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      if (!message.includes('duplicate column name')) {
+        throw error;
+      }
+    }
+  }
+
+  safeRun(`ALTER TABLE purchase_invoices ADD COLUMN status TEXT DEFAULT 'active'`);
+  safeRun(`ALTER TABLE purchase_invoices ADD COLUMN cancelled_at TEXT`);
+  safeRun(`ALTER TABLE purchase_invoices ADD COLUMN cancelled_by INTEGER`);
+  safeRun(`ALTER TABLE purchase_invoices ADD COLUMN cancel_reason TEXT`);
+
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS purchase_returns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      purchase_id INTEGER NOT NULL,
+      supplier_id INTEGER NOT NULL,
+      total_amount REAL NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS purchase_return_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      return_id INTEGER NOT NULL,
+      purchase_item_id INTEGER NOT NULL,
+      variant_id INTEGER NOT NULL,
+      product_name TEXT NOT NULL,
+      barcode TEXT,
+      size TEXT,
+      color TEXT,
+      quantity REAL NOT NULL,
+      unit_cost REAL NOT NULL,
+      line_total REAL NOT NULL
+    )
+  `).run();
+
+  db.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_purchase_returns_purchase_id
+    ON purchase_returns (purchase_id)
+  `).run();
+
+  db.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_purchase_return_items_return_id
+    ON purchase_return_items (return_id)
+  `).run();
+
+  db.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_purchase_return_items_purchase_item_id
+    ON purchase_return_items (purchase_item_id)
+  `).run();
+}
+
+function getCurrentVariantStock(db: ReturnType<typeof getDb>, variantId: number) {
+  const row = db
+    .prepare(`
+      SELECT
+        IFNULL(SUM(
+          CASE
+            WHEN type = 'in' THEN quantity
+            WHEN type = 'out' THEN -quantity
+            ELSE 0
+          END
+        ), 0) AS stock
+      FROM stock_movements
+      WHERE variant_id = ?
+    `)
+    .get(Number(variantId)) as { stock: number } | undefined;
+
+  return Number(row?.stock || 0);
+}
+
+function getReturnedQuantityForPurchaseItem(
+  db: ReturnType<typeof getDb>,
+  purchaseItemId: number
+) {
+  const row = db
+    .prepare(`
+      SELECT IFNULL(SUM(pri.quantity), 0) AS quantity
+      FROM purchase_return_items pri
+      JOIN purchase_returns pr ON pr.id = pri.return_id
+      WHERE pri.purchase_item_id = ?
+    `)
+    .get(Number(purchaseItemId)) as { quantity: number } | undefined;
+
+  return Number(row?.quantity || 0);
+}
+
+function normalizePaymentStatus(totalAmount: number, paidAmount: number, remainingAmount: number) {
+  if (remainingAmount <= 0) return 'paid';
+  if (paidAmount > 0 && paidAmount < totalAmount) return 'partial';
+  return 'unpaid';
+}
+
 export function createPurchaseInvoice(input: CreatePurchaseInput) {
+  ensurePurchaseReturnSchema();
+
   const db = getDb();
 
   const supplierId = Number(input.supplier_id);
@@ -87,9 +211,10 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       : 0;
 
     const subTotalInput = Number(input.sub_total || 0);
-    const subTotal = Number.isFinite(subTotalInput) && subTotalInput > 0
-      ? subTotalInput
-      : totalAmount + discountValue;
+    const subTotal =
+      Number.isFinite(subTotalInput) && subTotalInput > 0
+        ? subTotalInput
+        : totalAmount + discountValue;
 
     const discountInput = Number(input.discount_input || 0);
     const discountType = input.discount_type === 'percent' ? 'percent' : 'amount';
@@ -112,9 +237,10 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
           remaining_amount,
           payment_status,
           payment_method,
-          notes
+          notes,
+          status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
       `)
       .run(
         supplierId,
@@ -239,11 +365,376 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
   return tx();
 }
 
+export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
+  ensurePurchaseReturnSchema();
+
+  const db = getDb();
+  const purchaseId = Number(input.purchase_id);
+
+  if (!purchaseId) {
+    throw new Error('رقم فاتورة الشراء غير صحيح');
+  }
+
+  const tx = db.transaction(() => {
+    const purchase = db
+      .prepare(`
+        SELECT
+          pi.*,
+          IFNULL(pi.status, 'active') AS safe_status
+        FROM purchase_invoices pi
+        WHERE pi.id = ?
+        LIMIT 1
+      `)
+      .get(purchaseId) as any;
+
+    if (!purchase) {
+      throw new Error('فاتورة الشراء غير موجودة');
+    }
+
+    if (purchase.safe_status === 'cancelled') {
+      throw new Error('فاتورة الشراء ملغاة بالفعل');
+    }
+
+    const returnsCountRow = db
+      .prepare(`
+        SELECT COUNT(*) AS count
+        FROM purchase_returns
+        WHERE purchase_id = ?
+      `)
+      .get(purchaseId) as { count: number };
+
+    if (Number(returnsCountRow?.count || 0) > 0) {
+      throw new Error('لا يمكن إلغاء فاتورة تم عمل مرتجع عليها');
+    }
+
+    const items = db
+      .prepare(`
+        SELECT *
+        FROM purchase_items
+        WHERE purchase_id = ?
+        ORDER BY id ASC
+      `)
+      .all(purchaseId) as any[];
+
+    if (items.length === 0) {
+      throw new Error('لا توجد أصناف داخل فاتورة الشراء');
+    }
+
+    for (const item of items) {
+      const currentStock = getCurrentVariantStock(db, Number(item.variant_id));
+      const quantity = Number(item.quantity || 0);
+
+      if (currentStock < quantity) {
+        throw new Error(
+          `لا يمكن إلغاء الفاتورة لأن مخزون الصنف "${item.product_name}" أقل من كمية الفاتورة`
+        );
+      }
+    }
+
+    const insertStockMovement = db.prepare(`
+      INSERT INTO stock_movements (
+        variant_id,
+        type,
+        quantity,
+        reference_id,
+        reference_type,
+        notes
+      )
+      VALUES (?, 'out', ?, ?, 'purchase_cancel', ?)
+    `);
+
+    for (const item of items) {
+      insertStockMovement.run(
+        Number(item.variant_id),
+        Number(item.quantity || 0),
+        purchaseId,
+        `خروج مخزون بسبب إلغاء فاتورة شراء رقم ${purchaseId}`
+      );
+    }
+
+    const totalAmount = Number(purchase.total_amount || 0);
+    const paidAmount = Number(purchase.paid_amount || 0);
+    const remainingAmount = Number(purchase.remaining_amount || 0);
+
+    db.prepare(`
+      UPDATE purchase_invoices
+      SET
+        status = 'cancelled',
+        cancelled_at = CURRENT_TIMESTAMP,
+        cancelled_by = ?,
+        cancel_reason = ?,
+        payment_status = 'cancelled',
+        remaining_amount = 0
+      WHERE id = ?
+    `).run(
+      input.actor_id ?? null,
+      input.reason?.trim() || null,
+      purchaseId
+    );
+
+    db.prepare(`
+      UPDATE suppliers
+      SET
+        total_purchased = MAX(total_purchased - ?, 0),
+        balance = MAX(balance - ?, 0),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(totalAmount, remainingAmount, Number(purchase.supplier_id));
+
+    if (paidAmount > 0) {
+      createCashMovement({
+        type: 'supplier_payment',
+        direction: 'in',
+        amount: paidAmount,
+        payment_method: purchase.payment_method || 'cash',
+        reference_id: purchaseId,
+        reference_type: 'purchase_cancel',
+        notes: `عكس دفعة فاتورة شراء ملغاة رقم ${purchaseId}`,
+        created_by: input.actor_id ?? null
+      });
+
+      db.prepare(`
+        DELETE FROM supplier_payments
+        WHERE purchase_id = ?
+      `).run(purchaseId);
+    }
+
+    return {
+      ok: true,
+      purchase_id: purchaseId,
+      supplier_id: Number(purchase.supplier_id),
+      reversed_total: totalAmount,
+      reversed_paid: paidAmount,
+      reversed_remaining: remainingAmount,
+      items_count: items.length
+    };
+  });
+
+  return tx();
+}
+
+export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
+  ensurePurchaseReturnSchema();
+
+  const db = getDb();
+  const purchaseId = Number(input.purchase_id);
+
+  if (!purchaseId) {
+    throw new Error('رقم فاتورة الشراء غير صحيح');
+  }
+
+  if (!input.items?.length) {
+    throw new Error('لا توجد أصناف في المرتجع');
+  }
+
+  const tx = db.transaction(() => {
+    const purchase = db
+      .prepare(`
+        SELECT
+          pi.*,
+          IFNULL(pi.status, 'active') AS safe_status
+        FROM purchase_invoices pi
+        WHERE pi.id = ?
+        LIMIT 1
+      `)
+      .get(purchaseId) as any;
+
+    if (!purchase) {
+      throw new Error('فاتورة الشراء غير موجودة');
+    }
+
+    if (purchase.safe_status === 'cancelled') {
+      throw new Error('لا يمكن عمل مرتجع على فاتورة ملغاة');
+    }
+
+    const preparedItems = input.items.map((rawItem) => {
+      const quantity = Number(rawItem.quantity || 0);
+
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new Error('كمية المرتجع غير صحيحة');
+      }
+
+      let purchaseItem: any;
+
+      if (rawItem.purchase_item_id) {
+        purchaseItem = db
+          .prepare(`
+            SELECT *
+            FROM purchase_items
+            WHERE id = ?
+              AND purchase_id = ?
+            LIMIT 1
+          `)
+          .get(Number(rawItem.purchase_item_id), purchaseId);
+      } else if (rawItem.variant_id) {
+        purchaseItem = db
+          .prepare(`
+            SELECT *
+            FROM purchase_items
+            WHERE variant_id = ?
+              AND purchase_id = ?
+            LIMIT 1
+          `)
+          .get(Number(rawItem.variant_id), purchaseId);
+      }
+
+      if (!purchaseItem) {
+        throw new Error('الصنف غير موجود داخل فاتورة الشراء');
+      }
+
+      const alreadyReturned = getReturnedQuantityForPurchaseItem(
+        db,
+        Number(purchaseItem.id)
+      );
+
+      const originalQuantity = Number(purchaseItem.quantity || 0);
+      const availableToReturn = Math.max(0, originalQuantity - alreadyReturned);
+
+      if (quantity > availableToReturn) {
+        throw new Error(
+          `كمية المرتجع للصنف "${purchaseItem.product_name}" أكبر من الكمية المتاحة للمرتجع`
+        );
+      }
+
+      const currentStock = getCurrentVariantStock(db, Number(purchaseItem.variant_id));
+
+      if (currentStock < quantity) {
+        throw new Error(
+          `لا يمكن عمل مرتجع للصنف "${purchaseItem.product_name}" لأن المخزون الحالي غير كافٍ`
+        );
+      }
+
+      const unitCost = Number(purchaseItem.unit_cost || 0);
+
+      return {
+        purchaseItem,
+        quantity,
+        unitCost,
+        lineTotal: quantity * unitCost
+      };
+    });
+
+    const totalAmount = preparedItems.reduce((sum, item) => sum + item.lineTotal, 0);
+
+    if (totalAmount <= 0) {
+      throw new Error('قيمة المرتجع غير صحيحة');
+    }
+
+    const returnResult = db
+      .prepare(`
+        INSERT INTO purchase_returns (
+          purchase_id,
+          supplier_id,
+          total_amount,
+          notes,
+          created_by
+        )
+        VALUES (?, ?, ?, ?, ?)
+      `)
+      .run(
+        purchaseId,
+        Number(purchase.supplier_id),
+        totalAmount,
+        input.notes?.trim() || null,
+        input.actor_id ?? null
+      );
+
+    const returnId = Number(returnResult.lastInsertRowid);
+
+    const insertReturnItem = db.prepare(`
+      INSERT INTO purchase_return_items (
+        return_id,
+        purchase_item_id,
+        variant_id,
+        product_name,
+        barcode,
+        size,
+        color,
+        quantity,
+        unit_cost,
+        line_total
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertStockMovement = db.prepare(`
+      INSERT INTO stock_movements (
+        variant_id,
+        type,
+        quantity,
+        reference_id,
+        reference_type,
+        notes
+      )
+      VALUES (?, 'out', ?, ?, 'purchase_return', ?)
+    `);
+
+    for (const item of preparedItems) {
+      insertReturnItem.run(
+        returnId,
+        Number(item.purchaseItem.id),
+        Number(item.purchaseItem.variant_id),
+        item.purchaseItem.product_name,
+        item.purchaseItem.barcode ?? null,
+        item.purchaseItem.size ?? null,
+        item.purchaseItem.color ?? null,
+        item.quantity,
+        item.unitCost,
+        item.lineTotal
+      );
+
+      insertStockMovement.run(
+        Number(item.purchaseItem.variant_id),
+        item.quantity,
+        returnId,
+        `خروج مخزون بسبب مرتجع شراء رقم ${returnId} من فاتورة ${purchaseId}`
+      );
+    }
+
+    const oldRemaining = Number(purchase.remaining_amount || 0);
+    const oldPaid = Number(purchase.paid_amount || 0);
+    const oldTotal = Number(purchase.total_amount || 0);
+
+    const newRemaining = Math.max(0, oldRemaining - totalAmount);
+    const newPaymentStatus = normalizePaymentStatus(oldTotal, oldPaid, newRemaining);
+
+    db.prepare(`
+      UPDATE purchase_invoices
+      SET
+        remaining_amount = ?,
+        payment_status = ?
+      WHERE id = ?
+    `).run(newRemaining, newPaymentStatus, purchaseId);
+
+    db.prepare(`
+      UPDATE suppliers
+      SET
+        total_purchased = MAX(total_purchased - ?, 0),
+        balance = balance - ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(totalAmount, totalAmount, Number(purchase.supplier_id));
+
+    return {
+      ok: true,
+      return_id: returnId,
+      purchase_id: purchaseId,
+      supplier_id: Number(purchase.supplier_id),
+      total_amount: totalAmount,
+      items_count: preparedItems.length
+    };
+  });
+
+  return tx();
+}
+
 export function listPurchaseInvoices(input?: {
   search?: string;
   limit?: number;
   offset?: number;
 }) {
+  ensurePurchaseReturnSchema();
+
   const db = getDb();
 
   const search = input?.search?.trim() || '';
@@ -272,9 +763,15 @@ export function listPurchaseInvoices(input?: {
     .prepare(`
       SELECT
         pi.*,
+        IFNULL(pi.status, 'active') AS status,
         s.name AS supplier_name,
         s.phone AS supplier_phone,
-        COUNT(pii.id) AS items_count
+        COUNT(pii.id) AS items_count,
+        IFNULL((
+          SELECT SUM(pr.total_amount)
+          FROM purchase_returns pr
+          WHERE pr.purchase_id = pi.id
+        ), 0) AS returned_amount
       FROM purchase_invoices pi
       JOIN suppliers s ON s.id = pi.supplier_id
       LEFT JOIN purchase_items pii ON pii.purchase_id = pi.id
@@ -303,15 +800,90 @@ export function listPurchaseInvoices(input?: {
   };
 }
 
+export function listPurchaseReturns(input?: {
+  search?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  ensurePurchaseReturnSchema();
+
+  const db = getDb();
+
+  const search = input?.search?.trim() || '';
+  const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 300);
+  const offset = Math.max(Number(input?.offset || 0), 0);
+
+  const where: string[] = [];
+  const params: any[] = [];
+
+  if (search) {
+    where.push(`
+      (
+        CAST(pr.id AS TEXT) LIKE ?
+        OR CAST(pr.purchase_id AS TEXT) LIKE ?
+        OR s.name LIKE ?
+        OR IFNULL(s.phone, '') LIKE ?
+      )
+    `);
+
+    const q = `%${search}%`;
+    params.push(q, q, q, q);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const rows = db
+    .prepare(`
+      SELECT
+        pr.*,
+        s.name AS supplier_name,
+        s.phone AS supplier_phone,
+        COUNT(pri.id) AS items_count
+      FROM purchase_returns pr
+      JOIN suppliers s ON s.id = pr.supplier_id
+      LEFT JOIN purchase_return_items pri ON pri.return_id = pr.id
+      ${whereSql}
+      GROUP BY pr.id
+      ORDER BY pr.id DESC
+      LIMIT ?
+      OFFSET ?
+    `)
+    .all(...params, limit, offset);
+
+  const totalRow = db
+    .prepare(`
+      SELECT COUNT(*) AS total
+      FROM purchase_returns pr
+      JOIN suppliers s ON s.id = pr.supplier_id
+      ${whereSql}
+    `)
+    .get(...params) as { total: number };
+
+  return {
+    rows,
+    total: Number(totalRow?.total || 0),
+    limit,
+    offset
+  };
+}
+
 export function getPurchaseInvoice(purchaseId: number) {
+  ensurePurchaseReturnSchema();
+
   const db = getDb();
 
   const purchase = db
     .prepare(`
       SELECT
         pi.*,
+        IFNULL(pi.status, 'active') AS status,
         s.name AS supplier_name,
-        s.phone AS supplier_phone
+        s.phone AS supplier_phone,
+        IFNULL((
+          SELECT SUM(pr.total_amount)
+          FROM purchase_returns pr
+          WHERE pr.purchase_id = pi.id
+        ), 0) AS returned_amount
       FROM purchase_invoices pi
       JOIN suppliers s ON s.id = pi.supplier_id
       WHERE pi.id = ?
@@ -325,10 +897,26 @@ export function getPurchaseInvoice(purchaseId: number) {
 
   const items = db
     .prepare(`
-      SELECT *
-      FROM purchase_items
-      WHERE purchase_id = ?
-      ORDER BY id ASC
+      SELECT
+        pii.*,
+        IFNULL((
+          SELECT SUM(pri.quantity)
+          FROM purchase_return_items pri
+          JOIN purchase_returns pr ON pr.id = pri.return_id
+          WHERE pri.purchase_item_id = pii.id
+        ), 0) AS returned_quantity,
+        MAX(
+          pii.quantity - IFNULL((
+            SELECT SUM(pri.quantity)
+            FROM purchase_return_items pri
+            JOIN purchase_returns pr ON pr.id = pri.return_id
+            WHERE pri.purchase_item_id = pii.id
+          ), 0),
+          0
+        ) AS returnable_quantity
+      FROM purchase_items pii
+      WHERE pii.purchase_id = ?
+      ORDER BY pii.id ASC
     `)
     .all(Number(purchaseId));
 
@@ -341,10 +929,60 @@ export function getPurchaseInvoice(purchaseId: number) {
     `)
     .all(Number(purchaseId));
 
+  const returns = db
+    .prepare(`
+      SELECT *
+      FROM purchase_returns
+      WHERE purchase_id = ?
+      ORDER BY id DESC
+    `)
+    .all(Number(purchaseId));
+
   return {
     purchase,
     items,
-    payments
+    payments,
+    returns
+  };
+}
+
+export function getPurchaseReturn(returnId: number) {
+  ensurePurchaseReturnSchema();
+
+  const db = getDb();
+
+  const purchaseReturn = db
+    .prepare(`
+      SELECT
+        pr.*,
+        s.name AS supplier_name,
+        s.phone AS supplier_phone,
+        pi.id AS purchase_number,
+        pi.created_at AS purchase_created_at
+      FROM purchase_returns pr
+      JOIN suppliers s ON s.id = pr.supplier_id
+      JOIN purchase_invoices pi ON pi.id = pr.purchase_id
+      WHERE pr.id = ?
+      LIMIT 1
+    `)
+    .get(Number(returnId));
+
+  if (!purchaseReturn) {
+    throw new Error('مرتجع الشراء غير موجود');
+  }
+
+  const items = db
+    .prepare(`
+      SELECT *
+      FROM purchase_return_items
+      WHERE return_id = ?
+      ORDER BY id ASC
+    `)
+    .all(Number(returnId));
+
+  return {
+    return: purchaseReturn,
+    items
   };
 }
 
@@ -355,6 +993,8 @@ export function recordSupplierPayment(input: {
   payment_method?: string;
   notes?: string | null;
 }) {
+  ensurePurchaseReturnSchema();
+
   const db = getDb();
 
   const supplierId = Number(input.supplier_id);
@@ -379,6 +1019,10 @@ export function recordSupplierPayment(input: {
     }
 
     const supplierBalance = Number(supplier.balance || 0);
+
+    if (supplierBalance <= 0) {
+      throw new Error('لا يوجد رصيد مستحق على المورد');
+    }
 
     if (amountInput > supplierBalance) {
       throw new Error('قيمة الدفع أكبر من رصيد المورد');
@@ -410,7 +1054,6 @@ export function recordSupplierPayment(input: {
       amount: number;
     }> = [];
 
-    // لو الدفعة مرتبطة بفاتورة معينة
     if (purchaseId) {
       const purchase = db
         .prepare(`
@@ -418,12 +1061,13 @@ export function recordSupplierPayment(input: {
           FROM purchase_invoices
           WHERE id = ?
             AND supplier_id = ?
+            AND IFNULL(status, 'active') != 'cancelled'
           LIMIT 1
         `)
         .get(purchaseId, supplierId) as any;
 
       if (!purchase) {
-        throw new Error('فاتورة الشراء غير موجودة');
+        throw new Error('فاتورة الشراء غير موجودة أو ملغاة');
       }
 
       const remaining = Number(purchase.remaining_amount || 0);
@@ -460,13 +1104,7 @@ export function recordSupplierPayment(input: {
         amount: finalAmount
       });
     } else {
-      // دفعة عامة للمورد: تتوزع تلقائيًا على أقدم فواتير مفتوحة
-      const supplierBalance = Number(supplier.balance || 0);
       let remainingPayment = Math.min(amountInput, supplierBalance);
-
-      if (remainingPayment <= 0) {
-        throw new Error('لا يوجد رصيد مستحق على المورد');
-      }
 
       const openPurchases = db
         .prepare(`
@@ -474,6 +1112,7 @@ export function recordSupplierPayment(input: {
           FROM purchase_invoices
           WHERE supplier_id = ?
             AND remaining_amount > 0
+            AND IFNULL(status, 'active') != 'cancelled'
           ORDER BY id ASC
         `)
         .all(supplierId) as any[];
@@ -525,7 +1164,7 @@ export function recordSupplierPayment(input: {
     db.prepare(`
       UPDATE suppliers
       SET
-        balance = MAX(balance - ?, 0),
+        balance = balance - ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(totalPaid, supplierId);
@@ -553,6 +1192,8 @@ export function recordSupplierPayment(input: {
 }
 
 export function getSupplierStatement(supplierId: number) {
+  ensurePurchaseReturnSchema();
+
   const db = getDb();
   const id = Number(supplierId);
 
@@ -578,14 +1219,29 @@ export function getSupplierStatement(supplierId: number) {
       SELECT *
       FROM purchase_invoices
       WHERE supplier_id = ?
+        AND IFNULL(status, 'active') != 'cancelled'
       ORDER BY created_at DESC, id DESC
     `)
     .all(id) as any[];
 
   const payments = db
     .prepare(`
+      SELECT sp.*
+      FROM supplier_payments sp
+      LEFT JOIN purchase_invoices pi ON pi.id = sp.purchase_id
+      WHERE sp.supplier_id = ?
+        AND (
+          sp.purchase_id IS NULL
+          OR IFNULL(pi.status, 'active') != 'cancelled'
+        )
+      ORDER BY sp.created_at DESC, sp.id DESC
+    `)
+    .all(id) as any[];
+
+  const returns = db
+    .prepare(`
       SELECT *
-      FROM supplier_payments
+      FROM purchase_returns
       WHERE supplier_id = ?
       ORDER BY created_at DESC, id DESC
     `)
@@ -602,6 +1258,18 @@ export function getSupplierStatement(supplierId: number) {
       payment_status: purchase.payment_status,
       notes: purchase.notes,
       created_at: purchase.created_at
+    })),
+
+    ...returns.map((purchaseReturn) => ({
+      id: `purchase-return-${purchaseReturn.id}`,
+      type: 'purchase_return',
+      title: `مرتجع شراء #${purchaseReturn.id} على فاتورة #${purchaseReturn.purchase_id}`,
+      debit: 0,
+      credit: Number(purchaseReturn.total_amount || 0),
+      purchase_id: purchaseReturn.purchase_id,
+      return_id: purchaseReturn.id,
+      notes: purchaseReturn.notes,
+      created_at: purchaseReturn.created_at
     })),
 
     ...payments.map((payment) => ({
@@ -625,10 +1293,12 @@ export function getSupplierStatement(supplierId: number) {
     supplier,
     purchases,
     payments,
+    returns,
     entries,
     summary: {
       total_purchased: Number(supplier.total_purchased || 0),
       total_paid: payments.reduce((sum, p) => sum + Number(p.amount || 0), 0),
+      total_returns: returns.reduce((sum, r) => sum + Number(r.total_amount || 0), 0),
       balance: Number(supplier.balance || 0),
       open_purchases: purchases.filter((p) => Number(p.remaining_amount || 0) > 0).length
     }

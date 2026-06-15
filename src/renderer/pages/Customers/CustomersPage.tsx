@@ -353,7 +353,16 @@ function formatDate(value?: string) {
 }
 
   return (
-    <div style={{ display: 'grid', gap: '18px' }}>
+      <div
+        style={{
+          display: 'grid',
+          gap: '18px',
+          height: '100%',
+          minHeight: 0,
+          overflow: 'hidden',
+          gridTemplateRows: 'auto auto minmax(0, 1fr)'
+        }}
+      >
       {message && (
         <div
           style={{
@@ -369,12 +378,15 @@ function formatDate(value?: string) {
       )}
 
       <div
-        className="glass-card"
+        className="glass-card table-scroll"
         style={{
           padding: '18px',
           borderRadius: '18px',
-          display: 'grid',
-          gap: '14px'
+          overflow: 'auto',
+          height: '100%',
+          minHeight: 0,
+          maxWidth: '100%',
+          boxSizing: 'border-box'
         }}
       >
         <h2 style={{ margin: 0, textAlign: 'right' }}>إدارة العملاء</h2>
@@ -402,7 +414,8 @@ function formatDate(value?: string) {
           padding: '18px',
           borderRadius: '18px',
           display: 'grid',
-          gap: '12px'
+          gap: '12px',
+          overflow: 'visible'
         }}
       >
         <h3 style={{ margin: 0, textAlign: 'right' }}>
@@ -490,7 +503,14 @@ function formatDate(value?: string) {
           overflowX: 'auto'
         }}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+        <table
+          style={{
+            width: '100%',
+            minWidth: '980px',
+            borderCollapse: 'collapse',
+            direction: 'rtl'
+          }}
+        >
           <thead>
             <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
               <th style={thStyle}>العميل</th>

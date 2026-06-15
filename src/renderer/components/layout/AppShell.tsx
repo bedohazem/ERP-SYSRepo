@@ -248,6 +248,7 @@ export default function AppShell({
         </header>
 
         <section
+          className="app-main-scroll"
           style={{
             background: isLight ? 'rgba(248,250,252,0.95)' : 'rgba(17,24,39,0.7)',
             border: isLight ? '1px solid rgba(15,23,42,0.10)' : '1px solid rgba(255,255,255,0.08)',
@@ -264,6 +265,7 @@ export default function AppShell({
       </main>
 
       <aside
+        className="app-sidebar-scroll"
         style={{
           gridArea: isMobile ? undefined : 'sidebar',
           position: isMobile ? 'fixed' : 'static',
