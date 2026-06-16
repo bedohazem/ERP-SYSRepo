@@ -447,7 +447,7 @@ export default function PurchasesPage() {
               position: 'sticky',
               top: 0,
               zIndex: 50,
-              background: 'rgba(15, 23, 42, 0.98)',
+              background: 'var(--panel-2)',
               paddingBottom: '12px',
               borderRadius: '14px'
             }}
