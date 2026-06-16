@@ -283,7 +283,30 @@ export default function LiabilitiesPage() {
   );
 
   return (
-    <div style={{ display: 'grid', gap: '18px' }}>
+    <div
+      style={{
+        display: 'grid',
+        gap: '12px',
+        height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
+        gridTemplateRows: 'auto auto minmax(0, 1fr)'
+      }}
+    >
+      <style>
+        {`
+          .liabilities-body-scroll {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+
+          .liabilities-body-scroll::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+            display: none;
+          }
+        `}
+      </style>
       {message && (
         <div
           style={{
@@ -307,7 +330,15 @@ export default function LiabilitiesPage() {
         </div>
       )}
 
-      <section className="glass-card" style={{ padding: '18px', display: 'grid', gap: '14px' }}>
+      <section
+        className="glass-card"
+        style={{
+          padding: '14px',
+          display: 'grid',
+          gap: '10px',
+          minHeight: 0
+        }}
+      >
         <div>
           <h2 style={{ margin: 0 }}>التزامات المحل</h2>
           <p style={{ margin: '8px 0 0', color: isLight ? '#64748b' : '#94a3b8', fontWeight: 700 }}>
@@ -330,7 +361,15 @@ export default function LiabilitiesPage() {
         </div>
       </section>
 
-      <section className="glass-card" style={{ padding: '18px', display: 'grid', gap: '14px' }}>
+      <section
+        className="glass-card"
+        style={{
+          padding: '14px',
+          display: 'grid',
+          gap: '10px',
+          minHeight: 0
+        }}
+      >
         <h3 style={{ margin: 0 }}>إضافة التزام جديد</h3>
 
         <div
@@ -417,7 +456,18 @@ export default function LiabilitiesPage() {
         </button>
       </section>
 
-      <section className="glass-card" style={{ padding: '18px', display: 'grid', gap: '14px' }}>
+      <section
+        className="glass-card"
+        style={{
+          padding: '14px',
+          display: 'grid',
+          gap: '12px',
+          height: '100%',
+          minHeight: 0,
+          overflow: 'hidden',
+          gridTemplateRows: 'auto minmax(0, 1fr)'
+        }}
+      >
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <input
             value={search}
@@ -442,7 +492,15 @@ export default function LiabilitiesPage() {
           </button>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
+        <div
+          className="liabilities-body-scroll"
+          style={{
+            overflow: 'auto',
+            minHeight: 0,
+            height: '100%',
+            maxWidth: '100%'
+          }}
+        >
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1050px' }}>
             <thead>
               <tr>
@@ -703,7 +761,7 @@ function SummaryCard({
   return (
     <div
       style={{
-        padding: '14px',
+        padding: '12px',
         borderRadius: '16px',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(148,163,184,0.14)',
@@ -714,7 +772,7 @@ function SummaryCard({
       <span style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</span>
       <strong
         style={{
-          fontSize: '20px',
+          fontSize: '18px',
           color: danger ? '#ef4444' : success ? '#16a34a' : 'inherit'
         }}
       >

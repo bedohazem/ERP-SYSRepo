@@ -543,857 +543,894 @@ export default function SettingsPage() {
     }
   }
   
-    return (
-      <div style={{ display: 'grid', gap: '16px' }}>
-        {pageMessage && (
-          <div
-            style={{
-              position: 'fixed',
-              top: '24px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 99999,
-              padding: '12px 18px',
-              borderRadius: '14px',
-              background:
-                pageMessage.type === 'error'
-                  ? 'rgba(239,68,68,0.95)'
-                  : 'rgba(16,185,129,0.95)',
-              color: '#fff',
-              fontWeight: 800,
-              boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
-              pointerEvents: 'none'
-            }}
-          >
-            {pageMessage.text}
-          </div>
-        )}
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gap: '12px',
+        height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
+        gridTemplateRows: 'auto minmax(0, 1fr)'
+      }}
+    >
+      <style>
+        {`
+          .settings-content-scroll {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
 
-        <div
-          className="glass-card"
-          style={{
-            borderRadius: '18px',
-            padding: '10px',
-            display: 'flex',
-            gap: '10px',
-            flexWrap: 'wrap',
-            direction: 'rtl'
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setActiveTab('store')}
-            style={tabButtonStyle(activeTab === 'store')}
-          >
-            إعدادات المحل
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('backup')}
-            style={tabButtonStyle(activeTab === 'backup')}
-          >
-            النسخ والبيانات
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('loyalty')}
-            style={tabButtonStyle(activeTab === 'loyalty')}
-          >
-            نقاط الولاء
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('barcode')}
-            style={tabButtonStyle(activeTab === 'barcode')}
-          >
-            طباعة الباركود
-          </button>
-        </div>
-      {activeTab === 'backup' && (    
-        <div
-          className="glass-card"
-          style={{
-            borderRadius: '24px',
-            padding: '24px',
-            display: 'grid',
-            gap: '16px',
-            direction: 'rtl'
-          }}
-        >
-          <div>
-            <h2 style={{ margin: '0 0 8px' }}>النسخ الاحتياطي واسترجاع البيانات</h2>
-            <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.8 }}>
-              احفظ نسخة من قاعدة البيانات أو استرجع نسخة قديمة عند الحاجة.
-            </p>
-          </div>
-
-          <div
-            style={{
-              padding: '14px',
-              borderRadius: '14px',
-              background: 'rgba(245,158,11,0.10)',
-              border: '1px solid rgba(245,158,11,0.25)',
-              color: '#fde68a',
-              fontWeight: 700,
-              lineHeight: 1.8
-            }}
-          >
-            نصيحة: اعمل نسخة احتياطية يوميًا قبل إغلاق المحل، واحتفظ بها على فلاشة أو Google Drive.
-          </div>
-
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={backupDatabase}
-              disabled={backupLoading}
-              style={{
-                ...primaryButtonStyle,
-                opacity: backupLoading ? 0.6 : 1,
-                cursor: backupLoading ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {backupLoading ? 'جاري الحفظ...' : 'حفظ نسخة احتياطية'}
-            </button>
-
-            <button
-              type="button"
-              onClick={restoreDatabase}
-              disabled={restoreLoading}
-              style={{
-                ...dangerButtonStyle,
-                opacity: restoreLoading ? 0.6 : 1,
-                cursor: restoreLoading ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {restoreLoading ? 'جاري الاسترجاع...' : 'استرجاع نسخة احتياطية'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => void resetDatabase()}
-              disabled={resetLoading}
-              style={{
-                ...dangerButtonStyle,
-                opacity: resetLoading ? 0.6 : 1,
-                cursor: resetLoading ? 'not-allowed' : 'pointer',
-                background: 'rgba(127,29,29,0.35)',
-                border: '1px solid rgba(248,113,113,0.45)',
-                color: '#fecaca'
-              }}
-            >
-              {resetLoading ? 'جاري التصفير...' : 'تصفير البرنامج ومسح كل البيانات'}
-            </button>
-          </div>
-        </div>
-      )}
-      {activeTab === 'store' && (
-        <div
-          className="glass-card"
-          style={{
-            borderRadius: '24px',
-            padding: '24px',
-            display: 'grid',
-            gap: '16px',
-            direction: 'rtl'
-          }}
-        >
-          <div>
-            <h2 style={{ margin: '0 0 8px' }}>إعدادات المحل</h2>
-            <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.8 }}>
-              إدارة تفعيل البرنامج وصورة التطبيق التي تظهر في اللوجن والواجهة.
-            </p>
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: '12px'
-            }}
-          >
-            <div style={statCardStyle}>
-              الحالة
-              <strong style={{ color: licenseStatus?.activated ? '#6ee7b7' : '#fdba74' }}>
-                {licenseStatus?.activated ? 'مفعل' : licenseStatus?.expired ? 'انتهت التجربة' : 'تجربة'}
-              </strong>
-            </div>
-
-            <div style={statCardStyle}>
-              الأيام المتبقية
-              <strong>{licenseStatus?.activated ? '∞' : licenseStatus?.days_left ?? 0}</strong>
-            </div>
-
-            <div style={statCardStyle}>
-              مدة التجربة
-              <strong>{licenseStatus?.trial_days ?? 7} أيام</strong>
-            </div>
-          </div>
-
-          <div
-            style={{
-              padding: '14px',
-              borderRadius: '16px',
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              display: 'grid',
-              gap: '10px'
-            }}
-          >
-            <div style={{ color: '#94a3b8', fontWeight: 900 }}>
-              كود الجهاز
-            </div>
-
-            <div
-              dir="ltr"
-              style={{
-                fontSize: '20px',
-                fontWeight: 900,
-                letterSpacing: '1px',
-                color: '#f8fafc',
-                background: 'rgba(15,23,42,0.55)',
-                border: '1px solid rgba(148,163,184,0.18)',
-                borderRadius: '12px',
-                padding: '12px',
-                textAlign: 'center',
-                direction: 'ltr',
-                unicodeBidi: 'bidi-override'
-              }}
-            >
-              {licenseStatus?.device_code || '—'}
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={() => void copyDeviceCode()}
-                style={primaryButtonStyle}
-              >
-                نسخ كود الجهاز
-              </button>
-
-              <span style={{ color: '#64748b', fontWeight: 700, alignSelf: 'center' }}>
-                ابعت الكود ده لصاحب البرنامج للحصول على كود التفعيل.
-              </span>
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(220px, 1fr) auto auto',
-              gap: '12px',
-              alignItems: 'end'
-            }}
-          >
-            <div>
-              <label style={labelStyle}>كود التفعيل</label>
-              <input
-                value={activationCode}
-                onChange={(e) => setActivationCode(e.target.value)}
-                placeholder="اكتب كود التفعيل"
-                style={inputStyle}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void handleActivateApp()}
-              disabled={savingActivation}
-              style={{
-                ...primaryButtonStyle,
-                opacity: savingActivation ? 0.6 : 1,
-                cursor: savingActivation ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {savingActivation ? 'جاري التفعيل...' : 'تفعيل'}
-            </button>
-          {licenseStatus?.activated && (
-            <button
-              type="button"
-              onClick={() => setShowDeactivateModal(true)}
-              disabled={deactivatingApp}
-              style={{
-                ...dangerButtonStyle,
-                opacity: deactivatingApp ? 0.6 : 1,
-                cursor: deactivatingApp ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {deactivatingApp ? 'جاري إلغاء التفعيل...' : 'إلغاء التفعيل'}
-            </button>
-          )}
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(220px, 1fr) auto',
-              gap: '12px',
-              alignItems: 'end'
-            }}
-          >
-            <div>
-              <label style={labelStyle}>اسم المحل</label>
-              <input
-                value={appName}
-                onChange={(e) => setAppName(e.target.value)}
-                placeholder="مثال: Lamar Store"
-                style={inputStyle}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void handleSaveAppName()}
-              disabled={savingAppName}
-              style={{
-                ...primaryButtonStyle,
-                opacity: savingAppName ? 0.6 : 1,
-                cursor: savingAppName ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {savingAppName ? 'جاري الحفظ...' : 'حفظ الاسم'}
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(180px, 0.8fr) minmax(260px, 1.2fr) auto',
-              gap: '12px',
-              alignItems: 'end'
-            }}
-          >
-            <div>
-              <label style={labelStyle}>رقم المحل على الفاتورة</label>
-              <input
-                value={storePhone}
-                onChange={(e) => setStorePhone(e.target.value)}
-                placeholder="مثال: 01000000000"
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>عنوان المحل على الفاتورة</label>
-              <input
-                value={storeAddress}
-                onChange={(e) => setStoreAddress(e.target.value)}
-                placeholder="مثال: القاهرة - شارع ..."
-                style={inputStyle}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void handleSaveStoreContactInfo()}
-              disabled={savingStoreContact}
-              style={{
-                ...primaryButtonStyle,
-                opacity: savingStoreContact ? 0.6 : 1,
-                cursor: savingStoreContact ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {savingStoreContact ? 'جاري الحفظ...' : 'حفظ بيانات الفاتورة'}
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'minmax(220px, 1fr) auto auto',
-              gap: '12px',
-              alignItems: 'end'
-            }}
-          >
-            <div>
-              <label style={labelStyle}>رابط / مسار صورة التطبيق</label>
-              <input
-                value={appLogoUrl}
-                onChange={(e) => setAppLogoUrl(e.target.value)}
-                placeholder="اختار صورة من الجهاز أو ضع رابط صورة"
-                style={inputStyle}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => void handleChooseAppLogo()}
-              disabled={savingLogo}
-              style={{
-                ...primaryButtonStyle,
-                opacity: savingLogo ? 0.6 : 1,
-                cursor: savingLogo ? 'not-allowed' : 'pointer'
-              }}
-            >
-              اختيار صورة
-            </button>
-
-            <button
-              type="button"
-              onClick={() => void handleSaveAppLogoUrl()}
-              disabled={savingLogo}
-              style={{
-                ...primaryButtonStyle,
-                opacity: savingLogo ? 0.6 : 1,
-                cursor: savingLogo ? 'not-allowed' : 'pointer'
-              }}
-            >
-              حفظ
-            </button>
-          </div>
-
-          {appLogoUrl.trim() && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '14px',
-                padding: '14px',
-                borderRadius: '16px',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)'
-              }}
-            >
-              <img
-                key={appLogoUrl}
-                src={appLogoUrl}
-                alt="App Logo"
-                style={{
-                  width: '72px',
-                  height: '72px',
-                  borderRadius: '18px',
-                  objectFit: 'cover',
-                  background: 'rgba(255,255,255,0.08)'
-                }}
-                onLoad={(e) => {
-                  e.currentTarget.style.display = 'block';
-                }}
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
-              />
-
-              <div style={{ color: '#94a3b8', fontWeight: 700 }}>
-                معاينة الصورة الخارجية
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-      {activeTab === 'barcode' && (
-        <div className="glass-card" style={{ borderRadius: '24px', padding: '24px' }}>
-          <h2 style={{ marginTop: 0 }}>إعدادات طباعة الباركود</h2>
-          <p style={{ color: '#94a3b8' }}>
-            اضبط هنا مقاس الليبل ومكان كل عنصر داخله.
-          </p>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: '16px',
-              marginTop: '20px'
-            }}
-          >
-            <div>
-              <label style={labelStyle}>عرض الليبل (مم)</label>
-              <input
-                type="number"
-                value={settings.barcode_label_width_mm}
-                onChange={(e) =>
-                  setField('barcode_label_width_mm', Number(e.target.value))
-                }
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>ارتفاع الليبل (مم)</label>
-              <input
-                type="number"
-                value={settings.barcode_label_height_mm}
-                onChange={(e) =>
-                  setField('barcode_label_height_mm', Number(e.target.value))
-                }
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>عدد النسخ</label>
-              <input
-                type="number"
-                min={1}
-                value={settings.barcode_copies}
-                onChange={(e) => setField('barcode_copies', Number(e.target.value))}
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>ارتفاع صورة الباركود</label>
-              <input
-                type="number"
-                min={10}
-                value={settings.barcode_svg_height}
-                onChange={(e) => setField('barcode_svg_height', Number(e.target.value))}
-                style={inputStyle}
-              />
-            </div>
-
-            <div>
-              <label style={labelStyle}>تحريك المحتوى يمين / شمال (مم)</label>
-              <input
-                type="number"
-                step="0.1"
-                value={settings.barcode_content_offset_x_mm}
-                onChange={(e) =>
-                  setField('barcode_content_offset_x_mm', Number(e.target.value))
-                }
-                style={inputStyle}
-              />
-              <small style={hintStyle}>
-                موجب = يمين، سالب = شمال
-              </small>
-            </div>
-
-            <div>
-              <label style={labelStyle}>تحريك المحتوى فوق / تحت (مم)</label>
-              <input
-                type="number"
-                step="0.1"
-                value={settings.barcode_content_offset_y_mm}
-                onChange={(e) =>
-                  setField('barcode_content_offset_y_mm', Number(e.target.value))
-                }
-                style={inputStyle}
-              />
-              <small style={hintStyle}>
-                موجب = تحت، سالب = فوق
-              </small>
-            </div>
-            
-          </div>
-
-          <div style={{ marginTop: '16px' }}>
-            <label style={checkboxRowStyle}>
-              <input
-                type="checkbox"
-                checked={settings.barcode_auto_print_after_save}
-                onChange={(e) =>
-                  setField('barcode_auto_print_after_save', e.target.checked)
-                }
-              />
-              <span>طباعة تلقائية بعد حفظ المنتج</span>
-            </label>
-          </div>
-
-          <div style={{ marginTop: '24px', display: 'grid', gap: '16px' }}>
-            <BarcodeItemEditor
-              title="اسم المنتج"
-              fontSize={settings.barcode_name_font_size}
-              position={settings.barcode_name_position}
-              align={settings.barcode_name_align}
-              onFontSizeChange={(value) => setField('barcode_name_font_size', value)}
-              onPositionChange={(value) => setField('barcode_name_position', value)}
-              onAlignChange={(value) => setField('barcode_name_align', value)}
-            />
-
-            <BarcodeItemEditor
-              title="السعر"
-              fontSize={settings.barcode_price_font_size}
-              position={settings.barcode_price_position}
-              align={settings.barcode_price_align}
-              onFontSizeChange={(value) => setField('barcode_price_font_size', value)}
-              onPositionChange={(value) => setField('barcode_price_position', value)}
-              onAlignChange={(value) => setField('barcode_price_align', value)}
-            />
-
-            <BarcodeItemEditor
-              title="المقاس"
-              fontSize={settings.barcode_size_font_size}
-              position={settings.barcode_size_position}
-              align={settings.barcode_size_align}
-              onFontSizeChange={(value) => setField('barcode_size_font_size', value)}
-              onPositionChange={(value) => setField('barcode_size_position', value)}
-              onAlignChange={(value) => setField('barcode_size_align', value)}
-            />
-
-            <BarcodeItemEditor
-              title="اللون"
-              fontSize={settings.barcode_color_font_size}
-              position={settings.barcode_color_position}
-              align={settings.barcode_color_align}
-              onFontSizeChange={(value) => setField('barcode_color_font_size', value)}
-              onPositionChange={(value) => setField('barcode_color_position', value)}
-              onAlignChange={(value) => setField('barcode_color_align', value)}
-            />
-
-            <BarcodeItemEditor
-              title="رقم الباركود"
-              fontSize={settings.barcode_value_font_size}
-              position={settings.barcode_value_position}
-              align={settings.barcode_value_align}
-              onFontSizeChange={(value) => setField('barcode_value_font_size', value)}
-              onPositionChange={(value) => setField('barcode_value_position', value)}
-              onAlignChange={(value) => setField('barcode_value_align', value)}
-            />
-          </div>
-
-          <div style={{ marginTop: '24px', display: 'flex', gap: '12px' }}>
-            <button
-              onClick={() => void saveSettings()}
-              disabled={saving}
-              style={primaryButtonStyle}
-            >
-              {saving ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
-            </button>
-          </div>
-        </div>
-      )}
-      {activeTab === 'loyalty' && (   
-        <div
-          className="glass-card"
-          style={{
-            padding: '22px',
-            borderRadius: '18px',
-            display: 'grid',
-            gap: '18px',       
-            direction: 'rtl'
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: '14px',
-              flexWrap: 'wrap'
-            }}
-          >
-            <div>
-              <h3 style={{ margin: '0 0 6px' }}>إعدادات نقاط الولاء</h3>
-              <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>
-                حدد العميل يكسب كام نقطة، وقيمة النقطة عند استخدامها كخصم.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              role="switch"
-              aria-checked={loyaltySettings.loyalty_enabled}
-              onClick={() =>
-                setLoyaltySettings((prev) => ({
-                  ...prev,
-                  loyalty_enabled: !prev.loyalty_enabled
-                }))
-              }
-              style={{
-                width: '54px',
-                height: '28px',
-                borderRadius: '999px',
-                border: 'none',
-                padding: '3px',
-                cursor: 'pointer',
-                background: loyaltySettings.loyalty_enabled ? '#2563eb' : '#64748b',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: loyaltySettings.loyalty_enabled ? 'flex-end' : 'flex-start',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <span
-                style={{
-                  width: '22px',
-                  height: '22px',
-                  borderRadius: '50%',
-                  background: '#fff',
-                  display: 'block',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.25)'
-                }}
-              />
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-              gap: '14px'
-            }}
-          >
-            <div style={loyaltyFieldStyle}>
-              <label style={labelStyle}>كل كام جنيه شراء؟</label>
-              <input
-                type="number"
-                min={1}
-                value={loyaltySettings.loyalty_earn_amount}
-                onChange={(e) =>
-                  setLoyaltySettings((p) => ({
-                    ...p,
-                    loyalty_earn_amount: Number(e.target.value)
-                  }))
-                }
-                style={inputStyle}
-              />
-              <small style={hintStyle}>مثال: 1000 يعني كل 1000 جنيه</small>
-            </div>
-
-            <div style={loyaltyFieldStyle}>
-              <label style={labelStyle}>يكسب كام نقطة؟</label>
-              <input
-                type="number"
-                min={1}
-                value={loyaltySettings.loyalty_earn_points}
-                onChange={(e) =>
-                  setLoyaltySettings((p) => ({
-                    ...p,
-                    loyalty_earn_points: Number(e.target.value)
-                  }))
-                }
-                style={inputStyle}
-              />
-              <small style={hintStyle}>مثال: 10 نقاط لكل 1000 جنيه</small>
-            </div>
-
-            <div style={loyaltyFieldStyle}>
-              <label style={labelStyle}>قيمة النقطة بالجنيه</label>
-              <input
-                type="number"
-                min={0}
-                value={loyaltySettings.loyalty_point_value}
-                onChange={(e) =>
-                  setLoyaltySettings((p) => ({
-                    ...p,
-                    loyalty_point_value: Number(e.target.value)
-                  }))
-                }
-                style={inputStyle}
-              />
-              <small style={hintStyle}>مثال: كل نقطة = 10 جنيه خصم</small>
-            </div>
-
-            <div style={loyaltyFieldStyle}>
-              <label style={labelStyle}>أقل عدد نقاط للاستخدام</label>
-              <input
-                type="number"
-                min={1}
-                value={loyaltySettings.loyalty_min_redeem_points}
-                onChange={(e) =>
-                  setLoyaltySettings((p) => ({
-                    ...p,
-                    loyalty_min_redeem_points: Number(e.target.value)
-                  }))
-                }
-                style={inputStyle}
-              />
-              <small style={hintStyle}>أقل رصيد نقاط يسمح للعميل يستخدمه كخصم</small>
-            </div>
-          </div>
-
-          <div
-            style={{
-              padding: '14px',
-              borderRadius: '14px',
-              background: 'rgba(37,99,235,0.10)',
-              border: '1px solid rgba(37,99,235,0.25)',
-              color: '#bfdbfe',
-              fontWeight: 700,
-              lineHeight: 1.8
-            }}
-          >
-            مثال النظام الحالي:
-            كل {loyaltySettings.loyalty_earn_amount} جنيه =
-            {' '}{loyaltySettings.loyalty_earn_points} نقطة،
-            وكل نقطة = {loyaltySettings.loyalty_point_value} جنيه خصم.
-            أقل استخدام = {loyaltySettings.loyalty_min_redeem_points} نقطة.
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-            <button
-              type="button"
-              onClick={saveLoyaltySettings}
-              disabled={savingLoyalty}
-              style={{
-                ...primaryButtonStyle,
-                opacity: savingLoyalty ? 0.6 : 1,
-                cursor: savingLoyalty ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {savingLoyalty ? 'جاري الحفظ...' : 'حفظ إعدادات النقاط'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {showDeactivateModal && (
+          .settings-content-scroll::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+            display: none;
+          }
+        `}
+      </style>
+      {pageMessage && (
         <div
           style={{
             position: 'fixed',
-            inset: 0,
-            zIndex: 999999,
-            background: 'rgba(0,0,0,0.65)',
-            display: 'grid',
-            placeItems: 'center',
-            padding: '20px'
+            top: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 99999,
+            padding: '12px 18px',
+            borderRadius: '14px',
+            background:
+              pageMessage.type === 'error'
+                ? 'rgba(239,68,68,0.95)'
+                : 'rgba(16,185,129,0.95)',
+            color: '#fff',
+            fontWeight: 800,
+            boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
+            pointerEvents: 'none'
           }}
         >
-          <div
-            className="glass-card"
-            style={{
-              width: 'min(460px, 100%)',
-              borderRadius: '22px',
-              padding: '22px',
-              direction: 'rtl',
-              display: 'grid',
-              gap: '14px',
-              border: '1px solid rgba(248,113,113,0.35)'
-            }}
-          >
-            <h3 style={{ margin: 0, color: '#fecaca' }}>تأكيد إلغاء التفعيل</h3>
-
-            <p style={{ margin: 0, color: '#cbd5e1', lineHeight: 1.8, fontWeight: 700 }}>
-              هل أنت متأكد إنك عايز تلغي تفعيل البرنامج؟ لو فترة التجربة منتهية، البرنامج هيقفل ويطلب كود تفعيل جديد.
-            </p>
-
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-start' }}>
-              <button
-                type="button"
-                onClick={handleDeactivateApp}
-                disabled={deactivatingApp}
-                style={{
-                  ...dangerButtonStyle,
-                  opacity: deactivatingApp ? 0.6 : 1
-                }}
-              >
-                {deactivatingApp ? 'جاري الإلغاء...' : 'تأكيد إلغاء التفعيل'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowDeactivateModal(false)}
-                disabled={deactivatingApp}
-                style={{
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  background: 'rgba(255,255,255,0.06)',
-                  color: '#fff',
-                  borderRadius: '12px',
-                  padding: '11px 16px',
-                  fontWeight: 900,
-                  cursor: 'pointer'
-                }}
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
+          {pageMessage.text}
         </div>
       )}
+
+      <div
+        className="glass-card"
+        style={{
+          borderRadius: '18px',
+          padding: '10px',
+          display: 'flex',
+          gap: '10px',
+          flexWrap: 'wrap',
+          direction: 'rtl',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setActiveTab('store')}
+          style={tabButtonStyle(activeTab === 'store')}
+        >
+          إعدادات المحل
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('backup')}
+          style={tabButtonStyle(activeTab === 'backup')}
+        >
+          النسخ والبيانات
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('loyalty')}
+          style={tabButtonStyle(activeTab === 'loyalty')}
+        >
+          نقاط الولاء
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('barcode')}
+          style={tabButtonStyle(activeTab === 'barcode')}
+        >
+          طباعة الباركود
+        </button>
       </div>
-    );
+
+    <div
+      className="settings-content-scroll"
+      style={{
+        minHeight: 0,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        display: 'grid',
+        gap: '16px',
+        alignContent: 'start',
+        paddingBottom: '24px'
+      }}
+    >
+    {activeTab === 'backup' && (    
+      <div
+        className="glass-card"
+        style={{
+          borderRadius: '24px',
+          padding: '24px',
+          display: 'grid',
+          gap: '16px',
+          direction: 'rtl'
+        }}
+      >
+        <div>
+          <h2 style={{ margin: '0 0 8px' }}>النسخ الاحتياطي واسترجاع البيانات</h2>
+          <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.8 }}>
+            احفظ نسخة من قاعدة البيانات أو استرجع نسخة قديمة عند الحاجة.
+          </p>
+        </div>
+
+        <div
+          style={{
+            padding: '14px',
+            borderRadius: '14px',
+            background: 'rgba(245,158,11,0.10)',
+            border: '1px solid rgba(245,158,11,0.25)',
+            color: '#fde68a',
+            fontWeight: 700,
+            lineHeight: 1.8
+          }}
+        >
+          نصيحة: اعمل نسخة احتياطية يوميًا قبل إغلاق المحل، واحتفظ بها على فلاشة أو Google Drive.
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={backupDatabase}
+            disabled={backupLoading}
+            style={{
+              ...primaryButtonStyle,
+              opacity: backupLoading ? 0.6 : 1,
+              cursor: backupLoading ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {backupLoading ? 'جاري الحفظ...' : 'حفظ نسخة احتياطية'}
+          </button>
+
+          <button
+            type="button"
+            onClick={restoreDatabase}
+            disabled={restoreLoading}
+            style={{
+              ...dangerButtonStyle,
+              opacity: restoreLoading ? 0.6 : 1,
+              cursor: restoreLoading ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {restoreLoading ? 'جاري الاسترجاع...' : 'استرجاع نسخة احتياطية'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void resetDatabase()}
+            disabled={resetLoading}
+            style={{
+              ...dangerButtonStyle,
+              opacity: resetLoading ? 0.6 : 1,
+              cursor: resetLoading ? 'not-allowed' : 'pointer',
+              background: 'rgba(127,29,29,0.35)',
+              border: '1px solid rgba(248,113,113,0.45)',
+              color: '#fecaca'
+            }}
+          >
+            {resetLoading ? 'جاري التصفير...' : 'تصفير البرنامج ومسح كل البيانات'}
+          </button>
+        </div>
+      </div>
+    )}
+    {activeTab === 'store' && (
+      <div
+        className="glass-card"
+        style={{
+          borderRadius: '24px',
+          padding: '24px',
+          display: 'grid',
+          gap: '16px',
+          direction: 'rtl'
+        }}
+      >
+        <div>
+          <h2 style={{ margin: '0 0 8px' }}>إعدادات المحل</h2>
+          <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.8 }}>
+            إدارة تفعيل البرنامج وصورة التطبيق التي تظهر في اللوجن والواجهة.
+          </p>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '12px'
+          }}
+        >
+          <div style={statCardStyle}>
+            الحالة
+            <strong style={{ color: licenseStatus?.activated ? '#6ee7b7' : '#fdba74' }}>
+              {licenseStatus?.activated ? 'مفعل' : licenseStatus?.expired ? 'انتهت التجربة' : 'تجربة'}
+            </strong>
+          </div>
+
+          <div style={statCardStyle}>
+            الأيام المتبقية
+            <strong>{licenseStatus?.activated ? '∞' : licenseStatus?.days_left ?? 0}</strong>
+          </div>
+
+          <div style={statCardStyle}>
+            مدة التجربة
+            <strong>{licenseStatus?.trial_days ?? 7} أيام</strong>
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: '14px',
+            borderRadius: '16px',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            display: 'grid',
+            gap: '10px'
+          }}
+        >
+          <div style={{ color: '#94a3b8', fontWeight: 900 }}>
+            كود الجهاز
+          </div>
+
+          <div
+            dir="ltr"
+            style={{
+              fontSize: '20px',
+              fontWeight: 900,
+              letterSpacing: '1px',
+              color: '#f8fafc',
+              background: 'rgba(15,23,42,0.55)',
+              border: '1px solid rgba(148,163,184,0.18)',
+              borderRadius: '12px',
+              padding: '12px',
+              textAlign: 'center',
+              direction: 'ltr',
+              unicodeBidi: 'bidi-override'
+            }}
+          >
+            {licenseStatus?.device_code || '—'}
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => void copyDeviceCode()}
+              style={primaryButtonStyle}
+            >
+              نسخ كود الجهاز
+            </button>
+
+            <span style={{ color: '#64748b', fontWeight: 700, alignSelf: 'center' }}>
+              ابعت الكود ده لصاحب البرنامج للحصول على كود التفعيل.
+            </span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(220px, 1fr) auto auto',
+            gap: '12px',
+            alignItems: 'end'
+          }}
+        >
+          <div>
+            <label style={labelStyle}>كود التفعيل</label>
+            <input
+              value={activationCode}
+              onChange={(e) => setActivationCode(e.target.value)}
+              placeholder="اكتب كود التفعيل"
+              style={inputStyle}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleActivateApp()}
+            disabled={savingActivation}
+            style={{
+              ...primaryButtonStyle,
+              opacity: savingActivation ? 0.6 : 1,
+              cursor: savingActivation ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {savingActivation ? 'جاري التفعيل...' : 'تفعيل'}
+          </button>
+        {licenseStatus?.activated && (
+          <button
+            type="button"
+            onClick={() => setShowDeactivateModal(true)}
+            disabled={deactivatingApp}
+            style={{
+              ...dangerButtonStyle,
+              opacity: deactivatingApp ? 0.6 : 1,
+              cursor: deactivatingApp ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {deactivatingApp ? 'جاري إلغاء التفعيل...' : 'إلغاء التفعيل'}
+          </button>
+        )}
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(220px, 1fr) auto',
+            gap: '12px',
+            alignItems: 'end'
+          }}
+        >
+          <div>
+            <label style={labelStyle}>اسم المحل</label>
+            <input
+              value={appName}
+              onChange={(e) => setAppName(e.target.value)}
+              placeholder="مثال: Lamar Store"
+              style={inputStyle}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleSaveAppName()}
+            disabled={savingAppName}
+            style={{
+              ...primaryButtonStyle,
+              opacity: savingAppName ? 0.6 : 1,
+              cursor: savingAppName ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {savingAppName ? 'جاري الحفظ...' : 'حفظ الاسم'}
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(180px, 0.8fr) minmax(260px, 1.2fr) auto',
+            gap: '12px',
+            alignItems: 'end'
+          }}
+        >
+          <div>
+            <label style={labelStyle}>رقم المحل على الفاتورة</label>
+            <input
+              value={storePhone}
+              onChange={(e) => setStorePhone(e.target.value)}
+              placeholder="مثال: 01000000000"
+              style={inputStyle}
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle}>عنوان المحل على الفاتورة</label>
+            <input
+              value={storeAddress}
+              onChange={(e) => setStoreAddress(e.target.value)}
+              placeholder="مثال: القاهرة - شارع ..."
+              style={inputStyle}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleSaveStoreContactInfo()}
+            disabled={savingStoreContact}
+            style={{
+              ...primaryButtonStyle,
+              opacity: savingStoreContact ? 0.6 : 1,
+              cursor: savingStoreContact ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {savingStoreContact ? 'جاري الحفظ...' : 'حفظ بيانات الفاتورة'}
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(220px, 1fr) auto auto',
+            gap: '12px',
+            alignItems: 'end'
+          }}
+        >
+          <div>
+            <label style={labelStyle}>رابط / مسار صورة التطبيق</label>
+            <input
+              value={appLogoUrl}
+              onChange={(e) => setAppLogoUrl(e.target.value)}
+              placeholder="اختار صورة من الجهاز أو ضع رابط صورة"
+              style={inputStyle}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleChooseAppLogo()}
+            disabled={savingLogo}
+            style={{
+              ...primaryButtonStyle,
+              opacity: savingLogo ? 0.6 : 1,
+              cursor: savingLogo ? 'not-allowed' : 'pointer'
+            }}
+          >
+            اختيار صورة
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void handleSaveAppLogoUrl()}
+            disabled={savingLogo}
+            style={{
+              ...primaryButtonStyle,
+              opacity: savingLogo ? 0.6 : 1,
+              cursor: savingLogo ? 'not-allowed' : 'pointer'
+            }}
+          >
+            حفظ
+          </button>
+        </div>
+
+        {appLogoUrl.trim() && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '14px',
+              padding: '14px',
+              borderRadius: '16px',
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)'
+            }}
+          >
+            <img
+              key={appLogoUrl}
+              src={appLogoUrl}
+              alt="App Logo"
+              style={{
+                width: '72px',
+                height: '72px',
+                borderRadius: '18px',
+                objectFit: 'cover',
+                background: 'rgba(255,255,255,0.08)'
+              }}
+              onLoad={(e) => {
+                e.currentTarget.style.display = 'block';
+              }}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+
+            <div style={{ color: '#94a3b8', fontWeight: 700 }}>
+              معاينة الصورة الخارجية
+            </div>
+          </div>
+        )}
+      </div>
+    )}
+    {activeTab === 'barcode' && (
+      <div className="glass-card" style={{ borderRadius: '24px', padding: '24px' }}>
+        <h2 style={{ marginTop: 0 }}>إعدادات طباعة الباركود</h2>
+        <p style={{ color: '#94a3b8' }}>
+          اضبط هنا مقاس الليبل ومكان كل عنصر داخله.
+        </p>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '16px',
+            marginTop: '20px'
+          }}
+        >
+          <div>
+            <label style={labelStyle}>عرض الليبل (مم)</label>
+            <input
+              type="number"
+              value={settings.barcode_label_width_mm}
+              onChange={(e) =>
+                setField('barcode_label_width_mm', Number(e.target.value))
+              }
+              style={inputStyle}
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle}>ارتفاع الليبل (مم)</label>
+            <input
+              type="number"
+              value={settings.barcode_label_height_mm}
+              onChange={(e) =>
+                setField('barcode_label_height_mm', Number(e.target.value))
+              }
+              style={inputStyle}
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle}>عدد النسخ</label>
+            <input
+              type="number"
+              min={1}
+              value={settings.barcode_copies}
+              onChange={(e) => setField('barcode_copies', Number(e.target.value))}
+              style={inputStyle}
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle}>ارتفاع صورة الباركود</label>
+            <input
+              type="number"
+              min={10}
+              value={settings.barcode_svg_height}
+              onChange={(e) => setField('barcode_svg_height', Number(e.target.value))}
+              style={inputStyle}
+            />
+          </div>
+
+          <div>
+            <label style={labelStyle}>تحريك المحتوى يمين / شمال (مم)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={settings.barcode_content_offset_x_mm}
+              onChange={(e) =>
+                setField('barcode_content_offset_x_mm', Number(e.target.value))
+              }
+              style={inputStyle}
+            />
+            <small style={hintStyle}>
+              موجب = يمين، سالب = شمال
+            </small>
+          </div>
+
+          <div>
+            <label style={labelStyle}>تحريك المحتوى فوق / تحت (مم)</label>
+            <input
+              type="number"
+              step="0.1"
+              value={settings.barcode_content_offset_y_mm}
+              onChange={(e) =>
+                setField('barcode_content_offset_y_mm', Number(e.target.value))
+              }
+              style={inputStyle}
+            />
+            <small style={hintStyle}>
+              موجب = تحت، سالب = فوق
+            </small>
+          </div>
+          
+        </div>
+
+        <div style={{ marginTop: '16px' }}>
+          <label style={checkboxRowStyle}>
+            <input
+              type="checkbox"
+              checked={settings.barcode_auto_print_after_save}
+              onChange={(e) =>
+                setField('barcode_auto_print_after_save', e.target.checked)
+              }
+            />
+            <span>طباعة تلقائية بعد حفظ المنتج</span>
+          </label>
+        </div>
+
+        <div style={{ marginTop: '24px', display: 'grid', gap: '16px' }}>
+          <BarcodeItemEditor
+            title="اسم المنتج"
+            fontSize={settings.barcode_name_font_size}
+            position={settings.barcode_name_position}
+            align={settings.barcode_name_align}
+            onFontSizeChange={(value) => setField('barcode_name_font_size', value)}
+            onPositionChange={(value) => setField('barcode_name_position', value)}
+            onAlignChange={(value) => setField('barcode_name_align', value)}
+          />
+
+          <BarcodeItemEditor
+            title="السعر"
+            fontSize={settings.barcode_price_font_size}
+            position={settings.barcode_price_position}
+            align={settings.barcode_price_align}
+            onFontSizeChange={(value) => setField('barcode_price_font_size', value)}
+            onPositionChange={(value) => setField('barcode_price_position', value)}
+            onAlignChange={(value) => setField('barcode_price_align', value)}
+          />
+
+          <BarcodeItemEditor
+            title="المقاس"
+            fontSize={settings.barcode_size_font_size}
+            position={settings.barcode_size_position}
+            align={settings.barcode_size_align}
+            onFontSizeChange={(value) => setField('barcode_size_font_size', value)}
+            onPositionChange={(value) => setField('barcode_size_position', value)}
+            onAlignChange={(value) => setField('barcode_size_align', value)}
+          />
+
+          <BarcodeItemEditor
+            title="اللون"
+            fontSize={settings.barcode_color_font_size}
+            position={settings.barcode_color_position}
+            align={settings.barcode_color_align}
+            onFontSizeChange={(value) => setField('barcode_color_font_size', value)}
+            onPositionChange={(value) => setField('barcode_color_position', value)}
+            onAlignChange={(value) => setField('barcode_color_align', value)}
+          />
+
+          <BarcodeItemEditor
+            title="رقم الباركود"
+            fontSize={settings.barcode_value_font_size}
+            position={settings.barcode_value_position}
+            align={settings.barcode_value_align}
+            onFontSizeChange={(value) => setField('barcode_value_font_size', value)}
+            onPositionChange={(value) => setField('barcode_value_position', value)}
+            onAlignChange={(value) => setField('barcode_value_align', value)}
+          />
+        </div>
+
+        <div style={{ marginTop: '24px', display: 'flex', gap: '12px' }}>
+          <button
+            onClick={() => void saveSettings()}
+            disabled={saving}
+            style={primaryButtonStyle}
+          >
+            {saving ? 'جاري الحفظ...' : 'حفظ الإعدادات'}
+          </button>
+        </div>
+      </div>
+    )}
+    {activeTab === 'loyalty' && (   
+      <div
+        className="glass-card"
+        style={{
+          padding: '22px',
+          borderRadius: '18px',
+          display: 'grid',
+          gap: '18px',       
+          direction: 'rtl'
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '14px',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div>
+            <h3 style={{ margin: '0 0 6px' }}>إعدادات نقاط الولاء</h3>
+            <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>
+              حدد العميل يكسب كام نقطة، وقيمة النقطة عند استخدامها كخصم.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={loyaltySettings.loyalty_enabled}
+            onClick={() =>
+              setLoyaltySettings((prev) => ({
+                ...prev,
+                loyalty_enabled: !prev.loyalty_enabled
+              }))
+            }
+            style={{
+              width: '54px',
+              height: '28px',
+              borderRadius: '999px',
+              border: 'none',
+              padding: '3px',
+              cursor: 'pointer',
+              background: loyaltySettings.loyalty_enabled ? '#2563eb' : '#64748b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: loyaltySettings.loyalty_enabled ? 'flex-end' : 'flex-start',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <span
+              style={{
+                width: '22px',
+                height: '22px',
+                borderRadius: '50%',
+                background: '#fff',
+                display: 'block',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.25)'
+              }}
+            />
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: '14px'
+          }}
+        >
+          <div style={loyaltyFieldStyle}>
+            <label style={labelStyle}>كل كام جنيه شراء؟</label>
+            <input
+              type="number"
+              min={1}
+              value={loyaltySettings.loyalty_earn_amount}
+              onChange={(e) =>
+                setLoyaltySettings((p) => ({
+                  ...p,
+                  loyalty_earn_amount: Number(e.target.value)
+                }))
+              }
+              style={inputStyle}
+            />
+            <small style={hintStyle}>مثال: 1000 يعني كل 1000 جنيه</small>
+          </div>
+
+          <div style={loyaltyFieldStyle}>
+            <label style={labelStyle}>يكسب كام نقطة؟</label>
+            <input
+              type="number"
+              min={1}
+              value={loyaltySettings.loyalty_earn_points}
+              onChange={(e) =>
+                setLoyaltySettings((p) => ({
+                  ...p,
+                  loyalty_earn_points: Number(e.target.value)
+                }))
+              }
+              style={inputStyle}
+            />
+            <small style={hintStyle}>مثال: 10 نقاط لكل 1000 جنيه</small>
+          </div>
+
+          <div style={loyaltyFieldStyle}>
+            <label style={labelStyle}>قيمة النقطة بالجنيه</label>
+            <input
+              type="number"
+              min={0}
+              value={loyaltySettings.loyalty_point_value}
+              onChange={(e) =>
+                setLoyaltySettings((p) => ({
+                  ...p,
+                  loyalty_point_value: Number(e.target.value)
+                }))
+              }
+              style={inputStyle}
+            />
+            <small style={hintStyle}>مثال: كل نقطة = 10 جنيه خصم</small>
+          </div>
+
+          <div style={loyaltyFieldStyle}>
+            <label style={labelStyle}>أقل عدد نقاط للاستخدام</label>
+            <input
+              type="number"
+              min={1}
+              value={loyaltySettings.loyalty_min_redeem_points}
+              onChange={(e) =>
+                setLoyaltySettings((p) => ({
+                  ...p,
+                  loyalty_min_redeem_points: Number(e.target.value)
+                }))
+              }
+              style={inputStyle}
+            />
+            <small style={hintStyle}>أقل رصيد نقاط يسمح للعميل يستخدمه كخصم</small>
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: '14px',
+            borderRadius: '14px',
+            background: 'rgba(37,99,235,0.10)',
+            border: '1px solid rgba(37,99,235,0.25)',
+            color: '#bfdbfe',
+            fontWeight: 700,
+            lineHeight: 1.8
+          }}
+        >
+          مثال النظام الحالي:
+          كل {loyaltySettings.loyalty_earn_amount} جنيه =
+          {' '}{loyaltySettings.loyalty_earn_points} نقطة،
+          وكل نقطة = {loyaltySettings.loyalty_point_value} جنيه خصم.
+          أقل استخدام = {loyaltySettings.loyalty_min_redeem_points} نقطة.
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+          <button
+            type="button"
+            onClick={saveLoyaltySettings}
+            disabled={savingLoyalty}
+            style={{
+              ...primaryButtonStyle,
+              opacity: savingLoyalty ? 0.6 : 1,
+              cursor: savingLoyalty ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {savingLoyalty ? 'جاري الحفظ...' : 'حفظ إعدادات النقاط'}
+          </button>
+        </div>
+      </div>
+    )}
+
+    {showDeactivateModal && (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 999999,
+          background: 'rgba(0,0,0,0.65)',
+          display: 'grid',
+          placeItems: 'center',
+          padding: '20px'
+        }}
+      >
+        <div
+          className="glass-card"
+          style={{
+            width: 'min(460px, 100%)',
+            borderRadius: '22px',
+            padding: '22px',
+            direction: 'rtl',
+            display: 'grid',
+            gap: '14px',
+            border: '1px solid rgba(248,113,113,0.35)'
+          }}
+        >
+          <h3 style={{ margin: 0, color: '#fecaca' }}>تأكيد إلغاء التفعيل</h3>
+
+          <p style={{ margin: 0, color: '#cbd5e1', lineHeight: 1.8, fontWeight: 700 }}>
+            هل أنت متأكد إنك عايز تلغي تفعيل البرنامج؟ لو فترة التجربة منتهية، البرنامج هيقفل ويطلب كود تفعيل جديد.
+          </p>
+
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-start' }}>
+            <button
+              type="button"
+              onClick={handleDeactivateApp}
+              disabled={deactivatingApp}
+              style={{
+                ...dangerButtonStyle,
+                opacity: deactivatingApp ? 0.6 : 1
+              }}
+            >
+              {deactivatingApp ? 'جاري الإلغاء...' : 'تأكيد إلغاء التفعيل'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowDeactivateModal(false)}
+              disabled={deactivatingApp}
+              style={{
+                border: '1px solid rgba(255,255,255,0.12)',
+                background: 'rgba(255,255,255,0.06)',
+                color: '#fff',
+                borderRadius: '12px',
+                padding: '11px 16px',
+                fontWeight: 900,
+                cursor: 'pointer'
+              }}
+            >
+              إلغاء
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </div>
+    </div>
+  );
 }
 
 function BarcodeItemEditor(props: {

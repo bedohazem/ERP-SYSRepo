@@ -78,7 +78,31 @@ export default function ReportsPage() {
   }, []);
 
   return (
-    <div style={{ display: 'grid', gap: '18px' }}>
+    <div
+      style={{
+        display: 'grid',
+        gap: '12px',
+        height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
+        gridTemplateRows: 'auto auto minmax(0, 1fr)'
+      }}
+    >
+      <style>
+        {`
+          .reports-body-scroll {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+
+          .reports-body-scroll::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+            display: none;
+          }
+        `}
+      </style>
+
       {message && (
         <div
           style={{
@@ -143,8 +167,9 @@ export default function ReportsPage() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-          gap: '14px'
+          gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+          gap: '10px',
+          minHeight: 0
         }}
       >
         <StatCard title="إجمالي المبيعات" value={money(data.summary.gross_sales)} />
@@ -159,6 +184,7 @@ export default function ReportsPage() {
           value={money(data.summary.net_profit_after_discounts)}
           success
         />
+
         <StatCard
           title="المصروفات"
           value={money(data.summary.total_expenses)}
@@ -176,6 +202,7 @@ export default function ReportsPage() {
           value={money(data.summary.final_net_profit)}
           success
         />
+
         <StatCard title="إجمالي المرتجعات" value={money(data.summary.total_returns)} danger />
         <StatCard title="عدد الفواتير" value={String(data.summary.sales_count)} />
         <StatCard title="عدد المرتجعات" value={String(data.summary.returns_count)} />
@@ -185,77 +212,90 @@ export default function ReportsPage() {
       </div>
 
       <div
+        className="reports-body-scroll"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(320px, 1.3fr) minmax(300px, 1fr)',
-          gap: '18px'
+          gap: '14px',
+          minHeight: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          alignContent: 'start',
+          paddingBottom: '24px'
         }}
       >
-        <ReportTable
-          title="أفضل المنتجات مبيعًا"
-          emptyText="لا توجد منتجات مباعة"
-          columns={['المنتج', 'المقاس', 'اللون', 'الكمية', 'الإجمالي']}
-          rows={data.topProducts.map((x) => [
-            x.product_name,
-            x.size || '—',
-            x.color || '—',
-            Number(x.net_quantity || 0),
-            money(x.net_total)
-          ])}
-        />
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(320px, 1.3fr) minmax(300px, 1fr)',
+            gap: '14px'
+          }}
+        >
+          <ReportTable
+            title="أفضل المنتجات مبيعًا"
+            emptyText="لا توجد منتجات مباعة"
+            columns={['المنتج', 'المقاس', 'اللون', 'الكمية', 'الإجمالي']}
+            rows={data.topProducts.map((x) => [
+              x.product_name,
+              x.size || '—',
+              x.color || '—',
+              Number(x.net_quantity || 0),
+              money(x.net_total)
+            ])}
+          />
+
+          <ReportTable
+            title="طرق الدفع"
+            emptyText="لا توجد بيانات"
+            columns={['الطريقة', 'العدد', 'الإجمالي']}
+            rows={data.paymentMethods.map((x) => [
+              getPaymentMethodLabel(x.payment_method),
+              x.count,
+              money(x.total)
+            ])}
+          />
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(320px, 1fr) minmax(320px, 1fr)',
+            gap: '14px'
+          }}
+        >
+          <ReportTable
+            title="مخزون منخفض / نافد"
+            emptyText="لا يوجد مخزون منخفض"
+            columns={['المنتج', 'باركود', 'المقاس', 'اللون', 'المخزون', 'الحد الأدنى']}
+            rows={data.lowStock.map((x) => [
+              x.product_name,
+              x.barcode || '—',
+              x.size || '—',
+              x.color || '—',
+              Number(x.stock || 0),
+              Number(x.min_stock || 0)
+            ])}
+          />
+
+          <ReportTable
+            title="أفضل العملاء"
+            emptyText="لا توجد بيانات عملاء"
+            columns={['العميل', 'الهاتف', 'عدد الفواتير', 'إجمالي الشراء']}
+            rows={data.topCustomers.map((x) => [
+              x.name,
+              x.phone || '—',
+              x.sales_count,
+              money(x.total_spent)
+            ])}
+          />
+        </div>
 
         <ReportTable
-          title="طرق الدفع"
-          emptyText="لا توجد بيانات"
-          columns={['الطريقة', 'العدد', 'الإجمالي']}
-          rows={data.paymentMethods.map((x) => [
-            getPaymentMethodLabel(x.payment_method),
-            x.count,
-            money(x.total)
-          ])}
+          title="مبيعات الأيام"
+          emptyText="لا توجد مبيعات في الفترة"
+          columns={['اليوم', 'صافي المبيعات']}
+          rows={data.dailySales.map((x) => [formatDateOnly(x.day), money(x.total)])}
         />
       </div>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(320px, 1fr) minmax(320px, 1fr)',
-          gap: '18px'
-        }}
-      >
-        <ReportTable
-          title="مخزون منخفض / نافد"
-          emptyText="لا يوجد مخزون منخفض"
-          columns={['المنتج', 'باركود', 'المقاس', 'اللون', 'المخزون', 'الحد الأدنى']}
-          rows={data.lowStock.map((x) => [
-            x.product_name,
-            x.barcode || '—',
-            x.size || '—',
-            x.color || '—',
-            Number(x.stock || 0),
-            Number(x.min_stock || 0)
-          ])}
-        />
-
-        <ReportTable
-          title="أفضل العملاء"
-          emptyText="لا توجد بيانات عملاء"
-          columns={['العميل', 'الهاتف', 'عدد الفواتير', 'إجمالي الشراء']}
-          rows={data.topCustomers.map((x) => [
-            x.name,
-            x.phone || '—',
-            x.sales_count,
-            money(x.total_spent)
-          ])}
-        />
-      </div>
-
-      <ReportTable
-        title="مبيعات الأيام"
-        emptyText="لا توجد مبيعات في الفترة"
-        columns={['اليوم', 'صافي المبيعات']}
-        rows={data.dailySales.map((x) => [formatDateOnly(x.day), money(x.total)])}
-      />
     </div>
   );
 }
@@ -371,17 +411,17 @@ function formatDateOnly(value?: string) {
 }
 
 const cardStyle: React.CSSProperties = {
-  padding: '18px',
-  borderRadius: '18px',
+  padding: '14px',
+  borderRadius: '16px',
   display: 'grid',
-  gap: '12px'
+  gap: '10px'
 };
 
 const statCardStyle: React.CSSProperties = {
-  padding: '18px',
-  borderRadius: '18px',
+  padding: '14px',
+  borderRadius: '16px',
   display: 'grid',
-  gap: '10px'
+  gap: '8px'
 };
 
 const inputStyle: React.CSSProperties = {

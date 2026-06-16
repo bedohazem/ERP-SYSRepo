@@ -383,73 +383,108 @@ export default function PurchaseHistoryPage() {
         </div>
       )}
 
-      <div className="glass-card" style={cardStyle}>
+      <div
+        className="glass-card"
+        style={{
+          padding: '12px 14px',
+          borderRadius: '16px',
+          display: 'grid',
+          gap: '10px'
+        }}
+      >
         <div
           style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: '14px',
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr) auto',
+            gap: '12px',
             alignItems: 'center',
-            flexWrap: 'wrap',
             direction: 'rtl'
           }}
         >
-          <div>
-            <h2 style={{ margin: '0 0 6px' }}>سجل فواتير الشراء</h2>
-            <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700 }}>
+          <div style={{ textAlign: 'right' }}>
+            <h2 style={{ margin: 0, fontSize: '20px', lineHeight: 1.2 }}>
+              سجل فواتير الشراء
+            </h2>
+
+            <p
+              style={{
+                margin: '4px 0 0',
+                color: '#94a3b8',
+                fontWeight: 700,
+                fontSize: '12px'
+              }}
+            >
               متابعة فواتير الموردين ومرتجعات الشراء
             </p>
           </div>
 
-          <div style={{ color: '#cbd5e1', fontWeight: 900 }}>
+          <div
+            style={{
+              color: '#cbd5e1',
+              fontWeight: 900,
+              fontSize: '13px',
+              whiteSpace: 'nowrap'
+            }}
+          >
             عدد النتائج: {currentTotal}
           </div>
         </div>
 
         <div
           style={{
-            display: 'flex',
+            display: 'grid',
+            gridTemplateColumns: 'auto minmax(260px, 1fr)',
             gap: '10px',
-            flexWrap: 'wrap',
-            justifyContent: 'flex-end',
+            alignItems: 'center',
             direction: 'rtl'
           }}
         >
-          <button
-            type="button"
-            onClick={() => setActiveTab('purchases')}
-            style={activeTab === 'purchases' ? activeTabButtonStyle : tabButtonStyle}
+          <div
+            style={{
+              display: 'flex',
+              gap: '8px',
+              flexWrap: 'nowrap'
+            }}
           >
-            فواتير الشراء
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('purchases')}
+              style={activeTab === 'purchases' ? activeTabButtonStyle : tabButtonStyle}
+            >
+              فواتير الشراء
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('returns')}
-            style={activeTab === 'returns' ? activeTabButtonStyle : tabButtonStyle}
-          >
-            مرتجعات الشراء
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('returns')}
+              style={activeTab === 'returns' ? activeTabButtonStyle : tabButtonStyle}
+            >
+              مرتجعات الشراء
+            </button>
+          </div>
+
+          <input
+            placeholder={
+              activeTab === 'returns'
+                ? 'بحث برقم المرتجع / رقم الفاتورة / اسم المورد / الهاتف'
+                : 'بحث برقم الفاتورة / اسم المورد / الهاتف'
+            }
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              ...inputStyle,
+              height: '38px'
+            }}
+          />
         </div>
-
-        <input
-          placeholder={
-            activeTab === 'returns'
-              ? 'بحث برقم المرتجع / رقم الفاتورة / اسم المورد / الهاتف'
-              : 'بحث برقم الفاتورة / اسم المورد / الهاتف'
-          }
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={inputStyle}
-        />
       </div>
 
       {activeTab === 'purchases' && (
         <div
           className="glass-card table-scroll"
           style={{
-            padding: '18px',
-            borderRadius: '18px',
+            padding: '10px 12px',
+            borderRadius: '16px',
             overflow: 'auto',
             height: '100%',
             minHeight: 0,
@@ -460,7 +495,7 @@ export default function PurchaseHistoryPage() {
           <table
             style={{
               width: '100%',
-              minWidth: '980px',
+              minWidth: '900px',
               borderCollapse: 'collapse',
               direction: 'rtl'
             }}
@@ -578,7 +613,8 @@ export default function PurchaseHistoryPage() {
                             gap: '6px',
                             flexWrap: 'wrap',
                             alignItems: 'center',
-                            minWidth: '180px'
+                            minWidth: '150px',
+                            maxWidth: '175px'
                           }}
                         >
                           <button
@@ -663,8 +699,8 @@ export default function PurchaseHistoryPage() {
         <div
           className="glass-card table-scroll"
           style={{
-            padding: '18px',
-            borderRadius: '18px',
+            padding: '10px 12px',
+            borderRadius: '16px',
             overflow: 'auto',
             height: '100%',
             minHeight: 0,
@@ -675,10 +711,9 @@ export default function PurchaseHistoryPage() {
           <table
             style={{
               width: '100%',
-              minWidth: '980px',
+              minWidth: '860px',
               borderCollapse: 'collapse',
               direction: 'rtl',
-              tableLayout: 'fixed'
             }}
           >
             <thead>
@@ -1537,10 +1572,10 @@ function formatDate(value?: string) {
 }
 
 const cardStyle: React.CSSProperties = {
-  padding: '18px',
-  borderRadius: '18px',
+  padding: '12px 14px',
+  borderRadius: '16px',
   display: 'grid',
-  gap: '14px'
+  gap: '10px'
 };
 
 const fieldStyle: React.CSSProperties = {
@@ -1554,7 +1589,7 @@ const labelStyle: React.CSSProperties = {
 };
 
 const inputStyle: React.CSSProperties = {
-  height: '44px',
+  height: '40px',
   borderRadius: '10px',
   border: '1px solid rgba(255,255,255,0.10)',
   background: 'rgba(255,255,255,0.05)',
@@ -1601,8 +1636,10 @@ const dangerSolidButtonStyle: React.CSSProperties = {
 
 const tabButtonStyle: React.CSSProperties = {
   ...secondaryButtonStyle,
-  minWidth: '125px',
-  height: '40px'
+  minWidth: '108px',
+  height: '34px',
+  padding: '0 10px',
+  fontSize: '12px'
 };
 
 const activeTabButtonStyle: React.CSSProperties = {
@@ -1614,15 +1651,17 @@ const activeTabButtonStyle: React.CSSProperties = {
 
 const smallButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(148,163,184,0.30)',
+  height: '30px',
   borderRadius: '8px',
   background: 'rgba(148,163,184,0.08)',
   color: '#e5e7eb',
-  padding: '7px 9px',
+  padding: '0 7px',
   cursor: 'pointer',
   whiteSpace: 'nowrap',
-  minWidth: '62px',
+  minWidth: '50px',
   textAlign: 'center',
-  fontWeight: 700
+  fontWeight: 700,
+  fontSize: '12px'
 };
 
 const closeButtonStyle: React.CSSProperties = {
@@ -1637,18 +1676,18 @@ const closeButtonStyle: React.CSSProperties = {
 };
 
 const thStyle: React.CSSProperties = {
-  padding: '10px 8px',
+  padding: '7px 6px',
   fontWeight: 900,
   whiteSpace: 'nowrap',
-  fontSize: '13px',
+  fontSize: '12px',
   borderBottom: '1px solid rgba(255,255,255,0.08)'
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: '10px 8px',
+  padding: '7px 6px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
-  fontSize: '13px',
+  fontSize: '12px',
   verticalAlign: 'middle'
 };
 

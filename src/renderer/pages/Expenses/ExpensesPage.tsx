@@ -334,7 +334,30 @@ export default function ExpensesPage() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: '18px' }}>
+    <div
+      style={{
+        display: 'grid',
+        gap: '12px',
+        height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
+        gridTemplateRows: 'auto auto minmax(0, 1fr)'
+      }}
+    >
+      <style>
+        {`
+          .expenses-body-scroll {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+
+          .expenses-body-scroll::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+            display: none;
+          }
+        `}
+      </style>
 
       {/* Toast Message */}
       {message && (
@@ -364,8 +387,8 @@ export default function ExpensesPage() {
       <div
         className="glass-card"
         style={{
-          padding: '18px',
-          borderRadius: '18px',
+          padding: '14px',
+          borderRadius: '16px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -412,10 +435,11 @@ export default function ExpensesPage() {
       <div
         className="glass-card"
         style={{
-          padding: '18px',
-          borderRadius: '18px',
+          padding: '14px',
+          borderRadius: '16px',
           display: 'grid',
-          gap: '14px'
+          gap: '10px',
+          minHeight: 0
         }}
       >
         <div>
@@ -487,7 +511,7 @@ export default function ExpensesPage() {
             placeholder="ملاحظات إضافية..."
             style={{
               ...inputStyle,
-              height: '90px',
+              height: '72px',
               paddingTop: '12px',
               resize: 'vertical'
             }}
@@ -514,67 +538,90 @@ export default function ExpensesPage() {
       <div
         className="glass-card"
         style={{
-          padding: '18px',
-          borderRadius: '18px',
-          overflowX: 'auto'
+          padding: '14px',
+          borderRadius: '16px',
+          height: '100%',
+          minHeight: 0,
+          overflow: 'hidden',
+          display: 'grid',
+          gridTemplateRows: 'auto minmax(0, 1fr)',
+          gap: '10px'
         }}
       >
         <h3 style={{ margin: '0 0 16px', textAlign: 'right' }}>سجل المصروفات</h3>
 
-        <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
-          <thead>
-            <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
-              <th style={thStyle}>المصروف</th>
-              <th style={thStyle}>التصنيف</th>
-              <th style={thStyle}>المبلغ</th>
-              <th style={thStyle}>طريقة الدفع</th>
-              <th style={thStyle}>المستخدم</th>
-              <th style={thStyle}>التاريخ</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan={6} style={{ ...tdStyle, textAlign: 'center' }}>
-                  جاري التحميل...
-                </td>
+        <div
+          className="expenses-body-scroll"
+          style={{
+            overflow: 'auto',
+            minHeight: 0,
+            height: '100%',
+            maxWidth: '100%'
+          }}
+        >
+          <table
+            style={{
+              width: '100%',
+              minWidth: '850px',
+              borderCollapse: 'collapse',
+              direction: 'rtl'
+            }}
+          >
+            <thead>
+              <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
+                <th style={thStyle}>المصروف</th>
+                <th style={thStyle}>التصنيف</th>
+                <th style={thStyle}>المبلغ</th>
+                <th style={thStyle}>طريقة الدفع</th>
+                <th style={thStyle}>المستخدم</th>
+                <th style={thStyle}>التاريخ</th>
               </tr>
-            )}
+            </thead>
 
-            {!loading && expenses.map((expense) => (
-              <tr
-                key={expense.id}
-                style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
-              >
-                <td style={{ ...tdStyle, fontWeight: 700 }}>{expense.title}</td>
-                <td style={tdStyle}>{expense.category || '—'}</td>
-                <td style={{ ...tdStyle, color: '#f87171', fontWeight: 900 }}>
-                  {money(expense.amount)}
-                </td>
-                <td style={tdStyle}>{getPaymentMethodLabel(expense.payment_method)}</td>
-                <td style={tdStyle}>{expense.created_by_name || '—'}</td>
-                <td style={{ ...tdStyle, color: '#94a3b8' }}>{formatDate(expense.created_at)}</td>
-              </tr>
-            ))}
+            <tbody>
+              {loading && (
+                <tr>
+                  <td colSpan={6} style={{ ...tdStyle, textAlign: 'center' }}>
+                    جاري التحميل...
+                  </td>
+                </tr>
+              )}
 
-            {!loading && expenses.length === 0 && (
-              <tr>
-                <td
-                  colSpan={6}
-                  style={{
-                    ...tdStyle,
-                    textAlign: 'center',
-                    color: '#94a3b8',
-                    padding: '28px'
-                  }}
+              {!loading && expenses.map((expense) => (
+                <tr
+                  key={expense.id}
+                  style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                 >
-                  لا توجد مصروفات مسجلة
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                  <td style={{ ...tdStyle, fontWeight: 700 }}>{expense.title}</td>
+                  <td style={tdStyle}>{expense.category || '—'}</td>
+                  <td style={{ ...tdStyle, color: '#f87171', fontWeight: 900 }}>
+                    {money(expense.amount)}
+                  </td>
+                  <td style={tdStyle}>{getPaymentMethodLabel(expense.payment_method)}</td>
+                  <td style={tdStyle}>{expense.created_by_name || '—'}</td>
+                  <td style={{ ...tdStyle, color: '#94a3b8' }}>{formatDate(expense.created_at)}</td>
+                </tr>
+              ))}
+
+              {!loading && expenses.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    style={{
+                      ...tdStyle,
+                      textAlign: 'center',
+                      color: '#94a3b8',
+                      padding: '28px'
+                    }}
+                  >
+                    لا توجد مصروفات مسجلة
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        
       </div>
     </div>
   );

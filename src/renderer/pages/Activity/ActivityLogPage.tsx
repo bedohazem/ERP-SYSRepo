@@ -334,7 +334,31 @@ export default function ActivityLogPage() {
   }, []);
 
   return (
-    <div style={{ display: 'grid', gap: '18px' }}>
+    <div
+      style={{
+        display: 'grid',
+        gap: '12px',
+        height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
+        gridTemplateRows: 'auto minmax(0, 1fr)'
+      }}
+    >
+      <style>
+        {`
+          .activity-body-scroll {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+
+          .activity-body-scroll::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+            display: none;
+          }
+        `}
+      </style>
+
       {pageMessage && (
         <div
           style={{
@@ -361,10 +385,11 @@ export default function ActivityLogPage() {
       <div
         className="glass-card"
         style={{
-          padding: '20px',
-          borderRadius: '22px',
+          padding: '14px',
+          borderRadius: '16px',
           display: 'grid',
-          gap: '16px'
+          gap: '12px',
+          minHeight: 0
         }}
       >
         <div
@@ -528,112 +553,134 @@ export default function ActivityLogPage() {
       <div
         className="glass-card"
         style={{
-          padding: '18px',
-          borderRadius: '18px',
-          overflowX: 'auto'
+          padding: '14px',
+          borderRadius: '16px',
+          height: '100%',
+          minHeight: 0,
+          overflow: 'hidden',
+          display: 'grid',
+          gridTemplateRows: 'auto minmax(0, 1fr)',
+          gap: '10px'
         }}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
-          <thead>
-            <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
-              <th style={thStyle}>#</th>
-              <th style={thStyle}>العملية</th>
-              <th style={thStyle}>الموديول</th>
-              <th style={thStyle}>رقم المرجع</th>
-              <th style={thStyle}>التفاصيل</th>
-              <th style={thStyle}>المستخدم</th>
-              <th style={thStyle}>التاريخ</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan={7} style={{ ...tdStyle, textAlign: 'center' }}>
-                  جاري التحميل...
-                </td>
+        <div
+          className="activity-body-scroll"
+          style={{
+            overflow: 'auto',
+            minHeight: 0,
+            height: '100%',
+            maxWidth: '100%'
+          }}
+        >
+          <table
+            style={{
+              width: '100%',
+              minWidth: '1000px',
+              borderCollapse: 'collapse',
+              direction: 'rtl'
+            }}
+          >
+            <thead>
+              <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
+                <th style={thStyle}>#</th>
+                <th style={thStyle}>العملية</th>
+                <th style={thStyle}>الموديول</th>
+                <th style={thStyle}>رقم المرجع</th>
+                <th style={thStyle}>التفاصيل</th>
+                <th style={thStyle}>المستخدم</th>
+                <th style={thStyle}>التاريخ</th>
               </tr>
-            )}
+            </thead>
 
-            {!loading &&
-              logs.map((item) => {
-                const detailsText = formatDetails(item.details);
-                const isExpanded = Boolean(expandedDetails[item.id]);
-                const canExpand = detailsText.length > 90;
+            <tbody>
+              {loading && (
+                <tr>
+                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center' }}>
+                    جاري التحميل...
+                  </td>
+                </tr>
+              )}
 
-                return (
-                  <tr key={item.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                    <td style={tdStyle}>{item.id}</td>
+              {!loading &&
+                logs.map((item) => {
+                  const detailsText = formatDetails(item.details);
+                  const isExpanded = Boolean(expandedDetails[item.id]);
+                  const canExpand = detailsText.length > 90;
 
-                    <td style={tdStyle}>
-                      <span style={getActionBadgeStyle(item.action)}>
-                        {getActionLabel(item.action)}
-                      </span>
-                    </td>
+                  return (
+                    <tr key={item.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <td style={tdStyle}>{item.id}</td>
 
-                    <td style={tdStyle}>{getEntityLabel(item.entity)}</td>
-                    <td style={tdStyle}>{item.entity_id || '—'}</td>
+                      <td style={tdStyle}>
+                        <span style={getActionBadgeStyle(item.action)}>
+                          {getActionLabel(item.action)}
+                        </span>
+                      </td>
 
-                    <td style={{ ...tdStyle, maxWidth: '420px' }}>
-                      <div
-                        title={!isExpanded ? detailsText : undefined}
-                        style={{
-                          lineHeight: 1.7,
-                          whiteSpace: isExpanded ? 'normal' : 'nowrap',
-                          overflow: isExpanded ? 'visible' : 'hidden',
-                          textOverflow: isExpanded ? 'clip' : 'ellipsis',
-                          wordBreak: 'break-word'
-                        }}
-                      >
-                        {detailsText}
-                      </div>
+                      <td style={tdStyle}>{getEntityLabel(item.entity)}</td>
+                      <td style={tdStyle}>{item.entity_id || '—'}</td>
 
-                      {canExpand && (
-                        <button
-                          type="button"
-                          onClick={() => toggleDetails(item.id)}
+                      <td style={{ ...tdStyle, maxWidth: '420px' }}>
+                        <div
+                          title={!isExpanded ? detailsText : undefined}
                           style={{
-                            marginTop: '6px',
-                            border: 'none',
-                            background: 'transparent',
-                            color: '#93c5fd',
-                            fontWeight: 900,
-                            cursor: 'pointer',
-                            padding: 0
+                            lineHeight: 1.7,
+                            whiteSpace: isExpanded ? 'normal' : 'nowrap',
+                            overflow: isExpanded ? 'visible' : 'hidden',
+                            textOverflow: isExpanded ? 'clip' : 'ellipsis',
+                            wordBreak: 'break-word'
                           }}
                         >
-                          {isExpanded ? 'عرض أقل' : 'عرض المزيد'}
-                        </button>
-                      )}
-                    </td>
+                          {detailsText}
+                        </div>
 
-                    <td style={tdStyle}>{formatLogUser(item)}</td>
+                        {canExpand && (
+                          <button
+                            type="button"
+                            onClick={() => toggleDetails(item.id)}
+                            style={{
+                              marginTop: '6px',
+                              border: 'none',
+                              background: 'transparent',
+                              color: '#93c5fd',
+                              fontWeight: 900,
+                              cursor: 'pointer',
+                              padding: 0
+                            }}
+                          >
+                            {isExpanded ? 'عرض أقل' : 'عرض المزيد'}
+                          </button>
+                        )}
+                      </td>
 
-                    <td style={{ ...tdStyle, color: '#94a3b8' }}>
-                      {formatDate(item.created_at)}
-                    </td>
-                  </tr>
-                );
-              })
-            }
+                      <td style={tdStyle}>{formatLogUser(item)}</td>
 
-            {!loading && logs.length === 0 && (
-              <tr>
-                <td
-                  colSpan={7}
-                  style={{
-                    ...tdStyle,
-                    padding: '30px',
-                    textAlign: 'center',
-                    color: '#94a3b8'
-                  }}
-                >
-                  لا توجد عمليات مطابقة للفلتر
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                      <td style={{ ...tdStyle, color: '#94a3b8' }}>
+                        {formatDate(item.created_at)}
+                      </td>
+                    </tr>
+                  );
+                })
+              }
+
+              {!loading && logs.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    style={{
+                      ...tdStyle,
+                      padding: '30px',
+                      textAlign: 'center',
+                      color: '#94a3b8'
+                    }}
+                  >
+                    لا توجد عمليات مطابقة للفلتر
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -987,7 +1034,7 @@ function getActionBadgeStyle(action: string): React.CSSProperties {
 }
 
 const inputStyle: React.CSSProperties = {
-  height: '44px',
+  height: '38px',
   borderRadius: '12px',
   border: '1px solid rgba(255,255,255,0.10)',
   background: 'rgba(255,255,255,0.05)',

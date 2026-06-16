@@ -450,7 +450,31 @@ export default function CashPage() {
   }
 
   return (
-    <div style={{ display: 'grid', gap: '18px' }}>
+    <div
+      style={{
+        display: 'grid',
+        gap: '12px',
+        height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
+        gridTemplateRows: 'auto auto auto minmax(0, 1fr)'
+      }}
+    >
+      <style>
+        {`
+          .cash-body-scroll {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+          }
+
+          .cash-body-scroll::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+            display: none;
+          }
+        `}
+      </style>
+
       {message && (
         <div
           style={{
@@ -479,7 +503,8 @@ export default function CashPage() {
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '14px'
+          gap: '10px',
+          minHeight: 0
         }}
       >
         <SummaryCard
@@ -507,10 +532,11 @@ export default function CashPage() {
       <div
         className="glass-card"
         style={{
-          padding: '18px',
-          borderRadius: '18px',
+          padding: '14px',
+          borderRadius: '16px',
           display: 'grid',
-          gap: '16px'
+          gap: '10px',
+          minHeight: 0
         }}
       >
         <div>
@@ -590,10 +616,11 @@ export default function CashPage() {
       <div
         className="glass-card"
         style={{
-          padding: '18px',
-          borderRadius: '18px',
+          padding: '14px',
+          borderRadius: '16px',
           display: 'grid',
-          gap: '16px'
+          gap: '10px',
+          minHeight: 0
         }}
       >
         <div>
@@ -725,9 +752,14 @@ export default function CashPage() {
       <div
         className="glass-card"
         style={{
-          padding: '18px',
-          borderRadius: '18px',
-          overflowX: 'auto'
+          padding: '14px',
+          borderRadius: '16px',
+          height: '100%',
+          minHeight: 0,
+          overflow: 'hidden',
+          display: 'grid',
+          gridTemplateRows: 'auto minmax(0, 1fr)',
+          gap: '10px'
         }}
       >
         <div style={{ marginBottom: '16px' }}>
@@ -737,7 +769,23 @@ export default function CashPage() {
           </p>
         </div>
 
-        <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+      <div
+        className="cash-body-scroll"
+        style={{
+          overflow: 'auto',
+          minHeight: 0,
+          height: '100%',
+          maxWidth: '100%'
+        }}
+      >
+        <table
+          style={{
+            width: '100%',
+            minWidth: '950px',
+            borderCollapse: 'collapse',
+            direction: 'rtl'
+          }}
+        >
           <thead>
             <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
               <th style={thStyle}>النوع</th>
@@ -828,6 +876,7 @@ export default function CashPage() {
           </tbody>
         </table>
       </div>
+      </div>
       {confirmOverdrawOpen && (
         <div style={modalOverlayStyle}>
           <div style={modalStyle}>
@@ -906,15 +955,15 @@ function SummaryCard({
     <div
       className="glass-card"
       style={{
-        padding: '18px',
-        borderRadius: '18px',
+        padding: '14px',
+        borderRadius: '16px',
         display: 'grid',
-        gap: '10px',
+        gap: '8px',
         border: `1px solid ${border}`
       }}
     >
       <div style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</div>
-      <strong style={{ color, fontSize: '28px' }}>{value}</strong>
+      <strong style={{ color, fontSize: '24px' }}>{value}</strong>
     </div>
   );
 }
