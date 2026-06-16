@@ -1168,21 +1168,24 @@ export default function ProductsPage() {
             ) : (
               products.map((product) => {
                 const isOpen = expandedId === product.id;
-                const searchValue = search.trim();
+                const searchValue = search.trim().toLowerCase();
+
+                const productMatchesSearch =
+                  !searchValue ||
+                  product.name?.toLowerCase().includes(searchValue) ||
+                  product.category_name?.toLowerCase().includes(searchValue);
 
                 const productVariants = (variantsMap[product.id] || []).filter((variant) => {
                   if (!searchValue) return true;
 
-                  // لو البحث باركود
-                  if (/^\d+$/.test(searchValue)) {
-                    return variant.barcode === searchValue;
-                  }
+                  // لو البحث باسم المنتج أو التصنيف، اعرض كل أصناف المنتج
+                  if (productMatchesSearch) return true;
 
-                  // البحث العادي
+                  // لو البحث بباركود / مقاس / لون
                   return (
-                    variant.barcode?.includes(searchValue) ||
-                    variant.size?.toLowerCase().includes(searchValue.toLowerCase()) ||
-                    variant.color?.toLowerCase().includes(searchValue.toLowerCase())
+                    String(variant.barcode || '').toLowerCase().includes(searchValue) ||
+                    String(variant.size || '').toLowerCase().includes(searchValue) ||
+                    String(variant.color || '').toLowerCase().includes(searchValue)
                   );
                 });
 

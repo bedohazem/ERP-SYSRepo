@@ -121,6 +121,8 @@ const defaultLoyaltySettings: LoyaltySettings = {
   loyalty_min_redeem_points: 2
 };
 
+const SALES_DRAFT_STORAGE_KEY = 'fony_sales_invoice_draft_v1';
+
 const createInvoice = (id: number): InvoiceTab => ({
   id,
   title: `فاتورة ${id}`,
@@ -153,6 +155,47 @@ function normalizeCustomer(customer: any): CustomerOption {
 function normalizePositiveInt(value: string | number): number {
   const n = Math.floor(Number(value));
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
+  const id = Number(raw?.id || fallbackId);
+  const base = createInvoice(id);
+
+  const cart = Array.isArray(raw?.cart)
+    ? raw.cart
+        .map((item: any) => ({
+          variant_id: Number(item.variant_id),
+          product_id: Number(item.product_id || 0),
+          product_name: String(item.product_name || ''),
+          barcode: String(item.barcode || ''),
+          size: String(item.size || ''),
+          color: String(item.color || ''),
+          sell_price: Number(item.sell_price || 0),
+          buy_price: Number(item.buy_price || 0),
+          stock: Number(item.stock || 0),
+          min_stock: Number(item.min_stock || 0),
+          is_active: Number(item.is_active ?? 1),
+          quantity: Math.max(1, Number(item.quantity || 1))
+        }))
+        .filter((item: CartItem) => Number.isFinite(item.variant_id) && item.variant_id > 0)
+    : [];
+
+  const customer = raw?.customer?.id ? normalizeCustomer(raw.customer) : null;
+
+  return {
+    ...base,
+    id,
+    title: String(raw?.title || `فاتورة ${id}`),
+    cart,
+    barcodeDraft: String(raw?.barcodeDraft || ''),
+    productDraft: String(raw?.productDraft || ''),
+    customer,
+    loyaltyPointsDraft: String(raw?.loyaltyPointsDraft || ''),
+    paidDraft: String(raw?.paidDraft || ''),
+    paymentMethod: String(raw?.paymentMethod || 'cash'),
+    discountType: raw?.discountType === 'percent' ? 'percent' : 'amount',
+    discountDraft: String(raw?.discountDraft || '')
+  };
 }
 
 function money(value: number | string | null | undefined): string {
@@ -243,7 +286,7 @@ export default function SalesPage() {
   } | null>(null);
 
   const [receiptData, setReceiptData] = useState<SaleReceipt | null>(null);
-
+  const [salesDraftHydrated, setSalesDraftHydrated] = useState(false);
   const [dropdownRect, setDropdownRect] = useState<DropdownRect | null>(null);
 
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
@@ -961,6 +1004,27 @@ export default function SalesPage() {
         discountDraft: '',
       });
 
+      if (invoices.length === 1) {
+        updateActiveInvoice({
+          cart: [],
+          barcodeDraft: '',
+          productDraft: '',
+          customer: null,
+          loyaltyPointsDraft: '',
+          paidDraft: '',
+          paymentMethod: 'cash',
+          discountType: 'amount',
+          discountDraft: ''
+        });
+
+        localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
+      } else {
+        const remainingInvoices = invoices.filter((invoice) => invoice.id !== activeInvoiceId);
+
+        setInvoices(remainingInvoices);
+        setActiveInvoiceId(remainingInvoices[0].id);
+      }
+
       const licenseData = await window.api.getLicenseStatus();
 
       setStoreInfo({
@@ -1102,6 +1166,76 @@ export default function SalesPage() {
     requestedRedeemPoints,
     maxRedeemPoints
   ]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SALES_DRAFT_STORAGE_KEY);
+
+      if (!raw) {
+        setSalesDraftHydrated(true);
+        return;
+      }
+
+      const parsed = JSON.parse(raw);
+      const loadedInvoices = Array.isArray(parsed?.invoices)
+        ? parsed.invoices
+            .map((invoice: any, index: number) => normalizeInvoiceDraft(invoice, index + 1))
+            .filter((invoice: InvoiceTab) => invoice.id > 0)
+        : [];
+
+      if (loadedInvoices.length > 0) {
+        const validIds = loadedInvoices.map((invoice: InvoiceTab) => invoice.id);
+        const requestedActiveId = Number(parsed?.activeInvoiceId || loadedInvoices[0].id);
+        const nextIdFromDraft = Number(parsed?.nextInvoiceId || 0);
+        const maxId = Math.max(...validIds);
+
+        setInvoices(loadedInvoices);
+        setActiveInvoiceId(validIds.includes(requestedActiveId) ? requestedActiveId : loadedInvoices[0].id);
+        setNextInvoiceId(Math.max(nextIdFromDraft, maxId + 1, 2));
+        setBarcodeMode(parsed?.barcodeMode === false ? false : true);
+      }
+    } catch (error) {
+      console.error('Failed to restore sales draft:', error);
+      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
+    } finally {
+      setSalesDraftHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!salesDraftHydrated) return;
+
+    const hasDraft =
+      invoices.length > 1 ||
+      invoices.some((invoice) =>
+        invoice.cart.length > 0 ||
+        invoice.customer ||
+        invoice.barcodeDraft.trim() ||
+        invoice.productDraft.trim() ||
+        invoice.loyaltyPointsDraft.trim() ||
+        invoice.paidDraft.trim() ||
+        invoice.discountDraft.trim() ||
+        invoice.paymentMethod !== 'cash' ||
+        invoice.discountType !== 'amount'
+      );
+
+    if (!hasDraft) {
+      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
+      return;
+    }
+
+    localStorage.setItem(
+      SALES_DRAFT_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        invoices,
+        activeInvoiceId,
+        nextInvoiceId,
+        barcodeMode,
+        savedAt: new Date().toISOString()
+      })
+    );
+  }, [salesDraftHydrated, invoices, activeInvoiceId, nextInvoiceId, barcodeMode]);
 
   useEffect(() => {
     window.focus();
