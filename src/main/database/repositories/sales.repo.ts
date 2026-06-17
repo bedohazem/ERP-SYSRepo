@@ -666,8 +666,50 @@ export function createSaleReturn(input: {
         ? Math.min(returnSubTotal / originalSubTotal, 1)
         : 0;
 
-    const loyaltyPointsToReverse = Math.floor(
-      Number(originalSale.loyalty_points_earned || 0) * ratio
+    const originalEarnedPoints = Math.max(
+      0,
+      Number(originalSale.loyalty_points_earned || 0)
+    );
+
+    const alreadyReturnedSubTotalRow = db
+      .prepare(`
+        SELECT IFNULL(SUM(sub_total), 0) AS returned_sub_total
+        FROM sale_returns
+        WHERE original_sale_id = ?
+      `)
+      .get(originalSaleId) as { returned_sub_total: number } | undefined;
+
+    const alreadyReversedPointsRow = db
+      .prepare(`
+        SELECT IFNULL(SUM(loyalty_points_reversed), 0) AS reversed_points
+        FROM sale_returns
+        WHERE original_sale_id = ?
+      `)
+      .get(originalSaleId) as { reversed_points: number } | undefined;
+
+    const alreadyReturnedSubTotal = Number(
+      alreadyReturnedSubTotalRow?.returned_sub_total || 0
+    );
+
+    const alreadyReversedPoints = Number(
+      alreadyReversedPointsRow?.reversed_points || 0
+    );
+
+    const cumulativeReturnRatio =
+      originalSubTotal > 0
+        ? Math.min((alreadyReturnedSubTotal + returnSubTotal) / originalSubTotal, 1)
+        : 0;
+
+    const targetTotalReversedPoints = Math.floor(
+      originalEarnedPoints * cumulativeReturnRatio
+    );
+
+    const loyaltyPointsToReverse = Math.max(
+      0,
+      Math.min(
+        originalEarnedPoints - alreadyReversedPoints,
+        targetTotalReversedPoints - alreadyReversedPoints
+      )
     );
 
     const saleDiscountPart = Number(

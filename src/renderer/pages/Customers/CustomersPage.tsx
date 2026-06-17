@@ -102,6 +102,16 @@ export default function CustomersPage() {
     return () => clearTimeout(handle);
   }, [query]);
 
+  useEffect(() => {
+    if (!message) return;
+
+    const timer = window.setTimeout(() => {
+      setMessage('');
+    }, 1800);
+
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
   function startCreate() {
     setEditingId(null);
     setForm(emptyForm);
@@ -370,11 +380,20 @@ function formatDate(value?: string) {
       {message && (
         <div
           style={{
-            padding: '12px 16px',
-            borderRadius: '12px',
-            background: 'rgba(16,185,129,0.15)',
-            color: '#6ee7b7',
-            fontWeight: 800
+            position: 'fixed',
+            top: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 999999,
+            padding: '12px 18px',
+            borderRadius: '14px',
+            background: message.includes('خطأ') || message.includes('مطلوب')
+              ? 'rgba(239,68,68,0.95)'
+              : 'rgba(16,185,129,0.95)',
+            color: '#fff',
+            fontWeight: 900,
+            boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
+            pointerEvents: 'none'
           }}
         >
           {message}

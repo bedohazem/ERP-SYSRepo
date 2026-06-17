@@ -7,7 +7,10 @@ import {
   type MouseEvent as ReactMouseEvent
 } from 'react';
 import { useAuthStore } from '../../store/auth.store';
-import { getPaymentMethodLabel } from '../../utils/payment-method';
+import {
+  CUSTOMER_PAYMENT_METHOD_OPTIONS,
+  getPaymentMethodLabel
+} from '../../utils/payment-method';
 
 type SaleVariant = {
   variant_id: number;
@@ -2390,16 +2393,47 @@ export default function SalesPage() {
 
             <label style={paymentLabelStyle}>
               طريقة الدفع
-              <select
-                value={activeInvoice.paymentMethod}
-                onChange={(e) => updateActiveInvoice({ paymentMethod: e.target.value })}
-                style={paymentInputStyle}
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                  gap: '10px'
+                }}
               >
-                <option value="cash">كاش</option>
-                <option value="card">كارت / فيزا</option>
-                <option value="wallet">محفظة</option>
-                <option value="bank_transfer">تحويل بنكي / انستا باي</option>
-              </select>
+                {CUSTOMER_PAYMENT_METHOD_OPTIONS.map((option) => {
+                  const active = activeInvoice.paymentMethod === option.value;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => updateActiveInvoice({ paymentMethod: option.value })}
+                      style={{
+                        minHeight: '58px',
+                        borderRadius: '14px',
+                        border: active
+                          ? '1px solid rgba(124,58,237,0.95)'
+                          : '1px solid rgba(255,255,255,0.12)',
+                        background: active
+                          ? 'linear-gradient(135deg, rgba(37,99,235,0.36), rgba(124,58,237,0.44))'
+                          : 'rgba(255,255,255,0.055)',
+                        color: active ? '#fff' : '#cbd5e1',
+                        fontWeight: 950,
+                        cursor: 'pointer',
+                        display: 'grid',
+                        placeItems: 'center',
+                        textAlign: 'center',
+                        padding: '8px 10px',
+                        boxShadow: active ? '0 0 0 3px rgba(124,58,237,0.16)' : 'none',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
             </label>
 
             <div
