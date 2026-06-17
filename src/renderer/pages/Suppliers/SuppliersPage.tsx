@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuthStore } from '../../store/auth.store';
+import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 
 type Supplier = {
   id: number;
@@ -36,7 +37,7 @@ export default function SuppliersPage() {
 
   const [paymentSupplier, setPaymentSupplier] = useState<Supplier | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState('store_cash');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [savingPayment, setSavingPayment] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
@@ -191,7 +192,7 @@ export default function SuppliersPage() {
   function openSupplierPayment(supplier: Supplier) {
     setPaymentSupplier(supplier);
     setPaymentAmount(String(Number(supplier.balance || 0)));
-    setPaymentMethod('cash');
+    setPaymentMethod('store_cash');
     setPaymentNotes('');
   }
 
@@ -713,16 +714,17 @@ function getErrorMessage(error: unknown, fallback: string) {
               </div>
 
               <div style={fieldStyle}>
-                <label style={labelStyle}>طريقة الدفع</label>
+                <label style={labelStyle}>الحساب المالي</label>
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
                   style={inputStyle}
                 >
-                  <option value="cash">كاش</option>
-                  <option value="card">كارت</option>
-                  <option value="wallet">محفظة</option>
-                  <option value="bank_transfer">تحويل بنكي</option>
+                  {CASH_ACCOUNT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 

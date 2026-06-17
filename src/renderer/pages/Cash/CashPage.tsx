@@ -12,6 +12,12 @@ type CashSummary = {
   balance: number;
 };
 
+type CashAccountBalance = {
+  value: string;
+  label: string;
+  balance: number;
+};
+
 type CashMovement = {
   id: number;
   type: string;
@@ -45,6 +51,8 @@ export default function CashPage() {
   const [amount, setAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('store_cash');
   const [drawerBalance, setDrawerBalance] = useState(0);
+  const [accountBalances, setAccountBalances] = useState<CashAccountBalance[]>([]);
+  const [totalCapital, setTotalCapital] = useState(0);
   const [closeAmount, setCloseAmount] = useState('');
   const [closeTargetAccount, setCloseTargetAccount] = useState('owner_bank');
   const [closingDay, setClosingDay] = useState(false);
@@ -78,7 +86,28 @@ export default function CashPage() {
         payment_method: 'store_cash'
       });
 
+      const accountSummaryRows = await Promise.all(
+        CASH_ACCOUNT_OPTIONS.map(async (option) => {
+          const accountSummary = await window.api.getCashSummary({
+            payment_method: option.value
+          });
+
+          return {
+            value: option.value,
+            label: option.label,
+            balance: Number(accountSummary?.balance || 0)
+          };
+        })
+      );
+
+      const capital = accountSummaryRows.reduce(
+        (sum, account) => sum + Number(account.balance || 0),
+        0
+      );
+
       setDrawerBalance(Number(drawerSummary?.balance || 0));
+      setAccountBalances(accountSummaryRows);
+      setTotalCapital(capital);
 
       setSummary(summaryData);
       setMovements(movementsData);
@@ -559,60 +588,88 @@ export default function CashPage() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
           gap: '10px',
           minHeight: 0
         }}
       >
         <SummaryCard
-          title="إجمالي الداخل"
-          value={money(summary?.total_in)}
-          color="#34d399"
-          border="rgba(34,197,94,0.20)"
+          title="رأس المال الإجمالي"
+          value={money(totalCapital)}
+          color="#facc15"
+          border="rgba(250,204,21,0.35)"
         />
 
-        <SummaryCard
-          title="إجمالي الخارج"
-          value={money(summary?.total_out)}
-          color="#f87171"
-          border="rgba(239,68,68,0.20)"
-        />
-
-        <SummaryCard
-          title="رصيد الخزنة"
-          value={money(summary?.balance)}
-          color="#60a5fa"
-          border="rgba(37,99,235,0.20)"
-        />
+        {accountBalances.map((account) => (
+          <SummaryCard
+            key={account.value}
+            title={account.label}
+            value={money(account.balance)}
+            color={account.balance >= 0 ? '#34d399' : '#f87171'}
+            border={account.balance >= 0 ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}
+          />
+        ))}
       </div>
 
       <div
-        className="glass-card"
         style={{
-          padding: '10px 14px',
-          borderRadius: '16px',
           display: 'flex',
-          alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '12px',
-          flexWrap: 'wrap',
-          minHeight: '70px'
+          alignItems: 'stretch',
+          gap: '10px',
+          direction: 'rtl'
         }}
       >
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={() => setManualModalOpen(true)}
-            style={primaryButtonStyle}
-          >
-            + حركة يدوية
-          </button>
+        <div
+          style={{
+            display: 'flex',
+            gap: '8px',
+            flexWrap: 'wrap'
+          }}
+        >
+          <SummaryCard
+            title="داخل حسب الفلتر"
+            value={money(summary?.total_in)}
+            color="#34d399"
+            border="rgba(34,197,94,0.20)"
+            compact
+          />
 
+          <SummaryCard
+            title="خارج حسب الفلتر"
+            value={money(summary?.total_out)}
+            color="#f87171"
+            border="rgba(239,68,68,0.20)"
+            compact
+          />
+
+          <SummaryCard
+            title="الرصيد حسب الفلتر"
+            value={money(summary?.balance)}
+            color="#60a5fa"
+            border="rgba(37,99,235,0.20)"
+            compact
+          />
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            gap: '8px',
+            alignItems: 'center',
+            flexShrink: 0
+          }}
+        >
           <button
             type="button"
             onClick={() => setDayCloseModalOpen(true)}
             style={{
               ...primaryButtonStyle,
+              width: '130px',
+              height: '38px',
+              padding: '0 10px',
+              fontSize: '12px',
+              borderRadius: '10px',
               background: 'rgba(16,185,129,0.14)',
               border: '1px solid rgba(16,185,129,0.32)',
               color: '#6ee7b7'
@@ -620,136 +677,117 @@ export default function CashPage() {
           >
             تقفيل اليوم
           </button>
-        </div>
 
-        <div
-          style={{
-            display: 'flex',
-            gap: '10px',
-            flexWrap: 'wrap',
-            alignItems: 'center'
-          }}
-        >
-          <MiniBalanceCard
-            title="كاش درج المحل"
-            value={money(drawerBalance)}
-            color="#60a5fa"
-            border="rgba(37,99,235,0.30)"
-          />
-
-          <MiniBalanceCard
-            title="الرصيد الكلي"
-            value={money(summary?.balance)}
-            color={Number(summary?.balance || 0) >= 0 ? '#34d399' : '#f87171'}
-            border={
-              Number(summary?.balance || 0) >= 0
-                ? 'rgba(34,197,94,0.30)'
-                : 'rgba(239,68,68,0.30)'
-            }
-          />
+          <button
+            type="button"
+            onClick={() => setManualModalOpen(true)}
+            style={{
+              ...primaryButtonStyle,
+              width: '130px',
+              height: '38px',
+              padding: '0 10px',
+              fontSize: '12px',
+              borderRadius: '10px'
+            }}
+          >
+            + حركة يدوية
+          </button>
         </div>
       </div>
 
       <div
         className="glass-card"
         style={{
-          padding: '14px',
-          borderRadius: '16px',
+          padding: '8px 10px',
+          borderRadius: '14px',
           display: 'grid',
-          gap: '10px',
-          minHeight: 0
+          gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+          gap: '8px',
+          alignItems: 'end',
+          minHeight: '52px'
         }}
       >
-        <div>
-          <h2 style={{ margin: '0 0 6px', textAlign: 'right' }}>فلترة حركة الخزنة</h2>
-          <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700, textAlign: 'right' }}>
-            ابحث حسب التاريخ، نوع الحركة، الاتجاه، أو طريقة الدفع.
-          </p>
-        </div>
+        <Field label="من">
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            style={{ ...inputStyle, height: '36px' }}
+          />
+        </Field>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-            gap: '12px',
-            alignItems: 'end'
-          }}
-        >
-          <Field label="من تاريخ">
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              style={inputStyle}
-            />
-          </Field>
+        <Field label="إلى">
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            style={{ ...inputStyle, height: '36px' }}
+          />
+        </Field>
 
-          <Field label="إلى تاريخ">
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              style={inputStyle}
-            />
-          </Field>
+        <Field label="النوع">
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            style={{ ...inputStyle, height: '36px' }}
+          >
+            <option value="all">الكل</option>
+            <option value="sale">بيع</option>
+            <option value="sale_return">مرتجع بيع</option>
+            <option value="purchase_return">مرتجع شراء</option>
+            <option value="customer_payment">دفعة عميل</option>
+            <option value="supplier_payment">دفعة مورد</option>
+            <option value="expense">مصروف</option>
+            <option value="deposit">إيداع</option>
+            <option value="withdraw">سحب</option>
+            <option value="liability_payment">دفعة التزام</option>
+            <option value="transfer">تحويل داخلي</option>
+          </select>
+        </Field>
 
-          <Field label="نوع العملية">
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="all">الكل</option>
-              <option value="sale">بيع</option>
-              <option value="sale_return">مرتجع بيع</option>
-              <option value="purchase_return">مرتجع شراء</option>
-              <option value="customer_payment">دفعة عميل</option>
-              <option value="supplier_payment">دفعة مورد</option>
-              <option value="expense">مصروف</option>
-              <option value="deposit">إيداع</option>
-              <option value="withdraw">سحب</option>
-              <option value="liability_payment">دفعة التزام</option>
-              <option value="transfer">تحويل داخلي</option>
-            </select>
-          </Field>
+        <Field label="الاتجاه">
+          <select
+            value={filterDirection}
+            onChange={(e) => setFilterDirection(e.target.value as 'all' | 'in' | 'out')}
+            style={{ ...inputStyle, height: '36px' }}
+          >
+            <option value="all">الكل</option>
+            <option value="in">داخل</option>
+            <option value="out">خارج</option>
+          </select>
+        </Field>
 
-          <Field label="الاتجاه">
-            <select
-              value={filterDirection}
-              onChange={(e) => setFilterDirection(e.target.value as 'all' | 'in' | 'out')}
-              style={inputStyle}
-            >
-              <option value="all">الكل</option>
-              <option value="in">داخل</option>
-              <option value="out">خارج</option>
-            </select>
-          </Field>
+        <Field label="الحساب">
+          <select
+            value={filterPaymentMethod}
+            onChange={(e) => setFilterPaymentMethod(e.target.value)}
+            style={{ ...inputStyle, height: '36px' }}
+          >
+            <option value="all">كل الحسابات</option>
+            {CASH_ACCOUNT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </Field>
 
-          <Field label="الحساب المالي">
-            <select
-              value={filterPaymentMethod}
-              onChange={(e) => setFilterPaymentMethod(e.target.value)}
-              style={inputStyle}
-            >
-              {CASH_ACCOUNT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </Field>
+        <Field label="بحث">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ملاحظات / مستخدم"
+            style={{ ...inputStyle, height: '36px' }}
+          />
+        </Field>
 
-          <Field label="بحث">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="ملاحظات / مستخدم"
-              style={inputStyle}
-            />
-          </Field>
-
-          <button type="button" onClick={loadData} style={primaryButtonStyle}>
-            {loading ? 'جاري التحميل...' : 'تطبيق الفلتر'}
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button
+            type="button"
+            onClick={loadData}
+            style={{ ...primaryButtonStyle, height: '36px', padding: '0 12px' }}
+          >
+            فلتر
           </button>
 
           <button
@@ -764,27 +802,13 @@ export default function CashPage() {
               setTimeout(() => void loadData(), 0);
             }}
             style={{
-              ...primaryButtonStyle,
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.12)'
+              ...secondaryButtonStyle,
+              height: '36px',
+              padding: '0 12px'
             }}
           >
-            مسح الفلتر
+            مسح
           </button>
-
-          <button
-            type="button"
-            onClick={printCashReport}
-            style={{
-              ...primaryButtonStyle,
-              background: 'rgba(16,185,129,0.14)',
-              border: '1px solid rgba(16,185,129,0.32)',
-              color: '#6ee7b7'
-            }}
-          >
-            طباعة الكشف
-          </button>
-
         </div>
       </div>
 
@@ -828,7 +852,7 @@ export default function CashPage() {
               <th style={thStyle}>النوع</th>
               <th style={thStyle}>الحركة</th>
               <th style={thStyle}>المبلغ</th>
-              <th style={thStyle}>طريقة الدفع</th>
+              <th style={thStyle}>الحساب المالي</th>
               <th style={thStyle}>ملاحظات</th>
               <th style={thStyle}>المستخدم</th>
               <th style={thStyle}>التاريخ</th>
@@ -1131,34 +1155,61 @@ function SummaryCard({
   title,
   value,
   color,
-  border
+  border,
+  compact = false
 }: {
   title: string;
   value: string;
   color: string;
   border: string;
+  compact?: boolean;
 }) {
   return (
     <div
       className="glass-card"
       style={{
-        padding: '14px',
-        borderRadius: '16px',
+        width: compact ? '260px' : 'auto',
+        minWidth: compact ? '220px' : undefined,
+        padding: compact ? '8px 12px' : '10px 12px',
+        borderRadius: '14px',
         display: 'grid',
-        gap: '8px',
-        border: `1px solid ${border}`
+        gap: compact ? '2px' : '5px',
+        border: `1px solid ${border}`,
+        minHeight: compact ? '58px' : '64px',
+        alignContent: 'center',
+        textAlign: 'right',
+        direction: 'rtl'
       }}
     >
-      <div style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</div>
-      <strong style={{ color, fontSize: '24px' }}>{value}</strong>
+      <div
+        style={{
+          color: '#94a3b8',
+          fontWeight: 800,
+          fontSize: compact ? '12px' : '13px'
+        }}
+      >
+        {title}
+      </div>
+
+      <strong
+        style={{
+          color,
+          fontSize: compact ? '18px' : '20px',
+          lineHeight: 1.15
+        }}
+      >
+        {value}
+      </strong>
     </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label style={{ display: 'grid', gap: '8px' }}>
-      <span style={{ color: '#cbd5e1', fontWeight: 800 }}>{label}</span>
+    <label style={{ display: 'grid', gap: '4px', minWidth: 0 }}>
+      <span style={{ color: '#94a3b8', fontWeight: 800, fontSize: '11px' }}>
+        {label}
+      </span>
       {children}
     </label>
   );
@@ -1278,40 +1329,3 @@ const miniCloseButtonStyle: React.CSSProperties = {
   fontSize: '18px',
   cursor: 'pointer'
 };
-
-function MiniBalanceCard({
-  title,
-  value,
-  color,
-  border
-}: {
-  title: string;
-  value: string;
-  color: string;
-  border: string;
-}) {
-  return (
-    <div
-      style={{
-        minWidth: '150px',
-        height: '48px',
-        borderRadius: '12px',
-        border: `1px solid ${border}`,
-        background: 'rgba(255,255,255,0.035)',
-        display: 'grid',
-        alignContent: 'center',
-        gap: '2px',
-        padding: '6px 12px',
-        textAlign: 'right'
-      }}
-    >
-      <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 800 }}>
-        {title}
-      </span>
-
-      <strong style={{ color, fontSize: '16px', fontWeight: 950 }}>
-        {value}
-      </strong>
-    </div>
-  );
-}

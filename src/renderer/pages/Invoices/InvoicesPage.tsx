@@ -204,13 +204,53 @@ export default function InvoicesPage() {
     }, 350);
   }
 
+  function resolveRefundAccountFromPaymentMethod(method?: string | null) {
+    switch (method) {
+      case 'store_cash':
+      case 'owner_cash':
+      case 'owner_bank':
+      case 'owner_vodafone':
+      case 'fawry_machine':
+        return method;
+
+      case 'cash':
+        return 'store_cash';
+
+      case 'card':
+        return 'fawry_machine';
+
+      case 'wallet':
+        return 'owner_vodafone';
+
+      case 'bank':
+      case 'bank_transfer':
+        return 'owner_bank';
+
+      default:
+        return 'store_cash';
+    }
+  }
+
+  function getErrorMessage(error: unknown, fallback: string) {
+    const raw =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : '';
+
+    const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/);
+
+    return match?.[1] || raw || fallback;
+  }
+
   async function openReturnPopup(saleId: number) {
     try {
         const receipt = await window.api.getSaleReceipt(saleId);
 
         setReturnReceipt(receipt);
         setReturnReason('');
-        setReturnRefundAccount(receipt.sale?.payment_method || 'store_cash');
+        setReturnRefundAccount(resolveRefundAccountFromPaymentMethod(receipt.sale?.payment_method));
 
         setReturnItems(
         (receipt.items ?? []).map((item: any) => {
@@ -309,18 +349,45 @@ export default function InvoicesPage() {
           setSelectedReturnHistory(Array.isArray(history) ? history : []);
         }
         
-    } catch (error) {
+      } catch (error) {
         console.error('Failed to create return:', error);
-        setMessage('حدث خطأ أثناء حفظ المرتجع');
-    } finally {
+        setMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ المرتجع'));
+      } finally {
         setSavingReturn(false);
-    }
+      }
     }
 
-  const returnTotal = returnItems.reduce(
-    (sum, item) => sum + item.return_quantity * item.unit_price,
-    0
+    const returnGrossTotal = returnItems.reduce(
+      (sum, item) => sum + item.return_quantity * item.unit_price,
+      0
     );
+
+    const originalSaleSubTotal = Number(returnReceipt?.sale?.sub_total || 0);
+
+    const returnRatio =
+      originalSaleSubTotal > 0
+        ? Math.min(returnGrossTotal / originalSaleSubTotal, 1)
+        : 0;
+
+    const returnDiscountShare = Number(
+      (Number(returnReceipt?.sale?.discount_value || 0) * returnRatio).toFixed(2)
+    );
+
+    const returnLoyaltyDiscountShare = Number(
+      (Number(returnReceipt?.sale?.loyalty_discount_value || 0) * returnRatio).toFixed(2)
+    );
+
+    const returnTotal = Math.max(
+      0,
+      returnGrossTotal - returnDiscountShare - returnLoyaltyDiscountShare
+    );
+
+    const returnDebtReduction =
+      returnReceipt?.sale?.customer_id
+        ? Math.min(returnTotal, Number(returnReceipt?.sale?.remaining_amount || 0))
+        : 0;
+
+    const returnCashRefund = Math.max(0, returnTotal - returnDebtReduction);
 
   return (
     <div
@@ -1205,17 +1272,28 @@ export default function InvoicesPage() {
                 flexWrap: 'wrap'
               }}
             >
-              <div
-                style={{
-                  padding: '14px 18px',
-                  borderRadius: '14px',
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  color: '#fff',
-                  fontWeight: 900
-                }}
-              >
-                إجمالي المرتجع: {money(returnTotal)}
+              <div style={{ display: 'grid', gap: '6px' }}>
+                <div>إجمالي الأصناف قبل الخصومات: {money(returnGrossTotal)}</div>
+
+                {(returnDiscountShare > 0 || returnLoyaltyDiscountShare > 0) && (
+                  <div style={{ color: '#fbbf24' }}>
+                    خصومات محسوبة على المرتجع: {money(returnDiscountShare + returnLoyaltyDiscountShare)}
+                  </div>
+                )}
+
+                <strong>صافي المرتجع: {money(returnTotal)}</strong>
+
+                {returnDebtReduction > 0 && (
+                  <div style={{ color: '#93c5fd' }}>
+                    يخصم من مديونية العميل: {money(returnDebtReduction)}
+                  </div>
+                )}
+
+                {returnCashRefund > 0 && (
+                  <div style={{ color: '#fca5a5' }}>
+                    سيتم رد فلوس من الحساب المالي: {money(returnCashRefund)}
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', gap: '10px' }}>

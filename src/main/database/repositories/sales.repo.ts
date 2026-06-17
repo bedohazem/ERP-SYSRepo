@@ -1,5 +1,5 @@
 import { getDb } from '../db';
-import { createCashMovement } from './cash.repo';
+import { createCashMovement, resolveCashAccount } from './cash.repo';
 
 export type CreateSaleLineInput = {
   variant_id: number;
@@ -583,7 +583,8 @@ export function createSaleReturn(input: {
       throw new Error('الفاتورة الأصلية غير موجودة');
     }
 
-    const refundPaymentMethod = input.refund_payment_method?.trim() || originalSale.payment_method || 'store_cash';
+    const rawRefundPaymentMethod = input.refund_payment_method?.trim() || originalSale.payment_method || 'store_cash';
+    const refundPaymentMethod = resolveCashAccount(rawRefundPaymentMethod);
 
     const getOriginalItem = db.prepare(`
       SELECT *
