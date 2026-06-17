@@ -20,6 +20,14 @@ type ReportsData = {
     total_liability_payments: number;
     final_net_profit: number;
   };
+  cashAccounts: Array<{
+    payment_method: string;
+    label: string;
+    total_in: number;
+    total_out: number;
+    balance: number;
+  }>;
+  cashTotalCapital: number;
   topProducts: any[];
   dailySales: any[];
   paymentMethods: any[];
@@ -37,6 +45,7 @@ type CashierDailyRevenue = {
   salesIn: number;
   customerPaymentsIn: number;
   depositsIn: number;
+  purchaseReturnsIn: number;
 
   returnsOut: number;
   supplierPaymentsOut: number;
@@ -65,6 +74,8 @@ const emptyReports: ReportsData = {
     total_liability_payments: 0,
     final_net_profit: 0
   },
+  cashAccounts: [],
+  cashTotalCapital: 0,
   topProducts: [],
   dailySales: [],
   paymentMethods: [],
@@ -91,6 +102,7 @@ export default function DashboardPage() {
     salesIn: 0,
     customerPaymentsIn: 0,
     depositsIn: 0,
+    purchaseReturnsIn: 0,
 
     returnsOut: 0,
     supplierPaymentsOut: 0,
@@ -117,6 +129,7 @@ export default function DashboardPage() {
         todaySalesCash,
         todayCustomerPayments,
         todayDeposits,
+        todayPurchaseReturns,
 
         todayReturns,
         todaySupplierPayments,
@@ -144,6 +157,12 @@ export default function DashboardPage() {
           date_from: todayKey,
           date_to: todayKey,
           type: 'deposit'
+        }),
+
+        window.api.getCashSummary({
+          date_from: todayKey,
+          date_to: todayKey,
+          type: 'purchase_return'
         }),
 
         window.api.getCashSummary({
@@ -182,19 +201,21 @@ export default function DashboardPage() {
       const salesIn = Number(todaySalesCash?.total_in || 0);
       const customerPaymentsIn = Number(todayCustomerPayments?.total_in || 0);
       const depositsIn = Number(todayDeposits?.total_in || 0);
+      const purchaseReturnsIn = Number(todayPurchaseReturns?.total_in || 0);
 
       const returnsOut = Number(todayReturns?.total_out || 0);
       const supplierPaymentsOut = Number(todaySupplierPayments?.total_out || 0);
       const expensesOut = Number(todayExpenses?.total_out || 0);
       const withdrawsOut = Number(todayWithdraws?.total_out || 0);
       const liabilityPaymentsOut = Number(todayLiabilityPayments?.total_out || 0);
-      const totalIn = salesIn + customerPaymentsIn + depositsIn;
+      const totalIn = salesIn + customerPaymentsIn + depositsIn + purchaseReturnsIn;
       const totalOut = returnsOut + supplierPaymentsOut + expensesOut + withdrawsOut + liabilityPaymentsOut;
-
+      
       setCashierRevenue({
         salesIn,
         customerPaymentsIn,
         depositsIn,
+        purchaseReturnsIn,
 
         returnsOut,
         supplierPaymentsOut,
@@ -281,6 +302,13 @@ export default function DashboardPage() {
       </section>
 
       <section style={statsGridStyle}>
+        <StatCard
+          icon="🏦"
+          title="رأس المال الحالي"
+          value={money(data.overview.cashTotalCapital)}
+          subtitle="إجمالي أرصدة الحسابات المالية"
+          tone="amber"
+        />
         <StatCard
           icon="☀️"
           title="مبيعات اليوم"
@@ -391,6 +419,17 @@ export default function DashboardPage() {
       </section>
 
       <section style={bottomGridStyle}>
+        <DashboardTable
+          title="أرصدة الحسابات المالية"
+          emptyText="لا توجد حركات مالية"
+          columns={['الحساب المالي', 'الرصيد الحالي']}
+          rows={data.overview.cashAccounts.map((account) => [
+            account.label || getPaymentMethodLabel(account.payment_method),
+            money(account.balance)
+          ])}
+          actionLabel="فتح الخزنة"
+          onAction={() => navigate('/cash')}
+        />
         <DashboardTable
           title="منتجات تحتاج متابعة"
           emptyText="المخزون تمام، لا توجد تنبيهات حالياً"
