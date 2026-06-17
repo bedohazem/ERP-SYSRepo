@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 
 import {
   createCashMovement,
+  createCashTransfer,
   getCashSummary,
   listCashMovements
 } from '../database/repositories/cash.repo';
@@ -9,6 +10,10 @@ import {
 export function registerCashIpc(): void {
   ipcMain.handle('cash:summary', (_, input) => {
     return getCashSummary(input);
+  });
+
+  ipcMain.handle('cash:transfer', (_, input) => {
+    return createCashTransfer(input);
   });
 
   ipcMain.handle('cash:list', (_, input) => {

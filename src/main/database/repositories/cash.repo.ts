@@ -10,7 +10,8 @@ export type CashMovementInput = {
     | 'liability_payment'
     | 'expense'
     | 'withdraw'
-    | 'deposit';
+    | 'deposit'
+    | 'transfer';
     
 
   direction: 'in' | 'out';
@@ -35,6 +36,65 @@ export type CashFilterInput = {
   payment_method?: string;
   search?: string;
 };
+
+export type CashAccountKey =
+  | 'store_cash'
+  | 'owner_cash'
+  | 'owner_bank'
+  | 'owner_vodafone'
+  | 'fawry_machine';
+
+export type CashTransferInput = {
+  from_account: string;
+  to_account: string;
+  amount: number;
+  notes?: string | null;
+  created_by?: number | null;
+};
+
+export function resolveCashAccount(value?: string | null): CashAccountKey {
+  switch (value) {
+    case 'store_cash':
+    case 'owner_cash':
+    case 'owner_bank':
+    case 'owner_vodafone':
+    case 'fawry_machine':
+      return value;
+
+    case 'cash':
+      return 'store_cash';
+
+    case 'card':
+      return 'fawry_machine';
+
+    case 'wallet':
+      return 'owner_vodafone';
+
+    case 'bank':
+    case 'bank_transfer':
+      return 'owner_bank';
+
+    default:
+      return 'store_cash';
+  }
+}
+
+function getAccountBalance(account: string) {
+  const db = getDb();
+  const safeAccount = resolveCashAccount(account);
+
+  const row = db
+    .prepare(`
+      SELECT
+        IFNULL(SUM(CASE WHEN direction = 'in' THEN amount ELSE 0 END), 0) AS total_in,
+        IFNULL(SUM(CASE WHEN direction = 'out' THEN amount ELSE 0 END), 0) AS total_out
+      FROM cash_movements
+      WHERE payment_method = ?
+    `)
+    .get(safeAccount) as { total_in: number; total_out: number } | undefined;
+
+  return Number(row?.total_in || 0) - Number(row?.total_out || 0);
+}
 
 function buildCashWhere(input?: CashFilterInput) {
   const where: string[] = [];
@@ -90,6 +150,7 @@ export function createCashMovement(input: CashMovementInput) {
   const amount = Number(input.amount || 0);
   const type = String(input.type || '').trim();
   const direction = input.direction;
+  const account = resolveCashAccount(input.payment_method || 'store_cash');
 
   if (!type) {
     throw new Error('نوع حركة الخزنة مطلوب');
@@ -121,7 +182,7 @@ export function createCashMovement(input: CashMovementInput) {
       type,
       amount,
       direction,
-      input.payment_method || 'cash',
+      account,
       input.reference_id ?? null,
       input.reference_type ?? null,
       input.notes ?? null,
@@ -139,7 +200,7 @@ export function createCashMovement(input: CashMovementInput) {
       type,
       amount,
       direction,
-      payment_method: input.payment_method || 'cash',
+      payment_method: account,
       notes: input.notes ?? null
     })
   });
@@ -191,4 +252,61 @@ export function listCashMovements(input?: CashFilterInput) {
       LIMIT 500
     `)
     .all(...params);
+}
+
+export function createCashTransfer(input: CashTransferInput) {
+  const db = getDb();
+
+  const amount = Number(input.amount || 0);
+  const fromAccount = resolveCashAccount(input.from_account);
+  const toAccount = resolveCashAccount(input.to_account);
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('مبلغ التحويل غير صحيح');
+  }
+
+  if (fromAccount === toAccount) {
+    throw new Error('لا يمكن التحويل لنفس الحساب');
+  }
+
+  const fromBalance = getAccountBalance(fromAccount);
+
+  if (amount > fromBalance) {
+    throw new Error('المبلغ المسحوب أكبر من رصيد الحساب');
+  }
+
+  const tx = db.transaction(() => {
+    const outResult = createCashMovement({
+      type: 'transfer',
+      direction: 'out',
+      amount,
+      payment_method: fromAccount,
+      reference_id: null,
+      reference_type: 'cash_transfer',
+      notes: input.notes || `تحويل من ${fromAccount} إلى ${toAccount}`,
+      created_by: input.created_by ?? null
+    });
+
+    const inResult = createCashMovement({
+      type: 'transfer',
+      direction: 'in',
+      amount,
+      payment_method: toAccount,
+      reference_id: Number(outResult.lastInsertRowid || 0),
+      reference_type: 'cash_transfer',
+      notes: input.notes || `تحويل من ${fromAccount} إلى ${toAccount}`,
+      created_by: input.created_by ?? null
+    });
+
+    return {
+      ok: true,
+      from_account: fromAccount,
+      to_account: toAccount,
+      amount,
+      out_id: Number(outResult.lastInsertRowid || 0),
+      in_id: Number(inResult.lastInsertRowid || 0)
+    };
+  });
+
+  return tx();
 }

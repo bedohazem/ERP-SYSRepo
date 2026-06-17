@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/auth.store';
-import { getPaymentMethodLabel } from '../../utils/payment-method';
+import {
+  CASH_ACCOUNT_OPTIONS,
+  DAY_CLOSE_TARGET_OPTIONS,
+  getPaymentMethodLabel
+} from '../../utils/payment-method';
 
 type CashSummary = {
   total_in: number;
@@ -39,7 +43,11 @@ export default function CashPage() {
 
   const [movementType, setMovementType] = useState<'deposit' | 'withdraw'>('deposit');
   const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState('store_cash');
+  const [drawerBalance, setDrawerBalance] = useState(0);
+  const [closeAmount, setCloseAmount] = useState('');
+  const [closeTargetAccount, setCloseTargetAccount] = useState('owner_bank');
+  const [closingDay, setClosingDay] = useState(false);
   const [notes, setNotes] = useState('');
 
   const [dateFrom, setDateFrom] = useState('');
@@ -48,6 +56,8 @@ export default function CashPage() {
   const [filterDirection, setFilterDirection] = useState<'all' | 'in' | 'out'>('all');
   const [filterPaymentMethod, setFilterPaymentMethod] = useState('all');
   const [search, setSearch] = useState('');
+  const [manualModalOpen, setManualModalOpen] = useState(false);
+  const [dayCloseModalOpen, setDayCloseModalOpen] = useState(false);
 
   async function loadData() {
     setLoading(true);
@@ -64,6 +74,11 @@ export default function CashPage() {
     try {
       const summaryData = await window.api.getCashSummary(filters);
       const movementsData = await window.api.getCashMovements(filters);
+      const drawerSummary = await window.api.getCashSummary({
+        payment_method: 'store_cash'
+      });
+
+      setDrawerBalance(Number(drawerSummary?.balance || 0));
 
       setSummary(summaryData);
       setMovements(movementsData);
@@ -96,6 +111,7 @@ export default function CashPage() {
     }
 
     setSaving(true);
+    setManualModalOpen(false);
 
     try {
       await window.api.createCashMovement({
@@ -122,6 +138,43 @@ export default function CashPage() {
       showMessage('error', 'حدث خطأ أثناء حفظ حركة الخزنة');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function closeStoreCashDay() {
+    const parsedAmount = Number(closeAmount || 0);
+
+    if (!parsedAmount || parsedAmount <= 0) {
+      showMessage('error', 'اكتب مبلغ صحيح للسحب من الدرج');
+      return;
+    }
+
+    if (parsedAmount > drawerBalance) {
+      showMessage('error', 'المبلغ أكبر من رصيد كاش درج المحل');
+      return;
+    }
+
+    setClosingDay(true);
+    setDayCloseModalOpen(false);
+
+    try {
+      await window.api.createCashTransfer({
+        from_account: 'store_cash',
+        to_account: closeTargetAccount,
+        amount: parsedAmount,
+        notes: `تقفيل اليوم - سحب من درج المحل والمتبقي في الدرج ${money(drawerBalance - parsedAmount)}`,
+        created_by: currentUser?.id ?? null
+      });
+
+      setCloseAmount('');
+      setCloseTargetAccount('owner_bank');
+      showMessage('success', 'تم تقفيل اليوم وتحويل الكاش بنجاح');
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      showMessage('error', error instanceof Error && error.message ? error.message : 'حدث خطأ أثناء تقفيل اليوم');
+    } finally {
+      setClosingDay(false);
     }
   }
 
@@ -154,7 +207,10 @@ export default function CashPage() {
       case 'deposit':
         return 'إيداع';
       case 'liability_payment':
-       return 'دفعة التزام';
+        return 'دفعة التزام';
+      case 'transfer':
+        return 'تحويل داخلي';  
+
 
       default:
         return type;
@@ -532,84 +588,64 @@ export default function CashPage() {
       <div
         className="glass-card"
         style={{
-          padding: '14px',
+          padding: '10px 14px',
           borderRadius: '16px',
-          display: 'grid',
-          gap: '10px',
-          minHeight: 0
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          flexWrap: 'wrap',
+          minHeight: '70px'
         }}
       >
-        <div>
-          <h2 style={{ margin: '0 0 6px', textAlign: 'right' }}>إضافة حركة يدوية</h2>
-          <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700, textAlign: 'right' }}>
-            استخدمها لتسجيل إيداع أو سحب خارج عمليات البيع والشراء.
-          </p>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setManualModalOpen(true)}
+            style={primaryButtonStyle}
+          >
+            + حركة يدوية
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setDayCloseModalOpen(true)}
+            style={{
+              ...primaryButtonStyle,
+              background: 'rgba(16,185,129,0.14)',
+              border: '1px solid rgba(16,185,129,0.32)',
+              color: '#6ee7b7'
+            }}
+          >
+            تقفيل اليوم
+          </button>
         </div>
 
         <div
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-            gap: '12px',
-            alignItems: 'end'
+            display: 'flex',
+            gap: '10px',
+            flexWrap: 'wrap',
+            alignItems: 'center'
           }}
         >
-          <Field label="نوع الحركة">
-            <select
-              value={movementType}
-              onChange={(e) => setMovementType(e.target.value as 'deposit' | 'withdraw')}
-              style={inputStyle}
-            >
-              <option value="deposit">إيداع</option>
-              <option value="withdraw">سحب</option>
-            </select>
-          </Field>
+          <MiniBalanceCard
+            title="كاش درج المحل"
+            value={money(drawerBalance)}
+            color="#60a5fa"
+            border="rgba(37,99,235,0.30)"
+          />
 
-          <Field label="المبلغ">
-            <input
-              type="number"
-              min={0}
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              style={inputStyle}
-            />
-          </Field>
-
-          <Field label="طريقة الدفع">
-            <select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="cash">كاش</option>
-              <option value="card">كارت / فيزا</option>
-              <option value="wallet">محفظة</option>
-              <option value="bank">تحويل بنكي / انستا باي</option>
-            </select>
-          </Field>
-
-          <Field label="ملاحظات">
-            <input
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="سبب الإيداع أو السحب"
-              style={inputStyle}
-            />
-          </Field>
-
-          <button
-            type="button"
-            onClick={handleCreateMovement}
-            disabled={saving}
-            style={{
-              ...primaryButtonStyle,
-              opacity: saving ? 0.6 : 1,
-              cursor: saving ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {saving ? 'جاري الحفظ...' : 'حفظ الحركة'}
-          </button>
+          <MiniBalanceCard
+            title="الرصيد الكلي"
+            value={money(summary?.balance)}
+            color={Number(summary?.balance || 0) >= 0 ? '#34d399' : '#f87171'}
+            border={
+              Number(summary?.balance || 0) >= 0
+                ? 'rgba(34,197,94,0.30)'
+                : 'rgba(239,68,68,0.30)'
+            }
+          />
         </div>
       </div>
 
@@ -686,17 +722,17 @@ export default function CashPage() {
             </select>
           </Field>
 
-          <Field label="طريقة الدفع">
+          <Field label="الحساب المالي">
             <select
               value={filterPaymentMethod}
               onChange={(e) => setFilterPaymentMethod(e.target.value)}
               style={inputStyle}
             >
-              <option value="all">الكل</option>
-              <option value="cash">كاش</option>
-              <option value="card">كارت / فيزا</option>
-              <option value="wallet">محفظة</option>
-              <option value="bank">تحويل بنكي / انستا باي</option>
+              {CASH_ACCOUNT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </Field>
 
@@ -758,8 +794,7 @@ export default function CashPage() {
           minHeight: 0,
           overflow: 'hidden',
           display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr)',
-          gap: '10px'
+          gridTemplateRows: 'auto minmax(0, 1fr)'
         }}
       >
         <div style={{ marginBottom: '16px' }}>
@@ -772,10 +807,9 @@ export default function CashPage() {
       <div
         className="cash-body-scroll"
         style={{
-          overflow: 'auto',
           minHeight: 0,
-          height: '100%',
-          maxWidth: '100%'
+          overflowY: 'auto',
+          overflowX: 'auto'
         }}
       >
         <table
@@ -877,6 +911,7 @@ export default function CashPage() {
         </table>
       </div>
       </div>
+
       {confirmOverdrawOpen && (
         <div style={modalOverlayStyle}>
           <div style={modalStyle}>
@@ -921,6 +956,155 @@ export default function CashPage() {
                 style={secondaryButtonStyle}
               >
                 إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {manualModalOpen && (
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div className="theme-modal-card" style={modalCardStyle}>
+            <div style={modalHeaderStyle}>
+              <h3 style={{ margin: 0 }}>إضافة حركة يدوية</h3>
+              <button
+                type="button"
+                onClick={() => setManualModalOpen(false)}
+                style={miniCloseButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: '12px' }}>
+              <Field label="نوع الحركة">
+                <select
+                  value={movementType}
+                  onChange={(e) => setMovementType(e.target.value as 'deposit' | 'withdraw')}
+                  style={inputStyle}
+                >
+                  <option value="deposit">إيداع</option>
+                  <option value="withdraw">سحب</option>
+                </select>
+              </Field>
+
+              <Field label="المبلغ">
+                <input
+                  type="number"
+                  min={0}
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.00"
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="الحساب المالي">
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  style={inputStyle}
+                >
+                  {CASH_ACCOUNT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="ملاحظات">
+                <input
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="سبب الإيداع أو السحب"
+                  style={inputStyle}
+                />
+              </Field>
+
+              <button
+                type="button"
+                onClick={handleCreateMovement}
+                disabled={saving}
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: saving ? 0.6 : 1,
+                  cursor: saving ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {saving ? 'جاري الحفظ...' : 'حفظ الحركة'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dayCloseModalOpen && (
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div className="theme-modal-card" style={modalCardStyle}>
+            <div style={modalHeaderStyle}>
+              <h3 style={{ margin: 0 }}>تقفيل اليوم</h3>
+              <button
+                type="button"
+                onClick={() => setDayCloseModalOpen(false)}
+                style={miniCloseButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: '12px' }}>
+              <SummaryCard
+                title="رصيد كاش درج المحل"
+                value={money(drawerBalance)}
+                color="#60a5fa"
+                border="rgba(37,99,235,0.20)"
+              />
+
+              <Field label="المبلغ المسحوب من الدرج">
+                <input
+                  type="number"
+                  min={0}
+                  max={drawerBalance}
+                  value={closeAmount}
+                  onChange={(e) => setCloseAmount(e.target.value)}
+                  placeholder="0.00"
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="تحويل إلى">
+                <select
+                  value={closeTargetAccount}
+                  onChange={(e) => setCloseTargetAccount(e.target.value)}
+                  style={inputStyle}
+                >
+                  {DAY_CLOSE_TARGET_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <SummaryCard
+                title="المتبقي في الدرج لليوم التالي"
+                value={money(Math.max(0, drawerBalance - Number(closeAmount || 0)))}
+                color="#34d399"
+                border="rgba(34,197,94,0.20)"
+              />
+
+              <button
+                type="button"
+                onClick={closeStoreCashDay}
+                disabled={closingDay}
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: closingDay ? 0.6 : 1,
+                  cursor: closingDay ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {closingDay ? 'جاري التقفيل...' : 'تنفيذ تقفيل اليوم'}
               </button>
             </div>
           </div>
@@ -1024,17 +1208,6 @@ const dangerButtonStyle: React.CSSProperties = {
   cursor: 'pointer'
 };
 
-const modalOverlayStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(0,0,0,0.60)',
-  zIndex: 99999,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '20px'
-};
-
 const modalStyle: React.CSSProperties = {
   width: '480px',
   maxWidth: '100%',
@@ -1057,3 +1230,85 @@ const tdStyle: React.CSSProperties = {
   color: '#e5e7eb',
   whiteSpace: 'nowrap'
 };
+
+const modalOverlayStyle: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(2, 6, 23, 0.82)',
+  zIndex: 1000000,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '20px',
+  backdropFilter: 'blur(7px)',
+  WebkitBackdropFilter: 'blur(7px)'
+};
+
+const modalCardStyle: React.CSSProperties = {
+  width: '520px',
+  maxWidth: '100%',
+  borderRadius: '20px',
+  background: 'var(--bg-soft)',
+  border: '1px solid var(--border)',
+  boxShadow: '0 30px 100px rgba(0,0,0,0.75)',
+  padding: '18px',
+  direction: 'rtl',
+  color: 'var(--text)',
+  overflow: 'hidden'
+};
+
+const modalHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '12px',
+  marginBottom: '16px'
+};
+
+const miniCloseButtonStyle: React.CSSProperties = {
+  width: '34px',
+  height: '34px',
+  borderRadius: '10px',
+  border: '1px solid rgba(255,255,255,0.12)',
+  background: 'rgba(255,255,255,0.05)',
+  color: 'var(--text)',
+  fontSize: '18px',
+  cursor: 'pointer'
+};
+
+function MiniBalanceCard({
+  title,
+  value,
+  color,
+  border
+}: {
+  title: string;
+  value: string;
+  color: string;
+  border: string;
+}) {
+  return (
+    <div
+      style={{
+        minWidth: '150px',
+        height: '48px',
+        borderRadius: '12px',
+        border: `1px solid ${border}`,
+        background: 'rgba(255,255,255,0.035)',
+        display: 'grid',
+        alignContent: 'center',
+        gap: '2px',
+        padding: '6px 12px',
+        textAlign: 'right'
+      }}
+    >
+      <span style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 800 }}>
+        {title}
+      </span>
+
+      <strong style={{ color, fontSize: '16px', fontWeight: 950 }}>
+        {value}
+      </strong>
+    </div>
+  );
+}

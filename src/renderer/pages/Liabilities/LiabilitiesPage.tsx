@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useAuthStore } from '../../store/auth.store';
-import { getPaymentMethodLabel } from '../../utils/payment-method';
+import {
+  CASH_ACCOUNT_OPTIONS,
+  getPaymentMethodLabel
+} from '../../utils/payment-method';
 
 type Liability = {
   id: number;
@@ -35,7 +39,7 @@ const emptyForm = {
   category: '',
   total_amount: '',
   paid_amount: '',
-  payment_method: 'cash',
+  payment_method: 'store_cash',
   due_date: '',
   notes: ''
 };
@@ -90,7 +94,7 @@ export default function LiabilitiesPage() {
 
   const [paymentTarget, setPaymentTarget] = useState<Liability | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState('store_cash');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [savingPayment, setSavingPayment] = useState(false);
 
@@ -228,7 +232,7 @@ export default function LiabilitiesPage() {
 
       setPaymentTarget(null);
       setPaymentAmount('');
-      setPaymentMethod('cash');
+      setPaymentMethod('store_cash');
       setPaymentNotes('');
 
       showMessage('success', 'تم تسجيل الدفعة');
@@ -422,16 +426,16 @@ export default function LiabilitiesPage() {
             placeholder="مدفوع مبدئيًا"
             style={inputStyle}
           />
-
           <select
             value={form.payment_method}
             onChange={(e) => setForm((prev) => ({ ...prev, payment_method: e.target.value }))}
             style={inputStyle}
           >
-            <option value="cash">كاش</option>
-            <option value="card">كارت / فيزا</option>
-            <option value="wallet">محفظة</option>
-            <option value="bank">تحويل بنكي / إنستا باي</option>
+            {CASH_ACCOUNT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
 
           <input
@@ -575,6 +579,7 @@ export default function LiabilitiesPage() {
                           onClick={() => {
                             setPaymentTarget(item);
                             setPaymentAmount(String(item.remaining_amount || ''));
+                            setPaymentMethod('store_cash');
                           }}
                         >
                           دفعة
@@ -626,15 +631,17 @@ export default function LiabilitiesPage() {
               style={inputStyle}
             />
 
+            <label style={labelStyle}>الحساب المالي</label>
             <select
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}
               style={inputStyle}
             >
-              <option value="cash">كاش</option>
-              <option value="card">كارت / فيزا</option>
-              <option value="wallet">محفظة</option>
-              <option value="bank">تحويل بنكي / إنستا باي</option>
+              {CASH_ACCOUNT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
 
             <input
@@ -881,4 +888,9 @@ const closeButtonStyle: React.CSSProperties = {
   color: 'inherit',
   cursor: 'pointer',
   fontWeight: 900
+};
+
+const labelStyle: CSSProperties = {
+  color: '#cbd5e1',
+  fontWeight: 800
 };

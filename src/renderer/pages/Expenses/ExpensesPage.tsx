@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuthStore } from '../../store/auth.store';
-import { getPaymentMethodLabel } from '../../utils/payment-method';
+import {
+  CASH_ACCOUNT_OPTIONS,
+  getPaymentMethodLabel
+} from '../../utils/payment-method';
 
 type Expense = {
   id: number;
@@ -24,7 +27,7 @@ export default function ExpensesPage() {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState('store_cash');
   const [notes, setNotes] = useState('');
 
   function showMessage(type: 'success' | 'error', text: string) {
@@ -75,7 +78,7 @@ export default function ExpensesPage() {
       setTitle('');
       setCategory('');
       setAmount('');
-      setPaymentMethod('cash');
+      setPaymentMethod('store_cash');
       setNotes('');
 
       showMessage('success', 'تم حفظ المصروف');
@@ -299,7 +302,7 @@ export default function ExpensesPage() {
                       <th>المصروف</th>
                       <th>التصنيف</th>
                       <th>المبلغ</th>
-                      <th>طريقة الدفع</th>
+                      <th>الحساب المالي</th>
                       <th>ملاحظات</th>
                       <th>المستخدم</th>
                       <th>التاريخ</th>
@@ -489,16 +492,17 @@ export default function ExpensesPage() {
           </div>
 
           <div>
-            <label style={labelStyle}>طريقة الدفع</label>
+            <label style={labelStyle}>الحساب المالي</label>
             <select
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}
               style={inputStyle}
             >
-              <option value="cash">كاش</option>
-              <option value="card">كارت / فيزا</option>
-              <option value="wallet">محفظة</option>
-              <option value="bank_transfer">تحويل بنكي / انستا باي</option>
+              {CASH_ACCOUNT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -572,7 +576,7 @@ export default function ExpensesPage() {
                 <th style={thStyle}>المصروف</th>
                 <th style={thStyle}>التصنيف</th>
                 <th style={thStyle}>المبلغ</th>
-                <th style={thStyle}>طريقة الدفع</th>
+                <th style={thStyle}>الحساب المالي</th>
                 <th style={thStyle}>المستخدم</th>
                 <th style={thStyle}>التاريخ</th>
               </tr>

@@ -543,6 +543,7 @@ export function createSaleReturn(input: {
   original_sale_id: number;
   user_id: number;
   reason?: string | null;
+  refund_payment_method?: string | null;
   items: Array<{
     sale_item_id: number;
     variant_id: number;
@@ -581,6 +582,8 @@ export function createSaleReturn(input: {
     if (!originalSale) {
       throw new Error('الفاتورة الأصلية غير موجودة');
     }
+
+    const refundPaymentMethod = input.refund_payment_method?.trim() || originalSale.payment_method || 'store_cash';
 
     const getOriginalItem = db.prepare(`
       SELECT *
@@ -713,7 +716,7 @@ export function createSaleReturn(input: {
         returnSubTotal,
         loyaltyDiscountPart,
         returnValue,
-        originalSale.payment_method || 'cash',
+        refundPaymentMethod,
         reason,
         `مرتجع من فاتورة رقم ${originalSaleId}`,
         loyaltyPointsToReverse
@@ -726,7 +729,7 @@ export function createSaleReturn(input: {
         type: 'sale_return',
         direction: 'out',
         amount: cashRefundAmount,
-        payment_method: originalSale.payment_method || 'cash',
+        payment_method: refundPaymentMethod,
         reference_id: returnId,
         reference_type: 'sale_return',
         notes: `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
@@ -776,7 +779,7 @@ export function createSaleReturn(input: {
         originalSale.customer_id,
         originalSaleId,
         debtReductionAmount,
-        originalSale.payment_method || 'cash',
+        refundPaymentMethod,
         `تسوية مديونية بسبب مرتجع RET-${String(returnId).padStart(5, '0')}`
       );
     }

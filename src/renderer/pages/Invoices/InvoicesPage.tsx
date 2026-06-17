@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/auth.store';
-import { getPaymentMethodLabel } from '../../utils/payment-method';
+import {
+  CASH_ACCOUNT_OPTIONS,
+  getPaymentMethodLabel
+} from '../../utils/payment-method';
 
 type SaleRow = {
   id: number;
@@ -91,6 +94,7 @@ export default function InvoicesPage() {
   const [returnReceipt, setReturnReceipt] = useState<ReceiptData | null>(null);
   const [returnItems, setReturnItems] = useState<ReturnDraftItem[]>([]);
   const [returnReason, setReturnReason] = useState('');
+  const [returnRefundAccount, setReturnRefundAccount] = useState('store_cash');
   const [savingReturn, setSavingReturn] = useState(false);
 
   async function loadInvoices() {
@@ -206,6 +210,7 @@ export default function InvoicesPage() {
 
         setReturnReceipt(receipt);
         setReturnReason('');
+        setReturnRefundAccount(receipt.sale?.payment_method || 'store_cash');
 
         setReturnItems(
         (receipt.items ?? []).map((item: any) => {
@@ -278,18 +283,19 @@ export default function InvoicesPage() {
     setSavingReturn(true);
 
     try {
-        const result = await window.api.createSaleReturn({
+      const result = await window.api.createSaleReturn({
         original_sale_id: Number(returnReceipt.sale.id),
         user_id: Number(user.id),
         reason: returnReason.trim() || null,
+        refund_payment_method: returnRefundAccount,
         items: selectedItems
-        });
+      });
 
         setMessage(`تم عمل مرتجع ${result.returnCode || `RET-${String(result.returnSaleId).padStart(5, '0')}`}`);
         setReturnReceipt(null);
         setReturnItems([]);
         setReturnReason('');
-
+        setReturnRefundAccount('store_cash');
         await loadInvoices();
         await loadReturns();
 
@@ -1172,6 +1178,21 @@ export default function InvoicesPage() {
                 onChange={(e) => setReturnReason(e.target.value)}
                 style={inputStyle}
               />
+            </div>
+
+            <div style={{ display: 'grid', gap: '8px' }}>
+              <label style={{ color: '#cbd5e1', fontWeight: 800 }}>رد الفلوس من حساب</label>
+              <select
+                value={returnRefundAccount}
+                onChange={(e) => setReturnRefundAccount(e.target.value)}
+                style={inputStyle}
+              >
+                {CASH_ACCOUNT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div

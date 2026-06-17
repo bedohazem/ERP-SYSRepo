@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useAuthStore } from '../../store/auth.store';
+import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 
 const PURCHASE_DRAFT_KEY = 'fony_purchase_invoice_draft_v1';
 
@@ -37,7 +38,7 @@ export default function PurchasesPage() {
   const [lines, setLines] = useState<PurchaseLine[]>([]);
 
   const [paidAmount, setPaidAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState('store_cash');
   const [notes, setNotes] = useState('');
 
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
@@ -327,7 +328,7 @@ export default function PurchasesPage() {
       setNotes('');
       setProductSearch('');
       setProductResults([]);
-      setPaymentMethod('cash');
+      setPaymentMethod('store_cash');
       setDiscountType('amount');
       setDiscountDraft('');
     } catch (error) {
@@ -697,16 +698,17 @@ export default function PurchasesPage() {
             </div>
 
             <div style={fieldStyle}>
-              <label style={labelStyle}>طريقة الدفع</label>
+              <label style={labelStyle}>الحساب المالي</label>
               <select
                 value={paymentMethod}
                 onChange={(e) => setPaymentMethod(e.target.value)}
                 style={inputStyle}
               >
-                <option value="cash">كاش</option>
-                <option value="card">كارت / فيزا</option>
-                <option value="wallet">محفظة</option>
-                <option value="bank_transfer">تحويل بنكي / انستا باي</option>
+                {CASH_ACCOUNT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

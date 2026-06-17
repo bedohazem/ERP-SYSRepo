@@ -84,7 +84,8 @@ contextBridge.exposeInMainWorld('api', {
   getCashSummary: (input) => ipcRenderer.invoke('cash:summary', input),
   getCashMovements: (input) => ipcRenderer.invoke('cash:list', input),
   createCashMovement: (input) => ipcRenderer.invoke('cash:create-movement', input),
-
+  createCashTransfer: (input) => ipcRenderer.invoke('cash:transfer', input),
+  
   createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
   getExpenses: () => ipcRenderer.invoke('expenses:list'),
 

@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuthStore } from '../../store/auth.store';
+import {
+  CUSTOMER_PAYMENT_METHOD_OPTIONS,
+  getPaymentMethodLabel
+} from '../../utils/payment-method';
 
 type CustomerRow = {
   id: number;
@@ -792,6 +796,7 @@ function formatDate(value?: string) {
                       <th style={thStyle}>البيان</th>
                       <th style={thStyle}>مدين</th>
                       <th style={thStyle}>دائن</th>
+                      <th style={thStyle}>طريقة الدفع</th>
                       <th style={thStyle}>ملاحظات</th>
                     </tr>
                   </thead>
@@ -831,6 +836,9 @@ function formatDate(value?: string) {
                           >
                             {entry.credit > 0 ? money(entry.credit) : '—'}
                           </td>
+                          <td style={tdStyle}>
+                            {entry.payment_method ? getPaymentMethodLabel(entry.payment_method) : '—'}
+                          </td>
                           <td style={tdStyle}>{entry.notes || '—'}</td>
                         </tr>
                       ))}
@@ -838,7 +846,7 @@ function formatDate(value?: string) {
                     {!statementLoading && statementData.entries.length === 0 && (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={6}
                           style={{
                             ...tdStyle,
                             textAlign: 'center',
@@ -897,10 +905,11 @@ function formatDate(value?: string) {
                     onChange={(e) => setPaymentMethod(e.target.value)}
                     style={inputStyle}
                   >
-                    <option value="cash">كاش</option>
-                    <option value="card">كارت</option>
-                    <option value="wallet">محفظة</option>
-                    <option value="bank_transfer">تحويل بنكي</option>
+                    {CUSTOMER_PAYMENT_METHOD_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

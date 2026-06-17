@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/auth.store';
-import { getPaymentMethodLabel } from '../../utils/payment-method';
+import {
+  CASH_ACCOUNT_OPTIONS,
+  getPaymentMethodLabel
+} from '../../utils/payment-method';
 
 type PurchaseRow = {
   id: number;
@@ -57,7 +60,7 @@ export default function PurchaseHistoryPage() {
 
   const [paymentPurchase, setPaymentPurchase] = useState<PurchaseRow | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentMethod, setPaymentMethod] = useState('store_cash');
   const [paymentNotes, setPaymentNotes] = useState('');
   const [savingPayment, setSavingPayment] = useState(false);
 
@@ -167,7 +170,7 @@ export default function PurchaseHistoryPage() {
 
     setPaymentPurchase(row);
     setPaymentAmount(String(Number(row.remaining_amount || 0)));
-    setPaymentMethod(row.payment_method || 'cash');
+    setPaymentMethod(row.payment_method || 'store_cash');
     setPaymentNotes('');
   }
 
@@ -506,7 +509,7 @@ export default function PurchaseHistoryPage() {
                 <th style={thStyle}>المورد</th>
                 <th style={thStyle}>الأصناف</th>
                 <th style={thStyle}>المبلغ</th>
-                <th style={thStyle}>الدفع</th>
+                <th style={thStyle}>الدفع / الحساب</th>
                 <th style={thStyle}>الحالة</th>
                 <th style={thStyle}>إجراءات</th>
               </tr>
@@ -868,7 +871,7 @@ export default function PurchaseHistoryPage() {
               <InfoCard title="المرتجع" value={money(selectedPurchase.purchase.returned_amount || 0)} />
               <InfoCard title="المدفوع" value={money(selectedPurchase.purchase.paid_amount)} />
               <InfoCard title="المتبقي" value={money(selectedPurchase.purchase.remaining_amount)} />
-              <InfoCard title="طريقة الدفع" value={getPaymentMethodLabel(selectedPurchase.purchase.payment_method)} />
+              <InfoCard title="الحساب المالي" value={getPaymentMethodLabel(selectedPurchase.purchase.payment_method)} />
               <InfoCard title="الحالة" value={paymentStatusName(selectedPurchase.purchase.payment_status)} />
             </div>
 
@@ -919,7 +922,7 @@ export default function PurchaseHistoryPage() {
                   <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                     <th style={thStyle}>التاريخ</th>
                     <th style={thStyle}>المبلغ</th>
-                    <th style={thStyle}>الطريقة</th>
+                    <th style={thStyle}>الحساب المالي</th>
                     <th style={thStyle}>ملاحظات</th>
                   </tr>
                 </thead>
@@ -932,7 +935,7 @@ export default function PurchaseHistoryPage() {
                     >
                       <td style={tdStyle}>{formatDate(payment.created_at)}</td>
                       <td style={tdStyle}>{money(payment.amount)}</td>
-                      <td style={tdStyle}>{paymentMethodName(payment.payment_method)}</td>
+                      <td style={tdStyle}>{getPaymentMethodLabel(payment.payment_method)}</td>
                       <td style={tdStyle}>{payment.notes || '—'}</td>
                     </tr>
                   ))}
@@ -1414,16 +1417,17 @@ export default function PurchaseHistoryPage() {
               </div>
 
               <div style={fieldStyle}>
-                <label style={labelStyle}>طريقة الدفع</label>
+                <label style={labelStyle}>الحساب المالي</label>
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
                   style={inputStyle}
                 >
-                  <option value="cash">كاش</option>
-                  <option value="card">كارت</option>
-                  <option value="wallet">محفظة</option>
-                  <option value="bank_transfer">تحويل بنكي</option>
+                  {CASH_ACCOUNT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 

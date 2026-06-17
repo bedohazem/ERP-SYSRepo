@@ -247,6 +247,7 @@ declare global {
         original_sale_id: number;
         user_id: number;
         reason?: string | null;
+        refund_payment_method?: string | null;
         items: Array<{
           sale_item_id: number;
           variant_id: number;
@@ -742,6 +743,7 @@ declare global {
           }) => Promise<any[]>;
 
           createCashMovement: (input: any) => Promise<any>;
+          createCashTransfer: (input: any) => Promise<any>;
         
 
         // =========================
