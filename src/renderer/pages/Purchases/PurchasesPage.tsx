@@ -331,12 +331,25 @@ export default function PurchasesPage() {
       setPaymentMethod('store_cash');
       setDiscountType('amount');
       setDiscountDraft('');
-    } catch (error) {
-      console.error('Failed to save purchase:', error);
-      showMessage('حدث خطأ أثناء حفظ فاتورة الشراء');
-    } finally {
-      setSaving(false);
-    }
+      } catch (error) {
+        console.error('Failed to save purchase:', error);
+        showMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ فاتورة الشراء'));
+      } finally {
+        setSaving(false);
+      }
+  }
+
+  function getErrorMessage(error: unknown, fallback: string) {
+    const raw =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : '';
+
+    const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/);
+
+    return match?.[1] || raw || fallback;
   }
 
   return (

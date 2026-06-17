@@ -5,6 +5,7 @@ export type CashMovementInput = {
   type:
     | 'sale'
     | 'sale_return'
+    | 'purchase_return'
     | 'customer_payment'
     | 'supplier_payment'
     | 'liability_payment'
@@ -96,6 +97,23 @@ function getAccountBalance(account: string) {
   return Number(row?.total_in || 0) - Number(row?.total_out || 0);
 }
 
+function getAccountLabel(account: CashAccountKey) {
+  switch (account) {
+    case 'store_cash':
+      return 'كاش درج المحل';
+    case 'owner_cash':
+      return 'كاش مع المالك';
+    case 'owner_bank':
+      return 'حساب بنك / فيزا المالك';
+    case 'owner_vodafone':
+      return 'فودافون كاش المالك';
+    case 'fawry_machine':
+      return 'ماكينة فوري';
+    default:
+      return account;
+  }
+}
+
 function buildCashWhere(input?: CashFilterInput) {
   const where: string[] = [];
   const params: any[] = [];
@@ -122,7 +140,7 @@ function buildCashWhere(input?: CashFilterInput) {
 
   if (input?.payment_method && input.payment_method !== 'all') {
     where.push(`cm.payment_method = ?`);
-    params.push(input.payment_method);
+    params.push(resolveCashAccount(input.payment_method));
   }
 
   if (input?.search?.trim()) {
@@ -162,6 +180,16 @@ export function createCashMovement(input: CashMovementInput) {
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error('مبلغ حركة الخزنة غير صحيح');
+  }
+
+  if (direction === 'out') {
+    const currentBalance = getAccountBalance(account);
+
+    if (amount > currentBalance) {
+      throw new Error(
+        `لا يمكن إتمام العملية: رصيد ${getAccountLabel(account)} غير كافٍ. الرصيد الحالي ${currentBalance.toFixed(2)} ج.م والمطلوب ${amount.toFixed(2)} ج.م`
+      );
+    }
   }
 
   const result = db

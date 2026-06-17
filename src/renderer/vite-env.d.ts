@@ -640,6 +640,8 @@ declare global {
           purchase_id: number;
           notes?: string | null;
           actor_id?: number;
+          refund_payment_method?: string | null;
+          refund_mode?: 'cash' | 'credit' | string;
           items: Array<{
             purchase_item_id?: number;
             variant_id?: number;
@@ -652,6 +654,10 @@ declare global {
           supplier_id: number;
           total_amount: number;
           items_count: number;
+          debt_reduction_amount?: number;
+          cash_refund_amount?: number;
+          refund_mode?: string;
+          refund_payment_method?: string | null;
         }>;
 
         listPurchaseReturns: (input?: {

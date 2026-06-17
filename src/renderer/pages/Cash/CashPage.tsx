@@ -210,7 +210,8 @@ export default function CashPage() {
         return 'دفعة التزام';
       case 'transfer':
         return 'تحويل داخلي';  
-
+      case 'purchase_return':
+        return 'مرتجع شراء';
 
       default:
         return type;
@@ -701,12 +702,14 @@ export default function CashPage() {
               <option value="all">الكل</option>
               <option value="sale">بيع</option>
               <option value="sale_return">مرتجع بيع</option>
+              <option value="purchase_return">مرتجع شراء</option>
               <option value="customer_payment">دفعة عميل</option>
               <option value="supplier_payment">دفعة مورد</option>
               <option value="expense">مصروف</option>
               <option value="deposit">إيداع</option>
               <option value="withdraw">سحب</option>
               <option value="liability_payment">دفعة التزام</option>
+              <option value="transfer">تحويل داخلي</option>
             </select>
           </Field>
 

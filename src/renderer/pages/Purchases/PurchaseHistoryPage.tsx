@@ -67,6 +67,8 @@ export default function PurchaseHistoryPage() {
   const [returnPurchase, setReturnPurchase] = useState<any | null>(null);
   const [returnQuantities, setReturnQuantities] = useState<Record<number, string>>({});
   const [returnNotes, setReturnNotes] = useState('');
+  const [returnRefundAccount, setReturnRefundAccount] = useState('store_cash');
+  const [returnRefundMode, setReturnRefundMode] = useState<'cash' | 'credit'>('cash');
   const [savingReturn, setSavingReturn] = useState(false);
 
   const [cancelPurchaseTarget, setCancelPurchaseTarget] = useState<PurchaseRow | null>(null);
@@ -81,8 +83,16 @@ export default function PurchaseHistoryPage() {
   }
 
   function getErrorMessage(error: unknown, fallback: string) {
-    if (error instanceof Error && error.message) return error.message;
-    return fallback;
+    const raw =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : '';
+
+    const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/);
+
+    return match?.[1] || raw || fallback;
   }
 
   async function loadPurchases() {
@@ -275,6 +285,8 @@ export default function PurchaseHistoryPage() {
       setReturnPurchase(data);
       setReturnNotes('');
       setReturnQuantities({});
+      setReturnRefundAccount(data.purchase?.payment_method || 'store_cash');
+      setReturnRefundMode('cash');
     } catch (error) {
       console.error('Failed to open purchase return modal:', error);
       showMessage('حدث خطأ أثناء تجهيز مرتجع الشراء');
@@ -326,6 +338,8 @@ export default function PurchaseHistoryPage() {
       const result = await window.api.createPurchaseReturn({
         purchase_id: Number(returnPurchase.purchase.id),
         notes: returnNotes.trim() || null,
+        refund_payment_method: returnRefundAccount,
+        refund_mode: returnRefundMode,
         actor_id: currentUser?.id,
         items
       });
@@ -335,6 +349,8 @@ export default function PurchaseHistoryPage() {
       setReturnPurchase(null);
       setReturnQuantities({});
       setReturnNotes('');
+      setReturnRefundAccount('store_cash');
+      setReturnRefundMode('cash');
 
       await loadPurchases();
 
@@ -353,6 +369,22 @@ export default function PurchaseHistoryPage() {
       setSavingReturn(false);
     }
   }
+
+  const purchaseReturnTotal = returnPurchase
+    ? (returnPurchase.items ?? []).reduce((sum: number, item: any) => {
+        const quantity = Number(returnQuantities[item.id] || 0);
+        return sum + quantity * Number(item.unit_cost || 0);
+      }, 0)
+    : 0;
+
+  const purchaseReturnDebtReduction = returnPurchase
+    ? Math.min(purchaseReturnTotal, Number(returnPurchase.purchase?.remaining_amount || 0))
+    : 0;
+
+  const purchaseReturnCashRefund = Math.max(
+    0,
+    purchaseReturnTotal - purchaseReturnDebtReduction
+  );
 
   return (
     <div
@@ -551,8 +583,16 @@ export default function PurchaseHistoryPage() {
                         <div style={{ display: 'grid', gap: '4px' }}>
                           <strong>{row.items_count || 0}</strong>
                           {hasReturns && (
-                            <span style={{ color: '#fbbf24', fontSize: '12px', fontWeight: 900 }}>
-                              مرتجع: {money(row.returned_amount || 0)}
+                            <span
+                              style={{
+                                color: Number(row.remaining_amount || 0) > 0 ? '#fbbf24' : '#94a3b8',
+                                fontSize: '12px',
+                                fontWeight: 900
+                              }}
+                            >
+                              {Number(row.remaining_amount || 0) > 0
+                                ? `مرتجع مخصوم: ${money(row.returned_amount || 0)}`
+                                : `مرتجع سابق: ${money(row.returned_amount || 0)}`}
                             </span>
                           )}
                         </div>
@@ -1285,6 +1325,57 @@ export default function PurchaseHistoryPage() {
                   style={inputStyle}
                 />
               </div>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: '12px'
+                }}
+              >
+                <InfoCard title="قيمة المرتجع" value={money(purchaseReturnTotal)} />
+                <InfoCard title="يخصم من مديونية المورد" value={money(purchaseReturnDebtReduction)} />
+                <InfoCard title="فرق راجع من المورد" value={money(purchaseReturnCashRefund)} />
+              </div>
+
+              {purchaseReturnCashRefund > 0 && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                    gap: '12px'
+                  }}
+                >
+                  <div style={fieldStyle}>
+                    <label style={labelStyle}>طريقة فرق المرتجع</label>
+                    <select
+                      value={returnRefundMode}
+                      onChange={(e) => setReturnRefundMode(e.target.value as 'cash' | 'credit')}
+                      style={inputStyle}
+                    >
+                      <option value="cash">المورد رجع فلوس الآن</option>
+                      <option value="credit">يتحفظ رصيد دائن عند المورد</option>
+                    </select>
+                  </div>
+
+                  {returnRefundMode === 'cash' && (
+                    <div style={fieldStyle}>
+                      <label style={labelStyle}>الفلوس دخلت على حساب</label>
+                      <select
+                        value={returnRefundAccount}
+                        onChange={(e) => setReturnRefundAccount(e.target.value)}
+                        style={inputStyle}
+                      >
+                        {CASH_ACCOUNT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div style={{ overflowX: 'auto' }}>
                 <table

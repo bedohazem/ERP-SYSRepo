@@ -26,6 +26,8 @@ export type CancelPurchaseInput = {
 export type CreatePurchaseReturnInput = {
   purchase_id: number;
   notes?: string | null;
+  refund_payment_method?: string | null;
+  refund_mode?: 'cash' | 'credit' | string;
   actor_id?: number | null;
   items: Array<{
     purchase_item_id?: number;
@@ -65,6 +67,11 @@ function ensurePurchaseReturnSchema() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `).run();
+
+  safeRun(`ALTER TABLE purchase_returns ADD COLUMN debt_reduction_amount REAL DEFAULT 0`);
+  safeRun(`ALTER TABLE purchase_returns ADD COLUMN cash_refund_amount REAL DEFAULT 0`);
+  safeRun(`ALTER TABLE purchase_returns ADD COLUMN refund_payment_method TEXT`);
+  safeRun(`ALTER TABLE purchase_returns ADD COLUMN refund_mode TEXT DEFAULT 'cash'`);
 
   db.prepare(`
     CREATE TABLE IF NOT EXISTS purchase_return_items (
@@ -620,21 +627,36 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       throw new Error('قيمة المرتجع غير صحيحة');
     }
 
+    const oldRemaining = Number(purchase.remaining_amount || 0);
+    const debtReductionAmount = Math.min(totalAmount, oldRemaining);
+    const cashRefundAmount = Math.max(0, totalAmount - debtReductionAmount);
+    const refundMode = input.refund_mode === 'credit' ? 'credit' : 'cash';
+    const refundPaymentMethod = input.refund_payment_method?.trim() || purchase.payment_method || 'store_cash';
+    const supplierBalanceReduction = debtReductionAmount + (refundMode === 'credit' ? cashRefundAmount : 0);
+
     const returnResult = db
       .prepare(`
         INSERT INTO purchase_returns (
           purchase_id,
           supplier_id,
           total_amount,
+          debt_reduction_amount,
+          cash_refund_amount,
+          refund_payment_method,
+          refund_mode,
           notes,
           created_by
         )
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         purchaseId,
         Number(purchase.supplier_id),
         totalAmount,
+        debtReductionAmount,
+        refundMode === 'cash' ? cashRefundAmount : 0,
+        refundMode === 'cash' ? refundPaymentMethod : null,
+        refundMode,
         input.notes?.trim() || null,
         input.actor_id ?? null
       );
@@ -691,11 +713,9 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       );
     }
 
-    const oldRemaining = Number(purchase.remaining_amount || 0);
     const oldPaid = Number(purchase.paid_amount || 0);
     const oldTotal = Number(purchase.total_amount || 0);
-
-    const newRemaining = Math.max(0, oldRemaining - totalAmount);
+    const newRemaining = Math.max(0, oldRemaining - debtReductionAmount);
     const newPaymentStatus = normalizePaymentStatus(oldTotal, oldPaid, newRemaining);
 
     db.prepare(`
@@ -713,7 +733,20 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         balance = balance - ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(totalAmount, totalAmount, Number(purchase.supplier_id));
+    `).run(totalAmount, supplierBalanceReduction, Number(purchase.supplier_id));
+
+    if (refundMode === 'cash' && cashRefundAmount > 0) {
+      createCashMovement({
+        type: 'purchase_return',
+        direction: 'in',
+        amount: cashRefundAmount,
+        payment_method: refundPaymentMethod,
+        reference_id: returnId,
+        reference_type: 'purchase_return',
+        notes: `استلام فرق مرتجع شراء رقم ${returnId} من فاتورة ${purchaseId}`,
+        created_by: input.actor_id ?? null
+      });
+    }
 
     return {
       ok: true,
@@ -721,6 +754,10 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       purchase_id: purchaseId,
       supplier_id: Number(purchase.supplier_id),
       total_amount: totalAmount,
+      debt_reduction_amount: debtReductionAmount,
+      cash_refund_amount: refundMode === 'cash' ? cashRefundAmount : 0,
+      refund_mode: refundMode,
+      refund_payment_method: refundMode === 'cash' ? refundPaymentMethod : null,
       items_count: preparedItems.length
     };
   });
@@ -1078,12 +1115,9 @@ export function recordSupplierPayment(input: {
 
       const finalAmount = Math.min(amountInput, remaining);
 
-      const newPaid = Math.min(
-        Number(purchase.total_amount || 0),
-        Number(purchase.paid_amount || 0) + finalAmount
-      );
+      const newPaid = Number(purchase.paid_amount || 0) + finalAmount;
 
-      const newRemaining = Math.max(0, Number(purchase.total_amount || 0) - newPaid);
+      const newRemaining = Math.max(0, remaining - finalAmount);
 
       const newStatus =
         newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
@@ -1127,12 +1161,9 @@ export function recordSupplierPayment(input: {
         const purchaseRemaining = Number(purchase.remaining_amount || 0);
         const payNow = Math.min(remainingPayment, purchaseRemaining);
 
-        const newPaid = Math.min(
-          Number(purchase.total_amount || 0),
-          Number(purchase.paid_amount || 0) + payNow
-        );
+        const newPaid = Number(purchase.paid_amount || 0) + payNow;
 
-        const newRemaining = Math.max(0, Number(purchase.total_amount || 0) - newPaid);
+        const newRemaining = Math.max(0, purchaseRemaining - payNow);
 
         const newStatus =
           newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';

@@ -228,12 +228,12 @@ export default function SuppliersPage() {
         const data = await window.api.getSupplierStatement(paymentSupplier.id);
         setStatementData(data);
       }
-    } catch (error) {
-      console.error('Failed to save supplier payment:', error);
-      showMessage('حدث خطأ أثناء تسجيل الدفعة');
-    } finally {
-      setSavingPayment(false);
-    }
+      } catch (error) {
+        console.error('Failed to save supplier payment:', error);
+        showMessage(getErrorMessage(error, 'حدث خطأ أثناء تسجيل الدفعة'));
+      } finally {
+        setSavingPayment(false);
+      }
   }
 
   function InfoCard({ title, value }: { title: string; value: string }) {
@@ -272,6 +272,19 @@ function formatDate(value?: string) {
   } catch {
     return value;
   }
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  const raw =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : '';
+
+  const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/);
+
+  return match?.[1] || raw || fallback;
 }
 
   return (
