@@ -1142,6 +1142,12 @@ function CashierRevenueView({
           />
 
           <CashierMiniCard
+            title="مرتجعات الشراء"
+            value={money(revenue.purchaseReturnsIn)}
+            subtitle="فلوس رجعت من الموردين"
+          />
+
+          <CashierMiniCard
             title="مرتجعات البيع"
             value={money(revenue.returnsOut)}
             subtitle={`${returnsCount} عملية مرتجع`}
