@@ -166,7 +166,7 @@ export default function PurchasesPage() {
         productSearch.trim() ||
         lines.length > 0 ||
         paidAmount.trim() ||
-        paymentMethod !== 'cash' ||
+        paymentMethod !== 'store_cash' ||
         notes.trim() ||
         discountType !== 'amount' ||
         discountDraft.trim()

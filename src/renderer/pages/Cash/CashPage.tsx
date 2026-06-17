@@ -128,7 +128,7 @@ export default function CashPage() {
       setConfirmOverdrawOpen(false);
       setMovementType('deposit');
       setAmount('');
-      setPaymentMethod('cash');
+      setPaymentMethod('store_cash');
       setNotes('');
 
       showMessage('success', 'تم حفظ حركة الخزنة بنجاح');
