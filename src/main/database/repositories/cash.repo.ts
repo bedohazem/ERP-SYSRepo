@@ -80,8 +80,29 @@ export function resolveCashAccount(value?: string | null): CashAccountKey {
   }
 }
 
+function normalizeLegacyCashMovementAccounts() {
+  const db = getDb();
+
+  db.prepare(`
+    UPDATE cash_movements
+    SET payment_method = CASE
+      WHEN payment_method IS NULL OR TRIM(payment_method) = '' THEN 'store_cash'
+      WHEN payment_method = 'cash' THEN 'store_cash'
+      WHEN payment_method = 'card' THEN 'fawry_machine'
+      WHEN payment_method = 'wallet' THEN 'owner_vodafone'
+      WHEN payment_method IN ('bank', 'bank_transfer') THEN 'owner_bank'
+      ELSE payment_method
+    END
+    WHERE payment_method IS NULL
+       OR TRIM(payment_method) = ''
+       OR payment_method IN ('cash', 'card', 'wallet', 'bank', 'bank_transfer')
+  `).run();
+}
+
+
 function getAccountBalance(account: string) {
   const db = getDb();
+  normalizeLegacyCashMovementAccounts();
   const safeAccount = resolveCashAccount(account);
 
   const row = db
@@ -238,6 +259,7 @@ export function createCashMovement(input: CashMovementInput) {
 
 export function getCashSummary(input?: CashFilterInput) {
   const db = getDb();
+  normalizeLegacyCashMovementAccounts();
   const { whereSql, params } = buildCashWhere(input);
 
   const row = db
@@ -266,6 +288,7 @@ export function getCashSummary(input?: CashFilterInput) {
 
 export function listCashMovements(input?: CashFilterInput) {
   const db = getDb();
+  normalizeLegacyCashMovementAccounts();
   const { whereSql, params } = buildCashWhere(input);
 
   return db
@@ -284,6 +307,7 @@ export function listCashMovements(input?: CashFilterInput) {
 
 export function createCashTransfer(input: CashTransferInput) {
   const db = getDb();
+  normalizeLegacyCashMovementAccounts();
 
   const amount = Number(input.amount || 0);
   const fromAccount = resolveCashAccount(input.from_account);

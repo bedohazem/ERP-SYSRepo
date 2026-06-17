@@ -37,7 +37,7 @@ export default function CashPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [confirmOverdrawOpen, setConfirmOverdrawOpen] = useState(false);
+  
 
   function showMessage(type: 'success' | 'error', text: string) {
     setMessage({ type, text });
@@ -119,7 +119,7 @@ export default function CashPage() {
     }
   }
 
-  async function saveCashMovement(allowOverdraw = false) {
+  async function saveCashMovement() {
     const parsedAmount = Number(amount);
 
     if (!parsedAmount || parsedAmount <= 0) {
@@ -129,14 +129,18 @@ export default function CashPage() {
 
     const direction = movementType === 'deposit' ? 'in' : 'out';
 
-    if (
-      !allowOverdraw &&
-      direction === 'out' &&
-      summary &&
-      parsedAmount > Number(summary.balance || 0)
-    ) {
-      setConfirmOverdrawOpen(true);
-      return;
+    if (direction === 'out') {
+      const selectedAccountBalance = Number(
+        accountBalances.find((account) => account.value === paymentMethod)?.balance || 0
+      );
+
+      if (parsedAmount > selectedAccountBalance) {
+        showMessage(
+          'error',
+          `رصيد ${getPaymentMethodLabel(paymentMethod)} غير كافٍ. الرصيد الحالي ${money(selectedAccountBalance)}`
+        );
+        return;
+      }
     }
 
     setSaving(true);
@@ -154,7 +158,6 @@ export default function CashPage() {
         created_by: currentUser?.id ?? null
       });
 
-      setConfirmOverdrawOpen(false);
       setMovementType('deposit');
       setAmount('');
       setPaymentMethod('store_cash');
@@ -207,12 +210,35 @@ export default function CashPage() {
     }
   }
 
-  function handleCreateMovement() {
-    void saveCashMovement(false);
+  function openWithdrawSelectedAccountBalance() {
+    if (filterPaymentMethod === 'all') {
+      showMessage('error', 'اختار حساب مالي من الفلتر الأول عشان تسحب رصيده');
+      return;
+    }
+
+    const selectedAccount = accountBalances.find(
+      (account) => account.value === filterPaymentMethod
+    );
+
+    const balance = Number(selectedAccount?.balance || 0);
+
+    if (balance <= 0) {
+      showMessage(
+        'error',
+        `لا يوجد رصيد متاح في ${selectedAccount?.label || getPaymentMethodLabel(filterPaymentMethod)}`
+      );
+      return;
+    }
+
+    setMovementType('withdraw');
+    setPaymentMethod(filterPaymentMethod);
+    setAmount(balance.toFixed(2));
+    setNotes(`سحب رصيد ${selectedAccount?.label || getPaymentMethodLabel(filterPaymentMethod)}`);
+    setManualModalOpen(true);
   }
 
-  function confirmOverdrawMovement() {
-    void saveCashMovement(true);
+  function handleCreateMovement() {
+    void saveCashMovement();
   }
 
   useEffect(() => {
@@ -692,6 +718,23 @@ export default function CashPage() {
           >
             + حركة يدوية
           </button>
+          <button
+            type="button"
+            onClick={openWithdrawSelectedAccountBalance}
+            style={{
+              ...primaryButtonStyle,
+              width: '145px',
+              height: '38px',
+              padding: '0 10px',
+              fontSize: '12px',
+              borderRadius: '10px',
+              background: 'rgba(245,158,11,0.14)',
+              border: '1px solid rgba(245,158,11,0.32)',
+              color: '#fbbf24'
+            }}
+          >
+            سحب رصيد الحساب
+          </button>
         </div>
       </div>
 
@@ -938,56 +981,6 @@ export default function CashPage() {
         </table>
       </div>
       </div>
-
-      {confirmOverdrawOpen && (
-        <div style={modalOverlayStyle}>
-          <div style={modalStyle}>
-            <h3 style={{ margin: '0 0 8px' }}>تأكيد السحب</h3>
-
-            <p style={{ margin: '0 0 18px', color: '#cbd5e1', lineHeight: 1.8 }}>
-              المبلغ أكبر من رصيد الخزنة الحالي. هل تريد تسجيل السحب؟
-            </p>
-
-            <div
-              style={{
-                padding: '12px',
-                borderRadius: '12px',
-                background: 'rgba(239,68,68,0.12)',
-                border: '1px solid rgba(239,68,68,0.25)',
-                color: '#fecaca',
-                fontWeight: 800,
-                marginBottom: '18px'
-              }}
-            >
-              رصيد الخزنة: {money(summary?.balance)} — مبلغ السحب: {money(amount)}
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={confirmOverdrawMovement}
-                disabled={saving}
-                style={{
-                  ...dangerButtonStyle,
-                  opacity: saving ? 0.6 : 1,
-                  cursor: saving ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {saving ? 'جاري الحفظ...' : 'تسجيل السحب'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setConfirmOverdrawOpen(false)}
-                disabled={saving}
-                style={secondaryButtonStyle}
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {manualModalOpen && (
         <div className="theme-modal-overlay" style={modalOverlayStyle}>
