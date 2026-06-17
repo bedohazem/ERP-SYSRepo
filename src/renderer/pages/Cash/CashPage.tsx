@@ -312,10 +312,23 @@ export default function CashPage() {
         ? `الاتجاه: ${filterDirection === 'in' ? 'داخل' : 'خارج'}`
         : null,
       filterPaymentMethod !== 'all'
-        ? `طريقة الدفع: ${getPaymentMethodLabel(filterPaymentMethod)}`
+        ? `الحساب المالي: ${getPaymentMethodLabel(filterPaymentMethod)}`
         : null,
       search.trim() ? `بحث: ${search.trim()}` : null
     ].filter(Boolean);
+
+    const accountCardsHtml = accountBalances
+      .map(
+        (account) => `
+          <div class="card">
+            <div class="card-title">${escapeHtml(account.label)}</div>
+            <div class="card-value ${account.balance >= 0 ? 'in' : 'out'}">
+              ${money(account.balance)}
+            </div>
+          </div>
+        `
+      )
+      .join('');
 
     const rowsHtml = movements
       .map(
@@ -380,7 +393,7 @@ export default function CashPage() {
 
             .summary {
               display: grid;
-              grid-template-columns: repeat(3, 1fr);
+              grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
               gap: 12px;
               margin: 18px 0;
             }
@@ -495,9 +508,29 @@ export default function CashPage() {
 
           <div class="summary">
             <div class="card">
-              <div class="card-title">إجمالي الداخل</div>
+              <div class="card-title">رأس المال الإجمالي</div>
+              <div class="card-value">${money(totalCapital)}</div>
+            </div>
+
+            ${accountCardsHtml}
+          </div>
+
+          <div class="summary">
+            <div class="card">
+              <div class="card-title">إجمالي الداخل حسب الفلتر</div>
               <div class="card-value in">${money(summary?.total_in)}</div>
             </div>
+
+            <div class="card">
+              <div class="card-title">إجمالي الخارج حسب الفلتر</div>
+              <div class="card-value out">${money(summary?.total_out)}</div>
+            </div>
+
+            <div class="card">
+              <div class="card-title">الرصيد حسب الفلتر</div>
+              <div class="card-value">${money(summary?.balance)}</div>
+            </div>
+          </div>
 
             <div class="card">
               <div class="card-title">إجمالي الخارج</div>
@@ -527,7 +560,7 @@ export default function CashPage() {
                       <th>النوع</th>
                       <th>الحركة</th>
                       <th>المبلغ</th>
-                      <th>طريقة الدفع</th>
+                      <th>الحساب المالي</th>
                       <th>ملاحظات</th>
                       <th>المستخدم</th>
                       <th>التاريخ</th>
@@ -851,6 +884,23 @@ export default function CashPage() {
             }}
           >
             مسح
+          </button>
+          <button
+            type="button"
+            onClick={printCashReport}
+            style={{
+              ...primaryButtonStyle,
+              width: '130px',
+              height: '38px',
+              padding: '0 10px',
+              fontSize: '12px',
+              borderRadius: '10px',
+              background: 'rgba(96,165,250,0.14)',
+              border: '1px solid rgba(96,165,250,0.32)',
+              color: '#93c5fd'
+            }}
+          >
+            طباعة الكشف
           </button>
         </div>
       </div>
