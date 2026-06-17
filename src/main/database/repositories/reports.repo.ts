@@ -160,7 +160,7 @@ export function getReportsSummary(input?: ReportFilter) {
   const totalExpenses = Number(expensesRow.total_expenses || 0);
   const totalLiabilityPayments = Number(liabilityPaymentsRow.total_liability_payments || 0);
 
-  const finalNetProfit = netProfitAfterDiscounts - totalExpenses - totalLiabilityPayments;  
+  const finalNetProfit = netProfitAfterDiscounts - totalExpenses;  
 
   const topProducts = db
     .prepare(`

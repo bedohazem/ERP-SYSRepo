@@ -207,7 +207,7 @@ export default function ReportsPage() {
         />
 
         <StatCard
-          title="دفعات الالتزامات"
+          title="خروج نقدي للالتزامات"
           value={money(data.summary.total_liability_payments)}
           danger
         />
