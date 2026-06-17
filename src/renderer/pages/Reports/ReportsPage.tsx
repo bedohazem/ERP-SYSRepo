@@ -17,6 +17,14 @@ type ReportsData = {
     normal_discounts: number;
     total_discounts: number;
   };
+  cashAccounts: Array<{
+    payment_method: string;
+    label: string;
+    total_in: number;
+    total_out: number;
+    balance: number;
+  }>;
+  cashTotalCapital: number;
   topProducts: any[];
   dailySales: any[];
   paymentMethods: any[];
@@ -40,6 +48,8 @@ const emptyReports: ReportsData = {
     normal_discounts: 0,
     total_discounts: 0
   },
+  cashAccounts: [],
+  cashTotalCapital: 0,
   topProducts: [],
   dailySales: [],
   paymentMethods: [],
@@ -172,6 +182,11 @@ export default function ReportsPage() {
           minHeight: 0
         }}
       >
+        <StatCard
+          title="رأس المال الحالي"
+          value={money(data.cashTotalCapital)}
+          highlight
+        />
         <StatCard title="إجمالي المبيعات" value={money(data.summary.gross_sales)} />
         <StatCard title="صافي المبيعات" value={money(data.summary.net_sales)} highlight />
         <StatCard
@@ -230,6 +245,17 @@ export default function ReportsPage() {
             gap: '14px'
           }}
         >
+          <ReportTable
+            title="أرصدة الحسابات المالية الحالية"
+            emptyText="لا توجد حركات مالية"
+            columns={['الحساب المالي', 'إجمالي الداخل', 'إجمالي الخارج', 'الرصيد الحالي']}
+            rows={data.cashAccounts.map((x) => [
+              x.label || getPaymentMethodLabel(x.payment_method),
+              money(x.total_in),
+              money(x.total_out),
+              money(x.balance)
+            ])}
+          />
           <ReportTable
             title="أفضل المنتجات مبيعًا"
             emptyText="لا توجد منتجات مباعة"

@@ -421,6 +421,15 @@ declare global {
           total_liability_payments: number;
           final_net_profit: number;
         };
+        cashAccounts: Array<{
+          payment_method: string;
+          label: string;
+          total_in: number;
+          total_out: number;
+          balance: number;
+        }>;
+
+        cashTotalCapital: number;
         topProducts: Array<any>;
         dailySales: Array<any>;
         paymentMethods: Array<any>;

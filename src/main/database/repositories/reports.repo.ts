@@ -25,6 +25,34 @@ function buildWhere(alias: string, input?: ReportFilter, extra: string[] = []) {
   };
 }
 
+const CASH_ACCOUNT_ORDER = `
+  CASE account
+    WHEN 'store_cash' THEN 1
+    WHEN 'owner_cash' THEN 2
+    WHEN 'owner_bank' THEN 3
+    WHEN 'owner_vodafone' THEN 4
+    WHEN 'fawry_machine' THEN 5
+    ELSE 99
+  END
+`;
+
+function getCashAccountLabel(account: string) {
+  switch (account) {
+    case 'store_cash':
+      return 'كاش درج المحل';
+    case 'owner_cash':
+      return 'كاش مع المالك';
+    case 'owner_bank':
+      return 'حساب بنك / فيزا المالك';
+    case 'owner_vodafone':
+      return 'فودافون كاش المالك';
+    case 'fawry_machine':
+      return 'ماكينة فوري';
+    default:
+      return account || 'غير محدد';
+  }
+}
+
 export function getReportsSummary(input?: ReportFilter) {
   const db = getDb();
 
@@ -280,6 +308,51 @@ export function getReportsSummary(input?: ReportFilter) {
     `)
     .all(...combinedWhere.params);
 
+  const cashAccounts = db
+    .prepare(`
+      SELECT
+        account AS payment_method,
+        IFNULL(SUM(CASE WHEN direction = 'in' THEN amount ELSE 0 END), 0) AS total_in,
+        IFNULL(SUM(CASE WHEN direction = 'out' THEN amount ELSE 0 END), 0) AS total_out,
+        IFNULL(SUM(CASE WHEN direction = 'in' THEN amount ELSE -amount END), 0) AS balance
+      FROM (
+        SELECT
+          CASE
+            WHEN payment_method IS NULL OR TRIM(payment_method) = '' THEN 'store_cash'
+            WHEN payment_method = 'cash' THEN 'store_cash'
+            WHEN payment_method = 'card' THEN 'fawry_machine'
+            WHEN payment_method = 'wallet' THEN 'owner_vodafone'
+            WHEN payment_method IN ('bank', 'bank_transfer') THEN 'owner_bank'
+            WHEN payment_method IN (
+              'store_cash',
+              'owner_cash',
+              'owner_bank',
+              'owner_vodafone',
+              'fawry_machine'
+            ) THEN payment_method
+            ELSE 'store_cash'
+          END AS account,
+          direction,
+          amount
+        FROM cash_movements
+      ) cash
+      GROUP BY account
+      ORDER BY ${CASH_ACCOUNT_ORDER}
+    `)
+    .all()
+    .map((row: any) => ({
+      payment_method: row.payment_method,
+      label: getCashAccountLabel(row.payment_method),
+      total_in: Number(row.total_in || 0),
+      total_out: Number(row.total_out || 0),
+      balance: Number(row.balance || 0)
+    }));
+
+  const cashTotalCapital = cashAccounts.reduce(
+    (sum: number, account: any) => sum + Number(account.balance || 0),
+    0
+  );  
+
   return {
     summary: {
       sales_count: Number(salesSummary.sales_count || 0),
@@ -296,6 +369,8 @@ export function getReportsSummary(input?: ReportFilter) {
       total_liability_payments: totalLiabilityPayments,
       final_net_profit: finalNetProfit
     },
+    cashAccounts,
+    cashTotalCapital,
     topProducts,
     dailySales,
     paymentMethods,
