@@ -32,6 +32,7 @@ export default function CustomersPage() {
   const isAdmin = currentUser?.role === 'admin';
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [query, setQuery] = useState('');
+  const [showDebtorsOnly, setShowDebtorsOnly] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
@@ -59,6 +60,37 @@ export default function CustomersPage() {
     () => customers.find((c) => c.id === editingId),
     [customers, editingId]
   );
+
+  const debtorCustomers = useMemo(() => {
+    return customers
+      .filter((customer) => Number(customer.balance || 0) > 0)
+      .sort((a, b) => Number(b.balance || 0) - Number(a.balance || 0));
+  }, [customers]);
+
+  const displayedCustomers = useMemo(() => {
+    const list = showDebtorsOnly ? debtorCustomers : customers;
+
+    return [...list].sort((a, b) => {
+      const balanceDiff = Number(b.balance || 0) - Number(a.balance || 0);
+
+      if (balanceDiff !== 0) return balanceDiff;
+
+      return Number(b.id || 0) - Number(a.id || 0);
+    });
+  }, [customers, debtorCustomers, showDebtorsOnly]);
+
+  const debtSummary = useMemo(() => {
+    const totalDebt = debtorCustomers.reduce(
+      (sum, customer) => sum + Number(customer.balance || 0),
+      0
+    );
+
+    return {
+      totalDebt,
+      debtorsCount: debtorCustomers.length,
+      topDebtor: debtorCustomers[0] || null
+    };
+  }, [debtorCustomers]);
 
   async function loadCustomers(searchValue = query) {
     setLoadingCustomers(true);
@@ -347,6 +379,39 @@ function InfoCard({ title, value }: { title: string; value: string }) {
   );
 }
 
+function MiniDebtCard({ title, value }: { title: string; value: string }) {
+  return (
+    <div
+      style={{
+        padding: '10px 12px',
+        borderRadius: '12px',
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        display: 'grid',
+        gap: '5px',
+        minHeight: '54px'
+      }}
+    >
+      <span style={{ color: '#94a3b8', fontWeight: 900, fontSize: '12px' }}>
+        {title}
+      </span>
+
+      <strong
+        style={{
+          color: '#fff',
+          fontSize: '14px',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis'
+        }}
+        title={value}
+      >
+        {value}
+      </strong>
+    </div>
+  );
+}
+
 function formatDate(value?: string) {
   if (!value) return '—';
 
@@ -403,22 +468,39 @@ function formatDate(value?: string) {
       <div
         className="glass-card table-scroll"
         style={{
-          padding: '18px',
+          padding: '16px',
           borderRadius: '18px',
-          overflow: 'auto',
-          height: '100%',
-          minHeight: 0,
+          overflow: 'visible',
           maxWidth: '100%',
-          boxSizing: 'border-box'
+          boxSizing: 'border-box',
+          display: 'grid',
+          gap: '12px'
         }}
       >
-        <h2 style={{ margin: 0, textAlign: 'right' }}>إدارة العملاء</h2>
-
         <div
           style={{
             display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
             gap: '12px',
             flexWrap: 'wrap',
+            direction: 'rtl'
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0, textAlign: 'right' }}>إدارة العملاء</h2>
+            <p style={{ margin: '6px 0 0', color: '#94a3b8', fontWeight: 800 }}>
+              بحث سريع ومتابعة مديونيات العملاء
+            </p>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(260px, 1fr) auto minmax(520px, 2fr)',
+            gap: '12px',
+            alignItems: 'stretch',
             direction: 'rtl'
           }}
         >
@@ -428,6 +510,44 @@ function formatDate(value?: string) {
             onChange={(e) => setQuery(e.target.value)}
             style={inputStyle}
           />
+
+          <button
+            type="button"
+            onClick={() => setShowDebtorsOnly((value) => !value)}
+            style={{
+              ...(showDebtorsOnly ? primaryButtonStyle : secondaryOutlineButtonStyle),
+              minWidth: '135px'
+            }}
+          >
+            {showDebtorsOnly ? 'عرض الكل' : 'المديونين فقط'}
+          </button>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, minmax(150px, 1fr))',
+              gap: '8px'
+            }}
+          >
+            <MiniDebtCard
+              title="إجمالي المديونية"
+              value={money(debtSummary.totalDebt)}
+            />
+
+            <MiniDebtCard
+              title="عدد المديونين"
+              value={String(debtSummary.debtorsCount)}
+            />
+
+            <MiniDebtCard
+              title="أكبر مديونية"
+              value={
+                debtSummary.topDebtor
+                  ? `${debtSummary.topDebtor.name} - ${money(debtSummary.topDebtor.balance)}`
+                  : 'لا يوجد'
+              }
+            />
+          </div>
         </div>
       </div>
 
@@ -548,7 +668,7 @@ function formatDate(value?: string) {
           </thead>
 
           <tbody>
-            {customers.map((customer) => (
+            {displayedCustomers.map((customer) => (
               <tr key={customer.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                 <td style={tdStyle}>{customer.name}</td>
                 <td style={tdStyle}>{customer.phone || '—'}</td>
@@ -608,9 +728,9 @@ function formatDate(value?: string) {
               </tr>
             ))}
 
-            {customers.length === 0 && (
+            {displayedCustomers.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ ...tdStyle, textAlign: 'center', color: '#94a3b8' }}>
+                <td colSpan={8} style={{ ...tdStyle, textAlign: 'center', color: '#94a3b8' }}>
                   لا يوجد عملاء
                 </td>
               </tr>
