@@ -532,17 +532,6 @@ export default function CashPage() {
             </div>
           </div>
 
-            <div class="card">
-              <div class="card-title">إجمالي الخارج</div>
-              <div class="card-value out">${money(summary?.total_out)}</div>
-            </div>
-
-            <div class="card">
-              <div class="card-title">رصيد الخزنة</div>
-              <div class="card-value">${money(summary?.balance)}</div>
-            </div>
-          </div>
-
           <div class="filters">
             ${
               filtersText.length
@@ -571,7 +560,7 @@ export default function CashPage() {
                   </tbody>
                 </table>
               `
-              : '<div class="empty">لا توجد حركات خزنة مطابقة للفلتر مطابقة للفلتر</div>'
+              : '<div class="empty">لا توجد حركات خزنة مطابقة للفلتر</div>'
           }
 
           <div class="footer">
