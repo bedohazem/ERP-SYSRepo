@@ -148,7 +148,7 @@ export default function ReportsPage() {
           <div>
             <h2 style={{ margin: '0 0 6px' }}>التقارير</h2>
             <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700 }}>
-              ملخص المبيعات، الأرباح، المرتجعات، وأقل مخزون
+              ملخص المبيعات، الأرباح، الخزنة، الحسابات المالية، والمرتجعات
             </p>
           </div>
 
@@ -270,9 +270,9 @@ export default function ReportsPage() {
           />
 
           <ReportTable
-            title="طرق الدفع"
+            title="طرق دفع المبيعات فقط"
             emptyText="لا توجد بيانات"
-            columns={['الطريقة', 'العدد', 'الإجمالي']}
+            columns={['طريقة الدفع', 'عدد فواتير البيع', 'إجمالي المبيعات']}
             rows={data.paymentMethods.map((x) => [
               getPaymentMethodLabel(x.payment_method),
               x.count,
