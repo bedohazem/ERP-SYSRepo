@@ -107,4 +107,6 @@ contextBridge.exposeInMainWorld('api', {
   cancelLiability: (input) => ipcRenderer.invoke('liabilities:cancel', input),
   getLiabilitiesSummary: (input) => ipcRenderer.invoke('liabilities:summary', input),
 
+  savePdfFromHtml: (input) => ipcRenderer.invoke('print:save-pdf', input),
+
 });

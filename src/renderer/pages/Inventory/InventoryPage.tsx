@@ -163,6 +163,31 @@ export default function InventoryPage() {
     }
   }
 
+  async function downloadInventoryEmployeesPdf() {
+    try {
+      const inventoryRows = await window.api.getInventoryList({
+        search: '',
+        status: 'all'
+      });
+
+      const printRows: InventoryRow[] = Array.isArray(inventoryRows) ? inventoryRows : [];
+      const html = buildInventoryEmployeesPdfHtml(printRows);
+
+      const result = await window.api.savePdfFromHtml({
+        html,
+        defaultFileName: `inventory-employees-${new Date().toISOString().slice(0, 10)}.pdf`,
+        landscape: true
+      });
+
+      if (result?.canceled) return;
+
+      showMessage('تم حفظ PDF المخزون بنجاح');
+    } catch (error) {
+      console.error('Failed to save inventory PDF:', error);
+      showMessage('حدث خطأ أثناء حفظ PDF المخزون');
+    }
+  }
+
   return (
       <div
         style={{
@@ -213,9 +238,15 @@ export default function InventoryPage() {
             </p>
           </div>
 
-          <button type="button" onClick={loadInventory} style={primaryButtonStyle}>
-            {loading ? 'جاري التحميل...' : 'تحديث'}
-          </button>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button type="button" onClick={downloadInventoryEmployeesPdf} style={secondaryButtonStyle}>
+              PDF المخزون
+            </button>
+
+            <button type="button" onClick={loadInventory} style={primaryButtonStyle}>
+              {loading ? 'جاري التحميل...' : 'تحديث'}
+            </button>
+          </div>
         </div>
 
         <div
@@ -622,6 +653,236 @@ export default function InventoryPage() {
   );
 }
 
+function buildInventoryEmployeesPdfHtml(printRows: InventoryRow[]) {
+
+  const availableCount = printRows.filter(
+    (item) => Number(item.stock || 0) > Number(item.min_stock || 0)
+  ).length;
+
+  const lowCount = printRows.filter(
+    (item) =>
+      Number(item.stock || 0) > 0 &&
+      Number(item.stock || 0) <= Number(item.min_stock || 0)
+  ).length;
+
+  const outCount = printRows.filter((item) => Number(item.stock || 0) === 0).length;
+
+  const rowsHtml = printRows
+    .map((item, index) => {
+      const stock = Number(item.stock || 0);
+      const minStock = Number(item.min_stock || 0);
+      const statusText = getInventoryStatusText(item);
+
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${escapeHtml(item.product_name)}</td>
+          <td>${escapeHtml(item.barcode || '—')}</td>
+          <td>${escapeHtml(item.size || '—')}</td>
+          <td>${escapeHtml(item.color || '—')}</td>
+          <td class="${stock <= 0 ? 'danger' : stock <= minStock ? 'warning' : ''}">
+            ${stock}
+          </td>
+          <td>${minStock}</td>
+          <td>${money(item.sell_price)}</td>
+          <td>${statusText}</td>
+          <td class="notes-cell">&nbsp;</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  return `
+    <!doctype html>
+    <html lang="ar" dir="rtl">
+      <head>
+        <meta charset="UTF-8" />
+        <title>تقرير مخزون الموظفين</title>
+        <style>
+          @page {
+            size: A4 landscape;
+            margin: 10mm;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+            color: #111827;
+            background: #ffffff;
+            direction: rtl;
+          }
+
+          .header {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: flex-start;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+          }
+
+          h1 {
+            margin: 0 0 6px;
+            font-size: 22px;
+          }
+
+          .muted {
+            color: #6b7280;
+            font-size: 11px;
+            line-height: 1.6;
+            font-weight: 700;
+          }
+
+          .summary {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin: 10px 0;
+          }
+
+          .card {
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 8px;
+            background: #f9fafb;
+          }
+
+          .card-title {
+            color: #6b7280;
+            font-size: 10px;
+            margin-bottom: 4px;
+            font-weight: 800;
+          }
+
+          .card-value {
+            font-size: 15px;
+            font-weight: 900;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+          }
+
+          th,
+          td {
+            border: 1px solid #d1d5db;
+            padding: 5px;
+            text-align: right;
+            font-size: 9.5px;
+            vertical-align: middle;
+            word-break: break-word;
+          }
+
+          th {
+            background: #f3f4f6;
+            font-weight: 900;
+          }
+
+          .danger {
+            color: #b91c1c;
+            font-weight: 900;
+          }
+
+          .warning {
+            color: #b45309;
+            font-weight: 900;
+          }
+
+          .footer {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            color: #6b7280;
+            font-size: 10px;
+            font-weight: 700;
+          }
+          .notes-cell {
+            height: 24px;
+            background: #ffffff;
+          }
+        </style>
+      </head>
+
+      <body>
+        <div class="header">
+          <div>
+            <h1>تقرير مخزون الموظفين</h1>
+            <div class="muted">
+              تقرير كامل للمخزون بدون سعر الشراء<br />
+              تاريخ التصدير: ${new Date().toLocaleString('ar-EG')}
+            </div>
+          </div>
+
+          <div class="muted">
+            عدد الأصناف: ${printRows.length}<br />
+            مقاس: A4 أفقي
+          </div>
+        </div>
+
+        <div class="summary">
+          <div class="card">
+            <div class="card-title">كل الأصناف</div>
+            <div class="card-value">${printRows.length}</div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">متاح</div>
+            <div class="card-value">${availableCount}</div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">منخفض</div>
+            <div class="card-value">${lowCount}</div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">نافد</div>
+            <div class="card-value">${outCount}</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 32px;">#</th>
+              <th style="width: 190px;">المنتج</th>
+              <th style="width: 95px;">الباركود</th>
+              <th style="width: 70px;">المقاس</th>
+              <th style="width: 70px;">اللون</th>
+              <th style="width: 60px;">المخزون</th>
+              <th style="width: 60px;">حد أدنى</th>
+              <th style="width: 85px;">سعر البيع</th>
+              <th style="width: 75px;">الحالة</th>
+              <th style="width: 130px;">ملاحظات</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            ${
+              rowsHtml ||
+              '<tr><td colspan="10" style="text-align:center;padding:22px;">لا توجد أصناف</td></tr>'
+            }
+          </tbody>
+        </table>
+
+        <div class="footer">
+          <div>تم إنشاء التقرير من نظام ERP Store</div>
+          <div>صفحة المخزون - نسخة الموظفين</div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
 function StatCard({
   title,
   value,
@@ -702,6 +963,25 @@ function stockColor(item: InventoryRow) {
   if (stock === 0) return '#fca5a5';
   if (stock <= minStock) return '#fdba74';
   return '#6ee7b7';
+}
+
+function getInventoryStatusText(item: InventoryRow) {
+  const stock = Number(item.stock || 0);
+  const minStock = Number(item.min_stock || 0);
+
+  if (stock < 0) return 'سالب';
+  if (stock === 0) return 'نافد';
+  if (stock <= minStock) return 'منخفض';
+  return 'متاح';
+}
+
+function escapeHtml(value: string) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function movementTypeName(movement: MovementRow) {

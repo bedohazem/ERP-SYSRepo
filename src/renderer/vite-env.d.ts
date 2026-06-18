@@ -531,6 +531,16 @@ declare global {
           actor_id?: number;
         }) => Promise<any>;
 
+        savePdfFromHtml: (input: {
+          html: string;
+          defaultFileName?: string;
+          landscape?: boolean;
+        }) => Promise<{
+          ok: boolean;
+          canceled?: boolean;
+          filePath?: string;
+        }>;
+
         
         // =========================
         // Suppliers
