@@ -18,6 +18,11 @@ import {
 } from '../database/repositories/settings.repo';
 import { closeDb, getDb, getDbPath, resetDatabaseData } from '../database/db';
 import { requireAdmin } from './permission-helper';
+import {
+  createAutoBackup,
+  getAutoBackupInfo,
+  setAutoBackupDir
+} from '../database/auto-backup';
 
 
 function getErrorMessage(error: unknown) {
@@ -295,6 +300,85 @@ export function registerSettingsIpc(): void {
         safetyBackupPath,
         message: 'تم تصفير البرنامج بنجاح'
       };
+    } catch (error) {
+      return {
+        success: false,
+        message: getErrorMessage(error)
+      };
+    }
+  });
+
+  ipcMain.handle('settings:get-auto-backup-info', () => {
+    return getAutoBackupInfo();
+  });
+
+  ipcMain.handle('settings:choose-auto-backup-dir', async (event, input?: { actor_id?: number }) => {
+    try {
+      requireAdmin(getActorId(input));
+
+      const parentWindow = BrowserWindow.fromWebContents(event.sender);
+
+      const result = parentWindow
+        ? await dialog.showOpenDialog(parentWindow, {
+            title: 'اختيار مكان النسخ التلقائي',
+            properties: ['openDirectory', 'createDirectory']
+          })
+        : await dialog.showOpenDialog({
+            title: 'اختيار مكان النسخ التلقائي',
+            properties: ['openDirectory', 'createDirectory']
+          });
+
+      if (result.canceled || !result.filePaths[0]) {
+        return {
+          success: false,
+          canceled: true
+        };
+      }
+
+        setAutoBackupDir(result.filePaths[0]);
+        const backup = await createAutoBackup('manual');
+        const info = backup.info || getAutoBackupInfo();
+
+      logAction({
+        actor_id: getActorId(input),
+        action: 'auto_backup_dir_changed',
+        entity: 'settings',
+        entity_id: null,
+        details: {
+          path: result.filePaths[0],
+          backup
+        }
+      });
+
+      return {
+        success: true,
+        info,
+        backup,
+        message: 'تم اختيار مكان النسخ التلقائي بنجاح'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: getErrorMessage(error)
+      };
+    }
+  });
+
+  ipcMain.handle('settings:run-auto-backup-now', async (_, input?: { actor_id?: number }) => {
+    try {
+      requireAdmin(getActorId(input));
+
+      const result = await createAutoBackup('manual');
+
+      logAction({
+        actor_id: getActorId(input),
+        action: 'auto_backup_run_now',
+        entity: 'settings',
+        entity_id: null,
+        details: result
+      });
+
+      return result;
     } catch (error) {
       return {
         success: false,

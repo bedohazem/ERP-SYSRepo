@@ -124,6 +124,20 @@ export default function SettingsPage() {
   const [savingStoreContact, setSavingStoreContact] = useState(false);
   const currentUser = useAuthStore((s) => s.user);
 
+  const [autoBackupInfo, setAutoBackupInfo] = useState<{
+    dir: string;
+    maxBackups: number;
+    files: Array<{
+      file: string;
+      fullPath: string;
+      size: number;
+      createdAt: string;
+    }>;
+  } | null>(null);
+
+  const [choosingBackupDir, setChoosingBackupDir] = useState(false);
+  const [runningAutoBackup, setRunningAutoBackup] = useState(false);
+
   useEffect(() => {
     void loadSettings();
   }, []);
@@ -139,12 +153,12 @@ export default function SettingsPage() {
 
   async function loadSettings() {
     try {
-      const [barcodeData, loyaltyData, licenseData] = await Promise.all([
+      const [barcodeData, loyaltyData, licenseData, autoBackupData] = await Promise.all([
         window.api.getBarcodePrintSettings(),
         window.api.getLoyaltySettings(),
-        window.api.getLicenseStatus()
+        window.api.getLicenseStatus(),
+        window.api.getAutoBackupInfo()
       ]);
-
       setSettings(barcodeData);
       setLoyaltySettings(loyaltyData);
       setLicenseStatus(licenseData);
@@ -152,6 +166,7 @@ export default function SettingsPage() {
       setAppName(licenseData.app_name || 'ERP Store');
       setStorePhone(licenseData.store_phone || '');
       setStoreAddress(licenseData.store_address || '');
+      setAutoBackupInfo(autoBackupData);
       const loadedTheme = licenseData.app_theme === 'light' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', loadedTheme);
     } catch (error) {
@@ -159,6 +174,65 @@ export default function SettingsPage() {
       showMessage('error', 'حدث خطأ أثناء تحميل الإعدادات');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function chooseAutoBackupDir() {
+    if (choosingBackupDir) return;
+
+    setChoosingBackupDir(true);
+
+    try {
+      const result = await window.api.chooseAutoBackupDir({ actor_id: currentUser?.id });
+
+      if (result.canceled) return;
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل اختيار مكان النسخ التلقائي');
+        return;
+      }
+
+      if (result.info) {
+        setAutoBackupInfo(result.info);
+      } else {
+        setAutoBackupInfo(await window.api.getAutoBackupInfo());
+      }
+
+      showMessage('success', 'تم اختيار مكان النسخ التلقائي');
+    } catch (error) {
+      console.error('Failed to choose auto backup dir:', error);
+      showMessage('error', 'حدث خطأ أثناء اختيار مكان النسخ التلقائي');
+    } finally {
+      setChoosingBackupDir(false);
+    }
+  }
+
+  async function runAutoBackupNow() {
+    if (runningAutoBackup) return;
+
+    setRunningAutoBackup(true);
+
+    try {
+      const result = await window.api.runAutoBackupNow({ actor_id: currentUser?.id });
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل إنشاء النسخة التلقائية');
+        return;
+      }
+
+      if (result.info) {
+        setAutoBackupInfo(result.info);
+      } else {
+        setAutoBackupInfo(await window.api.getAutoBackupInfo());
+      }
+
+      showMessage('success', 'تم إنشاء نسخة تلقائية الآن');
+      
+    } catch (error) {
+      console.error('Failed to run auto backup:', error);
+      showMessage('error', 'حدث خطأ أثناء إنشاء النسخة التلقائية');
+    } finally {
+      setRunningAutoBackup(false);
     }
   }
 
@@ -678,6 +752,102 @@ export default function SettingsPage() {
           }}
         >
           نصيحة: اعمل نسخة احتياطية يوميًا قبل إغلاق المحل، واحتفظ بها على فلاشة أو Google Drive.
+        </div>
+
+        <div
+          style={{
+            padding: '14px',
+            borderRadius: '16px',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            display: 'grid',
+            gap: '12px'
+          }}
+        >
+          <div>
+            <h3 style={{ margin: '0 0 6px' }}>النسخ التلقائي</h3>
+            <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.7 }}>
+              البرنامج ينشئ نسخة عند الفتح، وكل ساعة، وعند القفل، ويمكن إنشاء نسخة يدويًا، ويحتفظ بآخر 7 نسخ فقط.
+            </p>
+          </div>
+
+          <div
+            dir="ltr"
+            style={{
+              padding: '12px',
+              borderRadius: '12px',
+              background: 'rgba(15,23,42,0.55)',
+              border: '1px solid rgba(148,163,184,0.18)',
+              color: '#e5e7eb',
+              fontWeight: 800,
+              overflowX: 'auto',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {autoBackupInfo?.dir || '—'}
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => void chooseAutoBackupDir()}
+              disabled={choosingBackupDir}
+              style={{
+                ...primaryButtonStyle,
+                opacity: choosingBackupDir ? 0.6 : 1,
+                cursor: choosingBackupDir ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {choosingBackupDir ? 'جاري الاختيار...' : 'اختيار مكان النسخ التلقائي'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void runAutoBackupNow()}
+              disabled={runningAutoBackup}
+              style={{
+                ...primaryButtonStyle,
+                opacity: runningAutoBackup ? 0.6 : 1,
+                cursor: runningAutoBackup ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {runningAutoBackup ? 'جاري إنشاء النسخة...' : 'إنشاء نسخة الآن'}
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gap: '8px'
+            }}
+          >
+            <strong style={{ color: '#cbd5e1' }}>
+              آخر النسخ: {autoBackupInfo?.files?.length || 0} / {autoBackupInfo?.maxBackups || 7}
+            </strong>
+
+            {(autoBackupInfo?.files || []).length === 0 ? (
+              <span style={{ color: '#94a3b8' }}>لا توجد نسخ تلقائية حتى الآن</span>
+            ) : (
+              (autoBackupInfo?.files || []).map((file) => (
+                <div
+                  key={file.fullPath}
+                  style={{
+                    padding: '10px',
+                    borderRadius: '10px',
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    display: 'grid',
+                    gap: '4px'
+                  }}
+                >
+                  <strong>{file.file}</strong>
+                  <span dir="ltr" style={{ color: '#94a3b8', fontSize: '12px' }}>
+                    {file.fullPath}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>

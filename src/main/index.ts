@@ -14,12 +14,24 @@ import { registerCashIpc } from './ipc/cash.ipc';
 import { registerExpenseIpc } from './ipc/expense.ipc';
 import { registerActivityIpc } from './ipc/activity.ipc';
 import { getAppLicenseStatus } from './database/repositories/settings.repo';
-import { createDailyAutoBackup } from './database/auto-backup';
+import { createAutoBackup } from './database/auto-backup';
 import { registerStockCountIpc } from './ipc/stock-count.ipc';
 import { registerLiabilitiesIpc } from './ipc/liabilities.ipc';
 import { registerPrintIpc } from './ipc/print.ipc';
 
 let mainWindow: BrowserWindow | null = null;
+let hourlyBackupTimer: NodeJS.Timeout | null = null;
+let shutdownBackupDone = false;
+
+function startAutoBackupScheduler() {
+  setTimeout(() => {
+    void createAutoBackup('startup');
+  }, 10000);
+
+  hourlyBackupTimer = setInterval(() => {
+    void createAutoBackup('hourly');
+  }, 60 * 60 * 1000);
+}
 
 const appRoot = app.isPackaged ? app.getAppPath() : process.cwd();
 const appIconPath = path.join(appRoot, 'build', 'icon.ico');
@@ -100,12 +112,8 @@ app.whenReady().then(() => {
   registerPrintIpc();
 
   createWindow();
+  startAutoBackupScheduler();
 
-  setTimeout(() => {
-    void createDailyAutoBackup().finally(() => {
-    });
-  }, 10000);
-  
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -113,8 +121,30 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  app.on('before-quit', async (event) => {
+    if (shutdownBackupDone) {
+      return;
+    }
+
+    event.preventDefault();
+    shutdownBackupDone = true;
+
+    if (hourlyBackupTimer) {
+      clearInterval(hourlyBackupTimer);
+      hourlyBackupTimer = null;
+    }
+
+    try {
+      await createAutoBackup('shutdown');
+    } catch (error) {
+      console.error('Shutdown backup failed:', error);
+    }
+
     app.quit();
-  }
-});
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit();
+    }
+  });

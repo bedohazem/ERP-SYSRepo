@@ -391,6 +391,51 @@ declare global {
         safetyBackupPath?: string;
       }>;
 
+      getAutoBackupInfo: () => Promise<{
+        dir: string;
+        maxBackups: number;
+        files: Array<{
+          file: string;
+          fullPath: string;
+          size: number;
+          createdAt: string;
+        }>;
+      }>;
+
+      chooseAutoBackupDir: (input?: { actor_id?: number }) => Promise<{
+        success: boolean;
+        canceled?: boolean;
+        message?: string;
+        info?: {
+          dir: string;
+          maxBackups: number;
+          files: Array<{
+            file: string;
+            fullPath: string;
+            size: number;
+            createdAt: string;
+          }>;
+        };
+      }>;
+
+      runAutoBackupNow: (input?: { actor_id?: number }) => Promise<{
+        success: boolean;
+        skipped?: boolean;
+        reason?: 'startup' | 'hourly' | 'shutdown' | 'manual';
+        path?: string;
+        message?: string;
+        info?: {
+          dir: string;
+          maxBackups: number;
+          files: Array<{
+            file: string;
+            fullPath: string;
+            size: number;
+            createdAt: string;
+          }>;
+        };
+      }>;
+
       // =========================
       // Logs
       // =========================

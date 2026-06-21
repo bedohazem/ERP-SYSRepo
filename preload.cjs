@@ -50,6 +50,9 @@ contextBridge.exposeInMainWorld('api', {
   backupDatabase: (input) => ipcRenderer.invoke('settings:backup-database', input),
   restoreDatabase: (input) => ipcRenderer.invoke('settings:restore-database', input),
   resetDatabase: (input) => ipcRenderer.invoke('settings:reset-database', input),
+  getAutoBackupInfo: () => ipcRenderer.invoke('settings:get-auto-backup-info'),
+  chooseAutoBackupDir: (input) => ipcRenderer.invoke('settings:choose-auto-backup-dir', input),
+  runAutoBackupNow: (input) => ipcRenderer.invoke('settings:run-auto-backup-now', input),
 
   getReportsSummary: (input) => ipcRenderer.invoke('reports:summary', input),
 
