@@ -751,6 +751,8 @@ declare global {
             direction?: 'all' | 'in' | 'out';
             payment_method?: string;
             search?: string;
+            reference_type?: string;
+            created_by?: number | null;
           }) => Promise<{
             total_in: number;
             total_out: number;

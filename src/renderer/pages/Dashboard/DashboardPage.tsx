@@ -42,20 +42,20 @@ type DashboardState = {
 };
 
 type CashierDailyRevenue = {
+  drawerCash: number;
+  instapayBank: number;
+  vodafoneCash: number;
+  fawryMachine: number;
+  ownerCash: number;
+
   salesIn: number;
-  customerPaymentsIn: number;
-  depositsIn: number;
-  purchaseReturnsIn: number;
+  totalDiscounts: number;
+  saleReturnsOut: number;
 
-  returnsOut: number;
+  purchaseInvoicesOut: number;
   supplierPaymentsOut: number;
+  purchaseReturnsIn: number;
   expensesOut: number;
-  withdrawsOut: number;
-  liabilityPaymentsOut: number;
-
-  totalIn: number;
-  totalOut: number;
-  netCash: number;
 };
 
 const emptyReports: ReportsData = {
@@ -99,19 +99,20 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState('');
 
   const [cashierRevenue, setCashierRevenue] = useState<CashierDailyRevenue>({
-    salesIn: 0,
-    customerPaymentsIn: 0,
-    depositsIn: 0,
-    purchaseReturnsIn: 0,
+    drawerCash: 0,
+    instapayBank: 0,
+    vodafoneCash: 0,
+    fawryMachine: 0,
+    ownerCash: 0,
 
-    returnsOut: 0,
+    salesIn: 0,
+    totalDiscounts: 0,
+    saleReturnsOut: 0,
+
+    purchaseInvoicesOut: 0,
     supplierPaymentsOut: 0,
-    expensesOut: 0,
-    withdrawsOut: 0,
-    liabilityPaymentsOut: 0,
-    totalIn: 0,
-    totalOut: 0,
-    netCash: 0
+    purchaseReturnsIn: 0,
+    expensesOut: 0
   });
   const todayKey = useMemo(() => getLocalDateKey(new Date()), []);
   const monthStartKey = useMemo(() => getMonthStartKey(new Date()), []);
@@ -119,6 +120,13 @@ export default function DashboardPage() {
   async function loadDashboard() {
     setLoading(true);
     setMessage('');
+    const cashierId = isCashier ? Number(user?.id || 0) : undefined;
+
+    const cashierDayFilter = {
+      date_from: todayKey,
+      date_to: todayKey,
+      created_by: cashierId
+    };
 
     try {
       const [
@@ -126,106 +134,100 @@ export default function DashboardPage() {
         month,
         overview,
 
-        todaySalesCash,
-        todayCustomerPayments,
-        todayDeposits,
-        todayPurchaseReturns,
+        todayDrawerCash,
+        todayInstapayBank,
+        todayVodafoneCash,
+        todayFawryMachine,
+        todayOwnerCash,
 
-        todayReturns,
+        todaySalesCash,
+        todaySaleReturns,
+        todayPurchaseInvoices,
         todaySupplierPayments,
-        todayExpenses,
-        todayWithdraws,
-        todayLiabilityPayments
+        todayPurchaseReturns,
+        todayExpenses
       ] = await Promise.all([
         window.api.getReportsSummary({ date_from: todayKey, date_to: todayKey }),
         window.api.getReportsSummary({ date_from: monthStartKey, date_to: todayKey }),
         window.api.getReportsSummary(),
 
         window.api.getCashSummary({
-          date_from: todayKey,
-          date_to: todayKey,
+          ...cashierDayFilter,
+          payment_method: 'store_cash'
+        }),
+
+        window.api.getCashSummary({
+          ...cashierDayFilter,
+          payment_method: 'owner_bank'
+        }),
+
+        window.api.getCashSummary({
+          ...cashierDayFilter,
+          payment_method: 'owner_vodafone'
+        }),
+
+        window.api.getCashSummary({
+          ...cashierDayFilter,
+          payment_method: 'fawry_machine'
+        }),
+
+        window.api.getCashSummary({
+          ...cashierDayFilter,
+          payment_method: 'owner_cash'
+        }),
+
+        window.api.getCashSummary({
+          ...cashierDayFilter,
           type: 'sale'
         }),
 
         window.api.getCashSummary({
-          date_from: todayKey,
-          date_to: todayKey,
-          type: 'customer_payment'
-        }),
-
-        window.api.getCashSummary({
-          date_from: todayKey,
-          date_to: todayKey,
-          type: 'deposit'
-        }),
-
-        window.api.getCashSummary({
-          date_from: todayKey,
-          date_to: todayKey,
-          type: 'purchase_return'
-        }),
-
-        window.api.getCashSummary({
-          date_from: todayKey,
-          date_to: todayKey,
+          ...cashierDayFilter,
           type: 'sale_return'
         }),
 
         window.api.getCashSummary({
-          date_from: todayKey,
-          date_to: todayKey,
-          type: 'supplier_payment'
+          ...cashierDayFilter,
+          type: 'supplier_payment',
+          reference_type: 'purchase_invoice'
         }),
 
         window.api.getCashSummary({
-          date_from: todayKey,
-          date_to: todayKey,
+          ...cashierDayFilter,
+          type: 'supplier_payment',
+          reference_type: 'supplier_payment'
+        }),
+
+        window.api.getCashSummary({
+          ...cashierDayFilter,
+          type: 'purchase_return'
+        }),
+
+        window.api.getCashSummary({
+          ...cashierDayFilter,
           type: 'expense'
-        }),
-
-        window.api.getCashSummary({
-          date_from: todayKey,
-          date_to: todayKey,
-          type: 'withdraw'
-        }),
-
-        window.api.getCashSummary({
-          date_from: todayKey,
-          date_to: todayKey,
-          type: 'liability_payment'
         })
       ]);
 
       setData({ today, month, overview });
 
-      const salesIn = Number(todaySalesCash?.total_in || 0);
-      const customerPaymentsIn = Number(todayCustomerPayments?.total_in || 0);
-      const depositsIn = Number(todayDeposits?.total_in || 0);
-      const purchaseReturnsIn = Number(todayPurchaseReturns?.total_in || 0);
-
-      const returnsOut = Number(todayReturns?.total_out || 0);
-      const supplierPaymentsOut = Number(todaySupplierPayments?.total_out || 0);
-      const expensesOut = Number(todayExpenses?.total_out || 0);
-      const withdrawsOut = Number(todayWithdraws?.total_out || 0);
-      const liabilityPaymentsOut = Number(todayLiabilityPayments?.total_out || 0);
-      const totalIn = salesIn + customerPaymentsIn + depositsIn + purchaseReturnsIn;
-      const totalOut = returnsOut + supplierPaymentsOut + expensesOut + withdrawsOut + liabilityPaymentsOut;
-      
       setCashierRevenue({
-        salesIn,
-        customerPaymentsIn,
-        depositsIn,
-        purchaseReturnsIn,
+        drawerCash: Number(todayDrawerCash?.balance || 0),
+        instapayBank: Number(todayInstapayBank?.balance || 0),
+        vodafoneCash: Number(todayVodafoneCash?.balance || 0),
+        fawryMachine: Number(todayFawryMachine?.balance || 0),
+        ownerCash: Number(todayOwnerCash?.balance || 0),
 
-        returnsOut,
-        supplierPaymentsOut,
-        expensesOut,
-        withdrawsOut,
-        liabilityPaymentsOut,
+        salesIn: Number(todaySalesCash?.total_in || 0),
+        totalDiscounts:
+          Number(today.summary.normal_discounts || 0) +
+          Number(today.summary.loyalty_discounts || 0),
+        saleReturnsOut: Number(todaySaleReturns?.total_out || 0),
 
-        totalIn,
-        totalOut,
-        netCash: totalIn - totalOut
+        purchaseInvoicesOut: Number(todayPurchaseInvoices?.total_out || 0),
+        supplierPaymentsOut: Number(todaySupplierPayments?.total_out || 0),
+        purchaseReturnsIn: Number(todayPurchaseReturns?.total_in || 0),
+        expensesOut: Number(todayExpenses?.total_out || 0)
       });
 
       setLastUpdated(
@@ -1085,7 +1087,7 @@ function CashierRevenueView({
           }}
         >
           <div style={{ color: '#bbf7d0', fontWeight: 900, marginBottom: '10px' }}>
-            صافي إيراد اليوم
+           صافي إيراد اليوم
           </div>
 
           <strong
@@ -1096,11 +1098,11 @@ function CashierRevenueView({
               lineHeight: 1.2
             }}
           >
-            {money(revenue.netCash)}
+            {money(revenue.drawerCash)}
           </strong>
 
           <div style={{ color: '#94a3b8', fontWeight: 800, marginTop: '10px' }}>
-             إجمالي الداخل - إجمالي الخارج  
+               فلوس الدرج بعد أي دخول أو خروج كاش
           </div>
         </div>
 
@@ -1112,33 +1114,63 @@ function CashierRevenueView({
           }}
         >
           <CashierMiniCard
-            title="تحصيل مبيعات اليوم"
+            title="فلوس الدرج"
+            value={money(revenue.drawerCash)}
+            subtitle="كاش فعلي في الدرج"
+          />
+
+          <CashierMiniCard
+            title="إنستاباي / بنك"
+            value={money(revenue.instapayBank)}
+            subtitle="صافي تحويلات البنك"
+          />
+
+          <CashierMiniCard
+            title="فودافون كاش"
+            value={money(revenue.vodafoneCash)}
+            subtitle="صافي فودافون كاش"
+          />
+
+          <CashierMiniCard
+            title="فوري"
+            value={money(revenue.fawryMachine)}
+            subtitle="صافي ماكينة فوري"
+          />
+
+          <CashierMiniCard
+            title="كاش المالك"
+            value={money(revenue.ownerCash)}
+            subtitle="أي كاش مع المالك"
+          />
+
+          <CashierMiniCard
+            title="إجمالي المبيعات"
             value={money(revenue.salesIn)}
-            subtitle={`${salesCount} فاتورة بيع`}
+            subtitle={`${salesCount} فاتورة بيع مدفوعة فعليًا`}
           />
 
           <CashierMiniCard
-            title="خصومات عادية"
-            value={money(normalDiscounts)}
-            subtitle="خصومات مباشرة على الفواتير"
+            title="الخصومات"
+            value={money(revenue.totalDiscounts)}
+            subtitle="خصومات عادية + نقاط"
           />
 
           <CashierMiniCard
-            title="خصومات النقاط"
-            value={money(loyaltyDiscounts)}
-            subtitle="خصومات نقاط الولاء"
+            title="المرتجعات"
+            value={money(revenue.saleReturnsOut)}
+            subtitle={`${returnsCount} عملية مرتجع بيع`}
           />
 
           <CashierMiniCard
-            title="دفعات العملاء"
-            value={money(revenue.customerPaymentsIn)}
-            subtitle="تحصيل مديونيات"
+            title="دفعات الموردين"
+            value={money(revenue.supplierPaymentsOut)}
+            subtitle="سداد مديونية مورد"
           />
 
           <CashierMiniCard
-            title="إيداعات يدوية"
-            value={money(revenue.depositsIn)}
-            subtitle="أي فلوس دخلت يدويًا"
+            title="إجمالي الشراء"
+            value={money(revenue.purchaseInvoicesOut)}
+            subtitle="مدفوع وقت إنشاء فواتير الشراء"
           />
 
           <CashierMiniCard
@@ -1148,45 +1180,9 @@ function CashierRevenueView({
           />
 
           <CashierMiniCard
-            title="مرتجعات البيع"
-            value={money(revenue.returnsOut)}
-            subtitle={`${returnsCount} عملية مرتجع`}
-          />
-
-          <CashierMiniCard
-            title="دفعات الموردين"
-            value={money(revenue.supplierPaymentsOut)}
-            subtitle="فلوس خرجت للموردين"
-          />
-
-          <CashierMiniCard
-            title="دفعات الالتزامات"
-            value={money(revenue.liabilityPaymentsOut)}
-            subtitle="سداد التزامات على المحل"
-          />
-
-          <CashierMiniCard
-            title="المصروفات"
+            title="المصاريف"
             value={money(revenue.expensesOut)}
-            subtitle="مصاريف اليوم"
-          />
-
-          <CashierMiniCard
-            title="سحب يدوي"
-            value={money(revenue.withdrawsOut)}
-            subtitle="أي فلوس اتسحبت يدويًا"
-          />
-
-          <CashierMiniCard
-            title="إجمالي الداخل"
-            value={money(revenue.totalIn)}
-            subtitle="قبل خصم الخارج"
-          />
-
-          <CashierMiniCard
-            title="إجمالي الخارج"
-            value={money(revenue.totalOut)}
-            subtitle="مرتجعات + مصاريف + موردين + التزامات"
+            subtitle="مصروفات اليوم"
           />
         </div>
       </section>

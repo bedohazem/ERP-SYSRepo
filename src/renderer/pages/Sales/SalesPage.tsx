@@ -193,11 +193,22 @@ function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
     barcodeDraft: String(raw?.barcodeDraft || ''),
     productDraft: String(raw?.productDraft || ''),
     customer,
-    loyaltyPointsDraft: String(raw?.loyaltyPointsDraft || ''),
-    paidDraft: String(raw?.paidDraft || ''),
-    paymentMethod: String(raw?.paymentMethod || 'cash'),
-    discountType: raw?.discountType === 'percent' ? 'percent' : 'amount',
-    discountDraft: String(raw?.discountDraft || '')
+    loyaltyPointsDraft: '',
+    paidDraft: '',
+    paymentMethod: 'cash',
+    discountType: 'amount',
+    discountDraft: ''
+  };
+}
+
+function serializeInvoiceDraft(invoice: InvoiceTab): InvoiceTab {
+  return {
+    ...invoice,
+    loyaltyPointsDraft: '',
+    paidDraft: '',
+    paymentMethod: 'cash',
+    discountType: 'amount',
+    discountDraft: ''
   };
 }
 
@@ -1214,12 +1225,7 @@ export default function SalesPage() {
         invoice.cart.length > 0 ||
         invoice.customer ||
         invoice.barcodeDraft.trim() ||
-        invoice.productDraft.trim() ||
-        invoice.loyaltyPointsDraft.trim() ||
-        invoice.paidDraft.trim() ||
-        invoice.discountDraft.trim() ||
-        invoice.paymentMethod !== 'cash' ||
-        invoice.discountType !== 'amount'
+        invoice.productDraft.trim() 
       );
 
     if (!hasDraft) {
@@ -1230,8 +1236,8 @@ export default function SalesPage() {
     localStorage.setItem(
       SALES_DRAFT_STORAGE_KEY,
       JSON.stringify({
-        version: 1,
-        invoices,
+        version: 2,
+        invoices: invoices.map(serializeInvoiceDraft),
         activeInvoiceId,
         nextInvoiceId,
         barcodeMode,

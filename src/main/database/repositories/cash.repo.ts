@@ -36,6 +36,8 @@ export type CashFilterInput = {
   direction?: 'all' | 'in' | 'out';
   payment_method?: string;
   search?: string;
+  reference_type?: string;
+  created_by?: number | null;
 };
 
 export type CashAccountKey =
@@ -162,6 +164,16 @@ function buildCashWhere(input?: CashFilterInput) {
   if (input?.payment_method && input.payment_method !== 'all') {
     where.push(`cm.payment_method = ?`);
     params.push(resolveCashAccount(input.payment_method));
+  }
+
+  if (input?.reference_type && input.reference_type !== 'all') {
+    where.push(`cm.reference_type = ?`);
+    params.push(input.reference_type);
+  }
+
+  if (input?.created_by) {
+    where.push(`cm.created_by = ?`);
+    params.push(Number(input.created_by));
   }
 
   if (input?.search?.trim()) {

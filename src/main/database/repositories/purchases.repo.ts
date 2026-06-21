@@ -1206,7 +1206,7 @@ export function recordSupplierPayment(input: {
       amount: totalPaid,
       payment_method: input.payment_method || 'cash',
       reference_id: purchaseId,
-      reference_type: purchaseId ? 'purchase_invoice' : 'supplier_payment',
+      reference_type: 'supplier_payment',
       notes: input.notes?.trim() || 'دفعة للمورد',
       created_by: (input as any).actor_id ?? null
     });
