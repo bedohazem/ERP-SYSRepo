@@ -1824,7 +1824,7 @@ export default function SalesPage() {
                 )}
 
                 <input
-                  value={`${item.product_name} ${item.size || ''} ${item.color || ''}`}
+                  value={`${item.product_name} | ${item.size || '—'} | ${item.color || '—'} | سعر: ${money(item.sell_price)} ج.م`}
                   readOnly
                   style={{
                     ...tableInputStyle,
