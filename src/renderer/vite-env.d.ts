@@ -183,6 +183,8 @@ declare global {
 
       saveBarcodePrintSettings: (input: any) => Promise<any>;
 
+
+
       // =========================
       // Sales
       // =========================
@@ -584,6 +586,43 @@ declare global {
           ok: boolean;
           canceled?: boolean;
           filePath?: string;
+        }>;
+
+        getCashDrawerSettings: () => Promise<{
+          printer_name: string;
+          auto_open_cash_sale: boolean;
+        }>;
+
+        saveCashDrawerSettings: (input: {
+          printer_name?: string | null;
+          auto_open_cash_sale?: boolean;
+          actor_id?: number;
+        }) => Promise<{
+          success: boolean;
+          message?: string;
+          settings: {
+            printer_name: string;
+            auto_open_cash_sale: boolean;
+          };
+        }>;
+
+        getCashDrawerPrinters: () => Promise<
+          Array<{
+            name: string;
+            displayName: string;
+            description?: string;
+            status?: number;
+            isDefault: boolean;
+          }>
+        >;
+
+        openCashDrawer: (input?: {
+          actor_id?: number;
+          reason?: 'manual' | 'sale' | 'test' | string;
+          sale_id?: number | null;
+        }) => Promise<{
+          success: boolean;
+          message?: string;
         }>;
 
         

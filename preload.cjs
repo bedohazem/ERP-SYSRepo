@@ -112,4 +112,9 @@ contextBridge.exposeInMainWorld('api', {
 
   savePdfFromHtml: (input) => ipcRenderer.invoke('print:save-pdf', input),
 
+  getCashDrawerSettings: () => ipcRenderer.invoke('cash-drawer:get-settings'),
+  saveCashDrawerSettings: (input) => ipcRenderer.invoke('cash-drawer:save-settings', input),
+  getCashDrawerPrinters: () => ipcRenderer.invoke('cash-drawer:list-printers'),
+  openCashDrawer: (input) => ipcRenderer.invoke('cash-drawer:open', input),
+  
 });

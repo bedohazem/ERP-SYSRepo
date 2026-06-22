@@ -18,6 +18,7 @@ import { createAutoBackup } from './database/auto-backup';
 import { registerStockCountIpc } from './ipc/stock-count.ipc';
 import { registerLiabilitiesIpc } from './ipc/liabilities.ipc';
 import { registerPrintIpc } from './ipc/print.ipc';
+import { registerCashDrawerIpc } from './ipc/cash-drawer.ipc';
 
 let mainWindow: BrowserWindow | null = null;
 let hourlyBackupTimer: NodeJS.Timeout | null = null;
@@ -110,6 +111,7 @@ app.whenReady().then(() => {
   registerActivityIpc();
   registerLiabilitiesIpc();
   registerPrintIpc();
+  registerCashDrawerIpc();
 
   createWindow();
   startAutoBackupScheduler();

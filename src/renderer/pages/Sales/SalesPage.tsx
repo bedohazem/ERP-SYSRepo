@@ -267,6 +267,8 @@ export default function SalesPage() {
 
   const [productResults, setProductResults] = useState<SaleVariant[]>([]);
   const [saving, setSaving] = useState(false);
+  const [openingCashDrawer, setOpeningCashDrawer] = useState(false);
+  const [cashDrawerAutoOpen, setCashDrawerAutoOpen] = useState(true);
   const [barcodeMode, setBarcodeMode] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
@@ -308,6 +310,23 @@ export default function SalesPage() {
   const firstQtyInputRef = useRef<HTMLInputElement | null>(null);
   const customerWrapperRef = useRef<HTMLDivElement | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    window.api.getCashDrawerSettings()
+      .then((settings) => {
+        if (!mounted) return;
+        setCashDrawerAutoOpen(Boolean(settings.auto_open_cash_sale));
+      })
+      .catch((error) => {
+        console.error('Failed to load cash drawer settings:', error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const activeInvoice =
     invoices.find((x) => x.id === activeInvoiceId) ?? invoices[0];
@@ -935,6 +954,45 @@ export default function SalesPage() {
     }, 350);
   }
 
+  async function handleOpenCashDrawer(
+    reason: 'manual' | 'sale' | 'test' = 'manual',
+    saleId: number | null = null,
+    showSuccess = true
+  ) {
+    if (reason === 'manual' && openingCashDrawer) return false;
+
+    if (reason === 'manual') {
+      setOpeningCashDrawer(true);
+    }
+
+    try {
+      const result = await window.api.openCashDrawer({
+        actor_id: user?.id,
+        reason,
+        sale_id: saleId
+      });
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل فتح درج الكاشير', false);
+        return false;
+      }
+
+      if (showSuccess) {
+        showMessage('success', 'تم إرسال أمر فتح درج الكاشير', false);
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Failed to open cash drawer:', error);
+      showMessage('error', 'حدث خطأ أثناء فتح درج الكاشير', false);
+      return false;
+    } finally {
+      if (reason === 'manual') {
+        setOpeningCashDrawer(false);
+      }
+    }
+  }
+
   async function saveSale() {
     if (saving) return;
 
@@ -989,6 +1047,13 @@ export default function SalesPage() {
           unit_price: Number(item.sell_price)
         }))
       });
+
+      const savedSaleId = Number(result.saleId);
+      const savedPaymentMethod = activeInvoice.paymentMethod || 'cash';
+
+      if (savedPaymentMethod === 'cash' && cashDrawerAutoOpen) {
+        void handleOpenCashDrawer('sale', savedSaleId, false);
+      }
 
       try {
         const receipt = await window.api.getSaleReceipt(Number(result.saleId));
@@ -1109,6 +1174,16 @@ export default function SalesPage() {
     function handleKeyDown(e: KeyboardEvent) {
       if (showAddCustomerModal || receiptData) return;
 
+      if (e.key === 'F8') {
+        e.preventDefault();
+
+        if (!saving && !openingCashDrawer) {
+          void handleOpenCashDrawer('manual', null, true);
+        }
+
+        return;
+      }
+
       if (showPaymentModal) {
         if (e.key === 'Escape') {
           e.preventDefault();
@@ -1178,7 +1253,8 @@ export default function SalesPage() {
     remainingAmount,
     paymentStatus,
     requestedRedeemPoints,
-    maxRedeemPoints
+    maxRedeemPoints,
+    openingCashDrawer
   ]);
 
   useEffect(() => {
@@ -1355,18 +1431,45 @@ export default function SalesPage() {
           minWidth: 0
         }}
       >
-        <button
-          type="button"
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={addInvoice}
+        <div
           style={{
-            ...primaryButtonStyle,
+            display: 'flex',
+            gap: '10px',
+            flexWrap: isCompact ? 'wrap' : 'nowrap',
             width: isCompact ? '100%' : undefined,
             justifySelf: isCompact ? 'stretch' : 'start'
           }}
         >
-          + فاتورة جديدة F9
-        </button>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={addInvoice}
+            style={{
+              ...primaryButtonStyle,
+              width: isCompact ? '100%' : undefined
+            }}
+          >
+            + فاتورة جديدة F9
+          </button>
+
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => void handleOpenCashDrawer('manual', null, true)}
+            disabled={openingCashDrawer || saving}
+            style={{
+              ...secondaryOutlineButtonStyle,
+              minWidth: isCompact ? '100%' : '130px',
+              width: isCompact ? '100%' : undefined,
+              borderColor: 'rgba(34,197,94,0.45)',
+              color: '#86efac',
+              opacity: openingCashDrawer || saving ? 0.6 : 1,
+              cursor: openingCashDrawer || saving ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {openingCashDrawer ? 'جاري الفتح...' : 'فتح الدرج F8'}
+          </button>
+        </div>
 
         <div
           style={{

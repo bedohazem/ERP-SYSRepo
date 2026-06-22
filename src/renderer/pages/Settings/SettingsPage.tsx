@@ -95,7 +95,20 @@ type AppLicenseStatus = {
   app_theme?: 'dark' | 'light';
 };
 
-type SettingsTab = 'store' | 'backup' | 'loyalty' | 'barcode';
+type CashDrawerPrinter = {
+  name: string;
+  displayName: string;
+  description?: string;
+  status?: number;
+  isDefault: boolean;
+};
+
+type CashDrawerSettings = {
+  printer_name: string;
+  auto_open_cash_sale: boolean;
+};
+
+type SettingsTab = 'store' | 'backup' | 'loyalty' | 'barcode' | 'cashDrawer';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<BarcodePrintSettings>(defaultSettings);
@@ -138,6 +151,16 @@ export default function SettingsPage() {
   const [choosingBackupDir, setChoosingBackupDir] = useState(false);
   const [runningAutoBackup, setRunningAutoBackup] = useState(false);
 
+  const [cashDrawerSettings, setCashDrawerSettings] = useState<CashDrawerSettings>({
+    printer_name: '',
+    auto_open_cash_sale: true
+  });
+
+  const [cashDrawerPrinters, setCashDrawerPrinters] = useState<CashDrawerPrinter[]>([]);
+  const [savingCashDrawer, setSavingCashDrawer] = useState(false);
+  const [testingCashDrawer, setTestingCashDrawer] = useState(false);
+  const [loadingCashDrawerPrinters, setLoadingCashDrawerPrinters] = useState(false);
+
   useEffect(() => {
     void loadSettings();
   }, []);
@@ -153,11 +176,20 @@ export default function SettingsPage() {
 
   async function loadSettings() {
     try {
-      const [barcodeData, loyaltyData, licenseData, autoBackupData] = await Promise.all([
+      const [
+        barcodeData,
+        loyaltyData,
+        licenseData,
+        autoBackupData,
+        cashDrawerData,
+        cashDrawerPrintersData
+      ] = await Promise.all([
         window.api.getBarcodePrintSettings(),
         window.api.getLoyaltySettings(),
         window.api.getLicenseStatus(),
-        window.api.getAutoBackupInfo()
+        window.api.getAutoBackupInfo(),
+        window.api.getCashDrawerSettings(),
+        window.api.getCashDrawerPrinters().catch(() => [])
       ]);
       setSettings(barcodeData);
       setLoyaltySettings(loyaltyData);
@@ -167,6 +199,8 @@ export default function SettingsPage() {
       setStorePhone(licenseData.store_phone || '');
       setStoreAddress(licenseData.store_address || '');
       setAutoBackupInfo(autoBackupData);
+      setCashDrawerSettings(cashDrawerData);
+      setCashDrawerPrinters(cashDrawerPrintersData);
       const loadedTheme = licenseData.app_theme === 'light' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', loadedTheme);
     } catch (error) {
@@ -233,6 +267,85 @@ export default function SettingsPage() {
       showMessage('error', 'حدث خطأ أثناء إنشاء النسخة التلقائية');
     } finally {
       setRunningAutoBackup(false);
+    }
+  }
+
+  async function reloadCashDrawerPrinters() {
+    if (loadingCashDrawerPrinters) return;
+
+    setLoadingCashDrawerPrinters(true);
+
+    try {
+      const printers = await window.api.getCashDrawerPrinters();
+      setCashDrawerPrinters(printers);
+      showMessage('success', 'تم تحديث قائمة الطابعات');
+    } catch (error) {
+      console.error('Failed to load cash drawer printers:', error);
+      showMessage('error', 'فشل تحميل الطابعات');
+    } finally {
+      setLoadingCashDrawerPrinters(false);
+    }
+  }
+
+  async function saveCashDrawerSettings() {
+    if (savingCashDrawer) return;
+
+    if (!cashDrawerSettings.printer_name.trim()) {
+      showMessage('error', 'اختار طابعة درج الكاشير أولًا');
+      return;
+    }
+
+    setSavingCashDrawer(true);
+
+    try {
+      const result = await window.api.saveCashDrawerSettings({
+        printer_name: cashDrawerSettings.printer_name,
+        auto_open_cash_sale: cashDrawerSettings.auto_open_cash_sale,
+        actor_id: currentUser?.id
+      });
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل حفظ إعدادات درج الكاشير');
+        return;
+      }
+
+      setCashDrawerSettings(result.settings);
+      showMessage('success', 'تم حفظ إعدادات درج الكاشير');
+    } catch (error) {
+      console.error('Failed to save cash drawer settings:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات درج الكاشير');
+    } finally {
+      setSavingCashDrawer(false);
+    }
+  }
+
+  async function testOpenCashDrawer() {
+    if (testingCashDrawer) return;
+
+    if (!cashDrawerSettings.printer_name.trim()) {
+      showMessage('error', 'اختار طابعة درج الكاشير أولًا');
+      return;
+    }
+
+    setTestingCashDrawer(true);
+
+    try {
+      const result = await window.api.openCashDrawer({
+        actor_id: currentUser?.id,
+        reason: 'test'
+      });
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل فتح درج الكاشير');
+        return;
+      }
+
+      showMessage('success', 'تم إرسال أمر فتح درج الكاشير');
+    } catch (error) {
+      console.error('Failed to open cash drawer:', error);
+      showMessage('error', 'حدث خطأ أثناء فتح درج الكاشير');
+    } finally {
+      setTestingCashDrawer(false);
     }
   }
 
@@ -707,6 +820,14 @@ export default function SettingsPage() {
           style={tabButtonStyle(activeTab === 'barcode')}
         >
           طباعة الباركود
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('cashDrawer')}
+          style={tabButtonStyle(activeTab === 'cashDrawer')}
+        >
+          درج الكاشير
         </button>
       </div>
 
@@ -1187,6 +1308,141 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+      </div>
+    )}
+    {activeTab === 'cashDrawer' && (
+      <div
+        className="glass-card"
+        style={{
+          borderRadius: '24px',
+          padding: '24px',
+          display: 'grid',
+          gap: '16px',
+          direction: 'rtl'
+        }}
+      >
+        <div>
+          <h2 style={{ margin: '0 0 8px' }}>إعدادات درج الكاشير</h2>
+          <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.8 }}>
+            اختار الطابعة الحرارية المتوصل بها درج الكاشير، ويمكن فتح الدرج تلقائيًا بعد بيع الكاش.
+          </p>
+        </div>
+
+        <div
+          style={{
+            padding: '14px',
+            borderRadius: '14px',
+            background: 'rgba(59,130,246,0.10)',
+            border: '1px solid rgba(59,130,246,0.25)',
+            color: '#bfdbfe',
+            fontWeight: 700,
+            lineHeight: 1.8
+          }}
+        >
+          لازم درج الكاشير يكون متوصل في الطابعة من منفذ RJ11 / RJ12، والطابعة تكون متسطبة على ويندوز.
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(240px, 1fr) auto',
+            gap: '12px',
+            alignItems: 'end'
+          }}
+        >
+          <div>
+            <label style={labelStyle}>طابعة درج الكاشير</label>
+            <select
+              value={cashDrawerSettings.printer_name}
+              onChange={(e) =>
+                setCashDrawerSettings((prev) => ({
+                  ...prev,
+                  printer_name: e.target.value
+                }))
+              }
+              style={inputStyle}
+            >
+              <option value="">اختار الطابعة</option>
+              {cashDrawerPrinters.map((printer) => (
+                <option key={printer.name} value={printer.name}>
+                  {printer.displayName || printer.name}
+                  {printer.isDefault ? ' — الافتراضية' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void reloadCashDrawerPrinters()}
+            disabled={loadingCashDrawerPrinters}
+            style={{
+              ...primaryButtonStyle,
+              opacity: loadingCashDrawerPrinters ? 0.6 : 1,
+              cursor: loadingCashDrawerPrinters ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {loadingCashDrawerPrinters ? 'جاري التحديث...' : 'تحديث الطابعات'}
+          </button>
+        </div>
+
+        <label style={checkboxRowStyle}>
+          <input
+            type="checkbox"
+            checked={cashDrawerSettings.auto_open_cash_sale}
+            onChange={(e) =>
+              setCashDrawerSettings((prev) => ({
+                ...prev,
+                auto_open_cash_sale: e.target.checked
+              }))
+            }
+          />
+          <span>فتح الدرج تلقائيًا بعد حفظ فاتورة بيع كاش</span>
+        </label>
+
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => void saveCashDrawerSettings()}
+            disabled={savingCashDrawer}
+            style={{
+              ...primaryButtonStyle,
+              opacity: savingCashDrawer ? 0.6 : 1,
+              cursor: savingCashDrawer ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {savingCashDrawer ? 'جاري الحفظ...' : 'حفظ إعدادات الدرج'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void testOpenCashDrawer()}
+            disabled={testingCashDrawer}
+            style={{
+              ...dangerButtonStyle,
+              opacity: testingCashDrawer ? 0.6 : 1,
+              cursor: testingCashDrawer ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {testingCashDrawer ? 'جاري الاختبار...' : 'اختبار فتح الدرج'}
+          </button>
+        </div>
+
+        <div
+          dir="ltr"
+          style={{
+            padding: '12px',
+            borderRadius: '12px',
+            background: 'rgba(15,23,42,0.55)',
+            border: '1px solid rgba(148,163,184,0.18)',
+            color: '#e5e7eb',
+            fontWeight: 800,
+            overflowX: 'auto',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          {cashDrawerSettings.printer_name || 'لم يتم اختيار طابعة بعد'}
+        </div>
       </div>
     )}
     {activeTab === 'barcode' && (
