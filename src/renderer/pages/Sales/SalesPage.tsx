@@ -973,7 +973,17 @@ export default function SalesPage() {
       });
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل فتح درج الكاشير', false);
+        console.warn('Cash drawer failed:', result.message);
+
+        // مهم: في الفتح التلقائي بعد البيع مانطلعش رسالة حمراء
+        if (showSuccess) {
+          showMessage(
+            'error',
+            'تعذر فتح درج الكاشير، تأكد من توصيل الدرج والطابعة',
+            false
+          );
+        }
+
         return false;
       }
 
@@ -984,7 +994,16 @@ export default function SalesPage() {
       return true;
     } catch (error) {
       console.error('Failed to open cash drawer:', error);
-      showMessage('error', 'حدث خطأ أثناء فتح درج الكاشير', false);
+
+      // مهم: في الفتح التلقائي بعد البيع مانطلعش رسالة حمراء
+      if (showSuccess) {
+        showMessage(
+          'error',
+          'تعذر فتح درج الكاشير، تأكد من توصيل الدرج والطابعة',
+          false
+        );
+      }
+
       return false;
     } finally {
       if (reason === 'manual') {

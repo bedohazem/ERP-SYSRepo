@@ -217,6 +217,8 @@ async function sendCashDrawerPulse(printerName: string) {
       windowsHide: true,
       timeout: 8000
     });
+  } catch {
+    throw new Error('تعذر فتح درج الكاشير، تأكد من توصيل الدرج والطابعة أو اختيار الطابعة الصحيحة من الإعدادات');
   } finally {
     await fs.unlink(scriptPath).catch(() => {});
   }
