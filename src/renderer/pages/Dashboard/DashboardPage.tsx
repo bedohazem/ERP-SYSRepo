@@ -134,7 +134,7 @@ export default function DashboardPage() {
         month,
         overview,
 
-        todayDrawerCash,
+        currentDrawerCash,
         todayInstapayBank,
         todayVodafoneCash,
         todayFawryMachine,
@@ -152,7 +152,6 @@ export default function DashboardPage() {
         window.api.getReportsSummary(),
 
         window.api.getCashSummary({
-          ...cashierDayFilter,
           payment_method: 'store_cash'
         }),
 
@@ -212,7 +211,7 @@ export default function DashboardPage() {
       setData({ today, month, overview });
 
       setCashierRevenue({
-        drawerCash: Number(todayDrawerCash?.balance || 0),
+        drawerCash: Number(currentDrawerCash?.balance || 0),
         instapayBank: Number(todayInstapayBank?.balance || 0),
         vodafoneCash: Number(todayVodafoneCash?.balance || 0),
         fawryMachine: Number(todayFawryMachine?.balance || 0),
