@@ -843,16 +843,18 @@ export default function ProductsPage() {
       });
 
       setEditVariants(
-        (Array.isArray(data) ? data : []).map((v: ProductVariant) => ({
-          id: v.id,
-          barcode: v.barcode ?? '',
-          size: v.size ?? '',
-          color: v.color ?? '',
-          buy_price: String(v.buy_price ?? 0),
-          sell_price: String(v.sell_price ?? 0),
-          min_stock: String(v.min_stock ?? 5),
-          is_active: v.is_active ?? 1
-        }))
+        (Array.isArray(data) ? data : [])
+          .filter((v: ProductVariant) => Number(v.is_active ?? 1) === 1)
+          .map((v: ProductVariant) => ({
+            id: v.id,
+            barcode: v.barcode ?? '',
+            size: v.size ?? '',
+            color: v.color ?? '',
+            buy_price: String(v.buy_price ?? 0),
+            sell_price: String(v.sell_price ?? 0),
+            min_stock: String(v.min_stock ?? 5),
+            is_active: v.is_active ?? 1
+          }))
       );
     } catch (error) {
       console.error('Failed to load edit variants:', error);
@@ -1575,7 +1577,43 @@ export default function ProductsPage() {
               alignContent: 'start'
             }}
           >
-            <div style={{ fontSize: '20px', fontWeight: 700 }}>إضافة منتج جديد</div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px',
+                flexWrap: 'wrap'
+              }}
+            >
+              <div style={{ fontSize: '20px', fontWeight: 700 }}>إضافة منتج جديد</div>
+
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => void handleSave()}
+                  disabled={!canSave || loading}
+                  style={{
+                    ...primaryButtonStyle,
+                    opacity: !canSave || loading ? 0.6 : 1
+                  }}
+                >
+                  {loading ? 'جاري الحفظ...' : 'حفظ المنتج'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetCreateForm();
+                    setShowCreate(false);
+                    setActiveTab('list');
+                  }}
+                  style={secondaryButtonStyle}
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
 
             <div
               style={{
@@ -1767,31 +1805,8 @@ export default function ProductsPage() {
                 <button type="button" onClick={addVariant} style={secondaryButtonStyle}>
                   + إضافة variant
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => void handleSave()}
-                  disabled={!canSave || loading}
-                  style={{
-                    ...primaryButtonStyle,
-                    opacity: !canSave || loading ? 0.6 : 1
-                  }}
-                >
-                  {loading ? 'جاري الحفظ...' : 'حفظ المنتج'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetCreateForm();
-                    setShowCreate(false);
-                    setActiveTab('list');
-                  }}
-                  style={secondaryButtonStyle}
-                >
-                  إلغاء
-                </button>
               </div>
+
             </div>
           </div>
         </div>
@@ -1812,9 +1827,37 @@ export default function ProductsPage() {
               alignContent: 'start'
             }}
           >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '12px',
+              flexWrap: 'wrap'
+            }}
+          >
             <div style={{ fontSize: '20px', fontWeight: 700 }}>
               {productEditMode === 'addVariant' ? 'إضافة صنف للمنتج' : 'تعديل المنتج'}
             </div>
+
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => void handleSaveEdit()}
+                disabled={savingEdit}
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: savingEdit ? 0.6 : 1
+                }}
+              >
+                {savingEdit ? 'جاري حفظ التعديلات...' : 'حفظ التعديلات'}
+              </button>
+
+              <button type="button" onClick={closeEditProduct} style={secondaryButtonStyle}>
+                إلغاء
+              </button>
+            </div>
+          </div>
 
             {productEditMode === 'addVariant' && (
               <div style={{ color: '#94a3b8', fontWeight: 700 }}>
@@ -2104,24 +2147,6 @@ export default function ProductsPage() {
                     </div>
                   </div>
                 ))}
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => void handleSaveEdit()}
-                  disabled={savingEdit}
-                  style={{
-                    ...primaryButtonStyle,
-                    opacity: savingEdit ? 0.6 : 1
-                  }}
-                >
-                  {savingEdit ? 'جاري حفظ التعديلات...' : 'حفظ التعديلات'}
-                </button>
-
-                <button type="button" onClick={closeEditProduct} style={secondaryButtonStyle}>
-                  إلغاء
-                </button>
               </div>
             </div>
           </div>
