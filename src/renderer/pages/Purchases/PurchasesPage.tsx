@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, KeyboardEvent } from 'react';
 import { useAuthStore } from '../../store/auth.store';
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 
@@ -14,18 +14,37 @@ type Supplier = {
 
 type VariantRow = {
   variant_id: number;
+  product_id?: number;
   product_name: string;
   barcode?: string | null;
   size?: string | null;
   color?: string | null;
   buy_price: number;
+  sell_price: number;
   stock: number;
 };
+
+type ProductOption = {
+  id: number;
+  name: string;
+  category_name?: string | null;
+  variants_count?: number;
+  active_variants_count?: number;
+};
+
+type QuickProductMode = 'newProduct' | 'newVariant';
 
 type PurchaseLine = VariantRow & {
   quantity: number;
   unit_cost: number;
 };
+
+function generateBarcodeValue() {
+  const timestampPart = Date.now().toString().slice(-10);
+  const randomPart = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+
+  return `2${timestampPart}${randomPart}`;
+}
 
 export default function PurchasesPage() {
   const currentUser = useAuthStore((s) => s.user);
@@ -36,6 +55,7 @@ export default function PurchasesPage() {
   const [productSearch, setProductSearch] = useState('');
   const [productResults, setProductResults] = useState<VariantRow[]>([]);
   const [lines, setLines] = useState<PurchaseLine[]>([]);
+  const productSearchRef = useRef<HTMLInputElement | null>(null);
 
   const [paidAmount, setPaidAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('store_cash');
@@ -47,6 +67,21 @@ export default function PurchasesPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [draftHydrated, setDraftHydrated] = useState(false);
+  
+  const [quickProductOpen, setQuickProductOpen] = useState(false);
+  const [quickProductSaving, setQuickProductSaving] = useState(false);
+  const [quickMode, setQuickMode] = useState<QuickProductMode>('newProduct');
+  const [quickProductSearch, setQuickProductSearch] = useState('');
+  const [quickExistingProducts, setQuickExistingProducts] = useState<ProductOption[]>([]);
+  const [quickExistingProductId, setQuickExistingProductId] = useState<number | ''>('');
+
+  const [quickProductName, setQuickProductName] = useState('');
+  const [quickBarcode, setQuickBarcode] = useState('');
+  const [quickSize, setQuickSize] = useState('قطعة');
+  const [quickColor, setQuickColor] = useState('عام');
+  const [quickBuyPrice, setQuickBuyPrice] = useState('');
+  const [quickSellPrice, setQuickSellPrice] = useState('');
+  const [quickQuantity, setQuickQuantity] = useState('1');
 
   const subTotal = useMemo(
     () =>
@@ -213,6 +248,42 @@ export default function PurchasesPage() {
   }, [supplierSearch]);
 
   useEffect(() => {
+    if (!quickProductOpen || quickMode !== 'newVariant') {
+      return;
+    }
+
+    const q = quickProductSearch.trim();
+
+    if (!q) {
+      setQuickExistingProducts([]);
+      setQuickExistingProductId('');
+      return;
+    }
+
+    const handle = setTimeout(async () => {
+      try {
+        const data = await window.api.getProducts({
+          search: q,
+          includeInactive: false
+        });
+
+        const rows = Array.isArray(data) ? data.slice(0, 20) : [];
+        setQuickExistingProducts(rows);
+
+        if (rows.length === 1) {
+          setQuickExistingProductId(Number(rows[0].id));
+        }
+      } catch (error) {
+        console.error(error);
+        setQuickExistingProducts([]);
+      }
+    }, 250);
+
+    return () => clearTimeout(handle);
+  }, [quickProductOpen, quickMode, quickProductSearch]);
+
+
+  useEffect(() => {
     const q = productSearch.trim();
 
     if (!q) {
@@ -243,13 +314,24 @@ export default function PurchasesPage() {
   }
 
   function addLine(item: VariantRow) {
+    addLineWithValues(item, 1, Number(item.buy_price || 0));
+  }
+
+  function addLineWithValues(item: VariantRow, quantityValue = 1, unitCostValue?: number) {
+    const quantity = Math.max(1, Number(quantityValue || 1));
+    const unitCost = Math.max(0, Number(unitCostValue ?? item.buy_price ?? 0));
+
     const exists = lines.find((x) => x.variant_id === item.variant_id);
 
     if (exists) {
       setLines((prev) =>
         prev.map((x) =>
           x.variant_id === item.variant_id
-            ? { ...x, quantity: Number(x.quantity || 0) + 1 }
+            ? {
+                ...x,
+                quantity: Number(x.quantity || 0) + quantity,
+                unit_cost: unitCost
+              }
             : x
         )
       );
@@ -258,14 +340,191 @@ export default function PurchasesPage() {
         ...prev,
         {
           ...item,
-          quantity: 1,
-          unit_cost: Number(item.buy_price || 0)
+          quantity,
+          unit_cost: unitCost
         }
       ]);
     }
 
     setProductSearch('');
     setProductResults([]);
+
+    setTimeout(() => {
+      productSearchRef.current?.focus();
+    }, 0);
+  }
+
+function openQuickProductModal(searchValue = productSearch) {
+  const cleanValue = searchValue.trim();
+
+  const looksLikeBarcode =
+    Boolean(cleanValue) &&
+    /^[0-9A-Za-z_.-]+$/.test(cleanValue) &&
+    /\d/.test(cleanValue);
+
+  setQuickMode('newProduct');
+  setQuickBarcode(looksLikeBarcode ? cleanValue : '');
+  setQuickProductName(looksLikeBarcode ? '' : cleanValue);
+  setQuickProductSearch(looksLikeBarcode ? '' : cleanValue);
+  setQuickExistingProducts([]);
+  setQuickExistingProductId('');
+
+  setQuickSize('قطعة');
+  setQuickColor('عام');
+  setQuickBuyPrice('');
+  setQuickSellPrice('');
+  setQuickQuantity('1');
+  setQuickProductOpen(true);
+}
+
+  async function saveQuickProductFromPurchase() {
+    const name = quickProductName.trim();
+    const barcode = quickBarcode.trim();
+    const size = quickSize.trim() || 'قطعة';
+    const color = quickColor.trim() || 'عام';
+    const buyPrice = Number(quickBuyPrice || 0);
+    const sellPrice = Number(quickSellPrice || 0);
+    const quantity = Math.max(1, Number(quickQuantity || 1));
+
+    if (quickMode === 'newProduct' && !name) {
+      showMessage('اكتب اسم المنتج');
+      return;
+    }
+
+    if (quickMode === 'newVariant' && !quickExistingProductId) {
+      showMessage('اختار المنتج الموجود الذي سيتم إضافة الصنف عليه');
+      return;
+    }
+
+    if (!barcode) {
+      showMessage('اكتب الباركود');
+      return;
+    }
+
+    if (!Number.isFinite(buyPrice) || buyPrice < 0) {
+      showMessage('سعر الشراء غير صحيح');
+      return;
+    }
+
+    if (!Number.isFinite(sellPrice) || sellPrice < 0) {
+      showMessage('سعر البيع غير صحيح');
+      return;
+    }
+
+    setQuickProductSaving(true);
+
+    try {
+      const result =
+        quickMode === 'newVariant'
+          ? await window.api.addProductVariant({
+              product_id: Number(quickExistingProductId),
+              barcode,
+              size,
+              color,
+              buy_price: buyPrice,
+              sell_price: sellPrice,
+              min_stock: 5,
+
+              // مهم: فاتورة الشراء هي اللي هتزود المخزون
+              opening_qty: 0,
+              actor_id: currentUser?.id
+            })
+          : await window.api.createProduct({
+              name,
+              category_id: null,
+              image_path: null,
+              description: null,
+              actor_id: currentUser?.id,
+              variants: [
+                {
+                  barcode,
+                  size,
+                  color,
+                  buy_price: buyPrice,
+                  sell_price: sellPrice,
+                  min_stock: 5,
+
+                  // مهم: فاتورة الشراء هي اللي هتزود المخزون
+                  opening_qty: 0
+                }
+              ]
+            });
+
+      if (!result?.success) {
+        showMessage(
+          result?.message ||
+            (quickMode === 'newVariant' ? 'فشل إضافة الصنف للمنتج' : 'فشل إنشاء المنتج')
+        );
+        return;
+      }
+
+      const inventoryRows = await window.api.getInventoryList({
+        search: barcode,
+        status: 'all'
+      });
+
+      const createdVariant = Array.isArray(inventoryRows)
+        ? inventoryRows.find((item: VariantRow) => String(item.barcode || '').trim() === barcode)
+        : null;
+
+      if (!createdVariant) {
+        showMessage('تم الحفظ لكن لم يتم العثور على الصنف في المخزون، ابحث عنه بالباركود');
+        return;
+      }
+
+      addLineWithValues(createdVariant, quantity, buyPrice);
+
+      setQuickProductOpen(false);
+      setQuickMode('newProduct');
+      setQuickProductSearch('');
+      setQuickExistingProducts([]);
+      setQuickExistingProductId('');
+      showMessage(
+        quickMode === 'newVariant'
+          ? 'تم إضافة الصنف للمنتج وإضافته للفاتورة'
+          : 'تم إنشاء المنتج وإضافته للفاتورة'
+      );
+    } catch (error) {
+      console.error(error);
+      showMessage(
+        getErrorMessage(
+          error,
+          quickMode === 'newVariant'
+            ? 'حدث خطأ أثناء إضافة الصنف للمنتج'
+            : 'حدث خطأ أثناء إنشاء المنتج'
+        )
+      );
+    } finally {
+      setQuickProductSaving(false);
+    }
+  }
+
+  function handleProductSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return;
+
+    e.preventDefault();
+
+    const q = productSearch.trim();
+
+    if (!q) return;
+
+    const exactBarcode = productResults.find(
+      (item) => String(item.barcode || '').trim() === q
+    );
+
+    if (exactBarcode) {
+      addLine(exactBarcode);
+      return;
+    }
+
+    if (productResults.length === 1) {
+      addLine(productResults[0]);
+      return;
+    }
+
+    if (productResults.length > 1) {
+      addLine(productResults[0]);
+    }
   }
 
   function updateLine(variantId: number, patch: Partial<PurchaseLine>) {
@@ -466,7 +725,26 @@ export default function PurchasesPage() {
               borderRadius: '14px'
             }}
           >
-            <h3 style={{ margin: 0, textAlign: 'right' }}>إضافة أصناف</h3>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '10px',
+                flexWrap: 'wrap',
+                direction: 'rtl'
+              }}
+            >
+              <h3 style={{ margin: 0, textAlign: 'right' }}>إضافة أصناف</h3>
+
+              <button
+                type="button"
+                onClick={() => openQuickProductModal(productSearch)}
+                style={quickAddSmallButtonStyle}
+              >
+                + إضافة سريع
+              </button>
+            </div>
 
             <div
               style={{
@@ -475,9 +753,11 @@ export default function PurchasesPage() {
               }}
             >
               <input
+                ref={productSearchRef}
                 placeholder="بحث عن منتج / باركود / مقاس / لون"
                 value={productSearch}
                 onChange={(e) => setProductSearch(e.target.value)}
+                onKeyDown={handleProductSearchKeyDown}
                 style={{ ...inputStyle, width: '100%' }}
               />
 
@@ -520,6 +800,7 @@ export default function PurchasesPage() {
                       <strong>{item.product_name}</strong>
                       <span style={{ color: '#94a3b8', fontSize: '12px' }}>
                         {item.barcode || '—'} | {item.size || '—'} | {item.color || '—'} |
+                        شراء: {money(item.buy_price)} | بيع: {money(item.sell_price)} |
                         المخزون الحالي: {item.stock}
                       </span>
                     </button>
@@ -567,6 +848,10 @@ export default function PurchasesPage() {
                           <strong>{line.product_name}</strong>
                           <span style={{ color: '#94a3b8', fontSize: '12px' }}>
                             {line.size || '—'} / {line.color || '—'} / مخزون: {line.stock}
+                          </span>
+
+                          <span style={{ color: '#22c55e', fontSize: '12px', fontWeight: 900 }}>
+                            سعر البيع: {money(line.sell_price)}
                           </span>
                           {line.barcode && (
                             <span style={{ color: '#64748b', fontSize: '11px' }}>
@@ -752,6 +1037,218 @@ export default function PurchasesPage() {
           </div>
         </div>
       </div>
+      {quickProductOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100000,
+            background: 'rgba(0,0,0,0.65)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: '18px'
+          }}
+        >
+          <div
+            className="glass-card"
+            style={{
+              width: 'min(760px, 100%)',
+              borderRadius: '18px',
+              padding: '18px',
+              display: 'grid',
+              gap: '14px',
+              direction: 'rtl'
+            }}
+          >
+            <h3 style={{ margin: 0 }}>إضافة سريع للفاتورة</h3>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setQuickMode('newProduct')}
+                style={quickModeButtonStyle(quickMode === 'newProduct')}
+              >
+                منتج جديد
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickMode('newVariant');
+                  setQuickProductSearch(quickProductSearch || quickProductName || productSearch);
+                }}
+                style={quickModeButtonStyle(quickMode === 'newVariant')}
+              >
+                صنف لمنتج موجود
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '12px'
+              }}
+            >
+              {quickMode === 'newProduct' ? (
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>اسم المنتج</label>
+                  <input
+                    value={quickProductName}
+                    onChange={(e) => setQuickProductName(e.target.value)}
+                    style={inputStyle}
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <div style={{ ...fieldStyle, gridColumn: '1 / -1' }}>
+                  <label style={labelStyle}>اختيار المنتج الموجود</label>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(0, 1fr) minmax(220px, 320px)',
+                      gap: '8px'
+                    }}
+                  >
+                    <input
+                      placeholder="اكتب اسم المنتج الموجود"
+                      value={quickProductSearch}
+                      onChange={(e) => {
+                        setQuickProductSearch(e.target.value);
+                        setQuickExistingProductId('');
+                      }}
+                      style={inputStyle}
+                      autoFocus
+                    />
+
+                    <select
+                      value={quickExistingProductId}
+                      onChange={(e) =>
+                        setQuickExistingProductId(e.target.value ? Number(e.target.value) : '')
+                      }
+                      style={inputStyle}
+                    >
+                      <option value="">اختار المنتج</option>
+                      {quickExistingProducts.map((product) => (
+                        <option key={product.id} value={product.id}>
+                          {product.name} - أصناف: {Number(product.active_variants_count ?? product.variants_count ?? 0)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              <div style={fieldStyle}>
+                <label style={labelStyle}>الباركود</label>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0, 1fr) auto',
+                    gap: '8px'
+                  }}
+                >
+                  <input
+                    value={quickBarcode}
+                    onChange={(e) => setQuickBarcode(e.target.value)}
+                    style={inputStyle}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => setQuickBarcode(generateBarcodeValue())}
+                    style={smallButtonStyle}
+                  >
+                    توليد
+                  </button>
+                </div>
+              </div>
+
+              <div style={fieldStyle}>
+                <label style={labelStyle}>المقاس</label>
+                <input
+                  value={quickSize}
+                  onChange={(e) => setQuickSize(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={fieldStyle}>
+                <label style={labelStyle}>اللون</label>
+                <input
+                  value={quickColor}
+                  onChange={(e) => setQuickColor(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={fieldStyle}>
+                <label style={labelStyle}>سعر الشراء</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={quickBuyPrice}
+                  onChange={(e) => setQuickBuyPrice(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={fieldStyle}>
+                <label style={labelStyle}>سعر البيع</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={quickSellPrice}
+                  onChange={(e) => setQuickSellPrice(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={fieldStyle}>
+                <label style={labelStyle}>الكمية في الفاتورة</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={quickQuantity}
+                  onChange={(e) => setQuickQuantity(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => void saveQuickProductFromPurchase()}
+                disabled={quickProductSaving}
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: quickProductSaving ? 0.6 : 1
+                }}
+              >
+                {quickProductSaving
+                  ? 'جاري الحفظ...'
+                  : quickMode === 'newVariant'
+                    ? 'حفظ الصنف وإضافته للفاتورة'
+                    : 'حفظ المنتج وإضافته للفاتورة'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setQuickProductOpen(false)}
+                style={{
+                  ...dangerButtonStyle,
+                  height: '44px'
+                }}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -800,6 +1297,44 @@ const primaryButtonStyle: CSSProperties = {
   padding: '0 18px',
   cursor: 'pointer'
 };
+
+const quickAddSmallButtonStyle: CSSProperties = {
+  border: 'none',
+  height: '34px',
+  borderRadius: '9px',
+  background: 'linear-gradient(135deg, #16a34a, #22c55e)',
+  color: '#fff',
+  fontWeight: 900,
+  padding: '0 12px',
+  cursor: 'pointer',
+  fontSize: '12px',
+  whiteSpace: 'nowrap'
+};
+
+const smallButtonStyle: CSSProperties = {
+  border: '1px solid rgba(255,255,255,0.10)',
+  height: '44px',
+  minWidth: '82px',
+  borderRadius: '10px',
+  background: 'rgba(255,255,255,0.06)',
+  color: '#fff',
+  fontWeight: 900,
+  padding: '0 12px',
+  cursor: 'pointer'
+};
+
+function quickModeButtonStyle(active: boolean): CSSProperties {
+  return {
+    border: active ? '1px solid rgba(34,197,94,0.70)' : '1px solid rgba(255,255,255,0.10)',
+    height: '38px',
+    borderRadius: '10px',
+    background: active ? 'rgba(34,197,94,0.20)' : 'rgba(255,255,255,0.05)',
+    color: active ? '#bbf7d0' : '#fff',
+    fontWeight: 900,
+    padding: '0 14px',
+    cursor: 'pointer'
+  };
+}
 
 const dangerButtonStyle: CSSProperties = {
   border: '1px solid #ef4444',
