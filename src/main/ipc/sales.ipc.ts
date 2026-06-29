@@ -15,9 +15,24 @@ import {
 } from '../database/repositories/product.repo';
 
 export function registerSalesIpc(): void {
-  ipcMain.handle('sales:search-variants', (_, query: string) => {
-    return searchSaleVariants(query ?? '');
-  });
+
+  ipcMain.handle(
+    'sales:search-variants',
+    (
+      _,
+      payload:
+        | string
+        | {
+            query?: string;
+            categoryId?: number | string | null;
+            limit?: number;
+          }
+    ) => {
+      return searchSaleVariants(
+        typeof payload === 'string' ? payload ?? '' : payload ?? { query: '' }
+      );
+    }
+  );
 
   ipcMain.handle('sales:get-variant-by-barcode', (_, barcode: string) => {
     return getVariantByBarcode(barcode ?? '');

@@ -16,6 +16,8 @@ type SaleVariant = {
   variant_id: number;
   product_id: number;
   product_name: string;
+  category_id?: number | null;
+  category_name?: string | null;
   barcode: string;
   size: string;
   color: string;
@@ -24,6 +26,12 @@ type SaleVariant = {
   stock: number;
   min_stock: number;
   is_active: number;
+};
+
+type Category = {
+  id: number;
+  name: string;
+  description?: string | null;
 };
 
 type CartItem = SaleVariant & {
@@ -266,6 +274,8 @@ export default function SalesPage() {
   const [nextInvoiceId, setNextInvoiceId] = useState(2);
 
   const [productResults, setProductResults] = useState<SaleVariant[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [saleCategoryFilter, setSaleCategoryFilter] = useState('all');
   const [saving, setSaving] = useState(false);
   const [openingCashDrawer, setOpeningCashDrawer] = useState(false);
   const [cashDrawerAutoOpen, setCashDrawerAutoOpen] = useState(true);
@@ -1160,7 +1170,10 @@ export default function SalesPage() {
 
     const handle = setTimeout(() => {
       void window.api
-        .searchSaleVariants(q)
+        .searchSaleVariants({
+          query: q,
+          categoryId: saleCategoryFilter
+        })
         .then((results) => {
           setProductResults(results);
           updateDropdownPosition();
@@ -1173,7 +1186,7 @@ export default function SalesPage() {
     }, 200);
 
     return () => clearTimeout(handle);
-  }, [activeInvoice.productDraft, activeInvoiceId]);
+  }, [activeInvoice.productDraft, activeInvoiceId, saleCategoryFilter]);
 
   useEffect(() => {
     function handleReposition() {
@@ -1345,6 +1358,15 @@ export default function SalesPage() {
     window.focus();
     void loadCustomers('');
     void loadLoyaltySettings();
+
+    void window.api
+      .getCategories()
+      .then((data) => setCategories(Array.isArray(data) ? data : []))
+      .catch((error) => {
+        console.error('Failed to load categories:', error);
+        setCategories([]);
+      });
+
     setTimeout(focusMainInput, 100);
   }, []);
 
@@ -1904,6 +1926,44 @@ export default function SalesPage() {
 
         <div
           style={{
+            display: 'flex',
+            justifyContent: 'flex-start',
+            alignItems: 'center',
+            gap: '10px',
+            direction: 'rtl',
+            marginBottom: '12px',
+            flexWrap: 'wrap'
+          }}
+        >
+          <span style={{ color: '#cbd5e1', fontWeight: 800 }}>
+            تصنيف المنتجات
+          </span>
+
+          <select
+            value={saleCategoryFilter}
+            onChange={(e) => {
+              setSaleCategoryFilter(e.target.value);
+              setProductResults([]);
+              setDropdownRect(null);
+              setTimeout(focusMainInput, 0);
+            }}
+            style={{
+              ...tableInputStyle,
+              width: '220px',
+              maxWidth: '100%'
+            }}
+          >
+            <option value="all">كل التصنيفات</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div
+          style={{
             overflowX: 'auto',
             overflowY: 'visible',
             width: '100%',
@@ -2106,8 +2166,15 @@ export default function SalesPage() {
                 fontWeight: 700
               }}
             >
-              {item.product_name} | {item.size || '—'} | {item.color || '—'} |{' '}
-              {item.sell_price} ج
+              <div style={{ display: 'grid', gap: '4px' }}>
+                <strong>
+                  {item.product_name} | {item.size || '—'} | {item.color || '—'} | {item.sell_price} ج
+                </strong>
+
+                <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                  التصنيف: {item.category_name || 'بدون تصنيف'} | المخزون: {item.stock}
+                </span>
+              </div>
             </button>
           ))}
         </div>

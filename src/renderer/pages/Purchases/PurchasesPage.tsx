@@ -12,6 +12,12 @@ type Supplier = {
   balance: number;
 };
 
+type Category = {
+  id: number;
+  name: string;
+  description?: string | null;
+};
+
 type VariantRow = {
   variant_id: number;
   product_id?: number;
@@ -49,6 +55,8 @@ function generateBarcodeValue() {
 export default function PurchasesPage() {
   const currentUser = useAuthStore((s) => s.user);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [supplierId, setSupplierId] = useState<number | ''>('');
   const [supplierSearch, setSupplierSearch] = useState('');
 
@@ -282,7 +290,6 @@ export default function PurchasesPage() {
     return () => clearTimeout(handle);
   }, [quickProductOpen, quickMode, quickProductSearch]);
 
-
   useEffect(() => {
     const q = productSearch.trim();
 
@@ -295,7 +302,8 @@ export default function PurchasesPage() {
       try {
         const data = await window.api.getInventoryList({
           search: q,
-          status: 'all'
+          status: 'all',
+          categoryId: categoryFilter
         });
 
         setProductResults(Array.isArray(data) ? data.slice(0, 20) : []);
@@ -306,7 +314,26 @@ export default function PurchasesPage() {
     }, 250);
 
     return () => clearTimeout(handle);
-  }, [productSearch]);
+  }, [productSearch, categoryFilter]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    window.api
+      .getCategories()
+      .then((data) => {
+        if (!mounted) return;
+        setCategories(Array.isArray(data) ? data : []);
+      })
+      .catch((error) => {
+        console.error('Failed to load categories:', error);
+        setCategories([]);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   function showMessage(text: string) {
     setMessage(text);
@@ -735,7 +762,35 @@ function openQuickProductModal(searchValue = productSearch) {
                 direction: 'rtl'
               }}
             >
-              <h3 style={{ margin: 0, textAlign: 'right' }}>إضافة أصناف</h3>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '10px',
+                  flexWrap: 'wrap',
+                  direction: 'rtl'
+                }}
+              >
+                <h3 style={{ margin: 0, textAlign: 'right' }}>إضافة أصناف</h3>
+
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    width: '220px',
+                    maxWidth: '100%'
+                  }}
+                >
+                  <option value="all">كل التصنيفات</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <button
                 type="button"

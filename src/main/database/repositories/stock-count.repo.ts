@@ -14,6 +14,7 @@ export function createStockCountSession(input: {
   title: string;
   notes?: string | null;
   actor_id?: number | null;
+  categoryId?: number | string | null;
 }) {
   const db = getDb();
 
@@ -22,6 +23,15 @@ export function createStockCountSession(input: {
   if (!title) {
     throw new Error('اسم جلسة الجرد مطلوب');
   }
+
+  const rawCategoryId = input.categoryId;
+  const categoryId =
+    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null;
+
+  const categorySql =
+    categoryId && Number.isFinite(categoryId) && categoryId > 0
+      ? `AND p.category_id = ?`
+      : '';
 
   const tx = db.transaction(() => {
     const result = db
@@ -62,11 +72,12 @@ export function createStockCountSession(input: {
         LEFT JOIN stock_movements sm ON sm.variant_id = v.id
         WHERE v.is_active = 1
           AND p.is_active = 1
+        ${categorySql}
         GROUP BY v.id
       ) x
       ORDER BY x.variant_id ASC
       `
-    ).run(sessionId);
+    ).run(sessionId, ...(categorySql ? [categoryId] : []));
 
     const countRow = db
       .prepare(
@@ -190,6 +201,8 @@ export function getStockCountSession(sessionId: number) {
       SELECT
         sci.*,
         p.name AS product_name,
+        p.category_id AS category_id,
+        c.name AS category_name,
         v.barcode,
         v.size,
         v.color,
@@ -201,6 +214,7 @@ export function getStockCountSession(sessionId: number) {
       FROM stock_count_items sci
       JOIN product_variants v ON v.id = sci.variant_id
       JOIN products p ON p.id = v.product_id
+      LEFT JOIN categories c ON c.id = p.category_id
       WHERE sci.session_id = ?
       ORDER BY p.name ASC, v.size ASC, v.color ASC
       `

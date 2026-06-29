@@ -13,6 +13,7 @@ const STOCK_SUM_SQL = `
 export function getInventoryList(input?: {
   search?: string;
   status?: 'all' | 'available' | 'low' | 'out' ;
+  categoryId?: number | string | null;
 }) {
   const db = getDb();
 
@@ -20,6 +21,17 @@ export function getInventoryList(input?: {
   const status = input?.status || 'all';
 
   const params: any[] = [];
+
+  let categorySql = '';
+  const rawCategoryId = input?.categoryId;
+  const categoryId =
+    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null;
+
+  if (categoryId && Number.isFinite(categoryId) && categoryId > 0) {
+    categorySql = `AND p.category_id = ?`;
+    params.push(categoryId);
+  }
+
   let searchSql = '';
 
   if (search) {
@@ -56,6 +68,8 @@ export function getInventoryList(input?: {
         v.id AS variant_id,
         p.id AS product_id,
         p.name AS product_name,
+        p.category_id AS category_id,
+        c.name AS category_name,
         v.barcode,
         v.size,
         v.color,
@@ -67,9 +81,11 @@ export function getInventoryList(input?: {
         ${STOCK_SUM_SQL} AS stock
       FROM product_variants v
       JOIN products p ON p.id = v.product_id
+      LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN stock_movements sm ON sm.variant_id = v.id
       WHERE p.is_active = 1
         AND v.is_active = 1
+        ${categorySql}
         ${searchSql}
       GROUP BY v.id
       ${havingSql}

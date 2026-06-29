@@ -30,6 +30,8 @@ type StockCountItem = {
   actual_stock?: number | null;
   notes?: string | null;
   product_name: string;
+  category_id?: number | null;
+  category_name?: string | null;
   barcode?: string | null;
   size?: string | null;
   color?: string | null;
@@ -38,6 +40,12 @@ type StockCountItem = {
   difference: number;
   buy_difference_value: number;
   sell_difference_value: number;
+};
+
+type Category = {
+  id: number;
+  name: string;
+  description?: string | null;
 };
 
 type StockCountDetails = {
@@ -57,6 +65,9 @@ export default function StockCountPage() {
 
   const [newTitle, setNewTitle] = useState('');
   const [newNotes, setNewNotes] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [newSessionCategoryId, setNewSessionCategoryId] = useState('all');
+  const [countCategoryFilter, setCountCategoryFilter] = useState('all');
   const [creating, setCreating] = useState(false);
 
   const [barcode, setBarcode] = useState('');
@@ -114,10 +125,18 @@ export default function StockCountPage() {
       if (filter === 'shortage' && !(diff !== null && diff < 0)) return false;
       if (filter === 'surplus' && !(diff !== null && diff > 0)) return false;
 
+      if (
+        countCategoryFilter !== 'all' &&
+        Number(item.category_id || 0) !== Number(countCategoryFilter)
+      ) {
+        return false;
+      }
+
       if (!q) return true;
 
       return [
         item.product_name,
+        item.category_name,
         item.barcode,
         item.size,
         item.color
@@ -127,10 +146,29 @@ export default function StockCountPage() {
         .toLowerCase()
         .includes(q);
     });
-  }, [selected, search, filter]);
+  }, [selected, search, filter, countCategoryFilter]);
 
   useEffect(() => {
     void loadSessions();
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    window.api
+      .getCategories()
+      .then((data) => {
+        if (!mounted) return;
+        setCategories(Array.isArray(data) ? data : []);
+      })
+      .catch((error) => {
+        console.error('Failed to load categories:', error);
+        setCategories([]);
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   function showMessage(text: string) {
@@ -160,6 +198,7 @@ export default function StockCountPage() {
       setSelected(data);
       setSearch('');
       setFilter('all');
+      setCountCategoryFilter('all');
       setBarcode('');
       setScanMessage('');
     } catch (error) {
@@ -189,6 +228,7 @@ export default function StockCountPage() {
       const result = await window.api.createStockCountSession({
         title: newTitle.trim(),
         notes: newNotes.trim() || null,
+        categoryId: newSessionCategoryId,
         actor_id: currentUser?.id
       });
 
@@ -199,6 +239,7 @@ export default function StockCountPage() {
 
       setNewTitle('');
       setNewNotes('');
+      setNewSessionCategoryId('all');
       showMessage('تم إنشاء جلسة الجرد');
       await loadSessions();
 
@@ -381,7 +422,7 @@ export default function StockCountPage() {
         </div>
 
         {isAdmin && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(220px, 1fr) auto', gap: '10px', alignItems: 'end' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) 220px minmax(220px, 1fr) auto', gap: '10px', alignItems: 'end' }}>
             <Field label="اسم جلسة الجرد">
               <input
                 value={newTitle}
@@ -389,6 +430,21 @@ export default function StockCountPage() {
                 placeholder="مثال: جرد آخر الشهر"
                 style={inputStyle}
               />
+            </Field>
+
+            <Field label="تصنيف الجرد">
+              <select
+                value={newSessionCategoryId}
+                onChange={(e) => setNewSessionCategoryId(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="all">كل التصنيفات</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
             </Field>
 
             <Field label="ملاحظات">
@@ -560,7 +616,7 @@ export default function StockCountPage() {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1fr) 180px', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(240px, 1fr) 180px 220px', gap: '10px' }}>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -578,6 +634,19 @@ export default function StockCountPage() {
               <option value="matched">مطابق</option>
               <option value="shortage">عجز</option>
               <option value="surplus">زيادة</option>
+            </select>
+
+            <select
+              value={countCategoryFilter}
+              onChange={(e) => setCountCategoryFilter(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="all">كل التصنيفات</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -614,7 +683,14 @@ export default function StockCountPage() {
 
                   return (
                     <tr key={item.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                      <td style={tdStyle}>{item.product_name}</td>
+                      <td style={tdStyle}>
+                        <div style={{ display: 'grid', gap: '4px' }}>
+                          <strong>{item.product_name}</strong>
+                          <span style={{ color: '#38bdf8', fontSize: '12px', fontWeight: 800 }}>
+                            {item.category_name || 'بدون تصنيف'}
+                          </span>
+                        </div>
+                      </td>
                       <td style={tdStyle}>{item.barcode || '—'}</td>
                       <td style={tdStyle}>{item.size || '—'}</td>
                       <td style={tdStyle}>{item.color || '—'}</td>

@@ -4,6 +4,8 @@ type InventoryRow = {
   variant_id: number;
   product_id: number;
   product_name: string;
+  category_id?: number | null;
+  category_name?: string | null;
   barcode?: string | null;
   size?: string | null;
   color?: string | null;
@@ -31,10 +33,18 @@ type MovementRow = {
   color?: string | null;
 };
 
+type Category = {
+  id: number;
+  name: string;
+  description?: string | null;
+};
+
 export default function InventoryPage() {
   const [rows, setRows] = useState<InventoryRow[]>([]);
   const [movements, setMovements] = useState<MovementRow[]>([]);
   const [search, setSearch] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [status, setStatus] = useState<'all' | 'available' | 'low' | 'out'>('all');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -66,13 +76,33 @@ export default function InventoryPage() {
     };
   }, [rows]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    window.api
+      .getCategories()
+      .then((data) => {
+        if (!mounted) return;
+        setCategories(Array.isArray(data) ? data : []);
+      })
+      .catch((error) => {
+        console.error('Failed to load categories:', error);
+        setCategories([]);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   async function loadInventory() {
     setLoading(true);
 
     try {
       const data = await window.api.getInventoryList({
         search,
-        status
+        status,
+        categoryId: categoryFilter
       });
 
       setRows(Array.isArray(data) ? data : []);
@@ -91,7 +121,7 @@ export default function InventoryPage() {
     }, 250);
 
     return () => clearTimeout(handle);
-  }, [search, status]);
+  }, [search, status, categoryFilter]);
 
   function showMessage(text: string) {
     setMessage(text);
@@ -252,7 +282,7 @@ export default function InventoryPage() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'minmax(260px, 1fr) 180px',
+            gridTemplateColumns: 'minmax(260px, 1fr) 180px 220px',
             gap: '12px',
             direction: 'rtl'
           }}
@@ -273,6 +303,19 @@ export default function InventoryPage() {
             <option value="available">متاح</option>
             <option value="low">مخزون منخفض</option>
             <option value="out">نافد</option>
+          </select>
+
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="all">كل التصنيفات</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -355,6 +398,10 @@ export default function InventoryPage() {
 
                       <span style={{ color: '#64748b', fontSize: '12px' }}>
                         {item.size || '—'} / {item.color || '—'}
+                      </span>
+
+                      <span style={{ color: '#38bdf8', fontSize: '12px', fontWeight: 800 }}>
+                        التصنيف: {item.category_name || 'بدون تصنيف'}
                       </span>
                     </div>
                   </td>

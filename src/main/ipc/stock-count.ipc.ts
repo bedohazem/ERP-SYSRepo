@@ -36,7 +36,8 @@ export function registerStockCountIpc(): void {
       const result = createStockCountSession({
         title: input.title,
         notes: input.notes,
-        actor_id: actorId
+        actor_id: actorId,
+        categoryId: input.categoryId ?? null
       });
 
       logAction({
@@ -46,7 +47,8 @@ export function registerStockCountIpc(): void {
         entity_id: result.id,
         details: {
           title: input.title,
-          items_count: result.items_count
+          items_count: result.items_count,
+          categoryId: input.categoryId ?? null,
         }
       });
 

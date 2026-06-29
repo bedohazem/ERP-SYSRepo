@@ -196,10 +196,28 @@ export function getCategories(): CategoryRow[] {
     .all() as CategoryRow[];
 }
 
-export function getProducts(search = '', includeInactive = false): ProductRow[] {
+export function getProducts(
+  search = '',
+  includeInactive = false,
+  categoryId?: number | string | null
+): ProductRow[] {
   const db = getDb();
   const term = search.trim();
   const query = `%${term}%`;
+
+  const selectedCategoryId =
+    categoryId && categoryId !== 'all' ? Number(categoryId) : null;
+
+  const categorySql = selectedCategoryId ? `AND p.category_id = ?` : '';
+
+  const params = [
+    ...(selectedCategoryId ? [selectedCategoryId] : []),
+    query,
+    query,
+    term,
+    query,
+    query
+  ];
 
   return db
     .prepare(
@@ -231,6 +249,7 @@ export function getProducts(search = '', includeInactive = false): ProductRow[] 
       LEFT JOIN categories c ON c.id = p.category_id
       WHERE
         (${includeInactive ? '1=1' : 'p.is_active = 1'})
+        ${categorySql}
         AND (
           p.name LIKE ?
           OR IFNULL(c.name, '') LIKE ?
@@ -248,13 +267,7 @@ export function getProducts(search = '', includeInactive = false): ProductRow[] 
       ORDER BY p.id DESC
       `
     )
-    .all(
-      query,
-      query,
-      term,   // للباركود
-      query,
-      query
-    ) as ProductRow[];
+    .all(...params) as ProductRow[];
 }
 
 export function getProductVariants(productId: number, includeInactive = true) {
@@ -606,6 +619,8 @@ export type SaleSearchVariantRow = {
   variant_id: number;
   product_id: number;
   product_name: string;
+  category_id: number | null;
+  category_name: string | null;
   barcode: string;
   size: string;
   color: string;
@@ -616,15 +631,42 @@ export type SaleSearchVariantRow = {
   is_active: number;
 };
 
-export function searchSaleVariants(query: string, limit = 30): SaleSearchVariantRow[] {
+export function searchSaleVariants(
+  input: string | { query?: string; categoryId?: number | string | null; limit?: number },
+  limit = 30
+): SaleSearchVariantRow[] {
   const db = getDb();
-  const trimmed = query.trim();
+
+  const trimmed =
+    typeof input === 'string'
+      ? input.trim()
+      : String(input?.query || '').trim();
 
   if (!trimmed) {
     return [];
   }
 
+  const rawCategoryId = typeof input === 'string' ? null : input?.categoryId;
+  const categoryId =
+    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null;
+
+  const safeLimit =
+    typeof input === 'string'
+      ? limit
+      : Math.min(Math.max(Number(input?.limit || limit), 1), 100);
+
+  const params: any[] = [];
+
+  let categorySql = '';
+
+  if (categoryId && Number.isFinite(categoryId) && categoryId > 0) {
+    categorySql = `AND p.category_id = ?`;
+    params.push(categoryId);
+  }
+
   const likeQuery = `%${trimmed}%`;
+
+  params.push(likeQuery, likeQuery, likeQuery, likeQuery, trimmed, safeLimit);
 
   return db
     .prepare(
@@ -633,6 +675,8 @@ export function searchSaleVariants(query: string, limit = 30): SaleSearchVariant
         v.id as variant_id,
         p.id as product_id,
         p.name as product_name,
+        p.category_id as category_id,
+        c.name as category_name,
         v.barcode,
         v.size,
         v.color,
@@ -643,9 +687,11 @@ export function searchSaleVariants(query: string, limit = 30): SaleSearchVariant
         ${STOCK_SUM_SQL} as stock
       FROM product_variants v
       INNER JOIN products p ON p.id = v.product_id
+      LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN stock_movements sm ON sm.variant_id = v.id
       WHERE p.is_active = 1
         AND v.is_active = 1
+        ${categorySql}
         AND (
           v.barcode LIKE ?
           OR p.name LIKE ?
@@ -656,6 +702,8 @@ export function searchSaleVariants(query: string, limit = 30): SaleSearchVariant
         v.id,
         p.id,
         p.name,
+        p.category_id,
+        c.name,
         v.barcode,
         v.size,
         v.color,
@@ -670,7 +718,7 @@ export function searchSaleVariants(query: string, limit = 30): SaleSearchVariant
       LIMIT ?
       `
     )
-    .all(likeQuery, likeQuery, likeQuery, likeQuery, trimmed, limit) as SaleSearchVariantRow[];
+    .all(...params) as SaleSearchVariantRow[];
 }
 
 export function getVariantByBarcode(barcode: string): SaleSearchVariantRow | undefined {

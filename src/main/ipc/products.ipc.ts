@@ -22,9 +22,23 @@ export function registerProductsIpc(): void {
     return getCategories();
   });
 
-  ipcMain.handle('products:list', (_, payload?: { search?: string; includeInactive?: boolean }) => {
-    return getProducts(payload?.search ?? '', payload?.includeInactive ?? false);
-  });
+  ipcMain.handle(
+    'products:list',
+    (
+      _,
+      payload?: {
+        search?: string;
+        includeInactive?: boolean;
+        categoryId?: number | string | null;
+      }
+    ) => {
+      return getProducts(
+        payload?.search ?? '',
+        payload?.includeInactive ?? false,
+        payload?.categoryId ?? null
+      );
+    }
+  );
 
   ipcMain.handle('products:get-variants', (_, payload: { productId: number; includeInactive?: boolean }) => {
     return getProductVariants(payload.productId, payload.includeInactive ?? true);

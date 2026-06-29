@@ -135,6 +135,7 @@ export default function ProductsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [showCreate, setShowCreate] = useState(false);
   const [activeTab, setActiveTab] = useState<ProductsTab>('list');
   const [loading, setLoading] = useState(false);
@@ -206,7 +207,8 @@ export default function ProductsPage() {
         window.api.getCategories(),
         window.api.getProducts({
           search,
-          includeInactive
+          includeInactive,
+          categoryId: categoryFilter
         }),
         window.api.getBarcodePrintSettings()
       ]);
@@ -369,14 +371,15 @@ export default function ProductsPage() {
       void window.api
         .getProducts({
           search,
-          includeInactive
+          includeInactive,
+          categoryId: categoryFilter
         })
         .then((data) => setProducts(Array.isArray(data) ? data : []))
         .catch((error) => console.error('Failed to search products:', error));
     }, 250);
 
     return () => clearTimeout(handle);
-  }, [search, includeInactive]);
+  }, [search, includeInactive, categoryFilter]);
 
   useEffect(() => {
     setVariantsMap({});
@@ -424,7 +427,7 @@ export default function ProductsPage() {
       const result = await window.api.createProduct({
         name: name.trim(),
         category_id: categoryId ? Number(categoryId) : null,
-        description: description.trim() || null,
+        description: null,
         image_path: null,
         actor_id: currentUser?.id,
         variants: variants.map((v) => ({
@@ -903,7 +906,7 @@ export default function ProductsPage() {
         id: editingProductId,
         name: editName.trim(),
         category_id: editCategoryId ? Number(editCategoryId) : null,
-        description: editDescription.trim() || null,
+        description: null,
         image_path: null,
         actor_id: currentUser?.id
       });
@@ -1055,7 +1058,9 @@ export default function ProductsPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: isCompact ? '1fr' : 'minmax(260px, 1fr) auto',
+              gridTemplateColumns: isCompact
+                ? '1fr'
+                : 'minmax(260px, 1fr) minmax(190px, 260px) auto',
               alignItems: 'center',
               gap: '12px',
               maxWidth: '100%'
@@ -1067,6 +1072,19 @@ export default function ProductsPage() {
               placeholder="ابحث باسم المنتج أو التصنيف أو الباركود أو المقاس أو اللون..."
               style={inputStyle}
             />
+
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              style={inputStyle}
+            >
+              <option value="all">كل التصنيفات</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
 
             <button
               type="button"
@@ -1285,19 +1303,6 @@ export default function ProductsPage() {
                             النشطة: {Number(product.active_variants_count || 0)}
                           </span>
                         </div>
-
-                        {product.description ? (
-                          <div
-                            style={{
-                              color: '#cbd5e1',
-                              fontSize: '13px',
-                              marginTop: '6px',
-                              overflowWrap: 'anywhere'
-                            }}
-                          >
-                            {product.description}
-                          </div>
-                        ) : null}
                       </div>
 
                       <div
@@ -1647,20 +1652,6 @@ export default function ProductsPage() {
                 </select>
               </div>
             </div>
-
-            <div>
-              <label style={labelStyle}>الوصف</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                style={{
-                  ...inputStyle,
-                  height: '86px',
-                  paddingTop: '14px',
-                  resize: 'vertical'
-                }}
-              />
-            </div>
           </div>
 
           <div className="product-editor-body-scroll">
@@ -1896,20 +1887,6 @@ export default function ProductsPage() {
                   ))}
                 </select>
               </div>
-            </div>
-
-            <div>
-              <label style={labelStyle}>الوصف</label>
-              <textarea
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                style={{
-                  ...inputStyle,
-                  height: '86px',
-                  paddingTop: '14px',
-                  resize: 'vertical'
-                }}
-              />
             </div>
           </div>
 

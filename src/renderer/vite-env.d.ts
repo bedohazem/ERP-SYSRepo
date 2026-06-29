@@ -188,7 +188,15 @@ declare global {
       // =========================
       // Sales
       // =========================
-      searchSaleVariants: (query: string) => Promise<any[]>;
+      searchSaleVariants: (
+        query:
+          | string
+          | {
+              query?: string;
+              categoryId?: number | string | null;
+              limit?: number;
+            }
+      ) => Promise<any[]>;
       getSaleReturnHistory: (saleId: number) => Promise<any[]>;
 
       getVariantByBarcode: (barcode: string) => Promise<any | null>;
@@ -490,6 +498,7 @@ declare global {
         getInventoryList: (input?: {
           search?: string;
           status?: 'all' | 'available' | 'low' | 'out' | 'negative';
+          categoryId?: number | string | null;
         }) => Promise<
           Array<{
             variant_id: number;
@@ -552,6 +561,7 @@ declare global {
         createStockCountSession: (input: {
           title: string;
           notes?: string | null;
+          categoryId?: number | string | null;
           actor_id?: number;
         }) => Promise<any>;
 
