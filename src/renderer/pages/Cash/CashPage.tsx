@@ -67,6 +67,13 @@ export default function CashPage() {
   const [manualModalOpen, setManualModalOpen] = useState(false);
   const [dayCloseModalOpen, setDayCloseModalOpen] = useState(false);
 
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferFromAccount, setTransferFromAccount] = useState('store_cash');
+  const [transferToAccount, setTransferToAccount] = useState('owner_cash');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferNotes, setTransferNotes] = useState('');
+  const [transferring, setTransferring] = useState(false);
+
   async function loadData() {
     setLoading(true);
 
@@ -207,6 +214,65 @@ export default function CashPage() {
       showMessage('error', error instanceof Error && error.message ? error.message : 'حدث خطأ أثناء تقفيل اليوم');
     } finally {
       setClosingDay(false);
+    }
+  }
+
+  async function saveCashTransfer() {
+    const parsedAmount = Number(transferAmount || 0);
+
+    if (!parsedAmount || parsedAmount <= 0) {
+      showMessage('error', 'اكتب مبلغ صحيح للتحويل');
+      return;
+    }
+
+    if (transferFromAccount === transferToAccount) {
+      showMessage('error', 'لا يمكن التحويل لنفس الحساب');
+      return;
+    }
+
+    const fromBalance = Number(
+      accountBalances.find((account) => account.value === transferFromAccount)?.balance || 0
+    );
+
+    if (parsedAmount > fromBalance) {
+      showMessage(
+        'error',
+        `رصيد ${getPaymentMethodLabel(transferFromAccount)} غير كافٍ. الرصيد الحالي ${money(fromBalance)}`
+      );
+      return;
+    }
+
+    setTransferring(true);
+    setTransferModalOpen(false);
+
+    try {
+      await window.api.createCashTransfer({
+        from_account: transferFromAccount,
+        to_account: transferToAccount,
+        amount: parsedAmount,
+        notes:
+          transferNotes.trim() ||
+          `تحويل من ${getPaymentMethodLabel(transferFromAccount)} إلى ${getPaymentMethodLabel(transferToAccount)}`,
+        created_by: currentUser?.id ?? null
+      });
+
+      setTransferFromAccount('store_cash');
+      setTransferToAccount('owner_cash');
+      setTransferAmount('');
+      setTransferNotes('');
+
+      showMessage('success', 'تم تحويل المبلغ بين الحسابات بنجاح');
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      showMessage(
+        'error',
+        error instanceof Error && error.message
+          ? error.message
+          : 'حدث خطأ أثناء تحويل المبلغ'
+      );
+    } finally {
+      setTransferring(false);
     }
   }
 
@@ -728,6 +794,24 @@ export default function CashPage() {
 
           <button
             type="button"
+            onClick={() => setTransferModalOpen(true)}
+            style={{
+              ...primaryButtonStyle,
+              width: '150px',
+              height: '38px',
+              padding: '0 10px',
+              fontSize: '12px',
+              borderRadius: '10px',
+              background: 'rgba(96,165,250,0.14)',
+              border: '1px solid rgba(96,165,250,0.32)',
+              color: '#93c5fd'
+            }}
+          >
+            نقل بين الحسابات
+          </button>
+
+          <button
+            type="button"
             onClick={() => setManualModalOpen(true)}
             style={{
               ...primaryButtonStyle,
@@ -1092,6 +1176,107 @@ export default function CashPage() {
                 }}
               >
                 {saving ? 'جاري الحفظ...' : 'حفظ الحركة'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {transferModalOpen && (
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div className="theme-modal-card" style={modalCardStyle}>
+            <div style={modalHeaderStyle}>
+              <h3 style={{ margin: 0 }}>نقل فلوس بين الحسابات</h3>
+
+              <button
+                type="button"
+                onClick={() => setTransferModalOpen(false)}
+                style={miniCloseButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: '12px' }}>
+              <Field label="من حساب">
+                <select
+                  value={transferFromAccount}
+                  onChange={(e) => setTransferFromAccount(e.target.value)}
+                  style={inputStyle}
+                >
+                  {CASH_ACCOUNT_OPTIONS.map((option) => {
+                    const balance = Number(
+                      accountBalances.find((account) => account.value === option.value)?.balance || 0
+                    );
+
+                    return (
+                      <option key={option.value} value={option.value}>
+                        {option.label} - الرصيد {money(balance)}
+                      </option>
+                    );
+                  })}
+                </select>
+              </Field>
+
+              <Field label="إلى حساب">
+                <select
+                  value={transferToAccount}
+                  onChange={(e) => setTransferToAccount(e.target.value)}
+                  style={inputStyle}
+                >
+                  {CASH_ACCOUNT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="المبلغ">
+                <input
+                  type="number"
+                  min={0}
+                  value={transferAmount}
+                  onChange={(e) => setTransferAmount(e.target.value)}
+                  placeholder="0.00"
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="ملاحظات">
+                <input
+                  value={transferNotes}
+                  onChange={(e) => setTransferNotes(e.target.value)}
+                  placeholder="مثال: نقل من الدرج للبنك / تغذية فوري"
+                  style={inputStyle}
+                />
+              </Field>
+
+              <SummaryCard
+                title="رصيد الحساب المحول منه بعد العملية"
+                value={money(
+                  Math.max(
+                    0,
+                    Number(
+                      accountBalances.find((account) => account.value === transferFromAccount)?.balance || 0
+                    ) - Number(transferAmount || 0)
+                  )
+                )}
+                color="#fbbf24"
+                border="rgba(245,158,11,0.25)"
+              />
+
+              <button
+                type="button"
+                onClick={saveCashTransfer}
+                disabled={transferring}
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: transferring ? 0.6 : 1,
+                  cursor: transferring ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {transferring ? 'جاري التحويل...' : 'تنفيذ التحويل'}
               </button>
             </div>
           </div>
