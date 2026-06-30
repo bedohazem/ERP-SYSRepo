@@ -21,6 +21,11 @@ const SUPPORT_PHONE_DISPLAY2 = '01068377869';
 const SUPPORT_WHATSAPP_RAW = '201155559287'; // رقم واتساب بدون +
 
 export default function LicenseGate({ children }: { children: ReactNode }) {
+  const isPopupWindow = Boolean(window.opener);
+
+  if (isPopupWindow) {
+    return <>{children}</>;
+  }
   const [status, setStatus] = useState<LicenseStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [activationCode, setActivationCode] = useState('');
@@ -40,11 +45,32 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
     );
   }
 
+  async function waitForApi(maxTries = 20) {
+    for (let i = 0; i < maxTries; i += 1) {
+      const api = (window as any).api;
+
+      if (api && typeof api.getLicenseStatus === 'function') {
+        return api as Window['api'];
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 150));
+    }
+
+    return null;
+  }
+
   async function loadLicenseStatus() {
     setLoading(true);
 
     try {
-      const data = await window.api.getLicenseStatus();
+      const api = await waitForApi();
+
+      if (!api) {
+        setMessage('تعذر تحميل واجهة البرنامج. أغلق البرنامج وافتحه مرة أخرى.');
+        return;
+      }
+
+      const data = await api.getLicenseStatus();
       window.__APP_LICENSE_STATUS__ = data;
 
       setStatus(data);
@@ -102,7 +128,14 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
     setMessage('');
 
     try {
-      const result = await window.api.activateApp(activationCode.trim());
+      const api = await waitForApi();
+
+      if (!api) {
+        setMessage('تعذر تحميل واجهة البرنامج. أغلق البرنامج وافتحه مرة أخرى.');
+        return;
+      }
+
+      const result = await api.activateApp(activationCode.trim());
 
       if (!result.success) {
         setMessage(result.message || 'كود التفعيل غير صحيح');
