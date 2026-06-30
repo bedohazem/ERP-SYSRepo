@@ -101,6 +101,7 @@ type SaleReceipt = {
 
 type StoreReceiptInfo = {
   app_name?: string;
+  app_logo_url?: string;
   store_phone?: string;
   store_address?: string;
   store_qr_enabled?: boolean;
@@ -791,6 +792,7 @@ export default function SalesPage() {
     const paidNetAmount = Math.max(0, grandTotal - remainingAmount);
 
     const storeName = String(storeInfo.app_name || 'ERP Store').trim();
+    const storeLogoUrl = String(storeInfo.app_logo_url || '').trim();
     const storePhone = String(storeInfo.store_phone || '').trim();
     const storeAddress = String(storeInfo.store_address || '').trim();
 
@@ -838,6 +840,15 @@ export default function SalesPage() {
             .receipt-header {
               text-align: center;
               line-height: 1.5;
+            }
+
+            .receipt-logo {
+              width: 70px;
+              max-width: 90%;
+              max-height: 70px;
+              object-fit: contain;
+              display: block;
+              margin: 0 auto 6px;
             }
 
             .store-name {
@@ -898,6 +909,7 @@ export default function SalesPage() {
         <body>
           <div class="receipt">
           <div class="receipt-header">
+            ${storeLogoUrl ? `<img class="receipt-logo" src="${escapeHtml(storeLogoUrl)}" alt="Store Logo" />` : ''}
             <div class="store-name">${escapeHtml(storeName)}</div>
             ${cleanStorePhone ? `<div class="store-info">تليفون: ${escapeHtml(cleanStorePhone)}</div>` : ''}
             ${cleanStoreAddress ? `<div class="store-info">العنوان: ${escapeHtml(cleanStoreAddress)}</div>` : ''}
@@ -966,6 +978,7 @@ export default function SalesPage() {
 
       storeInfo = {
         app_name: status.app_name,
+        app_logo_url: status.app_logo_url,
         store_phone: status.store_phone,
         store_address: status.store_address,
         store_qr_enabled: status.store_qr_enabled,
