@@ -187,16 +187,12 @@ export default function ReportsPage() {
           value={money(data.cashTotalCapital)}
           highlight
         />
-        <StatCard title="إجمالي المبيعات" value={money(data.summary.gross_sales)} />
+
         <StatCard title="صافي المبيعات" value={money(data.summary.net_sales)} highlight />
-        <StatCard
-          title="ربح قبل الخصومات"
-          value={money(data.summary.gross_profit_before_discounts)}
-        />
 
         <StatCard
-          title="صافي الربح بعد الخصومات"
-          value={money(data.summary.net_profit_after_discounts)}
+          title="صافي الربح النهائي"
+          value={money(data.summary.final_net_profit)}
           success
         />
 
@@ -210,12 +206,6 @@ export default function ReportsPage() {
           title="خروج نقدي للالتزامات"
           value={money(data.summary.total_liability_payments)}
           danger
-        />
-
-        <StatCard
-          title="صافي الربح النهائي"
-          value={money(data.summary.final_net_profit)}
-          success
         />
 
         <StatCard title="إجمالي المرتجعات" value={money(data.summary.total_returns)} danger />
