@@ -11,6 +11,7 @@ import {
   CUSTOMER_PAYMENT_METHOD_OPTIONS,
   getPaymentMethodLabel
 } from '../../utils/payment-method';
+import QRCode from 'qrcode';
 
 type SaleVariant = {
   variant_id: number;
@@ -102,6 +103,9 @@ type StoreReceiptInfo = {
   app_name?: string;
   store_phone?: string;
   store_address?: string;
+  store_qr_enabled?: boolean;
+  store_qr_title?: string;
+  store_qr_primary_url?: string;
 };
 
 type InvoiceTab = {
@@ -779,7 +783,8 @@ export default function SalesPage() {
 
   function buildReceiptPrintHtml(
     receipt: SaleReceipt,
-    storeInfo: StoreReceiptInfo = {}
+    storeInfo: StoreReceiptInfo = {},
+    qrDataUrl = ''
   ) {
     const remainingAmount = Math.max(0, Number(receipt.sale.remaining_amount || 0));
     const grandTotal = Number(receipt.sale.grand_total || 0);
@@ -853,6 +858,22 @@ export default function SalesPage() {
               margin-bottom: 3px;
             }
 
+            .qr-box {
+              text-align: center;
+              margin-top: 10px;
+              padding-top: 10px;
+              border-top: 1px dashed #bbb;
+              font-size: 10px;
+              color: #444;
+            }
+
+            .qr-box img {
+              width: 92px;
+              height: 92px;
+              display: block;
+              margin: 0 auto 5px;
+            }
+
             .muted {
               color: #555;
               font-size: 11px;
@@ -921,6 +942,12 @@ export default function SalesPage() {
             <div class="row"><span>نقاط مكتسبة</span><strong>${escapeHtml(receipt.sale.loyalty_points_earned || 0)}</strong></div>
 
             <div class="line"></div>
+            ${qrDataUrl ? `
+              <div class="qr-box">
+                <img src="${qrDataUrl}" alt="Invoice QR" />
+                <div>${escapeHtml(storeInfo.store_qr_title || 'امسح الكود للتواصل معنا')}</div>
+              </div>
+            ` : ''}
             <p class="center muted">شكرًا لتعاملكم معنا</p>
             <p class="center engineer-footer">${escapeHtml(ENGINEER_FOOTER)}</p>
           </div>
@@ -940,7 +967,10 @@ export default function SalesPage() {
       storeInfo = {
         app_name: status.app_name,
         store_phone: status.store_phone,
-        store_address: status.store_address
+        store_address: status.store_address,
+        store_qr_enabled: status.store_qr_enabled,
+        store_qr_title: status.store_qr_title,
+        store_qr_primary_url: status.store_qr_primary_url
       };
     } catch (error) {
       console.error('Failed to load store receipt info:', error);
@@ -954,7 +984,17 @@ export default function SalesPage() {
     }
 
     popup.document.open();
-    popup.document.write(buildReceiptPrintHtml(receiptData, storeInfo));
+    let qrDataUrl = '';
+
+    if (storeInfo.store_qr_enabled && storeInfo.store_qr_primary_url?.trim()) {
+      qrDataUrl = await QRCode.toDataURL(storeInfo.store_qr_primary_url.trim(), {
+        width: 120,
+        margin: 1,
+        errorCorrectionLevel: 'M'
+      });
+    }
+
+    popup.document.write(buildReceiptPrintHtml(receiptData, storeInfo, qrDataUrl));
     popup.document.close();
     popup.focus();
 

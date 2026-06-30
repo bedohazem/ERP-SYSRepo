@@ -374,6 +374,9 @@ export type AppLicenseStatus = {
   app_name: string;
   store_phone: string;
   store_address: string;
+  store_qr_enabled: boolean;
+  store_qr_title: string;
+  store_qr_primary_url: string;
   app_theme: 'dark' | 'light';
 };
 
@@ -384,6 +387,9 @@ export function getAppLicenseStatus(): AppLicenseStatus {
   const appName = getSetting('app_name', 'ERP Store');
   const storePhone = getSetting('store_phone', '');
   const storeAddress = getSetting('store_address', '');
+  const storeQrEnabled = getSetting('store_qr_enabled', 'false') === 'true';
+  const storeQrTitle = getSetting('store_qr_title', 'امسح الكود للتواصل معنا');
+  const storeQrPrimaryUrl = getSetting('store_qr_primary_url', '');
   const appTheme = getSetting('app_theme', 'dark') === 'light' ? 'light' : 'dark';
 
   return {
@@ -400,6 +406,9 @@ export function getAppLicenseStatus(): AppLicenseStatus {
     app_name: appName,
     store_phone: storePhone,
     store_address: storeAddress,
+    store_qr_enabled: storeQrEnabled,
+    store_qr_title: storeQrTitle,
+    store_qr_primary_url: storeQrPrimaryUrl,
     app_theme: appTheme
   };
 }
@@ -464,6 +473,23 @@ export function saveAppTheme(theme: 'dark' | 'light') {
   const cleanTheme = theme === 'light' ? 'light' : 'dark';
 
   saveSetting('app_theme', cleanTheme);
+
+  return {
+    success: true,
+    status: getAppLicenseStatus()
+  };
+}
+
+export type StoreQrSettings = {
+  store_qr_enabled: boolean;
+  store_qr_title: string;
+  store_qr_primary_url: string;
+};
+
+export function saveStoreQrSettings(input: StoreQrSettings) {
+  saveSetting('store_qr_enabled', String(Boolean(input.store_qr_enabled)));
+  saveSetting('store_qr_title', String(input.store_qr_title || '').trim() || 'امسح الكود للتواصل معنا');
+  saveSetting('store_qr_primary_url', String(input.store_qr_primary_url || '').trim());
 
   return {
     success: true,

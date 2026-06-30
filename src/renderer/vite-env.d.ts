@@ -64,6 +64,9 @@ declare global {
       app_theme?: 'dark' | 'light';
       store_phone?: string;
       store_address?: string;
+      store_qr_enabled?: boolean;
+      store_qr_title?: string;
+      store_qr_primary_url?: string;
     };
 
     api: {
@@ -907,9 +910,12 @@ declare global {
           device_code: string;
           app_logo_url: string;
           app_name: string;
-          app_theme: 'dark' | 'light';
-          store_phone: string;
-          store_address: string;
+          app_theme?: 'dark' | 'light';
+          store_phone?: string;
+          store_address?: string;
+          store_qr_enabled?: boolean;
+          store_qr_title?: string;
+          store_qr_primary_url?: string;
         }>;
 
         activateApp: (code: string) => Promise<{
@@ -1034,6 +1040,35 @@ declare global {
           address: string,
           input: any
         ) => Promise<any>;
+
+        saveStoreQrSettings: (input: {
+          store_qr_enabled: boolean;
+          store_qr_title?: string;
+          store_qr_primary_url?: string;
+          actor_id?: number;
+        }) => Promise<{
+          success: boolean;
+          message?: string;
+          status?: {
+            activated: boolean;
+            trial_started_at: string;
+            trial_days: number;
+            trial_expires_at: string;
+            days_left: number;
+            expired: boolean;
+            blocked?: boolean;
+            message?: string;
+            device_code?: string;
+            app_logo_url: string;
+            app_name: string;
+            app_theme?: 'dark' | 'light';
+            store_phone?: string;
+            store_address?: string;
+            store_qr_enabled?: boolean;
+            store_qr_title?: string;
+            store_qr_primary_url?: string;
+          };
+        }>;
 
 
         // =========================

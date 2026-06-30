@@ -14,6 +14,7 @@ import {
   deactivateApp,
   saveAppName,
   saveStoreContactInfo,
+  saveStoreQrSettings,
   saveAppTheme
 } from '../database/repositories/settings.repo';
 import { closeDb, getDb, getDbPath, resetDatabaseData } from '../database/db';
@@ -501,6 +502,27 @@ export function registerSettingsIpc(): void {
         };
       }
   });
+
+
+  ipcMain.handle(
+    'settings:save-store-qr-settings',
+    (_, input?: any) => {
+      try {
+        requireAdmin(getActorId(input));
+
+        return saveStoreQrSettings({
+          store_qr_enabled: Boolean(input?.store_qr_enabled),
+          store_qr_title: String(input?.store_qr_title || '').trim(),
+          store_qr_primary_url: String(input?.store_qr_primary_url || '').trim(),
+        });
+      } catch (error) {
+        return {
+          success: false,
+          message: getErrorMessage(error)
+        };
+      }
+    }
+  );
 
   ipcMain.handle('settings:save-app-theme',(_, theme: 'dark' | 'light', input?: { actor_id?: number }) => {
       try {

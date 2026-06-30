@@ -92,6 +92,9 @@ type AppLicenseStatus = {
   app_name?: string;
   store_phone?: string;
   store_address?: string;
+  store_qr_enabled?: boolean;
+  store_qr_title?: string;
+  store_qr_primary_url?: string;
   app_theme?: 'dark' | 'light';
 };
 
@@ -134,6 +137,11 @@ export default function SettingsPage() {
   const [savingAppName, setSavingAppName] = useState(false);
   const [storePhone, setStorePhone] = useState('');
   const [storeAddress, setStoreAddress] = useState('');
+
+  const [storeQrEnabled, setStoreQrEnabled] = useState(false);
+  const [storeQrTitle, setStoreQrTitle] = useState('امسح الكود للتواصل معنا');
+  const [storeQrPrimaryUrl, setStoreQrPrimaryUrl] = useState('');
+  const [savingStoreQr, setSavingStoreQr] = useState(false);
   const [savingStoreContact, setSavingStoreContact] = useState(false);
   const currentUser = useAuthStore((s) => s.user);
 
@@ -198,6 +206,9 @@ export default function SettingsPage() {
       setAppName(licenseData.app_name || 'ERP Store');
       setStorePhone(licenseData.store_phone || '');
       setStoreAddress(licenseData.store_address || '');
+      setStoreQrEnabled(Boolean(licenseData.store_qr_enabled));
+      setStoreQrTitle(licenseData.store_qr_title || 'امسح الكود للتواصل معنا');
+      setStoreQrPrimaryUrl(licenseData.store_qr_primary_url || '');
       setAutoBackupInfo(autoBackupData);
       setCashDrawerSettings(cashDrawerData);
       setCashDrawerPrinters(cashDrawerPrintersData);
@@ -208,6 +219,48 @@ export default function SettingsPage() {
       showMessage('error', 'حدث خطأ أثناء تحميل الإعدادات');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSaveStoreQrSettings() {
+    if (savingStoreQr) return;
+
+    setSavingStoreQr(true);
+
+    try {
+      const result = await window.api.saveStoreQrSettings({
+        store_qr_enabled: storeQrEnabled,
+        store_qr_title: storeQrTitle,
+        store_qr_primary_url: storeQrPrimaryUrl,
+        actor_id: currentUser?.id
+      });
+
+      if (!result?.success) {
+        showMessage('error', result?.message || 'فشل حفظ إعدادات QR');
+        return;
+      }
+
+      const nextStatus = result.status;
+
+      if (!nextStatus) {
+        showMessage('error', 'تم الحفظ لكن لم يتم تحديث بيانات QR');
+        return;
+      }
+
+      setLicenseStatus(nextStatus);
+
+      window.dispatchEvent(
+        new CustomEvent('license-status-changed', {
+          detail: nextStatus
+        })
+      );
+
+      showMessage('success', 'تم حفظ إعدادات QR الفاتورة');
+    } catch (error) {
+      console.error('FAILED SAVE STORE QR SETTINGS:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات QR');
+    } finally {
+      setSavingStoreQr(false);
     }
   }
 
@@ -1224,6 +1277,76 @@ export default function SettingsPage() {
             }}
           >
             {savingStoreContact ? 'جاري الحفظ...' : 'حفظ بيانات الفاتورة'}
+          </button>
+        </div>
+
+        <div
+          style={{
+            padding: '14px',
+            borderRadius: '16px',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            display: 'grid',
+            gap: '12px'
+          }}
+        >
+          <div>
+            <h3 style={{ margin: '0 0 6px' }}>إعدادات QR الفاتورة</h3>
+            <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.7 }}>
+              ضع رابط واحد يفتح قائمة روابط المحل مثل Linktree أو صفحة واتساب أو صفحة فيسبوك.
+            </p>
+          </div>
+
+          <label style={checkboxRowStyle}>
+            <input
+              type="checkbox"
+              checked={storeQrEnabled}
+              onChange={(e) => setStoreQrEnabled(e.target.checked)}
+            />
+            <span>إظهار QR على فاتورة المبيعات</span>
+          </label>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              gap: '12px'
+            }}
+          >
+            <div>
+              <label style={labelStyle}>النص أسفل QR</label>
+              <input
+                value={storeQrTitle}
+                onChange={(e) => setStoreQrTitle(e.target.value)}
+                placeholder="امسح الكود للتواصل معنا"
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>رابط QR</label>
+              <input
+                value={storeQrPrimaryUrl}
+                onChange={(e) => setStoreQrPrimaryUrl(e.target.value)}
+                placeholder="مثال: https://linktr.ee/store-name"
+                dir="ltr"
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleSaveStoreQrSettings()}
+            disabled={savingStoreQr}
+            style={{
+              ...primaryButtonStyle,
+              justifySelf: 'start',
+              opacity: savingStoreQr ? 0.6 : 1,
+              cursor: savingStoreQr ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {savingStoreQr ? 'جاري الحفظ...' : 'حفظ إعدادات QR'}
           </button>
         </div>
 
