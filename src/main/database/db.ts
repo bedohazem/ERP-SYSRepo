@@ -141,6 +141,49 @@ export function getDb(): Database.Database {
         value TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS sync_operations (
+        id TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        entity TEXT,
+        entity_id TEXT,
+        payload TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        error TEXT,
+        server_id TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        synced_at TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sync_operations_status_created
+      ON sync_operations(status, created_at);
+
+      CREATE INDEX IF NOT EXISTS idx_sync_operations_device
+      ON sync_operations(device_id);
+
+      CREATE TABLE IF NOT EXISTS sync_state (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS sync_conflicts (
+        id TEXT PRIMARY KEY,
+        operation_id TEXT,
+        device_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        message TEXT NOT NULL,
+        payload TEXT,
+        status TEXT NOT NULL DEFAULT 'open',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sync_conflicts_status
+      ON sync_conflicts(status, created_at);
+
       CREATE TABLE IF NOT EXISTS customers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -421,6 +464,10 @@ export function resetDatabaseData(): void {
   database.transaction(() => {
     database.exec(`
       
+
+      DELETE FROM sync_conflicts;
+      DELETE FROM sync_operations;
+      DELETE FROM sync_state;
 
       DELETE FROM activity_logs;
       DELETE FROM expenses;
