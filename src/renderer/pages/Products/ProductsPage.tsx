@@ -3,55 +3,56 @@ import BarcodePreview from '../../components/products/BarcodePreview';
 import { useAuthStore } from '../../store/auth.store';
 
 type Category = {
-id: number;
-name: string;
-description: string | null;
+  id: number;
+  name: string;
+  description: string | null;
+  is_active?: number;
 };
 
 type Product = {
-id: number;
-name: string;
-category_id: number | null;
-category_name: string | null;
-image_path: string | null;
-description: string | null;
-is_active: number;
-created_at: string;
-variants_count: number;
-active_variants_count: number;
+  id: number;
+  name: string;
+  category_id: number | null;
+  category_name: string | null;
+  image_path: string | null;
+  description: string | null;
+  is_active: number;
+  created_at: string;
+  variants_count: number;
+  active_variants_count: number;
 };
 
 type ProductVariant = {
-id: number;
-product_id: number;
-barcode: string;
-size: string;
-color: string;
-buy_price: number;
-sell_price: number;
-min_stock: number;
-is_active: number;
-stock: number;
+  id: number;
+  product_id: number;
+  barcode: string;
+  size: string;
+  color: string;
+  buy_price: number;
+  sell_price: number;
+  min_stock: number;
+  is_active: number;
+  stock: number;
 };
 
 type VariantForm = {
-barcode: string;
-size: string;
-color: string;
-buy_price: string;
-sell_price: string;
-min_stock: string;
-opening_qty: string;
+  barcode: string;
+  size: string;
+  color: string;
+  buy_price: string;
+  sell_price: string;
+  min_stock: string;
+  opening_qty: string;
 };
 
 const emptyVariant = (): VariantForm => ({
-barcode: '',
-size: '',
-color: '',
-buy_price: '',
-sell_price: '',
-min_stock: '5',
-opening_qty: '0'
+  barcode: '',
+  size: '',
+  color: '',
+  buy_price: '',
+  sell_price: '',
+  min_stock: '5',
+  opening_qty: '0'
 });
 
 type BarcodeItemPosition =
@@ -68,35 +69,35 @@ type BarcodeItemPosition =
 type BarcodeItemAlign = 'left' | 'center' | 'right';
 
 type BarcodePrintSettings = {
-barcode_label_width_mm: number;
-barcode_label_height_mm: number;
-barcode_copies: number;
-barcode_auto_print_after_save: boolean;
+  barcode_label_width_mm: number;
+  barcode_label_height_mm: number;
+  barcode_copies: number;
+  barcode_auto_print_after_save: boolean;
 
-barcode_content_offset_x_mm: number;
-barcode_content_offset_y_mm: number;
+  barcode_content_offset_x_mm: number;
+  barcode_content_offset_y_mm: number;
 
-barcode_name_font_size: number;
-barcode_name_position: BarcodeItemPosition;
-barcode_name_align: BarcodeItemAlign;
+  barcode_name_font_size: number;
+  barcode_name_position: BarcodeItemPosition;
+  barcode_name_align: BarcodeItemAlign;
 
-barcode_price_font_size: number;
-barcode_price_position: BarcodeItemPosition;
-barcode_price_align: BarcodeItemAlign;
+  barcode_price_font_size: number;
+  barcode_price_position: BarcodeItemPosition;
+  barcode_price_align: BarcodeItemAlign;
 
-barcode_size_font_size: number;
-barcode_size_position: BarcodeItemPosition;
-barcode_size_align: BarcodeItemAlign;
+  barcode_size_font_size: number;
+  barcode_size_position: BarcodeItemPosition;
+  barcode_size_align: BarcodeItemAlign;
 
-barcode_color_font_size: number;
-barcode_color_position: BarcodeItemPosition;
-barcode_color_align: BarcodeItemAlign;
+  barcode_color_font_size: number;
+  barcode_color_position: BarcodeItemPosition;
+  barcode_color_align: BarcodeItemAlign;
 
-barcode_value_font_size: number;
-barcode_value_position: BarcodeItemPosition;
-barcode_value_align: BarcodeItemAlign;
+  barcode_value_font_size: number;
+  barcode_value_position: BarcodeItemPosition;
+  barcode_value_align: BarcodeItemAlign;
 
-barcode_svg_height: number;
+  barcode_svg_height: number;
 };
 
 function escapeHtml(value: string) {
@@ -126,13 +127,17 @@ export default function ProductsPage() {
   const currentUser = useAuthStore((s) => s.user);
   const pageRef = useRef<HTMLDivElement | null>(null);
   const [isCompact, setIsCompact] = useState(false);
-  const [pageWidth, setPageWidth] = useState(
-    typeof window !== 'undefined' ? window.innerWidth : 1200
-  );
+  const [pageWidth, setPageWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
 
   const isNarrowDesktop = pageWidth < 1200;
   const isWideDesktop = pageWidth >= 1200;
   const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [categoryRows, setCategoryRows] = useState<Category[]>([]);
+  const [categoryDraft, setCategoryDraft] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
+  const [editingCategoryName, setEditingCategoryName] = useState('');
+  const [savingCategory, setSavingCategory] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -199,6 +204,126 @@ export default function ProductsPage() {
     setTimeout(() => {
       setPageMessage(null);
     }, 1800);
+  }
+
+  async function reloadActiveCategories() {
+    const data = await window.api.getCategories();
+    setCategories(Array.isArray(data) ? data : []);
+  }
+
+  async function loadCategoryManager() {
+    const data = await window.api.getCategories({ includeInactive: true });
+    setCategoryRows(Array.isArray(data) ? data : []);
+  }
+
+  function openCategoryManager() {
+    setCategoryModalOpen(true);
+    setCategoryDraft('');
+    setEditingCategoryId(null);
+    setEditingCategoryName('');
+    void loadCategoryManager();
+  }
+
+  async function saveCategory() {
+    const name = categoryDraft.trim();
+
+    if (!name) {
+      showMessage('error', 'اكتب اسم التصنيف');
+      return;
+    }
+
+    setSavingCategory(true);
+
+    try {
+      const result = await window.api.createCategory({
+        name,
+        description: null,
+        actor_id: currentUser?.id
+      });
+
+      if (!result?.success) {
+        showMessage('error', result?.message || 'فشل حفظ التصنيف');
+        return;
+      }
+
+      setCategoryDraft('');
+      await reloadActiveCategories();
+      await loadCategoryManager();
+      showMessage('success', 'تم حفظ التصنيف');
+    } catch (error) {
+      console.error(error);
+      showMessage('error', 'حدث خطأ أثناء حفظ التصنيف');
+    } finally {
+      setSavingCategory(false);
+    }
+  }
+
+  async function saveCategoryRename(categoryId: number) {
+    const name = editingCategoryName.trim();
+
+    if (!name) {
+      showMessage('error', 'اكتب اسم التصنيف');
+      return;
+    }
+
+    setSavingCategory(true);
+
+    try {
+      const result = await window.api.updateCategory({
+        id: categoryId,
+        name,
+        description: null,
+        actor_id: currentUser?.id
+      });
+
+      if (!result?.success) {
+        showMessage('error', result?.message || 'فشل تعديل التصنيف');
+        return;
+      }
+
+      setEditingCategoryId(null);
+      setEditingCategoryName('');
+      await reloadActiveCategories();
+      await loadCategoryManager();
+      showMessage('success', 'تم تعديل التصنيف');
+    } catch (error) {
+      console.error(error);
+      showMessage('error', 'حدث خطأ أثناء تعديل التصنيف');
+    } finally {
+      setSavingCategory(false);
+    }
+  }
+
+  async function toggleCategory(category: Category) {
+    setSavingCategory(true);
+
+    try {
+      const nextActive = Number(category.is_active || 0) ? 0 : 1;
+
+      const result = await window.api.toggleCategoryActive(
+        category.id,
+        nextActive,
+        currentUser?.id
+      );
+
+      if (!result?.success) {
+        showMessage('error', result?.message || 'فشل تحديث التصنيف');
+        return;
+      }
+
+      if (categoryFilter === String(category.id) && nextActive === 0) {
+        setCategoryFilter('all');
+      }
+
+      await reloadActiveCategories();
+      await loadCategoryManager();
+      showMessage('success', nextActive ? 'تم تفعيل التصنيف' : 'تم إخفاء التصنيف');
+    } catch (error) {
+      console.error(error);
+      showMessage('error', 'حدث خطأ أثناء تحديث التصنيف');
+    } finally {
+      setSavingCategory(false);
+    }
   }
 
   async function loadData() {
@@ -1060,7 +1185,7 @@ export default function ProductsPage() {
               display: 'grid',
               gridTemplateColumns: isCompact
                 ? '1fr'
-                : 'minmax(260px, 1fr) minmax(190px, 260px) auto',
+                : 'minmax(260px, 1fr) minmax(190px, 260px) auto auto',
               alignItems: 'center',
               gap: '12px',
               maxWidth: '100%'
@@ -1085,6 +1210,18 @@ export default function ProductsPage() {
                 </option>
               ))}
             </select>
+
+            <button
+              type="button"
+              onClick={openCategoryManager}
+              style={{
+                ...secondaryButtonStyle,
+                width: undefined,
+                whiteSpace: 'nowrap'
+              }}
+            >
+              إدارة التصنيفات
+            </button>
 
             <button
               type="button"
@@ -2125,6 +2262,185 @@ export default function ProductsPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {categoryModalOpen && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100000,
+            background: 'rgba(0,0,0,0.62)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: '18px'
+          }}
+        >
+          <div
+            className="theme-modal-card glass-card"
+            style={{
+              width: 'min(680px, 100%)',
+              maxHeight: '86vh',
+              overflowY: 'auto',
+              borderRadius: '18px',
+              padding: '18px',
+              display: 'grid',
+              gap: '14px',
+              direction: 'rtl'
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px'
+              }}
+            >
+              <h3 style={{ margin: 0 }}>إدارة التصنيفات</h3>
+
+              <button
+                type="button"
+                onClick={() => setCategoryModalOpen(false)}
+                style={dangerButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(220px, 1fr) auto',
+                gap: '10px'
+              }}
+            >
+              <input
+                value={categoryDraft}
+                onChange={(e) => setCategoryDraft(e.target.value)}
+                placeholder="اسم تصنيف جديد"
+                style={inputStyle}
+              />
+
+              <button
+                type="button"
+                onClick={() => void saveCategory()}
+                disabled={savingCategory}
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: savingCategory ? 0.6 : 1
+                }}
+              >
+                + إضافة
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gap: '8px' }}>
+              {categoryRows.map((cat) => {
+                const active = Number(cat.is_active || 0) === 1;
+                const editing = editingCategoryId === cat.id;
+
+                return (
+                  <div
+                    key={cat.id}
+                    className="soft-card"
+                    style={{
+                      padding: '12px',
+                      borderRadius: '12px',
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(180px, 1fr) auto',
+                      gap: '10px',
+                      alignItems: 'center',
+                      opacity: active ? 1 : 0.55
+                    }}
+                  >
+                    {editing ? (
+                      <input
+                        value={editingCategoryName}
+                        onChange={(e) => setEditingCategoryName(e.target.value)}
+                        style={inputStyle}
+                        autoFocus
+                      />
+                    ) : (
+                      <div style={{ display: 'grid', gap: '4px' }}>
+                        <strong>{cat.name}</strong>
+                        <span style={{ color: active ? '#86efac' : '#fca5a5', fontSize: '12px' }}>
+                          {active ? 'نشط' : 'مخفي'}
+                        </span>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {editing ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void saveCategoryRename(cat.id)}
+                            disabled={savingCategory}
+                            style={secondarySmallButtonStyle}
+                          >
+                            حفظ
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCategoryId(null);
+                              setEditingCategoryName('');
+                            }}
+                            style={secondarySmallButtonStyle}
+                          >
+                            إلغاء
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCategoryId(cat.id);
+                              setEditingCategoryName(cat.name);
+                            }}
+                            style={secondarySmallButtonStyle}
+                          >
+                            تعديل
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => void toggleCategory(cat)}
+                            disabled={savingCategory}
+                            style={{
+                              ...dangerButtonStyle,
+                              height: '36px',
+                              padding: '0 12px',
+                              color: active ? '#fca5a5' : '#86efac',
+                              border: active
+                                ? '1px solid rgba(239,68,68,0.25)'
+                                : '1px solid rgba(34,197,94,0.25)',
+                              background: active
+                                ? 'rgba(239,68,68,0.12)'
+                                : 'rgba(34,197,94,0.12)'
+                            }}
+                          >
+                            {active ? 'إخفاء' : 'تفعيل'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {categoryRows.length === 0 && (
+                <div style={{ color: '#94a3b8', textAlign: 'center', padding: '16px' }}>
+                  لا توجد تصنيفات
+                </div>
+              )}
             </div>
           </div>
         </div>

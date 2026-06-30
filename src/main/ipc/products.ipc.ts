@@ -10,7 +10,10 @@ import {
   updateProduct,
   updateVariant,
   toggleProductActive,
-  addProductVariant
+  addProductVariant,
+  createCategory,
+  updateCategory,
+  toggleCategoryActive
 } from '../database/repositories/product.repo';
 
 function getErrorMessage(error: unknown) {
@@ -18,8 +21,75 @@ function getErrorMessage(error: unknown) {
 }
 
 export function registerProductsIpc(): void {
-  ipcMain.handle('products:get-categories', () => {
-    return getCategories();
+
+  ipcMain.handle('products:get-categories', (_, input?: { includeInactive?: boolean }) => {
+    return getCategories(Boolean(input?.includeInactive));
+  });
+
+  ipcMain.handle('products:create-category', (_, input) => {
+    try {
+      requireAdmin(getActorId(input));
+      const result = createCategory(input);
+
+      logAction({
+        actor_id: getActorId(input),
+        action: 'category_created',
+        entity: 'categories',
+        entity_id: result.id,
+        details: { name: input.name }
+      });
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        message: getErrorMessage(error)
+      };
+    }
+  });
+
+  ipcMain.handle('products:update-category', (_, input) => {
+    try {
+      requireAdmin(getActorId(input));
+      const result = updateCategory(input);
+
+      logAction({
+        actor_id: getActorId(input),
+        action: 'category_updated',
+        entity: 'categories',
+        entity_id: input.id,
+        details: { name: input.name }
+      });
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        message: getErrorMessage(error)
+      };
+    }
+  });
+
+  ipcMain.handle('products:toggle-category', (_, categoryId: number, isActive: number, actorId?: number) => {
+    try {
+      requireAdmin(actorId);
+      const result = toggleCategoryActive(categoryId, isActive);
+
+      logAction({
+        actor_id: actorId ?? null,
+        action: isActive ? 'category_activated' : 'category_deactivated',
+        entity: 'categories',
+        entity_id: categoryId,
+        details: { is_active: isActive }
+      });
+
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        message: getErrorMessage(error)
+      };
+    }
   });
 
   ipcMain.handle(

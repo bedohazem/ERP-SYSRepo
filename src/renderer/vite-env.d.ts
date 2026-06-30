@@ -136,7 +136,26 @@ declare global {
       // =========================
       // Products
       // =========================
-      getCategories: () => Promise<any[]>;
+      getCategories: (input?: { includeInactive?: boolean }) => Promise<any[]>;
+
+      createCategory: (input: {
+        name: string;
+        description?: string | null;
+        actor_id?: number;
+      }) => Promise<any>;
+
+      updateCategory: (input: {
+        id: number;
+        name: string;
+        description?: string | null;
+        actor_id?: number;
+      }) => Promise<any>;
+
+      toggleCategoryActive: (
+        categoryId: number,
+        isActive: boolean | number,
+        actorId?: number
+      ) => Promise<any>;
 
       getProducts: (payload?: any) => Promise<any[]>;
 

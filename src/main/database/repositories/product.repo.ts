@@ -181,7 +181,7 @@ function validateVariantNumbers(variant: ProductVariantInput | AddProductVariant
   }
 }
 
-export function getCategories(): CategoryRow[] {
+export function getCategories(includeInactive = false): CategoryRow[] {
   const db = getDb();
 
   return db
@@ -189,11 +189,114 @@ export function getCategories(): CategoryRow[] {
       `
       SELECT id, name, description, is_active, created_at
       FROM categories
-      WHERE is_active = 1
-      ORDER BY name ASC
+      WHERE ${includeInactive ? '1=1' : 'is_active = 1'}
+      ORDER BY is_active DESC, name ASC
       `
     )
     .all() as CategoryRow[];
+}
+
+export function createCategory(input: {
+  name: string;
+  description?: string | null;
+}) {
+  const db = getDb();
+  const name = String(input.name || '').trim();
+
+  if (!name) {
+    throw new Error('اسم التصنيف مطلوب');
+  }
+
+  const existing = db
+    .prepare(`SELECT id, is_active FROM categories WHERE name = ? LIMIT 1`)
+    .get(name) as { id: number; is_active: number } | undefined;
+
+  if (existing) {
+    if (Number(existing.is_active) === 1) {
+      throw new Error('التصنيف موجود بالفعل');
+    }
+
+    db.prepare(
+      `
+      UPDATE categories
+      SET is_active = 1,
+          description = ?
+      WHERE id = ?
+      `
+    ).run(input.description ?? null, existing.id);
+
+    return { success: true, id: existing.id, reactivated: true };
+  }
+
+  const result = db
+    .prepare(
+      `
+      INSERT INTO categories (name, description, is_active)
+      VALUES (?, ?, 1)
+      `
+    )
+    .run(name, input.description ?? null);
+
+  return {
+    success: true,
+    id: Number(result.lastInsertRowid)
+  };
+}
+
+export function updateCategory(input: {
+  id: number;
+  name: string;
+  description?: string | null;
+}) {
+  const db = getDb();
+  const id = Number(input.id);
+  const name = String(input.name || '').trim();
+
+  if (!id) {
+    throw new Error('التصنيف غير صحيح');
+  }
+
+  if (!name) {
+    throw new Error('اسم التصنيف مطلوب');
+  }
+
+  const duplicate = db
+    .prepare(`SELECT id FROM categories WHERE name = ? AND id <> ? LIMIT 1`)
+    .get(name, id);
+
+  if (duplicate) {
+    throw new Error('يوجد تصنيف آخر بنفس الاسم');
+  }
+
+  db.prepare(
+    `
+    UPDATE categories
+    SET name = ?,
+        description = ?
+    WHERE id = ?
+    `
+  ).run(name, input.description ?? null, id);
+
+  return { success: true };
+}
+
+export function toggleCategoryActive(categoryId: number, isActive: number) {
+  const db = getDb();
+  const id = Number(categoryId);
+
+  if (!id) {
+    throw new Error('التصنيف غير صحيح');
+  }
+
+  db.prepare(
+    `
+    UPDATE categories
+    SET is_active = ?
+    WHERE id = ?
+    `
+  ).run(Number(isActive) ? 1 : 0, id);
+
+  return { success: true };
 }
 
 export function getProducts(

@@ -11,7 +11,10 @@ contextBridge.exposeInMainWorld('api', {
   resetUserPassword: (userId, password, actorId) => ipcRenderer.invoke('users:reset-password', userId, password, actorId),
   
 
-  getCategories: () => ipcRenderer.invoke('products:get-categories'),
+  getCategories: (input) => ipcRenderer.invoke('products:get-categories', input),
+  createCategory: (input) => ipcRenderer.invoke('products:create-category', input),
+  updateCategory: (input) => ipcRenderer.invoke('products:update-category', input),
+  toggleCategoryActive: (categoryId, isActive, actorId) => ipcRenderer.invoke('products:toggle-category', categoryId, isActive, actorId),
   getProducts: (payload) => ipcRenderer.invoke('products:list', payload),
   getProductVariants: (payload) => ipcRenderer.invoke('products:get-variants', payload),
   toggleVariantActive: (variantId, isActive, actorId) => ipcRenderer.invoke('products:toggle-variant-active', variantId, isActive, actorId),
