@@ -233,3 +233,132 @@ export function getLocalSyncStatus() {
     last_sync_at: getSyncState('last_sync_at', '')
   };
 }
+
+export function listSyncOperations(input?: {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const db = getDb();
+
+  const allowedStatuses = ['all', 'pending', 'syncing', 'synced', 'failed', 'conflict'];
+  const status = allowedStatuses.includes(String(input?.status || 'all'))
+    ? String(input?.status || 'all')
+    : 'all';
+
+  const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 500);
+  const offset = Math.max(Number(input?.offset || 0), 0);
+
+  const whereSql = status === 'all' ? '' : 'WHERE status = ?';
+  const params = status === 'all' ? [limit, offset] : [status, limit, offset];
+
+  return db
+    .prepare(`
+      SELECT
+        id,
+        device_id,
+        type,
+        entity,
+        entity_id,
+        status,
+        attempts,
+        error,
+        server_id,
+        created_at,
+        updated_at,
+        synced_at,
+        payload
+      FROM sync_operations
+      ${whereSql}
+      ORDER BY created_at DESC
+      LIMIT ?
+      OFFSET ?
+    `)
+    .all(...params);
+}
+
+export function listSyncConflicts(input?: {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const db = getDb();
+
+  const allowedStatuses = ['all', 'open', 'resolved', 'ignored'];
+  const status = allowedStatuses.includes(String(input?.status || 'open'))
+    ? String(input?.status || 'open')
+    : 'open';
+
+  const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 500);
+  const offset = Math.max(Number(input?.offset || 0), 0);
+
+  const whereSql = status === 'all' ? '' : 'WHERE status = ?';
+  const params = status === 'all' ? [limit, offset] : [status, limit, offset];
+
+  return db
+    .prepare(`
+      SELECT
+        id,
+        operation_id,
+        device_id,
+        type,
+        message,
+        payload,
+        status,
+        created_at,
+        resolved_at
+      FROM sync_conflicts
+      ${whereSql}
+      ORDER BY created_at DESC
+      LIMIT ?
+      OFFSET ?
+    `)
+    .all(...params);
+}
+
+export function retryFailedSyncOperations() {
+  const db = getDb();
+
+  const result = db
+    .prepare(`
+      UPDATE sync_operations
+      SET status = 'pending',
+          error = NULL,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE status IN ('failed', 'syncing')
+    `)
+    .run();
+
+  return {
+    success: true,
+    changed: result.changes
+  };
+}
+
+export function resolveSyncConflict(input: {
+  conflict_id: string;
+  status?: 'resolved' | 'ignored';
+}) {
+  const db = getDb();
+
+  const conflictId = String(input.conflict_id || '').trim();
+  const status = input.status === 'ignored' ? 'ignored' : 'resolved';
+
+  if (!conflictId) {
+    throw new Error('Conflict ID is required');
+  }
+
+  const result = db
+    .prepare(`
+      UPDATE sync_conflicts
+      SET status = ?,
+          resolved_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `)
+    .run(status, conflictId);
+
+  return {
+    success: true,
+    changed: result.changes
+  };
+}

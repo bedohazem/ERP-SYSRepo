@@ -1101,6 +1101,37 @@ declare global {
           operations: any[];
         }>;
 
+        listSyncOperations: (input?: {
+          status?: string;
+          limit?: number;
+          offset?: number;
+        }) => Promise<{
+          success: boolean;
+          operations: any[];
+        }>;
+
+        listSyncConflicts: (input?: {
+          status?: string;
+          limit?: number;
+          offset?: number;
+        }) => Promise<{
+          success: boolean;
+          conflicts: any[];
+        }>;
+
+        retryFailedSyncOperations: () => Promise<{
+          success: boolean;
+          changed: number;
+        }>;
+
+        resolveSyncConflict: (input: {
+          conflict_id: string;
+          status?: 'resolved' | 'ignored';
+        }) => Promise<{
+          success: boolean;
+          changed: number;
+        }>;
+
     
     };
   }

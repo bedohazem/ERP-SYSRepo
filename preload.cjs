@@ -123,5 +123,9 @@ contextBridge.exposeInMainWorld('api', {
 
   getSyncStatus: () => ipcRenderer.invoke('sync:get-status'),
   listPendingSyncOperations: (limit) => ipcRenderer.invoke('sync:list-pending', limit),
+  listSyncOperations: (input) => ipcRenderer.invoke('sync:list-operations', input),
+  listSyncConflicts: (input) => ipcRenderer.invoke('sync:list-conflicts', input),
+  retryFailedSyncOperations: () => ipcRenderer.invoke('sync:retry-failed'),
+  resolveSyncConflict: (input) => ipcRenderer.invoke('sync:resolve-conflict', input),
   
 });
