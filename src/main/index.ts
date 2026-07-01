@@ -19,6 +19,7 @@ import { registerStockCountIpc } from './ipc/stock-count.ipc';
 import { registerLiabilitiesIpc } from './ipc/liabilities.ipc';
 import { registerPrintIpc } from './ipc/print.ipc';
 import { registerCashDrawerIpc } from './ipc/cash-drawer.ipc';
+import { registerSyncIpc } from './ipc/sync.ipc';
 
 let mainWindow: BrowserWindow | null = null;
 let hourlyBackupTimer: NodeJS.Timeout | null = null;
@@ -112,7 +113,8 @@ app.whenReady().then(() => {
   registerLiabilitiesIpc();
   registerPrintIpc();
   registerCashDrawerIpc();
-
+  registerSyncIpc();
+  
   createWindow();
   startAutoBackupScheduler();
 

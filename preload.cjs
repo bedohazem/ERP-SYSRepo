@@ -120,5 +120,8 @@ contextBridge.exposeInMainWorld('api', {
   saveCashDrawerSettings: (input) => ipcRenderer.invoke('cash-drawer:save-settings', input),
   getCashDrawerPrinters: () => ipcRenderer.invoke('cash-drawer:list-printers'),
   openCashDrawer: (input) => ipcRenderer.invoke('cash-drawer:open', input),
+
+  getSyncStatus: () => ipcRenderer.invoke('sync:get-status'),
+  listPendingSyncOperations: (limit) => ipcRenderer.invoke('sync:list-pending', limit),
   
 });

@@ -59,6 +59,8 @@ export default function AppShell({
   const [appLogoUrl, setAppLogoUrl] = useState('');
   const [appName, setAppName] = useState('ERP Store');
 
+  const [syncStatus, setSyncStatus] = useState<any>(null);
+
   const [appTheme, setAppTheme] = useState<'dark' | 'light'>(
     document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
   );
@@ -117,6 +119,43 @@ export default function AppShell({
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSyncStatus() {
+      try {
+        const status = await window.api.getSyncStatus();
+
+        if (mounted) {
+          setSyncStatus(status);
+        }
+      } catch (error) {
+        if (mounted) {
+          setSyncStatus({
+            success: false,
+            online: false,
+            pending_count: 0,
+            failed_count: 0,
+            syncing_count: 0,
+            open_conflicts: 0,
+            last_sync_at: ''
+          });
+        }
+      }
+    }
+
+    void loadSyncStatus();
+
+    const timer = window.setInterval(() => {
+      void loadSyncStatus();
+    }, 5000);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -234,6 +273,91 @@ export default function AppShell({
             >
               {title}
             </h1>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              flexWrap: 'wrap',
+              justifyContent: 'flex-end'
+            }}
+          >
+            <div
+              title={syncStatus?.device_id ? `Device: ${syncStatus.device_id}` : ''}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 12px',
+                borderRadius: '999px',
+                background: syncStatus?.online
+                  ? 'rgba(34,197,94,0.15)'
+                  : 'rgba(239,68,68,0.15)',
+                border: syncStatus?.online
+                  ? '1px solid rgba(34,197,94,0.35)'
+                  : '1px solid rgba(239,68,68,0.35)',
+                color: syncStatus?.online ? '#22c55e' : '#ef4444',
+                fontSize: '13px',
+                fontWeight: 800,
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <span>{syncStatus?.online ? '🟢' : '🔴'}</span>
+              <span>{syncStatus?.online ? 'متصل' : 'أوفلاين'}</span>
+            </div>
+
+            <div
+              style={{
+                padding: '8px 12px',
+                borderRadius: '999px',
+                background: isLight ? '#f1f5f9' : 'rgba(15,23,42,0.75)',
+                border: isLight
+                  ? '1px solid rgba(15,23,42,0.10)'
+                  : '1px solid rgba(255,255,255,0.08)',
+                color: isLight ? '#0f172a' : '#e5e7eb',
+                fontSize: '13px',
+                fontWeight: 700,
+                whiteSpace: 'nowrap'
+              }}
+            >
+              معلق: {syncStatus?.pending_count ?? 0}
+            </div>
+
+            {(syncStatus?.failed_count || 0) > 0 && (
+              <div
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '999px',
+                  background: 'rgba(245,158,11,0.16)',
+                  border: '1px solid rgba(245,158,11,0.35)',
+                  color: '#f59e0b',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                فشل: {syncStatus.failed_count}
+              </div>
+            )}
+
+            {(syncStatus?.open_conflicts || 0) > 0 && (
+              <div
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '999px',
+                  background: 'rgba(239,68,68,0.16)',
+                  border: '1px solid rgba(239,68,68,0.35)',
+                  color: '#ef4444',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                تعارضات: {syncStatus.open_conflicts}
+              </div>
+            )}
           </div>
 
           {isMobile && (

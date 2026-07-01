@@ -1073,14 +1073,34 @@ declare global {
 
         // =========================
         // Liabilities
-        // ==========================
+        // =========================
         getLiabilities: (input?: { search?: string; status?: string }) => Promise<any[]>;
         createLiability: (input: any) => Promise<any>;
         recordLiabilityPayment: (input: any) => Promise<any>;
         getLiabilityStatement: (liabilityId: number) => Promise<any>;
         cancelLiability: (input: any) => Promise<any>;
         getLiabilitiesSummary: (input?: { date_from?: string; date_to?: string }) => Promise<any>;
-        
+
+
+        //=========================
+        // Sync
+        //=========================
+        getSyncStatus: () => Promise<{
+          success: boolean;
+          online: boolean;
+          device_id: string;
+          pending_count: number;
+          failed_count: number;
+          syncing_count: number;
+          open_conflicts: number;
+          last_sync_at: string;
+        }>;
+
+        listPendingSyncOperations: (limit?: number) => Promise<{
+          success: boolean;
+          operations: any[];
+        }>;
+
     
     };
   }
