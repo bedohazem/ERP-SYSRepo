@@ -1,5 +1,6 @@
 import { getDb } from '../db';
 import { createCashMovement, resolveCashAccount } from './cash.repo';
+import { enqueueSyncOperation } from './sync.repo';
 
 export type CreateSaleLineInput = {
   variant_id: number;
@@ -226,6 +227,19 @@ export function createSale(input: CreateSaleInput) {
       WHERE variant_id = ?
     `);
 
+    const syncItems: Array<{
+      sale_item_id: number;
+      variant_id: number;
+      product_name: string;
+      barcode: string | null;
+      size: string | null;
+      color: string | null;
+      quantity: number;
+      unit_cost: number;
+      unit_price: number;
+      line_total: number;
+    }> = [];
+
     for (const item of input.items) {
       const qty = Number(item.quantity || 0);
 
@@ -262,7 +276,9 @@ export function createSale(input: CreateSaleInput) {
           );
         }
 
-      insertItem.run(
+      const unitCost = Number(variant?.buy_price || 0);
+
+      const saleItemResult = insertItem.run(
         saleId,
         item.variant_id,
         item.product_name,
@@ -270,10 +286,23 @@ export function createSale(input: CreateSaleInput) {
         item.size ?? null,
         item.color ?? null,
         qty,
-        Number(variant?.buy_price || 0),
+        unitCost,
         price,
         lineTotal
       );
+
+      syncItems.push({
+        sale_item_id: Number(saleItemResult.lastInsertRowid),
+        variant_id: Number(item.variant_id),
+        product_name: item.product_name,
+        barcode: item.barcode ?? null,
+        size: item.size ?? null,
+        color: item.color ?? null,
+        quantity: qty,
+        unit_cost: unitCost,
+        unit_price: price,
+        line_total: lineTotal
+      });
 
       updateStock.run(
         item.variant_id,
@@ -334,6 +363,36 @@ export function createSale(input: CreateSaleInput) {
         );
       }
     }
+
+    const savedSale = db
+      .prepare(`SELECT * FROM sales WHERE id = ? LIMIT 1`)
+      .get(saleId);
+
+    enqueueSyncOperation({
+      type: 'sale.created',
+      entity: 'sales',
+      entity_id: saleId,
+      payload: {
+        sale: savedSale,
+        items: syncItems,
+        cash: paidAmount > 0
+          ? {
+              direction: 'in',
+              amount: paidAmount,
+              payment_method: input.payment_method || 'cash',
+              reference_type: 'sale',
+              reference_id: saleId
+            }
+          : null,
+        stock_movements: syncItems.map((item) => ({
+          variant_id: item.variant_id,
+          type: 'out',
+          quantity: item.quantity,
+          reference_id: saleId,
+          reference_type: 'sale'
+        }))
+      }
+    });
 
     return {
       saleId,

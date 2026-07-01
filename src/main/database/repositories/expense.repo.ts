@@ -1,6 +1,7 @@
 import { getDb } from '../db';
 import { createCashMovement } from './cash.repo';
 import { createActivityLog } from './activity.repo';
+import { enqueueSyncOperation } from './sync.repo';
 
 export type CreateExpenseInput = {
   title: string;
@@ -74,6 +75,26 @@ export function createExpense(input: CreateExpenseInput) {
       reference_type: 'expense',
       notes: `مصروف: ${title}`,
       created_by: input.created_by ?? null
+    });
+
+    const savedExpense = db
+      .prepare(`SELECT * FROM expenses WHERE id = ? LIMIT 1`)
+      .get(expenseId);
+
+    enqueueSyncOperation({
+      type: 'expense.created',
+      entity: 'expenses',
+      entity_id: expenseId,
+      payload: {
+        expense: savedExpense,
+        cash: {
+          direction: 'out',
+          amount,
+          payment_method: input.payment_method || 'cash',
+          reference_type: 'expense',
+          reference_id: expenseId
+        }
+      }
     });
 
     return {
