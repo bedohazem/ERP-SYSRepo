@@ -1,5 +1,6 @@
 import { getDb } from '../db';
 import { createCashMovement } from './cash.repo';
+import { enqueueSyncOperation } from './sync.repo';
 
 export type CustomerInput = {
   name: string;
@@ -290,6 +291,15 @@ export function recordCustomerPayment(input: {
     const allocations: Array<{
       sale_id: number | null;
       amount: number;
+      payment_id?: number;
+    }> = [];
+
+    const syncPayments: Array<{
+      payment_id: number;
+      sale_id: number | null;
+      amount: number;
+      payment_method: string;
+      notes: string | null;
     }> = [];
 
     // دفعة على فاتورة معينة
@@ -329,19 +339,33 @@ export function recordCustomerPayment(input: {
 
       updateSale.run(newPaid, newRemaining, newStatus, saleId);
 
-      insertPayment.run(
+      const paymentMethod = input.payment_method || 'cash';
+      const paymentNotes = input.notes?.trim() || `دفعة على فاتورة بيع رقم ${saleId}`;
+
+      const paymentResult = insertPayment.run(
         customerId,
         saleId,
         finalAmount,
-        input.payment_method || 'cash',
-        input.notes?.trim() || `دفعة على فاتورة بيع رقم ${saleId}`
+        paymentMethod,
+        paymentNotes
       );
+
+      const paymentId = Number(paymentResult.lastInsertRowid);
+
+      syncPayments.push({
+        payment_id: paymentId,
+        sale_id: saleId,
+        amount: finalAmount,
+        payment_method: paymentMethod,
+        notes: paymentNotes
+      });
 
       totalPaid = finalAmount;
 
       allocations.push({
         sale_id: saleId,
-        amount: finalAmount
+        amount: finalAmount,
+        payment_id: paymentId
       });
     } else {
       // دفعة عامة للعميل: تتوزع على أقدم فواتير مفتوحة
@@ -385,20 +409,35 @@ export function recordCustomerPayment(input: {
 
         updateSale.run(newPaid, newRemaining, newStatus, sale.id);
 
-        insertPayment.run(
+        const paymentMethod = input.payment_method || 'cash';
+        const paymentNotes =
+          input.notes?.trim() || `دفعة عامة موزعة على فاتورة بيع رقم ${sale.id}`;
+
+        const paymentResult = insertPayment.run(
           customerId,
           sale.id,
           payNow,
-          input.payment_method || 'cash',
-          input.notes?.trim() || `دفعة عامة موزعة على فاتورة بيع رقم ${sale.id}`
+          paymentMethod,
+          paymentNotes
         );
+
+        const paymentId = Number(paymentResult.lastInsertRowid);
+
+        syncPayments.push({
+          payment_id: paymentId,
+          sale_id: sale.id,
+          amount: payNow,
+          payment_method: paymentMethod,
+          notes: paymentNotes
+        });
 
         totalPaid += payNow;
         remainingPayment -= payNow;
 
         allocations.push({
           sale_id: sale.id,
-          amount: payNow
+          amount: payNow,
+          payment_id: paymentId
         });
       }
     }
@@ -424,6 +463,53 @@ export function recordCustomerPayment(input: {
       reference_type: saleId ? 'sale' : 'customer_payment',
       notes: input.notes?.trim() || 'دفعة من عميل',
       created_by: (input as any).actor_id ?? null
+    });
+
+
+    const getPaymentForSync = db.prepare(`
+      SELECT *
+      FROM customer_payments
+      WHERE id = ?
+      LIMIT 1
+    `);
+
+    const getSaleForSync = db.prepare(`
+      SELECT *
+      FROM sales
+      WHERE id = ?
+      LIMIT 1
+    `);
+
+    const savedCustomer = db
+      .prepare(`SELECT * FROM customers WHERE id = ? LIMIT 1`)
+      .get(customerId);
+
+    const savedPayments = syncPayments.map((payment) =>
+      getPaymentForSync.get(payment.payment_id)
+    );
+
+    const affectedSales = allocations
+      .filter((allocation) => allocation.sale_id)
+      .map((allocation) => getSaleForSync.get(allocation.sale_id))
+      .filter(Boolean);
+
+    enqueueSyncOperation({
+      type: 'customer_payment.created',
+      entity: 'customer_payments',
+      entity_id: syncPayments.map((payment) => payment.payment_id).join(','),
+      payload: {
+        customer: savedCustomer,
+        payments: savedPayments,
+        allocations,
+        affected_sales: affectedSales,
+        cash: {
+          direction: 'in',
+          amount: totalPaid,
+          payment_method: input.payment_method || 'cash',
+          reference_type: saleId ? 'sale' : 'customer_payment',
+          reference_id: saleId
+        }
+      }
     });
 
     return {
