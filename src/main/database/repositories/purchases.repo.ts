@@ -1,5 +1,6 @@
 import { getDb } from '../db';
 import { createCashMovement } from './cash.repo';
+import { enqueueSyncOperation } from './sync.repo';
 
 export type CreatePurchaseInput = {
   supplier_id: number;
@@ -298,8 +299,20 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       WHERE id = ?
     `);
 
+    const syncItems: Array<{
+      purchase_item_id: number;
+      variant_id: number;
+      product_name: string;
+      barcode: string | null;
+      size: string | null;
+      color: string | null;
+      quantity: number;
+      unit_cost: number;
+      line_total: number;
+    }> = [];
+
     for (const item of preparedItems) {
-      insertItem.run(
+      const purchaseItemResult = insertItem.run(
         purchaseId,
         item.variant.id,
         item.variant.product_name,
@@ -310,6 +323,18 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         item.unitCost,
         item.lineTotal
       );
+
+      syncItems.push({
+        purchase_item_id: Number(purchaseItemResult.lastInsertRowid),
+        variant_id: Number(item.variant.id),
+        product_name: item.variant.product_name,
+        barcode: item.variant.barcode ?? null,
+        size: item.variant.size ?? null,
+        color: item.variant.color ?? null,
+        quantity: item.quantity,
+        unit_cost: item.unitCost,
+        line_total: item.lineTotal
+      });
 
       insertStockMovement.run(
         item.variant.id,
@@ -329,9 +354,11 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(totalAmount, remainingAmount, supplierId);
+    
+    let supplierPaymentId: number | null = null;
 
     if (paidAmount > 0) {
-      db.prepare(`
+      const supplierPaymentResult = db.prepare(`
         INSERT INTO supplier_payments (
           supplier_id,
           purchase_id,
@@ -348,6 +375,8 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}`
       );
 
+      supplierPaymentId = Number(supplierPaymentResult.lastInsertRowid);
+
       createCashMovement({
         type: 'supplier_payment',
         direction: 'out',
@@ -359,6 +388,53 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         created_by: (input as any).actor_id ?? null
       });
     }
+
+    const savedPurchase = db
+      .prepare(`SELECT * FROM purchase_invoices WHERE id = ? LIMIT 1`)
+      .get(purchaseId);
+
+    const savedSupplier = db
+      .prepare(`SELECT * FROM suppliers WHERE id = ? LIMIT 1`)
+      .get(supplierId);
+
+    const savedPayment = supplierPaymentId
+      ? db
+          .prepare(`SELECT * FROM supplier_payments WHERE id = ? LIMIT 1`)
+          .get(supplierPaymentId)
+      : null;
+
+    enqueueSyncOperation({
+      type: 'purchase.created',
+      entity: 'purchase_invoices',
+      entity_id: purchaseId,
+      payload: {
+        purchase: savedPurchase,
+        supplier: savedSupplier,
+        items: syncItems,
+        supplier_payment: savedPayment,
+        cash:
+          paidAmount > 0
+            ? {
+                direction: 'out',
+                amount: paidAmount,
+                payment_method: input.payment_method || 'cash',
+                reference_type: 'purchase_invoice',
+                reference_id: purchaseId
+              }
+            : null,
+        stock_movements: syncItems.map((item) => ({
+          variant_id: item.variant_id,
+          type: 'in',
+          quantity: item.quantity,
+          reference_id: purchaseId,
+          reference_type: 'purchase'
+        })),
+        cost_updates: syncItems.map((item) => ({
+          variant_id: item.variant_id,
+          buy_price: item.unit_cost
+        }))
+      }
+    });
 
     return {
       purchaseId,
