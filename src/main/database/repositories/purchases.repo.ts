@@ -767,8 +767,21 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       VALUES (?, 'out', ?, ?, 'purchase_return', ?)
     `);
 
+    const syncReturnItems: Array<{
+      return_item_id: number;
+      purchase_item_id: number;
+      variant_id: number;
+      product_name: string;
+      barcode: string | null;
+      size: string | null;
+      color: string | null;
+      quantity: number;
+      unit_cost: number;
+      line_total: number;
+    }> = [];
+
     for (const item of preparedItems) {
-      insertReturnItem.run(
+      const returnItemResult = insertReturnItem.run(
         returnId,
         Number(item.purchaseItem.id),
         Number(item.purchaseItem.variant_id),
@@ -780,6 +793,19 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         item.unitCost,
         item.lineTotal
       );
+
+      syncReturnItems.push({
+        return_item_id: Number(returnItemResult.lastInsertRowid),
+        purchase_item_id: Number(item.purchaseItem.id),
+        variant_id: Number(item.purchaseItem.variant_id),
+        product_name: item.purchaseItem.product_name,
+        barcode: item.purchaseItem.barcode ?? null,
+        size: item.purchaseItem.size ?? null,
+        color: item.purchaseItem.color ?? null,
+        quantity: item.quantity,
+        unit_cost: item.unitCost,
+        line_total: item.lineTotal
+      });
 
       insertStockMovement.run(
         Number(item.purchaseItem.variant_id),
@@ -823,6 +849,61 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         created_by: input.actor_id ?? null
       });
     }
+
+    const savedReturn = db
+      .prepare(`SELECT * FROM purchase_returns WHERE id = ? LIMIT 1`)
+      .get(returnId);
+
+    const savedPurchase = db
+      .prepare(`SELECT * FROM purchase_invoices WHERE id = ? LIMIT 1`)
+      .get(purchaseId);
+
+    const savedSupplier = db
+      .prepare(`SELECT * FROM suppliers WHERE id = ? LIMIT 1`)
+      .get(Number(purchase.supplier_id));
+
+    enqueueSyncOperation({
+      type: 'purchase_return.created',
+      entity: 'purchase_returns',
+      entity_id: returnId,
+      payload: {
+        purchase_return: savedReturn,
+        purchase: savedPurchase,
+        supplier: savedSupplier,
+        items: syncReturnItems,
+        debt_reduction: {
+          supplier_id: Number(purchase.supplier_id),
+          purchase_id: purchaseId,
+          amount: debtReductionAmount
+        },
+        supplier_balance_reduction: supplierBalanceReduction,
+        cash_refund:
+          refundMode === 'cash' && cashRefundAmount > 0
+            ? {
+                direction: 'in',
+                amount: cashRefundAmount,
+                payment_method: refundPaymentMethod,
+                reference_type: 'purchase_return',
+                reference_id: returnId
+              }
+            : null,
+        credit_refund:
+          refundMode === 'credit' && cashRefundAmount > 0
+            ? {
+                supplier_id: Number(purchase.supplier_id),
+                amount: cashRefundAmount,
+                note: 'تم خصم قيمة المرتجع من رصيد المورد بدل استلام كاش'
+              }
+            : null,
+        stock_movements: syncReturnItems.map((item) => ({
+          variant_id: item.variant_id,
+          type: 'out',
+          quantity: item.quantity,
+          reference_id: returnId,
+          reference_type: 'purchase_return'
+        }))
+      }
+    });
 
     return {
       ok: true,
