@@ -127,5 +127,9 @@ contextBridge.exposeInMainWorld('api', {
   listSyncConflicts: (input) => ipcRenderer.invoke('sync:list-conflicts', input),
   retryFailedSyncOperations: () => ipcRenderer.invoke('sync:retry-failed'),
   resolveSyncConflict: (input) => ipcRenderer.invoke('sync:resolve-conflict', input),
+
+  getCloudSyncSettings: () => ipcRenderer.invoke('sync:get-cloud-settings'),
+  saveCloudSyncSettings: (input) => ipcRenderer.invoke('sync:save-cloud-settings', input),
+  testCloudSyncConnection: (input) => ipcRenderer.invoke('sync:test-connection', input),
   
 });

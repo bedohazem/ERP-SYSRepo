@@ -9,6 +9,15 @@ export default function SyncPage() {
   const [status, setStatus] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
+  const [cloudSettings, setCloudSettings] = useState({
+    cloud_server_url: '',
+    cloud_api_key: '',
+    cloud_branch_id: '',
+    cloud_sync_enabled: false
+  });
+
+  const [connectionResult, setConnectionResult] = useState<any>(null);
+
   const operationStatus = useMemo(() => {
     if (activeTab === 'pending') return 'pending';
     if (activeTab === 'failed') return 'failed';
@@ -22,6 +31,11 @@ export default function SyncPage() {
     try {
       const syncStatus = await window.api.getSyncStatus();
       setStatus(syncStatus);
+
+      const cloud = await window.api.getCloudSyncSettings();
+      if (cloud?.settings) {
+        setCloudSettings(cloud.settings);
+      }
 
       if (activeTab === 'conflicts') {
         const result = await window.api.listSyncConflicts({
@@ -61,6 +75,30 @@ export default function SyncPage() {
     await loadData();
   }
 
+  async function saveCloudSettings() {
+    const result = await window.api.saveCloudSyncSettings(cloudSettings);
+
+    if (result?.success === false) {
+      setConnectionResult({
+        success: false,
+        message: result.message || 'فشل حفظ الإعدادات'
+      });
+      return;
+    }
+
+    setConnectionResult({
+      success: true,
+      message: 'تم حفظ إعدادات السيرفر'
+    });
+
+    await loadData();
+  }
+
+  async function testConnection() {
+    const result = await window.api.testCloudSyncConnection(cloudSettings);
+    setConnectionResult(result);
+  }
+
   function formatPayload(payload: any) {
     if (!payload) return '';
 
@@ -85,6 +123,112 @@ export default function SyncPage() {
         <InfoCard title="عمليات فاشلة" value={status?.failed_count ?? 0} />
         <InfoCard title="تعارضات مفتوحة" value={status?.open_conflicts ?? 0} />
         <InfoCard title="آخر مزامنة" value={status?.last_sync_at || 'لم تتم بعد'} />
+      </div>
+
+      <div style={cardStyle}>
+        <div style={{ display: 'grid', gap: '12px' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '18px' }}>إعدادات السيرفر Online</h3>
+            <p style={{ margin: '6px 0 0', color: '#94a3b8', fontSize: '13px' }}>
+              دي أول خطوة للربط الأونلاين. لما نعمل السيرفر، الرابط هيبقى مثلًا:
+              https://api.your-domain.com
+            </p>
+          </div>
+
+          <label style={{ display: 'grid', gap: '6px' }}>
+            <span style={{ color: '#cbd5e1', fontWeight: 800 }}>رابط السيرفر</span>
+            <input
+              value={cloudSettings.cloud_server_url}
+              onChange={(event) =>
+                setCloudSettings((prev) => ({
+                  ...prev,
+                  cloud_server_url: event.target.value
+                }))
+              }
+              placeholder="https://api.your-domain.com"
+              style={inputStyle}
+              dir="ltr"
+            />
+          </label>
+
+          <label style={{ display: 'grid', gap: '6px' }}>
+            <span style={{ color: '#cbd5e1', fontWeight: 800 }}>API Key</span>
+            <input
+              value={cloudSettings.cloud_api_key}
+              onChange={(event) =>
+                setCloudSettings((prev) => ({
+                  ...prev,
+                  cloud_api_key: event.target.value
+                }))
+              }
+              placeholder="اختياري الآن"
+              style={inputStyle}
+              dir="ltr"
+            />
+          </label>
+
+          <label style={{ display: 'grid', gap: '6px' }}>
+            <span style={{ color: '#cbd5e1', fontWeight: 800 }}>كود الفرع</span>
+            <input
+              value={cloudSettings.cloud_branch_id}
+              onChange={(event) =>
+                setCloudSettings((prev) => ({
+                  ...prev,
+                  cloud_branch_id: event.target.value
+                }))
+              }
+              placeholder="مثال: samnoud-main"
+              style={inputStyle}
+              dir="ltr"
+            />
+          </label>
+
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              color: '#e5e7eb',
+              fontWeight: 800
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={cloudSettings.cloud_sync_enabled}
+              onChange={(event) =>
+                setCloudSettings((prev) => ({
+                  ...prev,
+                  cloud_sync_enabled: event.target.checked
+                }))
+              }
+            />
+            تفعيل المزامنة الأونلاين
+          </label>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => void saveCloudSettings()} style={buttonStyle}>
+              حفظ الإعدادات
+            </button>
+
+            <button type="button" onClick={() => void testConnection()} style={buttonStyle}>
+              اختبار الاتصال
+            </button>
+          </div>
+
+          {connectionResult && (
+            <div
+              style={{
+                ...noteStyle,
+                color: connectionResult.success ? '#86efac' : '#fca5a5',
+                borderColor: connectionResult.success
+                  ? 'rgba(34,197,94,0.35)'
+                  : 'rgba(239,68,68,0.35)'
+              }}
+            >
+              {connectionResult.message}
+            </div>
+          )}
+        </div>
       </div>
 
       <div
@@ -340,3 +484,14 @@ function pillStyle(status: string): React.CSSProperties {
     fontWeight: 900
   };
 }
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  border: '1px solid rgba(255,255,255,0.12)',
+  background: 'rgba(2,6,23,0.72)',
+  color: '#fff',
+  borderRadius: '12px',
+  padding: '11px 12px',
+  outline: 'none',
+  boxSizing: 'border-box'
+};

@@ -1132,6 +1132,39 @@ declare global {
           changed: number;
         }>;
 
+        getCloudSyncSettings: () => Promise<{
+          success: boolean;
+          settings: {
+            cloud_server_url: string;
+            cloud_api_key: string;
+            cloud_branch_id: string;
+            cloud_sync_enabled: boolean;
+          };
+        }>;
+
+        saveCloudSyncSettings: (input: {
+          cloud_server_url: string;
+          cloud_api_key?: string;
+          cloud_branch_id?: string;
+          cloud_sync_enabled: boolean;
+        }) => Promise<{
+          success: boolean;
+          message?: string;
+          settings?: any;
+        }>;
+
+        testCloudSyncConnection: (input?: {
+          cloud_server_url?: string;
+          cloud_api_key?: string;
+          cloud_branch_id?: string;
+        }) => Promise<{
+          success: boolean;
+          online: boolean;
+          status?: number;
+          message: string;
+          data?: any;
+        }>;
+
     
     };
   }

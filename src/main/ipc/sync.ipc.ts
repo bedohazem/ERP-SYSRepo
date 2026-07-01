@@ -5,7 +5,10 @@ import {
   listSyncOperations,
   listSyncConflicts,
   retryFailedSyncOperations,
-  resolveSyncConflict
+  resolveSyncConflict,
+  getCloudSyncSettings,
+  saveCloudSyncSettings,
+  testCloudSyncConnection
 } from '../database/repositories/sync.repo';
 
 export function registerSyncIpc(): void {
@@ -58,4 +61,21 @@ export function registerSyncIpc(): void {
   }) => {
     return resolveSyncConflict(input);
   });
+
+  ipcMain.handle('sync:get-cloud-settings', () => {
+    return {
+      success: true,
+      settings: getCloudSyncSettings()
+    };
+  });
+
+  ipcMain.handle('sync:save-cloud-settings', (_, input) => {
+    return saveCloudSyncSettings(input);
+  });
+
+  ipcMain.handle('sync:test-connection', async (_, input) => {
+    return testCloudSyncConnection(input);
+  });
+
+  
 }

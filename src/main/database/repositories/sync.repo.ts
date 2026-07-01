@@ -362,3 +362,119 @@ export function resolveSyncConflict(input: {
     changed: result.changes
   };
 }
+
+export type CloudSyncSettings = {
+  cloud_server_url: string;
+  cloud_api_key: string;
+  cloud_branch_id: string;
+  cloud_sync_enabled: boolean;
+};
+
+function normalizeServerUrl(url: string) {
+  return String(url || '').trim().replace(/\/+$/, '');
+}
+
+export function getCloudSyncSettings(): CloudSyncSettings {
+  return {
+    cloud_server_url: getSetting('cloud_server_url', ''),
+    cloud_api_key: getSetting('cloud_api_key', ''),
+    cloud_branch_id: getSetting('cloud_branch_id', ''),
+    cloud_sync_enabled: getSetting('cloud_sync_enabled', 'false') === 'true'
+  };
+}
+
+export function saveCloudSyncSettings(input: Partial<CloudSyncSettings>) {
+  const serverUrl = normalizeServerUrl(input.cloud_server_url || '');
+  const apiKey = String(input.cloud_api_key || '').trim();
+  const branchId = String(input.cloud_branch_id || '').trim();
+  const enabled = Boolean(input.cloud_sync_enabled);
+
+  if (enabled && !serverUrl) {
+    throw new Error('رابط السيرفر مطلوب عند تفعيل المزامنة');
+  }
+
+  saveSetting('cloud_server_url', serverUrl);
+  saveSetting('cloud_api_key', apiKey);
+  saveSetting('cloud_branch_id', branchId);
+  saveSetting('cloud_sync_enabled', String(enabled));
+
+  return {
+    success: true,
+    settings: getCloudSyncSettings()
+  };
+}
+
+export async function testCloudSyncConnection(input?: Partial<CloudSyncSettings>) {
+  const settings = {
+    ...getCloudSyncSettings(),
+    ...(input || {})
+  };
+
+  const serverUrl = normalizeServerUrl(settings.cloud_server_url || '');
+
+  if (!serverUrl) {
+    return {
+      success: false,
+      online: false,
+      message: 'اكتب رابط السيرفر أولًا'
+    };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000);
+
+  try {
+    const response = await fetch(`${serverUrl}/health`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(settings.cloud_api_key
+          ? { Authorization: `Bearer ${settings.cloud_api_key}` }
+          : {})
+      },
+      signal: controller.signal
+    });
+
+    clearTimeout(timer);
+
+    if (!response.ok) {
+      return {
+        success: false,
+        online: false,
+        status: response.status,
+        message: `السيرفر رد بكود ${response.status}`
+      };
+    }
+
+    let data: any = null;
+
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
+
+    return {
+      success: true,
+      online: true,
+      status: response.status,
+      message: 'تم الاتصال بالسيرفر بنجاح',
+      data
+    };
+  } catch (error) {
+    clearTimeout(timer);
+
+    const message =
+      error instanceof Error && error.name === 'AbortError'
+        ? 'انتهت مهلة الاتصال بالسيرفر'
+        : error instanceof Error
+          ? error.message
+          : 'تعذر الاتصال بالسيرفر';
+
+    return {
+      success: false,
+      online: false,
+      message
+    };
+  }
+}
