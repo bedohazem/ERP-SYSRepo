@@ -12,6 +12,7 @@ import {
   uploadSyncOperationToCloud,
   uploadPendingSyncOperations
 } from '../database/repositories/sync.repo';
+import { runCloudSyncOnce } from '../sync/cloud-sync-scheduler';
 
 export function registerSyncIpc(): void {
   ipcMain.handle('sync:get-status', () => {
@@ -84,6 +85,6 @@ export function registerSyncIpc(): void {
   });
 
   ipcMain.handle('sync:upload-pending', async (_, limit?: number) => {
-    return uploadPendingSyncOperations(limit || 20);
-  });  
+    return runCloudSyncOnce(limit || 20);
+  });
 }

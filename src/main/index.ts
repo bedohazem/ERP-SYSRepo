@@ -20,6 +20,7 @@ import { registerLiabilitiesIpc } from './ipc/liabilities.ipc';
 import { registerPrintIpc } from './ipc/print.ipc';
 import { registerCashDrawerIpc } from './ipc/cash-drawer.ipc';
 import { registerSyncIpc } from './ipc/sync.ipc';
+import { startCloudSyncScheduler, stopCloudSyncScheduler } from './sync/cloud-sync-scheduler';
 
 let mainWindow: BrowserWindow | null = null;
 let hourlyBackupTimer: NodeJS.Timeout | null = null;
@@ -114,6 +115,7 @@ app.whenReady().then(() => {
   registerPrintIpc();
   registerCashDrawerIpc();
   registerSyncIpc();
+  startCloudSyncScheduler();
   
   createWindow();
   startAutoBackupScheduler();
@@ -132,6 +134,7 @@ app.whenReady().then(() => {
 
     event.preventDefault();
     shutdownBackupDone = true;
+    stopCloudSyncScheduler();
 
     if (hourlyBackupTimer) {
       clearInterval(hourlyBackupTimer);
