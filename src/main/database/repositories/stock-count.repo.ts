@@ -1,4 +1,5 @@
 import { getDb } from '../db';
+import { enqueueSyncOperation } from './sync.repo';
 
 const STOCK_SUM_SQL = `
   IFNULL(SUM(
@@ -445,6 +446,20 @@ export function approveStockCountSession(input: {
       `
     );
 
+    const syncMovements: Array<{
+      movement_id: number;
+      item_id: number;
+      variant_id: number;
+      type: 'in' | 'out';
+      quantity: number;
+      reference_id: number;
+      reference_type: 'stock_count';
+      notes: string;
+      system_stock: number;
+      actual_stock: number;
+      diff: number;
+    }> = [];
+
     let changedItems = 0;
     let shortageItems = 0;
     let surplusItems = 0;
@@ -462,29 +477,42 @@ export function approveStockCountSession(input: {
 
       changedItems += 1;
 
+      const movementType = diff > 0 ? 'in' : 'out';
+      const movementQty = Math.abs(diff);
+      const movementNotes =
+        diff > 0
+          ? `تسوية جرد #${sessionId}: زيادة ${diff}`
+          : `تسوية جرد #${sessionId}: عجز ${Math.abs(diff)}`;
+
       if (diff > 0) {
         surplusItems += 1;
         totalSurplusQty += diff;
-
-        insertMovement.run(
-          Number(item.variant_id),
-          'in',
-          Math.abs(diff),
-          sessionId,
-          `تسوية جرد #${sessionId}: زيادة ${diff}`
-        );
       } else {
         shortageItems += 1;
         totalShortageQty += Math.abs(diff);
-
-        insertMovement.run(
-          Number(item.variant_id),
-          'out',
-          Math.abs(diff),
-          sessionId,
-          `تسوية جرد #${sessionId}: عجز ${Math.abs(diff)}`
-        );
       }
+
+      const movementResult = insertMovement.run(
+        Number(item.variant_id),
+        movementType,
+        movementQty,
+        sessionId,
+        movementNotes
+      );
+
+      syncMovements.push({
+        movement_id: Number(movementResult.lastInsertRowid),
+        item_id: Number(item.id),
+        variant_id: Number(item.variant_id),
+        type: movementType,
+        quantity: movementQty,
+        reference_id: sessionId,
+        reference_type: 'stock_count',
+        notes: movementNotes,
+        system_stock: systemStock,
+        actual_stock: actualStock,
+        diff
+      });
     }
 
     db.prepare(
@@ -497,6 +525,28 @@ export function approveStockCountSession(input: {
       WHERE id = ?
       `
     ).run(input.actor_id ?? null, sessionId);
+
+
+    const savedSession = db
+      .prepare(`SELECT * FROM stock_count_sessions WHERE id = ? LIMIT 1`)
+      .get(sessionId);
+
+    enqueueSyncOperation({
+      type: 'stock_count.approved',
+      entity: 'stock_count_sessions',
+      entity_id: sessionId,
+      payload: {
+        session: savedSession,
+        movements: syncMovements,
+        summary: {
+          changed_items: changedItems,
+          shortage_items: shortageItems,
+          surplus_items: surplusItems,
+          total_shortage_qty: totalShortageQty,
+          total_surplus_qty: totalSurplusQty
+        }
+      }
+    });
 
     return {
       success: true,

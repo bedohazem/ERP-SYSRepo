@@ -1,4 +1,5 @@
 import { getDb } from '../db';
+import { enqueueSyncOperation } from './sync.repo';
 
 const STOCK_SUM_SQL = `
   IFNULL(SUM(
@@ -172,7 +173,12 @@ export function adjustVariantStock(input: {
       };
     }
 
-    db.prepare(`
+    const movementType = diff > 0 ? 'in' : 'out';
+    const movementQty = Math.abs(diff);
+    const movementNotes =
+      input.notes?.trim() || `تسوية مخزون: من ${oldStock} إلى ${targetStock}`;
+
+    const movementResult = db.prepare(`
       INSERT INTO stock_movements (
         variant_id,
         type,
@@ -184,10 +190,33 @@ export function adjustVariantStock(input: {
       VALUES (?, ?, ?, NULL, 'manual_adjust', ?)
     `).run(
       variantId,
-      diff > 0 ? 'in' : 'out',
-      Math.abs(diff),
-      input.notes?.trim() || `تسوية مخزون: من ${oldStock} إلى ${targetStock}`
+      movementType,
+      movementQty,
+      movementNotes
     );
+
+    const movementId = Number(movementResult.lastInsertRowid);
+
+    enqueueSyncOperation({
+      type: 'stock_adjustment.created',
+      entity: 'stock_movements',
+      entity_id: movementId,
+      payload: {
+        movement: {
+          id: movementId,
+          variant_id: variantId,
+          type: movementType,
+          quantity: movementQty,
+          reference_id: null,
+          reference_type: 'manual_adjust',
+          notes: movementNotes
+        },
+        variant,
+        old_stock: oldStock,
+        new_stock: targetStock,
+        diff
+      }
+    });
 
     return {
       success: true,

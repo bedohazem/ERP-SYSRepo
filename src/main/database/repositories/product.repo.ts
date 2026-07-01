@@ -76,9 +76,14 @@ function zeroVariantStock(
 ) {
   const currentStock = getCurrentVariantStock(db, variantId);
 
-  if (currentStock === 0) return;
+  if (currentStock === 0) {
+    return null;
+  }
 
-  db.prepare(`
+  const movementType = currentStock > 0 ? 'out' : 'in';
+  const movementQty = Math.abs(currentStock);
+
+  const result = db.prepare(`
     INSERT INTO stock_movements (
       variant_id,
       type,
@@ -90,10 +95,20 @@ function zeroVariantStock(
     VALUES (?, ?, ?, NULL, 'deactivate_zero_stock', ?)
   `).run(
     variantId,
-    currentStock > 0 ? 'out' : 'in',
-    Math.abs(currentStock),
+    movementType,
+    movementQty,
     notes
   );
+
+  return {
+    movement_id: Number(result.lastInsertRowid),
+    variant_id: variantId,
+    type: movementType,
+    quantity: movementQty,
+    reference_id: null,
+    reference_type: 'deactivate_zero_stock',
+    notes
+  };
 }
 
 function zeroProductVariantsStock(
@@ -104,13 +119,21 @@ function zeroProductVariantsStock(
     .prepare(`SELECT id FROM product_variants WHERE product_id = ?`)
     .all(productId) as Array<{ id: number }>;
 
+  const movements: any[] = [];
+
   for (const variant of variants) {
-    zeroVariantStock(
+    const movement = zeroVariantStock(
       db,
       Number(variant.id),
       'تصفير مخزون بسبب تعطيل المنتج'
     );
+
+    if (movement) {
+      movements.push(movement);
+    }
   }
+
+  return movements;
 }
 
 function ensureBarcodeAvailable(barcode: string, exceptVariantId?: number) {
@@ -424,13 +447,29 @@ export function toggleVariantActive(variantId: number, isActive: number) {
       `
     ).run(nextActive, variantId);
 
-    if (!nextActive) {
-      zeroVariantStock(
-        db,
-        Number(variantId),
-        'تصفير مخزون بسبب تعطيل الصنف'
-      );
-    }
+    const stockMovement = !nextActive
+      ? zeroVariantStock(
+          db,
+          Number(variantId),
+          'تصفير مخزون بسبب تعطيل الصنف'
+        )
+      : null;
+
+    const savedVariant = db
+      .prepare(`SELECT * FROM product_variants WHERE id = ? LIMIT 1`)
+      .get(Number(variantId));
+
+    enqueueSyncOperation({
+      type: nextActive
+        ? 'product_variant.activated'
+        : 'product_variant.deactivated',
+      entity: 'product_variants',
+      entity_id: variantId,
+      payload: {
+        variant: savedVariant,
+        stock_movement: stockMovement
+      }
+    });
   });
 
   tx();
@@ -807,9 +846,28 @@ export function toggleProductActive(productId: number, isActive: number) {
       `
     ).run(nextActive, productId);
 
-    if (!nextActive) {
-      zeroProductVariantsStock(db, Number(productId));
-    }
+    const stockMovements = !nextActive
+      ? zeroProductVariantsStock(db, Number(productId))
+      : [];
+
+    const savedProduct = db
+      .prepare(`SELECT * FROM products WHERE id = ? LIMIT 1`)
+      .get(Number(productId));
+
+    const savedVariants = db
+      .prepare(`SELECT * FROM product_variants WHERE product_id = ? ORDER BY id ASC`)
+      .all(Number(productId));
+
+    enqueueSyncOperation({
+      type: nextActive ? 'product.activated' : 'product.deactivated',
+      entity: 'products',
+      entity_id: productId,
+      payload: {
+        product: savedProduct,
+        variants: savedVariants,
+        stock_movements: stockMovements
+      }
+    });
   });
 
   tx();
