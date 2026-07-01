@@ -11,10 +11,6 @@ import {
   testCloudSyncConnection,
   uploadSyncOperationToCloud,
   uploadPendingSyncOperations,
-  downloadServerEventsFromCloud,
-  listDownloadedServerEvents,
-  applyDownloadedServerEvents,
-  applyExpenseCreatedInboxEvent
 } from '../database/repositories/sync.repo';
 import { runCloudSyncOnce } from '../sync/cloud-sync-scheduler';
 
@@ -90,28 +86,5 @@ export function registerSyncIpc(): void {
 
   ipcMain.handle('sync:upload-pending', async (_, limit?: number) => {
     return runCloudSyncOnce(limit || 20);
-  });
-
-  ipcMain.handle('sync:download-events', async (_, limit?: number) => {
-    return downloadServerEventsFromCloud(limit || 200);
-  });
-
-  ipcMain.handle('sync:list-downloaded-events', (_, input?: {
-    status?: string;
-    limit?: number;
-    offset?: number;
-  }) => {
-    return {
-      success: true,
-      events: listDownloadedServerEvents(input)
-    };
-  });
-
-  ipcMain.handle('sync:apply-downloaded-events', (_, limit?: number) => {
-    return applyDownloadedServerEvents(limit || 50);
-  });
-
-  ipcMain.handle('sync:apply-downloaded-event', (_, version: number) => {
-    return applyExpenseCreatedInboxEvent(Number(version));
   });
 }

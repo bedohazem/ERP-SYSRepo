@@ -1,9 +1,7 @@
 import {
   getCloudSyncSettings,
   testCloudSyncConnection,
-  uploadPendingSyncOperations,
-  downloadServerEventsFromCloud,
-  applyDownloadedServerEvents
+  uploadPendingSyncOperations
 } from '../database/repositories/sync.repo';
 
 let timer: NodeJS.Timeout | null = null;
@@ -50,15 +48,11 @@ export async function runCloudSyncOnce(limit = 25) {
     }
 
     const uploadResult = await uploadPendingSyncOperations(limit);
-    const downloadResult = await downloadServerEventsFromCloud(200);
-    const applyResult = await applyDownloadedServerEvents(50);
 
     return {
-      success: Boolean(uploadResult.success && downloadResult.success && applyResult.success),
+      success: Boolean(uploadResult.success),
       upload: uploadResult,
-      download: downloadResult,
-      apply: applyResult,
-      message: `رفع: ${uploadResult.uploaded || 0} / سحب: ${downloadResult.received || 0} / تطبيق: ${applyResult.applied || 0}`
+      message: `رفع: ${uploadResult.uploaded || 0}`
     };
   } finally {
     running = false;
@@ -66,9 +60,7 @@ export async function runCloudSyncOnce(limit = 25) {
 }
 
 export function startCloudSyncScheduler() {
-  if (timer) {
-    return;
-  }
+  if (timer) return;
 
   setTimeout(() => {
     void runCloudSyncOnce(25);
@@ -80,9 +72,7 @@ export function startCloudSyncScheduler() {
 }
 
 export function stopCloudSyncScheduler() {
-  if (!timer) {
-    return;
-  }
+  if (!timer) return;
 
   clearInterval(timer);
   timer = null;

@@ -135,9 +135,6 @@ contextBridge.exposeInMainWorld('api', {
   uploadSyncOperation: (operationId) => ipcRenderer.invoke('sync:upload-operation', operationId),
   uploadPendingSyncOperations: (limit) => ipcRenderer.invoke('sync:upload-pending', limit),
 
-  downloadServerEvents: (limit) => ipcRenderer.invoke('sync:download-events', limit),
-  listDownloadedServerEvents: (input) => ipcRenderer.invoke('sync:list-downloaded-events', input),
-  applyDownloadedServerEvents: (limit) => ipcRenderer.invoke('sync:apply-downloaded-events', limit),
-  applyDownloadedServerEvent: (version) => ipcRenderer.invoke('sync:apply-downloaded-event', version),
+
   
 });

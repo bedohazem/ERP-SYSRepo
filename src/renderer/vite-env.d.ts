@@ -1183,43 +1183,6 @@ declare global {
           status: any;
         }>;
 
-      downloadServerEvents: (limit?: number) => Promise<{
-        success: boolean;
-        total?: number;
-        received?: number;
-        skipped_own_device?: number;
-        since_version?: number;
-        latest_version?: number;
-        message?: string;
-      }>;
-
-      listDownloadedServerEvents: (input?: {
-        status?: string;
-        limit?: number;
-        offset?: number;
-      }) => Promise<{
-        success: boolean;
-        events: any[];
-      }>;
-
-
-      applyDownloadedServerEvents: (limit?: number) => Promise<{
-        success: boolean;
-        total: number;
-        applied: number;
-        failed: number;
-        results: any[];
-        status: any;
-        message?: string;
-      }>;
-
-      applyDownloadedServerEvent: (version: number) => Promise<{
-        success: boolean;
-        version?: number;
-        expense_id?: number;
-        message?: string;
-      }>;
-
     
     };
   }
