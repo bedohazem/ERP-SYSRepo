@@ -915,8 +915,24 @@ export function createSaleReturn(input: {
       VALUES (?, 'in', ?, ?, 'sale_return', ?)
     `);
 
+    const syncReturnItems: Array<{
+      return_item_id: number;
+      original_sale_item_id: number;
+      variant_id: number;
+      product_name: string;
+      barcode: string | null;
+      size: string | null;
+      color: string | null;
+      quantity: number;
+      unit_cost: number;
+      unit_price: number;
+      line_total: number;
+    }> = [];
+
     for (const item of preparedItems) {
-      insertReturnItem.run(
+      const unitCost = Number(item.originalItem.unit_cost || 0);
+
+      const returnItemResult = insertReturnItem.run(
         returnId,
         item.originalItem.id,
         item.originalItem.variant_id,
@@ -925,10 +941,24 @@ export function createSaleReturn(input: {
         item.originalItem.size ?? null,
         item.originalItem.color ?? null,
         item.quantity,
-        Number(item.originalItem.unit_cost || 0),
+        unitCost,
         item.unitPrice,
         item.lineTotal
       );
+
+      syncReturnItems.push({
+        return_item_id: Number(returnItemResult.lastInsertRowid),
+        original_sale_item_id: Number(item.originalItem.id),
+        variant_id: Number(item.originalItem.variant_id),
+        product_name: item.originalItem.product_name,
+        barcode: item.originalItem.barcode ?? null,
+        size: item.originalItem.size ?? null,
+        color: item.originalItem.color ?? null,
+        quantity: item.quantity,
+        unit_cost: unitCost,
+        unit_price: item.unitPrice,
+        line_total: item.lineTotal
+      });
 
       insertStockMovement.run(
         item.originalItem.variant_id,
@@ -970,6 +1000,50 @@ export function createSaleReturn(input: {
         `خصم نقاط بسبب مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`
       );
     }
+
+    const savedReturn = db
+      .prepare(`SELECT * FROM sale_returns WHERE id = ? LIMIT 1`)
+      .get(returnId);
+
+    enqueueSyncOperation({
+      type: 'sale_return.created',
+      entity: 'sale_returns',
+      entity_id: returnId,
+      payload: {
+        return: savedReturn,
+        items: syncReturnItems,
+        original_sale_id: originalSaleId,
+        cash_refund:
+          cashRefundAmount > 0
+            ? {
+                direction: 'out',
+                amount: cashRefundAmount,
+                payment_method: refundPaymentMethod,
+                reference_type: 'sale_return',
+                reference_id: returnId
+              }
+            : null,
+        debt_reduction:
+          debtReductionAmount > 0
+            ? {
+                customer_id: originalSale.customer_id,
+                original_sale_id: originalSaleId,
+                amount: debtReductionAmount
+              }
+            : null,
+        stock_movements: syncReturnItems.map((item) => ({
+          variant_id: item.variant_id,
+          type: 'in',
+          quantity: item.quantity,
+          reference_id: returnId,
+          reference_type: 'sale_return'
+        })),
+        loyalty: {
+          points_reversed: loyaltyPointsToReverse,
+          amount: returnValue
+        }
+      }
+    });
 
     return {
       returnId,
