@@ -1165,6 +1165,15 @@ export function recordSupplierPayment(input: {
     const allocations: Array<{
       purchase_id: number | null;
       amount: number;
+      payment_id?: number;
+    }> = [];
+
+    const syncPayments: Array<{
+      payment_id: number;
+      purchase_id: number | null;
+      amount: number;
+      payment_method: string;
+      notes: string | null;
     }> = [];
 
     if (purchaseId) {
@@ -1200,18 +1209,32 @@ export function recordSupplierPayment(input: {
 
       updatePurchase.run(newPaid, newRemaining, newStatus, purchaseId);
 
-      insertPayment.run(
+      const paymentMethod = input.payment_method || 'cash';
+      const paymentNotes = input.notes?.trim() || `دفعة على فاتورة شراء رقم ${purchaseId}`;
+
+      const paymentResult = insertPayment.run(
         supplierId,
         purchaseId,
         finalAmount,
-        input.payment_method || 'cash',
-        input.notes?.trim() || `دفعة على فاتورة شراء رقم ${purchaseId}`
+        paymentMethod,
+        paymentNotes
       );
+
+      const paymentId = Number(paymentResult.lastInsertRowid);
+
+      syncPayments.push({
+        payment_id: paymentId,
+        purchase_id: purchaseId,
+        amount: finalAmount,
+        payment_method: paymentMethod,
+        notes: paymentNotes
+      });
 
       totalPaid = finalAmount;
       allocations.push({
         purchase_id: purchaseId,
-        amount: finalAmount
+        amount: finalAmount,
+        payment_id: paymentId
       });
     } else {
       let remainingPayment = Math.min(amountInput, supplierBalance);
@@ -1246,20 +1269,35 @@ export function recordSupplierPayment(input: {
 
         updatePurchase.run(newPaid, newRemaining, newStatus, purchase.id);
 
-        insertPayment.run(
+        const paymentMethod = input.payment_method || 'cash';
+        const paymentNotes =
+          input.notes?.trim() || `دفعة عامة موزعة على فاتورة شراء رقم ${purchase.id}`;
+
+        const paymentResult = insertPayment.run(
           supplierId,
           purchase.id,
           payNow,
-          input.payment_method || 'cash',
-          input.notes?.trim() || `دفعة عامة موزعة على فاتورة شراء رقم ${purchase.id}`
+          paymentMethod,
+          paymentNotes
         );
+
+        const paymentId = Number(paymentResult.lastInsertRowid);
+
+        syncPayments.push({
+          payment_id: paymentId,
+          purchase_id: Number(purchase.id),
+          amount: payNow,
+          payment_method: paymentMethod,
+          notes: paymentNotes
+        });
 
         totalPaid += payNow;
         remainingPayment -= payNow;
 
         allocations.push({
           purchase_id: purchase.id,
-          amount: payNow
+          amount: payNow,
+          payment_id: paymentId
         });
       }
     }
@@ -1285,6 +1323,52 @@ export function recordSupplierPayment(input: {
       reference_type: 'supplier_payment',
       notes: input.notes?.trim() || 'دفعة للمورد',
       created_by: (input as any).actor_id ?? null
+    });
+
+    const getPaymentForSync = db.prepare(`
+      SELECT *
+      FROM supplier_payments
+      WHERE id = ?
+      LIMIT 1
+    `);
+
+    const getPurchaseForSync = db.prepare(`
+      SELECT *
+      FROM purchase_invoices
+      WHERE id = ?
+      LIMIT 1
+    `);
+
+    const savedSupplier = db
+      .prepare(`SELECT * FROM suppliers WHERE id = ? LIMIT 1`)
+      .get(supplierId);
+
+    const savedPayments = syncPayments.map((payment) =>
+      getPaymentForSync.get(payment.payment_id)
+    );
+
+    const affectedPurchases = allocations
+      .filter((allocation) => allocation.purchase_id)
+      .map((allocation) => getPurchaseForSync.get(allocation.purchase_id))
+      .filter(Boolean);
+
+    enqueueSyncOperation({
+      type: 'supplier_payment.created',
+      entity: 'supplier_payments',
+      entity_id: syncPayments.map((payment) => payment.payment_id).join(','),
+      payload: {
+        supplier: savedSupplier,
+        payments: savedPayments,
+        allocations,
+        affected_purchases: affectedPurchases,
+        cash: {
+          direction: 'out',
+          amount: totalPaid,
+          payment_method: input.payment_method || 'cash',
+          reference_type: 'supplier_payment',
+          reference_id: purchaseId
+        }
+      }
     });
 
     return {
