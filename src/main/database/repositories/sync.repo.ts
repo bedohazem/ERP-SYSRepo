@@ -224,13 +224,24 @@ export function getLocalSyncStatus() {
     `)
     .get() as { open_conflicts: number };
 
+  const inboxRow = db
+    .prepare(`
+      SELECT COUNT(*) AS received_count
+      FROM sync_inbox_events
+      WHERE status = 'received'
+    `)
+    .get() as { received_count: number };
+
   return {
     device_id: deviceId,
     pending_count: Number(row.pending_count || 0),
     failed_count: Number(row.failed_count || 0),
     syncing_count: Number(row.syncing_count || 0),
     open_conflicts: Number(conflictsRow.open_conflicts || 0),
-    last_sync_at: getSyncState('last_sync_at', '')
+    last_sync_at: getSyncState('last_sync_at', ''),
+    received_server_events: Number(inboxRow.received_count || 0),
+    last_download_at: getSyncState('last_download_at', ''),
+    last_server_version: getSyncState('last_server_version', '0')
   };
 }
 
@@ -636,4 +647,171 @@ export async function uploadPendingSyncOperations(limit = 20) {
     results,
     status: getLocalSyncStatus()
   };
+}
+
+export async function downloadServerEventsFromCloud(limit = 200) {
+  const db = getDb();
+  const settings = getCloudSyncSettings();
+  const serverUrl = normalizeServerUrl(settings.cloud_server_url);
+  const deviceId = getOrCreateDeviceId();
+
+  if (!serverUrl) {
+    return {
+      success: false,
+      message: 'رابط السيرفر غير مسجل'
+    };
+  }
+
+  const sinceVersion = Number(getSyncState('last_server_version', '0') || 0);
+  const safeLimit = Math.min(Math.max(Number(limit || 200), 1), 500);
+
+  const url = new URL(`${serverUrl}/api/sync/events`);
+
+  url.searchParams.set('since_version', String(sinceVersion));
+  url.searchParams.set('limit', String(safeLimit));
+
+  if (settings.cloud_branch_id) {
+    url.searchParams.set('branch_id', settings.cloud_branch_id);
+  }
+
+  try {
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: getCloudAuthHeaders(settings.cloud_api_key)
+    });
+
+    let result: any = null;
+
+    try {
+      result = await response.json();
+    } catch {
+      result = null;
+    }
+
+    if (!response.ok || result?.success === false) {
+      return {
+        success: false,
+        status: response.status,
+        message: result?.message || `فشل سحب البيانات من السيرفر - كود ${response.status}`
+      };
+    }
+
+    const events = Array.isArray(result?.events) ? result.events : [];
+
+    const insertEvent = db.prepare(`
+      INSERT OR IGNORE INTO sync_inbox_events (
+        version,
+        operation_id,
+        device_id,
+        branch_id,
+        type,
+        entity,
+        entity_id,
+        payload,
+        status,
+        server_created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'received', ?)
+    `);
+
+    let received = 0;
+    let skippedOwnDevice = 0;
+    let latestVersion = sinceVersion;
+
+    const tx = db.transaction(() => {
+      for (const event of events) {
+        const version = Number(event.version || 0);
+
+        if (version > latestVersion) {
+          latestVersion = version;
+        }
+
+        if (String(event.device_id || '') === deviceId) {
+          skippedOwnDevice += 1;
+          continue;
+        }
+
+        const insertResult = insertEvent.run(
+          version,
+          String(event.operation_id || ''),
+          String(event.device_id || ''),
+          event.branch_id == null ? null : String(event.branch_id),
+          String(event.type || ''),
+          event.entity == null ? null : String(event.entity),
+          event.entity_id == null ? null : String(event.entity_id),
+          JSON.stringify(event.payload ?? null),
+          event.created_at || null
+        );
+
+        if (insertResult.changes > 0) {
+          received += 1;
+        }
+      }
+
+      const serverLatestVersion = Number(result?.latest_version || latestVersion || sinceVersion);
+
+      setSyncState('last_server_version', String(Math.max(serverLatestVersion, latestVersion)));
+      setSyncState('last_download_at', new Date().toISOString());
+    });
+
+    tx();
+
+    return {
+      success: true,
+      total: events.length,
+      received,
+      skipped_own_device: skippedOwnDevice,
+      since_version: sinceVersion,
+      latest_version: Number(result?.latest_version || latestVersion || sinceVersion),
+      message: `تم سحب ${received} عملية من السيرفر`
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'فشل الاتصال بالسيرفر أثناء السحب'
+    };
+  }
+}
+
+export function listDownloadedServerEvents(input?: {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const db = getDb();
+
+  const allowedStatuses = ['all', 'received', 'applied', 'failed', 'ignored'];
+  const status = allowedStatuses.includes(String(input?.status || 'all'))
+    ? String(input?.status || 'all')
+    : 'all';
+
+  const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 500);
+  const offset = Math.max(Number(input?.offset || 0), 0);
+
+  const whereSql = status === 'all' ? '' : 'WHERE status = ?';
+  const params = status === 'all' ? [limit, offset] : [status, limit, offset];
+
+  return db
+    .prepare(`
+      SELECT
+        version,
+        operation_id,
+        device_id,
+        branch_id,
+        type,
+        entity,
+        entity_id,
+        payload,
+        status,
+        error,
+        server_created_at,
+        received_at,
+        applied_at
+      FROM sync_inbox_events
+      ${whereSql}
+      ORDER BY version DESC
+      LIMIT ?
+      OFFSET ?
+    `)
+    .all(...params);
 }

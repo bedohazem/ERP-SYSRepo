@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-type TabKey = 'all' | 'pending' | 'failed' | 'synced' | 'conflicts';
+type TabKey = 'all' | 'pending' | 'failed' | 'synced' | 'conflicts' | 'inbox';
 
 export default function SyncPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('pending');
@@ -18,6 +18,9 @@ export default function SyncPage() {
 
   const [connectionResult, setConnectionResult] = useState<any>(null);
   const [uploadResult, setUploadResult] = useState<any>(null);
+
+  const [downloadedEvents, setDownloadedEvents] = useState<any[]>([]);
+  const [downloadResult, setDownloadResult] = useState<any>(null);
 
   const operationStatus = useMemo(() => {
     if (activeTab === 'pending') return 'pending';
@@ -45,6 +48,13 @@ export default function SyncPage() {
         });
 
         setConflicts(result.conflicts || []);
+      } else if (activeTab === 'inbox') {
+        const result = await window.api.listDownloadedServerEvents({
+          status: 'all',
+          limit: 200
+        });
+
+        setDownloadedEvents(result.events || []);
       } else {
         const result = await window.api.listSyncOperations({
           status: operationStatus,
@@ -106,6 +116,18 @@ export default function SyncPage() {
     try {
       const result = await window.api.uploadPendingSyncOperations(20);
       setUploadResult(result);
+      await loadData();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function downloadEventsNow() {
+    setLoading(true);
+
+    try {
+      const result = await window.api.downloadServerEvents(200);
+      setDownloadResult(result);
       await loadData();
     } finally {
       setLoading(false);
@@ -281,6 +303,9 @@ export default function SyncPage() {
           <TabButton active={activeTab === 'conflicts'} onClick={() => setActiveTab('conflicts')}>
             التعارضات
           </TabButton>
+          <TabButton active={activeTab === 'inbox'} onClick={() => setActiveTab('inbox')}>
+            وارد من السيرفر
+          </TabButton>
         </div>
 
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -290,6 +315,10 @@ export default function SyncPage() {
 
           <button type="button" onClick={() => void uploadPendingNow()} style={buttonStyle}>
             مزامنة الآن
+          </button>
+
+          <button type="button" onClick={() => void downloadEventsNow()} style={buttonStyle}>
+            سحب من السيرفر
           </button>
 
           <button type="button" onClick={() => void retryFailed()} style={dangerButtonStyle}>
@@ -311,6 +340,20 @@ export default function SyncPage() {
           {uploadResult.total != null
             ? `تم رفع ${uploadResult.uploaded} من ${uploadResult.total} - فشل ${uploadResult.failed}`
             : uploadResult.message || 'تم تنفيذ العملية'}
+        </div>
+      )}
+
+      {downloadResult && (
+        <div
+          style={{
+            ...noteStyle,
+            color: downloadResult.success ? '#86efac' : '#fca5a5',
+            borderColor: downloadResult.success
+              ? 'rgba(34,197,94,0.35)'
+              : 'rgba(239,68,68,0.35)'
+          }}
+        >
+          {downloadResult.message || `تم سحب ${downloadResult.received || 0} عملية من السيرفر`}
         </div>
       )}
 
@@ -345,6 +388,32 @@ export default function SyncPage() {
                 payload={formatPayload(conflict.payload)}
                 onResolve={() => void resolveConflict(conflict.id, 'resolved')}
                 onIgnore={() => void resolveConflict(conflict.id, 'ignored')}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      {!loading && activeTab === 'inbox' && (
+        <div style={{ display: 'grid', gap: '10px' }}>
+          {downloadedEvents.length === 0 ? (
+            <div style={noteStyle}>لا توجد عمليات واردة من السيرفر</div>
+          ) : (
+            downloadedEvents.map((event) => (
+              <OperationCard
+                key={event.version}
+                operation={{
+                  id: event.operation_id,
+                  type: event.type,
+                  entity: event.entity,
+                  entity_id: event.entity_id,
+                  status: event.status,
+                  attempts: 0,
+                  error: event.error,
+                  created_at: event.received_at
+                }}
+                payload={formatPayload(event.payload)}
+                onUpload={() => {}}
               />
             ))
           )}
@@ -394,7 +463,7 @@ function OperationCard({
 }: {
   operation: any;
   payload: string;
-  onUpload: () => void;
+  onUpload?: () => void;
 }) {
   return (
     <div style={cardStyle}>
@@ -409,7 +478,7 @@ function OperationCard({
 
       <div style={metaStyle}>Created: {operation.created_at}</div>
 
-      {operation.status !== 'synced' && (
+      {operation.status !== 'synced' && onUpload && (
         <button
           type="button"
           onClick={onUpload}

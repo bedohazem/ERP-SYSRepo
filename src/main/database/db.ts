@@ -184,6 +184,28 @@ export function getDb(): Database.Database {
       CREATE INDEX IF NOT EXISTS idx_sync_conflicts_status
       ON sync_conflicts(status, created_at);
 
+      CREATE TABLE IF NOT EXISTS sync_inbox_events (
+        version INTEGER PRIMARY KEY,
+        operation_id TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        branch_id TEXT,
+        type TEXT NOT NULL,
+        entity TEXT,
+        entity_id TEXT,
+        payload TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'received',
+        error TEXT,
+        server_created_at TEXT,
+        received_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        applied_at TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sync_inbox_events_status
+      ON sync_inbox_events(status, version);
+
+      CREATE INDEX IF NOT EXISTS idx_sync_inbox_events_type
+      ON sync_inbox_events(type);
+
       CREATE TABLE IF NOT EXISTS customers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -468,6 +490,7 @@ export function resetDatabaseData(): void {
       DELETE FROM sync_conflicts;
       DELETE FROM sync_operations;
       DELETE FROM sync_state;
+      DELETE FROM sync_inbox_events;
 
       DELETE FROM activity_logs;
       DELETE FROM expenses;
