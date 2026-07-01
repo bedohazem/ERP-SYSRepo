@@ -815,3 +815,233 @@ export function listDownloadedServerEvents(input?: {
     `)
     .all(...params);
 }
+
+function normalizeRemoteCashAccount(value?: string | null) {
+  switch (value) {
+    case 'store_cash':
+    case 'owner_cash':
+    case 'owner_bank':
+    case 'owner_vodafone':
+    case 'fawry_machine':
+      return value;
+
+    case 'cash':
+      return 'store_cash';
+
+    case 'card':
+      return 'fawry_machine';
+
+    case 'wallet':
+      return 'owner_vodafone';
+
+    case 'bank':
+    case 'bank_transfer':
+      return 'owner_bank';
+
+    default:
+      return 'store_cash';
+  }
+}
+
+function readRemoteExpensePayload(payloadText: unknown) {
+  const raw = parseSyncPayload(payloadText) as any;
+  const data = raw?.expense || raw?.input || raw?.data || raw || {};
+
+  return {
+    title: String(data.title || data.name || '').trim(),
+    category: data.category == null ? null : String(data.category).trim() || null,
+    amount: Number(data.amount || 0),
+    payment_method: normalizeRemoteCashAccount(data.payment_method || data.paymentMethod || 'cash'),
+    notes: data.notes == null ? null : String(data.notes).trim() || null
+  };
+}
+
+function markInboxEventFailed(event: any, message: string, payload?: unknown) {
+  const db = getDb();
+
+  db.prepare(`
+    UPDATE sync_inbox_events
+    SET status = 'failed',
+        error = ?
+    WHERE version = ?
+  `).run(message, event.version);
+
+  recordSyncConflict({
+    operation_id: event.operation_id,
+    type: `apply.${event.type}`,
+    message,
+    payload: JSON.stringify(payload ?? event)
+  });
+}
+
+export function applyExpenseCreatedInboxEvent(version: number) {
+  const db = getDb();
+
+  const event = db
+    .prepare(`
+      SELECT *
+      FROM sync_inbox_events
+      WHERE version = ?
+        AND type = 'expense.created'
+      LIMIT 1
+    `)
+    .get(version) as any;
+
+  if (!event) {
+    return {
+      success: false,
+      message: 'الحدث غير موجود'
+    };
+  }
+
+  if (event.status === 'applied') {
+    return {
+      success: true,
+      already_applied: true,
+      version,
+      message: 'الحدث مطبق من قبل'
+    };
+  }
+
+  if (event.status !== 'received') {
+    return {
+      success: false,
+      version,
+      message: `لا يمكن تطبيق حدث حالته ${event.status}`
+    };
+  }
+
+  const expense = readRemoteExpensePayload(event.payload);
+
+  if (!expense.title) {
+    markInboxEventFailed(event, 'عنوان المصروف الوارد من السيرفر غير موجود', expense);
+
+    return {
+      success: false,
+      version,
+      message: 'عنوان المصروف الوارد من السيرفر غير موجود'
+    };
+  }
+
+  if (!Number.isFinite(expense.amount) || expense.amount <= 0) {
+    markInboxEventFailed(event, 'قيمة المصروف الوارد من السيرفر غير صحيحة', expense);
+
+    return {
+      success: false,
+      version,
+      message: 'قيمة المصروف الوارد من السيرفر غير صحيحة'
+    };
+  }
+
+  const tx = db.transaction(() => {
+    const expenseResult = db
+      .prepare(`
+        INSERT INTO expenses (
+          title,
+          category,
+          amount,
+          payment_method,
+          notes,
+          created_by
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        expense.title,
+        expense.category,
+        expense.amount,
+        expense.payment_method,
+        expense.notes
+          ? `${expense.notes}\nوارد من المزامنة: ${event.operation_id}`
+          : `وارد من المزامنة: ${event.operation_id}`,
+        null
+      );
+
+    const expenseId = Number(expenseResult.lastInsertRowid);
+
+    db.prepare(`
+      INSERT INTO cash_movements (
+        type,
+        amount,
+        direction,
+        payment_method,
+        reference_id,
+        reference_type,
+        notes,
+        created_by
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'expense',
+      expense.amount,
+      'out',
+      expense.payment_method,
+      expenseId,
+      'expense',
+      `مصروف وارد من المزامنة: ${expense.title}`,
+      null
+    );
+
+    db.prepare(`
+      UPDATE sync_inbox_events
+      SET status = 'applied',
+          error = NULL,
+          applied_at = CURRENT_TIMESTAMP
+      WHERE version = ?
+    `).run(version);
+
+    return {
+      expense_id: expenseId
+    };
+  });
+
+  const result = tx();
+
+  return {
+    success: true,
+    version,
+    expense_id: result.expense_id,
+    message: 'تم تطبيق المصروف الوارد من السيرفر'
+  };
+}
+
+export function applyDownloadedServerEvents(limit = 50) {
+  const db = getDb();
+  const safeLimit = Math.min(Math.max(Number(limit || 50), 1), 200);
+
+  const events = db
+    .prepare(`
+      SELECT *
+      FROM sync_inbox_events
+      WHERE status = 'received'
+        AND type = 'expense.created'
+      ORDER BY version ASC
+      LIMIT ?
+    `)
+    .all(safeLimit) as any[];
+
+  let applied = 0;
+  let failed = 0;
+  const results: any[] = [];
+
+  for (const event of events) {
+    const result = applyExpenseCreatedInboxEvent(Number(event.version));
+    results.push(result);
+
+    if (result.success) {
+      applied += 1;
+    } else {
+      failed += 1;
+    }
+  }
+
+  return {
+    success: failed === 0,
+    total: events.length,
+    applied,
+    failed,
+    results,
+    status: getLocalSyncStatus(),
+    message: `تم تطبيق ${applied} مصروف وارد - فشل ${failed}`
+  };
+}

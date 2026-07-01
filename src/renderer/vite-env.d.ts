@@ -1202,6 +1202,24 @@ declare global {
         events: any[];
       }>;
 
+
+      applyDownloadedServerEvents: (limit?: number) => Promise<{
+        success: boolean;
+        total: number;
+        applied: number;
+        failed: number;
+        results: any[];
+        status: any;
+        message?: string;
+      }>;
+
+      applyDownloadedServerEvent: (version: number) => Promise<{
+        success: boolean;
+        version?: number;
+        expense_id?: number;
+        message?: string;
+      }>;
+
     
     };
   }

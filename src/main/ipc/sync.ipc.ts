@@ -12,7 +12,9 @@ import {
   uploadSyncOperationToCloud,
   uploadPendingSyncOperations,
   downloadServerEventsFromCloud,
-  listDownloadedServerEvents
+  listDownloadedServerEvents,
+  applyDownloadedServerEvents,
+  applyExpenseCreatedInboxEvent
 } from '../database/repositories/sync.repo';
 import { runCloudSyncOnce } from '../sync/cloud-sync-scheduler';
 
@@ -103,5 +105,13 @@ export function registerSyncIpc(): void {
       success: true,
       events: listDownloadedServerEvents(input)
     };
+  });
+
+  ipcMain.handle('sync:apply-downloaded-events', (_, limit?: number) => {
+    return applyDownloadedServerEvents(limit || 50);
+  });
+
+  ipcMain.handle('sync:apply-downloaded-event', (_, version: number) => {
+    return applyExpenseCreatedInboxEvent(Number(version));
   });
 }

@@ -22,6 +22,8 @@ export default function SyncPage() {
   const [downloadedEvents, setDownloadedEvents] = useState<any[]>([]);
   const [downloadResult, setDownloadResult] = useState<any>(null);
 
+  const [applyResult, setApplyResult] = useState<any>(null);
+
   const operationStatus = useMemo(() => {
     if (activeTab === 'pending') return 'pending';
     if (activeTab === 'failed') return 'failed';
@@ -128,6 +130,18 @@ export default function SyncPage() {
     try {
       const result = await window.api.downloadServerEvents(200);
       setDownloadResult(result);
+      await loadData();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function applyDownloadedNow() {
+    setLoading(true);
+
+    try {
+      const result = await window.api.applyDownloadedServerEvents(50);
+      setApplyResult(result);
       await loadData();
     } finally {
       setLoading(false);
@@ -321,6 +335,10 @@ export default function SyncPage() {
             سحب من السيرفر
           </button>
 
+          <button type="button" onClick={() => void applyDownloadedNow()} style={buttonStyle}>
+            تطبيق الوارد
+          </button>
+
           <button type="button" onClick={() => void retryFailed()} style={dangerButtonStyle}>
             إعادة محاولة الفاشل
           </button>
@@ -354,6 +372,20 @@ export default function SyncPage() {
           }}
         >
           {downloadResult.message || `تم سحب ${downloadResult.received || 0} عملية من السيرفر`}
+        </div>
+      )}
+
+      {applyResult && (
+        <div
+          style={{
+            ...noteStyle,
+            color: applyResult.success ? '#86efac' : '#fca5a5',
+            borderColor: applyResult.success
+              ? 'rgba(34,197,94,0.35)'
+              : 'rgba(239,68,68,0.35)'
+          }}
+        >
+          {applyResult.message || `تم تطبيق ${applyResult.applied || 0} من ${applyResult.total || 0}`}
         </div>
       )}
 

@@ -137,5 +137,7 @@ contextBridge.exposeInMainWorld('api', {
 
   downloadServerEvents: (limit) => ipcRenderer.invoke('sync:download-events', limit),
   listDownloadedServerEvents: (input) => ipcRenderer.invoke('sync:list-downloaded-events', input),
+  applyDownloadedServerEvents: (limit) => ipcRenderer.invoke('sync:apply-downloaded-events', limit),
+  applyDownloadedServerEvent: (version) => ipcRenderer.invoke('sync:apply-downloaded-event', version),
   
 });
