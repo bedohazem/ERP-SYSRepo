@@ -1,5 +1,6 @@
 import { getDb } from '../db';
 import { createActivityLog } from './activity.repo';
+import { enqueueSyncOperation } from './sync.repo';
 
 export type CashMovementInput = {
   type:
@@ -362,13 +363,46 @@ export function createCashTransfer(input: CashTransferInput) {
       created_by: input.created_by ?? null
     });
 
+    const outId = Number(outResult.lastInsertRowid || 0);
+    const inId = Number(inResult.lastInsertRowid || 0);
+
+    enqueueSyncOperation({
+      type: 'cash_transfer.created',
+      entity: 'cash_movements',
+      entity_id: `${outId},${inId}`,
+      payload: {
+        from_account: fromAccount,
+        to_account: toAccount,
+        amount,
+        notes: input.notes || null,
+        movements: [
+          {
+            id: outId,
+            type: 'transfer',
+            direction: 'out',
+            amount,
+            payment_method: fromAccount,
+            reference_type: 'cash_transfer'
+          },
+          {
+            id: inId,
+            type: 'transfer',
+            direction: 'in',
+            amount,
+            payment_method: toAccount,
+            reference_type: 'cash_transfer'
+          }
+        ]
+      }
+    });
+
     return {
       ok: true,
       from_account: fromAccount,
       to_account: toAccount,
       amount,
-      out_id: Number(outResult.lastInsertRowid || 0),
-      in_id: Number(inResult.lastInsertRowid || 0)
+      out_id: outId,
+      in_id: inId
     };
   });
 

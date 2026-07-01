@@ -1,4 +1,5 @@
 import { getDb } from '../db';
+import { enqueueSyncOperation } from './sync.repo';
 
 export type CategoryRow = {
   id: number;
@@ -487,6 +488,17 @@ export function createProduct(input: CreateProductInput) {
       `
     );
 
+    const syncVariants: Array<{
+      variant_id: number;
+      barcode: string;
+      size: string;
+      color: string;
+      buy_price: number;
+      sell_price: number;
+      min_stock: number;
+      opening_qty: number;
+    }> = [];
+
     for (const variant of input.variants) {
       const variantResult = insertVariant.run(
         productId,
@@ -505,6 +517,17 @@ export function createProduct(input: CreateProductInput) {
         throw new Error('كمية المخزون الافتتاحي غير صحيحة');
       }
 
+      syncVariants.push({
+        variant_id: variantId,
+        barcode: variant.barcode.trim(),
+        size: variant.size.trim(),
+        color: variant.color.trim(),
+        buy_price: Number(variant.buy_price || 0),
+        sell_price: Number(variant.sell_price || 0),
+        min_stock: Number(variant.min_stock || 0),
+        opening_qty: openingQty
+      });
+
       if (openingQty > 0) {
         insertMovement.run(
           variantId,
@@ -514,6 +537,29 @@ export function createProduct(input: CreateProductInput) {
         );
       }
     }
+
+    const savedProduct = db
+      .prepare(`SELECT * FROM products WHERE id = ? LIMIT 1`)
+      .get(productId);
+
+    enqueueSyncOperation({
+      type: 'product.created',
+      entity: 'products',
+      entity_id: productId,
+      payload: {
+        product: savedProduct,
+        variants: syncVariants,
+        stock_movements: syncVariants
+          .filter((variant) => variant.opening_qty > 0)
+          .map((variant) => ({
+            variant_id: variant.variant_id,
+            type: 'in',
+            quantity: variant.opening_qty,
+            reference_id: productId,
+            reference_type: 'opening_stock'
+          }))
+      }
+    });
 
     return productId;
   });
@@ -589,6 +635,32 @@ export function addProductVariant(input: AddProductVariantInput) {
       );
     }
 
+
+    const savedVariant = db
+      .prepare(`SELECT * FROM product_variants WHERE id = ? LIMIT 1`)
+      .get(variantId);
+
+    enqueueSyncOperation({
+      type: 'product_variant.created',
+      entity: 'product_variants',
+      entity_id: variantId,
+      payload: {
+        variant: savedVariant,
+        product_id: input.product_id,
+        opening_qty: openingQty,
+        stock_movement:
+          openingQty > 0
+            ? {
+                variant_id: variantId,
+                type: 'in',
+                quantity: openingQty,
+                reference_id: input.product_id,
+                reference_type: 'opening_stock'
+              }
+            : null
+      }
+    });
+
     return variantId;
   });
 
@@ -644,6 +716,19 @@ export function updateProduct(input: UpdateProductInput) {
     input.id
   );
 
+  const savedProduct = db
+    .prepare(`SELECT * FROM products WHERE id = ? LIMIT 1`)
+    .get(input.id);
+
+  enqueueSyncOperation({
+    type: 'product.updated',
+    entity: 'products',
+    entity_id: input.id,
+    payload: {
+      product: savedProduct
+    }
+  });
+
   return { success: true };
 }
 
@@ -691,6 +776,20 @@ export function updateVariant(input: UpdateVariantInput) {
   });
 
   tx();
+
+  const savedVariant = db
+    .prepare(`SELECT * FROM product_variants WHERE id = ? LIMIT 1`)
+    .get(input.id);
+
+  enqueueSyncOperation({
+    type: 'product_variant.updated',
+    entity: 'product_variants',
+    entity_id: input.id,
+    payload: {
+      variant: savedVariant,
+      zero_stock_if_deactivated: Number(input.is_active ?? 1) ? false : true
+    }
+  });
 
   return { success: true };
 }
