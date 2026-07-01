@@ -1165,6 +1165,24 @@ declare global {
           data?: any;
         }>;
 
+
+        uploadSyncOperation: (operationId: string) => Promise<{
+          success: boolean;
+          operation_id?: string;
+          message?: string;
+          duplicate?: boolean;
+          server_version?: number | null;
+        }>;
+
+        uploadPendingSyncOperations: (limit?: number) => Promise<{
+          success: boolean;
+          total: number;
+          uploaded: number;
+          failed: number;
+          results: any[];
+          status: any;
+        }>;
+
     
     };
   }

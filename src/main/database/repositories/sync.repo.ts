@@ -424,7 +424,7 @@ export async function testCloudSyncConnection(input?: Partial<CloudSyncSettings>
   const timer = setTimeout(() => controller.abort(), 7000);
 
   try {
-    const response = await fetch(`${serverUrl}/health`, {
+    const response = await fetch(`${serverUrl}/api/sync/ping`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -477,4 +477,163 @@ export async function testCloudSyncConnection(input?: Partial<CloudSyncSettings>
       message
     };
   }
+}
+
+function parseSyncPayload(payload: unknown) {
+  if (payload == null) return null;
+
+  if (typeof payload !== 'string') {
+    return payload;
+  }
+
+  try {
+    return JSON.parse(payload);
+  } catch {
+    return payload;
+  }
+}
+
+function getCloudAuthHeaders(apiKey: string) {
+  const cleanKey = String(apiKey || '').trim();
+
+  return {
+    'Content-Type': 'application/json',
+    ...(cleanKey ? { Authorization: `Bearer ${cleanKey}` } : {})
+  };
+}
+
+export async function uploadSyncOperationToCloud(operationId: string) {
+  const db = getDb();
+  const settings = getCloudSyncSettings();
+
+  const serverUrl = normalizeServerUrl(settings.cloud_server_url);
+
+  if (!serverUrl) {
+    return {
+      success: false,
+      message: 'رابط السيرفر غير مسجل'
+    };
+  }
+
+  const operation = db
+    .prepare(`
+      SELECT *
+      FROM sync_operations
+      WHERE id = ?
+      LIMIT 1
+    `)
+    .get(operationId) as any;
+
+  if (!operation) {
+    return {
+      success: false,
+      message: 'عملية المزامنة غير موجودة'
+    };
+  }
+
+  if (operation.status === 'synced') {
+    return {
+      success: true,
+      already_synced: true,
+      operation_id: operationId
+    };
+  }
+
+  markSyncOperationSyncing(operationId);
+
+  const body = {
+    id: operation.id,
+    operation_id: operation.id,
+    device_id: operation.device_id,
+    branch_id: settings.cloud_branch_id || null,
+    type: operation.type,
+    entity: operation.entity,
+    entity_id: operation.entity_id,
+    payload: parseSyncPayload(operation.payload),
+    created_at: operation.created_at
+  };
+
+  try {
+    const response = await fetch(`${serverUrl}/api/sync/operations`, {
+      method: 'POST',
+      headers: getCloudAuthHeaders(settings.cloud_api_key),
+      body: JSON.stringify(body)
+    });
+
+    let result: any = null;
+
+    try {
+      result = await response.json();
+    } catch {
+      result = null;
+    }
+
+    if (!response.ok || result?.success === false) {
+      const message =
+        result?.message || `فشل رفع العملية للسيرفر - كود ${response.status}`;
+
+      markSyncOperationFailed(operationId, message);
+
+      return {
+        success: false,
+        operation_id: operationId,
+        status: response.status,
+        message
+      };
+    }
+
+    markSyncOperationSynced(
+      operationId,
+      result?.server_version == null ? null : String(result.server_version)
+    );
+
+    return {
+      success: true,
+      operation_id: operationId,
+      duplicate: Boolean(result?.duplicate),
+      server_version: result?.server_version ?? null,
+      message: result?.message || 'تم رفع العملية بنجاح'
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'فشل الاتصال بسيرفر المزامنة';
+
+    markSyncOperationFailed(operationId, message);
+
+    return {
+      success: false,
+      operation_id: operationId,
+      message
+    };
+  }
+}
+
+export async function uploadPendingSyncOperations(limit = 20) {
+  const safeLimit = Math.min(Math.max(Number(limit || 20), 1), 100);
+  const operations = listPendingSyncOperations(safeLimit) as any[];
+
+  const results: any[] = [];
+  let uploaded = 0;
+  let failed = 0;
+
+  for (const operation of operations) {
+    const result = await uploadSyncOperationToCloud(operation.id);
+
+    results.push(result);
+
+    if (result.success) {
+      uploaded += 1;
+    } else {
+      failed += 1;
+    }
+  }
+
+  return {
+    success: failed === 0,
+    total: operations.length,
+    uploaded,
+    failed,
+    results,
+    status: getLocalSyncStatus()
+  };
 }

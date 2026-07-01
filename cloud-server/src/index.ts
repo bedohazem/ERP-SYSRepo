@@ -32,6 +32,27 @@ function requireApiKey(req: express.Request, res: express.Response, next: expres
   next();
 }
 
+app.get('/api/sync/ping', requireApiKey, async (_req, res) => {
+  try {
+    const db = await checkDatabaseConnection();
+
+    res.json({
+      success: true,
+      online: true,
+      service: 'erp-cloud-server',
+      database: true,
+      time: db.now
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      online: false,
+      database: false,
+      message: error instanceof Error ? error.message : 'Database connection failed'
+    });
+  }
+});
+
 app.get('/health', async (_req, res) => {
   try {
     const db = await checkDatabaseConnection();

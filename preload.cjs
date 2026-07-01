@@ -131,5 +131,8 @@ contextBridge.exposeInMainWorld('api', {
   getCloudSyncSettings: () => ipcRenderer.invoke('sync:get-cloud-settings'),
   saveCloudSyncSettings: (input) => ipcRenderer.invoke('sync:save-cloud-settings', input),
   testCloudSyncConnection: (input) => ipcRenderer.invoke('sync:test-connection', input),
+
+  uploadSyncOperation: (operationId) => ipcRenderer.invoke('sync:upload-operation', operationId),
+  uploadPendingSyncOperations: (limit) => ipcRenderer.invoke('sync:upload-pending', limit),
   
 });

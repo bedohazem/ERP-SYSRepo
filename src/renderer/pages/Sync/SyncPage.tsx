@@ -17,6 +17,7 @@ export default function SyncPage() {
   });
 
   const [connectionResult, setConnectionResult] = useState<any>(null);
+  const [uploadResult, setUploadResult] = useState<any>(null);
 
   const operationStatus = useMemo(() => {
     if (activeTab === 'pending') return 'pending';
@@ -97,6 +98,30 @@ export default function SyncPage() {
   async function testConnection() {
     const result = await window.api.testCloudSyncConnection(cloudSettings);
     setConnectionResult(result);
+  }
+
+  async function uploadPendingNow() {
+    setLoading(true);
+
+    try {
+      const result = await window.api.uploadPendingSyncOperations(20);
+      setUploadResult(result);
+      await loadData();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function uploadOneOperation(operationId: string) {
+    setLoading(true);
+
+    try {
+      const result = await window.api.uploadSyncOperation(operationId);
+      setUploadResult(result);
+      await loadData();
+    } finally {
+      setLoading(false);
+    }
   }
 
   function formatPayload(payload: any) {
@@ -263,11 +288,31 @@ export default function SyncPage() {
             تحديث
           </button>
 
+          <button type="button" onClick={() => void uploadPendingNow()} style={buttonStyle}>
+            مزامنة الآن
+          </button>
+
           <button type="button" onClick={() => void retryFailed()} style={dangerButtonStyle}>
             إعادة محاولة الفاشل
           </button>
         </div>
       </div>
+
+      {uploadResult && (
+        <div
+          style={{
+            ...noteStyle,
+            color: uploadResult.success ? '#86efac' : '#fca5a5',
+            borderColor: uploadResult.success
+              ? 'rgba(34,197,94,0.35)'
+              : 'rgba(239,68,68,0.35)'
+          }}
+        >
+          {uploadResult.total != null
+            ? `تم رفع ${uploadResult.uploaded} من ${uploadResult.total} - فشل ${uploadResult.failed}`
+            : uploadResult.message || 'تم تنفيذ العملية'}
+        </div>
+      )}
 
       {loading && <div style={noteStyle}>جاري التحميل...</div>}
 
@@ -281,6 +326,7 @@ export default function SyncPage() {
                 key={operation.id}
                 operation={operation}
                 payload={formatPayload(operation.payload)}
+                onUpload={() => void uploadOneOperation(operation.id)}
               />
             ))
           )}
@@ -341,7 +387,15 @@ function TabButton({
   );
 }
 
-function OperationCard({ operation, payload }: { operation: any; payload: string }) {
+function OperationCard({
+  operation,
+  payload,
+  onUpload
+}: {
+  operation: any;
+  payload: string;
+  onUpload: () => void;
+}) {
   return (
     <div style={cardStyle}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
@@ -354,6 +408,16 @@ function OperationCard({ operation, payload }: { operation: any; payload: string
       </div>
 
       <div style={metaStyle}>Created: {operation.created_at}</div>
+
+      {operation.status !== 'synced' && (
+        <button
+          type="button"
+          onClick={onUpload}
+          style={{ ...buttonStyle, marginTop: '10px' }}
+        >
+          رفع هذه العملية
+        </button>
+      )}
 
       {operation.error && (
         <div style={{ ...noteStyle, color: '#fca5a5', borderColor: 'rgba(239,68,68,0.35)' }}>

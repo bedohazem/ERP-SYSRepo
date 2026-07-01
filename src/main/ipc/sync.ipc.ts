@@ -8,7 +8,9 @@ import {
   resolveSyncConflict,
   getCloudSyncSettings,
   saveCloudSyncSettings,
-  testCloudSyncConnection
+  testCloudSyncConnection,
+  uploadSyncOperationToCloud,
+  uploadPendingSyncOperations
 } from '../database/repositories/sync.repo';
 
 export function registerSyncIpc(): void {
@@ -77,5 +79,11 @@ export function registerSyncIpc(): void {
     return testCloudSyncConnection(input);
   });
 
-  
+  ipcMain.handle('sync:upload-operation', async (_, operationId: string) => {
+    return uploadSyncOperationToCloud(operationId);
+  });
+
+  ipcMain.handle('sync:upload-pending', async (_, limit?: number) => {
+    return uploadPendingSyncOperations(limit || 20);
+  });  
 }
