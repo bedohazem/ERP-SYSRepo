@@ -1,6 +1,7 @@
 import { getDb } from '../db';
 import { createCashMovement } from './cash.repo';
 import { createActivityLog } from './activity.repo';
+import { enqueueSyncOperation } from './sync.repo';
 
 export type CreateLiabilityInput = {
   party_name: string;
@@ -120,8 +121,18 @@ export function createLiability(input: CreateLiabilityInput) {
         actor_id: input.actor_id ?? null
       });
     }
-
     const liability = getLiabilityByIdOrThrow(liabilityId);
+
+    enqueueSyncOperation({
+      type: 'liability.created',
+      entity: 'store_liabilities',
+      entity_id: liabilityId,
+      payload: {
+        liability,
+        initial_paid: initialPaid,
+        note: 'التزام سابق / متابعة سداد فقط'
+      }
+    });
 
     return {
       success: true,
@@ -198,6 +209,29 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
       reference_type: 'store_liability_payment',
       notes: `سداد التزام: ${liability.title} - ${liability.party_name}`,
       created_by: input.actor_id ?? null
+    });
+
+    const savedPayment = db
+      .prepare(`SELECT * FROM store_liability_payments WHERE id = ? LIMIT 1`)
+      .get(paymentId);
+
+    const savedLiability = getLiabilityByIdOrThrow(liability.id);
+
+    enqueueSyncOperation({
+      type: 'liability_payment.created',
+      entity: 'store_liability_payments',
+      entity_id: paymentId,
+      payload: {
+        payment: savedPayment,
+        liability: savedLiability,
+        cash: {
+          direction: 'out',
+          amount,
+          payment_method: input.payment_method || 'cash',
+          reference_type: 'store_liability_payment',
+          reference_id: paymentId
+        }
+      }
     });
 
     createActivityLog({
