@@ -184,12 +184,6 @@ export function getDb(): Database.Database {
       CREATE INDEX IF NOT EXISTS idx_sync_conflicts_status
       ON sync_conflicts(status, created_at);
 
-      CREATE INDEX IF NOT EXISTS idx_sync_inbox_events_status
-      ON sync_inbox_events(status, version);
-
-      CREATE INDEX IF NOT EXISTS idx_sync_inbox_events_type
-      ON sync_inbox_events(type);
-
       CREATE TABLE IF NOT EXISTS customers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,

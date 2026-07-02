@@ -36,9 +36,3 @@ ON sync_operations(status, received_at);
 
 CREATE INDEX IF NOT EXISTS idx_sync_operations_type
 ON sync_operations(type);
-
-CREATE INDEX IF NOT EXISTS idx_server_events_version
-ON server_events(version);
-
-CREATE INDEX IF NOT EXISTS idx_server_events_branch
-ON server_events(branch_id, version);
