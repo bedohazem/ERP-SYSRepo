@@ -1,7 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { checkDatabaseConnection, pool, query } from './db.js';
+import { checkDatabaseConnection, pool } from './db.js';
+import productsRouter from './routes/products.routes.js';
 
 const app = express();
 
@@ -72,6 +73,8 @@ app.get('/health', async (_req, res) => {
     });
   }
 });
+
+app.use('/api/products', requireApiKey, productsRouter);
 
 app.post('/api/sync/operations', requireApiKey, async (req, res) => {
   const body = req.body || {};
