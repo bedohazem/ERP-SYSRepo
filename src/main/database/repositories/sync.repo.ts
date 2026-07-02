@@ -224,24 +224,13 @@ export function getLocalSyncStatus() {
     `)
     .get() as { open_conflicts: number };
 
-  const inboxRow = db
-    .prepare(`
-      SELECT COUNT(*) AS received_count
-      FROM sync_inbox_events
-      WHERE status = 'received'
-    `)
-    .get() as { received_count: number };
-
   return {
     device_id: deviceId,
     pending_count: Number(row.pending_count || 0),
     failed_count: Number(row.failed_count || 0),
     syncing_count: Number(row.syncing_count || 0),
     open_conflicts: Number(conflictsRow.open_conflicts || 0),
-    last_sync_at: getSyncState('last_sync_at', ''),
-    received_server_events: Number(inboxRow.received_count || 0),
-    last_download_at: getSyncState('last_download_at', ''),
-    last_server_version: getSyncState('last_server_version', '0')
+    last_sync_at: getSyncState('last_sync_at', '')
   };
 }
 

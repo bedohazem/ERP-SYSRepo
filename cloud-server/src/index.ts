@@ -162,38 +162,12 @@ app.post('/api/sync/operations', requireApiKey, async (req, res) => {
       });
     }
 
-    const eventResult = await client.query<{ version: string }>(
-      `
-      INSERT INTO server_events (
-        operation_id,
-        device_id,
-        branch_id,
-        type,
-        entity,
-        entity_id,
-        payload
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
-      RETURNING version
-      `,
-      [
-        operationId,
-        deviceId,
-        branchId,
-        type,
-        entity,
-        entityId,
-        JSON.stringify(payload)
-      ]
-    );
-
     await client.query('COMMIT');
 
     return res.json({
       success: true,
       duplicate: false,
       operation_id: operationId,
-      server_version: Number(eventResult.rows[0].version),
       message: 'Operation received'
     });
   } catch (error) {
@@ -207,41 +181,6 @@ app.post('/api/sync/operations', requireApiKey, async (req, res) => {
   } finally {
     client.release();
   }
-});
-
-app.get('/api/sync/events', requireApiKey, async (req, res) => {
-  const sinceVersion = Number(req.query.since_version || 0);
-  const branchId = req.query.branch_id ? String(req.query.branch_id) : null;
-  const limit = Math.min(Math.max(Number(req.query.limit || 200), 1), 500);
-
-  const params: any[] = [sinceVersion, limit];
-
-  let branchSql = '';
-
-  if (branchId) {
-    branchSql = 'AND (branch_id = $3 OR branch_id IS NULL)';
-    params.push(branchId);
-  }
-
-  const result = await query(
-    `
-    SELECT *
-    FROM server_events
-    WHERE version > $1
-      ${branchSql}
-    ORDER BY version ASC
-    LIMIT $2
-    `,
-    params
-  );
-
-  res.json({
-    success: true,
-    events: result.rows,
-    latest_version: result.rows.length
-      ? Number(result.rows[result.rows.length - 1].version)
-      : sinceVersion
-  });
 });
 
 app.listen(PORT, () => {

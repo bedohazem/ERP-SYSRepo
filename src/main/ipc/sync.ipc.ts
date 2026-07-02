@@ -10,7 +10,6 @@ import {
   saveCloudSyncSettings,
   testCloudSyncConnection,
   uploadSyncOperationToCloud,
-  uploadPendingSyncOperations,
 } from '../database/repositories/sync.repo';
 import { runCloudSyncOnce } from '../sync/cloud-sync-scheduler';
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-type TabKey = 'all' | 'pending' | 'failed' | 'synced' | 'conflicts' | 'inbox';
+type TabKey = 'all' | 'pending' | 'failed' | 'synced' | 'conflicts';
 
 export default function SyncPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('pending');

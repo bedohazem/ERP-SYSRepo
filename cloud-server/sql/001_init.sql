@@ -37,18 +37,6 @@ ON sync_operations(status, received_at);
 CREATE INDEX IF NOT EXISTS idx_sync_operations_type
 ON sync_operations(type);
 
-CREATE TABLE IF NOT EXISTS server_events (
-  version BIGSERIAL PRIMARY KEY,
-  operation_id TEXT NOT NULL,
-  device_id TEXT NOT NULL,
-  branch_id TEXT,
-  type TEXT NOT NULL,
-  entity TEXT,
-  entity_id TEXT,
-  payload JSONB NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
 CREATE INDEX IF NOT EXISTS idx_server_events_version
 ON server_events(version);
 
