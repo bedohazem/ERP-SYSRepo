@@ -27,6 +27,8 @@ type SaleVariant = {
   stock: number;
   min_stock: number;
   is_active: number;
+  online?: boolean;
+  cached?: boolean;
 };
 
 type Category = {

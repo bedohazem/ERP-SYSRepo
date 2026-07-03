@@ -1,4 +1,10 @@
 import { getCloudSyncSettings } from '../database/repositories/sync.repo';
+import {
+  getCachedOnlineVariantByBarcode,
+  saveOnlineVariantCache,
+  saveOnlineVariantsCache,
+  searchCachedOnlineSaleVariants
+} from './online-product-cache.repo';
 
 function normalizeServerUrl(url: string) {
   return String(url || '').trim().replace(/\/+$/, '');
@@ -96,11 +102,26 @@ export async function getOnlineVariantByBarcode(barcode: string) {
       };
     }
 
+    const variant = mapCloudVariant(result.variant);
+
+    saveOnlineVariantCache(variant);
+
     return {
       success: true,
-      variant: mapCloudVariant(result.variant)
+      variant
     };
   } catch (error) {
+    const cached = getCachedOnlineVariantByBarcode(barcode);
+
+    if (cached) {
+      return {
+        success: true,
+        cached: true,
+        variant: cached,
+        message: 'تم قراءة الصنف من الكاش المحلي'
+      };
+    }
+
     return {
       success: false,
       network_error: true,
@@ -178,11 +199,23 @@ export async function searchOnlineSaleVariants(input: any) {
         )
       : [];
 
+    saveOnlineVariantsCache(variants);
+
     return {
       success: true,
       variants
     };
   } catch {
+    const cachedVariants = searchCachedOnlineSaleVariants(input);
+
+    if (cachedVariants.length > 0) {
+      return {
+        success: true,
+        cached: true,
+        variants: cachedVariants
+      };
+    }
+
     return {
       success: false,
       network_error: true,

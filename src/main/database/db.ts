@@ -184,6 +184,29 @@ export function getDb(): Database.Database {
       CREATE INDEX IF NOT EXISTS idx_sync_conflicts_status
       ON sync_conflicts(status, created_at);
 
+      CREATE TABLE IF NOT EXISTS online_product_cache (
+        variant_id TEXT PRIMARY KEY,
+        product_id TEXT,
+        product_name TEXT NOT NULL,
+        category_id TEXT,
+        category_name TEXT,
+        barcode TEXT,
+        size TEXT,
+        color TEXT,
+        sell_price REAL NOT NULL DEFAULT 0,
+        buy_price REAL NOT NULL DEFAULT 0,
+        stock REAL NOT NULL DEFAULT 0,
+        min_stock REAL NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        cached_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_online_product_cache_barcode
+      ON online_product_cache(barcode);
+
+      CREATE INDEX IF NOT EXISTS idx_online_product_cache_name
+      ON online_product_cache(product_name);
+
       CREATE TABLE IF NOT EXISTS customers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -468,7 +491,7 @@ export function resetDatabaseData(): void {
       DELETE FROM sync_conflicts;
       DELETE FROM sync_operations;
       DELETE FROM sync_state;
-      
+      DELETE FROM online_product_cache;
 
       DELETE FROM activity_logs;
       DELETE FROM expenses;
