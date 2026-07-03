@@ -230,6 +230,9 @@ declare global {
         offline?: boolean;
         invoice_no?: string | null;
         cloud_sale_id?: string | null;
+        pending_sync?: boolean;
+        client_operation_id?: string;
+        message?: string;
         receipt?: {
           sale: {
             id: number | string;

@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { getCloudSyncSettings } from '../database/repositories/sync.repo';
+import {
+  enqueueSyncOperation,
+  getCloudSyncSettings
+} from '../database/repositories/sync.repo';
 
 function normalizeServerUrl(url: string) {
   return String(url || '').trim().replace(/\/+$/, '');
@@ -8,6 +11,10 @@ function normalizeServerUrl(url: string) {
 function toNumber(value: unknown) {
   const num = Number(value || 0);
   return Number.isFinite(num) ? num : 0;
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
 function getHeaders(apiKey: string) {
@@ -56,7 +63,7 @@ function buildCloudSaleReceipt(sale: any) {
   };
 }
 
-function buildOnlineSaleBody(input: any) {
+function buildOnlineSaleBody(input: any, clientOperationId: string) {
   const settings = getCloudSyncSettings();
 
   return {
@@ -66,7 +73,7 @@ function buildOnlineSaleBody(input: any) {
     cashier_id: null,
     customer_id: null,
 
-    client_operation_id: `online_sale_${randomUUID()}`,
+    client_operation_id: clientOperationId,
 
     discount_value: toNumber(input.discount_value),
     paid_amount: input.paid == null ? toNumber(input.grand_total) : toNumber(input.paid),
@@ -84,6 +91,89 @@ function buildOnlineSaleBody(input: any) {
   };
 }
 
+function buildPendingOnlineReceipt(input: any, cloudSaleBody: any, reason: string) {
+  const invoiceNo = `OFFLINE-${String(cloudSaleBody.client_operation_id || '')
+    .slice(-8)
+    .toUpperCase()}`;
+
+  const items = Array.isArray(input.items)
+    ? input.items.map((item: any, index: number) => {
+        const quantity = toNumber(item.quantity);
+        const unitPrice = toNumber(item.unit_price);
+        const lineTotal = roundMoney(quantity * unitPrice);
+
+        return {
+          id: `${cloudSaleBody.client_operation_id}_item_${index + 1}`,
+          product_name: item.product_name || item.barcode || 'صنف',
+          barcode: item.barcode || null,
+          size: item.size || null,
+          color: item.color || null,
+          quantity,
+          unit_price: unitPrice,
+          line_total: lineTotal
+        };
+      })
+    : [];
+
+  const subTotal = roundMoney(
+    items.reduce((sum: number, item: any) => sum + toNumber(item.line_total), 0)
+  );
+
+  const discountValue = Math.min(Math.max(toNumber(input.discount_value), 0), subTotal);
+  const grandTotal = roundMoney(subTotal - discountValue);
+  const paidAmount = input.paid == null ? grandTotal : toNumber(input.paid);
+  const remainingAmount = roundMoney(grandTotal - paidAmount);
+
+  return {
+    sale: {
+      id: invoiceNo,
+      invoice_no: invoiceNo,
+      customer_name: null,
+      customer_phone: null,
+      cashier_name: null,
+      sub_total: subTotal,
+      discount_value: discountValue,
+      grand_total: grandTotal,
+      paid: paidAmount,
+      remaining_amount: remainingAmount,
+      payment_status:
+        remainingAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid',
+      change_amount: 0,
+      payment_method: input.payment_method || 'cash',
+      loyalty_points_earned: 0,
+      loyalty_points_redeemed: 0,
+      loyalty_discount_value: 0,
+      created_at: new Date().toISOString(),
+      offline_pending: true,
+      offline_reason: reason
+    },
+    items,
+    loyalty: []
+  };
+}
+
+function enqueuePendingOnlineSale(input: any, cloudSaleBody: any, reason: string) {
+  const receipt = buildPendingOnlineReceipt(input, cloudSaleBody, reason);
+
+  const operation = enqueueSyncOperation({
+    operation_id: cloudSaleBody.client_operation_id,
+    type: 'sale.created',
+    entity: 'sales',
+    entity_id: cloudSaleBody.client_operation_id,
+    payload: {
+      mode: 'online_sale_pending',
+      cloud_sale_body: cloudSaleBody,
+      offline_receipt: receipt,
+      offline_reason: reason
+    }
+  });
+
+  return {
+    operation_id: operation.operation_id,
+    receipt
+  };
+}
+
 export async function createOnlineSale(input: any) {
   const settings = getCloudSyncSettings();
 
@@ -91,7 +181,7 @@ export async function createOnlineSale(input: any) {
     return {
       success: false,
       skipped: true,
-      can_fallback: false,
+      can_fallback: true,
       message: 'Online mode disabled'
     };
   }
@@ -107,7 +197,8 @@ export async function createOnlineSale(input: any) {
     };
   }
 
-  const body = buildOnlineSaleBody(input);
+  const clientOperationId = `online_sale_${randomUUID()}`;
+  const body = buildOnlineSaleBody(input, clientOperationId);
 
   try {
     const response = await fetch(`${serverUrl}/api/sales`, {
@@ -147,12 +238,20 @@ export async function createOnlineSale(input: any) {
       message: 'تم حفظ الفاتورة أونلاين'
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : 'تعذر الاتصال بالسيرفر';
+    const pending = enqueuePendingOnlineSale(input, body, message);
+
     return {
-      success: false,
-      attempted: true,
-      can_fallback: true,
-      network_error: true,
-      message: error instanceof Error ? error.message : 'تعذر الاتصال بالسيرفر'
+      success: true,
+      online: false,
+      offline: true,
+      pending_sync: true,
+      saleId: pending.receipt.sale.invoice_no,
+      invoice_no: pending.receipt.sale.invoice_no,
+      client_operation_id: pending.operation_id,
+      receipt: pending.receipt,
+      message: 'تم حفظ الفاتورة أوفلاين وستُرفع عند رجوع السيرفر',
+      offline_reason: message
     };
   }
 }

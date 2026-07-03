@@ -530,6 +530,9 @@ function markSyncOperationConflict(operationId: string, message: string, payload
 
 function buildOfflineSaleCloudBody(operation: any, settings: CloudSyncSettings) {
   const payload = parseSyncPayload(operation.payload) as any;
+  if (payload?.cloud_sale_body) {
+    return payload.cloud_sale_body;
+  }
   const sale = payload?.sale || {};
   const items = Array.isArray(payload?.items) ? payload.items : [];
 
