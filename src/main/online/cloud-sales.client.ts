@@ -91,7 +91,7 @@ export async function createOnlineSale(input: any) {
     return {
       success: false,
       skipped: true,
-      can_fallback: true,
+      can_fallback: false,
       message: 'Online mode disabled'
     };
   }

@@ -9,6 +9,10 @@ import {
   getSaleReturnHistory,
   listSaleReturns
 } from '../database/repositories/sales.repo';
+import {
+  getOnlineVariantByBarcode,
+  searchOnlineSaleVariants
+} from '../online/cloud-products.client';
 
 import {
   getVariantByBarcode,
@@ -19,7 +23,7 @@ export function registerSalesIpc(): void {
 
   ipcMain.handle(
     'sales:search-variants',
-    (
+    async (
       _,
       payload:
         | string
@@ -29,14 +33,36 @@ export function registerSalesIpc(): void {
             limit?: number;
           }
     ) => {
-      return searchSaleVariants(
-        typeof payload === 'string' ? payload ?? '' : payload ?? { query: '' }
-      );
+      const onlineResult = await searchOnlineSaleVariants(payload);
+
+      if (onlineResult.success) {
+        return onlineResult.variants;
+      }
+
+      if (onlineResult.can_fallback) {
+        return searchSaleVariants(
+          typeof payload === 'string' ? payload ?? '' : payload ?? { query: '' }
+        );
+      }
+
+      throw new Error(onlineResult.message || 'فشل البحث عن الأصناف من السيرفر');
     }
   );
 
-  ipcMain.handle('sales:get-variant-by-barcode', (_, barcode: string) => {
-    return getVariantByBarcode(barcode ?? '');
+  ipcMain.handle('sales:get-variant-by-barcode', async (_, barcode: string) => {
+    const cleanBarcode = String(barcode || '').trim();
+
+    const onlineResult = await getOnlineVariantByBarcode(cleanBarcode);
+
+    if (onlineResult.success) {
+      return onlineResult.variant;
+    }
+
+    if (onlineResult.can_fallback) {
+      return getVariantByBarcode(cleanBarcode);
+    }
+
+    throw new Error(onlineResult.message || 'الصنف غير موجود على السيرفر');
   });
 
   ipcMain.handle('sales:create', async (_, input) => {

@@ -14,8 +14,8 @@ import {
 import QRCode from 'qrcode';
 
 type SaleVariant = {
-  variant_id: number;
-  product_id: number;
+  variant_id: number | string;
+  product_id: number | string;
   product_name: string;
   category_id?: number | null;
   category_name?: string | null;
@@ -181,8 +181,8 @@ function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
   const cart = Array.isArray(raw?.cart)
     ? raw.cart
         .map((item: any) => ({
-          variant_id: Number(item.variant_id),
-          product_id: Number(item.product_id || 0),
+          variant_id: item.variant_id,
+          product_id: item.product_id || 0,
           product_name: String(item.product_name || ''),
           barcode: String(item.barcode || ''),
           size: String(item.size || ''),
@@ -194,7 +194,7 @@ function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
           is_active: Number(item.is_active ?? 1),
           quantity: Math.max(1, Number(item.quantity || 1))
         }))
-        .filter((item: CartItem) => Number.isFinite(item.variant_id) && item.variant_id > 0)
+        .filter((item: CartItem) => Boolean(item.variant_id))
     : [];
 
   const customer = raw?.customer?.id ? normalizeCustomer(raw.customer) : null;
@@ -677,7 +677,7 @@ export default function SalesPage() {
     focusMainInput();
   }
 
-  function updateQty(variantId: number, qty: number) {
+  function updateQty(variantId: number | string, qty: number) {
     const nextCart = activeInvoice.cart.map((item) =>
       item.variant_id === variantId
         ? {
@@ -690,7 +690,7 @@ export default function SalesPage() {
     setActiveCart(nextCart);
   }
 
-  function removeLine(variantId: number) {
+  function removeLine(variantId: number | string) {
     setActiveCart(activeInvoice.cart.filter((item) => item.variant_id !== variantId));
     focusMainInput();
   }
@@ -1106,6 +1106,12 @@ export default function SalesPage() {
     setSaving(true);
 
     try {
+      const hasOnlineItems = activeInvoice.cart.some((item) => (item as any).online);
+
+      if (hasOnlineItems && !navigator.onLine) {
+        showMessage('error', 'الفاتورة أونلاين ولا يمكن حفظها محليًا والجهاز أوفلاين');
+        return;
+      }
       const result = await window.api.createSale({
         user_id: user.id,
         customer_id: activeInvoice.customer?.id ?? null,
