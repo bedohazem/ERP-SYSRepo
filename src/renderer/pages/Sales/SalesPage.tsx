@@ -62,7 +62,8 @@ type LoyaltySettings = {
 
 type SaleReceipt = {
   sale: {
-    id: number;
+    id: number | string;
+    invoice_no?: string | null;
     customer_name?: string | null;
     customer_phone?: string | null;
     cashier_name?: string | null;
@@ -80,7 +81,7 @@ type SaleReceipt = {
     created_at?: string | null;
   };
   items: Array<{
-    id: number;
+    id: number | string;
     product_name: string;
     barcode?: string | null;
     size?: string | null;
@@ -917,7 +918,7 @@ export default function SalesPage() {
             <div class="line"></div>
 
             <div class="receipt-title">فاتورة بيع</div>
-            <div class="store-info">رقم الفاتورة: #${escapeHtml(receipt.sale.id)}</div>
+            <div class="store-info">رقم الفاتورة: #${escapeHtml(receipt.sale.invoice_no || receipt.sale.id)}</div>
             <div class="store-info">${escapeHtml(formatReceiptDate(receipt.sale.created_at))}</div>
           </div>
 
@@ -1130,24 +1131,34 @@ export default function SalesPage() {
         }))
       });
 
-      const savedSaleId = Number(result.saleId);
+      const savedSaleId = result.saleId;
       const savedPaymentMethod = activeInvoice.paymentMethod || 'cash';
+      const numericSaleId = Number(savedSaleId);
 
       if (savedPaymentMethod === 'cash' && cashDrawerAutoOpen) {
-        void handleOpenCashDrawer('sale', savedSaleId, false);
+        void handleOpenCashDrawer(
+          'sale',
+          Number.isFinite(numericSaleId) ? numericSaleId : null,
+          false
+        );
       }
 
       try {
-        const receipt = await window.api.getSaleReceipt(Number(result.saleId));
-        setShowPaymentModal(false);
-        setReceiptData(receipt);
+        if (result.receipt) {
+          setShowPaymentModal(false);
+          setReceiptData(result.receipt);
+        } else {
+          const receipt = await window.api.getSaleReceipt(Number(result.saleId));
+          setShowPaymentModal(false);
+          setReceiptData(receipt);
+        }
       } catch (receiptError) {
         console.error('Failed to load receipt:', receiptError);
 
         const earned = Number(result?.loyalty_points_earned || 0);
         const successText = earned > 0
-          ? `تم حفظ الفاتورة رقم ${result.saleId} وكسب العميل ${earned} نقطة`
-          : `تم حفظ الفاتورة رقم ${result.saleId}`;
+          ? `تم حفظ الفاتورة رقم ${result.invoice_no || result.saleId} وكسب العميل ${earned} نقطة`
+          : `تم حفظ الفاتورة رقم ${result.invoice_no || result.saleId}`;
 
         setShowPaymentModal(false);
         showMessage('success', successText);

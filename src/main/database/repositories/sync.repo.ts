@@ -502,6 +502,129 @@ function getCloudAuthHeaders(apiKey: string) {
   };
 }
 
+function markSyncOperationConflict(operationId: string, message: string, payload?: unknown) {
+  const db = getDb();
+
+  db.prepare(`
+    UPDATE sync_operations
+    SET status = 'conflict',
+        error = ?,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(message, operationId);
+
+  recordSyncConflict({
+    operation_id: operationId,
+    type: 'sale.created',
+    message,
+    payload
+  });
+
+  return {
+    success: false,
+    conflict: true,
+    operation_id: operationId,
+    message
+  };
+}
+
+function buildOfflineSaleCloudBody(operation: any, settings: CloudSyncSettings) {
+  const payload = parseSyncPayload(operation.payload) as any;
+  const sale = payload?.sale || {};
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+
+  return {
+    branch_id: settings.cloud_branch_id || 'main',
+    warehouse_id: 'main-warehouse',
+    cash_register_id: 'main-cashier-1',
+    cashier_id: null,
+    customer_id: null,
+
+    client_operation_id: operation.id,
+
+    discount_value: Number(sale.discount_value || 0),
+    paid_amount: Number(sale.paid ?? sale.grand_total ?? 0),
+    payment_method: sale.payment_method || 'cash',
+    notes: sale.notes ?? null,
+
+    items: items.map((item: any) => ({
+      barcode: item.barcode || null,
+      variant_id: item.barcode ? null : String(item.variant_id || ''),
+      quantity: Number(item.quantity || 0),
+      unit_price: Number(item.unit_price || 0)
+    }))
+  };
+}
+
+async function uploadSaleCreatedOperationToCloud(
+  operation: any,
+  settings: CloudSyncSettings,
+  serverUrl: string
+) {
+  const body = buildOfflineSaleCloudBody(operation, settings);
+
+  try {
+    const response = await fetch(`${serverUrl}/api/sales`, {
+      method: 'POST',
+      headers: getCloudAuthHeaders(settings.cloud_api_key),
+      body: JSON.stringify(body)
+    });
+
+    let result: any = null;
+
+    try {
+      result = await response.json();
+    } catch {
+      result = null;
+    }
+
+    if (!response.ok || result?.success === false) {
+      const message =
+        result?.message || `فشل رفع فاتورة الأوفلاين للسيرفر - كود ${response.status}`;
+
+      if (response.status === 409 || result?.code === 'INSUFFICIENT_STOCK') {
+        return markSyncOperationConflict(operation.id, message, {
+          cloud_body: body,
+          response: result
+        });
+      }
+
+      markSyncOperationFailed(operation.id, message);
+
+      return {
+        success: false,
+        operation_id: operation.id,
+        status: response.status,
+        message
+      };
+    }
+
+    markSyncOperationSynced(
+      operation.id,
+      result?.sale?.invoice_no || result?.sale?.id || null
+    );
+
+    return {
+      success: true,
+      operation_id: operation.id,
+      sale_id: result?.sale?.id,
+      invoice_no: result?.sale?.invoice_no,
+      message: 'تم رفع فاتورة الأوفلاين كسيل حقيقية'
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'فشل الاتصال أثناء رفع فاتورة الأوفلاين';
+
+    markSyncOperationFailed(operation.id, message);
+
+    return {
+      success: false,
+      operation_id: operation.id,
+      message
+    };
+  }
+}
+
 export async function uploadSyncOperationToCloud(operationId: string) {
   const db = getDb();
   const settings = getCloudSyncSettings();
@@ -540,6 +663,10 @@ export async function uploadSyncOperationToCloud(operationId: string) {
   }
 
   markSyncOperationSyncing(operationId);
+
+  if (operation.type === 'sale.created') {
+    return uploadSaleCreatedOperationToCloud(operation, settings, serverUrl);
+  }
 
   const body = {
     id: operation.id,

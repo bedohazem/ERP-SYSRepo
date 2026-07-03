@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { getActorId, logAction } from './activity-helper';
+import { createOnlineSale } from '../online/cloud-sales.client';
 import {
   createSale,
   getSaleReceipt,
@@ -38,7 +39,17 @@ export function registerSalesIpc(): void {
     return getVariantByBarcode(barcode ?? '');
   });
 
-  ipcMain.handle('sales:create', (_, input) => {
+  ipcMain.handle('sales:create', async (_, input) => {
+    const onlineResult = await createOnlineSale(input);
+
+    if (onlineResult.success) {
+      return onlineResult;
+    }
+
+    if (onlineResult.attempted && !onlineResult.can_fallback) {
+      throw new Error(onlineResult.message || 'فشل البيع الأونلاين');
+    }
+
     const result = createSale(input);
 
     logAction({
@@ -51,11 +62,18 @@ export function registerSalesIpc(): void {
         grand_total: result.grand_total ?? input.grand_total,
         paid: input.paid,
         payment_method: input.payment_method,
-        items_count: input.items?.length || 0
+        items_count: input.items?.length || 0,
+        offline_fallback: Boolean(onlineResult.attempted),
+        offline_reason: onlineResult.message || null
       }
     });
 
-    return result;
+    return {
+      ...result,
+      online: false,
+      offline: Boolean(onlineResult.attempted),
+      offline_reason: onlineResult.message || null
+    };
   });
 
   ipcMain.handle('sales:get-receipt', (_, saleId: number) => {

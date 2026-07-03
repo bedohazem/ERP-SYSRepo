@@ -224,11 +224,52 @@ declare global {
       getVariantByBarcode: (barcode: string) => Promise<any | null>;
 
       createSale: (input: any) => Promise<{
-        saleId: number;
+        success?: boolean;
+        saleId: number | string;
+        online?: boolean;
+        offline?: boolean;
+        invoice_no?: string | null;
+        cloud_sale_id?: string | null;
+        receipt?: {
+          sale: {
+            id: number | string;
+            invoice_no?: string | null;
+            customer_name?: string | null;
+            customer_phone?: string | null;
+            cashier_name?: string | null;
+            sub_total: number;
+            discount_value?: number;
+            grand_total: number;
+            paid?: number;
+            remaining_amount?: number;
+            payment_status?: string;
+            change_amount?: number;
+            payment_method?: string | null;
+            loyalty_points_earned?: number;
+            loyalty_points_redeemed?: number;
+            loyalty_discount_value?: number;
+            created_at?: string | null;
+          };
+          items: Array<{
+            id: number | string;
+            product_name: string;
+            barcode?: string | null;
+            size?: string | null;
+            color?: string | null;
+            quantity: number;
+            unit_price: number;
+            line_total: number;
+          }>;
+          loyalty: any[];
+        };
         loyalty_points_earned?: number;
         loyalty_points_redeemed?: number;
         loyalty_discount_value?: number;
         grand_total?: number;
+        paid_amount?: number;
+        remaining_amount?: number;
+        payment_status?: string;
+        offline_reason?: string | null;
       }>;
 
       getSaleReceipt: (saleId: number) => Promise<{
