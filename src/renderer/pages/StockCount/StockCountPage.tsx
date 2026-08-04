@@ -73,6 +73,7 @@ export default function StockCountPage() {
   const [barcode, setBarcode] = useState('')
   const [scanMessage, setScanMessage] = useState('')
   const [savingItemId, setSavingItemId] = useState<number | null>(null)
+  const [savingAll, setSavingAll] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
 
   const [search, setSearch] = useState('')
@@ -286,10 +287,28 @@ export default function StockCountPage() {
   }
 
   function updateLocalActual(itemId: number, value: string) {
-    setActualDrafts((prev) => ({
-      ...prev,
-      [itemId]: value,
-    }))
+    const item = selected?.items.find((row) => row.id === itemId)
+    const savedValue = item?.actual_stock
+
+    setActualDrafts((prev) => {
+      const next = { ...prev }
+
+      const returnedToSavedValue =
+        savedValue !== null &&
+        savedValue !== undefined &&
+        value !== '' &&
+        Number(value) === Number(savedValue)
+
+      // لو المستخدم رجع لنفس القيمة المحفوظة،
+      // نشيل الصنف من قائمة التعديلات.
+      if (returnedToSavedValue) {
+        delete next[itemId]
+      } else {
+        next[itemId] = value
+      }
+
+      return next
+    })
   }
 
   async function saveItem(item: StockCountItem) {
@@ -343,6 +362,100 @@ export default function StockCountPage() {
       showMessage('حدث خطأ أثناء حفظ الكمية')
     } finally {
       setSavingItemId(null)
+    }
+  }
+
+  async function saveAllItems() {
+    if (!selected || savingAll) return
+
+    const draftEntries = Object.entries(actualDrafts)
+
+    if (draftEntries.length === 0) {
+      showMessage('لا توجد كميات جديدة للحفظ')
+      return
+    }
+
+    const itemsToSave = draftEntries.map(([itemId, rawValue]) => {
+      const item = selected.items.find((row) => row.id === Number(itemId))
+
+      return {
+        item,
+        rawValue,
+        actualStock: Number(rawValue),
+      }
+    })
+
+    const invalidItem = itemsToSave.find(
+      ({ item, rawValue, actualStock }) =>
+        !item ||
+        rawValue === '' ||
+        !Number.isFinite(actualStock) ||
+        actualStock < 0,
+    )
+
+    if (invalidItem) {
+      showMessage('يوجد صنف بكمية غير صحيحة')
+      return
+    }
+
+    setSavingAll(true)
+
+    const savedIds: number[] = []
+    let failedCount = 0
+
+    try {
+      for (const row of itemsToSave) {
+        if (!row.item) {
+          failedCount += 1
+          continue
+        }
+
+        try {
+          const result = await window.api.updateStockCountItem({
+            session_id: selected.session.id,
+            item_id: row.item.id,
+            actual_stock: row.actualStock,
+            notes: row.item.notes || null,
+          })
+
+          if (result?.success === false) {
+            failedCount += 1
+            continue
+          }
+
+          savedIds.push(row.item.id)
+        } catch (error) {
+          console.error(
+            `Failed to save stock count item ${row.item.id}:`,
+            error,
+          )
+
+          failedCount += 1
+        }
+      }
+
+      // نحذف من المسودات الأصناف التي تم حفظها فقط.
+      setActualDrafts((prev) => {
+        const next = { ...prev }
+
+        for (const itemId of savedIds) {
+          delete next[itemId]
+        }
+
+        return next
+      })
+
+      await openSession(selected.session.id, false)
+
+      if (failedCount > 0) {
+        showMessage(
+          `تم حفظ ${savedIds.length} صنف، وفشل حفظ ${failedCount} صنف`,
+        )
+      } else {
+        showMessage(`تم حفظ ${savedIds.length} صنف بنجاح`)
+      }
+    } finally {
+      setSavingAll(false)
     }
   }
 
@@ -628,11 +741,41 @@ export default function StockCountPage() {
             </div>
 
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              {isOpen && (
+                <button
+                  type="button"
+                  onClick={saveAllItems}
+                  disabled={savingAll || Object.keys(actualDrafts).length === 0}
+                  style={{
+                    ...primaryButtonStyle,
+                    opacity:
+                      savingAll || Object.keys(actualDrafts).length === 0
+                        ? 0.6
+                        : 1,
+                  }}
+                >
+                  {savingAll
+                    ? 'جاري حفظ الكل...'
+                    : `حفظ الكل${
+                        Object.keys(actualDrafts).length > 0
+                          ? ` (${Object.keys(actualDrafts).length})`
+                          : ''
+                      }`}
+                </button>
+              )}
+
               {isAdmin && isOpen && (
                 <>
                   <button
                     type="button"
-                    onClick={() => setConfirmAction('approve')}
+                    onClick={() => {
+                      if (Object.keys(actualDrafts).length > 0) {
+                        showMessage('اضغط حفظ الكل قبل اعتماد الجرد')
+                        return
+                      }
+
+                      setConfirmAction('approve')
+                    }}
                     disabled={actionLoading}
                     style={successButtonStyle}
                   >
@@ -652,7 +795,14 @@ export default function StockCountPage() {
 
               <button
                 type="button"
-                onClick={() => setSelected(null)}
+                onClick={() => {
+                  if (Object.keys(actualDrafts).length > 0) {
+                    showMessage('يوجد كميات غير محفوظة، اضغط حفظ الكل أولًا')
+                    return
+                  }
+
+                  setSelected(null)
+                }}
                 style={secondaryButtonStyle}
               >
                 إغلاق الجلسة
@@ -824,6 +974,28 @@ export default function StockCountPage() {
                       ? Number(actual) - Number(item.system_stock)
                       : null
 
+                    const hasDraft = Object.prototype.hasOwnProperty.call(
+                      actualDrafts,
+                      item.id,
+                    )
+
+                    const rawDraft = hasDraft ? actualDrafts[item.id] : ''
+                    const draftNumber = Number(rawDraft)
+
+                    const hasValidDraft =
+                      hasDraft &&
+                      rawDraft !== '' &&
+                      Number.isFinite(draftNumber) &&
+                      draftNumber >= 0
+
+                    const isSaved =
+                      item.actual_stock !== null &&
+                      item.actual_stock !== undefined &&
+                      !hasDraft
+
+                    const saveButtonDisabled =
+                      savingItemId === item.id || savingAll || !hasValidDraft
+
                     return (
                       <tr
                         key={item.id}
@@ -936,10 +1108,32 @@ export default function StockCountPage() {
                             <button
                               type="button"
                               onClick={() => saveItem(item)}
-                              disabled={savingItemId === item.id}
-                              style={smallButtonStyle}
+                              disabled={saveButtonDisabled}
+                              style={{
+                                ...smallButtonStyle,
+
+                                ...(isSaved
+                                  ? {
+                                      background: 'rgba(34, 197, 94, 0.14)',
+                                      border:
+                                        '1px solid rgba(34, 197, 94, 0.35)',
+                                      color: '#86efac',
+                                    }
+                                  : {}),
+
+                                opacity: saveButtonDisabled ? 0.55 : 1,
+                                cursor: saveButtonDisabled
+                                  ? 'not-allowed'
+                                  : 'pointer',
+                              }}
                             >
-                              {savingItemId === item.id ? 'حفظ...' : 'حفظ'}
+                              {savingItemId === item.id
+                                ? 'حفظ...'
+                                : hasValidDraft
+                                  ? 'حفظ'
+                                  : isSaved
+                                    ? '✓ محفوظ'
+                                    : 'اكتب الكمية'}
                             </button>
                           ) : (
                             '—'
