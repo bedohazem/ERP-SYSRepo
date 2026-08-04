@@ -217,18 +217,21 @@ export default function StockCountPage() {
     }
   }
 
-  async function openSession(sessionId: number) {
+  async function openSession(sessionId: number, resetView = true) {
     setLoadingDetails(true)
 
     try {
       const data = await window.api.getStockCountSession(sessionId)
       setSelected(data)
-      setActualDrafts({})
-      setSearch('')
-      setFilter('all')
-      setCountCategoryFilter('all')
-      setBarcode('')
-      setScanMessage('')
+
+      if (resetView) {
+        setActualDrafts({})
+        setSearch('')
+        setFilter('all')
+        setCountCategoryFilter('all')
+        setBarcode('')
+        setScanMessage('')
+      }
     } catch (error) {
       console.error('Failed to load stock count session:', error)
       showMessage('حدث خطأ أثناء فتح جلسة الجرد')
@@ -327,8 +330,14 @@ export default function StockCountPage() {
         return
       }
 
+      setActualDrafts((prev) => {
+        const next = { ...prev }
+        delete next[item.id]
+        return next
+      })
+
       showMessage('تم حفظ الكمية')
-      await openSession(selected.session.id)
+      await openSession(selected.session.id, false)
     } catch (error) {
       console.error('Failed to save stock count item:', error)
       showMessage('حدث خطأ أثناء حفظ الكمية')

@@ -200,15 +200,38 @@ export function getStockCountSession(sessionId: number) {
   if (session.status === 'open') {
     db.prepare(
       `
-      UPDATE stock_count_items
-      SET system_stock = (
-        SELECT ${STOCK_SUM_SQL}
-        FROM stock_movements sm
-        WHERE sm.variant_id = stock_count_items.variant_id
+    WITH current_stock AS (
+      SELECT
+        sci.id AS item_id,
+        ${STOCK_SUM_SQL} AS stock
+      FROM stock_count_items sci
+      LEFT JOIN stock_movements sm
+        ON sm.variant_id = sci.variant_id
+      WHERE sci.session_id = ?
+      GROUP BY sci.id
+    )
+    UPDATE stock_count_items
+    SET
+      actual_stock = CASE
+        WHEN actual_stock IS NOT NULL
+         AND system_stock <> (
+           SELECT cs.stock
+           FROM current_stock cs
+           WHERE cs.item_id = stock_count_items.id
+         )
+        THEN NULL
+        ELSE actual_stock
+      END,
+
+      system_stock = (
+        SELECT cs.stock
+        FROM current_stock cs
+        WHERE cs.item_id = stock_count_items.id
       )
-      WHERE session_id = ?
-      `,
-    ).run(Number(sessionId))
+
+    WHERE session_id = ?
+    `,
+    ).run(Number(sessionId), Number(sessionId))
   }
 
   const items = db
@@ -418,17 +441,26 @@ export function approveStockCountSession(input: {
 
     // مزامنة كمية النظام قبل الاعتماد مباشرة؛
     // حتى تشمل أي مبيعات أو مرتجعات تمت بعد فتح الجلسة.
-    db.prepare(
-      `
-      UPDATE stock_count_items
-      SET system_stock = (
+    const changedStock = db
+      .prepare(
+        `
+    SELECT COUNT(*) AS count
+    FROM stock_count_items sci
+    WHERE sci.session_id = ?
+      AND sci.system_stock <> (
         SELECT ${STOCK_SUM_SQL}
         FROM stock_movements sm
-        WHERE sm.variant_id = stock_count_items.variant_id
+        WHERE sm.variant_id = sci.variant_id
       )
-      WHERE session_id = ?
-      `,
-    ).run(sessionId)
+    `,
+      )
+      .get(sessionId) as { count: number }
+
+    if (Number(changedStock.count || 0) > 0) {
+      throw new Error(
+        `تم تغيير مخزون ${changedStock.count} صنف أثناء الجرد. افتح الجلسة مرة أخرى وراجع الكميات قبل الاعتماد`,
+      )
+    }
 
     const uncounted = db
       .prepare(
