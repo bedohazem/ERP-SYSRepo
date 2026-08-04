@@ -407,22 +407,26 @@ export default function PurchaseHistoryPage() {
   }
 
   const purchaseReturnTotal = returnPurchase
-    ? (returnPurchase.items ?? []).reduce((sum: number, item: any) => {
-        const quantity = Number(returnQuantities[item.id] || 0)
-        return sum + quantity * Number(item.unit_cost || 0)
-      }, 0)
-    : 0
+    ? roundMoney(
+        (returnPurchase.items ?? []).reduce((sum: number, item: any) => {
+          const quantity = Number(returnQuantities[item.id] || 0)
 
-  const purchaseReturnDebtReduction = returnPurchase
-    ? Math.min(
-        purchaseReturnTotal,
-        Number(returnPurchase.purchase?.remaining_amount || 0),
+          return sum + roundMoney(quantity * Number(item.unit_cost || 0))
+        }, 0),
       )
     : 0
 
-  const purchaseReturnCashRefund = Math.max(
-    0,
-    purchaseReturnTotal - purchaseReturnDebtReduction,
+  const purchaseReturnDebtReduction = returnPurchase
+    ? roundMoney(
+        Math.min(
+          purchaseReturnTotal,
+          roundMoney(Number(returnPurchase.purchase?.remaining_amount || 0)),
+        ),
+      )
+    : 0
+
+  const purchaseReturnCashRefund = roundMoney(
+    Math.max(0, purchaseReturnTotal - purchaseReturnDebtReduction),
   )
 
   return (
