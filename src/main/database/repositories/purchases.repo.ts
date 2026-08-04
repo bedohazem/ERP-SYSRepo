@@ -694,29 +694,33 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         purchaseItem,
         quantity,
         unitCost,
-        lineTotal: quantity * unitCost,
+        lineTotal: roundMoney(quantity * unitCost),
       }
     })
 
-    const totalAmount = preparedItems.reduce(
-      (sum, item) => sum + item.lineTotal,
-      0,
+    const totalAmount = roundMoney(
+      preparedItems.reduce((sum, item) => sum + item.lineTotal, 0),
     )
 
     if (totalAmount <= 0) {
       throw new Error('قيمة المرتجع غير صحيحة')
     }
 
-    const oldRemaining = Number(purchase.remaining_amount || 0)
-    const debtReductionAmount = Math.min(totalAmount, oldRemaining)
-    const cashRefundAmount = Math.max(0, totalAmount - debtReductionAmount)
+    const oldRemaining = roundMoney(Number(purchase.remaining_amount || 0))
+
+    const debtReductionAmount = roundMoney(Math.min(totalAmount, oldRemaining))
+
+    const cashRefundAmount = roundMoney(
+      Math.max(0, totalAmount - debtReductionAmount),
+    )
     const refundMode = input.refund_mode === 'credit' ? 'credit' : 'cash'
     const refundPaymentMethod =
       input.refund_payment_method?.trim() ||
       purchase.payment_method ||
       'store_cash'
-    const supplierBalanceReduction =
-      debtReductionAmount + (refundMode === 'credit' ? cashRefundAmount : 0)
+    const supplierBalanceReduction = roundMoney(
+      debtReductionAmount + (refundMode === 'credit' ? cashRefundAmount : 0),
+    )
 
     const returnResult = db
       .prepare(
@@ -799,9 +803,13 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       )
     }
 
-    const oldPaid = Number(purchase.paid_amount || 0)
-    const oldTotal = Number(purchase.total_amount || 0)
-    const newRemaining = Math.max(0, oldRemaining - debtReductionAmount)
+    const oldPaid = roundMoney(Number(purchase.paid_amount || 0))
+
+    const oldTotal = roundMoney(Number(purchase.total_amount || 0))
+
+    const newRemaining = roundMoney(
+      Math.max(0, oldRemaining - debtReductionAmount),
+    )
     const newPaymentStatus = normalizePaymentStatus(
       oldTotal,
       oldPaid,
@@ -822,8 +830,14 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       `
       UPDATE suppliers
       SET
-        total_purchased = MAX(total_purchased - ?, 0),
-        balance = balance - ?,
+        total_purchased = MAX(
+          ROUND(IFNULL(total_purchased, 0) - ?, 2),
+          0
+        ),
+        balance = ROUND(
+          IFNULL(balance, 0) - ?,
+          2
+        ),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `,

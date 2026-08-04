@@ -200,7 +200,6 @@ export default function PurchaseHistoryPage() {
       return
     }
 
-    setPaymentPurchase(row)
     const remaining = roundMoney(row.remaining_amount)
 
     if (remaining <= 0) {
@@ -208,6 +207,7 @@ export default function PurchaseHistoryPage() {
       return
     }
 
+    setPaymentPurchase(row)
     setPaymentAmount(remaining.toFixed(2))
     setPaymentMethod(row.payment_method || 'store_cash')
     setPaymentNotes('')
