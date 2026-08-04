@@ -1,29 +1,28 @@
-import Database from 'better-sqlite3';
-import path from 'node:path';
-import { app } from 'electron';
-import { hashPassword } from '../security/password';
+import Database from 'better-sqlite3'
+import path from 'node:path'
+import { app } from 'electron'
+import { hashPassword } from '../security/password'
 
-let db: Database.Database;
+let db: Database.Database
 
 export function getDbPath(): string {
-  return path.join(app.getPath('userData'), 'erp.db');
+  return path.join(app.getPath('userData'), 'erp.db')
 }
 
 export function closeDb(): void {
   if (db) {
-    db.close();
-    db = undefined as unknown as Database.Database;
+    db.close()
+    db = undefined as unknown as Database.Database
   }
 }
 
 export function getDb(): Database.Database {
   if (!db) {
-    const dbPath = getDbPath();
+    const dbPath = getDbPath()
 
-    db = new Database(dbPath);
+    db = new Database(dbPath)
 
-
-        db.exec(`
+    db.exec(`
       PRAGMA foreign_keys = ON;
 
       CREATE TABLE IF NOT EXISTS users (
@@ -345,57 +344,84 @@ export function getDb(): Database.Database {
         FOREIGN KEY (variant_id) REFERENCES product_variants(id)
       );
 
-    `);
-    
-      safeAddColumn(db, 'sales', 'loyalty_points_earned', 'INTEGER DEFAULT 0');
-      safeAddColumn(db, 'sales', 'loyalty_points_redeemed', 'INTEGER DEFAULT 0');
-      safeAddColumn(db, 'sales', 'loyalty_discount_value', 'REAL DEFAULT 0');
-      safeAddColumn(db, 'sales', 'parent_sale_id', 'INTEGER');
-      safeAddColumn(db, 'sales', 'return_reason', 'TEXT');
-      safeAddColumn(db, 'sales', 'type', `TEXT DEFAULT 'sale'`);
-      safeAddColumn(db, 'suppliers', 'email', 'TEXT');
-      safeAddColumn(db, 'suppliers', 'address', 'TEXT');
-      safeAddColumn(db, 'suppliers', 'notes', 'TEXT');
-      safeAddColumn(db, 'suppliers', 'total_purchased', 'REAL DEFAULT 0');
-      safeAddColumn(db, 'suppliers', 'balance', 'REAL DEFAULT 0');
-      safeAddColumn(db, 'suppliers', 'is_active', 'INTEGER DEFAULT 1');
-      safeAddColumn(db, 'suppliers', 'updated_at', 'TEXT');
-      safeAddColumn(db, 'purchase_invoices', 'payment_method', `TEXT DEFAULT 'cash'`);
-      safeAddColumn(db, 'purchase_invoices', 'notes', 'TEXT');
-      safeAddColumn(db, 'purchase_invoices', 'sub_total', 'REAL DEFAULT 0');
-      safeAddColumn(db, 'purchase_invoices', 'discount_type', `TEXT DEFAULT 'amount'`);
-      safeAddColumn(db, 'purchase_invoices', 'discount_input', 'REAL DEFAULT 0');
-      safeAddColumn(db, 'purchase_invoices', 'discount_value', 'REAL DEFAULT 0');
-      safeAddColumn(db, 'supplier_payments', 'purchase_id', 'INTEGER');
-      safeAddColumn(db, 'supplier_payments', 'payment_method', `TEXT DEFAULT 'cash'`);
-      safeAddColumn(db, 'supplier_payments', 'notes', 'TEXT');
+    `)
 
-      safeAddColumn(db, 'customers', 'balance', 'REAL DEFAULT 0');
+    safeAddColumn(db, 'sales', 'loyalty_points_earned', 'INTEGER DEFAULT 0')
+    safeAddColumn(db, 'sales', 'loyalty_points_redeemed', 'INTEGER DEFAULT 0')
+    safeAddColumn(db, 'sales', 'loyalty_discount_value', 'REAL DEFAULT 0')
+    safeAddColumn(db, 'sales', 'parent_sale_id', 'INTEGER')
+    safeAddColumn(db, 'sales', 'return_reason', 'TEXT')
+    safeAddColumn(db, 'sales', 'type', `TEXT DEFAULT 'sale'`)
+    safeAddColumn(db, 'suppliers', 'email', 'TEXT')
+    safeAddColumn(db, 'suppliers', 'address', 'TEXT')
+    safeAddColumn(db, 'suppliers', 'notes', 'TEXT')
+    safeAddColumn(db, 'suppliers', 'total_purchased', 'REAL DEFAULT 0')
+    safeAddColumn(db, 'suppliers', 'balance', 'REAL DEFAULT 0')
+    safeAddColumn(db, 'suppliers', 'is_active', 'INTEGER DEFAULT 1')
+    safeAddColumn(db, 'suppliers', 'updated_at', 'TEXT')
+    safeAddColumn(
+      db,
+      'purchase_invoices',
+      'payment_method',
+      `TEXT DEFAULT 'cash'`,
+    )
+    safeAddColumn(db, 'purchase_invoices', 'notes', 'TEXT')
+    safeAddColumn(db, 'purchase_invoices', 'sub_total', 'REAL DEFAULT 0')
+    safeAddColumn(
+      db,
+      'purchase_invoices',
+      'discount_type',
+      `TEXT DEFAULT 'amount'`,
+    )
+    safeAddColumn(db, 'purchase_invoices', 'discount_input', 'REAL DEFAULT 0')
+    safeAddColumn(db, 'purchase_invoices', 'discount_value', 'REAL DEFAULT 0')
+    safeAddColumn(db, 'supplier_payments', 'purchase_id', 'INTEGER')
+    safeAddColumn(
+      db,
+      'supplier_payments',
+      'payment_method',
+      `TEXT DEFAULT 'cash'`,
+    )
+    safeAddColumn(db, 'supplier_payments', 'notes', 'TEXT')
 
-      safeAddColumn(db, 'sales', 'remaining_amount', 'REAL DEFAULT 0');
-      safeAddColumn(db, 'sales', 'payment_status', `TEXT DEFAULT 'paid'`);
+    safeAddColumn(db, 'customers', 'balance', 'REAL DEFAULT 0')
 
-      safeAddColumn(db, 'customer_payments', 'sale_id', 'INTEGER');
-      safeAddColumn(db, 'customer_payments', 'payment_method', `TEXT DEFAULT 'cash'`);
-      safeAddColumn(db, 'customer_payments', 'notes', 'TEXT');
+    safeAddColumn(db, 'sales', 'remaining_amount', 'REAL DEFAULT 0')
+    safeAddColumn(db, 'sales', 'payment_status', `TEXT DEFAULT 'paid'`)
 
-      safeAddColumn(db, 'store_liabilities', 'category', 'TEXT');
-      safeAddColumn(db, 'store_liabilities', 'paid_amount', 'REAL DEFAULT 0');
-      safeAddColumn(db, 'store_liabilities', 'remaining_amount', 'REAL DEFAULT 0');
-      safeAddColumn(db, 'store_liabilities', 'status', `TEXT DEFAULT 'open'`);
-      safeAddColumn(db, 'store_liabilities', 'due_date', 'TEXT');
-      safeAddColumn(db, 'store_liabilities', 'updated_at', 'TEXT');
-      safeAddColumn(db, 'store_liability_payments', 'payment_method', `TEXT DEFAULT 'cash'`);
-      safeAddColumn(db, 'store_liability_payments', 'notes', 'TEXT');
+    safeAddColumn(db, 'customer_payments', 'sale_id', 'INTEGER')
+    safeAddColumn(
+      db,
+      'customer_payments',
+      'payment_method',
+      `TEXT DEFAULT 'cash'`,
+    )
+    safeAddColumn(db, 'customer_payments', 'notes', 'TEXT')
 
-      normalizeStockMovementTypes(db);
+    safeAddColumn(db, 'store_liabilities', 'category', 'TEXT')
+    safeAddColumn(db, 'store_liabilities', 'paid_amount', 'REAL DEFAULT 0')
+    safeAddColumn(db, 'store_liabilities', 'remaining_amount', 'REAL DEFAULT 0')
+    safeAddColumn(db, 'store_liabilities', 'status', `TEXT DEFAULT 'open'`)
+    safeAddColumn(db, 'store_liabilities', 'due_date', 'TEXT')
+    safeAddColumn(db, 'store_liabilities', 'updated_at', 'TEXT')
+    safeAddColumn(
+      db,
+      'store_liability_payments',
+      'payment_method',
+      `TEXT DEFAULT 'cash'`,
+    )
+    safeAddColumn(db, 'store_liability_payments', 'notes', 'TEXT')
 
-      seedAdminUser(db);
-      
-      seedDefaultCategories(db);
-      seedDefaultAppSettings(db);
+    normalizePurchaseMoney(db)
+    normalizeStockMovementTypes(db)
 
-      db.prepare(`
+    seedAdminUser(db)
+
+    seedDefaultCategories(db)
+    seedDefaultAppSettings(db)
+
+    db.prepare(
+      `
         UPDATE sales
         SET
           remaining_amount = CASE
@@ -409,14 +435,15 @@ export function getDb(): Database.Database {
             ELSE 'unpaid'
           END
         WHERE IFNULL(type, 'sale') = 'sale'
-      `).run();
+      `,
+    ).run()
   }
 
-  return db;
+  return db
 }
 
 export function resetDatabaseData(): void {
-  const database = getDb();
+  const database = getDb()
 
   database.transaction(() => {
     database.exec(`
@@ -454,29 +481,130 @@ export function resetDatabaseData(): void {
 
       DELETE FROM sqlite_sequence;
 
-    `);
+    `)
 
-    seedAdminUser(database);
-    seedDefaultCategories(database);
-    seedDefaultAppSettings(database);
-  })();
+    seedAdminUser(database)
+    seedDefaultCategories(database)
+    seedDefaultAppSettings(database)
+  })()
 }
 
 function safeAddColumn(
   database: Database.Database,
   table: string,
   column: string,
-  definition: string
+  definition: string,
 ): void {
-  const columns = database.prepare(`PRAGMA table_info(${table})`).all() as Array<{
-    name: string;
-  }>;
+  const columns = database
+    .prepare(`PRAGMA table_info(${table})`)
+    .all() as Array<{
+    name: string
+  }>
 
-  const exists = columns.some((c) => c.name === column);
+  const exists = columns.some((c) => c.name === column)
 
   if (!exists) {
-    database.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+    database
+      .prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+      .run()
   }
+}
+
+function normalizePurchaseMoney(database: Database.Database): void {
+  database.transaction(() => {
+    database
+      .prepare(
+        `
+      UPDATE purchase_invoices
+      SET
+        total_amount = ROUND(
+          IFNULL(total_amount, 0),
+          2
+        ),
+        sub_total = ROUND(
+          IFNULL(sub_total, 0),
+          2
+        ),
+        discount_value = ROUND(
+          IFNULL(discount_value, 0),
+          2
+        ),
+        paid_amount = ROUND(
+          IFNULL(paid_amount, 0),
+          2
+        ),
+        remaining_amount = ROUND(
+          IFNULL(remaining_amount, 0),
+          2
+        )
+    `,
+      )
+      .run()
+
+    database
+      .prepare(
+        `
+      UPDATE purchase_invoices
+      SET
+        remaining_amount = 0,
+        payment_status = 'paid'
+      WHERE ROUND(
+        IFNULL(remaining_amount, 0),
+        2
+      ) = 0
+        AND IFNULL(payment_status, '') != 'cancelled'
+    `,
+      )
+      .run()
+
+    database
+      .prepare(
+        `
+      UPDATE purchase_items
+      SET line_total = ROUND(
+        IFNULL(line_total, 0),
+        2
+      )
+    `,
+      )
+      .run()
+
+    database
+      .prepare(
+        `
+      UPDATE supplier_payments
+      SET amount = ROUND(
+        IFNULL(amount, 0),
+        2
+      )
+    `,
+      )
+      .run()
+
+    database
+      .prepare(
+        `
+      UPDATE suppliers
+      SET
+        total_purchased = ROUND(
+          IFNULL(total_purchased, 0),
+          2
+        ),
+        balance = CASE
+          WHEN ROUND(
+            IFNULL(balance, 0),
+            2
+          ) = 0
+          THEN 0
+          ELSE ROUND(
+            IFNULL(balance, 0),
+            2
+          )
+        END
+    `,
+      )
+      .run()
+  })()
 }
 
 function normalizeStockMovementTypes(database: Database.Database): void {
@@ -489,9 +617,9 @@ function normalizeStockMovementTypes(database: Database.Database): void {
       SET type = 'in',
           reference_type = COALESCE(NULLIF(reference_type, ''), 'opening_stock')
       WHERE type IN ('opening', 'product_opening', 'opening_stock')
-      `
+      `,
     )
-    .run();
+    .run()
 
   // احتياطي لو أي نسخة قديمة كانت مسمية البيع أو المرتجع بأسماء مختلفة
   database
@@ -500,9 +628,9 @@ function normalizeStockMovementTypes(database: Database.Database): void {
       UPDATE stock_movements
       SET type = 'out'
       WHERE type IN ('sale_out', 'sales_out')
-      `
+      `,
     )
-    .run();
+    .run()
 
   database
     .prepare(
@@ -510,129 +638,129 @@ function normalizeStockMovementTypes(database: Database.Database): void {
       UPDATE stock_movements
       SET type = 'in'
       WHERE type IN ('return_in', 'sale_return', 'return')
-      `
+      `,
     )
-    .run();
+    .run()
 }
 
 function seedAdminUser(database: Database.Database): void {
   const existingAdmin = database
     .prepare(`SELECT id FROM users WHERE username = ? LIMIT 1`)
-    .get('admin');
+    .get('admin')
 
   if (existingAdmin) {
-    return;
+    return
   }
 
   database
-    .prepare(`
+    .prepare(
+      `
       INSERT INTO users (name, username, password, role, is_active)
       VALUES (?, ?, ?, ?, ?)
-    `)
-    .run('Administrator', 'admin', hashPassword('1234'), 'admin', 1);
+    `,
+    )
+    .run('Administrator', 'admin', hashPassword('1234'), 'admin', 1)
 
-  console.log('Seeded default admin user: admin / 1234');
+  console.log('Seeded default admin user: admin / 1234')
 }
 
 function seedDefaultCategories(database: Database.Database): void {
   const countRow = database
     .prepare(`SELECT COUNT(*) as count FROM categories`)
-    .get() as { count: number };
+    .get() as { count: number }
 
   if (countRow.count > 0) {
-    return;
+    return
   }
 
   const stmt = database.prepare(`
     INSERT INTO categories (name, description, is_active)
     VALUES (?, ?, 1)
-  `);
+  `)
 
   const defaults = [
     ['كاجوال', 'ملابس كاجوال'],
     ['رسمي', 'ملابس رسمية'],
     ['رياضي', 'ملابس رياضية'],
-    ['أطفال', 'ملابس أطفال']
-  ];
+    ['أطفال', 'ملابس أطفال'],
+  ]
 
   const insertMany = database.transaction((items: string[][]) => {
     for (const item of items) {
-      stmt.run(item[0], item[1]);
+      stmt.run(item[0], item[1])
     }
-  });
+  })
 
-  insertMany(defaults);
-  console.log('Seeded default categories');
+  insertMany(defaults)
+  console.log('Seeded default categories')
 }
 
 function seedDefaultAppSettings(database: Database.Database): void {
   const defaults: Array<{ key: string; value: string }> = [
+    { key: 'app_theme', value: 'dark' },
 
-{ key: 'app_theme', value: 'dark' },
+    { key: 'barcode_label_width_mm', value: '35' },
+    { key: 'barcode_label_height_mm', value: '25' },
+    { key: 'barcode_copies', value: '1' },
+    { key: 'barcode_auto_print_after_save', value: 'false' },
 
-{ key: 'barcode_label_width_mm', value: '35' },
-{ key: 'barcode_label_height_mm', value: '25' },
-{ key: 'barcode_copies', value: '1' },
-{ key: 'barcode_auto_print_after_save', value: 'false' },
+    { key: 'barcode_content_offset_x_mm', value: '0' },
+    { key: 'barcode_content_offset_y_mm', value: '0' },
 
-{ key: 'barcode_content_offset_x_mm', value: '0' },
-{ key: 'barcode_content_offset_y_mm', value: '0' },
+    { key: 'barcode_name_font_size', value: '8' },
+    { key: 'barcode_name_position', value: 'top' },
+    { key: 'barcode_name_align', value: 'center' },
 
-{ key: 'barcode_name_font_size', value: '8' },
-{ key: 'barcode_name_position', value: 'top' },
-{ key: 'barcode_name_align', value: 'center' },
+    { key: 'barcode_price_font_size', value: '7' },
+    { key: 'barcode_price_position', value: 'bottom' },
+    { key: 'barcode_price_align', value: 'center' },
 
-{ key: 'barcode_price_font_size', value: '7' },
-{ key: 'barcode_price_position', value: 'bottom' },
-{ key: 'barcode_price_align', value: 'center' },
+    { key: 'barcode_size_font_size', value: '6' },
+    { key: 'barcode_size_position', value: 'above_barcode' },
+    { key: 'barcode_size_align', value: 'center' },
 
-{ key: 'barcode_size_font_size', value: '6' },
-{ key: 'barcode_size_position', value: 'above_barcode' },
-{ key: 'barcode_size_align', value: 'center' },
+    { key: 'barcode_color_font_size', value: '6' },
+    { key: 'barcode_color_position', value: 'above_barcode' },
+    { key: 'barcode_color_align', value: 'center' },
 
-{ key: 'barcode_color_font_size', value: '6' },
-{ key: 'barcode_color_position', value: 'above_barcode' },
-{ key: 'barcode_color_align', value: 'center' },
+    { key: 'barcode_value_font_size', value: '7' },
+    { key: 'barcode_value_position', value: 'below_barcode' },
+    { key: 'barcode_value_align', value: 'center' },
 
-{ key: 'barcode_value_font_size', value: '7' },
-{ key: 'barcode_value_position', value: 'below_barcode' },
-{ key: 'barcode_value_align', value: 'center' },
+    { key: 'barcode_svg_height', value: '22' },
 
-{ key: 'barcode_svg_height', value: '22' },
+    { key: 'loyalty_enabled', value: 'true' },
 
-{ key: 'loyalty_enabled', value: 'true' },
+    // كل كام جنيه = نقطة
+    { key: 'loyalty_earn_amount', value: '100' },
 
-// كل كام جنيه = نقطة
-{ key: 'loyalty_earn_amount', value: '100' },
+    // عدد النقط المكتسبة لكل مبلغ
+    { key: 'loyalty_earn_points', value: '1' },
 
-// عدد النقط المكتسبة لكل مبلغ
-{ key: 'loyalty_earn_points', value: '1' },
+    // قيمة النقطة عند الخصم بالجنيه
+    { key: 'loyalty_point_value', value: '1' },
 
-// قيمة النقطة عند الخصم بالجنيه
-{ key: 'loyalty_point_value', value: '1' },
-
-// أقل عدد نقاط ينفع يستخدمهم
-{ key: 'loyalty_min_redeem_points', value: '1' },
-
-  ];
+    // أقل عدد نقاط ينفع يستخدمهم
+    { key: 'loyalty_min_redeem_points', value: '1' },
+  ]
 
   const existsStmt = database.prepare(
-    `SELECT key FROM app_settings WHERE key = ? LIMIT 1`
-  );
+    `SELECT key FROM app_settings WHERE key = ? LIMIT 1`,
+  )
 
   const insertStmt = database.prepare(
-    `INSERT INTO app_settings (key, value) VALUES (?, ?)`
-  );
+    `INSERT INTO app_settings (key, value) VALUES (?, ?)`,
+  )
 
   const tx = database.transaction(() => {
     for (const item of defaults) {
-      const exists = existsStmt.get(item.key);
+      const exists = existsStmt.get(item.key)
 
       if (!exists) {
-        insertStmt.run(item.key, item.value);
+        insertStmt.run(item.key, item.value)
       }
     }
-  });
+  })
 
-  tx();
+  tx()
 }

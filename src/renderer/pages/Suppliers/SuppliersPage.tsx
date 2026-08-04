@@ -1,212 +1,226 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useAuthStore } from '../../store/auth.store';
-import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
+import { useEffect, useMemo, useState } from 'react'
+import { useAuthStore } from '../../store/auth.store'
+import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method'
+
+function roundMoney(value: number) {
+  const amount = Number(value || 0)
+
+  if (!Number.isFinite(amount)) {
+    return 0
+  }
+
+  return Math.round((amount + Number.EPSILON) * 100) / 100
+}
+
+function hasRemainingAmount(value: number) {
+  return roundMoney(value) > 0
+}
 
 type Supplier = {
-  id: number;
-  name: string;
-  phone?: string | null;
-  email?: string | null;
-  address?: string | null;
-  notes?: string | null;
-  total_purchased: number;
-  balance: number;
-  created_at: string;
-};
+  id: number
+  name: string
+  phone?: string | null
+  email?: string | null
+  address?: string | null
+  notes?: string | null
+  total_purchased: number
+  balance: number
+  created_at: string
+}
 
 const emptyForm = {
   name: '',
   phone: '',
   email: '',
   address: '',
-  notes: ''
-};
+  notes: '',
+}
 
 export default function SuppliersPage() {
-  const currentUser = useAuthStore((s) => s.user);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [search, setSearch] = useState('');
-  const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
+  const currentUser = useAuthStore((s) => s.user)
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [search, setSearch] = useState('')
+  const [form, setForm] = useState(emptyForm)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
 
-  const [statementData, setStatementData] = useState<any | null>(null);
-  const [statementLoading, setStatementLoading] = useState(false);
+  const [statementData, setStatementData] = useState<any | null>(null)
+  const [statementLoading, setStatementLoading] = useState(false)
 
-  const [paymentSupplier, setPaymentSupplier] = useState<Supplier | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('store_cash');
-  const [paymentNotes, setPaymentNotes] = useState('');
-  const [savingPayment, setSavingPayment] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
-  const [deletingSupplier, setDeletingSupplier] = useState(false);
+  const [paymentSupplier, setPaymentSupplier] = useState<Supplier | null>(null)
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('store_cash')
+  const [paymentNotes, setPaymentNotes] = useState('')
+  const [savingPayment, setSavingPayment] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null)
+  const [deletingSupplier, setDeletingSupplier] = useState(false)
 
   const editingSupplier = useMemo(
     () => suppliers.find((x) => x.id === editingId),
-    [suppliers, editingId]
-  );
+    [suppliers, editingId],
+  )
 
   function showMessage(text: string) {
-    setMessage(text);
-    setTimeout(() => setMessage(''), 1800);
+    setMessage(text)
+    setTimeout(() => setMessage(''), 1800)
   }
 
   async function loadSuppliers(searchValue = search) {
-    setLoading(true);
+    setLoading(true)
 
     try {
-      const data = await window.api.getSuppliers(searchValue);
-      setSuppliers(Array.isArray(data) ? data : []);
+      const data = await window.api.getSuppliers(searchValue)
+      setSuppliers(Array.isArray(data) ? data : [])
     } catch (error) {
-      console.error('Failed to load suppliers:', error);
-      showMessage('حدث خطأ أثناء تحميل الموردين');
-      setSuppliers([]);
+      console.error('Failed to load suppliers:', error)
+      showMessage('حدث خطأ أثناء تحميل الموردين')
+      setSuppliers([])
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      void loadSuppliers(search);
-    }, 250);
+      void loadSuppliers(search)
+    }, 250)
 
-    return () => clearTimeout(handle);
-  }, [search]);
+    return () => clearTimeout(handle)
+  }, [search])
 
   function startCreate() {
-    setEditingId(null);
-    setForm(emptyForm);
+    setEditingId(null)
+    setForm(emptyForm)
   }
 
   function startEdit(supplier: Supplier) {
-    setEditingId(supplier.id);
+    setEditingId(supplier.id)
     setForm({
       name: supplier.name || '',
       phone: supplier.phone || '',
       email: supplier.email || '',
       address: supplier.address || '',
-      notes: supplier.notes || ''
-    });
+      notes: supplier.notes || '',
+    })
   }
 
   async function saveSupplier() {
-    if (saving) return;
+    if (saving) return
 
     if (!form.name.trim()) {
-      showMessage('اسم المورد مطلوب');
-      return;
+      showMessage('اسم المورد مطلوب')
+      return
     }
 
-    setSaving(true);
+    setSaving(true)
 
     try {
       if (editingId) {
         await window.api.updateSupplier({
           id: editingId,
           ...form,
-          actor_id: currentUser?.id
-        });
+          actor_id: currentUser?.id,
+        })
 
-        showMessage('تم تعديل المورد');
+        showMessage('تم تعديل المورد')
       } else {
         await window.api.createSupplier({
           ...form,
-          actor_id: currentUser?.id
-        });
-        showMessage('تم إضافة المورد');
+          actor_id: currentUser?.id,
+        })
+        showMessage('تم إضافة المورد')
       }
 
-      setForm(emptyForm);
-      setEditingId(null);
-      await loadSuppliers();
+      setForm(emptyForm)
+      setEditingId(null)
+      await loadSuppliers()
     } catch (error) {
-      console.error('Failed to save supplier:', error);
-      showMessage('حدث خطأ أثناء حفظ المورد، تأكد أن رقم الهاتف غير مكرر');
+      console.error('Failed to save supplier:', error)
+      showMessage('حدث خطأ أثناء حفظ المورد، تأكد أن رقم الهاتف غير مكرر')
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
   }
 
   function requestDeleteSupplier(supplier: Supplier) {
-    setDeleteTarget(supplier);
+    setDeleteTarget(supplier)
   }
 
   function cancelDeleteSupplier() {
-    if (deletingSupplier) return;
-    setDeleteTarget(null);
+    if (deletingSupplier) return
+    setDeleteTarget(null)
   }
 
   async function confirmDeleteSupplier() {
-    if (!deleteTarget || deletingSupplier) return;
+    if (!deleteTarget || deletingSupplier) return
 
-    const deletedId = deleteTarget.id;
+    const deletedId = deleteTarget.id
 
-    setDeletingSupplier(true);
+    setDeletingSupplier(true)
 
     try {
-      await window.api.deleteSupplier(deletedId, currentUser?.id);
+      await window.api.deleteSupplier(deletedId, currentUser?.id)
 
       if (statementData?.supplier?.id === deletedId) {
-        setStatementData(null);
+        setStatementData(null)
       }
 
       if (paymentSupplier?.id === deletedId) {
-        setPaymentSupplier(null);
-        setPaymentAmount('');
-        setPaymentNotes('');
+        setPaymentSupplier(null)
+        setPaymentAmount('')
+        setPaymentNotes('')
       }
 
       if (editingId === deletedId) {
-        setEditingId(null);
-        setForm(emptyForm);
+        setEditingId(null)
+        setForm(emptyForm)
       }
 
-      setDeleteTarget(null);
-      showMessage('تم حذف المورد');
-      await loadSuppliers();
+      setDeleteTarget(null)
+      showMessage('تم حذف المورد')
+      await loadSuppliers()
     } catch (error) {
-      console.error('Failed to delete supplier:', error);
-      showMessage('حدث خطأ أثناء حذف المورد');
+      console.error('Failed to delete supplier:', error)
+      showMessage('حدث خطأ أثناء حذف المورد')
     } finally {
-      setDeletingSupplier(false);
+      setDeletingSupplier(false)
     }
   }
 
   async function openStatement(supplier: Supplier) {
-    setStatementLoading(true);
+    setStatementLoading(true)
 
     try {
-      const data = await window.api.getSupplierStatement(supplier.id);
-      setStatementData(data);
+      const data = await window.api.getSupplierStatement(supplier.id)
+      setStatementData(data)
     } catch (error) {
-      console.error('Failed to load supplier statement:', error);
-      showMessage('حدث خطأ أثناء تحميل كشف الحساب');
+      console.error('Failed to load supplier statement:', error)
+      showMessage('حدث خطأ أثناء تحميل كشف الحساب')
     } finally {
-      setStatementLoading(false);
+      setStatementLoading(false)
     }
   }
 
   function openSupplierPayment(supplier: Supplier) {
-    setPaymentSupplier(supplier);
-    setPaymentAmount(String(Number(supplier.balance || 0)));
-    setPaymentMethod('store_cash');
-    setPaymentNotes('');
+    setPaymentSupplier(supplier)
+    setPaymentAmount(roundMoney(supplier.balance).toFixed(2))
+    setPaymentMethod('store_cash')
+    setPaymentNotes('')
   }
 
   async function saveSupplierPayment() {
-    if (!paymentSupplier || savingPayment) return;
+    if (!paymentSupplier || savingPayment) return
 
-    const amount = Number(paymentAmount || 0);
+    const amount = Number(paymentAmount || 0)
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      showMessage('اكتب مبلغ صحيح');
-      return;
+      showMessage('اكتب مبلغ صحيح')
+      return
     }
 
-    setSavingPayment(true);
+    setSavingPayment(true)
 
     try {
       const result = await window.api.recordSupplierPayment({
@@ -214,79 +228,81 @@ export default function SuppliersPage() {
         amount,
         payment_method: paymentMethod,
         notes: paymentNotes.trim() || null,
-        actor_id: currentUser?.id
-      });
+        actor_id: currentUser?.id,
+      })
 
-      showMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`);
+      showMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`)
 
-      setPaymentSupplier(null);
-      setPaymentAmount('');
-      setPaymentNotes('');
+      setPaymentSupplier(null)
+      setPaymentAmount('')
+      setPaymentNotes('')
 
-      await loadSuppliers();
+      await loadSuppliers()
 
       if (statementData?.supplier?.id === paymentSupplier.id) {
-        const data = await window.api.getSupplierStatement(paymentSupplier.id);
-        setStatementData(data);
+        const data = await window.api.getSupplierStatement(paymentSupplier.id)
+        setStatementData(data)
       }
-      } catch (error) {
-        console.error('Failed to save supplier payment:', error);
-        showMessage(getErrorMessage(error, 'حدث خطأ أثناء تسجيل الدفعة'));
-      } finally {
-        setSavingPayment(false);
-      }
+    } catch (error) {
+      console.error('Failed to save supplier payment:', error)
+      showMessage(getErrorMessage(error, 'حدث خطأ أثناء تسجيل الدفعة'))
+    } finally {
+      setSavingPayment(false)
+    }
   }
 
   function InfoCard({ title, value }: { title: string; value: string }) {
-  return (
-    <div
-      className="supplier-info-card"
-      style={{
-        padding: '14px',
-        borderRadius: '14px',
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        display: 'grid',
-        gap: '8px'
-      }}
-    >
-      <span style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</span>
-      <strong style={{ color: '#fff', fontSize: '18px' }}>{value}</strong>
-    </div>
-  );
-}
-
-function formatDate(value?: string) {
-  if (!value) return '—';
-
-  try {
-    const raw = String(value);
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
-
-    return new Date(normalized).toLocaleString('ar-EG', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  } catch {
-    return value;
+    return (
+      <div
+        className="supplier-info-card"
+        style={{
+          padding: '14px',
+          borderRadius: '14px',
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          display: 'grid',
+          gap: '8px',
+        }}
+      >
+        <span style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</span>
+        <strong style={{ color: '#fff', fontSize: '18px' }}>{value}</strong>
+      </div>
+    )
   }
-}
 
-function getErrorMessage(error: unknown, fallback: string) {
-  const raw =
-    error instanceof Error
-      ? error.message
-      : typeof error === 'string'
-        ? error
-        : '';
+  function formatDate(value?: string) {
+    if (!value) return '—'
 
-  const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/);
+    try {
+      const raw = String(value)
+      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
 
-  return match?.[1] || raw || fallback;
-}
+      return new Date(normalized).toLocaleString('ar-EG', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    } catch {
+      return value
+    }
+  }
+
+  function getErrorMessage(error: unknown, fallback: string) {
+    const raw =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : ''
+
+    const match = raw.match(
+      /Error invoking remote method '[^']+': Error: (.*)$/,
+    )
+
+    return match?.[1] || raw || fallback
+  }
 
   return (
     <div
@@ -296,7 +312,7 @@ function getErrorMessage(error: unknown, fallback: string) {
         height: '100%',
         minHeight: 0,
         overflow: 'hidden',
-        gridTemplateRows: 'auto auto minmax(0, 1fr)'
+        gridTemplateRows: 'auto auto minmax(0, 1fr)',
       }}
     >
       {message && (
@@ -313,7 +329,7 @@ function getErrorMessage(error: unknown, fallback: string) {
             color: '#fff',
             fontWeight: 800,
             boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
-            pointerEvents: 'none'
+            pointerEvents: 'none',
           }}
         >
           {message}
@@ -328,7 +344,7 @@ function getErrorMessage(error: unknown, fallback: string) {
             gap: '14px',
             alignItems: 'center',
             flexWrap: 'wrap',
-            direction: 'rtl'
+            direction: 'rtl',
           }}
         >
           <div>
@@ -356,7 +372,7 @@ function getErrorMessage(error: unknown, fallback: string) {
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
-            gap: '12px'
+            gap: '12px',
           }}
         >
           <Input
@@ -389,12 +405,14 @@ function getErrorMessage(error: unknown, fallback: string) {
             onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
             style={{
               ...inputStyle,
-              gridColumn: '1 / -1'
+              gridColumn: '1 / -1',
             }}
           />
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-start' }}>
+        <div
+          style={{ display: 'flex', gap: '10px', justifyContent: 'flex-start' }}
+        >
           <button
             type="button"
             onClick={saveSupplier}
@@ -402,19 +420,25 @@ function getErrorMessage(error: unknown, fallback: string) {
             style={{
               ...primaryButtonStyle,
               opacity: saving ? 0.6 : 1,
-              cursor: saving ? 'not-allowed' : 'pointer'
+              cursor: saving ? 'not-allowed' : 'pointer',
             }}
           >
-            {saving ? 'جاري الحفظ...' : editingId ? 'حفظ التعديل' : 'حفظ المورد'}
+            {saving
+              ? 'جاري الحفظ...'
+              : editingId
+                ? 'حفظ التعديل'
+                : 'حفظ المورد'}
           </button>
 
           {editingId && (
-            <button type="button" onClick={startCreate} style={secondaryButtonStyle}>
+            <button
+              type="button"
+              onClick={startCreate}
+              style={secondaryButtonStyle}
+            >
               إلغاء التعديل
             </button>
           )}
-
-          
         </div>
       </div>
 
@@ -427,10 +451,17 @@ function getErrorMessage(error: unknown, fallback: string) {
           height: '100%',
           minHeight: 0,
           maxWidth: '100%',
-          boxSizing: 'border-box'
+          boxSizing: 'border-box',
         }}
       >
-        <table style={{ width: '100%',minWidth: '980px', borderCollapse: 'collapse', direction: 'rtl' }}>
+        <table
+          style={{
+            width: '100%',
+            minWidth: '980px',
+            borderCollapse: 'collapse',
+            direction: 'rtl',
+          }}
+        >
           <thead>
             <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
               <th style={thStyle}>المورد</th>
@@ -461,7 +492,13 @@ function getErrorMessage(error: unknown, fallback: string) {
                   <td style={tdStyle}>
                     <strong>{supplier.name}</strong>
                     {supplier.notes && (
-                      <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
+                      <div
+                        style={{
+                          color: '#94a3b8',
+                          fontSize: '12px',
+                          marginTop: '4px',
+                        }}
+                      >
                         {supplier.notes}
                       </div>
                     )}
@@ -473,14 +510,19 @@ function getErrorMessage(error: unknown, fallback: string) {
                   <td
                     style={{
                       ...tdStyle,
-                      color: Number(supplier.balance || 0) > 0 ? '#fca5a5' : '#6ee7b7',
-                      fontWeight: 900
+                      color:
+                        roundMoney(supplier.balance) > 0
+                          ? '#fca5a5'
+                          : '#6ee7b7',
+                      fontWeight: 900,
                     }}
                   >
                     {money(supplier.balance)}
                   </td>
                   <td style={tdStyle}>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <div
+                      style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}
+                    >
                       <button
                         type="button"
                         onClick={() => startEdit(supplier)}
@@ -496,7 +538,7 @@ function getErrorMessage(error: unknown, fallback: string) {
                           ...smallButtonStyle,
                           borderColor: '#ef4444',
                           color: '#fca5a5',
-                          background: 'rgba(239,68,68,0.10)'
+                          background: 'rgba(239,68,68,0.10)',
                         }}
                       >
                         حذف
@@ -510,7 +552,7 @@ function getErrorMessage(error: unknown, fallback: string) {
                         كشف حساب
                       </button>
 
-                      {Number(supplier.balance || 0) > 0 && (
+                      {roundMoney(supplier.balance) > 0 && (
                         <button
                           type="button"
                           onClick={() => openSupplierPayment(supplier)}
@@ -518,7 +560,7 @@ function getErrorMessage(error: unknown, fallback: string) {
                             ...smallButtonStyle,
                             borderColor: '#22c55e',
                             color: '#86efac',
-                            background: 'rgba(34,197,94,0.10)'
+                            background: 'rgba(34,197,94,0.10)',
                           }}
                         >
                           تسجيل دفعة
@@ -537,7 +579,7 @@ function getErrorMessage(error: unknown, fallback: string) {
                     ...tdStyle,
                     textAlign: 'center',
                     color: '#94a3b8',
-                    padding: '28px'
+                    padding: '28px',
                   }}
                 >
                   لا يوجد موردين
@@ -559,7 +601,7 @@ function getErrorMessage(error: unknown, fallback: string) {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 gap: '12px',
-                marginBottom: '18px'
+                marginBottom: '18px',
               }}
             >
               <div>
@@ -585,17 +627,35 @@ function getErrorMessage(error: unknown, fallback: string) {
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                 gap: '12px',
-                marginBottom: '18px'
+                marginBottom: '18px',
               }}
             >
-              <InfoCard title="إجمالي المشتريات" value={money(statementData.summary.total_purchased)} />
-              <InfoCard title="إجمالي المدفوع" value={money(statementData.summary.total_paid)} />
-              <InfoCard title="الرصيد الحالي" value={money(statementData.summary.balance)} />
-              <InfoCard title="فواتير مفتوحة" value={String(statementData.summary.open_purchases)} />
+              <InfoCard
+                title="إجمالي المشتريات"
+                value={money(statementData.summary.total_purchased)}
+              />
+              <InfoCard
+                title="إجمالي المدفوع"
+                value={money(statementData.summary.total_paid)}
+              />
+              <InfoCard
+                title="الرصيد الحالي"
+                value={money(statementData.summary.balance)}
+              />
+              <InfoCard
+                title="فواتير مفتوحة"
+                value={String(statementData.summary.open_purchases)}
+              />
             </div>
 
-            {Number(statementData.summary.balance || 0) > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '16px' }}>
+            {roundMoney(statementData.summary.balance) > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'flex-start',
+                  marginBottom: '16px',
+                }}
+              >
                 <button
                   type="button"
                   onClick={() =>
@@ -608,7 +668,7 @@ function getErrorMessage(error: unknown, fallback: string) {
                       notes: statementData.supplier.notes,
                       total_purchased: statementData.supplier.total_purchased,
                       balance: statementData.supplier.balance,
-                      created_at: statementData.supplier.created_at
+                      created_at: statementData.supplier.created_at,
                     })
                   }
                   style={primaryButtonStyle}
@@ -619,7 +679,13 @@ function getErrorMessage(error: unknown, fallback: string) {
             )}
 
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  direction: 'rtl',
+                }}
+              >
                 <thead>
                   <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                     <th style={thStyle}>التاريخ</th>
@@ -633,7 +699,10 @@ function getErrorMessage(error: unknown, fallback: string) {
                 <tbody>
                   {statementLoading && (
                     <tr>
-                      <td colSpan={5} style={{ ...tdStyle, textAlign: 'center' }}>
+                      <td
+                        colSpan={5}
+                        style={{ ...tdStyle, textAlign: 'center' }}
+                      >
                         جاري التحميل...
                       </td>
                     </tr>
@@ -643,16 +712,28 @@ function getErrorMessage(error: unknown, fallback: string) {
                     statementData.entries.map((entry: any) => (
                       <tr
                         key={entry.id}
-                        style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                        style={{
+                          borderTop: '1px solid rgba(255,255,255,0.06)',
+                        }}
                       >
                         <td style={tdStyle}>{formatDate(entry.created_at)}</td>
                         <td style={tdStyle}>
                           <strong>{entry.title}</strong>
                         </td>
-                        <td style={{ ...tdStyle, color: entry.debit > 0 ? '#fca5a5' : '#e5e7eb' }}>
+                        <td
+                          style={{
+                            ...tdStyle,
+                            color: entry.debit > 0 ? '#fca5a5' : '#e5e7eb',
+                          }}
+                        >
                           {entry.debit > 0 ? money(entry.debit) : '—'}
                         </td>
-                        <td style={{ ...tdStyle, color: entry.credit > 0 ? '#6ee7b7' : '#e5e7eb' }}>
+                        <td
+                          style={{
+                            ...tdStyle,
+                            color: entry.credit > 0 ? '#6ee7b7' : '#e5e7eb',
+                          }}
+                        >
                           {entry.credit > 0 ? money(entry.credit) : '—'}
                         </td>
                         <td style={tdStyle}>{entry.notes || '—'}</td>
@@ -667,7 +748,7 @@ function getErrorMessage(error: unknown, fallback: string) {
                           ...tdStyle,
                           textAlign: 'center',
                           color: '#94a3b8',
-                          padding: '24px'
+                          padding: '24px',
                         }}
                       >
                         لا توجد حركات
@@ -683,10 +764,15 @@ function getErrorMessage(error: unknown, fallback: string) {
 
       {paymentSupplier && (
         <div className="theme-modal-overlay" style={modalOverlayStyle}>
-          <div className="theme-modal-card supplier-payment-modal" style={modalStyle}>
+          <div
+            className="theme-modal-card supplier-payment-modal"
+            style={modalStyle}
+          >
             <h3 style={{ margin: '0 0 8px' }}>تسجيل دفعة للمورد</h3>
 
-            <p style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700 }}>
+            <p
+              style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700 }}
+            >
               {paymentSupplier.name}
             </p>
 
@@ -744,7 +830,7 @@ function getErrorMessage(error: unknown, fallback: string) {
                 display: 'flex',
                 gap: '10px',
                 justifyContent: 'flex-start',
-                marginTop: '22px'
+                marginTop: '22px',
               }}
             >
               <button
@@ -754,7 +840,7 @@ function getErrorMessage(error: unknown, fallback: string) {
                 style={{
                   ...primaryButtonStyle,
                   opacity: savingPayment ? 0.6 : 1,
-                  cursor: savingPayment ? 'not-allowed' : 'pointer'
+                  cursor: savingPayment ? 'not-allowed' : 'pointer',
                 }}
               >
                 {savingPayment ? 'جاري الحفظ...' : 'حفظ الدفعة'}
@@ -771,14 +857,18 @@ function getErrorMessage(error: unknown, fallback: string) {
           </div>
         </div>
       )}
-      
 
       {deleteTarget && (
         <div className="theme-modal-overlay" style={modalOverlayStyle}>
-          <div className="theme-modal-card supplier-delete-modal" style={modalStyle}>
+          <div
+            className="theme-modal-card supplier-delete-modal"
+            style={modalStyle}
+          >
             <h3 style={{ margin: '0 0 10px' }}>تأكيد حذف المورد</h3>
 
-            <p style={{ margin: '0 0 18px', color: '#94a3b8', lineHeight: 1.8 }}>
+            <p
+              style={{ margin: '0 0 18px', color: '#94a3b8', lineHeight: 1.8 }}
+            >
               هل أنت متأكد من حذف المورد{' '}
               <strong style={{ color: '#fff' }}>{deleteTarget.name}</strong>؟
             </p>
@@ -792,13 +882,19 @@ function getErrorMessage(error: unknown, fallback: string) {
                 border: '1px solid rgba(239,68,68,0.25)',
                 color: '#fca5a5',
                 marginBottom: '18px',
-                lineHeight: 1.8
+                lineHeight: 1.8,
               }}
             >
               سيتم إخفاء المورد من القائمة، ولن يظهر في البحث العادي.
             </div>
 
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-start' }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+                justifyContent: 'flex-start',
+              }}
+            >
               <button
                 type="button"
                 className="supplier-delete-confirm-button"
@@ -810,7 +906,7 @@ function getErrorMessage(error: unknown, fallback: string) {
                   border: '1px solid rgba(239,68,68,0.35)',
                   color: '#fca5a5',
                   opacity: deletingSupplier ? 0.6 : 1,
-                  cursor: deletingSupplier ? 'not-allowed' : 'pointer'
+                  cursor: deletingSupplier ? 'not-allowed' : 'pointer',
                 }}
               >
                 {deletingSupplier ? 'جاري الحذف...' : 'تأكيد الحذف'}
@@ -829,17 +925,17 @@ function getErrorMessage(error: unknown, fallback: string) {
         </div>
       )}
     </div>
-  );
+  )
 }
 
 function Input({
   placeholder,
   value,
-  onChange
+  onChange,
 }: {
-  placeholder: string;
-  value: string;
-  onChange: (value: string) => void;
+  placeholder: string
+  value: string
+  onChange: (value: string) => void
 }) {
   return (
     <input
@@ -848,11 +944,11 @@ function Input({
       onChange={(e) => onChange(e.target.value)}
       style={inputStyle}
     />
-  );
+  )
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`;
+  return `${Number(value || 0).toFixed(2)} ج.م`
 }
 
 const cardStyle: React.CSSProperties = {
@@ -860,8 +956,8 @@ const cardStyle: React.CSSProperties = {
   borderRadius: '18px',
   display: 'grid',
   gap: '14px',
-  overflow: 'visible'
-};
+  overflow: 'visible',
+}
 
 const inputStyle: React.CSSProperties = {
   height: '44px',
@@ -873,8 +969,8 @@ const inputStyle: React.CSSProperties = {
   padding: '0 12px',
   textAlign: 'right',
   direction: 'rtl',
-  boxSizing: 'border-box'
-};
+  boxSizing: 'border-box',
+}
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -884,8 +980,8 @@ const primaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontWeight: 800,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid #7c3aed',
@@ -895,8 +991,8 @@ const secondaryButtonStyle: React.CSSProperties = {
   color: '#c4b5fd',
   fontWeight: 800,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const smallButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(124,58,237,0.55)',
@@ -905,20 +1001,20 @@ const smallButtonStyle: React.CSSProperties = {
   color: '#c4b5fd',
   padding: '8px 10px',
   cursor: 'pointer',
-  fontWeight: 700
-};
+  fontWeight: 700,
+}
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   fontWeight: 800,
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}
 
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
@@ -928,8 +1024,8 @@ const modalOverlayStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  padding: '20px'
-};
+  padding: '20px',
+}
 
 const modalStyle: React.CSSProperties = {
   width: '480px',
@@ -941,18 +1037,18 @@ const modalStyle: React.CSSProperties = {
   background: '#111827',
   padding: '22px',
   direction: 'rtl',
-  boxShadow: '0 24px 70px rgba(0,0,0,0.55)'
-};
+  boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
+}
 
 const fieldStyle: React.CSSProperties = {
   display: 'grid',
-  gap: '8px'
-};
+  gap: '8px',
+}
 
 const labelStyle: React.CSSProperties = {
   color: '#cbd5e1',
-  fontWeight: 800
-};
+  fontWeight: 800,
+}
 
 const closeButtonStyle: React.CSSProperties = {
   width: '34px',
@@ -962,5 +1058,5 @@ const closeButtonStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.05)',
   color: '#fff',
   cursor: 'pointer',
-  fontSize: '20px'
-};
+  fontSize: '20px',
+}

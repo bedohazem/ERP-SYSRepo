@@ -1,85 +1,106 @@
-import { useEffect, useState } from 'react';
-import { useAuthStore } from '../../store/auth.store';
+import { useEffect, useState } from 'react'
+import { useAuthStore } from '../../store/auth.store'
 import {
   CASH_ACCOUNT_OPTIONS,
-  getPaymentMethodLabel
-} from '../../utils/payment-method';
+  getPaymentMethodLabel,
+} from '../../utils/payment-method'
+
+function roundMoney(value: number) {
+  const amount = Number(value || 0)
+
+  if (!Number.isFinite(amount)) {
+    return 0
+  }
+
+  return Math.round((amount + Number.EPSILON) * 100) / 100
+}
+
+function hasRemainingAmount(value: number) {
+  return roundMoney(value) > 0
+}
 
 type PurchaseRow = {
-  id: number;
-  supplier_id: number;
-  supplier_name: string;
-  supplier_phone?: string | null;
-  total_amount: number;
-  sub_total?: number;
-  discount_type?: 'amount' | 'percent' | string;
-  discount_input?: number;
-  discount_value?: number;
-  paid_amount: number;
-  remaining_amount: number;
-  payment_status: 'paid' | 'partial' | 'unpaid' | 'cancelled' | string;
-  payment_method?: string | null;
-  notes?: string | null;
-  created_at: string;
-  items_count: number;
-  status?: 'active' | 'cancelled' | string;
-  returned_amount?: number;
-};
+  id: number
+  supplier_id: number
+  supplier_name: string
+  supplier_phone?: string | null
+  total_amount: number
+  sub_total?: number
+  discount_type?: 'amount' | 'percent' | string
+  discount_input?: number
+  discount_value?: number
+  paid_amount: number
+  remaining_amount: number
+  payment_status: 'paid' | 'partial' | 'unpaid' | 'cancelled' | string
+  payment_method?: string | null
+  notes?: string | null
+  created_at: string
+  items_count: number
+  status?: 'active' | 'cancelled' | string
+  returned_amount?: number
+}
 
 type PurchaseReturnRow = {
-  id: number;
-  purchase_id: number;
-  supplier_id: number;
-  supplier_name: string;
-  supplier_phone?: string | null;
-  total_amount: number;
-  notes?: string | null;
-  created_at: string;
-  items_count: number;
-};
+  id: number
+  purchase_id: number
+  supplier_id: number
+  supplier_name: string
+  supplier_phone?: string | null
+  total_amount: number
+  notes?: string | null
+  created_at: string
+  items_count: number
+}
 
-type ActiveTab = 'purchases' | 'returns';
+type ActiveTab = 'purchases' | 'returns'
 
 export default function PurchaseHistoryPage() {
-  const currentUser = useAuthStore((s) => s.user);
+  const currentUser = useAuthStore((s) => s.user)
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('purchases');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('purchases')
 
-  const [rows, setRows] = useState<PurchaseRow[]>([]);
-  const [total, setTotal] = useState(0);
+  const [rows, setRows] = useState<PurchaseRow[]>([])
+  const [total, setTotal] = useState(0)
 
-  const [returnRows, setReturnRows] = useState<PurchaseReturnRow[]>([]);
-  const [returnTotal, setReturnTotal] = useState(0);
+  const [returnRows, setReturnRows] = useState<PurchaseReturnRow[]>([])
+  const [returnTotal, setReturnTotal] = useState(0)
 
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState('')
 
-  const [selectedPurchase, setSelectedPurchase] = useState<any | null>(null);
-  const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
+  const [selectedPurchase, setSelectedPurchase] = useState<any | null>(null)
+  const [selectedReturn, setSelectedReturn] = useState<any | null>(null)
 
-  const [paymentPurchase, setPaymentPurchase] = useState<PurchaseRow | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('store_cash');
-  const [paymentNotes, setPaymentNotes] = useState('');
-  const [savingPayment, setSavingPayment] = useState(false);
+  const [paymentPurchase, setPaymentPurchase] = useState<PurchaseRow | null>(
+    null,
+  )
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('store_cash')
+  const [paymentNotes, setPaymentNotes] = useState('')
+  const [savingPayment, setSavingPayment] = useState(false)
 
-  const [returnPurchase, setReturnPurchase] = useState<any | null>(null);
-  const [returnQuantities, setReturnQuantities] = useState<Record<number, string>>({});
-  const [returnNotes, setReturnNotes] = useState('');
-  const [returnRefundAccount, setReturnRefundAccount] = useState('store_cash');
-  const [returnRefundMode, setReturnRefundMode] = useState<'cash' | 'credit'>('cash');
-  const [savingReturn, setSavingReturn] = useState(false);
+  const [returnPurchase, setReturnPurchase] = useState<any | null>(null)
+  const [returnQuantities, setReturnQuantities] = useState<
+    Record<number, string>
+  >({})
+  const [returnNotes, setReturnNotes] = useState('')
+  const [returnRefundAccount, setReturnRefundAccount] = useState('store_cash')
+  const [returnRefundMode, setReturnRefundMode] = useState<'cash' | 'credit'>(
+    'cash',
+  )
+  const [savingReturn, setSavingReturn] = useState(false)
 
-  const [cancelPurchaseTarget, setCancelPurchaseTarget] = useState<PurchaseRow | null>(null);
-  const [cancelReason, setCancelReason] = useState('');
-  const [cancellingPurchase, setCancellingPurchase] = useState(false);
+  const [cancelPurchaseTarget, setCancelPurchaseTarget] =
+    useState<PurchaseRow | null>(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancellingPurchase, setCancellingPurchase] = useState(false)
 
-  const currentTotal = activeTab === 'purchases' ? total : returnTotal;
+  const currentTotal = activeTab === 'purchases' ? total : returnTotal
 
   function showMessage(text: string) {
-    setMessage(text);
-    setTimeout(() => setMessage(''), 2200);
+    setMessage(text)
+    setTimeout(() => setMessage(''), 2200)
   }
 
   function getErrorMessage(error: unknown, fallback: string) {
@@ -88,113 +109,121 @@ export default function PurchaseHistoryPage() {
         ? error.message
         : typeof error === 'string'
           ? error
-          : '';
+          : ''
 
-    const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/);
+    const match = raw.match(
+      /Error invoking remote method '[^']+': Error: (.*)$/,
+    )
 
-    return match?.[1] || raw || fallback;
+    return match?.[1] || raw || fallback
   }
 
   async function loadPurchases() {
-    setLoading(true);
+    setLoading(true)
 
     try {
       const result = await window.api.listPurchaseInvoices({
         search,
         limit: 100,
-        offset: 0
-      });
+        offset: 0,
+      })
 
-      setRows(Array.isArray(result.rows) ? result.rows : []);
-      setTotal(Number(result.total || 0));
+      setRows(Array.isArray(result.rows) ? result.rows : [])
+      setTotal(Number(result.total || 0))
     } catch (error) {
-      console.error('Failed to load purchase invoices:', error);
-      showMessage('حدث خطأ أثناء تحميل فواتير الشراء');
-      setRows([]);
-      setTotal(0);
+      console.error('Failed to load purchase invoices:', error)
+      showMessage('حدث خطأ أثناء تحميل فواتير الشراء')
+      setRows([])
+      setTotal(0)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
   async function loadReturns() {
-    setLoading(true);
+    setLoading(true)
 
     try {
       const result = await window.api.listPurchaseReturns({
         search,
         limit: 100,
-        offset: 0
-      });
+        offset: 0,
+      })
 
-      setReturnRows(Array.isArray(result.rows) ? result.rows : []);
-      setReturnTotal(Number(result.total || 0));
+      setReturnRows(Array.isArray(result.rows) ? result.rows : [])
+      setReturnTotal(Number(result.total || 0))
     } catch (error) {
-      console.error('Failed to load purchase returns:', error);
-      showMessage('حدث خطأ أثناء تحميل مرتجعات الشراء');
-      setReturnRows([]);
-      setReturnTotal(0);
+      console.error('Failed to load purchase returns:', error)
+      showMessage('حدث خطأ أثناء تحميل مرتجعات الشراء')
+      setReturnRows([])
+      setReturnTotal(0)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
-
 
   useEffect(() => {
     const handle = setTimeout(() => {
       if (activeTab === 'returns') {
-        void loadReturns();
+        void loadReturns()
       } else {
-        void loadPurchases();
+        void loadPurchases()
       }
-    }, 250);
+    }, 250)
 
-    return () => clearTimeout(handle);
-  }, [search, activeTab]);
+    return () => clearTimeout(handle)
+  }, [search, activeTab])
 
   async function openDetails(purchaseId: number) {
     try {
-      const data = await window.api.getPurchaseInvoice(purchaseId);
-      setSelectedPurchase(data);
+      const data = await window.api.getPurchaseInvoice(purchaseId)
+      setSelectedPurchase(data)
     } catch (error) {
-      console.error('Failed to open purchase invoice:', error);
-      showMessage('حدث خطأ أثناء فتح تفاصيل الفاتورة');
+      console.error('Failed to open purchase invoice:', error)
+      showMessage('حدث خطأ أثناء فتح تفاصيل الفاتورة')
     }
   }
 
   async function openReturnDetails(returnId: number) {
     try {
-      const data = await window.api.getPurchaseReturn(returnId);
-      setSelectedReturn(data);
+      const data = await window.api.getPurchaseReturn(returnId)
+      setSelectedReturn(data)
     } catch (error) {
-      console.error('Failed to open purchase return:', error);
-      showMessage('حدث خطأ أثناء فتح تفاصيل المرتجع');
+      console.error('Failed to open purchase return:', error)
+      showMessage('حدث خطأ أثناء فتح تفاصيل المرتجع')
     }
   }
 
   function openPayment(row: PurchaseRow) {
     if (row.status === 'cancelled' || row.payment_status === 'cancelled') {
-      showMessage('لا يمكن تسجيل دفعة على فاتورة ملغاة');
-      return;
+      showMessage('لا يمكن تسجيل دفعة على فاتورة ملغاة')
+      return
     }
 
-    setPaymentPurchase(row);
-    setPaymentAmount(String(Number(row.remaining_amount || 0)));
-    setPaymentMethod(row.payment_method || 'store_cash');
-    setPaymentNotes('');
+    setPaymentPurchase(row)
+    const remaining = roundMoney(row.remaining_amount)
+
+    if (remaining <= 0) {
+      showMessage('الفاتورة مدفوعة بالكامل')
+      return
+    }
+
+    setPaymentAmount(remaining.toFixed(2))
+    setPaymentMethod(row.payment_method || 'store_cash')
+    setPaymentNotes('')
   }
 
   async function savePayment() {
-    if (!paymentPurchase || savingPayment) return;
+    if (!paymentPurchase || savingPayment) return
 
-    const amount = Number(paymentAmount || 0);
+    const amount = Number(paymentAmount || 0)
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      showMessage('اكتب مبلغ صحيح');
-      return;
+      showMessage('اكتب مبلغ صحيح')
+      return
     }
 
-    setSavingPayment(true);
+    setSavingPayment(true)
 
     try {
       const result = await window.api.recordSupplierPayment({
@@ -203,136 +232,141 @@ export default function PurchaseHistoryPage() {
         amount,
         payment_method: paymentMethod,
         notes: paymentNotes.trim() || null,
-        actor_id: currentUser?.id
-      });
+        actor_id: currentUser?.id,
+      })
 
-      showMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`);
+      showMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`)
 
-      setPaymentPurchase(null);
-      setPaymentAmount('');
-      setPaymentNotes('');
+      setPaymentPurchase(null)
+      setPaymentAmount('')
+      setPaymentNotes('')
 
-      await loadPurchases();
+      await loadPurchases()
 
       if (selectedPurchase?.purchase?.id === paymentPurchase.id) {
-        const data = await window.api.getPurchaseInvoice(paymentPurchase.id);
-        setSelectedPurchase(data);
+        const data = await window.api.getPurchaseInvoice(paymentPurchase.id)
+        setSelectedPurchase(data)
       }
     } catch (error) {
-      console.error('Failed to record supplier payment:', error);
-      showMessage(getErrorMessage(error, 'حدث خطأ أثناء تسجيل الدفعة'));
+      console.error('Failed to record supplier payment:', error)
+      showMessage(getErrorMessage(error, 'حدث خطأ أثناء تسجيل الدفعة'))
     } finally {
-      setSavingPayment(false);
+      setSavingPayment(false)
     }
   }
 
   function openCancelPurchaseModal(row: PurchaseRow) {
     if (row.status === 'cancelled' || row.payment_status === 'cancelled') {
-      showMessage('فاتورة الشراء ملغاة بالفعل');
-      return;
+      showMessage('فاتورة الشراء ملغاة بالفعل')
+      return
     }
 
-    const hasReturns = Number(row.returned_amount || 0) > 0;
+    const hasReturns = Number(row.returned_amount || 0) > 0
 
     if (hasReturns) {
-      showMessage('لا يمكن إلغاء فاتورة تم عمل مرتجع عليها');
-      return;
+      showMessage('لا يمكن إلغاء فاتورة تم عمل مرتجع عليها')
+      return
     }
 
-    setCancelPurchaseTarget(row);
-    setCancelReason('إلغاء فاتورة شراء');
+    setCancelPurchaseTarget(row)
+    setCancelReason('إلغاء فاتورة شراء')
   }
 
   async function saveCancelPurchase() {
-    if (!cancelPurchaseTarget || cancellingPurchase) return;
+    if (!cancelPurchaseTarget || cancellingPurchase) return
 
-    setCancellingPurchase(true);
+    setCancellingPurchase(true)
 
     try {
       const result = await window.api.cancelPurchaseInvoice({
         purchase_id: cancelPurchaseTarget.id,
         reason: cancelReason.trim() || 'إلغاء فاتورة شراء',
-        actor_id: currentUser?.id
-      });
+        actor_id: currentUser?.id,
+      })
 
-      showMessage(`تم إلغاء الفاتورة وخصم ${result.items_count} صنف من المخزون`);
+      showMessage(`تم إلغاء الفاتورة وخصم ${result.items_count} صنف من المخزون`)
 
-      const cancelledId = cancelPurchaseTarget.id;
-      setCancelPurchaseTarget(null);
-      setCancelReason('');
+      const cancelledId = cancelPurchaseTarget.id
+      setCancelPurchaseTarget(null)
+      setCancelReason('')
 
-      await loadPurchases();
+      await loadPurchases()
 
       if (selectedPurchase?.purchase?.id === cancelledId) {
-        setSelectedPurchase(null);
+        setSelectedPurchase(null)
       }
     } catch (error) {
-      console.error('Failed to cancel purchase invoice:', error);
-      showMessage(getErrorMessage(error, 'حدث خطأ أثناء إلغاء فاتورة الشراء'));
+      console.error('Failed to cancel purchase invoice:', error)
+      showMessage(getErrorMessage(error, 'حدث خطأ أثناء إلغاء فاتورة الشراء'))
     } finally {
-      setCancellingPurchase(false);
+      setCancellingPurchase(false)
     }
   }
 
   async function openReturnModal(row: PurchaseRow) {
     if (row.status === 'cancelled' || row.payment_status === 'cancelled') {
-      showMessage('لا يمكن عمل مرتجع على فاتورة ملغاة');
-      return;
+      showMessage('لا يمكن عمل مرتجع على فاتورة ملغاة')
+      return
     }
 
     try {
-      const data = await window.api.getPurchaseInvoice(row.id);
-      setReturnPurchase(data);
-      setReturnNotes('');
-      setReturnQuantities({});
-      setReturnRefundAccount(data.purchase?.payment_method || 'store_cash');
-      setReturnRefundMode('cash');
+      const data = await window.api.getPurchaseInvoice(row.id)
+      setReturnPurchase(data)
+      setReturnNotes('')
+      setReturnQuantities({})
+      setReturnRefundAccount(data.purchase?.payment_method || 'store_cash')
+      setReturnRefundMode('cash')
     } catch (error) {
-      console.error('Failed to open purchase return modal:', error);
-      showMessage('حدث خطأ أثناء تجهيز مرتجع الشراء');
+      console.error('Failed to open purchase return modal:', error)
+      showMessage('حدث خطأ أثناء تجهيز مرتجع الشراء')
     }
   }
 
   function updateReturnQuantity(itemId: number, value: string) {
     setReturnQuantities((prev) => ({
       ...prev,
-      [itemId]: value
-    }));
+      [itemId]: value,
+    }))
   }
 
   async function savePurchaseReturn() {
-    if (!returnPurchase || savingReturn) return;
+    if (!returnPurchase || savingReturn) return
 
     const items = (returnPurchase.items ?? [])
       .map((item: any) => {
-        const quantity = Number(returnQuantities[item.id] || 0);
+        const quantity = Number(returnQuantities[item.id] || 0)
 
         return {
           purchase_item_id: Number(item.id),
           variant_id: Number(item.variant_id),
-          quantity
-        };
+          quantity,
+        }
       })
-      .filter((item: { quantity: number }) => Number.isFinite(item.quantity) && item.quantity > 0);
+      .filter(
+        (item: { quantity: number }) =>
+          Number.isFinite(item.quantity) && item.quantity > 0,
+      )
 
     if (items.length === 0) {
-      showMessage('حدد كمية مرتجع لصنف واحد على الأقل');
-      return;
+      showMessage('حدد كمية مرتجع لصنف واحد على الأقل')
+      return
     }
 
     const invalidItem = (returnPurchase.items ?? []).find((item: any) => {
-      const quantity = Number(returnQuantities[item.id] || 0);
-      const maxQuantity = Number(item.returnable_quantity ?? item.quantity ?? 0);
+      const quantity = Number(returnQuantities[item.id] || 0)
+      const maxQuantity = Number(item.returnable_quantity ?? item.quantity ?? 0)
 
-      return quantity > maxQuantity;
-    });
+      return quantity > maxQuantity
+    })
 
     if (invalidItem) {
-      showMessage(`كمية المرتجع للصنف ${invalidItem.product_name} أكبر من المتاح`);
-      return;
+      showMessage(
+        `كمية المرتجع للصنف ${invalidItem.product_name} أكبر من المتاح`,
+      )
+      return
     }
 
-    setSavingReturn(true);
+    setSavingReturn(true)
 
     try {
       const result = await window.api.createPurchaseReturn({
@@ -341,50 +375,55 @@ export default function PurchaseHistoryPage() {
         refund_payment_method: returnRefundAccount,
         refund_mode: returnRefundMode,
         actor_id: currentUser?.id,
-        items
-      });
+        items,
+      })
 
-      showMessage(`تم إنشاء مرتجع شراء بقيمة ${money(result.total_amount)}`);
+      showMessage(`تم إنشاء مرتجع شراء بقيمة ${money(result.total_amount)}`)
 
-      setReturnPurchase(null);
-      setReturnQuantities({});
-      setReturnNotes('');
-      setReturnRefundAccount('store_cash');
-      setReturnRefundMode('cash');
+      setReturnPurchase(null)
+      setReturnQuantities({})
+      setReturnNotes('')
+      setReturnRefundAccount('store_cash')
+      setReturnRefundMode('cash')
 
-      await loadPurchases();
+      await loadPurchases()
 
       if (activeTab === 'returns') {
-        await loadReturns();
+        await loadReturns()
       }
 
       if (selectedPurchase?.purchase?.id === returnPurchase.purchase.id) {
-        const data = await window.api.getPurchaseInvoice(returnPurchase.purchase.id);
-        setSelectedPurchase(data);
+        const data = await window.api.getPurchaseInvoice(
+          returnPurchase.purchase.id,
+        )
+        setSelectedPurchase(data)
       }
     } catch (error) {
-      console.error('Failed to create purchase return:', error);
-      showMessage(getErrorMessage(error, 'حدث خطأ أثناء إنشاء مرتجع الشراء'));
+      console.error('Failed to create purchase return:', error)
+      showMessage(getErrorMessage(error, 'حدث خطأ أثناء إنشاء مرتجع الشراء'))
     } finally {
-      setSavingReturn(false);
+      setSavingReturn(false)
     }
   }
 
   const purchaseReturnTotal = returnPurchase
     ? (returnPurchase.items ?? []).reduce((sum: number, item: any) => {
-        const quantity = Number(returnQuantities[item.id] || 0);
-        return sum + quantity * Number(item.unit_cost || 0);
+        const quantity = Number(returnQuantities[item.id] || 0)
+        return sum + quantity * Number(item.unit_cost || 0)
       }, 0)
-    : 0;
+    : 0
 
   const purchaseReturnDebtReduction = returnPurchase
-    ? Math.min(purchaseReturnTotal, Number(returnPurchase.purchase?.remaining_amount || 0))
-    : 0;
+    ? Math.min(
+        purchaseReturnTotal,
+        Number(returnPurchase.purchase?.remaining_amount || 0),
+      )
+    : 0
 
   const purchaseReturnCashRefund = Math.max(
     0,
-    purchaseReturnTotal - purchaseReturnDebtReduction
-  );
+    purchaseReturnTotal - purchaseReturnDebtReduction,
+  )
 
   return (
     <div
@@ -394,7 +433,7 @@ export default function PurchaseHistoryPage() {
         height: '100%',
         minHeight: 0,
         overflow: 'hidden',
-        gridTemplateRows: 'auto minmax(0, 1fr)'
+        gridTemplateRows: 'auto minmax(0, 1fr)',
       }}
     >
       {message && (
@@ -411,7 +450,7 @@ export default function PurchaseHistoryPage() {
             color: '#fff',
             fontWeight: 800,
             boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
-            pointerEvents: 'none'
+            pointerEvents: 'none',
           }}
         >
           {message}
@@ -424,7 +463,7 @@ export default function PurchaseHistoryPage() {
           padding: '12px 14px',
           borderRadius: '16px',
           display: 'grid',
-          gap: '10px'
+          gap: '10px',
         }}
       >
         <div
@@ -433,7 +472,7 @@ export default function PurchaseHistoryPage() {
             gridTemplateColumns: 'minmax(0, 1fr) auto',
             gap: '12px',
             alignItems: 'center',
-            direction: 'rtl'
+            direction: 'rtl',
           }}
         >
           <div style={{ textAlign: 'right' }}>
@@ -446,7 +485,7 @@ export default function PurchaseHistoryPage() {
                 margin: '4px 0 0',
                 color: '#94a3b8',
                 fontWeight: 700,
-                fontSize: '12px'
+                fontSize: '12px',
               }}
             >
               متابعة فواتير الموردين ومرتجعات الشراء
@@ -458,7 +497,7 @@ export default function PurchaseHistoryPage() {
               color: '#cbd5e1',
               fontWeight: 900,
               fontSize: '13px',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
             }}
           >
             عدد النتائج: {currentTotal}
@@ -471,20 +510,24 @@ export default function PurchaseHistoryPage() {
             gridTemplateColumns: 'auto minmax(260px, 1fr)',
             gap: '10px',
             alignItems: 'center',
-            direction: 'rtl'
+            direction: 'rtl',
           }}
         >
           <div
             style={{
               display: 'flex',
               gap: '8px',
-              flexWrap: 'nowrap'
+              flexWrap: 'nowrap',
             }}
           >
             <button
               type="button"
               onClick={() => setActiveTab('purchases')}
-              style={activeTab === 'purchases' ? activeTabButtonStyle : tabButtonStyle}
+              style={
+                activeTab === 'purchases'
+                  ? activeTabButtonStyle
+                  : tabButtonStyle
+              }
             >
               فواتير الشراء
             </button>
@@ -492,7 +535,9 @@ export default function PurchaseHistoryPage() {
             <button
               type="button"
               onClick={() => setActiveTab('returns')}
-              style={activeTab === 'returns' ? activeTabButtonStyle : tabButtonStyle}
+              style={
+                activeTab === 'returns' ? activeTabButtonStyle : tabButtonStyle
+              }
             >
               مرتجعات الشراء
             </button>
@@ -508,7 +553,7 @@ export default function PurchaseHistoryPage() {
             onChange={(e) => setSearch(e.target.value)}
             style={{
               ...inputStyle,
-              height: '38px'
+              height: '38px',
             }}
           />
         </div>
@@ -524,7 +569,7 @@ export default function PurchaseHistoryPage() {
             height: '100%',
             minHeight: 0,
             maxWidth: '100%',
-            boxSizing: 'border-box'
+            boxSizing: 'border-box',
           }}
         >
           <table
@@ -532,7 +577,7 @@ export default function PurchaseHistoryPage() {
               width: '100%',
               minWidth: '900px',
               borderCollapse: 'collapse',
-              direction: 'rtl'
+              direction: 'rtl',
             }}
           >
             <thead>
@@ -558,8 +603,10 @@ export default function PurchaseHistoryPage() {
 
               {!loading &&
                 rows.map((row) => {
-                  const isCancelled = row.status === 'cancelled' || row.payment_status === 'cancelled';
-                  const hasReturns = Number(row.returned_amount || 0) > 0;
+                  const isCancelled =
+                    row.status === 'cancelled' ||
+                    row.payment_status === 'cancelled'
+                  const hasReturns = Number(row.returned_amount || 0) > 0
 
                   return (
                     <tr
@@ -569,10 +616,18 @@ export default function PurchaseHistoryPage() {
                       <td style={tdStyle}>#{row.id}</td>
 
                       <td style={tdStyle}>
-                        <div style={{ display: 'grid', gap: '4px', minWidth: '150px' }}>
+                        <div
+                          style={{
+                            display: 'grid',
+                            gap: '4px',
+                            minWidth: '150px',
+                          }}
+                        >
                           <strong>{row.supplier_name}</strong>
                           {row.supplier_phone && (
-                            <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                            <span
+                              style={{ color: '#94a3b8', fontSize: '12px' }}
+                            >
                               {row.supplier_phone}
                             </span>
                           )}
@@ -585,12 +640,14 @@ export default function PurchaseHistoryPage() {
                           {hasReturns && (
                             <span
                               style={{
-                                color: Number(row.remaining_amount || 0) > 0 ? '#fbbf24' : '#94a3b8',
+                                color: hasRemainingAmount(row.remaining_amount)
+                                  ? '#fbbf24'
+                                  : '#94a3b8',
                                 fontSize: '12px',
-                                fontWeight: 900
+                                fontWeight: 900,
                               }}
                             >
-                              {Number(row.remaining_amount || 0) > 0
+                              {hasRemainingAmount(row.remaining_amount)
                                 ? `مرتجع مخصوم: ${money(row.returned_amount || 0)}`
                                 : `مرتجع سابق: ${money(row.returned_amount || 0)}`}
                             </span>
@@ -599,23 +656,38 @@ export default function PurchaseHistoryPage() {
                       </td>
 
                       <td style={tdStyle}>
-                        <div style={{ display: 'grid', gap: '4px', minWidth: '130px' }}>
-                          <strong style={{ color: isCancelled ? '#94a3b8' : '#6ee7b7' }}>
+                        <div
+                          style={{
+                            display: 'grid',
+                            gap: '4px',
+                            minWidth: '130px',
+                          }}
+                        >
+                          <strong
+                            style={{
+                              color: isCancelled ? '#94a3b8' : '#6ee7b7',
+                            }}
+                          >
                             الإجمالي: {money(row.total_amount)}
                           </strong>
 
                           <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-                            قبل الخصم: {money(
+                            قبل الخصم:{' '}
+                            {money(
                               Number(row.sub_total || 0) > 0
                                 ? row.sub_total
-                                : Number(row.total_amount || 0) + Number(row.discount_value || 0)
+                                : Number(row.total_amount || 0) +
+                                    Number(row.discount_value || 0),
                             )}
                           </span>
 
                           {Number(row.discount_value || 0) > 0 && (
-                            <span style={{ color: '#fbbf24', fontSize: '12px' }}>
+                            <span
+                              style={{ color: '#fbbf24', fontSize: '12px' }}
+                            >
                               خصم: {money(row.discount_value || 0)}
-                              {row.discount_type === 'percent' && Number(row.discount_input || 0) > 0
+                              {row.discount_type === 'percent' &&
+                              Number(row.discount_input || 0) > 0
                                 ? ` (${Number(row.discount_input || 0)}%)`
                                 : ''}
                             </span>
@@ -624,16 +696,24 @@ export default function PurchaseHistoryPage() {
                       </td>
 
                       <td style={tdStyle}>
-                        <div style={{ display: 'grid', gap: '4px', minWidth: '130px' }}>
+                        <div
+                          style={{
+                            display: 'grid',
+                            gap: '4px',
+                            minWidth: '130px',
+                          }}
+                        >
                           <span style={{ color: '#6ee7b7', fontWeight: 900 }}>
                             مدفوع: {money(row.paid_amount)}
                           </span>
 
                           <span
                             style={{
-                              color: Number(row.remaining_amount || 0) > 0 ? '#fca5a5' : '#94a3b8',
+                              color: hasRemainingAmount(row.remaining_amount)
+                                ? '#fca5a5'
+                                : '#94a3b8',
                               fontSize: '12px',
-                              fontWeight: 800
+                              fontWeight: 800,
                             }}
                           >
                             متبقي: {money(row.remaining_amount)}
@@ -646,7 +726,11 @@ export default function PurchaseHistoryPage() {
                       </td>
 
                       <td style={tdStyle}>
-                        <PaymentStatusBadge status={isCancelled ? 'cancelled' : row.payment_status} />
+                        <PaymentStatusBadge
+                          status={
+                            isCancelled ? 'cancelled' : row.payment_status
+                          }
+                        />
                       </td>
 
                       <td style={tdStyle}>
@@ -657,7 +741,7 @@ export default function PurchaseHistoryPage() {
                             flexWrap: 'wrap',
                             alignItems: 'center',
                             minWidth: '150px',
-                            maxWidth: '175px'
+                            maxWidth: '175px',
                           }}
                         >
                           <button
@@ -668,20 +752,21 @@ export default function PurchaseHistoryPage() {
                             عرض
                           </button>
 
-                          {!isCancelled && Number(row.remaining_amount || 0) > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => openPayment(row)}
-                              style={{
-                                ...smallButtonStyle,
-                                borderColor: 'rgba(148,163,184,0.35)',
-                                color: '#dbeafe',
-                                background: 'rgba(148,163,184,0.08)'
-                              }}
-                            >
-                              دفعة
-                            </button>
-                          )}
+                          {!isCancelled &&
+                            hasRemainingAmount(row.remaining_amount) && (
+                              <button
+                                type="button"
+                                onClick={() => openPayment(row)}
+                                style={{
+                                  ...smallButtonStyle,
+                                  borderColor: 'rgba(148,163,184,0.35)',
+                                  color: '#dbeafe',
+                                  background: 'rgba(148,163,184,0.08)',
+                                }}
+                              >
+                                دفعة
+                              </button>
+                            )}
 
                           {!isCancelled && (
                             <button
@@ -691,7 +776,7 @@ export default function PurchaseHistoryPage() {
                                 ...smallButtonStyle,
                                 borderColor: 'rgba(245,158,11,0.45)',
                                 color: '#fcd34d',
-                                background: 'rgba(245,158,11,0.08)'
+                                background: 'rgba(245,158,11,0.08)',
                               }}
                             >
                               مرتجع
@@ -706,7 +791,7 @@ export default function PurchaseHistoryPage() {
                                 ...smallButtonStyle,
                                 borderColor: 'rgba(239,68,68,0.45)',
                                 color: '#fca5a5',
-                                background: 'rgba(239,68,68,0.08)'
+                                background: 'rgba(239,68,68,0.08)',
                               }}
                             >
                               إلغاء
@@ -715,7 +800,7 @@ export default function PurchaseHistoryPage() {
                         </div>
                       </td>
                     </tr>
-                  );
+                  )
                 })}
 
               {!loading && rows.length === 0 && (
@@ -726,7 +811,7 @@ export default function PurchaseHistoryPage() {
                       ...tdStyle,
                       textAlign: 'center',
                       color: '#94a3b8',
-                      padding: '28px'
+                      padding: '28px',
                     }}
                   >
                     لا توجد فواتير شراء
@@ -748,7 +833,7 @@ export default function PurchaseHistoryPage() {
             height: '100%',
             minHeight: 0,
             maxWidth: '100%',
-            boxSizing: 'border-box'
+            boxSizing: 'border-box',
           }}
         >
           <table
@@ -790,7 +875,13 @@ export default function PurchaseHistoryPage() {
                     <td style={tdStyle}>#{row.purchase_id}</td>
 
                     <td style={tdStyle}>
-                      <div style={{ display: 'grid', gap: '4px', minWidth: '150px' }}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gap: '4px',
+                          minWidth: '150px',
+                        }}
+                      >
                         <strong>{row.supplier_name}</strong>
                         {row.supplier_phone && (
                           <span style={{ color: '#94a3b8', fontSize: '12px' }}>
@@ -801,13 +892,21 @@ export default function PurchaseHistoryPage() {
                     </td>
 
                     <td style={tdStyle}>{row.items_count || 0}</td>
-                    <td style={{ ...tdStyle, color: '#fbbf24', fontWeight: 900 }}>
+                    <td
+                      style={{ ...tdStyle, color: '#fbbf24', fontWeight: 900 }}
+                    >
                       {money(row.total_amount)}
                     </td>
                     <td style={tdStyle}>{formatDate(row.created_at)}</td>
 
                     <td style={tdStyle}>
-                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: '6px',
+                          flexWrap: 'wrap',
+                        }}
+                      >
                         <button
                           type="button"
                           onClick={() => openReturnDetails(row.id)}
@@ -836,7 +935,7 @@ export default function PurchaseHistoryPage() {
                       ...tdStyle,
                       textAlign: 'center',
                       color: '#94a3b8',
-                      padding: '28px'
+                      padding: '28px',
                     }}
                   >
                     لا توجد مرتجعات شراء
@@ -860,7 +959,7 @@ export default function PurchaseHistoryPage() {
                 justifyContent: 'space-between',
                 gap: '12px',
                 alignItems: 'center',
-                marginBottom: '18px'
+                marginBottom: '18px',
               }}
             >
               <div>
@@ -886,7 +985,7 @@ export default function PurchaseHistoryPage() {
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                 gap: '12px',
-                marginBottom: '18px'
+                marginBottom: '18px',
               }}
             >
               <InfoCard
@@ -895,7 +994,7 @@ export default function PurchaseHistoryPage() {
                   Number(selectedPurchase.purchase.sub_total || 0) > 0
                     ? selectedPurchase.purchase.sub_total
                     : Number(selectedPurchase.purchase.total_amount || 0) +
-                        Number(selectedPurchase.purchase.discount_value || 0)
+                        Number(selectedPurchase.purchase.discount_value || 0),
                 )}
               />
 
@@ -907,18 +1006,47 @@ export default function PurchaseHistoryPage() {
                     : money(selectedPurchase.purchase.discount_value || 0)
                 }
               />
-              <InfoCard title="بعد الخصم" value={money(selectedPurchase.purchase.total_amount)} />
-              <InfoCard title="المرتجع" value={money(selectedPurchase.purchase.returned_amount || 0)} />
-              <InfoCard title="المدفوع" value={money(selectedPurchase.purchase.paid_amount)} />
-              <InfoCard title="المتبقي" value={money(selectedPurchase.purchase.remaining_amount)} />
-              <InfoCard title="الحساب المالي" value={getPaymentMethodLabel(selectedPurchase.purchase.payment_method)} />
-              <InfoCard title="الحالة" value={paymentStatusName(selectedPurchase.purchase.payment_status)} />
+              <InfoCard
+                title="بعد الخصم"
+                value={money(selectedPurchase.purchase.total_amount)}
+              />
+              <InfoCard
+                title="المرتجع"
+                value={money(selectedPurchase.purchase.returned_amount || 0)}
+              />
+              <InfoCard
+                title="المدفوع"
+                value={money(selectedPurchase.purchase.paid_amount)}
+              />
+              <InfoCard
+                title="المتبقي"
+                value={money(selectedPurchase.purchase.remaining_amount)}
+              />
+              <InfoCard
+                title="الحساب المالي"
+                value={getPaymentMethodLabel(
+                  selectedPurchase.purchase.payment_method,
+                )}
+              />
+              <InfoCard
+                title="الحالة"
+                value={paymentStatusName(
+                  selectedPurchase.purchase.payment_status,
+                )}
+              />
             </div>
 
             <h4 style={{ margin: '0 0 12px' }}>الأصناف</h4>
 
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', minWidth: '760px', borderCollapse: 'collapse', direction: 'rtl' }}>
+              <table
+                style={{
+                  width: '100%',
+                  minWidth: '760px',
+                  borderCollapse: 'collapse',
+                  direction: 'rtl',
+                }}
+              >
                 <thead>
                   <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                     <th style={thStyle}>الصنف</th>
@@ -945,7 +1073,9 @@ export default function PurchaseHistoryPage() {
                       <td style={tdStyle}>{item.color || '—'}</td>
                       <td style={tdStyle}>{item.quantity}</td>
                       <td style={tdStyle}>{item.returned_quantity || 0}</td>
-                      <td style={tdStyle}>{item.returnable_quantity ?? item.quantity}</td>
+                      <td style={tdStyle}>
+                        {item.returnable_quantity ?? item.quantity}
+                      </td>
                       <td style={tdStyle}>{money(item.unit_cost)}</td>
                       <td style={tdStyle}>{money(item.line_total)}</td>
                     </tr>
@@ -957,7 +1087,13 @@ export default function PurchaseHistoryPage() {
             <h4 style={{ margin: '22px 0 12px' }}>المدفوعات</h4>
 
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  direction: 'rtl',
+                }}
+              >
                 <thead>
                   <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                     <th style={thStyle}>التاريخ</th>
@@ -975,7 +1111,9 @@ export default function PurchaseHistoryPage() {
                     >
                       <td style={tdStyle}>{formatDate(payment.created_at)}</td>
                       <td style={tdStyle}>{money(payment.amount)}</td>
-                      <td style={tdStyle}>{getPaymentMethodLabel(payment.payment_method)}</td>
+                      <td style={tdStyle}>
+                        {getPaymentMethodLabel(payment.payment_method)}
+                      </td>
                       <td style={tdStyle}>{payment.notes || '—'}</td>
                     </tr>
                   ))}
@@ -988,7 +1126,7 @@ export default function PurchaseHistoryPage() {
                           ...tdStyle,
                           textAlign: 'center',
                           color: '#94a3b8',
-                          padding: '20px'
+                          padding: '20px',
                         }}
                       >
                         لا توجد مدفوعات
@@ -1004,7 +1142,13 @@ export default function PurchaseHistoryPage() {
                 <h4 style={{ margin: '22px 0 12px' }}>مرتجعات هذه الفاتورة</h4>
 
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+                  <table
+                    style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      direction: 'rtl',
+                    }}
+                  >
                     <thead>
                       <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                         <th style={thStyle}>رقم المرتجع</th>
@@ -1015,17 +1159,27 @@ export default function PurchaseHistoryPage() {
                     </thead>
 
                     <tbody>
-                      {(selectedPurchase.returns ?? []).map((purchaseReturn: any) => (
-                        <tr
-                          key={purchaseReturn.id}
-                          style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
-                        >
-                          <td style={tdStyle}>#{purchaseReturn.id}</td>
-                          <td style={tdStyle}>{money(purchaseReturn.total_amount)}</td>
-                          <td style={tdStyle}>{formatDate(purchaseReturn.created_at)}</td>
-                          <td style={tdStyle}>{purchaseReturn.notes || '—'}</td>
-                        </tr>
-                      ))}
+                      {(selectedPurchase.returns ?? []).map(
+                        (purchaseReturn: any) => (
+                          <tr
+                            key={purchaseReturn.id}
+                            style={{
+                              borderTop: '1px solid rgba(255,255,255,0.06)',
+                            }}
+                          >
+                            <td style={tdStyle}>#{purchaseReturn.id}</td>
+                            <td style={tdStyle}>
+                              {money(purchaseReturn.total_amount)}
+                            </td>
+                            <td style={tdStyle}>
+                              {formatDate(purchaseReturn.created_at)}
+                            </td>
+                            <td style={tdStyle}>
+                              {purchaseReturn.notes || '—'}
+                            </td>
+                          </tr>
+                        ),
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1038,11 +1192,13 @@ export default function PurchaseHistoryPage() {
                 justifyContent: 'flex-start',
                 gap: '10px',
                 marginTop: '22px',
-                flexWrap: 'wrap'
+                flexWrap: 'wrap',
               }}
             >
               {selectedPurchase.purchase.payment_status !== 'cancelled' &&
-                Number(selectedPurchase.purchase.remaining_amount || 0) > 0 && (
+                hasRemainingAmount(
+                  selectedPurchase.purchase.remaining_amount,
+                ) && (
                   <button
                     type="button"
                     onClick={() =>
@@ -1050,15 +1206,19 @@ export default function PurchaseHistoryPage() {
                         id: selectedPurchase.purchase.id,
                         supplier_id: selectedPurchase.purchase.supplier_id,
                         supplier_name: selectedPurchase.purchase.supplier_name,
-                        supplier_phone: selectedPurchase.purchase.supplier_phone,
+                        supplier_phone:
+                          selectedPurchase.purchase.supplier_phone,
                         total_amount: selectedPurchase.purchase.total_amount,
                         paid_amount: selectedPurchase.purchase.paid_amount,
-                        remaining_amount: selectedPurchase.purchase.remaining_amount,
-                        payment_status: selectedPurchase.purchase.payment_status,
-                        payment_method: selectedPurchase.purchase.payment_method,
+                        remaining_amount:
+                          selectedPurchase.purchase.remaining_amount,
+                        payment_status:
+                          selectedPurchase.purchase.payment_status,
+                        payment_method:
+                          selectedPurchase.purchase.payment_method,
                         notes: selectedPurchase.purchase.notes,
                         created_at: selectedPurchase.purchase.created_at,
-                        items_count: selectedPurchase.items?.length || 0
+                        items_count: selectedPurchase.items?.length || 0,
                       })
                     }
                     style={primaryButtonStyle}
@@ -1078,19 +1238,21 @@ export default function PurchaseHistoryPage() {
                       supplier_phone: selectedPurchase.purchase.supplier_phone,
                       total_amount: selectedPurchase.purchase.total_amount,
                       paid_amount: selectedPurchase.purchase.paid_amount,
-                      remaining_amount: selectedPurchase.purchase.remaining_amount,
+                      remaining_amount:
+                        selectedPurchase.purchase.remaining_amount,
                       payment_status: selectedPurchase.purchase.payment_status,
                       payment_method: selectedPurchase.purchase.payment_method,
                       notes: selectedPurchase.purchase.notes,
                       created_at: selectedPurchase.purchase.created_at,
                       items_count: selectedPurchase.items?.length || 0,
-                      returned_amount: selectedPurchase.purchase.returned_amount || 0
+                      returned_amount:
+                        selectedPurchase.purchase.returned_amount || 0,
                     })
                   }
                   style={{
                     ...secondaryButtonStyle,
                     borderColor: '#f59e0b',
-                    color: '#fde68a'
+                    color: '#fde68a',
                   }}
                 >
                   إنشاء مرتجع
@@ -1121,7 +1283,7 @@ export default function PurchaseHistoryPage() {
                 justifyContent: 'space-between',
                 gap: '12px',
                 alignItems: 'center',
-                marginBottom: '18px'
+                marginBottom: '18px',
               }}
             >
               <div>
@@ -1148,18 +1310,34 @@ export default function PurchaseHistoryPage() {
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                 gap: '12px',
-                marginBottom: '18px'
+                marginBottom: '18px',
               }}
             >
-              <InfoCard title="قيمة المرتجع" value={money(selectedReturn.return.total_amount)} />
-              <InfoCard title="التاريخ" value={formatDate(selectedReturn.return.created_at)} />
-              <InfoCard title="ملاحظات" value={selectedReturn.return.notes || '—'} />
+              <InfoCard
+                title="قيمة المرتجع"
+                value={money(selectedReturn.return.total_amount)}
+              />
+              <InfoCard
+                title="التاريخ"
+                value={formatDate(selectedReturn.return.created_at)}
+              />
+              <InfoCard
+                title="ملاحظات"
+                value={selectedReturn.return.notes || '—'}
+              />
             </div>
 
             <h4 style={{ margin: '0 0 12px' }}>أصناف المرتجع</h4>
 
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', minWidth: '720px', borderCollapse: 'collapse', direction: 'rtl' }}>
+              <table
+                style={{
+                  width: '100%',
+                  minWidth: '720px',
+                  borderCollapse: 'collapse',
+                  direction: 'rtl',
+                }}
+              >
                 <thead>
                   <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                     <th style={thStyle}>الصنف</th>
@@ -1196,7 +1374,7 @@ export default function PurchaseHistoryPage() {
                 display: 'flex',
                 justifyContent: 'flex-start',
                 gap: '10px',
-                marginTop: '22px'
+                marginTop: '22px',
               }}
             >
               <button
@@ -1221,17 +1399,34 @@ export default function PurchaseHistoryPage() {
 
       {cancelPurchaseTarget && (
         <div className="theme-modal-overlay" style={modalOverlayStyle}>
-          <div className="theme-modal-card purchase-cancel-modal" style={modalStyle}>
-            <h3 style={{ margin: '0 0 8px' }}>إلغاء فاتورة شراء #{cancelPurchaseTarget.id}</h3>
+          <div
+            className="theme-modal-card purchase-cancel-modal"
+            style={modalStyle}
+          >
+            <h3 style={{ margin: '0 0 8px' }}>
+              إلغاء فاتورة شراء #{cancelPurchaseTarget.id}
+            </h3>
 
-            <p style={{ margin: '0 0 16px', color: '#94a3b8', fontWeight: 700 }}>
-              سيتم خصم كميات الفاتورة من المخزون وعكس حساب المورد. لن يتم حذف الفاتورة من السجل.
+            <p
+              style={{ margin: '0 0 16px', color: '#94a3b8', fontWeight: 700 }}
+            >
+              سيتم خصم كميات الفاتورة من المخزون وعكس حساب المورد. لن يتم حذف
+              الفاتورة من السجل.
             </p>
 
             <div style={{ display: 'grid', gap: '12px' }}>
-              <InfoCard title="المورد" value={cancelPurchaseTarget.supplier_name || '—'} />
-              <InfoCard title="إجمالي الفاتورة" value={money(cancelPurchaseTarget.total_amount)} />
-              <InfoCard title="الأصناف" value={String(cancelPurchaseTarget.items_count || 0)} />
+              <InfoCard
+                title="المورد"
+                value={cancelPurchaseTarget.supplier_name || '—'}
+              />
+              <InfoCard
+                title="إجمالي الفاتورة"
+                value={money(cancelPurchaseTarget.total_amount)}
+              />
+              <InfoCard
+                title="الأصناف"
+                value={String(cancelPurchaseTarget.items_count || 0)}
+              />
 
               <div style={fieldStyle}>
                 <label style={labelStyle}>سبب الإلغاء</label>
@@ -1251,7 +1446,7 @@ export default function PurchaseHistoryPage() {
                 gap: '10px',
                 justifyContent: 'flex-start',
                 flexWrap: 'wrap',
-                marginTop: '22px'
+                marginTop: '22px',
               }}
             >
               <button
@@ -1261,7 +1456,7 @@ export default function PurchaseHistoryPage() {
                 style={{
                   ...dangerSolidButtonStyle,
                   opacity: cancellingPurchase ? 0.6 : 1,
-                  cursor: cancellingPurchase ? 'not-allowed' : 'pointer'
+                  cursor: cancellingPurchase ? 'not-allowed' : 'pointer',
                 }}
               >
                 {cancellingPurchase ? 'جاري الإلغاء...' : 'تأكيد الإلغاء'}
@@ -1270,8 +1465,8 @@ export default function PurchaseHistoryPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setCancelPurchaseTarget(null);
-                  setCancelReason('');
+                  setCancelPurchaseTarget(null)
+                  setCancelReason('')
                 }}
                 style={secondaryButtonStyle}
               >
@@ -1294,7 +1489,7 @@ export default function PurchaseHistoryPage() {
                 justifyContent: 'space-between',
                 gap: '12px',
                 alignItems: 'center',
-                marginBottom: '18px'
+                marginBottom: '18px',
               }}
             >
               <div>
@@ -1330,12 +1525,21 @@ export default function PurchaseHistoryPage() {
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                  gap: '12px'
+                  gap: '12px',
                 }}
               >
-                <InfoCard title="قيمة المرتجع" value={money(purchaseReturnTotal)} />
-                <InfoCard title="يخصم من مديونية المورد" value={money(purchaseReturnDebtReduction)} />
-                <InfoCard title="فرق راجع من المورد" value={money(purchaseReturnCashRefund)} />
+                <InfoCard
+                  title="قيمة المرتجع"
+                  value={money(purchaseReturnTotal)}
+                />
+                <InfoCard
+                  title="يخصم من مديونية المورد"
+                  value={money(purchaseReturnDebtReduction)}
+                />
+                <InfoCard
+                  title="فرق راجع من المورد"
+                  value={money(purchaseReturnCashRefund)}
+                />
               </div>
 
               {purchaseReturnCashRefund > 0 && (
@@ -1343,14 +1547,16 @@ export default function PurchaseHistoryPage() {
                   style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                    gap: '12px'
+                    gap: '12px',
                   }}
                 >
                   <div style={fieldStyle}>
                     <label style={labelStyle}>طريقة فرق المرتجع</label>
                     <select
                       value={returnRefundMode}
-                      onChange={(e) => setReturnRefundMode(e.target.value as 'cash' | 'credit')}
+                      onChange={(e) =>
+                        setReturnRefundMode(e.target.value as 'cash' | 'credit')
+                      }
                       style={inputStyle}
                     >
                       <option value="cash">المورد رجع فلوس الآن</option>
@@ -1383,7 +1589,7 @@ export default function PurchaseHistoryPage() {
                     width: '100%',
                     minWidth: '820px',
                     borderCollapse: 'collapse',
-                    direction: 'rtl'
+                    direction: 'rtl',
                   }}
                 >
                   <thead>
@@ -1399,18 +1605,31 @@ export default function PurchaseHistoryPage() {
 
                   <tbody>
                     {(returnPurchase.items ?? []).map((item: any) => {
-                      const maxQuantity = Number(item.returnable_quantity ?? item.quantity ?? 0);
+                      const maxQuantity = Number(
+                        item.returnable_quantity ?? item.quantity ?? 0,
+                      )
 
                       return (
                         <tr
                           key={item.id}
-                          style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                          style={{
+                            borderTop: '1px solid rgba(255,255,255,0.06)',
+                          }}
                         >
                           <td style={tdStyle}>
-                            <div style={{ display: 'grid', gap: '4px', minWidth: '160px' }}>
+                            <div
+                              style={{
+                                display: 'grid',
+                                gap: '4px',
+                                minWidth: '160px',
+                              }}
+                            >
                               <strong>{item.product_name}</strong>
-                              <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-                                {item.barcode || '—'} / {item.size || '—'} / {item.color || '—'}
+                              <span
+                                style={{ color: '#94a3b8', fontSize: '12px' }}
+                              >
+                                {item.barcode || '—'} / {item.size || '—'} /{' '}
+                                {item.color || '—'}
                               </span>
                             </div>
                           </td>
@@ -1424,18 +1643,23 @@ export default function PurchaseHistoryPage() {
                               max={maxQuantity}
                               disabled={maxQuantity <= 0}
                               value={returnQuantities[item.id] || ''}
-                              onChange={(e) => updateReturnQuantity(Number(item.id), e.target.value)}
+                              onChange={(e) =>
+                                updateReturnQuantity(
+                                  Number(item.id),
+                                  e.target.value,
+                                )
+                              }
                               style={{
                                 ...inputStyle,
                                 width: '120px',
                                 textAlign: 'center',
-                                opacity: maxQuantity <= 0 ? 0.5 : 1
+                                opacity: maxQuantity <= 0 ? 0.5 : 1,
                               }}
                             />
                           </td>
                           <td style={tdStyle}>{money(item.unit_cost)}</td>
                         </tr>
-                      );
+                      )
                     })}
                   </tbody>
                 </table>
@@ -1446,7 +1670,7 @@ export default function PurchaseHistoryPage() {
                   display: 'flex',
                   justifyContent: 'flex-start',
                   gap: '10px',
-                  marginTop: '10px'
+                  marginTop: '10px',
                 }}
               >
                 <button
@@ -1456,7 +1680,7 @@ export default function PurchaseHistoryPage() {
                   style={{
                     ...primaryButtonStyle,
                     opacity: savingReturn ? 0.6 : 1,
-                    cursor: savingReturn ? 'not-allowed' : 'pointer'
+                    cursor: savingReturn ? 'not-allowed' : 'pointer',
                   }}
                 >
                   {savingReturn ? 'جاري الحفظ...' : 'حفظ المرتجع'}
@@ -1477,10 +1701,15 @@ export default function PurchaseHistoryPage() {
 
       {paymentPurchase && (
         <div className="theme-modal-overlay" style={modalOverlayStyle}>
-          <div className="theme-modal-card purchase-payment-modal" style={modalStyle}>
+          <div
+            className="theme-modal-card purchase-payment-modal"
+            style={modalStyle}
+          >
             <h3 style={{ margin: '0 0 8px' }}>تسجيل دفعة للمورد</h3>
 
-            <p style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700 }}>
+            <p
+              style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700 }}
+            >
               {paymentPurchase.supplier_name} | فاتورة #{paymentPurchase.id}
             </p>
 
@@ -1538,7 +1767,7 @@ export default function PurchaseHistoryPage() {
                 display: 'flex',
                 gap: '10px',
                 justifyContent: 'flex-start',
-                marginTop: '22px'
+                marginTop: '22px',
               }}
             >
               <button
@@ -1548,7 +1777,7 @@ export default function PurchaseHistoryPage() {
                 style={{
                   ...primaryButtonStyle,
                   opacity: savingPayment ? 0.6 : 1,
-                  cursor: savingPayment ? 'not-allowed' : 'pointer'
+                  cursor: savingPayment ? 'not-allowed' : 'pointer',
                 }}
               >
                 {savingPayment ? 'جاري الحفظ...' : 'حفظ الدفعة'}
@@ -1566,7 +1795,7 @@ export default function PurchaseHistoryPage() {
         </div>
       )}
     </div>
-  );
+  )
 }
 
 function InfoCard({ title, value }: { title: string; value: string }) {
@@ -1579,40 +1808,40 @@ function InfoCard({ title, value }: { title: string; value: string }) {
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
         display: 'grid',
-        gap: '8px'
+        gap: '8px',
       }}
     >
       <span style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</span>
       <strong style={{ color: '#fff', fontSize: '18px' }}>{value}</strong>
     </div>
-  );
+  )
 }
 
 function PaymentStatusBadge({ status }: { status: string }) {
-  let text = 'غير مدفوعة';
-  let color = '#fca5a5';
-  let background = 'rgba(239,68,68,0.10)';
-  let border = 'rgba(239,68,68,0.25)';
+  let text = 'غير مدفوعة'
+  let color = '#fca5a5'
+  let background = 'rgba(239,68,68,0.10)'
+  let border = 'rgba(239,68,68,0.25)'
 
   if (status === 'paid') {
-    text = 'مدفوعة';
-    color = '#6ee7b7';
-    background = 'rgba(16,185,129,0.10)';
-    border = 'rgba(16,185,129,0.25)';
+    text = 'مدفوعة'
+    color = '#6ee7b7'
+    background = 'rgba(16,185,129,0.10)'
+    border = 'rgba(16,185,129,0.25)'
   }
 
   if (status === 'partial') {
-    text = 'جزئي';
-    color = '#fdba74';
-    background = 'rgba(249,115,22,0.10)';
-    border = 'rgba(249,115,22,0.25)';
+    text = 'جزئي'
+    color = '#fdba74'
+    background = 'rgba(249,115,22,0.10)'
+    border = 'rgba(249,115,22,0.25)'
   }
 
   if (status === 'cancelled') {
-    text = 'ملغاة';
-    color = '#cbd5e1';
-    background = 'rgba(148,163,184,0.12)';
-    border = 'rgba(148,163,184,0.28)';
+    text = 'ملغاة'
+    color = '#cbd5e1'
+    background = 'rgba(148,163,184,0.12)'
+    border = 'rgba(148,163,184,0.28)'
   }
 
   return (
@@ -1624,45 +1853,45 @@ function PaymentStatusBadge({ status }: { status: string }) {
         color,
         background,
         border: `1px solid ${border}`,
-        fontWeight: 900
+        fontWeight: 900,
       }}
     >
       {text}
     </span>
-  );
+  )
 }
 
 function paymentStatusName(status: string) {
-  if (status === 'paid') return 'مدفوعة';
-  if (status === 'partial') return 'مدفوعة جزئيًا';
-  if (status === 'cancelled') return 'ملغاة';
-  return 'غير مدفوعة';
+  if (status === 'paid') return 'مدفوعة'
+  if (status === 'partial') return 'مدفوعة جزئيًا'
+  if (status === 'cancelled') return 'ملغاة'
+  return 'غير مدفوعة'
 }
 
 function paymentMethodName(value?: string | null) {
-  return getPaymentMethodLabel(value);
+  return getPaymentMethodLabel(value)
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`;
+  return `${Number(value || 0).toFixed(2)} ج.م`
 }
 
 function formatDate(value?: string) {
-  if (!value) return '—';
+  if (!value) return '—'
 
   try {
-    const raw = String(value);
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
+    const raw = String(value)
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
 
     return new Date(normalized).toLocaleString('ar-EG', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit'
-    });
+      minute: '2-digit',
+    })
   } catch {
-    return value;
+    return value
   }
 }
 
@@ -1670,18 +1899,18 @@ const cardStyle: React.CSSProperties = {
   padding: '12px 14px',
   borderRadius: '16px',
   display: 'grid',
-  gap: '10px'
-};
+  gap: '10px',
+}
 
 const fieldStyle: React.CSSProperties = {
   display: 'grid',
-  gap: '8px'
-};
+  gap: '8px',
+}
 
 const labelStyle: React.CSSProperties = {
   color: '#cbd5e1',
-  fontWeight: 800
-};
+  fontWeight: 800,
+}
 
 const inputStyle: React.CSSProperties = {
   height: '40px',
@@ -1693,8 +1922,8 @@ const inputStyle: React.CSSProperties = {
   padding: '0 12px',
   textAlign: 'right',
   direction: 'rtl',
-  boxSizing: 'border-box'
-};
+  boxSizing: 'border-box',
+}
 
 const primaryButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(59,130,246,0.45)',
@@ -1704,8 +1933,8 @@ const primaryButtonStyle: React.CSSProperties = {
   color: '#dbeafe',
   fontWeight: 800,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(148,163,184,0.28)',
@@ -1715,8 +1944,8 @@ const secondaryButtonStyle: React.CSSProperties = {
   color: '#e5e7eb',
   fontWeight: 800,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const dangerSolidButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(239,68,68,0.55)',
@@ -1726,23 +1955,23 @@ const dangerSolidButtonStyle: React.CSSProperties = {
   color: '#fecaca',
   fontWeight: 900,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const tabButtonStyle: React.CSSProperties = {
   ...secondaryButtonStyle,
   minWidth: '108px',
   height: '34px',
   padding: '0 10px',
-  fontSize: '12px'
-};
+  fontSize: '12px',
+}
 
 const activeTabButtonStyle: React.CSSProperties = {
   ...tabButtonStyle,
   background: 'rgba(59,130,246,0.18)',
   color: '#dbeafe',
-  borderColor: 'rgba(59,130,246,0.45)'
-};
+  borderColor: 'rgba(59,130,246,0.45)',
+}
 
 const smallButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(148,163,184,0.30)',
@@ -1756,8 +1985,8 @@ const smallButtonStyle: React.CSSProperties = {
   minWidth: '50px',
   textAlign: 'center',
   fontWeight: 700,
-  fontSize: '12px'
-};
+  fontSize: '12px',
+}
 
 const closeButtonStyle: React.CSSProperties = {
   width: '34px',
@@ -1767,24 +1996,24 @@ const closeButtonStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.05)',
   color: '#fff',
   cursor: 'pointer',
-  fontSize: '20px'
-};
+  fontSize: '20px',
+}
 
 const thStyle: React.CSSProperties = {
   padding: '7px 6px',
   fontWeight: 900,
   whiteSpace: 'nowrap',
   fontSize: '12px',
-  borderBottom: '1px solid rgba(255,255,255,0.08)'
-};
+  borderBottom: '1px solid rgba(255,255,255,0.08)',
+}
 
 const tdStyle: React.CSSProperties = {
   padding: '7px 6px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
   fontSize: '12px',
-  verticalAlign: 'middle'
-};
+  verticalAlign: 'middle',
+}
 
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
@@ -1794,8 +2023,8 @@ const modalOverlayStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  padding: '20px'
-};
+  padding: '20px',
+}
 
 const modalStyle: React.CSSProperties = {
   width: '480px',
@@ -1807,5 +2036,5 @@ const modalStyle: React.CSSProperties = {
   background: '#111827',
   padding: '22px',
   direction: 'rtl',
-  boxShadow: '0 24px 70px rgba(0,0,0,0.55)'
-};
+  boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
+}
