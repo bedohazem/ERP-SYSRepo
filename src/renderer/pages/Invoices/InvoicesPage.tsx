@@ -1,104 +1,111 @@
-import { useEffect, useState } from 'react';
-import { useAuthStore } from '../../store/auth.store';
+import { useEffect, useState } from 'react'
+import { useAuthStore } from '../../store/auth.store'
 import {
   CASH_ACCOUNT_OPTIONS,
-  getPaymentMethodLabel
-} from '../../utils/payment-method';
+  getPaymentMethodLabel,
+} from '../../utils/payment-method'
+
+import QRCode from 'qrcode'
 
 type SaleRow = {
-  id: number;
-  customer_name?: string | null;
-  customer_phone?: string | null;
-  cashier_name?: string | null;
-  sub_total: number;
-  discount_value: number;
-  loyalty_discount_value: number;
-  grand_total: number;
-  paid: number;
-  remaining_amount: number;
-  payment_status: string;
-  change_amount: number;
-  payment_method: string;
-  loyalty_points_earned: number;
-  loyalty_points_redeemed: number;
-  created_at: string;
-  items_count: number;
-  total_quantity: number;
-  returned_quantity: number;
-  return_count: number;
-  total_return_amount: number;
-};
+  id: number
+  customer_name?: string | null
+  customer_phone?: string | null
+  cashier_name?: string | null
+  sub_total: number
+  discount_value: number
+  loyalty_discount_value: number
+  grand_total: number
+  paid: number
+  remaining_amount: number
+  payment_status: string
+  change_amount: number
+  payment_method: string
+  loyalty_points_earned: number
+  loyalty_points_redeemed: number
+  created_at: string
+  items_count: number
+  total_quantity: number
+  returned_quantity: number
+  return_count: number
+  total_return_amount: number
+}
 
-type InvoicesTab = 'sales' | 'returns';
+type InvoicesTab = 'sales' | 'returns'
 
 type ReturnRow = {
-  id: number;
-  code: string;
-  original_sale_id: number;
-  customer_name?: string | null;
-  customer_phone?: string | null;
-  cashier_name?: string | null;
-  sub_total: number;
-  loyalty_discount_value: number;
-  refund_amount: number;
-  payment_method: string;
-  reason?: string | null;
-  loyalty_points_reversed: number;
-  created_at: string;
-  items_count: number;
-  total_quantity: number;
-};
+  id: number
+  code: string
+  original_sale_id: number
+  customer_name?: string | null
+  customer_phone?: string | null
+  cashier_name?: string | null
+  sub_total: number
+  loyalty_discount_value: number
+  refund_amount: number
+  payment_method: string
+  reason?: string | null
+  loyalty_points_reversed: number
+  created_at: string
+  items_count: number
+  total_quantity: number
+}
 
 type ReceiptData = {
-  sale: any;
-  items: any[];
-  loyalty: any[];
-};
+  sale: any
+  items: any[]
+  loyalty: any[]
+}
 
 type StoreReceiptInfo = {
-  app_name?: string;
-  store_phone?: string;
-  store_address?: string;
-};
+  app_name?: string
+  app_logo_url?: string
+  store_phone?: string
+  store_address?: string
+  store_qr_enabled?: boolean
+  store_qr_title?: string
+  store_qr_primary_url?: string
+}
 
 type ReturnDraftItem = {
-  sale_item_id: number;
-  variant_id: number;
-  product_name: string;
-  size?: string | null;
-  color?: string | null;
-  sold_quantity: number;
-  returned_quantity: number;
-  returnable_quantity: number;
-  return_quantity: number;
-  unit_price: number;
-};
+  sale_item_id: number
+  variant_id: number
+  product_name: string
+  size?: string | null
+  color?: string | null
+  sold_quantity: number
+  returned_quantity: number
+  returnable_quantity: number
+  return_quantity: number
+  unit_price: number
+}
 
 export default function InvoicesPage() {
-  const [rows, setRows] = useState<SaleRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [activeTab, setActiveTab] = useState<InvoicesTab>('sales');
-  const [returnRows, setReturnRows] = useState<ReturnRow[]>([]);
-  const [returnsTotal, setReturnsTotal] = useState(0);
-  const [returnsLoading, setReturnsLoading] = useState(false);
-  const [search, setSearch] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(null);
-  const [selectedReturnHistory, setSelectedReturnHistory] = useState<any[]>([]);
-  const [message, setMessage] = useState('');
-  const user = useAuthStore((s) => s.user);
-  
+  const [rows, setRows] = useState<SaleRow[]>([])
+  const [total, setTotal] = useState(0)
+  const [activeTab, setActiveTab] = useState<InvoicesTab>('sales')
+  const [returnRows, setReturnRows] = useState<ReturnRow[]>([])
+  const [returnsTotal, setReturnsTotal] = useState(0)
+  const [returnsLoading, setReturnsLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(
+    null,
+  )
+  const [selectedReturnHistory, setSelectedReturnHistory] = useState<any[]>([])
+  const [message, setMessage] = useState('')
+  const user = useAuthStore((s) => s.user)
 
-  const [returnReceipt, setReturnReceipt] = useState<ReceiptData | null>(null);
-  const [returnItems, setReturnItems] = useState<ReturnDraftItem[]>([]);
-  const [returnReason, setReturnReason] = useState('');
-  const [returnRefundAccount, setReturnRefundAccount] = useState('store_cash');
-  const [savingReturn, setSavingReturn] = useState(false);
+  const [returnReceipt, setReturnReceipt] = useState<ReceiptData | null>(null)
+  const [returnItems, setReturnItems] = useState<ReturnDraftItem[]>([])
+  const [returnReason, setReturnReason] = useState('')
+  const [returnRefundAccount, setReturnRefundAccount] = useState('store_cash')
+  const [savingReturn, setSavingReturn] = useState(false)
 
   async function loadInvoices() {
-    setLoading(true);
+    setLoading(true)
 
     try {
       const result = await window.api.listSales({
@@ -106,23 +113,23 @@ export default function InvoicesPage() {
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
         limit: 100,
-        offset: 0
-      });
+        offset: 0,
+      })
 
-      setRows(Array.isArray(result.rows) ? result.rows : []);
-      setTotal(Number(result.total || 0));
+      setRows(Array.isArray(result.rows) ? result.rows : [])
+      setTotal(Number(result.total || 0))
     } catch (error) {
-      console.error('Failed to load invoices:', error);
-      setMessage('حدث خطأ أثناء تحميل الفواتير');
-      setRows([]);
-      setTotal(0);
+      console.error('Failed to load invoices:', error)
+      setMessage('حدث خطأ أثناء تحميل الفواتير')
+      setRows([])
+      setTotal(0)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
   async function loadReturns() {
-    setReturnsLoading(true);
+    setReturnsLoading(true)
 
     try {
       const result = await window.api.listSaleReturns({
@@ -130,78 +137,98 @@ export default function InvoicesPage() {
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
         limit: 100,
-        offset: 0
-      });
+        offset: 0,
+      })
 
-      setReturnRows(Array.isArray(result.rows) ? result.rows : []);
-      setReturnsTotal(Number(result.total || 0));
+      setReturnRows(Array.isArray(result.rows) ? result.rows : [])
+      setReturnsTotal(Number(result.total || 0))
     } catch (error) {
-      console.error('Failed to load returns:', error);
-      setMessage('حدث خطأ أثناء تحميل سجل المرتجعات');
-      setReturnRows([]);
-      setReturnsTotal(0);
+      console.error('Failed to load returns:', error)
+      setMessage('حدث خطأ أثناء تحميل سجل المرتجعات')
+      setReturnRows([])
+      setReturnsTotal(0)
     } finally {
-      setReturnsLoading(false);
+      setReturnsLoading(false)
     }
   }
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      void Promise.all([
-        loadInvoices(),
-        loadReturns()
-      ]);
-    }, 250);
+      void Promise.all([loadInvoices(), loadReturns()])
+    }, 250)
 
-    return () => clearTimeout(handle);
-  }, [search, dateFrom, dateTo]);
+    return () => clearTimeout(handle)
+  }, [search, dateFrom, dateTo])
 
   async function openReceipt(saleId: number) {
     try {
       const [receipt, history] = await Promise.all([
         window.api.getSaleReceipt(saleId),
-        window.api.getSaleReturnHistory(saleId)
-      ]);
+        window.api.getSaleReturnHistory(saleId),
+      ])
 
-      setSelectedReceipt(receipt);
-      setSelectedReturnHistory(Array.isArray(history) ? history : []);
+      setSelectedReceipt(receipt)
+      setSelectedReturnHistory(Array.isArray(history) ? history : [])
     } catch (error) {
-      console.error('Failed to open receipt:', error);
-      setMessage('حدث خطأ أثناء فتح الفاتورة');
+      console.error('Failed to open receipt:', error)
+      setMessage('حدث خطأ أثناء فتح الفاتورة')
     }
   }
 
   async function printReceipt(receipt: ReceiptData, returnHistory: any[] = []) {
-    let storeInfo: StoreReceiptInfo = {};
-      try {
-      const status = await window.api.getLicenseStatus();
+    let storeInfo: StoreReceiptInfo = {}
+
+    try {
+      const status = await window.api.getLicenseStatus()
 
       storeInfo = {
         app_name: status.app_name,
+        app_logo_url: status.app_logo_url,
         store_phone: status.store_phone,
-        store_address: status.store_address
-      };
+        store_address: status.store_address,
+        store_qr_enabled: status.store_qr_enabled,
+        store_qr_title: status.store_qr_title,
+        store_qr_primary_url: status.store_qr_primary_url,
+      }
     } catch (error) {
-      console.error('Failed to load store receipt info:', error);
+      console.error('Failed to load store receipt info:', error)
     }
 
-    const html = buildReceiptHtml(receipt, returnHistory, storeInfo);
-    const printWindow = window.open('', '_blank', 'width=420,height=700');
+    let qrDataUrl = ''
+
+    try {
+      if (storeInfo.store_qr_primary_url?.trim()) {
+        qrDataUrl = await QRCode.toDataURL(
+          storeInfo.store_qr_primary_url.trim(),
+          {
+            width: 120,
+            margin: 1,
+            errorCorrectionLevel: 'M',
+          },
+        )
+      }
+    } catch (error) {
+      console.error('Failed to generate invoice QR:', error)
+    }
+
+    const html = buildReceiptHtml(receipt, returnHistory, storeInfo, qrDataUrl)
+
+    const printWindow = window.open('', '_blank', 'width=420,height=700')
 
     if (!printWindow) {
-      setMessage('لم يتم فتح نافذة الطباعة');
-      return;
+      setMessage('لم يتم فتح نافذة الطباعة')
+      return
     }
 
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.focus();
+    printWindow.document.open()
+    printWindow.document.write(html)
+    printWindow.document.close()
+    printWindow.focus()
 
     setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 350);
+      printWindow.print()
+      printWindow.close()
+    }, 350)
   }
 
   function resolveRefundAccountFromPaymentMethod(method?: string | null) {
@@ -211,23 +238,23 @@ export default function InvoicesPage() {
       case 'owner_bank':
       case 'owner_vodafone':
       case 'fawry_machine':
-        return method;
+        return method
 
       case 'cash':
-        return 'store_cash';
+        return 'store_cash'
 
       case 'card':
-        return 'fawry_machine';
+        return 'fawry_machine'
 
       case 'wallet':
-        return 'owner_vodafone';
+        return 'owner_vodafone'
 
       case 'bank':
       case 'bank_transfer':
-        return 'owner_bank';
+        return 'owner_bank'
 
       default:
-        return 'store_cash';
+        return 'store_cash'
     }
   }
 
@@ -237,28 +264,32 @@ export default function InvoicesPage() {
         ? error.message
         : typeof error === 'string'
           ? error
-          : '';
+          : ''
 
-    const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/);
+    const match = raw.match(
+      /Error invoking remote method '[^']+': Error: (.*)$/,
+    )
 
-    return match?.[1] || raw || fallback;
+    return match?.[1] || raw || fallback
   }
 
   async function openReturnPopup(saleId: number) {
     try {
-        const receipt = await window.api.getSaleReceipt(saleId);
+      const receipt = await window.api.getSaleReceipt(saleId)
 
-        setReturnReceipt(receipt);
-        setReturnReason('');
-        setReturnRefundAccount(resolveRefundAccountFromPaymentMethod(receipt.sale?.payment_method));
+      setReturnReceipt(receipt)
+      setReturnReason('')
+      setReturnRefundAccount(
+        resolveRefundAccountFromPaymentMethod(receipt.sale?.payment_method),
+      )
 
-        setReturnItems(
+      setReturnItems(
         (receipt.items ?? []).map((item: any) => {
-            const soldQty = Number(item.quantity || 0);
-            const returnedQty = Number(item.returned_quantity || 0);
-            const returnableQty = Math.max(0, soldQty - returnedQty);
+          const soldQty = Number(item.quantity || 0)
+          const returnedQty = Number(item.returned_quantity || 0)
+          const returnableQty = Math.max(0, soldQty - returnedQty)
 
-            return {
+          return {
             sale_item_id: Number(item.id),
             variant_id: Number(item.variant_id),
             product_name: item.product_name,
@@ -268,59 +299,59 @@ export default function InvoicesPage() {
             returned_quantity: returnedQty,
             returnable_quantity: returnableQty,
             return_quantity: 0,
-            unit_price: Number(item.unit_price || 0)
-            };
-        })
-        );
+            unit_price: Number(item.unit_price || 0),
+          }
+        }),
+      )
     } catch (error) {
-        console.error('Failed to open return popup:', error);
-        setMessage('حدث خطأ أثناء فتح المرتجع');
+      console.error('Failed to open return popup:', error)
+      setMessage('حدث خطأ أثناء فتح المرتجع')
     }
-    }
+  }
 
   function updateReturnQty(saleItemId: number, qty: number) {
     setReturnItems((prev) =>
-        prev.map((item) =>
+      prev.map((item) =>
         item.sale_item_id === saleItemId
-            ? {
-                ...item,
-                return_quantity: Math.max(
+          ? {
+              ...item,
+              return_quantity: Math.max(
                 0,
-                Math.min(Number(qty || 0), item.returnable_quantity)
-                )
+                Math.min(Number(qty || 0), item.returnable_quantity),
+              ),
             }
-            : item
-        )
-    );
-    }
+          : item,
+      ),
+    )
+  }
 
   async function submitReturn() {
-    if (savingReturn) return;
+    if (savingReturn) return
 
     if (!user?.id) {
-        setMessage('المستخدم غير مسجل');
-        return;
+      setMessage('المستخدم غير مسجل')
+      return
     }
 
     if (!returnReceipt?.sale?.id) {
-        setMessage('الفاتورة الأصلية غير موجودة');
-        return;
+      setMessage('الفاتورة الأصلية غير موجودة')
+      return
     }
 
     const selectedItems = returnItems
-        .filter((item) => item.return_quantity > 0)
-        .map((item) => ({
+      .filter((item) => item.return_quantity > 0)
+      .map((item) => ({
         sale_item_id: item.sale_item_id,
         variant_id: item.variant_id,
-        quantity: item.return_quantity
-        }));
+        quantity: item.return_quantity,
+      }))
 
     if (selectedItems.length === 0) {
-        setMessage('اختار كمية مرتجع أولا');
-        return;
+      setMessage('اختار كمية مرتجع أولا')
+      return
     }
 
-    setSavingReturn(true);
+    setSavingReturn(true)
 
     try {
       const result = await window.api.createSaleReturn({
@@ -328,81 +359,83 @@ export default function InvoicesPage() {
         user_id: Number(user.id),
         reason: returnReason.trim() || null,
         refund_payment_method: returnRefundAccount,
-        items: selectedItems
-      });
+        items: selectedItems,
+      })
 
-        setMessage(`تم عمل مرتجع ${result.returnCode || `RET-${String(result.returnSaleId).padStart(5, '0')}`}`);
-        setReturnReceipt(null);
-        setReturnItems([]);
-        setReturnReason('');
-        setReturnRefundAccount('store_cash');
-        await loadInvoices();
-        await loadReturns();
+      setMessage(
+        `تم عمل مرتجع ${result.returnCode || `RET-${String(result.returnSaleId).padStart(5, '0')}`}`,
+      )
+      setReturnReceipt(null)
+      setReturnItems([])
+      setReturnReason('')
+      setReturnRefundAccount('store_cash')
+      await loadInvoices()
+      await loadReturns()
 
-        if (returnReceipt?.sale?.id) {
-          const [receipt, history] = await Promise.all([
-            window.api.getSaleReceipt(Number(returnReceipt.sale.id)),
-            window.api.getSaleReturnHistory(Number(returnReceipt.sale.id))
-          ]);
+      if (returnReceipt?.sale?.id) {
+        const [receipt, history] = await Promise.all([
+          window.api.getSaleReceipt(Number(returnReceipt.sale.id)),
+          window.api.getSaleReturnHistory(Number(returnReceipt.sale.id)),
+        ])
 
-          setSelectedReceipt(receipt);
-          setSelectedReturnHistory(Array.isArray(history) ? history : []);
-        }
-        
-      } catch (error) {
-        console.error('Failed to create return:', error);
-        setMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ المرتجع'));
-      } finally {
-        setSavingReturn(false);
+        setSelectedReceipt(receipt)
+        setSelectedReturnHistory(Array.isArray(history) ? history : [])
       }
+    } catch (error) {
+      console.error('Failed to create return:', error)
+      setMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ المرتجع'))
+    } finally {
+      setSavingReturn(false)
     }
+  }
 
-    const returnGrossTotal = returnItems.reduce(
-      (sum, item) => sum + item.return_quantity * item.unit_price,
-      0
-    );
+  const returnGrossTotal = returnItems.reduce(
+    (sum, item) => sum + item.return_quantity * item.unit_price,
+    0,
+  )
 
-    const originalSaleSubTotal = Number(returnReceipt?.sale?.sub_total || 0);
+  const originalSaleSubTotal = Number(returnReceipt?.sale?.sub_total || 0)
 
-    const returnRatio =
-      originalSaleSubTotal > 0
-        ? Math.min(returnGrossTotal / originalSaleSubTotal, 1)
-        : 0;
+  const returnRatio =
+    originalSaleSubTotal > 0
+      ? Math.min(returnGrossTotal / originalSaleSubTotal, 1)
+      : 0
 
-    const returnDiscountShare = Number(
-      (Number(returnReceipt?.sale?.discount_value || 0) * returnRatio).toFixed(2)
-    );
+  const returnDiscountShare = Number(
+    (Number(returnReceipt?.sale?.discount_value || 0) * returnRatio).toFixed(2),
+  )
 
-    const returnLoyaltyDiscountShare = Number(
-      (Number(returnReceipt?.sale?.loyalty_discount_value || 0) * returnRatio).toFixed(2)
-    );
+  const returnLoyaltyDiscountShare = Number(
+    (
+      Number(returnReceipt?.sale?.loyalty_discount_value || 0) * returnRatio
+    ).toFixed(2),
+  )
 
-    const returnTotal = Math.max(
-      0,
-      returnGrossTotal - returnDiscountShare - returnLoyaltyDiscountShare
-    );
+  const returnTotal = Math.max(
+    0,
+    returnGrossTotal - returnDiscountShare - returnLoyaltyDiscountShare,
+  )
 
-    const returnDebtReduction =
-      returnReceipt?.sale?.customer_id
-        ? Math.min(returnTotal, Number(returnReceipt?.sale?.remaining_amount || 0))
-        : 0;
+  const returnDebtReduction = returnReceipt?.sale?.customer_id
+    ? Math.min(returnTotal, Number(returnReceipt?.sale?.remaining_amount || 0))
+    : 0
 
-    const returnCashRefund = Math.max(0, returnTotal - returnDebtReduction);
+  const returnCashRefund = Math.max(0, returnTotal - returnDebtReduction)
 
   return (
     <div
-    style={{
-      display: 'grid',
-      gap: '18px',
-      height: '100%',
-      minHeight: 0,
-      gridTemplateRows: 'auto auto minmax(0, 1fr)',
-      alignContent: 'stretch',
-      width: '100%',
-      boxSizing: 'border-box',
-      paddingLeft: '28px'
-    }}
-  >
+      style={{
+        display: 'grid',
+        gap: '18px',
+        height: '100%',
+        minHeight: 0,
+        gridTemplateRows: 'auto auto minmax(0, 1fr)',
+        alignContent: 'stretch',
+        width: '100%',
+        boxSizing: 'border-box',
+        paddingLeft: '28px',
+      }}
+    >
       {message && (
         <div
           style={{
@@ -417,7 +450,7 @@ export default function InvoicesPage() {
             color: '#fff',
             fontWeight: 800,
             boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
-            pointerEvents: 'none'
+            pointerEvents: 'none',
           }}
         >
           {message}
@@ -430,7 +463,7 @@ export default function InvoicesPage() {
           padding: '18px',
           borderRadius: '18px',
           display: 'grid',
-          gap: '14px'
+          gap: '14px',
         }}
       >
         <div
@@ -440,7 +473,7 @@ export default function InvoicesPage() {
             alignItems: 'center',
             gap: '14px',
             flexWrap: 'wrap',
-            direction: 'rtl'
+            direction: 'rtl',
           }}
         >
           <div>
@@ -462,7 +495,7 @@ export default function InvoicesPage() {
             display: 'grid',
             gridTemplateColumns: 'minmax(260px, 1fr) 180px 180px 120px',
             gap: '12px',
-            direction: 'rtl'
+            direction: 'rtl',
           }}
         >
           <input
@@ -489,10 +522,7 @@ export default function InvoicesPage() {
           <button
             type="button"
             onClick={() => {
-              void Promise.all([
-                loadInvoices(),
-                loadReturns()
-              ]);
+              void Promise.all([loadInvoices(), loadReturns()])
             }}
             style={primaryButtonStyle}
           >
@@ -509,7 +539,7 @@ export default function InvoicesPage() {
           display: 'flex',
           gap: '10px',
           flexWrap: 'wrap',
-          direction: 'rtl'
+          direction: 'rtl',
         }}
       >
         <button
@@ -538,21 +568,27 @@ export default function InvoicesPage() {
             height: '100%',
             minHeight: 0,
             width: '100%',
-            boxSizing: 'border-box'
+            boxSizing: 'border-box',
           }}
         >
-          <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+          <table
+            style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              direction: 'rtl',
+            }}
+          >
             <thead>
               <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
-              <th style={thStyle}>رقم</th>
-              <th style={thStyle}>العميل</th>
-              <th style={thStyle}>الكاشير</th>
-              <th style={thStyle}>المرتجع</th>
-              <th style={thStyle}>قبل الخصم</th>
-              <th style={thStyle}>الخصم</th>
-              <th style={thStyle}>الإجمالي</th>
-              <th style={thStyle}>الدفع / النقاط</th>
-              <th style={thStyle}>إجراءات</th>
+                <th style={thStyle}>رقم</th>
+                <th style={thStyle}>العميل</th>
+                <th style={thStyle}>الكاشير</th>
+                <th style={thStyle}>المرتجع</th>
+                <th style={thStyle}>قبل الخصم</th>
+                <th style={thStyle}>الخصم</th>
+                <th style={thStyle}>الإجمالي</th>
+                <th style={thStyle}>الدفع / النقاط</th>
+                <th style={thStyle}>إجراءات</th>
               </tr>
             </thead>
 
@@ -586,7 +622,8 @@ export default function InvoicesPage() {
                     {Number(sale.returned_quantity || 0) > 0 ? (
                       <div style={{ display: 'grid', gap: '4px' }}>
                         <strong style={{ color: '#fdba74' }}>
-                          مرتجع {Number(sale.returned_quantity || 0)} من أصل {Number(sale.total_quantity || 0)}
+                          مرتجع {Number(sale.returned_quantity || 0)} من أصل{' '}
+                          {Number(sale.total_quantity || 0)}
                         </strong>
                         <span style={{ color: '#94a3b8', fontSize: '12px' }}>
                           عدد المرتجعات: {Number(sale.return_count || 0)}
@@ -600,20 +637,33 @@ export default function InvoicesPage() {
                   <td style={tdStyle}>
                     <div style={{ display: 'grid', gap: '3px' }}>
                       <strong>
-                        {money(Number(sale.discount_value || 0) + Number(sale.loyalty_discount_value || 0))}
+                        {money(
+                          Number(sale.discount_value || 0) +
+                            Number(sale.loyalty_discount_value || 0),
+                        )}
                       </strong>
 
-                      {(Number(sale.discount_value || 0) > 0 || Number(sale.loyalty_discount_value || 0) > 0) && (
+                      {(Number(sale.discount_value || 0) > 0 ||
+                        Number(sale.loyalty_discount_value || 0) > 0) && (
                         <span style={{ color: '#94a3b8', fontSize: '11px' }}>
-                          عادي: {money(sale.discount_value || 0)} / نقاط: {money(sale.loyalty_discount_value || 0)}
+                          عادي: {money(sale.discount_value || 0)} / نقاط:{' '}
+                          {money(sale.loyalty_discount_value || 0)}
                         </span>
                       )}
                     </div>
                   </td>
                   <td style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}>
-                    <div style={{ display: 'grid', gap: '4px', minWidth: '120px' }}>
+                    <div
+                      style={{ display: 'grid', gap: '4px', minWidth: '120px' }}
+                    >
                       <strong>
-                        {money(Math.max(0, Number(sale.grand_total || 0) - Number(sale.total_return_amount || 0)))}
+                        {money(
+                          Math.max(
+                            0,
+                            Number(sale.grand_total || 0) -
+                              Number(sale.total_return_amount || 0),
+                          ),
+                        )}
                       </strong>
 
                       {Number(sale.total_return_amount || 0) > 0 && (
@@ -630,7 +680,9 @@ export default function InvoicesPage() {
                     </div>
                   </td>
                   <td style={tdStyle}>
-                    <div style={{ display: 'grid', gap: '5px', minWidth: '135px' }}>
+                    <div
+                      style={{ display: 'grid', gap: '5px', minWidth: '135px' }}
+                    >
                       <span
                         style={{
                           padding: '4px 8px',
@@ -639,41 +691,60 @@ export default function InvoicesPage() {
                           border: '1px solid rgba(37,99,235,0.25)',
                           color: '#bfdbfe',
                           fontWeight: 900,
-                          width: 'fit-content'
+                          width: 'fit-content',
                         }}
                       >
                         {getPaymentMethodLabel(sale.payment_method)}
                       </span>
 
-                      <span style={{ color: '#6ee7b7', fontSize: '12px', fontWeight: 900 }}>
-                        مدفوع: {money(
+                      <span
+                        style={{
+                          color: '#6ee7b7',
+                          fontSize: '12px',
+                          fontWeight: 900,
+                        }}
+                      >
+                        مدفوع:{' '}
+                        {money(
                           Math.max(
                             0,
-                            Math.max(0, Number(sale.grand_total || 0) - Number(sale.total_return_amount || 0)) -
-                              Number(sale.remaining_amount || 0)
-                          )
+                            Math.max(
+                              0,
+                              Number(sale.grand_total || 0) -
+                                Number(sale.total_return_amount || 0),
+                            ) - Number(sale.remaining_amount || 0),
+                          ),
                         )}
                       </span>
 
                       <span
                         style={{
-                          color: Number(sale.remaining_amount || 0) > 0 ? '#fca5a5' : '#94a3b8',
+                          color:
+                            Number(sale.remaining_amount || 0) > 0
+                              ? '#fca5a5'
+                              : '#94a3b8',
                           fontSize: '12px',
-                          fontWeight: 900
+                          fontWeight: 900,
                         }}
                       >
                         باقي / مديونية: {money(sale.remaining_amount || 0)}
                       </span>
 
                       <span style={{ fontSize: '12px' }}>
-                        <span style={{ color: '#22c55e' }}>+{sale.loyalty_points_earned || 0}</span>
+                        <span style={{ color: '#22c55e' }}>
+                          +{sale.loyalty_points_earned || 0}
+                        </span>
                         {' / '}
-                        <span style={{ color: '#f87171' }}>-{sale.loyalty_points_redeemed || 0}</span>
+                        <span style={{ color: '#f87171' }}>
+                          -{sale.loyalty_points_redeemed || 0}
+                        </span>
                       </span>
                     </div>
                   </td>
                   <td style={tdStyle}>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <div
+                      style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}
+                    >
                       <button
                         type="button"
                         onClick={() => openReceipt(sale.id)}
@@ -687,29 +758,31 @@ export default function InvoicesPage() {
                         onClick={async () => {
                           const [receipt, history] = await Promise.all([
                             window.api.getSaleReceipt(sale.id),
-                            window.api.getSaleReturnHistory(sale.id)
-                          ]);
+                            window.api.getSaleReturnHistory(sale.id),
+                          ])
 
-                          void printReceipt(receipt, Array.isArray(history) ? history : []);
+                          void printReceipt(
+                            receipt,
+                            Array.isArray(history) ? history : [],
+                          )
                         }}
                         style={smallButtonStyle}
                       >
                         طباعة
                       </button>
 
-                    <button
-                      type="button"
-                      onClick={() => openReturnPopup(sale.id)}
-                      style={{
+                      <button
+                        type="button"
+                        onClick={() => openReturnPopup(sale.id)}
+                        style={{
                           ...smallButtonStyle,
                           borderColor: '#f97316',
                           color: '#fdba74',
-                          background: 'rgba(249,115,22,0.10)'
-                      }}
+                          background: 'rgba(249,115,22,0.10)',
+                        }}
                       >
-                      مرتجع
-                    </button>
-                      
+                        مرتجع
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -723,7 +796,7 @@ export default function InvoicesPage() {
                       ...tdStyle,
                       textAlign: 'center',
                       color: '#94a3b8',
-                      padding: '28px'
+                      padding: '28px',
                     }}
                   >
                     لا توجد فواتير
@@ -733,7 +806,7 @@ export default function InvoicesPage() {
             </tbody>
           </table>
         </div>
-      )}  
+      )}
 
       {activeTab === 'returns' && (
         <div
@@ -745,7 +818,7 @@ export default function InvoicesPage() {
             height: '100%',
             minHeight: 0,
             width: '100%',
-            boxSizing: 'border-box'
+            boxSizing: 'border-box',
           }}
         >
           <div
@@ -755,22 +828,28 @@ export default function InvoicesPage() {
               gap: '12px',
               flexWrap: 'wrap',
               marginBottom: '14px',
-              direction: 'rtl'
+              direction: 'rtl',
             }}
           >
             <h3 style={{ margin: 0 }}>سجل المرتجعات</h3>
           </div>
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+          <table
+            style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              direction: 'rtl',
+            }}
+          >
             <thead>
               <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
-              <th style={thStyle}>المرتجع</th>
-              <th style={thStyle}>الفاتورة</th>
-              <th style={thStyle}>العميل</th>
-              <th style={thStyle}>المستخدم</th>
-              <th style={thStyle}>الأصناف / الكمية</th>
-              <th style={thStyle}>القيمة / السبب</th>
-              <th style={thStyle}>إجراءات</th>
+                <th style={thStyle}>المرتجع</th>
+                <th style={thStyle}>الفاتورة</th>
+                <th style={thStyle}>العميل</th>
+                <th style={thStyle}>المستخدم</th>
+                <th style={thStyle}>الأصناف / الكمية</th>
+                <th style={thStyle}>القيمة / السبب</th>
+                <th style={thStyle}>إجراءات</th>
               </tr>
             </thead>
 
@@ -813,14 +892,18 @@ export default function InvoicesPage() {
                   </td>
                   <td style={tdStyle}>
                     <div style={{ display: 'grid', gap: '3px' }}>
-                      <strong style={{ color: '#fca5a5' }}>{money(ret.refund_amount)}</strong>
+                      <strong style={{ color: '#fca5a5' }}>
+                        {money(ret.refund_amount)}
+                      </strong>
                       <span style={{ color: '#94a3b8', fontSize: '12px' }}>
                         {ret.reason || '—'}
                       </span>
                     </div>
                   </td>
                   <td style={tdStyle}>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <div
+                      style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}
+                    >
                       <button
                         type="button"
                         onClick={() => openReceipt(ret.original_sale_id)}
@@ -833,10 +916,15 @@ export default function InvoicesPage() {
                         onClick={async () => {
                           const [receipt, history] = await Promise.all([
                             window.api.getSaleReceipt(ret.original_sale_id),
-                            window.api.getSaleReturnHistory(ret.original_sale_id)
-                          ]);
+                            window.api.getSaleReturnHistory(
+                              ret.original_sale_id,
+                            ),
+                          ])
 
-                          void printReceipt(receipt, Array.isArray(history) ? history : []);
+                          void printReceipt(
+                            receipt,
+                            Array.isArray(history) ? history : [],
+                          )
                         }}
                         style={smallButtonStyle}
                       >
@@ -855,7 +943,7 @@ export default function InvoicesPage() {
                       ...tdStyle,
                       textAlign: 'center',
                       color: '#94a3b8',
-                      padding: '28px'
+                      padding: '28px',
                     }}
                   >
                     لا توجد مرتجعات
@@ -878,7 +966,7 @@ export default function InvoicesPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '20px'
+            padding: '20px',
           }}
         >
           <div
@@ -893,7 +981,7 @@ export default function InvoicesPage() {
               background: '#111827',
               padding: '22px',
               direction: 'rtl',
-              boxShadow: '0 24px 70px rgba(0,0,0,0.55)'
+              boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
             }}
           >
             <div
@@ -902,7 +990,7 @@ export default function InvoicesPage() {
                 justifyContent: 'space-between',
                 gap: '14px',
                 alignItems: 'center',
-                marginBottom: '18px'
+                marginBottom: '18px',
               }}
             >
               <div>
@@ -928,12 +1016,14 @@ export default function InvoicesPage() {
                 display: 'grid',
                 gridTemplateColumns: 'repeat(3, 1fr)',
                 gap: '12px',
-                marginBottom: '18px'
+                marginBottom: '18px',
               }}
             >
               <div style={statCardStyle}>
                 العميل
-                <strong>{selectedReceipt.sale.customer_name || 'عميل نقدي'}</strong>
+                <strong>
+                  {selectedReceipt.sale.customer_name || 'عميل نقدي'}
+                </strong>
               </div>
               <div style={statCardStyle}>
                 الكاشير
@@ -971,7 +1061,8 @@ export default function InvoicesPage() {
                     <td style={tdStyle}>
                       {Number(item.returned_quantity || 0) > 0 ? (
                         <span style={{ color: '#fdba74', fontWeight: 900 }}>
-                          {Number(item.returned_quantity || 0)} من أصل {Number(item.quantity || 0)}
+                          {Number(item.returned_quantity || 0)} من أصل{' '}
+                          {Number(item.quantity || 0)}
                         </span>
                       ) : (
                         '—'
@@ -993,13 +1084,14 @@ export default function InvoicesPage() {
                   background: 'rgba(249,115,22,0.10)',
                   border: '1px solid rgba(249,115,22,0.25)',
                   display: 'grid',
-                  gap: '12px'
+                  gap: '12px',
                 }}
               >
                 <div
-                  className="theme-warning-panel" 
-                  style={{ color: '#fed7aa', fontWeight: 900 }}>
-                   سجل المرتجعات على هذه الفاتورة
+                  className="theme-warning-panel"
+                  style={{ color: '#fed7aa', fontWeight: 900 }}
+                >
+                  سجل المرتجعات على هذه الفاتورة
                 </div>
 
                 {selectedReturnHistory.map((ret) => (
@@ -1011,7 +1103,7 @@ export default function InvoicesPage() {
                       background: 'rgba(255,255,255,0.04)',
                       border: '1px solid rgba(255,255,255,0.08)',
                       display: 'grid',
-                      gap: '8px'
+                      gap: '8px',
                     }}
                   >
                     <div
@@ -1021,7 +1113,7 @@ export default function InvoicesPage() {
                         gap: '12px',
                         flexWrap: 'wrap',
                         color: '#fff',
-                        fontWeight: 800
+                        fontWeight: 800,
                       }}
                     >
                       <span>مرتجع #{ret.id}</span>
@@ -1030,7 +1122,8 @@ export default function InvoicesPage() {
                     </div>
 
                     <div style={{ color: '#94a3b8', fontWeight: 700 }}>
-                      السبب: {ret.return_reason || '—'} | المستخدم: {ret.cashier_name || '—'}
+                      السبب: {ret.return_reason || '—'} | المستخدم:{' '}
+                      {ret.cashier_name || '—'}
                     </div>
 
                     <div style={{ display: 'grid', gap: '6px' }}>
@@ -1042,14 +1135,16 @@ export default function InvoicesPage() {
                             justifyContent: 'space-between',
                             gap: '10px',
                             color: '#e5e7eb',
-                            fontSize: '13px'
+                            fontSize: '13px',
                           }}
                         >
                           <span>
-                            {item.product_name} {item.size || ''} {item.color || ''}
+                            {item.product_name} {item.size || ''}{' '}
+                            {item.color || ''}
                           </span>
                           <strong>
-                            كمية: {Number(item.quantity || 0)} | {money(item.line_total)}
+                            كمية: {Number(item.quantity || 0)} |{' '}
+                            {money(item.line_total)}
                           </strong>
                         </div>
                       ))}
@@ -1065,15 +1160,34 @@ export default function InvoicesPage() {
                 gap: '8px',
                 marginTop: '18px',
                 maxWidth: '360px',
-                marginRight: 'auto'
+                marginRight: 'auto',
               }}
             >
-              <SummaryLine label="الإجمالي قبل الخصم" value={money(selectedReceipt.sale.sub_total)} />
-              <SummaryLine label="خصم عادي" value={money(selectedReceipt.sale.discount_value || 0)} />
-              <SummaryLine label="خصم النقاط" value={money(selectedReceipt.sale.loyalty_discount_value || 0)} />
-              <SummaryLine label="الإجمالي النهائي" value={money(selectedReceipt.sale.grand_total)} strong />
-              <SummaryLine label="النقاط المكتسبة" value={`${selectedReceipt.sale.loyalty_points_earned || 0}`} />
-              <SummaryLine label="النقاط المستخدمة" value={`${selectedReceipt.sale.loyalty_points_redeemed || 0}`} />
+              <SummaryLine
+                label="الإجمالي قبل الخصم"
+                value={money(selectedReceipt.sale.sub_total)}
+              />
+              <SummaryLine
+                label="خصم عادي"
+                value={money(selectedReceipt.sale.discount_value || 0)}
+              />
+              <SummaryLine
+                label="خصم النقاط"
+                value={money(selectedReceipt.sale.loyalty_discount_value || 0)}
+              />
+              <SummaryLine
+                label="الإجمالي النهائي"
+                value={money(selectedReceipt.sale.grand_total)}
+                strong
+              />
+              <SummaryLine
+                label="النقاط المكتسبة"
+                value={`${selectedReceipt.sale.loyalty_points_earned || 0}`}
+              />
+              <SummaryLine
+                label="النقاط المستخدمة"
+                value={`${selectedReceipt.sale.loyalty_points_redeemed || 0}`}
+              />
             </div>
 
             <div
@@ -1081,12 +1195,14 @@ export default function InvoicesPage() {
                 display: 'flex',
                 justifyContent: 'flex-start',
                 gap: '10px',
-                marginTop: '22px'
+                marginTop: '22px',
               }}
             >
               <button
                 type="button"
-                onClick={() => void printReceipt(selectedReceipt, selectedReturnHistory)}
+                onClick={() =>
+                  void printReceipt(selectedReceipt, selectedReturnHistory)
+                }
                 style={primaryButtonStyle}
               >
                 طباعة الفاتورة
@@ -1115,7 +1231,7 @@ export default function InvoicesPage() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '20px'
+            padding: '20px',
           }}
         >
           <div
@@ -1130,7 +1246,7 @@ export default function InvoicesPage() {
               background: '#111827',
               padding: '22px',
               direction: 'rtl',
-              boxShadow: '0 24px 70px rgba(0,0,0,0.55)'
+              boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
             }}
           >
             <div
@@ -1139,7 +1255,7 @@ export default function InvoicesPage() {
                 justifyContent: 'space-between',
                 gap: '14px',
                 alignItems: 'center',
-                marginBottom: '18px'
+                marginBottom: '18px',
               }}
             >
               <div>
@@ -1154,11 +1270,11 @@ export default function InvoicesPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setReturnReceipt(null);
-                  setReturnItems([]);
-                  setReturnReason('');
-                  setSelectedReceipt(null);
-                  setSelectedReturnHistory([]);
+                  setReturnReceipt(null)
+                  setReturnItems([])
+                  setReturnReason('')
+                  setSelectedReceipt(null)
+                  setSelectedReturnHistory([])
                 }}
                 style={closeButtonStyle}
               >
@@ -1175,11 +1291,11 @@ export default function InvoicesPage() {
                 border: '1px solid rgba(249,115,22,0.25)',
                 color: '#fed7aa',
                 fontWeight: 700,
-                marginBottom: '16px'
+                marginBottom: '16px',
               }}
             >
-              اختار الكمية المطلوب إرجاعها لكل صنف. الكمية المتاحة للمرتجع بتقل لو الصنف
-              اتعمله مرتجع قبل كده.
+              اختار الكمية المطلوب إرجاعها لكل صنف. الكمية المتاحة للمرتجع بتقل
+              لو الصنف اتعمله مرتجع قبل كده.
             </div>
 
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -1216,13 +1332,16 @@ export default function InvoicesPage() {
                         disabled={item.returnable_quantity <= 0}
                         value={item.return_quantity}
                         onChange={(e) =>
-                          updateReturnQty(item.sale_item_id, Number(e.target.value))
+                          updateReturnQty(
+                            item.sale_item_id,
+                            Number(e.target.value),
+                          )
                         }
                         style={{
                           ...inputStyle,
                           width: '110px',
                           textAlign: 'center',
-                          opacity: item.returnable_quantity <= 0 ? 0.5 : 1
+                          opacity: item.returnable_quantity <= 0 ? 0.5 : 1,
                         }}
                       />
                     </td>
@@ -1248,7 +1367,9 @@ export default function InvoicesPage() {
             </div>
 
             <div style={{ display: 'grid', gap: '8px' }}>
-              <label style={{ color: '#cbd5e1', fontWeight: 800 }}>رد الفلوس من حساب</label>
+              <label style={{ color: '#cbd5e1', fontWeight: 800 }}>
+                رد الفلوس من حساب
+              </label>
               <select
                 value={returnRefundAccount}
                 onChange={(e) => setReturnRefundAccount(e.target.value)}
@@ -1269,15 +1390,19 @@ export default function InvoicesPage() {
                 alignItems: 'center',
                 gap: '14px',
                 marginTop: '22px',
-                flexWrap: 'wrap'
+                flexWrap: 'wrap',
               }}
             >
               <div style={{ display: 'grid', gap: '6px' }}>
-                <div>إجمالي الأصناف قبل الخصومات: {money(returnGrossTotal)}</div>
+                <div>
+                  إجمالي الأصناف قبل الخصومات: {money(returnGrossTotal)}
+                </div>
 
-                {(returnDiscountShare > 0 || returnLoyaltyDiscountShare > 0) && (
+                {(returnDiscountShare > 0 ||
+                  returnLoyaltyDiscountShare > 0) && (
                   <div style={{ color: '#fbbf24' }}>
-                    خصومات محسوبة على المرتجع: {money(returnDiscountShare + returnLoyaltyDiscountShare)}
+                    خصومات محسوبة على المرتجع:{' '}
+                    {money(returnDiscountShare + returnLoyaltyDiscountShare)}
                   </div>
                 )}
 
@@ -1307,7 +1432,7 @@ export default function InvoicesPage() {
                     cursor:
                       savingReturn || returnTotal <= 0
                         ? 'not-allowed'
-                        : 'pointer'
+                        : 'pointer',
                   }}
                 >
                   {savingReturn ? 'جاري الحفظ...' : 'حفظ المرتجع'}
@@ -1316,9 +1441,9 @@ export default function InvoicesPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setReturnReceipt(null);
-                    setReturnItems([]);
-                    setReturnReason('');
+                    setReturnReceipt(null)
+                    setReturnItems([])
+                    setReturnReason('')
                   }}
                   style={secondaryButtonStyle}
                 >
@@ -1330,17 +1455,17 @@ export default function InvoicesPage() {
         </div>
       )}
     </div>
-  );
+  )
 }
 
 function SummaryLine({
   label,
   value,
-  strong
+  strong,
 }: {
-  label: string;
-  value: string;
-  strong?: boolean;
+  label: string
+  value: string
+  strong?: boolean
 }) {
   return (
     <div
@@ -1350,41 +1475,39 @@ function SummaryLine({
         color: strong ? '#fff' : '#cbd5e1',
         fontWeight: strong ? 900 : 700,
         borderTop: '1px solid rgba(255,255,255,0.06)',
-        paddingTop: '8px'
+        paddingTop: '8px',
       }}
     >
       <span>{label}</span>
       <span>{value}</span>
     </div>
-  );
+  )
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`;
+  return `${Number(value || 0).toFixed(2)} ج.م`
 }
 
 function formatDate(value?: string) {
-  if (!value) return '—';
+  if (!value) return '—'
 
   try {
-    const raw = String(value);
+    const raw = String(value)
 
     // SQLite CURRENT_TIMESTAMP بيرجع UTC بالشكل ده:
     // 2026-04-27 10:30:00
     // فلازم نعلّمه إنه UTC بإضافة Z
-    const normalized = raw.includes('T')
-      ? raw
-      : raw.replace(' ', 'T') + 'Z';
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
 
     return new Date(normalized).toLocaleString('ar-EG', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit'
-    });
+      minute: '2-digit',
+    })
   } catch {
-    return value;
+    return value
   }
 }
 
@@ -1394,39 +1517,40 @@ function escapeHtml(value: unknown) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/'/g, '&#039;')
 }
 
-const ENGINEER_FOOTER = 'برمجة وتصميم: بشمهندس عبدالرحمن حازم - 01155559287/01068377869';
+const ENGINEER_FOOTER =
+  'برمجة وتصميم: بشمهندس عبدالرحمن حازم - 01155559287/01068377869'
 
 function getPaymentStatusLabel(status?: string | null) {
-  if (status === 'paid') return 'مدفوعة';
-  if (status === 'partial') return 'مدفوعة جزئيًا';
-  if (status === 'unpaid') return 'غير مدفوعة';
-  return status || '—';
+  if (status === 'paid') return 'مدفوعة'
+  if (status === 'partial') return 'مدفوعة جزئيًا'
+  if (status === 'unpaid') return 'غير مدفوعة'
+  return status || '—'
 }
 
 function getReturnAmount(item: any) {
-  return Number(item?.refund_amount ?? item?.grand_total ?? 0);
+  return Number(item?.refund_amount ?? item?.grand_total ?? 0)
 }
 
 function getReceiptFinance(receipt: ReceiptData, returnHistory: any[] = []) {
-  const sale = receipt.sale;
+  const sale = receipt.sale
 
-  const originalTotal = Number(sale.grand_total || 0);
+  const originalTotal = Number(sale.grand_total || 0)
   const totalReturns = returnHistory.reduce(
     (sum, item) => sum + getReturnAmount(item),
-    0
-  );
+    0,
+  )
 
-  const netTotal = Math.max(0, originalTotal - totalReturns);
-  const remainingAmount = Math.max(0, Number(sale.remaining_amount || 0));
-  const netPaidAmount = Math.max(0, netTotal - remainingAmount);
+  const netTotal = Math.max(0, originalTotal - totalReturns)
+  const remainingAmount = Math.max(0, Number(sale.remaining_amount || 0))
+  const netPaidAmount = Math.max(0, netTotal - remainingAmount)
 
   const totalReturnedQuantity = (receipt.items ?? []).reduce(
     (sum, item) => sum + Number(item.returned_quantity || 0),
-    0
-  );
+    0,
+  )
 
   return {
     originalTotal,
@@ -1435,272 +1559,663 @@ function getReceiptFinance(receipt: ReceiptData, returnHistory: any[] = []) {
     remainingAmount,
     netPaidAmount,
     totalReturnedQuantity,
-    paymentStatus: getPaymentStatusLabel(sale.payment_status)
-  };
+    paymentStatus: getPaymentStatusLabel(sale.payment_status),
+  }
 }
 
-  function buildReceiptHtml(
-    receipt: ReceiptData,
-    returnHistory: any[] = [],
-    storeInfo: StoreReceiptInfo = {}
-  ) {
-    const sale = receipt.sale;
-    const finance = getReceiptFinance(receipt, returnHistory);
+function buildReceiptHtml(
+  receipt: ReceiptData,
+  returnHistory: any[] = [],
+  storeInfo: StoreReceiptInfo = {},
+  qrDataUrl = '',
+) {
+  const sale = receipt.sale
+  const finance = getReceiptFinance(receipt, returnHistory)
 
-    const storeName = String(storeInfo.app_name || 'ERP Store').trim();
-    const storePhone = String(storeInfo.store_phone || '').trim();
-    const storeAddress = String(storeInfo.store_address || '').trim();
+  const storeName = String(storeInfo.app_name || 'ERP Store').trim()
 
-    const rows = (receipt.items ?? [])
-      .map((item) => {
-        const originalQty = Number(item.quantity || 0);
-        const returnedQty = Number(item.returned_quantity || 0);
-        const netQty = Math.max(0, originalQty - returnedQty);
-        const unitPrice = Number(item.unit_price || 0);
-        const netLineTotal = netQty * unitPrice;
+  const storeLogoUrl = String(storeInfo.app_logo_url || '').trim()
 
-        return `
-          <tr class="${returnedQty > 0 ? 'has-return' : ''}">
-            <td>
-              ${escapeHtml(item.product_name)}
-              ${item.size ? `<div class="muted">المقاس: ${escapeHtml(item.size)}</div>` : ''}
-              ${item.color ? `<div class="muted">اللون: ${escapeHtml(item.color)}</div>` : ''}
-              ${
-                returnedQty > 0
-                  ? `<div class="return-note">مرتجع: ${returnedQty} من أصل ${originalQty}</div>`
-                  : ''
-              }
-            </td>
-            <td>
-              ${netQty}
-              ${returnedQty > 0 ? `<div class="muted">الأصل: ${originalQty}</div>` : ''}
-            </td>
-            <td>${unitPrice.toFixed(2)}</td>
-            <td>${netLineTotal.toFixed(2)}</td>
-          </tr>
-        `;
-      })
-      .join('');
+  const storePhone = String(storeInfo.store_phone || '').trim()
 
-    return `
-      <!doctype html>
-      <html lang="ar" dir="rtl">
-        <head>
-          <meta charset="UTF-8" />
-          <title>فاتورة #${escapeHtml(sale.id)}</title>
+  const storeAddress = String(storeInfo.store_address || '').trim()
 
-          <style>
-            * { box-sizing: border-box; }
+  const itemRows = (receipt.items ?? [])
+    .map((item) => {
+      const originalQty = Number(item.quantity || 0)
+      const returnedQty = Number(item.returned_quantity || 0)
+      const netQty = Math.max(0, originalQty - returnedQty)
+      const unitPrice = Number(item.unit_price || 0)
+      const netLineTotal = netQty * unitPrice
+
+      const details = [
+        item.size ? String(item.size) : '',
+        item.color ? String(item.color) : '',
+      ]
+        .filter(Boolean)
+        .join(' / ')
+
+      return `
+      <tr class="${returnedQty > 0 ? 'has-return' : ''}">
+        <td class="product-cell">
+          <strong>${escapeHtml(item.product_name)}</strong>
+
+          ${
+            details
+              ? `<div class="product-details">${escapeHtml(details)}</div>`
+              : ''
+          }
+
+          ${
+            returnedQty > 0
+              ? `<div class="return-note">مرتجع ${returnedQty} من ${originalQty}</div>`
+              : ''
+          }
+        </td>
+
+        <td>${netQty}</td>
+        <td>${unitPrice.toFixed(2)}</td>
+        <td class="line-total">${netLineTotal.toFixed(2)}</td>
+      </tr>
+    `
+    })
+    .join('')
+
+  return `
+    <!doctype html>
+
+    <html lang="ar" dir="rtl">
+
+      <head>
+
+        <meta charset="UTF-8" />
+
+        <title>
+          فاتورة #${escapeHtml(sale.id)}
+        </title>
+
+        <style>
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            padding: 10px;
+            background: #fff;
+            color: #111;
+            font-family:
+              Arial,
+              Tahoma,
+              sans-serif;
+            font-size: 12px;
+          }
+
+          .receipt {
+            width: 300px;
+            max-width: 100%;
+            margin: 0 auto;
+          }
+
+          .header {
+            text-align: center;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #222;
+          }
+
+          .logo {
+            width: 45px;
+            height: 45px;
+          }
+
+          .store-name {
+            font-size: 16px;
+            font-weight: 900;
+            margin-bottom: 4px;
+          }
+
+          .store-info {
+            color: #444;
+            font-size: 10.5px;
+            line-height: 1.6;
+          }
+
+          .invoice-title-row {
+            display: grid;
+            grid-template-columns: 105px 1fr 72px;
+            align-items: center;
+            gap: 6px;
+            margin: 6px 0;
+            direction: ltr;
+          }
+
+          .invoice-number {
+            justify-self: end;
+            border: 1px solid #222;
+            border-radius: 6px;
+            padding: 4px 7px;
+            font-weight: 900;
+            font-size: 12px;
+            text-align: center;
+            direction: rtl;
+          }
+            
+          .invoice-title {
+            text-align: center;
+            font-weight: 900;
+            font-size: 15px;
+            direction: rtl;
+            white-space: nowrap;
+          }
+
+          .invoice-date {
+            justify-self: start;
+            font-size: 12px;
+            color: #555;
+            direction: rtl;
+            text-align: left;
+            white-space: nowrap;
+          }
+
+          .invoice-number {
+            border: 1px solid #222;
+            border-radius: 6px;
+            padding: 5px 8px;
+            font-weight: 900;
+            font-size: 13px;
+          }
+
+          .invoice-title {
+            text-align: center;
+            font-weight: 900;
+            font-size: 16px;
+          }
+
+          .invoice-date {
+            font-size: 9.5px;
+            color: #555;
+            text-align: left;
+          }
+
+          .sale-info {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            align-items: stretch;
+            padding: 5px 0;
+            border-top: 1px dashed #bbb;
+            border-bottom: 1px dashed #bbb;
+            direction: rtl;
+          }
+
+          .sale-info-item {
+            text-align: center;
+            padding: 2px 5px;
+            min-width: 0;
+          }
+
+          .sale-info-item:not(:last-child) {
+            border-left: 1px dotted #bbb;
+          }
+
+          .sale-info-item span {
+            display: block;
+            font-size: 8px;
+            color: #555;
+            margin-bottom: 2px;
+          }
+
+          .sale-info-item strong {
+            display: block;
+            font-size: 9px;
+            font-weight: 800;
+            overflow-wrap: anywhere;
+            line-height: 1.25;
+          }
+
+          .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 8px 0 10px;
+            table-layout: fixed;
+            font-size: 10.5px;
+          }
+
+          .items-table th {
+            padding: 5px 3px;
+            border-top: 1px solid #555;
+            border-bottom: 1px solid #555;
+            font-size: 9.5px;
+            font-weight: 900;
+            text-align: center;
+          }
+
+          .items-table td {
+            padding: 6px 3px;
+            border-bottom: 1px dotted #bbb;
+            text-align: center;
+            vertical-align: middle;
+          }
+
+          .items-table th:first-child,
+          .items-table td:first-child {
+            width: 45%;
+            text-align: right;
+          }
+
+          .items-table th:nth-child(2),
+          .items-table td:nth-child(2) {
+            width: 10%;
+          }
+
+          .items-table th:nth-child(3),
+          .items-table td:nth-child(3) {
+            width: 20%;
+          }
+
+          .items-table th:nth-child(4),
+          .items-table td:nth-child(4) {
+            width: 25%;
+          }
+
+          .product-cell strong {
+            display: block;
+            font-size: 11px;
+          }
+
+          .product-details {
+            color: #666;
+            font-size: 9px;
+            margin-top: 2px;
+          }
+
+          .line-total {
+            font-weight: 900;
+          }
+
+          .has-return {
+            background: #fff8ee;
+          }
+
+          .return-note {
+            color: #b45309;
+            font-size: 8.5px;
+            font-weight: 800;
+            margin-top: 2px;
+          }
+
+          .item-card.has-return {
+            background: #fff8ee;
+          }
+
+          .item-total span {
+            font-size: 9px;
+          }
+
+          .item-total strong {
+            font-size: 15px;
+          }
+
+          .item-values > div {
+            text-align: center;
+            display: grid;
+            gap: 2px;
+          }
+
+          .item-values span {
+            color: #666;
+            font-size: 9px;
+          }
+
+          .item-values strong {
+            font-size: 12px;
+          }
+
+          .return-note {
+            margin-top: 6px;
+            padding: 5px;
+            border-radius: 5px;
+            background: #ffedd5;
+            color: #9a3412;
+            text-align: center;
+            font-weight: 800;
+            font-size: 10px;
+          }
+
+          .summary-box {
+            border: 1px solid #999;
+            border-radius: 8px;
+            padding: 9px;
+            margin-top: 10px;
+          }
+
+          .summary-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin: 5px 0;
+          }
+
+          .discount {
+            color: #b91c1c;
+          }
+
+          .final-total {
+            margin-top: 7px;
+            padding-top: 8px;
+            border-top: 1px dashed #777;
+            font-size: 15px;
+            font-weight: 900;
+            color: #172554;
+          }
+
+          .paid {
+            font-weight: 800;
+          }
+
+          .remaining-zero {
+            color: #15803d;
+            font-weight: 900;
+          }
+
+          .remaining-debt {
+            color: #c2410c;
+            font-weight: 900;
+          }
+
+          .receipt-bottom {
+            display: grid;
+            grid-template-columns: 90px 1fr;
+            align-items: center;
+            gap: 10px;
+            margin-top: 6px;
+            padding-top: 5px;
+            direction: ltr;
+          }
+
+          .qr-side {
+            text-align: center;
+          }
+
+          .qr-side img {
+            width: 68px;
+            height: 68px;
+            display: block;
+            margin: 0 auto;
+          }
+
+          .qr-title {
+            margin-top: 2px;
+            font-size: 7.5px;
+            line-height: 1.2;
+            font-weight: 700;
+            white-space: nowrap;
+            direction: rtl;
+          }
+
+          .thanks-side {
+            direction: rtl;
+            text-align: right;
+            font-size: 13px;
+            font-weight: 900;
+            padding-right: 6px;
+          }
+            
+          .engineer-footer {
+            margin-top: 4px;
+            padding-top: 4px;
+            border-top: 1px dashed #bbb;
+            text-align: center;
+            font-size: 9px;
+            color: #555;
+            line-height: 1.5;
+          }
+
+          @media print {
 
             body {
-              margin: 0;
-              padding: 14px;
-              font-family: Arial, Tahoma, sans-serif;
-              color: #111;
-              background: #fff;
-              font-size: 12px;
+              padding: 0;
             }
 
             .receipt {
-              width: 280px;
-              margin: 0 auto;
-            }
-
-            h2, p { margin: 0; }
-
-            .center { text-align: center; }
-
-            .muted {
-              color: #555;
-              font-size: 11px;
-              line-height: 1.5;
-            }
-
-            .line {
-              border-top: 1px dashed #777;
-              margin: 10px 0;
-            }
-
-            .row {
-              display: flex;
-              justify-content: space-between;
-              gap: 8px;
-              margin: 5px 0;
-            }
-
-            table {
               width: 100%;
-              border-collapse: collapse;
-              margin-top: 8px;
             }
 
-            th, td {
-              padding: 5px 0;
-              border-bottom: 1px dashed #ddd;
-              text-align: right;
-              vertical-align: top;
+          }
+
+        </style>
+
+      </head>
+
+      <body>
+
+        <div class="receipt">
+
+          <div class="header">
+
+            ${
+              storeLogoUrl
+                ? `
+                  <img
+                    class="logo"
+                    src="${escapeHtml(storeLogoUrl)}"
+                    alt="Logo"
+                  />
+                `
+                : ''
             }
 
-            th {
-              font-size: 11px;
-              color: #333;
-            }
-
-            .total {
-              font-weight: 800;
-              font-size: 14px;
-            }
-
-            .return-note {
-              color: #b45309;
-              font-size: 11px;
-              font-weight: 700;
-              line-height: 1.5;
-            }
-
-            .has-return td {
-              background: #fff7ed;
-            }
-
-            .engineer-footer {
-              margin-top: 8px;
-              padding-top: 8px;
-              border-top: 1px dashed #bbb;
-              font-size: 10.5px;
-              color: #444;
-              line-height: 1.6;
-            }
-
-            @media print {
-              body { padding: 0; }
-              .receipt { width: 100%; }
-            }
-          </style>
-        </head>
-
-        <body>
-          <div class="receipt">
-            <div class="center">
-              <h2>${escapeHtml(storeName)}</h2>
-              ${storePhone ? `<p class="muted">تليفون: ${escapeHtml(storePhone)}</p>` : ''}
-              ${storeAddress ? `<p class="muted">العنوان: ${escapeHtml(storeAddress)}</p>` : ''}
-              <div class="line"></div>
-              <h3 style="margin: 0 0 4px; font-size: 14px;">فاتورة بيع</h3>
-              <p class="muted">رقم الفاتورة: #${escapeHtml(sale.id)}</p>
-              <p class="muted">${escapeHtml(formatDate(sale.created_at))}</p>
-            </div>
-
-            <div class="row">
-              <span>العميل</span>
-              <strong>${escapeHtml(sale.customer_name || 'عميل نقدي')}</strong>
-            </div>
-
-            <div class="row">
-              <span>الكاشير</span>
-              <strong>${escapeHtml(sale.cashier_name || '-')}</strong>
-            </div>
-
-            <div class="row">
-              <span>طريقة الدفع</span>
-              <strong>${escapeHtml(getPaymentMethodLabel(sale.payment_method))}</strong>
-            </div>
-
-            <table>
-              <thead>
-                <tr>
-                  <th>الصنف</th>
-                  <th>كمية</th>
-                  <th>سعر</th>
-                  <th>إجمالي</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                ${rows}
-              </tbody>
-            </table>
-
-            <div class="line"></div>
-
-            <div class="row">
-              <span>الإجمالي قبل الخصم</span>
-              <strong>${Number(sale.sub_total || 0).toFixed(2)} ج.م</strong>
-            </div>
-
-            <div class="row">
-              <span>خصم عادي</span>
-              <strong>${Number(sale.discount_value || 0).toFixed(2)} ج.م</strong>
-            </div>
-
-            <div class="row">
-              <span>خصم النقاط</span>
-              <strong>${Number(sale.loyalty_discount_value || 0).toFixed(2)} ج.م</strong>
-            </div>
-
-            <div class="row total">
-              <span>إجمالي الفاتورة</span>
-              <strong>${finance.originalTotal.toFixed(2)} ج.م</strong>
+            <div class="store-name">
+              ${escapeHtml(storeName)}
             </div>
 
             ${
-              finance.totalReturns > 0
+              storePhone
                 ? `
-                  <div class="row">
-                    <span>إجمالي المرتجعات</span>
-                    <strong>${finance.totalReturns.toFixed(2)} ج.م</strong>
-                  </div>
-
-                  <div class="row total">
-                    <span>الصافي بعد المرتجع</span>
-                    <strong>${finance.netTotal.toFixed(2)} ج.م</strong>
-                  </div>
-
-                  <div class="row">
-                    <span>الكمية المرتجعة</span>
-                    <strong>${finance.totalReturnedQuantity}</strong>
+                  <div class="store-info">
+                    تليفون:
+                    ${escapeHtml(storePhone)}
                   </div>
                 `
                 : ''
             }
 
-            <div class="line"></div>
+            ${
+              storeAddress
+                ? `
+                  <div class="store-info">
+                    ${escapeHtml(storeAddress)}
+                  </div>
+                `
+                : ''
+            }
 
-            <div class="row">
-              <span>المدفوع</span>
-              <strong>${finance.netPaidAmount.toFixed(2)} ج.م</strong>
-            </div>
-
-            <div class="row">
-              <span>الباقي / المديونية</span>
-              <strong>${finance.remainingAmount.toFixed(2)} ج.م</strong>
-            </div>
-
-            <div class="row">
-              <span>حالة الدفع</span>
-              <strong>${escapeHtml(finance.paymentStatus)}</strong>
-            </div>
-
-            <div class="line"></div>
-
-            <div class="row">
-              <span>نقاط مستخدمة</span>
-              <strong>${escapeHtml(sale.loyalty_points_redeemed || 0)}</strong>
-            </div>
-
-            <div class="row">
-              <span>نقاط مكتسبة</span>
-              <strong>${escapeHtml(sale.loyalty_points_earned || 0)}</strong>
-            </div>
-
-            <div class="line"></div>
-
-            <p class="center muted">شكرًا لتعاملكم معنا</p>
-            <p class="center engineer-footer">${escapeHtml(ENGINEER_FOOTER)}</p>
           </div>
-        </body>
-      </html>
-    `;
-  }
+
+          <div class="invoice-title-row">
+
+            <div class="invoice-number">
+              #${escapeHtml(sale.id)}
+            </div>
+
+            <div class="invoice-title">
+              فاتورة بيع
+            </div>
+
+            <div class="invoice-date">
+              ${escapeHtml(formatDate(sale.created_at))}
+            </div>
+
+          </div>
+
+          <div class="sale-info">
+
+            <div class="sale-info-item">
+              <span>العميل</span>
+              <strong>
+                ${escapeHtml(sale.customer_name || 'عميل نقدي')}
+              </strong>
+            </div>
+
+            <div class="sale-info-item">
+              <span>الكاشير</span>
+              <strong>
+                ${escapeHtml(sale.cashier_name || '—')}
+              </strong>
+            </div>
+
+            <div class="sale-info-item">
+              <span>طريقة الدفع</span>
+              <strong>
+                ${escapeHtml(getPaymentMethodLabel(sale.payment_method))}
+              </strong>
+            </div>
+
+          </div>
+
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>الصنف</th>
+                <th>ك</th>
+                <th>السعر</th>
+                <th>الإجمالي</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${itemRows}
+            </tbody>
+          </table>
+
+          <div class="summary-box">
+
+            <div class="summary-row">
+              <span>قبل الخصم</span>
+              <strong>
+                ${Number(sale.sub_total || 0).toFixed(2)}
+              </strong>
+            </div>
+
+            ${
+              Number(sale.discount_value || 0) > 0
+                ? `
+                  <div class="summary-row discount">
+                    <span>الخصم</span>
+                    <strong>
+                      -${Number(sale.discount_value || 0).toFixed(2)}
+                    </strong>
+                  </div>
+                `
+                : ''
+            }
+
+            ${
+              Number(sale.loyalty_discount_value || 0) > 0
+                ? `
+                  <div class="summary-row discount">
+                    <span>خصم النقاط</span>
+                    <strong>
+                      -${Number(sale.loyalty_discount_value || 0).toFixed(2)}
+                    </strong>
+                  </div>
+                `
+                : ''
+            }
+
+            ${
+              finance.totalReturns > 0
+                ? `
+                  <div class="summary-row">
+                    <span>
+                      المرتجعات
+                    </span>
+                    <strong>
+                      -${finance.totalReturns.toFixed(2)}
+                    </strong>
+                  </div>
+                `
+                : ''
+            }
+
+            <div class="summary-row final-total">
+              <span>
+                ${
+                  finance.totalReturns > 0
+                    ? 'الصافي النهائي'
+                    : 'الإجمالي النهائي'
+                }
+              </span>
+
+              <strong>
+                ${finance.netTotal.toFixed(2)}
+                ج.م
+              </strong>
+            </div>
+
+            <div class="summary-row paid">
+              <span>المدفوع</span>
+              <strong>
+                ${finance.netPaidAmount.toFixed(2)}
+                ج.م
+              </strong>
+            </div>
+
+            <div class="summary-row">
+              <span>الباقي</span>
+
+              <strong
+                class="${
+                  finance.remainingAmount > 0
+                    ? 'remaining-debt'
+                    : 'remaining-zero'
+                }"
+              >
+                ${finance.remainingAmount.toFixed(2)}
+                ج.م
+              </strong>
+            </div>
+
+          </div>
+
+          <div class="receipt-bottom">
+
+            ${
+              qrDataUrl
+                ? `
+                  <div class="qr-side">
+
+                    <img
+                      src="${qrDataUrl}"
+                      alt="QR Code"
+                    />
+
+                    <div class="qr-title">
+                      امسح الكود للتواصل معنا
+                    </div>
+
+                  </div>
+                `
+                : ''
+            }
+
+            <div class="thanks-side">
+              شكرًا لتعاملكم معنا
+            </div>
+
+          </div>
+
+          <div class="engineer-footer">
+            ${escapeHtml(ENGINEER_FOOTER)}
+          </div>
+
+        </div>
+
+      </body>
+
+    </html>
+  `
+}
 
 const inputStyle: React.CSSProperties = {
   height: '44px',
@@ -1712,8 +2227,8 @@ const inputStyle: React.CSSProperties = {
   padding: '0 12px',
   textAlign: 'right',
   direction: 'rtl',
-  boxSizing: 'border-box'
-};
+  boxSizing: 'border-box',
+}
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -1723,8 +2238,8 @@ const primaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontWeight: 800,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid #7c3aed',
@@ -1734,8 +2249,8 @@ const secondaryButtonStyle: React.CSSProperties = {
   color: '#c4b5fd',
   fontWeight: 800,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const smallButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(124,58,237,0.55)',
@@ -1744,8 +2259,8 @@ const smallButtonStyle: React.CSSProperties = {
   color: '#c4b5fd',
   padding: '8px 10px',
   cursor: 'pointer',
-  fontWeight: 700
-};
+  fontWeight: 700,
+}
 
 const closeButtonStyle: React.CSSProperties = {
   width: '34px',
@@ -1755,20 +2270,20 @@ const closeButtonStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.05)',
   color: '#fff',
   cursor: 'pointer',
-  fontSize: '20px'
-};
+  fontSize: '20px',
+}
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   fontWeight: 800,
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}
 
 const statCardStyle: React.CSSProperties = {
   display: 'grid',
@@ -1777,8 +2292,8 @@ const statCardStyle: React.CSSProperties = {
   borderRadius: '14px',
   background: 'rgba(255,255,255,0.04)',
   border: '1px solid rgba(255,255,255,0.08)',
-  color: '#94a3b8'
-};
+  color: '#94a3b8',
+}
 
 function tabButtonStyle(active: boolean): React.CSSProperties {
   return {
@@ -1794,6 +2309,6 @@ function tabButtonStyle(active: boolean): React.CSSProperties {
     fontWeight: 900,
     padding: '0 18px',
     cursor: 'pointer',
-    boxShadow: active ? '0 12px 26px rgba(37,99,235,0.22)' : 'none'
-  };
+    boxShadow: active ? '0 12px 26px rgba(37,99,235,0.22)' : 'none',
+  }
 }

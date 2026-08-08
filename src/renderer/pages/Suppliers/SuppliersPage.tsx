@@ -203,6 +203,275 @@ export default function SuppliersPage() {
     }
   }
 
+  async function saveSupplierStatementPdf() {
+    if (!statementData) return
+
+    try {
+      const supplier = statementData.supplier
+      const summary = statementData.summary
+      const entries = Array.isArray(statementData.entries)
+        ? statementData.entries
+        : []
+
+      const safeText = (value: unknown) =>
+        String(value ?? '—')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;')
+
+      const rowsHtml = entries.length
+        ? entries
+            .map(
+              (entry: any) => `
+              <tr>
+                <td>${safeText(formatDate(entry.created_at))}</td>
+                <td>${safeText(entry.title)}</td>
+                <td>${entry.debit > 0 ? safeText(money(entry.debit)) : '—'}</td>
+                <td>${entry.credit > 0 ? safeText(money(entry.credit)) : '—'}</td>
+                <td>${safeText(entry.notes || '—')}</td>
+              </tr>
+            `,
+            )
+            .join('')
+        : `
+        <tr>
+          <td colspan="5" style="text-align:center;padding:20px;">
+            لا توجد حركات
+          </td>
+        </tr>
+      `
+
+      const html = `
+      <!doctype html>
+      <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="UTF-8" />
+
+          <style>
+            * {
+              box-sizing: border-box;
+            }
+
+            body {
+              font-family: Arial, Tahoma, sans-serif;
+              direction: rtl;
+              margin: 0;
+              padding: 28px;
+              color: #111827;
+              background: #ffffff;
+              font-size: 13px;
+            }
+
+            .header {
+              text-align: center;
+              margin-bottom: 24px;
+              border-bottom: 2px solid #111827;
+              padding-bottom: 14px;
+            }
+
+            .header h1 {
+              margin: 0 0 8px;
+              font-size: 24px;
+            }
+
+            .header p {
+              margin: 4px 0;
+              color: #4b5563;
+            }
+
+            .supplier-info {
+              display: grid;
+              grid-template-columns: repeat(2, 1fr);
+              gap: 8px 20px;
+              margin-bottom: 20px;
+              padding: 14px;
+              border: 1px solid #d1d5db;
+              border-radius: 8px;
+            }
+
+            .summary {
+              display: grid;
+              grid-template-columns: repeat(4, 1fr);
+              gap: 10px;
+              margin-bottom: 24px;
+            }
+
+            .summary-card {
+              border: 1px solid #d1d5db;
+              border-radius: 8px;
+              padding: 12px;
+              text-align: center;
+            }
+
+            .summary-card span {
+              display: block;
+              color: #6b7280;
+              margin-bottom: 6px;
+              font-size: 12px;
+            }
+
+            .summary-card strong {
+              font-size: 16px;
+            }
+
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              table-layout: fixed;
+            }
+
+            th,
+            td {
+              border: 1px solid #d1d5db;
+              padding: 9px 7px;
+              text-align: right;
+              vertical-align: top;
+              word-break: break-word;
+            }
+
+            th {
+              background: #f3f4f6;
+              font-weight: bold;
+            }
+
+            th:nth-child(1),
+            td:nth-child(1) {
+              width: 18%;
+            }
+
+            th:nth-child(2),
+            td:nth-child(2) {
+              width: 25%;
+            }
+
+            th:nth-child(3),
+            td:nth-child(3),
+            th:nth-child(4),
+            td:nth-child(4) {
+              width: 14%;
+            }
+
+            th:nth-child(5),
+            td:nth-child(5) {
+              width: 29%;
+            }
+
+            .footer {
+              margin-top: 20px;
+              padding-top: 10px;
+              border-top: 1px solid #d1d5db;
+              color: #6b7280;
+              font-size: 11px;
+              text-align: center;
+            }
+
+            @page {
+              size: A4 landscape;
+              margin: 12mm;
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="header">
+            <h1>كشف حساب المورد</h1>
+            <p>${safeText(supplier?.name)}</p>
+            <p>
+              تاريخ استخراج الكشف:
+              ${safeText(new Date().toLocaleString('ar-EG'))}
+            </p>
+          </div>
+
+          <div class="supplier-info">
+            <div>
+              <strong>اسم المورد:</strong>
+              ${safeText(supplier?.name)}
+            </div>
+
+            <div>
+              <strong>الهاتف:</strong>
+              ${safeText(supplier?.phone || '—')}
+            </div>
+
+            <div>
+              <strong>البريد الإلكتروني:</strong>
+              ${safeText(supplier?.email || '—')}
+            </div>
+
+            <div>
+              <strong>العنوان:</strong>
+              ${safeText(supplier?.address || '—')}
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="summary-card">
+              <span>إجمالي المشتريات</span>
+              <strong>${safeText(money(summary?.total_purchased || 0))}</strong>
+            </div>
+
+            <div class="summary-card">
+              <span>إجمالي المدفوع</span>
+              <strong>${safeText(money(summary?.total_paid || 0))}</strong>
+            </div>
+
+            <div class="summary-card">
+              <span>الرصيد الحالي</span>
+              <strong>${safeText(money(summary?.balance || 0))}</strong>
+            </div>
+
+            <div class="summary-card">
+              <span>الفواتير المفتوحة</span>
+              <strong>${safeText(summary?.open_purchases || 0)}</strong>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>التاريخ</th>
+                <th>البيان</th>
+                <th>مدين</th>
+                <th>دائن</th>
+                <th>ملاحظات</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+
+          <div class="footer">
+            تم إنشاء هذا الكشف من نظام ERP Store
+          </div>
+        </body>
+      </html>
+    `
+
+      const supplierName = String(supplier?.name || 'supplier')
+        .replace(/[<>:"/\\|?*]+/g, '-')
+        .trim()
+
+      const result = await window.api.savePdfFromHtml({
+        html,
+        defaultFileName: `كشف-حساب-${supplierName}-${new Date()
+          .toISOString()
+          .slice(0, 10)}.pdf`,
+        landscape: true,
+      })
+
+      if (result?.canceled) return
+
+      showMessage('تم حفظ كشف حساب المورد PDF بنجاح')
+    } catch (error) {
+      console.error('Failed to save supplier statement PDF:', error)
+      showMessage('حدث خطأ أثناء حفظ كشف حساب المورد PDF')
+    }
+  }
+
   function openSupplierPayment(supplier: Supplier) {
     setPaymentSupplier(supplier)
     setPaymentAmount(roundMoney(supplier.balance).toFixed(2))
@@ -608,18 +877,40 @@ export default function SuppliersPage() {
                 <h3 style={{ margin: '0 0 6px' }}>
                   كشف حساب: {statementData.supplier?.name}
                 </h3>
+
                 <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700 }}>
                   متابعة فواتير الشراء والدفعات والرصيد الحالي
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setStatementData(null)}
-                style={closeButtonStyle}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
               >
-                ×
-              </button>
+                <button
+                  type="button"
+                  onClick={saveSupplierStatementPdf}
+                  disabled={statementLoading}
+                  style={{
+                    ...secondaryButtonStyle,
+                    opacity: statementLoading ? 0.6 : 1,
+                    cursor: statementLoading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  حفظ PDF
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStatementData(null)}
+                  style={closeButtonStyle}
+                >
+                  ×
+                </button>
+              </div>
             </div>
 
             <div
