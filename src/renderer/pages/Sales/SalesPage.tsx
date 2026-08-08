@@ -260,13 +260,21 @@ function formatReceiptDate(value?: string | null): string {
 
     const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
 
-    return new Date(normalized).toLocaleString('ar-EG', {
-      year: 'numeric',
-      month: '2-digit',
+    const date = new Date(normalized)
+
+    const datePart = date.toLocaleDateString('en-GB', {
       day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+
+    const timePart = date.toLocaleTimeString('en-GB', {
       hour: '2-digit',
       minute: '2-digit',
+      hour12: false,
     })
+
+    return `${datePart}  ${timePart}`
   } catch {
     return value
   }
@@ -843,12 +851,17 @@ export default function SalesPage() {
       0,
       Number(receipt.sale.remaining_amount || 0),
     )
+
     const grandTotal = Number(receipt.sale.grand_total || 0)
+
     const paidNetAmount = Math.max(0, grandTotal - remainingAmount)
 
     const storeName = String(storeInfo.app_name || 'ERP Store').trim()
+
     const storeLogoUrl = String(storeInfo.app_logo_url || '').trim()
+
     const storePhone = String(storeInfo.store_phone || '').trim()
+
     const storeAddress = String(storeInfo.store_address || '').trim()
 
     const cleanStorePhone =
@@ -861,172 +874,717 @@ export default function SalesPage() {
         ? storeAddress
         : ''
 
-    const rows = receipt.items
-      .map(
-        (item) => `
-          <tr>
-            <td>${escapeHtml(item.product_name)} ${escapeHtml(item.size || '')} ${escapeHtml(item.color || '')}</td>
-            <td>${escapeHtml(item.quantity)}</td>
-            <td>${money(item.unit_price)}</td>
-            <td>${money(item.line_total)}</td>
-          </tr>
-        `,
-      )
+    const itemRows = receipt.items
+      .map((item) => {
+        const quantity = Number(item.quantity || 0)
+        const unitPrice = Number(item.unit_price || 0)
+        const lineTotal = Number(item.line_total ?? quantity * unitPrice)
+
+        const details = [
+          item.size ? String(item.size) : '',
+          item.color ? String(item.color) : '',
+        ]
+          .filter(Boolean)
+          .join(' / ')
+
+        return `
+        <tr>
+          <td class="product-cell">
+
+            <strong>
+              ${escapeHtml(item.product_name)}
+            </strong>
+
+            ${
+              details
+                ? `
+                  <div class="product-details">
+                    ${escapeHtml(details)}
+                  </div>
+                `
+                : ''
+            }
+
+          </td>
+
+          <td>${quantity}</td>
+
+          <td>
+            ${unitPrice.toFixed(2)}
+          </td>
+
+          <td class="line-total">
+            ${lineTotal.toFixed(2)}
+          </td>
+        </tr>
+      `
+      })
       .join('')
 
     return `
-      <!doctype html>
-      <html lang="ar" dir="rtl">
-        <head>
-          <meta charset="UTF-8" />
-          <title>فاتورة #${escapeHtml(receipt.sale.id)}</title>
-          <style>
-            * { box-sizing: border-box; }
+    <!doctype html>
+
+    <html lang="ar" dir="rtl">
+
+      <head>
+
+        <meta charset="UTF-8" />
+
+        <title>
+          فاتورة #${escapeHtml(receipt.sale.id)}
+        </title>
+
+        <style>
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            padding: 10px;
+            background: #fff;
+            color: #111;
+            font-family:
+              Arial,
+              Tahoma,
+              sans-serif;
+            font-size: 12px;
+          }
+
+          .receipt {
+            width: 300px;
+            max-width: 100%;
+            margin: 0 auto;
+          }
+
+          /* =========================
+             Header
+          ========================= */
+
+          .header {
+            padding: 5px 0 7px;
+            border-bottom: 1px solid #222;
+          }
+
+          .store-main-row {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 10px;
+            direction: ltr;
+          }
+
+          .logo {
+            width: 48px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: block;
+          }
+
+          .store-name {
+            font-size: 19px;
+            line-height: 1;
+            font-weight: 900;
+            color: #111;
+            white-space: nowrap;
+          }
+
+          .store-contact-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-top: 5px;
+            direction: ltr;
+            font-size: 9.5px;
+            color: #222;
+          }
+
+          .store-contact-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+            font-weight: 700;
+          }
+
+          .store-contact-item.phone {
+            direction: ltr;
+          }
+
+          .store-contact-item.address {
+            direction: rtl;
+          }
+
+          .contact-svg {
+            width: 13px;
+            height: 13px;
+            flex-shrink: 0;
+            fill: #111;
+          }
+
+          /* =========================
+             Invoice number/title/date
+          ========================= */
+
+          .invoice-title-row {
+            display: grid;
+            grid-template-columns:
+              58px 1fr 125px;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 0;
+            direction: ltr;
+            border-bottom:
+              1px dashed #999;
+          }
+
+          .invoice-number {
+            justify-self: start;
+            min-width: 42px;
+            padding: 5px 7px;
+            border: 1.2px solid #222;
+            border-radius: 7px;
+            text-align: center;
+            direction: ltr;
+            font-size: 15px;
+            font-weight: 900;
+            line-height: 1;
+          }
+
+          .invoice-title {
+            justify-self: center;
+            direction: rtl;
+            text-align: center;
+            white-space: nowrap;
+            font-size: 17px;
+            font-weight: 900;
+            line-height: 1;
+          }
+
+          .invoice-date {
+            justify-self: end;
+            direction: ltr;
+            text-align: right;
+            white-space: nowrap;
+            color: #222;
+            font-size: 10px;
+            font-weight: 700;
+          }
+
+          /* =========================
+             Customer / cashier / pay
+          ========================= */
+
+          .sale-info {
+            display: grid;
+            grid-template-columns:
+              repeat(3, 1fr);
+            align-items: stretch;
+            width: 100%;
+            padding: 7px 0;
+            direction: rtl;
+            border-bottom:
+              1px dashed #999;
+          }
+
+          .sale-info-item {
+            text-align: center;
+            padding: 2px 6px;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+          }
+
+          .sale-info-item:not(:last-child) {
+            border-left:
+              1px dashed #aaa;
+          }
+
+          .sale-info-item span {
+            display: block;
+            font-size: 9px;
+            color: #555;
+            margin-bottom: 4px;
+            line-height: 1;
+          }
+
+          .sale-info-item strong {
+            display: block;
+            font-size: 11px;
+            font-weight: 900;
+            color: #111;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+          }
+
+          /* =========================
+             Items
+          ========================= */
+
+          .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 8px 0 10px;
+            table-layout: fixed;
+            font-size: 10.5px;
+          }
+
+          .items-table th {
+            padding: 5px 3px;
+            border-top: 1px solid #555;
+            border-bottom: 1px solid #555;
+            font-size: 9.5px;
+            font-weight: 900;
+            text-align: center;
+          }
+
+          .items-table td {
+            padding: 6px 3px;
+            border-bottom:
+              1px dotted #bbb;
+            text-align: center;
+            vertical-align: middle;
+          }
+
+          .items-table th:first-child,
+          .items-table td:first-child {
+            width: 45%;
+            text-align: right;
+          }
+
+          .items-table th:nth-child(2),
+          .items-table td:nth-child(2) {
+            width: 10%;
+          }
+
+          .items-table th:nth-child(3),
+          .items-table td:nth-child(3) {
+            width: 20%;
+          }
+
+          .items-table th:nth-child(4),
+          .items-table td:nth-child(4) {
+            width: 25%;
+          }
+
+          .product-cell strong {
+            display: block;
+            font-size: 11px;
+          }
+
+          .product-details {
+            color: #666;
+            font-size: 9px;
+            margin-top: 2px;
+          }
+
+          .line-total {
+            font-weight: 900;
+          }
+
+          /* =========================
+             Summary
+          ========================= */
+
+          .summary-box {
+            border: 1px solid #999;
+            border-radius: 8px;
+            padding: 9px;
+            margin-top: 10px;
+          }
+
+          .summary-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin: 5px 0;
+          }
+
+          .discount {
+            color: #b91c1c;
+          }
+
+          .final-total {
+            margin-top: 7px;
+            padding-top: 8px;
+            border-top:
+              1px dashed #777;
+            font-size: 15px;
+            font-weight: 900;
+            color: #172554;
+          }
+
+          .paid {
+            font-weight: 800;
+          }
+
+          .remaining-zero {
+            color: #15803d;
+            font-weight: 900;
+          }
+
+          .remaining-debt {
+            color: #c2410c;
+            font-weight: 900;
+          }
+
+          /* =========================
+             QR / Thanks
+          ========================= */
+
+          .receipt-bottom {
+            display: grid;
+            grid-template-columns:
+              90px 1fr;
+            align-items: center;
+            gap: 10px;
+            margin-top: 6px;
+            padding-top: 5px;
+            direction: ltr;
+          }
+
+          .qr-side {
+            text-align: center;
+          }
+
+          .qr-side img {
+            width: 68px;
+            height: 68px;
+            display: block;
+            margin: 0 auto;
+          }
+
+          .qr-title {
+            margin-top: 2px;
+            font-size: 7.5px;
+            line-height: 1.2;
+            font-weight: 700;
+            white-space: nowrap;
+            direction: rtl;
+          }
+
+          .thanks-side {
+            direction: rtl;
+            text-align: right;
+            font-size: 13px;
+            font-weight: 900;
+            padding-right: 6px;
+          }
+
+          .engineer-footer {
+            margin-top: 4px;
+            padding-top: 4px;
+            border-top:
+              1px dashed #bbb;
+            text-align: center;
+            font-size: 9px;
+            color: #555;
+            line-height: 1.5;
+          }
+
+          @media print {
+
             body {
-              margin: 0;
-              padding: 14px;
-              font-family: Arial, Tahoma, sans-serif;
-              color: #111;
-              background: #fff;
-              font-size: 12px;
-            }
-            .receipt { width: 280px; margin: 0 auto; }
-            h2, p { margin: 0; }
-            .center { text-align: center; }
-
-            .receipt-header {
-              text-align: center;
-              line-height: 1.5;
+              padding: 0;
             }
 
-            .receipt-logo {
-              width: 70px;
-              max-width: 90%;
-              max-height: 70px;
-              object-fit: contain;
-              display: block;
-              margin: 0 auto 6px;
+            .receipt {
+              width: 100%;
             }
 
-            .store-name {
-              font-size: 18px;
-              font-weight: 800;
-              margin-bottom: 3px;
+          }
+
+        </style>
+
+      </head>
+
+      <body>
+
+        <div class="receipt">
+
+          <!-- Store Header -->
+
+          <div class="header">
+
+            <div class="store-main-row">
+
+              ${
+                storeLogoUrl
+                  ? `
+                    <img
+                      class="logo"
+                      src="${escapeHtml(storeLogoUrl)}"
+                      alt="Logo"
+                    />
+                  `
+                  : ''
+              }
+
+              <div class="store-name">
+                ${escapeHtml(storeName)}
+              </div>
+
+            </div>
+
+            ${
+              cleanStorePhone || cleanStoreAddress
+                ? `
+                  <div class="store-contact-row">
+
+                    ${
+                      cleanStorePhone
+                        ? `
+                          <div class="store-contact-item phone">
+
+                            <svg
+                              class="contact-svg"
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                            >
+                              <path d="M6.62 10.79a15.46 15.46 0 006.59 6.59l2.2-2.2a1 1 0 011.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 011 1V20a1 1 0 01-1 1C10.61 21 3 13.39 3 4a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.46.57 3.59a1 1 0 01-.25 1.02l-2.2 2.18z"/>
+                            </svg>
+
+                            <span>
+                              ${escapeHtml(cleanStorePhone)}
+                            </span>
+
+                          </div>
+                        `
+                        : ''
+                    }
+
+                    ${
+                      cleanStoreAddress
+                        ? `
+                          <div class="store-contact-item address">
+
+                            <svg
+                              class="contact-svg"
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1112 6a2.5 2.5 0 010 5.5z"/>
+                            </svg>
+
+                            <span>
+                              ${escapeHtml(cleanStoreAddress)}
+                            </span>
+
+                          </div>
+                        `
+                        : ''
+                    }
+
+                  </div>
+                `
+                : ''
             }
 
-            .store-info {
-              font-size: 11px;
-              color: #555;
-              font-weight: 500;
-            }
-
-            .receipt-title {
-              font-size: 14px;
-              font-weight: 800;
-              margin-bottom: 3px;
-            }
-
-            .qr-box {
-              text-align: center;
-              margin-top: 10px;
-              padding-top: 10px;
-              border-top: 1px dashed #bbb;
-              font-size: 10px;
-              color: #444;
-            }
-
-            .qr-box img {
-              width: 92px;
-              height: 92px;
-              display: block;
-              margin: 0 auto 5px;
-            }
-
-            .muted {
-              color: #555;
-              font-size: 11px;
-            }
-            .line { border-top: 1px dashed #777; margin: 10px 0; }
-            .row { display: flex; justify-content: space-between; gap: 8px; margin: 5px 0; }
-            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-            th, td { padding: 5px 0; border-bottom: 1px dashed #ddd; text-align: right; vertical-align: top; }
-            th { font-size: 11px; color: #333; }
-            .total { font-weight: 800; font-size: 14px; }
-            @media print { body { padding: 0; } .receipt { width: 100%; } }
-            .engineer-footer {
-              margin-top: 8px;
-              padding-top: 8px;
-              border-top: 1px dashed #bbb;
-              font-size: 10.5px;
-              color: #444;
-              line-height: 1.6;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="receipt">
-          <div class="receipt-header">
-            ${storeLogoUrl ? `<img class="receipt-logo" src="${escapeHtml(storeLogoUrl)}" alt="Store Logo" />` : ''}
-            <div class="store-name">${escapeHtml(storeName)}</div>
-            ${cleanStorePhone ? `<div class="store-info">تليفون: ${escapeHtml(cleanStorePhone)}</div>` : ''}
-            ${cleanStoreAddress ? `<div class="store-info">العنوان: ${escapeHtml(cleanStoreAddress)}</div>` : ''}
-
-            <div class="line"></div>
-
-            <div class="receipt-title">فاتورة بيع</div>
-            <div class="store-info">رقم الفاتورة: #${escapeHtml(receipt.sale.id)}</div>
-            <div class="store-info">${escapeHtml(formatReceiptDate(receipt.sale.created_at))}</div>
           </div>
 
-          <div class="line"></div>
+          <!-- Invoice -->
 
-            <div class="row"><span>العميل</span><strong>${escapeHtml(receipt.sale.customer_name || 'عميل نقدي')}</strong></div>
-            <div class="row"><span>الكاشير</span><strong>${escapeHtml(receipt.sale.cashier_name || '-')}</strong></div>
-            <div class="row"><span>طريقة الدفع</span><strong>${escapeHtml(getPaymentMethodLabel(receipt.sale.payment_method))}</strong></div>
+          <div class="invoice-title-row">
 
-            <table>
-              <thead>
-                <tr>
-                  <th>الصنف</th>
-                  <th>كمية</th>
-                  <th>سعر</th>
-                  <th>إجمالي</th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
+            <div class="invoice-number">
+              #${escapeHtml(receipt.sale.id)}
+            </div>
 
-            <div class="line"></div>
+            <div class="invoice-title">
+              فاتورة بيع
+            </div>
 
-            <div class="row"><span>الإجمالي قبل الخصم</span><strong>${money(receipt.sale.sub_total)} ج.م</strong></div>
-            <div class="row"><span>خصم عادي</span><strong>${money(receipt.sale.discount_value)} ج.م</strong></div>
-            <div class="row"><span>خصم النقاط</span><strong>${money(receipt.sale.loyalty_discount_value)} ج.م</strong></div>
-            <div class="row total"><span>الإجمالي النهائي</span><strong>${money(receipt.sale.grand_total)} ج.م</strong></div>
-            <div class="row"><span>المدفوع</span><strong>${money(paidNetAmount)} ج.م</strong></div>
-            <div class="row"><span>الباقي / المديونية</span><strong>${money(remainingAmount)} ج.م</strong></div>
-            <div class="row"><span>حالة الدفع</span><strong>${escapeHtml(getPaymentStatusLabel(receipt.sale.payment_status))}</strong></div>
-            <div class="line"></div>
+            <div class="invoice-date">
+              ${escapeHtml(formatReceiptDate(receipt.sale.created_at))}
+            </div>
 
-            <div class="row"><span>نقاط مستخدمة</span><strong>${escapeHtml(receipt.sale.loyalty_points_redeemed || 0)}</strong></div>
-            <div class="row"><span>نقاط مكتسبة</span><strong>${escapeHtml(receipt.sale.loyalty_points_earned || 0)}</strong></div>
+          </div>
 
-            <div class="line"></div>
+          <!-- Customer -->
+
+          <div class="sale-info">
+
+            <div class="sale-info-item">
+              <span>العميل</span>
+
+              <strong>
+                ${escapeHtml(receipt.sale.customer_name || 'عميل نقدي')}
+              </strong>
+            </div>
+
+            <div class="sale-info-item">
+              <span>الكاشير</span>
+
+              <strong>
+                ${escapeHtml(receipt.sale.cashier_name || '—')}
+              </strong>
+            </div>
+
+            <div class="sale-info-item">
+              <span>طريقة الدفع</span>
+
+              <strong>
+                ${escapeHtml(
+                  getPaymentMethodLabel(receipt.sale.payment_method),
+                )}
+              </strong>
+            </div>
+
+          </div>
+
+          <!-- Items -->
+
+          <table class="items-table">
+
+            <thead>
+              <tr>
+                <th>الصنف</th>
+                <th>ك</th>
+                <th>السعر</th>
+                <th>الإجمالي</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${itemRows}
+            </tbody>
+
+          </table>
+
+          <!-- Summary -->
+
+          <div class="summary-box">
+
+            <div class="summary-row">
+
+              <span>قبل الخصم</span>
+
+              <strong>
+                ${money(receipt.sale.sub_total)}
+              </strong>
+
+            </div>
+
+            ${
+              Number(receipt.sale.discount_value || 0) > 0
+                ? `
+                  <div class="summary-row discount">
+
+                    <span>الخصم</span>
+
+                    <strong>
+                      -${money(receipt.sale.discount_value)}
+                    </strong>
+
+                  </div>
+                `
+                : ''
+            }
+
+            ${
+              Number(receipt.sale.loyalty_discount_value || 0) > 0
+                ? `
+                  <div class="summary-row discount">
+
+                    <span>
+                      خصم النقاط
+                    </span>
+
+                    <strong>
+                      -${money(receipt.sale.loyalty_discount_value)}
+                    </strong>
+
+                  </div>
+                `
+                : ''
+            }
+
+            <div class="summary-row final-total">
+
+              <span>
+                الإجمالي النهائي
+              </span>
+
+              <strong>
+                ${money(grandTotal)}
+                ج.م
+              </strong>
+
+            </div>
+
+            <div class="summary-row paid">
+
+              <span>المدفوع</span>
+
+              <strong>
+                ${money(paidNetAmount)}
+                ج.م
+              </strong>
+
+            </div>
+
+            <div class="summary-row">
+
+              <span>الباقي</span>
+
+              <strong
+                class="${
+                  remainingAmount > 0 ? 'remaining-debt' : 'remaining-zero'
+                }"
+              >
+                ${money(remainingAmount)}
+                ج.م
+              </strong>
+
+            </div>
+
+          </div>
+
+          <!-- QR / Thanks -->
+
+          <div class="receipt-bottom">
+
             ${
               qrDataUrl
                 ? `
-              <div class="qr-box">
-                <img src="${qrDataUrl}" alt="Invoice QR" />
-                <div>${escapeHtml(storeInfo.store_qr_title || 'امسح الكود للتواصل معنا')}</div>
-              </div>
-            `
+                  <div class="qr-side">
+
+                    <img
+                      src="${qrDataUrl}"
+                      alt="QR Code"
+                    />
+
+                    <div class="qr-title">
+                      امسح الكود للتواصل معنا
+                    </div>
+
+                  </div>
+                `
                 : ''
             }
-            <p class="center muted">شكرًا لتعاملكم معنا</p>
-            <p class="center engineer-footer">${escapeHtml(ENGINEER_FOOTER)}</p>
+
+            <div class="thanks-side">
+              شكرًا لتعاملكم معنا
+            </div>
+
           </div>
-        </body>
-      </html>
-    `
+
+          <div class="engineer-footer">
+            ${escapeHtml(ENGINEER_FOOTER)}
+          </div>
+
+        </div>
+
+      </body>
+
+    </html>
+  `
   }
 
   async function printReceipt() {

@@ -197,7 +197,10 @@ export default function InvoicesPage() {
     let qrDataUrl = ''
 
     try {
-      if (storeInfo.store_qr_primary_url?.trim()) {
+      if (
+        storeInfo.store_qr_enabled &&
+        storeInfo.store_qr_primary_url?.trim()
+      ) {
         qrDataUrl = await QRCode.toDataURL(
           storeInfo.store_qr_primary_url.trim(),
           {
@@ -1511,6 +1514,34 @@ function formatDate(value?: string) {
   }
 }
 
+function formatReceiptDate(value?: string) {
+  if (!value) return '—'
+
+  try {
+    const raw = String(value)
+
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
+
+    const date = new Date(normalized)
+
+    const datePart = date.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+
+    const timePart = date.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+
+    return `${datePart}  ${timePart}`
+  } catch {
+    return value
+  }
+}
+
 function escapeHtml(value: unknown) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -1659,118 +1690,167 @@ function buildReceiptHtml(
           }
 
           .header {
-            text-align: center;
-            padding-bottom: 10px;
+            padding: 5px 0 7px;
             border-bottom: 1px solid #222;
           }
 
-          .logo {
-            width: 45px;
-            height: 45px;
-          }
-
-          .store-name {
-            font-size: 16px;
-            font-weight: 900;
-            margin-bottom: 4px;
-          }
-
-          .store-info {
-            color: #444;
-            font-size: 10.5px;
-            line-height: 1.6;
-          }
-
-          .invoice-title-row {
-            display: grid;
-            grid-template-columns: 105px 1fr 72px;
+          /* اللوجو + اسم المحل */
+          .store-main-row {
+            display: flex;
             align-items: center;
-            gap: 6px;
-            margin: 6px 0;
+            justify-content: flex-start;
+            gap: 10px;
             direction: ltr;
           }
 
-          .invoice-number {
-            justify-self: end;
-            border: 1px solid #222;
-            border-radius: 6px;
-            padding: 4px 7px;
-            font-weight: 900;
-            font-size: 12px;
-            text-align: center;
-            direction: rtl;
+          .logo {
+            width: 48px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 50%;
+            flex-shrink: 0;
+            display: block;
           }
-            
-          .invoice-title {
-            text-align: center;
+
+          .store-name {
+            font-size: 19px;
+            line-height: 1;
             font-weight: 900;
-            font-size: 15px;
-            direction: rtl;
+            color: #111;
             white-space: nowrap;
           }
 
-          .invoice-date {
-            justify-self: start;
-            font-size: 12px;
-            color: #555;
-            direction: rtl;
-            text-align: left;
-            white-space: nowrap;
-          }
-
-          .invoice-number {
-            border: 1px solid #222;
-            border-radius: 6px;
-            padding: 5px 8px;
-            font-weight: 900;
-            font-size: 13px;
-          }
-
-          .invoice-title {
-            text-align: center;
-            font-weight: 900;
-            font-size: 16px;
-          }
-
-          .invoice-date {
+          /* التليفون + العنوان */
+          .store-contact-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-top: 5px;
+            direction: ltr;
             font-size: 9.5px;
-            color: #555;
-            text-align: left;
+            color: #222;
           }
+
+          .store-contact-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+            font-weight: 700;
+          }
+
+          .store-contact-item.phone {
+            direction: ltr;
+          }
+
+          .store-contact-item.address {
+            direction: rtl;
+          }
+
+          .contact-svg {
+            width: 13px;
+            height: 13px;
+            flex-shrink: 0;
+            fill: #111;
+          }
+
+          /* رقم الفاتورة + العنوان + التاريخ */
+          .invoice-title-row {
+            display: grid;
+            grid-template-columns: 58px 1fr 125px;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 0;
+            direction: ltr;
+            border-bottom: 1px dashed #999;
+          }
+
+          .invoice-number {
+            justify-self: start;
+            min-width: 42px;
+            padding: 5px 7px;
+            border: 1.2px solid #222;
+            border-radius: 7px;
+            text-align: center;
+            direction: ltr;
+            font-size: 15px;
+            font-weight: 900;
+            line-height: 1;
+          }
+
+          .invoice-title {
+            justify-self: center;
+            direction: rtl;
+            text-align: center;
+            white-space: nowrap;
+            font-size: 17px;
+            font-weight: 900;
+            line-height: 1;
+          }
+
+          .invoice-date {
+            justify-self: end;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 4px;
+            direction: ltr;
+            white-space: nowrap;
+            color: #222;
+            font-size: 10px;
+            font-weight: 700;
+          }
+
+          .date-svg {
+            width: 15px;
+            height: 15px;
+            flex-shrink: 0;
+            fill: none;
+            stroke: #111;
+            stroke-width: 1.8;
+          }
+
 
           .sale-info {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             align-items: stretch;
-            padding: 5px 0;
-            border-top: 1px dashed #bbb;
-            border-bottom: 1px dashed #bbb;
+            width: 100%;
+            padding: 7px 0;
             direction: rtl;
+            border-bottom: 1px dashed #999;
           }
 
           .sale-info-item {
             text-align: center;
-            padding: 2px 5px;
+            padding: 2px 6px;
             min-width: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
           }
 
           .sale-info-item:not(:last-child) {
-            border-left: 1px dotted #bbb;
+            border-left: 1px dashed #aaa;
           }
 
           .sale-info-item span {
             display: block;
-            font-size: 8px;
+            font-size: 9px;
             color: #555;
-            margin-bottom: 2px;
+            margin-bottom: 4px;
+            line-height: 1;
           }
 
           .sale-info-item strong {
             display: block;
-            font-size: 9px;
-            font-weight: 800;
+            font-size: 11px;
+            font-weight: 900;
+            color: #111;
+            line-height: 1.2;
             overflow-wrap: anywhere;
-            line-height: 1.25;
           }
 
           .items-table {
@@ -1844,32 +1924,6 @@ function buildReceiptHtml(
             margin-top: 2px;
           }
 
-          .item-card.has-return {
-            background: #fff8ee;
-          }
-
-          .item-total span {
-            font-size: 9px;
-          }
-
-          .item-total strong {
-            font-size: 15px;
-          }
-
-          .item-values > div {
-            text-align: center;
-            display: grid;
-            gap: 2px;
-          }
-
-          .item-values span {
-            color: #666;
-            font-size: 9px;
-          }
-
-          .item-values strong {
-            font-size: 12px;
-          }
 
           .return-note {
             margin-top: 6px;
@@ -1991,7 +2045,9 @@ function buildReceiptHtml(
 
         <div class="receipt">
 
-          <div class="header">
+        <div class="header">
+
+          <div class="store-main-row">
 
             ${
               storeLogoUrl
@@ -2009,28 +2065,64 @@ function buildReceiptHtml(
               ${escapeHtml(storeName)}
             </div>
 
-            ${
-              storePhone
-                ? `
-                  <div class="store-info">
-                    تليفون:
-                    ${escapeHtml(storePhone)}
-                  </div>
-                `
-                : ''
-            }
-
-            ${
-              storeAddress
-                ? `
-                  <div class="store-info">
-                    ${escapeHtml(storeAddress)}
-                  </div>
-                `
-                : ''
-            }
-
           </div>
+
+          ${
+            storePhone || storeAddress
+              ? `
+                <div class="store-contact-row">
+
+                  ${
+                    storePhone
+                      ? `
+                        <div class="store-contact-item phone">
+
+                          <svg
+                            class="contact-svg"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                          >
+                            <path d="M6.62 10.79a15.46 15.46 0 006.59 6.59l2.2-2.2a1 1 0 011.01-.24c1.12.37 2.33.57 3.58.57a1 1 0 011 1V20a1 1 0 01-1 1C10.61 21 3 13.39 3 4a1 1 0 011-1h3.5a1 1 0 011 1c0 1.25.2 2.46.57 3.59a1 1 0 01-.25 1.02l-2.2 2.18z"/>
+                          </svg>
+
+                          <span>
+                            ${escapeHtml(storePhone)}
+                          </span>
+
+                        </div>
+                      `
+                      : ''
+                  }
+
+                  ${
+                    storeAddress
+                      ? `
+                        <div class="store-contact-item address">
+
+                          <svg
+                            class="contact-svg"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                          >
+                            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1112 6a2.5 2.5 0 010 5.5z"/>
+                          </svg>
+
+                          <span>
+                            ${escapeHtml(storeAddress)}
+                          </span>
+
+                        </div>
+                      `
+                      : ''
+                  }
+
+                </div>
+              `
+              : ''
+          }
+
+        </div>
+          
 
           <div class="invoice-title-row">
 
@@ -2043,7 +2135,31 @@ function buildReceiptHtml(
             </div>
 
             <div class="invoice-date">
-              ${escapeHtml(formatDate(sale.created_at))}
+
+              <svg
+                class="date-svg"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <rect
+                  x="3"
+                  y="5"
+                  width="18"
+                  height="16"
+                  rx="2"
+                />
+
+                <path d="M16 3v4M8 3v4M3 10h18" />
+
+                <circle cx="17" cy="17" r="4" />
+
+                <path d="M17 15v2.2l1.5 1" />
+              </svg>
+
+              <span>
+                ${escapeHtml(formatReceiptDate(sale.created_at))}
+              </span>
+
             </div>
 
           </div>
