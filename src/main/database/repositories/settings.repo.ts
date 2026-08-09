@@ -1,9 +1,9 @@
-import { getDb } from '../db';
+import { getDb } from '../db'
 import {
   getDeviceLicenseStatus,
   activateDevice,
-  deactivateDevice
-} from '../../security/device-license';
+  deactivateDevice,
+} from '../../security/device-license'
 
 export type BarcodeItemPosition =
   | 'top'
@@ -14,41 +14,41 @@ export type BarcodeItemPosition =
   | 'bottom'
   | 'bottom-left'
   | 'bottom-right'
-  | 'hidden';
+  | 'hidden'
 
-export type BarcodeItemAlign = 'left' | 'center' | 'right';
+export type BarcodeItemAlign = 'left' | 'center' | 'right'
 
 export type BarcodePrintSettings = {
-  barcode_label_width_mm: number;
-  barcode_label_height_mm: number;
-  barcode_copies: number;
-  barcode_auto_print_after_save: boolean;
+  barcode_label_width_mm: number
+  barcode_label_height_mm: number
+  barcode_copies: number
+  barcode_auto_print_after_save: boolean
 
-  barcode_content_offset_x_mm: number;
-  barcode_content_offset_y_mm: number;
+  barcode_content_offset_x_mm: number
+  barcode_content_offset_y_mm: number
 
-  barcode_name_font_size: number;
-  barcode_name_position: BarcodeItemPosition;
-  barcode_name_align: BarcodeItemAlign;
+  barcode_name_font_size: number
+  barcode_name_position: BarcodeItemPosition
+  barcode_name_align: BarcodeItemAlign
 
-  barcode_price_font_size: number;
-  barcode_price_position: BarcodeItemPosition;
-  barcode_price_align: BarcodeItemAlign;
+  barcode_price_font_size: number
+  barcode_price_position: BarcodeItemPosition
+  barcode_price_align: BarcodeItemAlign
 
-  barcode_size_font_size: number;
-  barcode_size_position: BarcodeItemPosition;
-  barcode_size_align: BarcodeItemAlign;
+  barcode_size_font_size: number
+  barcode_size_position: BarcodeItemPosition
+  barcode_size_align: BarcodeItemAlign
 
-  barcode_color_font_size: number;
-  barcode_color_position: BarcodeItemPosition;
-  barcode_color_align: BarcodeItemAlign;
+  barcode_color_font_size: number
+  barcode_color_position: BarcodeItemPosition
+  barcode_color_align: BarcodeItemAlign
 
-  barcode_value_font_size: number;
-  barcode_value_position: BarcodeItemPosition;
-  barcode_value_align: BarcodeItemAlign;
+  barcode_value_font_size: number
+  barcode_value_position: BarcodeItemPosition
+  barcode_value_align: BarcodeItemAlign
 
-  barcode_svg_height: number;
-};
+  barcode_svg_height: number
+}
 
 const DEFAULT_SETTINGS: BarcodePrintSettings = {
   barcode_label_width_mm: 35,
@@ -79,244 +79,449 @@ const DEFAULT_SETTINGS: BarcodePrintSettings = {
   barcode_value_position: 'below_barcode',
   barcode_value_align: 'center',
 
-  barcode_svg_height: 22
-};
+  barcode_svg_height: 22,
+}
 
 function toBool(value: string | undefined, fallback: boolean): boolean {
-  if (value == null) return fallback;
-  return value === 'true';
+  if (value == null) return fallback
+  return value === 'true'
 }
 
 function toNumber(value: string | undefined, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
 }
 
 function toText<T extends string>(value: string | undefined, fallback: T): T {
-  return (value ?? fallback) as T;
+  return (value ?? fallback) as T
 }
 
 export function getBarcodePrintSettings(): BarcodePrintSettings {
-  const db = getDb();
+  const db = getDb()
 
   const rows = db
     .prepare(`SELECT key, value FROM app_settings`)
-    .all() as Array<{ key: string; value: string }>;
+    .all() as Array<{ key: string; value: string }>
 
-  const map = new Map(rows.map((row) => [row.key, row.value]));
+  const map = new Map(rows.map((row) => [row.key, row.value]))
 
-return {
-  barcode_label_width_mm: toNumber(
-    map.get('barcode_label_width_mm'),
-    DEFAULT_SETTINGS.barcode_label_width_mm
-  ),
-  barcode_label_height_mm: toNumber(
-    map.get('barcode_label_height_mm'),
-    DEFAULT_SETTINGS.barcode_label_height_mm
-  ),
-  barcode_copies: toNumber(
-    map.get('barcode_copies'),
-    DEFAULT_SETTINGS.barcode_copies
-  ),
-  barcode_auto_print_after_save: toBool(
-    map.get('barcode_auto_print_after_save'),
-    DEFAULT_SETTINGS.barcode_auto_print_after_save
-  ),
+  return {
+    barcode_label_width_mm: toNumber(
+      map.get('barcode_label_width_mm'),
+      DEFAULT_SETTINGS.barcode_label_width_mm,
+    ),
+    barcode_label_height_mm: toNumber(
+      map.get('barcode_label_height_mm'),
+      DEFAULT_SETTINGS.barcode_label_height_mm,
+    ),
+    barcode_copies: toNumber(
+      map.get('barcode_copies'),
+      DEFAULT_SETTINGS.barcode_copies,
+    ),
+    barcode_auto_print_after_save: toBool(
+      map.get('barcode_auto_print_after_save'),
+      DEFAULT_SETTINGS.barcode_auto_print_after_save,
+    ),
 
-  barcode_content_offset_x_mm: toNumber(
-    map.get('barcode_content_offset_x_mm'),
-    DEFAULT_SETTINGS.barcode_content_offset_x_mm
-  ),
-  barcode_content_offset_y_mm: toNumber(
-    map.get('barcode_content_offset_y_mm'),
-    DEFAULT_SETTINGS.barcode_content_offset_y_mm
-  ),
+    barcode_content_offset_x_mm: toNumber(
+      map.get('barcode_content_offset_x_mm'),
+      DEFAULT_SETTINGS.barcode_content_offset_x_mm,
+    ),
+    barcode_content_offset_y_mm: toNumber(
+      map.get('barcode_content_offset_y_mm'),
+      DEFAULT_SETTINGS.barcode_content_offset_y_mm,
+    ),
 
-  barcode_name_font_size: toNumber(
-    map.get('barcode_name_font_size'),
-    DEFAULT_SETTINGS.barcode_name_font_size
-  ),
-  barcode_name_position: toText(
-    map.get('barcode_name_position'),
-    DEFAULT_SETTINGS.barcode_name_position
-  ),
-  barcode_name_align: toText(
-    map.get('barcode_name_align'),
-    DEFAULT_SETTINGS.barcode_name_align
-  ),
+    barcode_name_font_size: toNumber(
+      map.get('barcode_name_font_size'),
+      DEFAULT_SETTINGS.barcode_name_font_size,
+    ),
+    barcode_name_position: toText(
+      map.get('barcode_name_position'),
+      DEFAULT_SETTINGS.barcode_name_position,
+    ),
+    barcode_name_align: toText(
+      map.get('barcode_name_align'),
+      DEFAULT_SETTINGS.barcode_name_align,
+    ),
 
-  barcode_price_font_size: toNumber(
-    map.get('barcode_price_font_size'),
-    DEFAULT_SETTINGS.barcode_price_font_size
-  ),
-  barcode_price_position: toText(
-    map.get('barcode_price_position'),
-    DEFAULT_SETTINGS.barcode_price_position
-  ),
-  barcode_price_align: toText(
-    map.get('barcode_price_align'),
-    DEFAULT_SETTINGS.barcode_price_align
-  ),
+    barcode_price_font_size: toNumber(
+      map.get('barcode_price_font_size'),
+      DEFAULT_SETTINGS.barcode_price_font_size,
+    ),
+    barcode_price_position: toText(
+      map.get('barcode_price_position'),
+      DEFAULT_SETTINGS.barcode_price_position,
+    ),
+    barcode_price_align: toText(
+      map.get('barcode_price_align'),
+      DEFAULT_SETTINGS.barcode_price_align,
+    ),
 
-  barcode_size_font_size: toNumber(
-    map.get('barcode_size_font_size'),
-    DEFAULT_SETTINGS.barcode_size_font_size
-  ),
-  barcode_size_position: toText(
-    map.get('barcode_size_position'),
-    DEFAULT_SETTINGS.barcode_size_position
-  ),
-  barcode_size_align: toText(
-    map.get('barcode_size_align'),
-    DEFAULT_SETTINGS.barcode_size_align
-  ),
+    barcode_size_font_size: toNumber(
+      map.get('barcode_size_font_size'),
+      DEFAULT_SETTINGS.barcode_size_font_size,
+    ),
+    barcode_size_position: toText(
+      map.get('barcode_size_position'),
+      DEFAULT_SETTINGS.barcode_size_position,
+    ),
+    barcode_size_align: toText(
+      map.get('barcode_size_align'),
+      DEFAULT_SETTINGS.barcode_size_align,
+    ),
 
-  barcode_color_font_size: toNumber(
-    map.get('barcode_color_font_size'),
-    DEFAULT_SETTINGS.barcode_color_font_size
-  ),
-  barcode_color_position: toText(
-    map.get('barcode_color_position'),
-    DEFAULT_SETTINGS.barcode_color_position
-  ),
-  barcode_color_align: toText(
-    map.get('barcode_color_align'),
-    DEFAULT_SETTINGS.barcode_color_align
-  ),
+    barcode_color_font_size: toNumber(
+      map.get('barcode_color_font_size'),
+      DEFAULT_SETTINGS.barcode_color_font_size,
+    ),
+    barcode_color_position: toText(
+      map.get('barcode_color_position'),
+      DEFAULT_SETTINGS.barcode_color_position,
+    ),
+    barcode_color_align: toText(
+      map.get('barcode_color_align'),
+      DEFAULT_SETTINGS.barcode_color_align,
+    ),
 
-  barcode_value_font_size: toNumber(
-    map.get('barcode_value_font_size'),
-    DEFAULT_SETTINGS.barcode_value_font_size
-  ),
-  barcode_value_position: toText(
-    map.get('barcode_value_position'),
-    DEFAULT_SETTINGS.barcode_value_position
-  ),
-  barcode_value_align: toText(
-    map.get('barcode_value_align'),
-    DEFAULT_SETTINGS.barcode_value_align
-  ),
+    barcode_value_font_size: toNumber(
+      map.get('barcode_value_font_size'),
+      DEFAULT_SETTINGS.barcode_value_font_size,
+    ),
+    barcode_value_position: toText(
+      map.get('barcode_value_position'),
+      DEFAULT_SETTINGS.barcode_value_position,
+    ),
+    barcode_value_align: toText(
+      map.get('barcode_value_align'),
+      DEFAULT_SETTINGS.barcode_value_align,
+    ),
 
-  barcode_svg_height: toNumber(
-    map.get('barcode_svg_height'),
-    DEFAULT_SETTINGS.barcode_svg_height
-  )
-};
+    barcode_svg_height: toNumber(
+      map.get('barcode_svg_height'),
+      DEFAULT_SETTINGS.barcode_svg_height,
+    ),
+  }
 }
 
 function assertPositiveNumber(value: unknown, message: string) {
-  const numberValue = Number(value);
+  const numberValue = Number(value)
 
   if (!Number.isFinite(numberValue) || numberValue <= 0) {
-    throw new Error(message);
+    throw new Error(message)
   }
 
-  return numberValue;
+  return numberValue
 }
 
 function assertFiniteNumber(value: unknown, message: string) {
-  const numberValue = Number(value);
+  const numberValue = Number(value)
 
   if (!Number.isFinite(numberValue)) {
-    throw new Error(message);
+    throw new Error(message)
   }
 
-  return numberValue;
+  return numberValue
 }
 
 function validateBarcodePrintSettings(input: BarcodePrintSettings) {
-  assertPositiveNumber(input.barcode_label_width_mm, 'عرض ملصق الباركود غير صحيح');
-  assertPositiveNumber(input.barcode_label_height_mm, 'ارتفاع ملصق الباركود غير صحيح');
-  assertPositiveNumber(input.barcode_copies, 'عدد نسخ الباركود غير صحيح');
+  assertPositiveNumber(
+    input.barcode_label_width_mm,
+    'عرض ملصق الباركود غير صحيح',
+  )
+  assertPositiveNumber(
+    input.barcode_label_height_mm,
+    'ارتفاع ملصق الباركود غير صحيح',
+  )
+  assertPositiveNumber(input.barcode_copies, 'عدد نسخ الباركود غير صحيح')
 
-  assertFiniteNumber(input.barcode_content_offset_x_mm, 'إزاحة الباركود الأفقية غير صحيحة');
-  assertFiniteNumber(input.barcode_content_offset_y_mm, 'إزاحة الباركود الرأسية غير صحيحة');
+  assertFiniteNumber(
+    input.barcode_content_offset_x_mm,
+    'إزاحة الباركود الأفقية غير صحيحة',
+  )
+  assertFiniteNumber(
+    input.barcode_content_offset_y_mm,
+    'إزاحة الباركود الرأسية غير صحيحة',
+  )
 
-  assertPositiveNumber(input.barcode_name_font_size, 'حجم خط اسم المنتج غير صحيح');
-  assertPositiveNumber(input.barcode_price_font_size, 'حجم خط السعر غير صحيح');
-  assertPositiveNumber(input.barcode_size_font_size, 'حجم خط المقاس غير صحيح');
-  assertPositiveNumber(input.barcode_color_font_size, 'حجم خط اللون غير صحيح');
-  assertPositiveNumber(input.barcode_value_font_size, 'حجم خط قيمة الباركود غير صحيح');
+  assertPositiveNumber(
+    input.barcode_name_font_size,
+    'حجم خط اسم المنتج غير صحيح',
+  )
+  assertPositiveNumber(input.barcode_price_font_size, 'حجم خط السعر غير صحيح')
+  assertPositiveNumber(input.barcode_size_font_size, 'حجم خط المقاس غير صحيح')
+  assertPositiveNumber(input.barcode_color_font_size, 'حجم خط اللون غير صحيح')
+  assertPositiveNumber(
+    input.barcode_value_font_size,
+    'حجم خط قيمة الباركود غير صحيح',
+  )
 
-  assertPositiveNumber(input.barcode_svg_height, 'ارتفاع الباركود غير صحيح');
+  assertPositiveNumber(input.barcode_svg_height, 'ارتفاع الباركود غير صحيح')
 }
 
 export function saveBarcodePrintSettings(input: BarcodePrintSettings) {
-  const db = getDb();
+  const db = getDb()
 
-  validateBarcodePrintSettings(input);
+  validateBarcodePrintSettings(input)
 
   const stmt = db.prepare(`
     INSERT INTO app_settings (key, value)
     VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
-  `);
+  `)
 
   const tx = db.transaction(() => {
-    stmt.run('barcode_label_width_mm', String(input.barcode_label_width_mm));
-    stmt.run('barcode_label_height_mm', String(input.barcode_label_height_mm));
-    stmt.run('barcode_copies', String(input.barcode_copies));
-    stmt.run( 'barcode_auto_print_after_save', String(input.barcode_auto_print_after_save));
+    stmt.run('barcode_label_width_mm', String(input.barcode_label_width_mm))
+    stmt.run('barcode_label_height_mm', String(input.barcode_label_height_mm))
+    stmt.run('barcode_copies', String(input.barcode_copies))
+    stmt.run(
+      'barcode_auto_print_after_save',
+      String(input.barcode_auto_print_after_save),
+    )
 
-    stmt.run('barcode_content_offset_x_mm', String(input.barcode_content_offset_x_mm));
-    stmt.run('barcode_content_offset_y_mm', String(input.barcode_content_offset_y_mm));
+    stmt.run(
+      'barcode_content_offset_x_mm',
+      String(input.barcode_content_offset_x_mm),
+    )
+    stmt.run(
+      'barcode_content_offset_y_mm',
+      String(input.barcode_content_offset_y_mm),
+    )
 
-    stmt.run('barcode_name_font_size', String(input.barcode_name_font_size));
-    stmt.run('barcode_name_position', String(input.barcode_name_position));
-    stmt.run('barcode_name_align', String(input.barcode_name_align));
+    stmt.run('barcode_name_font_size', String(input.barcode_name_font_size))
+    stmt.run('barcode_name_position', String(input.barcode_name_position))
+    stmt.run('barcode_name_align', String(input.barcode_name_align))
 
-    stmt.run('barcode_price_font_size', String(input.barcode_price_font_size));
-    stmt.run('barcode_price_position', String(input.barcode_price_position));
-    stmt.run('barcode_price_align', String(input.barcode_price_align));
+    stmt.run('barcode_price_font_size', String(input.barcode_price_font_size))
+    stmt.run('barcode_price_position', String(input.barcode_price_position))
+    stmt.run('barcode_price_align', String(input.barcode_price_align))
 
-    stmt.run('barcode_size_font_size', String(input.barcode_size_font_size));
-    stmt.run('barcode_size_position', String(input.barcode_size_position));
-    stmt.run('barcode_size_align', String(input.barcode_size_align));
+    stmt.run('barcode_size_font_size', String(input.barcode_size_font_size))
+    stmt.run('barcode_size_position', String(input.barcode_size_position))
+    stmt.run('barcode_size_align', String(input.barcode_size_align))
 
-    stmt.run('barcode_color_font_size', String(input.barcode_color_font_size));
-    stmt.run('barcode_color_position', String(input.barcode_color_position));
-    stmt.run('barcode_color_align', String(input.barcode_color_align));
+    stmt.run('barcode_color_font_size', String(input.barcode_color_font_size))
+    stmt.run('barcode_color_position', String(input.barcode_color_position))
+    stmt.run('barcode_color_align', String(input.barcode_color_align))
 
-    stmt.run('barcode_value_font_size', String(input.barcode_value_font_size));
-    stmt.run('barcode_value_position', String(input.barcode_value_position));
-    stmt.run('barcode_value_align', String(input.barcode_value_align));
+    stmt.run('barcode_value_font_size', String(input.barcode_value_font_size))
+    stmt.run('barcode_value_position', String(input.barcode_value_position))
+    stmt.run('barcode_value_align', String(input.barcode_value_align))
 
-    stmt.run('barcode_svg_height', String(input.barcode_svg_height));
-  });
+    stmt.run('barcode_svg_height', String(input.barcode_svg_height))
+  })
 
-    tx();
+  tx()
 
-    return { success: true };
+  return { success: true }
 }
 
+export type ReceiptPaperSize = '80mm' | '58mm' | 'custom'
 
+export type ReceiptPrintSettings = {
+  receipt_paper_size: ReceiptPaperSize
+  receipt_width_px: number
+  receipt_padding_top_px: number
+  receipt_padding_right_px: number
+  receipt_padding_bottom_px: number
+  receipt_padding_left_px: number
+  receipt_font_size_px: number
+}
+
+const DEFAULT_RECEIPT_PRINT_SETTINGS: ReceiptPrintSettings = {
+  receipt_paper_size: '80mm',
+  receipt_width_px: 245,
+  receipt_padding_top_px: 10,
+  receipt_padding_right_px: 4,
+  receipt_padding_bottom_px: 10,
+  receipt_padding_left_px: 18,
+  receipt_font_size_px: 12,
+}
+
+function toReceiptPaperSize(value: string | undefined): ReceiptPaperSize {
+  if (value === '58mm' || value === 'custom') return value
+  return '80mm'
+}
+
+function clampNumber(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+) {
+  const parsed = Number(value)
+
+  if (!Number.isFinite(parsed)) return fallback
+
+  return Math.min(max, Math.max(min, parsed))
+}
+
+export function getReceiptPrintSettings(): ReceiptPrintSettings {
+  return {
+    receipt_paper_size: toReceiptPaperSize(
+      getSetting(
+        'receipt_paper_size',
+        DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_paper_size,
+      ),
+    ),
+
+    receipt_width_px: clampNumber(
+      getSetting(
+        'receipt_width_px',
+        String(DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_width_px),
+      ),
+      DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_width_px,
+      150,
+      320,
+    ),
+
+    receipt_padding_top_px: clampNumber(
+      getSetting(
+        'receipt_padding_top_px',
+        String(DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_padding_top_px),
+      ),
+      DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_padding_top_px,
+      0,
+      60,
+    ),
+
+    receipt_padding_right_px: clampNumber(
+      getSetting(
+        'receipt_padding_right_px',
+        String(DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_padding_right_px),
+      ),
+      DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_padding_right_px,
+      0,
+      60,
+    ),
+
+    receipt_padding_bottom_px: clampNumber(
+      getSetting(
+        'receipt_padding_bottom_px',
+        String(DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_padding_bottom_px),
+      ),
+      DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_padding_bottom_px,
+      0,
+      60,
+    ),
+
+    receipt_padding_left_px: clampNumber(
+      getSetting(
+        'receipt_padding_left_px',
+        String(DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_padding_left_px),
+      ),
+      DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_padding_left_px,
+      0,
+      60,
+    ),
+
+    receipt_font_size_px: clampNumber(
+      getSetting(
+        'receipt_font_size_px',
+        String(DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_font_size_px),
+      ),
+      DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_font_size_px,
+      9,
+      16,
+    ),
+  }
+}
+
+export function saveReceiptPrintSettings(input: ReceiptPrintSettings) {
+  const settings: ReceiptPrintSettings = {
+    receipt_paper_size: toReceiptPaperSize(input.receipt_paper_size),
+
+    receipt_width_px: clampNumber(
+      input.receipt_width_px,
+      DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_width_px,
+      150,
+      320,
+    ),
+
+    receipt_padding_top_px: clampNumber(
+      input.receipt_padding_top_px,
+      DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_padding_top_px,
+      0,
+      60,
+    ),
+
+    receipt_padding_right_px: clampNumber(
+      input.receipt_padding_right_px,
+      DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_padding_right_px,
+      0,
+      60,
+    ),
+
+    receipt_padding_bottom_px: clampNumber(
+      input.receipt_padding_bottom_px,
+      DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_padding_bottom_px,
+      0,
+      60,
+    ),
+
+    receipt_padding_left_px: clampNumber(
+      input.receipt_padding_left_px,
+      DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_padding_left_px,
+      0,
+      60,
+    ),
+
+    receipt_font_size_px: clampNumber(
+      input.receipt_font_size_px,
+      DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_font_size_px,
+      9,
+      16,
+    ),
+  }
+
+  saveSetting('receipt_paper_size', settings.receipt_paper_size)
+  saveSetting('receipt_width_px', String(settings.receipt_width_px))
+  saveSetting('receipt_padding_top_px', String(settings.receipt_padding_top_px))
+  saveSetting(
+    'receipt_padding_right_px',
+    String(settings.receipt_padding_right_px),
+  )
+  saveSetting(
+    'receipt_padding_bottom_px',
+    String(settings.receipt_padding_bottom_px),
+  )
+  saveSetting(
+    'receipt_padding_left_px',
+    String(settings.receipt_padding_left_px),
+  )
+  saveSetting('receipt_font_size_px', String(settings.receipt_font_size_px))
+
+  return settings
+}
 
 export type LoyaltySettings = {
-  loyalty_enabled: boolean;
-  loyalty_earn_amount: number;
-  loyalty_earn_points: number;
-  loyalty_point_value: number;
-  loyalty_min_redeem_points: number;
-};
+  loyalty_enabled: boolean
+  loyalty_earn_amount: number
+  loyalty_earn_points: number
+  loyalty_point_value: number
+  loyalty_min_redeem_points: number
+}
 
 function getSetting(key: string, fallback: string) {
-  const db = getDb();
+  const db = getDb()
 
   const row = db
     .prepare(`SELECT value FROM app_settings WHERE key = ? LIMIT 1`)
-    .get(key) as { value: string } | undefined;
+    .get(key) as { value: string } | undefined
 
-  return row?.value ?? fallback;
+  return row?.value ?? fallback
 }
 
 function saveSetting(key: string, value: string) {
-  const db = getDb();
+  const db = getDb()
 
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO app_settings (key, value)
     VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
-  `).run(key, value);
+  `,
+  ).run(key, value)
 }
 
 export function getLoyaltySettings(): LoyaltySettings {
@@ -325,72 +530,75 @@ export function getLoyaltySettings(): LoyaltySettings {
     loyalty_earn_amount: Number(getSetting('loyalty_earn_amount', '100')),
     loyalty_earn_points: Number(getSetting('loyalty_earn_points', '1')),
     loyalty_point_value: Number(getSetting('loyalty_point_value', '1')),
-    loyalty_min_redeem_points: Number(getSetting('loyalty_min_redeem_points', '1'))
-  };
+    loyalty_min_redeem_points: Number(
+      getSetting('loyalty_min_redeem_points', '1'),
+    ),
+  }
 }
 
 export function saveLoyaltySettings(input: LoyaltySettings) {
-  const loyaltyEarnAmount = Number(input.loyalty_earn_amount || 100);
-  const loyaltyEarnPoints = Number(input.loyalty_earn_points || 1);
-  const loyaltyPointValue = Number(input.loyalty_point_value || 1);
-  const loyaltyMinRedeemPoints = Number(input.loyalty_min_redeem_points || 1);
+  const loyaltyEarnAmount = Number(input.loyalty_earn_amount || 100)
+  const loyaltyEarnPoints = Number(input.loyalty_earn_points || 1)
+  const loyaltyPointValue = Number(input.loyalty_point_value || 1)
+  const loyaltyMinRedeemPoints = Number(input.loyalty_min_redeem_points || 1)
 
   if (!Number.isFinite(loyaltyEarnAmount) || loyaltyEarnAmount <= 0) {
-    throw new Error('قيمة كسب النقاط غير صحيحة');
+    throw new Error('قيمة كسب النقاط غير صحيحة')
   }
 
   if (!Number.isFinite(loyaltyEarnPoints) || loyaltyEarnPoints <= 0) {
-    throw new Error('عدد النقاط المكتسبة غير صحيح');
+    throw new Error('عدد النقاط المكتسبة غير صحيح')
   }
 
   if (!Number.isFinite(loyaltyPointValue) || loyaltyPointValue <= 0) {
-    throw new Error('قيمة النقطة غير صحيحة');
+    throw new Error('قيمة النقطة غير صحيحة')
   }
 
   if (!Number.isFinite(loyaltyMinRedeemPoints) || loyaltyMinRedeemPoints <= 0) {
-    throw new Error('الحد الأدنى لاستخدام النقاط غير صحيح');
+    throw new Error('الحد الأدنى لاستخدام النقاط غير صحيح')
   }
 
-  saveSetting('loyalty_enabled', String(Boolean(input.loyalty_enabled)));
-  saveSetting('loyalty_earn_amount', String(loyaltyEarnAmount));
-  saveSetting('loyalty_earn_points', String(loyaltyEarnPoints));
-  saveSetting('loyalty_point_value', String(loyaltyPointValue));
-  saveSetting('loyalty_min_redeem_points', String(loyaltyMinRedeemPoints));
+  saveSetting('loyalty_enabled', String(Boolean(input.loyalty_enabled)))
+  saveSetting('loyalty_earn_amount', String(loyaltyEarnAmount))
+  saveSetting('loyalty_earn_points', String(loyaltyEarnPoints))
+  saveSetting('loyalty_point_value', String(loyaltyPointValue))
+  saveSetting('loyalty_min_redeem_points', String(loyaltyMinRedeemPoints))
 
-  return getLoyaltySettings();
+  return getLoyaltySettings()
 }
 
 export type AppLicenseStatus = {
-  activated: boolean;
-  trial_started_at: string;
-  trial_days: number;
-  trial_expires_at: string;
-  days_left: number;
-  expired: boolean;
-  blocked: boolean;
-  message: string;
-  device_code: string;
-  app_logo_url: string;
-  app_name: string;
-  store_phone: string;
-  store_address: string;
-  store_qr_enabled: boolean;
-  store_qr_title: string;
-  store_qr_primary_url: string;
-  app_theme: 'dark' | 'light';
-};
+  activated: boolean
+  trial_started_at: string
+  trial_days: number
+  trial_expires_at: string
+  days_left: number
+  expired: boolean
+  blocked: boolean
+  message: string
+  device_code: string
+  app_logo_url: string
+  app_name: string
+  store_phone: string
+  store_address: string
+  store_qr_enabled: boolean
+  store_qr_title: string
+  store_qr_primary_url: string
+  app_theme: 'dark' | 'light'
+}
 
 export function getAppLicenseStatus(): AppLicenseStatus {
-  const license = getDeviceLicenseStatus();
+  const license = getDeviceLicenseStatus()
 
-  const appLogoUrl = getSetting('app_logo_url', '');
-  const appName = getSetting('app_name', 'ERP Store');
-  const storePhone = getSetting('store_phone', '');
-  const storeAddress = getSetting('store_address', '');
-  const storeQrEnabled = getSetting('store_qr_enabled', 'false') === 'true';
-  const storeQrTitle = getSetting('store_qr_title', 'امسح الكود للتواصل معنا');
-  const storeQrPrimaryUrl = getSetting('store_qr_primary_url', '');
-  const appTheme = getSetting('app_theme', 'dark') === 'light' ? 'light' : 'dark';
+  const appLogoUrl = getSetting('app_logo_url', '')
+  const appName = getSetting('app_name', 'ERP Store')
+  const storePhone = getSetting('store_phone', '')
+  const storeAddress = getSetting('store_address', '')
+  const storeQrEnabled = getSetting('store_qr_enabled', 'false') === 'true'
+  const storeQrTitle = getSetting('store_qr_title', 'امسح الكود للتواصل معنا')
+  const storeQrPrimaryUrl = getSetting('store_qr_primary_url', '')
+  const appTheme =
+    getSetting('app_theme', 'dark') === 'light' ? 'light' : 'dark'
 
   return {
     activated: license.activated,
@@ -409,90 +617,96 @@ export function getAppLicenseStatus(): AppLicenseStatus {
     store_qr_enabled: storeQrEnabled,
     store_qr_title: storeQrTitle,
     store_qr_primary_url: storeQrPrimaryUrl,
-    app_theme: appTheme
-  };
+    app_theme: appTheme,
+  }
 }
 
 export function activateApp(code: string) {
-  const result = activateDevice(code);
+  const result = activateDevice(code)
 
   if (!result.success) {
-    return result;
+    return result
   }
 
   return {
     success: true,
     message: result.message,
-    status: getAppLicenseStatus()
-  };
+    status: getAppLicenseStatus(),
+  }
 }
 
 export function deactivateApp() {
-  const result = deactivateDevice();
+  const result = deactivateDevice()
 
   return {
     success: true,
     message: result.message,
-    status: getAppLicenseStatus()
-  };
+    status: getAppLicenseStatus(),
+  }
 }
 
 export function saveAppLogoUrl(url: string) {
-  saveSetting('app_logo_url', String(url || '').trim());
+  saveSetting('app_logo_url', String(url || '').trim())
 
   return {
     success: true,
-    status: getAppLicenseStatus()
-  };
+    status: getAppLicenseStatus(),
+  }
 }
 export function saveAppName(name: string) {
-  const cleanName = String(name || '').trim() || 'ERP Store';
+  const cleanName = String(name || '').trim() || 'ERP Store'
 
-  saveSetting('app_name', cleanName);
+  saveSetting('app_name', cleanName)
 
   return {
     success: true,
-    status: getAppLicenseStatus()
-  };
+    status: getAppLicenseStatus(),
+  }
 }
 
 export function saveStoreContactInfo(phone: string, address: string) {
-  const cleanPhone = String(phone || '').trim();
-  const cleanAddress = String(address || '').trim();
+  const cleanPhone = String(phone || '').trim()
+  const cleanAddress = String(address || '').trim()
 
-  saveSetting('store_phone', cleanPhone);
-  saveSetting('store_address', cleanAddress);
+  saveSetting('store_phone', cleanPhone)
+  saveSetting('store_address', cleanAddress)
 
   return {
     success: true,
-    status: getAppLicenseStatus()
-  };
+    status: getAppLicenseStatus(),
+  }
 }
 
 export function saveAppTheme(theme: 'dark' | 'light') {
-  const cleanTheme = theme === 'light' ? 'light' : 'dark';
+  const cleanTheme = theme === 'light' ? 'light' : 'dark'
 
-  saveSetting('app_theme', cleanTheme);
+  saveSetting('app_theme', cleanTheme)
 
   return {
     success: true,
-    status: getAppLicenseStatus()
-  };
+    status: getAppLicenseStatus(),
+  }
 }
 
 export type StoreQrSettings = {
-  store_qr_enabled: boolean;
-  store_qr_title: string;
-  store_qr_primary_url: string;
-};
+  store_qr_enabled: boolean
+  store_qr_title: string
+  store_qr_primary_url: string
+}
 
 export function saveStoreQrSettings(input: StoreQrSettings) {
-  saveSetting('store_qr_enabled', String(Boolean(input.store_qr_enabled)));
-  saveSetting('store_qr_title', String(input.store_qr_title || '').trim() || 'امسح الكود للتواصل معنا');
-  saveSetting('store_qr_primary_url', String(input.store_qr_primary_url || '').trim());
+  saveSetting('store_qr_enabled', String(Boolean(input.store_qr_enabled)))
+  saveSetting(
+    'store_qr_title',
+    String(input.store_qr_title || '').trim() || 'امسح الكود للتواصل معنا',
+  )
+  saveSetting(
+    'store_qr_primary_url',
+    String(input.store_qr_primary_url || '').trim(),
+  )
 
   return {
     success: true,
-    status: getAppLicenseStatus()
-  };
+    status: getAppLicenseStatus(),
+  }
 }

@@ -17,8 +17,28 @@ export type StoreReceiptInfo = {
   store_qr_primary_url?: string
 }
 
+export type ReceiptPrintSettings = {
+  receipt_paper_size: '80mm' | '58mm' | 'custom'
+  receipt_width_px: number
+  receipt_padding_top_px: number
+  receipt_padding_right_px: number
+  receipt_padding_bottom_px: number
+  receipt_padding_left_px: number
+  receipt_font_size_px: number
+}
+
+export const DEFAULT_RECEIPT_PRINT_SETTINGS: ReceiptPrintSettings = {
+  receipt_paper_size: '80mm',
+  receipt_width_px: 245,
+  receipt_padding_top_px: 10,
+  receipt_padding_right_px: 4,
+  receipt_padding_bottom_px: 10,
+  receipt_padding_left_px: 18,
+  receipt_font_size_px: 12,
+}
+
 export const ENGINEER_FOOTER =
-  'برمجة وتصميم: بشمهندس عبدالرحمن حازم - 01155559287/01068377869'
+  'برمجة وتصميم: بشمهندس عبدالرحمن حازم   01155559287-01068377869'
 
 export function money(value: number | string | null | undefined): string {
   const n = Number(value || 0)
@@ -83,6 +103,15 @@ export async function loadReceiptStoreInfo(): Promise<StoreReceiptInfo> {
   } catch (error) {
     console.error('Failed to load store receipt info:', error)
     return {}
+  }
+}
+
+export async function loadReceiptPrintSettings(): Promise<ReceiptPrintSettings> {
+  try {
+    return await window.api.getReceiptPrintSettings()
+  } catch (error) {
+    console.error('Failed to load receipt print settings:', error)
+    return DEFAULT_RECEIPT_PRINT_SETTINGS
   }
 }
 
@@ -159,6 +188,7 @@ export function buildSaleReceiptHtml(
   returnHistory: any[] = [],
   storeInfo: StoreReceiptInfo = {},
   qrDataUrl = '',
+  printSettings: ReceiptPrintSettings = DEFAULT_RECEIPT_PRINT_SETTINGS,
 ) {
   const sale = receipt.sale
   const finance = getReceiptFinance(receipt, returnHistory)
@@ -246,7 +276,7 @@ export function buildSaleReceiptHtml(
             background: #fff;
             color: #111;
             font-family: Arial, Tahoma, sans-serif;
-            font-size: 12px;
+            font-size: ${printSettings.receipt_font_size_px}px;
           }
 
           .receipt {
@@ -339,8 +369,8 @@ export function buildSaleReceiptHtml(
             border-radius: 7px;
             text-align: center;
             direction: ltr;
-            font-size: 15px;
-            font-weight: 900;
+            font-size: 10px;
+            font-weight: 700;
             line-height: 1;
           }
 
@@ -594,12 +624,12 @@ export function buildSaleReceiptHtml(
           @media print {
             body {
               margin: 0;
-              padding: 10px 4px 10px 18px;
+              padding: ${printSettings.receipt_padding_top_px}px ${printSettings.receipt_padding_right_px}px ${printSettings.receipt_padding_bottom_px}px ${printSettings.receipt_padding_left_px}px;
               background: #fff;
             }
 
             .receipt {
-              width: 245px;
+              width: ${printSettings.receipt_width_px}px;
               margin: 0 auto;
             }
           }
@@ -906,6 +936,7 @@ export async function printSaleReceiptHtml(options: {
   onBlocked?: () => void
 }) {
   const storeInfo = await loadReceiptStoreInfo()
+  const printSettings = await loadReceiptPrintSettings()
   const qrDataUrl = await buildReceiptQrDataUrl(storeInfo)
 
   const html = buildSaleReceiptHtml(
@@ -913,6 +944,7 @@ export async function printSaleReceiptHtml(options: {
     options.returnHistory || [],
     storeInfo,
     qrDataUrl,
+    printSettings,
   )
 
   const opened = openReceiptPrintWindow(html)
