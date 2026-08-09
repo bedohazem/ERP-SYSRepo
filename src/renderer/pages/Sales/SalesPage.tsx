@@ -945,16 +945,12 @@ export default function SalesPage() {
             padding: 10px;
             background: #fff;
             color: #111;
-            font-family:
-              Arial,
-              Tahoma,
-              sans-serif;
+            font-family: Arial, Tahoma, sans-serif;
             font-size: 12px;
           }
 
           .receipt {
-            width: 300px;
-            max-width: 100%;
+            width: 280px;
             margin: 0 auto;
           }
 
@@ -1213,14 +1209,14 @@ export default function SalesPage() {
           .final-total {
             margin-top: 7px;
             padding-top: 8px;
-            border-top:
-              1px dashed #777;
-            font-size: 15px;
-            font-weight: 900;
+            border-top: 1px dashed #777;
+            font-size: 12px;
+            font-weight: 800;
             color: #172554;
           }
 
           .paid {
+            font-size: 12px;
             font-weight: 800;
           }
 
@@ -1280,24 +1276,24 @@ export default function SalesPage() {
           .engineer-footer {
             margin-top: 4px;
             padding-top: 4px;
-            border-top:
-              1px dashed #bbb;
+            border-top: 1px dashed #bbb;
             text-align: center;
-            font-size: 9px;
+            font-size: 12px;
             color: #555;
             line-height: 1.5;
           }
 
           @media print {
-
             body {
-              padding: 0;
+              margin: 0;
+              padding: 10px 4px 10px 18px;
+              background: #fff;
             }
 
             .receipt {
-              width: 100%;
+              width: 245px;
+              margin: 0 auto;
             }
-
           }
 
         </style>
