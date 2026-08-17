@@ -1,62 +1,62 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { getPaymentMethodLabel } from '../../utils/payment-method';
-import { useAuthStore } from '../../store/auth.store';
+import { useEffect, useMemo, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { getPaymentMethodLabel } from '../../utils/payment-method'
+import { useAuthStore } from '../../store/auth.store'
 
 type ReportsData = {
   summary: {
-    sales_count: number;
-    returns_count: number;
-    gross_sales: number;
-    total_returns: number;
-    normal_discounts: number;
-    loyalty_discounts: number;
-    total_discounts: number;
-    net_sales: number;
-    gross_profit_before_discounts: number;
-    net_profit_after_discounts: number;
-    total_expenses: number;
-    total_liability_payments: number;
-    final_net_profit: number;
-  };
+    sales_count: number
+    returns_count: number
+    gross_sales: number
+    total_returns: number
+    normal_discounts: number
+    loyalty_discounts: number
+    total_discounts: number
+    net_sales: number
+    gross_profit_before_discounts: number
+    net_profit_after_discounts: number
+    total_expenses: number
+    total_liability_payments: number
+    final_net_profit: number
+  }
   cashAccounts: Array<{
-    payment_method: string;
-    label: string;
-    total_in: number;
-    total_out: number;
-    balance: number;
-  }>;
-  cashTotalCapital: number;
-  topProducts: any[];
-  dailySales: any[];
-  paymentMethods: any[];
-  lowStock: any[];
-  topCustomers: any[];
-};
+    payment_method: string
+    label: string
+    total_in: number
+    total_out: number
+    balance: number
+  }>
+  cashTotalCapital: number
+  topProducts: any[]
+  dailySales: any[]
+  paymentMethods: any[]
+  lowStock: any[]
+  topCustomers: any[]
+}
 
 type DashboardState = {
-  today: ReportsData;
-  month: ReportsData;
-  overview: ReportsData;
-};
+  today: ReportsData
+  month: ReportsData
+  overview: ReportsData
+}
 
 type CashierDailyRevenue = {
-  drawerCash: number;
-  instapayBank: number;
-  vodafoneCash: number;
-  fawryMachine: number;
-  ownerCash: number;
+  drawerCash: number
+  instapayBank: number
+  vodafoneCash: number
+  fawryMachine: number
+  ownerCash: number
 
-  salesIn: number;
-  totalDiscounts: number;
-  saleReturnsOut: number;
+  salesIn: number
+  totalDiscounts: number
+  saleReturnsOut: number
 
-  purchaseInvoicesOut: number;
-  supplierPaymentsOut: number;
-  purchaseReturnsIn: number;
-  expensesOut: number;
-};
+  purchaseInvoicesOut: number
+  supplierPaymentsOut: number
+  purchaseReturnsIn: number
+  expensesOut: number
+}
 
 const emptyReports: ReportsData = {
   summary: {
@@ -72,7 +72,7 @@ const emptyReports: ReportsData = {
     net_profit_after_discounts: 0,
     total_expenses: 0,
     total_liability_payments: 0,
-    final_net_profit: 0
+    final_net_profit: 0,
   },
   cashAccounts: [],
   cashTotalCapital: 0,
@@ -80,23 +80,23 @@ const emptyReports: ReportsData = {
   dailySales: [],
   paymentMethods: [],
   lowStock: [],
-  topCustomers: []
-};
+  topCustomers: [],
+}
 
 const emptyDashboard: DashboardState = {
   today: emptyReports,
   month: emptyReports,
-  overview: emptyReports
-};
+  overview: emptyReports,
+}
 
 export default function DashboardPage() {
-  const navigate = useNavigate();
-  const user = useAuthStore((s) => s.user);
-  const isCashier = user?.role !== 'admin';
-  const [data, setData] = useState<DashboardState>(emptyDashboard);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [lastUpdated, setLastUpdated] = useState('');
+  const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
+  const isCashier = user?.role !== 'admin'
+  const [data, setData] = useState<DashboardState>(emptyDashboard)
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState('')
+  const [lastUpdated, setLastUpdated] = useState('')
 
   const [cashierRevenue, setCashierRevenue] = useState<CashierDailyRevenue>({
     drawerCash: 0,
@@ -112,21 +112,24 @@ export default function DashboardPage() {
     purchaseInvoicesOut: 0,
     supplierPaymentsOut: 0,
     purchaseReturnsIn: 0,
-    expensesOut: 0
-  });
-  const todayKey = useMemo(() => getLocalDateKey(new Date()), []);
-  const monthStartKey = useMemo(() => getMonthStartKey(new Date()), []);
+    expensesOut: 0,
+  })
+  const todayKey = useMemo(() => getLocalDateKey(new Date()), [])
+  const monthStartKey = useMemo(() => getMonthStartKey(new Date()), [])
 
   async function loadDashboard() {
-    setLoading(true);
-    setMessage('');
-    const cashierId = isCashier ? Number(user?.id || 0) : undefined;
+    setLoading(true)
+    setMessage('')
+    const cashierId = isCashier ? Number(user?.id || 0) : undefined
+
+    const reportUserFilter =
+      isCashier && cashierId ? { user_id: cashierId } : {}
 
     const cashierDayFilter = {
       date_from: todayKey,
       date_to: todayKey,
-      created_by: cashierId
-    };
+      created_by: cashierId,
+    }
 
     try {
       const [
@@ -145,70 +148,80 @@ export default function DashboardPage() {
         todayPurchaseInvoices,
         todaySupplierPayments,
         todayPurchaseReturns,
-        todayExpenses
+        todayExpenses,
       ] = await Promise.all([
-        window.api.getReportsSummary({ date_from: todayKey, date_to: todayKey }),
-        window.api.getReportsSummary({ date_from: monthStartKey, date_to: todayKey }),
-        window.api.getReportsSummary(),
+        window.api.getReportsSummary({
+          ...reportUserFilter,
+          date_from: todayKey,
+          date_to: todayKey,
+        }),
+        window.api.getReportsSummary({
+          ...reportUserFilter,
+          date_from: monthStartKey,
+          date_to: todayKey,
+        }),
+        window.api.getReportsSummary({
+          ...reportUserFilter,
+        }),
 
         window.api.getCashSummary({
-          payment_method: 'store_cash'
+          payment_method: 'store_cash',
         }),
 
         window.api.getCashSummary({
           ...cashierDayFilter,
-          payment_method: 'owner_bank'
+          payment_method: 'owner_bank',
         }),
 
         window.api.getCashSummary({
           ...cashierDayFilter,
-          payment_method: 'owner_vodafone'
+          payment_method: 'owner_vodafone',
         }),
 
         window.api.getCashSummary({
           ...cashierDayFilter,
-          payment_method: 'fawry_machine'
+          payment_method: 'fawry_machine',
         }),
 
         window.api.getCashSummary({
           ...cashierDayFilter,
-          payment_method: 'owner_cash'
+          payment_method: 'owner_cash',
         }),
 
         window.api.getCashSummary({
           ...cashierDayFilter,
-          type: 'sale'
+          type: 'sale',
         }),
 
         window.api.getCashSummary({
           ...cashierDayFilter,
-          type: 'sale_return'
+          type: 'sale_return',
         }),
 
         window.api.getCashSummary({
           ...cashierDayFilter,
           type: 'supplier_payment',
-          reference_type: 'purchase_invoice'
+          reference_type: 'purchase_invoice',
         }),
 
         window.api.getCashSummary({
           ...cashierDayFilter,
           type: 'supplier_payment',
-          reference_type: 'supplier_payment'
+          reference_type: 'supplier_payment',
         }),
 
         window.api.getCashSummary({
           ...cashierDayFilter,
-          type: 'purchase_return'
+          type: 'purchase_return',
         }),
 
         window.api.getCashSummary({
           ...cashierDayFilter,
-          type: 'expense'
-        })
-      ]);
+          type: 'expense',
+        }),
+      ])
 
-      setData({ today, month, overview });
+      setData({ today, month, overview })
 
       setCashierRevenue({
         drawerCash: Number(currentDrawerCash?.balance || 0),
@@ -217,40 +230,42 @@ export default function DashboardPage() {
         fawryMachine: Number(todayFawryMachine?.balance || 0),
         ownerCash: Number(todayOwnerCash?.balance || 0),
 
-        salesIn: Number(todaySalesCash?.total_in || 0),
+        salesIn: Number(today.summary.net_sales || 0),
+
         totalDiscounts:
           Number(today.summary.normal_discounts || 0) +
           Number(today.summary.loyalty_discounts || 0),
-        saleReturnsOut: Number(todaySaleReturns?.total_out || 0),
+
+        saleReturnsOut: Number(today.summary.total_returns || 0),
 
         purchaseInvoicesOut: Number(todayPurchaseInvoices?.total_out || 0),
         supplierPaymentsOut: Number(todaySupplierPayments?.total_out || 0),
         purchaseReturnsIn: Number(todayPurchaseReturns?.total_in || 0),
-        expensesOut: Number(todayExpenses?.total_out || 0)
-      });
+        expensesOut: Number(todayExpenses?.total_out || 0),
+      })
 
       setLastUpdated(
         new Date().toLocaleTimeString('ar-EG', {
           hour: '2-digit',
-          minute: '2-digit'
-        })
-      );
+          minute: '2-digit',
+        }),
+      )
     } catch (error) {
-      console.error('Failed to load dashboard:', error);
-      setData(emptyDashboard);
-      setMessage('حدث خطأ أثناء تحميل لوحة التحكم');
+      console.error('Failed to load dashboard:', error)
+      setData(emptyDashboard)
+      setMessage('حدث خطأ أثناء تحميل لوحة التحكم')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
   useEffect(() => {
-    void loadDashboard();
-  }, []);
+    void loadDashboard()
+  }, [])
 
-  const bestProduct = data.month.topProducts[0];
-  const bestCustomer = data.month.topCustomers[0];
-  const lowStockCount = data.overview.lowStock.length;
+  const bestProduct = data.month.topProducts[0]
+  const bestCustomer = data.month.topCustomers[0]
+  const lowStockCount = data.overview.lowStock.length
 
   if (isCashier) {
     return (
@@ -267,7 +282,7 @@ export default function DashboardPage() {
         onRefresh={loadDashboard}
         onNewSale={() => navigate('/sales')}
       />
-    );
+    )
   }
 
   return (
@@ -282,21 +297,39 @@ export default function DashboardPage() {
             أداء المحل اليوم والشهر الحالي
           </h2>
 
-          <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700, lineHeight: 1.8 }}>
-            ملخص سريع للمبيعات، الأرباح، المرتجعات، أفضل المنتجات، والتنبيهات المهمة.
+          <p
+            style={{
+              margin: 0,
+              color: '#94a3b8',
+              fontWeight: 700,
+              lineHeight: 1.8,
+            }}
+          >
+            ملخص سريع للمبيعات، الأرباح، المرتجعات، أفضل المنتجات، والتنبيهات
+            المهمة.
           </p>
 
           <div style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>
-            {lastUpdated ? `آخر تحديث: ${lastUpdated}` : 'يتم تحميل البيانات الآن...'}
+            {lastUpdated
+              ? `آخر تحديث: ${lastUpdated}`
+              : 'يتم تحميل البيانات الآن...'}
           </div>
         </div>
 
         <div style={heroActionsStyle}>
-          <button type="button" onClick={loadDashboard} style={primaryButtonStyle}>
+          <button
+            type="button"
+            onClick={loadDashboard}
+            style={primaryButtonStyle}
+          >
             {loading ? 'جاري التحديث...' : 'تحديث البيانات'}
           </button>
 
-          <button type="button" onClick={() => navigate('/sales')} style={secondaryButtonStyle}>
+          <button
+            type="button"
+            onClick={() => navigate('/sales')}
+            style={secondaryButtonStyle}
+          >
             فاتورة بيع جديدة
           </button>
         </div>
@@ -381,7 +414,11 @@ export default function DashboardPage() {
             title="مبيعات آخر الأيام"
             subtitle="صافي المبيعات اليومية خلال الشهر الحالي"
             action={
-              <button type="button" onClick={() => navigate('/reports')} style={ghostButtonStyle}>
+              <button
+                type="button"
+                onClick={() => navigate('/reports')}
+                style={ghostButtonStyle}
+              >
                 التقارير
               </button>
             }
@@ -391,7 +428,10 @@ export default function DashboardPage() {
         </div>
 
         <div className="glass-card" style={cardStyle}>
-          <SectionHeader title="أهم المؤشرات" subtitle="أفضل منتج وعميل خلال الشهر" />
+          <SectionHeader
+            title="أهم المؤشرات"
+            subtitle="أفضل منتج وعميل خلال الشهر"
+          />
 
           <InsightCard
             icon="🏆"
@@ -426,7 +466,7 @@ export default function DashboardPage() {
           columns={['الحساب المالي', 'الرصيد الحالي']}
           rows={data.overview.cashAccounts.map((account) => [
             account.label || getPaymentMethodLabel(account.payment_method),
-            money(account.balance)
+            money(account.balance),
           ])}
           actionLabel="فتح الخزنة"
           onAction={() => navigate('/cash')}
@@ -434,21 +474,33 @@ export default function DashboardPage() {
         <DashboardTable
           title="منتجات تحتاج متابعة"
           emptyText="المخزون تمام، لا توجد تنبيهات حالياً"
-          columns={['المنتج', 'باركود', 'المقاس', 'اللون', 'المخزون', 'الحد الأدنى']}
-          rows={data.overview.lowStock.slice(0, 8).map((item) => [
-            item.product_name,
-            item.barcode || '—',
-            item.size || '—',
-            item.color || '—',
-            Number(item.stock || 0),
-            Number(item.min_stock || 0)
-          ])}
+          columns={[
+            'المنتج',
+            'باركود',
+            'المقاس',
+            'اللون',
+            'المخزون',
+            'الحد الأدنى',
+          ]}
+          rows={data.overview.lowStock
+            .slice(0, 8)
+            .map((item) => [
+              item.product_name,
+              item.barcode || '—',
+              item.size || '—',
+              item.color || '—',
+              Number(item.stock || 0),
+              Number(item.min_stock || 0),
+            ])}
           actionLabel="فتح المخزون"
           onAction={() => navigate('/inventory')}
         />
 
         <div className="glass-card" style={cardStyle}>
-          <SectionHeader title="اختصارات سريعة" subtitle="أكثر العمليات استخدامًا" />
+          <SectionHeader
+            title="اختصارات سريعة"
+            subtitle="أكثر العمليات استخدامًا"
+          />
 
           <div style={{ display: 'grid', gap: '10px' }}>
             <QuickAction
@@ -489,7 +541,7 @@ export default function DashboardPage() {
         </div>
       </section>
     </div>
-  );
+  )
 }
 
 function StatCard({
@@ -497,19 +549,25 @@ function StatCard({
   title,
   value,
   subtitle,
-  tone
+  tone,
 }: {
-  icon: string;
-  title: string;
-  value: string;
-  subtitle: string;
-  tone: 'blue' | 'violet' | 'green' | 'red' | 'amber' | 'slate';
+  icon: string
+  title: string
+  value: string
+  subtitle: string
+  tone: 'blue' | 'violet' | 'green' | 'red' | 'amber' | 'slate'
 }) {
-  const toneStyle = toneStyles[tone];
+  const toneStyle = toneStyles[tone]
 
   return (
     <div className="glass-card hover-lift" style={statCardStyle}>
-      <div style={{ ...iconBoxStyle, background: toneStyle.background, color: toneStyle.color }}>
+      <div
+        style={{
+          ...iconBoxStyle,
+          background: toneStyle.background,
+          color: toneStyle.color,
+        }}
+      >
         {icon}
       </div>
 
@@ -521,17 +579,17 @@ function StatCard({
         {subtitle}
       </div>
     </div>
-  );
+  )
 }
 
 function SectionHeader({
   title,
   subtitle,
-  action
+  action,
 }: {
-  title: string;
-  subtitle?: string;
-  action?: ReactNode;
+  title: string
+  subtitle?: string
+  action?: ReactNode
 }) {
   return (
     <div
@@ -540,7 +598,7 @@ function SectionHeader({
         justifyContent: 'space-between',
         alignItems: 'center',
         gap: '12px',
-        flexWrap: 'wrap'
+        flexWrap: 'wrap',
       }}
     >
       <div>
@@ -555,22 +613,25 @@ function SectionHeader({
 
       {action}
     </div>
-  );
+  )
 }
 
 function DailySalesChart({ rows }: { rows: any[] }) {
-  const visibleRows = rows.slice(-14);
-  const maxValue = Math.max(...visibleRows.map((row) => Number(row.total || 0)), 0);
+  const visibleRows = rows.slice(-14)
+  const maxValue = Math.max(
+    ...visibleRows.map((row) => Number(row.total || 0)),
+    0,
+  )
 
   if (!visibleRows.length) {
-    return <EmptyState text="لا توجد مبيعات مسجلة خلال الشهر الحالي" />;
+    return <EmptyState text="لا توجد مبيعات مسجلة خلال الشهر الحالي" />
   }
 
   return (
     <div style={{ display: 'grid', gap: '12px' }}>
       {visibleRows.map((row) => {
-        const total = Number(row.total || 0);
-        const width = maxValue > 0 ? Math.max((total / maxValue) * 100, 4) : 4;
+        const total = Number(row.total || 0)
+        const width = maxValue > 0 ? Math.max((total / maxValue) * 100, 4) : 4
 
         return (
           <div key={row.day} style={{ display: 'grid', gap: '7px' }}>
@@ -581,7 +642,7 @@ function DailySalesChart({ rows }: { rows: any[] }) {
                 gap: '12px',
                 color: '#cbd5e1',
                 fontWeight: 800,
-                fontSize: '13px'
+                fontSize: '13px',
               }}
             >
               <span>{formatDateOnly(row.day)}</span>
@@ -592,22 +653,22 @@ function DailySalesChart({ rows }: { rows: any[] }) {
               <div style={{ ...barFillStyle, width: `${width}%` }} />
             </div>
           </div>
-        );
+        )
       })}
     </div>
-  );
+  )
 }
 
 function InsightCard({
   icon,
   title,
   value,
-  meta
+  meta,
 }: {
-  icon: string;
-  title: string;
-  value: string;
-  meta: string;
+  icon: string
+  title: string
+  value: string
+  meta: string
 }) {
   return (
     <div style={insightStyle}>
@@ -623,26 +684,33 @@ function InsightCard({
             color: '#f8fafc',
             fontWeight: 900,
             overflow: 'hidden',
-            textOverflow: 'ellipsis'
+            textOverflow: 'ellipsis',
           }}
         >
           {value}
         </div>
 
-        <div style={{ color: '#64748b', fontSize: '13px', fontWeight: 700, marginTop: '4px' }}>
+        <div
+          style={{
+            color: '#64748b',
+            fontSize: '13px',
+            fontWeight: 700,
+            marginTop: '4px',
+          }}
+        >
           {meta}
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 function PaymentBreakdown({ rows }: { rows: any[] }) {
   if (!rows.length) {
-    return <EmptyState text="لا توجد بيانات طرق دفع حتى الآن" />;
+    return <EmptyState text="لا توجد بيانات طرق دفع حتى الآن" />
   }
 
-  const total = rows.reduce((sum, row) => sum + Number(row.total || 0), 0);
+  const total = rows.reduce((sum, row) => sum + Number(row.total || 0), 0)
 
   return (
     <div style={{ display: 'grid', gap: '10px' }}>
@@ -651,8 +719,8 @@ function PaymentBreakdown({ rows }: { rows: any[] }) {
       </h4>
 
       {rows.map((row) => {
-        const rowTotal = Number(row.total || 0);
-        const percent = total > 0 ? Math.round((rowTotal / total) * 100) : 0;
+        const rowTotal = Number(row.total || 0)
+        const percent = total > 0 ? Math.round((rowTotal / total) * 100) : 0
 
         return (
           <div key={row.payment_method} style={paymentRowStyle}>
@@ -660,10 +728,10 @@ function PaymentBreakdown({ rows }: { rows: any[] }) {
             <strong>{money(rowTotal)}</strong>
             <span style={{ color: '#94a3b8' }}>{percent}%</span>
           </div>
-        );
+        )
       })}
     </div>
-  );
+  )
 }
 
 function DashboardTable({
@@ -672,14 +740,14 @@ function DashboardTable({
   rows,
   emptyText,
   actionLabel,
-  onAction
+  onAction,
 }: {
-  title: string;
-  columns: string[];
-  rows: any[][];
-  emptyText: string;
-  actionLabel?: string;
-  onAction?: () => void;
+  title: string
+  columns: string[]
+  rows: any[][]
+  emptyText: string
+  actionLabel?: string
+  onAction?: () => void
 }) {
   return (
     <div className="glass-card" style={cardStyle}>
@@ -695,7 +763,13 @@ function DashboardTable({
       />
 
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+        <table
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            direction: 'rtl',
+          }}
+        >
           <thead>
             <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
               {columns.map((column) => (
@@ -715,7 +789,7 @@ function DashboardTable({
                     ...tdStyle,
                     textAlign: 'center',
                     color: '#94a3b8',
-                    padding: '24px'
+                    padding: '24px',
                   }}
                 >
                   {emptyText}
@@ -723,7 +797,10 @@ function DashboardTable({
               </tr>
             ) : (
               rows.map((row, index) => (
-                <tr key={index} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <tr
+                  key={index}
+                  style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                >
                   {row.map((cell, cellIndex) => (
                     <td key={cellIndex} style={tdStyle}>
                       {cell}
@@ -736,19 +813,19 @@ function DashboardTable({
         </table>
       </div>
     </div>
-  );
+  )
 }
 
 function QuickAction({
   icon,
   title,
   subtitle,
-  onClick
+  onClick,
 }: {
-  icon: string;
-  title: string;
-  subtitle: string;
-  onClick: () => void;
+  icon: string
+  title: string
+  subtitle: string
+  onClick: () => void
 }) {
   return (
     <button type="button" onClick={onClick} style={quickActionStyle}>
@@ -761,55 +838,61 @@ function QuickAction({
         </span>
       </span>
     </button>
-  );
+  )
 }
 
 function Toast({ children }: { children: ReactNode }) {
-  return <div style={toastStyle}>{children}</div>;
+  return <div style={toastStyle}>{children}</div>
 }
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div style={{ padding: '26px', textAlign: 'center', color: '#94a3b8', fontWeight: 800 }}>
+    <div
+      style={{
+        padding: '26px',
+        textAlign: 'center',
+        color: '#94a3b8',
+        fontWeight: 800,
+      }}
+    >
       {text}
     </div>
-  );
+  )
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`;
+  return `${Number(value || 0).toFixed(2)} ج.م`
 }
 
-
 function formatDateOnly(value?: string) {
-  if (!value) return '—';
+  if (!value) return '—'
 
   try {
-    const raw = String(value);
-    const normalized = raw.includes('T') ? raw : `${raw}T00:00:00`;
+    const raw = String(value)
+    const normalized = raw.includes('T') ? raw : `${raw}T00:00:00`
 
     return new Date(normalized).toLocaleDateString('ar-EG', {
       month: 'short',
-      day: '2-digit'
-    });
+      day: '2-digit',
+    })
   } catch {
-    return value;
+    return value
   }
 }
 
 function getLocalDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
 
-  return `${year}-${month}-${day}`;
+  return `${year}-${month}-${day}`
 }
 
 function getMonthStartKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
 
-  return `${year}-${month}-01`;
+  return `${year}-${month}-01`
 }
 
 const toneStyles = {
@@ -818,8 +901,8 @@ const toneStyles = {
   green: { background: 'rgba(16,185,129,0.16)', color: '#6ee7b7' },
   red: { background: 'rgba(239,68,68,0.16)', color: '#fca5a5' },
   amber: { background: 'rgba(245,158,11,0.16)', color: '#fcd34d' },
-  slate: { background: 'rgba(148,163,184,0.12)', color: '#cbd5e1' }
-};
+  slate: { background: 'rgba(148,163,184,0.12)', color: '#cbd5e1' },
+}
 
 const heroStyle: CSSProperties = {
   padding: '22px',
@@ -829,48 +912,48 @@ const heroStyle: CSSProperties = {
   gap: '18px',
   alignItems: 'center',
   background:
-    'linear-gradient(135deg, rgba(37,99,235,0.22), rgba(139,92,246,0.12)), rgba(17,24,39,0.78)'
-};
+    'linear-gradient(135deg, rgba(37,99,235,0.22), rgba(139,92,246,0.12)), rgba(17,24,39,0.78)',
+}
 
 const heroActionsStyle: CSSProperties = {
   display: 'flex',
   gap: '10px',
   flexWrap: 'wrap',
-  justifyContent: 'flex-end'
-};
+  justifyContent: 'flex-end',
+}
 
 const statsGridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-  gap: '14px'
-};
+  gap: '14px',
+}
 
 const mainGridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-  gap: '18px'
-};
+  gap: '18px',
+}
 
 const bottomGridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-  gap: '18px'
-};
+  gap: '18px',
+}
 
 const cardStyle: CSSProperties = {
   padding: '18px',
   borderRadius: '20px',
   display: 'grid',
-  gap: '16px'
-};
+  gap: '16px',
+}
 
 const statCardStyle: CSSProperties = {
   padding: '18px',
   borderRadius: '20px',
   display: 'grid',
   gap: '9px',
-  minHeight: '154px'
-};
+  minHeight: '154px',
+}
 
 const iconBoxStyle: CSSProperties = {
   width: '42px',
@@ -878,8 +961,8 @@ const iconBoxStyle: CSSProperties = {
   borderRadius: '14px',
   display: 'grid',
   placeItems: 'center',
-  fontSize: '20px'
-};
+  fontSize: '20px',
+}
 
 const smallIconStyle: CSSProperties = {
   width: '42px',
@@ -889,8 +972,8 @@ const smallIconStyle: CSSProperties = {
   placeItems: 'center',
   background: 'rgba(255,255,255,0.06)',
   border: '1px solid rgba(255,255,255,0.08)',
-  flexShrink: 0
-};
+  flexShrink: 0,
+}
 
 const primaryButtonStyle: CSSProperties = {
   border: 'none',
@@ -900,8 +983,8 @@ const primaryButtonStyle: CSSProperties = {
   color: '#fff',
   fontWeight: 900,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const secondaryButtonStyle: CSSProperties = {
   border: '1px solid rgba(255,255,255,0.12)',
@@ -911,8 +994,8 @@ const secondaryButtonStyle: CSSProperties = {
   color: '#fff',
   fontWeight: 900,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const ghostButtonStyle: CSSProperties = {
   border: '1px solid rgba(96,165,250,0.28)',
@@ -922,8 +1005,8 @@ const ghostButtonStyle: CSSProperties = {
   color: '#93c5fd',
   fontWeight: 900,
   padding: '0 14px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const insightStyle: CSSProperties = {
   display: 'grid',
@@ -933,8 +1016,8 @@ const insightStyle: CSSProperties = {
   padding: '14px',
   borderRadius: '16px',
   background: 'rgba(255,255,255,0.04)',
-  border: '1px solid rgba(255,255,255,0.06)'
-};
+  border: '1px solid rgba(255,255,255,0.06)',
+}
 
 const paymentRowStyle: CSSProperties = {
   display: 'grid',
@@ -945,8 +1028,8 @@ const paymentRowStyle: CSSProperties = {
   borderRadius: '14px',
   background: 'rgba(255,255,255,0.04)',
   border: '1px solid rgba(255,255,255,0.06)',
-  fontWeight: 800
-};
+  fontWeight: 800,
+}
 
 const quickActionStyle: CSSProperties = {
   display: 'grid',
@@ -959,34 +1042,34 @@ const quickActionStyle: CSSProperties = {
   border: '1px solid rgba(255,255,255,0.08)',
   background: 'rgba(255,255,255,0.04)',
   color: '#fff',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const barTrackStyle: CSSProperties = {
   height: '12px',
   borderRadius: '999px',
   background: 'rgba(255,255,255,0.06)',
-  overflow: 'hidden'
-};
+  overflow: 'hidden',
+}
 
 const barFillStyle: CSSProperties = {
   height: '100%',
   borderRadius: '999px',
   background: 'linear-gradient(90deg, #2563eb, #8b5cf6)',
-  transition: 'width 0.25s ease'
-};
+  transition: 'width 0.25s ease',
+}
 
 const thStyle: CSSProperties = {
   padding: '12px',
   fontWeight: 900,
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}
 
 const tdStyle: CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}
 
 const toastStyle: CSSProperties = {
   position: 'fixed',
@@ -1000,8 +1083,8 @@ const toastStyle: CSSProperties = {
   color: '#fff',
   fontWeight: 900,
   boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
-  pointerEvents: 'none'
-};
+  pointerEvents: 'none',
+}
 
 function CashierRevenueView({
   todayKey,
@@ -1014,19 +1097,19 @@ function CashierRevenueView({
   lastUpdated,
   loading,
   onRefresh,
-  onNewSale
+  onNewSale,
 }: {
-  todayKey: string;
-  cashierName: string;
-  revenue: CashierDailyRevenue;
-  salesCount: number;
-  returnsCount: number;
-  normalDiscounts: number;
-  loyaltyDiscounts: number;
-  lastUpdated: string;
-  loading: boolean;
-  onRefresh: () => void;
-  onNewSale: () => void;
+  todayKey: string
+  cashierName: string
+  revenue: CashierDailyRevenue
+  salesCount: number
+  returnsCount: number
+  normalDiscounts: number
+  loyaltyDiscounts: number
+  lastUpdated: string
+  loading: boolean
+  onRefresh: () => void
+  onNewSale: () => void
 }) {
   return (
     <div style={{ display: 'grid', gap: '18px' }}>
@@ -1037,7 +1120,7 @@ function CashierRevenueView({
           borderRadius: '22px',
           display: 'grid',
           gap: '18px',
-          direction: 'rtl'
+          direction: 'rtl',
         }}
       >
         <div
@@ -1046,11 +1129,13 @@ function CashierRevenueView({
             justifyContent: 'space-between',
             gap: '14px',
             alignItems: 'center',
-            flexWrap: 'wrap'
+            flexWrap: 'wrap',
           }}
         >
           <div>
-            <div style={{ color: '#93c5fd', fontWeight: 900, marginBottom: '6px' }}>
+            <div
+              style={{ color: '#93c5fd', fontWeight: 900, marginBottom: '6px' }}
+            >
               ملخص اليوم للكاشير
             </div>
 
@@ -1061,16 +1146,26 @@ function CashierRevenueView({
             </p>
 
             <p style={{ margin: '6px 0 0', color: '#64748b', fontWeight: 700 }}>
-              {lastUpdated ? `آخر تحديث: ${lastUpdated}` : 'يتم تحميل البيانات الآن...'}
+              {lastUpdated
+                ? `آخر تحديث: ${lastUpdated}`
+                : 'يتم تحميل البيانات الآن...'}
             </p>
           </div>
 
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button type="button" onClick={onRefresh} style={primaryButtonStyle}>
+            <button
+              type="button"
+              onClick={onRefresh}
+              style={primaryButtonStyle}
+            >
               {loading ? 'جاري التحديث...' : 'تحديث'}
             </button>
 
-            <button type="button" onClick={onNewSale} style={secondaryButtonStyle}>
+            <button
+              type="button"
+              onClick={onNewSale}
+              style={secondaryButtonStyle}
+            >
               فاتورة جديدة
             </button>
           </div>
@@ -1080,13 +1175,16 @@ function CashierRevenueView({
           style={{
             padding: '26px',
             borderRadius: '22px',
-            background: 'linear-gradient(135deg, rgba(34,197,94,0.22), rgba(37,99,235,0.16))',
+            background:
+              'linear-gradient(135deg, rgba(34,197,94,0.22), rgba(37,99,235,0.16))',
             border: '1px solid rgba(34,197,94,0.25)',
-            textAlign: 'center'
+            textAlign: 'center',
           }}
         >
-          <div style={{ color: '#bbf7d0', fontWeight: 900, marginBottom: '10px' }}>
-           صافي إيراد اليوم
+          <div
+            style={{ color: '#bbf7d0', fontWeight: 900, marginBottom: '10px' }}
+          >
+            صافي مبيعات اليوم
           </div>
 
           <strong
@@ -1094,14 +1192,14 @@ function CashierRevenueView({
               display: 'block',
               fontSize: '44px',
               color: '#fff',
-              lineHeight: 1.2
+              lineHeight: 1.2,
             }}
           >
-            {money(revenue.drawerCash)}
+            {money(revenue.salesIn)}
           </strong>
 
           <div style={{ color: '#94a3b8', fontWeight: 800, marginTop: '10px' }}>
-               فلوس الدرج بعد أي دخول أو خروج كاش
+            صافي مبيعات فواتير اليوم بعد المرتجعات الخاصة بنفس يوم البيع
           </div>
         </div>
 
@@ -1109,7 +1207,7 @@ function CashierRevenueView({
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '12px'
+            gap: '12px',
           }}
         >
           <CashierMiniCard
@@ -1143,9 +1241,9 @@ function CashierRevenueView({
           />
 
           <CashierMiniCard
-            title="إجمالي المبيعات"
+            title="صافي مبيعات اليوم"
             value={money(revenue.salesIn)}
-            subtitle={`${salesCount} فاتورة بيع مدفوعة فعليًا`}
+            subtitle={`${salesCount} فاتورة بيع`}
           />
 
           <CashierMiniCard
@@ -1155,9 +1253,9 @@ function CashierRevenueView({
           />
 
           <CashierMiniCard
-            title="المرتجعات"
+            title="مرتجعات مبيعات اليوم"
             value={money(revenue.saleReturnsOut)}
-            subtitle={`${returnsCount} عملية مرتجع بيع`}
+            subtitle={`${returnsCount} عملية مرتجع من فواتير اليوم`}
           />
 
           <CashierMiniCard
@@ -1186,17 +1284,17 @@ function CashierRevenueView({
         </div>
       </section>
     </div>
-  );
+  )
 }
 
 function CashierMiniCard({
   title,
   value,
-  subtitle
+  subtitle,
 }: {
-  title: string;
-  value: string;
-  subtitle: string;
+  title: string
+  value: string
+  subtitle: string
 }) {
   return (
     <div
@@ -1207,7 +1305,7 @@ function CashierMiniCard({
         display: 'grid',
         gap: '8px',
         textAlign: 'right',
-        border: '1px solid rgba(255,255,255,0.08)'
+        border: '1px solid rgba(255,255,255,0.08)',
       }}
     >
       <div style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</div>
@@ -1216,5 +1314,5 @@ function CashierMiniCard({
         {subtitle}
       </div>
     </div>
-  );
+  )
 }

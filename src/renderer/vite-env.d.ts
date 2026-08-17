@@ -487,6 +487,7 @@ declare global {
       getReportsSummary: (input?: {
         date_from?: string
         date_to?: string
+        user_id?: number
       }) => Promise<{
         summary: {
           sales_count: number
