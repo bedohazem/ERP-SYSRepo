@@ -150,6 +150,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('cash:create-movement', input),
   createCashTransfer: (input) => ipcRenderer.invoke('cash:transfer', input),
 
+  getCashDayClosePreview: (businessDate) =>
+    ipcRenderer.invoke('cash:day-close-preview', businessDate),
+
+  closeCashDay: (input) => ipcRenderer.invoke('cash:close-day', input),
+
   createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
   getExpenses: () => ipcRenderer.invoke('expenses:list'),
 

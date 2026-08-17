@@ -1,81 +1,108 @@
-import { useEffect, useState } from 'react';
-import { useAuthStore } from '../../store/auth.store';
+import { useEffect, useState } from 'react'
+import { useAuthStore } from '../../store/auth.store'
 import {
   CASH_ACCOUNT_OPTIONS,
   DAY_CLOSE_TARGET_OPTIONS,
-  getPaymentMethodLabel
-} from '../../utils/payment-method';
+  getPaymentMethodLabel,
+} from '../../utils/payment-method'
 
 type CashSummary = {
-  total_in: number;
-  total_out: number;
-  balance: number;
-};
+  total_in: number
+  total_out: number
+  balance: number
+}
 
 type CashAccountBalance = {
-  value: string;
-  label: string;
-  balance: number;
-};
+  value: string
+  label: string
+  balance: number
+}
 
 type CashMovement = {
-  id: number;
-  type: string;
-  direction: 'in' | 'out';
-  amount: number;
-  payment_method: string;
-  notes: string;
-  created_at: string;
-  created_by_name?: string;
-};
+  id: number
+  type: string
+  direction: 'in' | 'out'
+  amount: number
+  payment_method: string
+  notes: string
+  created_at: string
+  created_by_name?: string
+}
+
+type CashDayClosePreview = {
+  business_date: string
+  already_closed: boolean
+  closing: any | null
+  opening_drawer_balance: number
+  day_cash_in: number
+  day_cash_out: number
+  system_closing_balance: number
+  breakdown: Array<{
+    type: string
+    direction: 'in' | 'out'
+    total: number
+  }>
+}
 
 export default function CashPage() {
-  const currentUser = useAuthStore((s) => s.user);
+  const currentUser = useAuthStore((s) => s.user)
 
-  const [summary, setSummary] = useState<CashSummary | null>(null);
-  const [movements, setMovements] = useState<CashMovement[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  
+  const [summary, setSummary] = useState<CashSummary | null>(null)
+  const [movements, setMovements] = useState<CashMovement[]>([])
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<{
+    type: 'success' | 'error'
+    text: string
+  } | null>(null)
 
   function showMessage(type: 'success' | 'error', text: string) {
-    setMessage({ type, text });
+    setMessage({ type, text })
 
     setTimeout(() => {
-      setMessage(null);
-    }, 1800);
+      setMessage(null)
+    }, 1800)
   }
 
-  const [movementType, setMovementType] = useState<'deposit' | 'withdraw'>('deposit');
-  const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('store_cash');
-  const [drawerBalance, setDrawerBalance] = useState(0);
-  const [accountBalances, setAccountBalances] = useState<CashAccountBalance[]>([]);
-  const [totalCapital, setTotalCapital] = useState(0);
-  const [closeAmount, setCloseAmount] = useState('');
-  const [closeTargetAccount, setCloseTargetAccount] = useState('owner_bank');
-  const [closingDay, setClosingDay] = useState(false);
-  const [notes, setNotes] = useState('');
+  const [movementType, setMovementType] = useState<'deposit' | 'withdraw'>(
+    'deposit',
+  )
+  const [amount, setAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('store_cash')
+  const [drawerBalance, setDrawerBalance] = useState(0)
+  const [accountBalances, setAccountBalances] = useState<CashAccountBalance[]>(
+    [],
+  )
+  const [totalCapital, setTotalCapital] = useState(0)
+  const [dayClosePreview, setDayClosePreview] =
+    useState<CashDayClosePreview | null>(null)
 
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [filterType, setFilterType] = useState('all');
-  const [filterDirection, setFilterDirection] = useState<'all' | 'in' | 'out'>('all');
-  const [filterPaymentMethod, setFilterPaymentMethod] = useState('all');
-  const [search, setSearch] = useState('');
-  const [manualModalOpen, setManualModalOpen] = useState(false);
-  const [dayCloseModalOpen, setDayCloseModalOpen] = useState(false);
+  const [countedCloseAmount, setCountedCloseAmount] = useState('')
+  const [carryOverAmount, setCarryOverAmount] = useState('0')
+  const [closeTargetAccount, setCloseTargetAccount] = useState('owner_bank')
+  const [closingDay, setClosingDay] = useState(false)
+  const [notes, setNotes] = useState('')
 
-  const [transferModalOpen, setTransferModalOpen] = useState(false);
-  const [transferFromAccount, setTransferFromAccount] = useState('store_cash');
-  const [transferToAccount, setTransferToAccount] = useState('owner_cash');
-  const [transferAmount, setTransferAmount] = useState('');
-  const [transferNotes, setTransferNotes] = useState('');
-  const [transferring, setTransferring] = useState(false);
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [filterType, setFilterType] = useState('all')
+  const [filterDirection, setFilterDirection] = useState<'all' | 'in' | 'out'>(
+    'all',
+  )
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState('all')
+  const [search, setSearch] = useState('')
+  const [manualModalOpen, setManualModalOpen] = useState(false)
+  const [dayCloseModalOpen, setDayCloseModalOpen] = useState(false)
+
+  const [transferModalOpen, setTransferModalOpen] = useState(false)
+  const [transferFromAccount, setTransferFromAccount] = useState('store_cash')
+  const [transferToAccount, setTransferToAccount] = useState('owner_cash')
+  const [transferAmount, setTransferAmount] = useState('')
+  const [transferNotes, setTransferNotes] = useState('')
+  const [transferring, setTransferring] = useState(false)
 
   async function loadData() {
-    setLoading(true);
+    setLoading(true)
 
     const filters = {
       date_from: dateFrom || undefined,
@@ -83,75 +110,76 @@ export default function CashPage() {
       type: filterType,
       direction: filterDirection,
       payment_method: filterPaymentMethod,
-      search: search || undefined
-    };
+      search: search || undefined,
+    }
 
     try {
-      const summaryData = await window.api.getCashSummary(filters);
-      const movementsData = await window.api.getCashMovements(filters);
+      const summaryData = await window.api.getCashSummary(filters)
+      const movementsData = await window.api.getCashMovements(filters)
       const drawerSummary = await window.api.getCashSummary({
-        payment_method: 'store_cash'
-      });
+        payment_method: 'store_cash',
+      })
 
       const accountSummaryRows = await Promise.all(
         CASH_ACCOUNT_OPTIONS.map(async (option) => {
           const accountSummary = await window.api.getCashSummary({
-            payment_method: option.value
-          });
+            payment_method: option.value,
+          })
 
           return {
             value: option.value,
             label: option.label,
-            balance: Number(accountSummary?.balance || 0)
-          };
-        })
-      );
+            balance: Number(accountSummary?.balance || 0),
+          }
+        }),
+      )
 
       const capital = accountSummaryRows.reduce(
         (sum, account) => sum + Number(account.balance || 0),
-        0
-      );
+        0,
+      )
 
-      setDrawerBalance(Number(drawerSummary?.balance || 0));
-      setAccountBalances(accountSummaryRows);
-      setTotalCapital(capital);
+      setDrawerBalance(Number(drawerSummary?.balance || 0))
+      setAccountBalances(accountSummaryRows)
+      setTotalCapital(capital)
 
-      setSummary(summaryData);
-      setMovements(movementsData);
+      setSummary(summaryData)
+      setMovements(movementsData)
     } catch (error) {
-      console.error(error);
-      showMessage('error', 'حدث خطأ أثناء تحميل بيانات الخزنة');
+      console.error(error)
+      showMessage('error', 'حدث خطأ أثناء تحميل بيانات الخزنة')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
   async function saveCashMovement() {
-    const parsedAmount = Number(amount);
+    const parsedAmount = Number(amount)
 
     if (!parsedAmount || parsedAmount <= 0) {
-      showMessage('error', 'اكتب مبلغ صحيح');
-      return;
+      showMessage('error', 'اكتب مبلغ صحيح')
+      return
     }
 
-    const direction = movementType === 'deposit' ? 'in' : 'out';
+    const direction = movementType === 'deposit' ? 'in' : 'out'
 
     if (direction === 'out') {
       const selectedAccountBalance = Number(
-        accountBalances.find((account) => account.value === paymentMethod)?.balance || 0
-      );
+        accountBalances.find((account) => account.value === paymentMethod)
+          ?.balance || 0,
+      )
 
       if (parsedAmount > selectedAccountBalance) {
         showMessage(
           'error',
-          `رصيد ${getPaymentMethodLabel(paymentMethod)} غير كافٍ. الرصيد الحالي ${money(selectedAccountBalance)}`
-        );
-        return;
+          `رصيد ${getPaymentMethodLabel(paymentMethod)} غير كافٍ. الرصيد الحالي ${money(selectedAccountBalance)}`,
+        )
+        return
       }
     }
 
-    setSaving(true);
-    setManualModalOpen(false);
+    setSaving(true)
+    setManualModalOpen(false)
 
     try {
       await window.api.createCashMovement({
@@ -161,89 +189,175 @@ export default function CashPage() {
         payment_method: paymentMethod,
         reference_id: null,
         reference_type: 'manual',
-        notes: notes.trim() || (movementType === 'deposit' ? 'إيداع يدوي' : 'سحب يدوي'),
-        created_by: currentUser?.id ?? null
-      });
+        notes:
+          notes.trim() ||
+          (movementType === 'deposit' ? 'إيداع يدوي' : 'سحب يدوي'),
+        created_by: currentUser?.id ?? null,
+      })
 
-      setMovementType('deposit');
-      setAmount('');
-      setPaymentMethod('store_cash');
-      setNotes('');
+      setMovementType('deposit')
+      setAmount('')
+      setPaymentMethod('store_cash')
+      setNotes('')
 
-      showMessage('success', 'تم حفظ حركة الخزنة بنجاح');
-      await loadData();
+      showMessage('success', 'تم حفظ حركة الخزنة بنجاح')
+      await loadData()
     } catch (error) {
-      console.error(error);
-      showMessage('error', 'حدث خطأ أثناء حفظ حركة الخزنة');
+      console.error(error)
+      showMessage('error', 'حدث خطأ أثناء حفظ حركة الخزنة')
     } finally {
-      setSaving(false);
+      setSaving(false)
+    }
+  }
+
+  async function openDayCloseModal() {
+    try {
+      const businessDate = getLocalDateKey(new Date())
+
+      const preview = await window.api.getCashDayClosePreview(businessDate)
+
+      if (preview.already_closed) {
+        const closing = preview.closing
+
+        showMessage(
+          'error',
+          `تم تقفيل يوم ${businessDate} بالفعل${
+            closing?.closed_by_name ? ` بواسطة ${closing.closed_by_name}` : ''
+          }`,
+        )
+
+        return
+      }
+
+      setDayClosePreview(preview)
+      setCountedCloseAmount('')
+      setCarryOverAmount('0')
+      setCloseTargetAccount('owner_bank')
+
+      setDayCloseModalOpen(true)
+    } catch (error) {
+      console.error(error)
+
+      showMessage(
+        'error',
+        error instanceof Error
+          ? error.message
+          : 'تعذر تحميل بيانات تقفيل اليوم',
+      )
     }
   }
 
   async function closeStoreCashDay() {
-    const parsedAmount = Number(closeAmount || 0);
-
-    if (!parsedAmount || parsedAmount <= 0) {
-      showMessage('error', 'اكتب مبلغ صحيح للسحب من الدرج');
-      return;
+    if (!dayClosePreview) {
+      showMessage('error', 'بيانات تقفيل اليوم غير متاحة')
+      return
     }
 
-    if (parsedAmount > drawerBalance) {
-      showMessage('error', 'المبلغ أكبر من رصيد كاش درج المحل');
-      return;
+    if (!countedCloseAmount.trim()) {
+      showMessage('error', 'اكتب المبلغ الموجود فعليًا في الدرج بعد الجرد')
+      return
     }
 
-    setClosingDay(true);
-    setDayCloseModalOpen(false);
+    const countedAmount = Number(countedCloseAmount)
+    const carryAmount = Number(carryOverAmount || 0)
+
+    if (!Number.isFinite(countedAmount) || countedAmount < 0) {
+      showMessage('error', 'قيمة الجرد الفعلي غير صحيحة')
+      return
+    }
+
+    if (!Number.isFinite(carryAmount) || carryAmount < 0) {
+      showMessage('error', 'المبلغ المتبقي غير صحيح')
+      return
+    }
+
+    const difference =
+      countedAmount - Number(dayClosePreview.system_closing_balance || 0)
+
+    if (Math.abs(difference) > 0.01) {
+      showMessage(
+        'error',
+        `في فرق في الدرج ${money(difference)} - راجع الجرد أو سجل حركة تسوية أولًا`,
+      )
+
+      return
+    }
+
+    if (carryAmount > countedAmount) {
+      showMessage(
+        'error',
+        'المبلغ المتبقي لليوم التالي أكبر من الموجود في الدرج',
+      )
+
+      return
+    }
+
+    setClosingDay(true)
 
     try {
-      await window.api.createCashTransfer({
-        from_account: 'store_cash',
-        to_account: closeTargetAccount,
-        amount: parsedAmount,
-        notes: `تقفيل اليوم - سحب من درج المحل والمتبقي في الدرج ${money(drawerBalance - parsedAmount)}`,
-        created_by: currentUser?.id ?? null
-      });
+      const result = await window.api.closeCashDay({
+        business_date: dayClosePreview.business_date,
+        counted_amount: countedAmount,
+        carry_over_amount: carryAmount,
+        target_account: closeTargetAccount,
+        closed_by: currentUser?.id ?? null,
+      })
 
-      setCloseAmount('');
-      setCloseTargetAccount('owner_bank');
-      showMessage('success', 'تم تقفيل اليوم وتحويل الكاش بنجاح');
-      await loadData();
+      setDayCloseModalOpen(false)
+      setDayClosePreview(null)
+      setCountedCloseAmount('')
+      setCarryOverAmount('0')
+
+      showMessage(
+        'success',
+        `تم تقفيل اليوم - تم تحويل ${money(
+          result.transfer_amount,
+        )} والمتبقي في الدرج ${money(result.carry_over_amount)}`,
+      )
+
+      await loadData()
     } catch (error) {
-      console.error(error);
-      showMessage('error', error instanceof Error && error.message ? error.message : 'حدث خطأ أثناء تقفيل اليوم');
+      console.error(error)
+
+      showMessage(
+        'error',
+        error instanceof Error && error.message
+          ? error.message
+          : 'حدث خطأ أثناء تقفيل اليوم',
+      )
     } finally {
-      setClosingDay(false);
+      setClosingDay(false)
     }
   }
 
   async function saveCashTransfer() {
-    const parsedAmount = Number(transferAmount || 0);
+    const parsedAmount = Number(transferAmount || 0)
 
     if (!parsedAmount || parsedAmount <= 0) {
-      showMessage('error', 'اكتب مبلغ صحيح للتحويل');
-      return;
+      showMessage('error', 'اكتب مبلغ صحيح للتحويل')
+      return
     }
 
     if (transferFromAccount === transferToAccount) {
-      showMessage('error', 'لا يمكن التحويل لنفس الحساب');
-      return;
+      showMessage('error', 'لا يمكن التحويل لنفس الحساب')
+      return
     }
 
     const fromBalance = Number(
-      accountBalances.find((account) => account.value === transferFromAccount)?.balance || 0
-    );
+      accountBalances.find((account) => account.value === transferFromAccount)
+        ?.balance || 0,
+    )
 
     if (parsedAmount > fromBalance) {
       showMessage(
         'error',
-        `رصيد ${getPaymentMethodLabel(transferFromAccount)} غير كافٍ. الرصيد الحالي ${money(fromBalance)}`
-      );
-      return;
+        `رصيد ${getPaymentMethodLabel(transferFromAccount)} غير كافٍ. الرصيد الحالي ${money(fromBalance)}`,
+      )
+      return
     }
 
-    setTransferring(true);
-    setTransferModalOpen(false);
+    setTransferring(true)
+    setTransferModalOpen(false)
 
     try {
       await window.api.createCashTransfer({
@@ -253,121 +367,133 @@ export default function CashPage() {
         notes:
           transferNotes.trim() ||
           `تحويل من ${getPaymentMethodLabel(transferFromAccount)} إلى ${getPaymentMethodLabel(transferToAccount)}`,
-        created_by: currentUser?.id ?? null
-      });
+        created_by: currentUser?.id ?? null,
+      })
 
-      setTransferFromAccount('store_cash');
-      setTransferToAccount('owner_cash');
-      setTransferAmount('');
-      setTransferNotes('');
+      setTransferFromAccount('store_cash')
+      setTransferToAccount('owner_cash')
+      setTransferAmount('')
+      setTransferNotes('')
 
-      showMessage('success', 'تم تحويل المبلغ بين الحسابات بنجاح');
-      await loadData();
+      showMessage('success', 'تم تحويل المبلغ بين الحسابات بنجاح')
+      await loadData()
     } catch (error) {
-      console.error(error);
+      console.error(error)
       showMessage(
         'error',
         error instanceof Error && error.message
           ? error.message
-          : 'حدث خطأ أثناء تحويل المبلغ'
-      );
+          : 'حدث خطأ أثناء تحويل المبلغ',
+      )
     } finally {
-      setTransferring(false);
+      setTransferring(false)
     }
   }
 
   function openWithdrawSelectedAccountBalance() {
     if (filterPaymentMethod === 'all') {
-      showMessage('error', 'اختار حساب مالي من الفلتر الأول عشان تسحب رصيده');
-      return;
+      showMessage('error', 'اختار حساب مالي من الفلتر الأول عشان تسحب رصيده')
+      return
     }
 
     const selectedAccount = accountBalances.find(
-      (account) => account.value === filterPaymentMethod
-    );
+      (account) => account.value === filterPaymentMethod,
+    )
 
-    const balance = Number(selectedAccount?.balance || 0);
+    const balance = Number(selectedAccount?.balance || 0)
 
     if (balance <= 0) {
       showMessage(
         'error',
-        `لا يوجد رصيد متاح في ${selectedAccount?.label || getPaymentMethodLabel(filterPaymentMethod)}`
-      );
-      return;
+        `لا يوجد رصيد متاح في ${selectedAccount?.label || getPaymentMethodLabel(filterPaymentMethod)}`,
+      )
+      return
     }
 
-    setMovementType('withdraw');
-    setPaymentMethod(filterPaymentMethod);
-    setAmount(balance.toFixed(2));
-    setNotes(`سحب رصيد ${selectedAccount?.label || getPaymentMethodLabel(filterPaymentMethod)}`);
-    setManualModalOpen(true);
+    setMovementType('withdraw')
+    setPaymentMethod(filterPaymentMethod)
+    setAmount(balance.toFixed(2))
+    setNotes(
+      `سحب رصيد ${selectedAccount?.label || getPaymentMethodLabel(filterPaymentMethod)}`,
+    )
+    setManualModalOpen(true)
   }
 
   function handleCreateMovement() {
-    void saveCashMovement();
+    void saveCashMovement()
   }
 
   useEffect(() => {
-    void loadData();
-  }, []);
+    void loadData()
+  }, [])
 
   function getTypeLabel(type: string) {
     switch (type) {
       case 'sale':
-        return 'بيع';
+        return 'بيع'
       case 'sale_return':
-        return 'مرتجع بيع';
+        return 'مرتجع بيع'
       case 'customer_payment':
-        return 'دفعة عميل';
+        return 'دفعة عميل'
       case 'supplier_payment':
-        return 'دفعة مورد';
+        return 'دفعة مورد'
       case 'expense':
-        return 'مصروف';
+        return 'مصروف'
       case 'withdraw':
-        return 'سحب';
+        return 'سحب'
       case 'deposit':
-        return 'إيداع';
+        return 'إيداع'
       case 'liability_payment':
-        return 'دفعة التزام';
+        return 'دفعة التزام'
       case 'transfer':
-        return 'تحويل داخلي';  
+        return 'تحويل داخلي'
       case 'purchase_return':
-        return 'مرتجع شراء';
+        return 'مرتجع شراء'
 
       default:
-        return type;
+        return type
     }
   }
 
   function formatDate(value?: string) {
-    if (!value) return '—';
+    if (!value) return '—'
 
     try {
-      const raw = String(value);
-      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
+      const raw = String(value)
+      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
 
       return new Date(normalized).toLocaleString('ar-EG', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
-        minute: '2-digit'
-      });
+        minute: '2-digit',
+      })
     } catch {
-      return value;
+      return value
     }
   }
 
   function money(value: unknown) {
-    return `${Number(value || 0).toFixed(2)} ج.م`;
+    return `${Number(value || 0).toFixed(2)} ج.م`
+  }
+
+  function getLocalDateKey(date: Date) {
+    const year = date.getFullYear()
+
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+
+    const day = String(date.getDate()).padStart(2, '0')
+
+    return `${year}-${month}-${day}`
   }
 
   function printCashReport() {
-    const printWindow = window.open('', '_blank', 'width=1100,height=800');
+    const printWindow = window.open('', '_blank', 'width=1100,height=800')
 
     if (!printWindow) {
-      showMessage('error', 'تعذر فتح نافذة الطباعة');
-      return;
+      showMessage('error', 'تعذر فتح نافذة الطباعة')
+      return
     }
 
     const filtersText = [
@@ -380,8 +506,8 @@ export default function CashPage() {
       filterPaymentMethod !== 'all'
         ? `الحساب المالي: ${getPaymentMethodLabel(filterPaymentMethod)}`
         : null,
-      search.trim() ? `بحث: ${search.trim()}` : null
-    ].filter(Boolean);
+      search.trim() ? `بحث: ${search.trim()}` : null,
+    ].filter(Boolean)
 
     const accountCardsHtml = accountBalances
       .map(
@@ -392,9 +518,9 @@ export default function CashPage() {
               ${money(account.balance)}
             </div>
           </div>
-        `
+        `,
       )
-      .join('');
+      .join('')
 
     const rowsHtml = movements
       .map(
@@ -412,9 +538,9 @@ export default function CashPage() {
             <td>${escapeHtml(item.created_by_name || '—')}</td>
             <td>${formatDate(item.created_at)}</td>
           </tr>
-        `
+        `,
       )
-      .join('');
+      .join('')
 
     const html = `
       <!doctype html>
@@ -601,7 +727,9 @@ export default function CashPage() {
           <div class="filters">
             ${
               filtersText.length
-                ? filtersText.map((item) => `<div>${escapeHtml(String(item))}</div>`).join('')
+                ? filtersText
+                    .map((item) => `<div>${escapeHtml(String(item))}</div>`)
+                    .join('')
                 : '<div>بدون فلاتر</div>'
             }
           </div>
@@ -642,11 +770,11 @@ export default function CashPage() {
           </script>
         </body>
       </html>
-    `;
+    `
 
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
+    printWindow.document.open()
+    printWindow.document.write(html)
+    printWindow.document.close()
   }
 
   return (
@@ -657,7 +785,7 @@ export default function CashPage() {
         height: '100%',
         minHeight: 0,
         overflow: 'hidden',
-        gridTemplateRows: 'auto auto auto minmax(0, 1fr)'
+        gridTemplateRows: 'auto auto auto minmax(0, 1fr)',
       }}
     >
       <style>
@@ -692,7 +820,7 @@ export default function CashPage() {
             color: '#fff',
             fontWeight: 800,
             boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
-            pointerEvents: 'none'
+            pointerEvents: 'none',
           }}
         >
           {message.text}
@@ -704,7 +832,7 @@ export default function CashPage() {
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
           gap: '10px',
-          minHeight: 0
+          minHeight: 0,
         }}
       >
         <SummaryCard
@@ -720,7 +848,11 @@ export default function CashPage() {
             title={account.label}
             value={money(account.balance)}
             color={account.balance >= 0 ? '#34d399' : '#f87171'}
-            border={account.balance >= 0 ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.25)'}
+            border={
+              account.balance >= 0
+                ? 'rgba(34,197,94,0.25)'
+                : 'rgba(239,68,68,0.25)'
+            }
           />
         ))}
       </div>
@@ -731,14 +863,14 @@ export default function CashPage() {
           justifyContent: 'space-between',
           alignItems: 'stretch',
           gap: '10px',
-          direction: 'rtl'
+          direction: 'rtl',
         }}
       >
         <div
           style={{
             display: 'flex',
             gap: '8px',
-            flexWrap: 'wrap'
+            flexWrap: 'wrap',
           }}
         >
           <SummaryCard
@@ -771,12 +903,12 @@ export default function CashPage() {
             display: 'flex',
             gap: '8px',
             alignItems: 'center',
-            flexShrink: 0
+            flexShrink: 0,
           }}
         >
           <button
             type="button"
-            onClick={() => setDayCloseModalOpen(true)}
+            onClick={() => void openDayCloseModal()}
             style={{
               ...primaryButtonStyle,
               width: '130px',
@@ -786,7 +918,7 @@ export default function CashPage() {
               borderRadius: '10px',
               background: 'rgba(16,185,129,0.14)',
               border: '1px solid rgba(16,185,129,0.32)',
-              color: '#6ee7b7'
+              color: '#6ee7b7',
             }}
           >
             تقفيل اليوم
@@ -804,7 +936,7 @@ export default function CashPage() {
               borderRadius: '10px',
               background: 'rgba(96,165,250,0.14)',
               border: '1px solid rgba(96,165,250,0.32)',
-              color: '#93c5fd'
+              color: '#93c5fd',
             }}
           >
             نقل بين الحسابات
@@ -819,7 +951,7 @@ export default function CashPage() {
               height: '38px',
               padding: '0 10px',
               fontSize: '12px',
-              borderRadius: '10px'
+              borderRadius: '10px',
             }}
           >
             + حركة يدوية
@@ -836,7 +968,7 @@ export default function CashPage() {
               borderRadius: '10px',
               background: 'rgba(245,158,11,0.14)',
               border: '1px solid rgba(245,158,11,0.32)',
-              color: '#fbbf24'
+              color: '#fbbf24',
             }}
           >
             سحب رصيد الحساب
@@ -853,7 +985,7 @@ export default function CashPage() {
           gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
           gap: '8px',
           alignItems: 'end',
-          minHeight: '52px'
+          minHeight: '52px',
         }}
       >
         <Field label="من">
@@ -897,7 +1029,9 @@ export default function CashPage() {
         <Field label="الاتجاه">
           <select
             value={filterDirection}
-            onChange={(e) => setFilterDirection(e.target.value as 'all' | 'in' | 'out')}
+            onChange={(e) =>
+              setFilterDirection(e.target.value as 'all' | 'in' | 'out')
+            }
             style={{ ...inputStyle, height: '36px' }}
           >
             <option value="all">الكل</option>
@@ -942,18 +1076,18 @@ export default function CashPage() {
           <button
             type="button"
             onClick={() => {
-              setDateFrom('');
-              setDateTo('');
-              setFilterType('all');
-              setFilterDirection('all');
-              setFilterPaymentMethod('all');
-              setSearch('');
-              setTimeout(() => void loadData(), 0);
+              setDateFrom('')
+              setDateTo('')
+              setFilterType('all')
+              setFilterDirection('all')
+              setFilterPaymentMethod('all')
+              setSearch('')
+              setTimeout(() => void loadData(), 0)
             }}
             style={{
               ...secondaryButtonStyle,
               height: '36px',
-              padding: '0 12px'
+              padding: '0 12px',
             }}
           >
             مسح
@@ -970,7 +1104,7 @@ export default function CashPage() {
               borderRadius: '10px',
               background: 'rgba(96,165,250,0.14)',
               border: '1px solid rgba(96,165,250,0.32)',
-              color: '#93c5fd'
+              color: '#93c5fd',
             }}
           >
             طباعة الكشف
@@ -987,122 +1121,132 @@ export default function CashPage() {
           minHeight: 0,
           overflow: 'hidden',
           display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr)'
+          gridTemplateRows: 'auto minmax(0, 1fr)',
         }}
       >
         <div style={{ marginBottom: '16px' }}>
           <h2 style={{ margin: '0 0 6px', textAlign: 'right' }}>حركة الخزنة</h2>
-          <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700, textAlign: 'right' }}>
+          <p
+            style={{
+              margin: 0,
+              color: '#94a3b8',
+              fontWeight: 700,
+              textAlign: 'right',
+            }}
+          >
             جميع عمليات السحب والإيداع والتحصيل
           </p>
         </div>
 
-      <div
-        className="cash-body-scroll"
-        style={{
-          minHeight: 0,
-          overflowY: 'auto',
-          overflowX: 'auto'
-        }}
-      >
-        <table
+        <div
+          className="cash-body-scroll"
           style={{
-            width: '100%',
-            minWidth: '950px',
-            borderCollapse: 'collapse',
-            direction: 'rtl'
+            minHeight: 0,
+            overflowY: 'auto',
+            overflowX: 'auto',
           }}
         >
-          <thead>
-            <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
-              <th style={thStyle}>النوع</th>
-              <th style={thStyle}>الحركة</th>
-              <th style={thStyle}>المبلغ</th>
-              <th style={thStyle}>الحساب المالي</th>
-              <th style={thStyle}>ملاحظات</th>
-              <th style={thStyle}>المستخدم</th>
-              <th style={thStyle}>التاريخ</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan={7} style={{ ...tdStyle, textAlign: 'center' }}>
-                  جاري التحميل...
-                </td>
+          <table
+            style={{
+              width: '100%',
+              minWidth: '950px',
+              borderCollapse: 'collapse',
+              direction: 'rtl',
+            }}
+          >
+            <thead>
+              <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
+                <th style={thStyle}>النوع</th>
+                <th style={thStyle}>الحركة</th>
+                <th style={thStyle}>المبلغ</th>
+                <th style={thStyle}>الحساب المالي</th>
+                <th style={thStyle}>ملاحظات</th>
+                <th style={thStyle}>المستخدم</th>
+                <th style={thStyle}>التاريخ</th>
               </tr>
-            )}
+            </thead>
 
-            {!loading &&
-              movements.map((item) => (
-                <tr
-                  key={item.id}
-                  style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
-                >
-                  <td style={tdStyle}>{getTypeLabel(item.type)}</td>
-
-                  <td style={tdStyle}>
-                    <span
-                      style={{
-                        display: 'inline-flex',
-                        padding: '4px 10px',
-                        borderRadius: '999px',
-                        fontSize: '12px',
-                        fontWeight: 800,
-                        color: item.direction === 'in' ? '#34d399' : '#f87171',
-                        background:
-                          item.direction === 'in'
-                            ? 'rgba(34,197,94,0.10)'
-                            : 'rgba(239,68,68,0.10)',
-                        border: `1px solid ${
-                          item.direction === 'in'
-                            ? 'rgba(34,197,94,0.25)'
-                            : 'rgba(239,68,68,0.25)'
-                        }`
-                      }}
-                    >
-                      {item.direction === 'in' ? 'داخل' : 'خارج'}
-                    </span>
-                  </td>
-
-                  <td
-                    style={{
-                      ...tdStyle,
-                      fontWeight: 900,
-                      color: item.direction === 'in' ? '#34d399' : '#f87171'
-                    }}
-                  >
-                    {money(item.amount)}
-                  </td>
-
-                  <td style={tdStyle}>{getPaymentMethodLabel(item.payment_method)}</td>
-                  <td style={tdStyle}>{item.notes || '—'}</td>
-                  <td style={tdStyle}>{item.created_by_name || '—'}</td>
-                  <td style={{ ...tdStyle, color: '#94a3b8' }}>
-                    {formatDate(item.created_at)}
+            <tbody>
+              {loading && (
+                <tr>
+                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center' }}>
+                    جاري التحميل...
                   </td>
                 </tr>
-              ))}
+              )}
 
-            {!loading && movements.length === 0 && (
-              <tr>
-                <td
-                  colSpan={7}
-                  style={{
-                    ...tdStyle,
-                    textAlign: 'center',
-                    color: '#94a3b8',
-                    padding: '28px'
-                  }}
-                >
-                  لا توجد حركات خزنة
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+              {!loading &&
+                movements.map((item) => (
+                  <tr
+                    key={item.id}
+                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                  >
+                    <td style={tdStyle}>{getTypeLabel(item.type)}</td>
+
+                    <td style={tdStyle}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          padding: '4px 10px',
+                          borderRadius: '999px',
+                          fontSize: '12px',
+                          fontWeight: 800,
+                          color:
+                            item.direction === 'in' ? '#34d399' : '#f87171',
+                          background:
+                            item.direction === 'in'
+                              ? 'rgba(34,197,94,0.10)'
+                              : 'rgba(239,68,68,0.10)',
+                          border: `1px solid ${
+                            item.direction === 'in'
+                              ? 'rgba(34,197,94,0.25)'
+                              : 'rgba(239,68,68,0.25)'
+                          }`,
+                        }}
+                      >
+                        {item.direction === 'in' ? 'داخل' : 'خارج'}
+                      </span>
+                    </td>
+
+                    <td
+                      style={{
+                        ...tdStyle,
+                        fontWeight: 900,
+                        color: item.direction === 'in' ? '#34d399' : '#f87171',
+                      }}
+                    >
+                      {money(item.amount)}
+                    </td>
+
+                    <td style={tdStyle}>
+                      {getPaymentMethodLabel(item.payment_method)}
+                    </td>
+                    <td style={tdStyle}>{item.notes || '—'}</td>
+                    <td style={tdStyle}>{item.created_by_name || '—'}</td>
+                    <td style={{ ...tdStyle, color: '#94a3b8' }}>
+                      {formatDate(item.created_at)}
+                    </td>
+                  </tr>
+                ))}
+
+              {!loading && movements.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    style={{
+                      ...tdStyle,
+                      textAlign: 'center',
+                      color: '#94a3b8',
+                      padding: '28px',
+                    }}
+                  >
+                    لا توجد حركات خزنة
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {manualModalOpen && (
@@ -1123,7 +1267,9 @@ export default function CashPage() {
               <Field label="نوع الحركة">
                 <select
                   value={movementType}
-                  onChange={(e) => setMovementType(e.target.value as 'deposit' | 'withdraw')}
+                  onChange={(e) =>
+                    setMovementType(e.target.value as 'deposit' | 'withdraw')
+                  }
                   style={inputStyle}
                 >
                   <option value="deposit">إيداع</option>
@@ -1172,7 +1318,7 @@ export default function CashPage() {
                 style={{
                   ...primaryButtonStyle,
                   opacity: saving ? 0.6 : 1,
-                  cursor: saving ? 'not-allowed' : 'pointer'
+                  cursor: saving ? 'not-allowed' : 'pointer',
                 }}
               >
                 {saving ? 'جاري الحفظ...' : 'حفظ الحركة'}
@@ -1206,14 +1352,16 @@ export default function CashPage() {
                 >
                   {CASH_ACCOUNT_OPTIONS.map((option) => {
                     const balance = Number(
-                      accountBalances.find((account) => account.value === option.value)?.balance || 0
-                    );
+                      accountBalances.find(
+                        (account) => account.value === option.value,
+                      )?.balance || 0,
+                    )
 
                     return (
                       <option key={option.value} value={option.value}>
                         {option.label} - الرصيد {money(balance)}
                       </option>
-                    );
+                    )
                   })}
                 </select>
               </Field>
@@ -1258,9 +1406,11 @@ export default function CashPage() {
                   Math.max(
                     0,
                     Number(
-                      accountBalances.find((account) => account.value === transferFromAccount)?.balance || 0
-                    ) - Number(transferAmount || 0)
-                  )
+                      accountBalances.find(
+                        (account) => account.value === transferFromAccount,
+                      )?.balance || 0,
+                    ) - Number(transferAmount || 0),
+                  ),
                 )}
                 color="#fbbf24"
                 border="rgba(245,158,11,0.25)"
@@ -1273,7 +1423,7 @@ export default function CashPage() {
                 style={{
                   ...primaryButtonStyle,
                   opacity: transferring ? 0.6 : 1,
-                  cursor: transferring ? 'not-allowed' : 'pointer'
+                  cursor: transferring ? 'not-allowed' : 'pointer',
                 }}
               >
                 {transferring ? 'جاري التحويل...' : 'تنفيذ التحويل'}
@@ -1299,25 +1449,90 @@ export default function CashPage() {
 
             <div style={{ display: 'grid', gap: '12px' }}>
               <SummaryCard
-                title="رصيد كاش درج المحل"
-                value={money(drawerBalance)}
-                color="#60a5fa"
-                border="rgba(37,99,235,0.20)"
+                title="رصيد أول اليوم"
+                value={money(dayClosePreview?.opening_drawer_balance)}
+                color="#93c5fd"
+                border="rgba(59,130,246,0.25)"
               />
 
-              <Field label="المبلغ المسحوب من الدرج">
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '10px',
+                }}
+              >
+                <SummaryCard
+                  title="إجمالي الداخل للدرج اليوم"
+                  value={money(dayClosePreview?.day_cash_in)}
+                  color="#34d399"
+                  border="rgba(34,197,94,0.25)"
+                />
+
+                <SummaryCard
+                  title="إجمالي الخارج من الدرج اليوم"
+                  value={money(dayClosePreview?.day_cash_out)}
+                  color="#f87171"
+                  border="rgba(239,68,68,0.25)"
+                />
+              </div>
+
+              <SummaryCard
+                title="الرصيد المفروض موجود في الدرج"
+                value={money(dayClosePreview?.system_closing_balance)}
+                color="#facc15"
+                border="rgba(250,204,21,0.30)"
+              />
+
+              <Field label="الجرد الفعلي - الفلوس الموجودة في الدرج">
                 <input
                   type="number"
                   min={0}
-                  max={drawerBalance}
-                  value={closeAmount}
-                  onChange={(e) => setCloseAmount(e.target.value)}
+                  value={countedCloseAmount}
+                  onChange={(e) => setCountedCloseAmount(e.target.value)}
+                  placeholder="عد الفلوس واكتب المبلغ"
+                  style={inputStyle}
+                />
+              </Field>
+
+              {countedCloseAmount.trim() ? (
+                <SummaryCard
+                  title="فرق الجرد"
+                  value={money(
+                    Number(countedCloseAmount || 0) -
+                      Number(dayClosePreview?.system_closing_balance || 0),
+                  )}
+                  color={
+                    Math.abs(
+                      Number(countedCloseAmount || 0) -
+                        Number(dayClosePreview?.system_closing_balance || 0),
+                    ) <= 0.01
+                      ? '#34d399'
+                      : '#f87171'
+                  }
+                  border={
+                    Math.abs(
+                      Number(countedCloseAmount || 0) -
+                        Number(dayClosePreview?.system_closing_balance || 0),
+                    ) <= 0.01
+                      ? 'rgba(34,197,94,0.25)'
+                      : 'rgba(239,68,68,0.25)'
+                  }
+                />
+              ) : null}
+
+              <Field label="المبلغ اللي هيفضل في الدرج لبداية اليوم التالي">
+                <input
+                  type="number"
+                  min={0}
+                  value={carryOverAmount}
+                  onChange={(e) => setCarryOverAmount(e.target.value)}
                   placeholder="0.00"
                   style={inputStyle}
                 />
               </Field>
 
-              <Field label="تحويل إلى">
+              <Field label="تحويل باقي الكاش إلى">
                 <select
                   value={closeTargetAccount}
                   onChange={(e) => setCloseTargetAccount(e.target.value)}
@@ -1332,10 +1547,16 @@ export default function CashPage() {
               </Field>
 
               <SummaryCard
-                title="المتبقي في الدرج لليوم التالي"
-                value={money(Math.max(0, drawerBalance - Number(closeAmount || 0)))}
-                color="#34d399"
-                border="rgba(34,197,94,0.20)"
+                title="المبلغ اللي هيتم تحويله"
+                value={money(
+                  Math.max(
+                    0,
+                    Number(countedCloseAmount || 0) -
+                      Number(carryOverAmount || 0),
+                  ),
+                )}
+                color="#60a5fa"
+                border="rgba(59,130,246,0.25)"
               />
 
               <button
@@ -1345,18 +1566,17 @@ export default function CashPage() {
                 style={{
                   ...primaryButtonStyle,
                   opacity: closingDay ? 0.6 : 1,
-                  cursor: closingDay ? 'not-allowed' : 'pointer'
+                  cursor: closingDay ? 'not-allowed' : 'pointer',
                 }}
               >
-                {closingDay ? 'جاري التقفيل...' : 'تنفيذ تقفيل اليوم'}
+                {closingDay ? 'جاري التقفيل...' : 'تأكيد وتقفيل اليوم'}
               </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
-  );
+  )
 }
 
 function escapeHtml(value: string) {
@@ -1365,7 +1585,7 @@ function escapeHtml(value: string) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/'/g, '&#039;')
 }
 
 function SummaryCard({
@@ -1373,13 +1593,13 @@ function SummaryCard({
   value,
   color,
   border,
-  compact = false
+  compact = false,
 }: {
-  title: string;
-  value: string;
-  color: string;
-  border: string;
-  compact?: boolean;
+  title: string
+  value: string
+  color: string
+  border: string
+  compact?: boolean
 }) {
   return (
     <div
@@ -1395,14 +1615,14 @@ function SummaryCard({
         minHeight: compact ? '58px' : '64px',
         alignContent: 'center',
         textAlign: 'right',
-        direction: 'rtl'
+        direction: 'rtl',
       }}
     >
       <div
         style={{
           color: '#94a3b8',
           fontWeight: 800,
-          fontSize: compact ? '12px' : '13px'
+          fontSize: compact ? '12px' : '13px',
         }}
       >
         {title}
@@ -1412,16 +1632,22 @@ function SummaryCard({
         style={{
           color,
           fontSize: compact ? '18px' : '20px',
-          lineHeight: 1.15
+          lineHeight: 1.15,
         }}
       >
         {value}
       </strong>
     </div>
-  );
+  )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
   return (
     <label style={{ display: 'grid', gap: '4px', minWidth: 0 }}>
       <span style={{ color: '#94a3b8', fontWeight: 800, fontSize: '11px' }}>
@@ -1429,7 +1655,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       </span>
       {children}
     </label>
-  );
+  )
 }
 
 const inputStyle: React.CSSProperties = {
@@ -1443,8 +1669,8 @@ const inputStyle: React.CSSProperties = {
   padding: '0 12px',
   textAlign: 'right',
   direction: 'rtl',
-  boxSizing: 'border-box'
-};
+  boxSizing: 'border-box',
+}
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -1454,8 +1680,8 @@ const primaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontWeight: 900,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.12)',
@@ -1465,8 +1691,8 @@ const secondaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontWeight: 900,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const dangerButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(239,68,68,0.35)',
@@ -1476,8 +1702,8 @@ const dangerButtonStyle: React.CSSProperties = {
   color: '#fca5a5',
   fontWeight: 900,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const modalStyle: React.CSSProperties = {
   width: '480px',
@@ -1487,20 +1713,20 @@ const modalStyle: React.CSSProperties = {
   background: '#111827',
   padding: '22px',
   direction: 'rtl',
-  boxShadow: '0 24px 70px rgba(0,0,0,0.55)'
-};
+  boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
+}
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   fontWeight: 800,
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}
 
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
@@ -1512,8 +1738,8 @@ const modalOverlayStyle: React.CSSProperties = {
   justifyContent: 'center',
   padding: '20px',
   backdropFilter: 'blur(7px)',
-  WebkitBackdropFilter: 'blur(7px)'
-};
+  WebkitBackdropFilter: 'blur(7px)',
+}
 
 const modalCardStyle: React.CSSProperties = {
   width: '520px',
@@ -1525,16 +1751,16 @@ const modalCardStyle: React.CSSProperties = {
   padding: '18px',
   direction: 'rtl',
   color: 'var(--text)',
-  overflow: 'hidden'
-};
+  overflow: 'hidden',
+}
 
 const modalHeaderStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: '12px',
-  marginBottom: '16px'
-};
+  marginBottom: '16px',
+}
 
 const miniCloseButtonStyle: React.CSSProperties = {
   width: '34px',
@@ -1544,5 +1770,5 @@ const miniCloseButtonStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.05)',
   color: 'var(--text)',
   fontSize: '18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}

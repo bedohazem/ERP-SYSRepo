@@ -892,6 +892,42 @@ declare global {
       createCashMovement: (input: any) => Promise<any>
       createCashTransfer: (input: any) => Promise<any>
 
+      getCashDayClosePreview: (businessDate: string) => Promise<{
+        business_date: string
+        already_closed: boolean
+        closing: any | null
+        opening_drawer_balance: number
+        day_cash_in: number
+        day_cash_out: number
+        system_closing_balance: number
+        breakdown: Array<{
+          type: string
+          direction: 'in' | 'out'
+          total: number
+        }>
+      }>
+
+      closeCashDay: (input: {
+        business_date: string
+        counted_amount: number
+        carry_over_amount?: number
+        target_account?: string
+        closed_by?: number | null
+      }) => Promise<{
+        ok: boolean
+        closing_id: number
+        business_date: string
+        opening_drawer_balance: number
+        day_cash_in: number
+        day_cash_out: number
+        system_closing_balance: number
+        counted_closing_balance: number
+        difference: number
+        carry_over_amount: number
+        transfer_amount: number
+        target_account: string | null
+      }>
+
       // =========================
       // Expenses
       // =========================

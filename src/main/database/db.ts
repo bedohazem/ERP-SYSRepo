@@ -286,6 +286,29 @@ export function getDb(): Database.Database {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
 
+      CREATE TABLE IF NOT EXISTS cash_day_closings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        business_date TEXT NOT NULL UNIQUE,
+
+        opening_drawer_balance REAL NOT NULL DEFAULT 0,
+        day_cash_in REAL NOT NULL DEFAULT 0,
+        day_cash_out REAL NOT NULL DEFAULT 0,
+
+        system_closing_balance REAL NOT NULL DEFAULT 0,
+        counted_closing_balance REAL NOT NULL DEFAULT 0,
+        difference REAL NOT NULL DEFAULT 0,
+
+        carry_over_amount REAL NOT NULL DEFAULT 0,
+        transfer_amount REAL NOT NULL DEFAULT 0,
+        target_account TEXT,
+
+        closed_by INTEGER,
+        closed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (closed_by) REFERENCES users(id)
+      );
+
       CREATE TABLE IF NOT EXISTS expenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL,
@@ -451,6 +474,7 @@ export function resetDatabaseData(): void {
 
       DELETE FROM activity_logs;
       DELETE FROM expenses;
+      DELETE FROM cash_day_closings;
       DELETE FROM cash_movements;
 
       DELETE FROM store_liability_payments;

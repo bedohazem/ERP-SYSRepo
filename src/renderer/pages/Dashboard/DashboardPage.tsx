@@ -363,7 +363,7 @@ export default function DashboardPage() {
           icon="💰"
           title="صافي الربح النهائي"
           value={money(data.month.summary.final_net_profit)}
-          subtitle="بعد الخصومات والمرتجعات والمصروفات"
+          subtitle="بعد الخصومات والمرتجعات والمصروفات ودفعات الالتزامات"
           tone="green"
         />
 

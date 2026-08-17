@@ -262,7 +262,8 @@ export function getReportsSummary(input?: ReportFilter) {
     liabilityPaymentsRow.total_liability_payments || 0,
   )
 
-  const finalNetProfit = netProfitAfterDiscounts - totalExpenses
+  const finalNetProfit =
+    netProfitAfterDiscounts - totalExpenses - totalLiabilityPayments
 
   const topProducts = db
     .prepare(
