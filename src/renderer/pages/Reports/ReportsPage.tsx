@@ -1,36 +1,36 @@
-import { useEffect, useState } from 'react';
-import { getPaymentMethodLabel } from '../../utils/payment-method';
+import { useEffect, useState } from 'react'
+import { getPaymentMethodLabel } from '../../utils/payment-method'
 
 type ReportsData = {
   summary: {
-    sales_count: number;
-    returns_count: number;
-    gross_sales: number;
-    total_returns: number;
-    loyalty_discounts: number;
-    net_sales: number;
-    gross_profit_before_discounts: number;
-    net_profit_after_discounts: number;
-    total_expenses: number;
-    total_liability_payments: number;
-    final_net_profit: number;
-    normal_discounts: number;
-    total_discounts: number;
-  };
+    sales_count: number
+    returns_count: number
+    gross_sales: number
+    total_returns: number
+    loyalty_discounts: number
+    net_sales: number
+    gross_profit_before_discounts: number
+    net_profit_after_discounts: number
+    total_expenses: number
+    total_liability_payments: number
+    final_net_profit: number
+    normal_discounts: number
+    total_discounts: number
+  }
   cashAccounts: Array<{
-    payment_method: string;
-    label: string;
-    total_in: number;
-    total_out: number;
-    balance: number;
-  }>;
-  cashTotalCapital: number;
-  topProducts: any[];
-  dailySales: any[];
-  paymentMethods: any[];
-  lowStock: any[];
-  topCustomers: any[];
-};
+    payment_method: string
+    label: string
+    total_in: number
+    total_out: number
+    balance: number
+  }>
+  cashTotalCapital: number
+  topProducts: any[]
+  dailySales: any[]
+  paymentMethods: any[]
+  lowStock: any[]
+  topCustomers: any[]
+}
 
 const emptyReports: ReportsData = {
   summary: {
@@ -46,7 +46,7 @@ const emptyReports: ReportsData = {
     total_liability_payments: 0,
     final_net_profit: 0,
     normal_discounts: 0,
-    total_discounts: 0
+    total_discounts: 0,
   },
   cashAccounts: [],
   cashTotalCapital: 0,
@@ -54,38 +54,38 @@ const emptyReports: ReportsData = {
   dailySales: [],
   paymentMethods: [],
   lowStock: [],
-  topCustomers: []
-};
+  topCustomers: [],
+}
 
 export default function ReportsPage() {
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [data, setData] = useState<ReportsData>(emptyReports);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [data, setData] = useState<ReportsData>(emptyReports)
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState('')
 
   async function loadReports() {
-    setLoading(true);
+    setLoading(true)
 
     try {
       const result = await window.api.getReportsSummary({
         date_from: dateFrom || undefined,
-        date_to: dateTo || undefined
-      });
+        date_to: dateTo || undefined,
+      })
 
-      setData(result);
+      setData(result)
     } catch (error) {
-      console.error('Failed to load reports:', error);
-      setMessage('حدث خطأ أثناء تحميل التقارير');
-      setData(emptyReports);
+      console.error('Failed to load reports:', error)
+      setMessage('حدث خطأ أثناء تحميل التقارير')
+      setData(emptyReports)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
   useEffect(() => {
-    void loadReports();
-  }, []);
+    void loadReports()
+  }, [])
 
   return (
     <div
@@ -95,7 +95,7 @@ export default function ReportsPage() {
         height: '100%',
         minHeight: 0,
         overflow: 'hidden',
-        gridTemplateRows: 'auto auto minmax(0, 1fr)'
+        gridTemplateRows: 'auto auto minmax(0, 1fr)',
       }}
     >
       <style>
@@ -127,7 +127,7 @@ export default function ReportsPage() {
             color: '#fff',
             fontWeight: 800,
             boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
-            pointerEvents: 'none'
+            pointerEvents: 'none',
           }}
         >
           {message}
@@ -142,7 +142,7 @@ export default function ReportsPage() {
             gap: '14px',
             alignItems: 'center',
             flexWrap: 'wrap',
-            direction: 'rtl'
+            direction: 'rtl',
           }}
         >
           <div>
@@ -167,7 +167,11 @@ export default function ReportsPage() {
               style={inputStyle}
             />
 
-            <button type="button" onClick={loadReports} style={primaryButtonStyle}>
+            <button
+              type="button"
+              onClick={loadReports}
+              style={primaryButtonStyle}
+            >
               {loading ? 'جاري التحميل...' : 'تحديث'}
             </button>
           </div>
@@ -179,7 +183,7 @@ export default function ReportsPage() {
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
           gap: '10px',
-          minHeight: 0
+          minHeight: 0,
         }}
       >
         <StatCard
@@ -188,7 +192,11 @@ export default function ReportsPage() {
           highlight
         />
 
-        <StatCard title="صافي المبيعات" value={money(data.summary.net_sales)} highlight />
+        <StatCard
+          title="صافي المبيعات"
+          value={money(data.summary.net_sales)}
+          highlight
+        />
 
         <StatCard
           title="صافي الربح النهائي"
@@ -208,12 +216,31 @@ export default function ReportsPage() {
           danger
         />
 
-        <StatCard title="إجمالي المرتجعات" value={money(data.summary.total_returns)} danger />
-        <StatCard title="عدد الفواتير" value={String(data.summary.sales_count)} />
-        <StatCard title="عدد المرتجعات" value={String(data.summary.returns_count)} />
-        <StatCard title="خصومات النقاط" value={money(data.summary.loyalty_discounts)} />
-        <StatCard title="خصومات عادية" value={money(data.summary.normal_discounts)} />
-        <StatCard title="إجمالي الخصومات" value={money(data.summary.total_discounts)} />
+        <StatCard
+          title="إجمالي المرتجعات"
+          value={money(data.summary.total_returns)}
+          danger
+        />
+        <StatCard
+          title="عدد الفواتير"
+          value={String(data.summary.sales_count)}
+        />
+        <StatCard
+          title="عدد المرتجعات"
+          value={String(data.summary.returns_count)}
+        />
+        <StatCard
+          title="خصومات النقاط"
+          value={money(data.summary.loyalty_discounts)}
+        />
+        <StatCard
+          title="خصومات عادية"
+          value={money(data.summary.normal_discounts)}
+        />
+        <StatCard
+          title="إجمالي الخصومات"
+          value={money(data.summary.total_discounts)}
+        />
       </div>
 
       <div
@@ -225,29 +252,34 @@ export default function ReportsPage() {
           overflowY: 'auto',
           overflowX: 'hidden',
           alignContent: 'start',
-          paddingBottom: '24px'
+          paddingBottom: '24px',
         }}
       >
         <div
           style={{
             display: 'grid',
             gridTemplateColumns: 'minmax(320px, 1.3fr) minmax(300px, 1fr)',
-            gap: '14px'
+            gap: '14px',
           }}
         >
           <ReportTable
             title="أرصدة الحسابات المالية الحالية"
             emptyText="لا توجد حركات مالية"
-            columns={['الحساب المالي', 'إجمالي الداخل', 'إجمالي الخارج', 'الرصيد الحالي']}
+            columns={[
+              'الحساب المالي',
+              'إجمالي الداخل',
+              'إجمالي الخارج',
+              'الرصيد الحالي',
+            ]}
             rows={data.cashAccounts.map((x) => [
               x.label || getPaymentMethodLabel(x.payment_method),
               money(x.total_in),
               money(x.total_out),
-              money(x.balance)
+              money(x.balance),
             ])}
           />
           <ReportTable
-            title="أفضل المنتجات مبيعًا"
+            title="المنتجات حسب المبيعات"
             emptyText="لا توجد منتجات مباعة"
             columns={['المنتج', 'المقاس', 'اللون', 'الكمية', 'الإجمالي']}
             rows={data.topProducts.map((x) => [
@@ -255,7 +287,7 @@ export default function ReportsPage() {
               x.size || '—',
               x.color || '—',
               Number(x.net_quantity || 0),
-              money(x.net_total)
+              money(x.net_total),
             ])}
           />
 
@@ -266,7 +298,7 @@ export default function ReportsPage() {
             rows={data.paymentMethods.map((x) => [
               getPaymentMethodLabel(x.payment_method),
               x.count,
-              money(x.total)
+              money(x.total),
             ])}
           />
         </div>
@@ -275,32 +307,39 @@ export default function ReportsPage() {
           style={{
             display: 'grid',
             gridTemplateColumns: 'minmax(320px, 1fr) minmax(320px, 1fr)',
-            gap: '14px'
+            gap: '14px',
           }}
         >
           <ReportTable
             title="مخزون منخفض / نافد"
             emptyText="لا يوجد مخزون منخفض"
-            columns={['المنتج', 'باركود', 'المقاس', 'اللون', 'المخزون', 'الحد الأدنى']}
+            columns={[
+              'المنتج',
+              'باركود',
+              'المقاس',
+              'اللون',
+              'المخزون',
+              'الحد الأدنى',
+            ]}
             rows={data.lowStock.map((x) => [
               x.product_name,
               x.barcode || '—',
               x.size || '—',
               x.color || '—',
               Number(x.stock || 0),
-              Number(x.min_stock || 0)
+              Number(x.min_stock || 0),
             ])}
           />
 
           <ReportTable
-            title="أفضل العملاء"
+            title="العملاء حسب إجمالي الشراء"
             emptyText="لا توجد بيانات عملاء"
             columns={['العميل', 'الهاتف', 'عدد الفواتير', 'إجمالي الشراء']}
             rows={data.topCustomers.map((x) => [
               x.name,
               x.phone || '—',
               x.sales_count,
-              money(x.total_spent)
+              money(x.total_spent),
             ])}
           />
         </div>
@@ -309,11 +348,14 @@ export default function ReportsPage() {
           title="مبيعات الأيام"
           emptyText="لا توجد مبيعات في الفترة"
           columns={['اليوم', 'صافي المبيعات']}
-          rows={data.dailySales.map((x) => [formatDateOnly(x.day), money(x.total)])}
+          rows={data.dailySales.map((x) => [
+            formatDateOnly(x.day),
+            money(x.total),
+          ])}
         />
       </div>
     </div>
-  );
+  )
 }
 
 function StatCard({
@@ -321,13 +363,13 @@ function StatCard({
   value,
   highlight,
   success,
-  danger
+  danger,
 }: {
-  title: string;
-  value: string;
-  highlight?: boolean;
-  success?: boolean;
-  danger?: boolean;
+  title: string
+  value: string
+  highlight?: boolean
+  success?: boolean
+  danger?: boolean
 }) {
   const color = danger
     ? '#fca5a5'
@@ -335,35 +377,88 @@ function StatCard({
       ? '#6ee7b7'
       : highlight
         ? '#bfdbfe'
-        : '#e5e7eb';
+        : '#e5e7eb'
 
   return (
     <div className="glass-card" style={statCardStyle}>
       <div style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</div>
       <strong style={{ color, fontSize: '24px' }}>{value}</strong>
     </div>
-  );
+  )
 }
 
 function ReportTable({
   title,
   columns,
   rows,
-  emptyText
+  emptyText,
+  pageSize = 10,
 }: {
-  title: string;
-  columns: string[];
-  rows: any[][];
-  emptyText: string;
+  title: string
+  columns: string[]
+  rows: any[][]
+  emptyText: string
+  pageSize?: number
 }) {
+  const [page, setPage] = useState(1)
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+
+  const safePage = Math.min(Math.max(page, 1), totalPages)
+
+  const visibleRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
+
+  useEffect(() => {
+    setPage(1)
+  }, [rows])
+
+  const startItem = rows.length > 0 ? (safePage - 1) * pageSize + 1 : 0
+
+  const endItem = Math.min(safePage * pageSize, rows.length)
+
   return (
     <div className="glass-card" style={cardStyle}>
-      <h3 style={{ margin: '0 0 14px', textAlign: 'right' }}>{title}</h3>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '10px',
+          flexWrap: 'wrap',
+          direction: 'rtl',
+          marginBottom: '14px',
+        }}
+      >
+        <h3 style={{ margin: 0, textAlign: 'right' }}>{title}</h3>
+
+        {rows.length > 0 && (
+          <span
+            style={{
+              color: '#94a3b8',
+              fontSize: '12px',
+              fontWeight: 800,
+            }}
+          >
+            {startItem} - {endItem} من {rows.length}
+          </span>
+        )}
+      </div>
 
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+        <table
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            direction: 'rtl',
+          }}
+        >
           <thead>
-            <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
+            <tr
+              style={{
+                color: '#cbd5e1',
+                textAlign: 'right',
+              }}
+            >
               {columns.map((column) => (
                 <th key={column} style={thStyle}>
                   {column}
@@ -381,7 +476,7 @@ function ReportTable({
                     ...tdStyle,
                     textAlign: 'center',
                     color: '#94a3b8',
-                    padding: '24px'
+                    padding: '24px',
                   }}
                 >
                   {emptyText}
@@ -389,8 +484,13 @@ function ReportTable({
               </tr>
             )}
 
-            {rows.map((row, index) => (
-              <tr key={index} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            {visibleRows.map((row, index) => (
+              <tr
+                key={`${safePage}-${index}`}
+                style={{
+                  borderTop: '1px solid rgba(255,255,255,0.06)',
+                }}
+              >
                 {row.map((cell, cellIndex) => (
                   <td key={cellIndex} style={tdStyle}>
                     {cell}
@@ -401,28 +501,83 @@ function ReportTable({
           </tbody>
         </table>
       </div>
+
+      {totalPages > 1 && (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: '8px',
+            marginTop: '14px',
+            paddingTop: '12px',
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            direction: 'rtl',
+          }}
+        >
+          <button
+            type="button"
+            disabled={safePage <= 1}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            style={{
+              ...primaryButtonStyle,
+              height: '36px',
+              padding: '0 12px',
+              opacity: safePage <= 1 ? 0.45 : 1,
+            }}
+          >
+            السابق
+          </button>
+
+          <strong
+            style={{
+              color: '#fff',
+              minWidth: '110px',
+              textAlign: 'center',
+            }}
+          >
+            صفحة {safePage} من {totalPages}
+          </strong>
+
+          <button
+            type="button"
+            disabled={safePage >= totalPages}
+            onClick={() =>
+              setPage((current) => Math.min(totalPages, current + 1))
+            }
+            style={{
+              ...primaryButtonStyle,
+              height: '36px',
+              padding: '0 12px',
+              opacity: safePage >= totalPages ? 0.45 : 1,
+            }}
+          >
+            التالي
+          </button>
+        </div>
+      )}
     </div>
-  );
+  )
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`;
+  return `${Number(value || 0).toFixed(2)} ج.م`
 }
 
 function formatDateOnly(value?: string) {
-  if (!value) return '—';
+  if (!value) return '—'
 
   try {
-    const raw = String(value);
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
+    const raw = String(value)
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
 
     return new Date(normalized).toLocaleDateString('ar-EG', {
       year: 'numeric',
       month: '2-digit',
-      day: '2-digit'
-    });
+      day: '2-digit',
+    })
   } catch {
-    return value;
+    return value
   }
 }
 
@@ -430,15 +585,15 @@ const cardStyle: React.CSSProperties = {
   padding: '14px',
   borderRadius: '16px',
   display: 'grid',
-  gap: '10px'
-};
+  gap: '10px',
+}
 
 const statCardStyle: React.CSSProperties = {
   padding: '14px',
   borderRadius: '16px',
   display: 'grid',
-  gap: '8px'
-};
+  gap: '8px',
+}
 
 const inputStyle: React.CSSProperties = {
   height: '44px',
@@ -450,8 +605,8 @@ const inputStyle: React.CSSProperties = {
   padding: '0 12px',
   textAlign: 'right',
   direction: 'rtl',
-  boxSizing: 'border-box'
-};
+  boxSizing: 'border-box',
+}
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -461,17 +616,17 @@ const primaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontWeight: 800,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   fontWeight: 800,
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}

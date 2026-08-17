@@ -80,12 +80,16 @@ type ReturnDraftItem = {
   unit_price: number
 }
 
+const INVOICE_PAGE_SIZE = 50
+
 export default function InvoicesPage() {
   const [rows, setRows] = useState<SaleRow[]>([])
   const [total, setTotal] = useState(0)
+  const [salesPage, setSalesPage] = useState(1)
   const [activeTab, setActiveTab] = useState<InvoicesTab>('sales')
   const [returnRows, setReturnRows] = useState<ReturnRow[]>([])
   const [returnsTotal, setReturnsTotal] = useState(0)
+  const [returnsPage, setReturnsPage] = useState(1)
   const [returnsLoading, setReturnsLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [dateFrom, setDateFrom] = useState('')
@@ -104,16 +108,18 @@ export default function InvoicesPage() {
   const [returnRefundAccount, setReturnRefundAccount] = useState('store_cash')
   const [savingReturn, setSavingReturn] = useState(false)
 
-  async function loadInvoices() {
+  async function loadInvoices(page = salesPage) {
     setLoading(true)
 
     try {
+      const safePage = Math.max(1, Number(page || 1))
+
       const result = await window.api.listSales({
         search,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
-        limit: 100,
-        offset: 0,
+        limit: INVOICE_PAGE_SIZE,
+        offset: (safePage - 1) * INVOICE_PAGE_SIZE,
       })
 
       setRows(Array.isArray(result.rows) ? result.rows : [])
@@ -128,16 +134,18 @@ export default function InvoicesPage() {
     }
   }
 
-  async function loadReturns() {
+  async function loadReturns(page = returnsPage) {
     setReturnsLoading(true)
 
     try {
+      const safePage = Math.max(1, Number(page || 1))
+
       const result = await window.api.listSaleReturns({
         search,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
-        limit: 100,
-        offset: 0,
+        limit: INVOICE_PAGE_SIZE,
+        offset: (safePage - 1) * INVOICE_PAGE_SIZE,
       })
 
       setReturnRows(Array.isArray(result.rows) ? result.rows : [])
@@ -154,7 +162,10 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      void Promise.all([loadInvoices(), loadReturns()])
+      setSalesPage(1)
+      setReturnsPage(1)
+
+      void Promise.all([loadInvoices(1), loadReturns(1)])
     }, 250)
 
     return () => clearTimeout(handle)
@@ -321,8 +332,8 @@ export default function InvoicesPage() {
       setReturnItems([])
       setReturnReason('')
       setReturnRefundAccount('store_cash')
-      await loadInvoices()
-      await loadReturns()
+      await loadInvoices(salesPage)
+      await loadReturns(returnsPage)
 
       if (returnReceipt?.sale?.id) {
         const [receipt, history] = await Promise.all([
@@ -373,6 +384,13 @@ export default function InvoicesPage() {
     : 0
 
   const returnCashRefund = Math.max(0, returnTotal - returnDebtReduction)
+
+  const salesTotalPages = Math.max(1, Math.ceil(total / INVOICE_PAGE_SIZE))
+
+  const returnsTotalPages = Math.max(
+    1,
+    Math.ceil(returnsTotal / INVOICE_PAGE_SIZE),
+  )
 
   return (
     <div
@@ -474,7 +492,10 @@ export default function InvoicesPage() {
           <button
             type="button"
             onClick={() => {
-              void Promise.all([loadInvoices(), loadReturns()])
+              void Promise.all([
+                loadInvoices(salesPage),
+                loadReturns(returnsPage),
+              ])
             }}
             style={primaryButtonStyle}
           >
@@ -1027,6 +1048,18 @@ export default function InvoicesPage() {
               </tbody>
             </table>
 
+            <PaginationBar
+              page={salesPage}
+              totalPages={salesTotalPages}
+              totalItems={total}
+              pageSize={INVOICE_PAGE_SIZE}
+              loading={loading}
+              onPageChange={(page) => {
+                setSalesPage(page)
+                void loadInvoices(page)
+              }}
+            />
+
             {selectedReturnHistory.length > 0 && (
               <div
                 style={{
@@ -1305,6 +1338,18 @@ export default function InvoicesPage() {
               </tbody>
             </table>
 
+            <PaginationBar
+              page={returnsPage}
+              totalPages={returnsTotalPages}
+              totalItems={returnsTotal}
+              pageSize={INVOICE_PAGE_SIZE}
+              loading={returnsLoading}
+              onPageChange={(page) => {
+                setReturnsPage(page)
+                void loadReturns(page)
+              }}
+            />
+
             <div style={{ display: 'grid', gap: '10px', marginTop: '18px' }}>
               <label style={{ color: '#cbd5e1', fontWeight: 800 }}>
                 سبب المرتجع
@@ -1406,6 +1451,119 @@ export default function InvoicesPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function PaginationBar({
+  page,
+  totalPages,
+  totalItems,
+  pageSize,
+  loading,
+  onPageChange,
+}: {
+  page: number
+  totalPages: number
+  totalItems: number
+  pageSize: number
+  loading?: boolean
+  onPageChange: (page: number) => void
+}) {
+  if (totalItems <= 0) {
+    return null
+  }
+
+  const safePage = Math.min(Math.max(page, 1), Math.max(totalPages, 1))
+
+  const startItem = (safePage - 1) * pageSize + 1
+
+  const endItem = Math.min(safePage * pageSize, totalItems)
+
+  const buttonStyle = (disabled: boolean): React.CSSProperties => ({
+    ...smallButtonStyle,
+    opacity: disabled ? 0.45 : 1,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+  })
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: '12px',
+        flexWrap: 'wrap',
+        direction: 'rtl',
+        borderTop: '1px solid rgba(255,255,255,0.08)',
+        marginTop: '14px',
+        paddingTop: '14px',
+      }}
+    >
+      <div
+        style={{
+          color: '#94a3b8',
+          fontWeight: 800,
+          fontSize: '13px',
+        }}
+      >
+        عرض {startItem} - {endItem} من {totalItems}
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          flexWrap: 'wrap',
+        }}
+      >
+        <button
+          type="button"
+          disabled={loading || safePage <= 1}
+          onClick={() => onPageChange(1)}
+          style={buttonStyle(Boolean(loading || safePage <= 1))}
+        >
+          الأولى
+        </button>
+
+        <button
+          type="button"
+          disabled={loading || safePage <= 1}
+          onClick={() => onPageChange(Math.max(1, safePage - 1))}
+          style={buttonStyle(Boolean(loading || safePage <= 1))}
+        >
+          السابق
+        </button>
+
+        <strong
+          style={{
+            color: '#fff',
+            minWidth: '100px',
+            textAlign: 'center',
+          }}
+        >
+          صفحة {safePage} من {totalPages}
+        </strong>
+
+        <button
+          type="button"
+          disabled={loading || safePage >= totalPages}
+          onClick={() => onPageChange(Math.min(totalPages, safePage + 1))}
+          style={buttonStyle(Boolean(loading || safePage >= totalPages))}
+        >
+          التالي
+        </button>
+
+        <button
+          type="button"
+          disabled={loading || safePage >= totalPages}
+          onClick={() => onPageChange(totalPages)}
+          style={buttonStyle(Boolean(loading || safePage >= totalPages))}
+        >
+          الأخيرة
+        </button>
+      </div>
     </div>
   )
 }

@@ -327,7 +327,6 @@ export function getReportsSummary(input?: ReportFilter) {
 
     ORDER BY net_quantity DESC
 
-    LIMIT 10
   `,
     )
     .all(...combinedWhere.params)
@@ -362,7 +361,6 @@ export function getReportsSummary(input?: ReportFilter) {
 
     GROUP BY date(x.created_at, 'localtime')
     ORDER BY day ASC
-    LIMIT 60
   `,
     )
     .all(...combinedWhere.params)
@@ -426,7 +424,6 @@ export function getReportsSummary(input?: ReportFilter) {
       GROUP BY pv.id
       HAVING stock <= pv.min_stock
       ORDER BY stock ASC
-      LIMIT 20
     `,
     )
     .all()
@@ -489,7 +486,6 @@ export function getReportsSummary(input?: ReportFilter) {
 
     ORDER BY total_spent DESC
 
-    LIMIT 10
   `,
     )
     .all(...combinedWhere.params)
