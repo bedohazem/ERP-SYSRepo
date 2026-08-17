@@ -544,6 +544,20 @@ export default function InvoicesPage() {
             boxSizing: 'border-box',
           }}
         >
+          <h3 style={{ margin: 0 }}>سجل المبيعات</h3>
+
+          <PaginationBar
+            page={salesPage}
+            totalPages={salesTotalPages}
+            totalItems={total}
+            pageSize={INVOICE_PAGE_SIZE}
+            loading={loading}
+            onPageChange={(page) => {
+              setSalesPage(page)
+              void loadInvoices(page)
+            }}
+          />
+
           <table
             style={{
               width: '100%',
@@ -807,6 +821,18 @@ export default function InvoicesPage() {
             <h3 style={{ margin: 0 }}>سجل المرتجعات</h3>
           </div>
 
+          <PaginationBar
+            page={returnsPage}
+            totalPages={returnsTotalPages}
+            totalItems={returnsTotal}
+            pageSize={INVOICE_PAGE_SIZE}
+            loading={returnsLoading}
+            onPageChange={(page) => {
+              setReturnsPage(page)
+              void loadReturns(page)
+            }}
+          />
+
           <table
             style={{
               width: '100%',
@@ -1047,18 +1073,6 @@ export default function InvoicesPage() {
                 ))}
               </tbody>
             </table>
-
-            <PaginationBar
-              page={salesPage}
-              totalPages={salesTotalPages}
-              totalItems={total}
-              pageSize={INVOICE_PAGE_SIZE}
-              loading={loading}
-              onPageChange={(page) => {
-                setSalesPage(page)
-                void loadInvoices(page)
-              }}
-            />
 
             {selectedReturnHistory.length > 0 && (
               <div
@@ -1338,18 +1352,6 @@ export default function InvoicesPage() {
               </tbody>
             </table>
 
-            <PaginationBar
-              page={returnsPage}
-              totalPages={returnsTotalPages}
-              totalItems={returnsTotal}
-              pageSize={INVOICE_PAGE_SIZE}
-              loading={returnsLoading}
-              onPageChange={(page) => {
-                setReturnsPage(page)
-                void loadReturns(page)
-              }}
-            />
-
             <div style={{ display: 'grid', gap: '10px', marginTop: '18px' }}>
               <label style={{ color: '#cbd5e1', fontWeight: 800 }}>
                 سبب المرتجع
@@ -1489,30 +1491,21 @@ function PaginationBar({
   return (
     <div
       style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: '12px',
-        flexWrap: 'wrap',
+        display: 'grid',
+        justifyItems: 'center',
+        gap: '8px',
         direction: 'rtl',
-        borderTop: '1px solid rgba(255,255,255,0.08)',
-        marginTop: '14px',
-        paddingTop: '14px',
+
+        marginBottom: '12px',
+        paddingBottom: '12px',
+
+        borderBottom: '1px solid rgba(255,255,255,0.10)',
       }}
     >
       <div
         style={{
-          color: '#94a3b8',
-          fontWeight: 800,
-          fontSize: '13px',
-        }}
-      >
-        عرض {startItem} - {endItem} من {totalItems}
-      </div>
-
-      <div
-        style={{
           display: 'flex',
+          justifyContent: 'center',
           alignItems: 'center',
           gap: '8px',
           flexWrap: 'wrap',
@@ -1539,8 +1532,9 @@ function PaginationBar({
         <strong
           style={{
             color: '#fff',
-            minWidth: '100px',
+            minWidth: '110px',
             textAlign: 'center',
+            fontSize: '14px',
           }}
         >
           صفحة {safePage} من {totalPages}
@@ -1563,6 +1557,17 @@ function PaginationBar({
         >
           الأخيرة
         </button>
+      </div>
+
+      <div
+        style={{
+          color: '#94a3b8',
+          fontWeight: 800,
+          fontSize: '12px',
+          textAlign: 'center',
+        }}
+      >
+        عرض {startItem} - {endItem} من {totalItems}
       </div>
     </div>
   )
