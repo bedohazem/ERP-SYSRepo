@@ -1,195 +1,242 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react'
+
+import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 
 type InventoryRow = {
-  variant_id: number;
-  product_id: number;
-  product_name: string;
-  category_id?: number | null;
-  category_name?: string | null;
-  barcode?: string | null;
-  size?: string | null;
-  color?: string | null;
-  buy_price: number;
-  sell_price: number;
-  min_stock: number;
-  is_active: number;
-  product_is_active: number;
-  stock: number;
-};
+  variant_id: number
+  product_id: number
+  product_name: string
+  category_id?: number | null
+  category_name?: string | null
+  barcode?: string | null
+  size?: string | null
+  color?: string | null
+  buy_price: number
+  sell_price: number
+  min_stock: number
+  is_active: number
+  product_is_active: number
+  stock: number
+}
 
 type MovementRow = {
-  id: number;
-  variant_id: number;
-  type: 'in' | 'out';
-  quantity: number;
-  signed_quantity: number;
-  reference_id?: number | null;
-  reference_type?: string | null;
-  notes?: string | null;
-  created_at: string;
-  product_name: string;
-  barcode?: string | null;
-  size?: string | null;
-  color?: string | null;
-};
+  id: number
+  variant_id: number
+  type: 'in' | 'out'
+  quantity: number
+  signed_quantity: number
+  reference_id?: number | null
+  reference_type?: string | null
+  notes?: string | null
+  created_at: string
+  product_name: string
+  barcode?: string | null
+  size?: string | null
+  color?: string | null
+}
 
 type Category = {
-  id: number;
-  name: string;
-  description?: string | null;
-};
+  id: number
+  name: string
+  description?: string | null
+}
 
 export default function InventoryPage() {
-  const [rows, setRows] = useState<InventoryRow[]>([]);
-  const [movements, setMovements] = useState<MovementRow[]>([]);
-  const [search, setSearch] = useState('');
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [status, setStatus] = useState<'all' | 'available' | 'low' | 'out'>('all');
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
+  const [rows, setRows] = useState<InventoryRow[]>([])
+  const [inventoryTotal, setInventoryTotal] = useState(0)
+  const [inventoryPage, setInventoryPage] = useState(1)
+  const [movements, setMovements] = useState<MovementRow[]>([])
+  const [movementsTotal, setMovementsTotal] = useState(0)
+  const [movementsPage, setMovementsPage] = useState(1)
+  const [search, setSearch] = useState('')
+  const [categories, setCategories] = useState<Category[]>([])
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [status, setStatus] = useState<'all' | 'available' | 'low' | 'out'>(
+    'all',
+  )
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState('')
 
-  const [adjustItem, setAdjustItem] = useState<InventoryRow | null>(null);
-  const [targetStock, setTargetStock] = useState('');
-  const [adjustNotes, setAdjustNotes] = useState('');
-  const [savingAdjust, setSavingAdjust] = useState(false);
+  const [adjustItem, setAdjustItem] = useState<InventoryRow | null>(null)
+  const [targetStock, setTargetStock] = useState('')
+  const [adjustNotes, setAdjustNotes] = useState('')
+  const [savingAdjust, setSavingAdjust] = useState(false)
 
-  const [historyItem, setHistoryItem] = useState<InventoryRow | null>(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyItem, setHistoryItem] = useState<InventoryRow | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
 
-  const stats = useMemo(() => {
-    const positiveRows = rows.filter((x) => Number(x.stock || 0) > 0);
-
-    return {
-      total: rows.length,
-      available: rows.filter((x) => Number(x.stock || 0) > Number(x.min_stock || 0)).length,
-      low: rows.filter((x) => Number(x.stock || 0) > 0 && Number(x.stock || 0) <= Number(x.min_stock || 0)).length,
-      out: rows.filter((x) => Number(x.stock || 0) === 0).length,
-
-      totalBuyValue: positiveRows.reduce((sum, item) => {
-        return sum + Number(item.stock || 0) * Number(item.buy_price || 0);
-      }, 0),
-
-      totalSellValue: positiveRows.reduce((sum, item) => {
-        return sum + Number(item.stock || 0) * Number(item.sell_price || 0);
-      }, 0)
-    };
-  }, [rows]);
+  const [stats, setStats] = useState({
+    total: 0,
+    available: 0,
+    low: 0,
+    out: 0,
+    totalBuyValue: 0,
+    totalSellValue: 0,
+  })
 
   useEffect(() => {
-    let mounted = true;
+    let mounted = true
 
     window.api
       .getCategories()
       .then((data) => {
-        if (!mounted) return;
-        setCategories(Array.isArray(data) ? data : []);
+        if (!mounted) return
+        setCategories(Array.isArray(data) ? data : [])
       })
       .catch((error) => {
-        console.error('Failed to load categories:', error);
-        setCategories([]);
-      });
+        console.error('Failed to load categories:', error)
+        setCategories([])
+      })
 
     return () => {
-      mounted = false;
-    };
-  }, []);
+      mounted = false
+    }
+  }, [])
 
-  async function loadInventory() {
-    setLoading(true);
+  async function loadInventory(page = inventoryPage) {
+    setLoading(true)
 
     try {
-      const data = await window.api.getInventoryList({
+      const safePage = Math.max(1, Number(page || 1))
+
+      const result = await window.api.getInventoryPage({
         search,
         status,
-        categoryId: categoryFilter
-      });
+        categoryId: categoryFilter,
+        limit: SYSTEM_PAGE_SIZE,
+        offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
+      })
 
-      setRows(Array.isArray(data) ? data : []);
+      const total = Number(result.total || 0)
+
+      const totalPages = Math.max(1, Math.ceil(total / SYSTEM_PAGE_SIZE))
+
+      if (safePage > totalPages) {
+        setInventoryPage(totalPages)
+        await loadInventory(totalPages)
+        return
+      }
+
+      setRows(Array.isArray(result.rows) ? result.rows : [])
+
+      setInventoryTotal(total)
+      setInventoryPage(safePage)
+
+      setStats({
+        total: Number(result.summary?.total || 0),
+        available: Number(result.summary?.available || 0),
+        low: Number(result.summary?.low || 0),
+        out: Number(result.summary?.out || 0),
+        totalBuyValue: Number(result.summary?.totalBuyValue || 0),
+        totalSellValue: Number(result.summary?.totalSellValue || 0),
+      })
     } catch (error) {
-      console.error('Failed to load inventory:', error);
-      showMessage('حدث خطأ أثناء تحميل المخزون');
-      setRows([]);
+      console.error('Failed to load inventory:', error)
+
+      showMessage('حدث خطأ أثناء تحميل المخزون')
+
+      setRows([])
+      setInventoryTotal(0)
+
+      setStats({
+        total: 0,
+        available: 0,
+        low: 0,
+        out: 0,
+        totalBuyValue: 0,
+        totalSellValue: 0,
+      })
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      void loadInventory();
-    }, 250);
+      setInventoryPage(1)
+      void loadInventory(1)
+    }, 250)
 
-    return () => clearTimeout(handle);
-  }, [search, status, categoryFilter]);
+    return () => clearTimeout(handle)
+  }, [search, status, categoryFilter])
 
   function showMessage(text: string) {
-    setMessage(text);
+    setMessage(text)
 
     setTimeout(() => {
-      setMessage('');
-    }, 1800);
+      setMessage('')
+    }, 1800)
   }
 
   function openAdjust(item: InventoryRow) {
-    setAdjustItem(item);
-    setTargetStock(String(Number(item.stock || 0)));
-    setAdjustNotes('');
+    setAdjustItem(item)
+    setTargetStock(String(Number(item.stock || 0)))
+    setAdjustNotes('')
   }
 
   async function saveAdjustment() {
-    if (!adjustItem) return;
-    if (savingAdjust) return;
+    if (!adjustItem) return
+    if (savingAdjust) return
 
-    const nextStock = Number(targetStock);
+    const nextStock = Number(targetStock)
 
     if (!Number.isFinite(nextStock) || nextStock < 0) {
-      showMessage('اكتب مخزون صحيح');
-      return;
+      showMessage('اكتب مخزون صحيح')
+      return
     }
 
-    setSavingAdjust(true);
+    setSavingAdjust(true)
 
     try {
       const result = await window.api.adjustVariantStock({
         variant_id: adjustItem.variant_id,
         target_stock: nextStock,
-        notes: adjustNotes.trim() || null
-      });
+        notes: adjustNotes.trim() || null,
+      })
 
       showMessage(
         result.diff === 0
           ? 'لا يوجد تغيير في المخزون'
-          : `تم تعديل المخزون من ${result.old_stock} إلى ${result.new_stock}`
-      );
+          : `تم تعديل المخزون من ${result.old_stock} إلى ${result.new_stock}`,
+      )
 
-      setAdjustItem(null);
-      await loadInventory();
+      setAdjustItem(null)
+      await loadInventory(inventoryPage)
     } catch (error) {
-      console.error('Failed to adjust stock:', error);
-      showMessage('حدث خطأ أثناء تسوية المخزون');
+      console.error('Failed to adjust stock:', error)
+      showMessage('حدث خطأ أثناء تسوية المخزون')
     } finally {
-      setSavingAdjust(false);
+      setSavingAdjust(false)
     }
   }
 
-  async function openHistory(item: InventoryRow) {
-    setHistoryItem(item);
-    setHistoryLoading(true);
+  async function openHistory(item: InventoryRow, page = 1) {
+    setHistoryItem(item)
+    setHistoryLoading(true)
 
     try {
-      const data = await window.api.getStockMovements({
-        variant_id: item.variant_id,
-        limit: 200
-      });
+      const safePage = Math.max(1, Number(page || 1))
 
-      setMovements(Array.isArray(data) ? data : []);
+      const result = await window.api.getStockMovements({
+        variant_id: item.variant_id,
+        limit: SYSTEM_PAGE_SIZE,
+        offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
+      })
+
+      setMovements(Array.isArray(result.rows) ? result.rows : [])
+
+      setMovementsTotal(Number(result.total || 0))
+
+      setMovementsPage(safePage)
     } catch (error) {
-      console.error('Failed to load stock movements:', error);
-      showMessage('حدث خطأ أثناء تحميل سجل الحركات');
-      setMovements([]);
+      console.error('Failed to load stock movements:', error)
+
+      showMessage('حدث خطأ أثناء تحميل سجل الحركات')
+
+      setMovements([])
+      setMovementsTotal(0)
     } finally {
-      setHistoryLoading(false);
+      setHistoryLoading(false)
     }
   }
 
@@ -197,38 +244,40 @@ export default function InventoryPage() {
     try {
       const inventoryRows = await window.api.getInventoryList({
         search: '',
-        status: 'all'
-      });
+        status: 'all',
+      })
 
-      const printRows: InventoryRow[] = Array.isArray(inventoryRows) ? inventoryRows : [];
-      const html = buildInventoryEmployeesPdfHtml(printRows);
+      const printRows: InventoryRow[] = Array.isArray(inventoryRows)
+        ? inventoryRows
+        : []
+      const html = buildInventoryEmployeesPdfHtml(printRows)
 
       const result = await window.api.savePdfFromHtml({
         html,
         defaultFileName: `inventory-employees-${new Date().toISOString().slice(0, 10)}.pdf`,
-        landscape: true
-      });
+        landscape: true,
+      })
 
-      if (result?.canceled) return;
+      if (result?.canceled) return
 
-      showMessage('تم حفظ PDF المخزون بنجاح');
+      showMessage('تم حفظ PDF المخزون بنجاح')
     } catch (error) {
-      console.error('Failed to save inventory PDF:', error);
-      showMessage('حدث خطأ أثناء حفظ PDF المخزون');
+      console.error('Failed to save inventory PDF:', error)
+      showMessage('حدث خطأ أثناء حفظ PDF المخزون')
     }
   }
 
   return (
-      <div
-        style={{
-          display: 'grid',
-          gap: '18px',
-          height: '100%',
-          minHeight: 0,
-          overflow: 'hidden',
-          gridTemplateRows: 'auto auto minmax(0, 1fr)'
-        }}
-      >
+    <div
+      style={{
+        display: 'grid',
+        gap: '18px',
+        height: '100%',
+        minHeight: 0,
+        overflow: 'hidden',
+        gridTemplateRows: 'auto auto minmax(0, 1fr)',
+      }}
+    >
       {message && (
         <div
           style={{
@@ -243,7 +292,7 @@ export default function InventoryPage() {
             color: '#fff',
             fontWeight: 800,
             boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
-            pointerEvents: 'none'
+            pointerEvents: 'none',
           }}
         >
           {message}
@@ -258,7 +307,7 @@ export default function InventoryPage() {
             gap: '14px',
             alignItems: 'center',
             flexWrap: 'wrap',
-            direction: 'rtl'
+            direction: 'rtl',
           }}
         >
           <div>
@@ -269,11 +318,19 @@ export default function InventoryPage() {
           </div>
 
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button type="button" onClick={downloadInventoryEmployeesPdf} style={secondaryButtonStyle}>
+            <button
+              type="button"
+              onClick={downloadInventoryEmployeesPdf}
+              style={secondaryButtonStyle}
+            >
               PDF المخزون
             </button>
 
-            <button type="button" onClick={loadInventory} style={primaryButtonStyle}>
+            <button
+              type="button"
+              onClick={() => void loadInventory(inventoryPage)}
+              style={primaryButtonStyle}
+            >
               {loading ? 'جاري التحميل...' : 'تحديث'}
             </button>
           </div>
@@ -284,7 +341,7 @@ export default function InventoryPage() {
             display: 'grid',
             gridTemplateColumns: 'minmax(260px, 1fr) 180px 220px',
             gap: '12px',
-            direction: 'rtl'
+            direction: 'rtl',
           }}
         >
           <input
@@ -324,7 +381,7 @@ export default function InventoryPage() {
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-          gap: '14px'
+          gap: '14px',
         }}
       >
         <StatCard title="كل الأصناف" value={String(stats.total)} />
@@ -332,7 +389,11 @@ export default function InventoryPage() {
         <StatCard title="منخفض" value={String(stats.low)} warning />
         <StatCard title="نافد" value={String(stats.out)} danger />
         <StatCard title="إجمالي الشراء" value={money(stats.totalBuyValue)} />
-        <StatCard title="إجمالي البيع" value={money(stats.totalSellValue)} success />
+        <StatCard
+          title="إجمالي البيع"
+          value={money(stats.totalSellValue)}
+          success
+        />
       </div>
 
       <div
@@ -344,15 +405,24 @@ export default function InventoryPage() {
           height: '100%',
           minHeight: 0,
           maxWidth: '100%',
-          boxSizing: 'border-box'
+          boxSizing: 'border-box',
         }}
       >
+        <PaginationBar
+          page={inventoryPage}
+          totalItems={inventoryTotal}
+          loading={loading}
+          onPageChange={(page) => {
+            void loadInventory(page)
+          }}
+        />
+
         <table
           style={{
             width: '100%',
             minWidth: '980px',
             borderCollapse: 'collapse',
-            direction: 'rtl'
+            direction: 'rtl',
           }}
         >
           <colgroup>
@@ -389,7 +459,9 @@ export default function InventoryPage() {
                   style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                 >
                   <td style={tdStyle} title={item.product_name}>
-                    <div style={{ display: 'grid', gap: '4px', minWidth: '180px' }}>
+                    <div
+                      style={{ display: 'grid', gap: '4px', minWidth: '180px' }}
+                    >
                       <strong>{item.product_name}</strong>
 
                       <span style={{ color: '#94a3b8', fontSize: '12px' }}>
@@ -400,7 +472,13 @@ export default function InventoryPage() {
                         {item.size || '—'} / {item.color || '—'}
                       </span>
 
-                      <span style={{ color: '#38bdf8', fontSize: '12px', fontWeight: 800 }}>
+                      <span
+                        style={{
+                          color: '#38bdf8',
+                          fontSize: '12px',
+                          fontWeight: 800,
+                        }}
+                      >
                         التصنيف: {item.category_name || 'بدون تصنيف'}
                       </span>
                     </div>
@@ -410,7 +488,7 @@ export default function InventoryPage() {
                     style={{
                       ...tdStyle,
                       fontWeight: 900,
-                      color: stockColor(item)
+                      color: stockColor(item),
                     }}
                   >
                     <div style={{ display: 'grid', gap: '3px' }}>
@@ -427,9 +505,13 @@ export default function InventoryPage() {
                   </td>
 
                   <td style={tdStyle}>
-                    <div style={{ display: 'grid', gap: '4px', minWidth: '120px' }}>
+                    <div
+                      style={{ display: 'grid', gap: '4px', minWidth: '120px' }}
+                    >
                       <span>شراء: {money(item.buy_price)}</span>
-                      <span style={{ color: '#6ee7b7' }}>بيع: {money(item.sell_price)}</span>
+                      <span style={{ color: '#6ee7b7' }}>
+                        بيع: {money(item.sell_price)}
+                      </span>
                     </div>
                   </td>
 
@@ -439,7 +521,7 @@ export default function InventoryPage() {
                         display: 'flex',
                         gap: '8px',
                         flexWrap: 'nowrap',
-                        alignItems: 'center'
+                        alignItems: 'center',
                       }}
                     >
                       <button
@@ -470,7 +552,7 @@ export default function InventoryPage() {
                     ...tdStyle,
                     textAlign: 'center',
                     color: '#94a3b8',
-                    padding: '28px'
+                    padding: '28px',
                   }}
                 >
                   لا توجد أصناف
@@ -486,7 +568,9 @@ export default function InventoryPage() {
           <div className="theme-modal-card" style={modalStyle}>
             <h3 style={{ margin: '0 0 8px' }}>تسوية مخزون</h3>
 
-            <p style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700 }}>
+            <p
+              style={{ margin: '0 0 18px', color: '#94a3b8', fontWeight: 700 }}
+            >
               {adjustItem.product_name} | {adjustItem.size || '—'} |{' '}
               {adjustItem.color || '—'}
             </p>
@@ -499,7 +583,7 @@ export default function InventoryPage() {
                   readOnly
                   style={{
                     ...inputStyle,
-                    opacity: 0.7
+                    opacity: 0.7,
                   }}
                 />
               </div>
@@ -534,10 +618,11 @@ export default function InventoryPage() {
                   background: 'rgba(37,99,235,0.10)',
                   border: '1px solid rgba(37,99,235,0.25)',
                   color: '#bfdbfe',
-                  fontWeight: 800
+                  fontWeight: 800,
                 }}
               >
-                الفرق: {Number(targetStock || 0) - Number(adjustItem.stock || 0)}
+                الفرق:{' '}
+                {Number(targetStock || 0) - Number(adjustItem.stock || 0)}
               </div>
             </div>
 
@@ -546,7 +631,7 @@ export default function InventoryPage() {
                 display: 'flex',
                 gap: '10px',
                 justifyContent: 'flex-start',
-                marginTop: '22px'
+                marginTop: '22px',
               }}
             >
               <button
@@ -555,7 +640,7 @@ export default function InventoryPage() {
                 disabled={savingAdjust}
                 style={{
                   ...primaryButtonStyle,
-                  opacity: savingAdjust ? 0.6 : 1
+                  opacity: savingAdjust ? 0.6 : 1,
                 }}
               >
                 {savingAdjust ? 'جاري الحفظ...' : 'حفظ التسوية'}
@@ -579,7 +664,7 @@ export default function InventoryPage() {
             className="theme-modal-card"
             style={{
               ...modalStyle,
-              width: '900px'
+              width: '900px',
             }}
           >
             <div
@@ -588,7 +673,7 @@ export default function InventoryPage() {
                 justifyContent: 'space-between',
                 gap: '12px',
                 alignItems: 'center',
-                marginBottom: '14px'
+                marginBottom: '14px',
               }}
             >
               <div>
@@ -602,8 +687,8 @@ export default function InventoryPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setHistoryItem(null);
-                  setMovements([]);
+                  setHistoryItem(null)
+                  setMovements([])
                 }}
                 style={closeButtonStyle}
               >
@@ -611,8 +696,23 @@ export default function InventoryPage() {
               </button>
             </div>
 
+            <PaginationBar
+              page={movementsPage}
+              totalItems={movementsTotal}
+              loading={historyLoading}
+              onPageChange={(page) => {
+                void openHistory(historyItem, page)
+              }}
+            />
+
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}>
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  direction: 'rtl',
+                }}
+              >
                 <thead>
                   <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                     <th style={thStyle}>التاريخ</th>
@@ -626,7 +726,10 @@ export default function InventoryPage() {
                 <tbody>
                   {historyLoading && (
                     <tr>
-                      <td colSpan={5} style={{ ...tdStyle, textAlign: 'center' }}>
+                      <td
+                        colSpan={5}
+                        style={{ ...tdStyle, textAlign: 'center' }}
+                      >
                         جاري التحميل...
                       </td>
                     </tr>
@@ -636,9 +739,13 @@ export default function InventoryPage() {
                     movements.map((movement) => (
                       <tr
                         key={movement.id}
-                        style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                        style={{
+                          borderTop: '1px solid rgba(255,255,255,0.06)',
+                        }}
                       >
-                        <td style={tdStyle}>{formatDate(movement.created_at)}</td>
+                        <td style={tdStyle}>
+                          {formatDate(movement.created_at)}
+                        </td>
                         <td style={tdStyle}>{movementTypeName(movement)}</td>
                         <td
                           style={{
@@ -647,7 +754,7 @@ export default function InventoryPage() {
                             color:
                               Number(movement.signed_quantity || 0) >= 0
                                 ? '#6ee7b7'
-                                : '#fca5a5'
+                                : '#fca5a5',
                           }}
                         >
                           {Number(movement.signed_quantity || 0) > 0 ? '+' : ''}
@@ -669,7 +776,7 @@ export default function InventoryPage() {
                           ...tdStyle,
                           textAlign: 'center',
                           color: '#94a3b8',
-                          padding: '24px'
+                          padding: '24px',
                         }}
                       >
                         لا توجد حركات مخزون
@@ -683,12 +790,14 @@ export default function InventoryPage() {
             <button
               type="button"
               onClick={() => {
-                setHistoryItem(null);
-                setMovements([]);
+                setHistoryItem(null)
+                setMovements([])
+                setMovementsTotal(0)
+                setMovementsPage(1)
               }}
               style={{
                 ...secondaryButtonStyle,
-                marginTop: '18px'
+                marginTop: '18px',
               }}
             >
               إغلاق
@@ -697,28 +806,29 @@ export default function InventoryPage() {
         </div>
       )}
     </div>
-  );
+  )
 }
 
 function buildInventoryEmployeesPdfHtml(printRows: InventoryRow[]) {
-
   const availableCount = printRows.filter(
-    (item) => Number(item.stock || 0) > Number(item.min_stock || 0)
-  ).length;
+    (item) => Number(item.stock || 0) > Number(item.min_stock || 0),
+  ).length
 
   const lowCount = printRows.filter(
     (item) =>
       Number(item.stock || 0) > 0 &&
-      Number(item.stock || 0) <= Number(item.min_stock || 0)
-  ).length;
+      Number(item.stock || 0) <= Number(item.min_stock || 0),
+  ).length
 
-  const outCount = printRows.filter((item) => Number(item.stock || 0) === 0).length;
+  const outCount = printRows.filter(
+    (item) => Number(item.stock || 0) === 0,
+  ).length
 
   const rowsHtml = printRows
     .map((item, index) => {
-      const stock = Number(item.stock || 0);
-      const minStock = Number(item.min_stock || 0);
-      const statusText = getInventoryStatusText(item);
+      const stock = Number(item.stock || 0)
+      const minStock = Number(item.min_stock || 0)
+      const statusText = getInventoryStatusText(item)
 
       return `
         <tr>
@@ -735,9 +845,9 @@ function buildInventoryEmployeesPdfHtml(printRows: InventoryRow[]) {
           <td>${statusText}</td>
           <td class="notes-cell">&nbsp;</td>
         </tr>
-      `;
+      `
     })
-    .join('');
+    .join('')
 
   return `
     <!doctype html>
@@ -927,7 +1037,7 @@ function buildInventoryEmployeesPdfHtml(printRows: InventoryRow[]) {
         </div>
       </body>
     </html>
-  `;
+  `
 }
 
 function StatCard({
@@ -935,13 +1045,13 @@ function StatCard({
   value,
   success,
   warning,
-  danger
+  danger,
 }: {
-  title: string;
-  value: string;
-  success?: boolean;
-  warning?: boolean;
-  danger?: boolean;
+  title: string
+  value: string
+  success?: boolean
+  warning?: boolean
+  danger?: boolean
 }) {
   const color = danger
     ? '#fca5a5'
@@ -949,40 +1059,40 @@ function StatCard({
       ? '#fdba74'
       : success
         ? '#6ee7b7'
-        : '#e5e7eb';
+        : '#e5e7eb'
 
   return (
     <div className="glass-card" style={statCardStyle}>
       <div style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</div>
       <strong style={{ color, fontSize: '21px' }}>{value}</strong>
     </div>
-  );
+  )
 }
 
 function StatusBadge({ item }: { item: InventoryRow }) {
-  const stock = Number(item.stock || 0);
-  const minStock = Number(item.min_stock || 0);
+  const stock = Number(item.stock || 0)
+  const minStock = Number(item.min_stock || 0)
 
-  let text = 'متاح';
-  let color = '#6ee7b7';
-  let background = 'rgba(16,185,129,0.10)';
-  let border = 'rgba(16,185,129,0.25)';
+  let text = 'متاح'
+  let color = '#6ee7b7'
+  let background = 'rgba(16,185,129,0.10)'
+  let border = 'rgba(16,185,129,0.25)'
 
   if (stock < 0) {
-    text = 'سالب';
-    color = '#fca5a5';
-    background = 'rgba(239,68,68,0.10)';
-    border = 'rgba(239,68,68,0.25)';
+    text = 'سالب'
+    color = '#fca5a5'
+    background = 'rgba(239,68,68,0.10)'
+    border = 'rgba(239,68,68,0.25)'
   } else if (stock === 0) {
-    text = 'نافد';
-    color = '#fca5a5';
-    background = 'rgba(239,68,68,0.10)';
-    border = 'rgba(239,68,68,0.25)';
+    text = 'نافد'
+    color = '#fca5a5'
+    background = 'rgba(239,68,68,0.10)'
+    border = 'rgba(239,68,68,0.25)'
   } else if (stock <= minStock) {
-    text = 'منخفض';
-    color = '#fdba74';
-    background = 'rgba(249,115,22,0.10)';
-    border = 'rgba(249,115,22,0.25)';
+    text = 'منخفض'
+    color = '#fdba74'
+    background = 'rgba(249,115,22,0.10)'
+    border = 'rgba(249,115,22,0.25)'
   }
 
   return (
@@ -994,32 +1104,32 @@ function StatusBadge({ item }: { item: InventoryRow }) {
         color,
         background,
         border: `1px solid ${border}`,
-        fontWeight: 900
+        fontWeight: 900,
       }}
     >
       {text}
     </span>
-  );
+  )
 }
 
 function stockColor(item: InventoryRow) {
-  const stock = Number(item.stock || 0);
-  const minStock = Number(item.min_stock || 0);
+  const stock = Number(item.stock || 0)
+  const minStock = Number(item.min_stock || 0)
 
-  if (stock < 0) return '#fca5a5';
-  if (stock === 0) return '#fca5a5';
-  if (stock <= minStock) return '#fdba74';
-  return '#6ee7b7';
+  if (stock < 0) return '#fca5a5'
+  if (stock === 0) return '#fca5a5'
+  if (stock <= minStock) return '#fdba74'
+  return '#6ee7b7'
 }
 
 function getInventoryStatusText(item: InventoryRow) {
-  const stock = Number(item.stock || 0);
-  const minStock = Number(item.min_stock || 0);
+  const stock = Number(item.stock || 0)
+  const minStock = Number(item.min_stock || 0)
 
-  if (stock < 0) return 'سالب';
-  if (stock === 0) return 'نافد';
-  if (stock <= minStock) return 'منخفض';
-  return 'متاح';
+  if (stock < 0) return 'سالب'
+  if (stock === 0) return 'نافد'
+  if (stock <= minStock) return 'منخفض'
+  return 'متاح'
 }
 
 function escapeHtml(value: string) {
@@ -1028,41 +1138,41 @@ function escapeHtml(value: string) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/'/g, '&#039;')
 }
 
 function movementTypeName(movement: MovementRow) {
-  if (movement.reference_type === 'sale') return 'بيع';
-  if (movement.reference_type === 'return') return 'مرتجع';
-  if (movement.reference_type === 'opening_stock') return 'رصيد افتتاحي';
-  if (movement.reference_type === 'manual_adjust') return 'تسوية يدوية';
+  if (movement.reference_type === 'sale') return 'بيع'
+  if (movement.reference_type === 'return') return 'مرتجع'
+  if (movement.reference_type === 'opening_stock') return 'رصيد افتتاحي'
+  if (movement.reference_type === 'manual_adjust') return 'تسوية يدوية'
 
-  if (movement.type === 'in') return 'دخول';
-  if (movement.type === 'out') return 'خروج';
+  if (movement.type === 'in') return 'دخول'
+  if (movement.type === 'out') return 'خروج'
 
-  return movement.type;
+  return movement.type
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`;
+  return `${Number(value || 0).toFixed(2)} ج.م`
 }
 
 function formatDate(value?: string) {
-  if (!value) return '—';
+  if (!value) return '—'
 
   try {
-    const raw = String(value);
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
+    const raw = String(value)
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
 
     return new Date(normalized).toLocaleString('ar-EG', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit'
-    });
+      minute: '2-digit',
+    })
   } catch {
-    return value;
+    return value
   }
 }
 
@@ -1070,15 +1180,15 @@ const cardStyle: React.CSSProperties = {
   padding: '18px',
   borderRadius: '18px',
   display: 'grid',
-  gap: '14px'
-};
+  gap: '14px',
+}
 
 const statCardStyle: React.CSSProperties = {
   padding: '14px',
   borderRadius: '18px',
   display: 'grid',
-  gap: '10px'
-};
+  gap: '10px',
+}
 
 const inputStyle: React.CSSProperties = {
   height: '44px',
@@ -1090,8 +1200,8 @@ const inputStyle: React.CSSProperties = {
   padding: '0 12px',
   textAlign: 'right',
   direction: 'rtl',
-  boxSizing: 'border-box'
-};
+  boxSizing: 'border-box',
+}
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -1101,8 +1211,8 @@ const primaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontWeight: 800,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid #7c3aed',
@@ -1112,8 +1222,8 @@ const secondaryButtonStyle: React.CSSProperties = {
   color: '#c4b5fd',
   fontWeight: 800,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const smallButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(124,58,237,0.7)',
@@ -1125,24 +1235,24 @@ const smallButtonStyle: React.CSSProperties = {
   padding: '0 10px',
   cursor: 'pointer',
   whiteSpace: 'nowrap',
-  fontSize: '12px'
-};
+  fontSize: '12px',
+}
 
 const thStyle: React.CSSProperties = {
   padding: '10px 8px',
   fontWeight: 900,
   whiteSpace: 'nowrap',
   fontSize: '13px',
-  borderBottom: '1px solid rgba(255,255,255,0.08)'
-};
+  borderBottom: '1px solid rgba(255,255,255,0.08)',
+}
 
 const tdStyle: React.CSSProperties = {
   padding: '10px 8px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
   fontSize: '13px',
-  verticalAlign: 'middle'
-};
+  verticalAlign: 'middle',
+}
 
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
@@ -1152,8 +1262,8 @@ const modalOverlayStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  padding: '20px'
-};
+  padding: '20px',
+}
 
 const modalStyle: React.CSSProperties = {
   width: '480px',
@@ -1165,18 +1275,18 @@ const modalStyle: React.CSSProperties = {
   background: '#111827',
   padding: '22px',
   direction: 'rtl',
-  boxShadow: '0 24px 70px rgba(0,0,0,0.55)'
-};
+  boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
+}
 
 const fieldStyle: React.CSSProperties = {
   display: 'grid',
-  gap: '8px'
-};
+  gap: '8px',
+}
 
 const labelStyle: React.CSSProperties = {
   color: '#cbd5e1',
-  fontWeight: 800
-};
+  fontWeight: 800,
+}
 
 const closeButtonStyle: React.CSSProperties = {
   width: '34px',
@@ -1186,5 +1296,5 @@ const closeButtonStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.05)',
   color: '#fff',
   cursor: 'pointer',
-  fontSize: '20px'
-};
+  fontSize: '20px',
+}

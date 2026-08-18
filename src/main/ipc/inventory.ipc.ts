@@ -1,20 +1,25 @@
-import { ipcMain } from 'electron';
+import { ipcMain } from 'electron'
 import {
   adjustVariantStock,
   getInventoryList,
-  getStockMovements
-} from '../database/repositories/inventory.repo';
+  getStockMovements,
+  listInventoryPage,
+} from '../database/repositories/inventory.repo'
 
 export function registerInventoryIpc(): void {
   ipcMain.handle('inventory:list', (_, input) => {
-    return getInventoryList(input);
-  });
+    return getInventoryList(input)
+  })
+
+  ipcMain.handle('inventory:list-page', (_, input) => {
+    return listInventoryPage(input)
+  })
 
   ipcMain.handle('inventory:adjust-stock', (_, input) => {
-    return adjustVariantStock(input);
-  });
+    return adjustVariantStock(input)
+  })
 
   ipcMain.handle('inventory:movements', (_, input) => {
-    return getStockMovements(input);
-  });
+    return getStockMovements(input)
+  })
 }

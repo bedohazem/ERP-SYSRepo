@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuthStore } from '../../store/auth.store'
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method'
+import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 
 function roundMoney(value: number) {
   const amount = Number(value || 0)
@@ -36,9 +37,16 @@ const emptyForm = {
   notes: '',
 }
 
+const SUPPLIER_STATEMENT_PAGE_SIZE = 20
+
 export default function SuppliersPage() {
   const currentUser = useAuthStore((s) => s.user)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [suppliersTotal, setSuppliersTotal] = useState(0)
+
+  const [supplierPage, setSupplierPage] = useState(1)
+
+  const [supplierStatementPage, setSupplierStatementPage] = useState(1)
   const [search, setSearch] = useState('')
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -67,16 +75,43 @@ export default function SuppliersPage() {
     setTimeout(() => setMessage(''), 1800)
   }
 
-  async function loadSuppliers(searchValue = search) {
+  async function loadSuppliers(page = supplierPage, searchValue = search) {
     setLoading(true)
 
     try {
-      const data = await window.api.getSuppliers(searchValue)
-      setSuppliers(Array.isArray(data) ? data : [])
+      const safePage = Math.max(1, Number(page || 1))
+
+      const result = await window.api.listSuppliers({
+        search: searchValue.trim() || undefined,
+
+        limit: SYSTEM_PAGE_SIZE,
+
+        offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
+      })
+
+      const total = Number(result.total || 0)
+
+      const totalPages = Math.max(1, Math.ceil(total / SYSTEM_PAGE_SIZE))
+
+      if (safePage > totalPages) {
+        setSupplierPage(totalPages)
+
+        await loadSuppliers(totalPages, searchValue)
+
+        return
+      }
+
+      setSuppliers(Array.isArray(result.rows) ? result.rows : [])
+
+      setSuppliersTotal(total)
+      setSupplierPage(safePage)
     } catch (error) {
       console.error('Failed to load suppliers:', error)
+
       showMessage('حدث خطأ أثناء تحميل الموردين')
+
       setSuppliers([])
+      setSuppliersTotal(0)
     } finally {
       setLoading(false)
     }
@@ -84,7 +119,9 @@ export default function SuppliersPage() {
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      void loadSuppliers(search)
+      setSupplierPage(1)
+
+      void loadSuppliers(1, search)
     }, 250)
 
     return () => clearTimeout(handle)
@@ -135,7 +172,7 @@ export default function SuppliersPage() {
 
       setForm(emptyForm)
       setEditingId(null)
-      await loadSuppliers()
+      await loadSuppliers(supplierPage)
     } catch (error) {
       console.error('Failed to save supplier:', error)
       showMessage('حدث خطأ أثناء حفظ المورد، تأكد أن رقم الهاتف غير مكرر')
@@ -180,7 +217,7 @@ export default function SuppliersPage() {
 
       setDeleteTarget(null)
       showMessage('تم حذف المورد')
-      await loadSuppliers()
+      await loadSuppliers(supplierPage)
     } catch (error) {
       console.error('Failed to delete supplier:', error)
       showMessage('حدث خطأ أثناء حذف المورد')
@@ -191,6 +228,7 @@ export default function SuppliersPage() {
 
   async function openStatement(supplier: Supplier) {
     setStatementLoading(true)
+    setSupplierStatementPage(1)
 
     try {
       const data = await window.api.getSupplierStatement(supplier.id)
@@ -506,7 +544,7 @@ export default function SuppliersPage() {
       setPaymentAmount('')
       setPaymentNotes('')
 
-      await loadSuppliers()
+      await loadSuppliers(supplierPage)
 
       if (statementData?.supplier?.id === paymentSupplier.id) {
         const data = await window.api.getSupplierStatement(paymentSupplier.id)
@@ -723,6 +761,15 @@ export default function SuppliersPage() {
           boxSizing: 'border-box',
         }}
       >
+        <PaginationBar
+          page={supplierPage}
+          totalItems={suppliersTotal}
+          loading={loading}
+          onPageChange={(page) => {
+            void loadSuppliers(page)
+          }}
+        />
+
         <table
           style={{
             width: '100%',
@@ -969,6 +1016,14 @@ export default function SuppliersPage() {
               </div>
             )}
 
+            <PaginationBar
+              page={supplierStatementPage}
+              totalItems={statementData.entries?.length || 0}
+              pageSize={SUPPLIER_STATEMENT_PAGE_SIZE}
+              loading={statementLoading}
+              onPageChange={setSupplierStatementPage}
+            />
+
             <div style={{ overflowX: 'auto' }}>
               <table
                 style={{
@@ -1000,36 +1055,45 @@ export default function SuppliersPage() {
                   )}
 
                   {!statementLoading &&
-                    statementData.entries.map((entry: any) => (
-                      <tr
-                        key={entry.id}
-                        style={{
-                          borderTop: '1px solid rgba(255,255,255,0.06)',
-                        }}
-                      >
-                        <td style={tdStyle}>{formatDate(entry.created_at)}</td>
-                        <td style={tdStyle}>
-                          <strong>{entry.title}</strong>
-                        </td>
-                        <td
+                    statementData.entries
+                      .slice(
+                        (supplierStatementPage - 1) *
+                          SUPPLIER_STATEMENT_PAGE_SIZE,
+
+                        supplierStatementPage * SUPPLIER_STATEMENT_PAGE_SIZE,
+                      )
+                      .map((entry: any) => (
+                        <tr
+                          key={entry.id}
                           style={{
-                            ...tdStyle,
-                            color: entry.debit > 0 ? '#fca5a5' : '#e5e7eb',
+                            borderTop: '1px solid rgba(255,255,255,0.06)',
                           }}
                         >
-                          {entry.debit > 0 ? money(entry.debit) : '—'}
-                        </td>
-                        <td
-                          style={{
-                            ...tdStyle,
-                            color: entry.credit > 0 ? '#6ee7b7' : '#e5e7eb',
-                          }}
-                        >
-                          {entry.credit > 0 ? money(entry.credit) : '—'}
-                        </td>
-                        <td style={tdStyle}>{entry.notes || '—'}</td>
-                      </tr>
-                    ))}
+                          <td style={tdStyle}>
+                            {formatDate(entry.created_at)}
+                          </td>
+                          <td style={tdStyle}>
+                            <strong>{entry.title}</strong>
+                          </td>
+                          <td
+                            style={{
+                              ...tdStyle,
+                              color: entry.debit > 0 ? '#fca5a5' : '#e5e7eb',
+                            }}
+                          >
+                            {entry.debit > 0 ? money(entry.debit) : '—'}
+                          </td>
+                          <td
+                            style={{
+                              ...tdStyle,
+                              color: entry.credit > 0 ? '#6ee7b7' : '#e5e7eb',
+                            }}
+                          >
+                            {entry.credit > 0 ? money(entry.credit) : '—'}
+                          </td>
+                          <td style={tdStyle}>{entry.notes || '—'}</td>
+                        </tr>
+                      ))}
 
                   {!statementLoading && statementData.entries.length === 0 && (
                     <tr>

@@ -1,24 +1,25 @@
-import { getDb } from '../db';
-import { createCashMovement } from './cash.repo';
+import { getDb } from '../db'
+import { createCashMovement } from './cash.repo'
 
 export type CustomerInput = {
-  name: string;
-  phone?: string | null;
-  email?: string | null;
-  address?: string | null;
-  notes?: string | null;
-};
+  name: string
+  phone?: string | null
+  email?: string | null
+  address?: string | null
+  notes?: string | null
+}
 
 export type CustomerUpdateInput = CustomerInput & {
-  id: number;
-  is_active?: number;
-};
+  id: number
+  is_active?: number
+}
 
 export function getCustomers() {
-  const db = getDb();
+  const db = getDb()
 
   return db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         c.*,
         COUNT(s.id) AS sales_count,
@@ -28,16 +29,18 @@ export function getCustomers() {
       WHERE c.is_active = 1
       GROUP BY c.id
       ORDER BY c.id DESC
-    `)
-    .all();
+    `,
+    )
+    .all()
 }
 
 export function searchCustomers(query: string) {
-  const db = getDb();
-  const q = `%${query.trim()}%`;
+  const db = getDb()
+  const q = `%${query.trim()}%`
 
   return db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         c.*,
         COUNT(s.id) AS sales_count,
@@ -53,25 +56,173 @@ export function searchCustomers(query: string) {
       GROUP BY c.id
       ORDER BY c.id DESC
       LIMIT 30
+    `,
+    )
+    .all(q, q, q)
+}
+
+export function listCustomers(input?: {
+  search?: string
+  debtors_only?: boolean
+  limit?: number
+  offset?: number
+}) {
+  const db = getDb()
+
+  const search = input?.search?.trim() || ''
+
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+
+  const offset = Math.max(Number(input?.offset || 0), 0)
+
+  const baseWhere: string[] = [`c.is_active = 1`]
+
+  const baseParams: any[] = []
+
+  if (search) {
+    baseWhere.push(`
+      (
+        c.name LIKE ?
+        OR IFNULL(c.phone, '') LIKE ?
+        OR IFNULL(c.email, '') LIKE ?
+        OR IFNULL(c.address, '') LIKE ?
+      )
     `)
-    .all(q, q, q);
+
+    const q = `%${search}%`
+
+    baseParams.push(q, q, q, q)
+  }
+
+  const rowsWhere = [...baseWhere]
+
+  if (input?.debtors_only) {
+    rowsWhere.push(`IFNULL(c.balance, 0) > 0`)
+  }
+
+  const rowsWhereSql = `WHERE ${rowsWhere.join(' AND ')}`
+
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        c.*,
+        COUNT(s.id) AS sales_count,
+        MAX(s.created_at) AS last_sale_at
+
+      FROM customers c
+
+      LEFT JOIN sales s
+        ON s.customer_id = c.id
+
+      ${rowsWhereSql}
+
+      GROUP BY c.id
+
+      ORDER BY
+        IFNULL(c.balance, 0) DESC,
+        c.id DESC
+
+      LIMIT ?
+      OFFSET ?
+    `,
+    )
+    .all(...baseParams, limit, offset)
+
+  const totalRow = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS total
+
+      FROM customers c
+
+      ${rowsWhereSql}
+    `,
+    )
+    .get(...baseParams) as {
+    total: number
+  }
+
+  const debtWhere = [...baseWhere, `IFNULL(c.balance, 0) > 0`]
+
+  const debtWhereSql = `WHERE ${debtWhere.join(' AND ')}`
+
+  const debtSummaryRow = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS debtors_count,
+        IFNULL(
+          SUM(IFNULL(c.balance, 0)),
+          0
+        ) AS total_debt
+
+      FROM customers c
+
+      ${debtWhereSql}
+    `,
+    )
+    .get(...baseParams) as any
+
+  const topDebtor = db
+    .prepare(
+      `
+      SELECT
+        c.id,
+        c.name,
+        c.balance
+
+      FROM customers c
+
+      ${debtWhereSql}
+
+      ORDER BY
+        IFNULL(c.balance, 0) DESC,
+        c.id DESC
+
+      LIMIT 1
+    `,
+    )
+    .get(...baseParams) as any
+
+  return {
+    rows,
+    total: Number(totalRow?.total || 0),
+    limit,
+    offset,
+
+    summary: {
+      total_debt: Number(debtSummaryRow?.total_debt || 0),
+
+      debtors_count: Number(debtSummaryRow?.debtors_count || 0),
+
+      top_debtor: topDebtor
+        ? {
+            id: Number(topDebtor.id),
+            name: String(topDebtor.name || ''),
+            balance: Number(topDebtor.balance || 0),
+          }
+        : null,
+    },
+  }
 }
 
 export function createCustomer(input: CustomerInput) {
-  const db = getDb();
+  const db = getDb()
 
-  const name = input.name?.trim();
-  const phone = input.phone?.trim() || null;
-  const email = input.email?.trim() || null;
-  const address = input.address?.trim() || null;
-  const notes = input.notes?.trim() || null;
+  const name = input.name?.trim()
+  const phone = input.phone?.trim() || null
+  const email = input.email?.trim() || null
+  const address = input.address?.trim() || null
+  const notes = input.notes?.trim() || null
 
   if (!name) {
-    throw new Error('اسم العميل مطلوب');
+    throw new Error('اسم العميل مطلوب')
   }
 
   const result = db
-    .prepare(`
+    .prepare(
+      `
       INSERT INTO customers (
         name,
         phone,
@@ -80,30 +231,32 @@ export function createCustomer(input: CustomerInput) {
         notes
       )
       VALUES (?, ?, ?, ?, ?)
-    `)
-    .run(name, phone, email, address, notes);
+    `,
+    )
+    .run(name, phone, email, address, notes)
 
-  return getCustomerById(Number(result.lastInsertRowid));
+  return getCustomerById(Number(result.lastInsertRowid))
 }
 
 export function updateCustomer(input: CustomerUpdateInput) {
-  const db = getDb();
+  const db = getDb()
 
-  const name = input.name?.trim();
-  const phone = input.phone?.trim() || null;
-  const email = input.email?.trim() || null;
-  const address = input.address?.trim() || null;
-  const notes = input.notes?.trim() || null;
+  const name = input.name?.trim()
+  const phone = input.phone?.trim() || null
+  const email = input.email?.trim() || null
+  const address = input.address?.trim() || null
+  const notes = input.notes?.trim() || null
 
   if (!input.id) {
-    throw new Error('Customer ID is required');
+    throw new Error('Customer ID is required')
   }
 
   if (!name) {
-    throw new Error('اسم العميل مطلوب');
+    throw new Error('اسم العميل مطلوب')
   }
 
-  db.prepare(`
+  db.prepare(
+    `
     UPDATE customers
     SET
       name = ?,
@@ -113,29 +266,33 @@ export function updateCustomer(input: CustomerUpdateInput) {
       notes = ?,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).run(name, phone, email, address, notes, input.id);
+  `,
+  ).run(name, phone, email, address, notes, input.id)
 
-  return getCustomerById(input.id);
+  return getCustomerById(input.id)
 }
 
 export function deleteCustomer(id: number) {
-  const db = getDb();
+  const db = getDb()
 
-  db.prepare(`
+  db.prepare(
+    `
     UPDATE customers
     SET is_active = 0,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).run(id);
+  `,
+  ).run(id)
 
-  return { ok: true };
+  return { ok: true }
 }
 
 export function getCustomerById(id: number) {
-  const db = getDb();
+  const db = getDb()
 
   return db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         c.*,
         COUNT(s.id) AS sales_count,
@@ -145,17 +302,19 @@ export function getCustomerById(id: number) {
       WHERE c.id = ?
       GROUP BY c.id
       LIMIT 1
-    `)
-    .get(id);
+    `,
+    )
+    .get(id)
 }
 
 export function getCustomerHistory(customerId: number) {
-  const db = getDb();
+  const db = getDb()
 
-  const customer = getCustomerById(customerId);
+  const customer = getCustomerById(customerId)
 
   const sales = db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         id,
         sub_total,
@@ -171,54 +330,58 @@ export function getCustomerHistory(customerId: number) {
       FROM sales
       WHERE customer_id = ?
       ORDER BY id DESC
-      LIMIT 100
-    `)
-    .all(customerId);
+    `,
+    )
+    .all(customerId)
 
   const loyalty = db
-    .prepare(`
+    .prepare(
+      `
       SELECT *
       FROM loyalty_transactions
       WHERE customer_id = ?
       ORDER BY id DESC
-      LIMIT 100
-    `)
-    .all(customerId);
+    `,
+    )
+    .all(customerId)
 
   return {
     customer,
     sales,
-    loyalty
-  };
+    loyalty,
+  }
 }
 
 export function adjustCustomerPoints(input: {
-  customer_id: number;
-  points: number;
-  notes?: string | null;
+  customer_id: number
+  points: number
+  notes?: string | null
 }) {
-  const db = getDb();
+  const db = getDb()
 
-  const customerId = Number(input.customer_id);
-  const points = Number(input.points || 0);
+  const customerId = Number(input.customer_id)
+  const points = Number(input.points || 0)
 
   if (!customerId) {
-    throw new Error('Customer ID is required');
+    throw new Error('Customer ID is required')
   }
 
   if (!points) {
-    throw new Error('عدد النقاط مطلوب');
+    throw new Error('عدد النقاط مطلوب')
   }
 
   const tx = db.transaction(() => {
-    db.prepare(`
+    db.prepare(
+      `
       UPDATE customers
       SET points_balance = points_balance + ?,
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(points, customerId);
+    `,
+    ).run(points, customerId)
 
-    db.prepare(`
+    db.prepare(
+      `
       INSERT INTO loyalty_transactions (
         customer_id,
         sale_id,
@@ -228,42 +391,43 @@ export function adjustCustomerPoints(input: {
         notes
       )
       VALUES (?, NULL, 'adjust', ?, 0, ?)
-    `).run(customerId, points, input.notes ?? null);
+    `,
+    ).run(customerId, points, input.notes ?? null)
 
-    return getCustomerById(customerId);
-  });
+    return getCustomerById(customerId)
+  })
 
-  return tx();
+  return tx()
 }
 
 export function recordCustomerPayment(input: {
-  customer_id: number;
-  sale_id?: number | null;
-  amount: number;
-  payment_method?: string;
-  notes?: string | null;
+  customer_id: number
+  sale_id?: number | null
+  amount: number
+  payment_method?: string
+  notes?: string | null
 }) {
-  const db = getDb();
+  const db = getDb()
 
-  const customerId = Number(input.customer_id);
-  const saleId = input.sale_id ? Number(input.sale_id) : null;
-  const amountInput = Number(input.amount || 0);
+  const customerId = Number(input.customer_id)
+  const saleId = input.sale_id ? Number(input.sale_id) : null
+  const amountInput = Number(input.amount || 0)
 
   if (!customerId) {
-    throw new Error('Customer ID is required');
+    throw new Error('Customer ID is required')
   }
 
   if (!Number.isFinite(amountInput) || amountInput <= 0) {
-    throw new Error('مبلغ الدفعة غير صحيح');
+    throw new Error('مبلغ الدفعة غير صحيح')
   }
 
   const tx = db.transaction(() => {
     const customer = db
       .prepare(`SELECT * FROM customers WHERE id = ? AND is_active = 1 LIMIT 1`)
-      .get(customerId) as any;
+      .get(customerId) as any
 
     if (!customer) {
-      throw new Error('العميل غير موجود');
+      throw new Error('العميل غير موجود')
     }
 
     const insertPayment = db.prepare(`
@@ -275,7 +439,7 @@ export function recordCustomerPayment(input: {
         notes
       )
       VALUES (?, ?, ?, ?, ?)
-    `);
+    `)
 
     const updateSale = db.prepare(`
       UPDATE sales
@@ -284,136 +448,146 @@ export function recordCustomerPayment(input: {
         remaining_amount = ?,
         payment_status = ?
       WHERE id = ?
-    `);
+    `)
 
-    let totalPaid = 0;
+    let totalPaid = 0
     const allocations: Array<{
-      sale_id: number | null;
-      amount: number;
-    }> = [];
+      sale_id: number | null
+      amount: number
+    }> = []
 
     // دفعة على فاتورة معينة
     if (saleId) {
       const sale = db
-        .prepare(`
+        .prepare(
+          `
           SELECT *
           FROM sales
           WHERE id = ?
             AND customer_id = ?
             AND IFNULL(type, 'sale') = 'sale'
           LIMIT 1
-        `)
-        .get(saleId, customerId) as any;
+        `,
+        )
+        .get(saleId, customerId) as any
 
       if (!sale) {
-        throw new Error('الفاتورة غير موجودة');
+        throw new Error('الفاتورة غير موجودة')
       }
 
-      const remaining = Number(sale.remaining_amount || 0);
+      const remaining = Number(sale.remaining_amount || 0)
 
       if (remaining <= 0) {
-        throw new Error('الفاتورة مدفوعة بالكامل بالفعل');
+        throw new Error('الفاتورة مدفوعة بالكامل بالفعل')
       }
 
-      const finalAmount = Math.min(amountInput, remaining);
+      const finalAmount = Math.min(amountInput, remaining)
 
       const newPaid = Math.min(
         Number(sale.grand_total || 0),
-        Number(sale.paid || 0) + finalAmount
-      );
+        Number(sale.paid || 0) + finalAmount,
+      )
 
-      const newRemaining = Math.max(0, Number(sale.grand_total || 0) - newPaid);
+      const newRemaining = Math.max(0, Number(sale.grand_total || 0) - newPaid)
 
       const newStatus =
-        newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
+        newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
 
-      updateSale.run(newPaid, newRemaining, newStatus, saleId);
+      updateSale.run(newPaid, newRemaining, newStatus, saleId)
 
       insertPayment.run(
         customerId,
         saleId,
         finalAmount,
         input.payment_method || 'cash',
-        input.notes?.trim() || `دفعة على فاتورة بيع رقم ${saleId}`
-      );
+        input.notes?.trim() || `دفعة على فاتورة بيع رقم ${saleId}`,
+      )
 
-      totalPaid = finalAmount;
+      totalPaid = finalAmount
 
       allocations.push({
         sale_id: saleId,
-        amount: finalAmount
-      });
+        amount: finalAmount,
+      })
     } else {
       // دفعة عامة للعميل: تتوزع على أقدم فواتير مفتوحة
-      const customerBalance = Number(customer.balance || 0);
-      let remainingPayment = Math.min(amountInput, customerBalance);
+      const customerBalance = Number(customer.balance || 0)
+      let remainingPayment = Math.min(amountInput, customerBalance)
 
       if (remainingPayment <= 0) {
-        throw new Error('لا يوجد رصيد مستحق على العميل');
+        throw new Error('لا يوجد رصيد مستحق على العميل')
       }
 
       const openSales = db
-        .prepare(`
+        .prepare(
+          `
           SELECT *
           FROM sales
           WHERE customer_id = ?
             AND IFNULL(type, 'sale') = 'sale'
             AND remaining_amount > 0
           ORDER BY id ASC
-        `)
-        .all(customerId) as any[];
+        `,
+        )
+        .all(customerId) as any[]
 
       if (openSales.length === 0) {
-        throw new Error('لا توجد فواتير مفتوحة لهذا العميل');
+        throw new Error('لا توجد فواتير مفتوحة لهذا العميل')
       }
 
       for (const sale of openSales) {
-        if (remainingPayment <= 0) break;
+        if (remainingPayment <= 0) break
 
-        const saleRemaining = Number(sale.remaining_amount || 0);
-        const payNow = Math.min(remainingPayment, saleRemaining);
+        const saleRemaining = Number(sale.remaining_amount || 0)
+        const payNow = Math.min(remainingPayment, saleRemaining)
 
         const newPaid = Math.min(
           Number(sale.grand_total || 0),
-          Number(sale.paid || 0) + payNow
-        );
+          Number(sale.paid || 0) + payNow,
+        )
 
-        const newRemaining = Math.max(0, Number(sale.grand_total || 0) - newPaid);
+        const newRemaining = Math.max(
+          0,
+          Number(sale.grand_total || 0) - newPaid,
+        )
 
         const newStatus =
-          newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
+          newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
 
-        updateSale.run(newPaid, newRemaining, newStatus, sale.id);
+        updateSale.run(newPaid, newRemaining, newStatus, sale.id)
 
         insertPayment.run(
           customerId,
           sale.id,
           payNow,
           input.payment_method || 'cash',
-          input.notes?.trim() || `دفعة عامة موزعة على فاتورة بيع رقم ${sale.id}`
-        );
+          input.notes?.trim() ||
+            `دفعة عامة موزعة على فاتورة بيع رقم ${sale.id}`,
+        )
 
-        totalPaid += payNow;
-        remainingPayment -= payNow;
+        totalPaid += payNow
+        remainingPayment -= payNow
 
         allocations.push({
           sale_id: sale.id,
-          amount: payNow
-        });
+          amount: payNow,
+        })
       }
     }
 
     if (totalPaid <= 0) {
-      throw new Error('لم يتم تسجيل أي دفعة');
+      throw new Error('لم يتم تسجيل أي دفعة')
     }
 
-    db.prepare(`
+    db.prepare(
+      `
       UPDATE customers
       SET
         balance = MAX(IFNULL(balance, 0) - ?, 0),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(totalPaid, customerId);
+    `,
+    ).run(totalPaid, customerId)
 
     createCashMovement({
       type: 'customer_payment',
@@ -423,83 +597,89 @@ export function recordCustomerPayment(input: {
       reference_id: saleId,
       reference_type: saleId ? 'sale' : 'customer_payment',
       notes: input.notes?.trim() || 'دفعة من عميل',
-      created_by: (input as any).actor_id ?? null
-    });
+      created_by: (input as any).actor_id ?? null,
+    })
 
     return {
       ok: true,
       customer_id: customerId,
       paid_amount: totalPaid,
-      allocations
-    };
-  });
+      allocations,
+    }
+  })
 
-  return tx();
+  return tx()
 }
 
 export function getCustomerStatement(customerId: number) {
-  const db = getDb();
-  const id = Number(customerId);
+  const db = getDb()
+  const id = Number(customerId)
 
   if (!id) {
-    throw new Error('Customer ID is required');
+    throw new Error('Customer ID is required')
   }
 
   const customer = db
-    .prepare(`
+    .prepare(
+      `
       SELECT *
       FROM customers
       WHERE id = ?
       LIMIT 1
-    `)
-    .get(id) as any;
+    `,
+    )
+    .get(id) as any
 
   if (!customer) {
-    throw new Error('العميل غير موجود');
+    throw new Error('العميل غير موجود')
   }
 
   const sales = db
-    .prepare(`
+    .prepare(
+      `
       SELECT *
       FROM sales
       WHERE customer_id = ?
         AND IFNULL(type, 'sale') = 'sale'
       ORDER BY created_at DESC, id DESC
-    `)
-    .all(id) as any[];
+    `,
+    )
+    .all(id) as any[]
 
   const payments = db
-    .prepare(`
+    .prepare(
+      `
       SELECT *
       FROM customer_payments
       WHERE customer_id = ?
       ORDER BY created_at DESC, id DESC
-    `)
-    .all(id) as any[];
+    `,
+    )
+    .all(id) as any[]
 
   function isReturnSettlement(payment: any) {
-    return String(payment.notes || '').startsWith('تسوية مديونية بسبب مرتجع');
+    return String(payment.notes || '').startsWith('تسوية مديونية بسبب مرتجع')
   }
 
-  const normalPaymentsBySale = new Map<number, number>();
-  const allPaymentsBySale = new Map<number, number>();
+  const normalPaymentsBySale = new Map<number, number>()
+  const allPaymentsBySale = new Map<number, number>()
 
   for (const payment of payments) {
-    const saleId = Number(payment.sale_id || 0);
-    const amount = Number(payment.amount || 0);
+    const saleId = Number(payment.sale_id || 0)
+    const amount = Number(payment.amount || 0)
 
-    if (!saleId || amount <= 0) continue;
+    if (!saleId || amount <= 0) continue
 
     allPaymentsBySale.set(
       saleId,
-      Number(allPaymentsBySale.get(saleId) || 0) + amount
-    );
+      Number(allPaymentsBySale.get(saleId) || 0) + amount,
+    )
 
     if (!isReturnSettlement(payment)) {
       normalPaymentsBySale.set(
         saleId,
-        Number(normalPaymentsBySale.get(saleId) || 0) + amount
-      );
+        Number(normalPaymentsBySale.get(saleId) || 0) + amount,
+      )
     }
   }
 
@@ -512,22 +692,21 @@ export function getCustomerStatement(customerId: number) {
     sale_id: sale.id,
     payment_status: sale.payment_status,
     notes: sale.notes,
-    created_at: sale.created_at
-  }));
+    created_at: sale.created_at,
+  }))
 
   const initialPaymentEntries = sales
     .map((sale) => {
-      const normalLaterPaid = Number(normalPaymentsBySale.get(Number(sale.id)) || 0);
+      const normalLaterPaid = Number(
+        normalPaymentsBySale.get(Number(sale.id)) || 0,
+      )
 
-      const initialPaid = Math.max(
-        0,
-        Number(sale.paid || 0) - normalLaterPaid
-      );
+      const initialPaid = Math.max(0, Number(sale.paid || 0) - normalLaterPaid)
 
       return {
         sale,
-        initialPaid
-      };
+        initialPaid,
+      }
     })
     .filter((item) => item.initialPaid > 0)
     .map(({ sale, initialPaid }) => ({
@@ -539,8 +718,8 @@ export function getCustomerStatement(customerId: number) {
       sale_id: sale.id,
       payment_method: sale.payment_method,
       notes: 'دفعة مسجلة وقت إنشاء الفاتورة',
-      created_at: sale.created_at
-    }));
+      created_at: sale.created_at,
+    }))
 
   const paymentEntries = payments.map((payment) => ({
     id: `payment-${payment.id}`,
@@ -553,48 +732,48 @@ export function getCustomerStatement(customerId: number) {
     sale_id: payment.sale_id,
     payment_method: payment.payment_method,
     notes: payment.notes,
-    created_at: payment.created_at
-  }));
+    created_at: payment.created_at,
+  }))
 
   const entries = [
     ...saleEntries,
     ...initialPaymentEntries,
-    ...paymentEntries
+    ...paymentEntries,
   ].sort((a, b) => {
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
 
   const totalSales = sales.reduce(
     (sum, sale) => sum + Number(sale.grand_total || 0),
-    0
-  );
+    0,
+  )
 
   const totalInitialPaid = initialPaymentEntries.reduce(
     (sum, entry) => sum + Number(entry.credit || 0),
-    0
-  );
+    0,
+  )
 
   const totalLaterPayments = payments.reduce(
     (sum, payment) => sum + Number(payment.amount || 0),
-    0
-  );
+    0,
+  )
 
   const openSales = sales.filter((sale) => {
-    const saleId = Number(sale.id);
+    const saleId = Number(sale.id)
     const initialPaidEntry = initialPaymentEntries.find(
-      (entry) => Number(entry.sale_id) === saleId
-    );
+      (entry) => Number(entry.sale_id) === saleId,
+    )
 
-    const initialPaid = Number(initialPaidEntry?.credit || 0);
-    const allPayments = Number(allPaymentsBySale.get(saleId) || 0);
+    const initialPaid = Number(initialPaidEntry?.credit || 0)
+    const allPayments = Number(allPaymentsBySale.get(saleId) || 0)
 
     const effectiveRemaining = Math.max(
       0,
-      Number(sale.grand_total || 0) - initialPaid - allPayments
-    );
+      Number(sale.grand_total || 0) - initialPaid - allPayments,
+    )
 
-    return effectiveRemaining > 0;
-  });
+    return effectiveRemaining > 0
+  })
 
   return {
     customer,
@@ -605,7 +784,7 @@ export function getCustomerStatement(customerId: number) {
       total_sales: totalSales,
       total_paid: totalInitialPaid + totalLaterPayments,
       balance: Number(customer.balance || 0),
-      open_sales: openSales.length
-    }
-  };
+      open_sales: openSales.length,
+    },
+  }
 }

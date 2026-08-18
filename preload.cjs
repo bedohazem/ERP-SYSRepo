@@ -66,6 +66,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('sales:return-history', saleId),
 
   getCustomers: () => ipcRenderer.invoke('customers:list'),
+  listCustomers: (input) => ipcRenderer.invoke('customers:list-page', input),
   searchCustomers: (query) => ipcRenderer.invoke('customers:search', query),
   getCustomerById: (id) => ipcRenderer.invoke('customers:get-by-id', id),
   createCustomer: (input) => ipcRenderer.invoke('customers:create', input),
@@ -100,6 +101,7 @@ contextBridge.exposeInMainWorld('api', {
   getReportsSummary: (input) => ipcRenderer.invoke('reports:summary', input),
 
   getInventoryList: (input) => ipcRenderer.invoke('inventory:list', input),
+  getInventoryPage: (input) => ipcRenderer.invoke('inventory:list-page', input),
   adjustVariantStock: (input) =>
     ipcRenderer.invoke('inventory:adjust-stock', input),
   getStockMovements: (input) =>
@@ -120,6 +122,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('stock-count:cancel', input),
 
   getSuppliers: (search) => ipcRenderer.invoke('suppliers:list', search),
+  listSuppliers: (input) => ipcRenderer.invoke('suppliers:list-page', input),
   getSupplierById: (id) => ipcRenderer.invoke('suppliers:get-by-id', id),
   createSupplier: (input) => ipcRenderer.invoke('suppliers:create', input),
   updateSupplier: (input) => ipcRenderer.invoke('suppliers:update', input),

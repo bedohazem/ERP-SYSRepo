@@ -1,6 +1,6 @@
-import { ipcMain } from 'electron';
-import { requireAdmin } from './permission-helper';
-import { getActorId } from './activity-helper';
+import { ipcMain } from 'electron'
+import { requireAdmin } from './permission-helper'
+import { getActorId } from './activity-helper'
 import {
   adjustCustomerPoints,
   createCustomer,
@@ -11,50 +11,54 @@ import {
   searchCustomers,
   updateCustomer,
   recordCustomerPayment,
-  getCustomerStatement
-} from '../database/repositories/customers.repo';
+  listCustomers,
+  getCustomerStatement,
+} from '../database/repositories/customers.repo'
 
 export function registerCustomersIpc(): void {
   ipcMain.handle('customers:list', () => {
-    return getCustomers();
-  });
+    return getCustomers()
+  })
+
+  ipcMain.handle('customers:list-page', (_, input) => {
+    return listCustomers(input)
+  })
 
   ipcMain.handle('customers:search', (_, query: string) => {
-    return searchCustomers(query ?? '');
-  });
+    return searchCustomers(query ?? '')
+  })
 
   ipcMain.handle('customers:get-by-id', (_, id: number) => {
-    return getCustomerById(Number(id));
-  });
+    return getCustomerById(Number(id))
+  })
 
   ipcMain.handle('customers:create', (_, input) => {
-    return createCustomer(input);
-  });
+    return createCustomer(input)
+  })
 
   ipcMain.handle('customers:update', (_, input) => {
-    return updateCustomer(input);
-  });
+    return updateCustomer(input)
+  })
 
   ipcMain.handle('customers:delete', (_, id: number, actorId?: number) => {
-    requireAdmin(actorId ?? null);
-    return deleteCustomer(Number(id));
-  });
+    requireAdmin(actorId ?? null)
+    return deleteCustomer(Number(id))
+  })
 
   ipcMain.handle('customers:history', (_, customerId: number) => {
-    return getCustomerHistory(Number(customerId));
-  });
+    return getCustomerHistory(Number(customerId))
+  })
 
   ipcMain.handle('customers:adjust-points', (_, input) => {
-    requireAdmin(getActorId(input));
-    return adjustCustomerPoints(input);
-  });
+    requireAdmin(getActorId(input))
+    return adjustCustomerPoints(input)
+  })
 
   ipcMain.handle('customers:record-payment', (_, input) => {
-    return recordCustomerPayment(input);
-  });
+    return recordCustomerPayment(input)
+  })
 
   ipcMain.handle('customers:statement', (_, customerId: number) => {
-    return getCustomerStatement(Number(customerId));
-  });
-  
+    return getCustomerStatement(Number(customerId))
+  })
 }

@@ -336,6 +336,27 @@ declare global {
       // =========================
       getCustomers: () => Promise<Customer[]>
 
+      listCustomers: (input?: {
+        search?: string
+        debtors_only?: boolean
+        limit?: number
+        offset?: number
+      }) => Promise<{
+        rows: Customer[]
+        total: number
+        limit: number
+        offset: number
+        summary: {
+          total_debt: number
+          debtors_count: number
+          top_debtor: {
+            id: number
+            name: string
+            balance: number
+          } | null
+        }
+      }>
+
       searchCustomers: (query: string) => Promise<Customer[]>
 
       getCustomerById: (id: number) => Promise<Customer | null>
@@ -555,6 +576,27 @@ declare global {
         }>
       >
 
+      getInventoryPage: (input?: {
+        search?: string
+        status?: 'all' | 'available' | 'low' | 'out'
+        categoryId?: number | string | null
+        limit?: number
+        offset?: number
+      }) => Promise<{
+        rows: any[]
+        total: number
+        limit: number
+        offset: number
+        summary: {
+          total: number
+          available: number
+          low: number
+          out: number
+          totalBuyValue: number
+          totalSellValue: number
+        }
+      }>
+
       adjustVariantStock: (input: {
         variant_id: number
         target_stock: number
@@ -568,12 +610,13 @@ declare global {
         diff: number
       }>
 
-      getStockMovements: (input: {
+      getStockMovements: (input?: {
         variant_id?: number
         search?: string
         limit?: number
-      }) => Promise<
-        Array<{
+        offset?: number
+      }) => Promise<{
+        rows: Array<{
           id: number
           variant_id: number
           type: 'in' | 'out'
@@ -588,7 +631,10 @@ declare global {
           size?: string | null
           color?: string | null
         }>
-      >
+        total: number
+        limit: number
+        offset: number
+      }>
 
       getStockCountSessions: () => Promise<any[]>
 
@@ -692,6 +738,17 @@ declare global {
           updated_at?: string | null
         }>
       >
+
+      listSuppliers: (input?: {
+        search?: string
+        limit?: number
+        offset?: number
+      }) => Promise<{
+        rows: any[]
+        total: number
+        limit: number
+        offset: number
+      }>
 
       getSupplierById: (id: number) => Promise<any>
 
