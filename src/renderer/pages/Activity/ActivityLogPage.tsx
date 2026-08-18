@@ -1,69 +1,85 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react'
+import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 
 type ActivityFilters = {
-  date_from?: string;
-  date_to?: string;
-  action?: string;
-  entity?: string;
-  search?: string;
-  limit?: number;
-};
+  date_from?: string
+  date_to?: string
+  action?: string
+  entity?: string
+  search?: string
+  limit?: number
+  offset?: number
+}
 
 export default function ActivityLogPage() {
-  const [logs, setLogs] = useState<ActivityLog[]>([]);
-  const [expandedDetails, setExpandedDetails] = useState<Record<number, boolean>>({});
-  const [loading, setLoading] = useState(false);
+  const [logs, setLogs] = useState<ActivityLog[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [expandedDetails, setExpandedDetails] = useState<
+    Record<number, boolean>
+  >({})
+  const [loading, setLoading] = useState(false)
   const [pageMessage, setPageMessage] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
+    type: 'success' | 'error'
+    text: string
+  } | null>(null)
 
   function showMessage(type: 'success' | 'error', text: string) {
-    setPageMessage({ type, text });
+    setPageMessage({ type, text })
 
     setTimeout(() => {
-      setPageMessage(null);
-    }, 1800);
+      setPageMessage(null)
+    }, 1800)
   }
 
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [action, setAction] = useState('all');
-  const [entity, setEntity] = useState('all');
-  const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [action, setAction] = useState('all')
+  const [entity, setEntity] = useState('all')
+  const [search, setSearch] = useState('')
 
-  const logsCount = useMemo(() => logs.length, [logs]);
+  function getFilters(targetPage = page): ActivityFilters {
+    const safePage = Math.max(1, Number(targetPage || 1))
 
-  function getFilters(): ActivityFilters {
     return {
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
       action,
       entity,
       search: search.trim() || undefined,
-      limit: 500
-    };
+      limit: SYSTEM_PAGE_SIZE,
+      offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
+    }
   }
 
   function toggleDetails(id: number) {
     setExpandedDetails((prev) => ({
       ...prev,
-      [id]: !prev[id]
-    }));
+      [id]: !prev[id],
+    }))
   }
 
-  async function loadLogs(customFilters?: ActivityFilters) {
-    setLoading(true);
+  async function loadLogs(targetPage = page, customFilters?: ActivityFilters) {
+    setLoading(true)
 
     try {
-      const data = await window.api.getActivityLogs(customFilters ?? getFilters());
-      setLogs(data || []);
-      setExpandedDetails({});
+      const safePage = Math.max(1, Number(targetPage || 1))
+
+      const result = await window.api.getActivityLogs(
+        customFilters ?? getFilters(safePage),
+      )
+
+      setLogs(Array.isArray(result.rows) ? result.rows : [])
+      setTotal(Number(result.total || 0))
+      setPage(safePage)
+      setExpandedDetails({})
     } catch (error) {
-      console.error(error);
-      showMessage('error', 'حدث خطأ أثناء تحميل سجل العمليات');
+      console.error(error)
+      showMessage('error', 'حدث خطأ أثناء تحميل سجل العمليات')
+      setLogs([])
+      setTotal(0)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
@@ -71,24 +87,72 @@ export default function ActivityLogPage() {
     const emptyFilters: ActivityFilters = {
       action: 'all',
       entity: 'all',
-      limit: 500
-    };
+      limit: SYSTEM_PAGE_SIZE,
+      offset: 0,
+    }
 
-    setDateFrom('');
-    setDateTo('');
-    setAction('all');
-    setEntity('all');
-    setSearch('');
+    setDateFrom('')
+    setDateTo('')
+    setAction('all')
+    setEntity('all')
+    setSearch('')
 
-    void loadLogs(emptyFilters);
+    setPage(1)
+    void loadLogs(1, emptyFilters)
   }
 
-  function printActivityReport() {
-    const printWindow = window.open('', '_blank', 'width=1100,height=800');
+  async function getAllActivityLogsForPrint() {
+    const batchSize = 200
+
+    const baseFilters = {
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
+      action,
+      entity,
+      search: search.trim() || undefined,
+    }
+
+    const firstResult = await window.api.getActivityLogs({
+      ...baseFilters,
+      limit: batchSize,
+      offset: 0,
+    })
+
+    const allLogs = Array.isArray(firstResult.rows) ? [...firstResult.rows] : []
+
+    const total = Number(firstResult.total || 0)
+
+    for (let offset = batchSize; offset < total; offset += batchSize) {
+      const result = await window.api.getActivityLogs({
+        ...baseFilters,
+        limit: batchSize,
+        offset,
+      })
+
+      if (Array.isArray(result.rows)) {
+        allLogs.push(...result.rows)
+      }
+    }
+
+    return allLogs
+  }
+
+  async function printActivityReport() {
+    let printLogs: ActivityLog[] = []
+
+    try {
+      printLogs = await getAllActivityLogsForPrint()
+    } catch (error) {
+      console.error('Failed to load activity logs for print:', error)
+      showMessage('error', 'حدث خطأ أثناء تجهيز سجل العمليات للطباعة')
+      return
+    }
+
+    const printWindow = window.open('', '_blank', 'width=1100,height=800')
 
     if (!printWindow) {
-      showMessage('error', 'تعذر فتح نافذة الطباعة');
-      return;
+      showMessage('error', 'تعذر فتح نافذة الطباعة')
+      return
     }
 
     const filtersText = [
@@ -96,10 +160,10 @@ export default function ActivityLogPage() {
       dateTo ? `إلى تاريخ: ${dateTo}` : null,
       action !== 'all' ? `نوع العملية: ${getActionLabel(action)}` : null,
       entity !== 'all' ? `الموديول: ${getEntityLabel(entity)}` : null,
-      search.trim() ? `بحث: ${search.trim()}` : null
-    ].filter(Boolean);
+      search.trim() ? `بحث: ${search.trim()}` : null,
+    ].filter(Boolean)
 
-    const rowsHtml = logs
+    const rowsHtml = printLogs
       .map(
         (item) => `
           <tr>
@@ -111,9 +175,9 @@ export default function ActivityLogPage() {
             <td>${escapeHtml(formatLogUser(item))}</td>
             <td>${escapeHtml(formatDate(item.created_at))}</td>
           </tr>
-        `
+        `,
       )
-      .join('');
+      .join('')
 
     const html = `
       <!doctype html>
@@ -258,14 +322,14 @@ export default function ActivityLogPage() {
             </div>
 
             <div class="muted">
-              عدد العمليات: ${logs.length}
+              عدد العمليات: ${printLogs.length}
             </div>
           </div>
 
           <div class="summary">
             <div class="card">
               <div class="card-title">عدد النتائج</div>
-              <div class="card-value">${logs.length}</div>
+              <div class="card-value">${printLogs.length}</div>
             </div>
 
             <div class="card">
@@ -277,13 +341,15 @@ export default function ActivityLogPage() {
           <div class="filters">
             ${
               filtersText.length
-                ? filtersText.map((item) => `<div>${escapeHtml(String(item))}</div>`).join('')
+                ? filtersText
+                    .map((item) => `<div>${escapeHtml(String(item))}</div>`)
+                    .join('')
                 : '<div>بدون فلاتر</div>'
             }
           </div>
 
           ${
-            logs.length
+            printLogs.length
               ? `
                 <table>
                   <thead>
@@ -318,20 +384,21 @@ export default function ActivityLogPage() {
           </script>
         </body>
       </html>
-    `;
+    `
 
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
+    printWindow.document.open()
+    printWindow.document.write(html)
+    printWindow.document.close()
   }
 
   useEffect(() => {
-    void loadLogs({
+    void loadLogs(1, {
       action: 'all',
       entity: 'all',
-      limit: 500
-    });
-  }, []);
+      limit: SYSTEM_PAGE_SIZE,
+      offset: 0,
+    })
+  }, [])
 
   return (
     <div
@@ -341,7 +408,7 @@ export default function ActivityLogPage() {
         height: '100%',
         minHeight: 0,
         overflow: 'hidden',
-        gridTemplateRows: 'auto minmax(0, 1fr)'
+        gridTemplateRows: 'auto minmax(0, 1fr)',
       }}
     >
       <style>
@@ -376,7 +443,7 @@ export default function ActivityLogPage() {
             color: '#fff',
             fontWeight: 800,
             boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
-            pointerEvents: 'none'
+            pointerEvents: 'none',
           }}
         >
           {pageMessage.text}
@@ -389,7 +456,7 @@ export default function ActivityLogPage() {
           borderRadius: '16px',
           display: 'grid',
           gap: '12px',
-          minHeight: 0
+          minHeight: 0,
         }}
       >
         <div
@@ -398,7 +465,7 @@ export default function ActivityLogPage() {
             justifyContent: 'space-between',
             gap: '14px',
             flexWrap: 'wrap',
-            alignItems: 'center'
+            alignItems: 'center',
           }}
         >
           <div>
@@ -415,10 +482,10 @@ export default function ActivityLogPage() {
               background: 'rgba(37,99,235,0.12)',
               border: '1px solid rgba(37,99,235,0.28)',
               color: '#bfdbfe',
-              fontWeight: 900
+              fontWeight: 900,
             }}
           >
-            عدد النتائج: {logsCount}
+            عدد النتائج: {total}
           </div>
         </div>
 
@@ -427,7 +494,7 @@ export default function ActivityLogPage() {
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
             gap: '12px',
-            alignItems: 'end'
+            alignItems: 'end',
           }}
         >
           <Field label="من تاريخ">
@@ -526,27 +593,37 @@ export default function ActivityLogPage() {
             />
           </Field>
 
-          <button type="button" onClick={() => void loadLogs()} style={primaryButtonStyle}>
+          <button
+            type="button"
+            onClick={() => {
+              setPage(1)
+              void loadLogs(1)
+            }}
+            style={primaryButtonStyle}
+          >
             {loading ? 'جاري التحميل...' : 'تطبيق الفلتر'}
           </button>
 
-          <button type="button" onClick={clearFilters} style={secondaryButtonStyle}>
+          <button
+            type="button"
+            onClick={clearFilters}
+            style={secondaryButtonStyle}
+          >
             مسح الفلتر
           </button>
 
           <button
             type="button"
-            onClick={printActivityReport}
+            onClick={() => void printActivityReport()}
             style={{
               ...primaryButtonStyle,
               background: 'rgba(16,185,129,0.14)',
               border: '1px solid rgba(16,185,129,0.32)',
-              color: '#6ee7b7'
+              color: '#6ee7b7',
             }}
           >
             طباعة السجل
           </button>
-          
         </div>
       </div>
 
@@ -560,16 +637,25 @@ export default function ActivityLogPage() {
           overflow: 'hidden',
           display: 'grid',
           gridTemplateRows: 'auto minmax(0, 1fr)',
-          gap: '10px'
+          gap: '10px',
         }}
       >
+        <PaginationBar
+          page={page}
+          totalItems={total}
+          loading={loading}
+          onPageChange={(nextPage) => {
+            void loadLogs(nextPage)
+          }}
+        />
+
         <div
           className="activity-body-scroll"
           style={{
             overflow: 'auto',
             minHeight: 0,
             height: '100%',
-            maxWidth: '100%'
+            maxWidth: '100%',
           }}
         >
           <table
@@ -577,7 +663,7 @@ export default function ActivityLogPage() {
               width: '100%',
               minWidth: '1000px',
               borderCollapse: 'collapse',
-              direction: 'rtl'
+              direction: 'rtl',
             }}
           >
             <thead>
@@ -603,12 +689,15 @@ export default function ActivityLogPage() {
 
               {!loading &&
                 logs.map((item) => {
-                  const detailsText = formatDetails(item.details);
-                  const isExpanded = Boolean(expandedDetails[item.id]);
-                  const canExpand = detailsText.length > 90;
+                  const detailsText = formatDetails(item.details)
+                  const isExpanded = Boolean(expandedDetails[item.id])
+                  const canExpand = detailsText.length > 90
 
                   return (
-                    <tr key={item.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <tr
+                      key={item.id}
+                      style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                    >
                       <td style={tdStyle}>{item.id}</td>
 
                       <td style={tdStyle}>
@@ -628,7 +717,7 @@ export default function ActivityLogPage() {
                             whiteSpace: isExpanded ? 'normal' : 'nowrap',
                             overflow: isExpanded ? 'visible' : 'hidden',
                             textOverflow: isExpanded ? 'clip' : 'ellipsis',
-                            wordBreak: 'break-word'
+                            wordBreak: 'break-word',
                           }}
                         >
                           {detailsText}
@@ -645,7 +734,7 @@ export default function ActivityLogPage() {
                               color: '#93c5fd',
                               fontWeight: 900,
                               cursor: 'pointer',
-                              padding: 0
+                              padding: 0,
                             }}
                           >
                             {isExpanded ? 'عرض أقل' : 'عرض المزيد'}
@@ -659,9 +748,8 @@ export default function ActivityLogPage() {
                         {formatDate(item.created_at)}
                       </td>
                     </tr>
-                  );
-                })
-              }
+                  )
+                })}
 
               {!loading && logs.length === 0 && (
                 <tr>
@@ -671,7 +759,7 @@ export default function ActivityLogPage() {
                       ...tdStyle,
                       padding: '30px',
                       textAlign: 'center',
-                      color: '#94a3b8'
+                      color: '#94a3b8',
                     }}
                   >
                     لا توجد عمليات مطابقة للفلتر
@@ -683,15 +771,15 @@ export default function ActivityLogPage() {
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 function formatLogUser(item: ActivityLog) {
   if (item.user_name || item.username) {
-    return item.user_name || item.username;
+    return item.user_name || item.username
   }
 
-  return 'غير محدد';
+  return 'غير محدد'
 }
 
 function escapeHtml(value: unknown) {
@@ -700,152 +788,158 @@ function escapeHtml(value: unknown) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/'/g, '&#039;')
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
   return (
     <label style={{ display: 'grid', gap: '8px' }}>
       <span style={{ color: '#cbd5e1', fontWeight: 800 }}>{label}</span>
       {children}
     </label>
-  );
+  )
 }
 
 function getActionLabel(action: string) {
   switch (action) {
     case 'sale_created':
-      return 'فاتورة بيع';
+      return 'فاتورة بيع'
     case 'sale_return_created':
-      return 'مرتجع بيع';
+      return 'مرتجع بيع'
     case 'purchase_created':
-      return 'فاتورة شراء';
+      return 'فاتورة شراء'
 
     case 'cash_in':
-      return 'دخول خزنة';
+      return 'دخول خزنة'
     case 'cash_out':
-      return 'خروج خزنة';
+      return 'خروج خزنة'
     case 'cash_deposit':
-      return 'إيداع خزنة';
+      return 'إيداع خزنة'
     case 'cash_withdraw':
-      return 'سحب خزنة';
+      return 'سحب خزنة'
 
     case 'expense_created':
-      return 'مصروف';
+      return 'مصروف'
 
     case 'product_created':
-      return 'إضافة منتج';
+      return 'إضافة منتج'
     case 'product_updated':
-      return 'تعديل منتج';
+      return 'تعديل منتج'
     case 'product_activated':
-      return 'تفعيل منتج';
+      return 'تفعيل منتج'
     case 'product_deactivated':
-      return 'تعطيل منتج';
+      return 'تعطيل منتج'
     case 'variant_updated':
-      return 'تعديل صنف';
+      return 'تعديل صنف'
     case 'variant_created':
-     return 'إضافة صنف';
-      
+      return 'إضافة صنف'
+
     case 'user_created':
-      return 'إضافة مستخدم';
+      return 'إضافة مستخدم'
     case 'user_updated':
-      return 'تعديل مستخدم';
+      return 'تعديل مستخدم'
     case 'user_activated':
-      return 'تفعيل مستخدم';
+      return 'تفعيل مستخدم'
     case 'user_deactivated':
-      return 'تعطيل مستخدم';
+      return 'تعطيل مستخدم'
     case 'user_password_reset':
-      return 'كلمة مرور';
+      return 'كلمة مرور'
 
     case 'supplier_created':
-      return 'إضافة مورد';
+      return 'إضافة مورد'
     case 'supplier_updated':
-      return 'تعديل مورد';
+      return 'تعديل مورد'
     case 'supplier_deactivated':
-      return 'تعطيل مورد';
+      return 'تعطيل مورد'
 
     case 'database_backup_created':
-      return 'Backup';
+      return 'Backup'
     case 'database_restored':
-      return 'Restore';
+      return 'Restore'
 
     case 'variant_activated':
-      return 'تفعيل صنف';
+      return 'تفعيل صنف'
 
     case 'variant_deactivated':
-      return 'تعطيل صنف';
+      return 'تعطيل صنف'
 
     case 'customer_created':
-      return 'إضافة عميل';
+      return 'إضافة عميل'
 
     case 'customer_updated':
-      return 'تعديل عميل';
+      return 'تعديل عميل'
 
     case 'customer_deactivated':
-      return 'تعطيل عميل';
+      return 'تعطيل عميل'
 
     case 'customer_payment_created':
-      return 'دفعة عميل';
+      return 'دفعة عميل'
 
     case 'supplier_payment_created':
-      return 'دفعة مورد';
+      return 'دفعة مورد'
 
     case 'database_reset':
-      return 'تصفير البرنامج';
+      return 'تصفير البرنامج'
 
     case 'stock_count_created':
-      return 'إنشاء جرد';
+      return 'إنشاء جرد'
 
     case 'stock_count_approved':
-      return 'اعتماد جرد';
+      return 'اعتماد جرد'
 
     case 'stock_count_canceled':
-      return 'إلغاء جرد';  
+      return 'إلغاء جرد'
 
     default:
-      return action;
+      return action
   }
 }
 
 function getEntityLabel(entity?: string | null) {
   switch (entity) {
     case 'sales':
-      return 'المبيعات';
+      return 'المبيعات'
     case 'sale_returns':
-     return 'مرتجعات البيع';  
+      return 'مرتجعات البيع'
     case 'purchase_invoices':
-      return 'المشتريات';
+      return 'المشتريات'
     case 'cash_movements':
-      return 'الخزنة';
+      return 'الخزنة'
     case 'expenses':
-      return 'المصروفات';
+      return 'المصروفات'
     case 'products':
-      return 'المنتجات';
+      return 'المنتجات'
     case 'product_variants':
-      return 'أصناف المنتجات';
+      return 'أصناف المنتجات'
     case 'users':
-      return 'المستخدمين';
+      return 'المستخدمين'
     case 'suppliers':
-      return 'الموردين';
+      return 'الموردين'
     case 'settings':
-      return 'الإعدادات';
+      return 'الإعدادات'
 
     case 'stock_counts':
-      return 'الجرد';
-  
+      return 'الجرد'
+
     default:
-      return entity || '—';
+      return entity || '—'
   }
 }
 
 function formatDetails(value?: string | null) {
-  if (!value) return '—';
+  if (!value) return '—'
 
   try {
-    const parsed = JSON.parse(value);
+    const parsed = JSON.parse(value)
 
     if (!parsed || typeof parsed !== 'object') {
-      return String(value);
+      return String(value)
     }
 
     const parts = [
@@ -862,30 +956,60 @@ function formatDetails(value?: string | null) {
 
       parsed.amount ? `المبلغ: ${moneyValue(parsed.amount)}` : null,
       parsed.grand_total ? `الإجمالي: ${moneyValue(parsed.grand_total)}` : null,
-      parsed.total_amount ? `الإجمالي: ${moneyValue(parsed.total_amount)}` : null,
+      parsed.total_amount
+        ? `الإجمالي: ${moneyValue(parsed.total_amount)}`
+        : null,
       parsed.paid_amount ? `المدفوع: ${moneyValue(parsed.paid_amount)}` : null,
-      parsed.remaining_amount ? `المتبقي: ${moneyValue(parsed.remaining_amount)}` : null,
+      parsed.remaining_amount
+        ? `المتبقي: ${moneyValue(parsed.remaining_amount)}`
+        : null,
 
-      parsed.payment_method ? `الدفع: ${paymentName(parsed.payment_method)}` : null,
+      parsed.payment_method
+        ? `الدفع: ${paymentName(parsed.payment_method)}`
+        : null,
       parsed.items_count ? `عدد الأصناف: ${parsed.items_count}` : null,
       parsed.session_id ? `رقم الجلسة: ${parsed.session_id}` : null,
-      parsed.changed_items !== undefined ? `أصناف تم تعديلها: ${parsed.changed_items}` : null,
-      parsed.shortage_items !== undefined ? `أصناف عجز: ${parsed.shortage_items}` : null,
-      parsed.surplus_items !== undefined ? `أصناف زيادة: ${parsed.surplus_items}` : null,
-      parsed.total_shortage_qty !== undefined ? `إجمالي العجز: ${parsed.total_shortage_qty}` : null,
-      parsed.total_surplus_qty !== undefined ? `إجمالي الزيادة: ${parsed.total_surplus_qty}` : null,
-      parsed.buy_difference_value !== undefined ? `فرق الشراء: ${moneyValue(parsed.buy_difference_value)}` : null,
-      parsed.sell_difference_value !== undefined ? `فرق البيع: ${moneyValue(parsed.sell_difference_value)}` : null,
+      parsed.changed_items !== undefined
+        ? `أصناف تم تعديلها: ${parsed.changed_items}`
+        : null,
+      parsed.shortage_items !== undefined
+        ? `أصناف عجز: ${parsed.shortage_items}`
+        : null,
+      parsed.surplus_items !== undefined
+        ? `أصناف زيادة: ${parsed.surplus_items}`
+        : null,
+      parsed.total_shortage_qty !== undefined
+        ? `إجمالي العجز: ${parsed.total_shortage_qty}`
+        : null,
+      parsed.total_surplus_qty !== undefined
+        ? `إجمالي الزيادة: ${parsed.total_surplus_qty}`
+        : null,
+      parsed.buy_difference_value !== undefined
+        ? `فرق الشراء: ${moneyValue(parsed.buy_difference_value)}`
+        : null,
+      parsed.sell_difference_value !== undefined
+        ? `فرق البيع: ${moneyValue(parsed.sell_difference_value)}`
+        : null,
       parsed.quantity ? `الكمية: ${parsed.quantity}` : null,
-      parsed.old_stock !== undefined ? `المخزون القديم: ${parsed.old_stock}` : null,
-      parsed.new_stock !== undefined ? `المخزون الجديد: ${parsed.new_stock}` : null,
+      parsed.old_stock !== undefined
+        ? `المخزون القديم: ${parsed.old_stock}`
+        : null,
+      parsed.new_stock !== undefined
+        ? `المخزون الجديد: ${parsed.new_stock}`
+        : null,
       parsed.diff !== undefined ? `الفرق: ${parsed.diff}` : null,
 
-      parsed.original_sale_id ? `فاتورة البيع الأصلية: #${parsed.original_sale_id}` : null,
+      parsed.original_sale_id
+        ? `فاتورة البيع الأصلية: #${parsed.original_sale_id}`
+        : null,
       parsed.return_id ? `رقم المرتجع: #${parsed.return_id}` : null,
-      parsed.refund_amount ? `المردود: ${moneyValue(parsed.refund_amount)}` : null,
+      parsed.refund_amount
+        ? `المردود: ${moneyValue(parsed.refund_amount)}`
+        : null,
       parsed.reason ? `السبب: ${parsed.reason}` : null,
-      parsed.loyalty_points_reversed ? `نقاط ملغاة: ${parsed.loyalty_points_reversed}` : null,
+      parsed.loyalty_points_reversed
+        ? `نقاط ملغاة: ${parsed.loyalty_points_reversed}`
+        : null,
 
       parsed.is_active !== undefined
         ? `الحالة: ${Number(parsed.is_active) === 1 ? 'مفعل' : 'معطل'}`
@@ -895,27 +1019,27 @@ function formatDetails(value?: string | null) {
       parsed.restored_from ? `استرجاع من: ${parsed.restored_from}` : null,
       parsed.safety_backup ? `نسخة أمان: ${parsed.safety_backup}` : null,
 
-      parsed.notes ? `ملاحظات: ${parsed.notes}` : null
-    ].filter(Boolean);
+      parsed.notes ? `ملاحظات: ${parsed.notes}` : null,
+    ].filter(Boolean)
 
     if (parts.length) {
-      return parts.join(' • ');
+      return parts.join(' • ')
     }
 
-    return formatUnknownDetails(parsed);
+    return formatUnknownDetails(parsed)
   } catch {
-    return value;
+    return value
   }
 }
 
 function moneyValue(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`;
+  return `${Number(value || 0).toFixed(2)} ج.م`
 }
 
 function roleName(value: string) {
-  if (value === 'admin') return 'مدير';
-  if (value === 'cashier') return 'كاشير';
-  return value;
+  if (value === 'admin') return 'مدير'
+  if (value === 'cashier') return 'كاشير'
+  return value
 }
 
 function formatUnknownDetails(parsed: Record<string, any>) {
@@ -946,53 +1070,58 @@ function formatUnknownDetails(parsed: Record<string, any>) {
     counted_count: 'أصناف تم جردها',
     buy_difference_value: 'فرق الشراء',
     sell_difference_value: 'فرق البيع',
-  };
+  }
 
-  return Object.entries(parsed)
-    .filter(([, value]) => value !== null && value !== undefined && value !== '')
-    .map(([key, value]) => {
-      const label = labels[key] || key;
-      return `${label}: ${formatDetailValue(value)}`;
-    })
-    .join(' • ') || '—';
+  return (
+    Object.entries(parsed)
+      .filter(
+        ([, value]) => value !== null && value !== undefined && value !== '',
+      )
+      .map(([key, value]) => {
+        const label = labels[key] || key
+        return `${label}: ${formatDetailValue(value)}`
+      })
+      .join(' • ') || '—'
+  )
 }
 
 function formatDetailValue(value: unknown) {
   if (typeof value === 'boolean') {
-    return value ? 'نعم' : 'لا';
+    return value ? 'نعم' : 'لا'
   }
 
   if (typeof value === 'object') {
-    return JSON.stringify(value);
+    return JSON.stringify(value)
   }
 
-  return String(value);
+  return String(value)
 }
 
 function paymentName(value: string) {
-  if (value === 'cash') return 'كاش';
-  if (value === 'card') return 'كارت';
-  if (value === 'wallet') return 'محفظة';
-  if (value === 'bank' || value === 'bank_transfer') return 'تحويل بنكي / انستا باي';
-  return value;
+  if (value === 'cash') return 'كاش'
+  if (value === 'card') return 'كارت'
+  if (value === 'wallet') return 'محفظة'
+  if (value === 'bank' || value === 'bank_transfer')
+    return 'تحويل بنكي / انستا باي'
+  return value
 }
 
 function formatDate(value?: string) {
-  if (!value) return '—';
+  if (!value) return '—'
 
   try {
-    const raw = String(value);
-    const normalized = raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`;
+    const raw = String(value)
+    const normalized = raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`
 
     return new Date(normalized).toLocaleString('ar-EG', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit'
-    });
+      minute: '2-digit',
+    })
   } catch {
-    return value;
+    return value
   }
 }
 
@@ -1004,7 +1133,7 @@ function getActionBadgeStyle(action: string): React.CSSProperties {
     action.includes('restored') ||
     action.includes('return') ||
     action.includes('out') ||
-    action.includes('withdraw');
+    action.includes('withdraw')
 
   const isSuccess =
     action.includes('created') ||
@@ -1012,25 +1141,25 @@ function getActionBadgeStyle(action: string): React.CSSProperties {
     action.includes('activated') ||
     action.includes('deposit') ||
     action.includes('in') ||
-    action.includes('backup');
+    action.includes('backup')
 
   if (isDanger) {
     return {
       ...badgeStyle,
       background: 'rgba(239,68,68,0.16)',
-      color: '#fca5a5'
-    };
+      color: '#fca5a5',
+    }
   }
 
   if (isSuccess) {
     return {
       ...badgeStyle,
       background: 'rgba(16,185,129,0.16)',
-      color: '#6ee7b7'
-    };
+      color: '#6ee7b7',
+    }
   }
 
-  return badgeStyle;
+  return badgeStyle
 }
 
 const inputStyle: React.CSSProperties = {
@@ -1044,8 +1173,8 @@ const inputStyle: React.CSSProperties = {
   textAlign: 'right',
   direction: 'rtl',
   boxSizing: 'border-box',
-  minWidth: '180px'
-};
+  minWidth: '180px',
+}
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -1055,8 +1184,8 @@ const primaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontWeight: 900,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.12)',
@@ -1066,20 +1195,20 @@ const secondaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontWeight: 900,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   fontWeight: 900,
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}
 
 const badgeStyle: React.CSSProperties = {
   padding: '5px 10px',
@@ -1087,5 +1216,5 @@ const badgeStyle: React.CSSProperties = {
   background: 'rgba(59,130,246,0.16)',
   color: '#93c5fd',
   fontWeight: 900,
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}

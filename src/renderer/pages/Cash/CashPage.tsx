@@ -6,6 +6,8 @@ import {
   getPaymentMethodLabel,
 } from '../../utils/payment-method'
 
+import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
+
 type CashSummary = {
   total_in: number
   total_out: number
@@ -49,6 +51,8 @@ export default function CashPage() {
 
   const [summary, setSummary] = useState<CashSummary | null>(null)
   const [movements, setMovements] = useState<CashMovement[]>([])
+  const [movementsTotal, setMovementsTotal] = useState(0)
+  const [movementsPage, setMovementsPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{
@@ -101,9 +105,9 @@ export default function CashPage() {
   const [transferNotes, setTransferNotes] = useState('')
   const [transferring, setTransferring] = useState(false)
 
-  async function loadData() {
+  async function loadData(page = movementsPage) {
     setLoading(true)
-
+    const safePage = Math.max(1, Number(page || 1))
     const filters = {
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
@@ -113,9 +117,15 @@ export default function CashPage() {
       search: search || undefined,
     }
 
+    const movementFilters = {
+      ...filters,
+      limit: SYSTEM_PAGE_SIZE,
+      offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
+    }
+
     try {
       const summaryData = await window.api.getCashSummary(filters)
-      const movementsData = await window.api.getCashMovements(filters)
+      const movementsData = await window.api.getCashMovements(movementFilters)
       const drawerSummary = await window.api.getCashSummary({
         payment_method: 'store_cash',
       })
@@ -144,7 +154,10 @@ export default function CashPage() {
       setTotalCapital(capital)
 
       setSummary(summaryData)
-      setMovements(movementsData)
+      setMovements(Array.isArray(movementsData.rows) ? movementsData.rows : [])
+
+      setMovementsTotal(Number(movementsData.total || 0))
+      setMovementsPage(safePage)
     } catch (error) {
       console.error(error)
       showMessage('error', 'حدث خطأ أثناء تحميل بيانات الخزنة')
@@ -201,7 +214,7 @@ export default function CashPage() {
       setNotes('')
 
       showMessage('success', 'تم حفظ حركة الخزنة بنجاح')
-      await loadData()
+      await loadData(movementsPage)
     } catch (error) {
       console.error(error)
       showMessage('error', 'حدث خطأ أثناء حفظ حركة الخزنة')
@@ -315,7 +328,7 @@ export default function CashPage() {
         )} والمتبقي في الدرج ${money(result.carry_over_amount)}`,
       )
 
-      await loadData()
+      await loadData(movementsPage)
     } catch (error) {
       console.error(error)
 
@@ -376,7 +389,7 @@ export default function CashPage() {
       setTransferNotes('')
 
       showMessage('success', 'تم تحويل المبلغ بين الحسابات بنجاح')
-      await loadData()
+      await loadData(movementsPage)
     } catch (error) {
       console.error(error)
       showMessage(
@@ -424,7 +437,7 @@ export default function CashPage() {
   }
 
   useEffect(() => {
-    void loadData()
+    void loadData(1)
   }, [])
 
   function getTypeLabel(type: string) {
@@ -488,7 +501,56 @@ export default function CashPage() {
     return `${year}-${month}-${day}`
   }
 
-  function printCashReport() {
+  async function getAllCashMovementsForPrint() {
+    const batchSize = 200
+
+    const baseFilters = {
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
+      type: filterType,
+      direction: filterDirection,
+      payment_method: filterPaymentMethod,
+      search: search || undefined,
+    }
+
+    const firstResult = await window.api.getCashMovements({
+      ...baseFilters,
+      limit: batchSize,
+      offset: 0,
+    })
+
+    const allMovements: CashMovement[] = Array.isArray(firstResult.rows)
+      ? [...firstResult.rows]
+      : []
+
+    const total = Number(firstResult.total || 0)
+
+    for (let offset = batchSize; offset < total; offset += batchSize) {
+      const result = await window.api.getCashMovements({
+        ...baseFilters,
+        limit: batchSize,
+        offset,
+      })
+
+      if (Array.isArray(result.rows)) {
+        allMovements.push(...result.rows)
+      }
+    }
+
+    return allMovements
+  }
+
+  async function printCashReport() {
+    let printMovements: CashMovement[] = []
+
+    try {
+      printMovements = await getAllCashMovementsForPrint()
+    } catch (error) {
+      console.error('Failed to load cash movements for print:', error)
+      showMessage('error', 'حدث خطأ أثناء تجهيز كشف الخزنة للطباعة')
+      return
+    }
+
     const printWindow = window.open('', '_blank', 'width=1100,height=800')
 
     if (!printWindow) {
@@ -522,7 +584,7 @@ export default function CashPage() {
       )
       .join('')
 
-    const rowsHtml = movements
+    const rowsHtml = printMovements
       .map(
         (item) => `
           <tr>
@@ -694,7 +756,7 @@ export default function CashPage() {
 
             <div class="muted">
               المستخدم: ${escapeHtml(currentUser?.name || '—')}<br />
-              عدد الحركات: ${movements.length}
+              عدد الحركات: ${printMovements.length}
             </div>
           </div>
 
@@ -735,7 +797,7 @@ export default function CashPage() {
           </div>
 
           ${
-            movements.length
+            printMovements.length
               ? `
                 <table>
                   <thead>
@@ -1067,7 +1129,10 @@ export default function CashPage() {
         <div style={{ display: 'flex', gap: '6px' }}>
           <button
             type="button"
-            onClick={loadData}
+            onClick={() => {
+              setMovementsPage(1)
+              void loadData(1)
+            }}
             style={{ ...primaryButtonStyle, height: '36px', padding: '0 12px' }}
           >
             فلتر
@@ -1082,7 +1147,8 @@ export default function CashPage() {
               setFilterDirection('all')
               setFilterPaymentMethod('all')
               setSearch('')
-              setTimeout(() => void loadData(), 0)
+              setMovementsPage(1)
+              setTimeout(() => void loadData(1), 0)
             }}
             style={{
               ...secondaryButtonStyle,
@@ -1094,7 +1160,7 @@ export default function CashPage() {
           </button>
           <button
             type="button"
-            onClick={printCashReport}
+            onClick={() => void printCashReport()}
             style={{
               ...primaryButtonStyle,
               width: '130px',
@@ -1121,7 +1187,7 @@ export default function CashPage() {
           minHeight: 0,
           overflow: 'hidden',
           display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr)',
+          gridTemplateRows: 'auto auto minmax(0, 1fr)',
         }}
       >
         <div style={{ marginBottom: '16px' }}>
@@ -1137,6 +1203,15 @@ export default function CashPage() {
             جميع عمليات السحب والإيداع والتحصيل
           </p>
         </div>
+
+        <PaginationBar
+          page={movementsPage}
+          totalItems={movementsTotal}
+          loading={loading}
+          onPageChange={(page) => {
+            void loadData(page)
+          }}
+        />
 
         <div
           className="cash-body-scroll"

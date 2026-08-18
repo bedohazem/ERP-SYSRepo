@@ -478,8 +478,19 @@ declare global {
       // =========================
       getActivityLogs: (input?: {
         search?: string
+        action?: string
+        entity?: string
+        user_id?: number | null
+        date_from?: string
+        date_to?: string
         limit?: number
-      }) => Promise<ActivityLog[]>
+        offset?: number
+      }) => Promise<{
+        rows: ActivityLog[]
+        total: number
+        limit: number
+        offset: number
+      }>
 
       // =========================
       // Reports
@@ -887,7 +898,16 @@ declare global {
         direction?: 'all' | 'in' | 'out'
         payment_method?: string
         search?: string
-      }) => Promise<any[]>
+        reference_type?: string
+        created_by?: number | null
+        limit?: number
+        offset?: number
+      }) => Promise<{
+        rows: any[]
+        total: number
+        limit: number
+        offset: number
+      }>
 
       createCashMovement: (input: any) => Promise<any>
       createCashTransfer: (input: any) => Promise<any>

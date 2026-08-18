@@ -22,6 +22,10 @@ type CashMovementTestRow = {
   created_by_name?: string | null
 }
 
+function getCashMovementRows(input?: Parameters<typeof listCashMovements>[0]) {
+  return listCashMovements(input).rows as CashMovementTestRow[]
+}
+
 function getActivityLogsCount() {
   const db = getDb()
 
@@ -125,7 +129,7 @@ describe('cash repository', () => {
       created_by: 1,
     })
 
-    const rows = listCashMovements() as CashMovementTestRow[]
+    const rows = getCashMovementRows() as CashMovementTestRow[]
 
     expect(rows).toHaveLength(2)
     expect(rows[0].notes).toBe('Second movement')
@@ -151,10 +155,10 @@ describe('cash repository', () => {
       created_by: 1,
     })
 
-    const inRows = listCashMovements({
+    const inRows = getCashMovementRows({
       direction: 'in',
     }) as CashMovementTestRow[]
-    const outRows = listCashMovements({
+    const outRows = getCashMovementRows({
       direction: 'out',
     }) as CashMovementTestRow[]
 
@@ -184,10 +188,10 @@ describe('cash repository', () => {
       created_by: 1,
     })
 
-    const depositRows = listCashMovements({
+    const depositRows = getCashMovementRows({
       type: 'deposit',
     }) as CashMovementTestRow[]
-    const cardRows = listCashMovements({
+    const cardRows = getCashMovementRows({
       payment_method: 'card',
     }) as CashMovementTestRow[]
 
@@ -217,7 +221,7 @@ describe('cash repository', () => {
       created_by: 1,
     })
 
-    const rows = listCashMovements({
+    const rows = getCashMovementRows({
       search: 'searchable',
     }) as CashMovementTestRow[]
 
@@ -396,5 +400,36 @@ describe('cash repository', () => {
         closed_by: 1,
       }),
     ).toThrow()
+  })
+
+  it('paginates cash movements without losing older records', () => {
+    for (let index = 1; index <= 5; index += 1) {
+      createCashMovement({
+        type: 'deposit',
+        direction: 'in',
+        amount: index,
+        payment_method: 'store_cash',
+        notes: `movement ${index}`,
+        created_by: 1,
+      })
+    }
+
+    const firstPage = listCashMovements({
+      limit: 2,
+      offset: 0,
+    })
+
+    const secondPage = listCashMovements({
+      limit: 2,
+      offset: 2,
+    })
+
+    expect(firstPage.total).toBe(5)
+    expect(firstPage.rows).toHaveLength(2)
+    expect(secondPage.rows).toHaveLength(2)
+
+    expect((firstPage.rows[0] as CashMovementTestRow).notes).toBe('movement 5')
+
+    expect((secondPage.rows[0] as CashMovementTestRow).notes).toBe('movement 3')
   })
 })

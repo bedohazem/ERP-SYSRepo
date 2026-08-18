@@ -5,6 +5,8 @@ import {
   getPaymentMethodLabel,
 } from '../../utils/payment-method'
 
+import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
+
 function roundMoney(value: number) {
   const amount = Number(value || 0)
 
@@ -61,9 +63,11 @@ export default function PurchaseHistoryPage() {
 
   const [rows, setRows] = useState<PurchaseRow[]>([])
   const [total, setTotal] = useState(0)
+  const [purchasePage, setPurchasePage] = useState(1)
 
   const [returnRows, setReturnRows] = useState<PurchaseReturnRow[]>([])
   const [returnTotal, setReturnTotal] = useState(0)
+  const [returnPage, setReturnPage] = useState(1)
 
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
@@ -118,18 +122,21 @@ export default function PurchaseHistoryPage() {
     return match?.[1] || raw || fallback
   }
 
-  async function loadPurchases() {
+  async function loadPurchases(page = purchasePage) {
     setLoading(true)
 
     try {
+      const safePage = Math.max(1, Number(page || 1))
+
       const result = await window.api.listPurchaseInvoices({
         search,
-        limit: 100,
-        offset: 0,
+        limit: SYSTEM_PAGE_SIZE,
+        offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
       })
 
       setRows(Array.isArray(result.rows) ? result.rows : [])
       setTotal(Number(result.total || 0))
+      setPurchasePage(safePage)
     } catch (error) {
       console.error('Failed to load purchase invoices:', error)
       showMessage('حدث خطأ أثناء تحميل فواتير الشراء')
@@ -140,18 +147,21 @@ export default function PurchaseHistoryPage() {
     }
   }
 
-  async function loadReturns() {
+  async function loadReturns(page = returnPage) {
     setLoading(true)
 
     try {
+      const safePage = Math.max(1, Number(page || 1))
+
       const result = await window.api.listPurchaseReturns({
         search,
-        limit: 100,
-        offset: 0,
+        limit: SYSTEM_PAGE_SIZE,
+        offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
       })
 
       setReturnRows(Array.isArray(result.rows) ? result.rows : [])
       setReturnTotal(Number(result.total || 0))
+      setReturnPage(safePage)
     } catch (error) {
       console.error('Failed to load purchase returns:', error)
       showMessage('حدث خطأ أثناء تحميل مرتجعات الشراء')
@@ -165,9 +175,11 @@ export default function PurchaseHistoryPage() {
   useEffect(() => {
     const handle = setTimeout(() => {
       if (activeTab === 'returns') {
-        void loadReturns()
+        setReturnPage(1)
+        void loadReturns(1)
       } else {
-        void loadPurchases()
+        setPurchasePage(1)
+        void loadPurchases(1)
       }
     }, 250)
 
@@ -241,7 +253,7 @@ export default function PurchaseHistoryPage() {
       setPaymentAmount('')
       setPaymentNotes('')
 
-      await loadPurchases()
+      await loadPurchases(purchasePage)
 
       if (selectedPurchase?.purchase?.id === paymentPurchase.id) {
         const data = await window.api.getPurchaseInvoice(paymentPurchase.id)
@@ -290,7 +302,7 @@ export default function PurchaseHistoryPage() {
       setCancelPurchaseTarget(null)
       setCancelReason('')
 
-      await loadPurchases()
+      await loadPurchases(purchasePage)
 
       if (selectedPurchase?.purchase?.id === cancelledId) {
         setSelectedPurchase(null)
@@ -386,10 +398,10 @@ export default function PurchaseHistoryPage() {
       setReturnRefundAccount('store_cash')
       setReturnRefundMode('cash')
 
-      await loadPurchases()
+      await loadPurchases(purchasePage)
 
       if (activeTab === 'returns') {
-        await loadReturns()
+        await loadReturns(returnPage)
       }
 
       if (selectedPurchase?.purchase?.id === returnPurchase.purchase.id) {
@@ -576,6 +588,15 @@ export default function PurchaseHistoryPage() {
             boxSizing: 'border-box',
           }}
         >
+          <PaginationBar
+            page={purchasePage}
+            totalItems={total}
+            loading={loading}
+            onPageChange={(page) => {
+              void loadPurchases(page)
+            }}
+          />
+
           <table
             style={{
               width: '100%',
@@ -840,6 +861,15 @@ export default function PurchaseHistoryPage() {
             boxSizing: 'border-box',
           }}
         >
+          <PaginationBar
+            page={returnPage}
+            totalItems={returnTotal}
+            loading={loading}
+            onPageChange={(page) => {
+              void loadReturns(page)
+            }}
+          />
+
           <table
             style={{
               width: '100%',

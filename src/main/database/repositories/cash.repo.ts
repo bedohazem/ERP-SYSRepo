@@ -37,6 +37,8 @@ export type CashFilterInput = {
   search?: string
   reference_type?: string
   created_by?: number | null
+  limit?: number
+  offset?: number
 }
 
 export type CashAccountKey =
@@ -314,10 +316,16 @@ export function getCashSummary(input?: CashFilterInput) {
 
 export function listCashMovements(input?: CashFilterInput) {
   const db = getDb()
+
   normalizeLegacyCashMovementAccounts()
+
   const { whereSql, params } = buildCashWhere(input)
 
-  return db
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+
+  const offset = Math.max(Number(input?.offset || 0), 0)
+
+  const rows = db
     .prepare(
       `
       SELECT
@@ -327,10 +335,29 @@ export function listCashMovements(input?: CashFilterInput) {
       LEFT JOIN users u ON u.id = cm.created_by
       ${whereSql}
       ORDER BY cm.id DESC
-      LIMIT 500
+      LIMIT ?
+      OFFSET ?
     `,
     )
-    .all(...params)
+    .all(...params, limit, offset)
+
+  const totalRow = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS total
+      FROM cash_movements cm
+      LEFT JOIN users u ON u.id = cm.created_by
+      ${whereSql}
+    `,
+    )
+    .get(...params) as { total: number }
+
+  return {
+    rows,
+    total: Number(totalRow?.total || 0),
+    limit,
+    offset,
+  }
 }
 
 export function createCashTransfer(input: CashTransferInput) {
