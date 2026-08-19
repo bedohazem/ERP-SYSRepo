@@ -1,49 +1,50 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import BarcodePreview from '../../components/products/BarcodePreview';
-import { useAuthStore } from '../../store/auth.store';
+import { useEffect, useMemo, useRef, useState } from 'react'
+import BarcodePreview from '../../components/products/BarcodePreview'
+import { useAuthStore } from '../../store/auth.store'
+import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 
 type Category = {
-  id: number;
-  name: string;
-  description: string | null;
-  is_active?: number;
-};
+  id: number
+  name: string
+  description: string | null
+  is_active?: number
+}
 
 type Product = {
-  id: number;
-  name: string;
-  category_id: number | null;
-  category_name: string | null;
-  image_path: string | null;
-  description: string | null;
-  is_active: number;
-  created_at: string;
-  variants_count: number;
-  active_variants_count: number;
-};
+  id: number
+  name: string
+  category_id: number | null
+  category_name: string | null
+  image_path: string | null
+  description: string | null
+  is_active: number
+  created_at: string
+  variants_count: number
+  active_variants_count: number
+}
 
 type ProductVariant = {
-  id: number;
-  product_id: number;
-  barcode: string;
-  size: string;
-  color: string;
-  buy_price: number;
-  sell_price: number;
-  min_stock: number;
-  is_active: number;
-  stock: number;
-};
+  id: number
+  product_id: number
+  barcode: string
+  size: string
+  color: string
+  buy_price: number
+  sell_price: number
+  min_stock: number
+  is_active: number
+  stock: number
+}
 
 type VariantForm = {
-  barcode: string;
-  size: string;
-  color: string;
-  buy_price: string;
-  sell_price: string;
-  min_stock: string;
-  opening_qty: string;
-};
+  barcode: string
+  size: string
+  color: string
+  buy_price: string
+  sell_price: string
+  min_stock: string
+  opening_qty: string
+}
 
 const emptyVariant = (): VariantForm => ({
   barcode: '',
@@ -52,141 +53,152 @@ const emptyVariant = (): VariantForm => ({
   buy_price: '',
   sell_price: '',
   min_stock: '5',
-  opening_qty: '0'
-});
+  opening_qty: '0',
+})
 
 type BarcodeItemPosition =
-| 'top'
-| 'top-left'
-| 'top-right'
-| 'above_barcode'
-| 'below_barcode'
-| 'bottom'
-| 'bottom-left'
-| 'bottom-right'
-| 'hidden';
+  | 'top'
+  | 'top-left'
+  | 'top-right'
+  | 'above_barcode'
+  | 'below_barcode'
+  | 'bottom'
+  | 'bottom-left'
+  | 'bottom-right'
+  | 'hidden'
 
-type BarcodeItemAlign = 'left' | 'center' | 'right';
+type BarcodeItemAlign = 'left' | 'center' | 'right'
 
 type BarcodePrintSettings = {
-  barcode_label_width_mm: number;
-  barcode_label_height_mm: number;
-  barcode_copies: number;
-  barcode_auto_print_after_save: boolean;
+  barcode_label_width_mm: number
+  barcode_label_height_mm: number
+  barcode_copies: number
+  barcode_auto_print_after_save: boolean
 
-  barcode_content_offset_x_mm: number;
-  barcode_content_offset_y_mm: number;
+  barcode_content_offset_x_mm: number
+  barcode_content_offset_y_mm: number
 
-  barcode_name_font_size: number;
-  barcode_name_position: BarcodeItemPosition;
-  barcode_name_align: BarcodeItemAlign;
+  barcode_name_font_size: number
+  barcode_name_position: BarcodeItemPosition
+  barcode_name_align: BarcodeItemAlign
 
-  barcode_price_font_size: number;
-  barcode_price_position: BarcodeItemPosition;
-  barcode_price_align: BarcodeItemAlign;
+  barcode_price_font_size: number
+  barcode_price_position: BarcodeItemPosition
+  barcode_price_align: BarcodeItemAlign
 
-  barcode_size_font_size: number;
-  barcode_size_position: BarcodeItemPosition;
-  barcode_size_align: BarcodeItemAlign;
+  barcode_size_font_size: number
+  barcode_size_position: BarcodeItemPosition
+  barcode_size_align: BarcodeItemAlign
 
-  barcode_color_font_size: number;
-  barcode_color_position: BarcodeItemPosition;
-  barcode_color_align: BarcodeItemAlign;
+  barcode_color_font_size: number
+  barcode_color_position: BarcodeItemPosition
+  barcode_color_align: BarcodeItemAlign
 
-  barcode_value_font_size: number;
-  barcode_value_position: BarcodeItemPosition;
-  barcode_value_align: BarcodeItemAlign;
+  barcode_value_font_size: number
+  barcode_value_position: BarcodeItemPosition
+  barcode_value_align: BarcodeItemAlign
 
-  barcode_svg_height: number;
-};
+  barcode_svg_height: number
+}
 
 function escapeHtml(value: string) {
-return String(value ?? '')
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;');
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 function escapeJs(value: string) {
-return String(value ?? '')
-  .replace(/\\/g, '\\\\')
-  .replace(/"/g, '\\"');
+  return String(value ?? '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
 }
 
 function money(value: unknown) {
-const n = Number(value || 0);
-return Number.isFinite(n) ? n.toFixed(2) : '0.00';
+  const n = Number(value || 0)
+  return Number.isFinite(n) ? n.toFixed(2) : '0.00'
 }
 
-type ProductsTab = 'list' | 'create' | 'edit';
-type ProductEditMode = 'edit' | 'addVariant';
+type ProductsTab = 'list' | 'create' | 'edit'
+type ProductEditMode = 'edit' | 'addVariant'
 
 export default function ProductsPage() {
-  const currentUser = useAuthStore((s) => s.user);
-  const pageRef = useRef<HTMLDivElement | null>(null);
-  const [isCompact, setIsCompact] = useState(false);
-  const [pageWidth, setPageWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  const currentUser = useAuthStore((s) => s.user)
+  const pageRef = useRef<HTMLDivElement | null>(null)
+  const [isCompact, setIsCompact] = useState(false)
+  const [pageWidth, setPageWidth] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : 1200,
+  )
 
-  const isNarrowDesktop = pageWidth < 1200;
-  const isWideDesktop = pageWidth >= 1200;
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
-  const [categoryRows, setCategoryRows] = useState<Category[]>([]);
-  const [categoryDraft, setCategoryDraft] = useState('');
-  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
-  const [editingCategoryName, setEditingCategoryName] = useState('');
-  const [savingCategory, setSavingCategory] = useState(false);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [showCreate, setShowCreate] = useState(false);
-  const [activeTab, setActiveTab] = useState<ProductsTab>('list');
-  const [loading, setLoading] = useState(false);
+  const isNarrowDesktop = pageWidth < 1200
+  const isWideDesktop = pageWidth >= 1200
+  const [categories, setCategories] = useState<Category[]>([])
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false)
+  const [categoryRows, setCategoryRows] = useState<Category[]>([])
+  const [categoryDraft, setCategoryDraft] = useState('')
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(
+    null,
+  )
+  const [editingCategoryName, setEditingCategoryName] = useState('')
+  const [savingCategory, setSavingCategory] = useState(false)
+  const [products, setProducts] = useState<Product[]>([])
+  const [productsTotal, setProductsTotal] = useState(0)
+  const [productPage, setProductPage] = useState(1)
+  const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [showCreate, setShowCreate] = useState(false)
+  const [activeTab, setActiveTab] = useState<ProductsTab>('list')
+  const [loading, setLoading] = useState(false)
   const [pageMessage, setPageMessage] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
+    type: 'success' | 'error'
+    text: string
+  } | null>(null)
 
-  const [name, setName] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [description, setDescription] = useState('');
-  const [variants, setVariants] = useState<VariantForm[]>([emptyVariant()]);
-  const [newEditVariant, setNewEditVariant] = useState<VariantForm>(emptyVariant());
-  const [addingVariant, setAddingVariant] = useState(false);
-  const [productEditMode, setProductEditMode] = useState<ProductEditMode>('edit');
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [variantsMap, setVariantsMap] = useState<Record<number, ProductVariant[]>>({});
-  const [loadingVariants, setLoadingVariants] = useState<number | null>(null);
+  const [name, setName] = useState('')
+  const [categoryId, setCategoryId] = useState('')
+  const [description, setDescription] = useState('')
+  const [variants, setVariants] = useState<VariantForm[]>([emptyVariant()])
+  const [newEditVariant, setNewEditVariant] =
+    useState<VariantForm>(emptyVariant())
+  const [addingVariant, setAddingVariant] = useState(false)
+  const [productEditMode, setProductEditMode] =
+    useState<ProductEditMode>('edit')
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [variantsMap, setVariantsMap] = useState<
+    Record<number, ProductVariant[]>
+  >({})
+  const [loadingVariants, setLoadingVariants] = useState<number | null>(null)
 
-  const [printSettings, setPrintSettings] = useState<BarcodePrintSettings | null>(null);
+  const [printSettings, setPrintSettings] =
+    useState<BarcodePrintSettings | null>(null)
 
-  const [editingProductId, setEditingProductId] = useState<number | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editCategoryId, setEditCategoryId] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  
+  const [editingProductId, setEditingProductId] = useState<number | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editCategoryId, setEditCategoryId] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+
   const [editVariants, setEditVariants] = useState<
     Array<{
-      id: number;
-      barcode: string;
-      size: string;
-      color: string;
-      buy_price: string;
-      sell_price: string;
-      min_stock: string;
-      is_active: number;
+      id: number
+      barcode: string
+      size: string
+      color: string
+      buy_price: string
+      sell_price: string
+      min_stock: string
+      is_active: number
     }>
-  >([]);
-  const [savingEdit, setSavingEdit] = useState(false);
+  >([])
+  const [savingEdit, setSavingEdit] = useState(false)
 
-  const [includeInactive, setIncludeInactive] = useState(false);
-  const [includeInactiveVariants, setIncludeInactiveVariants] = useState(false);
+  const [includeInactive, setIncludeInactive] = useState(false)
+  const [includeInactiveVariants, setIncludeInactiveVariants] = useState(false)
 
   const canSave = useMemo(() => {
-    if (!name.trim()) return false;
-    if (variants.length === 0) return false;
+    if (!name.trim()) return false
+    if (variants.length === 0) return false
 
     return variants.every(
       (v) =>
@@ -194,216 +206,235 @@ export default function ProductsPage() {
         v.size.trim() &&
         v.color.trim() &&
         v.buy_price.trim() &&
-        v.sell_price.trim()
-    );
-  }, [name, variants]);
+        v.sell_price.trim(),
+    )
+  }, [name, variants])
 
   function showMessage(type: 'success' | 'error', text: string) {
-    setPageMessage({ type, text });
+    setPageMessage({ type, text })
 
     setTimeout(() => {
-      setPageMessage(null);
-    }, 1800);
+      setPageMessage(null)
+    }, 1800)
   }
 
   async function reloadActiveCategories() {
-    const data = await window.api.getCategories();
-    setCategories(Array.isArray(data) ? data : []);
+    const data = await window.api.getCategories()
+    setCategories(Array.isArray(data) ? data : [])
   }
 
   async function loadCategoryManager() {
-    const data = await window.api.getCategories({ includeInactive: true });
-    setCategoryRows(Array.isArray(data) ? data : []);
+    const data = await window.api.getCategories({ includeInactive: true })
+    setCategoryRows(Array.isArray(data) ? data : [])
   }
 
   function openCategoryManager() {
-    setCategoryModalOpen(true);
-    setCategoryDraft('');
-    setEditingCategoryId(null);
-    setEditingCategoryName('');
-    void loadCategoryManager();
+    setCategoryModalOpen(true)
+    setCategoryDraft('')
+    setEditingCategoryId(null)
+    setEditingCategoryName('')
+    void loadCategoryManager()
   }
 
   async function saveCategory() {
-    const name = categoryDraft.trim();
+    const name = categoryDraft.trim()
 
     if (!name) {
-      showMessage('error', 'اكتب اسم التصنيف');
-      return;
+      showMessage('error', 'اكتب اسم التصنيف')
+      return
     }
 
-    setSavingCategory(true);
+    setSavingCategory(true)
 
     try {
       const result = await window.api.createCategory({
         name,
         description: null,
-        actor_id: currentUser?.id
-      });
+        actor_id: currentUser?.id,
+      })
 
       if (!result?.success) {
-        showMessage('error', result?.message || 'فشل حفظ التصنيف');
-        return;
+        showMessage('error', result?.message || 'فشل حفظ التصنيف')
+        return
       }
 
-      setCategoryDraft('');
-      await reloadActiveCategories();
-      await loadCategoryManager();
-      showMessage('success', 'تم حفظ التصنيف');
+      setCategoryDraft('')
+      await reloadActiveCategories()
+      await loadCategoryManager()
+      showMessage('success', 'تم حفظ التصنيف')
     } catch (error) {
-      console.error(error);
-      showMessage('error', 'حدث خطأ أثناء حفظ التصنيف');
+      console.error(error)
+      showMessage('error', 'حدث خطأ أثناء حفظ التصنيف')
     } finally {
-      setSavingCategory(false);
+      setSavingCategory(false)
     }
   }
 
   async function saveCategoryRename(categoryId: number) {
-    const name = editingCategoryName.trim();
+    const name = editingCategoryName.trim()
 
     if (!name) {
-      showMessage('error', 'اكتب اسم التصنيف');
-      return;
+      showMessage('error', 'اكتب اسم التصنيف')
+      return
     }
 
-    setSavingCategory(true);
+    setSavingCategory(true)
 
     try {
       const result = await window.api.updateCategory({
         id: categoryId,
         name,
         description: null,
-        actor_id: currentUser?.id
-      });
+        actor_id: currentUser?.id,
+      })
 
       if (!result?.success) {
-        showMessage('error', result?.message || 'فشل تعديل التصنيف');
-        return;
+        showMessage('error', result?.message || 'فشل تعديل التصنيف')
+        return
       }
 
-      setEditingCategoryId(null);
-      setEditingCategoryName('');
-      await reloadActiveCategories();
-      await loadCategoryManager();
-      showMessage('success', 'تم تعديل التصنيف');
+      setEditingCategoryId(null)
+      setEditingCategoryName('')
+      await reloadActiveCategories()
+      await loadCategoryManager()
+      showMessage('success', 'تم تعديل التصنيف')
     } catch (error) {
-      console.error(error);
-      showMessage('error', 'حدث خطأ أثناء تعديل التصنيف');
+      console.error(error)
+      showMessage('error', 'حدث خطأ أثناء تعديل التصنيف')
     } finally {
-      setSavingCategory(false);
+      setSavingCategory(false)
     }
   }
 
   async function toggleCategory(category: Category) {
-    setSavingCategory(true);
+    setSavingCategory(true)
 
     try {
-      const nextActive = Number(category.is_active || 0) ? 0 : 1;
+      const nextActive = Number(category.is_active || 0) ? 0 : 1
 
       const result = await window.api.toggleCategoryActive(
         category.id,
         nextActive,
-        currentUser?.id
-      );
+        currentUser?.id,
+      )
 
       if (!result?.success) {
-        showMessage('error', result?.message || 'فشل تحديث التصنيف');
-        return;
+        showMessage('error', result?.message || 'فشل تحديث التصنيف')
+        return
       }
 
       if (categoryFilter === String(category.id) && nextActive === 0) {
-        setCategoryFilter('all');
+        setCategoryFilter('all')
       }
 
-      await reloadActiveCategories();
-      await loadCategoryManager();
-      showMessage('success', nextActive ? 'تم تفعيل التصنيف' : 'تم إخفاء التصنيف');
+      await reloadActiveCategories()
+      await loadCategoryManager()
+      showMessage(
+        'success',
+        nextActive ? 'تم تفعيل التصنيف' : 'تم إخفاء التصنيف',
+      )
     } catch (error) {
-      console.error(error);
-      showMessage('error', 'حدث خطأ أثناء تحديث التصنيف');
+      console.error(error)
+      showMessage('error', 'حدث خطأ أثناء تحديث التصنيف')
     } finally {
-      setSavingCategory(false);
+      setSavingCategory(false)
     }
   }
 
-  async function loadData() {
+  async function loadData(page = productPage) {
+    setLoading(true)
+
     try {
-      const [cats, prods, barcodeSettings] = await Promise.all([
+      const safePage = Math.max(1, Number(page || 1))
+
+      const [cats, productResult, barcodeSettings] = await Promise.all([
         window.api.getCategories(),
-        window.api.getProducts({
+
+        window.api.getProductsPage({
           search,
           includeInactive,
-          categoryId: categoryFilter
+          categoryId: categoryFilter,
+          limit: SYSTEM_PAGE_SIZE,
+          offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
         }),
-        window.api.getBarcodePrintSettings()
-      ]);
 
-      setCategories(Array.isArray(cats) ? cats : []);
-      setProducts(Array.isArray(prods) ? prods : []);
-      setPrintSettings(barcodeSettings);
+        window.api.getBarcodePrintSettings(),
+      ])
+
+      setCategories(Array.isArray(cats) ? cats : [])
+
+      setProducts(Array.isArray(productResult.rows) ? productResult.rows : [])
+
+      setProductsTotal(Number(productResult.total || 0))
+
+      setProductPage(safePage)
+      setPrintSettings(barcodeSettings)
     } catch (error) {
-      console.error('Failed to load products page data:', error);
-      showMessage('error', 'حدث خطأ أثناء تحميل المنتجات');
+      console.error('Failed to load products page data:', error)
+
+      showMessage('error', 'حدث خطأ أثناء تحميل المنتجات')
+    } finally {
+      setLoading(false)
     }
   }
 
   function updateNewEditVariant(key: keyof VariantForm, value: string) {
     setNewEditVariant((prev) => ({
       ...prev,
-      [key]: value
-    }));
+      [key]: value,
+    }))
   }
 
   async function addVariantToEditingProduct() {
-    if (!editingProductId) return;
-    if (addingVariant) return;
+    if (!editingProductId) return
+    if (addingVariant) return
 
     if (!newEditVariant.barcode.trim()) {
-      showMessage('error', 'الباركود مطلوب');
-      return;
+      showMessage('error', 'الباركود مطلوب')
+      return
     }
 
     if (!newEditVariant.size.trim()) {
-      showMessage('error', 'المقاس مطلوب');
-      return;
+      showMessage('error', 'المقاس مطلوب')
+      return
     }
 
     if (!newEditVariant.color.trim()) {
-      showMessage('error', 'اللون مطلوب');
-      return;
+      showMessage('error', 'اللون مطلوب')
+      return
     }
 
     if (!newEditVariant.buy_price.trim() || !newEditVariant.sell_price.trim()) {
-      showMessage('error', 'سعر الشراء وسعر البيع مطلوبين');
-      return;
+      showMessage('error', 'سعر الشراء وسعر البيع مطلوبين')
+      return
     }
 
-    const buyPrice = Number(newEditVariant.buy_price);
-    const sellPrice = Number(newEditVariant.sell_price);
-    const minStock = Number(newEditVariant.min_stock || 5);
-    const openingQty = Number(newEditVariant.opening_qty || 0);
+    const buyPrice = Number(newEditVariant.buy_price)
+    const sellPrice = Number(newEditVariant.sell_price)
+    const minStock = Number(newEditVariant.min_stock || 5)
+    const openingQty = Number(newEditVariant.opening_qty || 0)
 
     if (!Number.isFinite(buyPrice) || buyPrice < 0) {
-      showMessage('error', 'سعر الشراء غير صحيح');
-      return;
+      showMessage('error', 'سعر الشراء غير صحيح')
+      return
     }
 
     if (!Number.isFinite(sellPrice) || sellPrice < 0) {
-      showMessage('error', 'سعر البيع غير صحيح');
-      return;
+      showMessage('error', 'سعر البيع غير صحيح')
+      return
     }
 
     if (!Number.isFinite(minStock) || minStock < 0) {
-      showMessage('error', 'حد المخزون غير صحيح');
-      return;
+      showMessage('error', 'حد المخزون غير صحيح')
+      return
     }
 
     if (!Number.isFinite(openingQty) || openingQty < 0) {
-      showMessage('error', 'الرصيد الافتتاحي غير صحيح');
-      return;
+      showMessage('error', 'الرصيد الافتتاحي غير صحيح')
+      return
     }
 
-    setAddingVariant(true);
+    setAddingVariant(true)
 
     try {
       const result = await window.api.addProductVariant({
@@ -415,138 +446,132 @@ export default function ProductsPage() {
         sell_price: sellPrice,
         min_stock: minStock,
         opening_qty: openingQty,
-        actor_id: currentUser?.id
-      });
+        actor_id: currentUser?.id,
+      })
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل إضافة الصنف');
-        return;
+        showMessage('error', result.message || 'فشل إضافة الصنف')
+        return
       }
 
       const refreshed = await window.api.getProductVariants({
         productId: editingProductId,
-        includeInactive: true
-      });
+        includeInactive: true,
+      })
 
-      const normalizedVariants = (Array.isArray(refreshed) ? refreshed : []).map(
-        (v: ProductVariant) => ({
-          id: v.id,
-          barcode: v.barcode ?? '',
-          size: v.size ?? '',
-          color: v.color ?? '',
-          buy_price: String(v.buy_price ?? 0),
-          sell_price: String(v.sell_price ?? 0),
-          min_stock: String(v.min_stock ?? 5),
-          is_active: v.is_active ?? 1
-        })
-      );
+      const normalizedVariants = (
+        Array.isArray(refreshed) ? refreshed : []
+      ).map((v: ProductVariant) => ({
+        id: v.id,
+        barcode: v.barcode ?? '',
+        size: v.size ?? '',
+        color: v.color ?? '',
+        buy_price: String(v.buy_price ?? 0),
+        sell_price: String(v.sell_price ?? 0),
+        min_stock: String(v.min_stock ?? 5),
+        is_active: v.is_active ?? 1,
+      }))
 
-      setEditVariants(normalizedVariants);
+      setEditVariants(normalizedVariants)
 
       setVariantsMap((prev) => ({
         ...prev,
-        [editingProductId]: Array.isArray(refreshed) ? refreshed : []
-      }));
+        [editingProductId]: Array.isArray(refreshed) ? refreshed : [],
+      }))
 
-      await loadData();
+      await loadData(productPage)
 
-      setNewEditVariant(emptyVariant());
-      showMessage('success', 'تم إضافة الصنف بنجاح');
+      setNewEditVariant(emptyVariant())
+      showMessage('success', 'تم إضافة الصنف بنجاح')
     } catch (error) {
-      console.error('Failed to add variant:', error);
-      showMessage('error', 'حدث خطأ أثناء إضافة الصنف');
+      console.error('Failed to add variant:', error)
+      showMessage('error', 'حدث خطأ أثناء إضافة الصنف')
     } finally {
-      setAddingVariant(false);
+      setAddingVariant(false)
     }
   }
 
   useEffect(() => {
-    const element = pageRef.current;
+    const element = pageRef.current
 
-    if (!element) return;
+    if (!element) return
 
     function updateCompact(width: number) {
-      const safeWidth = width || window.innerWidth;
+      const safeWidth = width || window.innerWidth
 
-      setPageWidth(safeWidth);
-      setIsCompact(safeWidth <= 900);
+      setPageWidth(safeWidth)
+      setIsCompact(safeWidth <= 900)
     }
 
-    updateCompact(element.getBoundingClientRect().width);
+    updateCompact(element.getBoundingClientRect().width)
 
     const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
+      const entry = entries[0]
 
       if (entry) {
-        updateCompact(entry.contentRect.width);
+        updateCompact(entry.contentRect.width)
       }
-    });
+    })
 
-    observer.observe(element);
+    observer.observe(element)
 
-    return () => observer.disconnect();
-  }, []);
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
-    void loadData();
-  }, []);
+    void loadData(1)
+  }, [])
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      void window.api
-        .getProducts({
-          search,
-          includeInactive,
-          categoryId: categoryFilter
-        })
-        .then((data) => setProducts(Array.isArray(data) ? data : []))
-        .catch((error) => console.error('Failed to search products:', error));
-    }, 250);
+      setProductPage(1)
+      void loadData(1)
+    }, 250)
 
-    return () => clearTimeout(handle);
-  }, [search, includeInactive, categoryFilter]);
+    return () => clearTimeout(handle)
+  }, [search, includeInactive, categoryFilter])
 
   useEffect(() => {
-    setVariantsMap({});
-    setExpandedId(null);
-  }, [includeInactiveVariants]);
+    setVariantsMap({})
+    setExpandedId(null)
+  }, [includeInactiveVariants])
 
   function updateVariant(index: number, key: keyof VariantForm, value: string) {
     setVariants((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, [key]: value } : item))
-    );
+      prev.map((item, i) => (i === index ? { ...item, [key]: value } : item)),
+    )
   }
 
   function addVariant() {
-    setVariants((prev) => [...prev, emptyVariant()]);
+    setVariants((prev) => [...prev, emptyVariant()])
   }
 
   function removeVariant(index: number) {
-    setVariants((prev) => prev.filter((_, i) => i !== index));
+    setVariants((prev) => prev.filter((_, i) => i !== index))
   }
 
   function resetCreateForm() {
-    setName('');
-    setCategoryId('');
-    setDescription('');
-    setVariants([emptyVariant()]);
+    setName('')
+    setCategoryId('')
+    setDescription('')
+    setVariants([emptyVariant()])
   }
 
   function openCreateTab() {
-    setShowCreate(true);
-    setActiveTab('create');
+    setShowCreate(true)
+    setActiveTab('create')
 
-    setEditingProductId(null);
-    setEditName('');
-    setEditCategoryId('');
-    setEditDescription('');
-    setEditVariants([]);
+    setEditingProductId(null)
+    setEditName('')
+    setEditCategoryId('')
+    setEditDescription('')
+    setEditVariants([])
   }
 
   async function handleSave() {
-    if (!canSave || loading) return;
+    if (!canSave || loading) return
 
-    setLoading(true);
+    setLoading(true)
 
     try {
       const result = await window.api.createProduct({
@@ -562,99 +587,106 @@ export default function ProductsPage() {
           buy_price: Number(v.buy_price),
           sell_price: Number(v.sell_price),
           min_stock: Number(v.min_stock || 5),
-          opening_qty: Number(v.opening_qty || 0)
-        }))
-      });
+          opening_qty: Number(v.opening_qty || 0),
+        })),
+      })
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل حفظ المنتج');
-        return;
+        showMessage('error', result.message || 'فشل حفظ المنتج')
+        return
       }
 
-      resetCreateForm();
-      setShowCreate(false);
-      setActiveTab('list');
+      resetCreateForm()
+      setShowCreate(false)
+      setActiveTab('list')
 
-      await reloadPrintSettings();
-      await loadData();
-      showMessage('success', 'تم حفظ المنتج بنجاح');
+      await reloadPrintSettings()
+      await loadData(productPage)
+      showMessage('success', 'تم حفظ المنتج بنجاح')
     } catch (error) {
-      console.error('Failed to save product:', error);
-      showMessage('error', 'حدث خطأ أثناء حفظ المنتج');
+      console.error('Failed to save product:', error)
+      showMessage('error', 'حدث خطأ أثناء حفظ المنتج')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
   async function toggleExpand(productId: number) {
     if (expandedId === productId) {
-      setExpandedId(null);
-      return;
+      setExpandedId(null)
+      return
     }
 
-    setExpandedId(productId);
+    setExpandedId(productId)
 
     if (!variantsMap[productId]) {
-      setLoadingVariants(productId);
+      setLoadingVariants(productId)
 
       try {
         const data = await window.api.getProductVariants({
           productId,
-          includeInactive: includeInactiveVariants
-        });
+          includeInactive: includeInactiveVariants,
+        })
 
         setVariantsMap((prev) => ({
           ...prev,
-          [productId]: Array.isArray(data) ? data : []
-        }));
+          [productId]: Array.isArray(data) ? data : [],
+        }))
       } catch (error) {
-        console.error('Failed to load product variants:', error);
-        showMessage('error', 'حدث خطأ أثناء تحميل الـ variants');
+        console.error('Failed to load product variants:', error)
+        showMessage('error', 'حدث خطأ أثناء تحميل الـ variants')
       } finally {
-        setLoadingVariants(null);
+        setLoadingVariants(null)
       }
     }
   }
 
   function generateBarcodeValue(): string {
-    const now = Date.now().toString().slice(-8);
-    const random = Math.floor(1000 + Math.random() * 9000).toString();
+    const now = Date.now().toString().slice(-8)
+    const random = Math.floor(1000 + Math.random() * 9000).toString()
 
-    return `29${now}${random}`;
+    return `29${now}${random}`
   }
 
   async function reloadPrintSettings() {
     try {
-      const data = await window.api.getBarcodePrintSettings();
-      setPrintSettings(data);
+      const data = await window.api.getBarcodePrintSettings()
+      setPrintSettings(data)
     } catch (error) {
-      console.error('Failed to reload print settings:', error);
+      console.error('Failed to reload print settings:', error)
     }
   }
 
   function printBarcodeLabel(input: {
-    productName: string;
-    barcode: string;
-    size: string;
-    color: string;
-    price: number;
+    productName: string
+    barcode: string
+    size: string
+    color: string
+    price: number
   }) {
     if (!input.barcode?.trim()) {
-      showMessage('error', 'لا يوجد باركود للطباعة');
-      return;
+      showMessage('error', 'لا يوجد باركود للطباعة')
+      return
     }
 
     if (!printSettings) {
-      showMessage('error', 'إعدادات الطباعة غير جاهزة');
-      return;
+      showMessage('error', 'إعدادات الطباعة غير جاهزة')
+      return
     }
 
-    const widthMm = Number(printSettings.barcode_label_width_mm || 35);
-    const heightMm = Number(printSettings.barcode_label_height_mm || 25);
-    const copies = Math.max(1, Number(printSettings.barcode_copies || 1));
-    const svgHeight = Math.max(10, Number(printSettings.barcode_svg_height || 22));
-    const contentOffsetX = Number(printSettings.barcode_content_offset_x_mm || 0);
-    const contentOffsetY = Number(printSettings.barcode_content_offset_y_mm || 0);
+    const widthMm = Number(printSettings.barcode_label_width_mm || 35)
+    const heightMm = Number(printSettings.barcode_label_height_mm || 25)
+    const copies = Math.max(1, Number(printSettings.barcode_copies || 1))
+    const svgHeight = Math.max(
+      10,
+      Number(printSettings.barcode_svg_height || 22),
+    )
+    const contentOffsetX = Number(
+      printSettings.barcode_content_offset_x_mm || 0,
+    )
+    const contentOffsetY = Number(
+      printSettings.barcode_content_offset_y_mm || 0,
+    )
 
     const itemDefs = [
       {
@@ -663,7 +695,7 @@ export default function ProductsPage() {
         fontSize: printSettings.barcode_name_font_size,
         position: printSettings.barcode_name_position,
         align: printSettings.barcode_name_align,
-        className: 'name-item'
+        className: 'name-item',
       },
       {
         key: 'price',
@@ -671,7 +703,7 @@ export default function ProductsPage() {
         fontSize: printSettings.barcode_price_font_size,
         position: printSettings.barcode_price_position,
         align: printSettings.barcode_price_align,
-        className: 'price-item'
+        className: 'price-item',
       },
       {
         key: 'size',
@@ -679,7 +711,7 @@ export default function ProductsPage() {
         fontSize: printSettings.barcode_size_font_size,
         position: printSettings.barcode_size_position,
         align: printSettings.barcode_size_align,
-        className: 'size-item'
+        className: 'size-item',
       },
       {
         key: 'color',
@@ -687,19 +719,22 @@ export default function ProductsPage() {
         fontSize: printSettings.barcode_color_font_size,
         position: printSettings.barcode_color_position,
         align: printSettings.barcode_color_align,
-        className: 'color-item'
-      }
-    ].filter((item) => item.position !== 'hidden');
+        className: 'color-item',
+      },
+    ].filter((item) => item.position !== 'hidden')
 
-    const valuePosition = printSettings.barcode_value_position;
-    const valueAlign = printSettings.barcode_value_align;
-    const valueFontSize = printSettings.barcode_value_font_size;
+    const valuePosition = printSettings.barcode_value_position
+    const valueAlign = printSettings.barcode_value_align
+    const valueFontSize = printSettings.barcode_value_font_size
 
-    function alignToCss(position: BarcodeItemPosition, align: BarcodeItemAlign) {
-      if (position.endsWith('-left')) return 'left';
-      if (position.endsWith('-right')) return 'right';
+    function alignToCss(
+      position: BarcodeItemPosition,
+      align: BarcodeItemAlign,
+    ) {
+      if (position.endsWith('-left')) return 'left'
+      if (position.endsWith('-right')) return 'right'
 
-      return align;
+      return align
     }
 
     function renderItems(position: BarcodeItemPosition) {
@@ -716,13 +751,13 @@ export default function ProductsPage() {
             >
               ${escapeHtml(item.value)}
             </div>
-          `
+          `,
         )
-        .join('');
+        .join('')
     }
 
     function renderBarcodeValue(position: BarcodeItemPosition) {
-      if (valuePosition !== position || valuePosition === 'hidden') return '';
+      if (valuePosition !== position || valuePosition === 'hidden') return ''
 
       return `
         <div
@@ -734,32 +769,32 @@ export default function ProductsPage() {
         >
           ${escapeHtml(input.barcode)}
         </div>
-      `;
+      `
     }
 
     const renderSingleZone = (position: BarcodeItemPosition) => {
-      const textHtml = renderItems(position) + renderBarcodeValue(position);
+      const textHtml = renderItems(position) + renderBarcodeValue(position)
 
-      if (!textHtml) return '';
+      if (!textHtml) return ''
 
       return `
         <div class="zone zone-${position}">
           ${textHtml}
         </div>
-      `;
-    };
+      `
+    }
 
     const renderTripleRow = (
       leftPos: BarcodeItemPosition,
       centerPos: BarcodeItemPosition,
       rightPos: BarcodeItemPosition,
-      rowClass: string
+      rowClass: string,
     ) => {
-      const leftHtml = renderItems(leftPos) + renderBarcodeValue(leftPos);
-      const centerHtml = renderItems(centerPos) + renderBarcodeValue(centerPos);
-      const rightHtml = renderItems(rightPos) + renderBarcodeValue(rightPos);
+      const leftHtml = renderItems(leftPos) + renderBarcodeValue(leftPos)
+      const centerHtml = renderItems(centerPos) + renderBarcodeValue(centerPos)
+      const rightHtml = renderItems(rightPos) + renderBarcodeValue(rightPos)
 
-      if (!leftHtml && !centerHtml && !rightHtml) return '';
+      if (!leftHtml && !centerHtml && !rightHtml) return ''
 
       return `
         <div class="triple-row ${rowClass}">
@@ -767,8 +802,8 @@ export default function ProductsPage() {
           <div class="triple-cell center">${centerHtml}</div>
           <div class="triple-cell right">${rightHtml}</div>
         </div>
-      `;
-    };
+      `
+    }
 
     const labelsHtml = Array.from({ length: copies })
       .map(
@@ -786,9 +821,9 @@ export default function ProductsPage() {
               ${renderTripleRow('bottom-left', 'bottom', 'bottom-right', 'row-bottom')}
             </div>
           </div>
-        `
+        `,
       )
-      .join('');
+      .join('')
 
     const content = `
       <html dir="ltr">
@@ -936,39 +971,42 @@ export default function ProductsPage() {
           </script>
         </body>
       </html>
-    `;
+    `
 
-    const printWindow = window.open('', '_blank', 'width=500,height=700');
+    const printWindow = window.open('', '_blank', 'width=500,height=700')
 
     if (!printWindow) {
-      showMessage('error', 'تعذر فتح نافذة الطباعة');
-      return;
+      showMessage('error', 'تعذر فتح نافذة الطباعة')
+      return
     }
 
-    printWindow.document.open();
-    printWindow.document.write(content);
-    printWindow.document.close();
+    printWindow.document.open()
+    printWindow.document.write(content)
+    printWindow.document.close()
   }
 
-  async function openEditProduct(product: Product, mode: ProductEditMode = 'edit') {
-    setShowCreate(false);
-    setActiveTab('edit');
-    setProductEditMode(mode);
+  async function openEditProduct(
+    product: Product,
+    mode: ProductEditMode = 'edit',
+  ) {
+    setShowCreate(false)
+    setActiveTab('edit')
+    setProductEditMode(mode)
 
     if (mode === 'addVariant') {
-      setNewEditVariant(emptyVariant());
+      setNewEditVariant(emptyVariant())
     }
 
-    setEditingProductId(product.id);
-    setEditName(product.name);
-    setEditCategoryId(product.category_id ? String(product.category_id) : '');
-    setEditDescription(product.description || '');
+    setEditingProductId(product.id)
+    setEditName(product.name)
+    setEditCategoryId(product.category_id ? String(product.category_id) : '')
+    setEditDescription(product.description || '')
 
     try {
       const data = await window.api.getProductVariants({
         productId: product.id,
-        includeInactive: true
-      });
+        includeInactive: true,
+      })
 
       setEditVariants(
         (Array.isArray(data) ? data : [])
@@ -981,23 +1019,23 @@ export default function ProductsPage() {
             buy_price: String(v.buy_price ?? 0),
             sell_price: String(v.sell_price ?? 0),
             min_stock: String(v.min_stock ?? 5),
-            is_active: v.is_active ?? 1
-          }))
-      );
+            is_active: v.is_active ?? 1,
+          })),
+      )
     } catch (error) {
-      console.error('Failed to load edit variants:', error);
-      showMessage('error', 'حدث خطأ أثناء تحميل بيانات المنتج');
+      console.error('Failed to load edit variants:', error)
+      showMessage('error', 'حدث خطأ أثناء تحميل بيانات المنتج')
     }
   }
 
   function closeEditProduct() {
-    setEditingProductId(null);
-    setEditName('');
-    setEditCategoryId('');
-    setEditDescription('');
-    setEditVariants([]);
-    setProductEditMode('edit');
-    setActiveTab('list');
+    setEditingProductId(null)
+    setEditName('')
+    setEditCategoryId('')
+    setEditDescription('')
+    setEditVariants([])
+    setProductEditMode('edit')
+    setActiveTab('list')
   }
 
   function updateEditVariant(
@@ -1009,22 +1047,22 @@ export default function ProductsPage() {
       | 'buy_price'
       | 'sell_price'
       | 'min_stock',
-    value: string
+    value: string,
   ) {
     setEditVariants((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, [key]: value } : item))
-    );
+      prev.map((item, i) => (i === index ? { ...item, [key]: value } : item)),
+    )
   }
 
   async function handleSaveEdit() {
-    if (!editingProductId) return;
+    if (!editingProductId) return
 
     if (!editName.trim()) {
-      showMessage('error', 'اسم المنتج مطلوب');
-      return;
+      showMessage('error', 'اسم المنتج مطلوب')
+      return
     }
 
-    setSavingEdit(true);
+    setSavingEdit(true)
 
     try {
       const productResult = await window.api.updateProduct({
@@ -1033,12 +1071,12 @@ export default function ProductsPage() {
         category_id: editCategoryId ? Number(editCategoryId) : null,
         description: null,
         image_path: null,
-        actor_id: currentUser?.id
-      });
+        actor_id: currentUser?.id,
+      })
 
       if (!productResult.success) {
-        showMessage('error', productResult.message || 'فشل تعديل المنتج');
-        return;
+        showMessage('error', productResult.message || 'فشل تعديل المنتج')
+        return
       }
 
       for (const variant of editVariants) {
@@ -1051,81 +1089,92 @@ export default function ProductsPage() {
           sell_price: Number(variant.sell_price),
           min_stock: Number(variant.min_stock || 5),
           is_active: variant.is_active,
-          actor_id: currentUser?.id
-        });
+          actor_id: currentUser?.id,
+        })
 
         if (!variantResult.success) {
-          showMessage('error', variantResult.message || 'فشل تعديل أحد الأصناف');
-          return;
+          showMessage('error', variantResult.message || 'فشل تعديل أحد الأصناف')
+          return
         }
       }
 
-      await loadData();
+      await loadData(productPage)
 
       if (expandedId === editingProductId) {
         const refreshed = await window.api.getProductVariants({
           productId: editingProductId,
-          includeInactive: includeInactiveVariants
-        });
+          includeInactive: includeInactiveVariants,
+        })
 
         setVariantsMap((prev) => ({
           ...prev,
-          [editingProductId]: Array.isArray(refreshed) ? refreshed : []
-        }));
+          [editingProductId]: Array.isArray(refreshed) ? refreshed : [],
+        }))
       }
 
-      closeEditProduct();
+      closeEditProduct()
     } catch (error) {
-      console.error('Failed to save edit product:', error);
-      showMessage('error', 'حدث خطأ أثناء حفظ التعديلات');
+      console.error('Failed to save edit product:', error)
+      showMessage('error', 'حدث خطأ أثناء حفظ التعديلات')
     } finally {
-      setSavingEdit(false);
+      setSavingEdit(false)
     }
   }
 
-  async function handleToggleProductActive(productId: number, currentState: number) {
+  async function handleToggleProductActive(
+    productId: number,
+    currentState: number,
+  ) {
     try {
-      await window.api.toggleProductActive(productId, currentState ? 0 : 1, currentUser?.id);
-      await loadData();
+      await window.api.toggleProductActive(
+        productId,
+        currentState ? 0 : 1,
+        currentUser?.id,
+      )
+      await loadData(productPage)
 
       if (expandedId === productId) {
-        setExpandedId(null);
+        setExpandedId(null)
       }
     } catch (error) {
-      console.error('Failed to toggle product active state:', error);
-      showMessage('error', 'حدث خطأ أثناء تحديث حالة المنتج');
+      console.error('Failed to toggle product active state:', error)
+      showMessage('error', 'حدث خطأ أثناء تحديث حالة المنتج')
     }
   }
 
   async function handleToggleVariantActive(
     productId: number,
     variantId: number,
-    currentState: number
+    currentState: number,
   ) {
     try {
-      await window.api.toggleVariantActive(variantId, currentState ? 0 : 1, currentUser?.id);
+      await window.api.toggleVariantActive(
+        variantId,
+        currentState ? 0 : 1,
+        currentUser?.id,
+      )
 
       const refreshed = await window.api.getProductVariants({
         productId,
-        includeInactive: includeInactiveVariants
-      });
+        includeInactive: includeInactiveVariants,
+      })
 
       setVariantsMap((prev) => ({
         ...prev,
-        [productId]: Array.isArray(refreshed) ? refreshed : []
-      }));
-      await loadData();
+        [productId]: Array.isArray(refreshed) ? refreshed : [],
+      }))
+      await loadData(productPage)
     } catch (error) {
-      console.error('Failed to toggle variant active state:', error);
-      showMessage('error', 'حدث خطأ أثناء تحديث حالة الـ variant');
+      console.error('Failed to toggle variant active state:', error)
+      showMessage('error', 'حدث خطأ أثناء تحديث حالة الـ variant')
     }
   }
 
-  const productGridMinWidth = isNarrowDesktop ? '900px' : '100%';
+  const productGridMinWidth = isNarrowDesktop ? '900px' : '100%'
 
   const variantGridColumns = isNarrowDesktop
     ? '220px 90px 110px 100px 90px 100px 120px'
-    : '1.5fr 0.8fr 0.8fr 0.8fr 0.7fr 110px 130px';
+    : '1.5fr 0.8fr 0.8fr 0.8fr 0.7fr 110px 130px'
 
   return (
     <div
@@ -1142,7 +1191,7 @@ export default function ProductsPage() {
           activeTab === 'list'
             ? 'auto auto minmax(0, 1fr)'
             : 'auto minmax(0, 1fr)',
-        alignContent: 'stretch'
+        alignContent: 'stretch',
       }}
     >
       {pageMessage && (
@@ -1162,7 +1211,7 @@ export default function ProductsPage() {
             color: '#fff',
             fontWeight: 800,
             boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
-            pointerEvents: 'none'
+            pointerEvents: 'none',
           }}
         >
           {pageMessage.text}
@@ -1177,7 +1226,7 @@ export default function ProductsPage() {
             display: 'grid',
             gap: '12px',
             maxWidth: '100%',
-            overflow: 'hidden'
+            overflow: 'hidden',
           }}
         >
           <div
@@ -1188,7 +1237,7 @@ export default function ProductsPage() {
                 : 'minmax(260px, 1fr) minmax(190px, 260px) auto auto',
               alignItems: 'center',
               gap: '12px',
-              maxWidth: '100%'
+              maxWidth: '100%',
             }}
           >
             <input
@@ -1217,7 +1266,7 @@ export default function ProductsPage() {
               style={{
                 ...secondaryButtonStyle,
                 width: undefined,
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
               }}
             >
               إدارة التصنيفات
@@ -1228,7 +1277,7 @@ export default function ProductsPage() {
               onClick={openCreateTab}
               style={{
                 ...primaryButtonStyle,
-                width: undefined
+                width: undefined,
               }}
             >
               + إضافة منتج
@@ -1241,7 +1290,7 @@ export default function ProductsPage() {
               gap: '12px',
               flexWrap: 'wrap',
               color: '#cbd5e1',
-              direction: 'rtl'
+              direction: 'rtl',
             }}
           >
             <label style={checkboxLabelStyle}>
@@ -1263,7 +1312,7 @@ export default function ProductsPage() {
             </label>
           </div>
         </div>
-      )}  
+      )}
       <div
         className="glass-card"
         style={{
@@ -1272,7 +1321,7 @@ export default function ProductsPage() {
           display: 'flex',
           gap: '10px',
           flexWrap: 'wrap',
-          direction: 'rtl'
+          direction: 'rtl',
         }}
       >
         <button
@@ -1295,18 +1344,18 @@ export default function ProductsPage() {
           type="button"
           disabled={!editingProductId}
           onClick={() => {
-            if (editingProductId) setActiveTab('edit');
+            if (editingProductId) setActiveTab('edit')
           }}
           style={{
             ...tabButtonStyle(activeTab === 'edit'),
             opacity: editingProductId ? 1 : 0.45,
-            cursor: editingProductId ? 'pointer' : 'not-allowed'
+            cursor: editingProductId ? 'pointer' : 'not-allowed',
           }}
         >
           تعديل المنتج
         </button>
       </div>
-      {activeTab === 'list' && (    
+      {activeTab === 'list' && (
         <div
           className="glass-card fixed-table-card list-scroll"
           style={{
@@ -1315,36 +1364,57 @@ export default function ProductsPage() {
             maxWidth: '100%',
           }}
         >
-          <div style={{ fontSize: '20px', fontWeight: 700, marginBottom: '16px' }}>
+          <div
+            style={{ fontSize: '20px', fontWeight: 700, marginBottom: '16px' }}
+          >
             المنتجات
           </div>
+
+          <PaginationBar
+            page={productPage}
+            totalItems={productsTotal}
+            loading={loading}
+            onPageChange={(page) => {
+              setExpandedId(null)
+              setVariantsMap({})
+              void loadData(page)
+            }}
+          />
 
           <div style={{ display: 'grid', gap: '12px', maxWidth: '100%' }}>
             {products.length === 0 ? (
               <div style={{ color: '#94a3b8' }}>لا توجد منتجات حتى الآن</div>
             ) : (
               products.map((product) => {
-                const isOpen = expandedId === product.id;
-                const searchValue = search.trim().toLowerCase();
+                const isOpen = expandedId === product.id
+                const searchValue = search.trim().toLowerCase()
 
                 const productMatchesSearch =
                   !searchValue ||
                   product.name?.toLowerCase().includes(searchValue) ||
-                  product.category_name?.toLowerCase().includes(searchValue);
+                  product.category_name?.toLowerCase().includes(searchValue)
 
-                const productVariants = (variantsMap[product.id] || []).filter((variant) => {
-                  if (!searchValue) return true;
+                const productVariants = (variantsMap[product.id] || []).filter(
+                  (variant) => {
+                    if (!searchValue) return true
 
-                  // لو البحث باسم المنتج أو التصنيف، اعرض كل أصناف المنتج
-                  if (productMatchesSearch) return true;
+                    // لو البحث باسم المنتج أو التصنيف، اعرض كل أصناف المنتج
+                    if (productMatchesSearch) return true
 
-                  // لو البحث بباركود / مقاس / لون
-                  return (
-                    String(variant.barcode || '').toLowerCase().includes(searchValue) ||
-                    String(variant.size || '').toLowerCase().includes(searchValue) ||
-                    String(variant.color || '').toLowerCase().includes(searchValue)
-                  );
-                });
+                    // لو البحث بباركود / مقاس / لون
+                    return (
+                      String(variant.barcode || '')
+                        .toLowerCase()
+                        .includes(searchValue) ||
+                      String(variant.size || '')
+                        .toLowerCase()
+                        .includes(searchValue) ||
+                      String(variant.color || '')
+                        .toLowerCase()
+                        .includes(searchValue)
+                    )
+                  },
+                )
 
                 return (
                   <div
@@ -1356,18 +1426,20 @@ export default function ProductsPage() {
                       display: 'grid',
                       gap: '12px',
                       maxWidth: '100%',
-                      overflow: 'hidden'
+                      overflow: 'hidden',
                     }}
                   >
                     <div
                       onClick={() => void toggleExpand(product.id)}
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: isCompact ? '1fr' : 'minmax(0, 1fr) auto',
+                        gridTemplateColumns: isCompact
+                          ? '1fr'
+                          : 'minmax(0, 1fr) auto',
                         alignItems: 'center',
                         gap: '12px',
                         cursor: 'pointer',
-                        minWidth: 0
+                        minWidth: 0,
                       }}
                     >
                       <div style={{ minWidth: 0 }}>
@@ -1377,7 +1449,7 @@ export default function ProductsPage() {
                             fontSize: '16px',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
+                            whiteSpace: 'nowrap',
                           }}
                         >
                           {product.name}
@@ -1388,7 +1460,7 @@ export default function ProductsPage() {
                           style={{
                             fontSize: '12px',
                             marginTop: '6px',
-                            fontWeight: 900
+                            fontWeight: 900,
                           }}
                         >
                           {product.is_active ? 'نشط' : 'موقوف'}
@@ -1398,7 +1470,7 @@ export default function ProductsPage() {
                           style={{
                             color: '#94a3b8',
                             fontSize: '13px',
-                            marginTop: '6px'
+                            marginTop: '6px',
                           }}
                         >
                           التصنيف: {product.category_name || '—'}
@@ -1409,7 +1481,7 @@ export default function ProductsPage() {
                             display: 'flex',
                             gap: '8px',
                             flexWrap: 'wrap',
-                            marginTop: '8px'
+                            marginTop: '8px',
                           }}
                         >
                           <span
@@ -1420,7 +1492,7 @@ export default function ProductsPage() {
                               border: '1px solid rgba(37,99,235,0.25)',
                               color: '#bfdbfe',
                               fontSize: '12px',
-                              fontWeight: 800
+                              fontWeight: 800,
                             }}
                           >
                             الأصناف: {Number(product.variants_count || 0)}
@@ -1434,7 +1506,7 @@ export default function ProductsPage() {
                               border: '1px solid rgba(16,185,129,0.25)',
                               color: '#86efac',
                               fontSize: '12px',
-                              fontWeight: 800
+                              fontWeight: 800,
                             }}
                           >
                             النشطة: {Number(product.active_variants_count || 0)}
@@ -1448,15 +1520,14 @@ export default function ProductsPage() {
                           alignItems: 'center',
                           gap: '10px',
                           flexWrap: 'wrap',
-                          justifyContent: isCompact ? 'flex-start' : 'flex-end'
+                          justifyContent: isCompact ? 'flex-start' : 'flex-end',
                         }}
                       >
-
                         <button
                           type="button"
                           onClick={(e) => {
-                            e.stopPropagation();
-                            void openEditProduct(product, 'edit');
+                            e.stopPropagation()
+                            void openEditProduct(product, 'edit')
                           }}
                           style={secondarySmallButtonStyle}
                         >
@@ -1466,14 +1537,14 @@ export default function ProductsPage() {
                           type="button"
                           className="product-action-button add-variant"
                           onClick={(e) => {
-                            e.stopPropagation();
-                            void openEditProduct(product, 'addVariant');
+                            e.stopPropagation()
+                            void openEditProduct(product, 'addVariant')
                           }}
                           style={{
                             ...secondarySmallButtonStyle,
                             color: '#6ee7b7',
                             border: '1px solid rgba(16,185,129,0.28)',
-                            background: 'rgba(16,185,129,0.10)'
+                            background: 'rgba(16,185,129,0.10)',
                           }}
                         >
                           + صنف
@@ -1482,8 +1553,11 @@ export default function ProductsPage() {
                           type="button"
                           className={`product-action-button ${product.is_active ? 'deactivate-product' : 'activate-product'}`}
                           onClick={(e) => {
-                            e.stopPropagation();
-                            void handleToggleProductActive(product.id, product.is_active);
+                            e.stopPropagation()
+                            void handleToggleProductActive(
+                              product.id,
+                              product.is_active,
+                            )
                           }}
                           style={{
                             ...dangerButtonStyle,
@@ -1495,7 +1569,7 @@ export default function ProductsPage() {
                               : '1px solid rgba(34,197,94,0.25)',
                             background: product.is_active
                               ? 'rgba(239,68,68,0.12)'
-                              : 'rgba(34,197,94,0.12)'
+                              : 'rgba(34,197,94,0.12)',
                           }}
                         >
                           {product.is_active ? 'تعطيل' : 'تفعيل'}
@@ -1507,7 +1581,7 @@ export default function ProductsPage() {
                             alignItems: 'center',
                             gap: '12px',
                             color: '#60a5fa',
-                            fontWeight: 600
+                            fontWeight: 600,
                           }}
                         >
                           <span>#{product.id}</span>
@@ -1523,52 +1597,61 @@ export default function ProductsPage() {
                           borderTop: '1px solid rgba(255,255,255,0.08)',
                           paddingTop: '12px',
                           maxWidth: '100%',
-                          overflow: 'hidden'
+                          overflow: 'hidden',
                         }}
                       >
                         {loadingVariants === product.id ? (
-                          <div style={{ color: '#94a3b8' }}>جاري تحميل الـ variants...</div>
+                          <div style={{ color: '#94a3b8' }}>
+                            جاري تحميل الـ variants...
+                          </div>
                         ) : productVariants.length === 0 ? (
-                          <div style={{ color: '#94a3b8' }}>لا توجد variants لهذا المنتج</div>
+                          <div style={{ color: '#94a3b8' }}>
+                            لا توجد variants لهذا المنتج
+                          </div>
                         ) : (
-                          <div style={{ overflowX: 'auto', maxWidth: '100%', direction: 'rtl'}}>
+                          <div
+                            style={{
+                              overflowX: 'auto',
+                              maxWidth: '100%',
+                              direction: 'rtl',
+                            }}
+                          >
                             <div
                               style={{
                                 display: 'grid',
                                 gap: '10px',
-                                minWidth: productGridMinWidth
+                                minWidth: productGridMinWidth,
                               }}
                             >
-                              
-                                <div
-                                  style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: variantGridColumns,
-                                    gap: '10px',
-                                    padding: '10px 12px',
-                                    borderRadius: '12px',
-                                    background: 'rgba(37,99,235,0.10)',
-                                    fontSize: '13px',
-                                    fontWeight: 700,
-                                    color: '#cbd5e1',
-                                    minWidth: 0,
-                                    alignItems: 'center'
-                                  }}
-                                >
-                                  <div>الباركود</div>
-                                  <div>المقاس</div>
-                                  <div>اللون</div>
-                                  <div>سعر الشراء</div>
-                                  <div>سعر البيع</div>
-                                  <div>المخزون</div>
-                                  <div>إجراء</div>
-                                  <div>الحالة</div>
-                                </div>
-                              
+                              <div
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: variantGridColumns,
+                                  gap: '10px',
+                                  padding: '10px 12px',
+                                  borderRadius: '12px',
+                                  background: 'rgba(37,99,235,0.10)',
+                                  fontSize: '13px',
+                                  fontWeight: 700,
+                                  color: '#cbd5e1',
+                                  minWidth: 0,
+                                  alignItems: 'center',
+                                }}
+                              >
+                                <div>الباركود</div>
+                                <div>المقاس</div>
+                                <div>اللون</div>
+                                <div>سعر الشراء</div>
+                                <div>سعر البيع</div>
+                                <div>المخزون</div>
+                                <div>إجراء</div>
+                                <div>الحالة</div>
+                              </div>
 
                               {productVariants.map((variant) => {
                                 const isLowStock =
-                                  Number(variant.stock) <= Number(variant.min_stock);
+                                  Number(variant.stock) <=
+                                  Number(variant.min_stock)
 
                                 return (
                                   <div
@@ -1579,7 +1662,8 @@ export default function ProductsPage() {
                                       padding: '12px',
                                       borderRadius: '14px',
                                       background: 'rgba(255,255,255,0.03)',
-                                      border: '1px solid rgba(255,255,255,0.06)'
+                                      border:
+                                        '1px solid rgba(255,255,255,0.06)',
                                     }}
                                   >
                                     <div
@@ -1589,7 +1673,7 @@ export default function ProductsPage() {
                                         gap: '10px',
                                         fontSize: '13px',
                                         alignItems: 'center',
-                                        minWidth: 0
+                                        minWidth: 0,
                                       }}
                                     >
                                       <div>{variant.barcode || '—'}</div>
@@ -1599,8 +1683,10 @@ export default function ProductsPage() {
                                       <div>{money(variant.sell_price)} ج</div>
                                       <div
                                         style={{
-                                          color: isLowStock ? '#f87171' : '#34d399',
-                                          fontWeight: 700
+                                          color: isLowStock
+                                            ? '#f87171'
+                                            : '#34d399',
+                                          fontWeight: 700,
                                         }}
                                       >
                                         {variant.stock}
@@ -1613,20 +1699,22 @@ export default function ProductsPage() {
                                           void handleToggleVariantActive(
                                             product.id,
                                             variant.id,
-                                            variant.is_active
+                                            variant.is_active,
                                           )
                                         }
                                         style={{
                                           ...dangerButtonStyle,
                                           height: '38px',
                                           padding: '0 10px',
-                                          color: variant.is_active ? '#fca5a5' : '#86efac',
+                                          color: variant.is_active
+                                            ? '#fca5a5'
+                                            : '#86efac',
                                           border: variant.is_active
                                             ? '1px solid rgba(239,68,68,0.25)'
                                             : '1px solid rgba(34,197,94,0.25)',
                                           background: variant.is_active
                                             ? 'rgba(239,68,68,0.12)'
-                                            : 'rgba(34,197,94,0.12)'
+                                            : 'rgba(34,197,94,0.12)',
                                         }}
                                       >
                                         {variant.is_active ? 'تعطيل' : 'تفعيل'}
@@ -1636,24 +1724,29 @@ export default function ProductsPage() {
                                         className={`product-status-text ${variant.is_active ? 'is-active' : 'is-inactive'}`}
                                         style={{
                                           fontSize: '12px',
-                                          fontWeight: 700
+                                          fontWeight: 700,
                                         }}
                                       >
-                                        {variant.is_active ? 'Variant نشط' : 'Variant موقوف'}
+                                        {variant.is_active
+                                          ? 'Variant نشط'
+                                          : 'Variant موقوف'}
                                       </div>
                                     </div>
 
                                     <div
                                       style={{
-                                        borderTop: '1px solid rgba(255,255,255,0.08)',
+                                        borderTop:
+                                          '1px solid rgba(255,255,255,0.08)',
                                         paddingTop: '12px',
                                         display: 'grid',
-                                        gridTemplateColumns: isCompact ? '1fr' : 'minmax(220px, 1fr) auto',
+                                        gridTemplateColumns: isCompact
+                                          ? '1fr'
+                                          : 'minmax(220px, 1fr) auto',
                                         gap: '12px',
                                         alignItems: 'center',
                                         direction: 'rtl',
                                         maxWidth: '100%',
-                                        overflow: 'hidden'
+                                        overflow: 'hidden',
                                       }}
                                     >
                                       <div
@@ -1661,10 +1754,14 @@ export default function ProductsPage() {
                                           minWidth: 0,
                                           overflowX: 'auto',
                                           display: 'flex',
-                                          justifyContent: isCompact ? 'center' : 'flex-start'
+                                          justifyContent: isCompact
+                                            ? 'center'
+                                            : 'flex-start',
                                         }}
                                       >
-                                        <BarcodePreview value={variant.barcode} />
+                                        <BarcodePreview
+                                          value={variant.barcode}
+                                        />
                                       </div>
 
                                       <button
@@ -1676,21 +1773,21 @@ export default function ProductsPage() {
                                             barcode: variant.barcode,
                                             size: variant.size,
                                             color: variant.color,
-                                            price: variant.sell_price
+                                            price: variant.sell_price,
                                           })
                                         }
                                         style={{
                                           ...secondaryButtonStyle,
                                           opacity: printSettings ? 1 : 0.6,
                                           width: undefined,
-                                          whiteSpace: 'nowrap'
+                                          whiteSpace: 'nowrap',
                                         }}
                                       >
                                         طباعة الباركود
                                       </button>
                                     </div>
                                   </div>
-                                );
+                                )
                               })}
                             </div>
                           </div>
@@ -1698,7 +1795,7 @@ export default function ProductsPage() {
                       </div>
                     )}
                   </div>
-                );
+                )
               })
             )}
           </div>
@@ -1716,7 +1813,7 @@ export default function ProductsPage() {
               gap: '16px',
               boxSizing: 'border-box',
               maxWidth: '100%',
-              alignContent: 'start'
+              alignContent: 'start',
             }}
           >
             <div
@@ -1725,10 +1822,12 @@ export default function ProductsPage() {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 gap: '12px',
-                flexWrap: 'wrap'
+                flexWrap: 'wrap',
               }}
             >
-              <div style={{ fontSize: '20px', fontWeight: 700 }}>إضافة منتج جديد</div>
+              <div style={{ fontSize: '20px', fontWeight: 700 }}>
+                إضافة منتج جديد
+              </div>
 
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 <button
@@ -1737,7 +1836,7 @@ export default function ProductsPage() {
                   disabled={!canSave || loading}
                   style={{
                     ...primaryButtonStyle,
-                    opacity: !canSave || loading ? 0.6 : 1
+                    opacity: !canSave || loading ? 0.6 : 1,
                   }}
                 >
                   {loading ? 'جاري الحفظ...' : 'حفظ المنتج'}
@@ -1746,9 +1845,9 @@ export default function ProductsPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    resetCreateForm();
-                    setShowCreate(false);
-                    setActiveTab('list');
+                    resetCreateForm()
+                    setShowCreate(false)
+                    setActiveTab('list')
                   }}
                   style={secondaryButtonStyle}
                 >
@@ -1761,7 +1860,7 @@ export default function ProductsPage() {
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: '14px'
+                gap: '14px',
               }}
             >
               <div>
@@ -1796,10 +1895,12 @@ export default function ProductsPage() {
               className="glass-card product-editor-body"
               style={{
                 borderRadius: '24px',
-                padding: isNarrowDesktop ? '16px' : '20px'
+                padding: isNarrowDesktop ? '16px' : '20px',
               }}
             >
-              <div style={{ fontSize: '18px', fontWeight: 700 }}>الـ Variants</div>
+              <div style={{ fontSize: '18px', fontWeight: 700 }}>
+                الـ Variants
+              </div>
 
               <div style={{ display: 'grid', gap: '14px' }}>
                 {variants.map((variant, index) => (
@@ -1811,14 +1912,15 @@ export default function ProductsPage() {
                       padding: isCompact ? '12px' : '16px',
                       display: 'grid',
                       gap: '14px',
-                      overflow: 'visible'
+                      overflow: 'visible',
                     }}
                   >
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-                        gap: '12px'
+                        gridTemplateColumns:
+                          'repeat(auto-fit, minmax(190px, 1fr))',
+                        gap: '12px',
                       }}
                     >
                       <div>
@@ -1827,19 +1929,29 @@ export default function ProductsPage() {
                         <div
                           style={{
                             display: 'grid',
-                            gridTemplateColumns: isCompact ? '1fr' : 'minmax(0, 1fr) auto',
-                            gap: '8px'
+                            gridTemplateColumns: isCompact
+                              ? '1fr'
+                              : 'minmax(0, 1fr) auto',
+                            gap: '8px',
                           }}
                         >
                           <input
                             value={variant.barcode}
-                            onChange={(e) => updateVariant(index, 'barcode', e.target.value)}
+                            onChange={(e) =>
+                              updateVariant(index, 'barcode', e.target.value)
+                            }
                             style={inputStyle}
                           />
 
                           <button
                             type="button"
-                            onClick={() => updateVariant(index, 'barcode', generateBarcodeValue())}
+                            onClick={() =>
+                              updateVariant(
+                                index,
+                                'barcode',
+                                generateBarcodeValue(),
+                              )
+                            }
                             style={secondarySmallButtonStyle}
                           >
                             توليد
@@ -1851,7 +1963,9 @@ export default function ProductsPage() {
                         <label style={labelStyle}>المقاس</label>
                         <input
                           value={variant.size}
-                          onChange={(e) => updateVariant(index, 'size', e.target.value)}
+                          onChange={(e) =>
+                            updateVariant(index, 'size', e.target.value)
+                          }
                           style={inputStyle}
                         />
                       </div>
@@ -1860,7 +1974,9 @@ export default function ProductsPage() {
                         <label style={labelStyle}>اللون</label>
                         <input
                           value={variant.color}
-                          onChange={(e) => updateVariant(index, 'color', e.target.value)}
+                          onChange={(e) =>
+                            updateVariant(index, 'color', e.target.value)
+                          }
                           style={inputStyle}
                         />
                       </div>
@@ -1869,8 +1985,9 @@ export default function ProductsPage() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                        gap: '12px'
+                        gridTemplateColumns:
+                          'repeat(auto-fit, minmax(160px, 1fr))',
+                        gap: '12px',
                       }}
                     >
                       <div>
@@ -1878,7 +1995,9 @@ export default function ProductsPage() {
                         <input
                           type="number"
                           value={variant.buy_price}
-                          onChange={(e) => updateVariant(index, 'buy_price', e.target.value)}
+                          onChange={(e) =>
+                            updateVariant(index, 'buy_price', e.target.value)
+                          }
                           style={inputStyle}
                         />
                       </div>
@@ -1888,7 +2007,9 @@ export default function ProductsPage() {
                         <input
                           type="number"
                           value={variant.sell_price}
-                          onChange={(e) => updateVariant(index, 'sell_price', e.target.value)}
+                          onChange={(e) =>
+                            updateVariant(index, 'sell_price', e.target.value)
+                          }
                           style={inputStyle}
                         />
                       </div>
@@ -1898,7 +2019,9 @@ export default function ProductsPage() {
                         <input
                           type="number"
                           value={variant.min_stock}
-                          onChange={(e) => updateVariant(index, 'min_stock', e.target.value)}
+                          onChange={(e) =>
+                            updateVariant(index, 'min_stock', e.target.value)
+                          }
                           style={inputStyle}
                         />
                       </div>
@@ -1908,7 +2031,9 @@ export default function ProductsPage() {
                         <input
                           type="number"
                           value={variant.opening_qty}
-                          onChange={(e) => updateVariant(index, 'opening_qty', e.target.value)}
+                          onChange={(e) =>
+                            updateVariant(index, 'opening_qty', e.target.value)
+                          }
                           style={inputStyle}
                         />
                       </div>
@@ -1930,17 +2055,19 @@ export default function ProductsPage() {
               </div>
 
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <button type="button" onClick={addVariant} style={secondaryButtonStyle}>
+                <button
+                  type="button"
+                  onClick={addVariant}
+                  style={secondaryButtonStyle}
+                >
                   + إضافة variant
                 </button>
               </div>
-
             </div>
           </div>
         </div>
       )}
 
-      
       {activeTab === 'edit' && editingProductId && (
         <div className="product-editor-screen">
           <div
@@ -1952,40 +2079,46 @@ export default function ProductsPage() {
               gap: '16px',
               boxSizing: 'border-box',
               maxWidth: '100%',
-              alignContent: 'start'
+              alignContent: 'start',
             }}
           >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: '12px',
-              flexWrap: 'wrap'
-            }}
-          >
-            <div style={{ fontSize: '20px', fontWeight: 700 }}>
-              {productEditMode === 'addVariant' ? 'إضافة صنف للمنتج' : 'تعديل المنتج'}
-            </div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px',
+                flexWrap: 'wrap',
+              }}
+            >
+              <div style={{ fontSize: '20px', fontWeight: 700 }}>
+                {productEditMode === 'addVariant'
+                  ? 'إضافة صنف للمنتج'
+                  : 'تعديل المنتج'}
+              </div>
 
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={() => void handleSaveEdit()}
-                disabled={savingEdit}
-                style={{
-                  ...primaryButtonStyle,
-                  opacity: savingEdit ? 0.6 : 1
-                }}
-              >
-                {savingEdit ? 'جاري حفظ التعديلات...' : 'حفظ التعديلات'}
-              </button>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveEdit()}
+                  disabled={savingEdit}
+                  style={{
+                    ...primaryButtonStyle,
+                    opacity: savingEdit ? 0.6 : 1,
+                  }}
+                >
+                  {savingEdit ? 'جاري حفظ التعديلات...' : 'حفظ التعديلات'}
+                </button>
 
-              <button type="button" onClick={closeEditProduct} style={secondaryButtonStyle}>
-                إلغاء
-              </button>
+                <button
+                  type="button"
+                  onClick={closeEditProduct}
+                  style={secondaryButtonStyle}
+                >
+                  إلغاء
+                </button>
+              </div>
             </div>
-          </div>
 
             {productEditMode === 'addVariant' && (
               <div style={{ color: '#94a3b8', fontWeight: 700 }}>
@@ -1997,7 +2130,7 @@ export default function ProductsPage() {
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: '14px'
+                gap: '14px',
               }}
             >
               <div>
@@ -2032,7 +2165,7 @@ export default function ProductsPage() {
               className="glass-card product-editor-body"
               style={{
                 borderRadius: '24px',
-                padding: isNarrowDesktop ? '16px' : '20px'
+                padding: isNarrowDesktop ? '16px' : '20px',
               }}
             >
               <div
@@ -2042,7 +2175,7 @@ export default function ProductsPage() {
                   padding: '16px',
                   display: 'grid',
                   gap: '14px',
-                  overflow: 'visible'
+                  overflow: 'visible',
                 }}
               >
                 <div>
@@ -2056,7 +2189,7 @@ export default function ProductsPage() {
                   style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                    gap: '12px'
+                    gap: '12px',
                   }}
                 >
                   <div>
@@ -2066,18 +2199,25 @@ export default function ProductsPage() {
                       style={{
                         display: 'grid',
                         gridTemplateColumns: 'minmax(0, 1fr) auto',
-                        gap: '8px'
+                        gap: '8px',
                       }}
                     >
                       <input
                         value={newEditVariant.barcode}
-                        onChange={(e) => updateNewEditVariant('barcode', e.target.value)}
+                        onChange={(e) =>
+                          updateNewEditVariant('barcode', e.target.value)
+                        }
                         style={inputStyle}
                       />
 
                       <button
                         type="button"
-                        onClick={() => updateNewEditVariant('barcode', generateBarcodeValue())}
+                        onClick={() =>
+                          updateNewEditVariant(
+                            'barcode',
+                            generateBarcodeValue(),
+                          )
+                        }
                         style={secondarySmallButtonStyle}
                       >
                         توليد
@@ -2089,7 +2229,9 @@ export default function ProductsPage() {
                     <label style={labelStyle}>المقاس</label>
                     <input
                       value={newEditVariant.size}
-                      onChange={(e) => updateNewEditVariant('size', e.target.value)}
+                      onChange={(e) =>
+                        updateNewEditVariant('size', e.target.value)
+                      }
                       style={inputStyle}
                     />
                   </div>
@@ -2098,7 +2240,9 @@ export default function ProductsPage() {
                     <label style={labelStyle}>اللون</label>
                     <input
                       value={newEditVariant.color}
-                      onChange={(e) => updateNewEditVariant('color', e.target.value)}
+                      onChange={(e) =>
+                        updateNewEditVariant('color', e.target.value)
+                      }
                       style={inputStyle}
                     />
                   </div>
@@ -2108,7 +2252,9 @@ export default function ProductsPage() {
                     <input
                       type="number"
                       value={newEditVariant.buy_price}
-                      onChange={(e) => updateNewEditVariant('buy_price', e.target.value)}
+                      onChange={(e) =>
+                        updateNewEditVariant('buy_price', e.target.value)
+                      }
                       style={inputStyle}
                     />
                   </div>
@@ -2118,7 +2264,9 @@ export default function ProductsPage() {
                     <input
                       type="number"
                       value={newEditVariant.sell_price}
-                      onChange={(e) => updateNewEditVariant('sell_price', e.target.value)}
+                      onChange={(e) =>
+                        updateNewEditVariant('sell_price', e.target.value)
+                      }
                       style={inputStyle}
                     />
                   </div>
@@ -2128,7 +2276,9 @@ export default function ProductsPage() {
                     <input
                       type="number"
                       value={newEditVariant.min_stock}
-                      onChange={(e) => updateNewEditVariant('min_stock', e.target.value)}
+                      onChange={(e) =>
+                        updateNewEditVariant('min_stock', e.target.value)
+                      }
                       style={inputStyle}
                     />
                   </div>
@@ -2138,7 +2288,9 @@ export default function ProductsPage() {
                     <input
                       type="number"
                       value={newEditVariant.opening_qty}
-                      onChange={(e) => updateNewEditVariant('opening_qty', e.target.value)}
+                      onChange={(e) =>
+                        updateNewEditVariant('opening_qty', e.target.value)
+                      }
                       style={inputStyle}
                     />
                   </div>
@@ -2152,7 +2304,7 @@ export default function ProductsPage() {
                     style={{
                       ...primaryButtonStyle,
                       opacity: addingVariant ? 0.6 : 1,
-                      cursor: addingVariant ? 'not-allowed' : 'pointer'
+                      cursor: addingVariant ? 'not-allowed' : 'pointer',
                     }}
                   >
                     {addingVariant ? 'جاري الإضافة...' : '+ إضافة الصنف للمنتج'}
@@ -2160,7 +2312,9 @@ export default function ProductsPage() {
                 </div>
               </div>
 
-              <div style={{ fontSize: '18px', fontWeight: 700 }}>تعديل الـ Variants</div>
+              <div style={{ fontSize: '18px', fontWeight: 700 }}>
+                تعديل الـ Variants
+              </div>
 
               <div style={{ display: 'grid', gap: '14px' }}>
                 {editVariants.map((variant, index) => (
@@ -2172,14 +2326,15 @@ export default function ProductsPage() {
                       padding: isCompact ? '12px' : '16px',
                       display: 'grid',
                       gap: '14px',
-                      overflow: 'visible'
+                      overflow: 'visible',
                     }}
                   >
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-                        gap: '12px'
+                        gridTemplateColumns:
+                          'repeat(auto-fit, minmax(190px, 1fr))',
+                        gap: '12px',
                       }}
                     >
                       <div>
@@ -2219,8 +2374,9 @@ export default function ProductsPage() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                        gap: '12px'
+                        gridTemplateColumns:
+                          'repeat(auto-fit, minmax(160px, 1fr))',
+                        gap: '12px',
                       }}
                     >
                       <div>
@@ -2229,7 +2385,11 @@ export default function ProductsPage() {
                           type="number"
                           value={variant.buy_price}
                           onChange={(e) =>
-                            updateEditVariant(index, 'buy_price', e.target.value)
+                            updateEditVariant(
+                              index,
+                              'buy_price',
+                              e.target.value,
+                            )
                           }
                           style={inputStyle}
                         />
@@ -2241,7 +2401,11 @@ export default function ProductsPage() {
                           type="number"
                           value={variant.sell_price}
                           onChange={(e) =>
-                            updateEditVariant(index, 'sell_price', e.target.value)
+                            updateEditVariant(
+                              index,
+                              'sell_price',
+                              e.target.value,
+                            )
                           }
                           style={inputStyle}
                         />
@@ -2253,7 +2417,11 @@ export default function ProductsPage() {
                           type="number"
                           value={variant.min_stock}
                           onChange={(e) =>
-                            updateEditVariant(index, 'min_stock', e.target.value)
+                            updateEditVariant(
+                              index,
+                              'min_stock',
+                              e.target.value,
+                            )
                           }
                           style={inputStyle}
                         />
@@ -2277,7 +2445,7 @@ export default function ProductsPage() {
             background: 'rgba(0,0,0,0.62)',
             display: 'grid',
             placeItems: 'center',
-            padding: '18px'
+            padding: '18px',
           }}
         >
           <div
@@ -2290,7 +2458,7 @@ export default function ProductsPage() {
               padding: '18px',
               display: 'grid',
               gap: '14px',
-              direction: 'rtl'
+              direction: 'rtl',
             }}
           >
             <div
@@ -2298,7 +2466,7 @@ export default function ProductsPage() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                gap: '12px'
+                gap: '12px',
               }}
             >
               <h3 style={{ margin: 0 }}>إدارة التصنيفات</h3>
@@ -2316,7 +2484,7 @@ export default function ProductsPage() {
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'minmax(220px, 1fr) auto',
-                gap: '10px'
+                gap: '10px',
               }}
             >
               <input
@@ -2332,7 +2500,7 @@ export default function ProductsPage() {
                 disabled={savingCategory}
                 style={{
                   ...primaryButtonStyle,
-                  opacity: savingCategory ? 0.6 : 1
+                  opacity: savingCategory ? 0.6 : 1,
                 }}
               >
                 + إضافة
@@ -2341,8 +2509,8 @@ export default function ProductsPage() {
 
             <div style={{ display: 'grid', gap: '8px' }}>
               {categoryRows.map((cat) => {
-                const active = Number(cat.is_active || 0) === 1;
-                const editing = editingCategoryId === cat.id;
+                const active = Number(cat.is_active || 0) === 1
+                const editing = editingCategoryId === cat.id
 
                 return (
                   <div
@@ -2355,7 +2523,7 @@ export default function ProductsPage() {
                       gridTemplateColumns: 'minmax(180px, 1fr) auto',
                       gap: '10px',
                       alignItems: 'center',
-                      opacity: active ? 1 : 0.55
+                      opacity: active ? 1 : 0.55,
                     }}
                   >
                     {editing ? (
@@ -2368,13 +2536,20 @@ export default function ProductsPage() {
                     ) : (
                       <div style={{ display: 'grid', gap: '4px' }}>
                         <strong>{cat.name}</strong>
-                        <span style={{ color: active ? '#86efac' : '#fca5a5', fontSize: '12px' }}>
+                        <span
+                          style={{
+                            color: active ? '#86efac' : '#fca5a5',
+                            fontSize: '12px',
+                          }}
+                        >
                           {active ? 'نشط' : 'مخفي'}
                         </span>
                       </div>
                     )}
 
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <div
+                      style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}
+                    >
                       {editing ? (
                         <>
                           <button
@@ -2389,8 +2564,8 @@ export default function ProductsPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setEditingCategoryId(null);
-                              setEditingCategoryName('');
+                              setEditingCategoryId(null)
+                              setEditingCategoryName('')
                             }}
                             style={secondarySmallButtonStyle}
                           >
@@ -2402,8 +2577,8 @@ export default function ProductsPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setEditingCategoryId(cat.id);
-                              setEditingCategoryName(cat.name);
+                              setEditingCategoryId(cat.id)
+                              setEditingCategoryName(cat.name)
                             }}
                             style={secondarySmallButtonStyle}
                           >
@@ -2424,7 +2599,7 @@ export default function ProductsPage() {
                                 : '1px solid rgba(34,197,94,0.25)',
                               background: active
                                 ? 'rgba(239,68,68,0.12)'
-                                : 'rgba(34,197,94,0.12)'
+                                : 'rgba(34,197,94,0.12)',
                             }}
                           >
                             {active ? 'إخفاء' : 'تفعيل'}
@@ -2433,11 +2608,17 @@ export default function ProductsPage() {
                       )}
                     </div>
                   </div>
-                );
+                )
               })}
 
               {categoryRows.length === 0 && (
-                <div style={{ color: '#94a3b8', textAlign: 'center', padding: '16px' }}>
+                <div
+                  style={{
+                    color: '#94a3b8',
+                    textAlign: 'center',
+                    padding: '16px',
+                  }}
+                >
                   لا توجد تصنيفات
                 </div>
               )}
@@ -2445,82 +2626,81 @@ export default function ProductsPage() {
           </div>
         </div>
       )}
-
     </div>
-  );
+  )
 }
 
 const labelStyle: React.CSSProperties = {
-display: 'block',
-marginBottom: '8px',
-color: '#cbd5e1',
-fontSize: '14px'
-};
+  display: 'block',
+  marginBottom: '8px',
+  color: '#cbd5e1',
+  fontSize: '14px',
+}
 
 const checkboxLabelStyle: React.CSSProperties = {
-display: 'flex',
-alignItems: 'center',
-gap: '8px',
-color: '#cbd5e1'
-};
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  color: '#cbd5e1',
+}
 
 const inputStyle: React.CSSProperties = {
-width: '100%',
-height: '48px',
-borderRadius: '14px',
-border: '1px solid rgba(255,255,255,0.08)',
-background: 'rgba(255,255,255,0.04)',
-color: '#fff',
-padding: '0 14px',
-outline: 'none',
-boxSizing: 'border-box',
-minWidth: 0
-};
+  width: '100%',
+  height: '48px',
+  borderRadius: '14px',
+  border: '1px solid rgba(255,255,255,0.08)',
+  background: 'rgba(255,255,255,0.04)',
+  color: '#fff',
+  padding: '0 14px',
+  outline: 'none',
+  boxSizing: 'border-box',
+  minWidth: 0,
+}
 
 const primaryButtonStyle: React.CSSProperties = {
-border: 'none',
-height: '48px',
-borderRadius: '14px',
-background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
-color: '#fff',
-fontWeight: 700,
-padding: '0 18px',
-cursor: 'pointer'
-};
+  border: 'none',
+  height: '48px',
+  borderRadius: '14px',
+  background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
+  color: '#fff',
+  fontWeight: 700,
+  padding: '0 18px',
+  cursor: 'pointer',
+}
 
 const secondaryButtonStyle: React.CSSProperties = {
-border: '1px solid rgba(255,255,255,0.08)',
-height: '48px',
-borderRadius: '14px',
-background: 'rgba(255,255,255,0.04)',
-color: '#fff',
-fontWeight: 600,
-padding: '0 18px',
-cursor: 'pointer'
-};
+  border: '1px solid rgba(255,255,255,0.08)',
+  height: '48px',
+  borderRadius: '14px',
+  background: 'rgba(255,255,255,0.04)',
+  color: '#fff',
+  fontWeight: 600,
+  padding: '0 18px',
+  cursor: 'pointer',
+}
 
 const dangerButtonStyle: React.CSSProperties = {
-border: '1px solid rgba(239,68,68,0.25)',
-height: '42px',
-borderRadius: '12px',
-background: 'rgba(239,68,68,0.12)',
-color: '#fca5a5',
-fontWeight: 600,
-padding: '0 14px',
-cursor: 'pointer'
-};
+  border: '1px solid rgba(239,68,68,0.25)',
+  height: '42px',
+  borderRadius: '12px',
+  background: 'rgba(239,68,68,0.12)',
+  color: '#fca5a5',
+  fontWeight: 600,
+  padding: '0 14px',
+  cursor: 'pointer',
+}
 
 const secondarySmallButtonStyle: React.CSSProperties = {
-border: '1px solid rgba(255,255,255,0.08)',
-height: '40px',
-minWidth: '88px',
-borderRadius: '12px',
-background: 'rgba(255,255,255,0.04)',
-color: '#fff',
-fontWeight: 600,
-padding: '0 14px',
-cursor: 'pointer'
-};
+  border: '1px solid rgba(255,255,255,0.08)',
+  height: '40px',
+  minWidth: '88px',
+  borderRadius: '12px',
+  background: 'rgba(255,255,255,0.04)',
+  color: '#fff',
+  fontWeight: 600,
+  padding: '0 14px',
+  cursor: 'pointer',
+}
 
 function tabButtonStyle(active: boolean): React.CSSProperties {
   return {
@@ -2536,6 +2716,6 @@ function tabButtonStyle(active: boolean): React.CSSProperties {
     fontWeight: 900,
     padding: '0 18px',
     cursor: 'pointer',
-    boxShadow: active ? '0 12px 26px rgba(37,99,235,0.22)' : 'none'
-  };
+    boxShadow: active ? '0 12px 26px rgba(37,99,235,0.22)' : 'none',
+  }
 }

@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('api', {
   register: (data) => ipcRenderer.invoke('auth:register', data),
 
   getUsers: (input) => ipcRenderer.invoke('users:list', input),
+  getUsersPage: (input) => ipcRenderer.invoke('users:list-page', input),
   createSystemUser: (input) => ipcRenderer.invoke('users:create', input),
   updateSystemUser: (input) => ipcRenderer.invoke('users:update', input),
   setUserActive: (userId, isActive, actorId) =>
@@ -26,6 +27,7 @@ contextBridge.exposeInMainWorld('api', {
       actorId,
     ),
   getProducts: (payload) => ipcRenderer.invoke('products:list', payload),
+  getProductsPage: (input) => ipcRenderer.invoke('products:list-page', input),
   getProductVariants: (payload) =>
     ipcRenderer.invoke('products:get-variants', payload),
   toggleVariantActive: (variantId, isActive, actorId) =>
@@ -160,6 +162,7 @@ contextBridge.exposeInMainWorld('api', {
 
   createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
   getExpenses: () => ipcRenderer.invoke('expenses:list'),
+  getExpensesPage: (input) => ipcRenderer.invoke('expenses:list-page', input),
 
   getActivityLogs: (input) => ipcRenderer.invoke('activity:list', input),
 
@@ -185,6 +188,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('settings:save-app-theme', theme, input),
 
   getLiabilities: (input) => ipcRenderer.invoke('liabilities:list', input),
+
+  getLiabilitiesPage: (input) =>
+    ipcRenderer.invoke('liabilities:list-page', input),
   createLiability: (input) => ipcRenderer.invoke('liabilities:create', input),
   recordLiabilityPayment: (input) =>
     ipcRenderer.invoke('liabilities:record-payment', input),

@@ -1,70 +1,94 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useAuthStore } from '../../store/auth.store';
+import { useEffect, useState } from 'react'
+import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
+import { useAuthStore } from '../../store/auth.store'
 import {
   CASH_ACCOUNT_OPTIONS,
-  getPaymentMethodLabel
-} from '../../utils/payment-method';
+  getPaymentMethodLabel,
+} from '../../utils/payment-method'
 
 type Expense = {
-  id: number;
-  title: string;
-  category?: string;
-  amount: number;
-  payment_method: string;
-  notes?: string;
-  created_by_name?: string;
-  created_at: string;
-};
+  id: number
+  title: string
+  category?: string
+  amount: number
+  payment_method: string
+  notes?: string
+  created_by_name?: string
+  created_at: string
+}
 
 export default function ExpensesPage() {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const currentUser = useAuthStore((s) => s.user);
-  const isAdmin = currentUser?.role === 'admin';
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [expensesTotal, setExpensesTotal] = useState(0)
+  const [expensesPage, setExpensesPage] = useState(1)
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<{
+    type: 'success' | 'error'
+    text: string
+  } | null>(null)
+  const currentUser = useAuthStore((s) => s.user)
+  const isAdmin = currentUser?.role === 'admin'
 
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('');
-  const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('store_cash');
-  const [notes, setNotes] = useState('');
+  const [title, setTitle] = useState('')
+  const [category, setCategory] = useState('')
+  const [amount, setAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('store_cash')
+  const [notes, setNotes] = useState('')
 
   function showMessage(type: 'success' | 'error', text: string) {
-    setMessage({ type, text });
-    setTimeout(() => setMessage(null), 1800);
+    setMessage({ type, text })
+    setTimeout(() => setMessage(null), 1800)
   }
 
-  async function loadExpenses() {
-    setLoading(true);
+  async function loadExpenses(page = expensesPage) {
+    setLoading(true)
+
     try {
-      const data = await window.api.getExpenses();
-      setExpenses(data || []);
+      const safePage = Math.max(1, Number(page || 1))
+
+      const result = await window.api.getExpensesPage({
+        limit: SYSTEM_PAGE_SIZE,
+        offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
+      })
+
+      setExpenses(Array.isArray(result.rows) ? result.rows : [])
+
+      setExpensesTotal(Number(result.total || 0))
+
+      setTotalExpenses(Number(result.total_amount || 0))
+
+      setExpensesPage(safePage)
     } catch (error) {
-      console.error(error);
-      showMessage('error', 'حدث خطأ أثناء تحميل المصروفات');
+      console.error(error)
+
+      showMessage('error', 'حدث خطأ أثناء تحميل المصروفات')
+
+      setExpenses([])
+      setExpensesTotal(0)
+      setTotalExpenses(0)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
   useEffect(() => {
-    void loadExpenses();
-  }, []);
+    void loadExpenses(1)
+  }, [])
 
   async function handleSubmit() {
     if (!title.trim()) {
-      showMessage('error', 'اسم المصروف مطلوب');
-      return;
+      showMessage('error', 'اسم المصروف مطلوب')
+      return
     }
 
-    const parsedAmount = Number(amount);
+    const parsedAmount = Number(amount)
     if (!parsedAmount || parsedAmount <= 0) {
-      showMessage('error', 'اكتب مبلغ صحيح');
-      return;
+      showMessage('error', 'اكتب مبلغ صحيح')
+      return
     }
 
-    setSaving(true);
+    setSaving(true)
     try {
       await window.api.createExpense({
         title: title.trim(),
@@ -72,58 +96,75 @@ export default function ExpensesPage() {
         amount: parsedAmount,
         payment_method: paymentMethod,
         notes: notes.trim() || null,
-        created_by: currentUser?.id ?? null
-      });
+        created_by: currentUser?.id ?? null,
+      })
 
-      setTitle('');
-      setCategory('');
-      setAmount('');
-      setPaymentMethod('store_cash');
-      setNotes('');
+      setTitle('')
+      setCategory('')
+      setAmount('')
+      setPaymentMethod('store_cash')
+      setNotes('')
 
-      showMessage('success', 'تم حفظ المصروف');
-      await loadExpenses();
+      showMessage('success', 'تم حفظ المصروف')
+      await loadExpenses(expensesPage)
     } catch (error: any) {
-      showMessage('error', error.message || 'حدث خطأ');
+      showMessage('error', error.message || 'حدث خطأ')
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
   }
 
-  const totalExpenses = useMemo(() => {
-    return expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  }, [expenses]);
+  const [totalExpenses, setTotalExpenses] = useState(0)
 
   function money(value: unknown) {
-    return `${Number(value || 0).toFixed(2)} ج.م`;
+    return `${Number(value || 0).toFixed(2)} ج.م`
   }
 
   function formatDate(value?: string) {
-    if (!value) return '—';
+    if (!value) return '—'
     try {
-      const raw = String(value);
-      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
+      const raw = String(value)
+      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
       return new Date(normalized).toLocaleString('ar-EG', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
-        minute: '2-digit'
-      });
+        minute: '2-digit',
+      })
     } catch {
-      return value;
+      return value
     }
   }
 
-  function printExpensesReport() {
-    const printWindow = window.open('', '_blank', 'width=1100,height=800');
+  async function printExpensesReport() {
+    let printExpenses: Expense[] = []
 
-    if (!printWindow) {
-      showMessage('error', 'تعذر فتح نافذة الطباعة');
-      return;
+    try {
+      const data = await window.api.getExpenses()
+
+      printExpenses = Array.isArray(data) ? data : []
+    } catch (error) {
+      console.error('Failed to load expenses for print:', error)
+
+      showMessage('error', 'تعذر تجهيز المصروفات للطباعة')
+
+      return
     }
 
-    const rowsHtml = expenses
+    const printTotalExpenses = printExpenses.reduce(
+      (sum, item) => sum + Number(item.amount || 0),
+      0,
+    )
+
+    const printWindow = window.open('', '_blank', 'width=1100,height=800')
+
+    if (!printWindow) {
+      showMessage('error', 'تعذر فتح نافذة الطباعة')
+      return
+    }
+
+    const rowsHtml = printExpenses
       .map(
         (expense) => `
           <tr>
@@ -135,9 +176,9 @@ export default function ExpensesPage() {
             <td>${escapeHtml(expense.created_by_name || '—')}</td>
             <td>${escapeHtml(formatDate(expense.created_at))}</td>
           </tr>
-        `
+        `,
       )
-      .join('');
+      .join('')
 
     const html = `
       <!doctype html>
@@ -277,24 +318,24 @@ export default function ExpensesPage() {
 
             <div class="muted">
               المستخدم: ${escapeHtml(currentUser?.name || '—')}<br />
-              عدد المصروفات: ${expenses.length}
+              عدد المصروفات: ${printExpenses.length}
             </div>
           </div>
 
           <div class="summary">
             <div class="card">
               <div class="card-title">إجمالي المصروفات</div>
-              <div class="card-value money">${money(totalExpenses)}</div>
+              <div class="card-value money">${money(printTotalExpenses)}</div>
             </div>
 
             <div class="card">
               <div class="card-title">عدد العمليات</div>
-              <div class="card-value">${expenses.length}</div>
+              <div class="card-value">${printExpenses.length}</div>
             </div>
           </div>
 
           ${
-            expenses.length
+            printExpenses.length
               ? `
                 <table>
                   <thead>
@@ -329,11 +370,11 @@ export default function ExpensesPage() {
           </script>
         </body>
       </html>
-    `;
+    `
 
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
+    printWindow.document.open()
+    printWindow.document.write(html)
+    printWindow.document.close()
   }
 
   return (
@@ -344,7 +385,7 @@ export default function ExpensesPage() {
         height: '100%',
         minHeight: 0,
         overflow: 'hidden',
-        gridTemplateRows: 'auto auto minmax(0, 1fr)'
+        gridTemplateRows: 'auto auto minmax(0, 1fr)',
       }}
     >
       <style>
@@ -373,13 +414,14 @@ export default function ExpensesPage() {
             zIndex: 99999,
             padding: '12px 18px',
             borderRadius: '14px',
-            background: message.type === 'error'
-              ? 'rgba(239,68,68,0.95)'
-              : 'rgba(16,185,129,0.95)',
+            background:
+              message.type === 'error'
+                ? 'rgba(239,68,68,0.95)'
+                : 'rgba(16,185,129,0.95)',
             color: '#fff',
             fontWeight: 800,
             boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
-            pointerEvents: 'none'
+            pointerEvents: 'none',
           }}
         >
           {message.text}
@@ -397,7 +439,7 @@ export default function ExpensesPage() {
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: '14px',
-          direction: 'rtl'
+          direction: 'rtl',
         }}
       >
         <div>
@@ -407,24 +449,37 @@ export default function ExpensesPage() {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={printExpensesReport}
-            style={{
-              ...primaryButtonStyle,
-              background: 'rgba(16,185,129,0.14)',
-              border: '1px solid rgba(16,185,129,0.32)',
-              color: '#6ee7b7'
-            }}
-          >
-            طباعة الكشف
-          </button>
-        )}
+        <div
+          style={{
+            display: 'flex',
+            gap: '12px',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => void printExpensesReport()}
+              style={{
+                ...primaryButtonStyle,
+                background: 'rgba(16,185,129,0.14)',
+                border: '1px solid rgba(16,185,129,0.32)',
+                color: '#6ee7b7',
+              }}
+            >
+              طباعة الكشف
+            </button>
+          )}
 
           <div style={{ textAlign: 'left' }}>
-            <div style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '4px' }}>
+            <div
+              style={{
+                color: '#94a3b8',
+                fontSize: '13px',
+                marginBottom: '4px',
+              }}
+            >
               إجمالي المصروفات
             </div>
             <strong style={{ color: '#f87171', fontSize: '24px' }}>
@@ -442,12 +497,19 @@ export default function ExpensesPage() {
           borderRadius: '16px',
           display: 'grid',
           gap: '10px',
-          minHeight: 0
+          minHeight: 0,
         }}
       >
         <div>
           <h3 style={{ margin: '0 0 6px', textAlign: 'right' }}>إضافة مصروف</h3>
-          <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700, textAlign: 'right' }}>
+          <p
+            style={{
+              margin: 0,
+              color: '#94a3b8',
+              fontWeight: 700,
+              textAlign: 'right',
+            }}
+          >
             تسجيل المصروفات وربطها بالخزنة
           </p>
         </div>
@@ -456,7 +518,7 @@ export default function ExpensesPage() {
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '12px'
+            gap: '12px',
           }}
         >
           <div>
@@ -517,7 +579,7 @@ export default function ExpensesPage() {
               ...inputStyle,
               height: '72px',
               paddingTop: '12px',
-              resize: 'vertical'
+              resize: 'vertical',
             }}
           />
         </div>
@@ -530,7 +592,7 @@ export default function ExpensesPage() {
             style={{
               ...primaryButtonStyle,
               opacity: saving ? 0.6 : 1,
-              cursor: saving ? 'not-allowed' : 'pointer'
+              cursor: saving ? 'not-allowed' : 'pointer',
             }}
           >
             {saving ? 'جاري الحفظ...' : 'حفظ المصروف'}
@@ -548,11 +610,22 @@ export default function ExpensesPage() {
           minHeight: 0,
           overflow: 'hidden',
           display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr)',
-          gap: '10px'
+          gridTemplateRows: 'auto auto minmax(0, 1fr)',
+          gap: '10px',
         }}
       >
-        <h3 style={{ margin: '0 0 16px', textAlign: 'right' }}>سجل المصروفات</h3>
+        <h3 style={{ margin: '0 0 16px', textAlign: 'right' }}>
+          سجل المصروفات
+        </h3>
+
+        <PaginationBar
+          page={expensesPage}
+          totalItems={expensesTotal}
+          loading={loading}
+          onPageChange={(page) => {
+            void loadExpenses(page)
+          }}
+        />
 
         <div
           className="expenses-body-scroll"
@@ -560,7 +633,7 @@ export default function ExpensesPage() {
             overflow: 'auto',
             minHeight: 0,
             height: '100%',
-            maxWidth: '100%'
+            maxWidth: '100%',
           }}
         >
           <table
@@ -568,7 +641,7 @@ export default function ExpensesPage() {
               width: '100%',
               minWidth: '850px',
               borderCollapse: 'collapse',
-              direction: 'rtl'
+              direction: 'rtl',
             }}
           >
             <thead>
@@ -591,21 +664,30 @@ export default function ExpensesPage() {
                 </tr>
               )}
 
-              {!loading && expenses.map((expense) => (
-                <tr
-                  key={expense.id}
-                  style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
-                >
-                  <td style={{ ...tdStyle, fontWeight: 700 }}>{expense.title}</td>
-                  <td style={tdStyle}>{expense.category || '—'}</td>
-                  <td style={{ ...tdStyle, color: '#f87171', fontWeight: 900 }}>
-                    {money(expense.amount)}
-                  </td>
-                  <td style={tdStyle}>{getPaymentMethodLabel(expense.payment_method)}</td>
-                  <td style={tdStyle}>{expense.created_by_name || '—'}</td>
-                  <td style={{ ...tdStyle, color: '#94a3b8' }}>{formatDate(expense.created_at)}</td>
-                </tr>
-              ))}
+              {!loading &&
+                expenses.map((expense) => (
+                  <tr
+                    key={expense.id}
+                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                  >
+                    <td style={{ ...tdStyle, fontWeight: 700 }}>
+                      {expense.title}
+                    </td>
+                    <td style={tdStyle}>{expense.category || '—'}</td>
+                    <td
+                      style={{ ...tdStyle, color: '#f87171', fontWeight: 900 }}
+                    >
+                      {money(expense.amount)}
+                    </td>
+                    <td style={tdStyle}>
+                      {getPaymentMethodLabel(expense.payment_method)}
+                    </td>
+                    <td style={tdStyle}>{expense.created_by_name || '—'}</td>
+                    <td style={{ ...tdStyle, color: '#94a3b8' }}>
+                      {formatDate(expense.created_at)}
+                    </td>
+                  </tr>
+                ))}
 
               {!loading && expenses.length === 0 && (
                 <tr>
@@ -615,7 +697,7 @@ export default function ExpensesPage() {
                       ...tdStyle,
                       textAlign: 'center',
                       color: '#94a3b8',
-                      padding: '28px'
+                      padding: '28px',
                     }}
                   >
                     لا توجد مصروفات مسجلة
@@ -625,10 +707,9 @@ export default function ExpensesPage() {
             </tbody>
           </table>
         </div>
-        
       </div>
     </div>
-  );
+  )
 }
 
 function escapeHtml(value: string) {
@@ -637,15 +718,15 @@ function escapeHtml(value: string) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/'/g, '&#039;')
 }
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
   marginBottom: '8px',
   color: '#cbd5e1',
-  fontSize: '14px'
-};
+  fontSize: '14px',
+}
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -658,8 +739,8 @@ const inputStyle: React.CSSProperties = {
   padding: '0 12px',
   textAlign: 'right',
   direction: 'rtl',
-  boxSizing: 'border-box'
-};
+  boxSizing: 'border-box',
+}
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -669,17 +750,17 @@ const primaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontWeight: 800,
   padding: '0 18px',
-  cursor: 'pointer'
-};
+  cursor: 'pointer',
+}
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   fontWeight: 800,
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
-  whiteSpace: 'nowrap'
-};
+  whiteSpace: 'nowrap',
+}

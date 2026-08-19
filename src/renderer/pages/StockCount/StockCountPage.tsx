@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 import { useAuthStore } from '../../store/auth.store'
 
 type StockCountSession = {
@@ -58,7 +59,9 @@ export default function StockCountPage() {
   const isAdmin = currentUser?.role === 'admin'
 
   const [sessions, setSessions] = useState<StockCountSession[]>([])
+  const [sessionPage, setSessionPage] = useState(1)
   const [selected, setSelected] = useState<StockCountDetails | null>(null)
+  const [countItemsPage, setCountItemsPage] = useState(1)
 
   const [loadingSessions, setLoadingSessions] = useState(false)
   const [loadingDetails, setLoadingDetails] = useState(false)
@@ -175,6 +178,31 @@ export default function StockCountPage() {
         .includes(q)
     })
   }, [selected, search, filter, countCategoryFilter])
+
+  const pagedSessions = useMemo(() => {
+    const start = (sessionPage - 1) * SYSTEM_PAGE_SIZE
+
+    return sessions.slice(start, start + SYSTEM_PAGE_SIZE)
+  }, [sessions, sessionPage])
+
+  const pagedVisibleItems = useMemo(() => {
+    const start = (countItemsPage - 1) * SYSTEM_PAGE_SIZE
+
+    return visibleItems.slice(start, start + SYSTEM_PAGE_SIZE)
+  }, [visibleItems, countItemsPage])
+
+  useEffect(() => {
+    setCountItemsPage(1)
+  }, [search, filter, countCategoryFilter, selected?.session?.id])
+
+  useEffect(() => {
+    const totalPages = Math.max(
+      1,
+      Math.ceil(sessions.length / SYSTEM_PAGE_SIZE),
+    )
+
+    setSessionPage((current) => Math.min(current, totalPages))
+  }, [sessions.length])
 
   useEffect(() => {
     void loadSessions()
@@ -643,6 +671,12 @@ export default function StockCountPage() {
       <section className="glass-card" style={cardStyle}>
         <h3 style={{ margin: 0 }}>جلسات الجرد</h3>
 
+        <PaginationBar
+          page={sessionPage}
+          totalItems={sessions.length}
+          onPageChange={setSessionPage}
+        />
+
         <div style={{ overflowX: 'auto' }}>
           <table
             style={{
@@ -669,7 +703,7 @@ export default function StockCountPage() {
             </thead>
 
             <tbody>
-              {sessions.map((session) => (
+              {pagedSessions.map((session) => (
                 <tr
                   key={session.id}
                   style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
@@ -917,6 +951,12 @@ export default function StockCountPage() {
             </select>
           </div>
 
+          <PaginationBar
+            page={countItemsPage}
+            totalItems={visibleItems.length}
+            onPageChange={setCountItemsPage}
+          />
+
           <div style={{ overflowX: 'auto' }}>
             <table
               style={{
@@ -955,7 +995,7 @@ export default function StockCountPage() {
                 )}
 
                 {!loadingDetails &&
-                  visibleItems.map((item) => {
+                  pagedVisibleItems.map((item) => {
                     const draftActual = actualDrafts[item.id]
 
                     const actual =

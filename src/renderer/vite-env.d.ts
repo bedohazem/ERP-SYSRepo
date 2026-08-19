@@ -111,6 +111,20 @@ declare global {
         users: SystemUser[]
       }>
 
+      getUsersPage: (input?: {
+        search?: string
+        actor_id?: number
+        limit?: number
+        offset?: number
+      }) => Promise<{
+        success: boolean
+        message?: string
+        users: SystemUser[]
+        total: number
+        limit: number
+        offset: number
+      }>
+
       createSystemUser: (input: {
         name: string
         username: string
@@ -165,6 +179,19 @@ declare global {
       ) => Promise<any>
 
       getProducts: (payload?: any) => Promise<any[]>
+
+      getProductsPage: (input?: {
+        search?: string
+        includeInactive?: boolean
+        categoryId?: number | string | null
+        limit?: number
+        offset?: number
+      }) => Promise<{
+        rows: any[]
+        total: number
+        limit: number
+        offset: number
+      }>
 
       getProductVariants: (payload?: any) => Promise<any[]>
 
@@ -1009,6 +1036,17 @@ declare global {
       // Expenses
       // =========================
       getExpenses: () => Promise<any[]>
+
+      getExpensesPage: (input?: {
+        limit?: number
+        offset?: number
+      }) => Promise<{
+        rows: any[]
+        total: number
+        total_amount: number
+        limit: number
+        offset: number
+      }>
       createExpense: (input: any) => Promise<any>
 
       // =========================
@@ -1199,6 +1237,19 @@ declare global {
         search?: string
         status?: string
       }) => Promise<any[]>
+
+      getLiabilitiesPage: (input?: {
+        search?: string
+        status?: string
+        limit?: number
+        offset?: number
+      }) => Promise<{
+        rows: any[]
+        total: number
+        limit: number
+        offset: number
+      }>
+
       createLiability: (input: any) => Promise<any>
       recordLiabilityPayment: (input: any) => Promise<any>
       getLiabilityStatement: (liabilityId: number) => Promise<any>

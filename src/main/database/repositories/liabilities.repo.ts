@@ -1,72 +1,76 @@
-import { getDb } from '../db';
-import { createCashMovement } from './cash.repo';
-import { createActivityLog } from './activity.repo';
+import { getDb } from '../db'
+import { createCashMovement } from './cash.repo'
+import { createActivityLog } from './activity.repo'
 
 export type CreateLiabilityInput = {
-  party_name: string;
-  title: string;
-  category?: string | null;
-  total_amount: number;
-  paid_amount?: number;
-  payment_method?: string;
-  due_date?: string | null;
-  notes?: string | null;
-  actor_id?: number | null;
-};
+  party_name: string
+  title: string
+  category?: string | null
+  total_amount: number
+  paid_amount?: number
+  payment_method?: string
+  due_date?: string | null
+  notes?: string | null
+  actor_id?: number | null
+}
 
 export type RecordLiabilityPaymentInput = {
-  liability_id: number;
-  amount: number;
-  payment_method?: string;
-  notes?: string | null;
-  actor_id?: number | null;
-};
+  liability_id: number
+  amount: number
+  payment_method?: string
+  notes?: string | null
+  actor_id?: number | null
+}
 
 function cleanText(value: unknown) {
-  return String(value || '').trim();
+  return String(value || '').trim()
 }
 
 function getLiabilityByIdOrThrow(id: number) {
-  const db = getDb();
+  const db = getDb()
 
   const row = db
     .prepare(`SELECT * FROM store_liabilities WHERE id = ? LIMIT 1`)
-    .get(id) as any;
+    .get(id) as any
 
   if (!row) {
-    throw new Error('الالتزام غير موجود');
+    throw new Error('الالتزام غير موجود')
   }
 
-  return row;
+  return row
 }
 
 function getStatus(remaining: number) {
-  return remaining <= 0 ? 'paid' : 'open';
+  return remaining <= 0 ? 'paid' : 'open'
 }
 
 export function createLiability(input: CreateLiabilityInput) {
-  const db = getDb();
+  const db = getDb()
 
-  const partyName = cleanText(input.party_name);
-  const title = cleanText(input.title);
-  const totalAmount = Number(input.total_amount || 0);
-  const initialPaid = Math.min(Math.max(Number(input.paid_amount || 0), 0), totalAmount);
+  const partyName = cleanText(input.party_name)
+  const title = cleanText(input.title)
+  const totalAmount = Number(input.total_amount || 0)
+  const initialPaid = Math.min(
+    Math.max(Number(input.paid_amount || 0), 0),
+    totalAmount,
+  )
 
   if (!partyName) {
-    throw new Error('اسم الشخص أو الجهة مطلوب');
+    throw new Error('اسم الشخص أو الجهة مطلوب')
   }
 
   if (!title) {
-    throw new Error('عنوان الالتزام مطلوب');
+    throw new Error('عنوان الالتزام مطلوب')
   }
 
   if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
-    throw new Error('قيمة الالتزام غير صحيحة');
+    throw new Error('قيمة الالتزام غير صحيحة')
   }
 
   const tx = db.transaction(() => {
     const result = db
-      .prepare(`
+      .prepare(
+        `
         INSERT INTO store_liabilities (
           party_name,
           title,
@@ -81,7 +85,8 @@ export function createLiability(input: CreateLiabilityInput) {
           updated_at
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      `)
+      `,
+      )
       .run(
         partyName,
         title,
@@ -92,10 +97,10 @@ export function createLiability(input: CreateLiabilityInput) {
         'open',
         input.due_date || null,
         cleanText(input.notes) || null,
-        input.actor_id ?? null
-      );
+        input.actor_id ?? null,
+      )
 
-    const liabilityId = Number(result.lastInsertRowid);
+    const liabilityId = Number(result.lastInsertRowid)
 
     createActivityLog({
       user_id: input.actor_id ?? null,
@@ -107,9 +112,9 @@ export function createLiability(input: CreateLiabilityInput) {
         title,
         total_amount: totalAmount,
         initial_paid: initialPaid,
-        remaining_amount: totalAmount
-      })
-    });
+        remaining_amount: totalAmount,
+      }),
+    })
 
     if (initialPaid > 0) {
       recordLiabilityPayment({
@@ -117,45 +122,46 @@ export function createLiability(input: CreateLiabilityInput) {
         amount: initialPaid,
         payment_method: input.payment_method || 'cash',
         notes: 'دفعة مبدئية عند إنشاء الالتزام',
-        actor_id: input.actor_id ?? null
-      });
+        actor_id: input.actor_id ?? null,
+      })
     }
 
-    const liability = getLiabilityByIdOrThrow(liabilityId);
+    const liability = getLiabilityByIdOrThrow(liabilityId)
 
     return {
       success: true,
       liability_id: liabilityId,
-      liability
-    };
-  });
+      liability,
+    }
+  })
 
-  return tx();
+  return tx()
 }
 
 export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
-  const db = getDb();
+  const db = getDb()
 
-  const liability = getLiabilityByIdOrThrow(Number(input.liability_id));
-  const amount = Number(input.amount || 0);
+  const liability = getLiabilityByIdOrThrow(Number(input.liability_id))
+  const amount = Number(input.amount || 0)
 
   if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('مبلغ الدفعة غير صحيح');
+    throw new Error('مبلغ الدفعة غير صحيح')
   }
 
   if (liability.status === 'cancelled') {
-    throw new Error('لا يمكن تسجيل دفعة على التزام ملغي');
+    throw new Error('لا يمكن تسجيل دفعة على التزام ملغي')
   }
 
-  const remainingBefore = Number(liability.remaining_amount || 0);
+  const remainingBefore = Number(liability.remaining_amount || 0)
 
   if (amount > remainingBefore) {
-    throw new Error('مبلغ الدفعة أكبر من المتبقي');
+    throw new Error('مبلغ الدفعة أكبر من المتبقي')
   }
 
   const tx = db.transaction(() => {
     const paymentResult = db
-      .prepare(`
+      .prepare(
+        `
         INSERT INTO store_liability_payments (
           liability_id,
           amount,
@@ -164,22 +170,27 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
           created_by
         )
         VALUES (?, ?, ?, ?, ?)
-      `)
+      `,
+      )
       .run(
         liability.id,
         amount,
         input.payment_method || 'cash',
         cleanText(input.notes) || null,
-        input.actor_id ?? null
-      );
+        input.actor_id ?? null,
+      )
 
-    const paymentId = Number(paymentResult.lastInsertRowid);
+    const paymentId = Number(paymentResult.lastInsertRowid)
 
-    const nextPaid = Number(liability.paid_amount || 0) + amount;
-    const nextRemaining = Math.max(0, Number(liability.total_amount || 0) - nextPaid);
-    const nextStatus = getStatus(nextRemaining);
+    const nextPaid = Number(liability.paid_amount || 0) + amount
+    const nextRemaining = Math.max(
+      0,
+      Number(liability.total_amount || 0) - nextPaid,
+    )
+    const nextStatus = getStatus(nextRemaining)
 
-    db.prepare(`
+    db.prepare(
+      `
       UPDATE store_liabilities
       SET
         paid_amount = ?,
@@ -187,7 +198,8 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
         status = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(nextPaid, nextRemaining, nextStatus, liability.id);
+    `,
+    ).run(nextPaid, nextRemaining, nextStatus, liability.id)
 
     createCashMovement({
       type: 'liability_payment',
@@ -197,8 +209,8 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
       reference_id: paymentId,
       reference_type: 'store_liability_payment',
       notes: `سداد التزام: ${liability.title} - ${liability.party_name}`,
-      created_by: input.actor_id ?? null
-    });
+      created_by: input.actor_id ?? null,
+    })
 
     createActivityLog({
       user_id: input.actor_id ?? null,
@@ -210,9 +222,9 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
         title: liability.title,
         party_name: liability.party_name,
         amount,
-        remaining_after: nextRemaining
-      })
-    });
+        remaining_after: nextRemaining,
+      }),
+    })
 
     return {
       success: true,
@@ -220,22 +232,22 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
       liability_id: liability.id,
       paid_amount: nextPaid,
       remaining_amount: nextRemaining,
-      status: nextStatus
-    };
-  });
+      status: nextStatus,
+    }
+  })
 
-  return tx();
+  return tx()
 }
 
 export function listLiabilities(input?: { search?: string; status?: string }) {
-  const db = getDb();
+  const db = getDb()
 
-  const where: string[] = [];
-  const params: any[] = [];
+  const where: string[] = []
+  const params: any[] = []
 
   if (input?.status && input.status !== 'all') {
-    where.push(`l.status = ?`);
-    params.push(input.status);
+    where.push(`l.status = ?`)
+    params.push(input.status)
   }
 
   if (input?.search?.trim()) {
@@ -244,16 +256,17 @@ export function listLiabilities(input?: { search?: string; status?: string }) {
       OR l.title LIKE ?
       OR l.category LIKE ?
       OR l.notes LIKE ?
-    )`);
+    )`)
 
-    const search = `%${input.search.trim()}%`;
-    params.push(search, search, search, search);
+    const search = `%${input.search.trim()}%`
+    params.push(search, search, search, search)
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
   return db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         l.*,
         u.name AS created_by_name,
@@ -267,16 +280,103 @@ export function listLiabilities(input?: { search?: string; status?: string }) {
       ${whereSql}
       ORDER BY l.id DESC
       LIMIT 500
+    `,
+    )
+    .all(...params)
+}
+
+export function listLiabilitiesPage(input?: {
+  search?: string
+  status?: string
+  limit?: number
+  offset?: number
+}) {
+  const db = getDb()
+
+  const where: string[] = []
+  const params: any[] = []
+
+  if (input?.status && input.status !== 'all') {
+    where.push(`l.status = ?`)
+    params.push(input.status)
+  }
+
+  if (input?.search?.trim()) {
+    where.push(`
+      (
+        l.party_name LIKE ?
+        OR l.title LIKE ?
+        OR IFNULL(l.category, '') LIKE ?
+        OR IFNULL(l.notes, '') LIKE ?
+      )
     `)
-    .all(...params);
+
+    const search = `%${input.search.trim()}%`
+
+    params.push(search, search, search, search)
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+
+  const offset = Math.max(Number(input?.offset || 0), 0)
+
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        l.*,
+        u.name AS created_by_name,
+
+        (
+          SELECT COUNT(*)
+          FROM store_liability_payments p
+          WHERE p.liability_id = l.id
+        ) AS payments_count
+
+      FROM store_liabilities l
+
+      LEFT JOIN users u
+        ON u.id = l.created_by
+
+      ${whereSql}
+
+      ORDER BY l.id DESC
+
+      LIMIT ?
+      OFFSET ?
+    `,
+    )
+    .all(...params, limit, offset)
+
+  const totalRow = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS total
+      FROM store_liabilities l
+      ${whereSql}
+    `,
+    )
+    .get(...params) as {
+    total: number
+  }
+
+  return {
+    rows,
+    total: Number(totalRow?.total || 0),
+    limit,
+    offset,
+  }
 }
 
 export function getLiabilityStatement(liabilityId: number) {
-  const db = getDb();
-  const liability = getLiabilityByIdOrThrow(liabilityId);
+  const db = getDb()
+  const liability = getLiabilityByIdOrThrow(liabilityId)
 
   const payments = db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         p.*,
         u.name AS created_by_name
@@ -284,28 +384,34 @@ export function getLiabilityStatement(liabilityId: number) {
       LEFT JOIN users u ON u.id = p.created_by
       WHERE p.liability_id = ?
       ORDER BY p.id DESC
-    `)
-    .all(liabilityId);
+    `,
+    )
+    .all(liabilityId)
 
   return {
     liability,
-    payments
-  };
+    payments,
+  }
 }
 
-export function cancelLiability(input: { id: number; actor_id?: number | null }) {
-  const db = getDb();
-  const liability = getLiabilityByIdOrThrow(Number(input.id));
+export function cancelLiability(input: {
+  id: number
+  actor_id?: number | null
+}) {
+  const db = getDb()
+  const liability = getLiabilityByIdOrThrow(Number(input.id))
 
   if (Number(liability.paid_amount || 0) > 0) {
-    throw new Error('لا يمكن إلغاء التزام عليه دفعات');
+    throw new Error('لا يمكن إلغاء التزام عليه دفعات')
   }
 
-  db.prepare(`
+  db.prepare(
+    `
     UPDATE store_liabilities
     SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).run(liability.id);
+  `,
+  ).run(liability.id)
 
   createActivityLog({
     user_id: input.actor_id ?? null,
@@ -315,58 +421,82 @@ export function cancelLiability(input: { id: number; actor_id?: number | null })
     details: JSON.stringify({
       title: liability.title,
       party_name: liability.party_name,
-      total_amount: liability.total_amount
-    })
-  });
+      total_amount: liability.total_amount,
+    }),
+  })
 
   return {
-    success: true
-  };
+    success: true,
+  }
 }
 
-export function getLiabilitiesSummary(input?: { date_from?: string; date_to?: string }) {
-  const db = getDb();
+export function getLiabilitiesSummary(input?: {
+  date_from?: string
+  date_to?: string
+}) {
+  const db = getDb()
 
-  const where: string[] = [];
-  const params: any[] = [];
+  const where: string[] = []
+  const params: any[] = []
 
   if (input?.date_from) {
-    where.push(`datetime(p.created_at, 'localtime') >= datetime(?)`);
-    params.push(`${input.date_from} 00:00:00`);
+    where.push(`datetime(p.created_at, 'localtime') >= datetime(?)`)
+    params.push(`${input.date_from} 00:00:00`)
   }
 
   if (input?.date_to) {
-    where.push(`datetime(p.created_at, 'localtime') <= datetime(?)`);
-    params.push(`${input.date_to} 23:59:59`);
+    where.push(`datetime(p.created_at, 'localtime') <= datetime(?)`)
+    params.push(`${input.date_to} 23:59:59`)
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
   const paidRow = db
-    .prepare(`
+    .prepare(
+      `
       SELECT IFNULL(SUM(p.amount), 0) AS paid_total
       FROM store_liability_payments p
       ${whereSql}
-    `)
-    .get(...params) as any;
+    `,
+    )
+    .get(...params) as any
 
   const totalsRow = db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         IFNULL(SUM(total_amount), 0) AS total_liabilities,
         IFNULL(SUM(paid_amount), 0) AS total_paid,
         IFNULL(SUM(remaining_amount), 0) AS total_remaining,
-        COUNT(*) AS count
+        COUNT(*) AS count,
+
+        SUM(
+          CASE
+            WHEN status = 'open' THEN 1
+            ELSE 0
+          END
+        ) AS open_count,
+
+        SUM(
+          CASE
+            WHEN status = 'paid' THEN 1
+            ELSE 0
+          END
+        ) AS paid_count
+
       FROM store_liabilities
       WHERE status != 'cancelled'
-    `)
-    .get() as any;
+    `,
+    )
+    .get() as any
 
   return {
     paid_in_period: Number(paidRow.paid_total || 0),
     total_liabilities: Number(totalsRow.total_liabilities || 0),
     total_paid: Number(totalsRow.total_paid || 0),
     total_remaining: Number(totalsRow.total_remaining || 0),
-    count: Number(totalsRow.count || 0)
-  };
+    count: Number(totalsRow.count || 0),
+    open_count: Number(totalsRow.open_count || 0),
+    paid_count: Number(totalsRow.paid_count || 0),
+  }
 }
