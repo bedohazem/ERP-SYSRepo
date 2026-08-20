@@ -117,17 +117,27 @@ export default function DashboardPage() {
   const todayKey = useMemo(() => getLocalDateKey(new Date()), [])
   const monthStartKey = useMemo(() => getMonthStartKey(new Date()), [])
 
-  async function loadDashboard() {
+  const [cashierDate, setCashierDate] = useState(todayKey)
+
+  async function loadDashboard(targetDate = cashierDate) {
     setLoading(true)
     setMessage('')
+
     const cashierId = isCashier ? Number(user?.id || 0) : undefined
+
+    const dashboardDate = isCashier ? targetDate : todayKey
+
+    const dashboardMonthStartKey =
+      isCashier && /^\d{4}-\d{2}-\d{2}$/.test(dashboardDate)
+        ? `${dashboardDate.slice(0, 7)}-01`
+        : monthStartKey
 
     const reportUserFilter =
       isCashier && cashierId ? { user_id: cashierId } : {}
 
     const cashierDayFilter = {
-      date_from: todayKey,
-      date_to: todayKey,
+      date_from: dashboardDate,
+      date_to: dashboardDate,
       created_by: cashierId,
     }
 
@@ -137,7 +147,7 @@ export default function DashboardPage() {
         month,
         overview,
 
-        currentDrawerCash,
+        selectedDayDrawer,
         todayInstapayBank,
         todayVodafoneCash,
         todayFawryMachine,
@@ -152,21 +162,19 @@ export default function DashboardPage() {
       ] = await Promise.all([
         window.api.getReportsSummary({
           ...reportUserFilter,
-          date_from: todayKey,
-          date_to: todayKey,
+          date_from: dashboardDate,
+          date_to: dashboardDate,
         }),
         window.api.getReportsSummary({
           ...reportUserFilter,
-          date_from: monthStartKey,
-          date_to: todayKey,
+          date_from: dashboardMonthStartKey,
+          date_to: dashboardDate,
         }),
         window.api.getReportsSummary({
           ...reportUserFilter,
         }),
 
-        window.api.getCashSummary({
-          payment_method: 'store_cash',
-        }),
+        window.api.getCashDayClosePreview(dashboardDate),
 
         window.api.getCashSummary({
           ...cashierDayFilter,
@@ -224,7 +232,7 @@ export default function DashboardPage() {
       setData({ today, month, overview })
 
       setCashierRevenue({
-        drawerCash: Number(currentDrawerCash?.balance || 0),
+        drawerCash: Number(selectedDayDrawer?.system_closing_balance || 0),
         instapayBank: Number(todayInstapayBank?.balance || 0),
         vodafoneCash: Number(todayVodafoneCash?.balance || 0),
         fawryMachine: Number(todayFawryMachine?.balance || 0),
@@ -270,7 +278,8 @@ export default function DashboardPage() {
   if (isCashier) {
     return (
       <CashierRevenueView
-        todayKey={todayKey}
+        selectedDate={cashierDate}
+        maxDate={todayKey}
         cashierName={user?.name || user?.username || 'الكاشير'}
         revenue={cashierRevenue}
         salesCount={data.today.summary.sales_count}
@@ -279,7 +288,16 @@ export default function DashboardPage() {
         loyaltyDiscounts={data.today.summary.loyalty_discounts}
         lastUpdated={lastUpdated}
         loading={loading}
-        onRefresh={loadDashboard}
+        onDateChange={(date) => {
+          const nextDate = date || todayKey
+
+          setCashierDate(nextDate)
+
+          void loadDashboard(nextDate)
+        }}
+        onRefresh={() => {
+          void loadDashboard(cashierDate)
+        }}
         onNewSale={() => navigate('/sales')}
       />
     )
@@ -319,7 +337,9 @@ export default function DashboardPage() {
         <div style={heroActionsStyle}>
           <button
             type="button"
-            onClick={loadDashboard}
+            onClick={() => {
+              void loadDashboard()
+            }}
             style={primaryButtonStyle}
           >
             {loading ? 'جاري التحديث...' : 'تحديث البيانات'}
@@ -1087,7 +1107,8 @@ const toastStyle: CSSProperties = {
 }
 
 function CashierRevenueView({
-  todayKey,
+  selectedDate,
+  maxDate,
   cashierName,
   revenue,
   salesCount,
@@ -1096,10 +1117,12 @@ function CashierRevenueView({
   loyaltyDiscounts,
   lastUpdated,
   loading,
+  onDateChange,
   onRefresh,
   onNewSale,
 }: {
-  todayKey: string
+  selectedDate: string
+  maxDate: string
   cashierName: string
   revenue: CashierDailyRevenue
   salesCount: number
@@ -1108,6 +1131,7 @@ function CashierRevenueView({
   loyaltyDiscounts: number
   lastUpdated: string
   loading: boolean
+  onDateChange: (date: string) => void
   onRefresh: () => void
   onNewSale: () => void
 }) {
@@ -1136,13 +1160,15 @@ function CashierRevenueView({
             <div
               style={{ color: '#93c5fd', fontWeight: 900, marginBottom: '6px' }}
             >
-              ملخص اليوم للكاشير
+              ملخص يوم الكاشير
             </div>
 
-            <h2 style={{ margin: 0, fontSize: '30px' }}>إيرادات اليوم</h2>
+            <h2 style={{ margin: 0, fontSize: '30px' }}>
+              إيرادات التاريخ المحدد
+            </h2>
 
             <p style={{ margin: '8px 0 0', color: '#94a3b8', fontWeight: 700 }}>
-              التاريخ: {todayKey} • الكاشير: {cashierName}
+              التاريخ: {selectedDate} • الكاشير: {cashierName}
             </p>
 
             <p style={{ margin: '6px 0 0', color: '#64748b', fontWeight: 700 }}>
@@ -1152,7 +1178,52 @@ function CashierRevenueView({
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: '10px',
+              flexWrap: 'wrap',
+              alignItems: 'flex-end',
+            }}
+          >
+            <label
+              style={{
+                display: 'grid',
+                gap: '6px',
+                color: '#94a3b8',
+                fontWeight: 800,
+                fontSize: '13px',
+              }}
+            >
+              <span>عرض يوم</span>
+
+              <input
+                type="date"
+                value={selectedDate}
+                max={maxDate}
+                disabled={loading}
+                onChange={(e) => onDateChange(e.target.value)}
+                style={{
+                  minHeight: '44px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  background: 'rgba(255,255,255,0.06)',
+                  color: '#fff',
+                  padding: '0 12px',
+                  fontWeight: 800,
+                  colorScheme: 'dark',
+                }}
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() => onDateChange(maxDate)}
+              style={secondaryButtonStyle}
+            >
+              اليوم
+            </button>
+
             <button
               type="button"
               onClick={onRefresh}
@@ -1211,9 +1282,9 @@ function CashierRevenueView({
           }}
         >
           <CashierMiniCard
-            title="فلوس الدرج"
+            title="رصيد الدرج"
             value={money(revenue.drawerCash)}
-            subtitle="كاش فعلي في الدرج"
+            subtitle="رصيد الدرج في نهاية التاريخ المحدد"
           />
 
           <CashierMiniCard
@@ -1241,7 +1312,7 @@ function CashierRevenueView({
           />
 
           <CashierMiniCard
-            title="صافي مبيعات اليوم"
+            title="صافي مبيعات التاريخ المحدد"
             value={money(revenue.salesIn)}
             subtitle={`${salesCount} فاتورة بيع`}
           />
@@ -1253,9 +1324,9 @@ function CashierRevenueView({
           />
 
           <CashierMiniCard
-            title="مرتجعات مبيعات اليوم"
+            title="مرتجعات مبيعات التاريخ المحدد"
             value={money(revenue.saleReturnsOut)}
-            subtitle={`${returnsCount} عملية مرتجع من فواتير اليوم`}
+            subtitle={`${returnsCount} عملية مرتجع من فواتير التاريخ المحدد`}
           />
 
           <CashierMiniCard
@@ -1279,7 +1350,7 @@ function CashierRevenueView({
           <CashierMiniCard
             title="المصاريف"
             value={money(revenue.expensesOut)}
-            subtitle="مصروفات اليوم"
+            subtitle="مصروفات التاريخ المحدد"
           />
         </div>
       </section>
