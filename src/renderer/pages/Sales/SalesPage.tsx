@@ -636,9 +636,7 @@ export default function SalesPage() {
 
     try {
       const q = searchValue.trim()
-      const data = q
-        ? await window.api.searchCustomers(q)
-        : await window.api.getCustomers()
+      const data = await window.api.searchCustomers(q)
 
       setCustomers(Array.isArray(data) ? data.map(normalizeCustomer) : [])
     } catch (error) {

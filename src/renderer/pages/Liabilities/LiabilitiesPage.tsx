@@ -45,6 +45,8 @@ const emptyForm = {
   notes: '',
 }
 
+const LIABILITY_STATEMENT_PAGE_SIZE = 20
+
 function money(value: unknown) {
   return `${Number(value || 0).toFixed(2)} ج.م`
 }
@@ -309,6 +311,17 @@ export default function LiabilitiesPage() {
   const openCount = Number(summary.open_count || 0)
 
   const paidCount = Number(summary.paid_count || 0)
+
+  const statementPayments = Array.isArray(statementData?.payments)
+    ? statementData.payments
+    : []
+
+  const statementPaymentsTotal = statementPayments.length
+
+  const statementPaymentsPageRows = statementPayments.slice(
+    (liabilityStatementPage - 1) * LIABILITY_STATEMENT_PAGE_SIZE,
+    liabilityStatementPage * LIABILITY_STATEMENT_PAGE_SIZE,
+  )
 
   return (
     <div
@@ -826,7 +839,7 @@ export default function LiabilitiesPage() {
             </div>
 
             <div style={{ display: 'grid', gap: '8px' }}>
-              {statementData.payments.map((payment) => (
+              {statementPaymentsPageRows.map((payment) => (
                 <div
                   key={payment.id}
                   style={{
@@ -853,7 +866,7 @@ export default function LiabilitiesPage() {
                 </div>
               ))}
 
-              {!statementData.payments.length && (
+              {!statementPaymentsTotal && (
                 <div
                   style={{
                     color: '#94a3b8',
@@ -864,6 +877,13 @@ export default function LiabilitiesPage() {
                   لا توجد دفعات مسجلة
                 </div>
               )}
+
+              <PaginationBar
+                page={liabilityStatementPage}
+                totalItems={statementPaymentsTotal}
+                pageSize={LIABILITY_STATEMENT_PAGE_SIZE}
+                onPageChange={setLiabilityStatementPage}
+              />
             </div>
           </div>
         </div>

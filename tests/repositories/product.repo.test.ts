@@ -1,34 +1,35 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
+import { beforeEach, describe, expect, it } from 'vitest'
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
 import {
   addProductVariant,
   createProduct,
   getProductVariants,
   getProducts,
   getVariantByBarcode,
+  listProductsPage,
   searchSaleVariants,
-  updateProduct
-} from '../../src/main/database/repositories/product.repo';
+  updateProduct,
+} from '../../src/main/database/repositories/product.repo'
 
 type ProductVariantTestRow = {
-  id: number;
-  product_id: number;
-  barcode: string;
-  size: string;
-  color: string;
-  buy_price: number;
-  sell_price: number;
-  min_stock: number;
-  is_active: number;
-  stock: number;
-};
+  id: number
+  product_id: number
+  barcode: string
+  size: string
+  color: string
+  buy_price: number
+  sell_price: number
+  min_stock: number
+  is_active: number
+  stock: number
+}
 
 describe('product repository', () => {
   beforeEach(() => {
-    closeDb();
-    getDb();
-    resetDatabaseData();
-  });
+    closeDb()
+    getDb()
+    resetDatabaseData()
+  })
 
   it('creates a product with one variant and opening stock', () => {
     const result = createProduct({
@@ -44,25 +45,27 @@ describe('product repository', () => {
           buy_price: 100,
           sell_price: 150,
           min_stock: 5,
-          opening_qty: 10
-        }
-      ]
-    });
+          opening_qty: 10,
+        },
+      ],
+    })
 
-    expect(result.success).toBe(true);
-    expect(result.productId).toBeGreaterThan(0);
+    expect(result.success).toBe(true)
+    expect(result.productId).toBeGreaterThan(0)
 
-    const products = getProducts('T-Shirt');
-    expect(products).toHaveLength(1);
-    expect(products[0].name).toBe('T-Shirt');
-    expect(products[0].variants_count).toBe(1);
-    expect(products[0].active_variants_count).toBe(1);
+    const products = getProducts('T-Shirt')
+    expect(products).toHaveLength(1)
+    expect(products[0].name).toBe('T-Shirt')
+    expect(products[0].variants_count).toBe(1)
+    expect(products[0].active_variants_count).toBe(1)
 
-    const variants = getProductVariants(result.productId) as ProductVariantTestRow[];
-    expect(variants).toHaveLength(1);
-    expect(variants[0].barcode).toBe('TS001');
-    expect(variants[0].stock).toBe(10);
-  });
+    const variants = getProductVariants(
+      result.productId,
+    ) as ProductVariantTestRow[]
+    expect(variants).toHaveLength(1)
+    expect(variants[0].barcode).toBe('TS001')
+    expect(variants[0].stock).toBe(10)
+  })
 
   it('rejects empty product name', () => {
     expect(() =>
@@ -77,22 +80,22 @@ describe('product repository', () => {
             buy_price: 100,
             sell_price: 150,
             min_stock: 5,
-            opening_qty: 1
-          }
-        ]
-      })
-    ).toThrow('اسم المنتج مطلوب');
-  });
+            opening_qty: 1,
+          },
+        ],
+      }),
+    ).toThrow('اسم المنتج مطلوب')
+  })
 
   it('rejects product without variants', () => {
     expect(() =>
       createProduct({
         name: 'No Variants Product',
         category_id: null,
-        variants: []
-      })
-    ).toThrow('لازم تضيف صنف واحد على الأقل');
-  });
+        variants: [],
+      }),
+    ).toThrow('لازم تضيف صنف واحد على الأقل')
+  })
 
   it('rejects empty barcode', () => {
     expect(() =>
@@ -107,12 +110,12 @@ describe('product repository', () => {
             buy_price: 100,
             sell_price: 150,
             min_stock: 5,
-            opening_qty: 1
-          }
-        ]
-      })
-    ).toThrow('الباركود مطلوب');
-  });
+            opening_qty: 1,
+          },
+        ],
+      }),
+    ).toThrow('الباركود مطلوب')
+  })
 
   it('rejects duplicate barcode inside same product', () => {
     expect(() =>
@@ -127,7 +130,7 @@ describe('product repository', () => {
             buy_price: 100,
             sell_price: 150,
             min_stock: 5,
-            opening_qty: 1
+            opening_qty: 1,
           },
           {
             barcode: 'DUP001',
@@ -136,12 +139,12 @@ describe('product repository', () => {
             buy_price: 100,
             sell_price: 150,
             min_stock: 5,
-            opening_qty: 1
-          }
-        ]
-      })
-    ).toThrow('مكرر في نفس المنتج');
-  });
+            opening_qty: 1,
+          },
+        ],
+      }),
+    ).toThrow('مكرر في نفس المنتج')
+  })
 
   it('rejects existing barcode in another product', () => {
     createProduct({
@@ -155,10 +158,10 @@ describe('product repository', () => {
           buy_price: 100,
           sell_price: 150,
           min_stock: 5,
-          opening_qty: 1
-        }
-      ]
-    });
+          opening_qty: 1,
+        },
+      ],
+    })
 
     expect(() =>
       createProduct({
@@ -172,12 +175,12 @@ describe('product repository', () => {
             buy_price: 120,
             sell_price: 180,
             min_stock: 5,
-            opening_qty: 1
-          }
-        ]
-      })
-    ).toThrow('مستخدم بالفعل');
-  });
+            opening_qty: 1,
+          },
+        ],
+      }),
+    ).toThrow('مستخدم بالفعل')
+  })
 
   it('rejects negative opening quantity', () => {
     expect(() =>
@@ -192,12 +195,12 @@ describe('product repository', () => {
             buy_price: 100,
             sell_price: 150,
             min_stock: 5,
-            opening_qty: -1
-          }
-        ]
-      })
-    ).toThrow('كمية المخزون الافتتاحي غير صحيحة');
-  });
+            opening_qty: -1,
+          },
+        ],
+      }),
+    ).toThrow('كمية المخزون الافتتاحي غير صحيحة')
+  })
 
   it('rolls back product creation when opening stock is invalid', () => {
     expect(() =>
@@ -212,15 +215,15 @@ describe('product repository', () => {
             buy_price: 100,
             sell_price: 150,
             min_stock: 5,
-            opening_qty: -10
-          }
-        ]
-      })
-    ).toThrow();
+            opening_qty: -10,
+          },
+        ],
+      }),
+    ).toThrow()
 
-    const products = getProducts('Rollback Product', true);
-    expect(products).toHaveLength(0);
-  });
+    const products = getProducts('Rollback Product', true)
+    expect(products).toHaveLength(0)
+  })
 
   it('adds a variant to an existing product', () => {
     const product = createProduct({
@@ -234,10 +237,10 @@ describe('product repository', () => {
           buy_price: 100,
           sell_price: 150,
           min_stock: 5,
-          opening_qty: 5
-        }
-      ]
-    });
+          opening_qty: 5,
+        },
+      ],
+    })
 
     const variant = addProductVariant({
       product_id: product.productId,
@@ -247,17 +250,19 @@ describe('product repository', () => {
       buy_price: 110,
       sell_price: 170,
       min_stock: 4,
-      opening_qty: 3
-    });
+      opening_qty: 3,
+    })
 
-    expect(variant.success).toBe(true);
-    expect(variant.variantId).toBeGreaterThan(0);
+    expect(variant.success).toBe(true)
+    expect(variant.variantId).toBeGreaterThan(0)
 
-    const variants = getProductVariants(product.productId) as ProductVariantTestRow[];
-    expect(variants).toHaveLength(2);
-    expect(variants[1].barcode).toBe('MULTI002');
-    expect(variants[1].stock).toBe(3);
-  });
+    const variants = getProductVariants(
+      product.productId,
+    ) as ProductVariantTestRow[]
+    expect(variants).toHaveLength(2)
+    expect(variants[1].barcode).toBe('MULTI002')
+    expect(variants[1].stock).toBe(3)
+  })
 
   it('searches sale variants only when stock is available', () => {
     createProduct({
@@ -271,7 +276,7 @@ describe('product repository', () => {
           buy_price: 100,
           sell_price: 150,
           min_stock: 5,
-          opening_qty: 7
+          opening_qty: 7,
         },
         {
           barcode: 'SEARCH002',
@@ -280,17 +285,17 @@ describe('product repository', () => {
           buy_price: 100,
           sell_price: 150,
           min_stock: 5,
-          opening_qty: 0
-        }
-      ]
-    });
+          opening_qty: 0,
+        },
+      ],
+    })
 
-    const results = searchSaleVariants('Searchable');
+    const results = searchSaleVariants('Searchable')
 
-    expect(results).toHaveLength(1);
-    expect(results[0].barcode).toBe('SEARCH001');
-    expect(results[0].stock).toBe(7);
-  });
+    expect(results).toHaveLength(1)
+    expect(results[0].barcode).toBe('SEARCH001')
+    expect(results[0].stock).toBe(7)
+  })
 
   it('gets variant by exact barcode', () => {
     createProduct({
@@ -304,104 +309,178 @@ describe('product repository', () => {
           buy_price: 100,
           sell_price: 150,
           min_stock: 5,
-          opening_qty: 4
-        }
-      ]
-    });
+          opening_qty: 4,
+        },
+      ],
+    })
 
-    const variant = getVariantByBarcode('BAR001');
+    const variant = getVariantByBarcode('BAR001')
 
-    expect(variant).toBeDefined();
-    expect(variant?.barcode).toBe('BAR001');
-    expect(variant?.stock).toBe(4);
-  });
+    expect(variant).toBeDefined()
+    expect(variant?.barcode).toBe('BAR001')
+    expect(variant?.stock).toBe(4)
+  })
 
   it('rejects negative buy price', () => {
     expect(() =>
-        createProduct({
+      createProduct({
         name: 'Negative Buy Price Product',
         category_id: null,
         variants: [
-            {
+          {
             barcode: 'NEGBUY001',
             size: 'M',
             color: 'Black',
             buy_price: -100,
             sell_price: 150,
             min_stock: 5,
-            opening_qty: 1
-            }
-        ]
-        })
-    ).toThrow();
-  });
+            opening_qty: 1,
+          },
+        ],
+      }),
+    ).toThrow()
+  })
 
   it('rejects negative sell price', () => {
     expect(() =>
-        createProduct({
+      createProduct({
         name: 'Negative Sell Price Product',
         category_id: null,
         variants: [
-            {
+          {
             barcode: 'NEGSELL001',
             size: 'M',
             color: 'Black',
             buy_price: 100,
             sell_price: -150,
             min_stock: 5,
-            opening_qty: 1
-            }
-        ]
-        })
-    ).toThrow();
-  });
+            opening_qty: 1,
+          },
+        ],
+      }),
+    ).toThrow()
+  })
 
   it('rejects negative minimum stock', () => {
     expect(() =>
-        createProduct({
+      createProduct({
         name: 'Negative Min Stock Product',
         category_id: null,
         variants: [
-            {
+          {
             barcode: 'NEGMIN001',
             size: 'M',
             color: 'Black',
             buy_price: 100,
             sell_price: 150,
             min_stock: -5,
-            opening_qty: 1
-            }
-        ]
-        })
-    ).toThrow();
-  });
+            opening_qty: 1,
+          },
+        ],
+      }),
+    ).toThrow()
+  })
 
   it('rejects updating product with empty name', () => {
     const product = createProduct({
-        name: 'Valid Product',
-        category_id: null,
-        variants: [
+      name: 'Valid Product',
+      category_id: null,
+      variants: [
         {
-            barcode: 'UPD001',
-            size: 'M',
-            color: 'Black',
-            buy_price: 100,
-            sell_price: 150,
-            min_stock: 5,
-            opening_qty: 1
-        }
-        ]
-    });
+          barcode: 'UPD001',
+          size: 'M',
+          color: 'Black',
+          buy_price: 100,
+          sell_price: 150,
+          min_stock: 5,
+          opening_qty: 1,
+        },
+      ],
+    })
 
     expect(() =>
-        updateProduct({
+      updateProduct({
         id: product.productId,
         name: '   ',
         category_id: null,
         description: null,
-        image_path: null
-        })
-    ).toThrow();
-  });
+        image_path: null,
+      }),
+    ).toThrow()
+  })
 
-});
+  it('paginates products and returns the filtered total', () => {
+    createProduct({
+      name: 'Paged Product 1',
+      category_id: null,
+      variants: [
+        {
+          barcode: 'PAGE001',
+          size: 'M',
+          color: 'Black',
+          buy_price: 10,
+          sell_price: 20,
+          min_stock: 1,
+          opening_qty: 0,
+        },
+      ],
+    })
+
+    createProduct({
+      name: 'Paged Product 2',
+      category_id: null,
+      variants: [
+        {
+          barcode: 'PAGE002',
+          size: 'M',
+          color: 'Black',
+          buy_price: 10,
+          sell_price: 20,
+          min_stock: 1,
+          opening_qty: 0,
+        },
+      ],
+    })
+
+    createProduct({
+      name: 'Paged Product 3',
+      category_id: null,
+      variants: [
+        {
+          barcode: 'PAGE003',
+          size: 'M',
+          color: 'Black',
+          buy_price: 10,
+          sell_price: 20,
+          min_stock: 1,
+          opening_qty: 0,
+        },
+      ],
+    })
+
+    const firstPage = listProductsPage({
+      search: 'Paged Product',
+      limit: 2,
+      offset: 0,
+    })
+
+    expect(firstPage.total).toBe(3)
+    expect(firstPage.rows).toHaveLength(2)
+    expect((firstPage.rows[0] as any).name).toBe('Paged Product 3')
+    expect((firstPage.rows[1] as any).name).toBe('Paged Product 2')
+    expect(firstPage.limit).toBe(2)
+    expect(firstPage.offset).toBe(0)
+
+    const secondPage = listProductsPage({
+      search: 'Paged Product',
+      limit: 2,
+      offset: 2,
+    })
+
+    expect(secondPage.total).toBe(3)
+    expect(secondPage.rows).toHaveLength(1)
+    expect((secondPage.rows[0] as any).name).toBe('Paged Product 1')
+    expect(secondPage.limit).toBe(2)
+    expect(secondPage.offset).toBe(2)
+  })
+})

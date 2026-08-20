@@ -279,7 +279,6 @@ export function listLiabilities(input?: { search?: string; status?: string }) {
       LEFT JOIN users u ON u.id = l.created_by
       ${whereSql}
       ORDER BY l.id DESC
-      LIMIT 500
     `,
     )
     .all(...params)

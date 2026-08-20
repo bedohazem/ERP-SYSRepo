@@ -159,8 +159,13 @@ export default function PurchasesPage() {
   const remaining = roundMoney(Math.max(0, totalAmount - paid))
 
   async function loadSuppliers(searchValue = supplierSearch) {
-    const data = await window.api.getSuppliers(searchValue)
-    setSuppliers(Array.isArray(data) ? data : [])
+    const result = await window.api.listSuppliers({
+      search: searchValue.trim() || undefined,
+      limit: 30,
+      offset: 0,
+    })
+
+    setSuppliers(Array.isArray(result?.rows) ? result.rows : [])
   }
 
   useEffect(() => {
@@ -297,12 +302,14 @@ export default function PurchasesPage() {
 
     const handle = setTimeout(async () => {
       try {
-        const data = await window.api.getProducts({
+        const result = await window.api.getProductsPage({
           search: q,
           includeInactive: false,
+          limit: 20,
+          offset: 0,
         })
 
-        const rows = Array.isArray(data) ? data.slice(0, 20) : []
+        const rows = Array.isArray(result?.rows) ? result.rows : []
         setQuickExistingProducts(rows)
 
         if (rows.length === 1) {
@@ -327,13 +334,15 @@ export default function PurchasesPage() {
 
     const handle = setTimeout(async () => {
       try {
-        const data = await window.api.getInventoryList({
+        const result = await window.api.getInventoryPage({
           search: q,
           status: 'all',
           categoryId: categoryFilter,
+          limit: 20,
+          offset: 0,
         })
 
-        setProductResults(Array.isArray(data) ? data.slice(0, 20) : [])
+        setProductResults(Array.isArray(result?.rows) ? result.rows : [])
       } catch (error) {
         console.error(error)
         setProductResults([])
@@ -518,10 +527,16 @@ export default function PurchasesPage() {
         return
       }
 
-      const inventoryRows = await window.api.getInventoryList({
+      const inventoryResult = await window.api.getInventoryPage({
         search: barcode,
         status: 'all',
+        limit: 20,
+        offset: 0,
       })
+
+      const inventoryRows = Array.isArray(inventoryResult?.rows)
+        ? inventoryResult.rows
+        : []
 
       const createdVariant = Array.isArray(inventoryRows)
         ? inventoryRows.find(
