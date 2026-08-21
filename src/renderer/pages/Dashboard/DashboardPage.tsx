@@ -48,7 +48,12 @@ type CashierDailyRevenue = {
   fawryMachine: number
   ownerCash: number
 
-  salesIn: number
+  netSales: number
+  saleCollectionsIn: number
+  customerPaymentsIn: number
+  totalCustomerCollections: number
+  newReceivables: number
+
   totalDiscounts: number
   saleReturnsOut: number
 
@@ -105,7 +110,12 @@ export default function DashboardPage() {
     fawryMachine: 0,
     ownerCash: 0,
 
-    salesIn: 0,
+    netSales: 0,
+    saleCollectionsIn: 0,
+    customerPaymentsIn: 0,
+    totalCustomerCollections: 0,
+    newReceivables: 0,
+
     totalDiscounts: 0,
     saleReturnsOut: 0,
 
@@ -154,6 +164,7 @@ export default function DashboardPage() {
         todayOwnerCash,
 
         todaySalesCash,
+        todayCustomerPayments,
         todaySaleReturns,
         todayPurchaseInvoices,
         todaySupplierPayments,
@@ -203,6 +214,11 @@ export default function DashboardPage() {
 
         window.api.getCashSummary({
           ...cashierDayFilter,
+          type: 'customer_payment',
+        }),
+
+        window.api.getCashSummary({
+          ...cashierDayFilter,
           type: 'sale_return',
         }),
 
@@ -238,7 +254,21 @@ export default function DashboardPage() {
         fawryMachine: Number(todayFawryMachine?.balance || 0),
         ownerCash: Number(todayOwnerCash?.balance || 0),
 
-        salesIn: Number(today.summary.net_sales || 0),
+        netSales: Number(today.summary.net_sales || 0),
+
+        saleCollectionsIn: Number(todaySalesCash?.total_in || 0),
+
+        customerPaymentsIn: Number(todayCustomerPayments?.total_in || 0),
+
+        totalCustomerCollections:
+          Number(todaySalesCash?.total_in || 0) +
+          Number(todayCustomerPayments?.total_in || 0),
+
+        newReceivables: Math.max(
+          0,
+          Number(today.summary.gross_sales || 0) -
+            Number(todaySalesCash?.total_in || 0),
+        ),
 
         totalDiscounts:
           Number(today.summary.normal_discounts || 0) +
@@ -1255,7 +1285,7 @@ function CashierRevenueView({
           <div
             style={{ color: '#bbf7d0', fontWeight: 900, marginBottom: '10px' }}
           >
-            صافي مبيعات اليوم
+            صافي مبيعات التاريخ المحدد
           </div>
 
           <strong
@@ -1266,11 +1296,12 @@ function CashierRevenueView({
               lineHeight: 1.2,
             }}
           >
-            {money(revenue.salesIn)}
+            {money(revenue.netSales)}
           </strong>
 
           <div style={{ color: '#94a3b8', fontWeight: 800, marginTop: '10px' }}>
-            صافي مبيعات فواتير اليوم بعد المرتجعات الخاصة بنفس يوم البيع
+            قيمة البيع تخص يوم إصدار الفاتورة، أما التحصيل فيظهر في يوم دخول
+            الفلوس فعليًا
           </div>
         </div>
 
@@ -1313,8 +1344,32 @@ function CashierRevenueView({
 
           <CashierMiniCard
             title="صافي مبيعات التاريخ المحدد"
-            value={money(revenue.salesIn)}
+            value={money(revenue.netSales)}
             subtitle={`${salesCount} فاتورة بيع`}
+          />
+
+          <CashierMiniCard
+            title="المحصل وقت البيع"
+            value={money(revenue.saleCollectionsIn)}
+            subtitle="فلوس اتدفعت لحظة إنشاء فواتير التاريخ المحدد"
+          />
+
+          <CashierMiniCard
+            title="آجل نشأ من فواتير التاريخ"
+            value={money(revenue.newReceivables)}
+            subtitle="الجزء غير المدفوع لحظة إنشاء الفواتير قبل أي سداد لاحق"
+          />
+
+          <CashierMiniCard
+            title="تحصيل مديونيات عملاء"
+            value={money(revenue.customerPaymentsIn)}
+            subtitle="دفعات اتسجلت خلال التاريخ على فواتير مفتوحة"
+          />
+
+          <CashierMiniCard
+            title="إجمالي تحصيل العملاء"
+            value={money(revenue.totalCustomerCollections)}
+            subtitle="المحصل وقت البيع + دفعات الفواتير المفتوحة"
           />
 
           <CashierMiniCard
