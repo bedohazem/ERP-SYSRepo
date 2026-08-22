@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getPaymentMethodLabel } from '../../utils/payment-method'
@@ -43,6 +43,12 @@ type DashboardState = {
 
 type CashierDailyRevenue = {
   drawerCash: number
+  drawerOpening: number
+  drawerCashIn: number
+  drawerCashOut: number
+  drawerEndBalance: number
+  drawerAlreadyClosed: boolean
+
   instapayBank: number
   vodafoneCash: number
   fawryMachine: number
@@ -55,11 +61,11 @@ type CashierDailyRevenue = {
   newReceivables: number
 
   totalDiscounts: number
-  saleReturnsOut: number
 
-  purchaseInvoicesOut: number
-  supplierPaymentsOut: number
-  purchaseReturnsIn: number
+  saleReturnsValue: number
+  saleReturnsCashOut: number
+  saleReturnsDebtReduction: number
+
   expensesOut: number
 }
 
@@ -105,6 +111,12 @@ export default function DashboardPage() {
 
   const [cashierRevenue, setCashierRevenue] = useState<CashierDailyRevenue>({
     drawerCash: 0,
+    drawerOpening: 0,
+    drawerCashIn: 0,
+    drawerCashOut: 0,
+    drawerEndBalance: 0,
+    drawerAlreadyClosed: false,
+
     instapayBank: 0,
     vodafoneCash: 0,
     fawryMachine: 0,
@@ -117,15 +129,18 @@ export default function DashboardPage() {
     newReceivables: 0,
 
     totalDiscounts: 0,
-    saleReturnsOut: 0,
 
-    purchaseInvoicesOut: 0,
-    supplierPaymentsOut: 0,
-    purchaseReturnsIn: 0,
+    saleReturnsValue: 0,
+    saleReturnsCashOut: 0,
+    saleReturnsDebtReduction: 0,
+
     expensesOut: 0,
   })
-  const todayKey = useMemo(() => getLocalDateKey(new Date()), [])
-  const monthStartKey = useMemo(() => getMonthStartKey(new Date()), [])
+  const [todayKey, setTodayKey] = useState(() => getLocalDateKey(new Date()))
+
+  const [monthStartKey, setMonthStartKey] = useState(() =>
+    getMonthStartKey(new Date()),
+  )
 
   const [cashierDate, setCashierDate] = useState(todayKey)
 
@@ -166,9 +181,6 @@ export default function DashboardPage() {
         todaySalesCash,
         todayCustomerPayments,
         todaySaleReturns,
-        todayPurchaseInvoices,
-        todaySupplierPayments,
-        todayPurchaseReturns,
         todayExpenses,
       ] = await Promise.all([
         window.api.getReportsSummary({
@@ -224,23 +236,6 @@ export default function DashboardPage() {
 
         window.api.getCashSummary({
           ...cashierDayFilter,
-          type: 'supplier_payment',
-          reference_type: 'purchase_invoice',
-        }),
-
-        window.api.getCashSummary({
-          ...cashierDayFilter,
-          type: 'supplier_payment',
-          reference_type: 'supplier_payment',
-        }),
-
-        window.api.getCashSummary({
-          ...cashierDayFilter,
-          type: 'purchase_return',
-        }),
-
-        window.api.getCashSummary({
-          ...cashierDayFilter,
           type: 'expense',
         }),
       ])
@@ -249,6 +244,19 @@ export default function DashboardPage() {
 
       setCashierRevenue({
         drawerCash: Number(selectedDayDrawer?.system_closing_balance || 0),
+
+        drawerOpening: Number(selectedDayDrawer?.opening_drawer_balance || 0),
+
+        drawerCashIn: Number(selectedDayDrawer?.day_cash_in || 0),
+
+        drawerCashOut: Number(selectedDayDrawer?.day_cash_out || 0),
+
+        drawerEndBalance: selectedDayDrawer?.already_closed
+          ? Number(selectedDayDrawer?.closing?.carry_over_amount || 0)
+          : Number(selectedDayDrawer?.system_closing_balance || 0),
+
+        drawerAlreadyClosed: Boolean(selectedDayDrawer?.already_closed),
+
         instapayBank: Number(todayInstapayBank?.balance || 0),
         vodafoneCash: Number(todayVodafoneCash?.balance || 0),
         fawryMachine: Number(todayFawryMachine?.balance || 0),
@@ -274,11 +282,16 @@ export default function DashboardPage() {
           Number(today.summary.normal_discounts || 0) +
           Number(today.summary.loyalty_discounts || 0),
 
-        saleReturnsOut: Number(today.summary.total_returns || 0),
+        saleReturnsValue: Number(today.summary.total_returns || 0),
 
-        purchaseInvoicesOut: Number(todayPurchaseInvoices?.total_out || 0),
-        supplierPaymentsOut: Number(todaySupplierPayments?.total_out || 0),
-        purchaseReturnsIn: Number(todayPurchaseReturns?.total_in || 0),
+        saleReturnsCashOut: Number(todaySaleReturns?.total_out || 0),
+
+        saleReturnsDebtReduction: Math.max(
+          0,
+          Number(today.summary.total_returns || 0) -
+            Number(todaySaleReturns?.total_out || 0),
+        ),
+
         expensesOut: Number(todayExpenses?.total_out || 0),
       })
 
@@ -298,7 +311,16 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    void loadDashboard()
+    const timer = window.setInterval(() => {
+      const now = new Date()
+
+      setTodayKey(getLocalDateKey(now))
+      setMonthStartKey(getMonthStartKey(now))
+    }, 60_000)
+
+    return () => {
+      window.clearInterval(timer)
+    }
   }, [])
 
   const bestProduct = data.month.topProducts[0]
@@ -1313,33 +1335,63 @@ function CashierRevenueView({
           }}
         >
           <CashierMiniCard
-            title="رصيد الدرج"
+            title="رصيد أول اليوم"
+            value={money(revenue.drawerOpening)}
+            subtitle="رصيد درج المحل لكل المستخدمين قبل حركات التاريخ المحدد"
+          />
+
+          <CashierMiniCard
+            title="إجمالي داخل الدرج"
+            value={money(revenue.drawerCashIn)}
+            subtitle="كل الحركات الداخلة للدرج من جميع المستخدمين خلال التاريخ"
+          />
+
+          <CashierMiniCard
+            title="إجمالي خارج الدرج"
+            value={money(revenue.drawerCashOut)}
+            subtitle="كل الحركات الخارجة من الدرج من جميع المستخدمين خلال التاريخ"
+          />
+
+          <CashierMiniCard
+            title={
+              revenue.drawerAlreadyClosed
+                ? 'رصيد الدرج قبل التقفيل'
+                : 'رصيد الدرج نهاية التاريخ'
+            }
             value={money(revenue.drawerCash)}
-            subtitle="رصيد الدرج في نهاية التاريخ المحدد"
+            subtitle="رصيد أول اليوم + الداخل - الخارج"
           />
 
+          {revenue.drawerAlreadyClosed ? (
+            <CashierMiniCard
+              title="المرحل لليوم التالي"
+              value={money(revenue.drawerEndBalance)}
+              subtitle="المبلغ الذي تُرك فعليًا في الدرج بعد التقفيل"
+            />
+          ) : null}
+
           <CashierMiniCard
-            title="إنستاباي / بنك"
+            title="صافي حركة بنك / إنستاباي"
             value={money(revenue.instapayBank)}
-            subtitle="صافي تحويلات البنك"
+            subtitle="صافي ما سجله الكاشير على الحساب خلال التاريخ المحدد"
           />
 
           <CashierMiniCard
-            title="فودافون كاش"
+            title="صافي حركة فودافون كاش"
             value={money(revenue.vodafoneCash)}
-            subtitle="صافي فودافون كاش"
+            subtitle="صافي ما سجله الكاشير خلال التاريخ المحدد"
           />
 
           <CashierMiniCard
-            title="فوري"
+            title="صافي حركة فوري"
             value={money(revenue.fawryMachine)}
-            subtitle="صافي ماكينة فوري"
+            subtitle="صافي ما سجله الكاشير على ماكينة فوري خلال التاريخ المحدد"
           />
 
           <CashierMiniCard
-            title="كاش المالك"
+            title="صافي حركة كاش المالك"
             value={money(revenue.ownerCash)}
-            subtitle="أي كاش مع المالك"
+            subtitle="صافي حركة الكاش مع المالك خلال التاريخ المحدد"
           />
 
           <CashierMiniCard
@@ -1379,27 +1431,21 @@ function CashierRevenueView({
           />
 
           <CashierMiniCard
-            title="مرتجعات مبيعات التاريخ المحدد"
-            value={money(revenue.saleReturnsOut)}
-            subtitle={`${returnsCount} عملية مرتجع من فواتير التاريخ المحدد`}
+            title="إجمالي مرتجعات البيع"
+            value={money(revenue.saleReturnsValue)}
+            subtitle={`${returnsCount} عملية مرتجع تمت في التاريخ المحدد`}
           />
 
           <CashierMiniCard
-            title="دفعات الموردين"
-            value={money(revenue.supplierPaymentsOut)}
-            subtitle="سداد مديونية مورد"
+            title="كاش خرج لمرتجعات البيع"
+            value={money(revenue.saleReturnsCashOut)}
+            subtitle="فلوس خرجت فعليًا للعميل بسبب المرتجعات"
           />
 
           <CashierMiniCard
-            title="إجمالي الشراء"
-            value={money(revenue.purchaseInvoicesOut)}
-            subtitle="مدفوع وقت إنشاء فواتير الشراء"
-          />
-
-          <CashierMiniCard
-            title="مرتجعات الشراء"
-            value={money(revenue.purchaseReturnsIn)}
-            subtitle="فلوس رجعت من الموردين"
+            title="تخفيض مديونية بسبب المرتجعات"
+            value={money(revenue.saleReturnsDebtReduction)}
+            subtitle="قيمة مرتجعات خصمت من رصيد العملاء بدون خروج كاش"
           />
 
           <CashierMiniCard

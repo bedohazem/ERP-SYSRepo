@@ -81,6 +81,10 @@ export default function CashPage() {
   const [dayClosePreview, setDayClosePreview] =
     useState<CashDayClosePreview | null>(null)
 
+  const [closeBusinessDate, setCloseBusinessDate] = useState(() =>
+    getLocalDateKey(new Date()),
+  )
+
   const [countedCloseAmount, setCountedCloseAmount] = useState('')
   const [carryOverAmount, setCarryOverAmount] = useState('0')
   const [closeTargetAccount, setCloseTargetAccount] = useState('owner_bank')
@@ -223,11 +227,18 @@ export default function CashPage() {
     }
   }
 
-  async function openDayCloseModal() {
-    try {
-      const businessDate = getLocalDateKey(new Date())
+  async function loadDayClosePreview(businessDate: string) {
+    if (!businessDate) return
 
+    setDayClosePreview(null)
+    setCountedCloseAmount('')
+    setCarryOverAmount('0')
+    setCloseTargetAccount('owner_bank')
+
+    try {
       const preview = await window.api.getCashDayClosePreview(businessDate)
+
+      setDayClosePreview(preview)
 
       if (preview.already_closed) {
         const closing = preview.closing
@@ -238,16 +249,7 @@ export default function CashPage() {
             closing?.closed_by_name ? ` بواسطة ${closing.closed_by_name}` : ''
           }`,
         )
-
-        return
       }
-
-      setDayClosePreview(preview)
-      setCountedCloseAmount('')
-      setCarryOverAmount('0')
-      setCloseTargetAccount('owner_bank')
-
-      setDayCloseModalOpen(true)
     } catch (error) {
       console.error(error)
 
@@ -260,9 +262,26 @@ export default function CashPage() {
     }
   }
 
+  async function openDayCloseModal() {
+    const businessDate = getLocalDateKey(new Date())
+
+    setCloseBusinessDate(businessDate)
+    setDayCloseModalOpen(true)
+
+    await loadDayClosePreview(businessDate)
+  }
+
   async function closeStoreCashDay() {
     if (!dayClosePreview) {
       showMessage('error', 'بيانات تقفيل اليوم غير متاحة')
+      return
+    }
+
+    if (dayClosePreview.already_closed) {
+      showMessage(
+        'error',
+        `تم تقفيل يوم ${dayClosePreview.business_date} بالفعل`,
+      )
       return
     }
 
@@ -983,7 +1002,7 @@ export default function CashPage() {
               color: '#6ee7b7',
             }}
           >
-            تقفيل اليوم
+            تقفيل يوم
           </button>
 
           <button
@@ -1512,7 +1531,7 @@ export default function CashPage() {
         <div className="theme-modal-overlay" style={modalOverlayStyle}>
           <div className="theme-modal-card" style={modalCardStyle}>
             <div style={modalHeaderStyle}>
-              <h3 style={{ margin: 0 }}>تقفيل اليوم</h3>
+              <h3 style={{ margin: 0 }}>تقفيل يوم</h3>
               <button
                 type="button"
                 onClick={() => setDayCloseModalOpen(false)}
@@ -1523,6 +1542,40 @@ export default function CashPage() {
             </div>
 
             <div style={{ display: 'grid', gap: '12px' }}>
+              <Field label="تاريخ اليوم المراد تقفيله">
+                <input
+                  type="date"
+                  value={closeBusinessDate}
+                  max={getLocalDateKey(new Date())}
+                  onChange={(e) => {
+                    const nextDate = e.target.value
+
+                    setCloseBusinessDate(nextDate)
+
+                    if (nextDate) {
+                      void loadDayClosePreview(nextDate)
+                    }
+                  }}
+                  style={inputStyle}
+                />
+              </Field>
+
+              {dayClosePreview?.already_closed ? (
+                <div
+                  style={{
+                    padding: '12px',
+                    borderRadius: '12px',
+                    background: 'rgba(245,158,11,0.12)',
+                    border: '1px solid rgba(245,158,11,0.28)',
+                    color: '#fbbf24',
+                    fontWeight: 900,
+                    textAlign: 'right',
+                  }}
+                >
+                  هذا اليوم مقفول بالفعل ولا يمكن تقفيله مرة أخرى.
+                </div>
+              ) : null}
+
               <SummaryCard
                 title="رصيد أول اليوم"
                 value={money(dayClosePreview?.opening_drawer_balance)}
@@ -1637,14 +1690,22 @@ export default function CashPage() {
               <button
                 type="button"
                 onClick={closeStoreCashDay}
-                disabled={closingDay}
+                disabled={
+                  closingDay ||
+                  !dayClosePreview ||
+                  dayClosePreview.already_closed
+                }
                 style={{
                   ...primaryButtonStyle,
                   opacity: closingDay ? 0.6 : 1,
                   cursor: closingDay ? 'not-allowed' : 'pointer',
                 }}
               >
-                {closingDay ? 'جاري التقفيل...' : 'تأكيد وتقفيل اليوم'}
+                {dayClosePreview?.already_closed
+                  ? 'اليوم مقفول بالفعل'
+                  : closingDay
+                    ? 'جاري التقفيل...'
+                    : `تأكيد وتقفيل ${closeBusinessDate}`}
               </button>
             </div>
           </div>

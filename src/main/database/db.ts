@@ -281,6 +281,7 @@ export function getDb(): Database.Database {
         notes TEXT,
 
         created_by INTEGER,
+        business_date TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 
         FOREIGN KEY (created_by) REFERENCES users(id)
@@ -434,6 +435,25 @@ export function getDb(): Database.Database {
       `TEXT DEFAULT 'cash'`,
     )
     safeAddColumn(db, 'store_liability_payments', 'notes', 'TEXT')
+
+    safeAddColumn(db, 'cash_movements', 'business_date', 'TEXT')
+
+    db.prepare(
+      `
+      UPDATE cash_movements
+      SET business_date = (
+        SELECT c.business_date
+        FROM cash_day_closings c
+        WHERE c.id = cash_movements.reference_id
+        LIMIT 1
+      )
+      WHERE reference_type = 'day_close'
+        AND (
+          business_date IS NULL
+          OR TRIM(business_date) = ''
+        )
+      `,
+    ).run()
 
     normalizePurchaseMoney(db)
     normalizeStockMovementTypes(db)

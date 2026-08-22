@@ -26,6 +26,7 @@ export type CashMovementInput = {
   notes?: string | null
 
   created_by?: number | null
+  business_date?: string | null
 }
 
 export type CashFilterInput = {
@@ -154,13 +155,25 @@ function buildCashWhere(input?: CashFilterInput) {
   const params: any[] = []
 
   if (input?.date_from) {
-    where.push(`datetime(cm.created_at, 'localtime') >= datetime(?)`)
-    params.push(`${input.date_from} 00:00:00`)
+    where.push(`
+      COALESCE(
+        NULLIF(cm.business_date, ''),
+        date(cm.created_at, 'localtime')
+      ) >= ?
+    `)
+
+    params.push(input.date_from)
   }
 
   if (input?.date_to) {
-    where.push(`datetime(cm.created_at, 'localtime') <= datetime(?)`)
-    params.push(`${input.date_to} 23:59:59`)
+    where.push(`
+      COALESCE(
+        NULLIF(cm.business_date, ''),
+        date(cm.created_at, 'localtime')
+      ) <= ?
+    `)
+
+    params.push(input.date_to)
   }
 
   if (input?.type && input.type !== 'all') {
@@ -215,6 +228,10 @@ export function createCashMovement(input: CashMovementInput) {
   const direction = input.direction
   const account = resolveCashAccount(input.payment_method || 'store_cash')
 
+  const businessDate = input.business_date
+    ? normalizeBusinessDate(input.business_date)
+    : null
+
   if (!type) {
     throw new Error('نوع حركة الخزنة مطلوب')
   }
@@ -248,9 +265,10 @@ export function createCashMovement(input: CashMovementInput) {
         reference_id,
         reference_type,
         notes,
-        created_by
+        created_by,
+        business_date
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     )
     .run(
@@ -262,6 +280,7 @@ export function createCashMovement(input: CashMovementInput) {
       input.reference_type ?? null,
       input.notes ?? null,
       input.created_by ?? null,
+      businessDate,
     )
 
   const movementId = Number(result.lastInsertRowid)
@@ -277,6 +296,7 @@ export function createCashMovement(input: CashMovementInput) {
       direction,
       payment_method: account,
       notes: input.notes ?? null,
+      business_date: businessDate,
     }),
   })
 
@@ -481,9 +501,6 @@ export function getCashDayClosePreview(businessDateInput: string) {
     }
   }
 
-  const startDate = `${businessDate} 00:00:00`
-  const endDate = `${businessDate} 23:59:59`
-
   const openingRow = db
     .prepare(
       `
@@ -500,10 +517,13 @@ export function getCashDayClosePreview(businessDateInput: string) {
         ) AS balance
       FROM cash_movements
       WHERE payment_method = 'store_cash'
-        AND datetime(created_at, 'localtime') < datetime(?)
+        AND COALESCE(
+          NULLIF(business_date, ''),
+          date(created_at, 'localtime')
+        ) < ?
     `,
     )
-    .get(startDate) as { balance: number } | undefined
+    .get(businessDate) as { balance: number } | undefined
 
   const todayRow = db
     .prepare(
@@ -532,11 +552,13 @@ export function getCashDayClosePreview(businessDateInput: string) {
       FROM cash_movements
 
       WHERE payment_method = 'store_cash'
-        AND datetime(created_at, 'localtime') >= datetime(?)
-        AND datetime(created_at, 'localtime') <= datetime(?)
+        AND COALESCE(
+          NULLIF(business_date, ''),
+          date(created_at, 'localtime')
+        ) = ?
     `,
     )
-    .get(startDate, endDate) as
+    .get(businessDate) as
     | {
         total_in: number
         total_out: number
@@ -554,15 +576,17 @@ export function getCashDayClosePreview(businessDateInput: string) {
       FROM cash_movements
 
       WHERE payment_method = 'store_cash'
-        AND datetime(created_at, 'localtime') >= datetime(?)
-        AND datetime(created_at, 'localtime') <= datetime(?)
+        AND COALESCE(
+          NULLIF(business_date, ''),
+          date(created_at, 'localtime')
+        ) = ?
 
       GROUP BY type, direction
 
       ORDER BY type ASC
     `,
     )
-    .all(startDate, endDate)
+    .all(businessDate)
     .map((row: any) => ({
       type: row.type,
       direction: row.direction,
@@ -695,6 +719,7 @@ export function closeCashDay(input: CashDayCloseInput) {
         reference_type: 'day_close',
         notes: note,
         created_by: input.closed_by ?? null,
+        business_date: businessDate,
       })
 
       createCashMovement({
@@ -706,6 +731,7 @@ export function closeCashDay(input: CashDayCloseInput) {
         reference_type: 'day_close',
         notes: note,
         created_by: input.closed_by ?? null,
+        business_date: businessDate,
       })
     }
 

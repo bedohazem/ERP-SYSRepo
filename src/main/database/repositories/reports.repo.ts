@@ -75,10 +75,10 @@ export function getReportsSummary(input?: ReportFilter) {
   )
 
   const returnsWhere = buildWhere(
-    'os',
+    'sr',
     input,
     [`IFNULL(os.type, 'sale') = 'sale'`],
-    'os.user_id',
+    'sr.user_id',
   )
 
   const combinedWhere = buildWhere('x', input, [], 'x.user_id')
@@ -303,8 +303,8 @@ export function getReportsSummary(input?: ReportFilter) {
         sri.color,
         -sri.quantity AS quantity,
         -sri.line_total AS total,
-        os.created_at,
-        os.user_id
+        sr.created_at,
+        sr.user_id
 
       FROM sale_return_items sri
 
@@ -349,8 +349,8 @@ export function getReportsSummary(input?: ReportFilter) {
       UNION ALL
 
       SELECT
-        os.created_at,
-        os.user_id,
+        sr.created_at,
+        sr.user_id,
         -sr.refund_amount AS amount
       FROM sale_returns sr
       JOIN sales os
@@ -465,8 +465,8 @@ export function getReportsSummary(input?: ReportFilter) {
 
       SELECT
         sr.customer_id,
-        os.created_at,
-        os.user_id,
+        sr.created_at,
+        sr.user_id,
         -sr.refund_amount AS amount,
         0 AS sales_count
 
