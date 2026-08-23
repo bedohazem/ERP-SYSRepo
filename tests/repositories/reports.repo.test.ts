@@ -432,7 +432,7 @@ describe('reports repository', () => {
     expect(futureReport.dailySales).toHaveLength(0)
   })
 
-  it('attributes a later return to the original sale date', () => {
+  it('attributes a later return to the actual return date', () => {
     const variant = seedReportProduct({
       name: 'Historical Return Product',
       barcode: 'REPORT-HISTORICAL-RETURN',
@@ -483,7 +483,9 @@ describe('reports repository', () => {
     db.prepare(
       `
     UPDATE sales
-    SET created_at = '2026-08-10 10:00:00'
+    SET
+      created_at = '2026-08-10 10:00:00',
+      business_date = '2026-08-10'
     WHERE id = ?
   `,
     ).run(sale.saleId)
@@ -507,13 +509,13 @@ describe('reports repository', () => {
     }) as ReportsSummaryTestResult
 
     expect(august10.summary.gross_sales).toBe(300)
-    expect(august10.summary.total_returns).toBe(150)
-    expect(august10.summary.net_sales).toBe(150)
-    expect(august10.summary.returns_count).toBe(1)
+    expect(august10.summary.total_returns).toBe(0)
+    expect(august10.summary.net_sales).toBe(300)
+    expect(august10.summary.returns_count).toBe(0)
 
     expect(august12.summary.gross_sales).toBe(0)
-    expect(august12.summary.total_returns).toBe(0)
-    expect(august12.summary.net_sales).toBe(0)
-    expect(august12.summary.returns_count).toBe(0)
+    expect(august12.summary.total_returns).toBe(150)
+    expect(august12.summary.net_sales).toBe(-150)
+    expect(august12.summary.returns_count).toBe(1)
   })
 })

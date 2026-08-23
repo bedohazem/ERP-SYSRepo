@@ -11,18 +11,21 @@ function buildWhere(
   input?: ReportFilter,
   extra: string[] = [],
   userColumn?: string,
+  dateExpression?: string,
 ) {
   const where: string[] = [...extra]
   const params: any[] = []
 
+  const dateExpr = dateExpression || `date(${alias}.created_at, 'localtime')`
+
   if (input?.date_from) {
-    where.push(`datetime(${alias}.created_at, 'localtime') >= datetime(?)`)
-    params.push(`${input.date_from} 00:00:00`)
+    where.push(`${dateExpr} >= ?`)
+    params.push(input.date_from)
   }
 
   if (input?.date_to) {
-    where.push(`datetime(${alias}.created_at, 'localtime') <= datetime(?)`)
-    params.push(`${input.date_to} 23:59:59`)
+    where.push(`${dateExpr} <= ?`)
+    params.push(input.date_to)
   }
 
   if (input?.user_id && userColumn) {
@@ -72,6 +75,10 @@ export function getReportsSummary(input?: ReportFilter) {
     input,
     [`IFNULL(s.type, 'sale') = 'sale'`],
     's.user_id',
+    `COALESCE(
+      NULLIF(s.business_date, ''),
+      date(s.created_at, 'localtime')
+    )`,
   )
 
   const returnsWhere = buildWhere(
@@ -81,7 +88,13 @@ export function getReportsSummary(input?: ReportFilter) {
     'sr.user_id',
   )
 
-  const combinedWhere = buildWhere('x', input, [], 'x.user_id')
+  const combinedWhere = buildWhere(
+    'x',
+    input,
+    [],
+    'x.user_id',
+    'x.business_date',
+  )
 
   const salesSummary = db
     .prepare(
@@ -284,7 +297,10 @@ export function getReportsSummary(input?: ReportFilter) {
         si.color,
         si.quantity AS quantity,
         si.line_total AS total,
-        s.created_at,
+        COALESCE(
+          NULLIF(s.business_date, ''),
+          date(s.created_at, 'localtime')
+        ) AS business_date,
         s.user_id
 
       FROM sale_items si
@@ -303,7 +319,7 @@ export function getReportsSummary(input?: ReportFilter) {
         sri.color,
         -sri.quantity AS quantity,
         -sri.line_total AS total,
-        sr.created_at,
+        date(sr.created_at, 'localtime') AS business_date,
         sr.user_id
 
       FROM sale_return_items sri
@@ -335,12 +351,15 @@ export function getReportsSummary(input?: ReportFilter) {
     .prepare(
       `
     SELECT
-      date(x.created_at, 'localtime') AS day,
+      x.business_date AS day,
       IFNULL(SUM(x.amount), 0) AS total
 
     FROM (
       SELECT
-        s.created_at,
+        COALESCE(
+          NULLIF(s.business_date, ''),
+          date(s.created_at, 'localtime')
+        ) AS business_date,
         s.user_id,
         s.grand_total AS amount
       FROM sales s
@@ -349,7 +368,7 @@ export function getReportsSummary(input?: ReportFilter) {
       UNION ALL
 
       SELECT
-        sr.created_at,
+        date(sr.created_at, 'localtime') AS business_date,
         sr.user_id,
         -sr.refund_amount AS amount
       FROM sale_returns sr
@@ -359,7 +378,7 @@ export function getReportsSummary(input?: ReportFilter) {
 
     ${combinedWhere.whereSql}
 
-    GROUP BY date(x.created_at, 'localtime')
+    GROUP BY x.business_date
     ORDER BY day ASC
   `,
     )
@@ -451,7 +470,10 @@ export function getReportsSummary(input?: ReportFilter) {
     JOIN (
       SELECT
         s.customer_id,
-        s.created_at,
+        COALESCE(
+          NULLIF(s.business_date, ''),
+          date(s.created_at, 'localtime')
+        ) AS business_date,
         s.user_id,
         s.grand_total AS amount,
         1 AS sales_count
@@ -465,7 +487,7 @@ export function getReportsSummary(input?: ReportFilter) {
 
       SELECT
         sr.customer_id,
-        sr.created_at,
+        date(sr.created_at, 'localtime') AS business_date,
         sr.user_id,
         -sr.refund_amount AS amount,
         0 AS sales_count

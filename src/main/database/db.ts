@@ -111,6 +111,7 @@ export function getDb(): Database.Database {
         type TEXT NOT NULL DEFAULT 'sale',
         customer_id INTEGER,
         user_id INTEGER REFERENCES users(id),
+        business_date TEXT,
         sub_total REAL NOT NULL DEFAULT 0,
         discount_value REAL NOT NULL DEFAULT 0,
         grand_total REAL NOT NULL DEFAULT 0,
@@ -412,6 +413,17 @@ export function getDb(): Database.Database {
 
     safeAddColumn(db, 'sales', 'remaining_amount', 'REAL DEFAULT 0')
     safeAddColumn(db, 'sales', 'payment_status', `TEXT DEFAULT 'paid'`)
+
+    safeAddColumn(db, 'sales', 'business_date', 'TEXT')
+
+    db.prepare(
+      `
+      UPDATE sales
+      SET business_date = date(created_at, 'localtime')
+      WHERE business_date IS NULL
+         OR TRIM(business_date) = ''
+      `,
+    ).run()
 
     safeAddColumn(db, 'customer_payments', 'sale_id', 'INTEGER')
     safeAddColumn(

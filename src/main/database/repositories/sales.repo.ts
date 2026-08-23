@@ -1,52 +1,53 @@
-import { getDb } from '../db';
-import { createCashMovement, resolveCashAccount } from './cash.repo';
+import { getDb } from '../db'
+import { createCashMovement, resolveCashAccount } from './cash.repo'
 
 export type CreateSaleLineInput = {
-  variant_id: number;
-  product_name: string;
-  barcode: string;
-  size: string;
-  color: string;
-  quantity: number;
-  unit_price: number;
-};
+  variant_id: number
+  product_name: string
+  barcode: string
+  size: string
+  color: string
+  quantity: number
+  unit_price: number
+}
 
 type CreateSaleInput = {
-  user_id: number;
-  customer_id?: number | null;
+  user_id: number
+  customer_id?: number | null
+  business_date?: string | null
 
-  sub_total: number;
-  discount_value: number;
-  grand_total: number;
-  change_amount: number;
-  payment_method: string;
-  notes?: string | null;
+  sub_total: number
+  discount_value: number
+  grand_total: number
+  change_amount: number
+  payment_method: string
+  notes?: string | null
 
-  loyalty_points_redeemed?: number;
-  loyalty_discount_value?: number;
-  paid?: number;
-  remaining_amount?: number;
-  payment_status?: string;
+  loyalty_points_redeemed?: number
+  loyalty_discount_value?: number
+  paid?: number
+  remaining_amount?: number
+  payment_status?: string
 
   items: Array<{
-    variant_id: number;
-    product_name: string;
-    barcode?: string | null;
-    size?: string | null;
-    color?: string | null;
-    quantity: number;
-    unit_price: number;
-  }>;
-};
+    variant_id: number
+    product_name: string
+    barcode?: string | null
+    size?: string | null
+    color?: string | null
+    quantity: number
+    unit_price: number
+  }>
+}
 
 function getSetting(key: string, fallback: string) {
-  const db = getDb();
+  const db = getDb()
 
   const row = db
     .prepare(`SELECT value FROM app_settings WHERE key = ? LIMIT 1`)
-    .get(key) as { value: string } | undefined;
+    .get(key) as { value: string } | undefined
 
-  return row?.value ?? fallback;
+  return row?.value ?? fallback
 }
 
 function getLoyaltySettingsForSale() {
@@ -55,80 +56,128 @@ function getLoyaltySettingsForSale() {
     earnAmount: Number(getSetting('loyalty_earn_amount', '100')),
     earnPoints: Number(getSetting('loyalty_earn_points', '1')),
     pointValue: Number(getSetting('loyalty_point_value', '1')),
-    minRedeemPoints: Number(getSetting('loyalty_min_redeem_points', '1'))
-  };
+    minRedeemPoints: Number(getSetting('loyalty_min_redeem_points', '1')),
+  }
+}
+
+function getLocalDateKey(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
+}
+
+function getRelativeLocalDateKey(days: number) {
+  const date = new Date()
+
+  date.setHours(12, 0, 0, 0)
+  date.setDate(date.getDate() + days)
+
+  return getLocalDateKey(date)
+}
+
+function resolveSaleBusinessDate(value?: string | null) {
+  const requestedDate = value?.trim() || ''
+  const today = getRelativeLocalDateKey(0)
+
+  if (!requestedDate) {
+    return today
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+    throw new Error('تاريخ الفاتورة غير صحيح')
+  }
+
+  const allowedDates = new Set([
+    getRelativeLocalDateKey(-1),
+    today,
+    getRelativeLocalDateKey(1),
+  ])
+
+  if (!allowedDates.has(requestedDate)) {
+    throw new Error('مسموح بتاريخ الفاتورة: أمس أو اليوم أو غدًا فقط')
+  }
+
+  return requestedDate
 }
 
 export function createSale(input: CreateSaleInput) {
-  const db = getDb();
+  const db = getDb()
 
   if (!input.user_id) {
-    throw new Error('User ID is required');
+    throw new Error('User ID is required')
   }
 
   if (!input.items?.length) {
-    throw new Error('Sale items are required');
+    throw new Error('Sale items are required')
   }
 
-  const loyalty = getLoyaltySettingsForSale();
+  const loyalty = getLoyaltySettingsForSale()
+  const businessDate = resolveSaleBusinessDate(input.business_date)
 
-  const customerId = input.customer_id ? Number(input.customer_id) : null;
-  const requestedRedeemPoints = Number(input.loyalty_points_redeemed || 0);
+  const customerId = input.customer_id ? Number(input.customer_id) : null
+  const requestedRedeemPoints = Number(input.loyalty_points_redeemed || 0)
 
   const tx = db.transaction(() => {
-    let redeemPoints = 0;
-    let loyaltyDiscountValue = 0;
+    let redeemPoints = 0
+    let loyaltyDiscountValue = 0
 
     if (loyalty.enabled && customerId && requestedRedeemPoints > 0) {
       const customer = db
         .prepare(`SELECT points_balance FROM customers WHERE id = ? LIMIT 1`)
-        .get(customerId) as { points_balance: number } | undefined;
+        .get(customerId) as { points_balance: number } | undefined
 
       if (!customer) {
-        throw new Error('العميل غير موجود');
+        throw new Error('العميل غير موجود')
       }
 
       if (requestedRedeemPoints < loyalty.minRedeemPoints) {
-        throw new Error(`أقل عدد نقاط للاستخدام هو ${loyalty.minRedeemPoints}`);
+        throw new Error(`أقل عدد نقاط للاستخدام هو ${loyalty.minRedeemPoints}`)
       }
 
       if (requestedRedeemPoints > Number(customer.points_balance || 0)) {
-        throw new Error('رصيد نقاط العميل غير كافي');
+        throw new Error('رصيد نقاط العميل غير كافي')
       }
 
-      redeemPoints = requestedRedeemPoints;
-      loyaltyDiscountValue = redeemPoints * loyalty.pointValue;
+      redeemPoints = requestedRedeemPoints
+      loyaltyDiscountValue = redeemPoints * loyalty.pointValue
     }
 
-    const subTotal = Number(input.sub_total || 0);
-    const normalDiscount = Number(input.discount_value || 0);
-    const grandTotal = Math.max(0, subTotal - normalDiscount - loyaltyDiscountValue);
+    const subTotal = Number(input.sub_total || 0)
+    const normalDiscount = Number(input.discount_value || 0)
+    const grandTotal = Math.max(
+      0,
+      subTotal - normalDiscount - loyaltyDiscountValue,
+    )
 
     const paidAmount = Math.min(
       Math.max(Number(input.paid ?? grandTotal), 0),
-      grandTotal
-    );
+      grandTotal,
+    )
 
-    const remainingAmount = Math.max(0, grandTotal - paidAmount);
+    const remainingAmount = Math.max(0, grandTotal - paidAmount)
 
     const paymentStatus =
-      remainingAmount === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
+      remainingAmount === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid'
 
     if (remainingAmount > 0 && !customerId) {
-      throw new Error('لا يمكن البيع آجل بدون اختيار عميل');
+      throw new Error('لا يمكن البيع آجل بدون اختيار عميل')
     }
 
     const earnedPoints =
       loyalty.enabled && customerId
         ? Math.floor(grandTotal / loyalty.earnAmount) * loyalty.earnPoints
-        : 0;
+        : 0
 
     const saleResult = db
-      .prepare(`
+      .prepare(
+        `
         INSERT INTO sales (
           type,
           customer_id,
           user_id,
+          business_date,
           sub_total,
           discount_value,
           grand_total,
@@ -144,12 +193,14 @@ export function createSale(input: CreateSaleInput) {
         )
         VALUES (
           'sale',
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
-      `)
+      `,
+      )
       .run(
         customerId,
         input.user_id,
+        businessDate,
         subTotal,
         normalDiscount,
         grandTotal,
@@ -161,10 +212,10 @@ export function createSale(input: CreateSaleInput) {
         input.notes ?? null,
         earnedPoints,
         redeemPoints,
-        loyaltyDiscountValue
-      );
+        loyaltyDiscountValue,
+      )
 
-    const saleId = Number(saleResult.lastInsertRowid);
+    const saleId = Number(saleResult.lastInsertRowid)
 
     if (paidAmount > 0) {
       createCashMovement({
@@ -175,8 +226,9 @@ export function createSale(input: CreateSaleInput) {
         reference_id: saleId,
         reference_type: 'sale',
         notes: `تحصيل فاتورة بيع رقم ${saleId}`,
-        created_by: input.user_id
-      });
+        created_by: input.user_id,
+        business_date: businessDate,
+      })
     }
 
     const insertItem = db.prepare(`
@@ -193,7 +245,7 @@ export function createSale(input: CreateSaleInput) {
         line_total
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    `)
 
     const updateStock = db.prepare(`
       INSERT INTO stock_movements (
@@ -205,14 +257,14 @@ export function createSale(input: CreateSaleInput) {
         notes
       )
       VALUES (?, 'out', ?, ?, 'sale', ?)
-    `);
+    `)
 
     const getVariantCost = db.prepare(`
       SELECT buy_price
       FROM product_variants
       WHERE id = ?
       LIMIT 1
-    `);
+    `)
 
     const getCurrentStock = db.prepare(`
       SELECT IFNULL(SUM(
@@ -224,43 +276,41 @@ export function createSale(input: CreateSaleInput) {
       ), 0) AS stock
       FROM stock_movements
       WHERE variant_id = ?
-    `);
+    `)
 
     for (const item of input.items) {
-      const qty = Number(item.quantity || 0);
+      const qty = Number(item.quantity || 0)
 
       if (!Number.isFinite(qty) || qty <= 0) {
-        throw new Error(`كمية غير صحيحة للصنف ${item.product_name}`);
+        throw new Error(`كمية غير صحيحة للصنف ${item.product_name}`)
       }
-      const price = Number(item.unit_price || 0);
-      const lineTotal = qty * price;
+      const price = Number(item.unit_price || 0)
+      const lineTotal = qty * price
 
       const variant = getVariantCost.get(item.variant_id) as
         | { buy_price: number }
-        | undefined;
+        | undefined
 
-        
+      // const getCurrentStock = db.prepare(`
+      //   SELECT IFNULL(SUM(
+      //     CASE
+      //       WHEN type = 'in' THEN quantity
+      //       WHEN type = 'out' THEN -quantity
+      //       ELSE 0
+      //     END
+      //   ), 0) AS stock
+      //   FROM stock_movements
+      //   WHERE variant_id = ?
+      // `);
 
-        // const getCurrentStock = db.prepare(`
-        //   SELECT IFNULL(SUM(
-        //     CASE
-        //       WHEN type = 'in' THEN quantity
-        //       WHEN type = 'out' THEN -quantity
-        //       ELSE 0
-        //     END
-        //   ), 0) AS stock
-        //   FROM stock_movements
-        //   WHERE variant_id = ?
-        // `);
+      const stockRow = getCurrentStock.get(item.variant_id) as { stock: number }
+      const availableStock = Number(stockRow?.stock || 0)
 
-        const stockRow = getCurrentStock.get(item.variant_id) as { stock: number };
-        const availableStock = Number(stockRow?.stock || 0);
-
-        if (qty > availableStock) {
-          throw new Error(
-            `المخزون غير كافي للصنف ${item.product_name}. المتاح: ${availableStock}`
-          );
-        }
+      if (qty > availableStock) {
+        throw new Error(
+          `المخزون غير كافي للصنف ${item.product_name}. المتاح: ${availableStock}`,
+        )
+      }
 
       insertItem.run(
         saleId,
@@ -272,19 +322,15 @@ export function createSale(input: CreateSaleInput) {
         qty,
         Number(variant?.buy_price || 0),
         price,
-        lineTotal
-      );
+        lineTotal,
+      )
 
-      updateStock.run(
-        item.variant_id,
-        qty,
-        saleId,
-        `بيع فاتورة رقم ${saleId}`
-      );
+      updateStock.run(item.variant_id, qty, saleId, `بيع فاتورة رقم ${saleId}`)
     }
 
     if (customerId && loyalty.enabled) {
-      db.prepare(`
+      db.prepare(
+        `
         UPDATE customers
         SET
           points_balance = points_balance + ? - ?,
@@ -292,10 +338,12 @@ export function createSale(input: CreateSaleInput) {
           balance = IFNULL(balance, 0) + ?,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(earnedPoints, redeemPoints, grandTotal, remainingAmount, customerId);
+      `,
+      ).run(earnedPoints, redeemPoints, grandTotal, remainingAmount, customerId)
 
       if (earnedPoints > 0) {
-        db.prepare(`
+        db.prepare(
+          `
           INSERT INTO loyalty_transactions (
             customer_id,
             sale_id,
@@ -305,17 +353,19 @@ export function createSale(input: CreateSaleInput) {
             notes
           )
           VALUES (?, ?, 'earn', ?, ?, ?)
-        `).run(
+        `,
+        ).run(
           customerId,
           saleId,
           earnedPoints,
           grandTotal,
-          `اكتساب نقاط من فاتورة رقم ${saleId}`
-        );
+          `اكتساب نقاط من فاتورة رقم ${saleId}`,
+        )
       }
 
       if (redeemPoints > 0) {
-        db.prepare(`
+        db.prepare(
+          `
           INSERT INTO loyalty_transactions (
             customer_id,
             sale_id,
@@ -325,13 +375,14 @@ export function createSale(input: CreateSaleInput) {
             notes
           )
           VALUES (?, ?, 'redeem', ?, ?, ?)
-        `).run(
+        `,
+        ).run(
           customerId,
           saleId,
           -redeemPoints,
           loyaltyDiscountValue,
-          `استخدام نقاط في فاتورة رقم ${saleId}`
-        );
+          `استخدام نقاط في فاتورة رقم ${saleId}`,
+        )
       }
     }
 
@@ -343,18 +394,19 @@ export function createSale(input: CreateSaleInput) {
       grand_total: grandTotal,
       paid_amount: paidAmount,
       remaining_amount: remainingAmount,
-      payment_status: paymentStatus
-    };
-  });
+      payment_status: paymentStatus,
+    }
+  })
 
-  return tx();
+  return tx()
 }
 
 export function getSaleReceipt(saleId: number) {
-  const db = getDb();
+  const db = getDb()
 
   const sale = db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         s.*,
         c.name AS customer_name,
@@ -365,15 +417,17 @@ export function getSaleReceipt(saleId: number) {
       LEFT JOIN users u ON u.id = s.user_id
       WHERE s.id = ?
       LIMIT 1
-    `)
-    .get(saleId);
+    `,
+    )
+    .get(saleId)
 
   if (!sale) {
-    throw new Error('الفاتورة غير موجودة');
+    throw new Error('الفاتورة غير موجودة')
   }
 
-const items = db
-  .prepare(`
+  const items = db
+    .prepare(
+      `
     SELECT
       si.id,
       si.sale_id,
@@ -395,11 +449,13 @@ const items = db
     FROM sale_items si
     WHERE si.sale_id = ?
     ORDER BY si.id ASC
-  `)
-  .all(saleId);
+  `,
+    )
+    .all(saleId)
 
   const loyalty = db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         id,
         customer_id,
@@ -412,31 +468,32 @@ const items = db
       FROM loyalty_transactions
       WHERE sale_id = ?
       ORDER BY id ASC
-    `)
-    .all(saleId);
+    `,
+    )
+    .all(saleId)
 
   return {
     sale,
     items,
-    loyalty
-  };
+    loyalty,
+  }
 }
 
 export function listSales(input?: {
-  search?: string;
-  date_from?: string;
-  date_to?: string;
-  limit?: number;
-  offset?: number;
+  search?: string
+  date_from?: string
+  date_to?: string
+  limit?: number
+  offset?: number
 }) {
-  const db = getDb();
+  const db = getDb()
 
-  const search = input?.search?.trim() || '';
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
-  const offset = Math.max(Number(input?.offset || 0), 0);
+  const search = input?.search?.trim() || ''
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+  const offset = Math.max(Number(input?.offset || 0), 0)
 
-  const where: string[] = [`s.type = 'sale'`];
-  const params: any[] = [];
+  const where: string[] = [`s.type = 'sale'`]
+  const params: any[] = []
 
   if (search) {
     where.push(`
@@ -446,30 +503,44 @@ export function listSales(input?: {
         OR c.phone LIKE ?
         OR u.name LIKE ?
       )
-    `);
+    `)
 
-    const q = `%${search}%`;
-    params.push(q, q, q, q);
+    const q = `%${search}%`
+    params.push(q, q, q, q)
   }
 
   if (input?.date_from) {
-    where.push(`datetime(s.created_at, 'localtime') >= datetime(?)`);
-    params.push(`${input.date_from} 00:00:00`);
+    where.push(`
+      COALESCE(
+        NULLIF(s.business_date, ''),
+        date(s.created_at, 'localtime')
+      ) >= ?
+    `)
+
+    params.push(input.date_from)
   }
 
   if (input?.date_to) {
-    where.push(`datetime(s.created_at, 'localtime') <= datetime(?)`);
-    params.push(`${input.date_to} 23:59:59`);
+    where.push(`
+      COALESCE(
+        NULLIF(s.business_date, ''),
+        date(s.created_at, 'localtime')
+      ) <= ?
+    `)
+
+    params.push(input.date_to)
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
   const rows = db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         s.id,
         s.customer_id,
         s.user_id,
+        s.business_date,
         s.sub_total,
         s.discount_value,
         s.grand_total,
@@ -518,73 +589,81 @@ export function listSales(input?: {
       ORDER BY s.id DESC
       LIMIT ?
       OFFSET ?
-    `)
-    .all(...params, limit, offset);
+    `,
+    )
+    .all(...params, limit, offset)
 
   const totalRow = db
-    .prepare(`
+    .prepare(
+      `
       SELECT COUNT(*) AS total
       FROM sales s
       LEFT JOIN customers c ON c.id = s.customer_id
       LEFT JOIN users u ON u.id = s.user_id
       ${whereSql}
-    `)
-    .get(...params) as { total: number };
+    `,
+    )
+    .get(...params) as { total: number }
 
   return {
     rows,
     total: totalRow.total,
     limit,
-    offset
-  };
+    offset,
+  }
 }
 
 export function createSaleReturn(input: {
-  original_sale_id: number;
-  user_id: number;
-  reason?: string | null;
-  refund_payment_method?: string | null;
+  original_sale_id: number
+  user_id: number
+  reason?: string | null
+  refund_payment_method?: string | null
   items: Array<{
-    sale_item_id: number;
-    variant_id: number;
-    quantity: number;
-  }>;
+    sale_item_id: number
+    variant_id: number
+    quantity: number
+  }>
 }) {
-  const db = getDb();
+  const db = getDb()
 
-  const originalSaleId = Number(input.original_sale_id);
-  const userId = Number(input.user_id);
-  const reason = input.reason?.trim() || null;
+  const originalSaleId = Number(input.original_sale_id)
+  const userId = Number(input.user_id)
+  const reason = input.reason?.trim() || null
 
   if (!originalSaleId) {
-    throw new Error('رقم الفاتورة الأصلية مطلوب');
+    throw new Error('رقم الفاتورة الأصلية مطلوب')
   }
 
   if (!userId) {
-    throw new Error('المستخدم مطلوب');
+    throw new Error('المستخدم مطلوب')
   }
 
   if (!input.items?.length) {
-    throw new Error('لا توجد أصناف للمرتجع');
+    throw new Error('لا توجد أصناف للمرتجع')
   }
 
   const tx = db.transaction(() => {
     const originalSale = db
-      .prepare(`
+      .prepare(
+        `
         SELECT *
         FROM sales
         WHERE id = ?
           AND IFNULL(type, 'sale') = 'sale'
         LIMIT 1
-      `)
-      .get(originalSaleId) as any;
+      `,
+      )
+      .get(originalSaleId) as any
 
     if (!originalSale) {
-      throw new Error('الفاتورة الأصلية غير موجودة');
+      throw new Error('الفاتورة الأصلية غير موجودة')
     }
 
-    const rawRefundPaymentMethod = input.refund_payment_method?.trim() || originalSale.payment_method || 'store_cash';
-    const refundPaymentMethod = resolveCashAccount(rawRefundPaymentMethod);
+    const rawRefundPaymentMethod =
+      input.refund_payment_method?.trim() ||
+      originalSale.payment_method ||
+      'store_cash'
+    const refundPaymentMethod = resolveCashAccount(rawRefundPaymentMethod)
 
     const getOriginalItem = db.prepare(`
       SELECT *
@@ -592,7 +671,7 @@ export function createSaleReturn(input: {
       WHERE id = ?
         AND sale_id = ?
       LIMIT 1
-    `);
+    `)
 
     const getAlreadyReturnedQty = db.prepare(`
       SELECT IFNULL(SUM(sri.quantity), 0) AS returned_qty
@@ -600,144 +679,150 @@ export function createSaleReturn(input: {
       JOIN sale_return_items sri ON sri.return_id = sr.id
       WHERE sr.original_sale_id = ?
         AND sri.original_sale_item_id = ?
-    `);
+    `)
 
-    let returnSubTotal = 0;
+    let returnSubTotal = 0
 
     const preparedItems = input.items
       .map((item) => {
         const originalItem = getOriginalItem.get(
           item.sale_item_id,
-          originalSaleId
-        ) as any;
+          originalSaleId,
+        ) as any
 
         if (!originalItem) {
-          throw new Error('صنف المرتجع غير موجود في الفاتورة الأصلية');
+          throw new Error('صنف المرتجع غير موجود في الفاتورة الأصلية')
         }
 
-        const requestedQty = Number(item.quantity || 0);
+        const requestedQty = Number(item.quantity || 0)
 
         if (requestedQty <= 0) {
-          return null;
+          return null
         }
 
         const alreadyReturned = getAlreadyReturnedQty.get(
           originalSaleId,
-          originalItem.id
-        ) as { returned_qty: number };
+          originalItem.id,
+        ) as { returned_qty: number }
 
         const maxReturnable =
           Number(originalItem.quantity || 0) -
-          Number(alreadyReturned?.returned_qty || 0);
+          Number(alreadyReturned?.returned_qty || 0)
 
         if (requestedQty > maxReturnable) {
           throw new Error(
-            `الكمية المطلوبة أكبر من المتاح للمرتجع للصنف: ${originalItem.product_name}`
-          );
+            `الكمية المطلوبة أكبر من المتاح للمرتجع للصنف: ${originalItem.product_name}`,
+          )
         }
 
-        const unitPrice = Number(originalItem.unit_price || 0);
-        const lineTotal = requestedQty * unitPrice;
+        const unitPrice = Number(originalItem.unit_price || 0)
+        const lineTotal = requestedQty * unitPrice
 
-        returnSubTotal += lineTotal;
+        returnSubTotal += lineTotal
 
         return {
           originalItem,
           quantity: requestedQty,
           unitPrice,
-          lineTotal
-        };
+          lineTotal,
+        }
       })
       .filter(Boolean) as Array<{
-        originalItem: any;
-        quantity: number;
-        unitPrice: number;
-        lineTotal: number;
-      }>;
+      originalItem: any
+      quantity: number
+      unitPrice: number
+      lineTotal: number
+    }>
 
     if (preparedItems.length === 0) {
-      throw new Error('لا توجد كميات صالحة للمرتجع');
+      throw new Error('لا توجد كميات صالحة للمرتجع')
     }
 
-    const originalSubTotal = Number(originalSale.sub_total || 0);
+    const originalSubTotal = Number(originalSale.sub_total || 0)
 
     const ratio =
-      originalSubTotal > 0
-        ? Math.min(returnSubTotal / originalSubTotal, 1)
-        : 0;
+      originalSubTotal > 0 ? Math.min(returnSubTotal / originalSubTotal, 1) : 0
 
     const originalEarnedPoints = Math.max(
       0,
-      Number(originalSale.loyalty_points_earned || 0)
-    );
+      Number(originalSale.loyalty_points_earned || 0),
+    )
 
     const alreadyReturnedSubTotalRow = db
-      .prepare(`
+      .prepare(
+        `
         SELECT IFNULL(SUM(sub_total), 0) AS returned_sub_total
         FROM sale_returns
         WHERE original_sale_id = ?
-      `)
-      .get(originalSaleId) as { returned_sub_total: number } | undefined;
+      `,
+      )
+      .get(originalSaleId) as { returned_sub_total: number } | undefined
 
     const alreadyReversedPointsRow = db
-      .prepare(`
+      .prepare(
+        `
         SELECT IFNULL(SUM(loyalty_points_reversed), 0) AS reversed_points
         FROM sale_returns
         WHERE original_sale_id = ?
-      `)
-      .get(originalSaleId) as { reversed_points: number } | undefined;
+      `,
+      )
+      .get(originalSaleId) as { reversed_points: number } | undefined
 
     const alreadyReturnedSubTotal = Number(
-      alreadyReturnedSubTotalRow?.returned_sub_total || 0
-    );
+      alreadyReturnedSubTotalRow?.returned_sub_total || 0,
+    )
 
     const alreadyReversedPoints = Number(
-      alreadyReversedPointsRow?.reversed_points || 0
-    );
+      alreadyReversedPointsRow?.reversed_points || 0,
+    )
 
     const cumulativeReturnRatio =
       originalSubTotal > 0
-        ? Math.min((alreadyReturnedSubTotal + returnSubTotal) / originalSubTotal, 1)
-        : 0;
+        ? Math.min(
+            (alreadyReturnedSubTotal + returnSubTotal) / originalSubTotal,
+            1,
+          )
+        : 0
 
     const targetTotalReversedPoints = Math.floor(
-      originalEarnedPoints * cumulativeReturnRatio
-    );
+      originalEarnedPoints * cumulativeReturnRatio,
+    )
 
     const loyaltyPointsToReverse = Math.max(
       0,
       Math.min(
         originalEarnedPoints - alreadyReversedPoints,
-        targetTotalReversedPoints - alreadyReversedPoints
-      )
-    );
+        targetTotalReversedPoints - alreadyReversedPoints,
+      ),
+    )
 
     const saleDiscountPart = Number(
-      (Number(originalSale.discount_value || 0) * ratio).toFixed(2)
-    );
+      (Number(originalSale.discount_value || 0) * ratio).toFixed(2),
+    )
 
     const loyaltyDiscountPart = Number(
-      (Number(originalSale.loyalty_discount_value || 0) * ratio).toFixed(2)
-    );
+      (Number(originalSale.loyalty_discount_value || 0) * ratio).toFixed(2),
+    )
 
     const returnValue = Math.max(
       0,
-      returnSubTotal - saleDiscountPart - loyaltyDiscountPart
-    );
+      returnSubTotal - saleDiscountPart - loyaltyDiscountPart,
+    )
 
     const originalRemainingAmount = Math.max(
       0,
-      Number(originalSale.remaining_amount || 0)
-    );
+      Number(originalSale.remaining_amount || 0),
+    )
 
     const debtReductionAmount = originalSale.customer_id
       ? Math.min(returnValue, originalRemainingAmount)
-      : 0;
+      : 0
 
-    const cashRefundAmount = Math.max(0, returnValue - debtReductionAmount);
+    const cashRefundAmount = Math.max(0, returnValue - debtReductionAmount)
 
     const returnResult = db
-      .prepare(`
+      .prepare(
+        `
         INSERT INTO sale_returns (
           original_sale_id,
           customer_id,
@@ -751,7 +836,8 @@ export function createSaleReturn(input: {
           loyalty_points_reversed
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
+      `,
+      )
       .run(
         originalSaleId,
         originalSale.customer_id ?? null,
@@ -762,12 +848,12 @@ export function createSaleReturn(input: {
         refundPaymentMethod,
         reason,
         `مرتجع من فاتورة رقم ${originalSaleId}`,
-        loyaltyPointsToReverse
-      );
+        loyaltyPointsToReverse,
+      )
 
-    const returnId = Number(returnResult.lastInsertRowid);
+    const returnId = Number(returnResult.lastInsertRowid)
 
-    if (cashRefundAmount  > 0) {
+    if (cashRefundAmount > 0) {
       createCashMovement({
         type: 'sale_return',
         direction: 'out',
@@ -776,40 +862,45 @@ export function createSaleReturn(input: {
         reference_id: returnId,
         reference_type: 'sale_return',
         notes: `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
-        created_by: userId
-      });
+        created_by: userId,
+      })
     }
 
     if (originalSale.customer_id && debtReductionAmount > 0) {
       const newSaleRemainingAmount = Math.max(
         0,
-        originalRemainingAmount - debtReductionAmount
-      );
+        originalRemainingAmount - debtReductionAmount,
+      )
 
       const newSalePaymentStatus =
         newSaleRemainingAmount === 0
           ? 'paid'
           : Number(originalSale.paid || 0) > 0
             ? 'partial'
-            : 'unpaid';
+            : 'unpaid'
 
-      db.prepare(`
+      db.prepare(
+        `
         UPDATE sales
         SET
           remaining_amount = ?,
           payment_status = ?
         WHERE id = ?
-      `).run(newSaleRemainingAmount, newSalePaymentStatus, originalSaleId);
+      `,
+      ).run(newSaleRemainingAmount, newSalePaymentStatus, originalSaleId)
 
-      db.prepare(`
+      db.prepare(
+        `
         UPDATE customers
         SET
           balance = MAX(IFNULL(balance, 0) - ?, 0),
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(debtReductionAmount, originalSale.customer_id);
+      `,
+      ).run(debtReductionAmount, originalSale.customer_id)
 
-      db.prepare(`
+      db.prepare(
+        `
         INSERT INTO customer_payments (
           customer_id,
           sale_id,
@@ -818,13 +909,14 @@ export function createSaleReturn(input: {
           notes
         )
         VALUES (?, ?, ?, ?, ?)
-      `).run(
+      `,
+      ).run(
         originalSale.customer_id,
         originalSaleId,
         debtReductionAmount,
         refundPaymentMethod,
-        `تسوية مديونية بسبب مرتجع RET-${String(returnId).padStart(5, '0')}`
-      );
+        `تسوية مديونية بسبب مرتجع RET-${String(returnId).padStart(5, '0')}`,
+      )
     }
 
     const insertReturnItem = db.prepare(`
@@ -842,7 +934,7 @@ export function createSaleReturn(input: {
         line_total
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    `)
 
     const insertStockMovement = db.prepare(`
       INSERT INTO stock_movements (
@@ -854,7 +946,7 @@ export function createSaleReturn(input: {
         notes
       )
       VALUES (?, 'in', ?, ?, 'sale_return', ?)
-    `);
+    `)
 
     for (const item of preparedItems) {
       insertReturnItem.run(
@@ -868,32 +960,31 @@ export function createSaleReturn(input: {
         item.quantity,
         Number(item.originalItem.unit_cost || 0),
         item.unitPrice,
-        item.lineTotal
-      );
+        item.lineTotal,
+      )
 
       insertStockMovement.run(
         item.originalItem.variant_id,
         item.quantity,
         returnId,
-        `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`
-      );
+        `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
+      )
     }
 
     if (originalSale.customer_id && loyaltyPointsToReverse > 0) {
-      db.prepare(`
+      db.prepare(
+        `
         UPDATE customers
         SET
           points_balance = MAX(points_balance - ?, 0),
           total_spent = MAX(total_spent - ?, 0),
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(
-        loyaltyPointsToReverse,
-        returnValue,
-        originalSale.customer_id
-      );
+      `,
+      ).run(loyaltyPointsToReverse, returnValue, originalSale.customer_id)
 
-      db.prepare(`
+      db.prepare(
+        `
         INSERT INTO loyalty_transactions (
           customer_id,
           sale_id,
@@ -903,13 +994,14 @@ export function createSaleReturn(input: {
           notes
         )
         VALUES (?, ?, 'adjust', ?, ?, ?)
-      `).run(
+      `,
+      ).run(
         originalSale.customer_id,
         originalSaleId,
         -loyaltyPointsToReverse,
         returnValue,
-        `خصم نقاط بسبب مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`
-      );
+        `خصم نقاط بسبب مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
+      )
     }
 
     return {
@@ -920,18 +1012,19 @@ export function createSaleReturn(input: {
       refundAmount: cashRefundAmount,
       debt_reduction_amount: debtReductionAmount,
       return_value: returnValue,
-      loyalty_points_reversed: loyaltyPointsToReverse
-    };
-  });
+      loyalty_points_reversed: loyaltyPointsToReverse,
+    }
+  })
 
-  return tx();
+  return tx()
 }
 
 export function getSaleReturnHistory(originalSaleId: number) {
-  const db = getDb();
+  const db = getDb()
 
   const returns = db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         sr.id,
         sr.original_sale_id,
@@ -956,8 +1049,9 @@ export function getSaleReturnHistory(originalSaleId: number) {
       WHERE sr.original_sale_id = ?
       GROUP BY sr.id
       ORDER BY sr.id DESC
-    `)
-    .all(originalSaleId) as any[];
+    `,
+    )
+    .all(originalSaleId) as any[]
 
   const getItems = db.prepare(`
     SELECT
@@ -975,31 +1069,31 @@ export function getSaleReturnHistory(originalSaleId: number) {
     FROM sale_return_items
     WHERE return_id = ?
     ORDER BY id ASC
-  `);
+  `)
 
   return returns.map((item) => ({
     ...item,
     code: `RET-${String(item.id).padStart(5, '0')}`,
     grand_total: item.refund_amount,
-    items: getItems.all(item.id)
-  }));
+    items: getItems.all(item.id),
+  }))
 }
 
 export function listSaleReturns(input?: {
-  search?: string;
-  date_from?: string;
-  date_to?: string;
-  limit?: number;
-  offset?: number;
+  search?: string
+  date_from?: string
+  date_to?: string
+  limit?: number
+  offset?: number
 }) {
-  const db = getDb();
+  const db = getDb()
 
-  const search = input?.search?.trim() || '';
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
-  const offset = Math.max(Number(input?.offset || 0), 0);
+  const search = input?.search?.trim() || ''
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+  const offset = Math.max(Number(input?.offset || 0), 0)
 
-  const where: string[] = [];
-  const params: any[] = [];
+  const where: string[] = []
+  const params: any[] = []
 
   if (search) {
     where.push(`
@@ -1011,26 +1105,27 @@ export function listSaleReturns(input?: {
         OR u.name LIKE ?
         OR IFNULL(sr.reason, '') LIKE ?
       )
-    `);
+    `)
 
-    const q = `%${search}%`;
-    params.push(q, q, q, q, q, q);
+    const q = `%${search}%`
+    params.push(q, q, q, q, q, q)
   }
 
   if (input?.date_from) {
-    where.push(`datetime(sr.created_at, 'localtime') >= datetime(?)`);
-    params.push(`${input.date_from} 00:00:00`);
+    where.push(`datetime(sr.created_at, 'localtime') >= datetime(?)`)
+    params.push(`${input.date_from} 00:00:00`)
   }
 
   if (input?.date_to) {
-    where.push(`datetime(sr.created_at, 'localtime') <= datetime(?)`);
-    params.push(`${input.date_to} 23:59:59`);
+    where.push(`datetime(sr.created_at, 'localtime') <= datetime(?)`)
+    params.push(`${input.date_to} 23:59:59`)
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
   const rows = db
-    .prepare(`
+    .prepare(
+      `
       SELECT
         sr.id,
         sr.original_sale_id,
@@ -1058,26 +1153,29 @@ export function listSaleReturns(input?: {
       ORDER BY sr.id DESC
       LIMIT ?
       OFFSET ?
-    `)
-    .all(...params, limit, offset);
+    `,
+    )
+    .all(...params, limit, offset)
 
   const totalRow = db
-    .prepare(`
+    .prepare(
+      `
       SELECT COUNT(*) AS total
       FROM sale_returns sr
       LEFT JOIN customers c ON c.id = sr.customer_id
       LEFT JOIN users u ON u.id = sr.user_id
       ${whereSql}
-    `)
-    .get(...params) as { total: number };
+    `,
+    )
+    .get(...params) as { total: number }
 
   return {
     rows: (rows as any[]).map((row) => ({
       ...row,
-      code: `RET-${String(row.id).padStart(5, '0')}`
+      code: `RET-${String(row.id).padStart(5, '0')}`,
     })),
     total: totalRow.total,
     limit,
-    offset
-  };
+    offset,
+  }
 }

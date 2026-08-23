@@ -61,7 +61,10 @@ export function getPaymentStatusLabel(status?: string | null) {
   return status || '—'
 }
 
-export function formatReceiptDate(value?: string | null): string {
+export function formatReceiptDate(
+  value?: string | null,
+  businessDate?: string | null,
+): string {
   if (!value) return '—'
 
   try {
@@ -69,11 +72,16 @@ export function formatReceiptDate(value?: string | null): string {
     const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
     const date = new Date(normalized)
 
-    const datePart = date.toLocaleDateString('en-GB', {
+    let datePart = date.toLocaleDateString('en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
     })
+
+    if (businessDate && /^\d{4}-\d{2}-\d{2}$/.test(String(businessDate))) {
+      const [year, month, day] = String(businessDate).split('-')
+      datePart = `${day}/${month}/${year}`
+    }
 
     const timePart = date.toLocaleTimeString('en-GB', {
       hour: '2-digit',
@@ -754,7 +762,9 @@ export function buildSaleReceiptHtml(
               </svg>
 
               <span>
-                ${escapeHtml(formatReceiptDate(sale.created_at))}
+                ${escapeHtml(
+                  formatReceiptDate(sale.created_at, sale.business_date),
+                )}
               </span>
 
             </div>

@@ -77,6 +77,7 @@ type SaleReceipt = {
     loyalty_points_earned?: number
     loyalty_points_redeemed?: number
     loyalty_discount_value?: number
+    business_date?: string | null
     created_at?: string | null
   }
   items: Array<{
@@ -119,6 +120,7 @@ type InvoiceTab = {
   loyaltyPointsDraft: string
   paidDraft: string
   paymentMethod: string
+  businessDateDraft: string
   discountType: 'amount' | 'percent'
   discountDraft: string
 }
@@ -149,6 +151,7 @@ const createInvoice = (id: number): InvoiceTab => ({
   loyaltyPointsDraft: '',
   paidDraft: '',
   paymentMethod: 'cash',
+  businessDateDraft: '',
   discountType: 'amount',
   discountDraft: '',
 })
@@ -212,6 +215,7 @@ function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
     loyaltyPointsDraft: '',
     paidDraft: '',
     paymentMethod: 'cash',
+    businessDateDraft: '',
     discountType: 'amount',
     discountDraft: '',
   }
@@ -223,6 +227,7 @@ function serializeInvoiceDraft(invoice: InvoiceTab): InvoiceTab {
     loyaltyPointsDraft: '',
     paidDraft: '',
     paymentMethod: 'cash',
+    businessDateDraft: '',
     discountType: 'amount',
     discountDraft: '',
   }
@@ -231,6 +236,19 @@ function serializeInvoiceDraft(invoice: InvoiceTab): InvoiceTab {
 function money(value: number | string | null | undefined): string {
   const n = Number(value || 0)
   return Number.isFinite(n) ? n.toFixed(2) : '0.00'
+}
+
+function getRelativeLocalDateKey(days: number) {
+  const date = new Date()
+
+  date.setHours(12, 0, 0, 0)
+  date.setDate(date.getDate() + days)
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
 }
 
 function escapeHtml(value: unknown) {
@@ -252,21 +270,28 @@ function getPaymentStatusLabel(status?: string | null) {
   return status || '—'
 }
 
-function formatReceiptDate(value?: string | null): string {
+function formatReceiptDate(
+  value?: string | null,
+  businessDate?: string | null,
+): string {
   if (!value) return '—'
 
   try {
     const raw = String(value)
-
     const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
 
     const date = new Date(normalized)
 
-    const datePart = date.toLocaleDateString('en-GB', {
+    let datePart = date.toLocaleDateString('en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
     })
+
+    if (businessDate && /^\d{4}-\d{2}-\d{2}$/.test(String(businessDate))) {
+      const [year, month, day] = String(businessDate).split('-')
+      datePart = `${day}/${month}/${year}`
+    }
 
     const timePart = date.toLocaleTimeString('en-GB', {
       hour: '2-digit',
@@ -942,6 +967,7 @@ export default function SalesPage() {
       const result = await window.api.createSale({
         user_id: user.id,
         customer_id: activeInvoice.customer?.id ?? null,
+        business_date: activeInvoice.businessDateDraft || null,
         sub_total: subTotal,
         discount_value: normalDiscountValue,
         grand_total: grandTotal,
@@ -996,6 +1022,7 @@ export default function SalesPage() {
         loyaltyPointsDraft: '',
         paidDraft: '',
         paymentMethod: 'cash',
+        businessDateDraft: '',
         discountType: 'amount',
         discountDraft: '',
       })
@@ -1009,6 +1036,7 @@ export default function SalesPage() {
           loyaltyPointsDraft: '',
           paidDraft: '',
           paymentMethod: 'cash',
+          businessDateDraft: '',
           discountType: 'amount',
           discountDraft: '',
         })
@@ -2223,7 +2251,10 @@ export default function SalesPage() {
                   تم حفظ الفاتورة #{receiptData.sale.id}
                 </h3>
                 <span style={{ color: '#94a3b8', fontSize: '13px' }}>
-                  {formatReceiptDate(receiptData.sale.created_at)}
+                  {formatReceiptDate(
+                    receiptData.sale.created_at,
+                    receiptData.sale.business_date,
+                  )}
                 </span>
               </div>
 
@@ -2633,6 +2664,56 @@ export default function SalesPage() {
                   }
                 }}
               />
+            </label>
+
+            <label style={paymentLabelStyle}>
+              تاريخ الفاتورة
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr auto',
+                  gap: '8px',
+                  alignItems: 'stretch',
+                }}
+              >
+                <input
+                  type="date"
+                  value={activeInvoice.businessDateDraft}
+                  min={getRelativeLocalDateKey(-1)}
+                  max={getRelativeLocalDateKey(1)}
+                  onChange={(e) =>
+                    updateActiveInvoice({
+                      businessDateDraft: e.target.value,
+                    })
+                  }
+                  style={{
+                    ...paymentInputStyle,
+                    colorScheme: 'dark',
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateActiveInvoice({
+                      businessDateDraft: '',
+                    })
+                  }
+                  style={secondaryOutlineButtonStyle}
+                >
+                  تلقائي
+                </button>
+              </div>
+              <span
+                style={{
+                  color: '#94a3b8',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                }}
+              >
+                اتركه فارغًا ليستخدم تاريخ ووقت البيع الفعلي تلقائيًا — مسموح
+                أمس أو اليوم أو غدًا.
+              </span>
             </label>
 
             <label style={paymentLabelStyle}>
