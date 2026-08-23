@@ -28,7 +28,13 @@ export function getSuppliers(search = '') {
         SELECT *
         FROM suppliers
         WHERE is_active = 1
-        ORDER BY id DESC
+        ORDER BY
+        CASE
+          WHEN IFNULL(balance, 0) > 0 THEN 0
+          ELSE 1
+        END ASC,
+        IFNULL(balance, 0) DESC,
+        id DESC
       `,
       )
       .all()
@@ -46,7 +52,13 @@ export function getSuppliers(search = '') {
           OR IFNULL(email, '') LIKE ?
           OR IFNULL(address, '') LIKE ?
         )
-      ORDER BY id DESC
+      ORDER BY
+      CASE
+        WHEN IFNULL(balance, 0) > 0 THEN 0
+        ELSE 1
+      END ASC,
+      IFNULL(balance, 0) DESC,
+      id DESC
     `,
     )
     .all(q, q, q, q)
@@ -94,7 +106,13 @@ export function listSuppliers(input?: {
 
       ${whereSql}
 
-      ORDER BY id DESC
+      ORDER BY
+      CASE
+        WHEN IFNULL(balance, 0) > 0 THEN 0
+        ELSE 1
+      END ASC,
+      IFNULL(balance, 0) DESC,
+      id DESC
 
       LIMIT ?
       OFFSET ?
