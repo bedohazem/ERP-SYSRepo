@@ -323,6 +323,18 @@ export default function DashboardPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!user?.id || !isCashier) return
+
+    void loadDashboard(cashierDate)
+  }, [user?.id, isCashier, cashierDate])
+
+  useEffect(() => {
+    if (!user?.id || isCashier) return
+
+    void loadDashboard(todayKey)
+  }, [user?.id, isCashier, todayKey])
+
   const bestProduct = data.month.topProducts[0]
   const bestCustomer = data.month.topCustomers[0]
   const lowStockCount = data.overview.lowStock.length
@@ -341,14 +353,7 @@ export default function DashboardPage() {
         lastUpdated={lastUpdated}
         loading={loading}
         onDateChange={(date) => {
-          const nextDate = date || todayKey
-
-          setCashierDate(nextDate)
-
-          void loadDashboard(nextDate)
-        }}
-        onRefresh={() => {
-          void loadDashboard(cashierDate)
+          setCashierDate(date || todayKey)
         }}
         onNewSale={() => navigate('/sales')}
       />
@@ -1170,7 +1175,6 @@ function CashierRevenueView({
   lastUpdated,
   loading,
   onDateChange,
-  onRefresh,
   onNewSale,
 }: {
   selectedDate: string
@@ -1184,7 +1188,6 @@ function CashierRevenueView({
   lastUpdated: string
   loading: boolean
   onDateChange: (date: string) => void
-  onRefresh: () => void
   onNewSale: () => void
 }) {
   return (
@@ -1274,14 +1277,6 @@ function CashierRevenueView({
               style={secondaryButtonStyle}
             >
               اليوم
-            </button>
-
-            <button
-              type="button"
-              onClick={onRefresh}
-              style={primaryButtonStyle}
-            >
-              {loading ? 'جاري التحديث...' : 'تحديث'}
             </button>
 
             <button
