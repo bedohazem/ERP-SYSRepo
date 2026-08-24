@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth.store'
 import { useAppStore } from '../../store/app.store'
 
@@ -161,8 +161,31 @@ export default function AppShell({
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   const navigate = useNavigate()
+  const location = useLocation()
 
   const { sidebarOpen, toggleSidebar } = useAppStore()
+
+  const [pageStickyEnabled, setPageStickyEnabled] = useState(() => {
+    return (
+      localStorage.getItem(`erp_page_sticky:${location.pathname}`) !== 'false'
+    )
+  })
+
+  useEffect(() => {
+    setPageStickyEnabled(
+      localStorage.getItem(`erp_page_sticky:${location.pathname}`) !== 'false',
+    )
+  }, [location.pathname])
+
+  function togglePageSticky() {
+    setPageStickyEnabled((current) => {
+      const next = !current
+
+      localStorage.setItem(`erp_page_sticky:${location.pathname}`, String(next))
+
+      return next
+    })
+  }
 
   const [isMobile, setIsMobile] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -365,19 +388,61 @@ export default function AppShell({
             </h1>
           </div>
 
-          {isMobile && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+            }}
+          >
             <button
               type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              style={mobileMenuButtonStyle}
+              onClick={togglePageSticky}
+              title={
+                pageStickyEnabled
+                  ? 'إلغاء تثبيت عناصر الصفحة'
+                  : 'تثبيت عناصر الصفحة'
+              }
+              style={{
+                height: '38px',
+                padding: '0 12px',
+                borderRadius: '10px',
+                border: pageStickyEnabled
+                  ? '1px solid rgba(37,99,235,0.40)'
+                  : '1px solid rgba(148,163,184,0.24)',
+                background: pageStickyEnabled
+                  ? 'rgba(37,99,235,0.14)'
+                  : 'rgba(148,163,184,0.08)',
+                color: pageStickyEnabled
+                  ? isLight
+                    ? '#1d4ed8'
+                    : '#93c5fd'
+                  : isLight
+                    ? '#475569'
+                    : '#94a3b8',
+                fontWeight: 800,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
             >
-              ☰
+              {pageStickyEnabled ? '📌 التثبيت مفعّل' : '📍 التثبيت ملغي'}
             </button>
-          )}
+
+            {isMobile && (
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(true)}
+                style={mobileMenuButtonStyle}
+              >
+                ☰
+              </button>
+            )}
+          </div>
         </header>
 
         <section
           className="app-main-scroll"
+          data-page-sticky-enabled={pageStickyEnabled ? 'true' : 'false'}
           style={{
             background: isLight
               ? 'rgba(248,250,252,0.95)'

@@ -40,7 +40,7 @@ html[data-theme='light'] {
   --muted: #475569;
 
   --shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.12);
-  --shadow-md: 0 10px 30px rgba(15, 23, 42, 0.10);
+  --shadow-md: 0 10px 30px rgba(15, 23, 42, 0.1);
 }
 
 html[data-theme='light'],
@@ -48,8 +48,16 @@ html[data-theme='light'] body,
 html[data-theme='light'] #root {
   color: #0f172a !important;
   background:
-    radial-gradient(circle at top right, rgba(37, 99, 235, 0.10), transparent 25%),
-    radial-gradient(circle at bottom left, rgba(139, 92, 246, 0.08), transparent 22%),
+    radial-gradient(
+      circle at top right,
+      rgba(37, 99, 235, 0.1),
+      transparent 25%
+    ),
+    radial-gradient(
+      circle at bottom left,
+      rgba(139, 92, 246, 0.08),
+      transparent 22%
+    ),
     linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%) !important;
 }
 
@@ -58,45 +66,79 @@ html[data-theme='light'] .glass-card,
 html[data-theme='light'] .soft-card {
   background: rgba(255, 255, 255, 0.96) !important;
   border-color: rgba(15, 23, 42, 0.12) !important;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.10) !important;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1) !important;
 }
 
 /* Main readable text inside cards */
-html[data-theme='light'] .glass-card :where(h1, h2, h3, h4, h5, h6, label, p, td, th, strong, small, div, span):not(button):not(button *),
-html[data-theme='light'] .soft-card :where(h1, h2, h3, h4, h5, h6, label, p, td, th, strong, small, div, span):not(button):not(button *) {
+html[data-theme='light']
+  .glass-card
+  :where(
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    label,
+    p,
+    td,
+    th,
+    strong,
+    small,
+    div,
+    span
+  ):not(button):not(button *),
+html[data-theme='light']
+  .soft-card
+  :where(
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    label,
+    p,
+    td,
+    th,
+    strong,
+    small,
+    div,
+    span
+  ):not(button):not(button *) {
   color: #0f172a !important;
 }
 
 /* Muted text becomes readable, not too pale */
-html[data-theme='light'] [style*="color: #94a3b8"],
-html[data-theme='light'] [style*="color:#94a3b8"],
-html[data-theme='light'] [style*="color: rgb(148, 163, 184)"],
-html[data-theme='light'] [style*="color: #64748b"],
-html[data-theme='light'] [style*="color:#64748b"],
-html[data-theme='light'] [style*="color: rgb(100, 116, 139)"],
-html[data-theme='light'] [style*="color: #cbd5e1"],
-html[data-theme='light'] [style*="color:#cbd5e1"],
-html[data-theme='light'] [style*="color: rgb(203, 213, 225)"] {
+html[data-theme='light'] [style*='color: #94a3b8'],
+html[data-theme='light'] [style*='color:#94a3b8'],
+html[data-theme='light'] [style*='color: rgb(148, 163, 184)'],
+html[data-theme='light'] [style*='color: #64748b'],
+html[data-theme='light'] [style*='color:#64748b'],
+html[data-theme='light'] [style*='color: rgb(100, 116, 139)'],
+html[data-theme='light'] [style*='color: #cbd5e1'],
+html[data-theme='light'] [style*='color:#cbd5e1'],
+html[data-theme='light'] [style*='color: rgb(203, 213, 225)'] {
   color: #334155 !important;
 }
 
 /* White text on white problem */
-html[data-theme='light'] [style*="color: #fff"],
-html[data-theme='light'] [style*="color:#fff"],
-html[data-theme='light'] [style*="color: #ffffff"],
-html[data-theme='light'] [style*="color:#ffffff"],
-html[data-theme='light'] [style*="color: rgb(255, 255, 255)"],
-html[data-theme='light'] [style*="color: #f8fafc"],
-html[data-theme='light'] [style*="color:#f8fafc"],
-html[data-theme='light'] [style*="color: rgb(248, 250, 252)"] {
+html[data-theme='light'] [style*='color: #fff'],
+html[data-theme='light'] [style*='color:#fff'],
+html[data-theme='light'] [style*='color: #ffffff'],
+html[data-theme='light'] [style*='color:#ffffff'],
+html[data-theme='light'] [style*='color: rgb(255, 255, 255)'],
+html[data-theme='light'] [style*='color: #f8fafc'],
+html[data-theme='light'] [style*='color:#f8fafc'],
+html[data-theme='light'] [style*='color: rgb(248, 250, 252)'] {
   color: #0f172a !important;
 }
 
 /* Keep gradient / primary buttons white */
-html[data-theme='light'] button[style*="linear-gradient"],
-html[data-theme='light'] button[style*="linear-gradient"] *,
-html[data-theme='light'] a[style*="linear-gradient"],
-html[data-theme='light'] a[style*="linear-gradient"] *,
+html[data-theme='light'] button[style*='linear-gradient'],
+html[data-theme='light'] button[style*='linear-gradient'] *,
+html[data-theme='light'] a[style*='linear-gradient'],
+html[data-theme='light'] a[style*='linear-gradient'] *,
 html[data-theme='light'] a[aria-current='page'],
 html[data-theme='light'] a[aria-current='page'] * {
   color: #ffffff !important;
@@ -107,7 +149,7 @@ html[data-theme='light'] button {
   border-color: rgba(15, 23, 42, 0.14) !important;
 }
 
-html[data-theme='light'] button:not([style*="linear-gradient"]) {
+html[data-theme='light'] button:not([style*='linear-gradient']) {
   color: #0f172a !important;
 }
 
@@ -130,7 +172,7 @@ html[data-theme='light'] table,
 html[data-theme='light'] thead,
 html[data-theme='light'] tbody,
 html[data-theme='light'] tr {
-  border-color: rgba(15, 23, 42, 0.10) !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
 }
 
 html[data-theme='light'] th,
@@ -141,7 +183,7 @@ html[data-theme='light'] td {
 /* Sidebar links */
 html[data-theme='light'] aside {
   background: rgba(255, 255, 255, 0.94) !important;
-  border-color: rgba(15, 23, 42, 0.10) !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
   box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12) !important;
 }
 
@@ -161,11 +203,11 @@ html[data-theme='light'] aside a[aria-current='page'] {
 }
 
 /* Keep colored badges readable */
-html[data-theme='light'] [style*="rgba(16,185,129"],
-html[data-theme='light'] [style*="rgba(34,197,94"],
-html[data-theme='light'] [style*="rgba(239,68,68"],
-html[data-theme='light'] [style*="rgba(245,158,11"],
-html[data-theme='light'] [style*="rgba(37,99,235"] {
+html[data-theme='light'] [style*='rgba(16,185,129'],
+html[data-theme='light'] [style*='rgba(34,197,94'],
+html[data-theme='light'] [style*='rgba(239,68,68'],
+html[data-theme='light'] [style*='rgba(245,158,11'],
+html[data-theme='light'] [style*='rgba(37,99,235'] {
   color: inherit;
 }
 
@@ -178,7 +220,6 @@ html[data-theme='light'] select option {
   background-color: #ffffff;
   color: #0f172a;
 }
-
 
 * {
   box-sizing: border-box;
@@ -197,8 +238,16 @@ body,
   min-height: 100%;
   color: var(--text);
   background:
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.18), transparent 25%),
-    radial-gradient(circle at bottom left, rgba(139, 92, 246, 0.16), transparent 22%),
+    radial-gradient(
+      circle at top right,
+      rgba(59, 130, 246, 0.18),
+      transparent 25%
+    ),
+    radial-gradient(
+      circle at bottom left,
+      rgba(139, 92, 246, 0.16),
+      transparent 22%
+    ),
     linear-gradient(180deg, #0b1220 0%, #0f172a 100%);
 }
 
@@ -233,7 +282,11 @@ a {
 }
 
 .soft-card {
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.92));
+  background: linear-gradient(
+    180deg,
+    rgba(30, 41, 59, 0.92),
+    rgba(15, 23, 42, 0.92)
+  );
   border: 1px solid var(--border);
   box-shadow: var(--shadow-md);
 }
@@ -362,14 +415,14 @@ html[data-theme='light'] .theme-popover * {
   color: #0f172a !important;
 }
 
-html[data-theme='light'] .theme-modal-card [style*="color: #94a3b8"],
-html[data-theme='light'] .theme-modal-card [style*="color:#94a3b8"],
-html[data-theme='light'] .theme-modal-card [style*="color: #64748b"],
-html[data-theme='light'] .theme-modal-card [style*="color:#64748b"],
-html[data-theme='light'] .theme-popover [style*="color: #94a3b8"],
-html[data-theme='light'] .theme-popover [style*="color:#94a3b8"],
-html[data-theme='light'] .theme-popover [style*="color: #64748b"],
-html[data-theme='light'] .theme-popover [style*="color:#64748b"] {
+html[data-theme='light'] .theme-modal-card [style*='color: #94a3b8'],
+html[data-theme='light'] .theme-modal-card [style*='color:#94a3b8'],
+html[data-theme='light'] .theme-modal-card [style*='color: #64748b'],
+html[data-theme='light'] .theme-modal-card [style*='color:#64748b'],
+html[data-theme='light'] .theme-popover [style*='color: #94a3b8'],
+html[data-theme='light'] .theme-popover [style*='color:#94a3b8'],
+html[data-theme='light'] .theme-popover [style*='color: #64748b'],
+html[data-theme='light'] .theme-popover [style*='color:#64748b'] {
   color: #475569 !important;
 }
 
@@ -389,17 +442,19 @@ html[data-theme='light'] .theme-popover input::placeholder {
   color: #64748b !important;
 }
 
-html[data-theme='light'] .theme-modal-card button:not([style*="linear-gradient"]),
-html[data-theme='light'] .theme-popover button:not([style*="linear-gradient"]) {
+html[data-theme='light']
+  .theme-modal-card
+  button:not([style*='linear-gradient']),
+html[data-theme='light'] .theme-popover button:not([style*='linear-gradient']) {
   background: rgba(15, 23, 42, 0.04) !important;
   color: #0f172a !important;
   border-color: rgba(15, 23, 42, 0.12) !important;
 }
 
-html[data-theme='light'] .theme-modal-card button[style*="linear-gradient"],
-html[data-theme='light'] .theme-modal-card button[style*="linear-gradient"] *,
-html[data-theme='light'] .theme-popover button[style*="linear-gradient"],
-html[data-theme='light'] .theme-popover button[style*="linear-gradient"] * {
+html[data-theme='light'] .theme-modal-card button[style*='linear-gradient'],
+html[data-theme='light'] .theme-modal-card button[style*='linear-gradient'] *,
+html[data-theme='light'] .theme-popover button[style*='linear-gradient'],
+html[data-theme='light'] .theme-popover button[style*='linear-gradient'] * {
   color: #ffffff !important;
 }
 
@@ -455,7 +510,7 @@ html[data-theme='light'] .discount-toggle-button {
 }
 
 html[data-theme='light'] .discount-toggle-button:hover {
-  background: rgba(124, 58, 237, 0.10) !important;
+  background: rgba(124, 58, 237, 0.1) !important;
   border-color: rgba(124, 58, 237, 0.45) !important;
   color: #5b21b6 !important;
 }
@@ -507,21 +562,27 @@ html[data-theme='light'] .discount-toggle-button.is-active {
 }
 
 /* Light mode */
-html[data-theme='light'] .theme-modal-card button.discount-toggle-button:not(.is-active) {
+html[data-theme='light']
+  .theme-modal-card
+  button.discount-toggle-button:not(.is-active) {
   background: #f8fafc !important;
   border: 1px solid rgba(15, 23, 42, 0.14) !important;
   color: #0f172a !important;
   box-shadow: none !important;
 }
 
-html[data-theme='light'] .theme-modal-card button.discount-toggle-button:not(.is-active):hover {
-  background: rgba(124, 58, 237, 0.10) !important;
+html[data-theme='light']
+  .theme-modal-card
+  button.discount-toggle-button:not(.is-active):hover {
+  background: rgba(124, 58, 237, 0.1) !important;
   border-color: rgba(124, 58, 237, 0.45) !important;
   color: #5b21b6 !important;
   transform: translateY(-1px);
 }
 
-html[data-theme='light'] .theme-modal-card button.discount-toggle-button.is-active {
+html[data-theme='light']
+  .theme-modal-card
+  button.discount-toggle-button.is-active {
   background: linear-gradient(135deg, #6d5dfc, #7c3aed) !important;
   border: 1px solid transparent !important;
   color: #ffffff !important;
@@ -529,7 +590,10 @@ html[data-theme='light'] .theme-modal-card button.discount-toggle-button.is-acti
   transform: translateY(-1px);
 }
 
-html[data-theme='light'] .theme-modal-card button.discount-toggle-button.is-active *,
+html[data-theme='light']
+  .theme-modal-card
+  button.discount-toggle-button.is-active
+  *,
 .theme-modal-card button.discount-toggle-button.is-active * {
   color: #ffffff !important;
 }
@@ -606,13 +670,13 @@ html[data-theme='light'] .product-status-text.is-inactive {
 
 .product-action-button.activate-product {
   background: rgba(34, 197, 94, 0.14) !important;
-  border-color: rgba(34, 197, 94, 0.40) !important;
+  border-color: rgba(34, 197, 94, 0.4) !important;
   color: #15803d !important;
 }
 
 .product-action-button.activate-product:hover {
   background: rgba(34, 197, 94, 0.22) !important;
-  border-color: rgba(34, 197, 94, 0.60) !important;
+  border-color: rgba(34, 197, 94, 0.6) !important;
   color: #166534 !important;
   box-shadow: 0 10px 22px rgba(34, 197, 94, 0.16) !important;
 }
@@ -689,7 +753,7 @@ html[data-theme='light'] .stock-confirm-action.cancel:hover {
 
 html[data-theme='light'] .customer-info-card {
   background: #f8fafc !important;
-  border: 1px solid rgba(15, 23, 42, 0.10) !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
   color: #0f172a !important;
 }
 
@@ -712,7 +776,7 @@ html[data-theme='light'] .customer-history-row * {
 }
 
 html[data-theme='light'] .customer-statement-modal table tr {
-  border-color: rgba(15, 23, 42, 0.10) !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
 }
 
 html[data-theme='light'] .customer-statement-modal td,
@@ -733,7 +797,9 @@ html[data-theme='light'] .theme-danger-panel * {
 }
 
 /* زر الحذف داخل مودال حذف العميل */
-html[data-theme='light'] .customer-delete-modal button[style*="rgba(239,68,68"] {
+html[data-theme='light']
+  .customer-delete-modal
+  button[style*='rgba(239,68,68'] {
   background: rgba(239, 68, 68, 0.14) !important;
   border-color: rgba(239, 68, 68, 0.35) !important;
   color: #b91c1c !important;
@@ -786,12 +852,12 @@ html[data-theme='light'] .supplier-statement-modal span {
 }
 
 html[data-theme='light'] .supplier-statement-modal table tr {
-  border-color: rgba(15, 23, 42, 0.10) !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
 }
 
 html[data-theme='light'] .supplier-info-card {
   background: #f8fafc !important;
-  border: 1px solid rgba(15, 23, 42, 0.10) !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
   color: #0f172a !important;
 }
 
@@ -863,12 +929,12 @@ html[data-theme='light'] .purchase-payment-modal label {
 }
 
 html[data-theme='light'] .purchase-details-modal table tr {
-  border-color: rgba(15, 23, 42, 0.10) !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
 }
 
 html[data-theme='light'] .purchase-info-card {
   background: #f8fafc !important;
-  border: 1px solid rgba(15, 23, 42, 0.10) !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
   color: #0f172a !important;
 }
 
@@ -890,7 +956,6 @@ html[data-theme='light'] .purchase-payment-modal select {
 html[data-theme='light'] .purchase-payment-modal input::placeholder {
   color: #64748b !important;
 }
-
 
 /* =========================
    Users page modals
@@ -1043,6 +1108,69 @@ html[data-theme='light'] .user-active-action.enable:hover {
   z-index: 40;
 }
 
+/* =========================================================
+   Optional page pinning
+   يتحكم في Sticky الحقيقي + الصفحات ذات الـ internal scroll
+   ========================================================= */
+
+/* 1) Sticky الحقيقي */
+.app-main-scroll[data-page-sticky-enabled='false'] [style*='position: sticky'],
+.app-main-scroll[data-page-sticky-enabled='false'] [style*='position:sticky'],
+.app-main-scroll[data-page-sticky-enabled='false'] .product-sticky-head,
+.app-main-scroll[data-page-sticky-enabled='false'] [class*='sticky'] {
+  position: static !important;
+  top: auto !important;
+  bottom: auto !important;
+  z-index: auto !important;
+}
+
+/* 2) إلغاء نظام الصفحة ذات الارتفاع الثابت
+   وخلي الصفحة كلها تتحرك مع Scroll الرئيسي */
+.app-main-scroll[data-page-sticky-enabled='false'] > div {
+  height: auto !important;
+  min-height: 100% !important;
+  overflow: visible !important;
+  grid-template-rows: none !important;
+  align-content: start !important;
+}
+
+/* 3) الكروت الكبيرة التي كانت تحبس الجدول داخل Scroll مستقل */
+.app-main-scroll[data-page-sticky-enabled='false']
+  > div
+  > .glass-card[style*='height: 100%'],
+.app-main-scroll[data-page-sticky-enabled='false']
+  > div
+  > .glass-card[style*='height:100%'],
+.app-main-scroll[data-page-sticky-enabled='false']
+  > div
+  > .soft-card[style*='height: 100%'],
+.app-main-scroll[data-page-sticky-enabled='false']
+  > div
+  > .soft-card[style*='height:100%'] {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  grid-template-rows: none !important;
+}
+
+/* 4) مناطق الجداول الداخلية مثل expenses-body-scroll وغيرها */
+.app-main-scroll[data-page-sticky-enabled='false'] [class*='body-scroll'] {
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+}
+
+/* 5) أي container مباشر كان معمول له 100% داخل منطقة النتائج */
+.app-main-scroll[data-page-sticky-enabled='false']
+  > div
+  > div[style*='height: 100%'],
+.app-main-scroll[data-page-sticky-enabled='false']
+  > div
+  > div[style*='height:100%'] {
+  height: auto !important;
+  max-height: none !important;
+}
+
 .product-sticky-surface {
   background: rgba(17, 24, 39, 0.96);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1055,7 +1183,7 @@ html[data-theme='light'] .user-active-action.enable:hover {
 
 html[data-theme='light'] .product-sticky-surface {
   background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(15, 23, 42, 0.10);
+  border-color: rgba(15, 23, 42, 0.1);
 }
 
 .product-editor-body {
