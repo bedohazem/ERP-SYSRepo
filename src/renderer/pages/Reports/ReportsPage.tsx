@@ -344,15 +344,7 @@ export default function ReportsPage() {
           />
         </div>
 
-        <ReportTable
-          title="مبيعات الأيام"
-          emptyText="لا توجد مبيعات في الفترة"
-          columns={['اليوم', 'صافي المبيعات']}
-          rows={data.dailySales.map((x) => [
-            formatDateOnly(x.day),
-            money(x.total),
-          ])}
-        />
+        <DailySalesBars rows={data.dailySales} />
       </div>
     </div>
   )
@@ -383,6 +375,127 @@ function StatCard({
     <div className="glass-card" style={statCardStyle}>
       <div style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</div>
       <strong style={{ color, fontSize: '24px' }}>{value}</strong>
+    </div>
+  )
+}
+
+function DailySalesBars({ rows }: { rows: any[] }) {
+  const maxValue = Math.max(...rows.map((row) => Number(row.total || 0)), 0)
+
+  return (
+    <div className="glass-card" style={cardStyle}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '10px',
+          flexWrap: 'wrap',
+          direction: 'rtl',
+          marginBottom: '16px',
+        }}
+      >
+        <div>
+          <h3 style={{ margin: 0 }}>مبيعات الأيام</h3>
+
+          <div
+            style={{
+              marginTop: '5px',
+              color: '#94a3b8',
+              fontSize: '12px',
+              fontWeight: 700,
+            }}
+          >
+            صافي المبيعات لكل يوم في الفترة المحددة
+          </div>
+        </div>
+
+        {rows.length > 0 && (
+          <span
+            style={{
+              color: '#94a3b8',
+              fontSize: '12px',
+              fontWeight: 800,
+            }}
+          >
+            {rows.length} يوم
+          </span>
+        )}
+      </div>
+
+      {rows.length === 0 ? (
+        <div
+          style={{
+            padding: '28px',
+            textAlign: 'center',
+            color: '#94a3b8',
+            fontWeight: 800,
+          }}
+        >
+          لا توجد مبيعات في الفترة
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gap: '12px',
+            maxHeight: '460px',
+            overflowY: 'auto',
+            paddingLeft: '4px',
+          }}
+        >
+          {rows.map((row) => {
+            const total = Number(row.total || 0)
+
+            const width =
+              maxValue > 0 ? Math.max((total / maxValue) * 100, 4) : 4
+
+            return (
+              <div
+                key={row.day}
+                style={{
+                  display: 'grid',
+                  gap: '7px',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '12px',
+                    direction: 'rtl',
+                    fontWeight: 800,
+                  }}
+                >
+                  <span>{formatDateOnly(row.day)}</span>
+
+                  <span style={{ color: '#bfdbfe' }}>{money(total)}</span>
+                </div>
+
+                <div
+                  style={{
+                    height: '12px',
+                    borderRadius: '999px',
+                    background: 'rgba(255,255,255,0.06)',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${width}%`,
+                      height: '100%',
+                      borderRadius: '999px',
+                      background: 'linear-gradient(90deg, #2563eb, #8b5cf6)',
+                      transition: 'width 0.25s ease',
+                    }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
