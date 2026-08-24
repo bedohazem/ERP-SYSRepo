@@ -171,6 +171,18 @@ export default function InvoicesPage() {
     return () => clearTimeout(handle)
   }, [search, dateFrom, dateTo])
 
+  useEffect(() => {
+    if (!message) return
+
+    const timer = window.setTimeout(() => {
+      setMessage('')
+    }, 1800)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [message])
+
   async function openReceipt(saleId: number) {
     try {
       const [receipt, history] = await Promise.all([
