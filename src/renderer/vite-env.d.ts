@@ -48,6 +48,7 @@ type BarcodePrintSettings = {
 type ReceiptPaperSize = '80mm' | '58mm' | 'custom'
 
 type ReceiptPrintSettings = {
+  receipt_silent_print: boolean
   receipt_paper_size: ReceiptPaperSize
   receipt_width_px: number
   receipt_padding_top_px: number
@@ -708,6 +709,11 @@ declare global {
         ok: boolean
         canceled?: boolean
         filePath?: string
+      }>
+
+      printHtmlSilent: (input: { html: string }) => Promise<{
+        ok: boolean
+        message?: string
       }>
 
       getCashDrawerSettings: () => Promise<{

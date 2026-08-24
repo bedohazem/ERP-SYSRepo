@@ -49,6 +49,7 @@ type BarcodePrintSettings = {
 type ReceiptPaperSize = '80mm' | '58mm' | 'custom'
 
 type ReceiptPrintSettings = {
+  receipt_silent_print: boolean
   receipt_paper_size: ReceiptPaperSize
   receipt_width_px: number
   receipt_padding_top_px: number
@@ -59,6 +60,7 @@ type ReceiptPrintSettings = {
 }
 
 const defaultReceiptPrintSettings: ReceiptPrintSettings = {
+  receipt_silent_print: false,
   receipt_paper_size: '80mm',
   receipt_width_px: 245,
   receipt_padding_top_px: 10,
@@ -477,15 +479,22 @@ export default function SettingsPage() {
   ) {
     setReceiptPrintSettings((prev) => ({
       ...prev,
+
       receipt_paper_size:
-        key === 'receipt_paper_size' ? (value as ReceiptPaperSize) : 'custom',
+        key === 'receipt_paper_size'
+          ? (value as ReceiptPaperSize)
+          : key === 'receipt_silent_print'
+            ? prev.receipt_paper_size
+            : 'custom',
+
       [key]: value,
     }))
   }
 
   function applyReceiptPrintPreset(paperSize: ReceiptPaperSize) {
     if (paperSize === '58mm') {
-      setReceiptPrintSettings({
+      setReceiptPrintSettings((prev) => ({
+        ...prev,
         receipt_paper_size: '58mm',
         receipt_width_px: 180,
         receipt_padding_top_px: 8,
@@ -493,12 +502,13 @@ export default function SettingsPage() {
         receipt_padding_bottom_px: 8,
         receipt_padding_left_px: 10,
         receipt_font_size_px: 11,
-      })
+      }))
 
       return
     }
 
-    setReceiptPrintSettings({
+    setReceiptPrintSettings((prev) => ({
+      ...prev,
       receipt_paper_size: '80mm',
       receipt_width_px: 245,
       receipt_padding_top_px: 10,
@@ -506,7 +516,7 @@ export default function SettingsPage() {
       receipt_padding_bottom_px: 10,
       receipt_padding_left_px: 18,
       receipt_font_size_px: 12,
-    })
+    }))
   }
 
   async function handleSaveReceiptPrintSettings() {
@@ -1967,6 +1977,48 @@ export default function SettingsPage() {
                 اضبط مقاس الفاتورة والهوامش حسب الطابعة الحرارية. الإعداد
                 الافتراضي مناسب لطابعة 80mm.
               </p>
+
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  marginTop: '16px',
+                  padding: '14px',
+                  borderRadius: '14px',
+                  border: '1px solid rgba(59,130,246,0.25)',
+                  background: receiptPrintSettings.receipt_silent_print
+                    ? 'rgba(37,99,235,0.12)'
+                    : 'rgba(255,255,255,0.04)',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={receiptPrintSettings.receipt_silent_print}
+                  onChange={(e) =>
+                    setReceiptPrintField(
+                      'receipt_silent_print',
+                      e.target.checked,
+                    )
+                  }
+                />
+
+                <div>
+                  <div style={{ fontWeight: 900 }}>الطباعة الصامتة</div>
+
+                  <div
+                    style={{
+                      color: '#94a3b8',
+                      fontSize: '12px',
+                      marginTop: '4px',
+                    }}
+                  >
+                    تطبع الفاتورة مباشرة على طابعة Windows الافتراضية بدون إظهار
+                    نافذة الطباعة.
+                  </div>
+                </div>
+              </label>
             </div>
 
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>

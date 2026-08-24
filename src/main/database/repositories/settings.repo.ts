@@ -319,6 +319,7 @@ export function saveBarcodePrintSettings(input: BarcodePrintSettings) {
 export type ReceiptPaperSize = '80mm' | '58mm' | 'custom'
 
 export type ReceiptPrintSettings = {
+  receipt_silent_print: boolean
   receipt_paper_size: ReceiptPaperSize
   receipt_width_px: number
   receipt_padding_top_px: number
@@ -329,6 +330,7 @@ export type ReceiptPrintSettings = {
 }
 
 const DEFAULT_RECEIPT_PRINT_SETTINGS: ReceiptPrintSettings = {
+  receipt_silent_print: false,
   receipt_paper_size: '80mm',
   receipt_width_px: 245,
   receipt_padding_top_px: 10,
@@ -358,6 +360,13 @@ function clampNumber(
 
 export function getReceiptPrintSettings(): ReceiptPrintSettings {
   return {
+    receipt_silent_print: toBool(
+      getSetting(
+        'receipt_silent_print',
+        String(DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_silent_print),
+      ),
+      DEFAULT_RECEIPT_PRINT_SETTINGS.receipt_silent_print,
+    ),
     receipt_paper_size: toReceiptPaperSize(
       getSetting(
         'receipt_paper_size',
@@ -429,6 +438,7 @@ export function getReceiptPrintSettings(): ReceiptPrintSettings {
 
 export function saveReceiptPrintSettings(input: ReceiptPrintSettings) {
   const settings: ReceiptPrintSettings = {
+    receipt_silent_print: Boolean(input.receipt_silent_print),
     receipt_paper_size: toReceiptPaperSize(input.receipt_paper_size),
 
     receipt_width_px: clampNumber(
@@ -473,7 +483,7 @@ export function saveReceiptPrintSettings(input: ReceiptPrintSettings) {
       16,
     ),
   }
-
+  saveSetting('receipt_silent_print', String(settings.receipt_silent_print))
   saveSetting('receipt_paper_size', settings.receipt_paper_size)
   saveSetting('receipt_width_px', String(settings.receipt_width_px))
   saveSetting('receipt_padding_top_px', String(settings.receipt_padding_top_px))

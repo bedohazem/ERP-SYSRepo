@@ -350,6 +350,7 @@ export default function SalesPage() {
   } | null>(null)
 
   const [receiptData, setReceiptData] = useState<SaleReceipt | null>(null)
+  const [printingReceipt, setPrintingReceipt] = useState(false)
   const [salesDraftHydrated, setSalesDraftHydrated] = useState(false)
   const [dropdownRect, setDropdownRect] = useState<DropdownRect | null>(null)
 
@@ -866,14 +867,24 @@ export default function SalesPage() {
   }
 
   async function printReceipt() {
-    if (!receiptData) return
+    if (!receiptData || printingReceipt) return
 
-    await printSaleReceiptHtml({
-      receipt: receiptData,
-      returnHistory: [],
-      onBlocked: () =>
-        showMessage('error', 'المتصفح منع فتح نافذة الطباعة', false),
-    })
+    setPrintingReceipt(true)
+
+    try {
+      await printSaleReceiptHtml({
+        receipt: receiptData,
+        returnHistory: [],
+
+        onBlocked: () =>
+          showMessage('error', 'المتصفح منع فتح نافذة الطباعة', false),
+
+        onError: (message) =>
+          showMessage('error', message || 'فشل طباعة الفاتورة', false),
+      })
+    } finally {
+      setPrintingReceipt(false)
+    }
   }
 
   async function handleOpenCashDrawer(
@@ -1123,6 +1134,17 @@ export default function SalesPage() {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'F12') {
+        e.preventDefault()
+        e.stopPropagation()
+
+        if (receiptData && !printingReceipt) {
+          void printReceipt()
+        }
+
+        return
+      }
+
       if (showAddCustomerModal || receiptData) return
 
       if (e.key === 'F8') {
@@ -1195,6 +1217,7 @@ export default function SalesPage() {
     showAddCustomerModal,
     showPaymentModal,
     receiptData,
+    printingReceipt,
     grandTotal,
     redeemPoints,
     loyaltyDiscountValue,
@@ -2384,9 +2407,13 @@ export default function SalesPage() {
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => void printReceipt()}
-                style={primaryButtonStyle}
+                disabled={printingReceipt}
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: printingReceipt ? 0.65 : 1,
+                }}
               >
-                طباعة الفاتورة
+                {printingReceipt ? 'جاري الطباعة...' : 'طباعة الفاتورة F12'}
               </button>
 
               <button

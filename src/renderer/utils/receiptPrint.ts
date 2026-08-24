@@ -18,6 +18,7 @@ export type StoreReceiptInfo = {
 }
 
 export type ReceiptPrintSettings = {
+  receipt_silent_print: boolean
   receipt_paper_size: '80mm' | '58mm' | 'custom'
   receipt_width_px: number
   receipt_padding_top_px: number
@@ -28,6 +29,7 @@ export type ReceiptPrintSettings = {
 }
 
 export const DEFAULT_RECEIPT_PRINT_SETTINGS: ReceiptPrintSettings = {
+  receipt_silent_print: false,
   receipt_paper_size: '80mm',
   receipt_width_px: 245,
   receipt_padding_top_px: 10,
@@ -944,6 +946,7 @@ export async function printSaleReceiptHtml(options: {
   receipt: SaleReceiptData
   returnHistory?: any[]
   onBlocked?: () => void
+  onError?: (message: string) => void
 }) {
   const storeInfo = await loadReceiptStoreInfo()
   const printSettings = await loadReceiptPrintSettings()
@@ -956,6 +959,30 @@ export async function printSaleReceiptHtml(options: {
     qrDataUrl,
     printSettings,
   )
+
+  if (printSettings.receipt_silent_print) {
+    try {
+      const result = await window.api.printHtmlSilent({
+        html,
+      })
+
+      if (!result?.ok) {
+        options.onError?.(result?.message || 'فشل تنفيذ الطباعة الصامتة')
+
+        return false
+      }
+
+      return true
+    } catch (error) {
+      console.error('Silent receipt print failed:', error)
+
+      options.onError?.(
+        error instanceof Error ? error.message : 'فشل تنفيذ الطباعة الصامتة',
+      )
+
+      return false
+    }
+  }
 
   const opened = openReceiptPrintWindow(html)
 

@@ -1,83 +1,162 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import fs from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
 
 type SavePdfInput = {
-  html: string;
-  defaultFileName?: string;
-  landscape?: boolean;
-};
+  html: string
+  defaultFileName?: string
+  landscape?: boolean
+}
+
+type SilentPrintInput = {
+  html: string
+}
 
 function cleanFileName(value: string) {
   const safeName = String(value || 'report.pdf')
     .replace(/[<>:"/\\|?*]+/g, '-')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
 
-  return safeName.toLowerCase().endsWith('.pdf') ? safeName : `${safeName}.pdf`;
+  return safeName.toLowerCase().endsWith('.pdf') ? safeName : `${safeName}.pdf`
 }
 
 export function registerPrintIpc(): void {
   ipcMain.handle('print:save-pdf', async (_event, input: SavePdfInput) => {
-    const html = String(input?.html || '').trim();
+    const html = String(input?.html || '').trim()
 
     if (!html) {
-      throw new Error('لا يوجد محتوى لإنشاء PDF');
+      throw new Error('لا يوجد محتوى لإنشاء PDF')
     }
 
     const defaultFileName = cleanFileName(
-      input.defaultFileName || `inventory-employees-${new Date().toISOString().slice(0, 10)}.pdf`
-    );
+      input.defaultFileName ||
+        `inventory-employees-${new Date().toISOString().slice(0, 10)}.pdf`,
+    )
 
     const saveResult = await dialog.showSaveDialog({
       title: 'حفظ ملف PDF',
       defaultPath: path.join(app.getPath('documents'), defaultFileName),
-      filters: [{ name: 'PDF Files', extensions: ['pdf'] }]
-    });
+      filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+    })
 
     if (saveResult.canceled || !saveResult.filePath) {
-      return { ok: false, canceled: true };
+      return { ok: false, canceled: true }
     }
 
     const filePath = saveResult.filePath.toLowerCase().endsWith('.pdf')
       ? saveResult.filePath
-      : `${saveResult.filePath}.pdf`;
+      : `${saveResult.filePath}.pdf`
 
     const pdfWindow = new BrowserWindow({
       show: false,
       webPreferences: {
         nodeIntegration: false,
-        contextIsolation: true
-      }
-    });
+        contextIsolation: true,
+      },
+    })
 
-    let tempHtmlPath = '';
+    let tempHtmlPath = ''
 
     try {
-      tempHtmlPath = path.join(os.tmpdir(), `erp-inventory-pdf-${Date.now()}.html`);
+      tempHtmlPath = path.join(
+        os.tmpdir(),
+        `erp-inventory-pdf-${Date.now()}.html`,
+      )
 
-      await fs.writeFile(tempHtmlPath, html, 'utf8');
-      await pdfWindow.loadFile(tempHtmlPath);
+      await fs.writeFile(tempHtmlPath, html, 'utf8')
+      await pdfWindow.loadFile(tempHtmlPath)
 
       const pdfBuffer = await pdfWindow.webContents.printToPDF({
         printBackground: true,
         landscape: input.landscape !== false,
-        pageSize: 'A4'
-      });
+        pageSize: 'A4',
+      })
 
-      await fs.writeFile(filePath, pdfBuffer);
+      await fs.writeFile(filePath, pdfBuffer)
 
       return {
         ok: true,
-        filePath
-      };
+        filePath,
+      }
     } finally {
-      pdfWindow.destroy();
+      pdfWindow.destroy()
 
       if (tempHtmlPath) {
-        await fs.unlink(tempHtmlPath).catch(() => {});
+        await fs.unlink(tempHtmlPath).catch(() => {})
       }
     }
-  });
+  })
+
+  ipcMain.handle(
+    'print:silent-html',
+    async (_event, input: SilentPrintInput) => {
+      const html = String(input?.html || '').trim()
+
+      if (!html) {
+        throw new Error('لا يوجد محتوى للطباعة')
+      }
+
+      const printWindow = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      })
+
+      let tempHtmlPath = ''
+
+      try {
+        tempHtmlPath = path.join(
+          os.tmpdir(),
+          `erp-silent-print-${Date.now()}.html`,
+        )
+
+        await fs.writeFile(tempHtmlPath, html, 'utf8')
+
+        await printWindow.loadFile(tempHtmlPath)
+
+        await new Promise<void>((resolve, reject) => {
+          printWindow.webContents.print(
+            {
+              silent: true,
+              printBackground: true,
+            },
+            (success, failureReason) => {
+              if (success) {
+                resolve()
+                return
+              }
+
+              reject(
+                new Error(
+                  failureReason || 'فشل إرسال الفاتورة للطابعة الافتراضية',
+                ),
+              )
+            },
+          )
+        })
+
+        return {
+          ok: true,
+        }
+      } catch (error) {
+        return {
+          ok: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'فشل تنفيذ الطباعة الصامتة',
+        }
+      } finally {
+        printWindow.destroy()
+
+        if (tempHtmlPath) {
+          await fs.unlink(tempHtmlPath).catch(() => {})
+        }
+      }
+    },
+  )
 }
