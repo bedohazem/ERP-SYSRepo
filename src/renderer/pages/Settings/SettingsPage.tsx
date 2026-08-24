@@ -2375,6 +2375,7 @@ export default function SettingsPage() {
 
         {showDeactivateModal && (
           <div
+            className="theme-modal-overlay"
             style={{
               position: 'fixed',
               inset: 0,

@@ -1133,6 +1133,39 @@ export default function SalesPage() {
   }, [productResults.length])
 
   useEffect(() => {
+    function handleEscapeDropdowns(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return
+
+      // الـModals لها أولوية.
+      if (showAddCustomerModal || showPaymentModal || receiptData) {
+        return
+      }
+
+      if (!customerDropdownOpen && productResults.length === 0) {
+        return
+      }
+
+      event.preventDefault()
+
+      setCustomerDropdownOpen(false)
+      setProductResults([])
+      setDropdownRect(null)
+    }
+
+    document.addEventListener('keydown', handleEscapeDropdowns)
+
+    return () => {
+      document.removeEventListener('keydown', handleEscapeDropdowns)
+    }
+  }, [
+    customerDropdownOpen,
+    productResults.length,
+    showAddCustomerModal,
+    showPaymentModal,
+    receiptData,
+  ])
+
+  useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'F12') {
         e.preventDefault()

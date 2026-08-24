@@ -151,6 +151,95 @@ const menuItems: MenuItem[] = [
   },
 ]
 
+function normalizeEscapeLabel(value?: string | null) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function isVisiblePopupElement(element: HTMLElement) {
+  const style = window.getComputedStyle(element)
+
+  return (
+    style.display !== 'none' &&
+    style.visibility !== 'hidden' &&
+    element.getClientRects().length > 0
+  )
+}
+
+function getTopVisiblePopup(selector: string) {
+  const elements = Array.from(
+    document.querySelectorAll<HTMLElement>(selector),
+  ).filter(isVisiblePopupElement)
+
+  let selected: HTMLElement | null = null
+  let selectedZIndex = Number.NEGATIVE_INFINITY
+
+  elements.forEach((element) => {
+    const rawZIndex = Number.parseInt(
+      window.getComputedStyle(element).zIndex,
+      10,
+    )
+
+    const zIndex = Number.isFinite(rawZIndex) ? rawZIndex : 0
+
+    if (!selected || zIndex >= selectedZIndex) {
+      selected = element
+      selectedZIndex = zIndex
+    }
+  })
+
+  return selected
+}
+
+function findEscapeCloseButton(root: HTMLElement) {
+  const buttons = Array.from(
+    root.querySelectorAll<HTMLButtonElement>('button'),
+  ).filter((button) => !button.disabled)
+
+  // الأولوية لزر إغلاق حقيقي أو X
+  const closeButton = buttons.find((button) => {
+    if (button.dataset.escapeClose === 'true') {
+      return true
+    }
+
+    const text = normalizeEscapeLabel(button.textContent)
+    const ariaLabel = normalizeEscapeLabel(button.getAttribute('aria-label'))
+    const title = normalizeEscapeLabel(button.getAttribute('title'))
+
+    return (
+      text === '×' ||
+      text === '✕' ||
+      text === '✖' ||
+      text === 'إغلاق' ||
+      text === 'اغلاق' ||
+      text.toLowerCase() === 'close' ||
+      /^(إغلاق|اغلاق)(?:\s|$)/.test(text) ||
+      /(إغلاق|اغلاق|close)/i.test(ariaLabel) ||
+      /(إغلاق|اغلاق|close)/i.test(title)
+    )
+  })
+
+  if (closeButton) {
+    return closeButton
+  }
+
+  // لو مفيش زر إغلاق، نستخدم زر الإلغاء
+  return (
+    buttons.find((button) => {
+      const text = normalizeEscapeLabel(button.textContent)
+
+      return (
+        text === 'إلغاء' ||
+        text === 'الغاء' ||
+        text === 'رجوع' ||
+        text === 'عودة' ||
+        text.toLowerCase() === 'cancel'
+      )
+    }) || null
+  )
+}
+
 export default function AppShell({
   title,
   children,
@@ -253,6 +342,42 @@ export default function AppShell({
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  useEffect(() => {
+    function handleGlobalEscape(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return
+
+      // لو الصفحة نفسها تعاملت بالفعل مع Esc
+      // زي Payment Modal في المبيعات، منعملش حاجة تانية.
+      if (event.defaultPrevented) return
+
+      const modalOverlay = getTopVisiblePopup('.theme-modal-overlay')
+
+      if (modalOverlay) {
+        const closeButton = findEscapeCloseButton(modalOverlay)
+
+        if (closeButton) {
+          event.preventDefault()
+          closeButton.click()
+        }
+
+        // طالما فيه Modal مفتوح ممنوع نقفل حاجة تحته.
+        return
+      }
+
+      // على الموبايل Esc يقفل القائمة الجانبية.
+      if (isMobile && mobileMenuOpen) {
+        event.preventDefault()
+        setMobileMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('keydown', handleGlobalEscape)
+
+    return () => {
+      document.removeEventListener('keydown', handleGlobalEscape)
+    }
+  }, [isMobile, mobileMenuOpen])
 
   useEffect(() => {
     void window.api

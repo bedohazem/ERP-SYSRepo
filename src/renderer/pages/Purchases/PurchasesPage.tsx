@@ -353,6 +353,31 @@ export default function PurchasesPage() {
   }, [productSearch, categoryFilter])
 
   useEffect(() => {
+    function handleEscapeDropdown(event: globalThis.KeyboardEvent) {
+      if (event.key !== 'Escape') return
+
+      // الـModal الرئيسي هيتعامل معاه AppShell.
+      if (quickProductOpen) return
+
+      if (productResults.length === 0) return
+
+      event.preventDefault()
+
+      setProductResults([])
+
+      requestAnimationFrame(() => {
+        productSearchRef.current?.focus()
+      })
+    }
+
+    document.addEventListener('keydown', handleEscapeDropdown)
+
+    return () => {
+      document.removeEventListener('keydown', handleEscapeDropdown)
+    }
+  }, [quickProductOpen, productResults.length])
+
+  useEffect(() => {
     let mounted = true
 
     window.api
@@ -1201,6 +1226,7 @@ export default function PurchasesPage() {
       </div>
       {quickProductOpen && (
         <div
+          className="theme-modal-overlay"
           style={{
             position: 'fixed',
             inset: 0,
