@@ -86,8 +86,23 @@ export function createExpense(input: CreateExpenseInput) {
   return tx()
 }
 
-export function listExpenses() {
+export function listExpenses(input?: { date_from?: string; date_to?: string }) {
   const db = getDb()
+
+  const where: string[] = []
+  const params: any[] = []
+
+  if (input?.date_from) {
+    where.push(`datetime(e.created_at, 'localtime') >= datetime(?)`)
+    params.push(`${input.date_from} 00:00:00`)
+  }
+
+  if (input?.date_to) {
+    where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`)
+    params.push(`${input.date_to} 23:59:59`)
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
   return db
     .prepare(
@@ -97,18 +112,40 @@ export function listExpenses() {
         u.name AS created_by_name
       FROM expenses e
       LEFT JOIN users u ON u.id = e.created_by
+
+      ${whereSql}
+
       ORDER BY e.id DESC
     `,
     )
-    .all()
+    .all(...params)
 }
 
-export function listExpensesPage(input?: { limit?: number; offset?: number }) {
+export function listExpensesPage(input?: {
+  date_from?: string
+  date_to?: string
+  limit?: number
+  offset?: number
+}) {
   const db = getDb()
 
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
-
   const offset = Math.max(Number(input?.offset || 0), 0)
+
+  const where: string[] = []
+  const params: any[] = []
+
+  if (input?.date_from) {
+    where.push(`datetime(e.created_at, 'localtime') >= datetime(?)`)
+    params.push(`${input.date_from} 00:00:00`)
+  }
+
+  if (input?.date_to) {
+    where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`)
+    params.push(`${input.date_to} 23:59:59`)
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
   const rows = db
     .prepare(
@@ -122,25 +159,29 @@ export function listExpensesPage(input?: { limit?: number; offset?: number }) {
       LEFT JOIN users u
         ON u.id = e.created_by
 
+      ${whereSql}
+
       ORDER BY e.id DESC
 
       LIMIT ?
       OFFSET ?
     `,
     )
-    .all(limit, offset)
+    .all(...params, limit, offset)
 
   const summary = db
     .prepare(
       `
       SELECT
         COUNT(*) AS total,
-        IFNULL(SUM(amount), 0) AS total_amount
+        IFNULL(SUM(e.amount), 0) AS total_amount
 
-      FROM expenses
+      FROM expenses e
+
+      ${whereSql}
     `,
     )
-    .get() as any
+    .get(...params) as any
 
   return {
     rows,

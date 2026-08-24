@@ -11,8 +11,8 @@ export function registerExpenseIpc(): void {
     return createExpense(input)
   })
 
-  ipcMain.handle('expenses:list', () => {
-    return listExpenses()
+  ipcMain.handle('expenses:list', (_, input) => {
+    return listExpenses(input)
   })
 
   ipcMain.handle('expenses:list-page', (_, input) => {

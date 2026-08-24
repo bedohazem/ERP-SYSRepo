@@ -21,6 +21,8 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [expensesTotal, setExpensesTotal] = useState(0)
   const [expensesPage, setExpensesPage] = useState(1)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{
@@ -48,6 +50,8 @@ export default function ExpensesPage() {
       const safePage = Math.max(1, Number(page || 1))
 
       const result = await window.api.getExpensesPage({
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
         limit: SYSTEM_PAGE_SIZE,
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
       })
@@ -73,8 +77,9 @@ export default function ExpensesPage() {
   }
 
   useEffect(() => {
+    setExpensesPage(1)
     void loadExpenses(1)
-  }, [])
+  }, [dateFrom, dateTo])
 
   async function handleSubmit() {
     if (!title.trim()) {
@@ -141,7 +146,10 @@ export default function ExpensesPage() {
     let printExpenses: Expense[] = []
 
     try {
-      const data = await window.api.getExpenses()
+      const data = await window.api.getExpenses({
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+      })
 
       printExpenses = Array.isArray(data) ? data : []
     } catch (error) {
@@ -480,7 +488,9 @@ export default function ExpensesPage() {
                 marginBottom: '4px',
               }}
             >
-              إجمالي المصروفات
+              {dateFrom || dateTo
+                ? 'إجمالي الفترة المحددة'
+                : 'إجمالي المصروفات'}
             </div>
             <strong style={{ color: '#f87171', fontSize: '24px' }}>
               {money(totalExpenses)}
@@ -614,9 +624,95 @@ export default function ExpensesPage() {
           gap: '10px',
         }}
       >
-        <h3 style={{ margin: '0 0 16px', textAlign: 'right' }}>
-          سجل المصروفات
-        </h3>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-end',
+            gap: '12px',
+            flexWrap: 'wrap',
+            direction: 'rtl',
+          }}
+        >
+          <h3 style={{ margin: 0, textAlign: 'right' }}>سجل المصروفات</h3>
+
+          <div
+            style={{
+              display: 'flex',
+              gap: '10px',
+              alignItems: 'flex-end',
+              flexWrap: 'wrap',
+            }}
+          >
+            <label
+              style={{
+                display: 'grid',
+                gap: '5px',
+                color: '#94a3b8',
+                fontSize: '12px',
+                fontWeight: 800,
+              }}
+            >
+              <span>من تاريخ</span>
+
+              <input
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(e) => setDateFrom(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  width: '165px',
+                  direction: 'ltr',
+                  colorScheme: 'dark',
+                }}
+              />
+            </label>
+
+            <label
+              style={{
+                display: 'grid',
+                gap: '5px',
+                color: '#94a3b8',
+                fontSize: '12px',
+                fontWeight: 800,
+              }}
+            >
+              <span>إلى تاريخ</span>
+
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(e) => setDateTo(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  width: '165px',
+                  direction: 'ltr',
+                  colorScheme: 'dark',
+                }}
+              />
+            </label>
+
+            {(dateFrom || dateTo) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setDateFrom('')
+                  setDateTo('')
+                }}
+                style={{
+                  ...primaryButtonStyle,
+                  background: 'rgba(148,163,184,0.12)',
+                  border: '1px solid rgba(148,163,184,0.25)',
+                  color: '#cbd5e1',
+                }}
+              >
+                مسح الفلتر
+              </button>
+            )}
+          </div>
+        </div>
 
         <PaginationBar
           page={expensesPage}

@@ -1035,9 +1035,14 @@ declare global {
       // =========================
       // Expenses
       // =========================
-      getExpenses: () => Promise<any[]>
+      getExpenses: (input?: {
+        date_from?: string
+        date_to?: string
+      }) => Promise<any[]>
 
       getExpensesPage: (input?: {
+        date_from?: string
+        date_to?: string
         limit?: number
         offset?: number
       }) => Promise<{
