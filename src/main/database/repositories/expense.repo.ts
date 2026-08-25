@@ -175,6 +175,16 @@ export function listExpensesPage(input?: {
     )
     .all(...params, limit, offset)
 
+  const totalRow = db
+    .prepare(
+      `
+    SELECT COUNT(*) AS total
+    FROM expenses e
+    ${whereSql}
+    `,
+    )
+    .get(...params) as any
+
   const activeWhereSql = where.length
     ? `${whereSql} AND e.cancelled_at IS NULL`
     : `WHERE e.cancelled_at IS NULL`
@@ -195,7 +205,7 @@ export function listExpensesPage(input?: {
 
   return {
     rows,
-    total: Number(summary?.total || 0),
+    total: Number(totalRow?.total || 0),
     total_amount: Number(summary?.total_amount || 0),
     limit,
     offset,

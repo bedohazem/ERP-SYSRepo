@@ -623,7 +623,7 @@ export default function CashPage() {
       }
     }
 
-    return allMovements
+    return allMovements.filter((item) => !item.cancelled_at)
   }
 
   async function printCashReport() {
