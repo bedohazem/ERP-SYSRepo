@@ -698,7 +698,7 @@ export default function StockCountPage() {
                 <th style={thStyle}>فرق الشراء</th>
                 <th style={thStyle}>المنشئ</th>
                 <th style={thStyle}>التاريخ</th>
-                <th style={thStyle}>إجراء</th>
+                <th style={thStyle}>إجراءات</th>
               </tr>
             </thead>
 
@@ -978,7 +978,7 @@ export default function StockCountPage() {
                   <th style={thStyle}>الفرق</th>
                   <th style={thStyle}>فرق الشراء</th>
                   <th style={thStyle}>ملاحظات</th>
-                  <th style={thStyle}>إجراء</th>
+                  <th style={thStyle}>إجراءات</th>
                 </tr>
               </thead>
 

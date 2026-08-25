@@ -1310,7 +1310,7 @@ export default function CashPage() {
           <table
             style={{
               width: '100%',
-              minWidth: '950px',
+              minWidth: '1150px',
               borderCollapse: 'collapse',
               direction: 'rtl',
             }}
@@ -1324,13 +1324,15 @@ export default function CashPage() {
                 <th style={thStyle}>ملاحظات</th>
                 <th style={thStyle}>المستخدم</th>
                 <th style={thStyle}>التاريخ</th>
+                <th style={thStyle}>الحالة</th>
+                <th style={thStyle}>إجراءات</th>
               </tr>
             </thead>
 
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={9} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
@@ -1342,58 +1344,17 @@ export default function CashPage() {
                     key={item.id}
                     style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                   >
-                    <td style={tdStyle}>
-                      <div
-                        style={{
-                          fontWeight: 800,
-                          opacity: item.cancelled_at ? 0.55 : 1,
-                          textDecoration: item.cancelled_at
-                            ? 'line-through'
-                            : 'none',
-                        }}
-                      >
-                        {getTypeLabel(item.type)}
-                      </div>
-
-                      {item.cancelled_at ? (
-                        <div
-                          style={{
-                            marginTop: '5px',
-                            color: '#f87171',
-                            fontSize: '11px',
-                            fontWeight: 900,
-                          }}
-                        >
-                          ملغاة
-                          {item.cancel_reason ? ` — ${item.cancel_reason}` : ''}
-                        </div>
-                      ) : isAdmin && canCancelCashMovement(item) ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCancelMovementTarget(item)
-
-                            setCancelMovementReason(
-                              item.type === 'transfer'
-                                ? 'إلغاء تحويل بين الحسابات'
-                                : `إلغاء ${getTypeLabel(item.type)}`,
-                            )
-
-                            setCancelMovementPassword('')
-                          }}
-                          style={{
-                            marginTop: '5px',
-                            border: 'none',
-                            background: 'transparent',
-                            color: '#f87171',
-                            padding: 0,
-                            cursor: 'pointer',
-                            fontWeight: 800,
-                          }}
-                        >
-                          إلغاء
-                        </button>
-                      ) : null}
+                    <td
+                      style={{
+                        ...tdStyle,
+                        fontWeight: 800,
+                        opacity: item.cancelled_at ? 0.55 : 1,
+                        textDecoration: item.cancelled_at
+                          ? 'line-through'
+                          : 'none',
+                      }}
+                    >
+                      {getTypeLabel(item.type)}
                     </td>
 
                     <td style={tdStyle}>
@@ -1439,13 +1400,90 @@ export default function CashPage() {
                     <td style={{ ...tdStyle, color: '#94a3b8' }}>
                       {formatDate(item.created_at)}
                     </td>
+                    <td style={tdStyle}>
+                      {item.cancelled_at ? (
+                        <div style={{ display: 'grid', gap: '4px' }}>
+                          <strong
+                            style={{
+                              color: '#f87171',
+                              fontSize: '12px',
+                            }}
+                          >
+                            ملغاة
+                          </strong>
+
+                          {item.cancel_reason && (
+                            <span
+                              style={{
+                                color: '#94a3b8',
+                                fontSize: '11px',
+                              }}
+                            >
+                              {item.cancel_reason}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span
+                          style={{
+                            color: '#34d399',
+                            fontWeight: 900,
+                            fontSize: '12px',
+                          }}
+                        >
+                          فعالة
+                        </span>
+                      )}
+                    </td>
+
+                    <td style={tdStyle}>
+                      {isAdmin && canCancelCashMovement(item) ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCancelMovementTarget(item)
+
+                            setCancelMovementReason(
+                              item.type === 'transfer'
+                                ? 'إلغاء تحويل بين الحسابات'
+                                : `إلغاء ${getTypeLabel(item.type)}`,
+                            )
+
+                            setCancelMovementPassword('')
+                          }}
+                          style={{
+                            height: '34px',
+                            padding: '0 12px',
+                            borderRadius: '9px',
+                            border: '1px solid rgba(239,68,68,0.35)',
+                            background: 'rgba(239,68,68,0.10)',
+                            color: '#fca5a5',
+                            cursor: 'pointer',
+                            fontWeight: 800,
+                          }}
+                        >
+                          إلغاء
+                        </button>
+                      ) : item.cancelled_at ? (
+                        <span style={{ color: '#64748b' }}>—</span>
+                      ) : (
+                        <span
+                          style={{
+                            color: '#64748b',
+                            fontSize: '11px',
+                          }}
+                        >
+                          من المصدر
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
 
               {!loading && movements.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={9}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -1538,33 +1576,6 @@ export default function CashPage() {
               </button>
             </div>
           </div>
-
-          <FinancialCancelModal
-            open={Boolean(cancelMovementTarget)}
-            title={
-              cancelMovementTarget?.type === 'transfer'
-                ? 'إلغاء التحويل'
-                : 'إلغاء حركة الخزنة'
-            }
-            description={
-              cancelMovementTarget
-                ? `${getTypeLabel(cancelMovementTarget.type)} — ${money(cancelMovementTarget.amount)} — ${getPaymentMethodLabel(cancelMovementTarget.payment_method)}`
-                : ''
-            }
-            reason={cancelMovementReason}
-            password={cancelMovementPassword}
-            loading={cancellingMovement}
-            onReasonChange={setCancelMovementReason}
-            onPasswordChange={setCancelMovementPassword}
-            onClose={() => {
-              if (cancellingMovement) return
-
-              setCancelMovementTarget(null)
-              setCancelMovementReason('')
-              setCancelMovementPassword('')
-            }}
-            onConfirm={() => void confirmCancelCashMovement()}
-          />
         </div>
       )}
 
@@ -1857,6 +1868,33 @@ export default function CashPage() {
           </div>
         </div>
       )}
+
+      <FinancialCancelModal
+        open={Boolean(cancelMovementTarget)}
+        title={
+          cancelMovementTarget?.type === 'transfer'
+            ? 'إلغاء التحويل'
+            : 'إلغاء حركة الخزنة'
+        }
+        description={
+          cancelMovementTarget
+            ? `${getTypeLabel(cancelMovementTarget.type)} — ${money(cancelMovementTarget.amount)} — ${getPaymentMethodLabel(cancelMovementTarget.payment_method)}`
+            : ''
+        }
+        reason={cancelMovementReason}
+        password={cancelMovementPassword}
+        loading={cancellingMovement}
+        onReasonChange={setCancelMovementReason}
+        onPasswordChange={setCancelMovementPassword}
+        onClose={() => {
+          if (cancellingMovement) return
+
+          setCancelMovementTarget(null)
+          setCancelMovementReason('')
+          setCancelMovementPassword('')
+        }}
+        onConfirm={() => void confirmCancelCashMovement()}
+      />
     </div>
   )
 }

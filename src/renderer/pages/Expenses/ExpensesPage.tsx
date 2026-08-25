@@ -781,7 +781,7 @@ export default function ExpensesPage() {
           <table
             style={{
               width: '100%',
-              minWidth: '850px',
+              minWidth: '1050px',
               borderCollapse: 'collapse',
               direction: 'rtl',
             }}
@@ -789,18 +789,20 @@ export default function ExpensesPage() {
             <thead>
               <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                 <th style={thStyle}>المصروف</th>
-                <th style={thStyle}>التصنيف</th>
+                {/* <th style={thStyle}>التصنيف</th> */}
                 <th style={thStyle}>المبلغ</th>
                 <th style={thStyle}>الحساب المالي</th>
                 <th style={thStyle}>المستخدم</th>
                 <th style={thStyle}>التاريخ</th>
+                <th style={thStyle}>الحالة</th>
+                <th style={thStyle}>إجراءات</th>
               </tr>
             </thead>
 
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={6} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
@@ -813,47 +815,9 @@ export default function ExpensesPage() {
                     style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                   >
                     <td style={{ ...tdStyle, fontWeight: 700 }}>
-                      <div>{expense.title}</div>
-
-                      {expense.cancelled_at ? (
-                        <div
-                          style={{
-                            marginTop: '5px',
-                            color: '#f87171',
-                            fontSize: '11px',
-                            fontWeight: 900,
-                          }}
-                        >
-                          ملغي
-                          {expense.cancel_reason
-                            ? ` — ${expense.cancel_reason}`
-                            : ''}
-                        </div>
-                      ) : isAdmin ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCancelExpenseTarget(expense)
-                            setCancelExpenseReason(
-                              `إلغاء مصروف: ${expense.title}`,
-                            )
-                            setCancelExpensePassword('')
-                          }}
-                          style={{
-                            marginTop: '6px',
-                            border: 'none',
-                            background: 'transparent',
-                            color: '#f87171',
-                            cursor: 'pointer',
-                            fontWeight: 800,
-                            padding: 0,
-                          }}
-                        >
-                          إلغاء المصروف
-                        </button>
-                      ) : null}
+                      {expense.title}
                     </td>
-                    <td style={tdStyle}>{expense.category || '—'}</td>
+                    {/* <td style={tdStyle}>{expense.category || '—'}</td> */}
                     <td
                       style={{ ...tdStyle, color: '#f87171', fontWeight: 900 }}
                     >
@@ -866,13 +830,77 @@ export default function ExpensesPage() {
                     <td style={{ ...tdStyle, color: '#94a3b8' }}>
                       {formatDate(expense.created_at)}
                     </td>
+                    <td style={tdStyle}>
+                      {expense.cancelled_at ? (
+                        <div style={{ display: 'grid', gap: '4px' }}>
+                          <strong
+                            style={{
+                              color: '#f87171',
+                              fontSize: '12px',
+                            }}
+                          >
+                            ملغي
+                          </strong>
+
+                          {expense.cancel_reason && (
+                            <span
+                              style={{
+                                color: '#94a3b8',
+                                fontSize: '11px',
+                              }}
+                            >
+                              {expense.cancel_reason}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span
+                          style={{
+                            color: '#34d399',
+                            fontWeight: 900,
+                            fontSize: '12px',
+                          }}
+                        >
+                          فعال
+                        </span>
+                      )}
+                    </td>
+
+                    <td style={tdStyle}>
+                      {isAdmin && !expense.cancelled_at ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCancelExpenseTarget(expense)
+                            setCancelExpenseReason(
+                              `إلغاء مصروف: ${expense.title}`,
+                            )
+                            setCancelExpensePassword('')
+                          }}
+                          style={{
+                            height: '34px',
+                            padding: '0 12px',
+                            borderRadius: '9px',
+                            border: '1px solid rgba(239,68,68,0.35)',
+                            background: 'rgba(239,68,68,0.10)',
+                            color: '#fca5a5',
+                            cursor: 'pointer',
+                            fontWeight: 800,
+                          }}
+                        >
+                          إلغاء
+                        </button>
+                      ) : (
+                        <span style={{ color: '#64748b' }}>—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
 
               {!loading && expenses.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',

@@ -926,7 +926,7 @@ export default function LiabilitiesPage() {
                       {money(payment.amount)}
                     </strong>
 
-                    {payment.cancelled_at ? (
+                    {payment.cancelled_at && (
                       <span
                         style={{
                           color: '#f87171',
@@ -936,26 +936,9 @@ export default function LiabilitiesPage() {
                       >
                         ملغاة
                       </span>
-                    ) : isAdmin ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCancelPaymentTarget(payment)
-                          setCancelPaymentReason('إلغاء دفعة التزام')
-                          setCancelPaymentPassword('')
-                        }}
-                        style={{
-                          border: 'none',
-                          background: 'transparent',
-                          color: '#f87171',
-                          cursor: 'pointer',
-                          fontWeight: 800,
-                        }}
-                      >
-                        إلغاء الدفعة
-                      </button>
-                    ) : null}
+                    )}
                   </div>
+
                   <span
                     style={{
                       color: isLight ? '#64748b' : '#94a3b8',
@@ -979,6 +962,51 @@ export default function LiabilitiesPage() {
                       سبب الإلغاء: {payment.cancel_reason}
                     </span>
                   )}
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '10px',
+                      paddingTop: '6px',
+                      borderTop: '1px solid rgba(148,163,184,0.12)',
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: '11px',
+                        fontWeight: 900,
+                      }}
+                    >
+                      إجراءات
+                    </span>
+
+                    {isAdmin && !payment.cancelled_at ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCancelPaymentTarget(payment)
+                          setCancelPaymentReason('إلغاء دفعة التزام')
+                          setCancelPaymentPassword('')
+                        }}
+                        style={{
+                          border: '1px solid rgba(239,68,68,0.30)',
+                          background: 'rgba(239,68,68,0.08)',
+                          color: '#fca5a5',
+                          borderRadius: '8px',
+                          height: '32px',
+                          padding: '0 10px',
+                          cursor: 'pointer',
+                          fontWeight: 800,
+                        }}
+                      >
+                        إلغاء الدفعة
+                      </button>
+                    ) : (
+                      <span style={{ color: '#64748b' }}>—</span>
+                    )}
+                  </div>
                 </div>
               ))}
 
