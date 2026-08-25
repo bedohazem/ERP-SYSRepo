@@ -450,6 +450,22 @@ export function getDb(): Database.Database {
 
     safeAddColumn(db, 'cash_movements', 'business_date', 'TEXT')
 
+    safeAddColumn(db, 'cash_movements', 'cancelled_at', 'TEXT')
+    safeAddColumn(db, 'cash_movements', 'cancelled_by', 'INTEGER')
+    safeAddColumn(db, 'cash_movements', 'cancel_reason', 'TEXT')
+
+    safeAddColumn(db, 'expenses', 'cancelled_at', 'TEXT')
+    safeAddColumn(db, 'expenses', 'cancelled_by', 'INTEGER')
+    safeAddColumn(db, 'expenses', 'cancel_reason', 'TEXT')
+
+    safeAddColumn(db, 'store_liability_payments', 'cancelled_at', 'TEXT')
+    safeAddColumn(db, 'store_liability_payments', 'cancelled_by', 'INTEGER')
+    safeAddColumn(db, 'store_liability_payments', 'cancel_reason', 'TEXT')
+
+    safeAddColumn(db, 'store_liabilities', 'cancelled_at', 'TEXT')
+    safeAddColumn(db, 'store_liabilities', 'cancelled_by', 'INTEGER')
+    safeAddColumn(db, 'store_liabilities', 'cancel_reason', 'TEXT')
+
     db.prepare(
       `
       UPDATE cash_movements

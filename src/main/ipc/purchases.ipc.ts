@@ -1,5 +1,5 @@
-import { ipcMain } from 'electron';
-import { getActorId, logAction } from './activity-helper';
+import { ipcMain } from 'electron'
+import { getActorId, logAction } from './activity-helper'
 import {
   createPurchaseInvoice,
   getPurchaseInvoice,
@@ -9,12 +9,14 @@ import {
   cancelPurchaseInvoice,
   createPurchaseReturn,
   listPurchaseReturns,
-  getPurchaseReturn
-} from '../database/repositories/purchases.repo';
+  getPurchaseReturn,
+} from '../database/repositories/purchases.repo'
+
+import { requireAdminPassword } from './permission-helper'
 
 export function registerPurchasesIpc(): void {
   ipcMain.handle('purchases:create', (_, input) => {
-    const result = createPurchaseInvoice(input);
+    const result = createPurchaseInvoice(input)
 
     logAction({
       actor_id: getActorId(input),
@@ -27,27 +29,28 @@ export function registerPurchasesIpc(): void {
         paid_amount: result.paid_amount,
         remaining_amount: result.remaining_amount,
         payment_status: result.payment_status,
-        items_count: input.items?.length || 0
-      }
-    });
+        items_count: input.items?.length || 0,
+      },
+    })
 
-    return result;
-  });
+    return result
+  })
 
   ipcMain.handle('purchases:list', (_, input) => {
-    return listPurchaseInvoices(input);
-  });
+    return listPurchaseInvoices(input)
+  })
 
   ipcMain.handle('purchases:get-by-id', (_, purchaseId: number) => {
-    return getPurchaseInvoice(Number(purchaseId));
-  });
+    return getPurchaseInvoice(Number(purchaseId))
+  })
 
   ipcMain.handle('purchases:cancel', (_, input) => {
+    requireAdminPassword(getActorId(input), input?.admin_password)
     const result = cancelPurchaseInvoice({
       purchase_id: Number(input.purchase_id),
       reason: input.reason || '',
-      actor_id: getActorId(input)
-    });
+      actor_id: getActorId(input),
+    })
 
     logAction({
       actor_id: getActorId(input),
@@ -60,19 +63,19 @@ export function registerPurchasesIpc(): void {
         reversed_total: result.reversed_total,
         reversed_paid: result.reversed_paid,
         reversed_remaining: result.reversed_remaining,
-        items_count: result.items_count
-      }
-    });
+        items_count: result.items_count,
+      },
+    })
 
-    return result;
-  });
+    return result
+  })
 
   ipcMain.handle('purchases:returns:create', (_, input) => {
     const result = createPurchaseReturn({
       ...input,
       purchase_id: Number(input.purchase_id),
-      actor_id: getActorId(input)
-    });
+      actor_id: getActorId(input),
+    })
 
     logAction({
       actor_id: getActorId(input),
@@ -84,26 +87,26 @@ export function registerPurchasesIpc(): void {
         supplier_id: result.supplier_id,
         total_amount: result.total_amount,
         items_count: input.items?.length || 0,
-        notes: input.notes || ''
-      }
-    });
+        notes: input.notes || '',
+      },
+    })
 
-    return result;
-  });
+    return result
+  })
 
   ipcMain.handle('purchases:returns:list', (_, input) => {
-    return listPurchaseReturns(input);
-  });
+    return listPurchaseReturns(input)
+  })
 
   ipcMain.handle('purchases:returns:get-by-id', (_, returnId: number) => {
-    return getPurchaseReturn(Number(returnId));
-  });
+    return getPurchaseReturn(Number(returnId))
+  })
 
   ipcMain.handle('suppliers:record-payment', (_, input) => {
-    return recordSupplierPayment(input);
-  });
+    return recordSupplierPayment(input)
+  })
 
   ipcMain.handle('suppliers:statement', (_, supplierId: number) => {
-    return getSupplierStatement(Number(supplierId));
-  });
+    return getSupplierStatement(Number(supplierId))
+  })
 }

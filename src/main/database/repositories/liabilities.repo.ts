@@ -274,6 +274,7 @@ export function listLiabilities(input?: { search?: string; status?: string }) {
           SELECT COUNT(*)
           FROM store_liability_payments p
           WHERE p.liability_id = l.id
+            AND p.cancelled_at IS NULL
         ) AS payments_count
       FROM store_liabilities l
       LEFT JOIN users u ON u.id = l.created_by
@@ -332,6 +333,7 @@ export function listLiabilitiesPage(input?: {
           SELECT COUNT(*)
           FROM store_liability_payments p
           WHERE p.liability_id = l.id
+            AND p.cancelled_at IS NULL
         ) AS payments_count
 
       FROM store_liabilities l
@@ -395,6 +397,7 @@ export function getLiabilityStatement(liabilityId: number) {
 
 export function cancelLiability(input: {
   id: number
+  reason?: string | null
   actor_id?: number | null
 }) {
   const db = getDb()
@@ -406,11 +409,20 @@ export function cancelLiability(input: {
 
   db.prepare(
     `
-    UPDATE store_liabilities
-    SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
+  UPDATE store_liabilities
+  SET
+    status = 'cancelled',
+    cancelled_at = CURRENT_TIMESTAMP,
+    cancelled_by = ?,
+    cancel_reason = ?,
+    updated_at = CURRENT_TIMESTAMP
+  WHERE id = ?
   `,
-  ).run(liability.id)
+  ).run(
+    input.actor_id ?? null,
+    String(input.reason || '').trim() || 'إلغاء الالتزام',
+    liability.id,
+  )
 
   createActivityLog({
     user_id: input.actor_id ?? null,
@@ -447,6 +459,8 @@ export function getLiabilitiesSummary(input?: {
     where.push(`datetime(p.created_at, 'localtime') <= datetime(?)`)
     params.push(`${input.date_to} 23:59:59`)
   }
+
+  where.push(`p.cancelled_at IS NULL`)
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
@@ -498,4 +512,163 @@ export function getLiabilitiesSummary(input?: {
     open_count: Number(totalsRow.open_count || 0),
     paid_count: Number(totalsRow.paid_count || 0),
   }
+}
+
+export function cancelLiabilityPayment(input: {
+  payment_id: number
+  reason?: string | null
+  actor_id?: number | null
+}) {
+  const db = getDb()
+
+  const paymentId = Number(input.payment_id)
+
+  const payment = db
+    .prepare(
+      `
+      SELECT
+        p.*,
+        l.total_amount,
+        l.status AS liability_status
+      FROM store_liability_payments p
+      JOIN store_liabilities l
+        ON l.id = p.liability_id
+      WHERE p.id = ?
+      LIMIT 1
+      `,
+    )
+    .get(paymentId) as any
+
+  if (!payment) {
+    throw new Error('دفعة الالتزام غير موجودة')
+  }
+
+  if (payment.cancelled_at) {
+    throw new Error('الدفعة ملغاة بالفعل')
+  }
+
+  if (payment.liability_status === 'cancelled') {
+    throw new Error('الالتزام نفسه ملغي')
+  }
+
+  const cashMovement = db
+    .prepare(
+      `
+      SELECT
+        cm.*,
+        COALESCE(
+          NULLIF(cm.business_date, ''),
+          date(cm.created_at, 'localtime')
+        ) AS accounting_date
+      FROM cash_movements cm
+      WHERE cm.type = 'liability_payment'
+        AND cm.reference_type = 'store_liability_payment'
+        AND cm.reference_id = ?
+      ORDER BY cm.id DESC
+      LIMIT 1
+      `,
+    )
+    .get(paymentId) as any
+
+  if (cashMovement && !cashMovement.cancelled_at) {
+    const closing = db
+      .prepare(
+        `
+        SELECT id
+        FROM cash_day_closings
+        WHERE business_date = ?
+        LIMIT 1
+        `,
+      )
+      .get(cashMovement.accounting_date)
+
+    if (closing) {
+      throw new Error(
+        `لا يمكن إلغاء الدفعة لأن يوم ${cashMovement.accounting_date} تم تقفيله`,
+      )
+    }
+  }
+
+  const reason = String(input.reason || '').trim() || 'إلغاء دفعة التزام'
+
+  const tx = db.transaction(() => {
+    db.prepare(
+      `
+      UPDATE store_liability_payments
+      SET
+        cancelled_at = CURRENT_TIMESTAMP,
+        cancelled_by = ?,
+        cancel_reason = ?
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, reason, paymentId)
+
+    if (cashMovement && !cashMovement.cancelled_at) {
+      db.prepare(
+        `
+        UPDATE cash_movements
+        SET
+          cancelled_at = CURRENT_TIMESTAMP,
+          cancelled_by = ?,
+          cancel_reason = ?
+        WHERE id = ?
+        `,
+      ).run(input.actor_id ?? null, reason, cashMovement.id)
+    }
+
+    const totals = db
+      .prepare(
+        `
+        SELECT IFNULL(SUM(amount), 0) AS paid
+        FROM store_liability_payments
+        WHERE liability_id = ?
+          AND cancelled_at IS NULL
+        `,
+      )
+      .get(payment.liability_id) as any
+
+    const nextPaid = Number(totals?.paid || 0)
+
+    const nextRemaining = Math.max(
+      0,
+      Number(payment.total_amount || 0) - nextPaid,
+    )
+
+    const nextStatus = nextRemaining <= 0 ? 'paid' : 'open'
+
+    db.prepare(
+      `
+      UPDATE store_liabilities
+      SET
+        paid_amount = ?,
+        remaining_amount = ?,
+        status = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+      `,
+    ).run(nextPaid, nextRemaining, nextStatus, payment.liability_id)
+
+    createActivityLog({
+      user_id: input.actor_id ?? null,
+      action: 'liability_payment_cancelled',
+      entity: 'store_liability_payments',
+      entity_id: paymentId,
+      details: JSON.stringify({
+        liability_id: payment.liability_id,
+        amount: payment.amount,
+        reason,
+      }),
+    })
+
+    return {
+      success: true,
+      liability_id: payment.liability_id,
+      payment_id: paymentId,
+      paid_amount: nextPaid,
+      remaining_amount: nextRemaining,
+      status: nextStatus,
+    }
+  })
+
+  return tx()
 }

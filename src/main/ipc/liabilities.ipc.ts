@@ -6,8 +6,11 @@ import {
   getLiabilityStatement,
   listLiabilities,
   listLiabilitiesPage,
+  cancelLiabilityPayment,
   recordLiabilityPayment,
 } from '../database/repositories/liabilities.repo'
+
+import { requireAdmin, requireAdminPassword } from './permission-helper'
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'حدث خطأ غير متوقع'
@@ -50,6 +53,7 @@ export function registerLiabilitiesIpc(): void {
 
   ipcMain.handle('liabilities:cancel', (_, input) => {
     try {
+      requireAdmin(input?.actor_id)
       return cancelLiability(input)
     } catch (error) {
       return {
@@ -61,5 +65,22 @@ export function registerLiabilitiesIpc(): void {
 
   ipcMain.handle('liabilities:summary', (_, input) => {
     return getLiabilitiesSummary(input)
+  })
+
+  ipcMain.handle('liabilities:cancel-payment', (_, input) => {
+    try {
+      requireAdminPassword(input?.actor_id, input?.admin_password)
+
+      return cancelLiabilityPayment({
+        payment_id: Number(input?.payment_id),
+        reason: input?.reason,
+        actor_id: input?.actor_id ?? null,
+      })
+    } catch (error) {
+      return {
+        success: false,
+        message: getErrorMessage(error),
+      }
+    }
   })
 }

@@ -153,6 +153,8 @@ contextBridge.exposeInMainWorld('api', {
   getCashMovements: (input) => ipcRenderer.invoke('cash:list', input),
   createCashMovement: (input) =>
     ipcRenderer.invoke('cash:create-movement', input),
+  cancelCashMovement: (input) =>
+    ipcRenderer.invoke('cash:cancel-movement', input),
   createCashTransfer: (input) => ipcRenderer.invoke('cash:transfer', input),
 
   getCashDayClosePreview: (businessDate) =>
@@ -161,7 +163,8 @@ contextBridge.exposeInMainWorld('api', {
   closeCashDay: (input) => ipcRenderer.invoke('cash:close-day', input),
 
   createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
-  getExpenses: () => ipcRenderer.invoke('expenses:list'),
+  cancelExpense: (input) => ipcRenderer.invoke('expenses:cancel', input),
+  getExpenses: (input) => ipcRenderer.invoke('expenses:list', input),
   getExpensesPage: (input) => ipcRenderer.invoke('expenses:list-page', input),
 
   getActivityLogs: (input) => ipcRenderer.invoke('activity:list', input),
@@ -197,6 +200,8 @@ contextBridge.exposeInMainWorld('api', {
   getLiabilityStatement: (liabilityId) =>
     ipcRenderer.invoke('liabilities:statement', liabilityId),
   cancelLiability: (input) => ipcRenderer.invoke('liabilities:cancel', input),
+  cancelLiabilityPayment: (input) =>
+    ipcRenderer.invoke('liabilities:cancel-payment', input),
   getLiabilitiesSummary: (input) =>
     ipcRenderer.invoke('liabilities:summary', input),
 

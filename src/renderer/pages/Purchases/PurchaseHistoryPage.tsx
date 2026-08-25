@@ -98,6 +98,7 @@ export default function PurchaseHistoryPage() {
   const [cancelPurchaseTarget, setCancelPurchaseTarget] =
     useState<PurchaseRow | null>(null)
   const [cancelReason, setCancelReason] = useState('')
+  const [cancelAdminPassword, setCancelAdminPassword] = useState('')
   const [cancellingPurchase, setCancellingPurchase] = useState(false)
 
   const currentTotal = activeTab === 'purchases' ? total : returnTotal
@@ -282,11 +283,15 @@ export default function PurchaseHistoryPage() {
 
     setCancelPurchaseTarget(row)
     setCancelReason('إلغاء فاتورة شراء')
+    setCancelAdminPassword('')
   }
 
   async function saveCancelPurchase() {
     if (!cancelPurchaseTarget || cancellingPurchase) return
-
+    if (!cancelAdminPassword.trim()) {
+      showMessage('اكتب كلمة مرور المدير')
+      return
+    }
     setCancellingPurchase(true)
 
     try {
@@ -294,12 +299,14 @@ export default function PurchaseHistoryPage() {
         purchase_id: cancelPurchaseTarget.id,
         reason: cancelReason.trim() || 'إلغاء فاتورة شراء',
         actor_id: currentUser?.id,
+        admin_password: cancelAdminPassword,
       })
 
       showMessage(`تم إلغاء الفاتورة وخصم ${result.items_count} صنف من المخزون`)
 
       const cancelledId = cancelPurchaseTarget.id
       setCancelPurchaseTarget(null)
+      setCancelAdminPassword('')
       setCancelReason('')
 
       await loadPurchases(purchasePage)
@@ -1471,6 +1478,17 @@ export default function PurchaseHistoryPage() {
                   style={inputStyle}
                   autoFocus
                 />
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>كلمة مرور المدير</label>
+
+                  <input
+                    type="password"
+                    value={cancelAdminPassword}
+                    onChange={(e) => setCancelAdminPassword(e.target.value)}
+                    placeholder="كلمة مرور المدير"
+                    style={inputStyle}
+                  />
+                </div>
               </div>
             </div>
 

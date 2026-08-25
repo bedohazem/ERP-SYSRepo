@@ -126,6 +126,7 @@ function getAccountBalance(account: string) {
         IFNULL(SUM(CASE WHEN direction = 'out' THEN amount ELSE 0 END), 0) AS total_out
       FROM cash_movements
       WHERE payment_method = ?
+       AND cancelled_at IS NULL
     `,
     )
     .get(safeAccount) as { total_in: number; total_out: number } | undefined
@@ -150,8 +151,13 @@ function getAccountLabel(account: CashAccountKey) {
   }
 }
 
-function buildCashWhere(input?: CashFilterInput) {
-  const where: string[] = []
+function buildCashWhere(
+  input?: CashFilterInput,
+  options?: {
+    activeOnly?: boolean
+  },
+) {
+  const where: string[] = options?.activeOnly ? [`cm.cancelled_at IS NULL`] : []
   const params: any[] = []
 
   if (input?.date_from) {
@@ -306,7 +312,9 @@ export function createCashMovement(input: CashMovementInput) {
 export function getCashSummary(input?: CashFilterInput) {
   const db = getDb()
   normalizeLegacyCashMovementAccounts()
-  const { whereSql, params } = buildCashWhere(input)
+  const { whereSql, params } = buildCashWhere(input, {
+    activeOnly: true,
+  })
 
   const row = db
     .prepare(
@@ -517,6 +525,7 @@ export function getCashDayClosePreview(businessDateInput: string) {
         ) AS balance
       FROM cash_movements
       WHERE payment_method = 'store_cash'
+      AND cancelled_at IS NULL
         AND COALESCE(
           NULLIF(business_date, ''),
           date(created_at, 'localtime')
@@ -552,6 +561,7 @@ export function getCashDayClosePreview(businessDateInput: string) {
       FROM cash_movements
 
       WHERE payment_method = 'store_cash'
+      AND cancelled_at IS NULL
         AND COALESCE(
           NULLIF(business_date, ''),
           date(created_at, 'localtime')
@@ -576,6 +586,7 @@ export function getCashDayClosePreview(businessDateInput: string) {
       FROM cash_movements
 
       WHERE payment_method = 'store_cash'
+      AND cancelled_at IS NULL
         AND COALESCE(
           NULLIF(business_date, ''),
           date(created_at, 'localtime')
@@ -772,6 +783,222 @@ export function closeCashDay(input: CashDayCloseInput) {
       transfer_amount: transferAmount,
 
       target_account: transferAmount > 0 ? targetAccount : null,
+    }
+  })
+
+  return tx()
+}
+
+export function cancelCashMovement(input: {
+  id: number
+  reason?: string | null
+  actor_id?: number | null
+}) {
+  const db = getDb()
+
+  normalizeLegacyCashMovementAccounts()
+
+  const movementId = Number(input.id)
+
+  const movement = db
+    .prepare(
+      `
+      SELECT
+        cm.*,
+        COALESCE(
+          NULLIF(cm.business_date, ''),
+          date(cm.created_at, 'localtime')
+        ) AS accounting_date
+      FROM cash_movements cm
+      WHERE cm.id = ?
+      LIMIT 1
+      `,
+    )
+    .get(movementId) as any
+
+  if (!movement) {
+    throw new Error('حركة الخزنة غير موجودة')
+  }
+
+  if (movement.cancelled_at) {
+    throw new Error('حركة الخزنة ملغاة بالفعل')
+  }
+
+  const isManual =
+    movement.reference_type === 'manual' &&
+    (movement.type === 'deposit' || movement.type === 'withdraw')
+
+  const isTransfer =
+    movement.type === 'transfer' && movement.reference_type === 'cash_transfer'
+
+  if (!isManual && !isTransfer) {
+    throw new Error('هذه الحركة مرتبطة بعملية أخرى ويجب إلغاؤها من مصدرها')
+  }
+
+  const reason = String(input.reason || '').trim() || 'إلغاء حركة خزنة'
+
+  function ensureOpenDate(row: any) {
+    const accountingDate = String(row.accounting_date || '')
+
+    const closing = db
+      .prepare(
+        `
+        SELECT id
+        FROM cash_day_closings
+        WHERE business_date = ?
+        LIMIT 1
+        `,
+      )
+      .get(accountingDate)
+
+    if (closing) {
+      throw new Error(
+        `لا يمكن إلغاء حركة تخص يوم ${accountingDate} لأنه تم تقفيله`,
+      )
+    }
+  }
+
+  if (isManual) {
+    ensureOpenDate(movement)
+
+    if (movement.direction === 'in') {
+      const currentBalance = getAccountBalance(movement.payment_method)
+
+      if (currentBalance + 0.0001 < Number(movement.amount || 0)) {
+        throw new Error(
+          'لا يمكن إلغاء الإيداع لأن الرصيد الحالي لا يكفي لعكس الحركة',
+        )
+      }
+    }
+
+    const tx = db.transaction(() => {
+      db.prepare(
+        `
+        UPDATE cash_movements
+        SET
+          cancelled_at = CURRENT_TIMESTAMP,
+          cancelled_by = ?,
+          cancel_reason = ?
+        WHERE id = ?
+        `,
+      ).run(input.actor_id ?? null, reason, movement.id)
+
+      createActivityLog({
+        user_id: input.actor_id ?? null,
+        action: 'cash_movement_cancelled',
+        entity: 'cash_movements',
+        entity_id: movement.id,
+        details: JSON.stringify({
+          type: movement.type,
+          direction: movement.direction,
+          amount: movement.amount,
+          payment_method: movement.payment_method,
+          reason,
+        }),
+      })
+
+      return {
+        success: true,
+        cancelled_ids: [movement.id],
+      }
+    })
+
+    return tx()
+  }
+
+  const outId =
+    movement.direction === 'in'
+      ? Number(movement.reference_id || 0)
+      : Number(movement.id)
+
+  const outMovement = db
+    .prepare(
+      `
+      SELECT
+        cm.*,
+        COALESCE(
+          NULLIF(cm.business_date, ''),
+          date(cm.created_at, 'localtime')
+        ) AS accounting_date
+      FROM cash_movements cm
+      WHERE cm.id = ?
+        AND cm.type = 'transfer'
+        AND cm.direction = 'out'
+        AND cm.reference_type = 'cash_transfer'
+      LIMIT 1
+      `,
+    )
+    .get(outId) as any
+
+  const inMovement = db
+    .prepare(
+      `
+      SELECT
+        cm.*,
+        COALESCE(
+          NULLIF(cm.business_date, ''),
+          date(cm.created_at, 'localtime')
+        ) AS accounting_date
+      FROM cash_movements cm
+      WHERE cm.type = 'transfer'
+        AND cm.direction = 'in'
+        AND cm.reference_type = 'cash_transfer'
+        AND cm.reference_id = ?
+      ORDER BY cm.id ASC
+      LIMIT 1
+      `,
+    )
+    .get(outId) as any
+
+  if (!outMovement || !inMovement) {
+    throw new Error('تعذر العثور على طرفي التحويل')
+  }
+
+  if (outMovement.cancelled_at || inMovement.cancelled_at) {
+    throw new Error('التحويل ملغي بالفعل')
+  }
+
+  ensureOpenDate(outMovement)
+  ensureOpenDate(inMovement)
+
+  const destinationBalance = getAccountBalance(inMovement.payment_method)
+
+  if (destinationBalance + 0.0001 < Number(inMovement.amount || 0)) {
+    throw new Error(
+      'لا يمكن إلغاء التحويل لأن رصيد الحساب المستلم لا يكفي لعكسه',
+    )
+  }
+
+  const tx = db.transaction(() => {
+    db.prepare(
+      `
+      UPDATE cash_movements
+      SET
+        cancelled_at = CURRENT_TIMESTAMP,
+        cancelled_by = ?,
+        cancel_reason = ?
+      WHERE id IN (?, ?)
+      `,
+    ).run(input.actor_id ?? null, reason, outMovement.id, inMovement.id)
+
+    createActivityLog({
+      user_id: input.actor_id ?? null,
+      action: 'cash_transfer_cancelled',
+      entity: 'cash_movements',
+      entity_id: outMovement.id,
+      details: JSON.stringify({
+        out_id: outMovement.id,
+        in_id: inMovement.id,
+        amount: outMovement.amount,
+        from_account: outMovement.payment_method,
+        to_account: inMovement.payment_method,
+        reason,
+      }),
+    })
+
+    return {
+      success: true,
+      cancelled_ids: [outMovement.id, inMovement.id],
     }
   })
 

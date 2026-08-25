@@ -867,6 +867,7 @@ declare global {
         purchase_id: number
         reason?: string
         actor_id?: number
+        admin_password: string
       }) => Promise<{
         ok: boolean
         purchase_id: number
@@ -1038,6 +1039,17 @@ declare global {
         target_account: string | null
       }>
 
+      cancelCashMovement: (input: {
+        id: number
+        reason?: string | null
+        actor_id?: number | null
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+        cancelled_ids?: number[]
+      }>
+
       // =========================
       // Expenses
       // =========================
@@ -1059,6 +1071,16 @@ declare global {
         offset: number
       }>
       createExpense: (input: any) => Promise<any>
+
+      cancelExpense: (input: {
+        id: number
+        reason?: string | null
+        actor_id?: number | null
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+      }>
 
       // =========================
       // Activation Code
@@ -1269,6 +1291,21 @@ declare global {
         date_from?: string
         date_to?: string
       }) => Promise<any>
+
+      cancelLiabilityPayment: (input: {
+        payment_id: number
+        reason?: string | null
+        actor_id?: number | null
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+        liability_id?: number
+        payment_id?: number
+        paid_amount?: number
+        remaining_amount?: number
+        status?: string
+      }>
     }
   }
 

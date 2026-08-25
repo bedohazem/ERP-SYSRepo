@@ -6,8 +6,10 @@ import {
   createCashTransfer,
   getCashDayClosePreview,
   getCashSummary,
+  cancelCashMovement,
   listCashMovements,
 } from '../database/repositories/cash.repo'
+import { requireAdminPassword } from './permission-helper'
 
 export function registerCashIpc(): void {
   ipcMain.handle('cash:summary', (_, input) => {
@@ -32,5 +34,23 @@ export function registerCashIpc(): void {
 
   ipcMain.handle('cash:close-day', (_, input) => {
     return closeCashDay(input)
+  })
+
+  ipcMain.handle('cash:cancel-movement', (_, input) => {
+    try {
+      requireAdminPassword(input?.actor_id, input?.admin_password)
+
+      return cancelCashMovement({
+        id: Number(input?.id),
+        reason: input?.reason,
+        actor_id: input?.actor_id ?? null,
+      })
+    } catch (error) {
+      return {
+        success: false,
+        message:
+          error instanceof Error ? error.message : 'تعذر إلغاء حركة الخزنة',
+      }
+    }
   })
 }

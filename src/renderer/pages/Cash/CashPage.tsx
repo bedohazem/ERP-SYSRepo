@@ -5,6 +5,7 @@ import {
   DAY_CLOSE_TARGET_OPTIONS,
   getPaymentMethodLabel,
 } from '../../utils/payment-method'
+import FinancialCancelModal from '../../components/FinancialCancelModal'
 
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 
@@ -29,6 +30,11 @@ type CashMovement = {
   notes: string
   created_at: string
   created_by_name?: string
+  reference_id?: number | null
+  reference_type?: string | null
+  cancelled_at?: string | null
+  cancelled_by?: number | null
+  cancel_reason?: string | null
 }
 
 type CashDayClosePreview = {
@@ -48,11 +54,19 @@ type CashDayClosePreview = {
 
 export default function CashPage() {
   const currentUser = useAuthStore((s) => s.user)
-
+  const isAdmin = currentUser?.role === 'admin'
   const [summary, setSummary] = useState<CashSummary | null>(null)
   const [movements, setMovements] = useState<CashMovement[]>([])
   const [movementsTotal, setMovementsTotal] = useState(0)
   const [movementsPage, setMovementsPage] = useState(1)
+  const [cancelMovementTarget, setCancelMovementTarget] =
+    useState<CashMovement | null>(null)
+
+  const [cancelMovementReason, setCancelMovementReason] = useState('')
+
+  const [cancelMovementPassword, setCancelMovementPassword] = useState('')
+
+  const [cancellingMovement, setCancellingMovement] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{
@@ -108,6 +122,27 @@ export default function CashPage() {
   const [transferAmount, setTransferAmount] = useState('')
   const [transferNotes, setTransferNotes] = useState('')
   const [transferring, setTransferring] = useState(false)
+
+  function canCancelCashMovement(item: CashMovement) {
+    if (item.cancelled_at) return false
+
+    if (
+      item.reference_type === 'manual' &&
+      (item.type === 'deposit' || item.type === 'withdraw')
+    ) {
+      return true
+    }
+
+    if (
+      item.type === 'transfer' &&
+      item.reference_type === 'cash_transfer' &&
+      item.direction === 'out'
+    ) {
+      return true
+    }
+
+    return false
+  }
 
   async function loadData(page = movementsPage) {
     setLoading(true)
@@ -419,6 +454,38 @@ export default function CashPage() {
       )
     } finally {
       setTransferring(false)
+    }
+  }
+
+  async function confirmCancelCashMovement() {
+    if (!cancelMovementTarget || cancellingMovement) return
+
+    setCancellingMovement(true)
+
+    try {
+      const result = await window.api.cancelCashMovement({
+        id: cancelMovementTarget.id,
+        reason: cancelMovementReason.trim() || 'إلغاء حركة خزنة',
+        actor_id: currentUser?.id ?? null,
+        admin_password: cancelMovementPassword,
+      })
+
+      if (!result?.success) {
+        showMessage('error', result?.message || 'تعذر إلغاء حركة الخزنة')
+        return
+      }
+
+      setCancelMovementTarget(null)
+      setCancelMovementReason('')
+      setCancelMovementPassword('')
+
+      showMessage('success', 'تم إلغاء حركة الخزنة')
+
+      await loadData(movementsPage)
+    } catch (error: any) {
+      showMessage('error', error?.message || 'حدث خطأ أثناء إلغاء حركة الخزنة')
+    } finally {
+      setCancellingMovement(false)
     }
   }
 
@@ -1275,7 +1342,59 @@ export default function CashPage() {
                     key={item.id}
                     style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                   >
-                    <td style={tdStyle}>{getTypeLabel(item.type)}</td>
+                    <td style={tdStyle}>
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          opacity: item.cancelled_at ? 0.55 : 1,
+                          textDecoration: item.cancelled_at
+                            ? 'line-through'
+                            : 'none',
+                        }}
+                      >
+                        {getTypeLabel(item.type)}
+                      </div>
+
+                      {item.cancelled_at ? (
+                        <div
+                          style={{
+                            marginTop: '5px',
+                            color: '#f87171',
+                            fontSize: '11px',
+                            fontWeight: 900,
+                          }}
+                        >
+                          ملغاة
+                          {item.cancel_reason ? ` — ${item.cancel_reason}` : ''}
+                        </div>
+                      ) : isAdmin && canCancelCashMovement(item) ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCancelMovementTarget(item)
+
+                            setCancelMovementReason(
+                              item.type === 'transfer'
+                                ? 'إلغاء تحويل بين الحسابات'
+                                : `إلغاء ${getTypeLabel(item.type)}`,
+                            )
+
+                            setCancelMovementPassword('')
+                          }}
+                          style={{
+                            marginTop: '5px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: '#f87171',
+                            padding: 0,
+                            cursor: 'pointer',
+                            fontWeight: 800,
+                          }}
+                        >
+                          إلغاء
+                        </button>
+                      ) : null}
+                    </td>
 
                     <td style={tdStyle}>
                       <span
@@ -1419,6 +1538,33 @@ export default function CashPage() {
               </button>
             </div>
           </div>
+
+          <FinancialCancelModal
+            open={Boolean(cancelMovementTarget)}
+            title={
+              cancelMovementTarget?.type === 'transfer'
+                ? 'إلغاء التحويل'
+                : 'إلغاء حركة الخزنة'
+            }
+            description={
+              cancelMovementTarget
+                ? `${getTypeLabel(cancelMovementTarget.type)} — ${money(cancelMovementTarget.amount)} — ${getPaymentMethodLabel(cancelMovementTarget.payment_method)}`
+                : ''
+            }
+            reason={cancelMovementReason}
+            password={cancelMovementPassword}
+            loading={cancellingMovement}
+            onReasonChange={setCancelMovementReason}
+            onPasswordChange={setCancelMovementPassword}
+            onClose={() => {
+              if (cancellingMovement) return
+
+              setCancelMovementTarget(null)
+              setCancelMovementReason('')
+              setCancelMovementPassword('')
+            }}
+            onConfirm={() => void confirmCancelCashMovement()}
+          />
         </div>
       )}
 

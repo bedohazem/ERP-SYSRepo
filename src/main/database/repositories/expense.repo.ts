@@ -11,6 +11,12 @@ export type CreateExpenseInput = {
   created_by?: number | null
 }
 
+export type CancelExpenseInput = {
+  id: number
+  reason?: string | null
+  actor_id?: number | null
+}
+
 export function createExpense(input: CreateExpenseInput) {
   const db = getDb()
 
@@ -89,7 +95,7 @@ export function createExpense(input: CreateExpenseInput) {
 export function listExpenses(input?: { date_from?: string; date_to?: string }) {
   const db = getDb()
 
-  const where: string[] = []
+  const where: string[] = [`e.cancelled_at IS NULL`]
   const params: any[] = []
 
   if (input?.date_from) {
@@ -169,6 +175,10 @@ export function listExpensesPage(input?: {
     )
     .all(...params, limit, offset)
 
+  const activeWhereSql = where.length
+    ? `${whereSql} AND e.cancelled_at IS NULL`
+    : `WHERE e.cancelled_at IS NULL`
+
   const summary = db
     .prepare(
       `
@@ -178,7 +188,7 @@ export function listExpensesPage(input?: {
 
       FROM expenses e
 
-      ${whereSql}
+      ${activeWhereSql}
     `,
     )
     .get(...params) as any
@@ -190,4 +200,119 @@ export function listExpensesPage(input?: {
     limit,
     offset,
   }
+}
+
+export function cancelExpense(input: CancelExpenseInput) {
+  const db = getDb()
+
+  const expenseId = Number(input.id)
+
+  const expense = db
+    .prepare(
+      `
+      SELECT *
+      FROM expenses
+      WHERE id = ?
+      LIMIT 1
+      `,
+    )
+    .get(expenseId) as any
+
+  if (!expense) {
+    throw new Error('المصروف غير موجود')
+  }
+
+  if (expense.cancelled_at) {
+    throw new Error('المصروف ملغي بالفعل')
+  }
+
+  const cashMovement = db
+    .prepare(
+      `
+      SELECT
+        cm.*,
+        COALESCE(
+          NULLIF(cm.business_date, ''),
+          date(cm.created_at, 'localtime')
+        ) AS accounting_date
+
+      FROM cash_movements cm
+
+      WHERE cm.type = 'expense'
+        AND cm.reference_type = 'expense'
+        AND cm.reference_id = ?
+
+      ORDER BY cm.id DESC
+      LIMIT 1
+      `,
+    )
+    .get(expenseId) as any
+
+  if (cashMovement && !cashMovement.cancelled_at) {
+    const closing = db
+      .prepare(
+        `
+        SELECT id
+        FROM cash_day_closings
+        WHERE business_date = ?
+        LIMIT 1
+        `,
+      )
+      .get(cashMovement.accounting_date)
+
+    if (closing) {
+      throw new Error(
+        `لا يمكن إلغاء المصروف لأن يوم ${cashMovement.accounting_date} تم تقفيله`,
+      )
+    }
+  }
+
+  const reason = String(input.reason || '').trim() || 'إلغاء مصروف'
+
+  const tx = db.transaction(() => {
+    db.prepare(
+      `
+      UPDATE expenses
+      SET
+        cancelled_at = CURRENT_TIMESTAMP,
+        cancelled_by = ?,
+        cancel_reason = ?
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, reason, expenseId)
+
+    if (cashMovement && !cashMovement.cancelled_at) {
+      db.prepare(
+        `
+        UPDATE cash_movements
+        SET
+          cancelled_at = CURRENT_TIMESTAMP,
+          cancelled_by = ?,
+          cancel_reason = ?
+        WHERE id = ?
+        `,
+      ).run(input.actor_id ?? null, reason, cashMovement.id)
+    }
+
+    createActivityLog({
+      user_id: input.actor_id ?? null,
+      action: 'expense_cancelled',
+      entity: 'expenses',
+      entity_id: expenseId,
+      details: JSON.stringify({
+        title: expense.title,
+        amount: expense.amount,
+        payment_method: expense.payment_method,
+        reason,
+        cash_movement_id: cashMovement?.id ?? null,
+      }),
+    })
+
+    return {
+      success: true,
+      id: expenseId,
+    }
+  })
+
+  return tx()
 }

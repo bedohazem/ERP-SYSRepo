@@ -247,8 +247,11 @@ export function getReportsSummary(input?: ReportFilter) {
     Number(salesProfitRow.net_profit_after_discounts || 0) -
     Number(returnsProfitRow.returned_profit_after_discounts || 0)
 
-  const expensesWhere = buildWhere('e', input)
-  const liabilityPaymentsWhere = buildWhere('p', input)
+  const expensesWhere = buildWhere('e', input, [`e.cancelled_at IS NULL`])
+
+  const liabilityPaymentsWhere = buildWhere('p', input, [
+    `p.cancelled_at IS NULL`,
+  ])
 
   const expensesRow = db
     .prepare(
@@ -540,6 +543,7 @@ export function getReportsSummary(input?: ReportFilter) {
           direction,
           amount
         FROM cash_movements
+          WHERE cancelled_at IS NULL
       ) cash
       GROUP BY account
       ORDER BY ${CASH_ACCOUNT_ORDER}

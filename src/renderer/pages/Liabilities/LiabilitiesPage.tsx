@@ -6,6 +6,7 @@ import {
   CASH_ACCOUNT_OPTIONS,
   getPaymentMethodLabel,
 } from '../../utils/payment-method'
+import FinancialCancelModal from '../../components/FinancialCancelModal'
 
 type Liability = {
   id: number
@@ -32,6 +33,9 @@ type LiabilityPayment = {
   notes?: string | null
   created_by_name?: string | null
   created_at: string
+  cancelled_at?: string | null
+  cancelled_by?: number | null
+  cancel_reason?: string | null
 }
 
 const emptyForm = {
@@ -78,7 +82,7 @@ function getStatusLabel(status: string) {
 
 export default function LiabilitiesPage() {
   const currentUser = useAuthStore((s) => s.user)
-
+  const isAdmin = currentUser?.role === 'admin'
   const [items, setItems] = useState<Liability[]>([])
   const [itemsTotal, setItemsTotal] = useState(0)
   const [liabilityPage, setLiabilityPage] = useState(1)
@@ -112,6 +116,14 @@ export default function LiabilitiesPage() {
   } | null>(null)
 
   const [cancelTarget, setCancelTarget] = useState<Liability | null>(null)
+  const [cancelPaymentTarget, setCancelPaymentTarget] =
+    useState<LiabilityPayment | null>(null)
+
+  const [cancelPaymentReason, setCancelPaymentReason] = useState('')
+
+  const [cancelPaymentPassword, setCancelPaymentPassword] = useState('')
+
+  const [cancellingPayment, setCancellingPayment] = useState(false)
   const [message, setMessage] = useState<{
     type: 'success' | 'error'
     text: string
@@ -292,6 +304,7 @@ export default function LiabilitiesPage() {
     try {
       const result = await window.api.cancelLiability({
         id: cancelTarget.id,
+        reason: 'إلغاء الالتزام من شاشة الالتزامات',
         actor_id: currentUser?.id ?? null,
       })
 
@@ -305,6 +318,49 @@ export default function LiabilitiesPage() {
       await loadData(liabilityPage)
     } catch (error: any) {
       showMessage('error', error.message || 'حدث خطأ أثناء إلغاء الالتزام')
+    }
+  }
+
+  async function confirmCancelLiabilityPayment() {
+    if (!cancelPaymentTarget || cancellingPayment) return
+
+    setCancellingPayment(true)
+
+    try {
+      const result = await window.api.cancelLiabilityPayment({
+        payment_id: cancelPaymentTarget.id,
+        reason: cancelPaymentReason.trim() || 'إلغاء دفعة التزام',
+        actor_id: currentUser?.id ?? null,
+        admin_password: cancelPaymentPassword,
+      })
+
+      if (!result?.success) {
+        showMessage('error', result?.message || 'تعذر إلغاء الدفعة')
+        return
+      }
+
+      const liabilityId = cancelPaymentTarget.liability_id
+
+      setCancelPaymentTarget(null)
+      setCancelPaymentReason('')
+      setCancelPaymentPassword('')
+
+      showMessage('success', 'تم إلغاء دفعة الالتزام')
+
+      await loadData(liabilityPage)
+
+      if (statementData?.liability?.id === liabilityId) {
+        const next = await window.api.getLiabilityStatement(liabilityId)
+
+        setStatementData(next)
+      }
+    } catch (error: any) {
+      showMessage(
+        'error',
+        error?.message || 'حدث خطأ أثناء إلغاء دفعة الالتزام',
+      )
+    } finally {
+      setCancellingPayment(false)
     }
   }
 
@@ -851,7 +907,55 @@ export default function LiabilitiesPage() {
                     gap: '6px',
                   }}
                 >
-                  <strong>{money(payment.amount)}</strong>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '10px',
+                    }}
+                  >
+                    <strong
+                      style={{
+                        textDecoration: payment.cancelled_at
+                          ? 'line-through'
+                          : 'none',
+                        opacity: payment.cancelled_at ? 0.55 : 1,
+                      }}
+                    >
+                      {money(payment.amount)}
+                    </strong>
+
+                    {payment.cancelled_at ? (
+                      <span
+                        style={{
+                          color: '#f87171',
+                          fontSize: '11px',
+                          fontWeight: 900,
+                        }}
+                      >
+                        ملغاة
+                      </span>
+                    ) : isAdmin ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCancelPaymentTarget(payment)
+                          setCancelPaymentReason('إلغاء دفعة التزام')
+                          setCancelPaymentPassword('')
+                        }}
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          color: '#f87171',
+                          cursor: 'pointer',
+                          fontWeight: 800,
+                        }}
+                      >
+                        إلغاء الدفعة
+                      </button>
+                    ) : null}
+                  </div>
                   <span
                     style={{
                       color: isLight ? '#64748b' : '#94a3b8',
@@ -863,6 +967,18 @@ export default function LiabilitiesPage() {
                     {payment.created_by_name || '—'}
                   </span>
                   {payment.notes ? <span>{payment.notes}</span> : null}
+
+                  {payment.cancelled_at && payment.cancel_reason && (
+                    <span
+                      style={{
+                        color: '#f87171',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                      }}
+                    >
+                      سبب الإلغاء: {payment.cancel_reason}
+                    </span>
+                  )}
                 </div>
               ))}
 
@@ -934,6 +1050,29 @@ export default function LiabilitiesPage() {
           </div>
         </div>
       )}
+
+      <FinancialCancelModal
+        open={Boolean(cancelPaymentTarget)}
+        title="إلغاء دفعة التزام"
+        description={
+          cancelPaymentTarget
+            ? `قيمة الدفعة: ${money(cancelPaymentTarget.amount)}`
+            : ''
+        }
+        reason={cancelPaymentReason}
+        password={cancelPaymentPassword}
+        loading={cancellingPayment}
+        onReasonChange={setCancelPaymentReason}
+        onPasswordChange={setCancelPaymentPassword}
+        onClose={() => {
+          if (cancellingPayment) return
+
+          setCancelPaymentTarget(null)
+          setCancelPaymentReason('')
+          setCancelPaymentPassword('')
+        }}
+        onConfirm={() => void confirmCancelLiabilityPayment()}
+      />
     </div>
   )
 }

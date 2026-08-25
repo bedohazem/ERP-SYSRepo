@@ -5,6 +5,7 @@ import {
   CASH_ACCOUNT_OPTIONS,
   getPaymentMethodLabel,
 } from '../../utils/payment-method'
+import FinancialCancelModal from '../../components/FinancialCancelModal'
 
 type Expense = {
   id: number
@@ -15,6 +16,9 @@ type Expense = {
   notes?: string
   created_by_name?: string
   created_at: string
+  cancelled_at?: string | null
+  cancelled_by?: number | null
+  cancel_reason?: string | null
 }
 
 export default function ExpensesPage() {
@@ -37,6 +41,14 @@ export default function ExpensesPage() {
   const [amount, setAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('store_cash')
   const [notes, setNotes] = useState('')
+  const [cancelExpenseTarget, setCancelExpenseTarget] =
+    useState<Expense | null>(null)
+
+  const [cancelExpenseReason, setCancelExpenseReason] = useState('')
+
+  const [cancelExpensePassword, setCancelExpensePassword] = useState('')
+
+  const [cancellingExpense, setCancellingExpense] = useState(false)
 
   function showMessage(type: 'success' | 'error', text: string) {
     setMessage({ type, text })
@@ -116,6 +128,40 @@ export default function ExpensesPage() {
       showMessage('error', error.message || 'حدث خطأ')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function confirmCancelExpense() {
+    if (!cancelExpenseTarget || cancellingExpense) return
+
+    setCancellingExpense(true)
+
+    try {
+      const result = await window.api.cancelExpense({
+        id: cancelExpenseTarget.id,
+        reason:
+          cancelExpenseReason.trim() ||
+          `إلغاء مصروف: ${cancelExpenseTarget.title}`,
+        actor_id: currentUser?.id ?? null,
+        admin_password: cancelExpensePassword,
+      })
+
+      if (!result?.success) {
+        showMessage('error', result?.message || 'تعذر إلغاء المصروف')
+        return
+      }
+
+      setCancelExpenseTarget(null)
+      setCancelExpenseReason('')
+      setCancelExpensePassword('')
+
+      showMessage('success', 'تم إلغاء المصروف')
+
+      await loadExpenses(expensesPage)
+    } catch (error: any) {
+      showMessage('error', error?.message || 'حدث خطأ أثناء إلغاء المصروف')
+    } finally {
+      setCancellingExpense(false)
     }
   }
 
@@ -767,7 +813,45 @@ export default function ExpensesPage() {
                     style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                   >
                     <td style={{ ...tdStyle, fontWeight: 700 }}>
-                      {expense.title}
+                      <div>{expense.title}</div>
+
+                      {expense.cancelled_at ? (
+                        <div
+                          style={{
+                            marginTop: '5px',
+                            color: '#f87171',
+                            fontSize: '11px',
+                            fontWeight: 900,
+                          }}
+                        >
+                          ملغي
+                          {expense.cancel_reason
+                            ? ` — ${expense.cancel_reason}`
+                            : ''}
+                        </div>
+                      ) : isAdmin ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCancelExpenseTarget(expense)
+                            setCancelExpenseReason(
+                              `إلغاء مصروف: ${expense.title}`,
+                            )
+                            setCancelExpensePassword('')
+                          }}
+                          style={{
+                            marginTop: '6px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: '#f87171',
+                            cursor: 'pointer',
+                            fontWeight: 800,
+                            padding: 0,
+                          }}
+                        >
+                          إلغاء المصروف
+                        </button>
+                      ) : null}
                     </td>
                     <td style={tdStyle}>{expense.category || '—'}</td>
                     <td
@@ -804,6 +888,28 @@ export default function ExpensesPage() {
           </table>
         </div>
       </div>
+      <FinancialCancelModal
+        open={Boolean(cancelExpenseTarget)}
+        title="إلغاء المصروف"
+        description={
+          cancelExpenseTarget
+            ? `${cancelExpenseTarget.title} — ${money(cancelExpenseTarget.amount)}`
+            : ''
+        }
+        reason={cancelExpenseReason}
+        password={cancelExpensePassword}
+        loading={cancellingExpense}
+        onReasonChange={setCancelExpenseReason}
+        onPasswordChange={setCancelExpensePassword}
+        onClose={() => {
+          if (cancellingExpense) return
+
+          setCancelExpenseTarget(null)
+          setCancelExpenseReason('')
+          setCancelExpensePassword('')
+        }}
+        onConfirm={() => void confirmCancelExpense()}
+      />
     </div>
   )
 }
