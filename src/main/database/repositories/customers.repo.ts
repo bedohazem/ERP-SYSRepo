@@ -686,16 +686,21 @@ export function getCustomerStatement(customerId: number) {
   const saleEntries = sales.map((sale) => ({
     id: `sale-${sale.id}`,
     type: 'sale',
-    title: `فاتورة بيع #${sale.id}`,
-    debit: Number(sale.grand_total || 0),
+    title: sale.cancelled_at
+      ? `فاتورة بيع #${sale.id} - ملغاة`
+      : `فاتورة بيع #${sale.id}`,
+    debit: sale.cancelled_at ? 0 : Number(sale.grand_total || 0),
     credit: 0,
     sale_id: sale.id,
     payment_status: sale.payment_status,
-    notes: sale.notes,
+    notes: sale.cancelled_at
+      ? sale.cancel_reason || 'فاتورة ملغاة'
+      : sale.notes,
     created_at: sale.created_at,
   }))
 
   const initialPaymentEntries = sales
+    .filter((sale) => !sale.cancelled_at)
     .map((sale) => {
       const normalLaterPaid = Number(
         normalPaymentsBySale.get(Number(sale.id)) || 0,
@@ -744,7 +749,8 @@ export function getCustomerStatement(customerId: number) {
   })
 
   const totalSales = sales.reduce(
-    (sum, sale) => sum + Number(sale.grand_total || 0),
+    (sum, sale) =>
+      sum + (sale.cancelled_at ? 0 : Number(sale.grand_total || 0)),
     0,
   )
 
@@ -759,6 +765,7 @@ export function getCustomerStatement(customerId: number) {
   )
 
   const openSales = sales.filter((sale) => {
+    if (sale.cancelled_at) return false
     const saleId = Number(sale.id)
     const initialPaidEntry = initialPaymentEntries.find(
       (entry) => Number(entry.sale_id) === saleId,

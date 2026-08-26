@@ -658,6 +658,9 @@ export function createSaleReturn(input: {
     if (!originalSale) {
       throw new Error('الفاتورة الأصلية غير موجودة')
     }
+    if (originalSale.cancelled_at) {
+      throw new Error('لا يمكن عمل مرتجع على فاتورة ملغاة')
+    }
 
     const rawRefundPaymentMethod =
       input.refund_payment_method?.trim() ||
@@ -678,6 +681,7 @@ export function createSaleReturn(input: {
       FROM sale_returns sr
       JOIN sale_return_items sri ON sri.return_id = sr.id
       WHERE sr.original_sale_id = ?
+      AND sr.cancelled_at IS NULL
         AND sri.original_sale_item_id = ?
     `)
 
@@ -830,12 +834,14 @@ export function createSaleReturn(input: {
           sub_total,
           loyalty_discount_value,
           refund_amount,
+          debt_reduction_amount,
+          cash_refund_amount,
           payment_method,
           reason,
           notes,
           loyalty_points_reversed
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -845,6 +851,8 @@ export function createSaleReturn(input: {
         returnSubTotal,
         loyaltyDiscountPart,
         returnValue,
+        debtReductionAmount,
+        cashRefundAmount,
         refundPaymentMethod,
         reason,
         `مرتجع من فاتورة رقم ${originalSaleId}`,
@@ -1037,6 +1045,11 @@ export function getSaleReturnHistory(originalSaleId: number) {
         sr.reason AS return_reason,
         sr.notes,
         sr.loyalty_points_reversed,
+        sr.debt_reduction_amount,
+        sr.cash_refund_amount,
+        sr.cancelled_at,
+        sr.cancelled_by,
+        sr.cancel_reason,
         sr.created_at,
         c.name AS customer_name,
         u.name AS cashier_name,
@@ -1047,6 +1060,7 @@ export function getSaleReturnHistory(originalSaleId: number) {
       LEFT JOIN users u ON u.id = sr.user_id
       LEFT JOIN sale_return_items sri ON sri.return_id = sr.id
       WHERE sr.original_sale_id = ?
+      AND sr.cancelled_at IS NULL
       GROUP BY sr.id
       ORDER BY sr.id DESC
     `,
@@ -1077,6 +1091,547 @@ export function getSaleReturnHistory(originalSaleId: number) {
     grand_total: item.refund_amount,
     items: getItems.all(item.id),
   }))
+}
+
+export function cancelSaleInvoice(input: {
+  sale_id: number
+  reason?: string | null
+  actor_id?: number | null
+}) {
+  const db = getDb()
+
+  const saleId = Number(input.sale_id)
+
+  if (!saleId) {
+    throw new Error('رقم فاتورة البيع غير صحيح')
+  }
+
+  const reason = input.reason?.trim() || 'إلغاء فاتورة بيع'
+
+  const tx = db.transaction(() => {
+    const sale = db
+      .prepare(
+        `
+        SELECT *
+        FROM sales
+        WHERE id = ?
+          AND IFNULL(type, 'sale') = 'sale'
+        LIMIT 1
+        `,
+      )
+      .get(saleId) as any
+
+    if (!sale) {
+      throw new Error('فاتورة البيع غير موجودة')
+    }
+
+    if (sale.cancelled_at) {
+      throw new Error('فاتورة البيع ملغاة بالفعل')
+    }
+
+    const returnsRow = db
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+        FROM sale_returns
+        WHERE original_sale_id = ?
+          AND cancelled_at IS NULL
+        `,
+      )
+      .get(saleId) as any
+
+    if (Number(returnsRow?.count || 0) > 0) {
+      throw new Error('لا يمكن إلغاء الفاتورة قبل إلغاء المرتجعات الخاصة بها')
+    }
+
+    const laterPayments = db
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+        FROM customer_payments
+        WHERE sale_id = ?
+        `,
+      )
+      .get(saleId) as any
+
+    if (Number(laterPayments?.count || 0) > 0) {
+      throw new Error('لا يمكن إلغاء الفاتورة لأنها تحتوي على دفعات عميل لاحقة')
+    }
+
+    const items = db
+      .prepare(
+        `
+        SELECT *
+        FROM sale_items
+        WHERE sale_id = ?
+        ORDER BY id ASC
+        `,
+      )
+      .all(saleId) as any[]
+
+    if (items.length === 0) {
+      throw new Error('لا توجد أصناف داخل الفاتورة')
+    }
+
+    const customerId = Number(sale.customer_id || 0)
+
+    const earnedPoints = Math.max(0, Number(sale.loyalty_points_earned || 0))
+
+    const redeemedPoints = Math.max(
+      0,
+      Number(sale.loyalty_points_redeemed || 0),
+    )
+
+    if (customerId && earnedPoints > 0) {
+      const customer = db
+        .prepare(
+          `
+          SELECT points_balance
+          FROM customers
+          WHERE id = ?
+          LIMIT 1
+          `,
+        )
+        .get(customerId) as any
+
+      const currentPoints = Number(customer?.points_balance || 0)
+
+      if (currentPoints + redeemedPoints < earnedPoints) {
+        throw new Error('لا يمكن إلغاء الفاتورة لأن نقاطها تم استخدامها بالفعل')
+      }
+    }
+
+    const paidAmount = Math.max(0, Number(sale.paid || 0))
+
+    const remainingAmount = Math.max(0, Number(sale.remaining_amount || 0))
+
+    const grandTotal = Math.max(0, Number(sale.grand_total || 0))
+
+    /*
+     * رد المبلغ المدفوع للعميل الآن.
+     * الحركة الأصلية تظل محفوظة.
+     */
+    if (paidAmount > 0) {
+      createCashMovement({
+        type: 'sale',
+        direction: 'out',
+        amount: paidAmount,
+        payment_method: sale.payment_method || 'store_cash',
+        reference_id: saleId,
+        reference_type: 'sale_cancel',
+        notes: `رد قيمة فاتورة بيع ملغاة رقم ${saleId}`,
+        created_by: input.actor_id ?? null,
+      })
+    }
+
+    const restoreStock = db.prepare(`
+      INSERT INTO stock_movements (
+        variant_id,
+        type,
+        quantity,
+        reference_id,
+        reference_type,
+        notes
+      )
+      VALUES (?, 'in', ?, ?, 'sale_cancel', ?)
+    `)
+
+    for (const item of items) {
+      restoreStock.run(
+        Number(item.variant_id),
+        Number(item.quantity || 0),
+        saleId,
+        `إرجاع مخزون بسبب إلغاء فاتورة بيع رقم ${saleId}`,
+      )
+    }
+
+    if (customerId) {
+      db.prepare(
+        `
+        UPDATE customers
+        SET
+          balance = MAX(
+            IFNULL(balance, 0) - ?,
+            0
+          ),
+          total_spent = MAX(
+            IFNULL(total_spent, 0) - ?,
+            0
+          ),
+          points_balance = MAX(
+            IFNULL(points_balance, 0)
+            - ?
+            + ?,
+            0
+          ),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        `,
+      ).run(
+        remainingAmount,
+        grandTotal,
+        earnedPoints,
+        redeemedPoints,
+        customerId,
+      )
+
+      const pointsAdjustment = redeemedPoints - earnedPoints
+
+      if (pointsAdjustment !== 0) {
+        db.prepare(
+          `
+          INSERT INTO loyalty_transactions (
+            customer_id,
+            sale_id,
+            type,
+            points,
+            amount,
+            notes
+          )
+          VALUES (?, ?, 'adjust', ?, ?, ?)
+          `,
+        ).run(
+          customerId,
+          saleId,
+          pointsAdjustment,
+          grandTotal,
+          `عكس نقاط بسبب إلغاء فاتورة بيع رقم ${saleId}`,
+        )
+      }
+    }
+
+    db.prepare(
+      `
+      UPDATE sales
+      SET
+        cancelled_at = CURRENT_TIMESTAMP,
+        cancelled_by = ?,
+        cancel_reason = ?,
+        payment_status = 'cancelled',
+        remaining_amount = 0
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, reason, saleId)
+
+    return {
+      ok: true,
+      sale_id: saleId,
+      refunded_amount: paidAmount,
+      removed_debt: remainingAmount,
+      restored_items: items.length,
+    }
+  })
+
+  return tx()
+}
+
+export function cancelSaleReturn(input: {
+  return_id: number
+  reason?: string | null
+  actor_id?: number | null
+}) {
+  const db = getDb()
+
+  const returnId = Number(input.return_id)
+
+  if (!returnId) {
+    throw new Error('رقم المرتجع غير صحيح')
+  }
+
+  const reason = input.reason?.trim() || 'إلغاء مرتجع بيع'
+
+  const returnCode = `RET-${String(returnId).padStart(5, '0')}`
+
+  const tx = db.transaction(() => {
+    const saleReturn = db
+      .prepare(
+        `
+        SELECT
+          sr.*,
+          s.grand_total AS sale_grand_total,
+          s.paid AS sale_paid,
+          s.remaining_amount AS sale_remaining,
+          s.cancelled_at AS sale_cancelled_at
+        FROM sale_returns sr
+        JOIN sales s
+          ON s.id = sr.original_sale_id
+        WHERE sr.id = ?
+        LIMIT 1
+        `,
+      )
+      .get(returnId) as any
+
+    if (!saleReturn) {
+      throw new Error('مرتجع البيع غير موجود')
+    }
+
+    if (saleReturn.cancelled_at) {
+      throw new Error('مرتجع البيع ملغي بالفعل')
+    }
+
+    if (saleReturn.sale_cancelled_at) {
+      throw new Error('لا يمكن إلغاء المرتجع لأن الفاتورة الأصلية ملغاة')
+    }
+
+    const items = db
+      .prepare(
+        `
+        SELECT *
+        FROM sale_return_items
+        WHERE return_id = ?
+        ORDER BY id ASC
+        `,
+      )
+      .all(returnId) as any[]
+
+    if (items.length === 0) {
+      throw new Error('لا توجد أصناف داخل المرتجع')
+    }
+
+    const getCurrentStock = db.prepare(`
+      SELECT IFNULL(
+        SUM(
+          CASE
+            WHEN type = 'in'
+              THEN quantity
+            WHEN type = 'out'
+              THEN -quantity
+            ELSE 0
+          END
+        ),
+        0
+      ) AS stock
+      FROM stock_movements
+      WHERE variant_id = ?
+    `)
+
+    for (const item of items) {
+      const stockRow = getCurrentStock.get(Number(item.variant_id)) as any
+
+      const currentStock = Number(stockRow?.stock || 0)
+
+      const qty = Number(item.quantity || 0)
+
+      if (currentStock < qty) {
+        throw new Error(
+          `لا يمكن إلغاء المرتجع لأن مخزون الصنف "${item.product_name}" أقل من كمية المرتجع`,
+        )
+      }
+    }
+
+    /*
+     * دعم المرتجعات القديمة قبل إضافة
+     * cash_refund_amount.
+     */
+    const cashRow = db
+      .prepare(
+        `
+        SELECT IFNULL(SUM(amount), 0) AS amount
+        FROM cash_movements
+        WHERE type = 'sale_return'
+          AND direction = 'out'
+          AND reference_type = 'sale_return'
+          AND reference_id = ?
+          AND cancelled_at IS NULL
+        `,
+      )
+      .get(returnId) as any
+
+    const cashRefundAmount =
+      saleReturn.cash_refund_amount !== null &&
+      saleReturn.cash_refund_amount !== undefined
+        ? Number(saleReturn.cash_refund_amount || 0)
+        : Number(cashRow?.amount || 0)
+
+    const settlementRow = db
+      .prepare(
+        `
+        SELECT IFNULL(SUM(amount), 0) AS amount
+        FROM customer_payments
+        WHERE sale_id = ?
+          AND notes LIKE ?
+        `,
+      )
+      .get(
+        Number(saleReturn.original_sale_id),
+        `تسوية مديونية بسبب مرتجع ${returnCode}%`,
+      ) as any
+
+    const debtReductionAmount =
+      saleReturn.debt_reduction_amount !== null &&
+      saleReturn.debt_reduction_amount !== undefined
+        ? Number(saleReturn.debt_reduction_amount || 0)
+        : Number(settlementRow?.amount || 0)
+
+    /*
+     * عكس رد الكاش:
+     * الكاش يرجع للحساب.
+     */
+    if (cashRefundAmount > 0) {
+      createCashMovement({
+        type: 'sale_return',
+        direction: 'in',
+        amount: cashRefundAmount,
+        payment_method: saleReturn.payment_method || 'store_cash',
+        reference_id: returnId,
+        reference_type: 'sale_return_cancel',
+        notes: `عكس مرتجع بيع ملغي ${returnCode}`,
+        created_by: input.actor_id ?? null,
+      })
+    }
+
+    const removeReturnedStock = db.prepare(`
+      INSERT INTO stock_movements (
+        variant_id,
+        type,
+        quantity,
+        reference_id,
+        reference_type,
+        notes
+      )
+      VALUES (
+        ?,
+        'out',
+        ?,
+        ?,
+        'sale_return_cancel',
+        ?
+      )
+    `)
+
+    for (const item of items) {
+      removeReturnedStock.run(
+        Number(item.variant_id),
+        Number(item.quantity || 0),
+        returnId,
+        `عكس مخزون مرتجع بيع ملغي ${returnCode}`,
+      )
+    }
+
+    const saleId = Number(saleReturn.original_sale_id)
+
+    if (saleReturn.customer_id && debtReductionAmount > 0) {
+      const maxRemaining = Math.max(
+        0,
+        Number(saleReturn.sale_grand_total || 0) -
+          Number(saleReturn.sale_paid || 0),
+      )
+
+      const newRemaining = Math.min(
+        maxRemaining,
+        Math.max(
+          0,
+          Number(saleReturn.sale_remaining || 0) + debtReductionAmount,
+        ),
+      )
+
+      const newStatus =
+        newRemaining <= 0
+          ? 'paid'
+          : Number(saleReturn.sale_paid || 0) > 0
+            ? 'partial'
+            : 'unpaid'
+
+      db.prepare(
+        `
+        UPDATE sales
+        SET
+          remaining_amount = ?,
+          payment_status = ?
+        WHERE id = ?
+        `,
+      ).run(newRemaining, newStatus, saleId)
+
+      db.prepare(
+        `
+        UPDATE customers
+        SET
+          balance =
+            IFNULL(balance, 0) + ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        `,
+      ).run(debtReductionAmount, Number(saleReturn.customer_id))
+
+      /*
+       * دي حركة داخلية أنشأها المرتجع نفسه،
+       * مش دفعة حقيقية من العميل.
+       */
+      db.prepare(
+        `
+        DELETE FROM customer_payments
+        WHERE sale_id = ?
+          AND notes LIKE ?
+        `,
+      ).run(saleId, `تسوية مديونية بسبب مرتجع ${returnCode}%`)
+    }
+
+    const reversedPoints = Math.max(
+      0,
+      Number(saleReturn.loyalty_points_reversed || 0),
+    )
+
+    if (saleReturn.customer_id && reversedPoints > 0) {
+      db.prepare(
+        `
+        UPDATE customers
+        SET
+          points_balance =
+            IFNULL(points_balance, 0) + ?,
+          total_spent =
+            IFNULL(total_spent, 0) + ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        `,
+      ).run(
+        reversedPoints,
+        Number(saleReturn.refund_amount || 0),
+        Number(saleReturn.customer_id),
+      )
+
+      db.prepare(
+        `
+        INSERT INTO loyalty_transactions (
+          customer_id,
+          sale_id,
+          type,
+          points,
+          amount,
+          notes
+        )
+        VALUES (?, ?, 'adjust', ?, ?, ?)
+        `,
+      ).run(
+        Number(saleReturn.customer_id),
+        saleId,
+        reversedPoints,
+        Number(saleReturn.refund_amount || 0),
+        `إرجاع نقاط بسبب إلغاء المرتجع ${returnCode}`,
+      )
+    }
+
+    db.prepare(
+      `
+      UPDATE sale_returns
+      SET
+        cancelled_at = CURRENT_TIMESTAMP,
+        cancelled_by = ?,
+        cancel_reason = ?
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, reason, returnId)
+
+    return {
+      ok: true,
+      return_id: returnId,
+      sale_id: saleId,
+      cash_restored: cashRefundAmount,
+      debt_restored: debtReductionAmount,
+      items_count: items.length,
+    }
+  })
+
+  return tx()
 }
 
 export function listSaleReturns(input?: {
@@ -1137,6 +1692,9 @@ export function listSaleReturns(input?: {
         sr.payment_method,
         sr.reason,
         sr.notes,
+        s.cancelled_at,
+        s.cancelled_by,
+        s.cancel_reason,
         sr.loyalty_points_reversed,
         sr.created_at,
         c.name AS customer_name,

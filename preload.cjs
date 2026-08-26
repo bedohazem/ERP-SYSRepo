@@ -60,9 +60,11 @@ contextBridge.exposeInMainWorld('api', {
   getVariantByBarcode: (barcode) =>
     ipcRenderer.invoke('sales:get-variant-by-barcode', barcode),
   createSale: (input) => ipcRenderer.invoke('sales:create', input),
+  cancelSaleInvoice: (input) => ipcRenderer.invoke('sales:cancel', input),
   getSaleReceipt: (saleId) => ipcRenderer.invoke('sales:get-receipt', saleId),
   listSales: (input) => ipcRenderer.invoke('sales:list', input),
   createSaleReturn: (input) => ipcRenderer.invoke('sales:return', input),
+  cancelSaleReturn: (input) => ipcRenderer.invoke('sales:cancel-return', input),
   listSaleReturns: (input) => ipcRenderer.invoke('sales:list-returns', input),
   getSaleReturnHistory: (saleId) =>
     ipcRenderer.invoke('sales:return-history', saleId),

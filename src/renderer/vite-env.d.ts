@@ -305,6 +305,9 @@ declare global {
           returned_quantity: number
           return_count: number
           total_return_amount: number
+          cancelled_at?: string | null
+          cancelled_by?: number | null
+          cancel_reason?: string | null
         }>
         total: number
         limit: number
@@ -353,10 +356,40 @@ declare global {
           created_at: string
           items_count: number
           total_quantity: number
+          cancelled_at?: string | null
+          cancelled_by?: number | null
+          cancel_reason?: string | null
         }>
         total: number
         limit: number
         offset: number
+      }>
+
+      cancelSaleInvoice: (input: {
+        sale_id: number
+        reason: string
+        actor_id?: number | null
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+        sale_id?: number
+        refunded_amount?: number
+        removed_debt?: number
+      }>
+
+      cancelSaleReturn: (input: {
+        return_id: number
+        reason: string
+        actor_id?: number | null
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+        return_id?: number
+        sale_id?: number
+        cash_restored?: number
+        debt_restored?: number
       }>
 
       // =========================

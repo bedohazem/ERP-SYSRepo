@@ -6,6 +6,7 @@ import {
 } from '../../utils/payment-method'
 
 import { printSaleReceiptHtml } from '../../utils/receiptPrint'
+import FinancialCancelModal from '../../components/FinancialCancelModal'
 
 type SaleRow = {
   id: number
@@ -29,6 +30,9 @@ type SaleRow = {
   returned_quantity: number
   return_count: number
   total_return_amount: number
+  cancelled_at?: string | null
+  cancelled_by?: number | null
+  cancel_reason?: string | null
 }
 
 type InvoicesTab = 'sales' | 'returns'
@@ -49,6 +53,9 @@ type ReturnRow = {
   created_at: string
   items_count: number
   total_quantity: number
+  cancelled_at?: string | null
+  cancelled_by?: number | null
+  cancel_reason?: string | null
 }
 
 type ReceiptData = {
@@ -101,7 +108,24 @@ export default function InvoicesPage() {
   const [selectedReturnHistory, setSelectedReturnHistory] = useState<any[]>([])
   const [message, setMessage] = useState('')
   const user = useAuthStore((s) => s.user)
+  const isAdmin = user?.role === 'admin'
 
+  const [cancelSaleTarget, setCancelSaleTarget] = useState<SaleRow | null>(null)
+
+  const [cancelSaleReason, setCancelSaleReason] = useState('')
+
+  const [cancelSalePassword, setCancelSalePassword] = useState('')
+
+  const [cancellingSale, setCancellingSale] = useState(false)
+
+  const [cancelReturnTarget, setCancelReturnTarget] =
+    useState<ReturnRow | null>(null)
+
+  const [cancelReturnReason, setCancelReturnReason] = useState('')
+
+  const [cancelReturnPassword, setCancelReturnPassword] = useState('')
+
+  const [cancellingReturn, setCancellingReturn] = useState(false)
   const [returnReceipt, setReturnReceipt] = useState<ReceiptData | null>(null)
   const [returnItems, setReturnItems] = useState<ReturnDraftItem[]>([])
   const [returnReason, setReturnReason] = useState('')
@@ -364,6 +388,71 @@ export default function InvoicesPage() {
     }
   }
 
+  async function confirmCancelSale() {
+    if (!cancelSaleTarget || cancellingSale) return
+
+    setCancellingSale(true)
+
+    try {
+      const result = await window.api.cancelSaleInvoice({
+        sale_id: cancelSaleTarget.id,
+        reason:
+          cancelSaleReason.trim() || `إلغاء فاتورة بيع #${cancelSaleTarget.id}`,
+        actor_id: user?.id ?? null,
+        admin_password: cancelSalePassword,
+      })
+
+      if (!result?.success) {
+        setMessage(result?.message || 'تعذر إلغاء فاتورة البيع')
+        return
+      }
+
+      setCancelSaleTarget(null)
+      setCancelSaleReason('')
+      setCancelSalePassword('')
+      setSelectedReceipt(null)
+
+      setMessage(`تم إلغاء فاتورة #${cancelSaleTarget.id}`)
+
+      await Promise.all([loadInvoices(salesPage), loadReturns(returnsPage)])
+    } finally {
+      setCancellingSale(false)
+    }
+  }
+
+  async function confirmCancelReturn() {
+    if (!cancelReturnTarget || cancellingReturn) return
+
+    setCancellingReturn(true)
+
+    try {
+      const result = await window.api.cancelSaleReturn({
+        return_id: cancelReturnTarget.id,
+        reason:
+          cancelReturnReason.trim() ||
+          `إلغاء المرتجع ${cancelReturnTarget.code}`,
+        actor_id: user?.id ?? null,
+        admin_password: cancelReturnPassword,
+      })
+
+      if (!result?.success) {
+        setMessage(result?.message || 'تعذر إلغاء مرتجع البيع')
+        return
+      }
+
+      setCancelReturnTarget(null)
+      setCancelReturnReason('')
+      setCancelReturnPassword('')
+      setSelectedReceipt(null)
+
+      setMessage(`تم إلغاء المرتجع ${cancelReturnTarget.code}`)
+
+      await Promise.all([loadInvoices(salesPage), loadReturns(returnsPage)])
+    } finally {
+      setCancellingReturn(false)
+    }
+  }
+
   const returnGrossTotal = returnItems.reduce(
     (sum, item) => sum + item.return_quantity * item.unit_price,
     0,
@@ -587,6 +676,7 @@ export default function InvoicesPage() {
                 <th style={thStyle}>الخصم</th>
                 <th style={thStyle}>الإجمالي</th>
                 <th style={thStyle}>الدفع / النقاط</th>
+                <th style={thStyle}>الحالة</th>
                 <th style={thStyle}>إجراءات</th>
               </tr>
             </thead>
@@ -594,7 +684,7 @@ export default function InvoicesPage() {
             <tbody>
               {loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={9} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={10} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
@@ -741,6 +831,26 @@ export default function InvoicesPage() {
                     </div>
                   </td>
                   <td style={tdStyle}>
+                    {sale.cancelled_at ? (
+                      <div style={{ display: 'grid', gap: '4px' }}>
+                        <strong style={{ color: '#f87171' }}>ملغاة</strong>
+
+                        {sale.cancel_reason && (
+                          <span
+                            style={{
+                              color: '#94a3b8',
+                              fontSize: '11px',
+                            }}
+                          >
+                            {sale.cancel_reason}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <strong style={{ color: '#34d399' }}>فعالة</strong>
+                    )}
+                  </td>
+                  <td style={tdStyle}>
                     <div
                       style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}
                     >
@@ -769,19 +879,42 @@ export default function InvoicesPage() {
                       >
                         طباعة
                       </button>
-
-                      <button
-                        type="button"
-                        onClick={() => openReturnPopup(sale.id)}
-                        style={{
-                          ...smallButtonStyle,
-                          borderColor: '#f97316',
-                          color: '#fdba74',
-                          background: 'rgba(249,115,22,0.10)',
-                        }}
-                      >
-                        مرتجع
-                      </button>
+                      {!sale.cancelled_at && (
+                        <button
+                          type="button"
+                          onClick={() => openReturnPopup(sale.id)}
+                          style={{
+                            ...smallButtonStyle,
+                            borderColor: '#f97316',
+                            color: '#fdba74',
+                            background: 'rgba(249,115,22,0.10)',
+                          }}
+                        >
+                          مرتجع
+                        </button>
+                      )}
+                      {isAdmin &&
+                        !sale.cancelled_at &&
+                        Number(sale.return_count || 0) === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCancelSaleTarget(sale)
+                              setCancelSaleReason(
+                                `إلغاء فاتورة بيع #${sale.id}`,
+                              )
+                              setCancelSalePassword('')
+                            }}
+                            style={{
+                              ...smallButtonStyle,
+                              borderColor: '#ef4444',
+                              color: '#fca5a5',
+                              background: 'rgba(239,68,68,0.10)',
+                            }}
+                          >
+                            إلغاء
+                          </button>
+                        )}
                     </div>
                   </td>
                 </tr>
@@ -790,7 +923,7 @@ export default function InvoicesPage() {
               {!loading && rows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -860,6 +993,7 @@ export default function InvoicesPage() {
                 <th style={thStyle}>المستخدم</th>
                 <th style={thStyle}>الأصناف / الكمية</th>
                 <th style={thStyle}>القيمة / السبب</th>
+                <th style={thStyle}>الحالة</th>
                 <th style={thStyle}>إجراءات</th>
               </tr>
             </thead>
@@ -867,7 +1001,7 @@ export default function InvoicesPage() {
             <tbody>
               {returnsLoading && returnRows.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={8} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
@@ -912,6 +1046,26 @@ export default function InvoicesPage() {
                     </div>
                   </td>
                   <td style={tdStyle}>
+                    {ret.cancelled_at ? (
+                      <div style={{ display: 'grid', gap: '4px' }}>
+                        <strong style={{ color: '#f87171' }}>ملغي</strong>
+
+                        {ret.cancel_reason && (
+                          <span
+                            style={{
+                              color: '#94a3b8',
+                              fontSize: '11px',
+                            }}
+                          >
+                            {ret.cancel_reason}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <strong style={{ color: '#34d399' }}>فعال</strong>
+                    )}
+                  </td>
+                  <td style={tdStyle}>
                     <div
                       style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}
                     >
@@ -941,6 +1095,24 @@ export default function InvoicesPage() {
                       >
                         طباعة الفاتورة
                       </button>
+                      {isAdmin && !ret.cancelled_at && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCancelReturnTarget(ret)
+                            setCancelReturnReason(`إلغاء المرتجع ${ret.code}`)
+                            setCancelReturnPassword('')
+                          }}
+                          style={{
+                            ...smallButtonStyle,
+                            borderColor: '#ef4444',
+                            color: '#fca5a5',
+                            background: 'rgba(239,68,68,0.10)',
+                          }}
+                        >
+                          إلغاء
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -949,7 +1121,7 @@ export default function InvoicesPage() {
               {!returnsLoading && returnRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -1465,6 +1637,52 @@ export default function InvoicesPage() {
           </div>
         </div>
       )}
+
+      <FinancialCancelModal
+        open={Boolean(cancelSaleTarget)}
+        title="إلغاء فاتورة بيع"
+        description={
+          cancelSaleTarget
+            ? `فاتورة #${cancelSaleTarget.id} — ${money(cancelSaleTarget.grand_total)}`
+            : ''
+        }
+        reason={cancelSaleReason}
+        password={cancelSalePassword}
+        loading={cancellingSale}
+        onReasonChange={setCancelSaleReason}
+        onPasswordChange={setCancelSalePassword}
+        onClose={() => {
+          if (cancellingSale) return
+
+          setCancelSaleTarget(null)
+          setCancelSaleReason('')
+          setCancelSalePassword('')
+        }}
+        onConfirm={() => void confirmCancelSale()}
+      />
+
+      <FinancialCancelModal
+        open={Boolean(cancelReturnTarget)}
+        title="إلغاء مرتجع بيع"
+        description={
+          cancelReturnTarget
+            ? `${cancelReturnTarget.code} — ${money(cancelReturnTarget.refund_amount)}`
+            : ''
+        }
+        reason={cancelReturnReason}
+        password={cancelReturnPassword}
+        loading={cancellingReturn}
+        onReasonChange={setCancelReturnReason}
+        onPasswordChange={setCancelReturnPassword}
+        onClose={() => {
+          if (cancellingReturn) return
+
+          setCancelReturnTarget(null)
+          setCancelReturnReason('')
+          setCancelReturnPassword('')
+        }}
+        onConfirm={() => void confirmCancelReturn()}
+      />
     </div>
   )
 }

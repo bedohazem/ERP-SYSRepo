@@ -73,7 +73,7 @@ export function getReportsSummary(input?: ReportFilter) {
   const salesWhere = buildWhere(
     's',
     input,
-    [`IFNULL(s.type, 'sale') = 'sale'`],
+    [`IFNULL(s.type, 'sale') = 'sale'`, `s.cancelled_at IS NULL`],
     's.user_id',
     `COALESCE(
       NULLIF(s.business_date, ''),
@@ -84,7 +84,11 @@ export function getReportsSummary(input?: ReportFilter) {
   const returnsWhere = buildWhere(
     'sr',
     input,
-    [`IFNULL(os.type, 'sale') = 'sale'`],
+    [
+      `IFNULL(os.type, 'sale') = 'sale'`,
+      `os.cancelled_at IS NULL`,
+      `sr.cancelled_at IS NULL`,
+    ],
     'sr.user_id',
   )
 
@@ -312,6 +316,7 @@ export function getReportsSummary(input?: ReportFilter) {
         ON s.id = si.sale_id
 
       WHERE IFNULL(s.type, 'sale') = 'sale'
+        AND s.cancelled_at IS NULL
 
       UNION ALL
 
@@ -367,6 +372,7 @@ export function getReportsSummary(input?: ReportFilter) {
         s.grand_total AS amount
       FROM sales s
       WHERE IFNULL(s.type, 'sale') = 'sale'
+        AND s.cancelled_at IS NULL
 
       UNION ALL
 
@@ -377,6 +383,10 @@ export function getReportsSummary(input?: ReportFilter) {
       FROM sale_returns sr
       JOIN sales os
         ON os.id = sr.original_sale_id
+
+      WHERE sr.cancelled_at IS NULL
+        AND os.cancelled_at IS NULL
+
     ) x
 
     ${combinedWhere.whereSql}
@@ -403,6 +413,7 @@ export function getReportsSummary(input?: ReportFilter) {
               SELECT SUM(sr.refund_amount)
               FROM sale_returns sr
               WHERE sr.original_sale_id = s.id
+              AND sr.cancelled_at IS NULL
             ),
             0
           )
@@ -484,6 +495,7 @@ export function getReportsSummary(input?: ReportFilter) {
       FROM sales s
 
       WHERE IFNULL(s.type, 'sale') = 'sale'
+        AND s.cancelled_at IS NULL
         AND s.customer_id IS NOT NULL
 
       UNION ALL
@@ -501,6 +513,8 @@ export function getReportsSummary(input?: ReportFilter) {
         ON os.id = sr.original_sale_id
 
       WHERE sr.customer_id IS NOT NULL
+        AND sr.cancelled_at IS NULL
+        AND os.cancelled_at IS NULL
 
     ) x
       ON x.customer_id = c.id

@@ -60,6 +60,7 @@ export function getPaymentStatusLabel(status?: string | null) {
   if (status === 'paid') return 'مدفوعة'
   if (status === 'partial') return 'مدفوعة جزئيًا'
   if (status === 'unpaid') return 'غير مدفوعة'
+  if (status === 'cancelled') return 'ملغاة'
   return status || '—'
 }
 
@@ -175,8 +176,10 @@ function getReceiptFinance(
   const grandTotal = Number(receipt.sale.grand_total || 0)
 
   const paidNetAmount = Math.max(0, grandTotal - remainingAmount)
-
-  const totalReturns = returnHistory.reduce((sum, item: any) => {
+  const activeReturnHistory = returnHistory.filter(
+    (item: any) => !item?.cancelled_at,
+  )
+  const totalReturns = activeReturnHistory.reduce((sum, item: any) => {
     return sum + Number(item.refund_amount || item.total_return_amount || 0)
   }, 0)
 

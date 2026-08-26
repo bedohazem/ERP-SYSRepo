@@ -415,6 +415,17 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'sales', 'payment_status', `TEXT DEFAULT 'paid'`)
 
     safeAddColumn(db, 'sales', 'business_date', 'TEXT')
+    safeAddColumn(db, 'sales', 'cancelled_at', 'TEXT')
+    safeAddColumn(db, 'sales', 'cancelled_by', 'INTEGER')
+    safeAddColumn(db, 'sales', 'cancel_reason', 'TEXT')
+
+    safeAddColumn(db, 'sale_returns', 'cancelled_at', 'TEXT')
+    safeAddColumn(db, 'sale_returns', 'cancelled_by', 'INTEGER')
+    safeAddColumn(db, 'sale_returns', 'cancel_reason', 'TEXT')
+
+    safeAddColumn(db, 'sale_returns', 'debt_reduction_amount', 'REAL')
+
+    safeAddColumn(db, 'sale_returns', 'cash_refund_amount', 'REAL')
 
     db.prepare(
       `
