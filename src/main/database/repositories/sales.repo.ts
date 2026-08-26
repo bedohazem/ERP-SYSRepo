@@ -328,32 +328,46 @@ export function createSale(input: CreateSaleInput) {
       updateStock.run(item.variant_id, qty, saleId, `بيع فاتورة رقم ${saleId}`)
     }
 
+    if (customerId) {
+      db.prepare(
+        `
+    UPDATE customers
+    SET
+      total_spent =
+        IFNULL(total_spent, 0) + ?,
+      balance =
+        IFNULL(balance, 0) + ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+    `,
+      ).run(grandTotal, remainingAmount, customerId)
+    }
+
     if (customerId && loyalty.enabled) {
       db.prepare(
         `
-        UPDATE customers
-        SET
-          points_balance = points_balance + ? - ?,
-          total_spent = total_spent + ?,
-          balance = IFNULL(balance, 0) + ?,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `,
-      ).run(earnedPoints, redeemPoints, grandTotal, remainingAmount, customerId)
+    UPDATE customers
+    SET
+      points_balance =
+        IFNULL(points_balance, 0) + ? - ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+    `,
+      ).run(earnedPoints, redeemPoints, customerId)
 
       if (earnedPoints > 0) {
         db.prepare(
           `
-          INSERT INTO loyalty_transactions (
-            customer_id,
-            sale_id,
-            type,
-            points,
-            amount,
-            notes
-          )
-          VALUES (?, ?, 'earn', ?, ?, ?)
-        `,
+      INSERT INTO loyalty_transactions (
+        customer_id,
+        sale_id,
+        type,
+        points,
+        amount,
+        notes
+      )
+      VALUES (?, ?, 'earn', ?, ?, ?)
+      `,
         ).run(
           customerId,
           saleId,
@@ -366,16 +380,16 @@ export function createSale(input: CreateSaleInput) {
       if (redeemPoints > 0) {
         db.prepare(
           `
-          INSERT INTO loyalty_transactions (
-            customer_id,
-            sale_id,
-            type,
-            points,
-            amount,
-            notes
-          )
-          VALUES (?, ?, 'redeem', ?, ?, ?)
-        `,
+      INSERT INTO loyalty_transactions (
+        customer_id,
+        sale_id,
+        type,
+        points,
+        amount,
+        notes
+      )
+      VALUES (?, ?, 'redeem', ?, ?, ?)
+      `,
         ).run(
           customerId,
           saleId,
@@ -985,30 +999,47 @@ export function createSaleReturn(input: {
       )
     }
 
+    if (originalSale.customer_id) {
+      db.prepare(
+        `
+    UPDATE customers
+    SET
+      total_spent = MAX(
+        IFNULL(total_spent, 0) - ?,
+        0
+      ),
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+    `,
+      ).run(returnValue, originalSale.customer_id)
+    }
+
     if (originalSale.customer_id && loyaltyPointsToReverse > 0) {
       db.prepare(
         `
-        UPDATE customers
-        SET
-          points_balance = MAX(points_balance - ?, 0),
-          total_spent = MAX(total_spent - ?, 0),
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `,
-      ).run(loyaltyPointsToReverse, returnValue, originalSale.customer_id)
+    UPDATE customers
+    SET
+      points_balance = MAX(
+        IFNULL(points_balance, 0) - ?,
+        0
+      ),
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+    `,
+      ).run(loyaltyPointsToReverse, originalSale.customer_id)
 
       db.prepare(
         `
-        INSERT INTO loyalty_transactions (
-          customer_id,
-          sale_id,
-          type,
-          points,
-          amount,
-          notes
-        )
-        VALUES (?, ?, 'adjust', ?, ?, ?)
-      `,
+    INSERT INTO loyalty_transactions (
+      customer_id,
+      sale_id,
+      type,
+      points,
+      amount,
+      notes
+    )
+    VALUES (?, ?, 'adjust', ?, ?, ?)
+    `,
       ).run(
         originalSale.customer_id,
         originalSaleId,
@@ -1640,6 +1671,22 @@ export function cancelSaleReturn(input: {
       ).run(saleId, `تسوية مديونية بسبب مرتجع ${returnCode}%`)
     }
 
+    if (saleReturn.customer_id) {
+      db.prepare(
+        `
+    UPDATE customers
+    SET
+      total_spent =
+        IFNULL(total_spent, 0) + ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+    `,
+      ).run(
+        Number(saleReturn.refund_amount || 0),
+        Number(saleReturn.customer_id),
+      )
+    }
+
     const reversedPoints = Math.max(
       0,
       Number(saleReturn.loyalty_points_reversed || 0),
@@ -1648,33 +1695,27 @@ export function cancelSaleReturn(input: {
     if (saleReturn.customer_id && reversedPoints > 0) {
       db.prepare(
         `
-        UPDATE customers
-        SET
-          points_balance =
-            IFNULL(points_balance, 0) + ?,
-          total_spent =
-            IFNULL(total_spent, 0) + ?,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-        `,
-      ).run(
-        reversedPoints,
-        Number(saleReturn.refund_amount || 0),
-        Number(saleReturn.customer_id),
-      )
+    UPDATE customers
+    SET
+      points_balance =
+        IFNULL(points_balance, 0) + ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+    `,
+      ).run(reversedPoints, Number(saleReturn.customer_id))
 
       db.prepare(
         `
-        INSERT INTO loyalty_transactions (
-          customer_id,
-          sale_id,
-          type,
-          points,
-          amount,
-          notes
-        )
-        VALUES (?, ?, 'adjust', ?, ?, ?)
-        `,
+    INSERT INTO loyalty_transactions (
+      customer_id,
+      sale_id,
+      type,
+      points,
+      amount,
+      notes
+    )
+    VALUES (?, ?, 'adjust', ?, ?, ?)
+    `,
       ).run(
         Number(saleReturn.customer_id),
         saleId,
