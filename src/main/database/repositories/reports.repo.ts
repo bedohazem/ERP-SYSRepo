@@ -337,6 +337,9 @@ export function getReportsSummary(input?: ReportFilter) {
 
       JOIN sales os
         ON os.id = sr.original_sale_id
+
+      WHERE sr.cancelled_at IS NULL
+        AND os.cancelled_at IS NULL   
     ) x
 
     ${combinedWhere.whereSql}

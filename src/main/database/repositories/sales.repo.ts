@@ -444,6 +444,7 @@ export function getSaleReceipt(saleId: number) {
         FROM sale_returns sr
         JOIN sale_return_items sri ON sri.return_id = sr.id
         WHERE sr.original_sale_id = si.sale_id
+          AND sr.cancelled_at IS NULL
           AND sri.original_sale_item_id = si.id
       ), 0) AS returned_quantity
     FROM sale_items si
@@ -566,18 +567,21 @@ export function listSales(input?: {
           FROM sale_returns sr
           JOIN sale_return_items sri ON sri.return_id = sr.id
           WHERE sr.original_sale_id = s.id
+           AND sr.cancelled_at IS NULL
         ), 0) AS returned_quantity,
 
         IFNULL((
           SELECT COUNT(*)
           FROM sale_returns sr
           WHERE sr.original_sale_id = s.id
+            AND sr.cancelled_at IS NULL
         ), 0) AS return_count,
 
         IFNULL((
           SELECT SUM(sr.refund_amount)
           FROM sale_returns sr
           WHERE sr.original_sale_id = s.id
+            AND sr.cancelled_at IS NULL
         ), 0) AS total_return_amount
 
       FROM sales s
@@ -758,6 +762,7 @@ export function createSaleReturn(input: {
         SELECT IFNULL(SUM(sub_total), 0) AS returned_sub_total
         FROM sale_returns
         WHERE original_sale_id = ?
+          AND cancelled_at IS NULL
       `,
       )
       .get(originalSaleId) as { returned_sub_total: number } | undefined
@@ -768,6 +773,7 @@ export function createSaleReturn(input: {
         SELECT IFNULL(SUM(loyalty_points_reversed), 0) AS reversed_points
         FROM sale_returns
         WHERE original_sale_id = ?
+          AND cancelled_at IS NULL
       `,
       )
       .get(originalSaleId) as { reversed_points: number } | undefined
@@ -1060,7 +1066,6 @@ export function getSaleReturnHistory(originalSaleId: number) {
       LEFT JOIN users u ON u.id = sr.user_id
       LEFT JOIN sale_return_items sri ON sri.return_id = sr.id
       WHERE sr.original_sale_id = ?
-      AND sr.cancelled_at IS NULL
       GROUP BY sr.id
       ORDER BY sr.id DESC
     `,
@@ -1127,6 +1132,42 @@ export function cancelSaleInvoice(input: {
 
     if (sale.cancelled_at) {
       throw new Error('فاتورة البيع ملغاة بالفعل')
+    }
+
+    const saleBusinessDateRow = db
+      .prepare(
+        `
+    SELECT
+      COALESCE(
+        NULLIF(business_date, ''),
+        date(created_at, 'localtime')
+      ) AS business_date
+    FROM sales
+    WHERE id = ?
+    LIMIT 1
+    `,
+      )
+      .get(saleId) as { business_date: string } | undefined
+
+    const saleBusinessDate = saleBusinessDateRow?.business_date || ''
+
+    if (saleBusinessDate) {
+      const closedDay = db
+        .prepare(
+          `
+      SELECT id
+      FROM cash_day_closings
+      WHERE business_date = ?
+      LIMIT 1
+      `,
+        )
+        .get(saleBusinessDate)
+
+      if (closedDay) {
+        throw new Error(
+          `لا يمكن إلغاء فاتورة تخص يوم ${saleBusinessDate} لأنه تم تقفيله`,
+        )
+      }
     }
 
     const returnsRow = db
@@ -1367,6 +1408,39 @@ export function cancelSaleReturn(input: {
 
     if (saleReturn.cancelled_at) {
       throw new Error('مرتجع البيع ملغي بالفعل')
+    }
+
+    const returnBusinessDateRow = db
+      .prepare(
+        `
+    SELECT
+      date(created_at, 'localtime') AS business_date
+    FROM sale_returns
+    WHERE id = ?
+    LIMIT 1
+    `,
+      )
+      .get(returnId) as { business_date: string } | undefined
+
+    const returnBusinessDate = returnBusinessDateRow?.business_date || ''
+
+    if (returnBusinessDate) {
+      const closedDay = db
+        .prepare(
+          `
+      SELECT id
+      FROM cash_day_closings
+      WHERE business_date = ?
+      LIMIT 1
+      `,
+        )
+        .get(returnBusinessDate)
+
+      if (closedDay) {
+        throw new Error(
+          `لا يمكن إلغاء مرتجع يخص يوم ${returnBusinessDate} لأنه تم تقفيله`,
+        )
+      }
     }
 
     if (saleReturn.sale_cancelled_at) {
