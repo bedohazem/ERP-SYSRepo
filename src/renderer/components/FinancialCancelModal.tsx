@@ -46,11 +46,21 @@ export default function FinancialCancelModal({
       <div
         className="theme-modal-card"
         style={{
-          width: 'min(480px, 100%)',
-          padding: '20px',
+          width: 'min(480px, calc(100vw - 40px))',
+          maxHeight: 'calc(100vh - 40px)',
+          overflowY: 'auto',
+          padding: '22px',
           borderRadius: '18px',
           display: 'grid',
           gap: '16px',
+          direction: 'rtl',
+          position: 'relative',
+          zIndex: 1,
+
+          background: '#111827',
+          border: '1px solid rgba(255,255,255,0.12)',
+          boxShadow: '0 28px 80px rgba(0,0,0,0.65)',
+          color: '#f8fafc',
         }}
       >
         <div>
