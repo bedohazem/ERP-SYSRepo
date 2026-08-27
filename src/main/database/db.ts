@@ -506,18 +506,46 @@ export function getDb(): Database.Database {
       `
         UPDATE sales
         SET
-          remaining_amount = CASE
-            WHEN IFNULL(grand_total, 0) - IFNULL(paid, 0) > 0
-            THEN IFNULL(grand_total, 0) - IFNULL(paid, 0)
-            ELSE 0
-          END,
+          remaining_amount = MAX(
+            IFNULL(grand_total, 0)
+            - IFNULL(paid, 0)
+            - IFNULL(
+                (
+                  SELECT SUM(cp.amount)
+                  FROM customer_payments cp
+                  WHERE cp.sale_id = sales.id
+                    AND cp.notes LIKE 'تسوية مديونية بسبب مرتجع RET-%'
+                ),
+                0
+              ),
+            0
+          ),
+
           payment_status = CASE
-            WHEN IFNULL(paid, 0) >= IFNULL(grand_total, 0) THEN 'paid'
-            WHEN IFNULL(paid, 0) > 0 THEN 'partial'
+            WHEN (
+              IFNULL(grand_total, 0)
+              - IFNULL(paid, 0)
+              - IFNULL(
+                  (
+                    SELECT SUM(cp.amount)
+                    FROM customer_payments cp
+                    WHERE cp.sale_id = sales.id
+                      AND cp.notes LIKE 'تسوية مديونية بسبب مرتجع RET-%'
+                  ),
+                  0
+                )
+            ) <= 0
+            THEN 'paid'
+
+            WHEN IFNULL(paid, 0) > 0
+            THEN 'partial'
+
             ELSE 'unpaid'
           END
+
         WHERE IFNULL(type, 'sale') = 'sale'
-      `,
+          AND cancelled_at IS NULL
+        `,
     ).run()
   }
 

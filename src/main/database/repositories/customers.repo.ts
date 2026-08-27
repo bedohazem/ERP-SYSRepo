@@ -466,6 +466,7 @@ export function recordCustomerPayment(input: {
           WHERE id = ?
             AND customer_id = ?
             AND IFNULL(type, 'sale') = 'sale'
+            AND cancelled_at IS NULL
           LIMIT 1
         `,
         )
@@ -488,7 +489,7 @@ export function recordCustomerPayment(input: {
         Number(sale.paid || 0) + finalAmount,
       )
 
-      const newRemaining = Math.max(0, Number(sale.grand_total || 0) - newPaid)
+      const newRemaining = Math.max(0, remaining - finalAmount)
 
       const newStatus =
         newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
@@ -525,6 +526,7 @@ export function recordCustomerPayment(input: {
           FROM sales
           WHERE customer_id = ?
             AND IFNULL(type, 'sale') = 'sale'
+            AND cancelled_at IS NULL
             AND remaining_amount > 0
           ORDER BY id ASC
         `,
@@ -546,10 +548,7 @@ export function recordCustomerPayment(input: {
           Number(sale.paid || 0) + payNow,
         )
 
-        const newRemaining = Math.max(
-          0,
-          Number(sale.grand_total || 0) - newPaid,
-        )
+        const newRemaining = Math.max(0, saleRemaining - payNow)
 
         const newStatus =
           newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
