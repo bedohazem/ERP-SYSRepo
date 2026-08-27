@@ -19,6 +19,8 @@ type ReportsData = {
     total_expenses: number
     total_liability_payments: number
     final_net_profit: number
+    cancelled_sales_count: number
+    cancelled_returns_count: number
   }
   cashAccounts: Array<{
     payment_method: string
@@ -84,6 +86,8 @@ const emptyReports: ReportsData = {
     total_expenses: 0,
     total_liability_payments: 0,
     final_net_profit: 0,
+    cancelled_sales_count: 0,
+    cancelled_returns_count: 0,
   },
   cashAccounts: [],
   cashTotalCapital: 0,
@@ -348,6 +352,8 @@ export default function DashboardPage() {
         revenue={cashierRevenue}
         salesCount={data.today.summary.sales_count}
         returnsCount={data.today.summary.returns_count}
+        cancelledSalesCount={data.today.summary.cancelled_sales_count}
+        cancelledReturnsCount={data.today.summary.cancelled_returns_count}
         normalDiscounts={data.today.summary.normal_discounts}
         loyaltyDiscounts={data.today.summary.loyalty_discounts}
         lastUpdated={lastUpdated}
@@ -1174,6 +1180,8 @@ function CashierRevenueView({
   loyaltyDiscounts,
   lastUpdated,
   loading,
+  cancelledSalesCount,
+  cancelledReturnsCount,
   onDateChange,
   onNewSale,
 }: {
@@ -1187,6 +1195,8 @@ function CashierRevenueView({
   loyaltyDiscounts: number
   lastUpdated: string
   loading: boolean
+  cancelledSalesCount: number
+  cancelledReturnsCount: number
   onDateChange: (date: string) => void
   onNewSale: () => void
 }) {
@@ -1396,6 +1406,12 @@ function CashierRevenueView({
           />
 
           <CashierMiniCard
+            title="الفواتير الملغاة"
+            value={String(cancelledSalesCount)}
+            subtitle="عدد فواتير البيع التي تم إلغاؤها في التاريخ المحدد"
+          />
+
+          <CashierMiniCard
             title="المحصل وقت البيع"
             value={money(revenue.saleCollectionsIn)}
             subtitle="فلوس اتدفعت لحظة إنشاء فواتير التاريخ المحدد"
@@ -1429,6 +1445,12 @@ function CashierRevenueView({
             title="إجمالي مرتجعات البيع"
             value={money(revenue.saleReturnsValue)}
             subtitle={`${returnsCount} عملية مرتجع تمت في التاريخ المحدد`}
+          />
+
+          <CashierMiniCard
+            title="المرتجعات الملغاة"
+            value={String(cancelledReturnsCount)}
+            subtitle="عدد عمليات المرتجع التي تم إلغاؤها في التاريخ المحدد"
           />
 
           <CashierMiniCard

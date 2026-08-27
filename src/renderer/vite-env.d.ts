@@ -279,6 +279,7 @@ declare global {
         date_to?: string
         limit?: number
         offset?: number
+        actor_id?: number | null
       }) => Promise<{
         rows: Array<{
           id: number
@@ -308,6 +309,7 @@ declare global {
           cancelled_at?: string | null
           cancelled_by?: number | null
           cancel_reason?: string | null
+          requires_admin_password?: number | boolean
         }>
         total: number
         limit: number
@@ -339,6 +341,7 @@ declare global {
         date_to?: string
         limit?: number
         offset?: number
+        actor_id?: number | null
       }) => Promise<{
         rows: Array<{
           id: number
@@ -359,6 +362,7 @@ declare global {
           cancelled_at?: string | null
           cancelled_by?: number | null
           cancel_reason?: string | null
+          requires_admin_password?: number | boolean
         }>
         total: number
         limit: number
@@ -369,7 +373,7 @@ declare global {
         sale_id: number
         reason: string
         actor_id?: number | null
-        admin_password: string
+        admin_password?: string
       }) => Promise<{
         success: boolean
         message?: string
@@ -382,7 +386,7 @@ declare global {
         return_id: number
         reason: string
         actor_id?: number | null
-        admin_password: string
+        admin_password?: string
       }) => Promise<{
         success: boolean
         message?: string
@@ -596,6 +600,8 @@ declare global {
           total_expenses: number
           total_liability_payments: number
           final_net_profit: number
+          cancelled_sales_count: number
+          cancelled_returns_count: number
         }
         cashAccounts: Array<{
           payment_method: string

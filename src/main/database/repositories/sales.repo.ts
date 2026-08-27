@@ -500,13 +500,14 @@ export function listSales(input?: {
   date_to?: string
   limit?: number
   offset?: number
+  actor_id?: number | null
 }) {
   const db = getDb()
 
   const search = input?.search?.trim() || ''
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
   const offset = Math.max(Number(input?.offset || 0), 0)
-
+  const actorId = Number(input?.actor_id || 0)
   const where: string[] = [`s.type = 'sale'`]
   const params: any[] = []
 
@@ -569,6 +570,18 @@ export function listSales(input?: {
         s.loyalty_points_redeemed,
         s.loyalty_discount_value,
         s.created_at,
+        s.cancelled_at,
+        s.cancelled_by,
+        s.cancel_reason,
+
+        CASE
+          WHEN s.user_id = ?
+            AND datetime(s.created_at)
+              BETWEEN datetime('now', '-24 hours')
+              AND datetime('now')
+          THEN 0
+          ELSE 1
+        END AS requires_admin_password,
         c.name AS customer_name,
         c.phone AS customer_phone,
         u.name AS cashier_name,
@@ -609,7 +622,7 @@ export function listSales(input?: {
       OFFSET ?
     `,
     )
-    .all(...params, limit, offset)
+    .all(actorId, ...params, limit, offset)
 
   const totalRow = db
     .prepare(
@@ -1127,6 +1140,95 @@ export function getSaleReturnHistory(originalSaleId: number) {
     grand_total: item.refund_amount,
     items: getItems.all(item.id),
   }))
+}
+
+export function getSaleCancellationAccess(
+  saleId: number,
+  actorId?: number | null,
+) {
+  const db = getDb()
+
+  const row = db
+    .prepare(
+      `
+      SELECT
+        id,
+        user_id,
+        CASE
+          WHEN user_id = ?
+            AND datetime(created_at)
+              BETWEEN datetime('now', '-24 hours')
+              AND datetime('now')
+          THEN 0
+          ELSE 1
+        END AS requires_admin_password
+      FROM sales
+      WHERE id = ?
+        AND IFNULL(type, 'sale') = 'sale'
+      LIMIT 1
+      `,
+    )
+    .get(Number(actorId || 0), Number(saleId)) as
+    | {
+        id: number
+        user_id: number
+        requires_admin_password: number
+      }
+    | undefined
+
+  if (!row) {
+    throw new Error('فاتورة البيع غير موجودة')
+  }
+
+  return {
+    sale_id: row.id,
+    user_id: row.user_id,
+    requires_admin_password: Number(row.requires_admin_password || 0) === 1,
+  }
+}
+
+export function getSaleReturnCancellationAccess(
+  returnId: number,
+  actorId?: number | null,
+) {
+  const db = getDb()
+
+  const row = db
+    .prepare(
+      `
+      SELECT
+        id,
+        user_id,
+        CASE
+          WHEN user_id = ?
+            AND datetime(created_at)
+              BETWEEN datetime('now', '-24 hours')
+              AND datetime('now')
+          THEN 0
+          ELSE 1
+        END AS requires_admin_password
+      FROM sale_returns
+      WHERE id = ?
+      LIMIT 1
+      `,
+    )
+    .get(Number(actorId || 0), Number(returnId)) as
+    | {
+        id: number
+        user_id: number
+        requires_admin_password: number
+      }
+    | undefined
+
+  if (!row) {
+    throw new Error('مرتجع البيع غير موجود')
+  }
+
+  return {
+    return_id: row.id,
+    user_id: row.user_id,
+    requires_admin_password: Number(row.requires_admin_password || 0) === 1,
+  }
 }
 
 export function cancelSaleInvoice(input: {
@@ -1755,12 +1857,14 @@ export function listSaleReturns(input?: {
   date_to?: string
   limit?: number
   offset?: number
+  actor_id?: number | null
 }) {
   const db = getDb()
 
   const search = input?.search?.trim() || ''
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
   const offset = Math.max(Number(input?.offset || 0), 0)
+  const actorId = Number(input?.actor_id || 0)
 
   const where: string[] = []
   const params: any[] = []
@@ -1807,9 +1911,18 @@ export function listSaleReturns(input?: {
         sr.payment_method,
         sr.reason,
         sr.notes,
-        s.cancelled_at,
-        s.cancelled_by,
-        s.cancel_reason,
+        sr.cancelled_at,
+        sr.cancelled_by,
+        sr.cancel_reason,
+
+        CASE
+          WHEN sr.user_id = ?
+            AND datetime(sr.created_at)
+              BETWEEN datetime('now', '-24 hours')
+              AND datetime('now')
+          THEN 0
+          ELSE 1
+        END AS requires_admin_password,
         sr.loyalty_points_reversed,
         sr.created_at,
         c.name AS customer_name,
@@ -1828,7 +1941,7 @@ export function listSaleReturns(input?: {
       OFFSET ?
     `,
     )
-    .all(...params, limit, offset)
+    .all(actorId, ...params, limit, offset)
 
   const totalRow = db
     .prepare(

@@ -92,6 +92,22 @@ export function getReportsSummary(input?: ReportFilter) {
     'sr.user_id',
   )
 
+  const cancelledSalesWhere = buildWhere(
+    's',
+    input,
+    [`IFNULL(s.type, 'sale') = 'sale'`, `s.cancelled_at IS NOT NULL`],
+    's.user_id',
+    `date(s.cancelled_at, 'localtime')`,
+  )
+
+  const cancelledReturnsWhere = buildWhere(
+    'sr',
+    input,
+    [`sr.cancelled_at IS NOT NULL`],
+    'sr.user_id',
+    `date(sr.cancelled_at, 'localtime')`,
+  )
+
   const combinedWhere = buildWhere(
     'x',
     input,
@@ -152,6 +168,26 @@ export function getReportsSummary(input?: ReportFilter) {
   `,
     )
     .get(...returnsWhere.params) as any
+
+  const cancelledSalesRow = db
+    .prepare(
+      `
+    SELECT COUNT(*) AS cancelled_sales_count
+    FROM sales s
+    ${cancelledSalesWhere.whereSql}
+    `,
+    )
+    .get(...cancelledSalesWhere.params) as any
+
+  const cancelledReturnsRow = db
+    .prepare(
+      `
+    SELECT COUNT(*) AS cancelled_returns_count
+    FROM sale_returns sr
+    ${cancelledReturnsWhere.whereSql}
+    `,
+    )
+    .get(...cancelledReturnsWhere.params) as any
 
   const salesProfitRow = db
     .prepare(
@@ -584,6 +620,13 @@ export function getReportsSummary(input?: ReportFilter) {
     summary: {
       sales_count: Number(salesSummary.sales_count || 0),
       returns_count: Number(returnsSummary.returns_count || 0),
+      cancelled_sales_count: Number(
+        cancelledSalesRow.cancelled_sales_count || 0,
+      ),
+
+      cancelled_returns_count: Number(
+        cancelledReturnsRow.cancelled_returns_count || 0,
+      ),
       gross_sales: grossSales,
       total_returns: totalReturns,
       normal_discounts: normalDiscounts,

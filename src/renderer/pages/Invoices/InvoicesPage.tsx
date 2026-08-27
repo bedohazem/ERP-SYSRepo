@@ -33,6 +33,8 @@ type SaleRow = {
   cancelled_at?: string | null
   cancelled_by?: number | null
   cancel_reason?: string | null
+  user_id?: number | null
+  requires_admin_password?: number | boolean
 }
 
 type InvoicesTab = 'sales' | 'returns'
@@ -56,6 +58,8 @@ type ReturnRow = {
   cancelled_at?: string | null
   cancelled_by?: number | null
   cancel_reason?: string | null
+  user_id?: number | null
+  requires_admin_password?: number | boolean
 }
 
 type ReceiptData = {
@@ -142,6 +146,7 @@ export default function InvoicesPage() {
         search,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
+        actor_id: user?.id ?? null,
         limit: INVOICE_PAGE_SIZE,
         offset: (safePage - 1) * INVOICE_PAGE_SIZE,
       })
@@ -168,6 +173,7 @@ export default function InvoicesPage() {
         search,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
+        actor_id: user?.id ?? null,
         limit: INVOICE_PAGE_SIZE,
         offset: (safePage - 1) * INVOICE_PAGE_SIZE,
       })
@@ -403,6 +409,16 @@ export default function InvoicesPage() {
       })
 
       if (!result?.success) {
+        if (result?.message?.includes('اكتب كلمة مرور المدير')) {
+          setCancelSaleTarget((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  requires_admin_password: true,
+                }
+              : prev,
+          )
+        }
         setMessage(result?.message || 'تعذر إلغاء فاتورة البيع')
         return
       }
@@ -436,6 +452,16 @@ export default function InvoicesPage() {
       })
 
       if (!result?.success) {
+        if (result?.message?.includes('اكتب كلمة مرور المدير')) {
+          setCancelReturnTarget((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  requires_admin_password: true,
+                }
+              : prev,
+          )
+        }
         setMessage(result?.message || 'تعذر إلغاء مرتجع البيع')
         return
       }
@@ -893,9 +919,11 @@ export default function InvoicesPage() {
                           مرتجع
                         </button>
                       )}
-                      {isAdmin &&
-                        !sale.cancelled_at &&
-                        Number(sale.return_count || 0) === 0 && (
+                      {!sale.cancelled_at &&
+                        Number(sale.return_count || 0) === 0 &&
+                        (isAdmin ||
+                          Number(sale.user_id || 0) ===
+                            Number(user?.id || 0)) && (
                           <button
                             type="button"
                             onClick={() => {
@@ -1095,24 +1123,27 @@ export default function InvoicesPage() {
                       >
                         طباعة الفاتورة
                       </button>
-                      {isAdmin && !ret.cancelled_at && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCancelReturnTarget(ret)
-                            setCancelReturnReason(`إلغاء المرتجع ${ret.code}`)
-                            setCancelReturnPassword('')
-                          }}
-                          style={{
-                            ...smallButtonStyle,
-                            borderColor: '#ef4444',
-                            color: '#fca5a5',
-                            background: 'rgba(239,68,68,0.10)',
-                          }}
-                        >
-                          إلغاء
-                        </button>
-                      )}
+                      {!ret.cancelled_at &&
+                        (isAdmin ||
+                          Number(ret.user_id || 0) ===
+                            Number(user?.id || 0)) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCancelReturnTarget(ret)
+                              setCancelReturnReason(`إلغاء المرتجع ${ret.code}`)
+                              setCancelReturnPassword('')
+                            }}
+                            style={{
+                              ...smallButtonStyle,
+                              borderColor: '#ef4444',
+                              color: '#fca5a5',
+                              background: 'rgba(239,68,68,0.10)',
+                            }}
+                          >
+                            إلغاء
+                          </button>
+                        )}
                     </div>
                   </td>
                 </tr>
@@ -1646,6 +1677,7 @@ export default function InvoicesPage() {
             ? `فاتورة #${cancelSaleTarget.id} — ${money(cancelSaleTarget.grand_total)}`
             : ''
         }
+        requirePassword={Boolean(cancelSaleTarget?.requires_admin_password)}
         reason={cancelSaleReason}
         password={cancelSalePassword}
         loading={cancellingSale}
@@ -1669,6 +1701,7 @@ export default function InvoicesPage() {
             ? `${cancelReturnTarget.code} — ${money(cancelReturnTarget.refund_amount)}`
             : ''
         }
+        requirePassword={Boolean(cancelReturnTarget?.requires_admin_password)}
         reason={cancelReturnReason}
         password={cancelReturnPassword}
         loading={cancellingReturn}

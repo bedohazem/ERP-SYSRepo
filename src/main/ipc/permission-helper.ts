@@ -69,3 +69,32 @@ export function requireAdminPassword(
     throw new Error('كلمة مرور المدير غير صحيحة')
   }
 }
+
+export function requireAnyAdminPassword(password?: string | null): void {
+  const cleanPassword = String(password || '')
+
+  if (!cleanPassword) {
+    throw new Error('اكتب كلمة مرور المدير')
+  }
+
+  const db = getDb()
+
+  const admins = db
+    .prepare(
+      `
+      SELECT password
+      FROM users
+      WHERE role = 'admin'
+        AND is_active = 1
+      `,
+    )
+    .all() as Array<{ password: string }>
+
+  const valid = admins.some((admin) =>
+    verifyPassword(cleanPassword, admin.password),
+  )
+
+  if (!valid) {
+    throw new Error('كلمة مرور المدير غير صحيحة')
+  }
+}

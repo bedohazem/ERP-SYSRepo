@@ -9,6 +9,8 @@ import {
   cancelSaleInvoice,
   cancelSaleReturn,
   listSaleReturns,
+  getSaleCancellationAccess,
+  getSaleReturnCancellationAccess,
 } from '../database/repositories/sales.repo'
 
 import {
@@ -16,7 +18,7 @@ import {
   searchSaleVariants,
 } from '../database/repositories/product.repo'
 
-import { requireAdminPassword } from './permission-helper'
+import { requireAnyAdminPassword } from './permission-helper'
 
 export function registerSalesIpc(): void {
   ipcMain.handle(
@@ -103,7 +105,11 @@ export function registerSalesIpc(): void {
     try {
       const actorId = getActorId(input)
 
-      requireAdminPassword(actorId, input?.admin_password)
+      const access = getSaleCancellationAccess(Number(input?.sale_id), actorId)
+
+      if (access.requires_admin_password) {
+        requireAnyAdminPassword(input?.admin_password)
+      }
 
       const result = cancelSaleInvoice({
         sale_id: Number(input?.sale_id),
@@ -140,7 +146,14 @@ export function registerSalesIpc(): void {
     try {
       const actorId = getActorId(input)
 
-      requireAdminPassword(actorId, input?.admin_password)
+      const access = getSaleReturnCancellationAccess(
+        Number(input?.return_id),
+        actorId,
+      )
+
+      if (access.requires_admin_password) {
+        requireAnyAdminPassword(input?.admin_password)
+      }
 
       const result = cancelSaleReturn({
         return_id: Number(input?.return_id),
