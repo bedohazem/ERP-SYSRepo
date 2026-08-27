@@ -958,7 +958,7 @@ export default function CashPage() {
             top: '24px',
             left: '50%',
             transform: 'translateX(-50%)',
-            zIndex: 99999,
+            zIndex: 1000001,
             padding: '12px 18px',
             borderRadius: '14px',
             background:

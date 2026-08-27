@@ -411,7 +411,7 @@ export default function LiabilitiesPage() {
             top: '24px',
             left: '50%',
             transform: 'translateX(-50%)',
-            zIndex: 99999,
+            zIndex: 1000001,
             padding: '12px 18px',
             borderRadius: '14px',
             background:
@@ -1216,7 +1216,7 @@ const dangerSmallButtonStyle: React.CSSProperties = {
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  zIndex: 9999,
+  zIndex: 1000001,
   background: 'rgba(0,0,0,0.55)',
   display: 'grid',
   placeItems: 'center',
