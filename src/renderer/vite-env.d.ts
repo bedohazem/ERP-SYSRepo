@@ -347,6 +347,7 @@ declare global {
           id: number
           code: string
           original_sale_id: number
+          user_id: number | null
           customer_name?: string | null
           customer_phone?: string | null
           cashier_name?: string | null
