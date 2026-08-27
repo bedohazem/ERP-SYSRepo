@@ -18,7 +18,7 @@ import {
   searchSaleVariants,
 } from '../database/repositories/product.repo'
 
-import { requireAnyAdminPassword } from './permission-helper'
+import { requireAdmin, requireAnyAdminPassword } from './permission-helper'
 
 export function registerSalesIpc(): void {
   ipcMain.handle(
@@ -107,6 +107,10 @@ export function registerSalesIpc(): void {
 
       const access = getSaleCancellationAccess(Number(input?.sale_id), actorId)
 
+      if (Number(access.user_id || 0) !== Number(actorId || 0)) {
+        requireAdmin(actorId)
+      }
+
       if (access.requires_admin_password) {
         requireAnyAdminPassword(input?.admin_password)
       }
@@ -150,6 +154,10 @@ export function registerSalesIpc(): void {
         Number(input?.return_id),
         actorId,
       )
+
+      if (Number(access.user_id || 0) !== Number(actorId || 0)) {
+        requireAdmin(actorId)
+      }
 
       if (access.requires_admin_password) {
         requireAnyAdminPassword(input?.admin_password)
