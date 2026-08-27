@@ -1216,7 +1216,7 @@ const dangerSmallButtonStyle: React.CSSProperties = {
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  zIndex: 1000001,
+  zIndex: 9999,
   background: 'rgba(0,0,0,0.55)',
   display: 'grid',
   placeItems: 'center',
