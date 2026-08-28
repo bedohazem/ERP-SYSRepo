@@ -452,6 +452,7 @@ declare global {
       }) => Promise<{
         ok: boolean
         customer_id: number
+        payment_batch_id: number
         paid_amount: number
         allocations?: Array<{
           sale_id: number | null

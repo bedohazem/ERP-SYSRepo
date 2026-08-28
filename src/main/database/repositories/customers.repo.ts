@@ -406,6 +406,7 @@ export function recordCustomerPayment(input: {
   amount: number
   payment_method?: string
   notes?: string | null
+  actor_id?: number | null
 }) {
   const db = getDb()
 
@@ -430,15 +431,52 @@ export function recordCustomerPayment(input: {
       throw new Error('العميل غير موجود')
     }
 
+    const businessDateRow = db
+      .prepare(
+        `
+    SELECT date('now', 'localtime') AS business_date
+    `,
+      )
+      .get() as { business_date: string }
+
+    const businessDate = String(businessDateRow?.business_date || '')
+
+    const batchResult = db
+      .prepare(
+        `
+    INSERT INTO customer_payment_batches (
+      customer_id,
+      sale_id,
+      amount,
+      payment_method,
+      notes,
+      created_by,
+      business_date
+    )
+    VALUES (?, ?, 0, ?, ?, ?, ?)
+    `,
+      )
+      .run(
+        customerId,
+        saleId,
+        input.payment_method || 'cash',
+        input.notes?.trim() || null,
+        input.actor_id ?? null,
+        businessDate,
+      )
+
+    const paymentBatchId = Number(batchResult.lastInsertRowid)
+
     const insertPayment = db.prepare(`
       INSERT INTO customer_payments (
         customer_id,
         sale_id,
+        batch_id,
         amount,
         payment_method,
         notes
       )
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?)
     `)
 
     const updateSale = db.prepare(`
@@ -499,6 +537,7 @@ export function recordCustomerPayment(input: {
       insertPayment.run(
         customerId,
         saleId,
+        paymentBatchId,
         finalAmount,
         input.payment_method || 'cash',
         input.notes?.trim() || `دفعة على فاتورة بيع رقم ${saleId}`,
@@ -554,10 +593,10 @@ export function recordCustomerPayment(input: {
           newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
 
         updateSale.run(newPaid, newRemaining, newStatus, sale.id)
-
         insertPayment.run(
           customerId,
           sale.id,
+          paymentBatchId,
           payNow,
           input.payment_method || 'cash',
           input.notes?.trim() ||
@@ -580,6 +619,14 @@ export function recordCustomerPayment(input: {
 
     db.prepare(
       `
+      UPDATE customer_payment_batches
+      SET amount = ?
+      WHERE id = ?
+      `,
+    ).run(totalPaid, paymentBatchId)
+
+    db.prepare(
+      `
       UPDATE customers
       SET
         balance = MAX(IFNULL(balance, 0) - ?, 0),
@@ -593,16 +640,25 @@ export function recordCustomerPayment(input: {
       direction: 'in',
       amount: totalPaid,
       payment_method: input.payment_method || 'cash',
-      reference_id: saleId,
-      reference_type: saleId ? 'sale' : 'customer_payment',
+
+      reference_id: paymentBatchId,
+      reference_type: 'customer_payment',
+
       notes: input.notes?.trim() || 'دفعة من عميل',
-      created_by: (input as any).actor_id ?? null,
+
+      created_by: input.actor_id ?? null,
+      business_date: businessDate,
     })
 
     return {
       ok: true,
+
       customer_id: customerId,
+
+      payment_batch_id: paymentBatchId,
+
       paid_amount: totalPaid,
+
       allocations,
     }
   })

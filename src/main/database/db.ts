@@ -255,16 +255,42 @@ export function getDb(): Database.Database {
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
 
+      CREATE TABLE IF NOT EXISTS customer_payment_batches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL,
+        sale_id INTEGER,
+        amount REAL NOT NULL DEFAULT 0,
+        payment_method TEXT DEFAULT 'cash',
+        notes TEXT,
+        created_by INTEGER,
+        business_date TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        cancelled_at TEXT,
+        cancelled_by INTEGER,
+        cancel_reason TEXT,
+
+        replacement_batch_id INTEGER,
+
+        FOREIGN KEY (customer_id) REFERENCES customers(id),
+        FOREIGN KEY (sale_id) REFERENCES sales(id),
+        FOREIGN KEY (created_by) REFERENCES users(id),
+        FOREIGN KEY (cancelled_by) REFERENCES users(id)
+      );
+
       CREATE TABLE IF NOT EXISTS customer_payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         customer_id INTEGER NOT NULL,
         sale_id INTEGER,
+        batch_id INTEGER,
         amount REAL NOT NULL,
         payment_method TEXT DEFAULT 'cash',
         notes TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
         FOREIGN KEY (customer_id) REFERENCES customers(id),
-        FOREIGN KEY (sale_id) REFERENCES sales(id)
+        FOREIGN KEY (sale_id) REFERENCES sales(id),
+        FOREIGN KEY (batch_id) REFERENCES customer_payment_batches(id)
       );
 
       CREATE TABLE IF NOT EXISTS cash_movements (
@@ -437,6 +463,7 @@ export function getDb(): Database.Database {
     ).run()
 
     safeAddColumn(db, 'customer_payments', 'sale_id', 'INTEGER')
+    safeAddColumn(db, 'customer_payments', 'batch_id', 'INTEGER')
     safeAddColumn(
       db,
       'customer_payments',
@@ -573,6 +600,7 @@ export function resetDatabaseData(): void {
       DELETE FROM suppliers;
 
       DELETE FROM customer_payments;
+      DELETE FROM customer_payment_batches;
       DELETE FROM loyalty_transactions;
       DELETE FROM sale_return_items;
       DELETE FROM sale_returns;
