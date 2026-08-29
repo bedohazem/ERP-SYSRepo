@@ -1659,6 +1659,13 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
     throw new Error('حركة حساب الدفع الخاصة بالدفعة ملغاة بالفعل')
   }
 
+  if (
+    Math.abs(roundMoney(Number(cashMovement.amount || 0)) - allocationTotal) >
+    0.01
+  ) {
+    throw new Error('قيمة حركة حساب الدفع لا تطابق قيمة دفعة المورد')
+  }
+
   return {
     db,
     batch,
@@ -1828,6 +1835,518 @@ export function cancelSupplierPaymentBatch(input: {
 
         amount: Number(allocation.amount || 0),
       })),
+    }
+  })
+
+  return tx()
+}
+
+export function updateSupplierPaymentBatch(input: {
+  batch_id: number
+  amount: number
+  payment_method?: string
+  notes?: string | null
+  actor_id?: number | null
+}) {
+  ensurePurchaseReturnSchema()
+
+  const batchId = Number(input.batch_id || 0)
+
+  const amountInput = roundMoney(Number(input.amount || 0))
+
+  if (!batchId) {
+    throw new Error('رقم دفعة المورد غير صحيح')
+  }
+
+  if (!Number.isFinite(amountInput) || amountInput <= 0) {
+    throw new Error('مبلغ الدفعة المعدل غير صحيح')
+  }
+
+  const context = getSupplierPaymentBatchMutationContext(batchId)
+
+  const {
+    db,
+    batch,
+    accountingDate,
+    allocations,
+    allocationTotal: oldTotal,
+    cashMovement,
+  } = context
+
+  const supplier = db
+    .prepare(
+      `
+      SELECT *
+
+      FROM suppliers
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(Number(batch.supplier_id)) as any
+
+  if (!supplier) {
+    throw new Error('المورد غير موجود')
+  }
+
+  const specificPurchaseId = Number(batch.purchase_id || 0)
+
+  const availableAfterReverse = roundMoney(
+    Number(supplier.balance || 0) + oldTotal,
+  )
+
+  let availableForNewPayment = availableAfterReverse
+
+  if (specificPurchaseId) {
+    const targetPurchase = allocations.find(
+      (allocation) => Number(allocation.purchase_id) === specificPurchaseId,
+    )
+
+    if (!targetPurchase) {
+      throw new Error('فاتورة الشراء المرتبطة بالدفعة غير موجودة')
+    }
+
+    const oldAllocationOnPurchase = roundMoney(
+      allocations.reduce(
+        (sum, allocation) =>
+          Number(allocation.purchase_id) === specificPurchaseId
+            ? sum + Number(allocation.amount || 0)
+            : sum,
+        0,
+      ),
+    )
+
+    availableForNewPayment = roundMoney(
+      Math.min(
+        availableAfterReverse,
+
+        Number(targetPurchase.remaining_amount || 0) + oldAllocationOnPurchase,
+      ),
+    )
+  }
+
+  if (amountInput > availableForNewPayment + 0.0001) {
+    throw new Error(
+      `مبلغ الدفعة المعدل أكبر من المديونية المتاحة وهي ${availableForNewPayment.toFixed(2)} ج.م`,
+    )
+  }
+
+  const newPaymentMethod =
+    String(input.payment_method || batch.payment_method || 'cash').trim() ||
+    'cash'
+
+  const newNotes =
+    input.notes === undefined
+      ? (batch.notes ?? null)
+      : input.notes?.trim() || null
+
+  const originalCreatedBy =
+    batch.created_by == null
+      ? (input.actor_id ?? null)
+      : Number(batch.created_by)
+
+  const tx = db.transaction(() => {
+    // عكس تأثير الدفعة القديمة
+    for (const allocation of allocations) {
+      const amount = roundMoney(Number(allocation.amount || 0))
+
+      const nextPaid = roundMoney(
+        Math.max(
+          0,
+
+          Number(allocation.paid_amount || 0) - amount,
+        ),
+      )
+
+      const nextRemaining = roundMoney(
+        Math.min(
+          Number(allocation.total_amount || 0),
+
+          Math.max(
+            0,
+
+            Number(allocation.remaining_amount || 0) + amount,
+          ),
+        ),
+      )
+
+      const nextStatus = normalizePaymentStatus(
+        Number(allocation.total_amount || 0),
+        nextPaid,
+        nextRemaining,
+      )
+
+      db.prepare(
+        `
+        UPDATE purchase_invoices
+
+        SET
+          paid_amount = ?,
+          remaining_amount = ?,
+          payment_status = ?
+
+        WHERE id = ?
+        `,
+      ).run(nextPaid, nextRemaining, nextStatus, Number(allocation.purchase_id))
+    }
+
+    // إعادة مديونية الدفعة القديمة
+    db.prepare(
+      `
+      UPDATE suppliers
+
+      SET
+        balance = ROUND(
+          IFNULL(balance, 0) + ?,
+          2
+        ),
+
+        updated_at =
+          CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+    ).run(oldTotal, Number(batch.supplier_id))
+
+    // إنشاء Batch بديل
+    const newBatchResult = db
+      .prepare(
+        `
+        INSERT INTO supplier_payment_batches (
+          supplier_id,
+          purchase_id,
+          amount,
+          payment_method,
+          notes,
+          created_by,
+          business_date,
+          created_at
+        )
+
+        VALUES (?, ?, 0, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(
+        Number(batch.supplier_id),
+
+        batch.purchase_id ?? null,
+
+        newPaymentMethod,
+
+        newNotes,
+
+        originalCreatedBy,
+
+        accountingDate || null,
+
+        batch.created_at,
+      )
+
+    const newBatchId = Number(newBatchResult.lastInsertRowid)
+
+    // القديمة أصبحت مستبدلة
+    db.prepare(
+      `
+      UPDATE supplier_payment_batches
+
+      SET
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
+        cancelled_by = ?,
+
+        cancel_reason =
+          'تم تعديل دفعة المورد',
+
+        replacement_batch_id = ?
+
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, newBatchId, batchId)
+
+    // إلغاء حركة الدفع القديمة
+    db.prepare(
+      `
+      UPDATE cash_movements
+
+      SET
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
+        cancelled_by = ?,
+
+        cancel_reason =
+          'تم تعديل دفعة المورد'
+
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, Number(cashMovement.id))
+
+    const insertPayment = db.prepare(
+      `
+        INSERT INTO supplier_payments (
+          supplier_id,
+          purchase_id,
+          batch_id,
+          amount,
+          payment_method,
+          notes
+        )
+
+        VALUES (?, ?, ?, ?, ?, ?)
+        `,
+    )
+
+    const updatePurchase = db.prepare(
+      `
+        UPDATE purchase_invoices
+
+        SET
+          paid_amount = ?,
+          remaining_amount = ?,
+          payment_status = ?
+
+        WHERE id = ?
+        `,
+    )
+
+    let totalPaid = 0
+
+    const newAllocations: Array<{
+      purchase_id: number
+      amount: number
+    }> = []
+
+    if (specificPurchaseId) {
+      const purchase = db
+        .prepare(
+          `
+          SELECT *
+
+          FROM purchase_invoices
+
+          WHERE id = ?
+            AND supplier_id = ?
+            AND IFNULL(
+              status,
+              'active'
+            ) != 'cancelled'
+
+          LIMIT 1
+          `,
+        )
+        .get(specificPurchaseId, Number(batch.supplier_id)) as any
+
+      if (!purchase) {
+        throw new Error('فاتورة الشراء المرتبطة بالدفعة غير موجودة')
+      }
+
+      const remaining = roundMoney(Number(purchase.remaining_amount || 0))
+
+      if (amountInput > remaining + 0.0001) {
+        throw new Error('مبلغ الدفعة المعدل أكبر من المتبقي على فاتورة الشراء')
+      }
+
+      const newPaid = roundMoney(
+        Number(purchase.paid_amount || 0) + amountInput,
+      )
+
+      const newRemaining = roundMoney(Math.max(0, remaining - amountInput))
+
+      const newStatus = normalizePaymentStatus(
+        Number(purchase.total_amount || 0),
+        newPaid,
+        newRemaining,
+      )
+
+      updatePurchase.run(newPaid, newRemaining, newStatus, specificPurchaseId)
+
+      insertPayment.run(
+        Number(batch.supplier_id),
+
+        specificPurchaseId,
+
+        newBatchId,
+
+        amountInput,
+
+        newPaymentMethod,
+
+        newNotes || `دفعة مورد معدلة على فاتورة شراء رقم ${specificPurchaseId}`,
+      )
+
+      totalPaid = amountInput
+
+      newAllocations.push({
+        purchase_id: specificPurchaseId,
+
+        amount: amountInput,
+      })
+    } else {
+      let remainingPayment = amountInput
+
+      const openPurchases = db
+        .prepare(
+          `
+          SELECT *
+
+          FROM purchase_invoices
+
+          WHERE supplier_id = ?
+
+            AND remaining_amount > 0
+
+            AND IFNULL(
+              status,
+              'active'
+            ) != 'cancelled'
+
+          ORDER BY id ASC
+          `,
+        )
+        .all(Number(batch.supplier_id)) as any[]
+
+      for (const purchase of openPurchases) {
+        if (remainingPayment <= 0.0001) {
+          break
+        }
+
+        const purchaseRemaining = roundMoney(
+          Number(purchase.remaining_amount || 0),
+        )
+
+        const payNow = roundMoney(Math.min(remainingPayment, purchaseRemaining))
+
+        if (payNow <= 0) {
+          continue
+        }
+
+        const newPaid = roundMoney(Number(purchase.paid_amount || 0) + payNow)
+
+        const newRemaining = roundMoney(Math.max(0, purchaseRemaining - payNow))
+
+        const newStatus = normalizePaymentStatus(
+          Number(purchase.total_amount || 0),
+          newPaid,
+          newRemaining,
+        )
+
+        updatePurchase.run(
+          newPaid,
+          newRemaining,
+          newStatus,
+          Number(purchase.id),
+        )
+
+        insertPayment.run(
+          Number(batch.supplier_id),
+
+          Number(purchase.id),
+
+          newBatchId,
+
+          payNow,
+
+          newPaymentMethod,
+
+          newNotes ||
+            `دفعة مورد معدلة موزعة على فاتورة شراء رقم ${purchase.id}`,
+        )
+
+        totalPaid = roundMoney(totalPaid + payNow)
+
+        remainingPayment = roundMoney(remainingPayment - payNow)
+
+        newAllocations.push({
+          purchase_id: Number(purchase.id),
+
+          amount: payNow,
+        })
+      }
+
+      if (remainingPayment > 0.0001) {
+        throw new Error('تعذر توزيع كامل مبلغ الدفعة المعدلة')
+      }
+    }
+
+    if (Math.abs(totalPaid - amountInput) > 0.01) {
+      throw new Error('تعذر تسجيل مبلغ دفعة المورد المعدل بالكامل')
+    }
+
+    db.prepare(
+      `
+      UPDATE supplier_payment_batches
+
+      SET amount = ?
+
+      WHERE id = ?
+      `,
+    ).run(totalPaid, newBatchId)
+
+    db.prepare(
+      `
+      UPDATE suppliers
+
+      SET
+        balance = MAX(
+          ROUND(
+            IFNULL(balance, 0) - ?,
+            2
+          ),
+          0
+        ),
+
+        updated_at =
+          CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+    ).run(totalPaid, Number(batch.supplier_id))
+
+    /*
+      حركة الدفع الجديدة.
+      لو الحساب الجديد رصيده غير كافٍ،
+      createCashMovement هترمي Error
+      وكل الـtransaction هتتراجع.
+    */
+    createCashMovement({
+      type: 'supplier_payment',
+
+      direction: 'out',
+
+      amount: totalPaid,
+
+      payment_method: newPaymentMethod,
+
+      reference_id: newBatchId,
+
+      reference_type: 'supplier_payment',
+
+      notes: newNotes || 'دفعة مورد معدلة',
+
+      created_by: originalCreatedBy,
+
+      business_date: accountingDate || null,
+    })
+
+    return {
+      success: true,
+
+      replaced_batch_id: batchId,
+
+      batch_id: newBatchId,
+
+      supplier_id: Number(batch.supplier_id),
+
+      old_amount: oldTotal,
+
+      new_amount: totalPaid,
+
+      payment_method: newPaymentMethod,
+
+      allocations: newAllocations,
     }
   })
 

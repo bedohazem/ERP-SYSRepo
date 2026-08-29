@@ -1059,6 +1059,33 @@ declare global {
         }>
       }>
 
+      updateSupplierPayment: (input: {
+        batch_id: number
+        amount: number
+        payment_method?: string
+        notes?: string | null
+        actor_id?: number | null
+        admin_password?: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+
+        replaced_batch_id?: number
+        batch_id?: number
+
+        supplier_id?: number
+
+        old_amount?: number
+        new_amount?: number
+
+        payment_method?: string
+
+        allocations?: Array<{
+          purchase_id: number
+          amount: number
+        }>
+      }>
+
       getSupplierStatement: (supplierId: number) => Promise<{
         supplier: any
         purchases: any[]

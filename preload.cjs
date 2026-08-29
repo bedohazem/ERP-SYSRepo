@@ -154,6 +154,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('suppliers:record-payment', input),
   cancelSupplierPayment: (input) =>
     ipcRenderer.invoke('suppliers:cancel-payment', input),
+  updateSupplierPayment: (input) =>
+    ipcRenderer.invoke('suppliers:update-payment', input),
   getSupplierStatement: (supplierId) =>
     ipcRenderer.invoke('suppliers:statement', supplierId),
 

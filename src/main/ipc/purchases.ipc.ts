@@ -11,6 +11,7 @@ import {
   listPurchaseReturns,
   cancelSupplierPaymentBatch,
   getSupplierPaymentBatchAccess,
+  updateSupplierPaymentBatch,
   getPurchaseReturn,
 } from '../database/repositories/purchases.repo'
 
@@ -187,6 +188,68 @@ export function registerPurchasesIpc(): void {
 
         message:
           error instanceof Error ? error.message : 'تعذر إلغاء دفعة المورد',
+      }
+    }
+  })
+
+  ipcMain.handle('suppliers:update-payment', (_, input) => {
+    try {
+      const actorId = getActorId(input)
+
+      const access = getSupplierPaymentBatchAccess(
+        Number(input?.batch_id),
+        actorId,
+      )
+
+      if (Number(access.created_by || 0) !== Number(actorId || 0)) {
+        requireAdmin(actorId)
+      }
+
+      if (access.requires_admin_password) {
+        requireAnyAdminPassword(input?.admin_password)
+      }
+
+      const result = updateSupplierPaymentBatch({
+        batch_id: Number(input?.batch_id),
+
+        amount: Number(input?.amount),
+
+        payment_method: input?.payment_method,
+
+        notes: input?.notes,
+
+        actor_id: actorId,
+      })
+
+      logAction({
+        actor_id: actorId,
+
+        action: 'supplier_payment_updated',
+
+        entity: 'supplier_payment_batches',
+
+        entity_id: Number(input?.batch_id),
+
+        details: {
+          supplier_id: result.supplier_id,
+
+          replacement_batch_id: result.batch_id,
+
+          old_amount: result.old_amount,
+
+          new_amount: result.new_amount,
+
+          payment_method: result.payment_method,
+        },
+      })
+
+      return result
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر تعديل دفعة المورد',
       }
     }
   })

@@ -11,6 +11,7 @@ import {
   cancelPurchaseInvoice,
   cancelSupplierPaymentBatch,
   getSupplierPaymentBatchAccess,
+  updateSupplierPaymentBatch,
   getSupplierStatement,
 } from '../../src/main/database/repositories/purchases.repo'
 
@@ -551,6 +552,152 @@ describe('purchases repository', () => {
       .get(payment.payment_batch_id) as any
 
     expect(movement.cancelled_at).toBeTruthy()
+  })
+
+  it('updates latest supplier payment and replaces its financial effects', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      paid_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 5,
+
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const payment = recordSupplierPayment({
+      supplier_id: supplierId,
+
+      purchase_id: purchase.purchaseId,
+
+      amount: 200,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    expect(getSupplierBalance(supplierId)).toBe(300)
+
+    const result = updateSupplierPaymentBatch({
+      batch_id: payment.payment_batch_id,
+
+      amount: 75,
+
+      payment_method: 'cash',
+
+      notes: 'Corrected supplier payment',
+
+      actor_id: 1,
+    })
+
+    expect(result.success).toBe(true)
+
+    expect(result.old_amount).toBe(200)
+
+    expect(result.new_amount).toBe(75)
+
+    expect(result.batch_id).not.toBe(payment.payment_batch_id)
+
+    expect(getSupplierBalance(supplierId)).toBe(425)
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+
+    expect(invoice.purchase.paid_amount).toBe(75)
+
+    expect(invoice.purchase.remaining_amount).toBe(425)
+
+    expect(invoice.purchase.payment_status).toBe('partial')
+
+    const db = getDb()
+
+    const oldBatch = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM supplier_payment_batches
+
+      WHERE id = ?
+      `,
+      )
+      .get(payment.payment_batch_id) as any
+
+    expect(oldBatch.cancelled_at).toBeTruthy()
+
+    expect(Number(oldBatch.replacement_batch_id)).toBe(result.batch_id)
+
+    const newBatch = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM supplier_payment_batches
+
+      WHERE id = ?
+      `,
+      )
+      .get(result.batch_id) as any
+
+    expect(Number(newBatch.amount)).toBe(75)
+
+    expect(newBatch.cancelled_at).toBeNull()
+
+    expect(newBatch.created_at).toBe(oldBatch.created_at)
+
+    expect(Number(newBatch.created_by)).toBe(Number(oldBatch.created_by))
+
+    const oldCashMovement = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE reference_type =
+        'supplier_payment'
+
+        AND reference_id = ?
+
+      LIMIT 1
+      `,
+      )
+      .get(payment.payment_batch_id) as any
+
+    expect(oldCashMovement.cancelled_at).toBeTruthy()
+
+    const newCashMovement = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE reference_type =
+        'supplier_payment'
+
+        AND reference_id = ?
+
+      LIMIT 1
+      `,
+      )
+      .get(result.batch_id) as any
+
+    expect(newCashMovement.cancelled_at).toBeNull()
+
+    expect(Number(newCashMovement.amount)).toBe(75)
   })
 
   it('blocks cancelling older supplier payment when a newer active payment exists', () => {
