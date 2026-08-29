@@ -10,10 +10,12 @@ import {
 } from '../../src/main/database/repositories/sales.repo'
 import {
   adjustCustomerPoints,
+  cancelCustomerPaymentBatch,
   createCustomer,
   deleteCustomer,
   getCustomerById,
   getCustomerHistory,
+  getCustomerPaymentBatchAccess,
   getCustomers,
   getCustomerStatement,
   recordCustomerPayment,
@@ -344,6 +346,83 @@ describe('customers repository', () => {
 
     expect(getCustomerPaymentsCount(customer.id)).toBe(1)
     expect(getCashMovementTotal('in')).toBe(250)
+  })
+
+  it('cancels customer payment batch and restores debt and sale balance', () => {
+    const customer = createTestCustomer()
+
+    const sale = createPartialSale(customer.id, 100)
+
+    const payment = recordCustomerPayment({
+      customer_id: customer.id,
+      sale_id: sale.saleId,
+      amount: 150,
+      payment_method: 'cash',
+      actor_id: 1,
+    })
+
+    const access = getCustomerPaymentBatchAccess(payment.payment_batch_id, 1)
+
+    expect(access.requires_admin_password).toBe(false)
+
+    const result = cancelCustomerPaymentBatch({
+      batch_id: payment.payment_batch_id,
+
+      reason: 'Wrong amount',
+
+      actor_id: 1,
+    })
+
+    expect(result.success).toBe(true)
+
+    expect(result.cancelled_amount).toBe(150)
+
+    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow
+
+    expect(updatedCustomer.balance).toBe(200)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    expect(receipt.sale.paid).toBe(100)
+
+    expect(receipt.sale.remaining_amount).toBe(200)
+
+    expect(receipt.sale.payment_status).toBe('partial')
+
+    const db = getDb()
+
+    const batch = db
+      .prepare(
+        `
+      SELECT *
+      FROM customer_payment_batches
+      WHERE id = ?
+      `,
+      )
+      .get(payment.payment_batch_id) as any
+
+    expect(batch.cancelled_at).toBeTruthy()
+
+    const movement = db
+      .prepare(
+        `
+      SELECT *
+      FROM cash_movements
+      WHERE type = 'customer_payment'
+        AND reference_type = 'customer_payment'
+        AND reference_id = ?
+      LIMIT 1
+      `,
+      )
+      .get(payment.payment_batch_id) as any
+
+    expect(movement.cancelled_at).toBeTruthy()
+
+    const statement = getCustomerStatement(customer.id) as any
+
+    expect(statement.summary.total_paid).toBe(100)
+
+    expect(statement.summary.balance).toBe(200)
   })
 
   it('caps customer payment to sale remaining amount', () => {

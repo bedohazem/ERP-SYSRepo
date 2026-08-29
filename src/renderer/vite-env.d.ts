@@ -460,6 +460,26 @@ declare global {
         }>
       }>
 
+      cancelCustomerPayment: (input: {
+        batch_id: number
+        reason: string
+        actor_id?: number | null
+        admin_password?: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+
+        batch_id?: number
+        customer_id?: number
+
+        cancelled_amount?: number
+
+        allocations?: Array<{
+          sale_id: number
+          amount: number
+        }>
+      }>
+
       getCustomerStatement: (customerId: number) => Promise<{
         customer: any
         sales: any[]
@@ -471,6 +491,8 @@ declare global {
           debit: number
           credit: number
           sale_id?: number | null
+          batch_id?: number | null
+          cancelled_at?: string | null
           payment_status?: string
           payment_method?: string
           notes?: string | null

@@ -83,6 +83,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('customers:adjust-points', input),
   recordCustomerPayment: (input) =>
     ipcRenderer.invoke('customers:record-payment', input),
+  cancelCustomerPayment: (input) =>
+    ipcRenderer.invoke('customers:cancel-payment', input),
   getCustomerStatement: (customerId) =>
     ipcRenderer.invoke('customers:statement', customerId),
 

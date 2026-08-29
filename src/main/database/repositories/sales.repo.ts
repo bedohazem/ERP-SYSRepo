@@ -1322,8 +1322,18 @@ export function cancelSaleInvoice(input: {
       .prepare(
         `
         SELECT COUNT(*) AS count
-        FROM customer_payments
-        WHERE sale_id = ?
+
+        FROM customer_payments cp
+
+        LEFT JOIN customer_payment_batches b
+          ON b.id = cp.batch_id
+
+        WHERE cp.sale_id = ?
+
+          AND (
+            cp.batch_id IS NULL
+            OR b.cancelled_at IS NULL
+          )
         `,
       )
       .get(saleId) as any

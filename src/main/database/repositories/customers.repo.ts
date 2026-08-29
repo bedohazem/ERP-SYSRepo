@@ -666,6 +666,278 @@ export function recordCustomerPayment(input: {
   return tx()
 }
 
+export function getCustomerPaymentBatchAccess(
+  batchId: number,
+  actorId?: number | null,
+) {
+  const db = getDb()
+
+  const row = db
+    .prepare(
+      `
+      SELECT
+        id,
+        created_by,
+
+        CASE
+          WHEN created_by = ?
+            AND datetime(created_at)
+              BETWEEN datetime('now', '-24 hours')
+              AND datetime('now')
+          THEN 0
+          ELSE 1
+        END AS requires_admin_password
+
+      FROM customer_payment_batches
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(Number(actorId || 0), Number(batchId)) as
+    | {
+        id: number
+        created_by: number | null
+        requires_admin_password: number
+      }
+    | undefined
+
+  if (!row) {
+    throw new Error('دفعة العميل غير موجودة')
+  }
+
+  return {
+    batch_id: Number(row.id),
+
+    created_by: row.created_by == null ? null : Number(row.created_by),
+
+    requires_admin_password: Number(row.requires_admin_password || 0) === 1,
+  }
+}
+
+export function cancelCustomerPaymentBatch(input: {
+  batch_id: number
+  reason?: string | null
+  actor_id?: number | null
+}) {
+  const db = getDb()
+
+  const batchId = Number(input.batch_id || 0)
+
+  if (!batchId) {
+    throw new Error('رقم دفعة العميل غير صحيح')
+  }
+
+  const reason = String(input.reason || '').trim() || 'إلغاء دفعة عميل'
+
+  const batch = db
+    .prepare(
+      `
+      SELECT
+        b.*,
+
+        COALESCE(
+          NULLIF(b.business_date, ''),
+          date(b.created_at, 'localtime')
+        ) AS accounting_date
+
+      FROM customer_payment_batches b
+
+      WHERE b.id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(batchId) as any
+
+  if (!batch) {
+    throw new Error('دفعة العميل غير موجودة')
+  }
+
+  if (batch.cancelled_at) {
+    throw new Error('دفعة العميل ملغاة بالفعل')
+  }
+
+  const accountingDate = String(batch.accounting_date || '')
+
+  if (accountingDate) {
+    const closing = db
+      .prepare(
+        `
+        SELECT id
+        FROM cash_day_closings
+        WHERE business_date = ?
+        LIMIT 1
+        `,
+      )
+      .get(accountingDate)
+
+    if (closing) {
+      throw new Error(
+        `لا يمكن إلغاء الدفعة لأن يوم ${accountingDate} تم تقفيله`,
+      )
+    }
+  }
+
+  const allocations = db
+    .prepare(
+      `
+      SELECT
+        cp.id,
+        cp.sale_id,
+        cp.amount,
+
+        s.paid,
+        s.remaining_amount,
+        s.grand_total,
+        s.cancelled_at AS sale_cancelled_at
+
+      FROM customer_payments cp
+
+      JOIN sales s
+        ON s.id = cp.sale_id
+
+      WHERE cp.batch_id = ?
+
+      ORDER BY cp.id ASC
+      `,
+    )
+    .all(batchId) as any[]
+
+  if (allocations.length === 0) {
+    throw new Error('لا توجد توزيعات مرتبطة بدفعة العميل')
+  }
+
+  if (allocations.some((allocation) => allocation.sale_cancelled_at)) {
+    throw new Error('لا يمكن إلغاء الدفعة لأن إحدى الفواتير المرتبطة بها ملغاة')
+  }
+
+  const allocationTotal = allocations.reduce(
+    (sum, allocation) => sum + Number(allocation.amount || 0),
+    0,
+  )
+
+  if (Math.abs(allocationTotal - Number(batch.amount || 0)) > 0.01) {
+    throw new Error('بيانات دفعة العميل غير متطابقة')
+  }
+
+  const cashMovement = db
+    .prepare(
+      `
+      SELECT *
+      FROM cash_movements
+
+      WHERE type = 'customer_payment'
+
+        AND reference_type = 'customer_payment'
+
+        AND reference_id = ?
+
+      ORDER BY id DESC
+
+      LIMIT 1
+      `,
+    )
+    .get(batchId) as any
+
+  if (!cashMovement) {
+    throw new Error('حركة الخزنة الخاصة بدفعة العميل غير موجودة')
+  }
+
+  if (cashMovement.cancelled_at) {
+    throw new Error('حركة الخزنة الخاصة بالدفعة ملغاة بالفعل')
+  }
+
+  const tx = db.transaction(() => {
+    for (const allocation of allocations) {
+      const amount = Number(allocation.amount || 0)
+
+      const nextPaid = Math.max(0, Number(allocation.paid || 0) - amount)
+
+      const nextRemaining = Math.min(
+        Number(allocation.grand_total || 0),
+
+        Math.max(0, Number(allocation.remaining_amount || 0) + amount),
+      )
+
+      const nextStatus =
+        nextRemaining <= 0 ? 'paid' : nextPaid > 0 ? 'partial' : 'unpaid'
+
+      db.prepare(
+        `
+        UPDATE sales
+
+        SET
+          paid = ?,
+          remaining_amount = ?,
+          payment_status = ?
+
+        WHERE id = ?
+        `,
+      ).run(nextPaid, nextRemaining, nextStatus, Number(allocation.sale_id))
+    }
+
+    db.prepare(
+      `
+      UPDATE customers
+
+      SET
+        balance =
+          IFNULL(balance, 0) + ?,
+
+        updated_at = CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+    ).run(allocationTotal, Number(batch.customer_id))
+
+    db.prepare(
+      `
+      UPDATE customer_payment_batches
+
+      SET
+        cancelled_at = CURRENT_TIMESTAMP,
+        cancelled_by = ?,
+        cancel_reason = ?
+
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, reason, batchId)
+
+    db.prepare(
+      `
+      UPDATE cash_movements
+
+      SET
+        cancelled_at = CURRENT_TIMESTAMP,
+        cancelled_by = ?,
+        cancel_reason = ?
+
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, reason, Number(cashMovement.id))
+
+    return {
+      success: true,
+
+      batch_id: batchId,
+
+      customer_id: Number(batch.customer_id),
+
+      cancelled_amount: allocationTotal,
+
+      allocations: allocations.map((allocation) => ({
+        sale_id: Number(allocation.sale_id),
+
+        amount: Number(allocation.amount || 0),
+      })),
+    }
+  })
+
+  return tx()
+}
+
 export function getCustomerStatement(customerId: number) {
   const db = getDb()
   const id = Number(customerId)
@@ -704,10 +976,24 @@ export function getCustomerStatement(customerId: number) {
   const payments = db
     .prepare(
       `
-      SELECT *
-      FROM customer_payments
-      WHERE customer_id = ?
-      ORDER BY created_at DESC, id DESC
+    SELECT
+      cp.*,
+
+      b.amount AS batch_amount,
+      b.created_by AS batch_created_by,
+      b.created_at AS batch_created_at,
+      b.cancelled_at AS batch_cancelled_at,
+      b.cancelled_by AS batch_cancelled_by,
+      b.cancel_reason AS batch_cancel_reason
+
+    FROM customer_payments cp
+
+    LEFT JOIN customer_payment_batches b
+      ON b.id = cp.batch_id
+
+    WHERE cp.customer_id = ?
+
+    ORDER BY cp.created_at DESC, cp.id DESC
     `,
     )
     .all(id) as any[]
@@ -716,12 +1002,20 @@ export function getCustomerStatement(customerId: number) {
     return String(payment.notes || '').startsWith('تسوية مديونية بسبب مرتجع')
   }
 
+  function isCancelledPaymentBatch(payment: any) {
+    return Boolean(payment.batch_id && payment.batch_cancelled_at)
+  }
+
   const normalPaymentsBySale = new Map<number, number>()
   const allPaymentsBySale = new Map<number, number>()
 
   for (const payment of payments) {
     const saleId = Number(payment.sale_id || 0)
     const amount = Number(payment.amount || 0)
+
+    if (isCancelledPaymentBatch(payment)) {
+      continue
+    }
 
     if (!saleId || amount <= 0) continue
 
@@ -781,19 +1075,41 @@ export function getCustomerStatement(customerId: number) {
       created_at: sale.created_at,
     }))
 
-  const paymentEntries = payments.map((payment) => ({
-    id: `payment-${payment.id}`,
-    type: 'payment',
-    title: payment.sale_id
-      ? `دفعة على فاتورة #${payment.sale_id}`
-      : 'دفعة عميل',
-    debit: 0,
-    credit: Number(payment.amount || 0),
-    sale_id: payment.sale_id,
-    payment_method: payment.payment_method,
-    notes: payment.notes,
-    created_at: payment.created_at,
-  }))
+  const paymentEntries = payments.map((payment) => {
+    const cancelled = isCancelledPaymentBatch(payment)
+
+    return {
+      id: `payment-${payment.id}`,
+
+      type: 'payment',
+
+      title: cancelled
+        ? payment.sale_id
+          ? `دفعة على فاتورة #${payment.sale_id} - ملغاة`
+          : 'دفعة عميل - ملغاة'
+        : payment.sale_id
+          ? `دفعة على فاتورة #${payment.sale_id}`
+          : 'دفعة عميل',
+
+      debit: 0,
+
+      credit: cancelled ? 0 : Number(payment.amount || 0),
+
+      sale_id: payment.sale_id,
+
+      batch_id: payment.batch_id ?? null,
+
+      payment_method: payment.payment_method,
+
+      notes: cancelled
+        ? payment.batch_cancel_reason || 'دفعة ملغاة'
+        : payment.notes,
+
+      cancelled_at: payment.batch_cancelled_at ?? null,
+
+      created_at: payment.batch_created_at || payment.created_at,
+    }
+  })
 
   const entries = [
     ...saleEntries,
@@ -814,10 +1130,13 @@ export function getCustomerStatement(customerId: number) {
     0,
   )
 
-  const totalLaterPayments = payments.reduce(
-    (sum, payment) => sum + Number(payment.amount || 0),
-    0,
-  )
+  const totalLaterPayments = payments.reduce((sum, payment) => {
+    if (isCancelledPaymentBatch(payment)) {
+      return sum
+    }
+
+    return sum + Number(payment.amount || 0)
+  }, 0)
 
   const openSales = sales.filter((sale) => {
     if (sale.cancelled_at) return false

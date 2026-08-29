@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
-import { requireAdmin } from './permission-helper'
-import { getActorId } from './activity-helper'
+import { requireAdmin, requireAnyAdminPassword } from './permission-helper'
+import { getActorId, logAction } from './activity-helper'
 import {
   adjustCustomerPoints,
   createCustomer,
@@ -13,6 +13,8 @@ import {
   recordCustomerPayment,
   listCustomers,
   getCustomerStatement,
+  cancelCustomerPaymentBatch,
+  getCustomerPaymentBatchAccess,
 } from '../database/repositories/customers.repo'
 
 export function registerCustomersIpc(): void {
@@ -56,6 +58,60 @@ export function registerCustomersIpc(): void {
 
   ipcMain.handle('customers:record-payment', (_, input) => {
     return recordCustomerPayment(input)
+  })
+
+  ipcMain.handle('customers:cancel-payment', (_, input) => {
+    try {
+      const actorId = getActorId(input)
+
+      const access = getCustomerPaymentBatchAccess(
+        Number(input?.batch_id),
+        actorId,
+      )
+
+      if (Number(access.created_by || 0) !== Number(actorId || 0)) {
+        requireAdmin(actorId)
+      }
+
+      if (access.requires_admin_password) {
+        requireAnyAdminPassword(input?.admin_password)
+      }
+
+      const result = cancelCustomerPaymentBatch({
+        batch_id: Number(input?.batch_id),
+
+        reason: input?.reason,
+
+        actor_id: actorId,
+      })
+
+      logAction({
+        actor_id: actorId,
+
+        action: 'customer_payment_cancelled',
+
+        entity: 'customer_payment_batches',
+
+        entity_id: Number(input?.batch_id),
+
+        details: {
+          customer_id: result.customer_id,
+
+          amount: result.cancelled_amount,
+
+          reason: input?.reason,
+        },
+      })
+
+      return result
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر إلغاء دفعة العميل',
+      }
+    }
   })
 
   ipcMain.handle('customers:statement', (_, customerId: number) => {
