@@ -2534,6 +2534,23 @@ export function getSupplierStatement(
                 )
             )
 
+            AND NOT EXISTS (
+              SELECT 1
+
+              FROM purchase_returns newer_return
+
+              WHERE newer_return.purchase_id IN (
+                SELECT current_payment.purchase_id
+
+                FROM supplier_payments current_payment
+
+                WHERE current_payment.batch_id = b.id
+              )
+
+                AND datetime(newer_return.created_at) >=
+                    datetime(b.created_at)
+            )
+
           THEN 1
 
           ELSE 0
