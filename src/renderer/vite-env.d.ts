@@ -1027,7 +1027,6 @@ declare global {
         amount: number
         payment_method?: string
         notes?: string | null
-        actor_id?: number
         actor_id?: number | null
       }) => Promise<{
         ok: boolean

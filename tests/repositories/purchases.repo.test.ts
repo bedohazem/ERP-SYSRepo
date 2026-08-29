@@ -8,6 +8,7 @@ import {
   createPurchaseInvoice,
   getPurchaseInvoice,
   recordSupplierPayment,
+  cancelPurchaseInvoice,
   getSupplierStatement,
 } from '../../src/main/database/repositories/purchases.repo'
 
@@ -453,6 +454,53 @@ describe('purchases repository', () => {
 
     expect(invoice.payments).toHaveLength(1)
     expect(invoice.payments[0].amount).toBe(200)
+  })
+
+  it('blocks purchase cancellation when legacy manual supplier payment exists', () => {
+    const supplierId = createTestSupplier()
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      paid_amount: 0,
+      payment_method: 'cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 5,
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const db = getDb()
+
+    db.prepare(
+      `
+    INSERT INTO supplier_payments (
+      supplier_id,
+      purchase_id,
+      amount,
+      payment_method,
+      notes
+    )
+    VALUES (?, ?, ?, ?, ?)
+    `,
+    ).run(
+      supplierId,
+      purchase.purchaseId,
+      100,
+      'cash',
+      'Legacy manual supplier payment',
+    )
+
+    expect(() =>
+      cancelPurchaseInvoice({
+        purchase_id: purchase.purchaseId,
+        reason: 'Cancel test',
+        actor_id: 1,
+      }),
+    ).toThrow('لا يمكن إلغاء فاتورة الشراء لأنها تحتوي على دفعة مورد لاحقة')
   })
 
   it('records full supplier payment and clears supplier balance', () => {

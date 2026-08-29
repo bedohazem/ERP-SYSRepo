@@ -481,17 +481,28 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
     const laterPaymentRow = db
       .prepare(
         `
-    SELECT COUNT(*) AS count
+        SELECT COUNT(*) AS count
 
-    FROM supplier_payments sp
+        FROM supplier_payments sp
 
-    JOIN supplier_payment_batches b
-      ON b.id = sp.batch_id
+        LEFT JOIN supplier_payment_batches b
+          ON b.id = sp.batch_id
 
-    WHERE sp.purchase_id = ?
+        WHERE sp.purchase_id = ?
 
-      AND b.cancelled_at IS NULL
-    `,
+          AND (
+            (
+              sp.batch_id IS NOT NULL
+              AND b.cancelled_at IS NULL
+            )
+
+            OR (
+              sp.batch_id IS NULL
+              AND IFNULL(sp.notes, '') NOT LIKE
+                'دفعة عند إنشاء فاتورة شراء رقم %'
+            )
+          )
+        `,
       )
       .get(purchaseId) as {
       count: number
