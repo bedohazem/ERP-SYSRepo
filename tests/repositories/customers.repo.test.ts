@@ -8,6 +8,7 @@ import {
   createSale,
   getSaleReceipt,
 } from '../../src/main/database/repositories/sales.repo'
+import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
 import {
   adjustCustomerPoints,
   cancelCustomerPaymentBatch,
@@ -423,6 +424,50 @@ describe('customers repository', () => {
     expect(statement.summary.total_paid).toBe(100)
 
     expect(statement.summary.balance).toBe(200)
+  })
+
+  it('rejects cancelling customer payment when cash balance cannot cover reversal', () => {
+    const customer = createTestCustomer()
+
+    const sale = createPartialSale(customer.id, 100)
+
+    const payment = recordCustomerPayment({
+      customer_id: customer.id,
+      sale_id: sale.saleId,
+      amount: 150,
+      payment_method: 'cash',
+      actor_id: 1,
+    })
+
+    createCashMovement({
+      type: 'withdraw',
+      direction: 'out',
+      amount: 200,
+      payment_method: 'cash',
+      reference_type: 'manual',
+      notes: 'Consume cash before cancellation',
+      created_by: 1,
+    })
+
+    expect(() =>
+      cancelCustomerPaymentBatch({
+        batch_id: payment.payment_batch_id,
+
+        reason: 'Wrong payment',
+
+        actor_id: 1,
+      }),
+    ).toThrow('رصيد حساب الدفع الحالي لا يكفي')
+
+    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow
+
+    expect(updatedCustomer.balance).toBe(50)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    expect(receipt.sale.paid).toBe(250)
+
+    expect(receipt.sale.remaining_amount).toBe(50)
   })
 
   it('caps customer payment to sale remaining amount', () => {

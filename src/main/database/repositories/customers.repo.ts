@@ -849,6 +849,45 @@ export function cancelCustomerPaymentBatch(input: {
     throw new Error('حركة الخزنة الخاصة بالدفعة ملغاة بالفعل')
   }
 
+  const cashBalanceRow = db
+    .prepare(
+      `
+    SELECT
+      IFNULL(
+        SUM(
+          CASE
+            WHEN direction = 'in'
+            THEN amount
+
+            WHEN direction = 'out'
+            THEN -amount
+
+            ELSE 0
+          END
+        ),
+        0
+      ) AS balance
+
+    FROM cash_movements
+
+    WHERE payment_method = ?
+      AND cancelled_at IS NULL
+    `,
+    )
+    .get(String(cashMovement.payment_method || 'store_cash')) as
+    | {
+        balance: number
+      }
+    | undefined
+
+  const currentCashBalance = Number(cashBalanceRow?.balance || 0)
+
+  if (currentCashBalance + 0.0001 < allocationTotal) {
+    throw new Error(
+      `لا يمكن إلغاء الدفعة لأن رصيد حساب الدفع الحالي لا يكفي لعكس مبلغ ${allocationTotal.toFixed(2)} ج.م`,
+    )
+  }
+
   const tx = db.transaction(() => {
     for (const allocation of allocations) {
       const amount = Number(allocation.amount || 0)
