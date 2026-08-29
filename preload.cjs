@@ -156,8 +156,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('suppliers:cancel-payment', input),
   updateSupplierPayment: (input) =>
     ipcRenderer.invoke('suppliers:update-payment', input),
-  getSupplierStatement: (supplierId) =>
-    ipcRenderer.invoke('suppliers:statement', supplierId),
+  getSupplierStatement: (supplierId, actorId) =>
+    ipcRenderer.invoke('suppliers:statement', supplierId, actorId),
 
   getCashSummary: (input) => ipcRenderer.invoke('cash:summary', input),
   getCashMovements: (input) => ipcRenderer.invoke('cash:list', input),

@@ -254,7 +254,10 @@ export function registerPurchasesIpc(): void {
     }
   })
 
-  ipcMain.handle('suppliers:statement', (_, supplierId: number) => {
-    return getSupplierStatement(Number(supplierId))
-  })
+  ipcMain.handle(
+    'suppliers:statement',
+    (_, supplierId: number, actorId?: number) => {
+      return getSupplierStatement(Number(supplierId), actorId ?? null)
+    },
+  )
 }

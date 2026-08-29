@@ -509,6 +509,19 @@ describe('purchases repository', () => {
 
     expect(getSupplierBalance(supplierId)).toBe(500)
 
+    const statement = getSupplierStatement(supplierId, 1) as any
+
+    expect(statement.summary.total_paid).toBe(0)
+
+    const cancelledEntries = statement.entries.filter(
+      (entry: any) =>
+        Number(entry.batch_id) === Number(payment.payment_batch_id),
+    )
+
+    expect(cancelledEntries).toHaveLength(1)
+
+    expect(cancelledEntries[0].credit).toBe(0)
+
     const invoice = getPurchaseInvoice(purchase.purchaseId) as any
 
     expect(invoice.purchase.paid_amount).toBe(0)
@@ -746,6 +759,65 @@ describe('purchases repository', () => {
     expect(() =>
       cancelSupplierPaymentBatch({
         batch_id: firstPayment.payment_batch_id,
+
+        reason: 'Old payment',
+
+        actor_id: 1,
+      }),
+    ).toThrow('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للمورد')
+  })
+
+  it('blocks supplier payment mutation when a newer invoice-time payment exists', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const firstPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 5,
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const manualPayment = recordSupplierPayment({
+      supplier_id: supplierId,
+
+      purchase_id: firstPurchase.purchaseId,
+
+      amount: 100,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      paid_amount: 50,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    expect(() =>
+      cancelSupplierPaymentBatch({
+        batch_id: manualPayment.payment_batch_id,
 
         reason: 'Old payment',
 

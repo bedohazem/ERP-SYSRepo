@@ -41,6 +41,7 @@ const SUPPLIER_STATEMENT_PAGE_SIZE = 20
 
 export default function SuppliersPage() {
   const currentUser = useAuthStore((s) => s.user)
+  const isAdmin = currentUser?.role === 'admin'
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [suppliersTotal, setSuppliersTotal] = useState(0)
 
@@ -62,6 +63,25 @@ export default function SuppliersPage() {
   const [paymentMethod, setPaymentMethod] = useState('store_cash')
   const [paymentNotes, setPaymentNotes] = useState('')
   const [savingPayment, setSavingPayment] = useState(false)
+  const [paymentAction, setPaymentAction] = useState<{
+    mode: 'edit' | 'cancel'
+    entry: any
+  } | null>(null)
+
+  const [paymentActionAmount, setPaymentActionAmount] = useState('')
+
+  const [paymentActionMethod, setPaymentActionMethod] = useState('store_cash')
+
+  const [paymentActionNotes, setPaymentActionNotes] = useState('')
+
+  const [paymentActionReason, setPaymentActionReason] = useState('')
+
+  const [paymentActionPassword, setPaymentActionPassword] = useState('')
+
+  const [paymentActionRequirePassword, setPaymentActionRequirePassword] =
+    useState(false)
+
+  const [savingPaymentAction, setSavingPaymentAction] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null)
   const [deletingSupplier, setDeletingSupplier] = useState(false)
 
@@ -231,7 +251,10 @@ export default function SuppliersPage() {
     setSupplierStatementPage(1)
 
     try {
-      const data = await window.api.getSupplierStatement(supplier.id)
+      const data = await window.api.getSupplierStatement(
+        supplier.id,
+        currentUser?.id,
+      )
       setStatementData(data)
     } catch (error) {
       console.error('Failed to load supplier statement:', error)
@@ -547,7 +570,10 @@ export default function SuppliersPage() {
       await loadSuppliers(supplierPage)
 
       if (statementData?.supplier?.id === paymentSupplier.id) {
-        const data = await window.api.getSupplierStatement(paymentSupplier.id)
+        const data = await window.api.getSupplierStatement(
+          paymentSupplier.id,
+          currentUser?.id,
+        )
         setStatementData(data)
       }
     } catch (error) {
@@ -555,6 +581,206 @@ export default function SuppliersPage() {
       showMessage(getErrorMessage(error, 'حدث خطأ أثناء تسجيل الدفعة'))
     } finally {
       setSavingPayment(false)
+    }
+  }
+
+  function canManageStatementPayment(entry: any) {
+    if (!entry?.batch_id) {
+      return false
+    }
+
+    if (
+      entry.cancelled_at ||
+      entry.replacement_batch_id ||
+      !entry.is_latest_mutable_batch
+    ) {
+      return false
+    }
+
+    return (
+      isAdmin ||
+      Number(entry.batch_created_by || 0) === Number(currentUser?.id || 0)
+    )
+  }
+
+  function paymentMethodLabel(value?: string | null) {
+    if (!value) return '—'
+
+    return (
+      CASH_ACCOUNT_OPTIONS.find((option) => option.value === value)?.label ||
+      value
+    )
+  }
+
+  function openPaymentEdit(entry: any) {
+    if (!canManageStatementPayment(entry)) {
+      return
+    }
+
+    setPaymentAction({
+      mode: 'edit',
+      entry,
+    })
+
+    setPaymentActionAmount(String(Number(entry.credit || 0)))
+
+    setPaymentActionMethod(String(entry.payment_method || 'store_cash'))
+
+    setPaymentActionNotes(String(entry.notes || ''))
+
+    setPaymentActionReason('')
+    setPaymentActionPassword('')
+
+    setPaymentActionRequirePassword(Boolean(entry.requires_admin_password))
+  }
+
+  function openPaymentCancel(entry: any) {
+    if (!canManageStatementPayment(entry)) {
+      return
+    }
+
+    setPaymentAction({
+      mode: 'cancel',
+      entry,
+    })
+
+    setPaymentActionAmount('')
+    setPaymentActionMethod('store_cash')
+    setPaymentActionNotes('')
+    setPaymentActionReason('')
+    setPaymentActionPassword('')
+
+    setPaymentActionRequirePassword(Boolean(entry.requires_admin_password))
+  }
+
+  function closePaymentAction() {
+    if (savingPaymentAction) return
+
+    setPaymentAction(null)
+    setPaymentActionAmount('')
+    setPaymentActionMethod('store_cash')
+    setPaymentActionNotes('')
+    setPaymentActionReason('')
+    setPaymentActionPassword('')
+    setPaymentActionRequirePassword(false)
+  }
+
+  async function savePaymentAction() {
+    if (!paymentAction || savingPaymentAction) {
+      return
+    }
+
+    const batchId = Number(paymentAction.entry?.batch_id || 0)
+
+    if (!batchId) {
+      showMessage('رقم دفعة المورد غير صحيح')
+      return
+    }
+
+    if (paymentAction.mode === 'edit') {
+      const amount = Number(paymentActionAmount || 0)
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        showMessage('اكتب مبلغ دفعة صحيح')
+        return
+      }
+    } else if (!paymentActionReason.trim()) {
+      showMessage('سبب الإلغاء مطلوب')
+      return
+    }
+
+    if (paymentActionRequirePassword && !paymentActionPassword.trim()) {
+      showMessage('كلمة مرور المدير مطلوبة')
+      return
+    }
+
+    setSavingPaymentAction(true)
+
+    try {
+      const result =
+        paymentAction.mode === 'edit'
+          ? await window.api.updateSupplierPayment({
+              batch_id: batchId,
+
+              amount: Number(paymentActionAmount),
+
+              payment_method: paymentActionMethod,
+
+              notes: paymentActionNotes.trim() || null,
+
+              actor_id: currentUser?.id,
+
+              admin_password: paymentActionRequirePassword
+                ? paymentActionPassword
+                : undefined,
+            })
+          : await window.api.cancelSupplierPayment({
+              batch_id: batchId,
+
+              reason: paymentActionReason.trim(),
+
+              actor_id: currentUser?.id,
+
+              admin_password: paymentActionRequirePassword
+                ? paymentActionPassword
+                : undefined,
+            })
+
+      if (!result.success) {
+        const errorMessage =
+          result.message ||
+          (paymentAction.mode === 'edit'
+            ? 'تعذر تعديل دفعة المورد'
+            : 'تعذر إلغاء دفعة المورد')
+
+        if (errorMessage.includes('كلمة مرور')) {
+          setPaymentActionRequirePassword(true)
+        }
+
+        showMessage(errorMessage)
+
+        return
+      }
+
+      const supplierId = Number(statementData?.supplier?.id || 0)
+
+      setPaymentAction(null)
+      setPaymentActionAmount('')
+      setPaymentActionNotes('')
+      setPaymentActionReason('')
+      setPaymentActionPassword('')
+
+      setPaymentActionRequirePassword(false)
+
+      await loadSuppliers(supplierPage)
+
+      if (supplierId) {
+        const data = await window.api.getSupplierStatement(
+          supplierId,
+          currentUser?.id,
+        )
+
+        setStatementData(data)
+      }
+
+      showMessage(
+        paymentAction.mode === 'edit'
+          ? 'تم تعديل دفعة المورد'
+          : 'تم إلغاء دفعة المورد',
+      )
+    } catch (error) {
+      console.error('Failed to process supplier payment:', error)
+
+      showMessage(
+        getErrorMessage(
+          error,
+          paymentAction.mode === 'edit'
+            ? 'حدث خطأ أثناء تعديل الدفعة'
+            : 'حدث خطأ أثناء إلغاء الدفعة',
+        ),
+      )
+    } finally {
+      setSavingPaymentAction(false)
     }
   }
 
@@ -629,7 +855,7 @@ export default function SuppliersPage() {
             top: '24px',
             left: '50%',
             transform: 'translateX(-50%)',
-            zIndex: 99999,
+            zIndex: 1000001,
             padding: '12px 18px',
             borderRadius: '14px',
             background: 'rgba(37,99,235,0.96)',
@@ -1038,7 +1264,9 @@ export default function SuppliersPage() {
                     <th style={thStyle}>البيان</th>
                     <th style={thStyle}>مدين</th>
                     <th style={thStyle}>دائن</th>
+                    <th style={thStyle}>طريقة الدفع</th>
                     <th style={thStyle}>ملاحظات</th>
+                    <th style={thStyle}>إجراءات</th>
                   </tr>
                 </thead>
 
@@ -1046,7 +1274,7 @@ export default function SuppliersPage() {
                   {statementLoading && (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={7}
                         style={{ ...tdStyle, textAlign: 'center' }}
                       >
                         جاري التحميل...
@@ -1074,6 +1302,20 @@ export default function SuppliersPage() {
                           </td>
                           <td style={tdStyle}>
                             <strong>{entry.title}</strong>
+
+                            {entry.allocations_text && (
+                              <div
+                                style={{
+                                  marginTop: '5px',
+                                  color: '#94a3b8',
+                                  fontSize: '11px',
+                                  whiteSpace: 'normal',
+                                  lineHeight: 1.6,
+                                }}
+                              >
+                                موزعة: {entry.allocations_text}
+                              </div>
+                            )}
                           </td>
                           <td
                             style={{
@@ -1091,14 +1333,58 @@ export default function SuppliersPage() {
                           >
                             {entry.credit > 0 ? money(entry.credit) : '—'}
                           </td>
+                          <td style={tdStyle}>
+                            {paymentMethodLabel(entry.payment_method)}
+                          </td>
+
                           <td style={tdStyle}>{entry.notes || '—'}</td>
+
+                          <td style={tdStyle}>
+                            {canManageStatementPayment(entry) ? (
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  gap: '6px',
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => openPaymentEdit(entry)}
+                                  style={{
+                                    ...smallButtonStyle,
+                                    color: '#fde68a',
+                                    borderColor: 'rgba(245,158,11,0.45)',
+                                    background: 'rgba(245,158,11,0.10)',
+                                  }}
+                                >
+                                  تعديل
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => openPaymentCancel(entry)}
+                                  style={{
+                                    ...smallButtonStyle,
+                                    color: '#fca5a5',
+                                    borderColor: 'rgba(239,68,68,0.45)',
+                                    background: 'rgba(239,68,68,0.10)',
+                                  }}
+                                >
+                                  إلغاء
+                                </button>
+                              </div>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
                         </tr>
                       ))}
 
                   {!statementLoading && statementData.entries.length === 0 && (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={7}
                         style={{
                           ...tdStyle,
                           textAlign: 'center',
@@ -1112,6 +1398,239 @@ export default function SuppliersPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {paymentAction && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            ...modalOverlayStyle,
+            zIndex: 999999,
+            background: 'rgba(2,6,23,0.72)',
+          }}
+        >
+          <div
+            className="theme-modal-card"
+            style={{
+              ...modalStyle,
+              width: '500px',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px',
+                marginBottom: '18px',
+              }}
+            >
+              <div>
+                <h3
+                  style={{
+                    margin: '0 0 6px',
+
+                    color:
+                      paymentAction.mode === 'cancel' ? '#f87171' : '#f8fafc',
+                  }}
+                >
+                  {paymentAction.mode === 'edit'
+                    ? 'تعديل دفعة المورد'
+                    : 'إلغاء دفعة المورد'}
+                </h3>
+
+                <div
+                  style={{
+                    color: '#94a3b8',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                  }}
+                >
+                  قيمة الدفعة الحالية: {money(paymentAction.entry?.credit || 0)}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closePaymentAction}
+                disabled={savingPaymentAction}
+                style={closeButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            {paymentAction.entry?.allocations_text && (
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: '10px',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  color: '#cbd5e1',
+                  marginBottom: '16px',
+                  lineHeight: 1.7,
+                }}
+              >
+                موزعة على: {paymentAction.entry.allocations_text}
+              </div>
+            )}
+
+            {paymentAction.mode === 'edit' ? (
+              <div
+                style={{
+                  display: 'grid',
+                  gap: '14px',
+                }}
+              >
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>المبلغ الصحيح</label>
+
+                  <input
+                    type="number"
+                    min={0}
+                    value={paymentActionAmount}
+                    onChange={(e) => setPaymentActionAmount(e.target.value)}
+                    style={inputStyle}
+                    autoFocus
+                  />
+                </div>
+
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>الحساب المالي</label>
+
+                  <select
+                    value={paymentActionMethod}
+                    onChange={(e) => setPaymentActionMethod(e.target.value)}
+                    style={inputStyle}
+                  >
+                    {CASH_ACCOUNT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>ملاحظات</label>
+
+                  <input
+                    value={paymentActionNotes}
+                    onChange={(e) => setPaymentActionNotes(e.target.value)}
+                    placeholder="ملاحظات الدفعة"
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div style={fieldStyle}>
+                <label style={labelStyle}>سبب الإلغاء</label>
+
+                <textarea
+                  value={paymentActionReason}
+                  onChange={(e) => setPaymentActionReason(e.target.value)}
+                  placeholder="اكتب سبب إلغاء الدفعة"
+                  autoFocus
+                  style={{
+                    minHeight: '90px',
+                    borderRadius: '10px',
+                    border: '1px solid rgba(255,255,255,0.10)',
+                    background: 'rgba(255,255,255,0.05)',
+                    color: '#fff',
+                    padding: '12px',
+                    outline: 'none',
+                    resize: 'vertical',
+                    direction: 'rtl',
+                  }}
+                />
+              </div>
+            )}
+
+            {paymentActionRequirePassword && (
+              <div
+                style={{
+                  ...fieldStyle,
+                  marginTop: '14px',
+                }}
+              >
+                <label style={labelStyle}>كلمة مرور المدير</label>
+
+                <input
+                  type="password"
+                  value={paymentActionPassword}
+                  onChange={(e) => setPaymentActionPassword(e.target.value)}
+                  placeholder="كلمة مرور المدير"
+                  style={inputStyle}
+                />
+              </div>
+            )}
+
+            {paymentAction.mode === 'cancel' && (
+              <div
+                style={{
+                  marginTop: '16px',
+                  padding: '11px 12px',
+                  borderRadius: '10px',
+                  background: 'rgba(239,68,68,0.10)',
+                  border: '1px solid rgba(239,68,68,0.22)',
+                  color: '#fca5a5',
+                  fontWeight: 800,
+                  fontSize: '12px',
+                  lineHeight: 1.7,
+                }}
+              >
+                إلغاء الدفعة سيعيد المبلغ إلى رصيد المورد ويلغي أثر الدفع من
+                الحساب المالي.
+              </div>
+            )}
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+                justifyContent: 'flex-start',
+                marginTop: '22px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={savePaymentAction}
+                disabled={savingPaymentAction}
+                style={{
+                  ...primaryButtonStyle,
+
+                  ...(paymentAction.mode === 'cancel'
+                    ? {
+                        background: 'rgba(239,68,68,0.18)',
+
+                        border: '1px solid rgba(239,68,68,0.35)',
+
+                        color: '#fca5a5',
+                      }
+                    : {}),
+
+                  opacity: savingPaymentAction ? 0.6 : 1,
+                }}
+              >
+                {savingPaymentAction
+                  ? 'جاري الحفظ...'
+                  : paymentAction.mode === 'edit'
+                    ? 'حفظ التعديل'
+                    : 'تأكيد الإلغاء'}
+              </button>
+
+              <button
+                type="button"
+                onClick={closePaymentAction}
+                disabled={savingPaymentAction}
+                style={secondaryButtonStyle}
+              >
+                رجوع
+              </button>
             </div>
           </div>
         </div>

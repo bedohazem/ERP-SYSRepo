@@ -1583,6 +1583,38 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
     throw new Error('لا توجد توزيعات مرتبطة بدفعة المورد')
   }
 
+  const latestAllocationId = Math.max(
+    ...allocations.map((allocation) => Number(allocation.id || 0)),
+  )
+
+  const newerPayment = db
+    .prepare(
+      `
+    SELECT sp.id
+
+    FROM supplier_payments sp
+
+    LEFT JOIN supplier_payment_batches b
+      ON b.id = sp.batch_id
+
+    WHERE sp.supplier_id = ?
+
+      AND sp.id > ?
+
+      AND (
+        sp.batch_id IS NULL
+        OR b.cancelled_at IS NULL
+      )
+
+    LIMIT 1
+    `,
+    )
+    .get(Number(batch.supplier_id), latestAllocationId)
+
+  if (newerPayment) {
+    throw new Error('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للمورد')
+  }
+
   if (
     allocations.some((allocation) => allocation.purchase_status === 'cancelled')
   ) {
@@ -2353,7 +2385,10 @@ export function updateSupplierPaymentBatch(input: {
   return tx()
 }
 
-export function getSupplierStatement(supplierId: number) {
+export function getSupplierStatement(
+  supplierId: number,
+  actorId?: number | null,
+) {
   ensurePurchaseReturnSchema()
 
   const db = getDb()
@@ -2367,10 +2402,13 @@ export function getSupplierStatement(supplierId: number) {
     .prepare(
       `
       SELECT *
+
       FROM suppliers
+
       WHERE id = ?
+
       LIMIT 1
-    `,
+      `,
     )
     .get(id) as any
 
@@ -2382,82 +2420,356 @@ export function getSupplierStatement(supplierId: number) {
     .prepare(
       `
       SELECT *
+
       FROM purchase_invoices
+
       WHERE supplier_id = ?
-        AND IFNULL(status, 'active') != 'cancelled'
-      ORDER BY created_at DESC, id DESC
-    `,
+
+        AND IFNULL(
+          status,
+          'active'
+        ) != 'cancelled'
+
+      ORDER BY
+        created_at DESC,
+        id DESC
+      `,
     )
     .all(id) as any[]
 
   const payments = db
     .prepare(
       `
-      SELECT sp.*
+      SELECT
+        sp.*,
+
+        b.purchase_id
+          AS batch_purchase_id,
+
+        b.amount
+          AS batch_amount,
+
+        b.payment_method
+          AS batch_payment_method,
+
+        b.notes
+          AS batch_notes,
+
+        b.created_by
+          AS batch_created_by,
+
+        b.created_at
+          AS batch_created_at,
+
+        b.cancelled_at
+          AS batch_cancelled_at,
+
+        b.cancelled_by
+          AS batch_cancelled_by,
+
+        b.cancel_reason
+          AS batch_cancel_reason,
+
+        b.replacement_batch_id,
+
+        CASE
+          WHEN b.id IS NULL
+          THEN 0
+
+          WHEN b.created_by = ?
+
+            AND datetime(
+              b.created_at
+            )
+            BETWEEN datetime(
+              'now',
+              '-24 hours'
+            )
+            AND datetime('now')
+
+          THEN 0
+
+          ELSE 1
+        END
+          AS batch_requires_admin_password,
+
+        CASE
+          WHEN b.id IS NOT NULL
+            AND b.cancelled_at IS NULL
+
+            AND NOT EXISTS (
+              SELECT 1
+
+              FROM supplier_payments newer
+
+              LEFT JOIN
+                supplier_payment_batches
+                newer_batch
+                ON newer_batch.id =
+                   newer.batch_id
+
+              WHERE newer.supplier_id =
+                    sp.supplier_id
+
+                AND newer.id > (
+                  SELECT IFNULL(
+                    MAX(current_sp.id),
+                    0
+                  )
+
+                  FROM supplier_payments
+                    current_sp
+
+                  WHERE
+                    current_sp.batch_id =
+                    b.id
+                )
+
+                AND (
+                  newer.batch_id IS NULL
+
+                  OR
+                  newer_batch.cancelled_at
+                    IS NULL
+                )
+            )
+
+          THEN 1
+
+          ELSE 0
+        END
+          AS batch_is_latest_mutable
+
       FROM supplier_payments sp
-      LEFT JOIN purchase_invoices pi ON pi.id = sp.purchase_id
+
+      LEFT JOIN
+        supplier_payment_batches b
+        ON b.id = sp.batch_id
+
+      LEFT JOIN
+        purchase_invoices pi
+        ON pi.id = sp.purchase_id
+
       WHERE sp.supplier_id = ?
+
         AND (
           sp.purchase_id IS NULL
-          OR IFNULL(pi.status, 'active') != 'cancelled'
+
+          OR IFNULL(
+            pi.status,
+            'active'
+          ) != 'cancelled'
         )
-      ORDER BY sp.created_at DESC, sp.id DESC
-    `,
+
+      ORDER BY
+        sp.created_at DESC,
+        sp.id DESC
+      `,
     )
-    .all(id) as any[]
+    .all(Number(actorId || 0), id) as any[]
 
   const returns = db
     .prepare(
       `
       SELECT *
+
       FROM purchase_returns
+
       WHERE supplier_id = ?
-      ORDER BY created_at DESC, id DESC
-    `,
+
+      ORDER BY
+        created_at DESC,
+        id DESC
+      `,
     )
     .all(id) as any[]
+
+  const batchPayments = new Map<number, any[]>()
+
+  const standalonePayments: any[] = []
+
+  for (const payment of payments) {
+    const batchId = Number(payment.batch_id || 0)
+
+    if (!batchId) {
+      standalonePayments.push(payment)
+
+      continue
+    }
+
+    const current = batchPayments.get(batchId) || []
+
+    current.push(payment)
+
+    batchPayments.set(batchId, current)
+  }
+
+  const batchPaymentEntries = Array.from(batchPayments.entries()).map(
+    ([batchId, rows]) => {
+      const first = rows[0]
+
+      const cancelled = Boolean(first.batch_cancelled_at)
+
+      const replaced = Boolean(first.replacement_batch_id)
+
+      const batchPurchaseId = Number(first.batch_purchase_id || 0)
+
+      const allocations = rows.map((row) => ({
+        purchase_id: Number(row.purchase_id),
+
+        amount: Number(row.amount || 0),
+      }))
+
+      const totalAmount =
+        Number(first.batch_amount || 0) ||
+        allocations.reduce((sum, item) => sum + item.amount, 0)
+
+      const allocationsText = allocations
+        .map((item) => `#${item.purchase_id}: ${item.amount.toFixed(2)} ج.م`)
+        .join('، ')
+
+      return {
+        id: `payment-batch-${batchId}`,
+
+        type: 'payment',
+
+        title: replaced
+          ? 'دفعة مورد - تم تعديلها'
+          : cancelled
+            ? 'دفعة مورد - ملغاة'
+            : batchPurchaseId
+              ? `دفعة مورد على فاتورة #${batchPurchaseId}`
+              : 'دفعة مورد',
+
+        debit: 0,
+
+        credit: cancelled ? 0 : totalAmount,
+
+        purchase_id: batchPurchaseId || null,
+
+        batch_id: batchId,
+
+        batch_created_by:
+          first.batch_created_by == null
+            ? null
+            : Number(first.batch_created_by),
+
+        requires_admin_password: Boolean(first.batch_requires_admin_password),
+
+        is_latest_mutable_batch: Boolean(first.batch_is_latest_mutable),
+
+        replacement_batch_id: first.replacement_batch_id ?? null,
+
+        allocations,
+
+        allocations_text: allocationsText,
+
+        payment_method: first.batch_payment_method || first.payment_method,
+
+        notes: cancelled
+          ? first.batch_cancel_reason || 'دفعة ملغاة'
+          : first.batch_notes || first.notes,
+
+        cancelled_at: first.batch_cancelled_at ?? null,
+
+        created_at: first.batch_created_at || first.created_at,
+      }
+    },
+  )
+
+  const standalonePaymentEntries = standalonePayments.map((payment) => {
+    const initialPayment = String(payment.notes || '').startsWith(
+      'دفعة عند إنشاء فاتورة شراء رقم ',
+    )
+
+    return {
+      id: `payment-${payment.id}`,
+
+      type: 'payment',
+
+      title: initialPayment
+        ? payment.purchase_id
+          ? `دفعة وقت إنشاء فاتورة #${payment.purchase_id}`
+          : 'دفعة وقت إنشاء فاتورة'
+        : payment.purchase_id
+          ? `دفعة على فاتورة #${payment.purchase_id}`
+          : 'دفعة مورد',
+
+      debit: 0,
+
+      credit: Number(payment.amount || 0),
+
+      purchase_id: payment.purchase_id,
+
+      batch_id: null,
+
+      payment_method: payment.payment_method,
+
+      notes: payment.notes,
+
+      cancelled_at: null,
+
+      created_at: payment.created_at,
+    }
+  })
+
+  const paymentEntries = [...batchPaymentEntries, ...standalonePaymentEntries]
 
   const entries = [
     ...purchases.map((purchase) => ({
       id: `purchase-${purchase.id}`,
+
       type: 'purchase',
+
       title: `فاتورة شراء #${purchase.id}`,
+
       debit: Number(purchase.total_amount || 0),
+
       credit: 0,
+
       purchase_id: purchase.id,
+
       payment_status: purchase.payment_status,
+
       notes: purchase.notes,
+
       created_at: purchase.created_at,
     })),
 
     ...returns.map((purchaseReturn) => ({
       id: `purchase-return-${purchaseReturn.id}`,
+
       type: 'purchase_return',
+
       title: `مرتجع شراء #${purchaseReturn.id} على فاتورة #${purchaseReturn.purchase_id}`,
+
       debit: 0,
+
       credit: Number(purchaseReturn.total_amount || 0),
+
       purchase_id: purchaseReturn.purchase_id,
+
       return_id: purchaseReturn.id,
+
       notes: purchaseReturn.notes,
+
       created_at: purchaseReturn.created_at,
     })),
 
-    ...payments.map((payment) => ({
-      id: `payment-${payment.id}`,
-      type: 'payment',
-      title: payment.purchase_id
-        ? `دفعة على فاتورة #${payment.purchase_id}`
-        : 'دفعة مورد',
-      debit: 0,
-      credit: Number(payment.amount || 0),
-      purchase_id: payment.purchase_id,
-      payment_method: payment.payment_method,
-      notes: payment.notes,
-      created_at: payment.created_at,
-    })),
+    ...paymentEntries,
   ].sort((a, b) => {
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   })
+
+  const totalPaid = roundMoney(
+    payments.reduce((sum, payment) => {
+      if (payment.batch_id && payment.batch_cancelled_at) {
+        return sum
+      }
+
+      return sum + Number(payment.amount || 0)
+    }, 0),
+  )
 
   return {
     supplier,
@@ -2465,16 +2777,21 @@ export function getSupplierStatement(supplierId: number) {
     payments,
     returns,
     entries,
+
     summary: {
       total_purchased: Number(supplier.total_purchased || 0),
-      total_paid: payments.reduce((sum, p) => sum + Number(p.amount || 0), 0),
+
+      total_paid: totalPaid,
+
       total_returns: returns.reduce(
-        (sum, r) => sum + Number(r.total_amount || 0),
+        (sum, purchaseReturn) => sum + Number(purchaseReturn.total_amount || 0),
         0,
       ),
+
       balance: Number(supplier.balance || 0),
+
       open_purchases: purchases.filter(
-        (p) => Number(p.remaining_amount || 0) > 0,
+        (purchase) => Number(purchase.remaining_amount || 0) > 0,
       ).length,
     },
   }

@@ -1086,7 +1086,10 @@ declare global {
         }>
       }>
 
-      getSupplierStatement: (supplierId: number) => Promise<{
+      getSupplierStatement: (
+        supplierId: number,
+        actorId?: number,
+      ) => Promise<{
         supplier: any
         purchases: any[]
         payments: any[]
@@ -1098,6 +1101,24 @@ declare global {
           debit: number
           credit: number
           purchase_id?: number | null
+          batch_id?: number | null
+
+          batch_created_by?: number | null
+
+          requires_admin_password?: boolean
+
+          is_latest_mutable_batch?: boolean
+
+          replacement_batch_id?: number | null
+
+          allocations?: Array<{
+            purchase_id: number
+            amount: number
+          }>
+
+          allocations_text?: string
+
+          cancelled_at?: string | null
           return_id?: number
           payment_status?: string
           payment_method?: string
