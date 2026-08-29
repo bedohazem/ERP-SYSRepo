@@ -15,6 +15,7 @@ import {
   getCustomerStatement,
   cancelCustomerPaymentBatch,
   getCustomerPaymentBatchAccess,
+  updateCustomerPaymentBatch,
 } from '../database/repositories/customers.repo'
 
 export function registerCustomersIpc(): void {
@@ -110,6 +111,68 @@ export function registerCustomersIpc(): void {
 
         message:
           error instanceof Error ? error.message : 'تعذر إلغاء دفعة العميل',
+      }
+    }
+  })
+
+  ipcMain.handle('customers:update-payment', (_, input) => {
+    try {
+      const actorId = getActorId(input)
+
+      const access = getCustomerPaymentBatchAccess(
+        Number(input?.batch_id),
+        actorId,
+      )
+
+      if (Number(access.created_by || 0) !== Number(actorId || 0)) {
+        requireAdmin(actorId)
+      }
+
+      if (access.requires_admin_password) {
+        requireAnyAdminPassword(input?.admin_password)
+      }
+
+      const result = updateCustomerPaymentBatch({
+        batch_id: Number(input?.batch_id),
+
+        amount: Number(input?.amount),
+
+        payment_method: input?.payment_method,
+
+        notes: input?.notes,
+
+        actor_id: actorId,
+      })
+
+      logAction({
+        actor_id: actorId,
+
+        action: 'customer_payment_updated',
+
+        entity: 'customer_payment_batches',
+
+        entity_id: Number(input?.batch_id),
+
+        details: {
+          customer_id: result.customer_id,
+
+          replacement_batch_id: result.batch_id,
+
+          old_amount: result.old_amount,
+
+          new_amount: result.new_amount,
+
+          payment_method: result.payment_method,
+        },
+      })
+
+      return result
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر تعديل دفعة العميل',
       }
     }
   })

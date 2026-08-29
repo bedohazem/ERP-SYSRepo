@@ -23,6 +23,7 @@ import {
   searchCustomers,
   listCustomers,
   updateCustomer,
+  updateCustomerPaymentBatch,
 } from '../../src/main/database/repositories/customers.repo'
 
 type CustomerTestRow = {
@@ -424,6 +425,116 @@ describe('customers repository', () => {
     expect(statement.summary.total_paid).toBe(100)
 
     expect(statement.summary.balance).toBe(200)
+  })
+
+  it('updates customer payment batch and replaces its financial effects', () => {
+    const customer = createTestCustomer()
+
+    const sale = createPartialSale(customer.id, 100)
+
+    const payment = recordCustomerPayment({
+      customer_id: customer.id,
+      sale_id: sale.saleId,
+      amount: 150,
+      payment_method: 'cash',
+      actor_id: 1,
+    })
+
+    const result = updateCustomerPaymentBatch({
+      batch_id: payment.payment_batch_id,
+
+      amount: 75,
+
+      payment_method: 'cash',
+
+      notes: 'Corrected payment',
+
+      actor_id: 1,
+    })
+
+    expect(result.success).toBe(true)
+
+    expect(result.old_amount).toBe(150)
+    expect(result.new_amount).toBe(75)
+
+    expect(result.batch_id).not.toBe(payment.payment_batch_id)
+
+    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow
+
+    expect(updatedCustomer.balance).toBe(125)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    expect(receipt.sale.paid).toBe(175)
+
+    expect(receipt.sale.remaining_amount).toBe(125)
+
+    expect(receipt.sale.payment_status).toBe('partial')
+
+    const db = getDb()
+
+    const oldBatch = db
+      .prepare(
+        `
+      SELECT *
+      FROM customer_payment_batches
+      WHERE id = ?
+      `,
+      )
+      .get(payment.payment_batch_id) as any
+
+    expect(oldBatch.cancelled_at).toBeTruthy()
+
+    expect(Number(oldBatch.replacement_batch_id)).toBe(result.batch_id)
+
+    const newBatch = db
+      .prepare(
+        `
+      SELECT *
+      FROM customer_payment_batches
+      WHERE id = ?
+      `,
+      )
+      .get(result.batch_id) as any
+
+    expect(Number(newBatch.amount)).toBe(75)
+
+    expect(newBatch.cancelled_at).toBeNull()
+
+    const activeCash = db
+      .prepare(
+        `
+      SELECT
+        IFNULL(
+          SUM(
+            CASE
+              WHEN direction = 'in'
+              THEN amount
+              WHEN direction = 'out'
+              THEN -amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS balance
+
+      FROM cash_movements
+
+      WHERE payment_method = 'store_cash'
+        AND cancelled_at IS NULL
+      `,
+      )
+      .get() as {
+      balance: number
+    }
+
+    expect(Number(activeCash.balance)).toBe(175)
+
+    const statement = getCustomerStatement(customer.id) as any
+
+    expect(statement.summary.total_paid).toBe(175)
+
+    expect(statement.summary.balance).toBe(125)
   })
 
   it('rejects cancelling customer payment when cash balance cannot cover reversal', () => {

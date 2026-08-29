@@ -1,5 +1,5 @@
 import { getDb } from '../db'
-import { createCashMovement } from './cash.repo'
+import { createCashMovement, resolveCashAccount } from './cash.repo'
 
 export type CustomerInput = {
   name: string
@@ -971,6 +971,570 @@ export function cancelCustomerPaymentBatch(input: {
 
         amount: Number(allocation.amount || 0),
       })),
+    }
+  })
+
+  return tx()
+}
+
+export function updateCustomerPaymentBatch(input: {
+  batch_id: number
+  amount: number
+  payment_method?: string
+  notes?: string | null
+  actor_id?: number | null
+}) {
+  const db = getDb()
+
+  const batchId = Number(input.batch_id || 0)
+  const amountInput = Number(input.amount || 0)
+
+  if (!batchId) {
+    throw new Error('رقم دفعة العميل غير صحيح')
+  }
+
+  if (!Number.isFinite(amountInput) || amountInput <= 0) {
+    throw new Error('مبلغ الدفعة المعدل غير صحيح')
+  }
+
+  const batch = db
+    .prepare(
+      `
+      SELECT
+        b.*,
+
+        COALESCE(
+          NULLIF(b.business_date, ''),
+          date(b.created_at, 'localtime')
+        ) AS accounting_date
+
+      FROM customer_payment_batches b
+
+      WHERE b.id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(batchId) as any
+
+  if (!batch) {
+    throw new Error('دفعة العميل غير موجودة')
+  }
+
+  if (batch.cancelled_at) {
+    throw new Error('لا يمكن تعديل دفعة ملغاة')
+  }
+
+  const accountingDate = String(batch.accounting_date || '')
+
+  if (accountingDate) {
+    const closing = db
+      .prepare(
+        `
+        SELECT id
+        FROM cash_day_closings
+        WHERE business_date = ?
+        LIMIT 1
+        `,
+      )
+      .get(accountingDate)
+
+    if (closing) {
+      throw new Error(
+        `لا يمكن تعديل الدفعة لأن يوم ${accountingDate} تم تقفيله`,
+      )
+    }
+  }
+
+  const customer = db
+    .prepare(
+      `
+      SELECT *
+      FROM customers
+      WHERE id = ?
+      LIMIT 1
+      `,
+    )
+    .get(Number(batch.customer_id)) as any
+
+  if (!customer) {
+    throw new Error('العميل غير موجود')
+  }
+
+  const allocations = db
+    .prepare(
+      `
+      SELECT
+        cp.id,
+        cp.sale_id,
+        cp.amount,
+
+        s.paid,
+        s.remaining_amount,
+        s.grand_total,
+        s.cancelled_at AS sale_cancelled_at
+
+      FROM customer_payments cp
+
+      JOIN sales s
+        ON s.id = cp.sale_id
+
+      WHERE cp.batch_id = ?
+
+      ORDER BY cp.id ASC
+      `,
+    )
+    .all(batchId) as any[]
+
+  if (allocations.length === 0) {
+    throw new Error('لا توجد توزيعات مرتبطة بدفعة العميل')
+  }
+
+  if (allocations.some((allocation) => allocation.sale_cancelled_at)) {
+    throw new Error('لا يمكن تعديل الدفعة لأن إحدى الفواتير المرتبطة بها ملغاة')
+  }
+
+  const oldTotal = allocations.reduce(
+    (sum, allocation) => sum + Number(allocation.amount || 0),
+    0,
+  )
+
+  if (Math.abs(oldTotal - Number(batch.amount || 0)) > 0.01) {
+    throw new Error('بيانات دفعة العميل غير متطابقة')
+  }
+
+  const cashMovement = db
+    .prepare(
+      `
+      SELECT *
+      FROM cash_movements
+
+      WHERE type = 'customer_payment'
+        AND direction = 'in'
+        AND reference_type = 'customer_payment'
+        AND reference_id = ?
+
+      ORDER BY id DESC
+
+      LIMIT 1
+      `,
+    )
+    .get(batchId) as any
+
+  if (!cashMovement) {
+    throw new Error('حركة الخزنة الخاصة بدفعة العميل غير موجودة')
+  }
+
+  if (cashMovement.cancelled_at) {
+    throw new Error('حركة الخزنة الخاصة بالدفعة ملغاة بالفعل')
+  }
+
+  if (Math.abs(Number(cashMovement.amount || 0) - oldTotal) > 0.01) {
+    throw new Error('قيمة حركة الخزنة لا تطابق قيمة الدفعة')
+  }
+
+  const specificSaleId = Number(batch.sale_id || 0)
+
+  const customerAvailableAfterReverse = Math.max(
+    0,
+    Number(customer.balance || 0) + oldTotal,
+  )
+
+  let availableForNewPayment = customerAvailableAfterReverse
+
+  if (specificSaleId) {
+    const targetSale = allocations.find(
+      (allocation) => Number(allocation.sale_id) === specificSaleId,
+    )
+
+    if (!targetSale) {
+      throw new Error('الفاتورة المرتبطة بالدفعة غير موجودة')
+    }
+
+    const oldAllocationOnSale = allocations.reduce(
+      (sum, allocation) =>
+        Number(allocation.sale_id) === specificSaleId
+          ? sum + Number(allocation.amount || 0)
+          : sum,
+      0,
+    )
+
+    availableForNewPayment = Math.min(
+      customerAvailableAfterReverse,
+
+      Math.max(
+        0,
+        Number(targetSale.remaining_amount || 0) + oldAllocationOnSale,
+      ),
+    )
+  }
+
+  if (amountInput > availableForNewPayment + 0.0001) {
+    throw new Error(
+      `مبلغ الدفعة المعدل أكبر من المديونية المتاحة وهي ${availableForNewPayment.toFixed(2)} ج.م`,
+    )
+  }
+
+  const newPaymentMethod =
+    String(input.payment_method || batch.payment_method || 'cash').trim() ||
+    'cash'
+
+  const oldAccount = resolveCashAccount(
+    cashMovement.payment_method || batch.payment_method || 'cash',
+  )
+
+  const newAccount = resolveCashAccount(newPaymentMethod)
+
+  const cashBalanceRow = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(
+            CASE
+              WHEN direction = 'in'
+              THEN amount
+
+              WHEN direction = 'out'
+              THEN -amount
+
+              ELSE 0
+            END
+          ),
+          0
+        ) AS balance
+
+      FROM cash_movements
+
+      WHERE payment_method = ?
+        AND cancelled_at IS NULL
+      `,
+    )
+    .get(oldAccount) as
+    | {
+        balance: number
+      }
+    | undefined
+
+  const oldAccountBalance = Number(cashBalanceRow?.balance || 0)
+
+  if (oldAccount === newAccount) {
+    if (oldAccountBalance + amountInput + 0.0001 < oldTotal) {
+      throw new Error('رصيد حساب الدفع الحالي لا يكفي لتنفيذ تعديل الدفعة')
+    }
+  } else if (oldAccountBalance + 0.0001 < oldTotal) {
+    throw new Error('رصيد حساب الدفع القديم لا يكفي لنقل الدفعة إلى حساب آخر')
+  }
+
+  const newNotes =
+    input.notes === undefined
+      ? (batch.notes ?? null)
+      : input.notes?.trim() || null
+
+  const originalCreatedBy =
+    batch.created_by == null
+      ? (input.actor_id ?? null)
+      : Number(batch.created_by)
+
+  const tx = db.transaction(() => {
+    // عكس تأثير الدفعة القديمة على الفواتير
+    for (const allocation of allocations) {
+      const amount = Number(allocation.amount || 0)
+
+      const nextPaid = Math.max(0, Number(allocation.paid || 0) - amount)
+
+      const nextRemaining = Math.min(
+        Number(allocation.grand_total || 0),
+
+        Math.max(0, Number(allocation.remaining_amount || 0) + amount),
+      )
+
+      const nextStatus =
+        nextRemaining <= 0 ? 'paid' : nextPaid > 0 ? 'partial' : 'unpaid'
+
+      db.prepare(
+        `
+        UPDATE sales
+        SET
+          paid = ?,
+          remaining_amount = ?,
+          payment_status = ?
+        WHERE id = ?
+        `,
+      ).run(nextPaid, nextRemaining, nextStatus, Number(allocation.sale_id))
+    }
+
+    // إعادة المديونية القديمة أولاً
+    db.prepare(
+      `
+      UPDATE customers
+      SET
+        balance =
+          IFNULL(balance, 0) + ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+      `,
+    ).run(oldTotal, Number(batch.customer_id))
+
+    // إنشاء Batch بديل مع الاحتفاظ
+    // بتاريخ ومالك العملية الأصليين
+    const newBatchResult = db
+      .prepare(
+        `
+        INSERT INTO customer_payment_batches (
+          customer_id,
+          sale_id,
+          amount,
+          payment_method,
+          notes,
+          created_by,
+          business_date,
+          created_at
+        )
+        VALUES (?, ?, 0, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(
+        Number(batch.customer_id),
+        batch.sale_id ?? null,
+        newPaymentMethod,
+        newNotes,
+        originalCreatedBy,
+        accountingDate || null,
+        batch.created_at,
+      )
+
+    const newBatchId = Number(newBatchResult.lastInsertRowid)
+
+    // تعليم العملية القديمة بأنها استبدلت
+    db.prepare(
+      `
+      UPDATE customer_payment_batches
+      SET
+        cancelled_at = CURRENT_TIMESTAMP,
+        cancelled_by = ?,
+        cancel_reason = ?,
+        replacement_batch_id = ?
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, 'تم تعديل دفعة العميل', newBatchId, batchId)
+
+    // إلغاء حركة الكاش القديمة
+    db.prepare(
+      `
+      UPDATE cash_movements
+      SET
+        cancelled_at = CURRENT_TIMESTAMP,
+        cancelled_by = ?,
+        cancel_reason = ?
+      WHERE id = ?
+      `,
+    ).run(
+      input.actor_id ?? null,
+      'تم تعديل دفعة العميل',
+      Number(cashMovement.id),
+    )
+
+    const insertPayment = db.prepare(`
+      INSERT INTO customer_payments (
+        customer_id,
+        sale_id,
+        batch_id,
+        amount,
+        payment_method,
+        notes
+      )
+      VALUES (?, ?, ?, ?, ?, ?)
+    `)
+
+    const updateSale = db.prepare(`
+      UPDATE sales
+      SET
+        paid = ?,
+        remaining_amount = ?,
+        payment_status = ?
+      WHERE id = ?
+    `)
+
+    let totalPaid = 0
+
+    const newAllocations: Array<{
+      sale_id: number
+      amount: number
+    }> = []
+
+    if (specificSaleId) {
+      const sale = db
+        .prepare(
+          `
+          SELECT *
+          FROM sales
+          WHERE id = ?
+            AND customer_id = ?
+            AND IFNULL(type, 'sale') = 'sale'
+            AND cancelled_at IS NULL
+          LIMIT 1
+          `,
+        )
+        .get(specificSaleId, Number(batch.customer_id)) as any
+
+      if (!sale) {
+        throw new Error('الفاتورة المرتبطة بالدفعة غير موجودة')
+      }
+
+      const remaining = Number(sale.remaining_amount || 0)
+
+      if (amountInput > remaining + 0.0001) {
+        throw new Error('مبلغ الدفعة المعدل أكبر من المتبقي على الفاتورة')
+      }
+
+      const newPaid = Math.min(
+        Number(sale.grand_total || 0),
+        Number(sale.paid || 0) + amountInput,
+      )
+
+      const newRemaining = Math.max(0, remaining - amountInput)
+
+      const newStatus =
+        newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
+
+      updateSale.run(newPaid, newRemaining, newStatus, specificSaleId)
+
+      insertPayment.run(
+        Number(batch.customer_id),
+        specificSaleId,
+        newBatchId,
+        amountInput,
+        newPaymentMethod,
+        newNotes || `دفعة معدلة على فاتورة بيع رقم ${specificSaleId}`,
+      )
+
+      totalPaid = amountInput
+
+      newAllocations.push({
+        sale_id: specificSaleId,
+        amount: amountInput,
+      })
+    } else {
+      let remainingPayment = amountInput
+
+      const openSales = db
+        .prepare(
+          `
+          SELECT *
+          FROM sales
+          WHERE customer_id = ?
+            AND IFNULL(type, 'sale') = 'sale'
+            AND cancelled_at IS NULL
+            AND remaining_amount > 0
+          ORDER BY id ASC
+          `,
+        )
+        .all(Number(batch.customer_id)) as any[]
+
+      for (const sale of openSales) {
+        if (remainingPayment <= 0.0001) {
+          break
+        }
+
+        const saleRemaining = Number(sale.remaining_amount || 0)
+
+        const payNow = Math.min(remainingPayment, saleRemaining)
+
+        if (payNow <= 0) {
+          continue
+        }
+
+        const newPaid = Math.min(
+          Number(sale.grand_total || 0),
+          Number(sale.paid || 0) + payNow,
+        )
+
+        const newRemaining = Math.max(0, saleRemaining - payNow)
+
+        const newStatus =
+          newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
+
+        updateSale.run(newPaid, newRemaining, newStatus, sale.id)
+
+        insertPayment.run(
+          Number(batch.customer_id),
+          Number(sale.id),
+          newBatchId,
+          payNow,
+          newPaymentMethod,
+          newNotes || `دفعة معدلة موزعة على فاتورة بيع رقم ${sale.id}`,
+        )
+
+        totalPaid += payNow
+        remainingPayment -= payNow
+
+        newAllocations.push({
+          sale_id: Number(sale.id),
+          amount: payNow,
+        })
+      }
+
+      if (remainingPayment > 0.0001) {
+        throw new Error('تعذر توزيع كامل مبلغ الدفعة المعدلة')
+      }
+    }
+
+    if (Math.abs(totalPaid - amountInput) > 0.01) {
+      throw new Error('تعذر تسجيل مبلغ الدفعة المعدل بالكامل')
+    }
+
+    db.prepare(
+      `
+      UPDATE customer_payment_batches
+      SET amount = ?
+      WHERE id = ?
+      `,
+    ).run(totalPaid, newBatchId)
+
+    db.prepare(
+      `
+      UPDATE customers
+      SET
+        balance = MAX(
+          IFNULL(balance, 0) - ?,
+          0
+        ),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+      `,
+    ).run(totalPaid, Number(batch.customer_id))
+
+    createCashMovement({
+      type: 'customer_payment',
+      direction: 'in',
+      amount: totalPaid,
+      payment_method: newPaymentMethod,
+
+      reference_id: newBatchId,
+      reference_type: 'customer_payment',
+
+      notes: newNotes || 'دفعة عميل معدلة',
+
+      created_by: originalCreatedBy,
+
+      business_date: accountingDate || null,
+    })
+
+    return {
+      success: true,
+
+      replaced_batch_id: batchId,
+      batch_id: newBatchId,
+
+      customer_id: Number(batch.customer_id),
+
+      old_amount: oldTotal,
+      new_amount: totalPaid,
+
+      payment_method: newPaymentMethod,
+
+      allocations: newAllocations,
     }
   })
 

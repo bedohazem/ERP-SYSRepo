@@ -480,6 +480,32 @@ declare global {
         }>
       }>
 
+      updateCustomerPayment: (input: {
+        batch_id: number
+        amount: number
+        payment_method?: string
+        notes?: string | null
+        actor_id?: number | null
+        admin_password?: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+
+        replaced_batch_id?: number
+        batch_id?: number
+        customer_id?: number
+
+        old_amount?: number
+        new_amount?: number
+
+        payment_method?: string
+
+        allocations?: Array<{
+          sale_id: number
+          amount: number
+        }>
+      }>
+
       getCustomerStatement: (customerId: number) => Promise<{
         customer: any
         sales: any[]
