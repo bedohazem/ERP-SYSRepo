@@ -103,7 +103,32 @@ export function registerPurchasesIpc(): void {
   })
 
   ipcMain.handle('suppliers:record-payment', (_, input) => {
-    return recordSupplierPayment(input)
+    const actorId = getActorId(input)
+
+    const result = recordSupplierPayment({
+      ...input,
+      actor_id: actorId,
+    })
+
+    logAction({
+      actor_id: actorId,
+
+      action: 'supplier_payment_recorded',
+
+      entity: 'supplier_payment_batches',
+
+      entity_id: result.payment_batch_id,
+
+      details: {
+        supplier_id: result.supplier_id,
+
+        amount: result.paid_amount,
+
+        allocations: result.allocations,
+      },
+    })
+
+    return result
   })
 
   ipcMain.handle('suppliers:statement', (_, supplierId: number) => {

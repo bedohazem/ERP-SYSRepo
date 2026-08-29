@@ -1028,9 +1028,11 @@ declare global {
         payment_method?: string
         notes?: string | null
         actor_id?: number
+        actor_id?: number | null
       }) => Promise<{
         ok: boolean
         supplier_id: number
+        payment_batch_id: number
         paid_amount: number
         allocations?: Array<{
           purchase_id: number | null

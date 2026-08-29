@@ -478,6 +478,31 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       throw new Error('لا يمكن إلغاء فاتورة تم عمل مرتجع عليها')
     }
 
+    const laterPaymentRow = db
+      .prepare(
+        `
+    SELECT COUNT(*) AS count
+
+    FROM supplier_payments sp
+
+    JOIN supplier_payment_batches b
+      ON b.id = sp.batch_id
+
+    WHERE sp.purchase_id = ?
+
+      AND b.cancelled_at IS NULL
+    `,
+      )
+      .get(purchaseId) as {
+      count: number
+    }
+
+    if (Number(laterPaymentRow?.count || 0) > 0) {
+      throw new Error(
+        'لا يمكن إلغاء فاتورة الشراء لأنها تحتوي على دفعة مورد لاحقة',
+      )
+    }
+
     const items = db
       .prepare(
         `
@@ -570,6 +595,7 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
         `
         DELETE FROM supplier_payments
         WHERE purchase_id = ?
+          AND batch_id IS NULL
       `,
       ).run(purchaseId)
     }
@@ -1157,6 +1183,7 @@ export function recordSupplierPayment(input: {
   amount: number
   payment_method?: string
   notes?: string | null
+  actor_id?: number | null
 }) {
   ensurePurchaseReturnSchema()
 
@@ -1193,15 +1220,54 @@ export function recordSupplierPayment(input: {
       throw new Error('قيمة الدفع أكبر من رصيد المورد')
     }
 
+    const businessDateRow = db
+      .prepare(
+        `
+    SELECT date('now', 'localtime') AS business_date
+    `,
+      )
+      .get() as {
+      business_date: string
+    }
+
+    const businessDate = String(businessDateRow?.business_date || '')
+
+    const batchResult = db
+      .prepare(
+        `
+    INSERT INTO supplier_payment_batches (
+      supplier_id,
+      purchase_id,
+      amount,
+      payment_method,
+      notes,
+      created_by,
+      business_date
+    )
+    VALUES (?, ?, 0, ?, ?, ?, ?)
+    `,
+      )
+      .run(
+        supplierId,
+        purchaseId,
+        input.payment_method || 'cash',
+        input.notes?.trim() || null,
+        input.actor_id ?? null,
+        businessDate,
+      )
+
+    const paymentBatchId = Number(batchResult.lastInsertRowid)
+
     const insertPayment = db.prepare(`
       INSERT INTO supplier_payments (
         supplier_id,
         purchase_id,
+        batch_id,
         amount,
         payment_method,
         notes
       )
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?)
     `)
 
     const updatePurchase = db.prepare(`
@@ -1259,6 +1325,7 @@ export function recordSupplierPayment(input: {
       insertPayment.run(
         supplierId,
         purchaseId,
+        paymentBatchId,
         finalAmount,
         input.payment_method || 'cash',
         input.notes?.trim() || `دفعة على فاتورة شراء رقم ${purchaseId}`,
@@ -1310,6 +1377,7 @@ export function recordSupplierPayment(input: {
         insertPayment.run(
           supplierId,
           purchase.id,
+          paymentBatchId,
           payNow,
           input.payment_method || 'cash',
           input.notes?.trim() ||
@@ -1333,6 +1401,14 @@ export function recordSupplierPayment(input: {
 
     db.prepare(
       `
+  UPDATE supplier_payment_batches
+  SET amount = ?
+  WHERE id = ?
+  `,
+    ).run(totalPaid, paymentBatchId)
+
+    db.prepare(
+      `
       UPDATE suppliers
       SET
         balance = MAX(
@@ -1347,18 +1423,30 @@ export function recordSupplierPayment(input: {
     createCashMovement({
       type: 'supplier_payment',
       direction: 'out',
+
       amount: totalPaid,
+
       payment_method: input.payment_method || 'cash',
-      reference_id: purchaseId,
+
+      reference_id: paymentBatchId,
       reference_type: 'supplier_payment',
+
       notes: input.notes?.trim() || 'دفعة للمورد',
-      created_by: (input as any).actor_id ?? null,
+
+      created_by: input.actor_id ?? null,
+
+      business_date: businessDate,
     })
 
     return {
       ok: true,
+
       supplier_id: supplierId,
+
+      payment_batch_id: paymentBatchId,
+
       paid_amount: totalPaid,
+
       allocations,
     }
   })

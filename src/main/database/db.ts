@@ -214,16 +214,50 @@ export function getDb(): Database.Database {
         FOREIGN KEY (variant_id) REFERENCES product_variants(id)
       );
 
-      CREATE TABLE IF NOT EXISTS supplier_payments (
+      CREATE TABLE IF NOT EXISTS supplier_payment_batches (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+
         supplier_id INTEGER NOT NULL,
         purchase_id INTEGER,
-        amount REAL NOT NULL,
+
+        amount REAL NOT NULL DEFAULT 0,
+
         payment_method TEXT DEFAULT 'cash',
         notes TEXT,
+
+        created_by INTEGER,
+        business_date TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        cancelled_at TEXT,
+        cancelled_by INTEGER,
+        cancel_reason TEXT,
+
+        replacement_batch_id INTEGER,
+
         FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
-        FOREIGN KEY (purchase_id) REFERENCES purchase_invoices(id)
+        FOREIGN KEY (purchase_id) REFERENCES purchase_invoices(id),
+        FOREIGN KEY (created_by) REFERENCES users(id),
+        FOREIGN KEY (cancelled_by) REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS supplier_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        supplier_id INTEGER NOT NULL,
+        purchase_id INTEGER,
+        batch_id INTEGER,
+
+        amount REAL NOT NULL,
+
+        payment_method TEXT DEFAULT 'cash',
+        notes TEXT,
+
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+        FOREIGN KEY (purchase_id) REFERENCES purchase_invoices(id),
+        FOREIGN KEY (batch_id) REFERENCES supplier_payment_batches(id)
       );
           
       CREATE TABLE IF NOT EXISTS store_liabilities (
@@ -427,6 +461,7 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'purchase_invoices', 'discount_input', 'REAL DEFAULT 0')
     safeAddColumn(db, 'purchase_invoices', 'discount_value', 'REAL DEFAULT 0')
     safeAddColumn(db, 'supplier_payments', 'purchase_id', 'INTEGER')
+    safeAddColumn(db, 'supplier_payments', 'batch_id', 'INTEGER')
     safeAddColumn(
       db,
       'supplier_payments',
@@ -595,6 +630,7 @@ export function resetDatabaseData(): void {
       DELETE FROM store_liabilities;
 
       DELETE FROM supplier_payments;
+      DELETE FROM supplier_payment_batches;
       DELETE FROM purchase_items;
       DELETE FROM purchase_invoices;
       DELETE FROM suppliers;
