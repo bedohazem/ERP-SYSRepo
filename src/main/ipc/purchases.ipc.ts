@@ -9,10 +9,16 @@ import {
   cancelPurchaseInvoice,
   createPurchaseReturn,
   listPurchaseReturns,
+  cancelSupplierPaymentBatch,
+  getSupplierPaymentBatchAccess,
   getPurchaseReturn,
 } from '../database/repositories/purchases.repo'
 
-import { requireAdminPassword } from './permission-helper'
+import {
+  requireAdmin,
+  requireAdminPassword,
+  requireAnyAdminPassword,
+} from './permission-helper'
 
 export function registerPurchasesIpc(): void {
   ipcMain.handle('purchases:create', (_, input) => {
@@ -129,6 +135,60 @@ export function registerPurchasesIpc(): void {
     })
 
     return result
+  })
+
+  ipcMain.handle('suppliers:cancel-payment', (_, input) => {
+    try {
+      const actorId = getActorId(input)
+
+      const access = getSupplierPaymentBatchAccess(
+        Number(input?.batch_id),
+        actorId,
+      )
+
+      if (Number(access.created_by || 0) !== Number(actorId || 0)) {
+        requireAdmin(actorId)
+      }
+
+      if (access.requires_admin_password) {
+        requireAnyAdminPassword(input?.admin_password)
+      }
+
+      const result = cancelSupplierPaymentBatch({
+        batch_id: Number(input?.batch_id),
+
+        reason: input?.reason,
+
+        actor_id: actorId,
+      })
+
+      logAction({
+        actor_id: actorId,
+
+        action: 'supplier_payment_cancelled',
+
+        entity: 'supplier_payment_batches',
+
+        entity_id: Number(input?.batch_id),
+
+        details: {
+          supplier_id: result.supplier_id,
+
+          amount: result.cancelled_amount,
+
+          reason: input?.reason || '',
+        },
+      })
+
+      return result
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر إلغاء دفعة المورد',
+      }
+    }
   })
 
   ipcMain.handle('suppliers:statement', (_, supplierId: number) => {

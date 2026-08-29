@@ -9,6 +9,8 @@ import {
   getPurchaseInvoice,
   recordSupplierPayment,
   cancelPurchaseInvoice,
+  cancelSupplierPaymentBatch,
+  getSupplierPaymentBatchAccess,
   getSupplierStatement,
 } from '../../src/main/database/repositories/purchases.repo'
 
@@ -454,6 +456,155 @@ describe('purchases repository', () => {
 
     expect(invoice.payments).toHaveLength(1)
     expect(invoice.payments[0].amount).toBe(200)
+  })
+
+  it('cancels latest supplier payment and restores supplier debt', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      paid_amount: 0,
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 5,
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const payment = recordSupplierPayment({
+      supplier_id: supplierId,
+
+      purchase_id: purchase.purchaseId,
+
+      amount: 200,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    const access = getSupplierPaymentBatchAccess(payment.payment_batch_id, 1)
+
+    expect(access.requires_admin_password).toBe(false)
+
+    const result = cancelSupplierPaymentBatch({
+      batch_id: payment.payment_batch_id,
+
+      reason: 'Wrong amount',
+
+      actor_id: 1,
+    })
+
+    expect(result.success).toBe(true)
+
+    expect(result.cancelled_amount).toBe(200)
+
+    expect(getSupplierBalance(supplierId)).toBe(500)
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+
+    expect(invoice.purchase.paid_amount).toBe(0)
+
+    expect(invoice.purchase.remaining_amount).toBe(500)
+
+    expect(invoice.purchase.payment_status).toBe('unpaid')
+
+    const db = getDb()
+
+    const batch = db
+      .prepare(
+        `
+      SELECT *
+      FROM supplier_payment_batches
+      WHERE id = ?
+      `,
+      )
+      .get(payment.payment_batch_id) as any
+
+    expect(batch.cancelled_at).toBeTruthy()
+
+    const movement = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE type =
+        'supplier_payment'
+
+        AND reference_type =
+          'supplier_payment'
+
+        AND reference_id = ?
+
+      LIMIT 1
+      `,
+      )
+      .get(payment.payment_batch_id) as any
+
+    expect(movement.cancelled_at).toBeTruthy()
+  })
+
+  it('blocks cancelling older supplier payment when a newer active payment exists', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 5,
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const firstPayment = recordSupplierPayment({
+      supplier_id: supplierId,
+
+      purchase_id: purchase.purchaseId,
+
+      amount: 100,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    recordSupplierPayment({
+      supplier_id: supplierId,
+
+      purchase_id: purchase.purchaseId,
+
+      amount: 100,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    expect(() =>
+      cancelSupplierPaymentBatch({
+        batch_id: firstPayment.payment_batch_id,
+
+        reason: 'Old payment',
+
+        actor_id: 1,
+      }),
+    ).toThrow('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للمورد')
   })
 
   it('blocks purchase cancellation when legacy manual supplier payment exists', () => {

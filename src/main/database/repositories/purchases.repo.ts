@@ -1465,6 +1465,375 @@ export function recordSupplierPayment(input: {
   return tx()
 }
 
+function getSupplierPaymentBatchMutationContext(batchId: number) {
+  const db = getDb()
+
+  if (!batchId) {
+    throw new Error('رقم دفعة المورد غير صحيح')
+  }
+
+  const batch = db
+    .prepare(
+      `
+      SELECT
+        b.*,
+
+        COALESCE(
+          NULLIF(b.business_date, ''),
+          date(b.created_at, 'localtime')
+        ) AS accounting_date
+
+      FROM supplier_payment_batches b
+
+      WHERE b.id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(batchId) as any
+
+  if (!batch) {
+    throw new Error('دفعة المورد غير موجودة')
+  }
+
+  if (batch.cancelled_at) {
+    throw new Error('دفعة المورد ملغاة بالفعل')
+  }
+
+  const latestBatch = db
+    .prepare(
+      `
+      SELECT id
+
+      FROM supplier_payment_batches
+
+      WHERE supplier_id = ?
+        AND cancelled_at IS NULL
+
+      ORDER BY
+        datetime(created_at) DESC,
+        id DESC
+
+      LIMIT 1
+      `,
+    )
+    .get(Number(batch.supplier_id)) as
+    | {
+        id: number
+      }
+    | undefined
+
+  if (Number(latestBatch?.id || 0) !== batchId) {
+    throw new Error('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للمورد')
+  }
+
+  const accountingDate = String(batch.accounting_date || '')
+
+  if (accountingDate) {
+    const closing = db
+      .prepare(
+        `
+        SELECT id
+
+        FROM cash_day_closings
+
+        WHERE business_date = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(accountingDate)
+
+    if (closing) {
+      throw new Error(
+        `لا يمكن تعديل أو إلغاء الدفعة لأن يوم ${accountingDate} تم تقفيله`,
+      )
+    }
+  }
+
+  const allocations = db
+    .prepare(
+      `
+      SELECT
+        sp.id,
+        sp.purchase_id,
+        sp.amount,
+
+        pi.total_amount,
+        pi.paid_amount,
+        pi.remaining_amount,
+        IFNULL(
+          pi.status,
+          'active'
+        ) AS purchase_status
+
+      FROM supplier_payments sp
+
+      JOIN purchase_invoices pi
+        ON pi.id = sp.purchase_id
+
+      WHERE sp.batch_id = ?
+
+      ORDER BY sp.id ASC
+      `,
+    )
+    .all(batchId) as any[]
+
+  if (allocations.length === 0) {
+    throw new Error('لا توجد توزيعات مرتبطة بدفعة المورد')
+  }
+
+  if (
+    allocations.some((allocation) => allocation.purchase_status === 'cancelled')
+  ) {
+    throw new Error(
+      'لا يمكن تعديل أو إلغاء الدفعة لأن إحدى فواتير الشراء المرتبطة بها ملغاة',
+    )
+  }
+
+  const laterReturn = db
+    .prepare(
+      `
+      SELECT pr.id
+
+      FROM purchase_returns pr
+
+      WHERE pr.purchase_id IN (
+        SELECT purchase_id
+
+        FROM supplier_payments
+
+        WHERE batch_id = ?
+      )
+
+        AND datetime(pr.created_at) >=
+            datetime(?)
+
+      LIMIT 1
+      `,
+    )
+    .get(batchId, batch.created_at)
+
+  if (laterReturn) {
+    throw new Error(
+      'لا يمكن تعديل أو إلغاء الدفعة لوجود مرتجع شراء أحدث مرتبط بها',
+    )
+  }
+
+  const allocationTotal = roundMoney(
+    allocations.reduce(
+      (sum, allocation) => sum + Number(allocation.amount || 0),
+      0,
+    ),
+  )
+
+  if (Math.abs(allocationTotal - Number(batch.amount || 0)) > 0.01) {
+    throw new Error('بيانات دفعة المورد غير متطابقة')
+  }
+
+  const cashMovement = db
+    .prepare(
+      `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE type = 'supplier_payment'
+        AND direction = 'out'
+        AND reference_type =
+            'supplier_payment'
+        AND reference_id = ?
+
+      ORDER BY id DESC
+
+      LIMIT 1
+      `,
+    )
+    .get(batchId) as any
+
+  if (!cashMovement) {
+    throw new Error('حركة حساب الدفع الخاصة بدفعة المورد غير موجودة')
+  }
+
+  if (cashMovement.cancelled_at) {
+    throw new Error('حركة حساب الدفع الخاصة بالدفعة ملغاة بالفعل')
+  }
+
+  return {
+    db,
+    batch,
+    accountingDate,
+    allocations,
+    allocationTotal,
+    cashMovement,
+  }
+}
+
+export function getSupplierPaymentBatchAccess(
+  batchId: number,
+  actorId?: number | null,
+) {
+  const context = getSupplierPaymentBatchMutationContext(Number(batchId))
+
+  const batch = context.batch
+
+  const row = context.db
+    .prepare(
+      `
+      SELECT
+        CASE
+          WHEN ? = ?
+            AND datetime(?)
+              BETWEEN datetime(
+                'now',
+                '-24 hours'
+              )
+              AND datetime('now')
+          THEN 0
+
+          ELSE 1
+        END AS requires_admin_password
+      `,
+    )
+    .get(
+      Number(batch.created_by || 0),
+      Number(actorId || 0),
+      batch.created_at,
+    ) as {
+    requires_admin_password: number
+  }
+
+  return {
+    batch_id: Number(batch.id),
+
+    supplier_id: Number(batch.supplier_id),
+
+    created_by: batch.created_by == null ? null : Number(batch.created_by),
+
+    requires_admin_password: Number(row.requires_admin_password || 0) === 1,
+  }
+}
+
+export function cancelSupplierPaymentBatch(input: {
+  batch_id: number
+  reason?: string | null
+  actor_id?: number | null
+}) {
+  ensurePurchaseReturnSchema()
+
+  const batchId = Number(input.batch_id || 0)
+
+  const context = getSupplierPaymentBatchMutationContext(batchId)
+
+  const { db, batch, allocations, allocationTotal, cashMovement } = context
+
+  const reason = String(input.reason || '').trim() || 'إلغاء دفعة مورد'
+
+  const tx = db.transaction(() => {
+    for (const allocation of allocations) {
+      const amount = roundMoney(Number(allocation.amount || 0))
+
+      const nextPaid = roundMoney(
+        Math.max(0, Number(allocation.paid_amount || 0) - amount),
+      )
+
+      const nextRemaining = roundMoney(
+        Math.min(
+          Number(allocation.total_amount || 0),
+
+          Math.max(0, Number(allocation.remaining_amount || 0) + amount),
+        ),
+      )
+
+      const nextStatus = normalizePaymentStatus(
+        Number(allocation.total_amount || 0),
+        nextPaid,
+        nextRemaining,
+      )
+
+      db.prepare(
+        `
+        UPDATE purchase_invoices
+
+        SET
+          paid_amount = ?,
+          remaining_amount = ?,
+          payment_status = ?
+
+        WHERE id = ?
+        `,
+      ).run(nextPaid, nextRemaining, nextStatus, Number(allocation.purchase_id))
+    }
+
+    db.prepare(
+      `
+      UPDATE suppliers
+
+      SET
+        balance = ROUND(
+          IFNULL(balance, 0) + ?,
+          2
+        ),
+
+        updated_at =
+          CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+    ).run(allocationTotal, Number(batch.supplier_id))
+
+    db.prepare(
+      `
+      UPDATE supplier_payment_batches
+
+      SET
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
+        cancelled_by = ?,
+
+        cancel_reason = ?
+
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, reason, batchId)
+
+    db.prepare(
+      `
+      UPDATE cash_movements
+
+      SET
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
+        cancelled_by = ?,
+
+        cancel_reason = ?
+
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, reason, Number(cashMovement.id))
+
+    return {
+      success: true,
+
+      batch_id: batchId,
+
+      supplier_id: Number(batch.supplier_id),
+
+      cancelled_amount: allocationTotal,
+
+      allocations: allocations.map((allocation) => ({
+        purchase_id: Number(allocation.purchase_id),
+
+        amount: Number(allocation.amount || 0),
+      })),
+    }
+  })
+
+  return tx()
+}
+
 export function getSupplierStatement(supplierId: number) {
   ensurePurchaseReturnSchema()
 

@@ -1039,6 +1039,26 @@ declare global {
         }>
       }>
 
+      cancelSupplierPayment: (input: {
+        batch_id: number
+        reason: string
+        actor_id?: number | null
+        admin_password?: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+
+        batch_id?: number
+        supplier_id?: number
+
+        cancelled_amount?: number
+
+        allocations?: Array<{
+          purchase_id: number
+          amount: number
+        }>
+      }>
+
       getSupplierStatement: (supplierId: number) => Promise<{
         supplier: any
         purchases: any[]
