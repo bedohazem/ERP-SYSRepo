@@ -1541,7 +1541,10 @@ export function updateCustomerPaymentBatch(input: {
   return tx()
 }
 
-export function getCustomerStatement(customerId: number) {
+export function getCustomerStatement(
+  customerId: number,
+  actorId?: number | null,
+) {
   const db = getDb()
   const id = Number(customerId)
 
@@ -1583,11 +1586,26 @@ export function getCustomerStatement(customerId: number) {
       cp.*,
 
       b.amount AS batch_amount,
+      b.payment_method AS batch_payment_method,
+      b.notes AS batch_notes,
       b.created_by AS batch_created_by,
       b.created_at AS batch_created_at,
       b.cancelled_at AS batch_cancelled_at,
       b.cancelled_by AS batch_cancelled_by,
-      b.cancel_reason AS batch_cancel_reason
+      b.cancel_reason AS batch_cancel_reason,
+      b.replacement_batch_id,
+
+      CASE
+        WHEN b.id IS NULL THEN 0
+
+        WHEN b.created_by = ?
+          AND datetime(b.created_at)
+            BETWEEN datetime('now', '-24 hours')
+            AND datetime('now')
+        THEN 0
+
+        ELSE 1
+      END AS batch_requires_admin_password
 
     FROM customer_payments cp
 
@@ -1599,7 +1617,7 @@ export function getCustomerStatement(customerId: number) {
     ORDER BY cp.created_at DESC, cp.id DESC
     `,
     )
-    .all(id) as any[]
+    .all(Number(actorId || 0), id) as any[]
 
   function isReturnSettlement(payment: any) {
     return String(payment.notes || '').startsWith('تسوية مديونية بسبب مرتجع')
@@ -1678,41 +1696,125 @@ export function getCustomerStatement(customerId: number) {
       created_at: sale.created_at,
     }))
 
-  const paymentEntries = payments.map((payment) => {
-    const cancelled = isCancelledPaymentBatch(payment)
+  const batchPayments = new Map<number, any[]>()
+
+  const standalonePayments: any[] = []
+
+  for (const payment of payments) {
+    const batchId = Number(payment.batch_id || 0)
+
+    if (!batchId) {
+      standalonePayments.push(payment)
+      continue
+    }
+
+    const current = batchPayments.get(batchId) || []
+
+    current.push(payment)
+
+    batchPayments.set(batchId, current)
+  }
+
+  const batchPaymentEntries = Array.from(batchPayments.entries()).map(
+    ([batchId, rows]) => {
+      const first = rows[0]
+
+      const cancelled = Boolean(first.batch_cancelled_at)
+
+      const replaced = Boolean(first.replacement_batch_id)
+
+      const allocations = rows.map((row) => ({
+        sale_id: Number(row.sale_id),
+
+        amount: Number(row.amount || 0),
+      }))
+
+      const totalAmount =
+        Number(first.batch_amount || 0) ||
+        allocations.reduce((sum, item) => sum + item.amount, 0)
+
+      const invoicesText = allocations
+        .map((item) => `#${item.sale_id}: ${item.amount.toFixed(2)} ج.م`)
+        .join('، ')
+
+      return {
+        id: `payment-batch-${batchId}`,
+
+        type: 'payment',
+
+        title: replaced
+          ? 'دفعة عميل - تم تعديلها'
+          : cancelled
+            ? 'دفعة عميل - ملغاة'
+            : 'دفعة عميل',
+
+        debit: 0,
+
+        credit: cancelled ? 0 : totalAmount,
+
+        batch_id: batchId,
+
+        batch_created_by:
+          first.batch_created_by == null
+            ? null
+            : Number(first.batch_created_by),
+
+        requires_admin_password: Boolean(first.batch_requires_admin_password),
+
+        payment_method: first.batch_payment_method || first.payment_method,
+
+        notes: cancelled
+          ? first.batch_cancel_reason || 'دفعة ملغاة'
+          : first.batch_notes || first.notes,
+
+        cancelled_at: first.batch_cancelled_at ?? null,
+
+        replacement_batch_id: first.replacement_batch_id ?? null,
+
+        allocations,
+
+        allocations_text: invoicesText,
+
+        created_at: first.batch_created_at || first.created_at,
+      }
+    },
+  )
+
+  const standalonePaymentEntries = standalonePayments.map((payment) => {
+    const returnSettlement = isReturnSettlement(payment)
 
     return {
       id: `payment-${payment.id}`,
 
       type: 'payment',
 
-      title: cancelled
+      title: returnSettlement
         ? payment.sale_id
-          ? `دفعة على فاتورة #${payment.sale_id} - ملغاة`
-          : 'دفعة عميل - ملغاة'
+          ? `تسوية مرتجع على فاتورة #${payment.sale_id}`
+          : 'تسوية مرتجع'
         : payment.sale_id
           ? `دفعة على فاتورة #${payment.sale_id}`
           : 'دفعة عميل',
 
       debit: 0,
 
-      credit: cancelled ? 0 : Number(payment.amount || 0),
+      credit: Number(payment.amount || 0),
 
       sale_id: payment.sale_id,
 
-      batch_id: payment.batch_id ?? null,
+      batch_id: null,
 
       payment_method: payment.payment_method,
 
-      notes: cancelled
-        ? payment.batch_cancel_reason || 'دفعة ملغاة'
-        : payment.notes,
+      notes: payment.notes,
 
-      cancelled_at: payment.batch_cancelled_at ?? null,
+      cancelled_at: null,
 
-      created_at: payment.batch_created_at || payment.created_at,
+      created_at: payment.created_at,
     }
   })
+
+  const paymentEntries = [...batchPaymentEntries, ...standalonePaymentEntries]
 
   const entries = [
     ...saleEntries,

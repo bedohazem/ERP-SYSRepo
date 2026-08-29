@@ -87,8 +87,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('customers:cancel-payment', input),
   updateCustomerPayment: (input) =>
     ipcRenderer.invoke('customers:update-payment', input),
-  getCustomerStatement: (customerId) =>
-    ipcRenderer.invoke('customers:statement', customerId),
+  getCustomerStatement: (customerId, actorId) =>
+    ipcRenderer.invoke('customers:statement', customerId, actorId),
 
   getLoyaltySettings: () => ipcRenderer.invoke('settings:get-loyalty'),
   saveLoyaltySettings: (input) =>

@@ -667,6 +667,18 @@ describe('customers repository', () => {
 
     const customerAfterPayment = getCustomerById(customer.id) as CustomerTestRow
     expect(customerAfterPayment.balance).toBe(150)
+    const statement = getCustomerStatement(customer.id, 1) as any
+
+    const batchEntries = statement.entries.filter(
+      (entry: any) =>
+        Number(entry.batch_id) === Number(payment.payment_batch_id),
+    )
+
+    expect(batchEntries).toHaveLength(1)
+
+    expect(batchEntries[0].credit).toBe(350)
+
+    expect(batchEntries[0].allocations).toHaveLength(2)
   })
 
   it('rejects customer payment with invalid amount', () => {

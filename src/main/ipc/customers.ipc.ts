@@ -177,7 +177,10 @@ export function registerCustomersIpc(): void {
     }
   })
 
-  ipcMain.handle('customers:statement', (_, customerId: number) => {
-    return getCustomerStatement(Number(customerId))
-  })
+  ipcMain.handle(
+    'customers:statement',
+    (_, customerId: number, actorId?: number) => {
+      return getCustomerStatement(Number(customerId), actorId ?? null)
+    },
+  )
 }

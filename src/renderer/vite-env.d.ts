@@ -506,7 +506,10 @@ declare global {
         }>
       }>
 
-      getCustomerStatement: (customerId: number) => Promise<{
+      getCustomerStatement: (
+        customerId: number,
+        actorId?: number,
+      ) => Promise<{
         customer: any
         sales: any[]
         payments: any[]
@@ -518,6 +521,17 @@ declare global {
           credit: number
           sale_id?: number | null
           batch_id?: number | null
+          batch_created_by?: number | null
+          requires_admin_password?: boolean
+
+          replacement_batch_id?: number | null
+
+          allocations?: Array<{
+            sale_id: number
+            amount: number
+          }>
+
+          allocations_text?: string
           cancelled_at?: string | null
           payment_status?: string
           payment_method?: string
