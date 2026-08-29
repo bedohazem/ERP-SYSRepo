@@ -83,6 +83,20 @@ export default function CustomersPage() {
   const [paymentNotes, setPaymentNotes] = useState('')
   const [savingPayment, setSavingPayment] = useState(false)
 
+  const [paymentAction, setPaymentAction] = useState<{
+    mode: 'edit' | 'cancel'
+    entry: any
+  } | null>(null)
+
+  const [paymentActionAmount, setPaymentActionAmount] = useState('')
+  const [paymentActionMethod, setPaymentActionMethod] = useState('cash')
+  const [paymentActionNotes, setPaymentActionNotes] = useState('')
+  const [paymentActionReason, setPaymentActionReason] = useState('')
+  const [paymentActionPassword, setPaymentActionPassword] = useState('')
+  const [paymentActionRequirePassword, setPaymentActionRequirePassword] =
+    useState(false)
+  const [savingPaymentAction, setSavingPaymentAction] = useState(false)
+
   const [deleteTarget, setDeleteTarget] = useState<CustomerRow | null>(null)
   const [deletingCustomer, setDeletingCustomer] = useState(false)
 
@@ -410,6 +424,190 @@ export default function CustomersPage() {
       setMessage('حدث خطأ أثناء تسجيل الدفعة')
     } finally {
       setSavingPayment(false)
+    }
+  }
+
+  function canManageStatementPayment(entry: any) {
+    if (!entry?.batch_id) {
+      return false
+    }
+
+    if (entry.cancelled_at || entry.replacement_batch_id) {
+      return false
+    }
+
+    return (
+      isAdmin ||
+      Number(entry.batch_created_by || 0) === Number(currentUser?.id || 0)
+    )
+  }
+
+  function openPaymentEdit(entry: any) {
+    if (!canManageStatementPayment(entry)) {
+      return
+    }
+
+    setPaymentAction({
+      mode: 'edit',
+      entry,
+    })
+
+    setPaymentActionAmount(String(Number(entry.credit || 0)))
+
+    setPaymentActionMethod(String(entry.payment_method || 'cash'))
+
+    setPaymentActionNotes(String(entry.notes || ''))
+
+    setPaymentActionReason('')
+    setPaymentActionPassword('')
+
+    setPaymentActionRequirePassword(Boolean(entry.requires_admin_password))
+  }
+
+  function openPaymentCancel(entry: any) {
+    if (!canManageStatementPayment(entry)) {
+      return
+    }
+
+    setPaymentAction({
+      mode: 'cancel',
+      entry,
+    })
+
+    setPaymentActionAmount('')
+    setPaymentActionMethod('cash')
+    setPaymentActionNotes('')
+    setPaymentActionReason('')
+    setPaymentActionPassword('')
+
+    setPaymentActionRequirePassword(Boolean(entry.requires_admin_password))
+  }
+
+  function closePaymentAction() {
+    if (savingPaymentAction) {
+      return
+    }
+
+    setPaymentAction(null)
+    setPaymentActionAmount('')
+    setPaymentActionMethod('cash')
+    setPaymentActionNotes('')
+    setPaymentActionReason('')
+    setPaymentActionPassword('')
+    setPaymentActionRequirePassword(false)
+  }
+
+  async function savePaymentAction() {
+    if (!paymentAction || savingPaymentAction) {
+      return
+    }
+
+    const batchId = Number(paymentAction.entry?.batch_id || 0)
+
+    if (!batchId) {
+      setMessage('رقم دفعة العميل غير صحيح')
+      return
+    }
+
+    if (paymentAction.mode === 'edit') {
+      const amount = Number(paymentActionAmount || 0)
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        setMessage('اكتب مبلغ دفعة صحيح')
+        return
+      }
+    } else if (!paymentActionReason.trim()) {
+      setMessage('سبب الإلغاء مطلوب')
+      return
+    }
+
+    if (paymentActionRequirePassword && !paymentActionPassword.trim()) {
+      setMessage('كلمة مرور المدير مطلوبة')
+      return
+    }
+
+    setSavingPaymentAction(true)
+
+    try {
+      const result =
+        paymentAction.mode === 'edit'
+          ? await window.api.updateCustomerPayment({
+              batch_id: batchId,
+
+              amount: Number(paymentActionAmount),
+
+              payment_method: paymentActionMethod,
+
+              notes: paymentActionNotes.trim() || null,
+
+              actor_id: currentUser?.id,
+
+              admin_password: paymentActionRequirePassword
+                ? paymentActionPassword
+                : undefined,
+            })
+          : await window.api.cancelCustomerPayment({
+              batch_id: batchId,
+
+              reason: paymentActionReason.trim(),
+
+              actor_id: currentUser?.id,
+
+              admin_password: paymentActionRequirePassword
+                ? paymentActionPassword
+                : undefined,
+            })
+
+      if (!result.success) {
+        const errorMessage =
+          result.message ||
+          (paymentAction.mode === 'edit'
+            ? 'تعذر تعديل دفعة العميل'
+            : 'تعذر إلغاء دفعة العميل')
+
+        if (errorMessage.includes('كلمة مرور المدير')) {
+          setPaymentActionRequirePassword(true)
+        }
+
+        setMessage(errorMessage)
+        return
+      }
+
+      const customerId = Number(statementData?.customer?.id || 0)
+
+      setPaymentAction(null)
+      setPaymentActionAmount('')
+      setPaymentActionNotes('')
+      setPaymentActionReason('')
+      setPaymentActionPassword('')
+      setPaymentActionRequirePassword(false)
+
+      await loadCustomers(customerPage)
+
+      if (customerId) {
+        const data = await window.api.getCustomerStatement(
+          customerId,
+          currentUser?.id,
+        )
+
+        setStatementData(data)
+      }
+
+      setMessage(
+        paymentAction.mode === 'edit'
+          ? 'تم تعديل دفعة العميل'
+          : 'تم إلغاء دفعة العميل',
+      )
+    } catch (error) {
+      console.error('Failed to process customer payment:', error)
+
+      setMessage(
+        paymentAction.mode === 'edit'
+          ? 'حدث خطأ أثناء تعديل الدفعة'
+          : 'حدث خطأ أثناء إلغاء الدفعة',
+      )
+    } finally {
+      setSavingPaymentAction(false)
     }
   }
 
@@ -1110,6 +1308,7 @@ export default function CustomersPage() {
                     <th style={thStyle}>دائن</th>
                     <th style={thStyle}>طريقة الدفع</th>
                     <th style={thStyle}>ملاحظات</th>
+                    <th style={thStyle}>إجراءات</th>
                   </tr>
                 </thead>
 
@@ -1117,7 +1316,7 @@ export default function CustomersPage() {
                   {statementLoading && (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={7}
                         style={{ ...tdStyle, textAlign: 'center' }}
                       >
                         جاري التحميل...
@@ -1144,6 +1343,20 @@ export default function CustomersPage() {
                           </td>
                           <td style={tdStyle}>
                             <strong>{entry.title}</strong>
+
+                            {entry.allocations_text && (
+                              <div
+                                style={{
+                                  marginTop: '5px',
+                                  color: '#94a3b8',
+                                  fontSize: '11px',
+                                  whiteSpace: 'normal',
+                                  lineHeight: 1.6,
+                                }}
+                              >
+                                موزعة: {entry.allocations_text}
+                              </div>
+                            )}
                           </td>
                           <td
                             style={{
@@ -1167,13 +1380,52 @@ export default function CustomersPage() {
                               : '—'}
                           </td>
                           <td style={tdStyle}>{entry.notes || '—'}</td>
+                          <td style={tdStyle}>
+                            {canManageStatementPayment(entry) ? (
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  gap: '6px',
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => openPaymentEdit(entry)}
+                                  style={{
+                                    ...smallButtonStyle,
+                                    color: '#fde68a',
+                                    borderColor: 'rgba(245,158,11,0.45)',
+                                    background: 'rgba(245,158,11,0.10)',
+                                  }}
+                                >
+                                  تعديل
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => openPaymentCancel(entry)}
+                                  style={{
+                                    ...smallButtonStyle,
+                                    color: '#fca5a5',
+                                    borderColor: 'rgba(239,68,68,0.45)',
+                                    background: 'rgba(239,68,68,0.10)',
+                                  }}
+                                >
+                                  إلغاء
+                                </button>
+                              </div>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
                         </tr>
                       ))}
 
                   {!statementLoading && statementData.entries.length === 0 && (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         style={{
                           ...tdStyle,
                           textAlign: 'center',
@@ -1187,6 +1439,236 @@ export default function CustomersPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {paymentAction && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            ...modalOverlayStyle,
+            zIndex: 999999,
+            background: 'rgba(2,6,23,0.72)',
+          }}
+        >
+          <div
+            className="theme-modal-card"
+            style={{
+              ...modalStyle,
+              width: '500px',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px',
+                marginBottom: '18px',
+              }}
+            >
+              <div>
+                <h3
+                  style={{
+                    margin: '0 0 6px',
+                    color:
+                      paymentAction.mode === 'cancel' ? '#f87171' : '#f8fafc',
+                  }}
+                >
+                  {paymentAction.mode === 'edit'
+                    ? 'تعديل دفعة العميل'
+                    : 'إلغاء دفعة العميل'}
+                </h3>
+
+                <div
+                  style={{
+                    color: '#94a3b8',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                  }}
+                >
+                  قيمة الدفعة الحالية: {money(paymentAction.entry?.credit || 0)}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closePaymentAction}
+                disabled={savingPaymentAction}
+                style={closeButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            {paymentAction.entry?.allocations_text && (
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: '10px',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  color: '#cbd5e1',
+                  marginBottom: '16px',
+                  lineHeight: 1.7,
+                }}
+              >
+                موزعة على: {paymentAction.entry.allocations_text}
+              </div>
+            )}
+
+            {paymentAction.mode === 'edit' ? (
+              <div
+                style={{
+                  display: 'grid',
+                  gap: '14px',
+                }}
+              >
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>المبلغ الصحيح</label>
+
+                  <input
+                    type="number"
+                    min={0}
+                    value={paymentActionAmount}
+                    onChange={(e) => setPaymentActionAmount(e.target.value)}
+                    style={inputStyle}
+                    autoFocus
+                  />
+                </div>
+
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>طريقة الدفع</label>
+
+                  <select
+                    value={paymentActionMethod}
+                    onChange={(e) => setPaymentActionMethod(e.target.value)}
+                    style={inputStyle}
+                  >
+                    {CUSTOMER_PAYMENT_METHOD_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>ملاحظات</label>
+
+                  <input
+                    value={paymentActionNotes}
+                    onChange={(e) => setPaymentActionNotes(e.target.value)}
+                    placeholder="ملاحظات الدفعة"
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div style={fieldStyle}>
+                <label style={labelStyle}>سبب الإلغاء</label>
+
+                <textarea
+                  value={paymentActionReason}
+                  onChange={(e) => setPaymentActionReason(e.target.value)}
+                  placeholder="اكتب سبب إلغاء الدفعة"
+                  autoFocus
+                  style={{
+                    minHeight: '90px',
+                    borderRadius: '10px',
+                    border: '1px solid rgba(255,255,255,0.10)',
+                    background: 'rgba(255,255,255,0.05)',
+                    color: '#fff',
+                    padding: '12px',
+                    outline: 'none',
+                    resize: 'vertical',
+                    direction: 'rtl',
+                  }}
+                />
+              </div>
+            )}
+
+            {paymentActionRequirePassword && (
+              <div
+                style={{
+                  ...fieldStyle,
+                  marginTop: '14px',
+                }}
+              >
+                <label style={labelStyle}>كلمة مرور المدير</label>
+
+                <input
+                  type="password"
+                  value={paymentActionPassword}
+                  onChange={(e) => setPaymentActionPassword(e.target.value)}
+                  placeholder="كلمة مرور المدير"
+                  style={inputStyle}
+                />
+              </div>
+            )}
+
+            {paymentAction.mode === 'cancel' && (
+              <div
+                style={{
+                  marginTop: '16px',
+                  padding: '11px 12px',
+                  borderRadius: '10px',
+                  background: 'rgba(239,68,68,0.10)',
+                  border: '1px solid rgba(239,68,68,0.22)',
+                  color: '#fca5a5',
+                  fontWeight: 800,
+                  fontSize: '12px',
+                  lineHeight: 1.7,
+                }}
+              >
+                إلغاء الدفعة سيعيد المديونية على العميل والفواتير، ويلغي أثرها
+                من حساب الدفع.
+              </div>
+            )}
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+                justifyContent: 'flex-start',
+                marginTop: '22px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={savePaymentAction}
+                disabled={savingPaymentAction}
+                style={{
+                  ...primaryButtonStyle,
+
+                  ...(paymentAction.mode === 'cancel'
+                    ? {
+                        background: 'rgba(239,68,68,0.18)',
+                        border: '1px solid rgba(239,68,68,0.35)',
+                        color: '#fca5a5',
+                      }
+                    : {}),
+
+                  opacity: savingPaymentAction ? 0.6 : 1,
+                }}
+              >
+                {savingPaymentAction
+                  ? 'جاري الحفظ...'
+                  : paymentAction.mode === 'edit'
+                    ? 'حفظ التعديل'
+                    : 'تأكيد الإلغاء'}
+              </button>
+
+              <button
+                type="button"
+                onClick={closePaymentAction}
+                disabled={savingPaymentAction}
+                style={secondaryOutlineButtonStyle}
+              >
+                رجوع
+              </button>
             </div>
           </div>
         </div>
