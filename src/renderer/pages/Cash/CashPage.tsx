@@ -29,6 +29,7 @@ type CashMovement = {
   payment_method: string
   notes: string
   created_at: string
+  business_date?: string | null
   created_by_name?: string
   reference_id?: number | null
   reference_type?: string | null
@@ -173,6 +174,34 @@ export default function CashPage() {
     }
 
     return false
+  }
+
+  function isDayCloseManagementRow(item: CashMovement) {
+    return (
+      !item.cancelled_at &&
+      item.type === 'transfer' &&
+      item.reference_type === 'day_close' &&
+      item.direction === 'out'
+    )
+  }
+
+  async function openDayCloseFromMovement(
+    item: CashMovement,
+    mode: 'edit' | 'cancel',
+  ) {
+    const businessDate = String(item.business_date || '').trim()
+
+    if (!businessDate) {
+      showMessage('error', 'تعذر تحديد تاريخ تقفيل اليوم')
+
+      return
+    }
+
+    await openDayCloseModal(businessDate)
+
+    if (mode === 'cancel') {
+      setDayCloseCancelReason(`إلغاء تقفيل يوم ${businessDate}`)
+    }
   }
 
   async function loadData(page = movementsPage) {
@@ -332,10 +361,12 @@ export default function CashPage() {
     }
   }
 
-  async function openDayCloseModal() {
-    const businessDate = getLocalDateKey(new Date())
+  async function openDayCloseModal(businessDateInput?: string) {
+    const businessDate =
+      String(businessDateInput || '').trim() || getLocalDateKey(new Date())
 
     setCloseBusinessDate(businessDate)
+
     setDayCloseModalOpen(true)
 
     await loadDayClosePreview(businessDate)
@@ -1706,7 +1737,53 @@ export default function CashPage() {
                     </td>
 
                     <td style={tdStyle}>
-                      {isAdmin && canManageCashMovement(item) ? (
+                      {isAdmin && isDayCloseManagementRow(item) ? (
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '7px',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void openDayCloseFromMovement(item, 'edit')
+                            }
+                            style={{
+                              height: '32px',
+                              padding: '0 10px',
+                              borderRadius: '8px',
+                              border: '1px solid rgba(245,158,11,0.30)',
+                              background: 'rgba(245,158,11,0.08)',
+                              color: '#fbbf24',
+                              cursor: 'pointer',
+                              fontWeight: 800,
+                            }}
+                          >
+                            تعديل التقفيل
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void openDayCloseFromMovement(item, 'cancel')
+                            }
+                            style={{
+                              height: '32px',
+                              padding: '0 10px',
+                              borderRadius: '8px',
+                              border: '1px solid rgba(239,68,68,0.30)',
+                              background: 'rgba(239,68,68,0.08)',
+                              color: '#fca5a5',
+                              cursor: 'pointer',
+                              fontWeight: 800,
+                            }}
+                          >
+                            إلغاء التقفيل
+                          </button>
+                        </div>
+                      ) : isAdmin && canManageCashMovement(item) ? (
                         <div
                           style={{
                             display: 'flex',
@@ -1769,7 +1846,11 @@ export default function CashPage() {
                           item.reference_type === 'cash_transfer' &&
                           item.direction === 'in'
                             ? 'طرف التحويل'
-                            : 'من المصدر'}
+                            : item.type === 'transfer' &&
+                                item.reference_type === 'day_close' &&
+                                item.direction === 'in'
+                              ? 'طرف تقفيل اليوم'
+                              : 'من المصدر'}
                         </span>
                       )}
                     </td>
