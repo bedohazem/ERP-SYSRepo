@@ -22,6 +22,17 @@ export type RecordLiabilityPaymentInput = {
   actor_id?: number | null
 }
 
+export type UpdateLiabilityInput = {
+  id: number
+  party_name: string
+  title: string
+  category?: string | null
+  total_amount: number
+  due_date?: string | null
+  notes?: string | null
+  actor_id?: number | null
+}
+
 function cleanText(value: unknown) {
   return String(value || '').trim()
 }
@@ -42,6 +53,16 @@ function getLiabilityByIdOrThrow(id: number) {
 
 function getStatus(remaining: number) {
   return remaining <= 0 ? 'paid' : 'open'
+}
+
+function roundMoney(value: number) {
+  const amount = Number(value || 0)
+
+  if (!Number.isFinite(amount)) {
+    return 0
+  }
+
+  return Math.round((amount + Number.EPSILON) * 100) / 100
 }
 
 export function createLiability(input: CreateLiabilityInput) {
@@ -393,6 +414,179 @@ export function getLiabilityStatement(liabilityId: number) {
     liability,
     payments,
   }
+}
+
+export function updateLiability(input: UpdateLiabilityInput) {
+  const db = getDb()
+
+  const liabilityId = Number(input.id || 0)
+
+  if (!liabilityId) {
+    throw new Error('رقم الالتزام غير صحيح')
+  }
+
+  const liability = getLiabilityByIdOrThrow(liabilityId)
+
+  if (liability.status === 'cancelled' || liability.cancelled_at) {
+    throw new Error('لا يمكن تعديل التزام ملغي')
+  }
+
+  const partyName = cleanText(input.party_name)
+
+  const title = cleanText(input.title)
+
+  const totalAmount = roundMoney(Number(input.total_amount || 0))
+
+  if (!partyName) {
+    throw new Error('اسم الشخص أو الجهة مطلوب')
+  }
+
+  if (!title) {
+    throw new Error('عنوان الالتزام مطلوب')
+  }
+
+  if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+    throw new Error('قيمة الالتزام غير صحيحة')
+  }
+
+  const paidRow = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(amount),
+          0
+        ) AS paid
+
+      FROM store_liability_payments
+
+      WHERE liability_id = ?
+        AND cancelled_at IS NULL
+      `,
+    )
+    .get(liabilityId) as {
+    paid: number
+  }
+
+  const activePaid = roundMoney(Number(paidRow?.paid || 0))
+
+  if (totalAmount + 0.0001 < activePaid) {
+    throw new Error(
+      `لا يمكن جعل قيمة الالتزام أقل من إجمالي المدفوع وهو ${activePaid.toFixed(2)} ج.م`,
+    )
+  }
+
+  const remaining = roundMoney(Math.max(0, totalAmount - activePaid))
+
+  const status = getStatus(remaining)
+
+  const category = cleanText(input.category) || null
+
+  const dueDate = cleanText(input.due_date) || null
+
+  const notes = cleanText(input.notes) || null
+
+  const tx = db.transaction(() => {
+    db.prepare(
+      `
+      UPDATE store_liabilities
+
+      SET
+        party_name = ?,
+        title = ?,
+        category = ?,
+        total_amount = ?,
+        paid_amount = ?,
+        remaining_amount = ?,
+        status = ?,
+        due_date = ?,
+        notes = ?,
+        updated_at =
+          CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+    ).run(
+      partyName,
+      title,
+      category,
+      totalAmount,
+      activePaid,
+      remaining,
+      status,
+      dueDate,
+      notes,
+      liabilityId,
+    )
+
+    createActivityLog({
+      user_id: input.actor_id ?? null,
+
+      action: 'liability_updated',
+
+      entity: 'store_liabilities',
+
+      entity_id: liabilityId,
+
+      details: JSON.stringify({
+        before: {
+          party_name: liability.party_name,
+
+          title: liability.title,
+
+          category: liability.category,
+
+          total_amount: Number(liability.total_amount || 0),
+
+          paid_amount: Number(liability.paid_amount || 0),
+
+          remaining_amount: Number(liability.remaining_amount || 0),
+
+          status: liability.status,
+
+          due_date: liability.due_date,
+
+          notes: liability.notes,
+        },
+
+        after: {
+          party_name: partyName,
+
+          title,
+
+          category,
+
+          total_amount: totalAmount,
+
+          paid_amount: activePaid,
+
+          remaining_amount: remaining,
+
+          status,
+
+          due_date: dueDate,
+
+          notes,
+        },
+      }),
+    })
+
+    return {
+      success: true,
+
+      liability_id: liabilityId,
+
+      total_amount: totalAmount,
+
+      paid_amount: activePaid,
+
+      remaining_amount: remaining,
+
+      status,
+    }
+  })
+
+  return tx()
 }
 
 export function cancelLiability(input: {

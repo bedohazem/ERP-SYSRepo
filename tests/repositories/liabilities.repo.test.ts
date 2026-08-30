@@ -8,6 +8,7 @@ import {
   listLiabilities,
   listLiabilitiesPage,
   recordLiabilityPayment,
+  updateLiability,
 } from '../../src/main/database/repositories/liabilities.repo'
 
 type LiabilityTestRow = {
@@ -528,5 +529,87 @@ describe('liabilities repository', () => {
     expect(secondPage.rows).toHaveLength(1)
     expect((secondPage.rows[0] as any).id).toBe(first.liability_id)
     expect(secondPage.offset).toBe(2)
+  })
+
+  it('updates liability while preserving active payments', () => {
+    const created = createLiability({
+      party_name: 'Old Party',
+
+      title: 'Old Liability',
+
+      total_amount: 1000,
+
+      paid_amount: 300,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    const result = updateLiability({
+      id: created.liability_id,
+
+      party_name: 'New Party',
+
+      title: 'New Liability',
+
+      category: 'updated',
+
+      total_amount: 1500,
+
+      due_date: '2026-12-31',
+
+      notes: 'Updated liability',
+
+      actor_id: 1,
+    })
+
+    expect(result.success).toBe(true)
+
+    const liability = getLiabilityById(created.liability_id)
+
+    expect(liability.party_name).toBe('New Party')
+
+    expect(liability.title).toBe('New Liability')
+
+    expect(liability.total_amount).toBe(1500)
+
+    expect(liability.paid_amount).toBe(300)
+
+    expect(liability.remaining_amount).toBe(1200)
+
+    expect(liability.status).toBe('open')
+
+    expect(getLiabilityPaymentsCount(created.liability_id)).toBe(1)
+  })
+
+  it('rejects liability total below active payments', () => {
+    const created = createLiability({
+      party_name: 'Paid Party',
+
+      title: 'Paid Liability',
+
+      total_amount: 1000,
+
+      paid_amount: 400,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    expect(() =>
+      updateLiability({
+        id: created.liability_id,
+
+        party_name: 'Paid Party',
+
+        title: 'Paid Liability',
+
+        total_amount: 300,
+
+        actor_id: 1,
+      }),
+    ).toThrow('لا يمكن جعل قيمة الالتزام أقل من إجمالي المدفوع وهو 400.00 ج.م')
   })
 })

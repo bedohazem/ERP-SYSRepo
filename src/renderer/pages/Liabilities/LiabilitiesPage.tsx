@@ -103,6 +103,20 @@ export default function LiabilitiesPage() {
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [editTarget, setEditTarget] = useState<Liability | null>(null)
+
+  const [editForm, setEditForm] = useState({
+    party_name: '',
+    title: '',
+    category: '',
+    total_amount: '',
+    due_date: '',
+    notes: '',
+  })
+
+  const [editPassword, setEditPassword] = useState('')
+
+  const [updatingLiability, setUpdatingLiability] = useState(false)
 
   const [paymentTarget, setPaymentTarget] = useState<Liability | null>(null)
   const [paymentAmount, setPaymentAmount] = useState('')
@@ -238,6 +252,112 @@ export default function LiabilitiesPage() {
       showMessage('error', error.message || 'حدث خطأ أثناء حفظ الالتزام')
     } finally {
       setSaving(false)
+    }
+  }
+
+  function openEditLiability(item: Liability) {
+    setEditTarget(item)
+
+    setEditForm({
+      party_name: item.party_name || '',
+
+      title: item.title || '',
+
+      category: item.category || '',
+
+      total_amount: String(Number(item.total_amount || 0)),
+
+      due_date: item.due_date || '',
+
+      notes: item.notes || '',
+    })
+
+    setEditPassword('')
+  }
+
+  function closeEditLiability() {
+    if (updatingLiability) return
+
+    setEditTarget(null)
+
+    setEditForm({
+      party_name: '',
+      title: '',
+      category: '',
+      total_amount: '',
+      due_date: '',
+      notes: '',
+    })
+
+    setEditPassword('')
+  }
+
+  async function confirmUpdateLiability() {
+    if (!editTarget || updatingLiability) {
+      return
+    }
+
+    const totalAmount = Number(editForm.total_amount || 0)
+
+    if (!editForm.party_name.trim()) {
+      showMessage('error', 'اسم الشخص أو الجهة مطلوب')
+      return
+    }
+
+    if (!editForm.title.trim()) {
+      showMessage('error', 'عنوان الالتزام مطلوب')
+      return
+    }
+
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      showMessage('error', 'قيمة الالتزام غير صحيحة')
+      return
+    }
+
+    if (!editPassword.trim()) {
+      showMessage('error', 'اكتب كلمة مرور المدير')
+      return
+    }
+
+    setUpdatingLiability(true)
+
+    try {
+      const result = await window.api.updateLiability({
+        id: editTarget.id,
+
+        party_name: editForm.party_name.trim(),
+
+        title: editForm.title.trim(),
+
+        category: editForm.category.trim() || null,
+
+        total_amount: totalAmount,
+
+        due_date: editForm.due_date || null,
+
+        notes: editForm.notes.trim() || null,
+
+        actor_id: currentUser?.id ?? null,
+
+        admin_password: editPassword,
+      })
+
+      if (!result.success) {
+        showMessage('error', result.message || 'تعذر تعديل الالتزام')
+
+        return
+      }
+
+      setEditTarget(null)
+      setEditPassword('')
+
+      showMessage('success', 'تم تعديل الالتزام')
+
+      await loadData(liabilityPage)
+    } catch (error: any) {
+      showMessage('error', error?.message || 'حدث خطأ أثناء تعديل الالتزام')
+    } finally {
+      setUpdatingLiability(false)
     }
   }
 
@@ -740,6 +860,21 @@ export default function LiabilitiesPage() {
                         كشف
                       </button>
 
+                      {isAdmin && item.status !== 'cancelled' && (
+                        <button
+                          type="button"
+                          style={{
+                            ...smallButtonStyle,
+                            background: 'rgba(245,158,11,0.12)',
+                            borderColor: 'rgba(245,158,11,0.30)',
+                            color: '#fbbf24',
+                          }}
+                          onClick={() => openEditLiability(item)}
+                        >
+                          تعديل
+                        </button>
+                      )}
+
                       {item.status === 'open' && (
                         <button
                           type="button"
@@ -789,6 +924,140 @@ export default function LiabilitiesPage() {
           </table>
         </div>
       </section>
+
+      {editTarget && (
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div className="theme-modal-card" style={modalStyle}>
+            <h3 style={{ margin: 0 }}>تعديل الالتزام</h3>
+
+            <input
+              value={editForm.party_name}
+              onChange={(e) =>
+                setEditForm((prev) => ({
+                  ...prev,
+                  party_name: e.target.value,
+                }))
+              }
+              placeholder="اسم الشخص / الجهة"
+              style={inputStyle}
+            />
+
+            <input
+              value={editForm.title}
+              onChange={(e) =>
+                setEditForm((prev) => ({
+                  ...prev,
+                  title: e.target.value,
+                }))
+              }
+              placeholder="عنوان الالتزام"
+              style={inputStyle}
+            />
+
+            <input
+              value={editForm.category}
+              onChange={(e) =>
+                setEditForm((prev) => ({
+                  ...prev,
+                  category: e.target.value,
+                }))
+              }
+              placeholder="التصنيف"
+              style={inputStyle}
+            />
+
+            <input
+              type="number"
+              min={0}
+              value={editForm.total_amount}
+              onChange={(e) =>
+                setEditForm((prev) => ({
+                  ...prev,
+                  total_amount: e.target.value,
+                }))
+              }
+              placeholder="إجمالي الالتزام"
+              style={inputStyle}
+            />
+
+            <div
+              style={{
+                color: '#94a3b8',
+                fontSize: '12px',
+                lineHeight: 1.7,
+              }}
+            >
+              المدفوع حاليًا: <strong>{money(editTarget.paid_amount)}</strong>
+              {' — '}
+              لا يمكن جعل الإجمالي أقل من المدفوع.
+            </div>
+
+            <input
+              type="date"
+              value={editForm.due_date}
+              onChange={(e) =>
+                setEditForm((prev) => ({
+                  ...prev,
+                  due_date: e.target.value,
+                }))
+              }
+              style={inputStyle}
+            />
+
+            <input
+              value={editForm.notes}
+              onChange={(e) =>
+                setEditForm((prev) => ({
+                  ...prev,
+                  notes: e.target.value,
+                }))
+              }
+              placeholder="ملاحظات"
+              style={inputStyle}
+            />
+
+            <input
+              type="password"
+              value={editPassword}
+              onChange={(e) => setEditPassword(e.target.value)}
+              placeholder="كلمة مرور المدير"
+              style={inputStyle}
+            />
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => void confirmUpdateLiability()}
+                disabled={updatingLiability}
+                style={{
+                  ...primaryButtonStyle,
+                  flex: 1,
+                  opacity: updatingLiability ? 0.6 : 1,
+                }}
+              >
+                {updatingLiability ? 'جاري الحفظ...' : 'حفظ التعديل'}
+              </button>
+
+              <button
+                type="button"
+                onClick={closeEditLiability}
+                disabled={updatingLiability}
+                style={{
+                  ...secondaryButtonStyle,
+                  flex: 1,
+                }}
+              >
+                رجوع
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {paymentTarget && (
         <div className="theme-modal-overlay" style={modalOverlayStyle}>

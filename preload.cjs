@@ -211,6 +211,7 @@ contextBridge.exposeInMainWorld('api', {
   getLiabilitiesPage: (input) =>
     ipcRenderer.invoke('liabilities:list-page', input),
   createLiability: (input) => ipcRenderer.invoke('liabilities:create', input),
+  updateLiability: (input) => ipcRenderer.invoke('liabilities:update', input),
   recordLiabilityPayment: (input) =>
     ipcRenderer.invoke('liabilities:record-payment', input),
   getLiabilityStatement: (liabilityId) =>

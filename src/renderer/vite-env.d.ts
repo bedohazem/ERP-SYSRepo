@@ -1508,6 +1508,28 @@ declare global {
       }>
 
       createLiability: (input: any) => Promise<any>
+      updateLiability: (input: {
+        id: number
+        party_name: string
+        title: string
+        category?: string | null
+        total_amount: number
+        due_date?: string | null
+        notes?: string | null
+        actor_id?: number | null
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+
+        liability_id?: number
+
+        total_amount?: number
+        paid_amount?: number
+        remaining_amount?: number
+
+        status?: string
+      }>
       recordLiabilityPayment: (input: any) => Promise<any>
       getLiabilityStatement: (liabilityId: number) => Promise<any>
       cancelLiability: (input: any) => Promise<any>
