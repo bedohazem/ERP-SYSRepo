@@ -634,7 +634,7 @@ export default function ProductsPage() {
         }))
       } catch (error) {
         console.error('Failed to load product variants:', error)
-        showMessage('error', 'حدث خطأ أثناء تحميل الـ variants')
+        showMessage('error', 'حدث خطأ أثناء تحميل الاصناف')
       } finally {
         setLoadingVariants(null)
       }
@@ -1308,7 +1308,7 @@ export default function ProductsPage() {
                 checked={includeInactiveVariants}
                 onChange={(e) => setIncludeInactiveVariants(e.target.checked)}
               />
-              <span>عرض الـ variants الموقوفة</span>
+              <span>عرض الاصناف الموقوفة</span>
             </label>
           </div>
         </div>
@@ -1602,7 +1602,7 @@ export default function ProductsPage() {
                       >
                         {loadingVariants === product.id ? (
                           <div style={{ color: '#94a3b8' }}>
-                            جاري تحميل الـ variants...
+                            جاري تحميل الاصناف...
                           </div>
                         ) : productVariants.length === 0 ? (
                           <div style={{ color: '#94a3b8' }}>
@@ -1898,9 +1898,7 @@ export default function ProductsPage() {
                 padding: isNarrowDesktop ? '16px' : '20px',
               }}
             >
-              <div style={{ fontSize: '18px', fontWeight: 700 }}>
-                الـ Variants
-              </div>
+              <div style={{ fontSize: '18px', fontWeight: 700 }}>الاصناف</div>
 
               <div style={{ display: 'grid', gap: '14px' }}>
                 {variants.map((variant, index) => (
@@ -2060,7 +2058,7 @@ export default function ProductsPage() {
                   onClick={addVariant}
                   style={secondaryButtonStyle}
                 >
-                  + إضافة variant
+                  + إضافة الصنف
                 </button>
               </div>
             </div>
@@ -2313,7 +2311,7 @@ export default function ProductsPage() {
               </div>
 
               <div style={{ fontSize: '18px', fontWeight: 700 }}>
-                تعديل الـ Variants
+                تعديل الاصناف
               </div>
 
               <div style={{ display: 'grid', gap: '14px' }}>
