@@ -4,7 +4,10 @@ import {
   createExpense,
   listExpenses,
   listExpensesPage,
+  updateExpense,
 } from '../../src/main/database/repositories/expense.repo'
+
+import { closeCashDay } from '../../src/main/database/repositories/cash.repo'
 
 type ExpenseTestRow = {
   id: number
@@ -257,5 +260,194 @@ describe('expense repository', () => {
     expect(secondPage.rows).toHaveLength(1)
     expect((secondPage.rows[0] as any).title).toBe('Paged Expense 1')
     expect(secondPage.offset).toBe(2)
+  })
+
+  it('updates expense and replaces its active cash movement', () => {
+    const created = createExpense({
+      title: 'Old Expense',
+
+      category: 'old',
+
+      amount: 250,
+
+      payment_method: 'store_cash',
+
+      notes: 'old note',
+
+      created_by: 1,
+    })
+
+    const db = getDb()
+
+    const oldMovement = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE reference_type =
+        'expense'
+
+        AND reference_id = ?
+
+        AND cancelled_at
+          IS NULL
+
+      LIMIT 1
+      `,
+      )
+      .get(created.id) as any
+
+    const result = updateExpense({
+      id: created.id,
+
+      title: 'New Expense',
+
+      category: 'new',
+
+      amount: 400,
+
+      payment_method: 'store_cash',
+
+      notes: 'new note',
+
+      actor_id: 1,
+    })
+
+    expect(result.success).toBe(true)
+
+    const expense = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM expenses
+
+      WHERE id = ?
+      `,
+      )
+      .get(created.id) as any
+
+    expect(expense.title).toBe('New Expense')
+
+    expect(Number(expense.amount)).toBe(400)
+
+    expect(expense.category).toBe('new')
+
+    const oldAfter = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE id = ?
+      `,
+      )
+      .get(oldMovement.id) as any
+
+    expect(oldAfter.cancelled_at).toBeTruthy()
+
+    const activeMovement = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE reference_type =
+        'expense'
+
+        AND reference_id = ?
+
+        AND cancelled_at
+          IS NULL
+
+      LIMIT 1
+      `,
+      )
+      .get(created.id) as any
+
+    expect(Number(activeMovement.amount)).toBe(400)
+
+    expect(activeMovement.id).not.toBe(oldMovement.id)
+
+    const activeExpenseOut = db
+      .prepare(
+        `
+      SELECT
+        IFNULL(
+          SUM(amount),
+          0
+        ) AS total
+
+      FROM cash_movements
+
+      WHERE type = 'expense'
+        AND direction = 'out'
+        AND cancelled_at
+          IS NULL
+      `,
+      )
+      .get() as {
+      total: number
+    }
+
+    expect(Number(activeExpenseOut.total)).toBe(400)
+  })
+
+  it('blocks expense editing after the business day is closed', () => {
+    const created = createExpense({
+      title: 'Closed Expense',
+
+      amount: 100,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+    })
+
+    const db = getDb()
+
+    const dateRow = db
+      .prepare(
+        `
+      SELECT
+        date(
+          'now',
+          'localtime'
+        ) AS day
+      `,
+      )
+      .get() as {
+      day: string
+    }
+
+    closeCashDay({
+      business_date: dateRow.day,
+
+      counted_amount: 999900,
+
+      carry_over_amount: 999900,
+
+      target_account: 'owner_cash',
+
+      closed_by: 1,
+    })
+
+    expect(() =>
+      updateExpense({
+        id: created.id,
+
+        title: 'Changed Expense',
+
+        amount: 200,
+
+        payment_method: 'store_cash',
+
+        actor_id: 1,
+      }),
+    ).toThrow(`لا يمكن تعديل المصروف لأن يوم ${dateRow.day} تم تقفيله`)
   })
 })

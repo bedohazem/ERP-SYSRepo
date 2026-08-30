@@ -1,5 +1,5 @@
 import { getDb } from '../db'
-import { createCashMovement } from './cash.repo'
+import { createCashMovement, resolveCashAccount } from './cash.repo'
 import { createActivityLog } from './activity.repo'
 
 export type CreateExpenseInput = {
@@ -14,6 +14,16 @@ export type CreateExpenseInput = {
 export type CancelExpenseInput = {
   id: number
   reason?: string | null
+  actor_id?: number | null
+}
+
+export type UpdateExpenseInput = {
+  id: number
+  title: string
+  category?: string | null
+  amount: number
+  payment_method?: string
+  notes?: string | null
   actor_id?: number | null
 }
 
@@ -210,6 +220,243 @@ export function listExpensesPage(input?: {
     limit,
     offset,
   }
+}
+
+export function updateExpense(input: UpdateExpenseInput) {
+  const db = getDb()
+
+  const expenseId = Number(input.id || 0)
+
+  if (!expenseId) {
+    throw new Error('رقم المصروف غير صحيح')
+  }
+
+  const title = String(input.title || '').trim()
+
+  if (!title) {
+    throw new Error('عنوان المصروف مطلوب')
+  }
+
+  const amount = Number(input.amount || 0)
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('قيمة المصروف غير صحيحة')
+  }
+
+  const expense = db
+    .prepare(
+      `
+      SELECT *
+
+      FROM expenses
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(expenseId) as any
+
+  if (!expense) {
+    throw new Error('المصروف غير موجود')
+  }
+
+  if (expense.cancelled_at) {
+    throw new Error('لا يمكن تعديل مصروف ملغي')
+  }
+
+  const cashMovement = db
+    .prepare(
+      `
+      SELECT
+        cm.*,
+
+        COALESCE(
+          NULLIF(
+            cm.business_date,
+            ''
+          ),
+
+          date(
+            cm.created_at,
+            'localtime'
+          )
+        ) AS accounting_date
+
+      FROM cash_movements cm
+
+      WHERE cm.type = 'expense'
+
+        AND cm.reference_type =
+            'expense'
+
+        AND cm.reference_id = ?
+
+      ORDER BY cm.id DESC
+
+      LIMIT 1
+      `,
+    )
+    .get(expenseId) as any
+
+  if (!cashMovement) {
+    throw new Error('حركة الخزنة الخاصة بالمصروف غير موجودة')
+  }
+
+  if (cashMovement.cancelled_at) {
+    throw new Error('حركة الخزنة الخاصة بالمصروف ملغاة بالفعل')
+  }
+
+  if (
+    Math.abs(Number(cashMovement.amount || 0) - Number(expense.amount || 0)) >
+    0.01
+  ) {
+    throw new Error('قيمة المصروف لا تطابق حركة الخزنة')
+  }
+
+  if (
+    resolveCashAccount(cashMovement.payment_method) !==
+    resolveCashAccount(expense.payment_method)
+  ) {
+    throw new Error('حساب المصروف لا يطابق حركة الخزنة')
+  }
+
+  const accountingDate = String(cashMovement.accounting_date || '')
+
+  const closing = db
+    .prepare(
+      `
+      SELECT id
+
+      FROM cash_day_closings
+
+      WHERE business_date = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(accountingDate)
+
+  if (closing) {
+    throw new Error(`لا يمكن تعديل المصروف لأن يوم ${accountingDate} تم تقفيله`)
+  }
+
+  const category = String(input.category || '').trim() || null
+
+  const notes = String(input.notes || '').trim() || null
+
+  const paymentMethod = resolveCashAccount(
+    input.payment_method || expense.payment_method || 'store_cash',
+  )
+
+  const originalCreatedBy =
+    cashMovement.created_by ?? expense.created_by ?? null
+
+  const tx = db.transaction(() => {
+    db.prepare(
+      `
+      UPDATE expenses
+
+      SET
+        title = ?,
+        category = ?,
+        amount = ?,
+        payment_method = ?,
+        notes = ?
+
+      WHERE id = ?
+      `,
+    ).run(title, category, amount, paymentMethod, notes, expenseId)
+
+    db.prepare(
+      `
+      UPDATE cash_movements
+
+      SET
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
+        cancelled_by = ?,
+
+        cancel_reason =
+          'تم تعديل المصروف'
+
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, Number(cashMovement.id))
+
+    const replacement = createCashMovement({
+      type: 'expense',
+
+      direction: 'out',
+
+      amount,
+
+      payment_method: paymentMethod,
+
+      reference_id: expenseId,
+
+      reference_type: 'expense',
+
+      notes: `مصروف: ${title}`,
+
+      created_by: originalCreatedBy,
+
+      business_date: accountingDate,
+    })
+
+    const newCashMovementId = Number(replacement.lastInsertRowid || 0)
+
+    createActivityLog({
+      user_id: input.actor_id ?? null,
+
+      action: 'expense_updated',
+
+      entity: 'expenses',
+
+      entity_id: expenseId,
+
+      details: JSON.stringify({
+        before: {
+          title: expense.title,
+
+          category: expense.category,
+
+          amount: Number(expense.amount || 0),
+
+          payment_method: expense.payment_method,
+
+          notes: expense.notes,
+
+          cash_movement_id: Number(cashMovement.id),
+        },
+
+        after: {
+          title,
+          category,
+          amount,
+
+          payment_method: paymentMethod,
+
+          notes,
+
+          cash_movement_id: newCashMovementId,
+        },
+      }),
+    })
+
+    return {
+      success: true,
+
+      id: expenseId,
+
+      old_cash_movement_id: Number(cashMovement.id),
+
+      cash_movement_id: newCashMovementId,
+    }
+  })
+
+  return tx()
 }
 
 export function cancelExpense(input: CancelExpenseInput) {

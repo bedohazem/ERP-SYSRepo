@@ -49,6 +49,24 @@ export default function ExpensesPage() {
   const [cancelExpensePassword, setCancelExpensePassword] = useState('')
 
   const [cancellingExpense, setCancellingExpense] = useState(false)
+  const [editExpenseTarget, setEditExpenseTarget] = useState<Expense | null>(
+    null,
+  )
+
+  const [editExpenseTitle, setEditExpenseTitle] = useState('')
+
+  const [editExpenseCategory, setEditExpenseCategory] = useState('')
+
+  const [editExpenseAmount, setEditExpenseAmount] = useState('')
+
+  const [editExpensePaymentMethod, setEditExpensePaymentMethod] =
+    useState('store_cash')
+
+  const [editExpenseNotes, setEditExpenseNotes] = useState('')
+
+  const [editExpensePassword, setEditExpensePassword] = useState('')
+
+  const [updatingExpense, setUpdatingExpense] = useState(false)
 
   function showMessage(type: 'success' | 'error', text: string) {
     setMessage({ type, text })
@@ -162,6 +180,97 @@ export default function ExpensesPage() {
       showMessage('error', error?.message || 'حدث خطأ أثناء إلغاء المصروف')
     } finally {
       setCancellingExpense(false)
+    }
+  }
+
+  function openEditExpense(expense: Expense) {
+    setEditExpenseTarget(expense)
+
+    setEditExpenseTitle(expense.title || '')
+
+    setEditExpenseCategory(expense.category || '')
+
+    setEditExpenseAmount(String(Number(expense.amount || 0)))
+
+    setEditExpensePaymentMethod(expense.payment_method || 'store_cash')
+
+    setEditExpenseNotes(expense.notes || '')
+
+    setEditExpensePassword('')
+  }
+
+  function closeEditExpense() {
+    if (updatingExpense) return
+
+    setEditExpenseTarget(null)
+    setEditExpenseTitle('')
+    setEditExpenseCategory('')
+    setEditExpenseAmount('')
+    setEditExpensePaymentMethod('store_cash')
+    setEditExpenseNotes('')
+    setEditExpensePassword('')
+  }
+
+  async function confirmUpdateExpense() {
+    if (!editExpenseTarget || updatingExpense) {
+      return
+    }
+
+    const title = editExpenseTitle.trim()
+
+    if (!title) {
+      showMessage('error', 'اسم المصروف مطلوب')
+      return
+    }
+
+    const amount = Number(editExpenseAmount || 0)
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showMessage('error', 'اكتب مبلغ صحيح')
+      return
+    }
+
+    if (!editExpensePassword.trim()) {
+      showMessage('error', 'اكتب كلمة مرور المدير')
+      return
+    }
+
+    setUpdatingExpense(true)
+
+    try {
+      const result = await window.api.updateExpense({
+        id: editExpenseTarget.id,
+
+        title,
+
+        category: editExpenseCategory.trim() || null,
+
+        amount,
+
+        payment_method: editExpensePaymentMethod,
+
+        notes: editExpenseNotes.trim() || null,
+
+        actor_id: currentUser?.id ?? null,
+
+        admin_password: editExpensePassword,
+      })
+
+      if (!result.success) {
+        showMessage('error', result.message || 'تعذر تعديل المصروف')
+
+        return
+      }
+
+      closeEditExpense()
+
+      showMessage('success', 'تم تعديل المصروف')
+
+      await loadExpenses(expensesPage)
+    } catch (error: any) {
+      showMessage('error', error?.message || 'حدث خطأ أثناء تعديل المصروف')
+    } finally {
+      setUpdatingExpense(false)
     }
   }
 
@@ -868,28 +977,55 @@ export default function ExpensesPage() {
 
                     <td style={tdStyle}>
                       {isAdmin && !expense.cancelled_at ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCancelExpenseTarget(expense)
-                            setCancelExpenseReason(
-                              `إلغاء مصروف: ${expense.title}`,
-                            )
-                            setCancelExpensePassword('')
-                          }}
+                        <div
                           style={{
-                            height: '34px',
-                            padding: '0 12px',
-                            borderRadius: '9px',
-                            border: '1px solid rgba(239,68,68,0.35)',
-                            background: 'rgba(239,68,68,0.10)',
-                            color: '#fca5a5',
-                            cursor: 'pointer',
-                            fontWeight: 800,
+                            display: 'flex',
+                            gap: '7px',
+                            flexWrap: 'wrap',
                           }}
                         >
-                          إلغاء
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => openEditExpense(expense)}
+                            style={{
+                              height: '34px',
+                              padding: '0 12px',
+                              borderRadius: '9px',
+                              border: '1px solid rgba(245,158,11,0.35)',
+                              background: 'rgba(245,158,11,0.10)',
+                              color: '#fbbf24',
+                              cursor: 'pointer',
+                              fontWeight: 800,
+                            }}
+                          >
+                            تعديل
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCancelExpenseTarget(expense)
+
+                              setCancelExpenseReason(
+                                `إلغاء مصروف: ${expense.title}`,
+                              )
+
+                              setCancelExpensePassword('')
+                            }}
+                            style={{
+                              height: '34px',
+                              padding: '0 12px',
+                              borderRadius: '9px',
+                              border: '1px solid rgba(239,68,68,0.35)',
+                              background: 'rgba(239,68,68,0.10)',
+                              color: '#fca5a5',
+                              cursor: 'pointer',
+                              fontWeight: 800,
+                            }}
+                          >
+                            إلغاء
+                          </button>
+                        </div>
                       ) : (
                         <span style={{ color: '#64748b' }}>—</span>
                       )}
@@ -916,6 +1052,178 @@ export default function ExpensesPage() {
           </table>
         </div>
       </div>
+
+      {editExpenseTarget && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000000,
+            display: 'grid',
+            placeItems: 'center',
+            padding: '20px',
+            background: 'rgba(2,6,23,0.82)',
+          }}
+        >
+          <div
+            className="theme-modal-card"
+            style={{
+              width: '520px',
+              maxWidth: '96vw',
+              borderRadius: '18px',
+              padding: '20px',
+              display: 'grid',
+              gap: '13px',
+              background: 'var(--bg-soft)',
+              border: '1px solid var(--border)',
+              color: 'var(--text)',
+              direction: 'rtl',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <h3 style={{ margin: 0 }}>تعديل المصروف</h3>
+
+              <button
+                type="button"
+                onClick={closeEditExpense}
+                disabled={updatingExpense}
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  background: 'rgba(255,255,255,0.05)',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div>
+              <label style={labelStyle}>اسم المصروف</label>
+
+              <input
+                value={editExpenseTitle}
+                onChange={(e) => setEditExpenseTitle(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>التصنيف</label>
+
+              <input
+                value={editExpenseCategory}
+                onChange={(e) => setEditExpenseCategory(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>المبلغ</label>
+
+              <input
+                type="number"
+                min={0}
+                value={editExpenseAmount}
+                onChange={(e) => setEditExpenseAmount(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>الحساب المالي</label>
+
+              <select
+                value={editExpensePaymentMethod}
+                onChange={(e) => setEditExpensePaymentMethod(e.target.value)}
+                style={inputStyle}
+              >
+                {CASH_ACCOUNT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label style={labelStyle}>ملاحظات</label>
+
+              <textarea
+                value={editExpenseNotes}
+                onChange={(e) => setEditExpenseNotes(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  minHeight: '75px',
+                  height: '75px',
+                  paddingTop: '12px',
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>كلمة مرور المدير</label>
+
+              <input
+                type="password"
+                value={editExpensePassword}
+                onChange={(e) => setEditExpensePassword(e.target.value)}
+                placeholder="كلمة مرور المدير"
+                style={inputStyle}
+              />
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => void confirmUpdateExpense()}
+                disabled={updatingExpense}
+                style={{
+                  ...primaryButtonStyle,
+                  flex: 1,
+                  opacity: updatingExpense ? 0.6 : 1,
+                }}
+              >
+                {updatingExpense ? 'جاري الحفظ...' : 'حفظ التعديل'}
+              </button>
+
+              <button
+                type="button"
+                onClick={closeEditExpense}
+                disabled={updatingExpense}
+                style={{
+                  height: '44px',
+                  padding: '0 18px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  background: 'rgba(255,255,255,0.05)',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                }}
+              >
+                رجوع
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <FinancialCancelModal
         open={Boolean(cancelExpenseTarget)}
         title="إلغاء المصروف"

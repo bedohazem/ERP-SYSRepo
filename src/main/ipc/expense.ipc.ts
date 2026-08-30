@@ -5,6 +5,7 @@ import {
   createExpense,
   listExpensesPage,
   listExpenses,
+  updateExpense,
 } from '../database/repositories/expense.repo'
 
 import { requireAdminPassword } from './permission-helper'
@@ -20,6 +21,34 @@ export function registerExpenseIpc(): void {
 
   ipcMain.handle('expenses:list-page', (_, input) => {
     return listExpensesPage(input)
+  })
+
+  ipcMain.handle('expenses:update', (_, input) => {
+    try {
+      requireAdminPassword(input?.actor_id, input?.admin_password)
+
+      return updateExpense({
+        id: Number(input?.id),
+
+        title: input?.title,
+
+        category: input?.category,
+
+        amount: Number(input?.amount),
+
+        payment_method: input?.payment_method,
+
+        notes: input?.notes,
+
+        actor_id: input?.actor_id ?? null,
+      })
+    } catch (error) {
+      return {
+        success: false,
+
+        message: error instanceof Error ? error.message : 'تعذر تعديل المصروف',
+      }
+    }
   })
 
   ipcMain.handle('expenses:cancel', (_, input) => {

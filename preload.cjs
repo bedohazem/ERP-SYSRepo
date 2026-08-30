@@ -178,6 +178,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('cash:update-day-close', input),
 
   createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
+  updateExpense: (input) => ipcRenderer.invoke('expenses:update', input),
   cancelExpense: (input) => ipcRenderer.invoke('expenses:cancel', input),
   getExpenses: (input) => ipcRenderer.invoke('expenses:list', input),
   getExpensesPage: (input) => ipcRenderer.invoke('expenses:list-page', input),

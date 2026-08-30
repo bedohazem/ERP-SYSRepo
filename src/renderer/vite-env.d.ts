@@ -1276,6 +1276,25 @@ declare global {
         offset: number
       }>
       createExpense: (input: any) => Promise<any>
+      updateExpense: (input: {
+        id: number
+        title: string
+        category?: string | null
+        amount: number
+        payment_method?: string
+        notes?: string | null
+        actor_id?: number | null
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+
+        id?: number
+
+        old_cash_movement_id?: number
+
+        cash_movement_id?: number
+      }>
 
       cancelExpense: (input: {
         id: number
