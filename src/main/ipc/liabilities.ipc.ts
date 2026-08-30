@@ -9,6 +9,7 @@ import {
   cancelLiabilityPayment,
   recordLiabilityPayment,
   updateLiability,
+  updateLiabilityPayment,
 } from '../database/repositories/liabilities.repo'
 
 import { requireAdmin, requireAdminPassword } from './permission-helper'
@@ -110,6 +111,30 @@ export function registerLiabilitiesIpc(): void {
     } catch (error) {
       return {
         success: false,
+        message: getErrorMessage(error),
+      }
+    }
+  })
+
+  ipcMain.handle('liabilities:update-payment', (_, input) => {
+    try {
+      requireAdminPassword(input?.actor_id, input?.admin_password)
+
+      return updateLiabilityPayment({
+        payment_id: Number(input?.payment_id),
+
+        amount: Number(input?.amount),
+
+        payment_method: input?.payment_method,
+
+        notes: input?.notes,
+
+        actor_id: input?.actor_id ?? null,
+      })
+    } catch (error) {
+      return {
+        success: false,
+
         message: getErrorMessage(error),
       }
     }

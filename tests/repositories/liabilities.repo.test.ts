@@ -9,6 +9,7 @@ import {
   listLiabilitiesPage,
   recordLiabilityPayment,
   updateLiability,
+  updateLiabilityPayment,
 } from '../../src/main/database/repositories/liabilities.repo'
 
 type LiabilityTestRow = {
@@ -611,5 +612,222 @@ describe('liabilities repository', () => {
         actor_id: 1,
       }),
     ).toThrow('لا يمكن جعل قيمة الالتزام أقل من إجمالي المدفوع وهو 400.00 ج.م')
+  })
+
+  it('updates liability payment and replaces its financial effects', () => {
+    const created = createLiability({
+      party_name: 'Payment Party',
+
+      title: 'Editable Liability',
+
+      total_amount: 1000,
+
+      paid_amount: 200,
+
+      payment_method: 'store_cash',
+
+      actor_id: 1,
+    })
+
+    const payment = recordLiabilityPayment({
+      liability_id: created.liability_id,
+
+      amount: 300,
+
+      payment_method: 'store_cash',
+
+      notes: 'Old payment',
+
+      actor_id: 1,
+    })
+
+    const db = getDb()
+
+    const oldPayment = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM store_liability_payments
+
+      WHERE id = ?
+      `,
+      )
+      .get(payment.payment_id) as any
+
+    const oldCash = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE reference_type =
+        'store_liability_payment'
+
+        AND reference_id = ?
+
+      LIMIT 1
+      `,
+      )
+      .get(payment.payment_id) as any
+
+    const result = updateLiabilityPayment({
+      payment_id: payment.payment_id,
+
+      amount: 500,
+
+      payment_method: 'store_cash',
+
+      notes: 'Corrected payment',
+
+      actor_id: 1,
+    })
+
+    expect(result.success).toBe(true)
+
+    expect(result.old_amount).toBe(300)
+
+    expect(result.new_amount).toBe(500)
+
+    expect(result.payment_id).not.toBe(payment.payment_id)
+
+    const liability = getLiabilityById(created.liability_id)
+
+    expect(liability.paid_amount).toBe(700)
+
+    expect(liability.remaining_amount).toBe(300)
+
+    expect(liability.status).toBe('open')
+
+    const oldAfter = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM store_liability_payments
+
+      WHERE id = ?
+      `,
+      )
+      .get(payment.payment_id) as any
+
+    expect(oldAfter.cancelled_at).toBeTruthy()
+
+    expect(Number(oldAfter.replacement_payment_id)).toBe(result.payment_id)
+
+    const replacement = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM store_liability_payments
+
+      WHERE id = ?
+      `,
+      )
+      .get(result.payment_id) as any
+
+    expect(Number(replacement.amount)).toBe(500)
+
+    expect(replacement.created_at).toBe(oldPayment.created_at)
+
+    const oldCashAfter = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE id = ?
+      `,
+      )
+      .get(oldCash.id) as any
+
+    expect(oldCashAfter.cancelled_at).toBeTruthy()
+
+    const newCash = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE reference_type =
+        'store_liability_payment'
+
+        AND reference_id = ?
+
+        AND cancelled_at
+          IS NULL
+
+      LIMIT 1
+      `,
+      )
+      .get(result.payment_id) as any
+
+    expect(Number(newCash.amount)).toBe(500)
+
+    const activeCash = db
+      .prepare(
+        `
+      SELECT
+        IFNULL(
+          SUM(amount),
+          0
+        ) AS total
+
+      FROM cash_movements
+
+      WHERE type =
+        'liability_payment'
+
+        AND cancelled_at
+          IS NULL
+      `,
+      )
+      .get() as {
+      total: number
+    }
+
+    expect(Number(activeCash.total)).toBe(700)
+  })
+
+  it('rejects liability payment update above available liability amount', () => {
+    const created = createLiability({
+      party_name: 'Limited Party',
+
+      title: 'Limited Liability',
+
+      total_amount: 1000,
+
+      paid_amount: 400,
+
+      payment_method: 'store_cash',
+
+      actor_id: 1,
+    })
+
+    const payment = recordLiabilityPayment({
+      liability_id: created.liability_id,
+
+      amount: 300,
+
+      payment_method: 'store_cash',
+
+      actor_id: 1,
+    })
+
+    expect(() =>
+      updateLiabilityPayment({
+        payment_id: payment.payment_id,
+
+        amount: 700,
+
+        payment_method: 'store_cash',
+
+        actor_id: 1,
+      }),
+    ).toThrow('مبلغ الدفعة المعدل أكبر من المتاح وهو 600.00 ج.م')
   })
 })

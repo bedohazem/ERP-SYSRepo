@@ -285,6 +285,9 @@ export function getDb(): Database.Database {
         notes TEXT,
         created_by INTEGER,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        replacement_payment_id INTEGER,
+
         FOREIGN KEY (liability_id) REFERENCES store_liabilities(id) ON DELETE CASCADE,
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
@@ -534,6 +537,13 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'store_liability_payments', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'store_liability_payments', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'store_liability_payments', 'cancel_reason', 'TEXT')
+
+    safeAddColumn(
+      db,
+      'store_liability_payments',
+      'replacement_payment_id',
+      'INTEGER',
+    )
 
     safeAddColumn(db, 'store_liabilities', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'store_liabilities', 'cancelled_by', 'INTEGER')

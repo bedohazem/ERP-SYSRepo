@@ -1531,6 +1531,32 @@ declare global {
         status?: string
       }>
       recordLiabilityPayment: (input: any) => Promise<any>
+      updateLiabilityPayment: (input: {
+        payment_id: number
+        amount: number
+        payment_method?: string
+        notes?: string | null
+        actor_id?: number | null
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+
+        liability_id?: number
+
+        replaced_payment_id?: number
+        payment_id?: number
+
+        old_amount?: number
+        new_amount?: number
+
+        paid_amount?: number
+        remaining_amount?: number
+
+        status?: string
+
+        payment_method?: string
+      }>
       getLiabilityStatement: (liabilityId: number) => Promise<any>
       cancelLiability: (input: any) => Promise<any>
       getLiabilitiesSummary: (input?: {

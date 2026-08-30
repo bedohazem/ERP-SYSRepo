@@ -36,6 +36,7 @@ type LiabilityPayment = {
   cancelled_at?: string | null
   cancelled_by?: number | null
   cancel_reason?: string | null
+  replacement_payment_id?: number | null
 }
 
 const emptyForm = {
@@ -138,6 +139,18 @@ export default function LiabilitiesPage() {
   const [cancelPaymentPassword, setCancelPaymentPassword] = useState('')
 
   const [cancellingPayment, setCancellingPayment] = useState(false)
+  const [editPaymentTarget, setEditPaymentTarget] =
+    useState<LiabilityPayment | null>(null)
+
+  const [editPaymentAmount, setEditPaymentAmount] = useState('')
+
+  const [editPaymentMethod, setEditPaymentMethod] = useState('store_cash')
+
+  const [editPaymentNotes, setEditPaymentNotes] = useState('')
+
+  const [editPaymentPassword, setEditPaymentPassword] = useState('')
+
+  const [updatingPayment, setUpdatingPayment] = useState(false)
   const [message, setMessage] = useState<{
     type: 'success' | 'error'
     text: string
@@ -481,6 +494,94 @@ export default function LiabilitiesPage() {
       )
     } finally {
       setCancellingPayment(false)
+    }
+  }
+
+  function openEditLiabilityPayment(payment: LiabilityPayment) {
+    setEditPaymentTarget(payment)
+
+    setEditPaymentAmount(String(Number(payment.amount || 0)))
+
+    setEditPaymentMethod(payment.payment_method || 'store_cash')
+
+    setEditPaymentNotes(payment.notes || '')
+
+    setEditPaymentPassword('')
+  }
+
+  function closeEditLiabilityPayment() {
+    if (updatingPayment) return
+
+    setEditPaymentTarget(null)
+    setEditPaymentAmount('')
+    setEditPaymentMethod('store_cash')
+    setEditPaymentNotes('')
+    setEditPaymentPassword('')
+  }
+
+  async function confirmUpdateLiabilityPayment() {
+    if (!editPaymentTarget || updatingPayment) {
+      return
+    }
+
+    const amount = Number(editPaymentAmount || 0)
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showMessage('error', 'اكتب مبلغ دفعة صحيح')
+      return
+    }
+
+    if (!editPaymentPassword.trim()) {
+      showMessage('error', 'اكتب كلمة مرور المدير')
+      return
+    }
+
+    const liabilityId = editPaymentTarget.liability_id
+
+    setUpdatingPayment(true)
+
+    try {
+      const result = await window.api.updateLiabilityPayment({
+        payment_id: editPaymentTarget.id,
+
+        amount,
+
+        payment_method: editPaymentMethod,
+
+        notes: editPaymentNotes.trim() || null,
+
+        actor_id: currentUser?.id ?? null,
+
+        admin_password: editPaymentPassword,
+      })
+
+      if (!result.success) {
+        showMessage('error', result.message || 'تعذر تعديل دفعة الالتزام')
+
+        return
+      }
+
+      setEditPaymentTarget(null)
+      setEditPaymentAmount('')
+      setEditPaymentNotes('')
+      setEditPaymentPassword('')
+
+      showMessage('success', 'تم تعديل دفعة الالتزام')
+
+      await loadData(liabilityPage)
+
+      if (statementData?.liability?.id === liabilityId) {
+        const next = await window.api.getLiabilityStatement(liabilityId)
+
+        setStatementData(next)
+      }
+    } catch (error: any) {
+      showMessage(
+        'error',
+        error?.message || 'حدث خطأ أثناء تعديل دفعة الالتزام',
+      )
+    } finally {
+      setUpdatingPayment(false)
     }
   }
 
@@ -1203,7 +1304,9 @@ export default function LiabilitiesPage() {
                           fontWeight: 900,
                         }}
                       >
-                        ملغاة
+                        {payment.replacement_payment_id
+                          ? 'تم تعديلها'
+                          : 'ملغاة'}
                       </span>
                     )}
                   </div>
@@ -1252,28 +1355,61 @@ export default function LiabilitiesPage() {
                     </span>
 
                     {isAdmin && !payment.cancelled_at ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCancelPaymentTarget(payment)
-                          setCancelPaymentReason('إلغاء دفعة التزام')
-                          setCancelPaymentPassword('')
-                        }}
+                      <div
                         style={{
-                          border: '1px solid rgba(239,68,68,0.30)',
-                          background: 'rgba(239,68,68,0.08)',
-                          color: '#fca5a5',
-                          borderRadius: '8px',
-                          height: '32px',
-                          padding: '0 10px',
-                          cursor: 'pointer',
-                          fontWeight: 800,
+                          display: 'flex',
+                          gap: '7px',
+                          flexWrap: 'wrap',
                         }}
                       >
-                        إلغاء الدفعة
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => openEditLiabilityPayment(payment)}
+                          style={{
+                            border: '1px solid rgba(245,158,11,0.30)',
+                            background: 'rgba(245,158,11,0.08)',
+                            color: '#fbbf24',
+                            borderRadius: '8px',
+                            height: '32px',
+                            padding: '0 10px',
+                            cursor: 'pointer',
+                            fontWeight: 800,
+                          }}
+                        >
+                          تعديل الدفعة
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCancelPaymentTarget(payment)
+
+                            setCancelPaymentReason('إلغاء دفعة التزام')
+
+                            setCancelPaymentPassword('')
+                          }}
+                          style={{
+                            border: '1px solid rgba(239,68,68,0.30)',
+                            background: 'rgba(239,68,68,0.08)',
+                            color: '#fca5a5',
+                            borderRadius: '8px',
+                            height: '32px',
+                            padding: '0 10px',
+                            cursor: 'pointer',
+                            fontWeight: 800,
+                          }}
+                        >
+                          إلغاء الدفعة
+                        </button>
+                      </div>
                     ) : (
-                      <span style={{ color: '#64748b' }}>—</span>
+                      <span
+                        style={{
+                          color: '#64748b',
+                        }}
+                      >
+                        —
+                      </span>
                     )}
                   </div>
                 </div>
@@ -1340,6 +1476,99 @@ export default function LiabilitiesPage() {
                 type="button"
                 onClick={() => setCancelTarget(null)}
                 style={{ ...secondaryButtonStyle, flex: 1 }}
+              >
+                رجوع
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editPaymentTarget && (
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div className="theme-modal-card" style={modalStyle}>
+            <h3 style={{ margin: 0 }}>تعديل دفعة الالتزام</h3>
+
+            <p
+              style={{
+                margin: 0,
+                color: '#94a3b8',
+                lineHeight: 1.8,
+              }}
+            >
+              القيمة الحالية: {money(editPaymentTarget.amount)}
+            </p>
+
+            <label style={labelStyle}>المبلغ الصحيح</label>
+
+            <input
+              type="number"
+              min={0}
+              value={editPaymentAmount}
+              onChange={(e) => setEditPaymentAmount(e.target.value)}
+              style={inputStyle}
+            />
+
+            <label style={labelStyle}>الحساب المالي</label>
+
+            <select
+              value={editPaymentMethod}
+              onChange={(e) => setEditPaymentMethod(e.target.value)}
+              style={inputStyle}
+            >
+              {CASH_ACCOUNT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
+            <label style={labelStyle}>ملاحظات</label>
+
+            <input
+              value={editPaymentNotes}
+              onChange={(e) => setEditPaymentNotes(e.target.value)}
+              placeholder="ملاحظات الدفعة"
+              style={inputStyle}
+            />
+
+            <label style={labelStyle}>كلمة مرور المدير</label>
+
+            <input
+              type="password"
+              value={editPaymentPassword}
+              onChange={(e) => setEditPaymentPassword(e.target.value)}
+              placeholder="كلمة مرور المدير"
+              style={inputStyle}
+            />
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => void confirmUpdateLiabilityPayment()}
+                disabled={updatingPayment}
+                style={{
+                  ...primaryButtonStyle,
+                  flex: 1,
+                  opacity: updatingPayment ? 0.6 : 1,
+                }}
+              >
+                {updatingPayment ? 'جاري الحفظ...' : 'حفظ التعديل'}
+              </button>
+
+              <button
+                type="button"
+                onClick={closeEditLiabilityPayment}
+                disabled={updatingPayment}
+                style={{
+                  ...secondaryButtonStyle,
+                  flex: 1,
+                }}
               >
                 رجوع
               </button>

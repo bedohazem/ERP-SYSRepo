@@ -1,5 +1,5 @@
 import { getDb } from '../db'
-import { createCashMovement } from './cash.repo'
+import { createCashMovement, resolveCashAccount } from './cash.repo'
 import { createActivityLog } from './activity.repo'
 
 export type CreateLiabilityInput = {
@@ -29,6 +29,14 @@ export type UpdateLiabilityInput = {
   category?: string | null
   total_amount: number
   due_date?: string | null
+  notes?: string | null
+  actor_id?: number | null
+}
+
+export type UpdateLiabilityPaymentInput = {
+  payment_id: number
+  amount: number
+  payment_method?: string
   notes?: string | null
   actor_id?: number | null
 }
@@ -708,26 +716,39 @@ export function getLiabilitiesSummary(input?: {
   }
 }
 
-export function cancelLiabilityPayment(input: {
-  payment_id: number
-  reason?: string | null
-  actor_id?: number | null
-}) {
+function getLiabilityPaymentMutationContext(paymentIdInput: number) {
   const db = getDb()
 
-  const paymentId = Number(input.payment_id)
+  const paymentId = Number(paymentIdInput || 0)
+
+  if (!paymentId) {
+    throw new Error('رقم دفعة الالتزام غير صحيح')
+  }
 
   const payment = db
     .prepare(
       `
       SELECT
         p.*,
+
         l.total_amount,
-        l.status AS liability_status
+
+        l.status
+          AS liability_status,
+
+        l.title
+          AS liability_title,
+
+        l.party_name
+          AS liability_party_name
+
       FROM store_liability_payments p
+
       JOIN store_liabilities l
         ON l.id = p.liability_id
+
       WHERE p.id = ?
+
       LIMIT 1
       `,
     )
@@ -750,38 +771,365 @@ export function cancelLiabilityPayment(input: {
       `
       SELECT
         cm.*,
+
         COALESCE(
-          NULLIF(cm.business_date, ''),
-          date(cm.created_at, 'localtime')
+          NULLIF(
+            cm.business_date,
+            ''
+          ),
+
+          date(
+            cm.created_at,
+            'localtime'
+          )
         ) AS accounting_date
+
       FROM cash_movements cm
-      WHERE cm.type = 'liability_payment'
-        AND cm.reference_type = 'store_liability_payment'
+
+      WHERE cm.type =
+        'liability_payment'
+
+        AND cm.direction = 'out'
+
+        AND cm.reference_type =
+          'store_liability_payment'
+
         AND cm.reference_id = ?
+
       ORDER BY cm.id DESC
+
       LIMIT 1
       `,
     )
     .get(paymentId) as any
 
-  if (cashMovement && !cashMovement.cancelled_at) {
-    const closing = db
+  if (!cashMovement) {
+    throw new Error('حركة الخزنة الخاصة بدفعة الالتزام غير موجودة')
+  }
+
+  if (cashMovement.cancelled_at) {
+    throw new Error('حركة الخزنة الخاصة بالدفعة ملغاة بالفعل')
+  }
+
+  if (
+    Math.abs(
+      roundMoney(Number(cashMovement.amount || 0)) -
+        roundMoney(Number(payment.amount || 0)),
+    ) > 0.01
+  ) {
+    throw new Error('قيمة دفعة الالتزام لا تطابق حركة الخزنة')
+  }
+
+  if (
+    resolveCashAccount(cashMovement.payment_method) !==
+    resolveCashAccount(payment.payment_method)
+  ) {
+    throw new Error('حساب دفعة الالتزام لا يطابق حركة الخزنة')
+  }
+
+  const accountingDate = String(cashMovement.accounting_date || '')
+
+  const closing = db
+    .prepare(
+      `
+      SELECT id
+
+      FROM cash_day_closings
+
+      WHERE business_date = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(accountingDate)
+
+  if (closing) {
+    throw new Error(
+      `لا يمكن تعديل أو إلغاء الدفعة لأن يوم ${accountingDate} تم تقفيله`,
+    )
+  }
+
+  return {
+    db,
+    paymentId,
+    payment,
+    cashMovement,
+    accountingDate,
+  }
+}
+
+export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
+  const amount = roundMoney(Number(input.amount || 0))
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('مبلغ الدفعة المعدل غير صحيح')
+  }
+
+  const { db, paymentId, payment, cashMovement, accountingDate } =
+    getLiabilityPaymentMutationContext(Number(input.payment_id))
+
+  const otherPaidRow = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(amount),
+          0
+        ) AS paid
+
+      FROM store_liability_payments
+
+      WHERE liability_id = ?
+
+        AND cancelled_at IS NULL
+
+        AND id != ?
+      `,
+    )
+    .get(payment.liability_id, paymentId) as {
+    paid: number
+  }
+
+  const otherPaid = roundMoney(Number(otherPaidRow?.paid || 0))
+
+  const maximumAmount = roundMoney(
+    Math.max(
+      0,
+
+      Number(payment.total_amount || 0) - otherPaid,
+    ),
+  )
+
+  if (amount > maximumAmount + 0.0001) {
+    throw new Error(
+      `مبلغ الدفعة المعدل أكبر من المتاح وهو ${maximumAmount.toFixed(2)} ج.م`,
+    )
+  }
+
+  const paymentMethod = resolveCashAccount(
+    input.payment_method || payment.payment_method || 'store_cash',
+  )
+
+  const notes =
+    input.notes === undefined
+      ? (payment.notes ?? null)
+      : cleanText(input.notes) || null
+
+  const originalCreatedBy =
+    payment.created_by ?? cashMovement.created_by ?? input.actor_id ?? null
+
+  const tx = db.transaction(() => {
+    const replacementResult = db
       .prepare(
         `
-        SELECT id
-        FROM cash_day_closings
-        WHERE business_date = ?
-        LIMIT 1
+        INSERT INTO store_liability_payments (
+          liability_id,
+          amount,
+          payment_method,
+          notes,
+          created_by,
+          created_at
+        )
+
+        VALUES (
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          COALESCE(
+            ?,
+            CURRENT_TIMESTAMP
+          )
+        )
         `,
       )
-      .get(cashMovement.accounting_date)
-
-    if (closing) {
-      throw new Error(
-        `لا يمكن إلغاء الدفعة لأن يوم ${cashMovement.accounting_date} تم تقفيله`,
+      .run(
+        payment.liability_id,
+        amount,
+        paymentMethod,
+        notes,
+        originalCreatedBy,
+        payment.created_at ?? null,
       )
+
+    const newPaymentId = Number(replacementResult.lastInsertRowid)
+
+    db.prepare(
+      `
+      UPDATE store_liability_payments
+
+      SET
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
+        cancelled_by = ?,
+
+        cancel_reason =
+          'تم تعديل دفعة الالتزام',
+
+        replacement_payment_id = ?
+
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, newPaymentId, paymentId)
+
+    db.prepare(
+      `
+      UPDATE cash_movements
+
+      SET
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
+        cancelled_by = ?,
+
+        cancel_reason =
+          'تم تعديل دفعة الالتزام'
+
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, Number(cashMovement.id))
+
+    const replacementCash = createCashMovement({
+      type: 'liability_payment',
+
+      direction: 'out',
+
+      amount,
+
+      payment_method: paymentMethod,
+
+      reference_id: newPaymentId,
+
+      reference_type: 'store_liability_payment',
+
+      notes: `سداد التزام: ${payment.liability_title} - ${payment.liability_party_name}`,
+
+      created_by: originalCreatedBy,
+
+      business_date: accountingDate,
+    })
+
+    const newCashMovementId = Number(replacementCash.lastInsertRowid || 0)
+
+    const totals = db
+      .prepare(
+        `
+        SELECT
+          IFNULL(
+            SUM(amount),
+            0
+          ) AS paid
+
+        FROM store_liability_payments
+
+        WHERE liability_id = ?
+          AND cancelled_at IS NULL
+        `,
+      )
+      .get(payment.liability_id) as {
+      paid: number
     }
-  }
+
+    const nextPaid = roundMoney(Number(totals?.paid || 0))
+
+    const nextRemaining = roundMoney(
+      Math.max(
+        0,
+
+        Number(payment.total_amount || 0) - nextPaid,
+      ),
+    )
+
+    const nextStatus = getStatus(nextRemaining)
+
+    db.prepare(
+      `
+      UPDATE store_liabilities
+
+      SET
+        paid_amount = ?,
+        remaining_amount = ?,
+        status = ?,
+        updated_at =
+          CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+    ).run(nextPaid, nextRemaining, nextStatus, payment.liability_id)
+
+    createActivityLog({
+      user_id: input.actor_id ?? null,
+
+      action: 'liability_payment_updated',
+
+      entity: 'store_liability_payments',
+
+      entity_id: paymentId,
+
+      details: JSON.stringify({
+        liability_id: payment.liability_id,
+
+        before: {
+          payment_id: paymentId,
+
+          amount: Number(payment.amount || 0),
+
+          payment_method: payment.payment_method,
+
+          notes: payment.notes,
+
+          cash_movement_id: Number(cashMovement.id),
+        },
+
+        after: {
+          payment_id: newPaymentId,
+
+          amount,
+
+          payment_method: paymentMethod,
+
+          notes,
+
+          cash_movement_id: newCashMovementId,
+        },
+      }),
+    })
+
+    return {
+      success: true,
+
+      liability_id: Number(payment.liability_id),
+
+      replaced_payment_id: paymentId,
+
+      payment_id: newPaymentId,
+
+      old_amount: roundMoney(Number(payment.amount || 0)),
+
+      new_amount: amount,
+
+      paid_amount: nextPaid,
+
+      remaining_amount: nextRemaining,
+
+      status: nextStatus,
+
+      payment_method: paymentMethod,
+    }
+  })
+
+  return tx()
+}
+
+export function cancelLiabilityPayment(input: {
+  payment_id: number
+  reason?: string | null
+  actor_id?: number | null
+}) {
+  const { db, paymentId, payment, cashMovement } =
+    getLiabilityPaymentMutationContext(Number(input.payment_id))
 
   const reason = String(input.reason || '').trim() || 'إلغاء دفعة التزام'
 
@@ -789,77 +1137,110 @@ export function cancelLiabilityPayment(input: {
     db.prepare(
       `
       UPDATE store_liability_payments
+
       SET
-        cancelled_at = CURRENT_TIMESTAMP,
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
         cancelled_by = ?,
+
         cancel_reason = ?
+
       WHERE id = ?
       `,
     ).run(input.actor_id ?? null, reason, paymentId)
 
-    if (cashMovement && !cashMovement.cancelled_at) {
-      db.prepare(
-        `
-        UPDATE cash_movements
-        SET
-          cancelled_at = CURRENT_TIMESTAMP,
-          cancelled_by = ?,
-          cancel_reason = ?
-        WHERE id = ?
-        `,
-      ).run(input.actor_id ?? null, reason, cashMovement.id)
-    }
+    db.prepare(
+      `
+      UPDATE cash_movements
+
+      SET
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
+        cancelled_by = ?,
+
+        cancel_reason = ?
+
+      WHERE id = ?
+      `,
+    ).run(input.actor_id ?? null, reason, Number(cashMovement.id))
 
     const totals = db
       .prepare(
         `
-        SELECT IFNULL(SUM(amount), 0) AS paid
+        SELECT
+          IFNULL(
+            SUM(amount),
+            0
+          ) AS paid
+
         FROM store_liability_payments
+
         WHERE liability_id = ?
           AND cancelled_at IS NULL
         `,
       )
       .get(payment.liability_id) as any
 
-    const nextPaid = Number(totals?.paid || 0)
+    const nextPaid = roundMoney(Number(totals?.paid || 0))
 
-    const nextRemaining = Math.max(
-      0,
-      Number(payment.total_amount || 0) - nextPaid,
+    const nextRemaining = roundMoney(
+      Math.max(
+        0,
+
+        Number(payment.total_amount || 0) - nextPaid,
+      ),
     )
 
-    const nextStatus = nextRemaining <= 0 ? 'paid' : 'open'
+    const nextStatus = getStatus(nextRemaining)
 
     db.prepare(
       `
       UPDATE store_liabilities
+
       SET
         paid_amount = ?,
         remaining_amount = ?,
         status = ?,
-        updated_at = CURRENT_TIMESTAMP
+        updated_at =
+          CURRENT_TIMESTAMP
+
       WHERE id = ?
       `,
     ).run(nextPaid, nextRemaining, nextStatus, payment.liability_id)
 
     createActivityLog({
       user_id: input.actor_id ?? null,
+
       action: 'liability_payment_cancelled',
+
       entity: 'store_liability_payments',
+
       entity_id: paymentId,
+
       details: JSON.stringify({
         liability_id: payment.liability_id,
+
         amount: payment.amount,
+
+        cash_movement_id: Number(cashMovement.id),
+
         reason,
       }),
     })
 
     return {
       success: true,
+
       liability_id: payment.liability_id,
+
       payment_id: paymentId,
+
       paid_amount: nextPaid,
+
       remaining_amount: nextRemaining,
+
       status: nextStatus,
     }
   })
