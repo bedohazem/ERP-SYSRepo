@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
 import {
+  cancelCashDayClosing,
   closeCashDay,
   createCashMovement,
   getCashDayClosePreview,
   getCashSummary,
   listCashMovements,
+  updateCashDayClosing,
 } from '../../src/main/database/repositories/cash.repo'
 
 type CashMovementTestRow = {
@@ -372,6 +374,214 @@ describe('cash repository', () => {
         closed_by: 1,
       }),
     ).toThrow()
+  })
+
+  it('cancels the latest day close and reopens the business day', () => {
+    createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 1000,
+      payment_method: 'store_cash',
+      created_by: 1,
+    })
+
+    const dateRow = getDb()
+      .prepare(
+        `
+      SELECT
+        date(
+          'now',
+          'localtime'
+        ) AS day
+      `,
+      )
+      .get() as {
+      day: string
+    }
+
+    const closing = closeCashDay({
+      business_date: dateRow.day,
+
+      counted_amount: 1000,
+
+      carry_over_amount: 100,
+
+      target_account: 'owner_cash',
+
+      closed_by: 1,
+    })
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(100)
+
+    expect(
+      getCashSummary({
+        payment_method: 'owner_cash',
+      }).balance,
+    ).toBe(900)
+
+    const result = cancelCashDayClosing({
+      closing_id: closing.closing_id,
+
+      reason: 'Closed by mistake',
+
+      actor_id: 1,
+    })
+
+    expect(result.success).toBe(true)
+
+    expect(getCashDayClosePreview(dateRow.day).already_closed).toBe(false)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(1000)
+
+    expect(
+      getCashSummary({
+        payment_method: 'owner_cash',
+      }).balance,
+    ).toBe(0)
+
+    const db = getDb()
+
+    const activeClosing = db
+      .prepare(
+        `
+      SELECT id
+
+      FROM cash_day_closings
+
+      WHERE business_date = ?
+      `,
+      )
+      .get(dateRow.day)
+
+    expect(activeClosing).toBeUndefined()
+
+    const cancelledTransfers = db
+      .prepare(
+        `
+      SELECT COUNT(*) AS count
+
+      FROM cash_movements
+
+      WHERE reference_type =
+        'day_close'
+
+        AND reference_id = ?
+
+        AND cancelled_at
+          IS NOT NULL
+      `,
+      )
+      .get(closing.closing_id) as {
+      count: number
+    }
+
+    expect(Number(cancelledTransfers.count)).toBe(2)
+
+    const secondClosing = closeCashDay({
+      business_date: dateRow.day,
+
+      counted_amount: 1000,
+
+      carry_over_amount: 200,
+
+      target_account: 'owner_cash',
+
+      closed_by: 1,
+    })
+
+    expect(secondClosing.transfer_amount).toBe(800)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(200)
+  })
+
+  it('updates the latest day close transfer safely', () => {
+    createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 1000,
+      payment_method: 'store_cash',
+      created_by: 1,
+    })
+
+    const dateRow = getDb()
+      .prepare(
+        `
+      SELECT
+        date(
+          'now',
+          'localtime'
+        ) AS day
+      `,
+      )
+      .get() as {
+      day: string
+    }
+
+    const closing = closeCashDay({
+      business_date: dateRow.day,
+
+      counted_amount: 1000,
+
+      carry_over_amount: 100,
+
+      target_account: 'owner_cash',
+
+      closed_by: 1,
+    })
+
+    const result = updateCashDayClosing({
+      closing_id: closing.closing_id,
+
+      carry_over_amount: 300,
+
+      target_account: 'owner_bank',
+
+      actor_id: 1,
+    })
+
+    expect(result.success).toBe(true)
+
+    expect(result.transfer_amount).toBe(700)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(300)
+
+    expect(
+      getCashSummary({
+        payment_method: 'owner_cash',
+      }).balance,
+    ).toBe(0)
+
+    expect(
+      getCashSummary({
+        payment_method: 'owner_bank',
+      }).balance,
+    ).toBe(700)
+
+    const preview = getCashDayClosePreview(dateRow.day)
+
+    expect(preview.already_closed).toBe(true)
+
+    expect(Number(preview.closing?.carry_over_amount)).toBe(300)
+
+    expect(Number(preview.closing?.transfer_amount)).toBe(700)
+
+    expect(preview.closing?.target_account).toBe('owner_bank')
   })
 
   it('rejects day closing when physical cash does not match system cash', () => {

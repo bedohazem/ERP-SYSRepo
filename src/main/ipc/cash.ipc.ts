@@ -7,6 +7,8 @@ import {
   getCashDayClosePreview,
   getCashSummary,
   cancelCashMovement,
+  cancelCashDayClosing,
+  updateCashDayClosing,
   listCashMovements,
 } from '../database/repositories/cash.repo'
 import { requireAdminPassword } from './permission-helper'
@@ -34,6 +36,50 @@ export function registerCashIpc(): void {
 
   ipcMain.handle('cash:close-day', (_, input) => {
     return closeCashDay(input)
+  })
+
+  ipcMain.handle('cash:cancel-day-close', (_, input) => {
+    try {
+      requireAdminPassword(input?.actor_id, input?.admin_password)
+
+      return cancelCashDayClosing({
+        closing_id: Number(input?.closing_id),
+
+        reason: input?.reason,
+
+        actor_id: input?.actor_id ?? null,
+      })
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر إلغاء تقفيل اليوم',
+      }
+    }
+  })
+
+  ipcMain.handle('cash:update-day-close', (_, input) => {
+    try {
+      requireAdminPassword(input?.actor_id, input?.admin_password)
+
+      return updateCashDayClosing({
+        closing_id: Number(input?.closing_id),
+
+        carry_over_amount: Number(input?.carry_over_amount),
+
+        target_account: input?.target_account,
+
+        actor_id: input?.actor_id ?? null,
+      })
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر تعديل تقفيل اليوم',
+      }
+    }
   })
 
   ipcMain.handle('cash:cancel-movement', (_, input) => {

@@ -1211,6 +1211,38 @@ declare global {
         target_account: string | null
       }>
 
+      cancelCashDayClosing: (input: {
+        closing_id: number
+        reason?: string | null
+        actor_id?: number | null
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+        closing_id?: number
+        business_date?: string
+      }>
+
+      updateCashDayClosing: (input: {
+        closing_id: number
+        carry_over_amount: number
+        target_account?: string
+        actor_id?: number | null
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+
+        closing_id?: number
+        business_date?: string
+
+        counted_closing_balance?: number
+        carry_over_amount?: number
+        transfer_amount?: number
+
+        target_account?: string | null
+      }>
+
       cancelCashMovement: (input: {
         id: number
         reason?: string | null

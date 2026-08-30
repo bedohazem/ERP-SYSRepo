@@ -789,6 +789,394 @@ export function closeCashDay(input: CashDayCloseInput) {
   return tx()
 }
 
+function getCashDayClosingMutationContext(closingId: number) {
+  const db = getDb()
+
+  if (!closingId) {
+    throw new Error('رقم تقفيل اليوم غير صحيح')
+  }
+
+  const closing = db
+    .prepare(
+      `
+      SELECT *
+
+      FROM cash_day_closings
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(closingId) as any
+
+  if (!closing) {
+    throw new Error('تقفيل اليوم غير موجود')
+  }
+
+  const latestClosing = db
+    .prepare(
+      `
+      SELECT
+        id,
+        business_date
+
+      FROM cash_day_closings
+
+      ORDER BY
+        business_date DESC,
+        id DESC
+
+      LIMIT 1
+      `,
+    )
+    .get() as
+    | {
+        id: number
+        business_date: string
+      }
+    | undefined
+
+  if (Number(latestClosing?.id || 0) !== closingId) {
+    throw new Error(
+      'لا يمكن تعديل أو إلغاء هذا التقفيل قبل إلغاء التقفيلات الأحدث',
+    )
+  }
+
+  const movements = db
+    .prepare(
+      `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE reference_type = 'day_close'
+        AND reference_id = ?
+        AND cancelled_at IS NULL
+
+      ORDER BY id ASC
+      `,
+    )
+    .all(closingId) as any[]
+
+  const transferAmount = roundMoney(Number(closing.transfer_amount || 0))
+
+  if (transferAmount > 0) {
+    const outMovement = movements.find(
+      (movement) =>
+        movement.direction === 'out' &&
+        resolveCashAccount(movement.payment_method) === 'store_cash',
+    )
+
+    const inMovement = movements.find((movement) => movement.direction === 'in')
+
+    if (!outMovement || !inMovement) {
+      throw new Error('حركات تحويل تقفيل اليوم غير مكتملة')
+    }
+
+    if (
+      Math.abs(Number(outMovement.amount || 0) - transferAmount) > 0.01 ||
+      Math.abs(Number(inMovement.amount || 0) - transferAmount) > 0.01
+    ) {
+      throw new Error('قيمة تحويل تقفيل اليوم غير متطابقة')
+    }
+
+    const destinationBalance = getAccountBalance(inMovement.payment_method)
+
+    if (destinationBalance + 0.0001 < transferAmount) {
+      throw new Error(
+        `لا يمكن تعديل أو إلغاء التقفيل لأن رصيد ${getAccountLabel(
+          resolveCashAccount(inMovement.payment_method),
+        )} لا يكفي لعكس تحويل التقفيل`,
+      )
+    }
+  } else if (movements.length > 0) {
+    throw new Error('بيانات تحويل تقفيل اليوم غير متطابقة')
+  }
+
+  return {
+    db,
+    closing,
+    movements,
+  }
+}
+
+function cancelDayCloseMovements(
+  movements: any[],
+  actorId: number | null,
+  reason: string,
+) {
+  const db = getDb()
+
+  const cancelMovement = db.prepare(
+    `
+    UPDATE cash_movements
+
+    SET
+      cancelled_at =
+        CURRENT_TIMESTAMP,
+
+      cancelled_by = ?,
+
+      cancel_reason = ?
+
+    WHERE id = ?
+      AND cancelled_at IS NULL
+    `,
+  )
+
+  for (const movement of movements) {
+    cancelMovement.run(actorId, reason, Number(movement.id))
+  }
+}
+
+export function cancelCashDayClosing(input: {
+  closing_id: number
+  reason?: string | null
+  actor_id?: number | null
+}) {
+  const db = getDb()
+
+  const closingId = Number(input.closing_id || 0)
+
+  const reason = String(input.reason || '').trim() || 'إلغاء تقفيل يوم'
+
+  const tx = db.transaction(() => {
+    const { closing, movements } = getCashDayClosingMutationContext(closingId)
+
+    const businessDate = String(closing.business_date || '')
+
+    cancelDayCloseMovements(movements, input.actor_id ?? null, reason)
+
+    /*
+      نحذف سجل التقفيل النشط حتى يصبح
+      اليوم مفتوحًا ويمكن تقفيله مرة أخرى.
+
+      تفاصيل التقفيل القديمة محفوظة
+      في Activity Log وحركات التحويل
+      القديمة تظل موجودة بحالة ملغاة.
+    */
+    db.prepare(
+      `
+      DELETE FROM cash_day_closings
+
+      WHERE id = ?
+      `,
+    ).run(closingId)
+
+    createActivityLog({
+      user_id: input.actor_id ?? null,
+
+      action: 'cash_day_close_cancelled',
+
+      entity: 'cash_day_closings',
+
+      entity_id: closingId,
+
+      details: JSON.stringify({
+        business_date: businessDate,
+
+        opening_drawer_balance: Number(closing.opening_drawer_balance || 0),
+
+        day_cash_in: Number(closing.day_cash_in || 0),
+
+        day_cash_out: Number(closing.day_cash_out || 0),
+
+        system_closing_balance: Number(closing.system_closing_balance || 0),
+
+        counted_closing_balance: Number(closing.counted_closing_balance || 0),
+
+        carry_over_amount: Number(closing.carry_over_amount || 0),
+
+        transfer_amount: Number(closing.transfer_amount || 0),
+
+        target_account: closing.target_account ?? null,
+
+        reason,
+      }),
+    })
+
+    return {
+      success: true,
+
+      closing_id: closingId,
+
+      business_date: businessDate,
+    }
+  })
+
+  return tx()
+}
+
+export function updateCashDayClosing(input: {
+  closing_id: number
+  carry_over_amount: number
+  target_account?: string
+  actor_id?: number | null
+}) {
+  const db = getDb()
+
+  const closingId = Number(input.closing_id || 0)
+
+  const carryOverAmount = roundMoney(Number(input.carry_over_amount || 0))
+
+  if (!Number.isFinite(carryOverAmount) || carryOverAmount < 0) {
+    throw new Error('المبلغ المتبقي في الدرج غير صحيح')
+  }
+
+  const targetAccount = resolveCashAccount(input.target_account || 'owner_cash')
+
+  if (!['owner_cash', 'owner_bank', 'owner_vodafone'].includes(targetAccount)) {
+    throw new Error('حساب تحويل تقفيل اليوم غير صحيح')
+  }
+
+  const tx = db.transaction(() => {
+    const { closing, movements } = getCashDayClosingMutationContext(closingId)
+
+    const countedAmount = roundMoney(
+      Number(closing.counted_closing_balance || 0),
+    )
+
+    if (carryOverAmount > countedAmount) {
+      throw new Error('المبلغ المتبقي لليوم التالي أكبر من رصيد الدرج')
+    }
+
+    const newTransferAmount = roundMoney(countedAmount - carryOverAmount)
+
+    const businessDate = String(closing.business_date || '')
+
+    const oldCarryOver = Number(closing.carry_over_amount || 0)
+
+    const oldTransferAmount = Number(closing.transfer_amount || 0)
+
+    const oldTargetAccount = closing.target_account ?? null
+
+    cancelDayCloseMovements(
+      movements,
+      input.actor_id ?? null,
+      `تم تعديل تقفيل يوم ${businessDate}`,
+    )
+
+    db.prepare(
+      `
+      UPDATE cash_day_closings
+
+      SET
+        carry_over_amount = ?,
+
+        transfer_amount = ?,
+
+        target_account = ?
+
+      WHERE id = ?
+      `,
+    ).run(
+      carryOverAmount,
+
+      newTransferAmount,
+
+      newTransferAmount > 0 ? targetAccount : null,
+
+      closingId,
+    )
+
+    if (newTransferAmount > 0) {
+      const note =
+        `تقفيل يوم ${businessDate} - ` +
+        `تحويل ${newTransferAmount.toFixed(2)} ج.م - ` +
+        `المتبقي في الدرج ${carryOverAmount.toFixed(2)} ج.م`
+
+      createCashMovement({
+        type: 'transfer',
+
+        direction: 'out',
+
+        amount: newTransferAmount,
+
+        payment_method: 'store_cash',
+
+        reference_id: closingId,
+
+        reference_type: 'day_close',
+
+        notes: note,
+
+        created_by: input.actor_id ?? null,
+
+        business_date: businessDate,
+      })
+
+      createCashMovement({
+        type: 'transfer',
+
+        direction: 'in',
+
+        amount: newTransferAmount,
+
+        payment_method: targetAccount,
+
+        reference_id: closingId,
+
+        reference_type: 'day_close',
+
+        notes: note,
+
+        created_by: input.actor_id ?? null,
+
+        business_date: businessDate,
+      })
+    }
+
+    createActivityLog({
+      user_id: input.actor_id ?? null,
+
+      action: 'cash_day_close_updated',
+
+      entity: 'cash_day_closings',
+
+      entity_id: closingId,
+
+      details: JSON.stringify({
+        business_date: businessDate,
+
+        before: {
+          carry_over_amount: oldCarryOver,
+
+          transfer_amount: oldTransferAmount,
+
+          target_account: oldTargetAccount,
+        },
+
+        after: {
+          carry_over_amount: carryOverAmount,
+
+          transfer_amount: newTransferAmount,
+
+          target_account: newTransferAmount > 0 ? targetAccount : null,
+        },
+      }),
+    })
+
+    return {
+      success: true,
+
+      closing_id: closingId,
+
+      business_date: businessDate,
+
+      counted_closing_balance: countedAmount,
+
+      carry_over_amount: carryOverAmount,
+
+      transfer_amount: newTransferAmount,
+
+      target_account: newTransferAmount > 0 ? targetAccount : null,
+    }
+  })
+
+  return tx()
+}
+
 export function cancelCashMovement(input: {
   id: number
   reason?: string | null

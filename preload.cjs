@@ -171,6 +171,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('cash:day-close-preview', businessDate),
 
   closeCashDay: (input) => ipcRenderer.invoke('cash:close-day', input),
+  cancelCashDayClosing: (input) =>
+    ipcRenderer.invoke('cash:cancel-day-close', input),
+
+  updateCashDayClosing: (input) =>
+    ipcRenderer.invoke('cash:update-day-close', input),
 
   createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
   cancelExpense: (input) => ipcRenderer.invoke('expenses:cancel', input),
