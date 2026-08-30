@@ -488,10 +488,34 @@ export function getCashDayClosePreview(businessDateInput: string) {
     .get(businessDate) as any
 
   if (existingClosing) {
+    const latestClosing = db
+      .prepare(
+        `
+    SELECT id
+
+    FROM cash_day_closings
+
+    ORDER BY
+      business_date DESC,
+      id DESC
+
+    LIMIT 1
+    `,
+      )
+      .get() as
+      | {
+          id: number
+        }
+      | undefined
+
+    const canManageClosing =
+      Number(latestClosing?.id || 0) === Number(existingClosing.id)
+
     return {
       business_date: businessDate,
       already_closed: true,
       closing: existingClosing,
+      can_manage_closing: canManageClosing,
 
       opening_drawer_balance: Number(
         existingClosing.opening_drawer_balance || 0,
@@ -618,6 +642,7 @@ export function getCashDayClosePreview(businessDateInput: string) {
     business_date: businessDate,
     already_closed: false,
     closing: null,
+    can_manage_closing: false,
 
     opening_drawer_balance: openingDrawerBalance,
     day_cash_in: dayCashIn,

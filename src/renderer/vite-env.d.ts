@@ -1179,6 +1179,7 @@ declare global {
         business_date: string
         already_closed: boolean
         closing: any | null
+        can_manage_closing: boolean
         opening_drawer_balance: number
         day_cash_in: number
         day_cash_out: number

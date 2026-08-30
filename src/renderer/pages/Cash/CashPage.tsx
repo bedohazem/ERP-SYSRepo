@@ -41,6 +41,7 @@ type CashDayClosePreview = {
   business_date: string
   already_closed: boolean
   closing: any | null
+  can_manage_closing: boolean
   opening_drawer_balance: number
   day_cash_in: number
   day_cash_out: number
@@ -103,6 +104,11 @@ export default function CashPage() {
   const [carryOverAmount, setCarryOverAmount] = useState('0')
   const [closeTargetAccount, setCloseTargetAccount] = useState('owner_bank')
   const [closingDay, setClosingDay] = useState(false)
+  const [dayCloseActionPassword, setDayCloseActionPassword] = useState('')
+
+  const [dayCloseCancelReason, setDayCloseCancelReason] = useState('')
+
+  const [savingDayCloseAction, setSavingDayCloseAction] = useState(false)
   const [notes, setNotes] = useState('')
 
   const [dateFrom, setDateFrom] = useState('')
@@ -270,6 +276,9 @@ export default function CashPage() {
     setCarryOverAmount('0')
     setCloseTargetAccount('owner_bank')
 
+    setDayCloseActionPassword('')
+    setDayCloseCancelReason('')
+
     try {
       const preview = await window.api.getCashDayClosePreview(businessDate)
 
@@ -278,12 +287,13 @@ export default function CashPage() {
       if (preview.already_closed) {
         const closing = preview.closing
 
-        showMessage(
-          'error',
-          `تم تقفيل يوم ${businessDate} بالفعل${
-            closing?.closed_by_name ? ` بواسطة ${closing.closed_by_name}` : ''
-          }`,
+        setCountedCloseAmount(
+          String(Number(closing?.counted_closing_balance || 0)),
         )
+
+        setCarryOverAmount(String(Number(closing?.carry_over_amount || 0)))
+
+        setCloseTargetAccount(String(closing?.target_account || 'owner_bank'))
       }
     } catch (error) {
       console.error(error)
@@ -394,6 +404,129 @@ export default function CashPage() {
       )
     } finally {
       setClosingDay(false)
+    }
+  }
+
+  async function updateClosedCashDay() {
+    if (!dayClosePreview?.already_closed || !dayClosePreview.closing) {
+      return
+    }
+
+    if (!dayClosePreview.can_manage_closing) {
+      showMessage('error', 'يوجد تقفيل أحدث ويجب إلغاؤه أولًا')
+
+      return
+    }
+
+    if (!dayCloseActionPassword.trim()) {
+      showMessage('error', 'اكتب كلمة مرور المدير')
+
+      return
+    }
+
+    const carryAmount = Number(carryOverAmount || 0)
+
+    if (!Number.isFinite(carryAmount) || carryAmount < 0) {
+      showMessage('error', 'المبلغ المتبقي غير صحيح')
+
+      return
+    }
+
+    setSavingDayCloseAction(true)
+
+    try {
+      const result = await window.api.updateCashDayClosing({
+        closing_id: Number(dayClosePreview.closing.id),
+
+        carry_over_amount: carryAmount,
+
+        target_account: closeTargetAccount,
+
+        actor_id: currentUser?.id ?? null,
+
+        admin_password: dayCloseActionPassword,
+      })
+
+      if (!result.success) {
+        showMessage('error', result.message || 'تعذر تعديل التقفيل')
+
+        return
+      }
+
+      showMessage('success', 'تم تعديل تقفيل اليوم')
+
+      await loadDayClosePreview(dayClosePreview.business_date)
+
+      await loadData(movementsPage)
+    } catch (error) {
+      showMessage(
+        'error',
+        error instanceof Error ? error.message : 'تعذر تعديل التقفيل',
+      )
+    } finally {
+      setSavingDayCloseAction(false)
+    }
+  }
+
+  async function cancelClosedCashDay() {
+    if (!dayClosePreview?.already_closed || !dayClosePreview.closing) {
+      return
+    }
+
+    if (!dayClosePreview.can_manage_closing) {
+      showMessage('error', 'يوجد تقفيل أحدث ويجب إلغاؤه أولًا')
+
+      return
+    }
+
+    if (!dayCloseCancelReason.trim()) {
+      showMessage('error', 'اكتب سبب إلغاء التقفيل')
+
+      return
+    }
+
+    if (!dayCloseActionPassword.trim()) {
+      showMessage('error', 'اكتب كلمة مرور المدير')
+
+      return
+    }
+
+    const businessDate = dayClosePreview.business_date
+
+    setSavingDayCloseAction(true)
+
+    try {
+      const result = await window.api.cancelCashDayClosing({
+        closing_id: Number(dayClosePreview.closing.id),
+
+        reason: dayCloseCancelReason.trim(),
+
+        actor_id: currentUser?.id ?? null,
+
+        admin_password: dayCloseActionPassword,
+      })
+
+      if (!result.success) {
+        showMessage('error', result.message || 'تعذر إلغاء التقفيل')
+
+        return
+      }
+
+      showMessage(
+        'success',
+        `تم إلغاء تقفيل ${businessDate} وفتح اليوم من جديد`,
+      )
+
+      await loadDayClosePreview(businessDate)
+
+      await loadData(movementsPage)
+    } catch (error) {
+      showMessage(
+        'error',
+        error instanceof Error ? error.message : 'تعذر إلغاء التقفيل',
+      )
+    } finally {
+      setSavingDayCloseAction(false)
     }
   }
 
@@ -1727,9 +1860,12 @@ export default function CashPage() {
                     color: '#fbbf24',
                     fontWeight: 900,
                     textAlign: 'right',
+                    lineHeight: 1.8,
                   }}
                 >
-                  هذا اليوم مقفول بالفعل ولا يمكن تقفيله مرة أخرى.
+                  {dayClosePreview.can_manage_closing
+                    ? 'هذا اليوم مقفول. يمكنك تعديل بيانات التقفيل أو إلغاؤه وفتح اليوم من جديد.'
+                    : 'هذا اليوم مقفول، لكن يوجد تقفيل أحدث. يجب إلغاء التقفيلات الأحدث أولًا.'}
                 </div>
               ) : null}
 
@@ -1773,6 +1909,7 @@ export default function CashPage() {
                 <input
                   type="number"
                   min={0}
+                  disabled={Boolean(dayClosePreview?.already_closed)}
                   value={countedCloseAmount}
                   onChange={(e) => setCountedCloseAmount(e.target.value)}
                   placeholder="عد الفلوس واكتب المبلغ"
@@ -1844,26 +1981,92 @@ export default function CashPage() {
                 border="rgba(59,130,246,0.25)"
               />
 
-              <button
-                type="button"
-                onClick={closeStoreCashDay}
-                disabled={
-                  closingDay ||
-                  !dayClosePreview ||
-                  dayClosePreview.already_closed
-                }
-                style={{
-                  ...primaryButtonStyle,
-                  opacity: closingDay ? 0.6 : 1,
-                  cursor: closingDay ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {dayClosePreview?.already_closed
-                  ? 'اليوم مقفول بالفعل'
-                  : closingDay
+              {dayClosePreview?.already_closed &&
+                dayClosePreview.can_manage_closing &&
+                isAdmin && (
+                  <>
+                    <Field label="كلمة مرور المدير">
+                      <input
+                        type="password"
+                        value={dayCloseActionPassword}
+                        onChange={(e) =>
+                          setDayCloseActionPassword(e.target.value)
+                        }
+                        placeholder="كلمة مرور المدير"
+                        style={inputStyle}
+                      />
+                    </Field>
+
+                    <Field label="سبب إلغاء التقفيل">
+                      <input
+                        value={dayCloseCancelReason}
+                        onChange={(e) =>
+                          setDayCloseCancelReason(e.target.value)
+                        }
+                        placeholder="مثال: تم تقفيل اليوم بالخطأ"
+                        style={inputStyle}
+                      />
+                    </Field>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '10px',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => void updateClosedCashDay()}
+                        disabled={savingDayCloseAction}
+                        style={{
+                          ...primaryButtonStyle,
+                          flex: 1,
+                          background: 'rgba(245,158,11,0.16)',
+                          border: '1px solid rgba(245,158,11,0.35)',
+                          color: '#fbbf24',
+                          opacity: savingDayCloseAction ? 0.6 : 1,
+                        }}
+                      >
+                        {savingDayCloseAction
+                          ? 'جاري التنفيذ...'
+                          : 'تعديل التقفيل'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void cancelClosedCashDay()}
+                        disabled={savingDayCloseAction}
+                        style={{
+                          ...dangerButtonStyle,
+                          flex: 1,
+                          opacity: savingDayCloseAction ? 0.6 : 1,
+                        }}
+                      >
+                        {savingDayCloseAction
+                          ? 'جاري التنفيذ...'
+                          : 'إلغاء التقفيل وفتح اليوم'}
+                      </button>
+                    </div>
+                  </>
+                )}
+
+              {!dayClosePreview?.already_closed && (
+                <button
+                  type="button"
+                  onClick={closeStoreCashDay}
+                  disabled={closingDay || !dayClosePreview}
+                  style={{
+                    ...primaryButtonStyle,
+                    opacity: closingDay ? 0.6 : 1,
+                    cursor: closingDay ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {closingDay
                     ? 'جاري التقفيل...'
                     : `تأكيد وتقفيل ${closeBusinessDate}`}
-              </button>
+                </button>
+              )}
             </div>
           </div>
         </div>
