@@ -529,7 +529,7 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'cash_movements', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'cash_movements', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'cash_movements', 'cancel_reason', 'TEXT')
-
+    safeAddColumn(db, 'cash_movements', 'replacement_movement_id', 'INTEGER')
     safeAddColumn(db, 'expenses', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'expenses', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'expenses', 'cancel_reason', 'TEXT')

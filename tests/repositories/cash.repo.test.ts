@@ -7,6 +7,8 @@ import {
   getCashDayClosePreview,
   getCashSummary,
   listCashMovements,
+  createCashTransfer,
+  updateCashMovement,
   updateCashDayClosing,
 } from '../../src/main/database/repositories/cash.repo'
 
@@ -641,5 +643,215 @@ describe('cash repository', () => {
     expect((firstPage.rows[0] as CashMovementTestRow).notes).toBe('movement 5')
 
     expect((secondPage.rows[0] as CashMovementTestRow).notes).toBe('movement 3')
+  })
+
+  it('updates a manual cash movement safely', () => {
+    const created = createCashMovement({
+      type: 'deposit',
+
+      direction: 'in',
+
+      amount: 500,
+
+      payment_method: 'store_cash',
+
+      reference_type: 'manual',
+
+      notes: 'Old manual movement',
+
+      created_by: 1,
+    })
+
+    const oldId = Number(created.lastInsertRowid)
+
+    const result = updateCashMovement({
+      id: oldId,
+
+      type: 'deposit',
+
+      amount: 300,
+
+      payment_method: 'owner_cash',
+
+      notes: 'Correct movement',
+
+      actor_id: 1,
+    })
+
+    expect(result.success).toBe(true)
+
+    const db = getDb()
+
+    const oldMovement = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE id = ?
+      `,
+      )
+      .get(oldId) as any
+
+    expect(oldMovement.cancelled_at).toBeTruthy()
+
+    if (!('movement_id' in result)) {
+      throw new Error('Expected manual cash movement update result')
+    }
+
+    expect(Number(oldMovement.replacement_movement_id)).toBe(result.movement_id)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(0)
+
+    expect(
+      getCashSummary({
+        payment_method: 'owner_cash',
+      }).balance,
+    ).toBe(300)
+  })
+
+  it('updates a cash transfer safely', () => {
+    createCashMovement({
+      type: 'deposit',
+
+      direction: 'in',
+
+      amount: 1000,
+
+      payment_method: 'store_cash',
+
+      reference_type: 'manual',
+
+      created_by: 1,
+    })
+
+    const transfer = createCashTransfer({
+      from_account: 'store_cash',
+
+      to_account: 'owner_cash',
+
+      amount: 400,
+
+      notes: 'Old transfer',
+
+      created_by: 1,
+    })
+
+    const result = updateCashMovement({
+      id: transfer.out_id,
+
+      amount: 250,
+
+      from_account: 'store_cash',
+
+      to_account: 'owner_bank',
+
+      notes: 'Correct transfer',
+
+      actor_id: 1,
+    })
+
+    expect(result.success).toBe(true)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(750)
+
+    expect(
+      getCashSummary({
+        payment_method: 'owner_cash',
+      }).balance,
+    ).toBe(0)
+
+    expect(
+      getCashSummary({
+        payment_method: 'owner_bank',
+      }).balance,
+    ).toBe(250)
+
+    const db = getDb()
+
+    const oldRows = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE id IN (?, ?)
+
+      ORDER BY id ASC
+      `,
+      )
+      .all(transfer.out_id, transfer.in_id) as any[]
+
+    expect(oldRows.every((row) => Boolean(row.cancelled_at))).toBe(true)
+
+    expect(
+      oldRows.every((row) => Number(row.replacement_movement_id || 0) > 0),
+    ).toBe(true)
+  })
+
+  it('blocks manual cash movement editing after day close', () => {
+    const created = createCashMovement({
+      type: 'deposit',
+
+      direction: 'in',
+
+      amount: 500,
+
+      payment_method: 'store_cash',
+
+      reference_type: 'manual',
+
+      created_by: 1,
+    })
+
+    const dateRow = getDb()
+      .prepare(
+        `
+      SELECT
+        date(
+          'now',
+          'localtime'
+        ) AS day
+      `,
+      )
+      .get() as {
+      day: string
+    }
+
+    closeCashDay({
+      business_date: dateRow.day,
+
+      counted_amount: 500,
+
+      carry_over_amount: 500,
+
+      target_account: 'owner_cash',
+
+      closed_by: 1,
+    })
+
+    expect(() =>
+      updateCashMovement({
+        id: Number(created.lastInsertRowid),
+
+        type: 'deposit',
+
+        amount: 600,
+
+        payment_method: 'store_cash',
+
+        actor_id: 1,
+      }),
+    ).toThrow(`لا يمكن تعديل حركة تخص يوم ${dateRow.day} لأنه تم تقفيله`)
   })
 })

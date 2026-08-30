@@ -1244,6 +1244,46 @@ declare global {
         target_account?: string | null
       }>
 
+      updateCashMovement: (input: {
+        id: number
+
+        type?: 'deposit' | 'withdraw'
+
+        amount: number
+
+        payment_method?: string
+
+        from_account?: string
+        to_account?: string
+
+        notes?: string | null
+
+        actor_id?: number | null
+
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+
+        replaced_movement_id?: number
+
+        movement_id?: number
+
+        replaced_movement_ids?: number[]
+
+        movement_ids?: number[]
+
+        type?: string
+        direction?: string
+
+        amount?: number
+
+        payment_method?: string
+
+        from_account?: string
+        to_account?: string
+      }>
+
       cancelCashMovement: (input: {
         id: number
         reason?: string | null

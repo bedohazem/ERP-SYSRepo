@@ -7,6 +7,7 @@ import {
   getCashDayClosePreview,
   getCashSummary,
   cancelCashMovement,
+  updateCashMovement,
   cancelCashDayClosing,
   updateCashDayClosing,
   listCashMovements,
@@ -78,6 +79,37 @@ export function registerCashIpc(): void {
 
         message:
           error instanceof Error ? error.message : 'تعذر تعديل تقفيل اليوم',
+      }
+    }
+  })
+
+  ipcMain.handle('cash:update-movement', (_, input) => {
+    try {
+      requireAdminPassword(input?.actor_id, input?.admin_password)
+
+      return updateCashMovement({
+        id: Number(input?.id),
+
+        type: input?.type,
+
+        amount: Number(input?.amount),
+
+        payment_method: input?.payment_method,
+
+        from_account: input?.from_account,
+
+        to_account: input?.to_account,
+
+        notes: input?.notes,
+
+        actor_id: input?.actor_id ?? null,
+      })
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر تعديل حركة الخزنة',
       }
     }
   })

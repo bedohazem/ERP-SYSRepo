@@ -163,6 +163,8 @@ contextBridge.exposeInMainWorld('api', {
   getCashMovements: (input) => ipcRenderer.invoke('cash:list', input),
   createCashMovement: (input) =>
     ipcRenderer.invoke('cash:create-movement', input),
+  updateCashMovement: (input) =>
+    ipcRenderer.invoke('cash:update-movement', input),
   cancelCashMovement: (input) =>
     ipcRenderer.invoke('cash:cancel-movement', input),
   createCashTransfer: (input) => ipcRenderer.invoke('cash:transfer', input),

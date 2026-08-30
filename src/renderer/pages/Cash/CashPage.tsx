@@ -35,6 +35,9 @@ type CashMovement = {
   cancelled_at?: string | null
   cancelled_by?: number | null
   cancel_reason?: string | null
+  replacement_movement_id?: number | null
+
+  transfer_to_account?: string | null
 }
 
 type CashDayClosePreview = {
@@ -68,6 +71,26 @@ export default function CashPage() {
   const [cancelMovementPassword, setCancelMovementPassword] = useState('')
 
   const [cancellingMovement, setCancellingMovement] = useState(false)
+  const [editMovementTarget, setEditMovementTarget] =
+    useState<CashMovement | null>(null)
+
+  const [editMovementType, setEditMovementType] = useState<
+    'deposit' | 'withdraw'
+  >('deposit')
+
+  const [editMovementAmount, setEditMovementAmount] = useState('')
+
+  const [editMovementAccount, setEditMovementAccount] = useState('store_cash')
+
+  const [editTransferFrom, setEditTransferFrom] = useState('store_cash')
+
+  const [editTransferTo, setEditTransferTo] = useState('owner_cash')
+
+  const [editMovementNotes, setEditMovementNotes] = useState('')
+
+  const [editMovementPassword, setEditMovementPassword] = useState('')
+
+  const [updatingMovement, setUpdatingMovement] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{
@@ -129,8 +152,10 @@ export default function CashPage() {
   const [transferNotes, setTransferNotes] = useState('')
   const [transferring, setTransferring] = useState(false)
 
-  function canCancelCashMovement(item: CashMovement) {
-    if (item.cancelled_at) return false
+  function canManageCashMovement(item: CashMovement) {
+    if (item.cancelled_at) {
+      return false
+    }
 
     if (
       item.reference_type === 'manual' &&
@@ -619,6 +644,117 @@ export default function CashPage() {
       showMessage('error', error?.message || 'حدث خطأ أثناء إلغاء حركة الخزنة')
     } finally {
       setCancellingMovement(false)
+    }
+  }
+
+  function openEditCashMovement(item: CashMovement) {
+    setEditMovementTarget(item)
+
+    setEditMovementAmount(String(Number(item.amount || 0)))
+
+    setEditMovementNotes(item.notes || '')
+
+    setEditMovementPassword('')
+
+    if (item.type === 'transfer') {
+      setEditTransferFrom(item.payment_method || 'store_cash')
+
+      setEditTransferTo(item.transfer_to_account || 'owner_cash')
+
+      return
+    }
+
+    setEditMovementType(item.type === 'withdraw' ? 'withdraw' : 'deposit')
+
+    setEditMovementAccount(item.payment_method || 'store_cash')
+  }
+
+  function closeEditCashMovement() {
+    if (updatingMovement) return
+
+    setEditMovementTarget(null)
+    setEditMovementAmount('')
+    setEditMovementNotes('')
+    setEditMovementPassword('')
+  }
+
+  async function confirmUpdateCashMovement() {
+    if (!editMovementTarget || updatingMovement) {
+      return
+    }
+
+    const amount = Number(editMovementAmount || 0)
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showMessage('error', 'اكتب مبلغ صحيح')
+
+      return
+    }
+
+    if (!editMovementPassword.trim()) {
+      showMessage('error', 'اكتب كلمة مرور المدير')
+
+      return
+    }
+
+    const isTransfer =
+      editMovementTarget.type === 'transfer' &&
+      editMovementTarget.reference_type === 'cash_transfer'
+
+    if (isTransfer && editTransferFrom === editTransferTo) {
+      showMessage('error', 'لا يمكن التحويل لنفس الحساب')
+
+      return
+    }
+
+    setUpdatingMovement(true)
+
+    try {
+      const result = await window.api.updateCashMovement({
+        id: editMovementTarget.id,
+
+        amount,
+
+        ...(isTransfer
+          ? {
+              from_account: editTransferFrom,
+
+              to_account: editTransferTo,
+            }
+          : {
+              type: editMovementType,
+
+              payment_method: editMovementAccount,
+            }),
+
+        notes: editMovementNotes.trim() || null,
+
+        actor_id: currentUser?.id ?? null,
+
+        admin_password: editMovementPassword,
+      })
+
+      if (!result.success) {
+        showMessage('error', result.message || 'تعذر تعديل حركة الخزنة')
+
+        return
+      }
+
+      closeEditCashMovement()
+
+      showMessage(
+        'success',
+        isTransfer ? 'تم تعديل التحويل' : 'تم تعديل حركة الخزنة',
+      )
+
+      await loadData(movementsPage)
+    } catch (error) {
+      showMessage(
+        'error',
+        error instanceof Error ? error.message : 'تعذر تعديل حركة الخزنة',
+      )
+    } finally {
+      setUpdatingMovement(false)
     }
   }
 
@@ -1570,35 +1706,58 @@ export default function CashPage() {
                     </td>
 
                     <td style={tdStyle}>
-                      {isAdmin && canCancelCashMovement(item) ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCancelMovementTarget(item)
-
-                            setCancelMovementReason(
-                              item.type === 'transfer'
-                                ? 'إلغاء تحويل بين الحسابات'
-                                : `إلغاء ${getTypeLabel(item.type)}`,
-                            )
-
-                            setCancelMovementPassword('')
-                          }}
+                      {isAdmin && canManageCashMovement(item) ? (
+                        <div
                           style={{
-                            height: '34px',
-                            padding: '0 12px',
-                            borderRadius: '9px',
-                            border: '1px solid rgba(239,68,68,0.35)',
-                            background: 'rgba(239,68,68,0.10)',
-                            color: '#fca5a5',
-                            cursor: 'pointer',
-                            fontWeight: 800,
+                            display: 'flex',
+                            gap: '7px',
+                            flexWrap: 'wrap',
                           }}
                         >
-                          إلغاء
-                        </button>
-                      ) : item.cancelled_at ? (
-                        <span style={{ color: '#64748b' }}>—</span>
+                          <button
+                            type="button"
+                            onClick={() => openEditCashMovement(item)}
+                            style={{
+                              height: '32px',
+                              padding: '0 10px',
+                              borderRadius: '8px',
+                              border: '1px solid rgba(245,158,11,0.30)',
+                              background: 'rgba(245,158,11,0.08)',
+                              color: '#fbbf24',
+                              cursor: 'pointer',
+                              fontWeight: 800,
+                            }}
+                          >
+                            تعديل
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCancelMovementTarget(item)
+
+                              setCancelMovementReason(
+                                item.type === 'transfer'
+                                  ? 'إلغاء تحويل بين الحسابات'
+                                  : `إلغاء ${getTypeLabel(item.type)}`,
+                              )
+
+                              setCancelMovementPassword('')
+                            }}
+                            style={{
+                              height: '32px',
+                              padding: '0 10px',
+                              borderRadius: '8px',
+                              border: '1px solid rgba(239,68,68,0.30)',
+                              background: 'rgba(239,68,68,0.08)',
+                              color: '#fca5a5',
+                              cursor: 'pointer',
+                              fontWeight: 800,
+                            }}
+                          >
+                            إلغاء
+                          </button>
+                        </div>
                       ) : (
                         <span
                           style={{
@@ -1606,7 +1765,11 @@ export default function CashPage() {
                             fontSize: '11px',
                           }}
                         >
-                          من المصدر
+                          {item.type === 'transfer' &&
+                          item.reference_type === 'cash_transfer' &&
+                          item.direction === 'in'
+                            ? 'طرف التحويل'
+                            : 'من المصدر'}
                         </span>
                       )}
                     </td>
@@ -2072,6 +2235,148 @@ export default function CashPage() {
         </div>
       )}
 
+      {editMovementTarget && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            ...modalOverlayStyle,
+            zIndex: 1000000,
+          }}
+        >
+          <div className="theme-modal-card" style={modalStyle}>
+            <h3 style={{ margin: 0 }}>
+              {editMovementTarget.type === 'transfer'
+                ? 'تعديل التحويل'
+                : 'تعديل حركة الخزنة'}
+            </h3>
+
+            {editMovementTarget.type === 'transfer' ? (
+              <>
+                <label style={labelStyle}>من حساب</label>
+
+                <select
+                  value={editTransferFrom}
+                  onChange={(e) => setEditTransferFrom(e.target.value)}
+                  style={inputStyle}
+                >
+                  {CASH_ACCOUNT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                <label style={labelStyle}>إلى حساب</label>
+
+                <select
+                  value={editTransferTo}
+                  onChange={(e) => setEditTransferTo(e.target.value)}
+                  style={inputStyle}
+                >
+                  {CASH_ACCOUNT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <>
+                <label style={labelStyle}>نوع الحركة</label>
+
+                <select
+                  value={editMovementType}
+                  onChange={(e) =>
+                    setEditMovementType(
+                      e.target.value as 'deposit' | 'withdraw',
+                    )
+                  }
+                  style={inputStyle}
+                >
+                  <option value="deposit">إيداع</option>
+
+                  <option value="withdraw">سحب</option>
+                </select>
+
+                <label style={labelStyle}>الحساب المالي</label>
+
+                <select
+                  value={editMovementAccount}
+                  onChange={(e) => setEditMovementAccount(e.target.value)}
+                  style={inputStyle}
+                >
+                  {CASH_ACCOUNT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+
+            <label style={labelStyle}>المبلغ</label>
+
+            <input
+              type="number"
+              min={0}
+              value={editMovementAmount}
+              onChange={(e) => setEditMovementAmount(e.target.value)}
+              style={inputStyle}
+            />
+
+            <label style={labelStyle}>ملاحظات</label>
+
+            <input
+              value={editMovementNotes}
+              onChange={(e) => setEditMovementNotes(e.target.value)}
+              style={inputStyle}
+            />
+
+            <label style={labelStyle}>كلمة مرور المدير</label>
+
+            <input
+              type="password"
+              value={editMovementPassword}
+              onChange={(e) => setEditMovementPassword(e.target.value)}
+              placeholder="كلمة مرور المدير"
+              style={inputStyle}
+            />
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => void confirmUpdateCashMovement()}
+                disabled={updatingMovement}
+                style={{
+                  ...primaryButtonStyle,
+                  flex: 1,
+                  opacity: updatingMovement ? 0.6 : 1,
+                }}
+              >
+                {updatingMovement ? 'جاري الحفظ...' : 'حفظ التعديل'}
+              </button>
+
+              <button
+                type="button"
+                onClick={closeEditCashMovement}
+                disabled={updatingMovement}
+                style={{
+                  ...secondaryButtonStyle,
+                  flex: 1,
+                }}
+              >
+                رجوع
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <FinancialCancelModal
         open={Boolean(cancelMovementTarget)}
         title={
@@ -2179,6 +2484,12 @@ function Field({
       {children}
     </label>
   )
+}
+
+const labelStyle: React.CSSProperties = {
+  color: '#94a3b8',
+  fontWeight: 800,
+  fontSize: '11px',
 }
 
 const inputStyle: React.CSSProperties = {
