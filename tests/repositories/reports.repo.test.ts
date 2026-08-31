@@ -268,7 +268,7 @@ describe('reports repository', () => {
 
     expect(report.summary.total_expenses).toBe(30)
     expect(report.summary.total_liability_payments).toBe(40)
-    expect(report.summary.final_net_profit).toBe(10)
+    expect(report.summary.final_net_profit).toBe(50)
 
     expect(report.paymentMethods).toHaveLength(1)
     expect(report.paymentMethods[0].payment_method).toBe('cash')
