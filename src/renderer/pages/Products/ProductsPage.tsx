@@ -196,6 +196,21 @@ export default function ProductsPage() {
   const [includeInactive, setIncludeInactive] = useState(false)
   const [includeInactiveVariants, setIncludeInactiveVariants] = useState(false)
 
+  const [deactivateConfirm, setDeactivateConfirm] = useState<
+    | {
+        type: 'product'
+        productId: number
+      }
+    | {
+        type: 'variant'
+        productId: number
+        variantId: number
+      }
+    | null
+  >(null)
+
+  const [confirmingDeactivate, setConfirmingDeactivate] = useState(false)
+
   const canSave = useMemo(() => {
     if (!name.trim()) return false
     if (variants.length === 0) return false
@@ -1121,58 +1136,62 @@ export default function ProductsPage() {
     }
   }
 
-  async function handleToggleProductActive(
-    productId: number,
-    currentState: number,
-  ) {
-    if (currentState) {
-      const confirmed = window.confirm(
-        'هل أنت متأكد من تعطيل هذا المنتج؟\n\nلن يظهر المنتج في العمليات الجديدة حتى يتم تفعيله مرة أخرى.',
-      )
-
-      if (!confirmed) {
-        return
-      }
-    }
-
+  async function applyProductActive(productId: number, nextActive: number) {
     try {
-      await window.api.toggleProductActive(
+      const result = await window.api.toggleProductActive(
         productId,
-        currentState ? 0 : 1,
+        nextActive,
         currentUser?.id,
       )
+
+      if (result?.success === false) {
+        showMessage('error', result.message || 'تعذر تحديث حالة المنتج')
+        return
+      }
+
       await loadData(productPage)
 
       if (expandedId === productId) {
         setExpandedId(null)
       }
+
+      showMessage('success', nextActive ? 'تم تفعيل المنتج' : 'تم تعطيل المنتج')
     } catch (error) {
       console.error('Failed to toggle product active state:', error)
+
       showMessage('error', 'حدث خطأ أثناء تحديث حالة المنتج')
     }
   }
 
-  async function handleToggleVariantActive(
-    productId: number,
-    variantId: number,
-    currentState: number,
-  ) {
+  function handleToggleProductActive(productId: number, currentState: number) {
     if (currentState) {
-      const confirmed = window.confirm(
-        'هل أنت متأكد من تعطيل هذا الصنف؟\n\nلن يظهر هذا الصنف في العمليات الجديدة حتى يتم تفعيله مرة أخرى.',
-      )
+      setDeactivateConfirm({
+        type: 'product',
+        productId,
+      })
 
-      if (!confirmed) {
-        return
-      }
+      return
     }
 
+    void applyProductActive(productId, 1)
+  }
+
+  async function applyVariantActive(
+    productId: number,
+    variantId: number,
+    nextActive: number,
+  ) {
     try {
-      await window.api.toggleVariantActive(
+      const result = await window.api.toggleVariantActive(
         variantId,
-        currentState ? 0 : 1,
+        nextActive,
         currentUser?.id,
       )
+
+      if (result?.success === false) {
+        showMessage('error', result.message || 'تعذر تحديث حالة الصنف')
+        return
+      }
 
       const refreshed = await window.api.getProductVariants({
         productId,
@@ -1181,12 +1200,57 @@ export default function ProductsPage() {
 
       setVariantsMap((prev) => ({
         ...prev,
+
         [productId]: Array.isArray(refreshed) ? refreshed : [],
       }))
+
       await loadData(productPage)
+
+      showMessage('success', nextActive ? 'تم تفعيل الصنف' : 'تم تعطيل الصنف')
     } catch (error) {
       console.error('Failed to toggle variant active state:', error)
-      showMessage('error', 'حدث خطأ أثناء تحديث حالة الـ variant')
+
+      showMessage('error', 'حدث خطأ أثناء تحديث حالة الصنف')
+    }
+  }
+
+  function handleToggleVariantActive(
+    productId: number,
+    variantId: number,
+    currentState: number,
+  ) {
+    if (currentState) {
+      setDeactivateConfirm({
+        type: 'variant',
+        productId,
+        variantId,
+      })
+
+      return
+    }
+
+    void applyVariantActive(productId, variantId, 1)
+  }
+
+  async function confirmDeactivate() {
+    if (!deactivateConfirm || confirmingDeactivate) {
+      return
+    }
+
+    const target = deactivateConfirm
+
+    setConfirmingDeactivate(true)
+
+    try {
+      if (target.type === 'product') {
+        await applyProductActive(target.productId, 0)
+      } else {
+        await applyVariantActive(target.productId, target.variantId, 0)
+      }
+
+      setDeactivateConfirm(null)
+    } finally {
+      setConfirmingDeactivate(false)
     }
   }
 
@@ -1221,7 +1285,7 @@ export default function ProductsPage() {
             top: '24px',
             left: '50%',
             transform: 'translateX(-50%)',
-            zIndex: 99999,
+            zIndex: 1000001,
             padding: '12px 18px',
             borderRadius: '14px',
             background:
@@ -1237,6 +1301,106 @@ export default function ProductsPage() {
           {pageMessage.text}
         </div>
       )}
+
+      {deactivateConfirm && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 999999,
+            background: 'rgba(2,6,23,0.78)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: '20px',
+          }}
+        >
+          <div
+            className="theme-modal-card"
+            role="dialog"
+            aria-modal="true"
+            style={{
+              width: '420px',
+              maxWidth: '95vw',
+              borderRadius: '18px',
+              padding: '22px',
+              background: 'var(--bg-soft)',
+              border: '1px solid var(--border)',
+              boxShadow: '0 24px 70px rgba(0,0,0,0.45)',
+              direction: 'rtl',
+              display: 'grid',
+              gap: '16px',
+            }}
+          >
+            <div>
+              <h3
+                style={{
+                  margin: '0 0 8px',
+                  color: '#f8fafc',
+                }}
+              >
+                تأكيد التعطيل
+              </h3>
+
+              <div
+                style={{
+                  color: '#cbd5e1',
+                  lineHeight: 1.8,
+                }}
+              >
+                {deactivateConfirm.type === 'product'
+                  ? 'هل أنت متأكد من تعطيل هذا المنتج؟ لن يظهر في العمليات الجديدة حتى يتم تفعيله مرة أخرى.'
+                  : 'هل أنت متأكد من تعطيل هذا الصنف؟ لن يظهر في العمليات الجديدة حتى يتم تفعيله مرة أخرى.'}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => void confirmDeactivate()}
+                disabled={confirmingDeactivate}
+                style={{
+                  flex: 1,
+                  height: '42px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(239,68,68,0.35)',
+                  background: 'rgba(239,68,68,0.14)',
+                  color: '#fca5a5',
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                  opacity: confirmingDeactivate ? 0.6 : 1,
+                }}
+              >
+                {confirmingDeactivate ? 'جاري التعطيل...' : 'نعم، تعطيل'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDeactivateConfirm(null)}
+                disabled={confirmingDeactivate}
+                style={{
+                  flex: 1,
+                  height: '42px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(148,163,184,0.25)',
+                  background: 'rgba(148,163,184,0.08)',
+                  color: '#cbd5e1',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                رجوع
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'list' && (
         <div
           className="glass-card"
