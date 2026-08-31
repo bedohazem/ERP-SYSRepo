@@ -912,6 +912,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
 
 export function listPurchaseInvoices(input?: {
   search?: string
+  payment_filter?: 'all' | 'paid' | 'unpaid'
   limit?: number
   offset?: number
 }) {
@@ -920,6 +921,7 @@ export function listPurchaseInvoices(input?: {
   const db = getDb()
 
   const search = input?.search?.trim() || ''
+  const paymentFilter = input?.payment_filter ?? 'all'
   const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 300)
   const offset = Math.max(Number(input?.offset || 0), 0)
 
@@ -943,6 +945,28 @@ export function listPurchaseInvoices(input?: {
 
     const q = `%${search}%`
     params.push(q, q, q)
+  }
+
+  if (paymentFilter === 'paid') {
+    where.push(`
+    (
+      IFNULL(pi.status, 'active') <> 'cancelled'
+      AND ROUND(
+        IFNULL(pi.remaining_amount, 0),
+        2
+      ) <= 0
+    )
+  `)
+  } else if (paymentFilter === 'unpaid') {
+    where.push(`
+    (
+      IFNULL(pi.status, 'active') <> 'cancelled'
+      AND ROUND(
+        IFNULL(pi.remaining_amount, 0),
+        2
+      ) > 0
+    )
+  `)
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''

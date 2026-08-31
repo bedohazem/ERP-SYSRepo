@@ -941,6 +941,9 @@ declare global {
 
       listPurchaseInvoices: (input?: {
         search?: string
+
+        payment_filter?: 'all' | 'paid' | 'unpaid'
+
         limit?: number
         offset?: number
       }) => Promise<{

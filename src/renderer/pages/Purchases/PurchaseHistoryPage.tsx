@@ -70,6 +70,11 @@ export default function PurchaseHistoryPage() {
   const [returnPage, setReturnPage] = useState(1)
 
   const [search, setSearch] = useState('')
+
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>(
+    'all',
+  )
+
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -131,7 +136,11 @@ export default function PurchaseHistoryPage() {
 
       const result = await window.api.listPurchaseInvoices({
         search,
+
+        payment_filter: paymentFilter,
+
         limit: SYSTEM_PAGE_SIZE,
+
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
       })
 
@@ -185,7 +194,7 @@ export default function PurchaseHistoryPage() {
     }, 250)
 
     return () => clearTimeout(handle)
-  }, [search, activeTab])
+  }, [search, activeTab, paymentFilter])
 
   async function openDetails(purchaseId: number) {
     try {
@@ -530,7 +539,10 @@ export default function PurchaseHistoryPage() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'auto minmax(260px, 1fr)',
+            gridTemplateColumns:
+              activeTab === 'purchases'
+                ? 'auto 180px minmax(260px, 1fr)'
+                : 'auto minmax(260px, 1fr)',
             gap: '10px',
             alignItems: 'center',
             direction: 'rtl',
@@ -565,6 +577,25 @@ export default function PurchaseHistoryPage() {
               مرتجعات الشراء
             </button>
           </div>
+
+          {activeTab === 'purchases' && (
+            <select
+              value={paymentFilter}
+              onChange={(e) =>
+                setPaymentFilter(e.target.value as 'all' | 'paid' | 'unpaid')
+              }
+              style={{
+                ...inputStyle,
+                height: '38px',
+              }}
+            >
+              <option value="all">كل الفواتير</option>
+
+              <option value="paid">مدفوعة</option>
+
+              <option value="unpaid">غير مدفوعة</option>
+            </select>
+          )}
 
           <input
             placeholder={

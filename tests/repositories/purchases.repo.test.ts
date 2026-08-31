@@ -12,6 +12,7 @@ import {
   cancelSupplierPaymentBatch,
   getSupplierPaymentBatchAccess,
   updateSupplierPaymentBatch,
+  listPurchaseInvoices,
   getSupplierStatement,
 } from '../../src/main/database/repositories/purchases.repo'
 
@@ -991,5 +992,68 @@ describe('purchases repository', () => {
     expect(statement.purchases.length).toBeGreaterThanOrEqual(1)
     expect(statement.payments.length).toBeGreaterThanOrEqual(2)
     expect(getSupplierBalance(supplierId)).toBe(200)
+  })
+
+  it('filters purchase invoices by payment state', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const paid = createPurchaseInvoice({
+      supplier_id: supplierId,
+      paid_amount: 100,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const partial = createPurchaseInvoice({
+      supplier_id: supplierId,
+      paid_amount: 50,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const unpaid = createPurchaseInvoice({
+      supplier_id: supplierId,
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const paidResult = listPurchaseInvoices({
+      payment_filter: 'paid',
+    }) as any
+
+    expect(paidResult.rows.map((row: any) => row.id)).toEqual([paid.purchaseId])
+
+    const unpaidResult = listPurchaseInvoices({
+      payment_filter: 'unpaid',
+    }) as any
+
+    const unpaidIds = unpaidResult.rows.map((row: any) => row.id)
+
+    expect(unpaidIds).toContain(partial.purchaseId)
+
+    expect(unpaidIds).toContain(unpaid.purchaseId)
+
+    expect(unpaidIds).not.toContain(paid.purchaseId)
   })
 })
