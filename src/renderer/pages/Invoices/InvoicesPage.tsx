@@ -596,7 +596,7 @@ export default function InvoicesPage() {
           }}
         >
           <input
-            placeholder="بحث برقم الفاتورة / العميل / الهاتف / الكاشير"
+            placeholder="بحث برقم الفاتورة مثل #405 / العميل / الهاتف / الكاشير"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={inputStyle}

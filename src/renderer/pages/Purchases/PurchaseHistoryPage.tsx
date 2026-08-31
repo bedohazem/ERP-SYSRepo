@@ -570,7 +570,7 @@ export default function PurchaseHistoryPage() {
             placeholder={
               activeTab === 'returns'
                 ? 'بحث برقم المرتجع / رقم الفاتورة / اسم المورد / الهاتف'
-                : 'بحث برقم الفاتورة / اسم المورد / الهاتف'
+                : 'بحث برقم الفاتورة مثل #405 / اسم المورد / الهاتف'
             }
             value={search}
             onChange={(e) => setSearch(e.target.value)}

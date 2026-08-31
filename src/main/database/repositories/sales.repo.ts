@@ -511,15 +511,21 @@ export function listSales(input?: {
   const where: string[] = [`s.type = 'sale'`]
   const params: any[] = []
 
-  if (search) {
+  const invoiceNumberMatch = search.match(/^#\s*(\d+)$/)
+
+  if (invoiceNumberMatch) {
+    where.push(`s.id = ?`)
+
+    params.push(Number(invoiceNumberMatch[1]))
+  } else if (search) {
     where.push(`
-      (
-        CAST(s.id AS TEXT) LIKE ?
-        OR c.name LIKE ?
-        OR c.phone LIKE ?
-        OR u.name LIKE ?
-      )
-    `)
+    (
+      CAST(s.id AS TEXT) LIKE ?
+      OR c.name LIKE ?
+      OR c.phone LIKE ?
+      OR u.name LIKE ?
+    )
+  `)
 
     const q = `%${search}%`
     params.push(q, q, q, q)

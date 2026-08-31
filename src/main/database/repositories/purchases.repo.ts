@@ -926,14 +926,20 @@ export function listPurchaseInvoices(input?: {
   const where: string[] = []
   const params: any[] = []
 
-  if (search) {
+  const invoiceNumberMatch = search.match(/^#\s*(\d+)$/)
+
+  if (invoiceNumberMatch) {
+    where.push(`pi.id = ?`)
+
+    params.push(Number(invoiceNumberMatch[1]))
+  } else if (search) {
     where.push(`
-      (
-        CAST(pi.id AS TEXT) LIKE ?
-        OR s.name LIKE ?
-        OR IFNULL(s.phone, '') LIKE ?
-      )
-    `)
+    (
+      CAST(pi.id AS TEXT) LIKE ?
+      OR s.name LIKE ?
+      OR IFNULL(s.phone, '') LIKE ?
+    )
+  `)
 
     const q = `%${search}%`
     params.push(q, q, q)
