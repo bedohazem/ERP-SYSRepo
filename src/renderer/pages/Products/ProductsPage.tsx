@@ -736,16 +736,24 @@ export default function ProductsPage() {
 
     const priceHtml = hasDiscountPrice
       ? `
-      <span class="price-pair">
-        <span class="old-price">
-          ${escapeHtml(money(originalPrice))} ج.م
-        </span>
+        <div class="price-pair">
 
-        <span class="new-price">
-          ${escapeHtml(money(discountPrice))} ج.م
-        </span>
-      </span>
-    `
+          <div class="old-price">
+            ${escapeHtml(money(originalPrice))}
+          </div>
+
+          <div class="discount-price">
+            <span class="discount-label">
+              بعد الخصم:
+            </span>
+
+            <span class="discount-value">
+              ${escapeHtml(money(discountPrice))} ج.م
+            </span>
+          </div>
+
+        </div>
+      `
       : ''
 
     const itemDefs: Array<{
@@ -1002,35 +1010,52 @@ export default function ProductsPage() {
             }
 
             .price-pair {
-              display: inline-flex;
-              align-items: center;
-              justify-content: center;
-              gap: 1.2mm;
-              white-space: nowrap;
+              width: 100%;
+              display: block;
+              line-height: 1;
             }
 
             .old-price {
               position: relative;
               display: inline-block;
-              font-size: 0.82em;
+              width: fit-content;
+              font-size: 0.85em;
               font-weight: 700;
+              direction: ltr;
+              line-height: 1;
+              margin-bottom: 0.4mm;
             }
 
             .old-price::after {
               content: "";
               position: absolute;
-              left: -8%;
-              right: -8%;
+              left: -6%;
+              right: -6%;
               top: 50%;
-              height: 1.4px;
+              height: 1.2px;
               background: #000;
               transform: rotate(-14deg);
               transform-origin: center;
             }
 
-            .new-price {
-              font-size: 1.18em;
+            .discount-price {
+              display: inline-flex;
+              align-items: center;
+              gap: 1mm;
+              white-space: nowrap;
+              direction: rtl;
+              line-height: 1;
+            }
+
+            .discount-label {
+              font-size: 0.78em;
+              font-weight: 700;
+            }
+
+            .discount-value {
+              font-size: 1.1em;
               font-weight: 900;
+              direction: ltr;
             }
 
             .barcode-zone {
