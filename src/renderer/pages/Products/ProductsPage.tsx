@@ -1125,6 +1125,16 @@ export default function ProductsPage() {
     productId: number,
     currentState: number,
   ) {
+    if (currentState) {
+      const confirmed = window.confirm(
+        'هل أنت متأكد من تعطيل هذا المنتج؟\n\nلن يظهر المنتج في العمليات الجديدة حتى يتم تفعيله مرة أخرى.',
+      )
+
+      if (!confirmed) {
+        return
+      }
+    }
+
     try {
       await window.api.toggleProductActive(
         productId,
@@ -1147,6 +1157,16 @@ export default function ProductsPage() {
     variantId: number,
     currentState: number,
   ) {
+    if (currentState) {
+      const confirmed = window.confirm(
+        'هل أنت متأكد من تعطيل هذا الصنف؟\n\nلن يظهر هذا الصنف في العمليات الجديدة حتى يتم تفعيله مرة أخرى.',
+      )
+
+      if (!confirmed) {
+        return
+      }
+    }
+
     try {
       await window.api.toggleVariantActive(
         variantId,
