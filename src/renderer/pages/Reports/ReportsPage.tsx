@@ -13,6 +13,9 @@ type ReportsData = {
     net_profit_after_discounts: number
     total_expenses: number
     total_liability_payments: number
+    total_purchase_invoices: number
+    total_manual_deposits: number
+    total_manual_withdrawals: number
     final_net_profit: number
     normal_discounts: number
     total_discounts: number
@@ -44,6 +47,9 @@ const emptyReports: ReportsData = {
     net_profit_after_discounts: 0,
     total_expenses: 0,
     total_liability_payments: 0,
+    total_purchase_invoices: 0,
+    total_manual_deposits: 0,
+    total_manual_withdrawals: 0,
     final_net_profit: 0,
     normal_discounts: 0,
     total_discounts: 0,
@@ -240,6 +246,22 @@ export default function ReportsPage() {
         <StatCard
           title="إجمالي الخصومات"
           value={money(data.summary.total_discounts)}
+        />
+        <StatCard
+          title="إجمالي فواتير الشراء"
+          value={money(data.summary.total_purchase_invoices)}
+        />
+
+        <StatCard
+          title="إجمالي الإيداعات اليدوية"
+          value={money(data.summary.total_manual_deposits)}
+          success
+        />
+
+        <StatCard
+          title="إجمالي السحب اليدوي"
+          value={money(data.summary.total_manual_withdrawals)}
+          danger
         />
       </div>
 

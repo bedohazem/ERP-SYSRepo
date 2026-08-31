@@ -16,6 +16,12 @@ import {
 } from '../../src/main/database/repositories/liabilities.repo'
 import { getReportsSummary } from '../../src/main/database/repositories/reports.repo'
 
+import { createPurchaseInvoice } from '../../src/main/database/repositories/purchases.repo'
+
+import { createSupplier } from '../../src/main/database/repositories/suppliers.repo'
+
+import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
+
 type ReportVariantTestRow = {
   variant_id: number
   product_id: number
@@ -88,6 +94,9 @@ type ReportsSummaryTestResult = {
     net_profit_after_discounts: number
     total_expenses: number
     total_liability_payments: number
+    total_purchase_invoices: number
+    total_manual_deposits: number
+    total_manual_withdrawals: number
     final_net_profit: number
   }
   topProducts: ReportTopProductRow[]
@@ -174,6 +183,11 @@ describe('reports repository', () => {
     expect(report.summary.net_profit_after_discounts).toBe(0)
     expect(report.summary.total_expenses).toBe(0)
     expect(report.summary.total_liability_payments).toBe(0)
+    expect(report.summary.total_purchase_invoices).toBe(0)
+
+    expect(report.summary.total_manual_deposits).toBe(0)
+
+    expect(report.summary.total_manual_withdrawals).toBe(0)
     expect(report.summary.final_net_profit).toBe(0)
 
     expect(report.topProducts).toHaveLength(0)
@@ -517,5 +531,79 @@ describe('reports repository', () => {
     expect(august12.summary.total_returns).toBe(150)
     expect(august12.summary.net_sales).toBe(-150)
     expect(august12.summary.returns_count).toBe(1)
+  })
+
+  it('reports purchase invoices and manual cash movements', () => {
+    const variant = seedReportProduct({
+      name: 'Purchase Report Product',
+
+      barcode: 'REPORT-PURCHASE',
+
+      openingQty: 0,
+
+      buyPrice: 100,
+
+      sellPrice: 150,
+    })
+
+    const supplier = createSupplier({
+      name: 'Report Supplier',
+    }) as any
+
+    createPurchaseInvoice({
+      supplier_id: supplier.id,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 2,
+
+          unit_cost: 120,
+        },
+      ],
+    })
+
+    createCashMovement({
+      type: 'deposit',
+
+      direction: 'in',
+
+      amount: 500,
+
+      payment_method: 'store_cash',
+
+      reference_type: 'manual',
+
+      notes: 'Manual report deposit',
+
+      created_by: 1,
+    })
+
+    createCashMovement({
+      type: 'withdraw',
+
+      direction: 'out',
+
+      amount: 120,
+
+      payment_method: 'store_cash',
+
+      reference_type: 'manual',
+
+      notes: 'Manual report withdrawal',
+
+      created_by: 1,
+    })
+
+    const report = getReportsSummary() as ReportsSummaryTestResult
+
+    expect(report.summary.total_purchase_invoices).toBe(240)
+
+    expect(report.summary.total_manual_deposits).toBe(500)
+
+    expect(report.summary.total_manual_withdrawals).toBe(120)
   })
 })

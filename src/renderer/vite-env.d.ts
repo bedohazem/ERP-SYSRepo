@@ -663,6 +663,9 @@ declare global {
           net_profit_after_discounts: number
           total_expenses: number
           total_liability_payments: number
+          total_purchase_invoices: number
+          total_manual_deposits: number
+          total_manual_withdrawals: number
           final_net_profit: number
           cancelled_sales_count: number
           cancelled_returns_count: number

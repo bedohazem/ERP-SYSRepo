@@ -293,6 +293,29 @@ export function getReportsSummary(input?: ReportFilter) {
     `p.cancelled_at IS NULL`,
   ])
 
+  const purchasesWhere = buildWhere(
+    'pi',
+    input,
+    [`pi.cancelled_at IS NULL`, `IFNULL(pi.status, 'active') <> 'cancelled'`],
+    undefined,
+    `date(pi.created_at, 'localtime')`,
+  )
+
+  const manualCashWhere = buildWhere(
+    'cm',
+    input,
+    [
+      `cm.cancelled_at IS NULL`,
+      `cm.reference_type = 'manual'`,
+      `cm.type IN ('deposit', 'withdraw')`,
+    ],
+    'cm.created_by',
+    `COALESCE(
+    NULLIF(cm.business_date, ''),
+    date(cm.created_at, 'localtime')
+  )`,
+  )
+
   const expensesRow = db
     .prepare(
       `
@@ -313,14 +336,78 @@ export function getReportsSummary(input?: ReportFilter) {
     )
     .get(...liabilityPaymentsWhere.params) as any
 
+  const purchasesRow = db
+    .prepare(
+      `
+    SELECT
+      IFNULL(
+        SUM(pi.total_amount),
+        0
+      ) AS total_purchase_invoices
+
+    FROM purchase_invoices pi
+
+    ${purchasesWhere.whereSql}
+    `,
+    )
+    .get(...purchasesWhere.params) as {
+    total_purchase_invoices: number
+  }
+
+  const manualCashRow = db
+    .prepare(
+      `
+    SELECT
+      IFNULL(
+        SUM(
+          CASE
+            WHEN cm.type = 'deposit'
+              AND cm.direction = 'in'
+            THEN cm.amount
+            ELSE 0
+          END
+        ),
+        0
+      ) AS total_manual_deposits,
+
+      IFNULL(
+        SUM(
+          CASE
+            WHEN cm.type = 'withdraw'
+              AND cm.direction = 'out'
+            THEN cm.amount
+            ELSE 0
+          END
+        ),
+        0
+      ) AS total_manual_withdrawals
+
+    FROM cash_movements cm
+
+    ${manualCashWhere.whereSql}
+    `,
+    )
+    .get(...manualCashWhere.params) as {
+    total_manual_deposits: number
+    total_manual_withdrawals: number
+  }
+
   const totalExpenses = Number(expensesRow.total_expenses || 0)
   const totalLiabilityPayments = Number(
     liabilityPaymentsRow.total_liability_payments || 0,
   )
 
-  const finalNetProfit =
-    netProfitAfterDiscounts - totalExpenses - totalLiabilityPayments
+  const totalPurchaseInvoices = Number(
+    purchasesRow.total_purchase_invoices || 0,
+  )
 
+  const totalManualDeposits = Number(manualCashRow.total_manual_deposits || 0)
+
+  const totalManualWithdrawals = Number(
+    manualCashRow.total_manual_withdrawals || 0,
+  )
+
+  const finalNetProfit = netProfitAfterDiscounts - totalExpenses
   const topProducts = db
     .prepare(
       `
@@ -637,6 +724,9 @@ export function getReportsSummary(input?: ReportFilter) {
       net_profit_after_discounts: netProfitAfterDiscounts,
       total_expenses: totalExpenses,
       total_liability_payments: totalLiabilityPayments,
+      total_purchase_invoices: totalPurchaseInvoices,
+      total_manual_deposits: totalManualDeposits,
+      total_manual_withdrawals: totalManualWithdrawals,
       final_net_profit: finalNetProfit,
     },
     cashAccounts,

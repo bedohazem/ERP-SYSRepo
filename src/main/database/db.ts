@@ -461,8 +461,13 @@ export function getDb(): Database.Database {
       'discount_type',
       `TEXT DEFAULT 'amount'`,
     )
+
     safeAddColumn(db, 'purchase_invoices', 'discount_input', 'REAL DEFAULT 0')
     safeAddColumn(db, 'purchase_invoices', 'discount_value', 'REAL DEFAULT 0')
+    safeAddColumn(db, 'purchase_invoices', 'status', `TEXT DEFAULT 'active'`)
+    safeAddColumn(db, 'purchase_invoices', 'cancelled_at', 'TEXT')
+    safeAddColumn(db, 'purchase_invoices', 'cancelled_by', 'INTEGER')
+    safeAddColumn(db, 'purchase_invoices', 'cancel_reason', 'TEXT')
     safeAddColumn(db, 'supplier_payments', 'purchase_id', 'INTEGER')
     safeAddColumn(db, 'supplier_payments', 'batch_id', 'INTEGER')
     safeAddColumn(
