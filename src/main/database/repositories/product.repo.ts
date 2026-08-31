@@ -27,6 +27,9 @@ export type ProductVariantInput = {
   color: string
   buy_price: number
   sell_price: number
+
+  discount_price?: number | null
+
   min_stock: number
   opening_qty?: number
 }
@@ -183,6 +186,18 @@ function validateVariantNumbers(
 
   if (!Number.isFinite(sellPrice) || sellPrice < 0) {
     throw new Error('سعر البيع غير صحيح')
+  }
+
+  if (variant.discount_price !== null && variant.discount_price !== undefined) {
+    const discountPrice = Number(variant.discount_price)
+
+    if (!Number.isFinite(discountPrice) || discountPrice <= 0) {
+      throw new Error('السعر بعد الخصم غير صحيح')
+    }
+
+    if (discountPrice >= sellPrice) {
+      throw new Error('السعر بعد الخصم يجب أن يكون أقل من سعر البيع الأصلي')
+    }
   }
 
   if (!Number.isFinite(minStock) || minStock < 0) {
@@ -519,6 +534,7 @@ export function getProductVariants(productId: number, includeInactive = true) {
         v.color,
         v.buy_price,
         v.sell_price,
+        v.discount_price,
         v.min_stock,
         v.is_active,
         ${STOCK_SUM_SQL} as stock
@@ -534,6 +550,7 @@ export function getProductVariants(productId: number, includeInactive = true) {
         v.color,
         v.buy_price,
         v.sell_price,
+        v.discount_price,
         v.min_stock,
         v.is_active
       ORDER BY v.id ASC
@@ -601,9 +618,18 @@ export function createProduct(input: CreateProductInput) {
 
     const insertVariant = db.prepare(
       `
-      INSERT INTO product_variants
-      (product_id, barcode, size, color, buy_price, sell_price, min_stock, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+      INSERT INTO product_variants (
+        product_id,
+        barcode,
+        size,
+        color,
+        buy_price,
+        sell_price,
+        discount_price,
+        min_stock,
+        is_active
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
       `,
     )
 
@@ -623,6 +649,7 @@ export function createProduct(input: CreateProductInput) {
         variant.color.trim(),
         variant.buy_price,
         variant.sell_price,
+        variant.discount_price ?? null,
         variant.min_stock,
       )
 
@@ -657,6 +684,9 @@ export type AddProductVariantInput = {
   color: string
   buy_price: number
   sell_price: number
+
+  discount_price?: number | null
+
   min_stock: number
   opening_qty?: number
 }
@@ -680,9 +710,18 @@ export function addProductVariant(input: AddProductVariantInput) {
     const variantResult = db
       .prepare(
         `
-        INSERT INTO product_variants
-        (product_id, barcode, size, color, buy_price, sell_price, min_stock, is_active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+        INSERT INTO product_variants (
+          product_id,
+          barcode,
+          size,
+          color,
+          buy_price,
+          sell_price,
+          discount_price,
+          min_stock,
+          is_active
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
         `,
       )
       .run(
@@ -692,6 +731,7 @@ export function addProductVariant(input: AddProductVariantInput) {
         input.color.trim(),
         input.buy_price,
         input.sell_price,
+        input.discount_price ?? null,
         input.min_stock,
       )
 
@@ -743,6 +783,9 @@ export type UpdateVariantInput = {
   color: string
   buy_price: number
   sell_price: number
+
+  discount_price?: number | null
+
   min_stock: number
   is_active?: number
 }
@@ -793,6 +836,7 @@ export function updateVariant(input: UpdateVariantInput) {
         color = ?,
         buy_price = ?,
         sell_price = ?,
+        discount_price = ?,
         min_stock = ?,
         is_active = ?
       WHERE id = ?
@@ -803,6 +847,7 @@ export function updateVariant(input: UpdateVariantInput) {
       input.color.trim(),
       input.buy_price,
       input.sell_price,
+      input.discount_price ?? null,
       input.min_stock,
       nextActive,
       input.id,
@@ -851,6 +896,8 @@ export type SaleSearchVariantRow = {
   size: string
   color: string
   sell_price: number
+  original_sell_price: number
+  discount_price: number | null
   buy_price: number
   stock: number
   min_stock: number
@@ -906,7 +953,17 @@ export function searchSaleVariants(
         v.barcode,
         v.size,
         v.color,
-        v.sell_price,
+        v.sell_price AS original_sell_price,
+
+        CASE
+          WHEN v.discount_price IS NOT NULL
+            AND v.discount_price > 0
+            AND v.discount_price < v.sell_price
+          THEN v.discount_price
+          ELSE v.sell_price
+        END AS sell_price,
+
+        v.discount_price,
         v.buy_price,
         v.min_stock,
         v.is_active,
@@ -934,6 +991,7 @@ export function searchSaleVariants(
         v.size,
         v.color,
         v.sell_price,
+        v.discount_price,
         v.buy_price,
         v.min_stock,
         v.is_active
@@ -962,7 +1020,17 @@ export function getVariantByBarcode(
         v.barcode,
         v.size,
         v.color,
-        v.sell_price,
+        v.sell_price AS original_sell_price,
+
+        CASE
+          WHEN v.discount_price IS NOT NULL
+            AND v.discount_price > 0
+            AND v.discount_price < v.sell_price
+          THEN v.discount_price
+          ELSE v.sell_price
+        END AS sell_price,
+
+        v.discount_price,
         v.buy_price,
         v.min_stock,
         v.is_active,
@@ -981,6 +1049,7 @@ export function getVariantByBarcode(
         v.size,
         v.color,
         v.sell_price,
+        v.discount_price,
         v.buy_price,
         v.min_stock,
         v.is_active

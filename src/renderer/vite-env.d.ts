@@ -221,6 +221,7 @@ declare global {
         color: string
         buy_price: number
         sell_price: number
+        discount_price?: number | null
         min_stock: number
         opening_qty?: number
         actor_id?: number

@@ -174,6 +174,7 @@ export function registerProductsIpc(): void {
           color: input.color,
           buy_price: input.buy_price,
           sell_price: input.sell_price,
+          discount_price: input.discount_price ?? null,
           min_stock: input.min_stock,
           opening_qty: input.opening_qty ?? 0,
         },
@@ -231,6 +232,7 @@ export function registerProductsIpc(): void {
           color: input.color,
           buy_price: input.buy_price,
           sell_price: input.sell_price,
+          discount_price: input.discount_price ?? null,
           min_stock: input.min_stock,
         },
       })

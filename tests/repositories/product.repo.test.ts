@@ -19,6 +19,7 @@ type ProductVariantTestRow = {
   color: string
   buy_price: number
   sell_price: number
+  discount_price: number | null
   min_stock: number
   is_active: number
   stock: number
@@ -482,5 +483,81 @@ describe('product repository', () => {
     expect((secondPage.rows[0] as any).name).toBe('Paged Product 1')
     expect(secondPage.limit).toBe(2)
     expect(secondPage.offset).toBe(2)
+  })
+
+  it('uses discount price as the active sale price', () => {
+    const product = createProduct({
+      name: 'Discount Product',
+
+      category_id: null,
+
+      variants: [
+        {
+          barcode: 'DISCOUNT001',
+
+          size: 'M',
+          color: 'Black',
+
+          buy_price: 300,
+
+          sell_price: 900,
+
+          discount_price: 500,
+
+          min_stock: 5,
+
+          opening_qty: 3,
+        },
+      ],
+    })
+
+    const variants = getProductVariants(
+      product.productId,
+    ) as ProductVariantTestRow[]
+
+    expect(variants[0].sell_price).toBe(900)
+
+    expect(variants[0].discount_price).toBe(500)
+
+    const barcodeVariant = getVariantByBarcode('DISCOUNT001')
+
+    expect(barcodeVariant?.original_sell_price).toBe(900)
+
+    expect(barcodeVariant?.discount_price).toBe(500)
+
+    expect(barcodeVariant?.sell_price).toBe(500)
+
+    const search = searchSaleVariants('Discount Product')
+
+    expect(search[0].sell_price).toBe(500)
+  })
+
+  it('rejects discount price equal to or above regular price', () => {
+    expect(() =>
+      createProduct({
+        name: 'Bad Discount Product',
+
+        category_id: null,
+
+        variants: [
+          {
+            barcode: 'BAD-DISCOUNT',
+
+            size: 'M',
+            color: 'Black',
+
+            buy_price: 300,
+
+            sell_price: 900,
+
+            discount_price: 900,
+
+            min_stock: 5,
+
+            opening_qty: 1,
+          },
+        ],
+      }),
+    ).toThrow('السعر بعد الخصم يجب أن يكون أقل من سعر البيع الأصلي')
   })
 })

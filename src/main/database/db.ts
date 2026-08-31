@@ -434,6 +434,8 @@ export function getDb(): Database.Database {
 
     `)
 
+    safeAddColumn(db, 'product_variants', 'discount_price', 'REAL')
+
     safeAddColumn(db, 'sales', 'loyalty_points_earned', 'INTEGER DEFAULT 0')
     safeAddColumn(db, 'sales', 'loyalty_points_redeemed', 'INTEGER DEFAULT 0')
     safeAddColumn(db, 'sales', 'loyalty_discount_value', 'REAL DEFAULT 0')

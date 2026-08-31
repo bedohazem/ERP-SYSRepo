@@ -31,6 +31,7 @@ type ProductVariant = {
   color: string
   buy_price: number
   sell_price: number
+  discount_price: number | null
   min_stock: number
   is_active: number
   stock: number
@@ -42,6 +43,7 @@ type VariantForm = {
   color: string
   buy_price: string
   sell_price: string
+  discount_price: string
   min_stock: string
   opening_qty: string
 }
@@ -52,6 +54,7 @@ const emptyVariant = (): VariantForm => ({
   color: '',
   buy_price: '',
   sell_price: '',
+  discount_price: '',
   min_stock: '5',
   opening_qty: '0',
 })
@@ -187,6 +190,7 @@ export default function ProductsPage() {
       color: string
       buy_price: string
       sell_price: string
+      discount_price: string
       min_stock: string
       is_active: number
     }>
@@ -459,6 +463,9 @@ export default function ProductsPage() {
         color: newEditVariant.color.trim(),
         buy_price: buyPrice,
         sell_price: sellPrice,
+        discount_price: newEditVariant.discount_price.trim()
+          ? Number(newEditVariant.discount_price)
+          : null,
         min_stock: minStock,
         opening_qty: openingQty,
         actor_id: currentUser?.id,
@@ -483,6 +490,10 @@ export default function ProductsPage() {
         color: v.color ?? '',
         buy_price: String(v.buy_price ?? 0),
         sell_price: String(v.sell_price ?? 0),
+        discount_price:
+          v.discount_price === null || v.discount_price === undefined
+            ? ''
+            : String(v.discount_price),
         min_stock: String(v.min_stock ?? 5),
         is_active: v.is_active ?? 1,
       }))
@@ -601,6 +612,11 @@ export default function ProductsPage() {
           color: v.color.trim(),
           buy_price: Number(v.buy_price),
           sell_price: Number(v.sell_price),
+
+          discount_price: v.discount_price.trim()
+            ? Number(v.discount_price)
+            : null,
+
           min_stock: Number(v.min_stock || 5),
           opening_qty: Number(v.opening_qty || 0),
         })),
@@ -677,7 +693,9 @@ export default function ProductsPage() {
     barcode: string
     size: string
     color: string
-    price: number
+
+    originalPrice: number
+    discountPrice?: number | null
   }) {
     if (!input.barcode?.trim()) {
       showMessage('error', 'لا يوجد باركود للطباعة')
@@ -703,7 +721,42 @@ export default function ProductsPage() {
       printSettings.barcode_content_offset_y_mm || 0,
     )
 
-    const itemDefs = [
+    const originalPrice = Number(input.originalPrice || 0)
+
+    const discountPrice =
+      input.discountPrice === null || input.discountPrice === undefined
+        ? null
+        : Number(input.discountPrice)
+
+    const hasDiscountPrice =
+      discountPrice !== null &&
+      Number.isFinite(discountPrice) &&
+      discountPrice > 0 &&
+      discountPrice < originalPrice
+
+    const priceHtml = hasDiscountPrice
+      ? `
+      <span class="price-pair">
+        <span class="old-price">
+          ${escapeHtml(money(originalPrice))} ج.م
+        </span>
+
+        <span class="new-price">
+          ${escapeHtml(money(discountPrice))} ج.م
+        </span>
+      </span>
+    `
+      : ''
+
+    const itemDefs: Array<{
+      key: string
+      value: string
+      html?: string
+      fontSize: number
+      position: BarcodeItemPosition
+      align: BarcodeItemAlign
+      className: string
+    }> = [
       {
         key: 'name',
         value: input.productName,
@@ -714,7 +767,10 @@ export default function ProductsPage() {
       },
       {
         key: 'price',
-        value: `${input.price} ج.م`,
+
+        value: `${money(originalPrice)} ج.م`,
+
+        html: hasDiscountPrice ? priceHtml : undefined,
         fontSize: printSettings.barcode_price_font_size,
         position: printSettings.barcode_price_position,
         align: printSettings.barcode_price_align,
@@ -764,7 +820,7 @@ export default function ProductsPage() {
                 text-align:${alignToCss(item.position, item.align)};
               "
             >
-              ${escapeHtml(item.value)}
+              ${item.html ? item.html : escapeHtml(item.value)}
             </div>
           `,
         )
@@ -945,6 +1001,38 @@ export default function ProductsPage() {
               font-weight: bold;
             }
 
+            .price-pair {
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              gap: 1.2mm;
+              white-space: nowrap;
+            }
+
+            .old-price {
+              position: relative;
+              display: inline-block;
+              font-size: 0.82em;
+              font-weight: 700;
+            }
+
+            .old-price::after {
+              content: "";
+              position: absolute;
+              left: -8%;
+              right: -8%;
+              top: 50%;
+              height: 1.4px;
+              background: #000;
+              transform: rotate(-14deg);
+              transform-origin: center;
+            }
+
+            .new-price {
+              font-size: 1.18em;
+              font-weight: 900;
+            }
+
             .barcode-zone {
               display: flex;
               align-items: center;
@@ -1033,6 +1121,10 @@ export default function ProductsPage() {
             color: v.color ?? '',
             buy_price: String(v.buy_price ?? 0),
             sell_price: String(v.sell_price ?? 0),
+            discount_price:
+              v.discount_price === null || v.discount_price === undefined
+                ? ''
+                : String(v.discount_price),
             min_stock: String(v.min_stock ?? 5),
             is_active: v.is_active ?? 1,
           })),
@@ -1061,6 +1153,7 @@ export default function ProductsPage() {
       | 'color'
       | 'buy_price'
       | 'sell_price'
+      | 'discount_price'
       | 'min_stock',
     value: string,
   ) {
@@ -1102,6 +1195,11 @@ export default function ProductsPage() {
           color: variant.color.trim(),
           buy_price: Number(variant.buy_price),
           sell_price: Number(variant.sell_price),
+
+          discount_price: variant.discount_price.trim()
+            ? Number(variant.discount_price)
+            : null,
+
           min_stock: Number(variant.min_stock || 5),
           is_active: variant.is_active,
           actor_id: currentUser?.id,
@@ -1864,7 +1962,42 @@ export default function ProductsPage() {
                                       <div>{variant.size || '—'}</div>
                                       <div>{variant.color || '—'}</div>
                                       <div>{money(variant.buy_price)} ج</div>
-                                      <div>{money(variant.sell_price)} ج</div>
+                                      <div
+                                        style={{
+                                          display: 'grid',
+                                          gap: '2px',
+                                        }}
+                                      >
+                                        {Number(variant.discount_price || 0) >
+                                          0 &&
+                                        Number(variant.discount_price) <
+                                          Number(variant.sell_price) ? (
+                                          <>
+                                            <span
+                                              style={{
+                                                color: '#94a3b8',
+                                                textDecoration: 'line-through',
+                                                fontSize: '11px',
+                                              }}
+                                            >
+                                              {money(variant.sell_price)} ج
+                                            </span>
+
+                                            <span
+                                              style={{
+                                                color: '#34d399',
+                                                fontWeight: 900,
+                                              }}
+                                            >
+                                              {money(variant.discount_price)} ج
+                                            </span>
+                                          </>
+                                        ) : (
+                                          <span>
+                                            {money(variant.sell_price)} ج
+                                          </span>
+                                        )}
+                                      </div>
                                       <div
                                         style={{
                                           color: isLowStock
@@ -1957,7 +2090,10 @@ export default function ProductsPage() {
                                             barcode: variant.barcode,
                                             size: variant.size,
                                             color: variant.color,
-                                            price: variant.sell_price,
+                                            originalPrice: variant.sell_price,
+
+                                            discountPrice:
+                                              variant.discount_price,
                                           })
                                         }
                                         style={{
@@ -2192,6 +2328,25 @@ export default function ProductsPage() {
                           onChange={(e) =>
                             updateVariant(index, 'sell_price', e.target.value)
                           }
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>السعر بعد الخصم</label>
+
+                        <input
+                          type="number"
+                          min={0}
+                          value={variant.discount_price}
+                          onChange={(e) =>
+                            updateVariant(
+                              index,
+                              'discount_price',
+                              e.target.value,
+                            )
+                          }
+                          placeholder="اختياري"
                           style={inputStyle}
                         />
                       </div>
@@ -2454,6 +2609,21 @@ export default function ProductsPage() {
                   </div>
 
                   <div>
+                    <label style={labelStyle}>السعر بعد الخصم</label>
+
+                    <input
+                      type="number"
+                      min={0}
+                      value={newEditVariant.discount_price}
+                      onChange={(e) =>
+                        updateNewEditVariant('discount_price', e.target.value)
+                      }
+                      placeholder="اختياري"
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
                     <label style={labelStyle}>حد المخزون</label>
                     <input
                       type="number"
@@ -2589,6 +2759,25 @@ export default function ProductsPage() {
                               e.target.value,
                             )
                           }
+                          style={inputStyle}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={labelStyle}>السعر بعد الخصم</label>
+
+                        <input
+                          type="number"
+                          min={0}
+                          value={variant.discount_price}
+                          onChange={(e) =>
+                            updateEditVariant(
+                              index,
+                              'discount_price',
+                              e.target.value,
+                            )
+                          }
+                          placeholder="اختياري"
                           style={inputStyle}
                         />
                       </div>
