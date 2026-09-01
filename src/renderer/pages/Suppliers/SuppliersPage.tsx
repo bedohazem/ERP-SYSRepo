@@ -1135,7 +1135,20 @@ export default function SuppliersPage() {
         <div className="theme-modal-overlay" style={modalOverlayStyle}>
           <div
             className="theme-modal-card supplier-statement-modal"
-            style={{ ...modalStyle, width: '900px' }}
+            style={{
+              ...modalStyle,
+
+              width: 'min(1180px, calc(100vw - 48px))',
+
+              maxWidth: 'calc(100vw - 48px)',
+
+              maxHeight: '92vh',
+
+              overflowY: 'auto',
+              overflowX: 'hidden',
+
+              boxSizing: 'border-box',
+            }}
           >
             <div
               style={{
@@ -1250,7 +1263,12 @@ export default function SuppliersPage() {
               onPageChange={setSupplierStatementPage}
             />
 
-            <div style={{ overflowX: 'auto' }}>
+            <div
+              style={{
+                width: '100%',
+                overflowX: 'hidden',
+              }}
+            >
               <table
                 style={{
                   width: '100%',
@@ -1888,6 +1906,21 @@ const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
+}
+
+const statementThStyle: React.CSSProperties = {
+  ...thStyle,
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
+}
+
+const statementTdStyle: React.CSSProperties = {
+  ...tdStyle,
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
+  verticalAlign: 'top',
+  lineHeight: 1.6,
 }
 
 const modalOverlayStyle: React.CSSProperties = {

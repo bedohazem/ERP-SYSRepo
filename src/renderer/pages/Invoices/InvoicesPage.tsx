@@ -1217,10 +1217,12 @@ export default function InvoicesPage() {
           <div
             className="theme-modal-card"
             style={{
-              width: '760px',
-              maxWidth: '100%',
-              maxHeight: '88vh',
+              width: 'min(1120px, calc(100vw - 48px))',
+              maxWidth: 'calc(100vw - 48px)',
+              maxHeight: '92vh',
               overflowY: 'auto',
+              overflowX: 'hidden',
+              boxSizing: 'border-box',
               borderRadius: '18px',
               border: '1px solid rgba(255,255,255,0.10)',
               background: '#111827',
@@ -1482,10 +1484,12 @@ export default function InvoicesPage() {
           <div
             className="theme-modal-card"
             style={{
-              width: '860px',
-              maxWidth: '100%',
-              maxHeight: '88vh',
+              width: 'min(1120px, calc(100vw - 48px))',
+              maxWidth: 'calc(100vw - 48px)',
+              maxHeight: '92vh',
               overflowY: 'auto',
+              overflowX: 'hidden',
+              boxSizing: 'border-box',
               borderRadius: '18px',
               border: '1px solid rgba(255,255,255,0.10)',
               background: '#111827',
@@ -2066,6 +2070,21 @@ const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
+}
+
+const invoiceModalThStyle: React.CSSProperties = {
+  ...thStyle,
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
+}
+
+const invoiceModalTdStyle: React.CSSProperties = {
+  ...tdStyle,
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
+  verticalAlign: 'top',
+  lineHeight: 1.6,
 }
 
 const statCardStyle: React.CSSProperties = {
