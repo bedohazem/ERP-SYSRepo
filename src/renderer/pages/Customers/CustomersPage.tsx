@@ -1316,17 +1316,18 @@ export default function CustomersPage() {
                   width: '100%',
                   borderCollapse: 'collapse',
                   direction: 'rtl',
+                  tableLayout: 'fixed',
                 }}
               >
                 <thead>
                   <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
-                    <th style={thStyle}>التاريخ</th>
-                    <th style={thStyle}>البيان</th>
-                    <th style={thStyle}>مدين</th>
-                    <th style={thStyle}>دائن</th>
-                    <th style={thStyle}>طريقة الدفع</th>
-                    <th style={thStyle}>ملاحظات</th>
-                    <th style={thStyle}>إجراءات</th>
+                    <th style={statementThStyle}>التاريخ</th>
+                    <th style={statementThStyle}>البيان</th>
+                    <th style={statementThStyle}>مدين</th>
+                    <th style={statementThStyle}>دائن</th>
+                    <th style={statementThStyle}>طريقة الدفع</th>
+                    <th style={statementThStyle}>ملاحظات</th>
+                    <th style={statementThStyle}>إجراءات</th>
                   </tr>
                 </thead>
 
@@ -1335,7 +1336,7 @@ export default function CustomersPage() {
                     <tr>
                       <td
                         colSpan={7}
-                        style={{ ...tdStyle, textAlign: 'center' }}
+                        style={{ ...statementTdStyle, textAlign: 'center' }}
                       >
                         جاري التحميل...
                       </td>
@@ -1356,10 +1357,10 @@ export default function CustomersPage() {
                             borderTop: '1px solid rgba(255,255,255,0.06)',
                           }}
                         >
-                          <td style={tdStyle}>
+                          <td style={statementTdStyle}>
                             {formatDate(entry.created_at)}
                           </td>
-                          <td style={tdStyle}>
+                          <td style={statementTdStyle}>
                             <strong>{entry.title}</strong>
 
                             {entry.allocations_text && (
@@ -1378,7 +1379,7 @@ export default function CustomersPage() {
                           </td>
                           <td
                             style={{
-                              ...tdStyle,
+                              ...statementTdStyle,
                               color: entry.debit > 0 ? '#fca5a5' : '#e5e7eb',
                             }}
                           >
@@ -1386,19 +1387,19 @@ export default function CustomersPage() {
                           </td>
                           <td
                             style={{
-                              ...tdStyle,
+                              ...statementTdStyle,
                               color: entry.credit > 0 ? '#6ee7b7' : '#e5e7eb',
                             }}
                           >
                             {entry.credit > 0 ? money(entry.credit) : '—'}
                           </td>
-                          <td style={tdStyle}>
+                          <td style={statementTdStyle}>
                             {entry.payment_method
                               ? getPaymentMethodLabel(entry.payment_method)
                               : '—'}
                           </td>
-                          <td style={tdStyle}>{entry.notes || '—'}</td>
-                          <td style={tdStyle}>
+                          <td style={statementTdStyle}>{entry.notes || '—'}</td>
+                          <td style={statementTdStyle}>
                             {canManageStatementPayment(entry) ? (
                               <div
                                 style={{

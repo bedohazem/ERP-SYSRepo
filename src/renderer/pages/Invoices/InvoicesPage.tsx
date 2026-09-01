@@ -1282,16 +1282,22 @@ export default function InvoicesPage() {
               </div>
             </div>
 
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                tableLayout: 'fixed',
+              }}
+            >
               <thead>
                 <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
-                  <th style={thStyle}>الصنف</th>
-                  <th style={thStyle}>المقاس</th>
-                  <th style={thStyle}>اللون</th>
-                  <th style={thStyle}>الكمية</th>
-                  <th style={thStyle}>المرتجع</th>
-                  <th style={thStyle}>السعر</th>
-                  <th style={thStyle}>الإجمالي</th>
+                  <th style={invoiceModalThStyle}>الصنف</th>
+                  <th style={invoiceModalThStyle}>المقاس</th>
+                  <th style={invoiceModalThStyle}>اللون</th>
+                  <th style={invoiceModalThStyle}>الكمية</th>
+                  <th style={invoiceModalThStyle}>المرتجع</th>
+                  <th style={invoiceModalThStyle}>السعر</th>
+                  <th style={invoiceModalThStyle}>الإجمالي</th>
                 </tr>
               </thead>
 
@@ -1301,11 +1307,11 @@ export default function InvoicesPage() {
                     key={item.id}
                     style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                   >
-                    <td style={tdStyle}>{item.product_name}</td>
-                    <td style={tdStyle}>{item.size || '—'}</td>
-                    <td style={tdStyle}>{item.color || '—'}</td>
-                    <td style={tdStyle}>{item.quantity}</td>
-                    <td style={tdStyle}>
+                    <td style={invoiceModalTdStyle}>{item.product_name}</td>
+                    <td style={invoiceModalTdStyle}>{item.size || '—'}</td>
+                    <td style={invoiceModalTdStyle}>{item.color || '—'}</td>
+                    <td style={invoiceModalTdStyle}>{item.quantity}</td>
+                    <td style={invoiceModalTdStyle}>
                       {Number(item.returned_quantity || 0) > 0 ? (
                         <span style={{ color: '#fdba74', fontWeight: 900 }}>
                           {Number(item.returned_quantity || 0)} من أصل{' '}
@@ -1315,8 +1321,12 @@ export default function InvoicesPage() {
                         '—'
                       )}
                     </td>
-                    <td style={tdStyle}>{money(item.unit_price)}</td>
-                    <td style={tdStyle}>{money(item.line_total)}</td>
+                    <td style={invoiceModalTdStyle}>
+                      {money(item.unit_price)}
+                    </td>
+                    <td style={invoiceModalTdStyle}>
+                      {money(item.line_total)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
