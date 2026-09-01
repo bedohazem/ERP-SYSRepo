@@ -41,12 +41,20 @@ export function createStockCountSession(input: {
           title,
           notes,
           status,
+          category_id,
           created_by
         )
-        VALUES (?, ?, 'open', ?)
+        VALUES (?, ?, 'open', ?, ?)
         `,
       )
-      .run(title, input.notes?.trim() || null, input.actor_id ?? null)
+      .run(
+        title,
+        input.notes?.trim() || null,
+
+        categorySql ? categoryId : null,
+
+        input.actor_id ?? null,
+      )
 
     const sessionId = Number(result.lastInsertRowid)
 

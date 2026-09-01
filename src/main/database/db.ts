@@ -82,12 +82,14 @@ export function getDb(): Database.Database {
         title TEXT NOT NULL,
         notes TEXT,
         status TEXT NOT NULL DEFAULT 'open',
+        category_id INTEGER,
         created_by INTEGER,
         approved_by INTEGER,
         canceled_by INTEGER,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         approved_at TEXT,
         canceled_at TEXT,
+        FOREIGN KEY (category_id) REFERENCES categories(id),
         FOREIGN KEY (created_by) REFERENCES users(id),
         FOREIGN KEY (approved_by) REFERENCES users(id),
         FOREIGN KEY (canceled_by) REFERENCES users(id)
@@ -435,7 +437,7 @@ export function getDb(): Database.Database {
     `)
 
     safeAddColumn(db, 'product_variants', 'discount_price', 'REAL')
-
+    safeAddColumn(db, 'stock_count_sessions', 'category_id', 'INTEGER')
     safeAddColumn(db, 'sales', 'loyalty_points_earned', 'INTEGER DEFAULT 0')
     safeAddColumn(db, 'sales', 'loyalty_points_redeemed', 'INTEGER DEFAULT 0')
     safeAddColumn(db, 'sales', 'loyalty_discount_value', 'REAL DEFAULT 0')

@@ -76,6 +76,64 @@ function getCurrentVariantStock(
   return Number(row?.stock || 0)
 }
 
+function addVariantToOpenStockCountSessions(
+  db: ReturnType<typeof getDb>,
+  variantId: number,
+  productId: number,
+) {
+  const product = db
+    .prepare(
+      `
+      SELECT
+        id,
+        category_id,
+        is_active
+      FROM products
+      WHERE id = ?
+      LIMIT 1
+      `,
+    )
+    .get(productId) as
+    | {
+        id: number
+        category_id: number | null
+        is_active: number
+      }
+    | undefined
+
+  if (!product || Number(product.is_active) !== 1) {
+    return
+  }
+
+  const systemStock = getCurrentVariantStock(db, variantId)
+
+  db.prepare(
+    `
+    INSERT OR IGNORE INTO stock_count_items (
+      session_id,
+      variant_id,
+      system_stock,
+      actual_stock
+    )
+
+    SELECT
+      scs.id,
+      ?,
+      ?,
+      NULL
+
+    FROM stock_count_sessions scs
+
+    WHERE scs.status = 'open'
+
+      AND (
+        scs.category_id IS NULL
+        OR scs.category_id = ?
+      )
+    `,
+  ).run(variantId, systemStock, product.category_id)
+}
+
 function zeroVariantStock(
   db: ReturnType<typeof getDb>,
   variantId: number,
@@ -668,6 +726,7 @@ export function createProduct(input: CreateProductInput) {
           'رصيد افتتاحي عند إنشاء المنتج',
         )
       }
+      addVariantToOpenStockCountSessions(db, variantId, productId)
     }
 
     return productId
@@ -756,6 +815,8 @@ export function addProductVariant(input: AddProductVariantInput) {
         'رصيد افتتاحي عند إضافة صنف جديد',
       )
     }
+
+    addVariantToOpenStockCountSessions(db, variantId, input.product_id)
 
     return variantId
   })

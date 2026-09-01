@@ -6,6 +6,7 @@ type StockCountSession = {
   id: number
   title: string
   notes?: string | null
+  category_id?: number | null
   status: 'open' | 'approved' | 'canceled'
   created_by?: number | null
   approved_by?: number | null
