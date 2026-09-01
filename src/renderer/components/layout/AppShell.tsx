@@ -589,6 +589,18 @@ export default function AppShell({
 
       <aside
         className="app-sidebar-scroll"
+        onMouseDown={(event) => {
+          if (event.button === 1) {
+            event.preventDefault()
+            event.stopPropagation()
+          }
+        }}
+        onAuxClick={(event) => {
+          if (event.button === 1) {
+            event.preventDefault()
+            event.stopPropagation()
+          }
+        }}
         style={{
           gridArea: isMobile ? undefined : 'sidebar',
           position: isMobile ? 'fixed' : 'static',
