@@ -260,6 +260,22 @@ declare global {
 
       getVariantByBarcode: (barcode: string) => Promise<any | null>
 
+      getPromotions: () => Promise<any[]>
+
+      getPromotion: (promotionId: number) => Promise<any>
+
+      getActivePromotion: () => Promise<any | null>
+
+      createPromotion: (input: any) => Promise<any>
+
+      updatePromotion: (input: any) => Promise<any>
+
+      togglePromotion: (input: {
+        id: number
+        is_active: number
+        actor_id?: number
+      }) => Promise<any>
+
       createSale: (input: any) => Promise<{
         saleId: number
         loyalty_points_earned?: number

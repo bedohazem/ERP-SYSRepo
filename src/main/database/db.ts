@@ -66,6 +66,49 @@ export function getDb(): Database.Database {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS promotions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        name TEXT NOT NULL,
+
+        type TEXT NOT NULL,
+        value REAL NOT NULL DEFAULT 0,
+
+        scope_type TEXT NOT NULL DEFAULT 'all',
+        category_id INTEGER,
+
+        is_active INTEGER NOT NULL DEFAULT 0,
+
+        created_by INTEGER,
+
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (category_id)
+          REFERENCES categories(id),
+
+        FOREIGN KEY (created_by)
+          REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS promotion_products (
+        promotion_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+
+        PRIMARY KEY (
+          promotion_id,
+          product_id
+        ),
+
+        FOREIGN KEY (promotion_id)
+          REFERENCES promotions(id)
+          ON DELETE CASCADE,
+
+        FOREIGN KEY (product_id)
+          REFERENCES products(id)
+          ON DELETE CASCADE
+      );
+
       CREATE TABLE IF NOT EXISTS stock_movements (
         id INTEGER PRIMARY KEY,
         variant_id INTEGER NOT NULL REFERENCES product_variants(id) ON DELETE CASCADE,
@@ -667,6 +710,8 @@ export function resetDatabaseData(): void {
       DELETE FROM stock_count_sessions;
 
       DELETE FROM stock_movements;
+      DELETE FROM promotion_products;
+      DELETE FROM promotions;
       DELETE FROM product_variants;
       DELETE FROM products;
       DELETE FROM categories;

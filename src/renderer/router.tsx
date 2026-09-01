@@ -5,6 +5,7 @@ import AppShell from './components/layout/AppShell'
 import LoginPage from './pages/Auth/LoginPage'
 import DashboardPage from './pages/Dashboard/DashboardPage'
 import ProductsPage from './pages/Products/ProductsPage'
+import PromotionsPage from './pages/Promotions/PromotionsPage'
 import SettingsPage from './pages/Settings/SettingsPage'
 import SalesPage from './pages/Sales/SalesPage'
 import CustomersPage from './pages/Customers/CustomersPage'
@@ -48,6 +49,11 @@ export const router = createHashRouter([
   {
     path: '/products',
     element: withShell('المنتجات', <ProductsPage />, ['admin']),
+  },
+  {
+    path: '/promotions',
+
+    element: withShell('العروض', <PromotionsPage />, ['admin']),
   },
   {
     path: '/inventory',

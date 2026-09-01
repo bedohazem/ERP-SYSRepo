@@ -59,6 +59,18 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('sales:search-variants', query),
   getVariantByBarcode: (barcode) =>
     ipcRenderer.invoke('sales:get-variant-by-barcode', barcode),
+  getPromotions: () => ipcRenderer.invoke('promotions:list'),
+
+  getPromotion: (promotionId) =>
+    ipcRenderer.invoke('promotions:get', promotionId),
+
+  getActivePromotion: () => ipcRenderer.invoke('promotions:get-active'),
+
+  createPromotion: (input) => ipcRenderer.invoke('promotions:create', input),
+
+  updatePromotion: (input) => ipcRenderer.invoke('promotions:update', input),
+
+  togglePromotion: (input) => ipcRenderer.invoke('promotions:toggle', input),
   createSale: (input) => ipcRenderer.invoke('sales:create', input),
   cancelSaleInvoice: (input) => ipcRenderer.invoke('sales:cancel', input),
   getSaleReceipt: (saleId) => ipcRenderer.invoke('sales:get-receipt', saleId),

@@ -52,6 +52,13 @@ const menuItems: MenuItem[] = [
     roles: ['admin'],
   },
   {
+    to: '/promotions',
+    label: 'العروض',
+    icon: '🎁',
+    title: 'العروض والخصومات',
+    roles: ['admin'],
+  },
+  {
     to: '/inventory',
     label: 'المخزون',
     icon: '📦',
