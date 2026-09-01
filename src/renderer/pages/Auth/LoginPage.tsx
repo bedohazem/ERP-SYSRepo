@@ -1,128 +1,170 @@
-import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../../store/auth.store';
-import { useEffect, useRef,useState } from 'react';
+import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '../../store/auth.store'
+import { useEffect, useRef, useState } from 'react'
 
+export default function LoginPage() {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const navigate = useNavigate()
+  const loginStore = useAuthStore((s) => s.login)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [appLogoUrl, setAppLogoUrl] = useState('')
+  const [appName, setAppName] = useState('ERP Store')
+  const [appTheme, setAppTheme] = useState<'dark' | 'light'>(() =>
+    document.documentElement.getAttribute('data-theme') === 'light'
+      ? 'light'
+      : 'dark',
+  )
 
+  const isLight = appTheme === 'light'
 
-export default function LoginPage() {; 
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const navigate = useNavigate();
-  const loginStore = useAuthStore((s) => s.login);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [appLogoUrl, setAppLogoUrl] = useState('');
-  const [appName, setAppName] = useState('ERP Store');
-    const [appTheme, setAppTheme] = useState<'dark' | 'light'>(() =>
-      document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
-    );
+  const usernameRef = useRef<HTMLInputElement>(null)
 
-    const isLight = appTheme === 'light';
+  async function waitForApi(maxTries = 20) {
+    for (let i = 0; i < maxTries; i += 1) {
+      const api = (window as any).api
 
-  const usernameRef = useRef<HTMLInputElement>(null);
+      if (
+        api &&
+        typeof api.getLicenseStatus === 'function' &&
+        typeof api.login === 'function'
+      ) {
+        return api as Window['api']
+      }
 
-
-  useEffect(() => {
-    usernameRef.current?.focus();
-
-    const cachedStatus = window.__APP_LICENSE_STATUS__;
-
-    if (cachedStatus) {
-      setAppLogoUrl(cachedStatus.app_logo_url || '');
-      setAppName(cachedStatus.app_name || 'ERP Store');
-
-      const nextTheme = cachedStatus.app_theme === 'light' ? 'light' : 'dark';
-      setAppTheme(nextTheme);
-      document.documentElement.setAttribute('data-theme', nextTheme);
-
-      return;
+      await new Promise((resolve) => window.setTimeout(resolve, 150))
     }
 
-    void window.api
-      .getLicenseStatus()
-      .then((status) => {
-        window.__APP_LICENSE_STATUS__ = status;
+    return null
+  }
 
-        setAppLogoUrl(status.app_logo_url || '');
-        setAppName(status.app_name || 'ERP Store');
+  useEffect(() => {
+    usernameRef.current?.focus()
 
-        const nextTheme = status.app_theme === 'light' ? 'light' : 'dark';
-        setAppTheme(nextTheme);
-        document.documentElement.setAttribute('data-theme', nextTheme);
-      })
-      .catch(() => {
-        setAppLogoUrl('');
-        setAppName('ERP Store');
-      });
-  }, []);
+    const cachedStatus = window.__APP_LICENSE_STATUS__
+
+    if (cachedStatus) {
+      setAppLogoUrl(cachedStatus.app_logo_url || '')
+
+      setAppName(cachedStatus.app_name || 'ERP Store')
+
+      const nextTheme = cachedStatus.app_theme === 'light' ? 'light' : 'dark'
+
+      setAppTheme(nextTheme)
+
+      document.documentElement.setAttribute('data-theme', nextTheme)
+
+      return
+    }
+
+    async function loadLoginAppInfo() {
+      try {
+        const api = await waitForApi()
+
+        if (!api) {
+          setAppLogoUrl('')
+          setAppName('ERP Store')
+          return
+        }
+
+        const status = await api.getLicenseStatus()
+
+        window.__APP_LICENSE_STATUS__ = status
+
+        setAppLogoUrl(status.app_logo_url || '')
+
+        setAppName(status.app_name || 'ERP Store')
+
+        const nextTheme = status.app_theme === 'light' ? 'light' : 'dark'
+
+        setAppTheme(nextTheme)
+
+        document.documentElement.setAttribute('data-theme', nextTheme)
+      } catch (error) {
+        console.error('Failed to load login app info:', error)
+
+        setAppLogoUrl('')
+        setAppName('ERP Store')
+      }
+    }
+
+    void loadLoginAppInfo()
+  }, [])
 
   async function handleLogin() {
-    setError('');
-    setLoading(true);
+    setError('')
+    setLoading(true)
 
     try {
-      
-      const res = await window.api.login({
+      const api = await waitForApi()
+
+      if (!api) {
+        setError('تعذر الاتصال بواجهة البرنامج، حاول مرة أخرى')
+        return
+      }
+
+      const res = await api.login({
         username,
-        password
-      });
+        password,
+      })
 
       if (!res.success) {
-        setError(res.message || 'فشل تسجيل الدخول');
-        return;
+        setError(res.message || 'فشل تسجيل الدخول')
+        return
       }
 
       if (res.user) {
-        loginStore(res.user);
-        navigate('/dashboard');
+        loginStore(res.user)
+        navigate('/dashboard')
       }
     } catch (error) {
-    console.error('Login error:', error);
-    setError('خطأ في الاتصال بالنظام');
-    }finally {
-      setLoading(false);
+      console.error('Login error:', error)
+      setError('خطأ في الاتصال بالنظام')
+    } finally {
+      setLoading(false)
     }
   }
 
-
-    const pageBg = isLight
+  const pageBg = isLight
     ? 'radial-gradient(circle at top right, rgba(37,99,235,0.10), transparent 28%), radial-gradient(circle at bottom left, rgba(139,92,246,0.10), transparent 26%), linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)'
-    : 'radial-gradient(circle at top right, rgba(37,99,235,0.18), transparent 28%), radial-gradient(circle at bottom left, rgba(139,92,246,0.18), transparent 26%)';
+    : 'radial-gradient(circle at top right, rgba(37,99,235,0.18), transparent 28%), radial-gradient(circle at bottom left, rgba(139,92,246,0.18), transparent 26%)'
 
-  const shellBg = isLight ? 'rgba(255,255,255,0.96)' : 'rgba(17,24,39,0.85)';
+  const shellBg = isLight ? 'rgba(255,255,255,0.96)' : 'rgba(17,24,39,0.85)'
   const shellBorder = isLight
     ? '1px solid rgba(15,23,42,0.10)'
-    : '1px solid rgba(255,255,255,0.08)';
+    : '1px solid rgba(255,255,255,0.08)'
   const shellShadow = isLight
     ? '0 24px 70px rgba(15,23,42,0.14)'
-    : '0 20px 60px rgba(0,0,0,0.35)';
+    : '0 20px 60px rgba(0,0,0,0.35)'
 
   const infoPanelBg = isLight
     ? 'radial-gradient(circle at top right, rgba(37,99,235,0.12), transparent 30%), radial-gradient(circle at bottom left, rgba(139,92,246,0.10), transparent 28%), linear-gradient(180deg, rgba(239,246,255,0.98), rgba(255,255,255,0.98))'
-    : 'radial-gradient(circle at top right, rgba(37,99,235,0.30), transparent 30%), radial-gradient(circle at bottom left, rgba(139,92,246,0.24), transparent 28%), linear-gradient(180deg, rgba(15,23,42,0.96), rgba(17,24,39,0.96))';
+    : 'radial-gradient(circle at top right, rgba(37,99,235,0.30), transparent 30%), radial-gradient(circle at bottom left, rgba(139,92,246,0.24), transparent 28%), linear-gradient(180deg, rgba(15,23,42,0.96), rgba(17,24,39,0.96))'
 
   const formPanelBg = isLight
     ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.98))'
-    : 'rgba(17,24,39,0.55)';
+    : 'rgba(17,24,39,0.55)'
 
-  const titleColor = isLight ? '#0f172a' : '#f8fafc';
-  const textColor = isLight ? '#334155' : '#cbd5e1';
-  const mutedColor = isLight ? '#64748b' : '#94a3b8';
+  const titleColor = isLight ? '#0f172a' : '#f8fafc'
+  const textColor = isLight ? '#334155' : '#cbd5e1'
+  const mutedColor = isLight ? '#64748b' : '#94a3b8'
 
   const loginInputStyle: React.CSSProperties = {
     width: '100%',
     height: '54px',
     borderRadius: '16px',
-    border: isLight ? '1px solid rgba(15,23,42,0.14)' : '1px solid rgba(255,255,255,0.08)',
+    border: isLight
+      ? '1px solid rgba(15,23,42,0.14)'
+      : '1px solid rgba(255,255,255,0.08)',
     background: isLight ? '#ffffff' : 'rgba(255,255,255,0.04)',
     color: isLight ? '#111827' : '#ffffff',
     padding: '0 16px',
     outline: 'none',
     fontSize: '15px',
-    boxShadow: isLight ? '0 8px 20px rgba(15,23,42,0.06)' : 'none'
-  };
-
+    boxShadow: isLight ? '0 8px 20px rgba(15,23,42,0.06)' : 'none',
+  }
 
   return (
     <div
@@ -132,7 +174,7 @@ export default function LoginPage() {;
         display: 'grid',
         placeItems: 'center',
         padding: '32px',
-        background: pageBg
+        background: pageBg,
       }}
     >
       <div
@@ -146,13 +188,13 @@ export default function LoginPage() {;
           border: shellBorder,
           borderRadius: '34px',
           overflow: 'hidden',
-          boxShadow: shellShadow
+          boxShadow: shellShadow,
         }}
       >
         <div
           style={{
             padding: '42px',
-            background: infoPanelBg
+            background: infoPanelBg,
           }}
         >
           <div
@@ -167,7 +209,7 @@ export default function LoginPage() {;
               boxShadow: '0 18px 45px rgba(37,99,235,0.38)',
               overflow: 'hidden',
               marginRight: 'auto',
-              marginLeft: '180px'
+              marginLeft: '180px',
             }}
           >
             {appLogoUrl ? (
@@ -178,10 +220,10 @@ export default function LoginPage() {;
                 style={{
                   width: '100%',
                   height: '100%',
-                  objectFit: 'cover'
+                  objectFit: 'cover',
                 }}
                 onError={(e) => {
-                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.style.display = 'none'
                 }}
               />
             ) : (
@@ -194,7 +236,7 @@ export default function LoginPage() {;
               margin: '26px 0 12px',
               fontSize: '42px',
               lineHeight: 1.15,
-              color: titleColor
+              color: titleColor,
             }}
           >
             {appName}
@@ -206,36 +248,38 @@ export default function LoginPage() {;
               color: textColor,
               fontSize: '18px',
               lineHeight: 1.9,
-              maxWidth: '500px'
+              maxWidth: '500px',
             }}
           >
-            نظام حديث لإدارة محل الملابس يشمل المنتجات والمخزون والمبيعات والعملاء
-            والموردين والتقارير بشكل سريع وعملي.
+            نظام حديث لإدارة محل الملابس يشمل المنتجات والمخزون والمبيعات
+            والعملاء والموردين والتقارير بشكل سريع وعملي.
           </p>
 
           <div
             style={{
               marginTop: '34px',
               display: 'grid',
-              gap: '14px'
+              gap: '14px',
             }}
           >
             {[
               'إدارة المنتجات والمقاسات والألوان',
               'فواتير بيع سريعة وبحث بالباركود',
-              'تقارير ومخزون وحركة أصناف بشكل واضح'
+              'تقارير ومخزون وحركة أصناف بشكل واضح',
             ].map((item) => (
               <div
                 key={item}
                 style={{
                   padding: '14px 16px',
                   borderRadius: '18px',
-                  background: isLight ? 'rgba(37,99,235,0.06)' : 'rgba(255,255,255,0.04)',
+                  background: isLight
+                    ? 'rgba(37,99,235,0.06)'
+                    : 'rgba(255,255,255,0.04)',
                   border: isLight
                     ? '1px solid rgba(37,99,235,0.14)'
                     : '1px solid rgba(255,255,255,0.08)',
                   color: isLight ? '#1e293b' : '#e2e8f0',
-                  fontWeight: 700
+                  fontWeight: 700,
                 }}
               >
                 ✨ {item}
@@ -249,7 +293,7 @@ export default function LoginPage() {;
             padding: '42px',
             display: 'flex',
             alignItems: 'center',
-            background: formPanelBg
+            background: formPanelBg,
           }}
         >
           <div style={{ width: '100%' }}>
@@ -259,7 +303,7 @@ export default function LoginPage() {;
                   color: isLight ? '#2563eb' : '#94a3b8',
                   fontSize: '14px',
                   marginBottom: '8px',
-                  fontWeight: 800
+                  fontWeight: 800,
                 }}
               >
                 تسجيل الدخول
@@ -269,7 +313,7 @@ export default function LoginPage() {;
                 style={{
                   margin: 0,
                   fontSize: '32px',
-                  color: titleColor
+                  color: titleColor,
                 }}
               >
                 أهلاً بعودتك
@@ -279,7 +323,7 @@ export default function LoginPage() {;
                 style={{
                   margin: '10px 0 0',
                   color: mutedColor,
-                  lineHeight: 1.8
+                  lineHeight: 1.8,
                 }}
               >
                 أدخل بياناتك للوصول إلى النظام.
@@ -288,8 +332,8 @@ export default function LoginPage() {;
 
             <form
               onSubmit={(e) => {
-                e.preventDefault();
-                void handleLogin();
+                e.preventDefault()
+                void handleLogin()
               }}
             >
               <div style={{ display: 'grid', gap: '16px' }}>
@@ -300,7 +344,7 @@ export default function LoginPage() {;
                       marginBottom: '8px',
                       color: isLight ? '#334155' : '#cbd5e1',
                       fontSize: '14px',
-                      fontWeight: 700
+                      fontWeight: 700,
                     }}
                   >
                     اسم المستخدم
@@ -322,7 +366,7 @@ export default function LoginPage() {;
                       marginBottom: '8px',
                       color: isLight ? '#334155' : '#cbd5e1',
                       fontSize: '14px',
-                      fontWeight: 700
+                      fontWeight: 700,
                     }}
                   >
                     كلمة المرور
@@ -355,7 +399,7 @@ export default function LoginPage() {;
                           ? 'rgba(15,23,42,0.04)'
                           : 'rgba(255,255,255,0.05)',
                         color: isLight ? '#111827' : '#fff',
-                        fontWeight: 700
+                        fontWeight: 700,
                       }}
                     >
                       {showPassword ? 'إخفاء' : 'إظهار'}
@@ -376,7 +420,7 @@ export default function LoginPage() {;
                     fontSize: '16px',
                     boxShadow: '0 14px 30px rgba(37,99,235,0.28)',
                     opacity: loading ? 0.65 : 1,
-                    cursor: loading ? 'not-allowed' : 'pointer'
+                    cursor: loading ? 'not-allowed' : 'pointer',
                   }}
                 >
                   {loading ? 'جاري الدخول...' : 'دخول'}
@@ -393,7 +437,7 @@ export default function LoginPage() {;
                   color: '#fca5a5',
                   padding: '12px',
                   borderRadius: '12px',
-                  fontWeight: 800
+                  fontWeight: 800,
                 }}
               >
                 {error}
@@ -403,5 +447,5 @@ export default function LoginPage() {;
         </div>
       </div>
     </div>
-  );
+  )
 }
