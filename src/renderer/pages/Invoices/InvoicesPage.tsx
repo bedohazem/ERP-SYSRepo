@@ -103,6 +103,11 @@ export default function InvoicesPage() {
   const [returnsPage, setReturnsPage] = useState(1)
   const [returnsLoading, setReturnsLoading] = useState(false)
   const [search, setSearch] = useState('')
+
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>(
+    'all',
+  )
+
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [loading, setLoading] = useState(false)
@@ -144,10 +149,17 @@ export default function InvoicesPage() {
 
       const result = await window.api.listSales({
         search,
+
+        payment_filter: paymentFilter,
+
         date_from: dateFrom || undefined,
+
         date_to: dateTo || undefined,
+
         actor_id: user?.id ?? null,
+
         limit: INVOICE_PAGE_SIZE,
+
         offset: (safePage - 1) * INVOICE_PAGE_SIZE,
       })
 
@@ -199,7 +211,7 @@ export default function InvoicesPage() {
     }, 250)
 
     return () => clearTimeout(handle)
-  }, [search, dateFrom, dateTo])
+  }, [search, dateFrom, dateTo, paymentFilter])
 
   useEffect(() => {
     if (!message) return
@@ -590,7 +602,10 @@ export default function InvoicesPage() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'minmax(260px, 1fr) 180px 180px 120px',
+            gridTemplateColumns:
+              activeTab === 'sales'
+                ? 'minmax(260px, 1fr) 170px 180px 180px 120px'
+                : 'minmax(260px, 1fr) 180px 180px 120px',
             gap: '12px',
             direction: 'rtl',
           }}
@@ -601,6 +616,22 @@ export default function InvoicesPage() {
             onChange={(e) => setSearch(e.target.value)}
             style={inputStyle}
           />
+
+          {activeTab === 'sales' && (
+            <select
+              value={paymentFilter}
+              onChange={(e) =>
+                setPaymentFilter(e.target.value as 'all' | 'paid' | 'unpaid')
+              }
+              style={inputStyle}
+            >
+              <option value="all">كل الفواتير</option>
+
+              <option value="paid">مدفوعة</option>
+
+              <option value="unpaid">غير مدفوعة</option>
+            </select>
+          )}
 
           <input
             type="date"

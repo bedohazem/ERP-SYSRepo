@@ -276,6 +276,9 @@ declare global {
 
       listSales: (input?: {
         search?: string
+
+        payment_filter?: 'all' | 'paid' | 'unpaid'
+
         date_from?: string
         date_to?: string
         limit?: number

@@ -496,6 +496,9 @@ export function getSaleReceipt(saleId: number) {
 
 export function listSales(input?: {
   search?: string
+
+  payment_filter?: 'all' | 'paid' | 'unpaid'
+
   date_from?: string
   date_to?: string
   limit?: number
@@ -505,6 +508,7 @@ export function listSales(input?: {
   const db = getDb()
 
   const search = input?.search?.trim() || ''
+  const paymentFilter = input?.payment_filter ?? 'all'
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
   const offset = Math.max(Number(input?.offset || 0), 0)
   const actorId = Number(input?.actor_id || 0)
@@ -529,6 +533,34 @@ export function listSales(input?: {
 
     const q = `%${search}%`
     params.push(q, q, q, q)
+  }
+
+  if (paymentFilter === 'paid') {
+    where.push(`
+    (
+      s.cancelled_at IS NULL
+      AND ROUND(
+        IFNULL(
+          s.remaining_amount,
+          0
+        ),
+        2
+      ) <= 0
+    )
+  `)
+  } else if (paymentFilter === 'unpaid') {
+    where.push(`
+    (
+      s.cancelled_at IS NULL
+      AND ROUND(
+        IFNULL(
+          s.remaining_amount,
+          0
+        ),
+        2
+      ) > 0
+    )
+  `)
   }
 
   if (input?.date_from) {
