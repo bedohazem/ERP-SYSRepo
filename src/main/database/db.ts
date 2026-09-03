@@ -505,9 +505,6 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'promotions', 'created_by', 'INTEGER')
 
     safeAddColumn(db, 'promotions', 'buy_qty', 'INTEGER')
-
-    safeAddColumn(db, 'promotions', 'free_qty', 'INTEGER')
-    safeAddColumn(db, 'promotions', 'buy_qty', 'INTEGER')
     safeAddColumn(db, 'promotions', 'free_qty', 'INTEGER')
     safeAddColumn(db, 'stock_count_sessions', 'category_id', 'INTEGER')
     safeAddColumn(db, 'sales', 'loyalty_points_earned', 'INTEGER DEFAULT 0')
