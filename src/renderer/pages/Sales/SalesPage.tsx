@@ -143,6 +143,10 @@ type InvoiceTab = {
   discountDraft: string
 }
 
+function roundMoney(value: number) {
+  return Number(Number(value || 0).toFixed(2))
+}
+
 function getPromotionDiscountForCart(
   promotion: ActivePromotion | null,
   cart: CartItem[],
@@ -153,42 +157,86 @@ function getPromotionDiscountForCart(
 
   const productIds = new Set((promotion.product_ids || []).map(Number))
 
-  const eligibleItems = cart.filter((item) => {
-    if (promotion.scope_type === 'all') {
-      return true
-    }
+  const eligibleItems = cart
+    .map((item) => {
+      let eligible = false
 
-    if (promotion.scope_type === 'category') {
-      return Number(item.category_id) === Number(promotion.category_id)
-    }
+      if (promotion.scope_type === 'all') {
+        eligible = true
+      }
 
-    return productIds.has(Number(item.product_id))
-  })
+      if (promotion.scope_type === 'category') {
+        eligible = Number(item.category_id) === Number(promotion.category_id)
+      }
 
-  const eligibleSubtotal = eligibleItems.reduce(
-    (total, item) => total + item.quantity * Number(item.sell_price),
-    0,
-  )
+      if (promotion.scope_type === 'products') {
+        eligible = productIds.has(Number(item.product_id))
+      }
+
+      if (!eligible) {
+        return null
+      }
+
+      const qty = Math.max(0, Number(item.quantity || 0))
+
+      const unitPrice = Math.max(0, Number(item.sell_price || 0))
+
+      return {
+        qty,
+        unitPrice,
+
+        lineTotal: roundMoney(qty * unitPrice),
+      }
+    })
+    .filter(Boolean) as Array<{
+    qty: number
+    unitPrice: number
+    lineTotal: number
+  }>
+
+  if (eligibleItems.length === 0) {
+    return 0
+  }
+
+  const value = Math.max(0, Number(promotion.value || 0))
 
   if (promotion.type === 'percent') {
-    return Math.min(
-      eligibleSubtotal,
+    const percent = Math.min(value, 100)
 
-      eligibleSubtotal * (Math.min(Number(promotion.value || 0), 100) / 100),
+    return roundMoney(
+      eligibleItems.reduce((total, item) => {
+        const discount = Math.min(
+          item.lineTotal,
+
+          roundMoney(item.lineTotal * (percent / 100)),
+        )
+
+        return total + discount
+      }, 0),
     )
   }
 
   if (promotion.type === 'fixed_per_item') {
-    return eligibleItems.reduce(
-      (total, item) =>
-        total +
-        Math.min(Number(promotion.value || 0), Number(item.sell_price || 0)) *
-          item.quantity,
-      0,
+    return roundMoney(
+      eligibleItems.reduce((total, item) => {
+        const discountPerItem = Math.min(item.unitPrice, value)
+
+        const discount = Math.min(
+          item.lineTotal,
+
+          roundMoney(discountPerItem * item.qty),
+        )
+
+        return total + discount
+      }, 0),
     )
   }
 
-  return Math.min(eligibleSubtotal, Number(promotion.value || 0))
+  const eligibleSubtotal = roundMoney(
+    eligibleItems.reduce((total, item) => total + item.lineTotal, 0),
+  )
+
+  return roundMoney(Math.min(eligibleSubtotal, value))
 }
 
 type DropdownRect = {
@@ -251,7 +299,21 @@ function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
         .map((item: any) => ({
           variant_id: Number(item.variant_id),
           product_id: Number(item.product_id || 0),
+
           product_name: String(item.product_name || ''),
+
+          category_id:
+            item.category_id === null ||
+            item.category_id === undefined ||
+            item.category_id === ''
+              ? null
+              : Number(item.category_id),
+
+          category_name:
+            item.category_name === null || item.category_name === undefined
+              ? null
+              : String(item.category_name),
+
           barcode: String(item.barcode || ''),
           size: String(item.size || ''),
           color: String(item.color || ''),
