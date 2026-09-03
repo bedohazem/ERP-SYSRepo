@@ -390,22 +390,70 @@ export function createSale(input: CreateSaleInput) {
         )
       }
 
-      insertItem.run(
-        saleId,
-        item.variant_id,
-        item.product_name,
-        item.barcode ?? null,
-        item.size ?? null,
-        item.color ?? null,
-        qty,
-        Number(variant?.buy_price || 0),
-
-        price,
-
+      const itemPromotionDiscount = Math.max(
+        0,
         Number(promotionResult.item_discounts[itemIndex] || 0),
-
-        lineTotal,
       )
+
+      const itemFreeQty = Math.min(
+        qty,
+        Math.max(
+          0,
+          Number(promotionResult.item_free_quantities[itemIndex] || 0),
+        ),
+      )
+
+      const isBuyXGetY = promotionResult.promotion?.type === 'buy_x_get_y'
+
+      if (isBuyXGetY && itemFreeQty > 0) {
+        const paidQty = qty - itemFreeQty
+
+        if (paidQty > 0) {
+          insertItem.run(
+            saleId,
+            item.variant_id,
+            item.product_name,
+            item.barcode ?? null,
+            item.size ?? null,
+            item.color ?? null,
+            paidQty,
+            Number(variant?.buy_price || 0),
+            price,
+            0,
+            roundMoney(paidQty * price),
+          )
+        }
+
+        const giftLineTotal = roundMoney(itemFreeQty * price)
+
+        insertItem.run(
+          saleId,
+          item.variant_id,
+          item.product_name,
+          item.barcode ?? null,
+          item.size ?? null,
+          item.color ?? null,
+          itemFreeQty,
+          Number(variant?.buy_price || 0),
+          price,
+          giftLineTotal,
+          giftLineTotal,
+        )
+      } else {
+        insertItem.run(
+          saleId,
+          item.variant_id,
+          item.product_name,
+          item.barcode ?? null,
+          item.size ?? null,
+          item.color ?? null,
+          qty,
+          Number(variant?.buy_price || 0),
+          price,
+          itemPromotionDiscount,
+          lineTotal,
+        )
+      }
 
       updateStock.run(item.variant_id, qty, saleId, `بيع فاتورة رقم ${saleId}`)
     }

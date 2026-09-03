@@ -1739,7 +1739,13 @@ export default function InvoicesPage() {
                     key={item.sale_item_id}
                     style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                   >
-                    <td style={tdStyle}>{item.product_name}</td>
+                    <td style={tdStyle}>
+                      {item.product_name}
+                      {item.promotion_discount_value >=
+                      roundMoney(item.unit_price * item.sold_quantity) - 0.01
+                        ? ' — مجاني بالعرض'
+                        : ''}
+                    </td>
                     <td style={tdStyle}>{item.size || '—'}</td>
                     <td style={tdStyle}>{item.color || '—'}</td>
                     <td style={tdStyle}>{item.sold_quantity}</td>

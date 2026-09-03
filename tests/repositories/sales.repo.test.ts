@@ -1346,7 +1346,24 @@ describe('sales repository', () => {
 
     const receipt = getSaleReceipt(sale.saleId) as any
 
-    expect(receipt.items[0].promotion_discount_value).toBe(150)
+    expect(receipt.items).toHaveLength(2)
+
+    const giftItem = receipt.items.find(
+      (item: any) => Number(item.promotion_discount_value || 0) > 0,
+    )
+
+    const paidItem = receipt.items.find(
+      (item: any) => Number(item.promotion_discount_value || 0) === 0,
+    )
+
+    expect(giftItem).toBeTruthy()
+    expect(paidItem).toBeTruthy()
+
+    expect(Number(giftItem.quantity)).toBe(1)
+    expect(Number(giftItem.promotion_discount_value)).toBe(150)
+
+    expect(Number(paidItem.quantity)).toBe(2)
+    expect(Number(paidItem.promotion_discount_value)).toBe(0)
 
     const returned = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1355,15 +1372,120 @@ describe('sales repository', () => {
 
       items: [
         {
-          sale_item_id: receipt.items[0].id,
+          sale_item_id: paidItem.id,
 
           variant_id: variant.variant_id,
 
-          quantity: 3,
+          quantity: 2,
+        },
+        {
+          sale_item_id: giftItem.id,
+
+          variant_id: variant.variant_id,
+
+          quantity: 1,
         },
       ],
     })
 
     expect(returned.return_value).toBe(300)
+  })
+
+  it('keeps buy x get y gift and paid returns distinct', () => {
+    const variant = seedProduct()
+
+    const promotion = createPromotion({
+      name: 'Buy 2 Get 1 Return Test',
+      type: 'buy_x_get_y',
+      value: 0,
+      buy_qty: 2,
+      free_qty: 1,
+      scope_type: 'all',
+      category_id: null,
+      product_ids: [],
+      actor_id: 1,
+    })
+
+    togglePromotion(promotion.promotionId, 1)
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      promotion_id: promotion.promotionId,
+      sub_total: 450,
+      discount_value: 30,
+      grand_total: 270,
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 270,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 3,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(sale.promotion_discount_value).toBe(150)
+    expect(sale.grand_total).toBe(270)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    expect(receipt.items).toHaveLength(2)
+
+    const giftItem = receipt.items.find(
+      (item: any) => Number(item.promotion_discount_value || 0) > 0,
+    )
+
+    const paidItem = receipt.items.find(
+      (item: any) => Number(item.promotion_discount_value || 0) === 0,
+    )
+
+    if (!giftItem || !paidItem) {
+      throw new Error(
+        'Buy X Get Y paid/gift lines were not persisted correctly',
+      )
+    }
+
+    expect(giftItem.quantity).toBe(1)
+    expect(giftItem.promotion_discount_value).toBe(150)
+
+    expect(paidItem.quantity).toBe(2)
+    expect(paidItem.promotion_discount_value).toBe(0)
+
+    const giftReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      items: [
+        {
+          sale_item_id: giftItem.id,
+          variant_id: giftItem.variant_id,
+          quantity: 1,
+        },
+      ],
+    })
+
+    expect(giftReturn.return_value).toBe(0)
+
+    const paidReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      items: [
+        {
+          sale_item_id: paidItem.id,
+          variant_id: paidItem.variant_id,
+          quantity: 1,
+        },
+      ],
+    })
+
+    expect(paidReturn.return_value).toBe(135)
+
+    expect(getStockByBarcode('SALE001')).toBe(9)
   })
 })

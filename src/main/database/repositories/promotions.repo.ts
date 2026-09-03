@@ -171,12 +171,14 @@ export function calculateActivePromotionForSale(items: PromotionSaleItem[]) {
   const promotion = getActivePromotion() as any
 
   const itemDiscounts = items.map(() => 0)
+  const itemFreeQuantities = items.map(() => 0)
 
   if (!promotion) {
     return {
       promotion: null,
       promotion_discount_value: 0,
       item_discounts: itemDiscounts,
+      item_free_quantities: itemFreeQuantities,
     }
   }
 
@@ -258,6 +260,7 @@ export function calculateActivePromotionForSale(items: PromotionSaleItem[]) {
       promotion,
       promotion_discount_value: 0,
       item_discounts: itemDiscounts,
+      item_free_quantities: itemFreeQuantities,
     }
   }
 
@@ -273,6 +276,7 @@ export function calculateActivePromotionForSale(items: PromotionSaleItem[]) {
         promotion,
         promotion_discount_value: 0,
         item_discounts: itemDiscounts,
+        item_free_quantities: itemFreeQuantities,
       }
     }
 
@@ -298,6 +302,8 @@ export function calculateActivePromotionForSale(items: PromotionSaleItem[]) {
       const itemUnits = Math.floor(item.qty)
 
       const freeFromItem = Math.min(remainingFreeUnits, itemUnits)
+
+      itemFreeQuantities[item.index] = freeFromItem
 
       itemDiscounts[item.index] = roundMoney(freeFromItem * item.unitPrice)
 
@@ -359,6 +365,7 @@ export function calculateActivePromotionForSale(items: PromotionSaleItem[]) {
     promotion,
     promotion_discount_value: totalDiscount,
     item_discounts: itemDiscounts,
+    item_free_quantities: itemFreeQuantities,
   }
 }
 
