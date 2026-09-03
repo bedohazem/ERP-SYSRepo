@@ -122,9 +122,36 @@ export function getReportsSummary(input?: ReportFilter) {
       SELECT
         COUNT(*) AS sales_count,
         IFNULL(SUM(s.grand_total), 0) AS gross_sales,
-        IFNULL(SUM(s.discount_value), 0) AS normal_discounts,
-        IFNULL(SUM(s.loyalty_discount_value), 0) AS loyalty_discounts,
-        IFNULL(SUM(s.discount_value + s.loyalty_discount_value), 0) AS total_discounts
+        IFNULL(
+          SUM(s.discount_value),
+          0
+        ) AS normal_discounts,
+
+        IFNULL(
+          SUM(
+            s.promotion_discount_value
+          ),
+          0
+        ) AS promotion_discounts,
+
+        IFNULL(
+          SUM(
+            s.loyalty_discount_value
+          ),
+          0
+        ) AS loyalty_discounts,
+
+        IFNULL(
+          SUM(
+            s.discount_value
+            + IFNULL(
+                s.promotion_discount_value,
+                0
+              )
+            + s.loyalty_discount_value
+          ),
+          0
+        ) AS total_discounts
       FROM sales s
       ${salesWhere.whereSql}
     `,
@@ -148,11 +175,28 @@ export function getReportsSummary(input?: ReportFilter) {
             0,
             sr.sub_total
             - sr.refund_amount
-            - IFNULL(sr.loyalty_discount_value, 0)
+            - IFNULL(
+                sr.loyalty_discount_value,
+                0
+              )
+            - IFNULL(
+                sr.promotion_discount_value,
+                0
+              )
           )
         ),
         0
       ) AS returned_normal_discounts,
+
+      IFNULL(
+        SUM(
+          IFNULL(
+            sr.promotion_discount_value,
+            0
+          )
+        ),
+        0
+      ) AS returned_promotion_discounts,
 
       IFNULL(
         SUM(sr.loyalty_discount_value),
@@ -197,12 +241,17 @@ export function getReportsSummary(input?: ReportFilter) {
         IFNULL(SUM(
           x.items_profit_before_discount
           - x.normal_discount
+          - x.promotion_discount
           - x.loyalty_discount
         ), 0) AS net_profit_after_discounts
       FROM (
         SELECT
           s.id,
           IFNULL(s.discount_value, 0) AS normal_discount,
+          IFNULL(
+            s.promotion_discount_value,
+            0
+          ) AS promotion_discount,
           IFNULL(s.loyalty_discount_value, 0) AS loyalty_discount,
           IFNULL(SUM(si.unit_cost * si.quantity), 0) AS total_cost,
           IFNULL(SUM((si.unit_price - si.unit_cost) * si.quantity), 0) AS items_profit_before_discount
@@ -271,13 +320,20 @@ export function getReportsSummary(input?: ReportFilter) {
       Number(returnsSummary.returned_normal_discounts || 0),
   )
 
+  const promotionDiscounts = Math.max(
+    0,
+
+    Number(salesSummary.promotion_discounts || 0) -
+      Number(returnsSummary.returned_promotion_discounts || 0),
+  )
+
   const loyaltyDiscounts = Math.max(
     0,
     Number(salesSummary.loyalty_discounts || 0) -
       Number(returnsSummary.returned_loyalty_discounts || 0),
   )
 
-  const totalDiscounts = normalDiscounts + loyaltyDiscounts
+  const totalDiscounts = normalDiscounts + promotionDiscounts + loyaltyDiscounts
 
   const grossProfitBeforeDiscounts =
     Number(salesProfitRow.gross_profit_before_discounts || 0) -
@@ -717,6 +773,7 @@ export function getReportsSummary(input?: ReportFilter) {
       gross_sales: grossSales,
       total_returns: totalReturns,
       normal_discounts: normalDiscounts,
+      promotion_discounts: promotionDiscounts,
       loyalty_discounts: loyaltyDiscounts,
       total_discounts: totalDiscounts,
       net_sales: grossSales - totalReturns,

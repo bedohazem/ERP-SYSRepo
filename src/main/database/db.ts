@@ -159,6 +159,11 @@ export function getDb(): Database.Database {
         business_date TEXT,
         sub_total REAL NOT NULL DEFAULT 0,
         discount_value REAL NOT NULL DEFAULT 0,
+
+        promotion_id INTEGER,
+        promotion_name TEXT,
+        promotion_discount_value REAL NOT NULL DEFAULT 0,
+
         grand_total REAL NOT NULL DEFAULT 0,
         paid REAL NOT NULL DEFAULT 0,
         change_amount REAL NOT NULL DEFAULT 0,
@@ -178,6 +183,7 @@ export function getDb(): Database.Database {
         quantity REAL NOT NULL,
         unit_cost REAL NOT NULL DEFAULT 0,
         unit_price REAL NOT NULL,
+        promotion_discount_value REAL NOT NULL DEFAULT 0,
         line_total REAL NOT NULL
       );
 
@@ -448,6 +454,7 @@ export function getDb(): Database.Database {
         customer_id INTEGER,
         user_id INTEGER REFERENCES users(id),
         sub_total REAL NOT NULL DEFAULT 0,
+        promotion_discount_value REAL NOT NULL DEFAULT 0,
         loyalty_discount_value REAL NOT NULL DEFAULT 0,
         refund_amount REAL NOT NULL DEFAULT 0,
         payment_method TEXT DEFAULT 'cash',
@@ -471,6 +478,7 @@ export function getDb(): Database.Database {
         quantity REAL NOT NULL,
         unit_cost REAL NOT NULL DEFAULT 0,
         unit_price REAL NOT NULL,
+        promotion_discount_value REAL NOT NULL DEFAULT 0,
         line_total REAL NOT NULL,
         FOREIGN KEY (return_id) REFERENCES sale_returns(id) ON DELETE CASCADE,
         FOREIGN KEY (original_sale_item_id) REFERENCES sale_items(id),
@@ -484,6 +492,32 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'sales', 'loyalty_points_earned', 'INTEGER DEFAULT 0')
     safeAddColumn(db, 'sales', 'loyalty_points_redeemed', 'INTEGER DEFAULT 0')
     safeAddColumn(db, 'sales', 'loyalty_discount_value', 'REAL DEFAULT 0')
+    safeAddColumn(db, 'sales', 'promotion_id', 'INTEGER')
+
+    safeAddColumn(db, 'sales', 'promotion_name', 'TEXT')
+
+    safeAddColumn(db, 'sales', 'promotion_discount_value', 'REAL DEFAULT 0')
+
+    safeAddColumn(
+      db,
+      'sale_items',
+      'promotion_discount_value',
+      'REAL DEFAULT 0',
+    )
+
+    safeAddColumn(
+      db,
+      'sale_returns',
+      'promotion_discount_value',
+      'REAL DEFAULT 0',
+    )
+
+    safeAddColumn(
+      db,
+      'sale_return_items',
+      'promotion_discount_value',
+      'REAL DEFAULT 0',
+    )
     safeAddColumn(db, 'sales', 'parent_sale_id', 'INTEGER')
     safeAddColumn(db, 'sales', 'return_reason', 'TEXT')
     safeAddColumn(db, 'sales', 'type', `TEXT DEFAULT 'sale'`)

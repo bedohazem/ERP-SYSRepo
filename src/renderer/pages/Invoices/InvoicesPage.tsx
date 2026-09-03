@@ -15,6 +15,9 @@ type SaleRow = {
   cashier_name?: string | null
   sub_total: number
   discount_value: number
+  promotion_id?: number | null
+  promotion_name?: string | null
+  promotion_discount_value?: number
   loyalty_discount_value: number
   grand_total: number
   paid: number
@@ -1428,6 +1431,15 @@ export default function InvoicesPage() {
                 label="خصم عادي"
                 value={money(selectedReceipt.sale.discount_value || 0)}
               />
+              {Number(selectedReceipt.sale.promotion_discount_value || 0) >
+                0 && (
+                <SummaryLine
+                  label={`عرض ${selectedReceipt.sale.promotion_name || ''}`}
+                  value={money(
+                    selectedReceipt.sale.promotion_discount_value || 0,
+                  )}
+                />
+              )}
               <SummaryLine
                 label="خصم النقاط"
                 value={money(selectedReceipt.sale.loyalty_discount_value || 0)}

@@ -281,6 +281,9 @@ declare global {
         loyalty_points_earned?: number
         loyalty_points_redeemed?: number
         loyalty_discount_value?: number
+        promotion_id?: number | null
+        promotion_name?: string | null
+        promotion_discount_value?: number
         grand_total?: number
       }>
 
@@ -307,6 +310,9 @@ declare global {
           user_id: number | null
           sub_total: number
           discount_value: number
+          promotion_id?: number | null
+          promotion_name?: string | null
+          promotion_discount_value: number
           grand_total: number
           paid: number
           remaining_amount: number
@@ -676,6 +682,7 @@ declare global {
           gross_sales: number
           total_returns: number
           normal_discounts: number
+          promotion_discounts: number
           loyalty_discounts: number
           total_discounts: number
           net_sales: number

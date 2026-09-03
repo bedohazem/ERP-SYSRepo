@@ -39,6 +39,21 @@ type CartItem = SaleVariant & {
   quantity: number
 }
 
+type ActivePromotion = {
+  id: number
+  name: string
+
+  type: 'percent' | 'fixed_per_item' | 'fixed_invoice'
+
+  value: number
+
+  scope_type: 'all' | 'category' | 'products'
+
+  category_id?: number | null
+
+  product_ids?: number[]
+}
+
 type CustomerOption = {
   id: number
   name: string
@@ -68,6 +83,9 @@ type SaleReceipt = {
     cashier_name?: string | null
     sub_total: number
     discount_value?: number
+    promotion_id?: number | null
+    promotion_name?: string | null
+    promotion_discount_value?: number
     grand_total: number
     paid?: number
     remaining_amount?: number
@@ -123,6 +141,54 @@ type InvoiceTab = {
   businessDateDraft: string
   discountType: 'amount' | 'percent'
   discountDraft: string
+}
+
+function getPromotionDiscountForCart(
+  promotion: ActivePromotion | null,
+  cart: CartItem[],
+) {
+  if (!promotion) {
+    return 0
+  }
+
+  const productIds = new Set((promotion.product_ids || []).map(Number))
+
+  const eligibleItems = cart.filter((item) => {
+    if (promotion.scope_type === 'all') {
+      return true
+    }
+
+    if (promotion.scope_type === 'category') {
+      return Number(item.category_id) === Number(promotion.category_id)
+    }
+
+    return productIds.has(Number(item.product_id))
+  })
+
+  const eligibleSubtotal = eligibleItems.reduce(
+    (total, item) => total + item.quantity * Number(item.sell_price),
+    0,
+  )
+
+  if (promotion.type === 'percent') {
+    return Math.min(
+      eligibleSubtotal,
+
+      eligibleSubtotal * (Math.min(Number(promotion.value || 0), 100) / 100),
+    )
+  }
+
+  if (promotion.type === 'fixed_per_item') {
+    return eligibleItems.reduce(
+      (total, item) =>
+        total +
+        Math.min(Number(promotion.value || 0), Number(item.sell_price || 0)) *
+          item.quantity,
+      0,
+    )
+  }
+
+  return Math.min(eligibleSubtotal, Number(promotion.value || 0))
 }
 
 type DropdownRect = {
@@ -321,7 +387,8 @@ export default function SalesPage() {
   const [cashDrawerAutoOpen, setCashDrawerAutoOpen] = useState(true)
   const [barcodeMode, setBarcodeMode] = useState(true)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
-
+  const [activePromotion, setActivePromotion] =
+    useState<ActivePromotion | null>(null)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
   const [loadingCustomers, setLoadingCustomers] = useState(false)
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false)
@@ -390,6 +457,13 @@ export default function SalesPage() {
     [activeInvoice.cart],
   )
 
+  const promotionDiscountValue = useMemo(
+    () => getPromotionDiscountForCart(activePromotion, activeInvoice.cart),
+    [activePromotion, activeInvoice.cart],
+  )
+
+  const totalAfterPromotion = Math.max(0, subTotal - promotionDiscountValue)
+
   const normalDiscountValue = useMemo(() => {
     const discountNumber = Number(activeInvoice.discountDraft || 0)
     const value = Number.isFinite(discountNumber)
@@ -398,13 +472,23 @@ export default function SalesPage() {
 
     if (activeInvoice.discountType === 'percent') {
       const percent = Math.min(value, 100)
-      return Math.min(subTotal, (subTotal * percent) / 100)
+      return Math.min(
+        totalAfterPromotion,
+        (totalAfterPromotion * percent) / 100,
+      )
     }
 
-    return Math.min(subTotal, value)
-  }, [activeInvoice.discountDraft, activeInvoice.discountType, subTotal])
+    return Math.min(totalAfterPromotion, value)
+  }, [
+    activeInvoice.discountDraft,
+    activeInvoice.discountType,
+    totalAfterPromotion,
+  ])
 
-  const totalAfterNormalDiscount = Math.max(0, subTotal - normalDiscountValue)
+  const totalAfterNormalDiscount = Math.max(
+    0,
+    totalAfterPromotion - normalDiscountValue,
+  )
 
   const selectedCustomerPoints = Number(
     activeInvoice.customer?.points_balance ?? 0,
@@ -452,7 +536,7 @@ export default function SalesPage() {
   const paymentStatus =
     remainingAmount === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid'
 
-  function openPaymentModal() {
+  async function openPaymentModal() {
     if (!user?.id) {
       showMessage('error', 'المستخدم غير مسجل')
       return
@@ -463,9 +547,55 @@ export default function SalesPage() {
       return
     }
 
+    let latestPromotion = activePromotion
+
+    try {
+      latestPromotion = await window.api.getActivePromotion()
+
+      setActivePromotion(latestPromotion || null)
+    } catch (error) {
+      console.error('Failed to refresh promotion:', error)
+    }
+
+    const nextPromotionDiscount = getPromotionDiscountForCart(
+      latestPromotion || null,
+      activeInvoice.cart,
+    )
+
+    const nextAfterPromotion = Math.max(0, subTotal - nextPromotionDiscount)
+
+    const discountNumber = Math.max(0, Number(activeInvoice.discountDraft || 0))
+
+    const nextNormalDiscount =
+      activeInvoice.discountType === 'percent'
+        ? Math.min(
+            nextAfterPromotion,
+            nextAfterPromotion * (Math.min(discountNumber, 100) / 100),
+          )
+        : Math.min(nextAfterPromotion, discountNumber)
+
+    const nextAfterNormal = Math.max(0, nextAfterPromotion - nextNormalDiscount)
+
+    const nextMaxRedeemByTotal =
+      pointValue > 0 ? Math.floor(nextAfterNormal / pointValue) : 0
+
+    const nextMaxRedeemPoints = loyaltyEnabled
+      ? Math.min(selectedCustomerPoints, nextMaxRedeemByTotal)
+      : 0
+
+    const nextRedeemPoints = Math.min(
+      requestedRedeemPoints,
+      nextMaxRedeemPoints,
+    )
+
+    const nextGrandTotal = Math.max(
+      0,
+      nextAfterNormal - nextRedeemPoints * pointValue,
+    )
+
     // كل مرة نفتح نافذة الدفع نبدأ بإجمالي الفاتورة الحالي
     updateActiveInvoice({
-      paidDraft: String(grandTotal.toFixed(2)),
+      paidDraft: nextGrandTotal.toFixed(2),
     })
 
     setShowPaymentModal(true)
@@ -979,6 +1109,7 @@ export default function SalesPage() {
         user_id: user.id,
         customer_id: activeInvoice.customer?.id ?? null,
         business_date: activeInvoice.businessDateDraft || null,
+        promotion_id: activePromotion?.id ?? null,
         sub_total: subTotal,
         discount_value: normalDiscountValue,
         grand_total: grandTotal,
@@ -1235,7 +1366,7 @@ export default function SalesPage() {
 
       if (e.key === 'F12') {
         e.preventDefault()
-        if (!saving) openPaymentModal()
+        if (!saving) void openPaymentModal()
       }
     }
 
@@ -1350,6 +1481,17 @@ export default function SalesPage() {
     void loadLoyaltySettings()
 
     void window.api
+      .getActivePromotion()
+      .then((promotion) => {
+        setActivePromotion(promotion || null)
+      })
+      .catch((error) => {
+        console.error('Failed to load active promotion:', error)
+
+        setActivePromotion(null)
+      })
+
+    void window.api
       .getCategories()
       .then((data) => setCategories(Array.isArray(data) ? data : []))
       .catch((error) => {
@@ -1418,14 +1560,17 @@ export default function SalesPage() {
 
     if (activeInvoice.discountType === 'percent') {
       const percent = Math.min(discountNumber, 100)
-      nextDiscountValue = Math.min(subTotal, (subTotal * percent) / 100)
+      nextDiscountValue = Math.min(
+        totalAfterPromotion,
+        (totalAfterPromotion * percent) / 100,
+      )
     } else {
-      nextDiscountValue = Math.min(subTotal, discountNumber)
+      nextDiscountValue = Math.min(totalAfterPromotion, discountNumber)
     }
 
     const nextGrandTotal = Math.max(
       0,
-      subTotal - nextDiscountValue - loyaltyDiscountValue,
+      totalAfterPromotion - nextDiscountValue - loyaltyDiscountValue,
     )
 
     updateActiveInvoice({
@@ -1442,16 +1587,16 @@ export default function SalesPage() {
 
     if (type === 'percent') {
       nextDiscountValue = Math.min(
-        subTotal,
-        (subTotal * Math.min(value, 100)) / 100,
+        totalAfterPromotion,
+        (totalAfterPromotion * Math.min(value, 100)) / 100,
       )
     } else {
-      nextDiscountValue = Math.min(subTotal, value)
+      nextDiscountValue = Math.min(totalAfterPromotion, value)
     }
 
     const nextGrandTotal = Math.max(
       0,
-      subTotal - nextDiscountValue - loyaltyDiscountValue,
+      totalAfterPromotion - nextDiscountValue - loyaltyDiscountValue,
     )
 
     updateActiveInvoice({
@@ -1628,6 +1773,37 @@ export default function SalesPage() {
         }}
       >
         <h2 style={{ margin: '0 0 24px', textAlign: 'right' }}>فاتورة بيع</h2>
+
+        {activePromotion && (
+          <div
+            style={{
+              marginBottom: '16px',
+              padding: '12px 14px',
+              borderRadius: '12px',
+              background: 'rgba(34,197,94,0.10)',
+              border: '1px solid rgba(34,197,94,0.30)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: '10px',
+              flexWrap: 'wrap',
+              direction: 'rtl',
+            }}
+          >
+            <strong
+              style={{
+                color: '#86efac',
+              }}
+            >
+              🎁 عرض فعال: {activePromotion.name}
+            </strong>
+
+            <span>
+              {promotionDiscountValue > 0
+                ? `خصم العرض: ${money(promotionDiscountValue)} ج.م`
+                : 'العرض لا ينطبق على أصناف الفاتورة الحالية'}
+            </span>
+          </div>
+        )}
 
         <div
           style={{
@@ -2194,7 +2370,7 @@ export default function SalesPage() {
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={openPaymentModal}
+            onClick={() => void openPaymentModal()}
             disabled={saving || activeInvoice.cart.length === 0}
             style={{
               ...secondaryOutlineButtonStyle,
@@ -2401,6 +2577,16 @@ export default function SalesPage() {
                 <span>خصم عادي</span>
                 <strong>{money(receiptData.sale.discount_value)} ج.م</strong>
               </div>
+
+              {Number(receiptData.sale.promotion_discount_value || 0) > 0 && (
+                <div style={receiptInfoCardStyle}>
+                  <span>عرض {receiptData.sale.promotion_name || ''}</span>
+
+                  <strong>
+                    {money(receiptData.sale.promotion_discount_value)} ج.م
+                  </strong>
+                </div>
+              )}
 
               <div style={receiptInfoCardStyle}>
                 <span>خصم النقاط</span>
@@ -2847,6 +3033,25 @@ export default function SalesPage() {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>الإجمالي قبل الخصومات</span>
+
+                {activePromotion && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <span>عرض: {activePromotion.name}</span>
+
+                    <strong
+                      style={{
+                        color: '#86efac',
+                      }}
+                    >
+                      {money(promotionDiscountValue)} ج.م
+                    </strong>
+                  </div>
+                )}
                 <strong>{money(subTotal)} ج.م</strong>
               </div>
 

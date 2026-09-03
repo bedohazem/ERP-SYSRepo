@@ -11,6 +11,11 @@ import {
   listSales,
 } from '../../src/main/database/repositories/sales.repo'
 
+import {
+  createPromotion,
+  togglePromotion,
+} from '../../src/main/database/repositories/promotions.repo'
+
 type SaleVariantTestRow = {
   variant_id: number
   product_id: number
@@ -1169,5 +1174,110 @@ describe('sales repository', () => {
     expect(unpaidIds).toContain(unpaid.saleId)
 
     expect(unpaidIds).not.toContain(paid.saleId)
+  })
+
+  it('applies active promotion and preserves discount on return', () => {
+    const variant = seedProduct()
+
+    const promotion = createPromotion({
+      name: '25 Percent Sale',
+
+      type: 'percent',
+
+      value: 25,
+
+      scope_type: 'all',
+
+      actor_id: 1,
+    })
+
+    togglePromotion(promotion.promotionId, 1)
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      promotion_id: promotion.promotionId,
+
+      sub_total: 150,
+
+      discount_value: 10,
+
+      grand_total: 102.5,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 102.5,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(sale.promotion_discount_value).toBe(37.5)
+
+    expect(sale.grand_total).toBe(102.5)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    expect(receipt.sale.promotion_discount_value).toBe(37.5)
+
+    expect(receipt.items[0].promotion_discount_value).toBe(37.5)
+
+    const result = createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      items: [
+        {
+          sale_item_id: receipt.items[0].id,
+
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+        },
+      ],
+    })
+
+    expect(result.return_value).toBe(102.5)
+
+    const db = getDb()
+
+    const returnRow = db
+      .prepare(
+        `
+          SELECT
+            promotion_discount_value,
+            refund_amount
+
+          FROM sale_returns
+
+          WHERE original_sale_id = ?
+          LIMIT 1
+          `,
+      )
+      .get(sale.saleId) as any
+
+    expect(Number(returnRow.promotion_discount_value)).toBe(37.5)
+
+    expect(Number(returnRow.refund_amount)).toBe(102.5)
   })
 })

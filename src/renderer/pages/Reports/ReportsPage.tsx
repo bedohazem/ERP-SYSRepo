@@ -18,6 +18,7 @@ type ReportsData = {
     total_manual_withdrawals: number
     final_net_profit: number
     normal_discounts: number
+    promotion_discounts: number
     total_discounts: number
   }
   cashAccounts: Array<{
@@ -52,6 +53,7 @@ const emptyReports: ReportsData = {
     total_manual_withdrawals: 0,
     final_net_profit: 0,
     normal_discounts: 0,
+    promotion_discounts: 0,
     total_discounts: 0,
   },
   cashAccounts: [],
@@ -242,6 +244,10 @@ export default function ReportsPage() {
         <StatCard
           title="خصومات عادية"
           value={money(data.summary.normal_discounts)}
+        />
+        <StatCard
+          title="خصومات العروض"
+          value={money(data.summary.promotion_discounts)}
         />
         <StatCard
           title="إجمالي الخصومات"

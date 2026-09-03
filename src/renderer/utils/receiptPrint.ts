@@ -839,6 +839,22 @@ export function buildSaleReceiptHtml(
             }
 
             ${
+              Number(sale.promotion_discount_value || 0) > 0
+                ? `
+                  <div class="summary-row discount">
+                    <span>
+                      عرض ${escapeHtml(sale.promotion_name || '')}
+                    </span>
+
+                    <strong>
+                      -${Number(sale.promotion_discount_value || 0).toFixed(2)}
+                    </strong>
+                  </div>
+                `
+                : ''
+            }
+
+            ${
               Number(sale.loyalty_discount_value || 0) > 0
                 ? `
                   <div class="summary-row discount">

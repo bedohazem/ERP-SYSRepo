@@ -132,6 +132,171 @@ function replacePromotionProducts(promotionId: number, productIds: number[]) {
   }
 }
 
+type PromotionSaleItem = {
+  variant_id: number
+  quantity: number
+  unit_price: number
+}
+
+function roundMoney(value: number) {
+  return Number(Number(value || 0).toFixed(2))
+}
+
+export function calculateActivePromotionForSale(items: PromotionSaleItem[]) {
+  const db = getDb()
+
+  const promotion = getActivePromotion() as any
+
+  const itemDiscounts = items.map(() => 0)
+
+  if (!promotion) {
+    return {
+      promotion: null,
+      promotion_discount_value: 0,
+      item_discounts: itemDiscounts,
+    }
+  }
+
+  const productIds = new Set<number>(
+    Array.isArray(promotion.product_ids)
+      ? promotion.product_ids.map(Number)
+      : [],
+  )
+
+  const getVariantScope = db.prepare(
+    `
+      SELECT
+        pv.product_id,
+        p.category_id
+
+      FROM product_variants pv
+
+      JOIN products p
+        ON p.id = pv.product_id
+
+      WHERE pv.id = ?
+      LIMIT 1
+      `,
+  )
+
+  const eligibleItems = items
+    .map((item, index) => {
+      const qty = Math.max(0, Number(item.quantity || 0))
+
+      const unitPrice = Math.max(0, Number(item.unit_price || 0))
+
+      const lineTotal = roundMoney(qty * unitPrice)
+
+      const scope = getVariantScope.get(Number(item.variant_id)) as
+        | {
+            product_id: number
+            category_id: number | null
+          }
+        | undefined
+
+      if (!scope) {
+        return null
+      }
+
+      let eligible = false
+
+      if (promotion.scope_type === 'all') {
+        eligible = true
+      }
+
+      if (promotion.scope_type === 'category') {
+        eligible = Number(scope.category_id) === Number(promotion.category_id)
+      }
+
+      if (promotion.scope_type === 'products') {
+        eligible = productIds.has(Number(scope.product_id))
+      }
+
+      if (!eligible) {
+        return null
+      }
+
+      return {
+        index,
+        qty,
+        unitPrice,
+        lineTotal,
+      }
+    })
+    .filter(Boolean) as Array<{
+    index: number
+    qty: number
+    unitPrice: number
+    lineTotal: number
+  }>
+
+  if (eligibleItems.length === 0) {
+    return {
+      promotion,
+      promotion_discount_value: 0,
+      item_discounts: itemDiscounts,
+    }
+  }
+
+  const value = Math.max(0, Number(promotion.value || 0))
+
+  if (promotion.type === 'percent') {
+    const percent = Math.min(value, 100)
+
+    for (const item of eligibleItems) {
+      itemDiscounts[item.index] = Math.min(
+        item.lineTotal,
+        roundMoney(item.lineTotal * (percent / 100)),
+      )
+    }
+  }
+
+  if (promotion.type === 'fixed_per_item') {
+    for (const item of eligibleItems) {
+      const discountPerItem = Math.min(item.unitPrice, value)
+
+      itemDiscounts[item.index] = Math.min(
+        item.lineTotal,
+        roundMoney(discountPerItem * item.qty),
+      )
+    }
+  }
+
+  if (promotion.type === 'fixed_invoice') {
+    const eligibleSubtotal = roundMoney(
+      eligibleItems.reduce((total, item) => total + item.lineTotal, 0),
+    )
+
+    const targetDiscount = Math.min(eligibleSubtotal, value)
+
+    let remaining = roundMoney(targetDiscount)
+
+    eligibleItems.forEach((item, index) => {
+      const isLast = index === eligibleItems.length - 1
+
+      let discount = isLast
+        ? remaining
+        : roundMoney(targetDiscount * (item.lineTotal / eligibleSubtotal))
+
+      discount = Math.min(item.lineTotal, discount)
+
+      itemDiscounts[item.index] = discount
+
+      remaining = roundMoney(remaining - discount)
+    })
+  }
+
+  const totalDiscount = roundMoney(
+    itemDiscounts.reduce((total, discount) => total + Number(discount || 0), 0),
+  )
+
+  return {
+    promotion,
+    promotion_discount_value: totalDiscount,
+    item_discounts: itemDiscounts,
+  }
+}
+
 export function listPromotions() {
   const db = getDb()
 
