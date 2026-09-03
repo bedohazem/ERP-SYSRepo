@@ -71,11 +71,8 @@ export function getDb(): Database.Database {
 
         name TEXT NOT NULL,
 
-        git add src/main/database/db.ts src/main/database/repositories/promotions.repo.ts src/main/ipc/promotions.ipc.ts src/renderer/pages/Promotions/PromotionsPage.tsx src/renderer/pages/Sales/SalesPage.tsx tests/repositories/sales.repo.test.ts
+        type TEXT NOT NULL,
 
-git commit -m "feat(promotions): add buy x get y offers"
-
-git push
         value REAL NOT NULL DEFAULT 0,
 
         buy_qty INTEGER,
@@ -495,6 +492,21 @@ git push
     `)
 
     safeAddColumn(db, 'product_variants', 'discount_price', 'REAL')
+    safeAddColumn(db, 'promotions', 'type', `TEXT DEFAULT 'percent'`)
+
+    safeAddColumn(db, 'promotions', 'value', 'REAL DEFAULT 0')
+
+    safeAddColumn(db, 'promotions', 'scope_type', `TEXT DEFAULT 'all'`)
+
+    safeAddColumn(db, 'promotions', 'category_id', 'INTEGER')
+
+    safeAddColumn(db, 'promotions', 'is_active', 'INTEGER DEFAULT 0')
+
+    safeAddColumn(db, 'promotions', 'created_by', 'INTEGER')
+
+    safeAddColumn(db, 'promotions', 'buy_qty', 'INTEGER')
+
+    safeAddColumn(db, 'promotions', 'free_qty', 'INTEGER')
     safeAddColumn(db, 'promotions', 'buy_qty', 'INTEGER')
     safeAddColumn(db, 'promotions', 'free_qty', 'INTEGER')
     safeAddColumn(db, 'stock_count_sessions', 'category_id', 'INTEGER')
