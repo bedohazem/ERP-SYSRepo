@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useAuthStore } from '../../store/auth.store'
 
-type PromotionType = 'percent' | 'fixed_per_item' | 'fixed_invoice'
+type PromotionType =
+  | 'percent'
+  | 'fixed_per_item'
+  | 'fixed_invoice'
+  | 'buy_x_get_y'
 
 type PromotionScope = 'all' | 'category' | 'products'
 
@@ -11,6 +15,8 @@ type PromotionRow = {
   name: string
   type: PromotionType
   value: number
+  buy_qty?: number | null
+  free_qty?: number | null
   scope_type: PromotionScope
   category_id?: number | null
   category_name?: string | null
@@ -38,6 +44,10 @@ const emptyForm = {
   type: 'percent' as PromotionType,
 
   value: '',
+
+  buy_qty: '2',
+
+  free_qty: '1',
 
   scope_type: 'all' as PromotionScope,
 
@@ -130,6 +140,10 @@ export default function PromotionsPage() {
 
         value: String(details.value ?? ''),
 
+        buy_qty: String(details.buy_qty ?? 2),
+
+        free_qty: String(details.free_qty ?? 1),
+
         scope_type: details.scope_type,
 
         category_id: details.category_id ? String(details.category_id) : '',
@@ -170,10 +184,27 @@ export default function PromotionsPage() {
       return
     }
 
-    const value = Number(form.value)
+    const isBuyXGetY = form.type === 'buy_x_get_y'
 
-    if (!Number.isFinite(value) || value <= 0) {
+    const value = isBuyXGetY ? 0 : Number(form.value)
+
+    if (!isBuyXGetY && (!Number.isFinite(value) || value <= 0)) {
       showMessage('اكتب قيمة عرض صحيحة')
+      return
+    }
+
+    const buyQty = Number(form.buy_qty)
+
+    const freeQty = Number(form.free_qty)
+
+    if (
+      isBuyXGetY &&
+      (!Number.isInteger(buyQty) ||
+        buyQty <= 0 ||
+        !Number.isInteger(freeQty) ||
+        freeQty <= 0)
+    ) {
+      showMessage('اكتب كميات الشراء والهدية بشكل صحيح')
       return
     }
 
@@ -186,7 +217,9 @@ export default function PromotionsPage() {
         type: form.type,
 
         value,
+        buy_qty: isBuyXGetY ? buyQty : null,
 
+        free_qty: isBuyXGetY ? freeQty : null,
         scope_type: form.scope_type,
 
         category_id:
@@ -265,7 +298,16 @@ export default function PromotionsPage() {
     )
   }, [products, productSearch])
 
-  function typeLabel(type: PromotionType, value: number) {
+  function typeLabel(
+    type: PromotionType,
+    value: number,
+    buyQty = 0,
+    freeQty = 0,
+  ) {
+    if (type === 'buy_x_get_y') {
+      return `اشتري ${buyQty} وخد ${freeQty} هدية`
+    }
+
     if (type === 'percent') {
       return `خصم ${value}%`
     }
@@ -391,29 +433,72 @@ export default function PromotionsPage() {
               style={inputStyle}
             >
               <option value="percent">خصم نسبة %</option>
-
               <option value="fixed_per_item">خصم مبلغ لكل قطعة</option>
-
               <option value="fixed_invoice">خصم مبلغ على الفاتورة</option>
+              <option value="buy_x_get_y">اشتري X وخد Y هدية</option>
             </select>
           </label>
 
-          <label style={fieldStyle}>
-            <span>قيمة الخصم</span>
+          {form.type !== 'buy_x_get_y' && (
+            <label style={fieldStyle}>
+              <span>قيمة الخصم</span>
 
-            <input
-              type="number"
-              min={0}
-              value={form.value}
-              onChange={(e) =>
-                setForm((current) => ({
-                  ...current,
-                  value: e.target.value,
-                }))
-              }
-              style={inputStyle}
-            />
-          </label>
+              <input
+                type="number"
+                min={0}
+                value={form.value}
+                onChange={(e) =>
+                  setForm((current) => ({
+                    ...current,
+                    value: e.target.value,
+                  }))
+                }
+                style={inputStyle}
+              />
+            </label>
+          )}
+
+          {form.type === 'buy_x_get_y' && (
+            <>
+              <label style={fieldStyle}>
+                <span>اشتري كام قطعة؟</span>
+
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={form.buy_qty}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+
+                      buy_qty: e.target.value,
+                    }))
+                  }
+                  style={inputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span>خد كام هدية؟</span>
+
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={form.free_qty}
+                  onChange={(e) =>
+                    setForm((current) => ({
+                      ...current,
+
+                      free_qty: e.target.value,
+                    }))
+                  }
+                  style={inputStyle}
+                />
+              </label>
+            </>
+          )}
 
           <label style={fieldStyle}>
             <span>يطبق على</span>
@@ -617,7 +702,15 @@ export default function PromotionsPage() {
                         color: '#cbd5e1',
                       }}
                     >
-                      {typeLabel(promotion.type, Number(promotion.value))}
+                      {typeLabel(
+                        promotion.type,
+
+                        Number(promotion.value),
+
+                        Number(promotion.buy_qty || 0),
+
+                        Number(promotion.free_qty || 0),
+                      )}
                     </div>
 
                     <div

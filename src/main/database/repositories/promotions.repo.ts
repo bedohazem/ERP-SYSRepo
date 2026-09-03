@@ -1,6 +1,10 @@
 import { getDb } from '../db'
 
-export type PromotionType = 'percent' | 'fixed_per_item' | 'fixed_invoice'
+export type PromotionType =
+  | 'percent'
+  | 'fixed_per_item'
+  | 'fixed_invoice'
+  | 'buy_x_get_y'
 
 export type PromotionScope = 'all' | 'category' | 'products'
 
@@ -9,7 +13,8 @@ export type PromotionInput = {
 
   type: PromotionType
   value: number
-
+  buy_qty?: number | null
+  free_qty?: number | null
   scope_type: PromotionScope
 
   category_id?: number | null
@@ -33,18 +38,36 @@ function validatePromotion(input: PromotionInput) {
     throw new Error('اسم العرض مطلوب')
   }
 
-  const value = Number(input.value)
-
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new Error('قيمة العرض غير صحيحة')
-  }
-
-  if (input.type === 'percent' && value > 100) {
-    throw new Error('نسبة الخصم لا يمكن أن تتجاوز 100%')
-  }
-
-  if (!['percent', 'fixed_per_item', 'fixed_invoice'].includes(input.type)) {
+  if (
+    !['percent', 'fixed_per_item', 'fixed_invoice', 'buy_x_get_y'].includes(
+      input.type,
+    )
+  ) {
     throw new Error('نوع العرض غير صحيح')
+  }
+
+  if (input.type === 'buy_x_get_y') {
+    const buyQty = Number(input.buy_qty)
+
+    const freeQty = Number(input.free_qty)
+
+    if (!Number.isInteger(buyQty) || buyQty <= 0) {
+      throw new Error('كمية الشراء في العرض غير صحيحة')
+    }
+
+    if (!Number.isInteger(freeQty) || freeQty <= 0) {
+      throw new Error('كمية الهدية في العرض غير صحيحة')
+    }
+  } else {
+    const value = Number(input.value)
+
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error('قيمة العرض غير صحيحة')
+    }
+
+    if (input.type === 'percent' && value > 100) {
+      throw new Error('نسبة الخصم لا يمكن أن تتجاوز 100%')
+    }
   }
 
   if (!['all', 'category', 'products'].includes(input.scope_type)) {
@@ -240,6 +263,48 @@ export function calculateActivePromotionForSale(items: PromotionSaleItem[]) {
 
   const value = Math.max(0, Number(promotion.value || 0))
 
+  if (promotion.type === 'buy_x_get_y') {
+    const buyQty = Math.floor(Number(promotion.buy_qty || 0))
+
+    const freeQty = Math.floor(Number(promotion.free_qty || 0))
+
+    if (buyQty <= 0 || freeQty <= 0) {
+      return {
+        promotion,
+        promotion_discount_value: 0,
+        item_discounts: itemDiscounts,
+      }
+    }
+
+    const groupSize = buyQty + freeQty
+
+    const totalEligibleUnits = eligibleItems.reduce(
+      (total, item) => total + Math.floor(item.qty),
+      0,
+    )
+
+    let remainingFreeUnits =
+      Math.floor(totalEligibleUnits / groupSize) * freeQty
+
+    const cheapestFirst = [...eligibleItems].sort(
+      (a, b) => a.unitPrice - b.unitPrice || a.index - b.index,
+    )
+
+    for (const item of cheapestFirst) {
+      if (remainingFreeUnits <= 0) {
+        break
+      }
+
+      const itemUnits = Math.floor(item.qty)
+
+      const freeFromItem = Math.min(remainingFreeUnits, itemUnits)
+
+      itemDiscounts[item.index] = roundMoney(freeFromItem * item.unitPrice)
+
+      remainingFreeUnits -= freeFromItem
+    }
+  }
+
   if (promotion.type === 'percent') {
     const percent = Math.min(value, 100)
 
@@ -427,6 +492,14 @@ export function createPromotion(input: PromotionInput) {
   const categoryId =
     input.scope_type === 'category' ? Number(input.category_id) : null
 
+  const isBuyXGetY = input.type === 'buy_x_get_y'
+
+  const promotionValue = isBuyXGetY ? 0 : Number(input.value)
+
+  const buyQty = isBuyXGetY ? Number(input.buy_qty) : null
+
+  const freeQty = isBuyXGetY ? Number(input.free_qty) : null
+
   const tx = db.transaction(() => {
     const result = db
       .prepare(
@@ -435,13 +508,15 @@ export function createPromotion(input: PromotionInput) {
               name,
               type,
               value,
+              buy_qty,
+              free_qty,
               scope_type,
               category_id,
               is_active,
               created_by
             )
             VALUES (
-              ?, ?, ?, ?, ?, 0, ?
+              ?, ?, ?, ?, ?, ?, ?, 0, ?
             )
             `,
       )
@@ -450,7 +525,11 @@ export function createPromotion(input: PromotionInput) {
 
         input.type,
 
-        Number(input.value),
+        promotionValue,
+
+        buyQty,
+
+        freeQty,
 
         input.scope_type,
 
@@ -485,6 +564,14 @@ export function updatePromotion(
 
   const id = Number(input.id)
 
+  const isBuyXGetY = input.type === 'buy_x_get_y'
+
+  const promotionValue = isBuyXGetY ? 0 : Number(input.value)
+
+  const buyQty = isBuyXGetY ? Number(input.buy_qty) : null
+
+  const freeQty = isBuyXGetY ? Number(input.free_qty) : null
+
   const existing = db
     .prepare(
       `
@@ -516,6 +603,8 @@ export function updatePromotion(
           name = ?,
           type = ?,
           value = ?,
+          buy_qty = ?,
+          free_qty = ?,
           scope_type = ?,
           category_id = ?,
           updated_at =
@@ -527,7 +616,11 @@ export function updatePromotion(
 
       input.type,
 
-      Number(input.value),
+      promotionValue,
+
+      buyQty,
+
+      freeQty,
 
       input.scope_type,
 

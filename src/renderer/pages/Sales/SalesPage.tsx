@@ -43,10 +43,12 @@ type ActivePromotion = {
   id: number
   name: string
 
-  type: 'percent' | 'fixed_per_item' | 'fixed_invoice'
+  type: 'percent' | 'fixed_per_item' | 'fixed_invoice' | 'buy_x_get_y'
 
   value: number
+  buy_qty?: number | null
 
+  free_qty?: number | null
   scope_type: 'all' | 'category' | 'products'
 
   category_id?: number | null
@@ -199,6 +201,50 @@ function getPromotionDiscountForCart(
   }
 
   const value = Math.max(0, Number(promotion.value || 0))
+
+  if (promotion.type === 'buy_x_get_y') {
+    const buyQty = Math.floor(Number(promotion.buy_qty || 0))
+
+    const freeQty = Math.floor(Number(promotion.free_qty || 0))
+
+    if (buyQty <= 0 || freeQty <= 0) {
+      return 0
+    }
+
+    const groupSize = buyQty + freeQty
+
+    const totalEligibleUnits = eligibleItems.reduce(
+      (total, item) => total + Math.floor(item.qty),
+      0,
+    )
+
+    let remainingFreeUnits =
+      Math.floor(totalEligibleUnits / groupSize) * freeQty
+
+    const cheapestFirst = [...eligibleItems].sort(
+      (a, b) => a.unitPrice - b.unitPrice,
+    )
+
+    let discount = 0
+
+    for (const item of cheapestFirst) {
+      if (remainingFreeUnits <= 0) {
+        break
+      }
+
+      const freeFromItem = Math.min(
+        remainingFreeUnits,
+
+        Math.floor(item.qty),
+      )
+
+      discount += freeFromItem * item.unitPrice
+
+      remainingFreeUnits -= freeFromItem
+    }
+
+    return roundMoney(discount)
+  }
 
   if (promotion.type === 'percent') {
     const percent = Math.min(value, 100)

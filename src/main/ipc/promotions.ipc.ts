@@ -51,6 +51,11 @@ export function registerPromotionsIpc(): void {
           name: input.name,
           type: input.type,
           value: input.value,
+
+          buy_qty: input.buy_qty ?? null,
+
+          free_qty: input.free_qty ?? null,
+
           scope_type: input.scope_type,
         },
       })
@@ -85,6 +90,11 @@ export function registerPromotionsIpc(): void {
           name: input.name,
           type: input.type,
           value: input.value,
+
+          buy_qty: input.buy_qty ?? null,
+
+          free_qty: input.free_qty ?? null,
+
           scope_type: input.scope_type,
         },
       })

@@ -71,8 +71,15 @@ export function getDb(): Database.Database {
 
         name TEXT NOT NULL,
 
-        type TEXT NOT NULL,
+        git add src/main/database/db.ts src/main/database/repositories/promotions.repo.ts src/main/ipc/promotions.ipc.ts src/renderer/pages/Promotions/PromotionsPage.tsx src/renderer/pages/Sales/SalesPage.tsx tests/repositories/sales.repo.test.ts
+
+git commit -m "feat(promotions): add buy x get y offers"
+
+git push
         value REAL NOT NULL DEFAULT 0,
+
+        buy_qty INTEGER,
+        free_qty INTEGER,
 
         scope_type TEXT NOT NULL DEFAULT 'all',
         category_id INTEGER,
@@ -488,6 +495,8 @@ export function getDb(): Database.Database {
     `)
 
     safeAddColumn(db, 'product_variants', 'discount_price', 'REAL')
+    safeAddColumn(db, 'promotions', 'buy_qty', 'INTEGER')
+    safeAddColumn(db, 'promotions', 'free_qty', 'INTEGER')
     safeAddColumn(db, 'stock_count_sessions', 'category_id', 'INTEGER')
     safeAddColumn(db, 'sales', 'loyalty_points_earned', 'INTEGER DEFAULT 0')
     safeAddColumn(db, 'sales', 'loyalty_points_redeemed', 'INTEGER DEFAULT 0')

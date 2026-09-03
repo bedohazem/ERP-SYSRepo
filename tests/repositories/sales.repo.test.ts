@@ -1280,4 +1280,90 @@ describe('sales repository', () => {
 
     expect(Number(returnRow.refund_amount)).toBe(102.5)
   })
+
+  it('applies buy 2 get 1 promotion', () => {
+    const variant = seedProduct()
+
+    const promotion = createPromotion({
+      name: 'Buy 2 Get 1',
+
+      type: 'buy_x_get_y',
+
+      value: 0,
+
+      buy_qty: 2,
+
+      free_qty: 1,
+
+      scope_type: 'all',
+
+      actor_id: 1,
+    })
+
+    togglePromotion(promotion.promotionId, 1)
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      promotion_id: promotion.promotionId,
+
+      sub_total: 450,
+
+      discount_value: 0,
+
+      grand_total: 300,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 300,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 3,
+
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(sale.promotion_discount_value).toBe(150)
+
+    expect(sale.grand_total).toBe(300)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    expect(receipt.items[0].promotion_discount_value).toBe(150)
+
+    const returned = createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      items: [
+        {
+          sale_item_id: receipt.items[0].id,
+
+          variant_id: variant.variant_id,
+
+          quantity: 3,
+        },
+      ],
+    })
+
+    expect(returned.return_value).toBe(300)
+  })
 })
