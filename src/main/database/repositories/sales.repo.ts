@@ -930,6 +930,16 @@ export function createSaleReturn(input: {
           throw new Error('صنف المرتجع غير موجود في الفاتورة الأصلية')
         }
 
+        if (
+          Number(originalItem.promotion_buy_qty || 0) > 0 &&
+          Number(originalItem.promotion_free_qty || 0) > 0 &&
+          Number(originalItem.promotion_discount_value || 0) > 0
+        ) {
+          throw new Error(
+            'لا يمكن عمل مرتجع لصنف ضمن عرض اشتري وخد. استخدم الاستبدال.',
+          )
+        }
+
         const requestedQty = Number(item.quantity || 0)
 
         if (requestedQty <= 0) {
