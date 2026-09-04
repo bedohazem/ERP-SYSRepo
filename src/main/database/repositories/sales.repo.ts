@@ -9,6 +9,8 @@ export type CreateSaleLineInput = {
   color: string
   quantity: number
   unit_price: number
+  is_gift?: boolean
+  promotion_group_id?: string | null
 }
 
 type CreateSaleInput = {
@@ -320,9 +322,11 @@ export function createSale(input: CreateSaleInput) {
         unit_cost,
         unit_price,
         promotion_discount_value,
-        line_total
+        line_total,
+        is_gift,
+        promotion_group_id
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const updateStock = db.prepare(`
@@ -438,6 +442,8 @@ export function createSale(input: CreateSaleInput) {
           price,
           giftLineTotal,
           giftLineTotal,
+          1,
+          `sale_${saleId}_gift_${item.variant_id}`,
         )
       } else {
         insertItem.run(
@@ -452,6 +458,8 @@ export function createSale(input: CreateSaleInput) {
           price,
           itemPromotionDiscount,
           lineTotal,
+          0,
+          null,
         )
       }
 
@@ -937,6 +945,12 @@ export function createSaleReturn(input: {
         ) {
           throw new Error(
             'لا يمكن عمل مرتجع لصنف ضمن عرض اشتري وخد. استخدم الاستبدال.',
+          )
+        }
+
+        if (Number(originalItem.is_gift || 0) === 1) {
+          throw new Error(
+            'لا يمكن عمل مرتجع للقطعة الهدية منفردة. يجب إرجاع العرض كاملًا أو استخدام الاستبدال.',
           )
         }
 
