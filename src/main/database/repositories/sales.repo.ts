@@ -895,6 +895,13 @@ export function createSaleReturn(input: {
       LIMIT 1
     `)
 
+    const getPromotionGroupItems = db.prepare(`
+      SELECT *
+      FROM sale_items
+      WHERE sale_id = ?
+        AND promotion_group_id = ?
+    `)
+
     const getAlreadyReturnedQty = db.prepare(`
       SELECT
         IFNULL(
@@ -954,7 +961,35 @@ export function createSaleReturn(input: {
           )
         }
 
+        if (originalItem.promotion_group_id) {
+          const promotionItems = getPromotionGroupItems.all(
+            originalSaleId,
+            originalItem.promotion_group_id,
+          ) as any[]
+
+          const returnIds = input.items.map((x) => Number(x.sale_item_id))
+
+          const missingPromotionItem = promotionItems.some(
+            (promotionItem) => !returnIds.includes(Number(promotionItem.id)),
+          )
+
+          if (missingPromotionItem) {
+            throw new Error(
+              'لا يمكن عمل مرتجع جزئي للعرض. يجب إرجاع العرض كاملًا أو استخدام الاستبدال.',
+            )
+          }
+        }
+
         const requestedQty = Number(item.quantity || 0)
+
+        if (
+          originalItem.promotion_group_id &&
+          requestedQty !== Number(originalItem.quantity || 0)
+        ) {
+          throw new Error(
+            'لا يمكن إرجاع كمية جزئية من عرض. يجب إرجاع العرض كاملًا.',
+          )
+        }
 
         if (requestedQty <= 0) {
           return null
