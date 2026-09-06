@@ -188,7 +188,9 @@ export function getDb(): Database.Database {
         unit_cost REAL NOT NULL DEFAULT 0,
         unit_price REAL NOT NULL,
         promotion_discount_value REAL NOT NULL DEFAULT 0,
-        line_total REAL NOT NULL
+        line_total REAL NOT NULL,
+        is_gift INTEGER NOT NULL DEFAULT 0,
+        promotion_group_id TEXT
       );
 
       CREATE TABLE IF NOT EXISTS app_settings (
@@ -522,6 +524,10 @@ export function getDb(): Database.Database {
       'promotion_discount_value',
       'REAL DEFAULT 0',
     )
+
+    safeAddColumn(db, 'sale_items', 'is_gift', 'INTEGER NOT NULL DEFAULT 0')
+
+    safeAddColumn(db, 'sale_items', 'promotion_group_id', 'TEXT')
 
     safeAddColumn(
       db,

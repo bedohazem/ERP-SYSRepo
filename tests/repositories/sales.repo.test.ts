@@ -1391,11 +1391,11 @@ describe('sales repository', () => {
     expect(returned.return_value).toBe(300)
   })
 
-  it('keeps buy x get y gift and paid returns distinct', () => {
+  it('rejects partial return of a buy x get y bundle but allows the full bundle', () => {
     const variant = seedProduct()
 
     const promotion = createPromotion({
-      name: 'Buy 2 Get 1 Return Test',
+      name: 'Buy 2 Get 1 Return Bundle Test',
       type: 'buy_x_get_y',
       value: 0,
       buy_qty: 2,
@@ -1413,11 +1413,11 @@ describe('sales repository', () => {
       customer_id: null,
       promotion_id: promotion.promotionId,
       sub_total: 450,
-      discount_value: 30,
-      grand_total: 270,
+      discount_value: 0,
+      grand_total: 300,
       change_amount: 0,
       payment_method: 'cash',
-      paid: 270,
+      paid: 300,
       items: [
         {
           variant_id: variant.variant_id,
@@ -1432,36 +1432,71 @@ describe('sales repository', () => {
     })
 
     expect(sale.promotion_discount_value).toBe(150)
-    expect(sale.grand_total).toBe(270)
+    expect(sale.grand_total).toBe(300)
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const db = getDb()
 
-    expect(receipt.items).toHaveLength(2)
-
-    const giftItem = receipt.items.find(
-      (item: any) => Number(item.promotion_discount_value || 0) > 0,
-    )
-
-    const paidItem = receipt.items.find(
-      (item: any) => Number(item.promotion_discount_value || 0) === 0,
-    )
-
-    if (!giftItem || !paidItem) {
-      throw new Error(
-        'Buy X Get Y paid/gift lines were not persisted correctly',
+    const saleItems = db
+      .prepare(
+        `
+      SELECT
+        id,
+        variant_id,
+        quantity,
+        promotion_discount_value,
+        is_gift,
+        promotion_group_id
+      FROM sale_items
+      WHERE sale_id = ?
+      ORDER BY id ASC
+      `,
       )
-    }
+      .all(sale.saleId) as any[]
 
-    expect(giftItem.quantity).toBe(1)
-    expect(giftItem.promotion_discount_value).toBe(150)
+    expect(saleItems).toHaveLength(2)
 
-    expect(paidItem.quantity).toBe(2)
-    expect(paidItem.promotion_discount_value).toBe(0)
+    const paidItem = saleItems.find(
+      (item: any) => Number(item.is_gift || 0) === 0,
+    )
 
-    const giftReturn = createSaleReturn({
+    const giftItem = saleItems.find(
+      (item: any) => Number(item.is_gift || 0) === 1,
+    )
+
+    expect(paidItem).toBeTruthy()
+    expect(giftItem).toBeTruthy()
+
+    expect(Number(paidItem.quantity)).toBe(2)
+    expect(Number(giftItem.quantity)).toBe(1)
+
+    expect(paidItem.promotion_group_id).toBeTruthy()
+    expect(giftItem.promotion_group_id).toBe(paidItem.promotion_group_id)
+
+    expect(() =>
+      createSaleReturn({
+        original_sale_id: sale.saleId,
+        user_id: 1,
+        items: [
+          {
+            sale_item_id: paidItem.id,
+            variant_id: paidItem.variant_id,
+            quantity: 1,
+          },
+        ],
+      }),
+    ).toThrow('لا يمكن عمل مرتجع جزئي للعرض')
+
+    expect(getStockByBarcode('SALE001')).toBe(7)
+
+    const fullReturn = createSaleReturn({
       original_sale_id: sale.saleId,
       user_id: 1,
       items: [
+        {
+          sale_item_id: paidItem.id,
+          variant_id: paidItem.variant_id,
+          quantity: 2,
+        },
         {
           sale_item_id: giftItem.id,
           variant_id: giftItem.variant_id,
@@ -1470,22 +1505,359 @@ describe('sales repository', () => {
       ],
     })
 
-    expect(giftReturn.return_value).toBe(0)
+    expect(fullReturn.return_value).toBe(300)
+    expect(getStockByBarcode('SALE001')).toBe(10)
+  })
 
-    const paidReturn = createSaleReturn({
+  it('allows returning the standalone paid unit outside a buy 2 get 1 bundle', () => {
+    const variant = seedProduct()
+
+    const promotion = createPromotion({
+      name: 'Buy 2 Get 1 With Standalone Unit',
+      type: 'buy_x_get_y',
+      value: 0,
+      buy_qty: 2,
+      free_qty: 1,
+      scope_type: 'all',
+      category_id: null,
+      product_ids: [],
+      actor_id: 1,
+    })
+
+    togglePromotion(promotion.promotionId, 1)
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      promotion_id: promotion.promotionId,
+      sub_total: 600,
+      discount_value: 0,
+      grand_total: 450,
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 450,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 4,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(sale.promotion_discount_value).toBe(150)
+    expect(sale.grand_total).toBe(450)
+
+    const db = getDb()
+
+    const saleItems = db
+      .prepare(
+        `
+        SELECT
+          id,
+          variant_id,
+          quantity,
+          is_gift,
+          promotion_group_id
+        FROM sale_items
+        WHERE sale_id = ?
+        ORDER BY id ASC
+        `,
+      )
+      .all(sale.saleId) as any[]
+
+    const groupedItems = saleItems.filter(
+      (item: any) => item.promotion_group_id,
+    )
+
+    const standaloneItems = saleItems.filter(
+      (item: any) => !item.promotion_group_id,
+    )
+
+    expect(
+      groupedItems.reduce(
+        (total: number, item: any) => total + Number(item.quantity),
+        0,
+      ),
+    ).toBe(3)
+
+    expect(standaloneItems).toHaveLength(1)
+    expect(Number(standaloneItems[0].quantity)).toBe(1)
+    expect(Number(standaloneItems[0].is_gift || 0)).toBe(0)
+
+    const returned = createSaleReturn({
       original_sale_id: sale.saleId,
       user_id: 1,
       items: [
         {
-          sale_item_id: paidItem.id,
-          variant_id: paidItem.variant_id,
+          sale_item_id: standaloneItems[0].id,
+          variant_id: standaloneItems[0].variant_id,
           quantity: 1,
         },
       ],
     })
 
-    expect(paidReturn.return_value).toBe(135)
+    expect(returned.return_value).toBe(150)
+    expect(getStockByBarcode('SALE001')).toBe(7)
+  })
 
-    expect(getStockByBarcode('SALE001')).toBe(9)
+  it('creates independent groups for two buy 2 get 1 bundles', () => {
+    const variant = seedProduct()
+
+    const promotion = createPromotion({
+      name: 'Two Buy 2 Get 1 Bundles',
+      type: 'buy_x_get_y',
+      value: 0,
+      buy_qty: 2,
+      free_qty: 1,
+      scope_type: 'all',
+      category_id: null,
+      product_ids: [],
+      actor_id: 1,
+    })
+
+    togglePromotion(promotion.promotionId, 1)
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      promotion_id: promotion.promotionId,
+      sub_total: 900,
+      discount_value: 0,
+      grand_total: 600,
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 600,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 6,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(sale.promotion_discount_value).toBe(300)
+    expect(sale.grand_total).toBe(600)
+
+    const db = getDb()
+
+    const saleItems = db
+      .prepare(
+        `
+        SELECT
+          id,
+          variant_id,
+          quantity,
+          is_gift,
+          promotion_group_id
+        FROM sale_items
+        WHERE sale_id = ?
+          AND promotion_group_id IS NOT NULL
+        ORDER BY id ASC
+        `,
+      )
+      .all(sale.saleId) as any[]
+
+    const groupIds = Array.from(
+      new Set(saleItems.map((item: any) => String(item.promotion_group_id))),
+    )
+
+    expect(groupIds).toHaveLength(2)
+
+    for (const groupId of groupIds) {
+      const groupItems = saleItems.filter(
+        (item: any) => item.promotion_group_id === groupId,
+      )
+
+      expect(
+        groupItems.reduce(
+          (total: number, item: any) => total + Number(item.quantity),
+          0,
+        ),
+      ).toBe(3)
+
+      expect(
+        groupItems.reduce(
+          (total: number, item: any) =>
+            total +
+            (Number(item.is_gift || 0) === 1 ? Number(item.quantity) : 0),
+          0,
+        ),
+      ).toBe(1)
+    }
+
+    const firstGroupItems = saleItems.filter(
+      (item: any) => item.promotion_group_id === groupIds[0],
+    )
+
+    const returned = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      items: firstGroupItems.map((item: any) => ({
+        sale_item_id: Number(item.id),
+        variant_id: Number(item.variant_id),
+        quantity: Number(item.quantity),
+      })),
+    })
+
+    expect(returned.return_value).toBe(300)
+    expect(getStockByBarcode('SALE001')).toBe(7)
+  })
+
+  it('groups different priced items into the same buy 2 get 1 bundle and makes the cheapest item the gift', () => {
+    createProduct({
+      name: 'Mixed Promotion Product',
+      category_id: null,
+      image_path: null,
+      description: null,
+      variants: [
+        {
+          barcode: 'PROMO250',
+          size: 'A',
+          color: 'Black',
+          buy_price: 100,
+          sell_price: 250,
+          min_stock: 1,
+          opening_qty: 5,
+        },
+        {
+          barcode: 'PROMO200',
+          size: 'B',
+          color: 'Black',
+          buy_price: 90,
+          sell_price: 200,
+          min_stock: 1,
+          opening_qty: 5,
+        },
+        {
+          barcode: 'PROMO150',
+          size: 'C',
+          color: 'Black',
+          buy_price: 80,
+          sell_price: 150,
+          min_stock: 1,
+          opening_qty: 5,
+        },
+      ],
+    })
+
+    const variant250 = getVariantByBarcode('PROMO250') as SaleVariantTestRow
+    const variant200 = getVariantByBarcode('PROMO200') as SaleVariantTestRow
+    const variant150 = getVariantByBarcode('PROMO150') as SaleVariantTestRow
+
+    const promotion = createPromotion({
+      name: 'Mixed Price Buy 2 Get 1',
+      type: 'buy_x_get_y',
+      value: 0,
+      buy_qty: 2,
+      free_qty: 1,
+      scope_type: 'all',
+      category_id: null,
+      product_ids: [],
+      actor_id: 1,
+    })
+
+    togglePromotion(promotion.promotionId, 1)
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      promotion_id: promotion.promotionId,
+      sub_total: 600,
+      discount_value: 0,
+      grand_total: 450,
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 450,
+      items: [
+        {
+          variant_id: variant250.variant_id,
+          product_name: variant250.product_name,
+          barcode: variant250.barcode,
+          size: variant250.size,
+          color: variant250.color,
+          quantity: 1,
+          unit_price: 250,
+        },
+        {
+          variant_id: variant200.variant_id,
+          product_name: variant200.product_name,
+          barcode: variant200.barcode,
+          size: variant200.size,
+          color: variant200.color,
+          quantity: 1,
+          unit_price: 200,
+        },
+        {
+          variant_id: variant150.variant_id,
+          product_name: variant150.product_name,
+          barcode: variant150.barcode,
+          size: variant150.size,
+          color: variant150.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(sale.promotion_discount_value).toBe(150)
+    expect(sale.grand_total).toBe(450)
+
+    const db = getDb()
+
+    const saleItems = db
+      .prepare(
+        `
+        SELECT
+          id,
+          variant_id,
+          quantity,
+          unit_price,
+          promotion_discount_value,
+          is_gift,
+          promotion_group_id
+        FROM sale_items
+        WHERE sale_id = ?
+        ORDER BY id ASC
+        `,
+      )
+      .all(sale.saleId) as any[]
+
+    expect(saleItems).toHaveLength(3)
+
+    const groupIds = Array.from(
+      new Set(saleItems.map((item: any) => String(item.promotion_group_id))),
+    )
+
+    expect(groupIds).toHaveLength(1)
+
+    const giftItem = saleItems.find(
+      (item: any) => Number(item.is_gift || 0) === 1,
+    )
+
+    expect(giftItem).toBeTruthy()
+    expect(Number(giftItem.unit_price)).toBe(150)
+    expect(Number(giftItem.promotion_discount_value)).toBe(150)
+
+    const returned = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      items: saleItems.map((item: any) => ({
+        sale_item_id: Number(item.id),
+        variant_id: Number(item.variant_id),
+        quantity: Number(item.quantity),
+      })),
+    })
+
+    expect(returned.return_value).toBe(450)
   })
 })

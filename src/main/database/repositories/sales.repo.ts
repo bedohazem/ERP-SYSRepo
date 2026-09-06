@@ -360,6 +360,193 @@ export function createSale(input: CreateSaleInput) {
       WHERE variant_id = ?
     `)
 
+    type BuyXGetYFragment = {
+      quantity: number
+      is_gift: boolean
+      promotion_group_id: string | null
+    }
+
+    const buyXGetYFragments = new Map<number, BuyXGetYFragment[]>()
+
+    const isBuyXGetYPromotion =
+      promotionResult.promotion?.type === 'buy_x_get_y'
+
+    const addBuyXGetYFragment = (
+      itemIndex: number,
+      quantity: number,
+      isGift: boolean,
+      promotionGroupId: string | null,
+    ) => {
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        return
+      }
+
+      const fragments = buyXGetYFragments.get(itemIndex) || []
+
+      const existing = fragments.find(
+        (fragment) =>
+          fragment.is_gift === isGift &&
+          fragment.promotion_group_id === promotionGroupId,
+      )
+
+      if (existing) {
+        existing.quantity += quantity
+      } else {
+        fragments.push({
+          quantity,
+          is_gift: isGift,
+          promotion_group_id: promotionGroupId,
+        })
+      }
+
+      buyXGetYFragments.set(itemIndex, fragments)
+    }
+
+    if (isBuyXGetYPromotion) {
+      const buyQty = Math.floor(Number(promotionResult.promotion?.buy_qty || 0))
+
+      const freeQty = Math.floor(
+        Number(promotionResult.promotion?.free_qty || 0),
+      )
+
+      if (buyQty > 0 && freeQty > 0) {
+        const promotionProductIds = new Set<number>(
+          Array.isArray(promotionResult.promotion?.product_ids)
+            ? promotionResult.promotion.product_ids.map(Number)
+            : [],
+        )
+
+        const getVariantPromotionScope = db.prepare(`
+          SELECT
+            pv.product_id,
+            p.category_id
+          FROM product_variants pv
+          JOIN products p
+            ON p.id = pv.product_id
+          WHERE pv.id = ?
+          LIMIT 1
+        `)
+
+        const eligibleWholeQuantities = input.items.map((item) => {
+          const scope = getVariantPromotionScope.get(
+            Number(item.variant_id),
+          ) as
+            | {
+                product_id: number
+                category_id: number | null
+              }
+            | undefined
+
+          if (!scope) {
+            return 0
+          }
+
+          const scopeType = String(
+            promotionResult.promotion?.scope_type || 'all',
+          )
+
+          let eligible = false
+
+          if (scopeType === 'all') {
+            eligible = true
+          }
+
+          if (scopeType === 'category') {
+            eligible =
+              Number(scope.category_id) ===
+              Number(promotionResult.promotion?.category_id)
+          }
+
+          if (scopeType === 'products') {
+            eligible = promotionProductIds.has(Number(scope.product_id))
+          }
+
+          if (!eligible) {
+            return 0
+          }
+
+          return Math.floor(Math.max(0, Number(item.quantity || 0)))
+        })
+
+        const giftUnits: number[] = []
+        const paidUnits: number[] = []
+
+        input.items.forEach((_, itemIndex) => {
+          const eligibleQty = Number(eligibleWholeQuantities[itemIndex] || 0)
+
+          const giftQty = Math.min(
+            eligibleQty,
+            Math.max(
+              0,
+              Math.floor(
+                Number(promotionResult.item_free_quantities[itemIndex] || 0),
+              ),
+            ),
+          )
+
+          const paidQty = eligibleQty - giftQty
+
+          for (let unit = 0; unit < giftQty; unit += 1) {
+            giftUnits.push(itemIndex)
+          }
+
+          for (let unit = 0; unit < paidQty; unit += 1) {
+            paidUnits.push(itemIndex)
+          }
+        })
+
+        const bundleCount = Math.min(
+          Math.floor(paidUnits.length / buyQty),
+          Math.floor(giftUnits.length / freeQty),
+        )
+
+        let paidCursor = 0
+        let giftCursor = 0
+
+        for (let bundleIndex = 0; bundleIndex < bundleCount; bundleIndex += 1) {
+          const promotionGroupId = `sale_${saleId}_promotion_${activePromotionId}_bundle_${
+            bundleIndex + 1
+          }`
+
+          for (let unit = 0; unit < buyQty; unit += 1) {
+            const itemIndex = paidUnits[paidCursor]
+
+            paidCursor += 1
+
+            addBuyXGetYFragment(itemIndex, 1, false, promotionGroupId)
+          }
+
+          for (let unit = 0; unit < freeQty; unit += 1) {
+            const itemIndex = giftUnits[giftCursor]
+
+            giftCursor += 1
+
+            addBuyXGetYFragment(itemIndex, 1, true, promotionGroupId)
+          }
+        }
+      }
+
+      const assignedQuantities = input.items.map(() => 0)
+
+      for (const [itemIndex, fragments] of buyXGetYFragments.entries()) {
+        assignedQuantities[itemIndex] = fragments.reduce(
+          (total, fragment) => total + Number(fragment.quantity || 0),
+          0,
+        )
+      }
+
+      input.items.forEach((item, itemIndex) => {
+        const originalQty = Math.max(0, Number(item.quantity || 0))
+
+        const standaloneQty = Math.max(
+          0,
+          originalQty - Number(assignedQuantities[itemIndex] || 0),
+        )
+
+        addBuyXGetYFragment(itemIndex, standaloneQty, false, null)
+      })
+    }
+
     for (const [itemIndex, item] of input.items.entries()) {
       const qty = Number(item.quantity || 0)
 
@@ -372,18 +559,6 @@ export function createSale(input: CreateSaleInput) {
       const variant = getVariantCost.get(item.variant_id) as
         | { buy_price: number }
         | undefined
-
-      // const getCurrentStock = db.prepare(`
-      //   SELECT IFNULL(SUM(
-      //     CASE
-      //       WHEN type = 'in' THEN quantity
-      //       WHEN type = 'out' THEN -quantity
-      //       ELSE 0
-      //     END
-      //   ), 0) AS stock
-      //   FROM stock_movements
-      //   WHERE variant_id = ?
-      // `);
 
       const stockRow = getCurrentStock.get(item.variant_id) as { stock: number }
       const availableStock = Number(stockRow?.stock || 0)
@@ -399,20 +574,14 @@ export function createSale(input: CreateSaleInput) {
         Number(promotionResult.item_discounts[itemIndex] || 0),
       )
 
-      const itemFreeQty = Math.min(
-        qty,
-        Math.max(
-          0,
-          Number(promotionResult.item_free_quantities[itemIndex] || 0),
-        ),
-      )
+      if (isBuyXGetYPromotion) {
+        const fragments = buyXGetYFragments.get(itemIndex) || []
 
-      const isBuyXGetY = promotionResult.promotion?.type === 'buy_x_get_y'
+        for (const fragment of fragments) {
+          const fragmentLineTotal = roundMoney(
+            Number(fragment.quantity) * price,
+          )
 
-      if (isBuyXGetY && itemFreeQty > 0) {
-        const paidQty = qty - itemFreeQty
-
-        if (paidQty > 0) {
           insertItem.run(
             saleId,
             item.variant_id,
@@ -420,31 +589,15 @@ export function createSale(input: CreateSaleInput) {
             item.barcode ?? null,
             item.size ?? null,
             item.color ?? null,
-            paidQty,
+            fragment.quantity,
             Number(variant?.buy_price || 0),
             price,
-            0,
-            roundMoney(paidQty * price),
+            fragment.is_gift ? fragmentLineTotal : 0,
+            fragmentLineTotal,
+            fragment.is_gift ? 1 : 0,
+            fragment.promotion_group_id,
           )
         }
-
-        const giftLineTotal = roundMoney(itemFreeQty * price)
-
-        insertItem.run(
-          saleId,
-          item.variant_id,
-          item.product_name,
-          item.barcode ?? null,
-          item.size ?? null,
-          item.color ?? null,
-          itemFreeQty,
-          Number(variant?.buy_price || 0),
-          price,
-          giftLineTotal,
-          giftLineTotal,
-          1,
-          `sale_${saleId}_gift_${item.variant_id}`,
-        )
       } else {
         insertItem.run(
           saleId,
@@ -943,22 +1096,6 @@ export function createSaleReturn(input: {
 
         if (!originalItem) {
           throw new Error('صنف المرتجع غير موجود في الفاتورة الأصلية')
-        }
-
-        if (
-          Number(originalItem.promotion_buy_qty || 0) > 0 &&
-          Number(originalItem.promotion_free_qty || 0) > 0 &&
-          Number(originalItem.promotion_discount_value || 0) > 0
-        ) {
-          throw new Error(
-            'لا يمكن عمل مرتجع لصنف ضمن عرض اشتري وخد. استخدم الاستبدال.',
-          )
-        }
-
-        if (Number(originalItem.is_gift || 0) === 1) {
-          throw new Error(
-            'لا يمكن عمل مرتجع للقطعة الهدية منفردة. يجب إرجاع العرض كاملًا أو استخدام الاستبدال.',
-          )
         }
 
         if (originalItem.promotion_group_id) {
