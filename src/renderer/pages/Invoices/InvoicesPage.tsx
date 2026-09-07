@@ -1175,7 +1175,7 @@ export default function InvoicesPage() {
                 <th style={thStyle}>رقم</th>
                 <th style={thStyle}>العميل</th>
                 <th style={thStyle}>الكاشير</th>
-                <th style={thStyle}>المرتجع</th>
+                <th style={thStyle}>مرتجع / استبدال</th>
                 <th style={thStyle}>قبل الخصم</th>
                 <th style={thStyle}>الخصم</th>
                 <th style={thStyle}>الإجمالي</th>
@@ -1212,15 +1212,60 @@ export default function InvoicesPage() {
                   </td>
                   <td style={tdStyle}>{sale.cashier_name || '—'}</td>
                   <td style={tdStyle}>
-                    {Number(sale.returned_quantity || 0) > 0 ? (
-                      <div style={{ display: 'grid', gap: '4px' }}>
-                        <strong style={{ color: '#fdba74' }}>
-                          مرتجع {Number(sale.returned_quantity || 0)} من أصل{' '}
-                          {Number(sale.total_quantity || 0)}
-                        </strong>
-                        <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-                          عدد المرتجعات: {Number(sale.return_count || 0)}
-                        </span>
+                    {Number(sale.return_count || 0) > 0 ||
+                    Number(sale.exchange_count || 0) > 0 ? (
+                      <div
+                        style={{
+                          display: 'grid',
+                          gap: '7px',
+                          minWidth: '150px',
+                        }}
+                      >
+                        {Number(sale.return_count || 0) > 0 && (
+                          <div
+                            style={{
+                              display: 'grid',
+                              gap: '3px',
+                            }}
+                          >
+                            <strong style={{ color: '#fdba74' }}>
+                              مرتجع {Number(sale.returned_quantity || 0)} من أصل{' '}
+                              {Number(sale.total_quantity || 0)}
+                            </strong>
+
+                            <span
+                              style={{
+                                color: '#94a3b8',
+                                fontSize: '12px',
+                              }}
+                            >
+                              عدد المرتجعات: {Number(sale.return_count || 0)}
+                            </span>
+                          </div>
+                        )}
+
+                        {Number(sale.exchange_count || 0) > 0 && (
+                          <div
+                            style={{
+                              display: 'grid',
+                              gap: '3px',
+                            }}
+                          >
+                            <strong style={{ color: '#86efac' }}>
+                              استبدال
+                            </strong>
+
+                            <span
+                              style={{
+                                color: '#94a3b8',
+                                fontSize: '12px',
+                              }}
+                            >
+                              عدد عمليات الاستبدال:{' '}
+                              {Number(sale.exchange_count || 0)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <span style={{ color: '#64748b' }}>—</span>
