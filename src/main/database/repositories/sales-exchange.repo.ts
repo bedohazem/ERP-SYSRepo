@@ -1,5 +1,6 @@
 import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
+import { getSaleCurrentState } from './sales-current-state.repo'
 
 export type CreateSaleExchangeInput = {
   original_sale_id: number
@@ -269,6 +270,8 @@ export function getSaleExchangeState(saleIdInput: number) {
     }
   }
 
+  const currentState = getSaleCurrentState(saleId)
+
   return {
     sale,
     snapshot: {
@@ -276,6 +279,7 @@ export function getSaleExchangeState(saleIdInput: number) {
       product_ids: parseProductIds(snapshot.product_ids_json),
     },
     groups: Array.from(groupMap.values()),
+    financials: currentState.financials,
   }
 }
 
@@ -537,7 +541,114 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       ),
     )
 
-    const differenceAmount = roundMoney(newGroupTotal - oldGroupTotal)
+    /*
+     * The settlement must be based on the
+     * CURRENT NET INVOICE, not only the
+     * raw promotion bundle.
+     *
+     * This prevents over-refunding when the
+     * original sale also had a normal or
+     * loyalty discount.
+     */
+    const currentStateBefore = getSaleCurrentState(saleId)
+
+    const beforeGroupGross = roundMoney(
+      beforeState.reduce(
+        (total, unit) => total + Number(unit.current_unit_price || 0),
+        0,
+      ),
+    )
+
+    const beforeGroupPromotionDiscount = roundMoney(
+      beforeState.reduce(
+        (total, unit) =>
+          total +
+          (Number(unit.current_is_gift || 0) === 1
+            ? Number(unit.current_unit_price || 0)
+            : 0),
+        0,
+      ),
+    )
+
+    const afterGroupGross = roundMoney(
+      afterState.reduce(
+        (total, unit) => total + Number(unit.current_unit_price || 0),
+        0,
+      ),
+    )
+
+    const afterGroupPromotionDiscount = roundMoney(
+      afterState.reduce(
+        (total, unit) =>
+          total +
+          (Number(unit.current_is_gift || 0) === 1
+            ? Number(unit.current_unit_price || 0)
+            : 0),
+        0,
+      ),
+    )
+
+    const nextSubTotal = roundMoney(
+      currentStateBefore.financials.current_sub_total -
+        beforeGroupGross +
+        afterGroupGross,
+    )
+
+    const nextPromotionDiscount = Math.max(
+      0,
+      roundMoney(
+        currentStateBefore.financials.current_promotion_discount_value -
+          beforeGroupPromotionDiscount +
+          afterGroupPromotionDiscount,
+      ),
+    )
+
+    const nextAfterPromotion = Math.max(
+      0,
+      roundMoney(nextSubTotal - nextPromotionDiscount),
+    )
+
+    const nextNormalDiscount = roundMoney(
+      Math.min(
+        currentStateBefore.financials.original_normal_discount_value,
+
+        nextAfterPromotion,
+      ),
+    )
+
+    const nextAfterNormal = Math.max(
+      0,
+      roundMoney(nextAfterPromotion - nextNormalDiscount),
+    )
+
+    const nextLoyaltyDiscount = roundMoney(
+      Math.min(
+        currentStateBefore.financials.original_loyalty_discount_value,
+
+        nextAfterNormal,
+      ),
+    )
+
+    const nextGrandTotal = Math.max(
+      0,
+      roundMoney(nextAfterNormal - nextLoyaltyDiscount),
+    )
+
+    /*
+     * Existing returns remain historical
+     * settled events. An exchange can only
+     * affect what is still active.
+     */
+    const nextNetGrandTotal = Math.max(
+      0,
+      roundMoney(
+        nextGrandTotal - currentStateBefore.financials.total_return_value,
+      ),
+    )
+
+    const differenceAmount = roundMoney(
+      nextNetGrandTotal - currentStateBefore.financials.net_grand_total,
+    )
 
     const paymentMethod = resolveCashAccount(
       input.payment_method?.trim() || sale.payment_method || 'store_cash',

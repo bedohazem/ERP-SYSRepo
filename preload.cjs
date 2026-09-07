@@ -74,6 +74,9 @@ contextBridge.exposeInMainWorld('api', {
   createSale: (input) => ipcRenderer.invoke('sales:create', input),
   cancelSaleInvoice: (input) => ipcRenderer.invoke('sales:cancel', input),
   getSaleReceipt: (saleId) => ipcRenderer.invoke('sales:get-receipt', saleId),
+
+  getSaleCurrentState: (saleId) =>
+    ipcRenderer.invoke('sales:current-state', saleId),
   listSales: (input) => ipcRenderer.invoke('sales:list', input),
   createSaleReturn: (input) => ipcRenderer.invoke('sales:return', input),
   cancelSaleReturn: (input) => ipcRenderer.invoke('sales:cancel-return', input),

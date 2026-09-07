@@ -1,6 +1,8 @@
 import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
 import { calculateActivePromotionForSale } from './promotions.repo'
+import { getSaleCurrentState } from './sales-current-state.repo'
+
 export type CreateSaleLineInput = {
   variant_id: number
   product_name: string
@@ -1041,7 +1043,13 @@ export function listSales(input?: {
           FROM sale_returns sr
           WHERE sr.original_sale_id = s.id
             AND sr.cancelled_at IS NULL
-        ), 0) AS total_return_amount
+        ), 0) AS total_return_amount,
+
+        IFNULL((
+          SELECT COUNT(*)
+          FROM sale_exchanges se
+          WHERE se.original_sale_id = s.id
+        ), 0) AS exchange_count
 
       FROM sales s
       LEFT JOIN customers c ON c.id = s.customer_id
@@ -1054,7 +1062,85 @@ export function listSales(input?: {
       OFFSET ?
     `,
     )
-    .all(actorId, ...params, limit, offset)
+    .all(actorId, ...params, limit, offset) as any[]
+
+  const resolvedRows = rows.map((row: any) => {
+    const originalSubTotal = Number(row.sub_total || 0)
+
+    const originalGrandTotal = Number(row.grand_total || 0)
+
+    /*
+     * Sales with no exchange do not need
+     * the heavier current-state resolver.
+     */
+    if (Number(row.exchange_count || 0) <= 0) {
+      const totalReturnValue = Number(row.total_return_amount || 0)
+
+      const currentNetTotal = Math.max(
+        0,
+        roundMoney(originalGrandTotal - totalReturnValue),
+      )
+
+      const currentPaidAmount = Math.max(
+        0,
+        roundMoney(currentNetTotal - Number(row.remaining_amount || 0)),
+      )
+
+      return {
+        ...row,
+
+        original_sub_total: originalSubTotal,
+
+        original_grand_total: originalGrandTotal,
+
+        total_discount_value: roundMoney(
+          Number(row.discount_value || 0) +
+            Number(row.promotion_discount_value || 0) +
+            Number(row.loyalty_discount_value || 0),
+        ),
+
+        current_net_total: currentNetTotal,
+
+        current_paid_amount: currentPaidAmount,
+
+        exchange_difference_total: 0,
+      }
+    }
+
+    const current = getSaleCurrentState(Number(row.id))
+
+    const financials = current.financials
+
+    return {
+      ...row,
+
+      original_sub_total: originalSubTotal,
+
+      original_grand_total: originalGrandTotal,
+
+      sub_total: financials.current_sub_total,
+
+      discount_value: financials.current_normal_discount_value,
+
+      promotion_discount_value: financials.current_promotion_discount_value,
+
+      loyalty_discount_value: financials.current_loyalty_discount_value,
+
+      grand_total: financials.current_grand_total,
+
+      total_discount_value: financials.current_total_discount,
+
+      total_return_amount: financials.total_return_value,
+
+      current_net_total: financials.net_grand_total,
+
+      current_paid_amount: financials.net_paid_amount,
+
+      exchange_count: financials.exchange_count,
+
+      exchange_difference_total: financials.exchange_difference_total,
+    }
+  })
 
   const totalRow = db
     .prepare(
@@ -1069,7 +1155,7 @@ export function listSales(input?: {
     .get(...params) as { total: number }
 
   return {
-    rows,
+    rows: resolvedRows,
     total: totalRow.total,
     limit,
     offset,

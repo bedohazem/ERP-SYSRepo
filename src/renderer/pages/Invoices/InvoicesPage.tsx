@@ -39,6 +39,16 @@ type SaleRow = {
   cancel_reason?: string | null
   user_id?: number | null
   requires_admin_password?: number | boolean
+  original_sub_total?: number
+  original_grand_total?: number
+
+  total_discount_value?: number
+
+  current_net_total?: number
+  current_paid_amount?: number
+
+  exchange_count?: number
+  exchange_difference_total?: number
 }
 
 type InvoicesTab = 'sales' | 'returns'
@@ -70,6 +80,16 @@ type ReceiptData = {
   sale: any
   items: any[]
   loyalty: any[]
+
+  original_receipt?: {
+    sale: any
+    items: any[]
+    loyalty: any[]
+  }
+
+  financials?: any
+
+  exchanges?: any[]
 }
 
 type StoreReceiptInfo = {
@@ -132,6 +152,20 @@ const INVOICE_PAGE_SIZE = 50
 
 function roundMoney(value: number) {
   return Number(Number(value || 0).toFixed(2))
+}
+
+async function loadCurrentReceiptData(saleId: number): Promise<ReceiptData> {
+  const state = await window.api.getSaleCurrentState(saleId)
+
+  return {
+    ...state.current_receipt,
+
+    original_receipt: state.original_receipt,
+
+    financials: state.financials,
+
+    exchanges: state.exchanges,
+  }
 }
 
 function mapReceiptItemToReturnDraft(item: any): ReturnDraftItem {
@@ -465,10 +499,10 @@ export default function InvoicesPage() {
   async function openReceipt(saleId: number) {
     try {
       const [receipt, history] = await Promise.all([
-        window.api.getSaleReceipt(saleId),
+        loadCurrentReceiptData(saleId),
+
         window.api.getSaleReturnHistory(saleId),
       ])
-
       setSelectedReceipt(receipt)
       setSelectedReturnHistory(Array.isArray(history) ? history : [])
     } catch (error) {
@@ -1197,16 +1231,25 @@ export default function InvoicesPage() {
                     <div style={{ display: 'grid', gap: '3px' }}>
                       <strong>
                         {money(
-                          Number(sale.discount_value || 0) +
-                            Number(sale.loyalty_discount_value || 0),
+                          sale.total_discount_value ??
+                            Number(sale.discount_value || 0) +
+                              Number(sale.promotion_discount_value || 0) +
+                              Number(sale.loyalty_discount_value || 0),
                         )}
                       </strong>
 
-                      {(Number(sale.discount_value || 0) > 0 ||
-                        Number(sale.loyalty_discount_value || 0) > 0) && (
+                      {Number(
+                        sale.total_discount_value ??
+                          Number(sale.discount_value || 0) +
+                            Number(sale.promotion_discount_value || 0) +
+                            Number(sale.loyalty_discount_value || 0),
+                      ) > 0 && (
                         <span style={{ color: '#94a3b8', fontSize: '11px' }}>
-                          عادي: {money(sale.discount_value || 0)} / نقاط:{' '}
-                          {money(sale.loyalty_discount_value || 0)}
+                          عادي: {money(sale.discount_value || 0)}
+                          {' / '}
+                          عرض: {money(sale.promotion_discount_value || 0)}
+                          {' / '}
+                          نقاط: {money(sale.loyalty_discount_value || 0)}
                         </span>
                       )}
                     </div>
@@ -1217,11 +1260,12 @@ export default function InvoicesPage() {
                     >
                       <strong>
                         {money(
-                          Math.max(
-                            0,
-                            Number(sale.grand_total || 0) -
-                              Number(sale.total_return_amount || 0),
-                          ),
+                          sale.current_net_total ??
+                            Math.max(
+                              0,
+                              Number(sale.grand_total || 0) -
+                                Number(sale.total_return_amount || 0),
+                            ),
                         )}
                       </strong>
 
@@ -1265,14 +1309,13 @@ export default function InvoicesPage() {
                       >
                         مدفوع:{' '}
                         {money(
-                          Math.max(
-                            0,
+                          sale.current_paid_amount ??
                             Math.max(
                               0,
-                              Number(sale.grand_total || 0) -
-                                Number(sale.total_return_amount || 0),
-                            ) - Number(sale.remaining_amount || 0),
-                          ),
+                              Number(
+                                sale.current_net_total ?? sale.grand_total ?? 0,
+                              ) - Number(sale.remaining_amount || 0),
+                            ),
                         )}
                       </span>
 
@@ -1336,7 +1379,8 @@ export default function InvoicesPage() {
                         type="button"
                         onClick={async () => {
                           const [receipt, history] = await Promise.all([
-                            window.api.getSaleReceipt(sale.id),
+                            loadCurrentReceiptData(sale.id),
+
                             window.api.getSaleReturnHistory(sale.id),
                           ])
 
@@ -1707,8 +1751,13 @@ export default function InvoicesPage() {
                 <strong>{selectedReceipt.sale.cashier_name || '—'}</strong>
               </div>
               <div style={statCardStyle}>
-                الإجمالي
-                <strong>{money(selectedReceipt.sale.grand_total)}</strong>
+                الصافي الحالي
+                <strong>
+                  {money(
+                    selectedReceipt.financials?.net_grand_total ??
+                      selectedReceipt.sale.grand_total,
+                  )}
+                </strong>
               </div>
             </div>
 
@@ -1761,6 +1810,253 @@ export default function InvoicesPage() {
                 ))}
               </tbody>
             </table>
+
+            {(selectedReceipt.exchanges || []).length > 0 && (
+              <div
+                style={{
+                  marginTop: '18px',
+                  padding: '14px',
+                  borderRadius: '14px',
+                  background: 'rgba(34,197,94,0.08)',
+                  border: '1px solid rgba(34,197,94,0.25)',
+                  display: 'grid',
+                  gap: '12px',
+                }}
+              >
+                <div
+                  style={{
+                    color: '#86efac',
+                    fontWeight: 900,
+                  }}
+                >
+                  سجل الاستبدالات
+                </div>
+
+                {(selectedReceipt.exchanges || []).map((exchange: any) => (
+                  <div
+                    key={exchange.id}
+                    style={{
+                      padding: '12px',
+                      borderRadius: '12px',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      display: 'grid',
+                      gap: '8px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: '10px',
+                        flexWrap: 'wrap',
+                        fontWeight: 800,
+                      }}
+                    >
+                      <span>{exchange.code}</span>
+
+                      <span>{formatDate(exchange.created_at)}</span>
+
+                      <span
+                        style={{
+                          color:
+                            Number(exchange.difference_amount || 0) > 0
+                              ? '#fbbf24'
+                              : Number(exchange.difference_amount || 0) < 0
+                                ? '#6ee7b7'
+                                : '#cbd5e1',
+                        }}
+                      >
+                        الفرق: {money(exchange.difference_amount || 0)}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: '12px',
+                      }}
+                    >
+                      المستخدم: {exchange.cashier_name || '—'}
+                      {' | '}
+                      السبب: {exchange.reason || '—'}
+                    </div>
+
+                    {(exchange.items || []).map((item: any) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr auto 1fr',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '8px',
+                          borderRadius: '8px',
+                          background: 'rgba(255,255,255,0.03)',
+                        }}
+                      >
+                        <span>
+                          {item.old_product_name} {item.old_size || ''}
+                          {' — '}
+                          {money(item.old_unit_price)}
+                        </span>
+
+                        <strong>←</strong>
+
+                        <span>
+                          {item.new_product_name} {item.new_size || ''}
+                          {' — '}
+                          {money(item.new_unit_price)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {(selectedReceipt.exchanges || []).length > 0 &&
+              selectedReceipt.original_receipt && (
+                <details
+                  style={{
+                    marginTop: '18px',
+                    padding: '14px',
+                    borderRadius: '14px',
+                    border: '1px solid rgba(148,163,184,0.20)',
+                    background: 'rgba(148,163,184,0.05)',
+                  }}
+                >
+                  <summary
+                    style={{
+                      cursor: 'pointer',
+                      fontWeight: 900,
+                      color: '#cbd5e1',
+                    }}
+                  >
+                    الفاتورة الأصلية قبل الاستبدال
+                  </summary>
+
+                  <div
+                    style={{
+                      marginTop: '14px',
+                      display: 'grid',
+                      gap: '12px',
+                    }}
+                  >
+                    <table
+                      style={{
+                        width: '100%',
+                        borderCollapse: 'collapse',
+                      }}
+                    >
+                      <thead>
+                        <tr>
+                          <th style={invoiceModalThStyle}>الصنف</th>
+
+                          <th style={invoiceModalThStyle}>المقاس</th>
+
+                          <th style={invoiceModalThStyle}>اللون</th>
+
+                          <th style={invoiceModalThStyle}>الكمية</th>
+
+                          <th style={invoiceModalThStyle}>السعر</th>
+
+                          <th style={invoiceModalThStyle}>الإجمالي</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {(selectedReceipt.original_receipt.items || []).map(
+                          (item: any) => (
+                            <tr
+                              key={item.id}
+                              style={{
+                                borderTop: '1px solid rgba(255,255,255,0.06)',
+                              }}
+                            >
+                              <td style={invoiceModalTdStyle}>
+                                {item.product_name}
+
+                                {Number(item.is_gift || 0) === 1
+                                  ? ' — هدية'
+                                  : ''}
+                              </td>
+
+                              <td style={invoiceModalTdStyle}>
+                                {item.size || '—'}
+                              </td>
+
+                              <td style={invoiceModalTdStyle}>
+                                {item.color || '—'}
+                              </td>
+
+                              <td style={invoiceModalTdStyle}>
+                                {item.quantity}
+                              </td>
+
+                              <td style={invoiceModalTdStyle}>
+                                {money(item.unit_price)}
+                              </td>
+
+                              <td style={invoiceModalTdStyle}>
+                                {money(item.line_total)}
+                              </td>
+                            </tr>
+                          ),
+                        )}
+                      </tbody>
+                    </table>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gap: '6px',
+                        maxWidth: '360px',
+                        marginRight: 'auto',
+                      }}
+                    >
+                      <SummaryLine
+                        label="الإجمالي قبل الخصم"
+                        value={money(
+                          selectedReceipt.original_receipt.sale.sub_total,
+                        )}
+                      />
+
+                      <SummaryLine
+                        label="خصم عادي"
+                        value={money(
+                          selectedReceipt.original_receipt.sale
+                            .discount_value || 0,
+                        )}
+                      />
+
+                      <SummaryLine
+                        label="خصم العرض"
+                        value={money(
+                          selectedReceipt.original_receipt.sale
+                            .promotion_discount_value || 0,
+                        )}
+                      />
+
+                      <SummaryLine
+                        label="خصم النقاط"
+                        value={money(
+                          selectedReceipt.original_receipt.sale
+                            .loyalty_discount_value || 0,
+                        )}
+                      />
+
+                      <SummaryLine
+                        label="الإجمالي الأصلي"
+                        value={money(
+                          selectedReceipt.original_receipt.sale.grand_total,
+                        )}
+                        strong
+                      />
+                    </div>
+                  </div>
+                </details>
+              )}
 
             {selectedReturnHistory.length > 0 && (
               <div
@@ -1851,29 +2147,66 @@ export default function InvoicesPage() {
               }}
             >
               <SummaryLine
-                label="الإجمالي قبل الخصم"
-                value={money(selectedReceipt.sale.sub_total)}
+                label="الإجمالي قبل الخصم الحالي"
+                value={money(
+                  selectedReceipt.financials?.current_sub_total ??
+                    selectedReceipt.sale.sub_total,
+                )}
               />
+
               <SummaryLine
-                label="خصم عادي"
-                value={money(selectedReceipt.sale.discount_value || 0)}
+                label="خصم عادي مطبق"
+                value={money(
+                  selectedReceipt.financials?.current_normal_discount_value ??
+                    selectedReceipt.sale.discount_value ??
+                    0,
+                )}
               />
-              {Number(selectedReceipt.sale.promotion_discount_value || 0) >
+
+              <SummaryLine
+                label="خصم العرض الحالي"
+                value={money(
+                  selectedReceipt.financials
+                    ?.current_promotion_discount_value ??
+                    selectedReceipt.sale.promotion_discount_value ??
+                    0,
+                )}
+              />
+
+              <SummaryLine
+                label="خصم النقاط المطبق"
+                value={money(
+                  selectedReceipt.financials?.current_loyalty_discount_value ??
+                    selectedReceipt.sale.loyalty_discount_value ??
+                    0,
+                )}
+              />
+
+              <SummaryLine
+                label="الإجمالي الحالي قبل المرتجعات"
+                value={money(
+                  selectedReceipt.financials?.current_grand_total ??
+                    selectedReceipt.sale.grand_total,
+                )}
+                strong
+              />
+
+              {Number(selectedReceipt.financials?.total_return_value || 0) >
                 0 && (
                 <SummaryLine
-                  label={`عرض ${selectedReceipt.sale.promotion_name || ''}`}
+                  label="إجمالي المرتجعات"
                   value={money(
-                    selectedReceipt.sale.promotion_discount_value || 0,
+                    selectedReceipt.financials?.total_return_value || 0,
                   )}
                 />
               )}
+
               <SummaryLine
-                label="خصم النقاط"
-                value={money(selectedReceipt.sale.loyalty_discount_value || 0)}
-              />
-              <SummaryLine
-                label="الإجمالي النهائي"
-                value={money(selectedReceipt.sale.grand_total)}
+                label="الصافي الحالي"
+                value={money(
+                  selectedReceipt.financials?.net_grand_total ??
+                    selectedReceipt.sale.grand_total,
+                )}
                 strong
               />
               <SummaryLine

@@ -42,6 +42,18 @@ type ExchangeState = {
   }
 
   groups: ExchangeGroup[]
+  financials: {
+    original_normal_discount_value: number
+    original_loyalty_discount_value: number
+
+    current_sub_total: number
+    current_promotion_discount_value: number
+
+    current_grand_total: number
+
+    total_return_value: number
+    net_grand_total: number
+  }
 }
 
 type ExchangeDraft = {
@@ -193,6 +205,7 @@ export default function SaleExchangeModal({
           sale: result.sale,
           snapshot: result.snapshot,
           groups: activeGroups,
+          financials: result.financials,
         }
 
         setState(nextState)
@@ -231,20 +244,31 @@ export default function SaleExchangeModal({
       return {
         oldTotal: 0,
         newTotal: 0,
+
         difference: 0,
+
+        currentInvoiceNet: 0,
+        nextInvoiceNet: 0,
       }
     }
 
-    const oldTotal = roundMoney(
-      selectedGroup.units.reduce(
-        (sum, unit) =>
-          sum +
-          (Number(unit.current_is_gift || 0) === 1
-            ? 0
-            : Number(unit.current_unit_price || 0)),
-        0,
-      ),
+    const oldUnits = selectedGroup.units.map((unit) => ({
+      id: Number(unit.id),
+
+      price: Number(unit.current_unit_price || 0),
+
+      isGift: Number(unit.current_is_gift || 0) === 1,
+    }))
+
+    const oldGroupGross = roundMoney(
+      oldUnits.reduce((sum, unit) => sum + unit.price, 0),
     )
+
+    const oldGroupPromotionDiscount = roundMoney(
+      oldUnits.reduce((sum, unit) => sum + (unit.isGift ? unit.price : 0), 0),
+    )
+
+    const oldTotal = roundMoney(oldGroupGross - oldGroupPromotionDiscount)
 
     const nextUnits = selectedGroup.units.map((unit) => {
       const draft = drafts.find(
@@ -272,17 +296,85 @@ export default function SaleExchangeModal({
         .map((unit) => unit.id),
     )
 
-    const newTotal = roundMoney(
+    const newGroupGross = roundMoney(
+      nextUnits.reduce((sum, unit) => sum + unit.price, 0),
+    )
+
+    const newGroupPromotionDiscount = roundMoney(
       nextUnits.reduce(
-        (sum, unit) => sum + (giftIds.has(unit.id) ? 0 : unit.price),
+        (sum, unit) => sum + (giftIds.has(unit.id) ? unit.price : 0),
         0,
       ),
     )
 
+    const newTotal = roundMoney(newGroupGross - newGroupPromotionDiscount)
+
+    /*
+     * Recalculate the whole invoice exactly
+     * like the Backend does.
+     */
+    const nextSubTotal = roundMoney(
+      Number(state.financials.current_sub_total || 0) -
+        oldGroupGross +
+        newGroupGross,
+    )
+
+    const nextPromotionDiscount = Math.max(
+      0,
+      roundMoney(
+        Number(state.financials.current_promotion_discount_value || 0) -
+          oldGroupPromotionDiscount +
+          newGroupPromotionDiscount,
+      ),
+    )
+
+    const afterPromotion = Math.max(
+      0,
+      roundMoney(nextSubTotal - nextPromotionDiscount),
+    )
+
+    const normalDiscount = roundMoney(
+      Math.min(
+        Number(state.financials.original_normal_discount_value || 0),
+
+        afterPromotion,
+      ),
+    )
+
+    const afterNormal = Math.max(0, roundMoney(afterPromotion - normalDiscount))
+
+    const loyaltyDiscount = roundMoney(
+      Math.min(
+        Number(state.financials.original_loyalty_discount_value || 0),
+
+        afterNormal,
+      ),
+    )
+
+    const nextGrandTotal = Math.max(
+      0,
+      roundMoney(afterNormal - loyaltyDiscount),
+    )
+
+    const nextInvoiceNet = Math.max(
+      0,
+      roundMoney(
+        nextGrandTotal - Number(state.financials.total_return_value || 0),
+      ),
+    )
+
+    const currentInvoiceNet = Number(state.financials.net_grand_total || 0)
+
+    const difference = roundMoney(nextInvoiceNet - currentInvoiceNet)
+
     return {
       oldTotal,
       newTotal,
-      difference: roundMoney(newTotal - oldTotal),
+
+      difference,
+
+      currentInvoiceNet,
+      nextInvoiceNet,
     }
   }, [state, selectedGroup, drafts])
 
@@ -834,17 +926,17 @@ export default function SaleExchangeModal({
                   }}
                 >
                   <div style={summaryCardStyle}>
-                    القيمة الحالية
+                    قيمة العرض الحالية
                     <strong>{money(preview.oldTotal)}</strong>
                   </div>
 
                   <div style={summaryCardStyle}>
-                    بعد الاستبدال
+                    قيمة العرض بعد الاستبدال
                     <strong>{money(preview.newTotal)}</strong>
                   </div>
 
                   <div style={summaryCardStyle}>
-                    الفرق
+                    فرق الاستبدال الفعلي
                     <strong
                       style={{
                         color:
@@ -861,6 +953,22 @@ export default function SaleExchangeModal({
                           ? `للعميل ${money(Math.abs(preview.difference))}`
                           : money(0)}
                     </strong>
+                  </div>
+
+                  <div
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      background: 'rgba(255,255,255,0.04)',
+                      color: '#cbd5e1',
+                      fontWeight: 800,
+                    }}
+                  >
+                    صافي الفاتورة الحالي:{' '}
+                    <strong>{money(preview.currentInvoiceNet)}</strong>
+                    {' → '}
+                    بعد الاستبدال:{' '}
+                    <strong>{money(preview.nextInvoiceNet)}</strong>
                   </div>
                 </div>
 

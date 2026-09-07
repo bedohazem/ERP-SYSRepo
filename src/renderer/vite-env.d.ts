@@ -293,6 +293,72 @@ declare global {
         loyalty: any[]
       }>
 
+      getSaleCurrentState: (saleId: number) => Promise<{
+        sale: any
+
+        financials: {
+          original_sub_total: number
+
+          original_promotion_discount_value: number
+
+          original_normal_discount_value: number
+
+          original_loyalty_discount_value: number
+
+          original_grand_total: number
+
+          current_sub_total: number
+
+          current_promotion_discount_value: number
+
+          current_normal_discount_value: number
+
+          current_loyalty_discount_value: number
+
+          current_total_discount: number
+
+          current_grand_total: number
+
+          total_return_value: number
+
+          net_grand_total: number
+
+          remaining_amount: number
+
+          net_paid_amount: number
+
+          return_count: number
+
+          exchange_count: number
+
+          exchange_difference_total: number
+
+          exchange_cash_collection_total: number
+
+          exchange_debt_reduction_total: number
+
+          exchange_cash_refund_total: number
+
+          financial_integrity_delta: number
+        }
+
+        current_receipt: {
+          sale: any
+          items: any[]
+          loyalty: any[]
+        }
+
+        original_receipt: {
+          sale: any
+          items: any[]
+          loyalty: any[]
+        }
+
+        exchanges: any[]
+
+        promotion_units: any[]
+      }>
+
       listSales: (input?: {
         search?: string
 
@@ -336,6 +402,16 @@ declare global {
           cancelled_by?: number | null
           cancel_reason?: string | null
           requires_admin_password?: number | boolean
+          original_sub_total?: number
+          original_grand_total?: number
+
+          total_discount_value?: number
+
+          current_net_total?: number
+          current_paid_amount?: number
+
+          exchange_count?: number
+          exchange_difference_total?: number
         }>
         total: number
         limit: number
@@ -470,6 +546,22 @@ declare global {
             current_color?: string | null
           }>
         }>
+        financials: {
+          original_sub_total: number
+          original_normal_discount_value: number
+          original_loyalty_discount_value: number
+
+          current_sub_total: number
+          current_promotion_discount_value: number
+          current_normal_discount_value: number
+          current_loyalty_discount_value: number
+          current_total_discount: number
+          current_grand_total: number
+
+          total_return_value: number
+          net_grand_total: number
+          net_paid_amount: number
+        }
       }>
 
       createSaleExchange: (input: {

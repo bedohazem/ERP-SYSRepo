@@ -25,6 +25,8 @@ import {
 
 import { requireAdmin, requireAnyAdminPassword } from './permission-helper'
 
+import { getSaleCurrentState } from '../database/repositories/sales-current-state.repo'
+
 export function registerSalesIpc(): void {
   ipcMain.handle(
     'sales:search-variants',
@@ -72,6 +74,10 @@ export function registerSalesIpc(): void {
 
   ipcMain.handle('sales:get-receipt', (_, saleId: number) => {
     return getSaleReceipt(Number(saleId))
+  })
+
+  ipcMain.handle('sales:current-state', (_, saleId: number) => {
+    return getSaleCurrentState(Number(saleId))
   })
 
   ipcMain.handle('sales:return-history', (_, saleId: number) => {
