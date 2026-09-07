@@ -21,6 +21,9 @@ type ReportsData = {
     final_net_profit: number
     cancelled_sales_count: number
     cancelled_returns_count: number
+    exchange_count: number
+    exchange_adjustment: number
+    exchange_discount_adjustment: number
   }
   cashAccounts: Array<{
     payment_method: string
@@ -88,6 +91,9 @@ const emptyReports: ReportsData = {
     final_net_profit: 0,
     cancelled_sales_count: 0,
     cancelled_returns_count: 0,
+    exchange_count: 0,
+    exchange_adjustment: 0,
+    exchange_discount_adjustment: 0,
   },
   cashAccounts: [],
   cashTotalCapital: 0,
@@ -278,13 +284,13 @@ export default function DashboardPage() {
 
         newReceivables: Math.max(
           0,
+
           Number(today.summary.gross_sales || 0) -
+            Number(today.summary.exchange_adjustment || 0) -
             Number(todaySalesCash?.total_in || 0),
         ),
 
-        totalDiscounts:
-          Number(today.summary.normal_discounts || 0) +
-          Number(today.summary.loyalty_discounts || 0),
+        totalDiscounts: Number(today.summary.total_discounts || 0),
 
         saleReturnsValue: Number(today.summary.total_returns || 0),
 
@@ -446,7 +452,7 @@ export default function DashboardPage() {
           icon="💰"
           title="صافي الربح النهائي"
           value={money(data.month.summary.final_net_profit)}
-          subtitle="بعد الخصومات والمرتجعات والمصروفات ودفعات الالتزامات"
+          subtitle="بعد الخصومات والمرتجعات والاستبدالات والمصروفات"
           tone="green"
         />
 
@@ -472,6 +478,16 @@ export default function DashboardPage() {
           value={money(data.month.summary.total_returns)}
           subtitle={`${data.month.summary.returns_count} عملية مرتجع`}
           tone="red"
+        />
+
+        <StatCard
+          icon="🔄"
+          title="استبدالات الشهر"
+          value={String(data.month.summary.exchange_count || 0)}
+          subtitle={`صافي الفروق: ${money(
+            data.month.summary.exchange_adjustment || 0,
+          )}`}
+          tone="violet"
         />
 
         <StatCard

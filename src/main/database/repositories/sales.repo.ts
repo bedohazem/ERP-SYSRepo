@@ -384,15 +384,29 @@ export function createSale(input: CreateSaleInput) {
         sale_id,
         original_sale_item_id,
         promotion_group_id,
+
         original_variant_id,
         current_variant_id,
+
         original_unit_price,
         current_unit_price,
+
+        original_unit_cost,
+        current_unit_cost,
+
         original_is_gift,
         current_is_gift,
+
         is_returned
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+      VALUES (
+        ?, ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?,
+        0
+      )
     `)
 
     const updateStock = db.prepare(`
@@ -674,11 +688,19 @@ export function createSale(input: CreateSaleInput) {
                 saleId,
                 saleItemId,
                 fragment.promotion_group_id,
+
                 item.variant_id,
                 item.variant_id,
+
                 price,
                 price,
+
+                Number(variant?.buy_price || 0),
+
+                Number(variant?.buy_price || 0),
+
                 fragment.is_gift ? 1 : 0,
+
                 fragment.is_gift ? 1 : 0,
               )
             }
@@ -1239,7 +1261,10 @@ export function createSaleReturn(input: {
           pv.barcode AS current_barcode,
           pv.size AS current_size,
           pv.color AS current_color,
-          pv.buy_price AS current_unit_cost,
+          COALESCE(
+            spu.current_unit_cost,
+            pv.buy_price
+          ) AS current_unit_cost,
 
           p.name AS current_product_name
 

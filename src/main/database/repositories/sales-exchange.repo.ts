@@ -38,7 +38,8 @@ type PromotionUnitRow = {
 
   original_unit_price: number
   current_unit_price: number
-
+  original_unit_cost: number | null
+  current_unit_cost: number | null
   original_is_gift: number
   current_is_gift: number
 
@@ -491,8 +492,13 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
     const beforeState = groupUnits.map((unit) => ({
       id: Number(unit.id),
+
       current_variant_id: Number(unit.current_variant_id),
+
       current_unit_price: Number(unit.current_unit_price),
+
+      current_unit_cost: Number(unit.current_unit_cost || 0),
+
       current_is_gift: Number(unit.current_is_gift),
     }))
 
@@ -515,8 +521,12 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
       return {
         ...unit,
+
         current_variant_id: replacement.variant_id,
+
         current_unit_price: Number(replacement.sell_price),
+
+        current_unit_cost: Number(replacement.buy_price || 0),
       }
     })
 
@@ -698,20 +708,54 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           original_sale_id,
           user_id,
           promotion_group_id,
+
           old_group_total,
           new_group_total,
           difference_amount,
+
+          old_invoice_sub_total,
+          new_invoice_sub_total,
+
+          old_promotion_discount_value,
+          new_promotion_discount_value,
+
+          old_normal_discount_value,
+          new_normal_discount_value,
+
+          old_loyalty_discount_value,
+          new_loyalty_discount_value,
+
+          old_invoice_grand_total,
+          new_invoice_grand_total,
+
+          old_net_total,
+          new_net_total,
+
           cash_collection_amount,
           debt_reduction_amount,
           cash_refund_amount,
+
           payment_method,
           reason,
+
           before_state_json,
           after_state_json,
+
           business_date
         )
         VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?,
+          ?, ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?, ?,
+          ?, ?,
+          ?, ?,
+          ?
         )
         `,
       )
@@ -719,16 +763,47 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         saleId,
         userId,
         promotionGroupId,
+
         oldGroupTotal,
         newGroupTotal,
         differenceAmount,
+
+        currentStateBefore.financials.current_sub_total,
+
+        nextSubTotal,
+
+        currentStateBefore.financials.current_promotion_discount_value,
+
+        nextPromotionDiscount,
+
+        currentStateBefore.financials.current_normal_discount_value,
+
+        nextNormalDiscount,
+
+        currentStateBefore.financials.current_loyalty_discount_value,
+
+        nextLoyaltyDiscount,
+
+        currentStateBefore.financials.current_grand_total,
+
+        nextGrandTotal,
+
+        currentStateBefore.financials.net_grand_total,
+
+        nextNetGrandTotal,
+
         cashCollectionAmount,
         debtReductionAmount,
         cashRefundAmount,
+
         paymentMethod,
+
         input.reason?.trim() || null,
+
         JSON.stringify(beforeState),
+
         JSON.stringify(afterState),
+
         businessDate,
       )
 
@@ -867,15 +942,29 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         INSERT INTO sale_exchange_items (
           exchange_id,
           promotion_unit_id,
+
           old_variant_id,
           new_variant_id,
+
           old_unit_price,
           new_unit_price,
+
+          old_unit_cost,
+          new_unit_cost,
+
           old_is_gift,
           new_is_gift,
+
           quantity
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+        VALUES (
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          1
+        )
         `,
     )
 
@@ -885,8 +974,11 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         SET
           current_variant_id = ?,
           current_unit_price = ?,
+          current_unit_cost = ?,
+
           updated_at =
             CURRENT_TIMESTAMP
+
         WHERE id = ?
           AND sale_id = ?
         `,
@@ -924,17 +1016,28 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       insertExchangeItem.run(
         exchangeId,
         oldUnit.id,
+
         oldUnit.current_variant_id,
         replacement.variant_id,
+
         oldUnit.current_unit_price,
         replacement.sell_price,
+
+        Number(oldUnit.current_unit_cost || 0),
+
+        Number(replacement.buy_price || 0),
+
         oldUnit.current_is_gift,
         newUnit.current_is_gift,
       )
 
       updateCurrentUnit.run(
         replacement.variant_id,
+
         replacement.sell_price,
+
+        Number(replacement.buy_price || 0),
+
         oldUnit.id,
         saleId,
       )

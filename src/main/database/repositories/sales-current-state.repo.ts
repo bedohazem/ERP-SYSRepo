@@ -129,8 +129,10 @@ export function getSaleCurrentState(saleIdInput: number) {
         pv.color
           AS current_color,
 
-        pv.buy_price
-          AS current_unit_cost,
+        COALESCE(
+          spu.current_unit_cost,
+          pv.buy_price
+        ) AS current_unit_cost,
 
         p.name
           AS current_product_name,

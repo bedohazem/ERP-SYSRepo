@@ -92,6 +92,23 @@ export function getReportsSummary(input?: ReportFilter) {
     'sr.user_id',
   )
 
+  const exchangesWhere = buildWhere(
+    'se',
+    input,
+    [`IFNULL(os.type, 'sale') = 'sale'`, `os.cancelled_at IS NULL`],
+    'se.user_id',
+    `COALESCE(
+        NULLIF(
+          se.business_date,
+          ''
+        ),
+        date(
+          se.created_at,
+          'localtime'
+        )
+      )`,
+  )
+
   const cancelledSalesWhere = buildWhere(
     's',
     input,
@@ -171,19 +188,27 @@ export function getReportsSummary(input?: ReportFilter) {
 
       IFNULL(
         SUM(
-          MAX(
-            0,
-            sr.sub_total
-            - sr.refund_amount
-            - IFNULL(
-                sr.loyalty_discount_value,
-                0
-              )
-            - IFNULL(
-                sr.promotion_discount_value,
-                0
-              )
-          )
+          CASE
+            WHEN
+              sr.normal_discount_value
+              IS NOT NULL
+            THEN
+              sr.normal_discount_value
+
+            ELSE MAX(
+              0,
+              sr.sub_total
+              - sr.refund_amount
+              - IFNULL(
+                  sr.loyalty_discount_value,
+                  0
+                )
+              - IFNULL(
+                  sr.promotion_discount_value,
+                  0
+                )
+            )
+          END
         ),
         0
       ) AS returned_normal_discounts,
@@ -212,6 +237,79 @@ export function getReportsSummary(input?: ReportFilter) {
   `,
     )
     .get(...returnsWhere.params) as any
+
+  const exchangeSummary = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS exchange_count,
+
+        IFNULL(
+          SUM(
+            se.difference_amount
+          ),
+          0
+        ) AS exchange_adjustment,
+
+        IFNULL(
+          SUM(
+            COALESCE(
+              se.new_normal_discount_value,
+              se.old_normal_discount_value,
+              0
+            )
+            -
+            COALESCE(
+              se.old_normal_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS normal_discount_adjustment,
+
+        IFNULL(
+          SUM(
+            COALESCE(
+              se.new_promotion_discount_value,
+              se.old_promotion_discount_value,
+              0
+            )
+            -
+            COALESCE(
+              se.old_promotion_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS promotion_discount_adjustment,
+
+        IFNULL(
+          SUM(
+            COALESCE(
+              se.new_loyalty_discount_value,
+              se.old_loyalty_discount_value,
+              0
+            )
+            -
+            COALESCE(
+              se.old_loyalty_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS loyalty_discount_adjustment
+
+      FROM sale_exchanges se
+
+      JOIN sales os
+        ON
+          os.id =
+            se.original_sale_id
+
+      ${exchangesWhere.whereSql}
+      `,
+    )
+    .get(...exchangesWhere.params) as any
 
   const cancelledSalesRow = db
     .prepare(
@@ -311,37 +409,176 @@ export function getReportsSummary(input?: ReportFilter) {
     )
     .get(...returnsWhere.params) as any
 
-  const grossSales = Number(salesSummary.gross_sales || 0)
+  const exchangeProfitRow = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(
+            IFNULL(
+              x.price_delta,
+              0
+            )
+          ),
+          0
+        ) AS gross_price_adjustment,
+
+        IFNULL(
+          SUM(
+            IFNULL(
+              x.price_delta,
+              0
+            )
+            -
+            IFNULL(
+              x.cost_delta,
+              0
+            )
+          ),
+          0
+        ) AS gross_profit_adjustment,
+
+        IFNULL(
+          SUM(
+            se.difference_amount
+            -
+            IFNULL(
+              x.cost_delta,
+              0
+            )
+          ),
+          0
+        ) AS net_profit_adjustment
+
+      FROM sale_exchanges se
+
+      JOIN sales os
+        ON
+          os.id =
+            se.original_sale_id
+
+      LEFT JOIN (
+        SELECT
+          sei.exchange_id,
+
+          IFNULL(
+            SUM(
+              (
+                sei.new_unit_price
+                -
+                sei.old_unit_price
+              )
+              *
+              sei.quantity
+            ),
+            0
+          ) AS price_delta,
+
+          IFNULL(
+            SUM(
+              (
+                COALESCE(
+                  sei.new_unit_cost,
+                  new_variant.buy_price,
+                  0
+                )
+                -
+                COALESCE(
+                  sei.old_unit_cost,
+                  old_variant.buy_price,
+                  0
+                )
+              )
+              *
+              sei.quantity
+            ),
+            0
+          ) AS cost_delta
+
+        FROM sale_exchange_items sei
+
+        LEFT JOIN product_variants
+          old_variant
+          ON
+            old_variant.id =
+              sei.old_variant_id
+
+        LEFT JOIN product_variants
+          new_variant
+          ON
+            new_variant.id =
+              sei.new_variant_id
+
+        GROUP BY
+          sei.exchange_id
+      ) x
+        ON
+          x.exchange_id =
+            se.id
+
+      ${exchangesWhere.whereSql}
+      `,
+    )
+    .get(...exchangesWhere.params) as any
+
+  const exchangeAdjustment = Number(exchangeSummary.exchange_adjustment || 0)
+
+  const grossPriceAdjustment = Number(
+    exchangeProfitRow.gross_price_adjustment || 0,
+  )
+
+  const exchangeDiscountAdjustment = grossPriceAdjustment - exchangeAdjustment
+
+  const grossSales = Number(salesSummary.gross_sales || 0) + exchangeAdjustment
+
   const totalReturns = Number(returnsSummary.total_returns || 0)
 
   const normalDiscounts = Math.max(
     0,
+
     Number(salesSummary.normal_discounts || 0) -
-      Number(returnsSummary.returned_normal_discounts || 0),
+      Number(returnsSummary.returned_normal_discounts || 0) +
+      Number(exchangeSummary.normal_discount_adjustment || 0),
   )
 
   const promotionDiscounts = Math.max(
     0,
 
     Number(salesSummary.promotion_discounts || 0) -
-      Number(returnsSummary.returned_promotion_discounts || 0),
+      Number(returnsSummary.returned_promotion_discounts || 0) +
+      Number(exchangeSummary.promotion_discount_adjustment || 0),
   )
 
   const loyaltyDiscounts = Math.max(
     0,
+
     Number(salesSummary.loyalty_discounts || 0) -
-      Number(returnsSummary.returned_loyalty_discounts || 0),
+      Number(returnsSummary.returned_loyalty_discounts || 0) +
+      Number(exchangeSummary.loyalty_discount_adjustment || 0),
   )
 
-  const totalDiscounts = normalDiscounts + promotionDiscounts + loyaltyDiscounts
+  const returnedDiscounts =
+    Number(returnsSummary.returned_normal_discounts || 0) +
+    Number(returnsSummary.returned_promotion_discounts || 0) +
+    Number(returnsSummary.returned_loyalty_discounts || 0)
+
+  const totalDiscounts = Math.max(
+    0,
+
+    Number(salesSummary.total_discounts || 0) -
+      returnedDiscounts +
+      exchangeDiscountAdjustment,
+  )
 
   const grossProfitBeforeDiscounts =
     Number(salesProfitRow.gross_profit_before_discounts || 0) -
-    Number(returnsProfitRow.returned_profit_before_discounts || 0)
+    Number(returnsProfitRow.returned_profit_before_discounts || 0) +
+    Number(exchangeProfitRow.gross_profit_adjustment || 0)
 
   const netProfitAfterDiscounts =
     Number(salesProfitRow.net_profit_after_discounts || 0) -
-    Number(returnsProfitRow.returned_profit_after_discounts || 0)
+    Number(returnsProfitRow.returned_profit_after_discounts || 0) +
+    Number(exchangeProfitRow.net_profit_adjustment || 0)
 
   const expensesWhere = buildWhere('e', input, [`e.cancelled_at IS NULL`])
 
@@ -464,155 +701,524 @@ export function getReportsSummary(input?: ReportFilter) {
   )
 
   const finalNetProfit = netProfitAfterDiscounts - totalExpenses
+
   const topProducts = db
     .prepare(
       `
-    SELECT
-      x.variant_id,
-      x.product_name,
-      x.size,
-      x.color,
-      IFNULL(SUM(x.quantity), 0) AS net_quantity,
-      IFNULL(SUM(x.total), 0) AS net_total
-
-    FROM (
       SELECT
-        si.variant_id,
-        si.product_name,
-        si.size,
-        si.color,
-        si.quantity AS quantity,
-        si.line_total AS total,
-        COALESCE(
-          NULLIF(s.business_date, ''),
-          date(s.created_at, 'localtime')
-        ) AS business_date,
-        s.user_id
+        x.variant_id,
+        x.product_name,
+        x.size,
+        x.color,
 
-      FROM sale_items si
+        IFNULL(
+          SUM(x.quantity),
+          0
+        ) AS net_quantity,
 
-      JOIN sales s
-        ON s.id = si.sale_id
+        IFNULL(
+          SUM(x.total),
+          0
+        ) AS net_total
 
-      WHERE IFNULL(s.type, 'sale') = 'sale'
-        AND s.cancelled_at IS NULL
+      FROM (
+        SELECT
+          si.variant_id,
+          si.product_name,
+          si.size,
+          si.color,
 
-      UNION ALL
+          si.quantity
+            AS quantity,
 
-      SELECT
-        sri.variant_id,
-        sri.product_name,
-        sri.size,
-        sri.color,
-        -sri.quantity AS quantity,
-        -sri.line_total AS total,
-        date(sr.created_at, 'localtime') AS business_date,
-        sr.user_id
+          si.line_total
+            AS total,
 
-      FROM sale_return_items sri
+          COALESCE(
+            NULLIF(
+              s.business_date,
+              ''
+            ),
+            date(
+              s.created_at,
+              'localtime'
+            )
+          ) AS business_date,
 
-      JOIN sale_returns sr
-        ON sr.id = sri.return_id
+          s.user_id
 
-      JOIN sales os
-        ON os.id = sr.original_sale_id
+        FROM sale_items si
 
-      WHERE sr.cancelled_at IS NULL
-        AND os.cancelled_at IS NULL   
-    ) x
+        JOIN sales s
+          ON
+            s.id =
+              si.sale_id
 
-    ${combinedWhere.whereSql}
+        WHERE
+          IFNULL(
+            s.type,
+            'sale'
+          ) = 'sale'
 
-    GROUP BY
-      x.variant_id,
-      x.product_name,
-      x.size,
-      x.color
+          AND
+            s.cancelled_at
+            IS NULL
 
-    HAVING net_quantity > 0
+        UNION ALL
 
-    ORDER BY net_quantity DESC
+        SELECT
+          sei.old_variant_id
+            AS variant_id,
 
-  `,
+          old_product.name
+            AS product_name,
+
+          old_variant.size,
+          old_variant.color,
+
+          -sei.quantity
+            AS quantity,
+
+          -(
+            sei.old_unit_price
+            *
+            sei.quantity
+          ) AS total,
+
+          COALESCE(
+            NULLIF(
+              se.business_date,
+              ''
+            ),
+            date(
+              se.created_at,
+              'localtime'
+            )
+          ) AS business_date,
+
+          se.user_id
+
+        FROM sale_exchange_items sei
+
+        JOIN sale_exchanges se
+          ON
+            se.id =
+              sei.exchange_id
+
+        JOIN sales os
+          ON
+            os.id =
+              se.original_sale_id
+
+        JOIN product_variants
+          old_variant
+          ON
+            old_variant.id =
+              sei.old_variant_id
+
+        JOIN products
+          old_product
+          ON
+            old_product.id =
+              old_variant.product_id
+
+        WHERE
+          os.cancelled_at
+            IS NULL
+
+          AND
+            IFNULL(
+              os.type,
+              'sale'
+            ) = 'sale'
+
+        UNION ALL
+
+        SELECT
+          sei.new_variant_id
+            AS variant_id,
+
+          new_product.name
+            AS product_name,
+
+          new_variant.size,
+          new_variant.color,
+
+          sei.quantity
+            AS quantity,
+
+          (
+            sei.new_unit_price
+            *
+            sei.quantity
+          ) AS total,
+
+          COALESCE(
+            NULLIF(
+              se.business_date,
+              ''
+            ),
+            date(
+              se.created_at,
+              'localtime'
+            )
+          ) AS business_date,
+
+          se.user_id
+
+        FROM sale_exchange_items sei
+
+        JOIN sale_exchanges se
+          ON
+            se.id =
+              sei.exchange_id
+
+        JOIN sales os
+          ON
+            os.id =
+              se.original_sale_id
+
+        JOIN product_variants
+          new_variant
+          ON
+            new_variant.id =
+              sei.new_variant_id
+
+        JOIN products
+          new_product
+          ON
+            new_product.id =
+              new_variant.product_id
+
+        WHERE
+          os.cancelled_at
+            IS NULL
+
+          AND
+            IFNULL(
+              os.type,
+              'sale'
+            ) = 'sale'
+
+        UNION ALL
+
+        SELECT
+          sri.variant_id,
+          sri.product_name,
+          sri.size,
+          sri.color,
+
+          -sri.quantity
+            AS quantity,
+
+          -sri.line_total
+            AS total,
+
+          date(
+            sr.created_at,
+            'localtime'
+          ) AS business_date,
+
+          sr.user_id
+
+        FROM sale_return_items sri
+
+        JOIN sale_returns sr
+          ON
+            sr.id =
+              sri.return_id
+
+        JOIN sales os
+          ON
+            os.id =
+              sr.original_sale_id
+
+        WHERE
+          sr.cancelled_at
+            IS NULL
+
+          AND
+            os.cancelled_at
+            IS NULL
+      ) x
+
+      ${combinedWhere.whereSql}
+
+      GROUP BY
+        x.variant_id,
+        x.product_name,
+        x.size,
+        x.color
+
+      HAVING
+        net_quantity > 0
+
+      ORDER BY
+        net_quantity DESC
+      `,
     )
     .all(...combinedWhere.params)
 
   const dailySales = db
     .prepare(
       `
-    SELECT
-      x.business_date AS day,
-      IFNULL(SUM(x.amount), 0) AS total
-
-    FROM (
       SELECT
-        COALESCE(
-          NULLIF(s.business_date, ''),
-          date(s.created_at, 'localtime')
-        ) AS business_date,
-        s.user_id,
-        s.grand_total AS amount
-      FROM sales s
-      WHERE IFNULL(s.type, 'sale') = 'sale'
-        AND s.cancelled_at IS NULL
+        x.business_date
+          AS day,
 
-      UNION ALL
+        IFNULL(
+          SUM(x.amount),
+          0
+        ) AS total
 
-      SELECT
-        date(sr.created_at, 'localtime') AS business_date,
-        sr.user_id,
-        -sr.refund_amount AS amount
-      FROM sale_returns sr
-      JOIN sales os
-        ON os.id = sr.original_sale_id
+      FROM (
+        SELECT
+          COALESCE(
+            NULLIF(
+              s.business_date,
+              ''
+            ),
+            date(
+              s.created_at,
+              'localtime'
+            )
+          ) AS business_date,
 
-      WHERE sr.cancelled_at IS NULL
-        AND os.cancelled_at IS NULL
+          s.user_id,
 
-    ) x
+          s.grand_total
+            AS amount
 
-    ${combinedWhere.whereSql}
+        FROM sales s
 
-    GROUP BY x.business_date
-    ORDER BY day ASC
-  `,
+        WHERE
+          IFNULL(
+            s.type,
+            'sale'
+          ) = 'sale'
+
+          AND
+            s.cancelled_at
+            IS NULL
+
+        UNION ALL
+
+        SELECT
+          COALESCE(
+            NULLIF(
+              se.business_date,
+              ''
+            ),
+            date(
+              se.created_at,
+              'localtime'
+            )
+          ) AS business_date,
+
+          se.user_id,
+
+          se.difference_amount
+            AS amount
+
+        FROM sale_exchanges se
+
+        JOIN sales os
+          ON
+            os.id =
+              se.original_sale_id
+
+        WHERE
+          os.cancelled_at
+            IS NULL
+
+          AND
+            IFNULL(
+              os.type,
+              'sale'
+            ) = 'sale'
+
+        UNION ALL
+
+        SELECT
+          date(
+            sr.created_at,
+            'localtime'
+          ) AS business_date,
+
+          sr.user_id,
+
+          -sr.refund_amount
+            AS amount
+
+        FROM sale_returns sr
+
+        JOIN sales os
+          ON
+            os.id =
+              sr.original_sale_id
+
+        WHERE
+          sr.cancelled_at
+            IS NULL
+
+          AND
+            os.cancelled_at
+            IS NULL
+      ) x
+
+      ${combinedWhere.whereSql}
+
+      GROUP BY
+        x.business_date
+
+      ORDER BY
+        day ASC
+      `,
     )
     .all(...combinedWhere.params)
 
   const paymentMethods = db
     .prepare(
       `
-    SELECT
-      IFNULL(s.payment_method, 'cash') AS payment_method,
+      SELECT
+        x.payment_method,
 
-      COUNT(*) AS count,
+        IFNULL(
+          SUM(x.invoice_count),
+          0
+        ) AS count,
 
-      IFNULL(
-        SUM(
-          s.grand_total -
+        IFNULL(
+          SUM(x.amount),
+          0
+        ) AS total
+
+      FROM (
+        SELECT
           IFNULL(
-            (
-              SELECT SUM(sr.refund_amount)
-              FROM sale_returns sr
-              WHERE sr.original_sale_id = s.id
-              AND sr.cancelled_at IS NULL
+            s.payment_method,
+            'cash'
+          ) AS payment_method,
+
+          1 AS invoice_count,
+
+          s.grand_total
+            AS amount,
+
+          COALESCE(
+            NULLIF(
+              s.business_date,
+              ''
             ),
-            0
-          )
-        ),
-        0
-      ) AS total
+            date(
+              s.created_at,
+              'localtime'
+            )
+          ) AS business_date,
 
-    FROM sales s
+          s.user_id
 
-    ${salesWhere.whereSql}
+        FROM sales s
 
-    GROUP BY IFNULL(s.payment_method, 'cash')
+        WHERE
+          IFNULL(
+            s.type,
+            'sale'
+          ) = 'sale'
 
-    ORDER BY total DESC
-  `,
+          AND
+            s.cancelled_at
+            IS NULL
+
+        UNION ALL
+
+        SELECT
+          IFNULL(
+            os.payment_method,
+            'cash'
+          ) AS payment_method,
+
+          0 AS invoice_count,
+
+          se.difference_amount
+            AS amount,
+
+          COALESCE(
+            NULLIF(
+              se.business_date,
+              ''
+            ),
+            date(
+              se.created_at,
+              'localtime'
+            )
+          ) AS business_date,
+
+          se.user_id
+
+        FROM sale_exchanges se
+
+        JOIN sales os
+          ON
+            os.id =
+              se.original_sale_id
+
+        WHERE
+          os.cancelled_at
+            IS NULL
+
+          AND
+            IFNULL(
+              os.type,
+              'sale'
+            ) = 'sale'
+
+        UNION ALL
+
+        SELECT
+          IFNULL(
+            os.payment_method,
+            'cash'
+          ) AS payment_method,
+
+          0 AS invoice_count,
+
+          -sr.refund_amount
+            AS amount,
+
+          date(
+            sr.created_at,
+            'localtime'
+          ) AS business_date,
+
+          sr.user_id
+
+        FROM sale_returns sr
+
+        JOIN sales os
+          ON
+            os.id =
+              sr.original_sale_id
+
+        WHERE
+          sr.cancelled_at
+            IS NULL
+
+          AND
+            os.cancelled_at
+            IS NULL
+      ) x
+
+      ${combinedWhere.whereSql}
+
+      GROUP BY
+        x.payment_method
+
+      ORDER BY
+        total DESC
+      `,
     )
-    .all(...salesWhere.params)
+    .all(...combinedWhere.params)
 
   const lowStock = db
     .prepare(
@@ -646,68 +1252,178 @@ export function getReportsSummary(input?: ReportFilter) {
   const topCustomers = db
     .prepare(
       `
-    SELECT
-      c.id,
-      c.name,
-      c.phone,
-
-      IFNULL(
-        SUM(x.sales_count),
-        0
-      ) AS sales_count,
-
-      IFNULL(
-        SUM(x.amount),
-        0
-      ) AS total_spent
-
-    FROM customers c
-
-    JOIN (
       SELECT
-        s.customer_id,
-        COALESCE(
-          NULLIF(s.business_date, ''),
-          date(s.created_at, 'localtime')
-        ) AS business_date,
-        s.user_id,
-        s.grand_total AS amount,
-        1 AS sales_count
+        c.id,
+        c.name,
+        c.phone,
 
-      FROM sales s
+        IFNULL(
+          SUM(x.sales_count),
+          0
+        ) AS sales_count,
 
-      WHERE IFNULL(s.type, 'sale') = 'sale'
-        AND s.cancelled_at IS NULL
-        AND s.customer_id IS NOT NULL
+        IFNULL(
+          SUM(x.amount),
+          0
+        ) AS total_spent
 
-      UNION ALL
+      FROM customers c
 
-      SELECT
-        sr.customer_id,
-        date(sr.created_at, 'localtime') AS business_date,
-        sr.user_id,
-        -sr.refund_amount AS amount,
-        0 AS sales_count
+      JOIN (
+        /*
+         * Original sales.
+         */
+        SELECT
+          s.customer_id,
 
-      FROM sale_returns sr
+          COALESCE(
+            NULLIF(
+              s.business_date,
+              ''
+            ),
+            date(
+              s.created_at,
+              'localtime'
+            )
+          ) AS business_date,
 
-      JOIN sales os
-        ON os.id = sr.original_sale_id
+          s.user_id,
 
-      WHERE sr.customer_id IS NOT NULL
-        AND sr.cancelled_at IS NULL
-        AND os.cancelled_at IS NULL
+          s.grand_total
+            AS amount,
 
-    ) x
-      ON x.customer_id = c.id
+          1 AS sales_count
 
-    ${combinedWhere.whereSql}
+        FROM sales s
 
-    GROUP BY c.id
+        WHERE
+          IFNULL(
+            s.type,
+            'sale'
+          ) = 'sale'
 
-    ORDER BY total_spent DESC
+          AND
+            s.cancelled_at
+            IS NULL
 
-  `,
+          AND
+            s.customer_id
+            IS NOT NULL
+
+        UNION ALL
+
+        /*
+         * Active returns reduce customer spend
+         * on the actual return date.
+         */
+        SELECT
+          sr.customer_id,
+
+          date(
+            sr.created_at,
+            'localtime'
+          ) AS business_date,
+
+          sr.user_id,
+
+          -sr.refund_amount
+            AS amount,
+
+          0 AS sales_count
+
+        FROM sale_returns sr
+
+        JOIN sales os
+          ON
+            os.id =
+              sr.original_sale_id
+
+        WHERE
+          sr.customer_id
+            IS NOT NULL
+
+          AND
+            sr.cancelled_at
+            IS NULL
+
+          AND
+            os.cancelled_at
+            IS NULL
+
+          AND
+            IFNULL(
+              os.type,
+              'sale'
+            ) = 'sale'
+
+        UNION ALL
+
+        /*
+         * Exchanges affect customer spend by
+         * the actual exchange difference.
+         *
+         * Positive difference:
+         * customer spent more.
+         *
+         * Negative difference:
+         * customer received/refunded value.
+         */
+        SELECT
+          os.customer_id,
+
+          COALESCE(
+            NULLIF(
+              se.business_date,
+              ''
+            ),
+            date(
+              se.created_at,
+              'localtime'
+            )
+          ) AS business_date,
+
+          se.user_id,
+
+          se.difference_amount
+            AS amount,
+
+          0 AS sales_count
+
+        FROM sale_exchanges se
+
+        JOIN sales os
+          ON
+            os.id =
+              se.original_sale_id
+
+        WHERE
+          os.customer_id
+            IS NOT NULL
+
+          AND
+            os.cancelled_at
+            IS NULL
+
+          AND
+            IFNULL(
+              os.type,
+              'sale'
+            ) = 'sale'
+      ) x
+        ON
+          x.customer_id =
+            c.id
+
+      ${combinedWhere.whereSql}
+
+      GROUP BY
+        c.id,
+        c.name,
+        c.phone
+
+      ORDER BY
+        total_spent DESC
+      `,
     )
     .all(...combinedWhere.params)
 
@@ -762,6 +1478,9 @@ export function getReportsSummary(input?: ReportFilter) {
   return {
     summary: {
       sales_count: Number(salesSummary.sales_count || 0),
+      exchange_count: Number(exchangeSummary.exchange_count || 0),
+      exchange_adjustment: exchangeAdjustment,
+      exchange_discount_adjustment: exchangeDiscountAdjustment,
       returns_count: Number(returnsSummary.returns_count || 0),
       cancelled_sales_count: Number(
         cancelledSalesRow.cancelled_sales_count || 0,

@@ -20,6 +20,9 @@ type ReportsData = {
     normal_discounts: number
     promotion_discounts: number
     total_discounts: number
+    exchange_count: number
+    exchange_adjustment: number
+    exchange_discount_adjustment: number
   }
   cashAccounts: Array<{
     payment_method: string
@@ -55,6 +58,9 @@ const emptyReports: ReportsData = {
     normal_discounts: 0,
     promotion_discounts: 0,
     total_discounts: 0,
+    exchange_count: 0,
+    exchange_adjustment: 0,
+    exchange_discount_adjustment: 0,
   },
   cashAccounts: [],
   cashTotalCapital: 0,
@@ -230,6 +236,17 @@ export default function ReportsPage() {
           danger
         />
         <StatCard
+          title="عدد الاستبدالات"
+          value={String(data.summary.exchange_count || 0)}
+        />
+
+        <StatCard
+          title="صافي فروق الاستبدال"
+          value={money(data.summary.exchange_adjustment || 0)}
+          success={Number(data.summary.exchange_adjustment || 0) > 0}
+          danger={Number(data.summary.exchange_adjustment || 0) < 0}
+        />
+        <StatCard
           title="عدد الفواتير"
           value={String(data.summary.sales_count)}
         />
@@ -320,9 +337,13 @@ export default function ReportsPage() {
           />
 
           <ReportTable
-            title="طرق دفع المبيعات فقط"
+            title="صافي المبيعات حسب طريقة دفع الفاتورة"
             emptyText="لا توجد بيانات"
-            columns={['طريقة الدفع', 'عدد فواتير البيع', 'إجمالي المبيعات']}
+            columns={[
+              'طريقة الدفع',
+              'عدد فواتير البيع الأصلية',
+              'صافي المبيعات',
+            ]}
             rows={data.paymentMethods.map((x) => [
               getPaymentMethodLabel(x.payment_method),
               x.count,

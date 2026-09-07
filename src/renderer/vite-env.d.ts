@@ -868,6 +868,9 @@ declare global {
           final_net_profit: number
           cancelled_sales_count: number
           cancelled_returns_count: number
+          exchange_count: number
+          exchange_adjustment: number
+          exchange_discount_adjustment: number
         }
         cashAccounts: Array<{
           payment_method: string

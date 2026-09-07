@@ -224,6 +224,9 @@ export function getDb(): Database.Database {
         original_unit_price REAL NOT NULL DEFAULT 0,
         current_unit_price REAL NOT NULL DEFAULT 0,
 
+        original_unit_cost REAL,
+        current_unit_cost REAL,
+
         original_is_gift INTEGER NOT NULL DEFAULT 0,
         current_is_gift INTEGER NOT NULL DEFAULT 0,
 
@@ -265,6 +268,24 @@ export function getDb(): Database.Database {
         new_group_total REAL NOT NULL DEFAULT 0,
         difference_amount REAL NOT NULL DEFAULT 0,
 
+        old_invoice_sub_total REAL,
+        new_invoice_sub_total REAL,
+
+        old_promotion_discount_value REAL,
+        new_promotion_discount_value REAL,
+
+        old_normal_discount_value REAL,
+        new_normal_discount_value REAL,
+
+        old_loyalty_discount_value REAL,
+        new_loyalty_discount_value REAL,
+
+        old_invoice_grand_total REAL,
+        new_invoice_grand_total REAL,
+
+        old_net_total REAL,
+        new_net_total REAL,
+
         cash_collection_amount REAL NOT NULL DEFAULT 0,
         debt_reduction_amount REAL NOT NULL DEFAULT 0,
         cash_refund_amount REAL NOT NULL DEFAULT 0,
@@ -297,7 +318,8 @@ export function getDb(): Database.Database {
 
         old_unit_price REAL NOT NULL DEFAULT 0,
         new_unit_price REAL NOT NULL DEFAULT 0,
-
+        old_unit_cost REAL,
+        new_unit_cost REAL,
         old_is_gift INTEGER NOT NULL DEFAULT 0,
         new_is_gift INTEGER NOT NULL DEFAULT 0,
 
@@ -682,6 +704,92 @@ export function getDb(): Database.Database {
       'cash_refund_amount',
       'REAL NOT NULL DEFAULT 0',
     )
+
+    safeAddColumn(db, 'sale_promotion_units', 'original_unit_cost', 'REAL')
+
+    safeAddColumn(db, 'sale_promotion_units', 'current_unit_cost', 'REAL')
+
+    safeAddColumn(db, 'sale_exchange_items', 'old_unit_cost', 'REAL')
+
+    safeAddColumn(db, 'sale_exchange_items', 'new_unit_cost', 'REAL')
+
+    safeAddColumn(db, 'sale_exchanges', 'old_invoice_sub_total', 'REAL')
+
+    safeAddColumn(db, 'sale_exchanges', 'new_invoice_sub_total', 'REAL')
+
+    safeAddColumn(db, 'sale_exchanges', 'old_promotion_discount_value', 'REAL')
+
+    safeAddColumn(db, 'sale_exchanges', 'new_promotion_discount_value', 'REAL')
+
+    safeAddColumn(db, 'sale_exchanges', 'old_normal_discount_value', 'REAL')
+
+    safeAddColumn(db, 'sale_exchanges', 'new_normal_discount_value', 'REAL')
+
+    safeAddColumn(db, 'sale_exchanges', 'old_loyalty_discount_value', 'REAL')
+
+    safeAddColumn(db, 'sale_exchanges', 'new_loyalty_discount_value', 'REAL')
+
+    safeAddColumn(db, 'sale_exchanges', 'old_invoice_grand_total', 'REAL')
+
+    safeAddColumn(db, 'sale_exchanges', 'new_invoice_grand_total', 'REAL')
+
+    safeAddColumn(db, 'sale_exchanges', 'old_net_total', 'REAL')
+
+    safeAddColumn(db, 'sale_exchanges', 'new_net_total', 'REAL')
+
+    db.exec(`
+      UPDATE sale_promotion_units
+      SET original_unit_cost = (
+        SELECT si.unit_cost
+        FROM sale_items si
+        WHERE
+          si.id =
+            sale_promotion_units.original_sale_item_id
+        LIMIT 1
+      )
+      WHERE original_unit_cost IS NULL;
+
+      UPDATE sale_promotion_units
+      SET current_unit_cost =
+        CASE
+          WHEN
+            current_variant_id =
+            original_variant_id
+          THEN original_unit_cost
+
+          ELSE (
+            SELECT pv.buy_price
+            FROM product_variants pv
+            WHERE
+              pv.id =
+                sale_promotion_units.current_variant_id
+            LIMIT 1
+          )
+        END
+      WHERE current_unit_cost IS NULL;
+
+      UPDATE sale_exchange_items
+      SET old_unit_cost = (
+        SELECT pv.buy_price
+        FROM product_variants pv
+        WHERE
+          pv.id =
+            sale_exchange_items.old_variant_id
+        LIMIT 1
+      )
+      WHERE old_unit_cost IS NULL;
+
+      UPDATE sale_exchange_items
+      SET new_unit_cost = (
+        SELECT pv.buy_price
+        FROM product_variants pv
+        WHERE
+          pv.id =
+            sale_exchange_items.new_variant_id
+        LIMIT 1
+      )
+      WHERE new_unit_cost IS NULL;
+    `)
 
     safeAddColumn(
       db,
