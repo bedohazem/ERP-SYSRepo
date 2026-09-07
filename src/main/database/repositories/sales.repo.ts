@@ -296,6 +296,54 @@ export function createSale(input: CreateSaleInput) {
 
     const saleId = Number(saleResult.lastInsertRowid)
 
+    if (activePromotionId && promotionResult.promotion) {
+      const promotionSnapshot = promotionResult.promotion as any
+
+      const snapshotProductIds = Array.isArray(promotionSnapshot.product_ids)
+        ? promotionSnapshot.product_ids
+            .map(Number)
+            .filter((id: number) => Number.isFinite(id) && id > 0)
+        : []
+
+      db.prepare(
+        `
+        INSERT INTO sale_promotion_snapshots (
+          sale_id,
+          promotion_id,
+          promotion_name,
+          promotion_type,
+          promotion_value,
+          buy_qty,
+          free_qty,
+          scope_type,
+          category_id,
+          product_ids_json
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      ).run(
+        saleId,
+        activePromotionId,
+        String(promotionSnapshot.name || ''),
+        String(promotionSnapshot.type || ''),
+        Number(promotionSnapshot.value || 0),
+        promotionSnapshot.buy_qty !== null &&
+          promotionSnapshot.buy_qty !== undefined
+          ? Number(promotionSnapshot.buy_qty)
+          : null,
+        promotionSnapshot.free_qty !== null &&
+          promotionSnapshot.free_qty !== undefined
+          ? Number(promotionSnapshot.free_qty)
+          : null,
+        String(promotionSnapshot.scope_type || 'all'),
+        promotionSnapshot.category_id !== null &&
+          promotionSnapshot.category_id !== undefined
+          ? Number(promotionSnapshot.category_id)
+          : null,
+        JSON.stringify(snapshotProductIds),
+      )
+    }
+
     if (paidAmount > 0) {
       createCashMovement({
         type: 'sale',
@@ -327,6 +375,22 @@ export function createSale(input: CreateSaleInput) {
         promotion_group_id
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    const insertPromotionUnit = db.prepare(`
+      INSERT INTO sale_promotion_units (
+        sale_id,
+        original_sale_item_id,
+        promotion_group_id,
+        original_variant_id,
+        current_variant_id,
+        original_unit_price,
+        current_unit_price,
+        original_is_gift,
+        current_is_gift,
+        is_returned
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `)
 
     const updateStock = db.prepare(`
@@ -582,7 +646,7 @@ export function createSale(input: CreateSaleInput) {
             Number(fragment.quantity) * price,
           )
 
-          insertItem.run(
+          const itemResult = insertItem.run(
             saleId,
             item.variant_id,
             item.product_name,
@@ -597,6 +661,26 @@ export function createSale(input: CreateSaleInput) {
             fragment.is_gift ? 1 : 0,
             fragment.promotion_group_id,
           )
+
+          const saleItemId = Number(itemResult.lastInsertRowid)
+
+          if (fragment.promotion_group_id) {
+            const unitCount = Math.floor(Number(fragment.quantity || 0))
+
+            for (let unitIndex = 0; unitIndex < unitCount; unitIndex += 1) {
+              insertPromotionUnit.run(
+                saleId,
+                saleItemId,
+                fragment.promotion_group_id,
+                item.variant_id,
+                item.variant_id,
+                price,
+                price,
+                fragment.is_gift ? 1 : 0,
+                fragment.is_gift ? 1 : 0,
+              )
+            }
+          }
         }
       } else {
         insertItem.run(
@@ -751,6 +835,8 @@ export function getSaleReceipt(saleId: number) {
       si.color,
       si.quantity,
       si.unit_price,
+      IFNULL(si.is_gift, 0) AS is_gift,
+      si.promotion_group_id,
       IFNULL(
         si.promotion_discount_value,
         0

@@ -193,6 +193,128 @@ export function getDb(): Database.Database {
         promotion_group_id TEXT
       );
 
+            CREATE TABLE IF NOT EXISTS sale_promotion_snapshots (
+        sale_id INTEGER PRIMARY KEY,
+        promotion_id INTEGER NOT NULL,
+        promotion_name TEXT NOT NULL,
+        promotion_type TEXT NOT NULL,
+        promotion_value REAL NOT NULL DEFAULT 0,
+        buy_qty INTEGER,
+        free_qty INTEGER,
+        scope_type TEXT NOT NULL,
+        category_id INTEGER,
+        product_ids_json TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (sale_id)
+          REFERENCES sales(id)
+          ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS sale_promotion_units (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        sale_id INTEGER NOT NULL,
+        original_sale_item_id INTEGER NOT NULL,
+        promotion_group_id TEXT NOT NULL,
+
+        original_variant_id INTEGER NOT NULL,
+        current_variant_id INTEGER NOT NULL,
+
+        original_unit_price REAL NOT NULL DEFAULT 0,
+        current_unit_price REAL NOT NULL DEFAULT 0,
+
+        original_is_gift INTEGER NOT NULL DEFAULT 0,
+        current_is_gift INTEGER NOT NULL DEFAULT 0,
+
+        is_returned INTEGER NOT NULL DEFAULT 0,
+
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (sale_id)
+          REFERENCES sales(id)
+          ON DELETE CASCADE,
+
+        FOREIGN KEY (original_sale_item_id)
+          REFERENCES sale_items(id)
+          ON DELETE CASCADE,
+
+        FOREIGN KEY (original_variant_id)
+          REFERENCES product_variants(id),
+
+        FOREIGN KEY (current_variant_id)
+          REFERENCES product_variants(id)
+      );
+
+      CREATE INDEX IF NOT EXISTS
+        idx_sale_promotion_units_sale_group
+      ON sale_promotion_units (
+        sale_id,
+        promotion_group_id
+      );
+
+      CREATE TABLE IF NOT EXISTS sale_exchanges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        original_sale_id INTEGER NOT NULL,
+        user_id INTEGER,
+        promotion_group_id TEXT NOT NULL,
+
+        old_group_total REAL NOT NULL DEFAULT 0,
+        new_group_total REAL NOT NULL DEFAULT 0,
+        difference_amount REAL NOT NULL DEFAULT 0,
+
+        payment_method TEXT NOT NULL DEFAULT 'store_cash',
+        reason TEXT,
+
+        before_state_json TEXT NOT NULL DEFAULT '[]',
+        after_state_json TEXT NOT NULL DEFAULT '[]',
+
+        business_date TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (original_sale_id)
+          REFERENCES sales(id)
+          ON DELETE CASCADE,
+
+        FOREIGN KEY (user_id)
+          REFERENCES users(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS sale_exchange_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        exchange_id INTEGER NOT NULL,
+        promotion_unit_id INTEGER NOT NULL,
+
+        old_variant_id INTEGER NOT NULL,
+        new_variant_id INTEGER NOT NULL,
+
+        old_unit_price REAL NOT NULL DEFAULT 0,
+        new_unit_price REAL NOT NULL DEFAULT 0,
+
+        old_is_gift INTEGER NOT NULL DEFAULT 0,
+        new_is_gift INTEGER NOT NULL DEFAULT 0,
+
+        quantity REAL NOT NULL DEFAULT 1,
+
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (exchange_id)
+          REFERENCES sale_exchanges(id)
+          ON DELETE CASCADE,
+
+        FOREIGN KEY (promotion_unit_id)
+          REFERENCES sale_promotion_units(id),
+
+        FOREIGN KEY (old_variant_id)
+          REFERENCES product_variants(id),
+
+        FOREIGN KEY (new_variant_id)
+          REFERENCES product_variants(id)
+      );
+
       CREATE TABLE IF NOT EXISTS app_settings (
         key TEXT PRIMARY KEY,
         value TEXT
@@ -461,6 +583,7 @@ export function getDb(): Database.Database {
         user_id INTEGER REFERENCES users(id),
         sub_total REAL NOT NULL DEFAULT 0,
         promotion_discount_value REAL NOT NULL DEFAULT 0,
+        normal_discount_value REAL,
         loyalty_discount_value REAL NOT NULL DEFAULT 0,
         refund_amount REAL NOT NULL DEFAULT 0,
         payment_method TEXT DEFAULT 'cash',
@@ -476,6 +599,7 @@ export function getDb(): Database.Database {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         return_id INTEGER NOT NULL,
         original_sale_item_id INTEGER NOT NULL,
+        promotion_unit_id INTEGER,
         variant_id INTEGER,
         product_name TEXT NOT NULL,
         barcode TEXT,
@@ -488,6 +612,7 @@ export function getDb(): Database.Database {
         line_total REAL NOT NULL,
         FOREIGN KEY (return_id) REFERENCES sale_returns(id) ON DELETE CASCADE,
         FOREIGN KEY (original_sale_item_id) REFERENCES sale_items(id),
+        FOREIGN KEY (promotion_unit_id) REFERENCES sale_promotion_units(id),
         FOREIGN KEY (variant_id) REFERENCES product_variants(id)
       );
 
@@ -528,6 +653,10 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'sale_items', 'is_gift', 'INTEGER NOT NULL DEFAULT 0')
 
     safeAddColumn(db, 'sale_items', 'promotion_group_id', 'TEXT')
+
+    safeAddColumn(db, 'sale_returns', 'normal_discount_value', 'REAL')
+
+    safeAddColumn(db, 'sale_return_items', 'promotion_unit_id', 'INTEGER')
 
     safeAddColumn(
       db,
@@ -758,8 +887,16 @@ export function resetDatabaseData(): void {
       DELETE FROM customer_payments;
       DELETE FROM customer_payment_batches;
       DELETE FROM loyalty_transactions;
+
       DELETE FROM sale_return_items;
       DELETE FROM sale_returns;
+
+      DELETE FROM sale_exchange_items;
+      DELETE FROM sale_exchanges;
+
+      DELETE FROM sale_promotion_units;
+      DELETE FROM sale_promotion_snapshots;
+
       DELETE FROM sale_items;
       DELETE FROM sales;
       DELETE FROM customers;
