@@ -23,6 +23,9 @@ type ReportsData = {
     cancelled_returns_count: number
     exchange_count: number
     exchange_adjustment: number
+    exchange_cash_collection: number
+    exchange_cash_refund: number
+    exchange_debt_reduction: number
     exchange_discount_adjustment: number
   }
   cashAccounts: Array<{
@@ -65,6 +68,13 @@ type CashierDailyRevenue = {
   totalCustomerCollections: number
   newReceivables: number
 
+  exchangeAdjustment: number
+
+  exchangeCashIn: number
+  exchangeCashOut: number
+
+  exchangeDebtReduction: number
+
   totalDiscounts: number
 
   saleReturnsValue: number
@@ -93,6 +103,9 @@ const emptyReports: ReportsData = {
     cancelled_returns_count: 0,
     exchange_count: 0,
     exchange_adjustment: 0,
+    exchange_cash_collection: 0,
+    exchange_cash_refund: 0,
+    exchange_debt_reduction: 0,
     exchange_discount_adjustment: 0,
   },
   cashAccounts: [],
@@ -137,6 +150,13 @@ export default function DashboardPage() {
     customerPaymentsIn: 0,
     totalCustomerCollections: 0,
     newReceivables: 0,
+
+    exchangeAdjustment: 0,
+
+    exchangeCashIn: 0,
+    exchangeCashOut: 0,
+
+    exchangeDebtReduction: 0,
 
     totalDiscounts: 0,
 
@@ -191,6 +211,7 @@ export default function DashboardPage() {
         todaySalesCash,
         todayCustomerPayments,
         todaySaleReturns,
+        todaySaleExchanges,
         todayExpenses,
       ] = await Promise.all([
         window.api.getReportsSummary({
@@ -246,6 +267,12 @@ export default function DashboardPage() {
 
         window.api.getCashSummary({
           ...cashierDayFilter,
+
+          type: 'sale_exchange',
+        }),
+
+        window.api.getCashSummary({
+          ...cashierDayFilter,
           type: 'expense',
         }),
       ])
@@ -280,7 +307,18 @@ export default function DashboardPage() {
 
         totalCustomerCollections:
           Number(todaySalesCash?.total_in || 0) +
-          Number(todayCustomerPayments?.total_in || 0),
+          Number(todayCustomerPayments?.total_in || 0) +
+          Number(todaySaleExchanges?.total_in || 0),
+
+        exchangeAdjustment: Number(today.summary.exchange_adjustment || 0),
+
+        exchangeCashIn: Number(todaySaleExchanges?.total_in || 0),
+
+        exchangeCashOut: Number(todaySaleExchanges?.total_out || 0),
+
+        exchangeDebtReduction: Number(
+          today.summary.exchange_debt_reduction || 0,
+        ),
 
         newReceivables: Math.max(
           0,
@@ -1454,13 +1492,23 @@ function CashierRevenueView({
           <CashierMiniCard
             title="الخصومات"
             value={money(revenue.totalDiscounts)}
-            subtitle="خصومات عادية + نقاط"
+            subtitle="خصم عادي + عرض + نقاط"
           />
 
           <CashierMiniCard
             title="إجمالي مرتجعات البيع"
             value={money(revenue.saleReturnsValue)}
             subtitle={`${returnsCount} عملية مرتجع تمت في التاريخ المحدد`}
+          />
+
+          <CashierMiniCard
+            title="فروق الاستبدال"
+            value={money(revenue.exchangeAdjustment)}
+            subtitle={
+              `تحصيل: ${money(revenue.exchangeCashIn)}` +
+              ` / رد كاش: ${money(revenue.exchangeCashOut)}` +
+              ` / خفض مديونية: ${money(revenue.exchangeDebtReduction)}`
+            }
           />
 
           <CashierMiniCard

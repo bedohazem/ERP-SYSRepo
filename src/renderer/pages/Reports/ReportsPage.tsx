@@ -22,6 +22,9 @@ type ReportsData = {
     total_discounts: number
     exchange_count: number
     exchange_adjustment: number
+    exchange_cash_collection: number
+    exchange_cash_refund: number
+    exchange_debt_reduction: number
     exchange_discount_adjustment: number
   }
   cashAccounts: Array<{
@@ -60,6 +63,9 @@ const emptyReports: ReportsData = {
     total_discounts: 0,
     exchange_count: 0,
     exchange_adjustment: 0,
+    exchange_cash_collection: 0,
+    exchange_cash_refund: 0,
+    exchange_debt_reduction: 0,
     exchange_discount_adjustment: 0,
   },
   cashAccounts: [],

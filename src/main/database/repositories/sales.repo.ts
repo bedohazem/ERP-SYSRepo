@@ -298,6 +298,32 @@ export function createSale(input: CreateSaleInput) {
 
     const saleId = Number(saleResult.lastInsertRowid)
 
+    db.prepare(
+      `
+      INSERT INTO sale_loyalty_snapshots (
+        sale_id,
+        enabled,
+        earn_amount,
+        earn_points,
+        point_value,
+        min_redeem_points
+      )
+      VALUES (?, ?, ?, ?, ?, ?)
+      `,
+    ).run(
+      saleId,
+
+      loyalty.enabled ? 1 : 0,
+
+      loyalty.earnAmount,
+
+      loyalty.earnPoints,
+
+      loyalty.pointValue,
+
+      loyalty.minRedeemPoints,
+    )
+
     if (activePromotionId && promotionResult.promotion) {
       const promotionSnapshot = promotionResult.promotion as any
 
@@ -1554,137 +1580,126 @@ export function createSaleReturn(input: {
       throw new Error('لا توجد كميات صالحة للمرتجع')
     }
 
-    const originalSubTotal = Number(originalSale.sub_total || 0)
+    /*
+     * المرتجع يعتمد على الحالة الحالية
+     * بعد كل الاستبدالات السابقة.
+     */
+    const currentStateBeforeReturn = getSaleCurrentState(originalSaleId)
 
-    const originalPromotionDiscount = Math.max(
-      0,
-      Number(originalSale.promotion_discount_value || 0),
+    const currentInvoiceSubTotal = Number(
+      currentStateBeforeReturn.financials.current_sub_total || 0,
     )
 
-    const originalAfterPromotion = Math.max(
+    const currentPromotionDiscount = Math.max(
       0,
-      originalSubTotal - originalPromotionDiscount,
+      Number(
+        currentStateBeforeReturn.financials.current_promotion_discount_value ||
+          0,
+      ),
+    )
+
+    const currentInvoiceAfterPromotion = Math.max(
+      0,
+
+      currentInvoiceSubTotal - currentPromotionDiscount,
     )
 
     const returnAfterPromotion = Math.max(
       0,
+
       returnSubTotal - returnPromotionDiscount,
-    )
-
-    const originalEarnedPoints = Math.max(
-      0,
-      Number(originalSale.loyalty_points_earned || 0),
-    )
-
-    const alreadyReturnedSubTotalRow = db
-      .prepare(
-        `
-        SELECT IFNULL(SUM(sub_total), 0) AS returned_sub_total
-        FROM sale_returns
-        WHERE original_sale_id = ?
-          AND cancelled_at IS NULL
-      `,
-      )
-      .get(originalSaleId) as { returned_sub_total: number } | undefined
-
-    const alreadyReversedPointsRow = db
-      .prepare(
-        `
-        SELECT IFNULL(SUM(loyalty_points_reversed), 0) AS reversed_points
-        FROM sale_returns
-        WHERE original_sale_id = ?
-          AND cancelled_at IS NULL
-      `,
-      )
-      .get(originalSaleId) as { reversed_points: number } | undefined
-
-    const alreadyReturnedSubTotal = Number(
-      alreadyReturnedSubTotalRow?.returned_sub_total || 0,
-    )
-
-    const alreadyReversedPoints = Number(
-      alreadyReversedPointsRow?.reversed_points || 0,
     )
 
     const previousReturns = db
       .prepare(
         `
-      SELECT
-        IFNULL(
-          SUM(
-            sub_total -
-            IFNULL(
-              promotion_discount_value,
-              0
-            )
-          ),
-          0
-        ) AS returned_after_promotion,
+        SELECT
+          IFNULL(
+            SUM(
+              sub_total -
+              IFNULL(
+                promotion_discount_value,
+                0
+              )
+            ),
+            0
+          )
+            AS returned_after_promotion,
 
-        IFNULL(
-          SUM(
-            CASE
-              WHEN normal_discount_value
-                IS NOT NULL
-              THEN normal_discount_value
+          IFNULL(
+            SUM(
+              CASE
+                WHEN
+                  normal_discount_value
+                    IS NOT NULL
 
-              ELSE MAX(
-                0,
-                sub_total
-                - refund_amount
-                - IFNULL(
+                THEN
+                  normal_discount_value
+
+                ELSE MAX(
+                  0,
+
+                  sub_total -
+                  refund_amount -
+                  IFNULL(
                     loyalty_discount_value,
                     0
-                  )
-                - IFNULL(
+                  ) -
+                  IFNULL(
                     promotion_discount_value,
                     0
                   )
+                )
+              END
+            ),
+            0
+          )
+            AS returned_normal_discount,
+
+          IFNULL(
+            SUM(
+              refund_amount +
+              IFNULL(
+                loyalty_discount_value,
+                0
               )
-            END
-          ),
-          0
-        ) AS returned_normal_discount,
+            ),
+            0
+          )
+            AS returned_before_loyalty,
 
-        IFNULL(
-          SUM(
-            refund_amount +
-            IFNULL(
-              loyalty_discount_value,
-              0
-            )
-          ),
-          0
-        ) AS returned_before_loyalty,
+          IFNULL(
+            SUM(
+              loyalty_discount_value
+            ),
+            0
+          )
+            AS returned_loyalty_discount,
 
-        IFNULL(
-          SUM(
-            loyalty_discount_value
-          ),
-          0
-        ) AS returned_loyalty_discount,
+          IFNULL(
+            SUM(
+              refund_amount
+            ),
+            0
+          )
+            AS returned_value
 
-        IFNULL(
-          SUM(
-            refund_amount
-          ),
-          0
-        ) AS returned_value
+        FROM sale_returns
 
-      FROM sale_returns
+        WHERE
+          original_sale_id = ?
 
-      WHERE
-        original_sale_id = ?
-
-        AND cancelled_at
-          IS NULL
-      `,
+          AND cancelled_at
+            IS NULL
+        `,
       )
       .get(originalSaleId) as any
 
-    const originalNormalDiscount = Math.max(
+    const currentNormalDiscount = Math.max(
       0,
-      Number(originalSale.discount_value || 0),
+      Number(
+        currentStateBeforeReturn.financials.current_normal_discount_value || 0,
+      ),
     )
 
     const cumulativeAfterPromotion =
@@ -1692,15 +1707,20 @@ export function createSaleReturn(input: {
       returnAfterPromotion
 
     const targetNormalDiscount =
-      originalAfterPromotion > 0
+      currentInvoiceAfterPromotion > 0
         ? roundMoney(
-            originalNormalDiscount *
-              Math.min(cumulativeAfterPromotion / originalAfterPromotion, 1),
+            currentNormalDiscount *
+              Math.min(
+                cumulativeAfterPromotion / currentInvoiceAfterPromotion,
+
+                1,
+              ),
           )
         : 0
 
     const saleDiscountPart = Math.max(
       0,
+
       roundMoney(
         targetNormalDiscount -
           Number(previousReturns?.returned_normal_discount || 0),
@@ -1709,17 +1729,22 @@ export function createSaleReturn(input: {
 
     const currentBeforeLoyalty = Math.max(
       0,
+
       returnAfterPromotion - saleDiscountPart,
     )
 
-    const originalBeforeLoyalty = Math.max(
+    const invoiceBeforeLoyalty = Math.max(
       0,
-      originalAfterPromotion - originalNormalDiscount,
+
+      currentInvoiceAfterPromotion - currentNormalDiscount,
     )
 
-    const originalLoyaltyDiscount = Math.max(
+    const currentLoyaltyDiscount = Math.max(
       0,
-      Number(originalSale.loyalty_discount_value || 0),
+
+      Number(
+        currentStateBeforeReturn.financials.current_loyalty_discount_value || 0,
+      ),
     )
 
     const cumulativeBeforeLoyalty =
@@ -1727,15 +1752,20 @@ export function createSaleReturn(input: {
       currentBeforeLoyalty
 
     const targetLoyaltyDiscount =
-      originalBeforeLoyalty > 0
+      invoiceBeforeLoyalty > 0
         ? roundMoney(
-            originalLoyaltyDiscount *
-              Math.min(cumulativeBeforeLoyalty / originalBeforeLoyalty, 1),
+            currentLoyaltyDiscount *
+              Math.min(
+                cumulativeBeforeLoyalty / invoiceBeforeLoyalty,
+
+                1,
+              ),
           )
         : 0
 
     const loyaltyDiscountPart = Math.max(
       0,
+
       roundMoney(
         targetLoyaltyDiscount -
           Number(previousReturns?.returned_loyalty_discount || 0),
@@ -1744,6 +1774,7 @@ export function createSaleReturn(input: {
 
     const returnValue = Math.max(
       0,
+
       roundMoney(
         returnSubTotal -
           returnPromotionDiscount -
@@ -1752,32 +1783,72 @@ export function createSaleReturn(input: {
       ),
     )
 
-    const originalGrandTotal = Math.max(
+    /*
+     * النقاط المكتسبة تعتمد على
+     * صافي الفاتورة الفعلي المتبقي.
+     */
+    const currentEarnedPoints = Math.max(
       0,
-      Number(originalSale.grand_total || 0),
+
+      Number(
+        currentStateBeforeReturn.financials.current_loyalty_points_earned || 0,
+      ),
     )
 
-    const cumulativeReturnRatio =
-      originalGrandTotal > 0
-        ? Math.min(
-            (Number(previousReturns?.returned_value || 0) + returnValue) /
-              originalGrandTotal,
-            1,
-          )
+    const loyaltySnapshot = currentStateBeforeReturn.loyalty_snapshot
+
+    const earnAmount = Math.max(0, Number(loyaltySnapshot?.earn_amount || 0))
+
+    const earnPoints = Math.max(0, Number(loyaltySnapshot?.earn_points || 0))
+
+    const nextNetGrandTotal = Math.max(
+      0,
+
+      roundMoney(
+        Number(currentStateBeforeReturn.financials.net_grand_total || 0) -
+          returnValue,
+      ),
+    )
+
+    const targetEarnedPointsAfterReturn =
+      originalSale.customer_id &&
+      loyaltySnapshot?.enabled &&
+      earnAmount > 0 &&
+      earnPoints > 0
+        ? Math.floor(nextNetGrandTotal / earnAmount) * earnPoints
         : 0
-
-    const targetTotalReversedPoints = Math.floor(
-      originalEarnedPoints * cumulativeReturnRatio,
-    )
 
     const loyaltyPointsToReverse = Math.max(
       0,
-      Math.min(
-        originalEarnedPoints - alreadyReversedPoints,
 
-        targetTotalReversedPoints - alreadyReversedPoints,
-      ),
+      Math.round(currentEarnedPoints - targetEarnedPointsAfterReturn),
     )
+
+    /*
+     * لو العميل صرف النقاط بالفعل،
+     * لا نسمح بإنشاء حالة سالبة
+     * أو إسقاط النقاط بصمت.
+     */
+    if (originalSale.customer_id && loyaltyPointsToReverse > 0) {
+      const customerPointsRow = db
+        .prepare(
+          `
+          SELECT points_balance
+          FROM customers
+          WHERE id = ?
+          LIMIT 1
+          `,
+        )
+        .get(originalSale.customer_id) as any
+
+      if (
+        Number(customerPointsRow?.points_balance || 0) < loyaltyPointsToReverse
+      ) {
+        throw new Error(
+          'لا يمكن عمل المرتجع لأن نقاط الفاتورة تم استخدامها بالفعل',
+        )
+      }
+    }
 
     const originalRemainingAmount = Math.max(
       0,

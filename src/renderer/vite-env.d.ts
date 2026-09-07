@@ -870,6 +870,9 @@ declare global {
           cancelled_returns_count: number
           exchange_count: number
           exchange_adjustment: number
+          exchange_cash_collection: number
+          exchange_cash_refund: number
+          exchange_debt_reduction: number
           exchange_discount_adjustment: number
         }
         cashAccounts: Array<{

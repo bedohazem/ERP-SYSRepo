@@ -561,7 +561,15 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
      * loyalty discount.
      */
     const currentStateBefore = getSaleCurrentState(saleId)
+    const loyaltySnapshot = currentStateBefore.loyalty_snapshot
 
+    const loyaltyEnabled = Boolean(loyaltySnapshot?.enabled)
+
+    const earnAmount = Math.max(0, Number(loyaltySnapshot?.earn_amount || 0))
+
+    const earnPoints = Math.max(0, Number(loyaltySnapshot?.earn_points || 0))
+
+    const pointValue = Math.max(0, Number(loyaltySnapshot?.point_value || 0))
     const beforeGroupGross = roundMoney(
       beforeState.reduce(
         (total, unit) => total + Number(unit.current_unit_price || 0),
@@ -631,13 +639,21 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       roundMoney(nextAfterPromotion - nextNormalDiscount),
     )
 
-    const nextLoyaltyDiscount = roundMoney(
-      Math.min(
-        currentStateBefore.financials.original_loyalty_discount_value,
-
-        nextAfterNormal,
-      ),
+    const originalRedeemedPoints = Math.max(
+      0,
+      Math.floor(Number(sale.loyalty_points_redeemed || 0)),
     )
+
+    const nextRedeemedPoints =
+      loyaltyEnabled && pointValue > 0
+        ? Math.min(
+            originalRedeemedPoints,
+
+            Math.floor((nextAfterNormal + 0.0000001) / pointValue),
+          )
+        : 0
+
+    const nextLoyaltyDiscount = roundMoney(nextRedeemedPoints * pointValue)
 
     const nextGrandTotal = Math.max(
       0,
@@ -655,6 +671,60 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         nextGrandTotal - currentStateBefore.financials.total_return_value,
       ),
     )
+
+    const currentEarnedPoints = Math.max(
+      0,
+      Number(currentStateBefore.financials.current_loyalty_points_earned || 0),
+    )
+
+    const currentRedeemedPoints = Math.max(
+      0,
+      Number(currentStateBefore.financials.ledger_loyalty_points_redeemed || 0),
+    )
+
+    const nextEarnedPoints =
+      sale.customer_id && loyaltyEnabled && earnAmount > 0 && earnPoints > 0
+        ? Math.floor(nextNetGrandTotal / earnAmount) * earnPoints
+        : 0
+
+    const loyaltyEarnedPointsAdjustment = Math.round(
+      nextEarnedPoints - currentEarnedPoints,
+    )
+
+    /*
+     * موجب = نقاط إضافية ستُستخدم.
+     * سالب = نقاط مستخدمة سابقًا
+     * ستعود للعميل.
+     */
+    const loyaltyRedeemedPointsAdjustment = Math.round(
+      nextRedeemedPoints - currentRedeemedPoints,
+    )
+
+    /*
+     * Earn +1 يزيد الرصيد.
+     * Redeem +1 يخفض الرصيد.
+     */
+    const loyaltyBalanceAdjustment =
+      loyaltyEarnedPointsAdjustment - loyaltyRedeemedPointsAdjustment
+
+    if (sale.customer_id && loyaltyBalanceAdjustment < 0) {
+      const customerPointsRow = db
+        .prepare(
+          `
+          SELECT points_balance
+          FROM customers
+          WHERE id = ?
+          LIMIT 1
+          `,
+        )
+        .get(sale.customer_id) as any
+
+      const currentPoints = Number(customerPointsRow?.points_balance || 0)
+
+      if (currentPoints + loyaltyBalanceAdjustment < 0) {
+        throw new Error('رصيد نقاط العميل غير كافٍ لإتمام الاستبدال')
+      }
+    }
 
     const differenceAmount = roundMoney(
       nextNetGrandTotal - currentStateBefore.financials.net_grand_total,
@@ -731,6 +801,9 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           old_net_total,
           new_net_total,
 
+          loyalty_earned_points_adjustment,
+          loyalty_redeemed_points_adjustment,
+
           cash_collection_amount,
           debt_reduction_amount,
           cash_refund_amount,
@@ -746,6 +819,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         VALUES (
           ?, ?, ?,
           ?, ?, ?,
+          ?, ?,
           ?, ?,
           ?, ?,
           ?, ?,
@@ -791,6 +865,10 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         currentStateBefore.financials.net_grand_total,
 
         nextNetGrandTotal,
+
+        loyaltyEarnedPointsAdjustment,
+
+        loyaltyRedeemedPointsAdjustment,
 
         cashCollectionAmount,
         debtReductionAmount,
@@ -1073,6 +1151,87 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       ).run(differenceAmount, sale.customer_id)
     }
 
+    if (sale.customer_id && loyaltyBalanceAdjustment !== 0) {
+      db.prepare(
+        `
+        UPDATE customers
+        SET
+          points_balance =
+            IFNULL(
+              points_balance,
+              0
+            ) + ?,
+
+          updated_at =
+            CURRENT_TIMESTAMP
+
+        WHERE id = ?
+        `,
+      ).run(loyaltyBalanceAdjustment, sale.customer_id)
+    }
+
+    if (sale.customer_id && loyaltyEarnedPointsAdjustment !== 0) {
+      db.prepare(
+        `
+        INSERT INTO loyalty_transactions (
+          customer_id,
+          sale_id,
+          type,
+          points,
+          amount,
+          notes
+        )
+        VALUES (
+          ?, ?,
+          'adjust',
+          ?, ?, ?
+        )
+        `,
+      ).run(
+        sale.customer_id,
+
+        saleId,
+
+        loyaltyEarnedPointsAdjustment,
+
+        Math.abs(differenceAmount),
+
+        `تعديل نقاط مكتسبة بسبب استبدال ${exchangeCode}`,
+      )
+    }
+
+    if (sale.customer_id && loyaltyRedeemedPointsAdjustment !== 0) {
+      db.prepare(
+        `
+        INSERT INTO loyalty_transactions (
+          customer_id,
+          sale_id,
+          type,
+          points,
+          amount,
+          notes
+        )
+        VALUES (
+          ?, ?,
+          'adjust',
+          ?, ?, ?
+        )
+        `,
+      ).run(
+        sale.customer_id,
+
+        saleId,
+
+        -loyaltyRedeemedPointsAdjustment,
+
+        Math.abs(differenceAmount),
+
+        loyaltyRedeemedPointsAdjustment > 0
+          ? `استخدام نقاط إضافية بسبب استبدال ${exchangeCode}`
+          : `إرجاع نقاط مستخدمة بسبب استبدال ${exchangeCode}`,
+      )
+    }
+
     return {
       success: true,
 
@@ -1084,6 +1243,12 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
       old_group_total: oldGroupTotal,
       new_group_total: newGroupTotal,
+
+      loyalty_earned_points_adjustment: loyaltyEarnedPointsAdjustment,
+
+      loyalty_redeemed_points_adjustment: loyaltyRedeemedPointsAdjustment,
+
+      loyalty_balance_adjustment: loyaltyBalanceAdjustment,
 
       difference_amount: differenceAmount,
 

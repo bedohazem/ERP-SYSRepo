@@ -51,6 +51,32 @@ export function getSaleCurrentState(saleIdInput: number) {
     throw new Error('الفاتورة غير موجودة')
   }
 
+  const loyaltySnapshot = db
+    .prepare(
+      `
+      SELECT *
+      FROM sale_loyalty_snapshots
+      WHERE sale_id = ?
+      LIMIT 1
+      `,
+    )
+    .get(saleId) as any
+
+  const effectiveLoyaltySnapshot = {
+    enabled: Number(loyaltySnapshot?.enabled || 0) === 1,
+
+    earn_amount: Math.max(0, Number(loyaltySnapshot?.earn_amount || 0)),
+
+    earn_points: Math.max(0, Number(loyaltySnapshot?.earn_points || 0)),
+
+    point_value: Math.max(0, Number(loyaltySnapshot?.point_value || 0)),
+
+    min_redeem_points: Math.max(
+      0,
+      Number(loyaltySnapshot?.min_redeem_points || 0),
+    ),
+  }
+
   /*
    * Original immutable sale items.
    * These remain the audit/history source.
@@ -348,8 +374,24 @@ export function getSaleCurrentState(saleIdInput: number) {
     roundMoney(afterPromotion - currentNormalDiscount),
   )
 
+  const originalRedeemedPoints = Math.max(
+    0,
+    Math.floor(Number(sale.loyalty_points_redeemed || 0)),
+  )
+
+  const loyaltyPointValue = Number(effectiveLoyaltySnapshot.point_value || 0)
+
+  const currentLoyaltyPointsRedeemed =
+    effectiveLoyaltySnapshot.enabled && loyaltyPointValue > 0
+      ? Math.min(
+          originalRedeemedPoints,
+
+          Math.floor((afterNormalDiscount + 0.0000001) / loyaltyPointValue),
+        )
+      : 0
+
   const currentLoyaltyDiscount = roundMoney(
-    Math.min(originalLoyaltyDiscount, afterNormalDiscount),
+    currentLoyaltyPointsRedeemed * loyaltyPointValue,
   )
 
   const currentGrandTotal = Math.max(
@@ -388,6 +430,7 @@ export function getSaleCurrentState(saleIdInput: number) {
 
               ELSE MAX(
                 0,
+
                 sr.sub_total
                 - sr.refund_amount
                 - IFNULL(
@@ -412,6 +455,17 @@ export function getSaleCurrentState(saleIdInput: number) {
           0
         )
           AS returned_loyalty_discount,
+
+        IFNULL(
+          SUM(
+            IFNULL(
+              sr.loyalty_points_reversed,
+              0
+            )
+          ),
+          0
+        )
+          AS returned_loyalty_points_reversed,
 
         IFNULL(
           SUM(sr.refund_amount),
@@ -501,7 +555,29 @@ export function getSaleCurrentState(saleIdInput: number) {
           ),
           0
         )
-          AS cash_refund_total
+          AS cash_refund_total,
+
+        IFNULL(
+          SUM(
+            IFNULL(
+              loyalty_earned_points_adjustment,
+              0
+            )
+          ),
+          0
+        )
+          AS loyalty_earned_points_adjustment,
+
+        IFNULL(
+          SUM(
+            IFNULL(
+              loyalty_redeemed_points_adjustment,
+              0
+            )
+          ),
+          0
+        )
+          AS loyalty_redeemed_points_adjustment
 
       FROM sale_exchanges
 
@@ -530,6 +606,21 @@ export function getSaleCurrentState(saleIdInput: number) {
       `,
     )
     .all(saleId) as any[]
+
+  const currentLoyaltyPointsEarned = Math.max(
+    0,
+
+    Number(sale.loyalty_points_earned || 0) +
+      Number(exchangeSummary?.loyalty_earned_points_adjustment || 0) -
+      Number(returnSummary?.returned_loyalty_points_reversed || 0),
+  )
+
+  const ledgerLoyaltyPointsRedeemed = Math.max(
+    0,
+
+    Number(sale.loyalty_points_redeemed || 0) +
+      Number(exchangeSummary?.loyalty_redeemed_points_adjustment || 0),
+  )
 
   const getExchangeItems = db.prepare(
     `
@@ -690,6 +781,12 @@ export function getSaleCurrentState(saleIdInput: number) {
     event_calculated_grand_total: eventCalculatedGrandTotal,
 
     financial_integrity_delta: financialIntegrityDelta,
+
+    current_loyalty_points_earned: currentLoyaltyPointsEarned,
+
+    current_loyalty_points_redeemed: currentLoyaltyPointsRedeemed,
+
+    ledger_loyalty_points_redeemed: ledgerLoyaltyPointsRedeemed,
   }
 
   const originalReceipt = {
@@ -752,6 +849,8 @@ export function getSaleCurrentState(saleIdInput: number) {
     sale: currentSale,
 
     financials,
+
+    loyalty_snapshot: effectiveLoyaltySnapshot,
 
     current_receipt: currentReceipt,
 

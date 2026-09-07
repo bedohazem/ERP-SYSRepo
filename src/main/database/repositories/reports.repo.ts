@@ -253,6 +253,27 @@ export function getReportsSummary(input?: ReportFilter) {
 
         IFNULL(
           SUM(
+            se.cash_collection_amount
+          ),
+          0
+        ) AS exchange_cash_collection,
+
+        IFNULL(
+          SUM(
+            se.cash_refund_amount
+          ),
+          0
+        ) AS exchange_cash_refund,
+
+        IFNULL(
+          SUM(
+            se.debt_reduction_amount
+          ),
+          0
+        ) AS exchange_debt_reduction,
+
+        IFNULL(
+          SUM(
             COALESCE(
               se.new_normal_discount_value,
               se.old_normal_discount_value,
@@ -1480,6 +1501,15 @@ export function getReportsSummary(input?: ReportFilter) {
       sales_count: Number(salesSummary.sales_count || 0),
       exchange_count: Number(exchangeSummary.exchange_count || 0),
       exchange_adjustment: exchangeAdjustment,
+      exchange_cash_collection: Number(
+        exchangeSummary.exchange_cash_collection || 0,
+      ),
+
+      exchange_cash_refund: Number(exchangeSummary.exchange_cash_refund || 0),
+
+      exchange_debt_reduction: Number(
+        exchangeSummary.exchange_debt_reduction || 0,
+      ),
       exchange_discount_adjustment: exchangeDiscountAdjustment,
       returns_count: Number(returnsSummary.returns_count || 0),
       cancelled_sales_count: Number(

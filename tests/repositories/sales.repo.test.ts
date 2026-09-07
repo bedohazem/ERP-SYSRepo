@@ -1064,7 +1064,7 @@ describe('sales repository', () => {
     expect(getStockByBarcode('SALE001')).toBe(9)
   })
 
-  it('reverses earned loyalty points proportionally on sale return', () => {
+  it('recalculates earned loyalty points from the remaining sale value after return', () => {
     const variant = seedProduct()
     const customerId = createTestCustomer()
 
@@ -1110,9 +1110,23 @@ describe('sales repository', () => {
     })
 
     expect(saleReturn.return_value).toBe(150)
-    expect(saleReturn.loyalty_points_reversed).toBe(1)
 
-    expect(getCustomerPoints(customerId)).toBe(2)
+    /*
+     * Original sale = 300
+     * Earned points = 3
+     *
+     * After returning 150:
+     * remaining sale value = 150
+     *
+     * Loyalty rule:
+     * 1 point per 100
+     *
+     * New earned target = floor(150 / 100) = 1
+     * Therefore reverse 3 - 1 = 2 points.
+     */
+    expect(saleReturn.loyalty_points_reversed).toBe(2)
+
+    expect(getCustomerPoints(customerId)).toBe(1)
   })
 
   it('filters sales by payment state', () => {

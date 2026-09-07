@@ -193,7 +193,7 @@ export function getDb(): Database.Database {
         promotion_group_id TEXT
       );
 
-            CREATE TABLE IF NOT EXISTS sale_promotion_snapshots (
+      CREATE TABLE IF NOT EXISTS sale_promotion_snapshots (
         sale_id INTEGER PRIMARY KEY,
         promotion_id INTEGER NOT NULL,
         promotion_name TEXT NOT NULL,
@@ -204,6 +204,25 @@ export function getDb(): Database.Database {
         scope_type TEXT NOT NULL,
         category_id INTEGER,
         product_ids_json TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (sale_id)
+          REFERENCES sales(id)
+          ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS sale_loyalty_snapshots (
+        sale_id INTEGER PRIMARY KEY,
+
+        enabled INTEGER NOT NULL DEFAULT 1,
+
+        earn_amount REAL NOT NULL DEFAULT 100,
+        earn_points REAL NOT NULL DEFAULT 1,
+
+        point_value REAL NOT NULL DEFAULT 1,
+
+        min_redeem_points REAL NOT NULL DEFAULT 1,
+
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 
         FOREIGN KEY (sale_id)
@@ -285,7 +304,9 @@ export function getDb(): Database.Database {
 
         old_net_total REAL,
         new_net_total REAL,
+        loyalty_earned_points_adjustment INTEGER NOT NULL DEFAULT 0,
 
+        loyalty_redeemed_points_adjustment INTEGER NOT NULL DEFAULT 0,
         cash_collection_amount REAL NOT NULL DEFAULT 0,
         debt_reduction_amount REAL NOT NULL DEFAULT 0,
         cash_refund_amount REAL NOT NULL DEFAULT 0,
@@ -804,6 +825,20 @@ export function getDb(): Database.Database {
       'promotion_discount_value',
       'REAL DEFAULT 0',
     )
+
+    safeAddColumn(
+      db,
+      'sale_exchanges',
+      'loyalty_earned_points_adjustment',
+      'INTEGER NOT NULL DEFAULT 0',
+    )
+
+    safeAddColumn(
+      db,
+      'sale_exchanges',
+      'loyalty_redeemed_points_adjustment',
+      'INTEGER NOT NULL DEFAULT 0',
+    )
     safeAddColumn(db, 'sales', 'parent_sale_id', 'INTEGER')
     safeAddColumn(db, 'sales', 'return_reason', 'TEXT')
     safeAddColumn(db, 'sales', 'type', `TEXT DEFAULT 'sale'`)
@@ -948,6 +983,106 @@ export function getDb(): Database.Database {
 
     db.prepare(
       `
+      INSERT OR IGNORE INTO sale_loyalty_snapshots (
+        sale_id,
+        enabled,
+        earn_amount,
+        earn_points,
+        point_value,
+        min_redeem_points
+      )
+
+      SELECT
+        s.id,
+
+        CASE
+          WHEN LOWER(
+            COALESCE(
+              (
+                SELECT value
+                FROM app_settings
+                WHERE key = 'loyalty_enabled'
+                LIMIT 1
+              ),
+              'true'
+            )
+          ) = 'true'
+          THEN 1
+          ELSE 0
+        END,
+
+        COALESCE(
+          NULLIF(
+            CAST(
+              (
+                SELECT value
+                FROM app_settings
+                WHERE key = 'loyalty_earn_amount'
+                LIMIT 1
+              ) AS REAL
+            ),
+            0
+          ),
+          100
+        ),
+
+        COALESCE(
+          NULLIF(
+            CAST(
+              (
+                SELECT value
+                FROM app_settings
+                WHERE key = 'loyalty_earn_points'
+                LIMIT 1
+              ) AS REAL
+            ),
+            0
+          ),
+          1
+        ),
+
+        COALESCE(
+          NULLIF(
+            CAST(
+              (
+                SELECT value
+                FROM app_settings
+                WHERE key = 'loyalty_point_value'
+                LIMIT 1
+              ) AS REAL
+            ),
+            0
+          ),
+          1
+        ),
+
+        COALESCE(
+          NULLIF(
+            CAST(
+              (
+                SELECT value
+                FROM app_settings
+                WHERE key = 'loyalty_min_redeem_points'
+                LIMIT 1
+              ) AS REAL
+            ),
+            0
+          ),
+          1
+        )
+
+      FROM sales s
+
+      WHERE
+        IFNULL(
+          s.type,
+          'sale'
+        ) = 'sale'
+      `,
+    ).run()
+
+    db.prepare(
+      `
         UPDATE sales
         SET
           remaining_amount = MAX(
@@ -1034,7 +1169,9 @@ export function resetDatabaseData(): void {
       DELETE FROM sale_exchanges;
 
       DELETE FROM sale_promotion_units;
+
       DELETE FROM sale_promotion_snapshots;
+      DELETE FROM sale_loyalty_snapshots;
 
       DELETE FROM sale_items;
       DELETE FROM sales;
