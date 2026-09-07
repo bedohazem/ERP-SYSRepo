@@ -18,6 +18,11 @@ import {
   searchSaleVariants,
 } from '../database/repositories/product.repo'
 
+import {
+  createSaleExchange,
+  getSaleExchangeState,
+} from '../database/repositories/sales-exchange.repo'
+
 import { requireAdmin, requireAnyAdminPassword } from './permission-helper'
 
 export function registerSalesIpc(): void {
@@ -71,6 +76,36 @@ export function registerSalesIpc(): void {
 
   ipcMain.handle('sales:return-history', (_, saleId: number) => {
     return getSaleReturnHistory(Number(saleId))
+  })
+
+  ipcMain.handle('sales:exchange-state', (_, saleId: number) => {
+    return getSaleExchangeState(Number(saleId))
+  })
+
+  ipcMain.handle('sales:exchange', (_, input) => {
+    const result = createSaleExchange(input)
+
+    logAction({
+      actor_id: getActorId(input),
+      action: 'sale_exchange_created',
+      entity: 'sale_exchanges',
+      entity_id: result.exchangeId,
+      details: {
+        exchange_code: result.exchangeCode,
+        original_sale_id: result.original_sale_id,
+        promotion_group_id: result.promotion_group_id,
+        old_group_total: result.old_group_total,
+        new_group_total: result.new_group_total,
+        difference_amount: result.difference_amount,
+        amount_to_collect: result.amount_to_collect,
+        amount_to_refund: result.amount_to_refund,
+        debt_reduction_amount: result.debt_reduction_amount,
+        payment_method: result.payment_method,
+        items_count: input.items?.length || 0,
+      },
+    })
+
+    return result
   })
 
   ipcMain.handle('sales:list', (_, input) => {

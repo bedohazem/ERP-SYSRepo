@@ -81,6 +81,10 @@ contextBridge.exposeInMainWorld('api', {
   getSaleReturnHistory: (saleId) =>
     ipcRenderer.invoke('sales:return-history', saleId),
 
+  getSaleExchangeState: (saleId) =>
+    ipcRenderer.invoke('sales:exchange-state', saleId),
+
+  createSaleExchange: (input) => ipcRenderer.invoke('sales:exchange', input),
   getCustomers: () => ipcRenderer.invoke('customers:list'),
   listCustomers: (input) => ipcRenderer.invoke('customers:list-page', input),
   searchCustomers: (query) => ipcRenderer.invoke('customers:search', query),

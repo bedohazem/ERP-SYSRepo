@@ -355,6 +355,8 @@ declare global {
       }) => Promise<{
         returnId?: number
         returnCode?: string
+        return_value?: number
+        debt_reduction_amount?: number
         returnSaleId: number
         originalSaleId: number
         refundAmount: number
@@ -421,6 +423,84 @@ declare global {
         sale_id?: number
         cash_restored?: number
         debt_restored?: number
+      }>
+
+      getSaleExchangeState: (saleId: number) => Promise<{
+        sale: any
+
+        snapshot: {
+          sale_id: number
+          promotion_id: number
+          promotion_name: string
+          promotion_type: string
+          promotion_value: number
+          buy_qty: number | null
+          free_qty: number | null
+          scope_type: string
+          category_id: number | null
+          product_ids_json: string
+          product_ids: number[]
+        }
+
+        groups: Array<{
+          promotion_group_id: string
+          units: Array<{
+            id: number
+            sale_id: number
+            original_sale_item_id: number
+            promotion_group_id: string
+
+            original_variant_id: number
+            current_variant_id: number
+
+            original_unit_price: number
+            current_unit_price: number
+
+            original_is_gift: number
+            current_is_gift: number
+
+            is_returned: number
+
+            current_product_id: number
+            current_product_name: string
+            current_category_id: number | null
+
+            current_barcode?: string | null
+            current_size?: string | null
+            current_color?: string | null
+          }>
+        }>
+      }>
+
+      createSaleExchange: (input: {
+        original_sale_id: number
+        user_id: number
+
+        payment_method?: string | null
+        reason?: string | null
+
+        items: Array<{
+          promotion_unit_id: number
+          new_variant_id: number
+        }>
+      }) => Promise<{
+        success: boolean
+
+        exchangeId: number
+        exchangeCode: string
+
+        original_sale_id: number
+        promotion_group_id: string
+
+        old_group_total: number
+        new_group_total: number
+        difference_amount: number
+
+        amount_to_collect: number
+        amount_to_refund: number
+        debt_reduction_amount: number
+
+        payment_method: string
       }>
 
       // =========================

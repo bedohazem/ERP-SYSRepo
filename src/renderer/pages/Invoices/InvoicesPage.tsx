@@ -7,6 +7,7 @@ import {
 
 import { printSaleReceiptHtml } from '../../utils/receiptPrint'
 import FinancialCancelModal from '../../components/FinancialCancelModal'
+import SaleExchangeModal from '../../components/SaleExchangeModal'
 
 type SaleRow = {
   id: number
@@ -148,6 +149,7 @@ export default function InvoicesPage() {
   const [returnReason, setReturnReason] = useState('')
   const [returnRefundAccount, setReturnRefundAccount] = useState('store_cash')
   const [savingReturn, setSavingReturn] = useState(false)
+  const [exchangeSaleId, setExchangeSaleId] = useState<number | null>(null)
 
   async function loadInvoices(page = salesPage) {
     setLoading(true)
@@ -1089,6 +1091,23 @@ export default function InvoicesPage() {
                       >
                         طباعة
                       </button>
+
+                      {!sale.cancelled_at &&
+                        Number(sale.promotion_id || 0) > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setExchangeSaleId(sale.id)}
+                            style={{
+                              ...smallButtonStyle,
+                              borderColor: '#22c55e',
+                              color: '#86efac',
+                              background: 'rgba(34,197,94,0.10)',
+                            }}
+                          >
+                            استبدال
+                          </button>
+                        )}
+
                       {!sale.cancelled_at && (
                         <button
                           type="button"
@@ -1893,6 +1912,22 @@ export default function InvoicesPage() {
           </div>
         </div>
       )}
+
+      <SaleExchangeModal
+        saleId={exchangeSaleId}
+        userId={user?.id ?? null}
+        onClose={() => setExchangeSaleId(null)}
+        onSuccess={(successMessage) => {
+          setMessage(successMessage)
+
+          setExchangeSaleId(null)
+
+          setSelectedReceipt(null)
+          setSelectedReturnHistory([])
+
+          void loadInvoices(salesPage)
+        }}
+      />
 
       <FinancialCancelModal
         open={Boolean(cancelSaleTarget)}
