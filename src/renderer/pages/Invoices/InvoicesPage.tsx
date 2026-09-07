@@ -517,7 +517,8 @@ export default function InvoicesPage() {
   async function printReceipt(receipt: ReceiptData, returnHistory: any[] = []) {
     await printSaleReceiptHtml({
       receipt,
-      returnHistory,
+
+      returnHistory: getActiveSaleReturnHistory(returnHistory),
       onBlocked: () => setMessage('لم يتم فتح نافذة الطباعة'),
     })
   }
@@ -698,13 +699,17 @@ export default function InvoicesPage() {
       await loadReturns(returnsPage)
 
       if (returnReceipt?.sale?.id) {
+        const saleId = Number(returnReceipt.sale.id)
+
         const [receipt, history] = await Promise.all([
-          window.api.getSaleReceipt(Number(returnReceipt.sale.id)),
-          window.api.getSaleReturnHistory(Number(returnReceipt.sale.id)),
+          loadCurrentReceiptData(saleId),
+
+          window.api.getSaleReturnHistory(saleId),
         ])
 
         setSelectedReceipt(receipt)
-        setSelectedReturnHistory(Array.isArray(history) ? history : [])
+
+        setSelectedReturnHistory(getActiveSaleReturnHistory(history))
       }
     } catch (error) {
       console.error('Failed to create return:', error)
