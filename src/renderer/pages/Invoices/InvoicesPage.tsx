@@ -9,6 +9,8 @@ import { printSaleReceiptHtml } from '../../utils/receiptPrint'
 import FinancialCancelModal from '../../components/FinancialCancelModal'
 import SaleExchangeModal from '../../components/SaleExchangeModal'
 
+import { getActiveSaleReturnHistory } from '../../utils/sale-return-history'
+
 type SaleRow = {
   id: number
   customer_name?: string | null
@@ -504,7 +506,8 @@ export default function InvoicesPage() {
         window.api.getSaleReturnHistory(saleId),
       ])
       setSelectedReceipt(receipt)
-      setSelectedReturnHistory(Array.isArray(history) ? history : [])
+
+      setSelectedReturnHistory(getActiveSaleReturnHistory(history))
     } catch (error) {
       console.error('Failed to open receipt:', error)
       setMessage('حدث خطأ أثناء فتح الفاتورة')
