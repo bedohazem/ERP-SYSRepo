@@ -986,6 +986,11 @@ export function listSales(input?: {
         s.business_date,
         s.sub_total,
         s.discount_value,
+
+        s.promotion_id,
+        s.promotion_name,
+        s.promotion_discount_value,
+
         s.grand_total,
         s.paid,
         s.change_amount,

@@ -1344,6 +1344,22 @@ describe('sales repository', () => {
 
     expect(sale.grand_total).toBe(300)
 
+    const listedSales = listSales({
+      search: `#${sale.saleId}`,
+      limit: 50,
+      offset: 0,
+    })
+
+    expect(listedSales.rows).toHaveLength(1)
+
+    const listedSale = listedSales.rows[0] as any
+
+    expect(Number(listedSale.promotion_id)).toBe(promotion.promotionId)
+
+    expect(listedSale.promotion_name).toBe('Buy 2 Get 1')
+
+    expect(Number(listedSale.promotion_discount_value)).toBe(150)
+
     const receipt = getSaleReceipt(sale.saleId) as any
 
     expect(receipt.items).toHaveLength(2)
