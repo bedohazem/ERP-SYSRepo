@@ -5,6 +5,7 @@ export type CashMovementInput = {
   type:
     | 'sale'
     | 'sale_return'
+    | 'sale_exchange'
     | 'purchase_return'
     | 'customer_payment'
     | 'supplier_payment'

@@ -1141,6 +1141,33 @@ export function createSaleReturn(input: {
         AND promotion_group_id = ?
     `)
 
+    const getCurrentPromotionGroupUnits = db.prepare(`
+        SELECT
+          spu.*,
+
+          pv.barcode AS current_barcode,
+          pv.size AS current_size,
+          pv.color AS current_color,
+          pv.buy_price AS current_unit_cost,
+
+          p.name AS current_product_name
+
+        FROM sale_promotion_units spu
+
+        JOIN product_variants pv
+          ON pv.id =
+            spu.current_variant_id
+
+        JOIN products p
+          ON p.id =
+            pv.product_id
+
+        WHERE spu.sale_id = ?
+          AND spu.promotion_group_id = ?
+
+        ORDER BY spu.id ASC
+      `)
+
     const getAlreadyReturnedQty = db.prepare(`
       SELECT
         IFNULL(
@@ -1171,119 +1198,241 @@ export function createSaleReturn(input: {
           = ?
     `)
 
+    type PreparedReturnItem = {
+      originalItem: any
+
+      promotionUnitId: number | null
+
+      variantId: number
+      productName: string
+      barcode: string | null
+      size: string | null
+      color: string | null
+      unitCost: number
+
+      quantity: number
+      unitPrice: number
+      lineTotal: number
+      promotionDiscount: number
+    }
+
     let returnSubTotal = 0
     let returnPromotionDiscount = 0
-    const preparedItems = input.items
-      .map((item) => {
-        const originalItem = getOriginalItem.get(
-          item.sale_item_id,
+
+    const preparedItems: PreparedReturnItem[] = []
+
+    const processedPromotionGroups = new Set<string>()
+
+    const returnIds = new Set(
+      input.items.map((item) => Number(item.sale_item_id)),
+    )
+
+    for (const item of input.items) {
+      const originalItem = getOriginalItem.get(
+        item.sale_item_id,
+        originalSaleId,
+      ) as any
+
+      if (!originalItem) {
+        throw new Error('صنف المرتجع غير موجود في الفاتورة الأصلية')
+      }
+
+      const requestedQty = Number(item.quantity || 0)
+
+      if (requestedQty <= 0) {
+        continue
+      }
+
+      if (originalItem.promotion_group_id) {
+        const groupId = String(originalItem.promotion_group_id)
+
+        const promotionItems = getPromotionGroupItems.all(
           originalSaleId,
-        ) as any
+          groupId,
+        ) as any[]
 
-        if (!originalItem) {
-          throw new Error('صنف المرتجع غير موجود في الفاتورة الأصلية')
-        }
+        const missingPromotionItem = promotionItems.some(
+          (promotionItem) => !returnIds.has(Number(promotionItem.id)),
+        )
 
-        if (originalItem.promotion_group_id) {
-          const promotionItems = getPromotionGroupItems.all(
-            originalSaleId,
-            originalItem.promotion_group_id,
-          ) as any[]
-
-          const returnIds = input.items.map((x) => Number(x.sale_item_id))
-
-          const missingPromotionItem = promotionItems.some(
-            (promotionItem) => !returnIds.includes(Number(promotionItem.id)),
+        if (missingPromotionItem) {
+          throw new Error(
+            'لا يمكن عمل مرتجع جزئي للعرض. يجب إرجاع العرض كاملًا أو استخدام الاستبدال.',
           )
-
-          if (missingPromotionItem) {
-            throw new Error(
-              'لا يمكن عمل مرتجع جزئي للعرض. يجب إرجاع العرض كاملًا أو استخدام الاستبدال.',
-            )
-          }
         }
 
-        const requestedQty = Number(item.quantity || 0)
-
-        if (
-          originalItem.promotion_group_id &&
-          requestedQty !== Number(originalItem.quantity || 0)
-        ) {
+        if (requestedQty !== Number(originalItem.quantity || 0)) {
           throw new Error(
             'لا يمكن إرجاع كمية جزئية من عرض. يجب إرجاع العرض كاملًا.',
           )
         }
 
-        if (requestedQty <= 0) {
-          return null
+        if (processedPromotionGroups.has(groupId)) {
+          continue
         }
 
-        const alreadyReturned = getAlreadyReturnedQty.get(
+        const currentUnits = getCurrentPromotionGroupUnits.all(
           originalSaleId,
-          originalItem.id,
-        ) as {
-          returned_qty: number
-          returned_promotion_discount: number
-        }
+          groupId,
+        ) as any[]
 
-        const maxReturnable =
-          Number(originalItem.quantity || 0) -
-          Number(alreadyReturned?.returned_qty || 0)
-
-        if (requestedQty > maxReturnable) {
-          throw new Error(
-            `الكمية المطلوبة أكبر من المتاح للمرتجع للصنف: ${originalItem.product_name}`,
+        /*
+         * الفواتير الجديدة تستخدم Unit State.
+         * لو مفيش Units فهي فاتورة legacy،
+         * فنكمل بالمنطق القديم أسفل البلوك.
+         */
+        if (currentUnits.length > 0) {
+          const expectedUnitCount = promotionItems.reduce(
+            (total, promotionItem) =>
+              total + Number(promotionItem.quantity || 0),
+            0,
           )
+
+          if (currentUnits.length !== expectedUnitCount) {
+            throw new Error(
+              'بيانات العرض المحفوظة غير مكتملة ولا يمكن عمل المرتجع',
+            )
+          }
+
+          if (currentUnits.some((unit) => Number(unit.is_returned) === 1)) {
+            throw new Error('العرض تم إرجاعه بالفعل')
+          }
+
+          processedPromotionGroups.add(groupId)
+
+          for (const unit of currentUnits) {
+            const unitOriginalItem = getOriginalItem.get(
+              unit.original_sale_item_id,
+              originalSaleId,
+            ) as any
+
+            if (!unitOriginalItem) {
+              throw new Error('تعذر ربط قطعة العرض بالفاتورة الأصلية')
+            }
+
+            const unitPrice = Number(unit.current_unit_price || 0)
+
+            const lineTotal = roundMoney(unitPrice)
+
+            const promotionDiscount =
+              Number(unit.current_is_gift || 0) === 1 ? lineTotal : 0
+
+            returnSubTotal += lineTotal
+            returnPromotionDiscount += promotionDiscount
+
+            preparedItems.push({
+              originalItem: unitOriginalItem,
+
+              promotionUnitId: Number(unit.id),
+
+              variantId: Number(unit.current_variant_id),
+
+              productName: String(
+                unit.current_product_name || unitOriginalItem.product_name,
+              ),
+
+              barcode: unit.current_barcode ?? null,
+
+              size: unit.current_size ?? null,
+
+              color: unit.current_color ?? null,
+
+              unitCost: Number(unit.current_unit_cost || 0),
+
+              quantity: 1,
+              unitPrice,
+              lineTotal,
+              promotionDiscount,
+            })
+          }
+
+          continue
         }
+      }
 
-        const unitPrice = Number(originalItem.unit_price || 0)
-        const lineTotal = requestedQty * unitPrice
+      /*
+       * المسار القديم:
+       * صنف عادي أو فاتورة Promotion Legacy.
+       */
+      const alreadyReturned = getAlreadyReturnedQty.get(
+        originalSaleId,
+        originalItem.id,
+      ) as {
+        returned_qty: number
+        returned_promotion_discount: number
+      }
 
-        returnSubTotal += lineTotal
+      const maxReturnable =
+        Number(originalItem.quantity || 0) -
+        Number(alreadyReturned?.returned_qty || 0)
 
-        const originalQty = Number(originalItem.quantity || 0)
-
-        const originalItemPromotion = Math.max(
-          0,
-          Number(originalItem.promotion_discount_value || 0),
+      if (requestedQty > maxReturnable) {
+        throw new Error(
+          `الكمية المطلوبة أكبر من المتاح للمرتجع للصنف: ${originalItem.product_name}`,
         )
+      }
 
-        const cumulativeReturnedQty =
-          Number(alreadyReturned?.returned_qty || 0) + requestedQty
+      const unitPrice = Number(originalItem.unit_price || 0)
 
-        const targetReturnedPromotion =
-          originalQty > 0
-            ? roundMoney(
-                originalItemPromotion *
-                  Math.min(cumulativeReturnedQty / originalQty, 1),
-              )
-            : 0
+      const lineTotal = requestedQty * unitPrice
 
-        const itemPromotionDiscount = Math.max(
-          0,
-          roundMoney(
-            targetReturnedPromotion -
-              Number(alreadyReturned?.returned_promotion_discount || 0),
-          ),
-        )
+      returnSubTotal += lineTotal
 
-        returnPromotionDiscount += itemPromotionDiscount
+      const originalQty = Number(originalItem.quantity || 0)
 
-        return {
-          originalItem,
-          quantity: requestedQty,
-          unitPrice,
-          lineTotal,
-          promotionDiscount: itemPromotionDiscount,
-        }
+      const originalItemPromotion = Math.max(
+        0,
+        Number(originalItem.promotion_discount_value || 0),
+      )
+
+      const cumulativeReturnedQty =
+        Number(alreadyReturned?.returned_qty || 0) + requestedQty
+
+      const targetReturnedPromotion =
+        originalQty > 0
+          ? roundMoney(
+              originalItemPromotion *
+                Math.min(cumulativeReturnedQty / originalQty, 1),
+            )
+          : 0
+
+      const itemPromotionDiscount = Math.max(
+        0,
+        roundMoney(
+          targetReturnedPromotion -
+            Number(alreadyReturned?.returned_promotion_discount || 0),
+        ),
+      )
+
+      returnPromotionDiscount += itemPromotionDiscount
+
+      preparedItems.push({
+        originalItem,
+
+        promotionUnitId: null,
+
+        variantId: Number(originalItem.variant_id),
+
+        productName: String(originalItem.product_name),
+
+        barcode: originalItem.barcode ?? null,
+
+        size: originalItem.size ?? null,
+
+        color: originalItem.color ?? null,
+
+        unitCost: Number(originalItem.unit_cost || 0),
+
+        quantity: requestedQty,
+        unitPrice,
+        lineTotal,
+        promotionDiscount: itemPromotionDiscount,
       })
-      .filter(Boolean) as Array<{
-      originalItem: any
-      quantity: number
-      unitPrice: number
-      lineTotal: number
-      promotionDiscount: number
-    }>
+    }
+
+    returnSubTotal = roundMoney(returnSubTotal)
+
+    returnPromotionDiscount = roundMoney(returnPromotionDiscount)
 
     if (preparedItems.length === 0) {
       throw new Error('لا توجد كميات صالحة للمرتجع')
@@ -1358,19 +1507,25 @@ export function createSaleReturn(input: {
 
         IFNULL(
           SUM(
-            MAX(
-              0,
-              sub_total
-              - refund_amount
-              - IFNULL(
-                  loyalty_discount_value,
-                  0
-                )
-              - IFNULL(
-                  promotion_discount_value,
-                  0
-                )
-            )
+            CASE
+              WHEN normal_discount_value
+                IS NOT NULL
+              THEN normal_discount_value
+
+              ELSE MAX(
+                0,
+                sub_total
+                - refund_amount
+                - IFNULL(
+                    loyalty_discount_value,
+                    0
+                  )
+                - IFNULL(
+                    promotion_discount_value,
+                    0
+                  )
+              )
+            END
           ),
           0
         ) AS returned_normal_discount,
@@ -1528,6 +1683,7 @@ export function createSaleReturn(input: {
           user_id,
           sub_total,
           promotion_discount_value,
+          normal_discount_value,
           loyalty_discount_value,
           refund_amount,
           debt_reduction_amount,
@@ -1537,7 +1693,7 @@ export function createSaleReturn(input: {
           notes,
           loyalty_points_reversed
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -1546,6 +1702,7 @@ export function createSaleReturn(input: {
         userId,
         returnSubTotal,
         returnPromotionDiscount,
+        saleDiscountPart,
         loyaltyDiscountPart,
         returnValue,
         debtReductionAmount,
@@ -1628,6 +1785,7 @@ export function createSaleReturn(input: {
       INSERT INTO sale_return_items (
         return_id,
         original_sale_item_id,
+        promotion_unit_id,
         variant_id,
         product_name,
         barcode,
@@ -1639,8 +1797,18 @@ export function createSaleReturn(input: {
         promotion_discount_value,
         line_total
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
+
+    const markPromotionUnitReturned = db.prepare(`
+        UPDATE sale_promotion_units
+        SET
+          is_returned = 1,
+          updated_at =
+            CURRENT_TIMESTAMP
+        WHERE id = ?
+          AND sale_id = ?
+      `)
 
     const insertStockMovement = db.prepare(`
       INSERT INTO stock_movements (
@@ -1658,24 +1826,29 @@ export function createSaleReturn(input: {
       insertReturnItem.run(
         returnId,
         item.originalItem.id,
-        item.originalItem.variant_id,
-        item.originalItem.product_name,
-        item.originalItem.barcode ?? null,
-        item.originalItem.size ?? null,
-        item.originalItem.color ?? null,
+        item.promotionUnitId,
+        item.variantId,
+        item.productName,
+        item.barcode,
+        item.size,
+        item.color,
         item.quantity,
-        Number(item.originalItem.unit_cost || 0),
+        item.unitCost,
         item.unitPrice,
         item.promotionDiscount,
         item.lineTotal,
       )
 
       insertStockMovement.run(
-        item.originalItem.variant_id,
+        item.variantId,
         item.quantity,
         returnId,
         `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
       )
+
+      if (item.promotionUnitId) {
+        markPromotionUnitReturned.run(item.promotionUnitId, originalSaleId)
+      }
     }
 
     if (originalSale.customer_id) {
@@ -1982,6 +2155,22 @@ export function cancelSaleInvoice(input: {
 
     if (Number(returnsRow?.count || 0) > 0) {
       throw new Error('لا يمكن إلغاء الفاتورة قبل إلغاء المرتجعات الخاصة بها')
+    }
+
+    const exchangesRow = db
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+        FROM sale_exchanges
+        WHERE original_sale_id = ?
+        `,
+      )
+      .get(saleId) as {
+      count: number
+    }
+
+    if (Number(exchangesRow?.count || 0) > 0) {
+      throw new Error('لا يمكن إلغاء الفاتورة بعد وجود عمليات استبدال عليها')
     }
 
     const laterPayments = db
@@ -2302,10 +2491,21 @@ export function cancelSaleReturn(input: {
       }
     }
 
-    /*
-     * دعم المرتجعات القديمة قبل إضافة
-     * cash_refund_amount.
-     */
+    const restorePromotionUnit = db.prepare(`
+        UPDATE sale_promotion_units
+        SET
+          is_returned = 0,
+          updated_at =
+            CURRENT_TIMESTAMP
+        WHERE id = ?
+      `)
+
+    for (const item of items) {
+      if (Number(item.promotion_unit_id || 0) > 0) {
+        restorePromotionUnit.run(Number(item.promotion_unit_id))
+      }
+    }
+
     const cashRow = db
       .prepare(
         `

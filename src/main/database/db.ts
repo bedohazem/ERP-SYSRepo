@@ -265,6 +265,10 @@ export function getDb(): Database.Database {
         new_group_total REAL NOT NULL DEFAULT 0,
         difference_amount REAL NOT NULL DEFAULT 0,
 
+        cash_collection_amount REAL NOT NULL DEFAULT 0,
+        debt_reduction_amount REAL NOT NULL DEFAULT 0,
+        cash_refund_amount REAL NOT NULL DEFAULT 0,
+
         payment_method TEXT NOT NULL DEFAULT 'store_cash',
         reason TEXT,
 
@@ -660,6 +664,27 @@ export function getDb(): Database.Database {
 
     safeAddColumn(
       db,
+      'sale_exchanges',
+      'cash_collection_amount',
+      'REAL NOT NULL DEFAULT 0',
+    )
+
+    safeAddColumn(
+      db,
+      'sale_exchanges',
+      'debt_reduction_amount',
+      'REAL NOT NULL DEFAULT 0',
+    )
+
+    safeAddColumn(
+      db,
+      'sale_exchanges',
+      'cash_refund_amount',
+      'REAL NOT NULL DEFAULT 0',
+    )
+
+    safeAddColumn(
+      db,
       'sale_returns',
       'promotion_discount_value',
       'REAL DEFAULT 0',
@@ -825,7 +850,10 @@ export function getDb(): Database.Database {
                   SELECT SUM(cp.amount)
                   FROM customer_payments cp
                   WHERE cp.sale_id = sales.id
-                    AND cp.notes LIKE 'تسوية مديونية بسبب مرتجع RET-%'
+                    AND (
+                    cp.notes LIKE 'تسوية مديونية بسبب مرتجع RET-%'
+                    OR cp.notes LIKE 'تسوية مديونية بسبب استبدال EXC-%'
+                  )
                 ),
                 0
               ),
@@ -841,7 +869,10 @@ export function getDb(): Database.Database {
                     SELECT SUM(cp.amount)
                     FROM customer_payments cp
                     WHERE cp.sale_id = sales.id
-                      AND cp.notes LIKE 'تسوية مديونية بسبب مرتجع RET-%'
+                      AND (
+                        cp.notes LIKE 'تسوية مديونية بسبب مرتجع RET-%'
+                        OR cp.notes LIKE 'تسوية مديونية بسبب استبدال EXC-%'
+                      )
                   ),
                   0
                 )
