@@ -82,24 +82,251 @@ type StoreReceiptInfo = {
   store_qr_primary_url?: string
 }
 
+type ReturnDraftSourceItem = {
+  sale_item_id: number
+  variant_id: number
+  quantity: number
+}
+
+type ReturnBundleUnit = {
+  id: number
+  original_sale_item_id: number
+
+  current_variant_id: number
+  current_unit_price: number
+  current_is_gift: number
+
+  is_returned: number
+
+  current_product_name: string
+  current_size?: string | null
+  current_color?: string | null
+}
+
 type ReturnDraftItem = {
   sale_item_id: number
   variant_id: number
+
   product_name: string
   size?: string | null
   color?: string | null
+
   sold_quantity: number
   returned_quantity: number
   returnable_quantity: number
   return_quantity: number
+
   unit_price: number
   promotion_discount_value: number
+
+  is_promotion_bundle?: boolean
+
+  promotion_group_id?: string | null
+
+  source_items?: ReturnDraftSourceItem[]
+
+  bundle_units?: ReturnBundleUnit[]
 }
 
 const INVOICE_PAGE_SIZE = 50
 
 function roundMoney(value: number) {
   return Number(Number(value || 0).toFixed(2))
+}
+
+function mapReceiptItemToReturnDraft(item: any): ReturnDraftItem {
+  const soldQty = Number(item.quantity || 0)
+
+  const returnedQty = Number(item.returned_quantity || 0)
+
+  const returnableQty = Math.max(0, soldQty - returnedQty)
+
+  return {
+    sale_item_id: Number(item.id),
+
+    variant_id: Number(item.variant_id),
+
+    product_name: String(item.product_name || ''),
+
+    size: item.size ?? null,
+    color: item.color ?? null,
+
+    sold_quantity: soldQty,
+    returned_quantity: returnedQty,
+    returnable_quantity: returnableQty,
+
+    return_quantity: 0,
+
+    unit_price: Number(item.unit_price || 0),
+
+    promotion_discount_value: Number(item.promotion_discount_value || 0),
+
+    is_promotion_bundle: false,
+
+    promotion_group_id: item.promotion_group_id ?? null,
+  }
+}
+
+function buildReturnDraftItems(
+  receipt: ReceiptData,
+  exchangeState: any | null,
+): ReturnDraftItem[] {
+  const receiptItems = Array.isArray(receipt.items) ? receipt.items : []
+
+  if (
+    !exchangeState ||
+    exchangeState.snapshot?.promotion_type !== 'buy_x_get_y'
+  ) {
+    return receiptItems.map(mapReceiptItemToReturnDraft)
+  }
+
+  const groups = Array.isArray(exchangeState.groups) ? exchangeState.groups : []
+
+  if (groups.length === 0) {
+    throw new Error('بيانات العرض الحالية غير موجودة ولا يمكن تجهيز المرتجع')
+  }
+
+  const handledGroupIds = new Set<string>()
+
+  const bundleDrafts: ReturnDraftItem[] = []
+
+  groups.forEach((group: any, groupIndex: number) => {
+    const groupId = String(group.promotion_group_id || '')
+
+    const units = Array.isArray(group.units) ? group.units : []
+
+    if (!groupId || units.length === 0) {
+      throw new Error('بيانات إحدى مجموعات العرض غير مكتملة')
+    }
+
+    const sourceItems = receiptItems.filter(
+      (item: any) => String(item.promotion_group_id || '') === groupId,
+    )
+
+    if (sourceItems.length === 0) {
+      throw new Error('تعذر ربط العرض بأصناف الفاتورة الأصلية')
+    }
+
+    const sourceQuantity = sourceItems.reduce(
+      (total: number, item: any) => total + Number(item.quantity || 0),
+      0,
+    )
+
+    if (sourceQuantity !== units.length) {
+      throw new Error('عدد قطع العرض الحالية لا يطابق الفاتورة الأصلية')
+    }
+
+    handledGroupIds.add(groupId)
+
+    const hasReturnedUnit = units.some(
+      (unit: any) => Number(unit.is_returned || 0) === 1,
+    )
+
+    const grossTotal = roundMoney(
+      units.reduce(
+        (total: number, unit: any) =>
+          total + Number(unit.current_unit_price || 0),
+        0,
+      ),
+    )
+
+    const promotionDiscount = roundMoney(
+      units.reduce(
+        (total: number, unit: any) =>
+          total +
+          (Number(unit.current_is_gift || 0) === 1
+            ? Number(unit.current_unit_price || 0)
+            : 0),
+        0,
+      ),
+    )
+
+    bundleDrafts.push({
+      /*
+       * IDs الحقيقية موجبة.
+       * نستخدم ID سالب للصف الصناعي
+       * الخاص بالـBundle داخل الواجهة فقط.
+       */
+      sale_item_id: -(groupIndex + 1),
+
+      variant_id: 0,
+
+      product_name: `عرض ${groupIndex + 1}`,
+
+      size: null,
+      color: null,
+
+      /*
+       * الـBundle يعامل كوحدة واحدة
+       * في شاشة المرتجع:
+       * 0 = لا يرجع
+       * 1 = يرجع كاملًا
+       */
+      sold_quantity: 1,
+
+      returned_quantity: hasReturnedUnit ? 1 : 0,
+
+      returnable_quantity: hasReturnedUnit ? 0 : 1,
+
+      return_quantity: 0,
+
+      /*
+       * نخزن Gross المجموعة هنا،
+       * ونخزن قيمة الهدية كخصم العرض.
+       * بذلك حساب Preview الحالي يظل
+       * مطابقًا لمنطق الـBackend.
+       */
+      unit_price: grossTotal,
+
+      promotion_discount_value: promotionDiscount,
+
+      is_promotion_bundle: true,
+
+      promotion_group_id: groupId,
+
+      source_items: sourceItems.map((item: any) => ({
+        sale_item_id: Number(item.id),
+
+        variant_id: Number(item.variant_id),
+
+        quantity: Number(item.quantity || 0),
+      })),
+
+      bundle_units: units.map((unit: any) => ({
+        id: Number(unit.id),
+
+        original_sale_item_id: Number(unit.original_sale_item_id),
+
+        current_variant_id: Number(unit.current_variant_id),
+
+        current_unit_price: Number(unit.current_unit_price || 0),
+
+        current_is_gift: Number(unit.current_is_gift || 0),
+
+        is_returned: Number(unit.is_returned || 0),
+
+        current_product_name: String(unit.current_product_name || ''),
+
+        current_size: unit.current_size ?? null,
+
+        current_color: unit.current_color ?? null,
+      })),
+    })
+  })
+
+  const regularDrafts = receiptItems
+    .filter((item: any) => {
+      const groupId = item.promotion_group_id
+
+      if (!groupId) {
+        return true
+      }
+
+      return !handledGroupIds.has(String(groupId))
+    })
+    .map(mapReceiptItemToReturnDraft)
+
+  return [...bundleDrafts, ...regularDrafts]
 }
 
 export default function InvoicesPage() {
@@ -304,38 +531,47 @@ export default function InvoicesPage() {
     try {
       const receipt = await window.api.getSaleReceipt(saleId)
 
+      let exchangeState: any | null = null
+
+      if (Number(receipt.sale?.promotion_id || 0) > 0) {
+        try {
+          const state = await window.api.getSaleExchangeState(saleId)
+
+          if (state.snapshot?.promotion_type === 'buy_x_get_y') {
+            exchangeState = state
+          }
+        } catch (exchangeError) {
+          const exchangeMessage = getErrorMessage(
+            exchangeError,
+            'تعذر قراءة حالة العرض',
+          )
+
+          /*
+           * الفواتير القديمة قبل إضافة
+           * Promotion Snapshot تستمر
+           * بالـlegacy return UI.
+           */
+          if (!exchangeMessage.includes('نسخة محفوظة')) {
+            throw exchangeError
+          }
+        }
+      }
+
+      const draftItems = buildReturnDraftItems(receipt, exchangeState)
+
       setReturnReceipt(receipt)
+
       setReturnReason('')
+
       setReturnRefundAccount(
         resolveRefundAccountFromPaymentMethod(receipt.sale?.payment_method),
       )
 
-      setReturnItems(
-        (receipt.items ?? []).map((item: any) => {
-          const soldQty = Number(item.quantity || 0)
-          const returnedQty = Number(item.returned_quantity || 0)
-          const returnableQty = Math.max(0, soldQty - returnedQty)
-
-          return {
-            sale_item_id: Number(item.id),
-            variant_id: Number(item.variant_id),
-            product_name: item.product_name,
-            size: item.size,
-            color: item.color,
-            sold_quantity: soldQty,
-            returned_quantity: returnedQty,
-            returnable_quantity: returnableQty,
-            return_quantity: 0,
-            unit_price: Number(item.unit_price || 0),
-            promotion_discount_value: Number(
-              item.promotion_discount_value || 0,
-            ),
-          }
-        }),
-      )
+      setReturnItems(draftItems)
     } catch (error) {
       console.error('Failed to open return popup:', error)
-      setMessage('حدث خطأ أثناء فتح المرتجع')
+
+      setMessage(getErrorMessage(error, 'حدث خطأ أثناء فتح المرتجع'))
     }
   }
 
@@ -368,13 +604,35 @@ export default function InvoicesPage() {
       return
     }
 
-    const selectedItems = returnItems
+    const rawSelectedItems = returnItems
       .filter((item) => item.return_quantity > 0)
-      .map((item) => ({
-        sale_item_id: item.sale_item_id,
-        variant_id: item.variant_id,
-        quantity: item.return_quantity,
-      }))
+      .flatMap((item) => {
+        if (item.is_promotion_bundle) {
+          return (item.source_items || []).map((sourceItem) => ({
+            sale_item_id: sourceItem.sale_item_id,
+
+            variant_id: sourceItem.variant_id,
+
+            quantity: sourceItem.quantity,
+          }))
+        }
+
+        return [
+          {
+            sale_item_id: item.sale_item_id,
+
+            variant_id: item.variant_id,
+
+            quantity: item.return_quantity,
+          },
+        ]
+      })
+
+    const selectedItems = Array.from(
+      new Map(
+        rawSelectedItems.map((item) => [item.sale_item_id, item]),
+      ).values(),
+    )
 
     if (selectedItems.length === 0) {
       setMessage('اختار كمية مرتجع أولا')
@@ -1734,8 +1992,9 @@ export default function InvoicesPage() {
                 marginBottom: '16px',
               }}
             >
-              اختار الكمية المطلوب إرجاعها لكل صنف. الكمية المتاحة للمرتجع بتقل
-              لو الصنف اتعمله مرتجع قبل كده.
+              الأصناف العادية يمكن تحديد كمية المرتجع منها. أما عرض اشتري وخد
+              فيظهر كحزمة واحدة ويجب إرجاع العرض كاملًا. بعد أي استبدال تظهر هنا
+              الأصناف والأسعار الحالية للعرض وليست الأصناف القديمة.
             </div>
 
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -1756,43 +2015,213 @@ export default function InvoicesPage() {
                 {returnItems.map((item) => (
                   <tr
                     key={item.sale_item_id}
-                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                    style={{
+                      borderTop: '1px solid rgba(255,255,255,0.06)',
+                    }}
                   >
                     <td style={tdStyle}>
-                      {item.product_name}
-                      {item.promotion_discount_value >=
-                      roundMoney(item.unit_price * item.sold_quantity) - 0.01
-                        ? ' — مجاني بالعرض'
-                        : ''}
+                      {item.is_promotion_bundle ? (
+                        <div
+                          style={{
+                            display: 'grid',
+                            gap: '8px',
+                            minWidth: '260px',
+                          }}
+                        >
+                          <strong
+                            style={{
+                              color: '#93c5fd',
+                            }}
+                          >
+                            {item.product_name} —{' '}
+                            {item.bundle_units?.length || 0} قطع
+                          </strong>
+
+                          {(item.bundle_units || []).map((unit) => (
+                            <div
+                              key={unit.id}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                gap: '10px',
+                                padding: '6px 8px',
+                                borderRadius: '8px',
+                                background: 'rgba(255,255,255,0.04)',
+                                fontSize: '12px',
+                              }}
+                            >
+                              <span>
+                                {unit.current_product_name}
+
+                                {' — '}
+
+                                {unit.current_size || '—'}
+
+                                {' / '}
+
+                                {unit.current_color || '—'}
+                              </span>
+
+                              <strong
+                                style={{
+                                  color:
+                                    Number(unit.current_is_gift) === 1
+                                      ? '#6ee7b7'
+                                      : '#fff',
+                                }}
+                              >
+                                {money(unit.current_unit_price)}
+
+                                {Number(unit.current_is_gift) === 1
+                                  ? ' — هدية'
+                                  : ''}
+                              </strong>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <>
+                          {item.product_name}
+
+                          {item.promotion_discount_value >=
+                          roundMoney(item.unit_price * item.sold_quantity) -
+                            0.01
+                            ? ' — مجاني بالعرض'
+                            : ''}
+                        </>
+                      )}
                     </td>
-                    <td style={tdStyle}>{item.size || '—'}</td>
-                    <td style={tdStyle}>{item.color || '—'}</td>
-                    <td style={tdStyle}>{item.sold_quantity}</td>
-                    <td style={tdStyle}>{item.returned_quantity}</td>
-                    <td style={tdStyle}>{item.returnable_quantity}</td>
+
                     <td style={tdStyle}>
-                      <input
-                        type="number"
-                        min={0}
-                        max={item.returnable_quantity}
-                        disabled={item.returnable_quantity <= 0}
-                        value={item.return_quantity}
-                        onChange={(e) =>
-                          updateReturnQty(
-                            item.sale_item_id,
-                            Number(e.target.value),
-                          )
-                        }
-                        style={{
-                          ...inputStyle,
-                          width: '110px',
-                          textAlign: 'center',
-                          opacity: item.returnable_quantity <= 0 ? 0.5 : 1,
-                        }}
-                      />
+                      {item.is_promotion_bundle ? '—' : item.size || '—'}
                     </td>
+
                     <td style={tdStyle}>
-                      {money(item.return_quantity * item.unit_price)}
+                      {item.is_promotion_bundle ? '—' : item.color || '—'}
+                    </td>
+
+                    <td style={tdStyle}>
+                      {item.is_promotion_bundle
+                        ? `${item.bundle_units?.length || 0} قطعة`
+                        : item.sold_quantity}
+                    </td>
+
+                    <td style={tdStyle}>
+                      {item.is_promotion_bundle
+                        ? item.returned_quantity > 0
+                          ? 'تم إرجاع العرض'
+                          : '—'
+                        : item.returned_quantity}
+                    </td>
+
+                    <td style={tdStyle}>
+                      {item.is_promotion_bundle
+                        ? item.returnable_quantity > 0
+                          ? 'العرض كامل'
+                          : '0'
+                        : item.returnable_quantity}
+                    </td>
+
+                    <td style={tdStyle}>
+                      {item.is_promotion_bundle ? (
+                        <button
+                          type="button"
+                          disabled={item.returnable_quantity <= 0}
+                          onClick={() =>
+                            updateReturnQty(
+                              item.sale_item_id,
+                              item.return_quantity > 0 ? 0 : 1,
+                            )
+                          }
+                          style={{
+                            ...smallButtonStyle,
+
+                            borderColor:
+                              item.return_quantity > 0 ? '#ef4444' : '#f97316',
+
+                            color:
+                              item.return_quantity > 0 ? '#fca5a5' : '#fdba74',
+
+                            background:
+                              item.return_quantity > 0
+                                ? 'rgba(239,68,68,0.10)'
+                                : 'rgba(249,115,22,0.10)',
+
+                            opacity: item.returnable_quantity <= 0 ? 0.45 : 1,
+
+                            cursor:
+                              item.returnable_quantity <= 0
+                                ? 'not-allowed'
+                                : 'pointer',
+                          }}
+                        >
+                          {item.return_quantity > 0
+                            ? 'إلغاء اختيار العرض'
+                            : 'إرجاع العرض كاملًا'}
+                        </button>
+                      ) : (
+                        <input
+                          type="number"
+                          min={0}
+                          max={item.returnable_quantity}
+                          disabled={item.returnable_quantity <= 0}
+                          value={item.return_quantity}
+                          onChange={(e) =>
+                            updateReturnQty(
+                              item.sale_item_id,
+                              Number(e.target.value),
+                            )
+                          }
+                          style={{
+                            ...inputStyle,
+                            width: '110px',
+                            textAlign: 'center',
+                            opacity: item.returnable_quantity <= 0 ? 0.5 : 1,
+                          }}
+                        />
+                      )}
+                    </td>
+
+                    <td style={tdStyle}>
+                      {item.is_promotion_bundle ? (
+                        <div
+                          style={{
+                            display: 'grid',
+                            gap: '3px',
+                          }}
+                        >
+                          <strong
+                            style={{
+                              color: '#6ee7b7',
+                            }}
+                          >
+                            {money(
+                              item.return_quantity *
+                                Math.max(
+                                  0,
+                                  item.unit_price -
+                                    item.promotion_discount_value,
+                                ),
+                            )}
+                          </strong>
+
+                          {item.return_quantity > 0 &&
+                            item.promotion_discount_value > 0 && (
+                              <span
+                                style={{
+                                  color: '#94a3b8',
+                                  fontSize: '11px',
+                                }}
+                              >
+                                قبل العرض: {money(item.unit_price)} / هدية:{' '}
+                                {money(item.promotion_discount_value)}
+                              </span>
+                            )}
+                        </div>
+                      ) : (
+                        money(item.return_quantity * item.unit_price)
+                      )}
                     </td>
                   </tr>
                 ))}
