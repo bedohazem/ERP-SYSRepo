@@ -163,6 +163,26 @@ function setCustomerPoints(customerId: number, points: number) {
   ).run(points, customerId)
 }
 
+function resetLoyaltySettingsForSalesTests() {
+  const db = getDb()
+
+  const update = db.prepare(`
+    UPDATE app_settings
+    SET value = ?
+    WHERE key = ?
+  `)
+
+  update.run('true', 'loyalty_enabled')
+
+  update.run('100', 'loyalty_earn_amount')
+
+  update.run('1', 'loyalty_earn_points')
+
+  update.run('1', 'loyalty_point_value')
+
+  update.run('1', 'loyalty_min_redeem_points')
+}
+
 function getStockByBarcode(barcode: string) {
   const variant = getVariantByBarcode(barcode) as SaleVariantTestRow | undefined
 
@@ -178,6 +198,8 @@ describe('sales repository', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+
+    resetLoyaltySettingsForSalesTests()
   })
 
   it('rejects missing user_id', () => {
@@ -600,6 +622,60 @@ describe('sales repository', () => {
     expect(receipt.sale.loyalty_points_redeemed).toBe(5)
     expect(receipt.sale.loyalty_discount_value).toBe(5)
     expect(receipt.sale.grand_total).toBe(295)
+  })
+
+  it('rejects redemption when invoice value would reduce redeemed points below the minimum', () => {
+    const variant = seedProduct()
+    const customerId = createTestCustomer()
+
+    setCustomerPoints(customerId, 10)
+
+    const db = getDb()
+
+    const updateSetting = db.prepare(`
+        UPDATE app_settings
+        SET value = ?
+        WHERE key = ?
+      `)
+
+    updateSetting.run('4', 'loyalty_min_redeem_points')
+
+    updateSetting.run('100', 'loyalty_point_value')
+
+    expect(() =>
+      createSale({
+        user_id: 1,
+        customer_id: customerId,
+
+        sub_total: 300,
+        discount_value: 0,
+        grand_total: 300,
+
+        change_amount: 0,
+        payment_method: 'cash',
+
+        loyalty_points_redeemed: 4,
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            product_name: variant.product_name,
+
+            barcode: variant.barcode,
+
+            size: variant.size,
+
+            color: variant.color,
+
+            quantity: 2,
+            unit_price: 150,
+          },
+        ],
+      }),
+    ).toThrow('قيمة الفاتورة لا تسمح باستخدام الحد الأدنى من النقاط')
+
+    expect(getCustomerPoints(customerId)).toBe(10)
   })
 
   it('rejects redeeming more loyalty points than customer balance', () => {
@@ -1127,6 +1203,99 @@ describe('sales repository', () => {
     expect(saleReturn.loyalty_points_reversed).toBe(2)
 
     expect(getCustomerPoints(customerId)).toBe(1)
+  })
+
+  it('uses recorded loyalty points proportionally for legacy returns instead of estimated rules', () => {
+    const variant = seedProduct()
+    const customerId = createTestCustomer()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customerId,
+
+      sub_total: 300,
+      discount_value: 0,
+      grand_total: 300,
+
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 300,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 2,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(sale.loyalty_points_earned).toBe(3)
+
+    expect(getCustomerPoints(customerId)).toBe(3)
+
+    const db = getDb()
+
+    db.prepare(
+      `
+      UPDATE sale_loyalty_snapshots
+
+      SET
+        source =
+          'legacy_estimated',
+
+        earn_amount = 999,
+
+        earn_points = 99
+
+      WHERE sale_id = ?
+      `,
+    ).run(sale.saleId)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      items: [
+        {
+          sale_item_id: Number(receipt.items[0].id),
+
+          variant_id: Number(receipt.items[0].variant_id),
+
+          quantity: 1,
+        },
+      ],
+    })
+
+    expect(saleReturn.return_value).toBe(150)
+
+    /*
+     * Legacy invoice:
+     *
+     * recorded earned points = 3
+     * returned value = 150 / 300 = 50%
+     *
+     * We cannot know the historical
+     * earning rule, so preserve recorded
+     * data proportionally:
+     *
+     * floor(3 * 50%) = 1 point reversed.
+     */
+    expect(saleReturn.loyalty_points_reversed).toBe(1)
+
+    expect(getCustomerPoints(customerId)).toBe(2)
   })
 
   it('filters sales by payment state', () => {

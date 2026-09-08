@@ -206,7 +206,19 @@ export function createSale(input: CreateSaleInput) {
           ? Math.floor(totalAfterNormalDiscount / loyalty.pointValue)
           : 0
 
-      redeemPoints = Math.min(requestedRedeemPoints, maxRedeemByTotal)
+      const cappedRedeemPoints = Math.min(
+        requestedRedeemPoints,
+        maxRedeemByTotal,
+      )
+
+      if (
+        cappedRedeemPoints > 0 &&
+        cappedRedeemPoints < loyalty.minRedeemPoints
+      ) {
+        throw new Error('قيمة الفاتورة لا تسمح باستخدام الحد الأدنى من النقاط')
+      }
+
+      redeemPoints = cappedRedeemPoints
 
       loyaltyDiscountValue = redeemPoints * loyalty.pointValue
     }
@@ -1683,7 +1695,15 @@ export function createSaleReturn(input: {
             ),
             0
           )
-            AS returned_value
+            AS returned_value,
+
+          IFNULL(
+            SUM(
+              loyalty_points_reversed
+            ),
+            0
+          )
+            AS reversed_points
 
         FROM sale_returns
 
@@ -1785,12 +1805,16 @@ export function createSaleReturn(input: {
     )
 
     /*
-     * النقاط المكتسبة تعتمد على
-     * صافي الفاتورة الفعلي المتبقي.
+     * Exact snapshots can recalculate
+     * loyalty using the actual historical
+     * rule.
+     *
+     * Legacy snapshots cannot.
+     * For legacy invoices we preserve the
+     * recorded points proportionally.
      */
     const currentEarnedPoints = Math.max(
       0,
-
       Number(
         currentStateBeforeReturn.financials.current_loyalty_points_earned || 0,
       ),
@@ -1798,32 +1822,74 @@ export function createSaleReturn(input: {
 
     const loyaltySnapshot = currentStateBeforeReturn.loyalty_snapshot
 
-    const earnAmount = Math.max(0, Number(loyaltySnapshot?.earn_amount || 0))
+    const loyaltySnapshotIsExact = Boolean(loyaltySnapshot?.is_exact)
 
-    const earnPoints = Math.max(0, Number(loyaltySnapshot?.earn_points || 0))
+    let loyaltyPointsToReverse = 0
 
-    const nextNetGrandTotal = Math.max(
-      0,
+    if (loyaltySnapshotIsExact) {
+      const earnAmount = Math.max(0, Number(loyaltySnapshot?.earn_amount || 0))
 
-      roundMoney(
-        Number(currentStateBeforeReturn.financials.net_grand_total || 0) -
-          returnValue,
-      ),
-    )
+      const earnPoints = Math.max(0, Number(loyaltySnapshot?.earn_points || 0))
 
-    const targetEarnedPointsAfterReturn =
-      originalSale.customer_id &&
-      loyaltySnapshot?.enabled &&
-      earnAmount > 0 &&
-      earnPoints > 0
-        ? Math.floor(nextNetGrandTotal / earnAmount) * earnPoints
-        : 0
+      const nextNetGrandTotal = Math.max(
+        0,
+        roundMoney(
+          Number(currentStateBeforeReturn.financials.net_grand_total || 0) -
+            returnValue,
+        ),
+      )
 
-    const loyaltyPointsToReverse = Math.max(
-      0,
+      const targetEarnedPointsAfterReturn =
+        originalSale.customer_id &&
+        loyaltySnapshot?.enabled &&
+        earnAmount > 0 &&
+        earnPoints > 0
+          ? Math.floor(nextNetGrandTotal / earnAmount) * earnPoints
+          : 0
 
-      Math.round(currentEarnedPoints - targetEarnedPointsAfterReturn),
-    )
+      loyaltyPointsToReverse = Math.max(
+        0,
+        Math.round(currentEarnedPoints - targetEarnedPointsAfterReturn),
+      )
+    } else {
+      const originalEarnedPoints = Math.max(
+        0,
+        Number(originalSale.loyalty_points_earned || 0),
+      )
+
+      const alreadyReversedPoints = Math.max(
+        0,
+        Number(previousReturns?.reversed_points || 0),
+      )
+
+      const originalGrandTotal = Math.max(
+        0,
+        Number(originalSale.grand_total || 0),
+      )
+
+      const cumulativeReturnedValue = Math.max(
+        0,
+        Number(previousReturns?.returned_value || 0) + returnValue,
+      )
+
+      const cumulativeReturnRatio =
+        originalGrandTotal > 0
+          ? Math.min(cumulativeReturnedValue / originalGrandTotal, 1)
+          : 0
+
+      const targetTotalReversedPoints = Math.floor(
+        originalEarnedPoints * cumulativeReturnRatio,
+      )
+
+      loyaltyPointsToReverse = Math.max(
+        0,
+        Math.min(
+          originalEarnedPoints - alreadyReversedPoints,
+
+          targetTotalReversedPoints - alreadyReversedPoints,
+        ),
+      )
+    }
 
     /*
      * لو العميل صرف النقاط بالفعل،
