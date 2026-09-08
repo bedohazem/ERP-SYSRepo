@@ -581,4 +581,109 @@ describe('sale exchange loyalty accounting', () => {
       }),
     ).toThrow('تم تقفيله')
   })
+
+  it('releases all redeemed points when an exchange drops below the saved minimum redemption', () => {
+    setLoyaltySettings({
+      earnAmount: 1000,
+      earnPoints: 1,
+      pointValue: 100,
+      minRedeemPoints: 4,
+    })
+
+    const result = seedSale({
+      initialPoints: 4,
+      redeemPoints: 4,
+    })
+
+    expect(result.sale.loyalty_points_redeemed).toBe(4)
+
+    expect(result.sale.loyalty_discount_value).toBe(400)
+
+    expect(result.sale.grand_total).toBe(50)
+
+    const unit250 = getUnitByPrice(result.sale.saleId, 250)
+
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+
+      user_id: 1,
+
+      items: [
+        {
+          promotion_unit_id: Number(unit250.id),
+
+          new_variant_id: result.variants.v150.variant_id,
+        },
+      ],
+    })
+
+    expect(exchange.loyalty_redeemed_points_adjustment).toBe(-4)
+
+    expect(getCustomerPoints(result.customerId)).toBe(4)
+
+    const state = getSaleCurrentState(result.sale.saleId)
+
+    expect(state.financials.current_loyalty_points_redeemed).toBe(0)
+
+    expect(state.financials.current_loyalty_discount_value).toBe(0)
+  })
+
+  it('does not pretend current loyalty settings are exact rules for an old invoice', () => {
+    setLoyaltySettings({
+      earnAmount: 1000,
+      earnPoints: 1,
+      pointValue: 50,
+    })
+
+    const result = seedSale({
+      initialPoints: 8,
+      redeemPoints: 8,
+    })
+
+    result.db
+      .prepare(
+        `
+        UPDATE sale_loyalty_snapshots
+
+        SET
+          source =
+            'legacy_estimated',
+
+          enabled = 0,
+
+          point_value = 999,
+
+          earn_amount = 999
+
+        WHERE sale_id = ?
+        `,
+      )
+      .run(result.sale.saleId)
+
+    const state = getSaleCurrentState(result.sale.saleId)
+
+    expect(state.loyalty_snapshot.is_exact).toBe(false)
+
+    expect(state.financials.current_loyalty_points_redeemed).toBe(8)
+
+    expect(state.financials.current_loyalty_discount_value).toBe(400)
+
+    const unit250 = getUnitByPrice(result.sale.saleId, 250)
+
+    expect(() =>
+      createSaleExchange({
+        original_sale_id: result.sale.saleId,
+
+        user_id: 1,
+
+        items: [
+          {
+            promotion_unit_id: Number(unit250.id),
+
+            new_variant_id: result.variants.v300.variant_id,
+          },
+        ],
+      }),
+    ).toThrow('شروط النقاط الأصلية غير محفوظة')
+  })
 })

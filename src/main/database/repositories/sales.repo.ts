@@ -306,9 +306,10 @@ export function createSale(input: CreateSaleInput) {
         earn_amount,
         earn_points,
         point_value,
-        min_redeem_points
+        min_redeem_points,
+        source
       )
-      VALUES (?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, 'exact')
       `,
     ).run(
       saleId,

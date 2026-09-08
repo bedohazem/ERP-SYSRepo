@@ -223,6 +223,8 @@ export function getDb(): Database.Database {
 
         min_redeem_points REAL NOT NULL DEFAULT 1,
 
+        source TEXT NOT NULL DEFAULT 'exact',
+
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 
         FOREIGN KEY (sale_id)
@@ -839,6 +841,13 @@ export function getDb(): Database.Database {
       'loyalty_redeemed_points_adjustment',
       'INTEGER NOT NULL DEFAULT 0',
     )
+
+    safeAddColumn(
+      db,
+      'sale_loyalty_snapshots',
+      'source',
+      `TEXT NOT NULL DEFAULT 'exact'`,
+    )
     safeAddColumn(db, 'sales', 'parent_sale_id', 'INTEGER')
     safeAddColumn(db, 'sales', 'return_reason', 'TEXT')
     safeAddColumn(db, 'sales', 'type', `TEXT DEFAULT 'sale'`)
@@ -989,7 +998,8 @@ export function getDb(): Database.Database {
         earn_amount,
         earn_points,
         point_value,
-        min_redeem_points
+        min_redeem_points,
+        source
       )
 
       SELECT
@@ -1069,7 +1079,10 @@ export function getDb(): Database.Database {
             0
           ),
           1
-        )
+        ),
+
+        'legacy_estimated'
+          AS source
 
       FROM sales s
 
@@ -1078,6 +1091,37 @@ export function getDb(): Database.Database {
           s.type,
           'sale'
         ) = 'sale'
+      `,
+    ).run()
+
+    db.prepare(
+      `
+      UPDATE sale_loyalty_snapshots
+      SET source = 'legacy_estimated'
+
+      WHERE source = 'exact'
+
+        AND EXISTS (
+          SELECT 1
+
+          FROM sales s
+
+          WHERE
+            s.id =
+              sale_loyalty_snapshots.sale_id
+
+            AND ABS(
+              strftime(
+                '%s',
+                sale_loyalty_snapshots.created_at
+              )
+              -
+              strftime(
+                '%s',
+                s.created_at
+              )
+            ) > 2
+        )
       `,
     ).run()
 

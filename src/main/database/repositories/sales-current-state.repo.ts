@@ -62,6 +62,9 @@ export function getSaleCurrentState(saleIdInput: number) {
     )
     .get(saleId) as any
 
+  const loyaltySnapshotIsExact =
+    String(loyaltySnapshot?.source || 'legacy_estimated') === 'exact'
+
   const effectiveLoyaltySnapshot = {
     enabled: Number(loyaltySnapshot?.enabled || 0) === 1,
 
@@ -73,8 +76,12 @@ export function getSaleCurrentState(saleIdInput: number) {
 
     min_redeem_points: Math.max(
       0,
-      Number(loyaltySnapshot?.min_redeem_points || 0),
+      Math.floor(Number(loyaltySnapshot?.min_redeem_points || 0)),
     ),
+
+    source: loyaltySnapshotIsExact ? 'exact' : 'legacy_estimated',
+
+    is_exact: loyaltySnapshotIsExact,
   }
 
   /*
@@ -381,7 +388,7 @@ export function getSaleCurrentState(saleIdInput: number) {
 
   const loyaltyPointValue = Number(effectiveLoyaltySnapshot.point_value || 0)
 
-  const currentLoyaltyPointsRedeemed =
+  const maxRedeemablePoints =
     effectiveLoyaltySnapshot.enabled && loyaltyPointValue > 0
       ? Math.min(
           originalRedeemedPoints,
@@ -390,9 +397,27 @@ export function getSaleCurrentState(saleIdInput: number) {
         )
       : 0
 
-  const currentLoyaltyDiscount = roundMoney(
-    currentLoyaltyPointsRedeemed * loyaltyPointValue,
-  )
+  const exactRedeemedPoints =
+    maxRedeemablePoints > 0 &&
+    maxRedeemablePoints < effectiveLoyaltySnapshot.min_redeem_points
+      ? 0
+      : maxRedeemablePoints
+
+  /*
+   * Legacy invoices do not have reliable
+   * historical loyalty settings.
+   *
+   * Preserve the original recorded loyalty
+   * values instead of pretending the current
+   * settings were the purchase-time rules.
+   */
+  const currentLoyaltyPointsRedeemed = loyaltySnapshotIsExact
+    ? exactRedeemedPoints
+    : originalRedeemedPoints
+
+  const currentLoyaltyDiscount = loyaltySnapshotIsExact
+    ? roundMoney(currentLoyaltyPointsRedeemed * loyaltyPointValue)
+    : roundMoney(Math.min(originalLoyaltyDiscount, afterNormalDiscount))
 
   const currentGrandTotal = Math.max(
     0,

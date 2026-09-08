@@ -563,13 +563,32 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
     const currentStateBefore = getSaleCurrentState(saleId)
     const loyaltySnapshot = currentStateBefore.loyalty_snapshot
 
-    const loyaltyEnabled = Boolean(loyaltySnapshot?.enabled)
+    const loyaltySnapshotIsExact = Boolean(loyaltySnapshot?.is_exact)
+
+    const hasHistoricalLoyaltyActivity =
+      Number(sale.loyalty_points_earned || 0) > 0 ||
+      Number(sale.loyalty_points_redeemed || 0) > 0 ||
+      Number(sale.loyalty_discount_value || 0) > 0
+
+    if (!loyaltySnapshotIsExact && hasHistoricalLoyaltyActivity) {
+      throw new Error(
+        'لا يمكن إعادة حساب نقاط هذه الفاتورة القديمة بأمان لأن شروط النقاط الأصلية غير محفوظة',
+      )
+    }
+
+    const loyaltyEnabled =
+      loyaltySnapshotIsExact && Boolean(loyaltySnapshot?.enabled)
 
     const earnAmount = Math.max(0, Number(loyaltySnapshot?.earn_amount || 0))
 
     const earnPoints = Math.max(0, Number(loyaltySnapshot?.earn_points || 0))
 
     const pointValue = Math.max(0, Number(loyaltySnapshot?.point_value || 0))
+    const minRedeemPoints = Math.max(
+      0,
+      Math.floor(Number(loyaltySnapshot?.min_redeem_points || 0)),
+    )
+
     const beforeGroupGross = roundMoney(
       beforeState.reduce(
         (total, unit) => total + Number(unit.current_unit_price || 0),
@@ -644,7 +663,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       Math.floor(Number(sale.loyalty_points_redeemed || 0)),
     )
 
-    const nextRedeemedPoints =
+    const maxNextRedeemedPoints =
       loyaltyEnabled && pointValue > 0
         ? Math.min(
             originalRedeemedPoints,
@@ -652,6 +671,11 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
             Math.floor((nextAfterNormal + 0.0000001) / pointValue),
           )
         : 0
+
+    const nextRedeemedPoints =
+      maxNextRedeemedPoints > 0 && maxNextRedeemedPoints < minRedeemPoints
+        ? 0
+        : maxNextRedeemedPoints
 
     const nextLoyaltyDiscount = roundMoney(nextRedeemedPoints * pointValue)
 
