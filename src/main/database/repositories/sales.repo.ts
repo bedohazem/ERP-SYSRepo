@@ -2762,16 +2762,31 @@ export function cancelSaleReturn(input: {
       WHERE variant_id = ?
     `)
 
+    const requiredByVariant = new Map<
+      number,
+      { quantity: number; productName: string }
+    >()
+
     for (const item of items) {
-      const stockRow = getCurrentStock.get(Number(item.variant_id)) as any
+      const variantId = Number(item.variant_id)
+      const previous = requiredByVariant.get(variantId)
+
+      requiredByVariant.set(variantId, {
+        quantity: (previous?.quantity ?? 0) + Number(item.quantity || 0),
+        productName: String(item.product_name || ''),
+      })
+    }
+
+    for (const [variantId, required] of requiredByVariant) {
+      const stockRow = getCurrentStock.get(variantId) as
+        | { stock: number }
+        | undefined
 
       const currentStock = Number(stockRow?.stock || 0)
 
-      const qty = Number(item.quantity || 0)
-
-      if (currentStock < qty) {
+      if (currentStock < required.quantity) {
         throw new Error(
-          `لا يمكن إلغاء المرتجع لأن مخزون الصنف "${item.product_name}" أقل من كمية المرتجع`,
+          `لا يمكن إلغاء المرتجع لأن مخزون الصنف "${required.productName}" أقل من كمية المرتجع`,
         )
       }
     }

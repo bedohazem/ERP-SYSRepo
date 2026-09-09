@@ -8,6 +8,7 @@ import {
   createSale,
   createSaleReturn,
   getSaleReceipt,
+  cancelSaleReturn,
   listSales,
 } from '../../src/main/database/repositories/sales.repo'
 
@@ -2059,4 +2060,129 @@ describe('sales repository', () => {
 
     expect(returned.return_value).toBe(450)
   })
+
+  it.each([2, 3])(
+    'checks combined return quantities with %s units in stock',
+    (remainingStock) => {
+      const db = getDb()
+      const variant = seedProduct()
+
+      const promotion = createPromotion({
+        name: 'Return cancellation stock check',
+        type: 'buy_x_get_y',
+        value: 0,
+        buy_qty: 2,
+        free_qty: 1,
+        scope_type: 'all',
+        actor_id: 1,
+      })
+
+      togglePromotion(promotion.promotionId, 1)
+
+      function sell(
+        quantity: number,
+        total: number,
+        promotionId: number | null = null,
+      ) {
+        return createSale({
+          user_id: 1,
+          customer_id: null,
+          promotion_id: promotionId,
+          sub_total: quantity * variant.sell_price,
+          discount_value: 0,
+          grand_total: total,
+          paid: total,
+          change_amount: 0,
+          payment_method: 'cash',
+          items: [
+            {
+              variant_id: variant.variant_id,
+              product_name: variant.product_name,
+              barcode: variant.barcode,
+              size: variant.size,
+              color: variant.color,
+              quantity,
+              unit_price: variant.sell_price,
+            },
+          ],
+        })
+      }
+
+      const sale = sell(3, 300, promotion.promotionId)
+      const receipt = getSaleReceipt(sale.saleId) as any
+
+      const returned = createSaleReturn({
+        original_sale_id: sale.saleId,
+        user_id: 1,
+        refund_payment_method: 'store_cash',
+        items: receipt.items.map((item: any) => ({
+          sale_item_id: Number(item.id),
+          variant_id: Number(item.variant_id),
+          quantity: Number(item.quantity),
+        })),
+      })
+
+      const returnedItems = db
+        .prepare(
+          'SELECT variant_id, quantity FROM sale_return_items WHERE return_id = ?',
+        )
+        .all(returned.returnId) as Array<{
+        variant_id: number
+        quantity: number
+      }>
+
+      expect(returnedItems.length).toBeGreaterThan(1)
+      expect(new Set(returnedItems.map((item) => item.variant_id)).size).toBe(1)
+      expect(returnedItems.reduce((sum, item) => sum + item.quantity, 0)).toBe(
+        3,
+      )
+
+      togglePromotion(promotion.promotionId, 0)
+
+      const soldLater = 10 - remainingStock
+      sell(soldLater, soldLater * variant.sell_price)
+
+      expect(getStockByBarcode(variant.barcode)).toBe(remainingStock)
+
+      const tables = [
+        'sales',
+        'sale_returns',
+        'sale_promotion_units',
+        'stock_movements',
+        'cash_movements',
+      ]
+
+      const snapshot = () =>
+        tables.map((table) =>
+          db.prepare(`SELECT * FROM ${table} ORDER BY id`).all(),
+        )
+
+      const before = snapshot()
+      const cashInBefore = getCashMovementTotal('in')
+
+      const cancel = () =>
+        cancelSaleReturn({
+          return_id: returned.returnId,
+          actor_id: 1,
+          reason: 'Stock regression test',
+        })
+
+      if (remainingStock === 2) {
+        expect(cancel).toThrow('أقل من كمية المرتجع')
+        expect(snapshot()).toEqual(before)
+        expect(getStockByBarcode(variant.barcode)).toBe(2)
+        return
+      }
+
+      expect(cancel().ok).toBe(true)
+      expect(getStockByBarcode(variant.barcode)).toBe(0)
+      expect(getCashMovementTotal('in')).toBe(cashInBefore + 300)
+
+      const returnRow = db
+        .prepare('SELECT cancelled_at FROM sale_returns WHERE id = ?')
+        .get(returned.returnId) as { cancelled_at: string | null }
+
+      expect(returnRow.cancelled_at).not.toBeNull()
+    },
+  )
 })
