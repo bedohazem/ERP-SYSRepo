@@ -403,8 +403,16 @@ describe('reports repository', () => {
       sellPrice: 150,
     })
 
+    const now = new Date()
+    const reportDate = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-')
+
     createSale({
       user_id: 1,
+      business_date: reportDate,
       customer_id: null,
       sub_total: 150,
       discount_value: 0,
@@ -425,11 +433,9 @@ describe('reports repository', () => {
       ],
     })
 
-    const today = new Date().toISOString().slice(0, 10)
-
     const todayReport = getReportsSummary({
-      date_from: today,
-      date_to: today,
+      date_from: reportDate,
+      date_to: reportDate,
     }) as ReportsSummaryTestResult
 
     const futureReport = getReportsSummary({

@@ -1619,8 +1619,15 @@ export function getCustomerStatement(
     )
     .all(Number(actorId || 0), id) as any[]
 
-  function isReturnSettlement(payment: any) {
-    return String(payment.notes || '').startsWith('تسوية مديونية بسبب مرتجع')
+  function isInternalSettlement(payment: any) {
+    if (payment.batch_id) return false
+
+    const notes = String(payment.notes || '').trim()
+
+    return (
+      notes.startsWith('تسوية مديونية بسبب مرتجع') ||
+      notes.startsWith('تسوية مديونية بسبب استبدال')
+    )
   }
 
   function isCancelledPaymentBatch(payment: any) {
@@ -1628,29 +1635,21 @@ export function getCustomerStatement(
   }
 
   const normalPaymentsBySale = new Map<number, number>()
-  const allPaymentsBySale = new Map<number, number>()
 
   for (const payment of payments) {
-    const saleId = Number(payment.sale_id || 0)
-    const amount = Number(payment.amount || 0)
-
-    if (isCancelledPaymentBatch(payment)) {
+    if (isInternalSettlement(payment) || isCancelledPaymentBatch(payment)) {
       continue
     }
 
+    const saleId = Number(payment.sale_id || 0)
+    const amount = Number(payment.amount || 0)
+
     if (!saleId || amount <= 0) continue
 
-    allPaymentsBySale.set(
+    normalPaymentsBySale.set(
       saleId,
-      Number(allPaymentsBySale.get(saleId) || 0) + amount,
+      Number(normalPaymentsBySale.get(saleId) || 0) + amount,
     )
-
-    if (!isReturnSettlement(payment)) {
-      normalPaymentsBySale.set(
-        saleId,
-        Number(normalPaymentsBySale.get(saleId) || 0) + amount,
-      )
-    }
   }
 
   const saleEntries = sales.map((sale) => ({
@@ -1701,6 +1700,8 @@ export function getCustomerStatement(
   const standalonePayments: any[] = []
 
   for (const payment of payments) {
+    if (isInternalSettlement(payment)) continue
+
     const batchId = Number(payment.batch_id || 0)
 
     if (!batchId) {
@@ -1780,38 +1781,123 @@ export function getCustomerStatement(
     },
   )
 
-  const standalonePaymentEntries = standalonePayments.map((payment) => {
-    const returnSettlement = isReturnSettlement(payment)
+  const standalonePaymentEntries = standalonePayments.map((payment) => ({
+    id: `payment-${payment.id}`,
+    type: 'payment',
+    title: payment.sale_id
+      ? `دفعة على فاتورة #${payment.sale_id}`
+      : 'دفعة عميل',
+    debit: 0,
+    credit: Number(payment.amount || 0),
+    sale_id: payment.sale_id,
+    batch_id: null,
+    payment_method: payment.payment_method,
+    notes: payment.notes,
+    cancelled_at: null,
+    created_at: payment.created_at,
+  }))
 
-    return {
-      id: `payment-${payment.id}`,
+  const adjustments = db
+    .prepare(
+      `
+      SELECT
+        'return' AS kind,
+        sr.id,
+        sr.original_sale_id AS sale_id,
+        -sr.refund_amount AS difference_amount,
+        0 AS cash_collection_amount,
+        COALESCE(
+          sr.cash_refund_amount,
+          (
+            SELECT SUM(cm.amount)
+            FROM cash_movements cm
+            WHERE cm.type = 'sale_return'
+              AND cm.direction = 'out'
+              AND cm.reference_type = 'sale_return'
+              AND cm.reference_id = sr.id
+              AND cm.cancelled_at IS NULL
+          ),
+          0
+        ) AS cash_refund_amount,
+        sr.payment_method,
+        sr.reason,
+        sr.created_at,
+        COALESCE(sr.cancelled_at, s.cancelled_at) AS cancelled_at,
+        COALESCE(sr.cancel_reason, s.cancel_reason) AS cancel_reason
+      FROM sale_returns sr
+      JOIN sales s ON s.id = sr.original_sale_id
+      WHERE s.customer_id = ?
+        AND IFNULL(s.type, 'sale') = 'sale'
 
-      type: 'payment',
+      UNION ALL
 
-      title: returnSettlement
-        ? payment.sale_id
-          ? `تسوية مرتجع على فاتورة #${payment.sale_id}`
-          : 'تسوية مرتجع'
-        : payment.sale_id
-          ? `دفعة على فاتورة #${payment.sale_id}`
-          : 'دفعة عميل',
+      SELECT
+        'exchange' AS kind,
+        se.id,
+        se.original_sale_id AS sale_id,
+        se.difference_amount,
+        se.cash_collection_amount,
+        se.cash_refund_amount,
+        se.payment_method,
+        se.reason,
+        se.created_at,
+        COALESCE(se.cancelled_at, s.cancelled_at) AS cancelled_at,
+        COALESCE(se.cancel_reason, s.cancel_reason) AS cancel_reason
+      FROM sale_exchanges se
+      JOIN sales s ON s.id = se.original_sale_id
+      WHERE s.customer_id = ?
+        AND IFNULL(s.type, 'sale') = 'sale'
+      `,
+    )
+    .all(id, id) as any[]
 
-      debit: 0,
+  const adjustmentEntries = adjustments.flatMap((row) => {
+    const isReturn = row.kind === 'return'
+    const label = isReturn ? 'مرتجع' : 'استبدال'
+    const prefix = isReturn ? 'RET' : 'EXC'
+    const code = `${prefix}-${String(row.id).padStart(5, '0')}`
+    const cancelled = Boolean(row.cancelled_at)
+    const suffix = cancelled ? ' - ملغي' : ''
 
-      credit: Number(payment.amount || 0),
+    const difference = Number(row.difference_amount || 0)
+    const collected = Number(row.cash_collection_amount || 0)
+    const refunded = Number(row.cash_refund_amount || 0)
 
-      sale_id: payment.sale_id,
-
+    const common = {
+      sale_id: Number(row.sale_id),
       batch_id: null,
-
-      payment_method: payment.payment_method,
-
-      notes: payment.notes,
-
-      cancelled_at: null,
-
-      created_at: payment.created_at,
+      cancelled_at: row.cancelled_at ?? null,
+      notes: cancelled
+        ? row.cancel_reason || 'عملية ملغاة'
+        : row.reason || null,
+      created_at: row.created_at,
     }
+
+    return [
+      {
+        ...common,
+        id: `${row.kind}-${row.id}`,
+        type: 'adjustment',
+        title: `${label} ${code} على فاتورة #${row.sale_id}${suffix}`,
+        debit: cancelled ? 0 : Math.max(0, difference),
+        credit: cancelled ? 0 : Math.max(0, -difference),
+      },
+      ...(collected > 0 || refunded > 0
+        ? [
+            {
+              ...common,
+              id: `${row.kind}-cash-${row.id}`,
+              type: 'payment',
+              title: `${
+                collected > 0 ? 'تحصيل فرق' : 'رد مبلغ'
+              } ${label} ${code}${suffix}`,
+              debit: cancelled ? 0 : refunded,
+              credit: cancelled ? 0 : collected,
+              payment_method: row.payment_method,
+            },
+          ]
+        : []),
+    ]
   })
 
   const paymentEntries = [...batchPaymentEntries, ...standalonePaymentEntries]
@@ -1820,46 +1906,29 @@ export function getCustomerStatement(
     ...saleEntries,
     ...initialPaymentEntries,
     ...paymentEntries,
-  ].sort((a, b) => {
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  })
-
-  const totalSales = sales.reduce(
-    (sum, sale) =>
-      sum + (sale.cancelled_at ? 0 : Number(sale.grand_total || 0)),
-    0,
+    ...adjustmentEntries,
+  ].sort(
+    (a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
   )
 
-  const totalInitialPaid = initialPaymentEntries.reduce(
-    (sum, entry) => sum + Number(entry.credit || 0),
-    0,
-  )
-
-  const totalLaterPayments = payments.reduce((sum, payment) => {
-    if (isCancelledPaymentBatch(payment)) {
+  const totalSales = entries.reduce((sum, entry) => {
+    if (entry.type !== 'sale' && entry.type !== 'adjustment') {
       return sum
     }
 
-    return sum + Number(payment.amount || 0)
+    return sum + Number(entry.debit || 0) - Number(entry.credit || 0)
   }, 0)
 
-  const openSales = sales.filter((sale) => {
-    if (sale.cancelled_at) return false
-    const saleId = Number(sale.id)
-    const initialPaidEntry = initialPaymentEntries.find(
-      (entry) => Number(entry.sale_id) === saleId,
-    )
+  const totalPaid = entries.reduce((sum, entry) => {
+    if (entry.type !== 'payment') return sum
 
-    const initialPaid = Number(initialPaidEntry?.credit || 0)
-    const allPayments = Number(allPaymentsBySale.get(saleId) || 0)
+    return sum + Number(entry.credit || 0) - Number(entry.debit || 0)
+  }, 0)
 
-    const effectiveRemaining = Math.max(
-      0,
-      Number(sale.grand_total || 0) - initialPaid - allPayments,
-    )
-
-    return effectiveRemaining > 0
-  })
+  const openSales = sales.filter(
+    (sale) => !sale.cancelled_at && Number(sale.remaining_amount || 0) > 0,
+  )
 
   return {
     customer,
@@ -1867,8 +1936,8 @@ export function getCustomerStatement(
     payments,
     entries,
     summary: {
-      total_sales: totalSales,
-      total_paid: totalInitialPaid + totalLaterPayments,
+      total_sales: Number(totalSales.toFixed(2)),
+      total_paid: Number(totalPaid.toFixed(2)),
       balance: Number(customer.balance || 0),
       open_sales: openSales.length,
     },

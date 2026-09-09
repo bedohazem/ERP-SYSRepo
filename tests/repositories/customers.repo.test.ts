@@ -7,7 +7,18 @@ import {
 import {
   createSale,
   getSaleReceipt,
+  createSaleReturn,
+  cancelSaleReturn,
 } from '../../src/main/database/repositories/sales.repo'
+import {
+  createPromotion,
+  togglePromotion,
+} from '../../src/main/database/repositories/promotions.repo'
+
+import {
+  createSaleExchange,
+  cancelSaleExchange,
+} from '../../src/main/database/repositories/sales-exchange.repo'
 import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
 import {
   adjustCustomerPoints,
@@ -806,4 +817,232 @@ describe('customers repository', () => {
 
     expect(history.loyalty).toHaveLength(105)
   })
+
+  it.each([
+    { paid: 200, replacement: 150, total: 450, netPaid: 200, balance: 250 },
+    { paid: 500, replacement: 150, total: 450, netPaid: 450, balance: 0 },
+    { paid: 550, replacement: 150, total: 450, netPaid: 450, balance: 0 },
+    { paid: 200, replacement: 350, total: 600, netPaid: 250, balance: 350 },
+    { paid: 200, replacement: 300, total: 550, netPaid: 200, balance: 350 },
+  ])(
+    'reconciles exchange statement for paid=$paid replacement=$replacement',
+    ({ paid, replacement, total, netPaid, balance }) => {
+      const db = getDb()
+      const customer = createTestCustomer()
+      const prices = [150, 200, 250, 300, 350]
+
+      createProduct({
+        name: 'Statement Exchange Product',
+        category_id: null,
+        image_path: null,
+        description: null,
+        variants: [
+          ...prices.map((price) => ({
+            barcode: `STMT${price}`,
+            size: String(price),
+            color: 'Black',
+            buy_price: 50,
+            sell_price: price,
+            min_stock: 0,
+            opening_qty: 20,
+          })),
+          {
+            barcode: 'STMT300ALT',
+            size: '300-ALT',
+            color: 'Blue',
+            buy_price: 50,
+            sell_price: 300,
+            min_stock: 0,
+            opening_qty: 20,
+          },
+        ],
+      })
+
+      const variantAt = (price: number) =>
+        getVariantByBarcode(`STMT${price}`) as SaleVariantTestRow
+
+      const promotion = createPromotion({
+        name: 'Statement Buy 2 Get 1',
+        type: 'buy_x_get_y',
+        value: 0,
+        buy_qty: 2,
+        free_qty: 1,
+        scope_type: 'all',
+        actor_id: 1,
+      })
+
+      togglePromotion(promotion.promotionId, 1)
+
+      const sale = createSale({
+        user_id: 1,
+        customer_id: customer.id,
+        promotion_id: promotion.promotionId,
+        sub_total: 750,
+        discount_value: 0,
+        grand_total: 550,
+        paid,
+        change_amount: 0,
+        payment_method: 'cash',
+        items: [300, 250, 200].map((price) => {
+          const variant = variantAt(price)
+
+          return {
+            variant_id: variant.variant_id,
+            product_name: variant.product_name,
+            barcode: variant.barcode,
+            size: variant.size,
+            color: variant.color,
+            quantity: 1,
+            unit_price: price,
+          }
+        }),
+      })
+
+      const unit = db
+        .prepare(
+          `
+          SELECT id
+          FROM sale_promotion_units
+          WHERE sale_id = ?
+            AND current_variant_id = ?
+          LIMIT 1
+          `,
+        )
+        .get(sale.saleId, variantAt(300).variant_id) as { id: number }
+
+      const replacementVariant =
+        replacement === 300
+          ? (getVariantByBarcode('STMT300ALT') as SaleVariantTestRow)
+          : variantAt(replacement)
+
+      const exchange = createSaleExchange({
+        original_sale_id: sale.saleId,
+        user_id: 1,
+        payment_method: 'store_cash',
+        items: [
+          {
+            promotion_unit_id: unit.id,
+            new_variant_id: replacementVariant.variant_id,
+          },
+        ],
+      })
+
+      function checkStatement(
+        expectedSales: number,
+        expectedPaid: number,
+        expectedBalance: number,
+      ) {
+        const statement = getCustomerStatement(customer.id) as any
+
+        expect(statement.summary.total_sales).toBe(expectedSales)
+        expect(statement.summary.total_paid).toBe(expectedPaid)
+        expect(statement.summary.balance).toBe(expectedBalance)
+        expect(statement.summary.open_sales).toBe(expectedBalance > 0 ? 1 : 0)
+
+        const initialPayment = statement.entries.find(
+          (entry: any) => entry.id === `sale-paid-${sale.saleId}`,
+        )
+
+        expect(initialPayment.credit).toBe(paid)
+
+        const ledgerBalance = statement.entries.reduce(
+          (sum: number, entry: any) =>
+            sum + Number(entry.debit) - Number(entry.credit),
+          0,
+        )
+
+        expect(ledgerBalance).toBeCloseTo(expectedBalance, 2)
+      }
+
+      checkStatement(total, netPaid, balance)
+
+      const laterPaid = balance > 0 ? 50 : 0
+
+      if (laterPaid > 0) {
+        recordCustomerPayment({
+          customer_id: customer.id,
+          sale_id: sale.saleId,
+          amount: laterPaid,
+          payment_method: 'cash',
+          notes: 'تسوية مديونية بسبب استبدال - دفعة فعلية',
+        })
+
+        checkStatement(total, netPaid + laterPaid, balance - laterPaid)
+      }
+
+      cancelSaleExchange({
+        exchange_id: exchange.exchangeId,
+        actor_id: 1,
+      })
+
+      checkStatement(550, paid + laterPaid, 550 - paid - laterPaid)
+    },
+  )
+
+  it.each([100, 250, 300])(
+    'reconciles returns and cancellation with initial payment %s',
+    (paid) => {
+      const customer = createTestCustomer()
+      const sale = createPartialSale(customer.id, paid)
+      const receipt = getSaleReceipt(sale.saleId) as any
+
+      const returned = createSaleReturn({
+        original_sale_id: sale.saleId,
+        user_id: 1,
+        refund_payment_method: 'store_cash',
+        items: [
+          {
+            sale_item_id: Number(receipt.items[0].id),
+            variant_id: Number(receipt.items[0].variant_id),
+            quantity: 1,
+          },
+        ],
+      })
+
+      // تغطية مرتجع قديم يعتمد على حركة الخزنة لتحديد المبلغ المردود.
+      if (paid === 250) {
+        getDb()
+          .prepare(
+            'UPDATE sale_returns SET cash_refund_amount = NULL WHERE id = ?',
+          )
+          .run(returned.returnId)
+      }
+
+      const statement = getCustomerStatement(customer.id) as any
+      const expectedPaid = Math.min(paid, 150)
+      const expectedBalance = Math.max(0, 150 - paid)
+
+      expect(statement.summary.total_sales).toBe(150)
+      expect(statement.summary.total_paid).toBe(expectedPaid)
+      expect(statement.summary.balance).toBe(expectedBalance)
+      expect(statement.summary.open_sales).toBe(expectedBalance > 0 ? 1 : 0)
+
+      expect(
+        statement.entries.reduce(
+          (sum: number, entry: any) =>
+            sum + Number(entry.debit) - Number(entry.credit),
+          0,
+        ),
+      ).toBeCloseTo(expectedBalance, 2)
+
+      cancelSaleReturn({
+        return_id: returned.returnId,
+        actor_id: 1,
+      })
+
+      const restored = getCustomerStatement(customer.id) as any
+
+      expect(restored.summary.total_sales).toBe(300)
+      expect(restored.summary.total_paid).toBe(paid)
+      expect(restored.summary.balance).toBe(300 - paid)
+
+      expect(
+        restored.entries.reduce(
+          (sum: number, entry: any) =>
+            sum + Number(entry.debit) - Number(entry.credit),
+          0,
+        ),
+      ).toBeCloseTo(300 - paid, 2)
+    },
+  )
 })

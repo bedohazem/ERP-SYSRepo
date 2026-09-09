@@ -1248,11 +1248,11 @@ export default function CustomersPage() {
               }}
             >
               <InfoCard
-                title="إجمالي المبيعات"
+                title="صافي المبيعات"
                 value={money(statementData.summary.total_sales)}
               />
               <InfoCard
-                title="إجمالي المدفوع"
+                title="صافي المدفوع"
                 value={money(statementData.summary.total_paid)}
               />
               <InfoCard

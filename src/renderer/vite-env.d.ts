@@ -871,7 +871,7 @@ declare global {
         payments: any[]
         entries: Array<{
           id: string
-          type: 'sale' | 'payment'
+          type: 'sale' | 'payment' | 'adjustment'
           title: string
           debit: number
           credit: number
