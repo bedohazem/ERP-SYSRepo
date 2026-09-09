@@ -2185,4 +2185,116 @@ describe('sales repository', () => {
       expect(returnRow.cancelled_at).not.toBeNull()
     },
   )
+
+  it('requires cancelling newer returns before restoring loyalty points', () => {
+    const db = getDb()
+    const variant = seedProduct()
+    const customerId = createTestCustomer()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customerId,
+      sub_total: 300,
+      discount_value: 0,
+      grand_total: 300,
+      paid: 300,
+      change_amount: 0,
+      payment_method: 'cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 2,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    function returnOne() {
+      return createSaleReturn({
+        original_sale_id: sale.saleId,
+        user_id: 1,
+        refund_payment_method: 'store_cash',
+        items: [
+          {
+            sale_item_id: Number(receipt.items[0].id),
+            variant_id: variant.variant_id,
+            quantity: 1,
+          },
+        ],
+      })
+    }
+
+    expect(getCustomerPoints(customerId)).toBe(3)
+
+    const firstReturn = returnOne()
+    expect(getCustomerPoints(customerId)).toBe(1)
+
+    const secondReturn = returnOne()
+    expect(getCustomerPoints(customerId)).toBe(0)
+
+    // نفس التوقيت للتأكد أن ترتيب الإلغاء يعتمد على رقم المرتجع.
+    db.prepare(
+      `
+      UPDATE sale_returns
+      SET created_at = (
+        SELECT created_at
+        FROM sale_returns
+        WHERE id = ?
+      )
+      WHERE id = ?
+      `,
+    ).run(firstReturn.returnId, secondReturn.returnId)
+
+    const tables = [
+      'customers',
+      'sales',
+      'sale_returns',
+      'stock_movements',
+      'cash_movements',
+      'customer_payments',
+      'loyalty_transactions',
+    ]
+
+    const snapshot = () =>
+      tables.map((table) =>
+        db.prepare(`SELECT * FROM ${table} ORDER BY id`).all(),
+      )
+
+    const before = snapshot()
+
+    expect(() =>
+      cancelSaleReturn({
+        return_id: firstReturn.returnId,
+        actor_id: 1,
+      }),
+    ).toThrow('يجب إلغاء المرتجع الأحدث')
+
+    expect(snapshot()).toEqual(before)
+
+    expect(
+      cancelSaleReturn({
+        return_id: secondReturn.returnId,
+        actor_id: 1,
+      }).ok,
+    ).toBe(true)
+
+    expect(getCustomerPoints(customerId)).toBe(1)
+    expect(getStockByBarcode(variant.barcode)).toBe(9)
+
+    expect(
+      cancelSaleReturn({
+        return_id: firstReturn.returnId,
+        actor_id: 1,
+      }).ok,
+    ).toBe(true)
+
+    expect(getCustomerPoints(customerId)).toBe(3)
+    expect(getStockByBarcode(variant.barcode)).toBe(8)
+  })
 })

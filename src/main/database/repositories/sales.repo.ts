@@ -2730,6 +2730,28 @@ export function cancelSaleReturn(input: {
       throw new Error('لا يمكن إلغاء المرتجع لأن الفاتورة الأصلية ملغاة')
     }
 
+    const laterReturn = db
+      .prepare(
+        `
+        SELECT id
+        FROM sale_returns
+        WHERE original_sale_id = ?
+          AND id > ?
+          AND cancelled_at IS NULL
+        ORDER BY id DESC
+        LIMIT 1
+        `,
+      )
+      .get(Number(saleReturn.original_sale_id), returnId) as
+      | { id: number }
+      | undefined
+
+    if (laterReturn) {
+      const laterCode = `RET-${String(laterReturn.id).padStart(5, '0')}`
+
+      throw new Error(`يجب إلغاء المرتجع الأحدث ${laterCode} أولًا`)
+    }
+
     const items = db
       .prepare(
         `
