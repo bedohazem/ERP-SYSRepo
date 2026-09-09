@@ -855,8 +855,11 @@ export default function InvoicesPage() {
       setReturnItems([])
       setReturnReason('')
       setReturnRefundAccount('store_cash')
-      await loadInvoices(salesPage)
-      await loadReturns(returnsPage)
+      await Promise.all([
+        loadInvoices(salesPage),
+        loadReturns(returnsPage),
+        loadExchanges(exchangesPage),
+      ])
 
       if (returnReceipt?.sale?.id) {
         const saleId = Number(returnReceipt.sale.id)
@@ -915,7 +918,11 @@ export default function InvoicesPage() {
 
       setMessage(`تم إلغاء فاتورة #${cancelSaleTarget.id}`)
 
-      await Promise.all([loadInvoices(salesPage), loadReturns(returnsPage)])
+      await Promise.all([
+        loadInvoices(salesPage),
+        loadReturns(returnsPage),
+        loadExchanges(exchangesPage),
+      ])
     } finally {
       setCancellingSale(false)
     }
@@ -958,7 +965,11 @@ export default function InvoicesPage() {
 
       setMessage(`تم إلغاء المرتجع ${cancelReturnTarget.code}`)
 
-      await Promise.all([loadInvoices(salesPage), loadReturns(returnsPage)])
+      await Promise.all([
+        loadInvoices(salesPage),
+        loadReturns(returnsPage),
+        loadExchanges(exchangesPage),
+      ])
     } finally {
       setCancellingReturn(false)
     }
@@ -1986,7 +1997,7 @@ export default function InvoicesPage() {
                         type="button"
                         onClick={async () => {
                           const [receipt, history] = await Promise.all([
-                            window.api.getSaleReceipt(ret.original_sale_id),
+                            loadCurrentReceiptData(ret.original_sale_id),
                             window.api.getSaleReturnHistory(
                               ret.original_sale_id,
                             ),

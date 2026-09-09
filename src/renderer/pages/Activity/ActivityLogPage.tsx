@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
-
+import { getPaymentMethodLabel } from '../../utils/payment-method'
 type ActivityFilters = {
   date_from?: string
   date_to?: string
@@ -525,6 +525,10 @@ export default function ActivityLogPage() {
 
               <option value="sale_created">إنشاء فاتورة بيع</option>
               <option value="sale_return_created">مرتجع بيع</option>
+              <option value="sale_cancelled">إلغاء فاتورة بيع</option>
+              <option value="sale_return_cancelled">إلغاء مرتجع بيع</option>
+              <option value="sale_exchange_created">إنشاء استبدال</option>
+              <option value="sale_exchange_cancelled">إلغاء استبدال</option>
 
               <option value="purchase_created">إنشاء فاتورة شراء</option>
 
@@ -577,6 +581,7 @@ export default function ActivityLogPage() {
               <option value="products">المنتجات</option>
               <option value="product_variants">أصناف المنتجات</option>
               <option value="sale_returns">مرتجعات البيع</option>
+              <option value="sale_exchanges">استبدالات البيع</option>
               <option value="stock_counts">جلسات الجرد</option>
               <option value="users">المستخدمين</option>
               <option value="suppliers">الموردين</option>
@@ -812,6 +817,14 @@ function getActionLabel(action: string) {
       return 'فاتورة بيع'
     case 'sale_return_created':
       return 'مرتجع بيع'
+    case 'sale_cancelled':
+      return 'إلغاء فاتورة بيع'
+    case 'sale_return_cancelled':
+      return 'إلغاء مرتجع بيع'
+    case 'sale_exchange_created':
+      return 'إنشاء استبدال'
+    case 'sale_exchange_cancelled':
+      return 'إلغاء استبدال'
     case 'purchase_created':
       return 'فاتورة شراء'
 
@@ -907,6 +920,8 @@ function getEntityLabel(entity?: string | null) {
       return 'المبيعات'
     case 'sale_returns':
       return 'مرتجعات البيع'
+    case 'sale_exchanges':
+      return 'استبدالات البيع'
     case 'purchase_invoices':
       return 'المشتريات'
     case 'cash_movements':
@@ -1003,6 +1018,38 @@ function formatDetails(value?: string | null) {
         ? `فاتورة البيع الأصلية: #${parsed.original_sale_id}`
         : null,
       parsed.return_id ? `رقم المرتجع: #${parsed.return_id}` : null,
+      parsed.exchange_code ? `رقم الاستبدال: ${parsed.exchange_code}` : null,
+      parsed.sale_id != null ? `فاتورة البيع: #${parsed.sale_id}` : null,
+      parsed.old_group_total != null
+        ? `قيمة المجموعة قبل الاستبدال: ${moneyValue(parsed.old_group_total)}`
+        : null,
+      parsed.new_group_total != null
+        ? `قيمة المجموعة بعد الاستبدال: ${moneyValue(parsed.new_group_total)}`
+        : null,
+      parsed.difference_amount != null
+        ? `فرق صافي الفاتورة: ${moneyValue(parsed.difference_amount)}`
+        : null,
+      parsed.amount_to_collect != null
+        ? `تحصيل فرق الاستبدال: ${moneyValue(parsed.amount_to_collect)}`
+        : null,
+      parsed.amount_to_refund != null
+        ? `رد فرق الاستبدال: ${moneyValue(parsed.amount_to_refund)}`
+        : null,
+      parsed.debt_reduction_amount != null
+        ? `تخفيض المديونية: ${moneyValue(parsed.debt_reduction_amount)}`
+        : null,
+      parsed.cash_refunded != null
+        ? `المبلغ المردود عند الإلغاء: ${moneyValue(parsed.cash_refunded)}`
+        : null,
+      parsed.cash_collected != null
+        ? `المبلغ المسترد عند الإلغاء: ${moneyValue(parsed.cash_collected)}`
+        : null,
+      parsed.debt_restored != null
+        ? `المديونية المعادة عند الإلغاء: ${moneyValue(parsed.debt_restored)}`
+        : null,
+      parsed.loyalty_balance_reversed != null
+        ? `تغير رصيد النقاط عند الإلغاء: ${parsed.loyalty_balance_reversed}`
+        : null,
       parsed.refund_amount
         ? `المردود: ${moneyValue(parsed.refund_amount)}`
         : null,
@@ -1098,12 +1145,7 @@ function formatDetailValue(value: unknown) {
 }
 
 function paymentName(value: string) {
-  if (value === 'cash') return 'كاش'
-  if (value === 'card') return 'كارت'
-  if (value === 'wallet') return 'محفظة'
-  if (value === 'bank' || value === 'bank_transfer')
-    return 'تحويل بنكي / انستا باي'
-  return value
+  return getPaymentMethodLabel(value)
 }
 
 function formatDate(value?: string) {
