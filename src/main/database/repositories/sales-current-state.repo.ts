@@ -606,7 +606,11 @@ export function getSaleCurrentState(saleIdInput: number) {
 
       FROM sale_exchanges
 
-      WHERE original_sale_id = ?
+      WHERE
+        original_sale_id = ?
+
+        AND cancelled_at
+          IS NULL
       `,
     )
     .get(saleId) as any
@@ -617,12 +621,20 @@ export function getSaleCurrentState(saleIdInput: number) {
       SELECT
         se.*,
 
-        u.name AS cashier_name
+        u.name
+          AS cashier_name,
+
+        cu.name
+          AS cancelled_by_name
 
       FROM sale_exchanges se
 
       LEFT JOIN users u
         ON u.id = se.user_id
+
+      LEFT JOIN users cu
+        ON cu.id =
+          se.cancelled_by
 
       WHERE
         se.original_sale_id = ?

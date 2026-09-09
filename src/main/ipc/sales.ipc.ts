@@ -19,8 +19,11 @@ import {
 } from '../database/repositories/product.repo'
 
 import {
+  cancelSaleExchange,
   createSaleExchange,
+  getSaleExchangeCancellationAccess,
   getSaleExchangeState,
+  listSaleExchanges,
 } from '../database/repositories/sales-exchange.repo'
 
 import { requireAdmin, requireAnyAdminPassword } from './permission-helper'
@@ -112,6 +115,75 @@ export function registerSalesIpc(): void {
     })
 
     return result
+  })
+
+  ipcMain.handle('sales:list-exchanges', (_, input) => {
+    return listSaleExchanges(input)
+  })
+
+  ipcMain.handle('sales:cancel-exchange', (_, input) => {
+    try {
+      const actorId = getActorId(input)
+
+      const access = getSaleExchangeCancellationAccess(
+        Number(input?.exchange_id),
+
+        actorId,
+      )
+
+      if (Number(access.user_id || 0) !== Number(actorId || 0)) {
+        requireAdmin(actorId)
+      }
+
+      if (access.requires_admin_password) {
+        requireAnyAdminPassword(input?.admin_password)
+      }
+
+      const result = cancelSaleExchange({
+        exchange_id: Number(input?.exchange_id),
+
+        reason: input?.reason,
+
+        actor_id: actorId,
+      })
+
+      logAction({
+        actor_id: actorId,
+
+        action: 'sale_exchange_cancelled',
+
+        entity: 'sale_exchanges',
+
+        entity_id: Number(input?.exchange_id),
+
+        details: {
+          reason: input?.reason,
+
+          sale_id: result.sale_id,
+
+          cash_refunded: result.cash_refunded,
+
+          cash_collected: result.cash_collected,
+
+          debt_restored: result.debt_restored,
+
+          loyalty_balance_reversed: result.loyalty_balance_reversed,
+        },
+      })
+
+      return {
+        success: true,
+
+        ...result,
+      }
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر إلغاء عملية الاستبدال',
+      }
+    }
   })
 
   ipcMain.handle('sales:list', (_, input) => {

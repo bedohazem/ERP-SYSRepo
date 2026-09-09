@@ -411,6 +411,9 @@ declare global {
           current_paid_amount?: number
 
           exchange_count?: number
+
+          cancelled_exchange_count?: number
+
           exchange_difference_total?: number
         }>
         total: number
@@ -593,6 +596,166 @@ declare global {
         debt_reduction_amount: number
 
         payment_method: string
+      }>
+
+      listSaleExchanges: (input?: {
+        search?: string
+
+        date_from?: string
+        date_to?: string
+
+        status?: 'all' | 'active' | 'cancelled'
+
+        actor_id?: number | null
+
+        limit?: number
+        offset?: number
+      }) => Promise<{
+        rows: Array<{
+          id: number
+
+          code: string
+
+          original_sale_id: number
+
+          user_id: number | null
+
+          promotion_group_id: string
+
+          old_group_total: number
+          new_group_total: number
+
+          difference_amount: number
+
+          cash_collection_amount: number
+
+          debt_reduction_amount: number
+
+          cash_refund_amount: number
+
+          loyalty_earned_points_adjustment: number
+
+          loyalty_redeemed_points_adjustment: number
+
+          payment_method: string
+
+          reason?: string | null
+
+          business_date?: string | null
+
+          accounting_date: string
+
+          created_at: string
+
+          cancelled_at?: string | null
+
+          cancelled_by?: number | null
+
+          cancel_reason?: string | null
+
+          cancelled_by_name?: string | null
+
+          customer_id?: number | null
+
+          customer_name?: string | null
+
+          customer_phone?: string | null
+
+          cashier_name?: string | null
+
+          items_count: number
+
+          total_quantity: number
+
+          requires_admin_password: number | boolean
+
+          is_latest_active: number | boolean
+
+          has_later_active_return: number | boolean
+
+          is_day_closed: number | boolean
+
+          can_cancel: boolean
+
+          cancel_block_reason?: string | null
+
+          items: Array<{
+            id: number
+
+            exchange_id: number
+
+            promotion_unit_id: number
+
+            old_variant_id: number
+
+            new_variant_id: number
+
+            old_unit_price: number
+
+            new_unit_price: number
+
+            old_unit_cost?: number | null
+
+            new_unit_cost?: number | null
+
+            old_is_gift: number
+
+            new_is_gift: number
+
+            quantity: number
+
+            old_product_name: string
+
+            old_barcode?: string | null
+
+            old_size?: string | null
+
+            old_color?: string | null
+
+            new_product_name: string
+
+            new_barcode?: string | null
+
+            new_size?: string | null
+
+            new_color?: string | null
+          }>
+        }>
+
+        total: number
+
+        limit: number
+        offset: number
+      }>
+
+      cancelSaleExchange: (input: {
+        exchange_id: number
+
+        reason: string
+
+        actor_id?: number | null
+
+        admin_password?: string
+      }) => Promise<{
+        success: boolean
+
+        message?: string
+
+        exchange_id?: number
+
+        exchange_code?: string
+
+        sale_id?: number
+
+        cash_refunded?: number
+
+        cash_collected?: number
+
+        debt_restored?: number
+
+        loyalty_balance_reversed?: number
+
+        restored_items?: number
       }>
 
       // =========================

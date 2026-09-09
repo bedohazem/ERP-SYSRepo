@@ -322,6 +322,10 @@ export function getDb(): Database.Database {
         business_date TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 
+        cancelled_at TEXT,
+        cancelled_by INTEGER,
+        cancel_reason TEXT,
+
         FOREIGN KEY (original_sale_id)
           REFERENCES sales(id)
           ON DELETE CASCADE,
@@ -841,6 +845,12 @@ export function getDb(): Database.Database {
       'loyalty_redeemed_points_adjustment',
       'INTEGER NOT NULL DEFAULT 0',
     )
+
+    safeAddColumn(db, 'sale_exchanges', 'cancelled_at', 'TEXT')
+
+    safeAddColumn(db, 'sale_exchanges', 'cancelled_by', 'INTEGER')
+
+    safeAddColumn(db, 'sale_exchanges', 'cancel_reason', 'TEXT')
 
     safeAddColumn(
       db,

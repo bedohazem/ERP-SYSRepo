@@ -6,6 +6,7 @@ import {
 } from '../../utils/payment-method'
 
 import { printSaleReceiptHtml } from '../../utils/receiptPrint'
+import { printSaleExchangeReceiptHtml } from '../../utils/exchangeReceiptPrint'
 import FinancialCancelModal from '../../components/FinancialCancelModal'
 import SaleExchangeModal from '../../components/SaleExchangeModal'
 
@@ -50,10 +51,103 @@ type SaleRow = {
   current_paid_amount?: number
 
   exchange_count?: number
+  cancelled_exchange_count?: number
   exchange_difference_total?: number
 }
 
-type InvoicesTab = 'sales' | 'returns'
+type InvoicesTab = 'sales' | 'returns' | 'exchanges'
+
+type ExchangeItemRow = {
+  id: number
+
+  exchange_id: number
+
+  promotion_unit_id: number
+
+  old_variant_id: number
+  new_variant_id: number
+
+  old_unit_price: number
+  new_unit_price: number
+
+  old_is_gift: number
+  new_is_gift: number
+
+  quantity: number
+
+  old_product_name: string
+
+  old_size?: string | null
+  old_color?: string | null
+
+  new_product_name: string
+
+  new_size?: string | null
+  new_color?: string | null
+}
+
+type ExchangeRow = {
+  id: number
+
+  code: string
+
+  original_sale_id: number
+
+  user_id?: number | null
+
+  promotion_group_id: string
+
+  old_group_total: number
+  new_group_total: number
+
+  difference_amount: number
+
+  cash_collection_amount: number
+
+  debt_reduction_amount: number
+
+  cash_refund_amount: number
+
+  loyalty_earned_points_adjustment: number
+
+  loyalty_redeemed_points_adjustment: number
+
+  payment_method: string
+
+  reason?: string | null
+
+  business_date?: string | null
+
+  accounting_date: string
+
+  created_at: string
+
+  cancelled_at?: string | null
+
+  cancelled_by?: number | null
+
+  cancel_reason?: string | null
+
+  cancelled_by_name?: string | null
+
+  customer_name?: string | null
+
+  customer_phone?: string | null
+
+  cashier_name?: string | null
+
+  items_count: number
+
+  total_quantity: number
+
+  requires_admin_password?: number | boolean
+
+  can_cancel: boolean
+
+  cancel_block_reason?: string | null
+
+  items: ExchangeItemRow[]
+}
 
 type ReturnRow = {
   id: number
@@ -374,6 +468,32 @@ export default function InvoicesPage() {
   const [returnsTotal, setReturnsTotal] = useState(0)
   const [returnsPage, setReturnsPage] = useState(1)
   const [returnsLoading, setReturnsLoading] = useState(false)
+
+  const [exchangeRows, setExchangeRows] = useState<ExchangeRow[]>([])
+
+  const [exchangesTotal, setExchangesTotal] = useState(0)
+
+  const [exchangesPage, setExchangesPage] = useState(1)
+
+  const [exchangesLoading, setExchangesLoading] = useState(false)
+
+  const [exchangeStatusFilter, setExchangeStatusFilter] = useState<
+    'all' | 'active' | 'cancelled'
+  >('all')
+
+  const [selectedExchange, setSelectedExchange] = useState<ExchangeRow | null>(
+    null,
+  )
+
+  const [cancelExchangeTarget, setCancelExchangeTarget] =
+    useState<ExchangeRow | null>(null)
+
+  const [cancelExchangeReason, setCancelExchangeReason] = useState('')
+
+  const [cancelExchangePassword, setCancelExchangePassword] = useState('')
+
+  const [cancellingExchange, setCancellingExchange] = useState(false)
+
   const [search, setSearch] = useState('')
 
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>(
@@ -475,16 +595,56 @@ export default function InvoicesPage() {
     }
   }
 
+  async function loadExchanges(page = exchangesPage) {
+    setExchangesLoading(true)
+
+    try {
+      const safePage = Math.max(1, Number(page || 1))
+
+      const result = await window.api.listSaleExchanges({
+        search,
+
+        date_from: dateFrom || undefined,
+
+        date_to: dateTo || undefined,
+
+        status: exchangeStatusFilter,
+
+        actor_id: user?.id ?? null,
+
+        limit: INVOICE_PAGE_SIZE,
+
+        offset: (safePage - 1) * INVOICE_PAGE_SIZE,
+      })
+
+      setExchangeRows(Array.isArray(result.rows) ? result.rows : [])
+
+      setExchangesTotal(Number(result.total || 0))
+    } catch (error) {
+      console.error('Failed to load exchanges:', error)
+
+      setMessage('حدث خطأ أثناء تحميل سجل الاستبدالات')
+
+      setExchangeRows([])
+      setExchangesTotal(0)
+    } finally {
+      setExchangesLoading(false)
+    }
+  }
+
   useEffect(() => {
     const handle = setTimeout(() => {
       setSalesPage(1)
+
       setReturnsPage(1)
 
-      void Promise.all([loadInvoices(1), loadReturns(1)])
+      setExchangesPage(1)
+
+      void Promise.all([loadInvoices(1), loadReturns(1), loadExchanges(1)])
     }, 250)
 
     return () => clearTimeout(handle)
-  }, [search, dateFrom, dateTo, paymentFilter])
+  }, [search, dateFrom, dateTo, paymentFilter, exchangeStatusFilter])
 
   useEffect(() => {
     if (!message) return
@@ -804,6 +964,70 @@ export default function InvoicesPage() {
     }
   }
 
+  async function confirmCancelExchange() {
+    if (!cancelExchangeTarget || cancellingExchange) {
+      return
+    }
+
+    setCancellingExchange(true)
+
+    try {
+      const result = await window.api.cancelSaleExchange({
+        exchange_id: cancelExchangeTarget.id,
+
+        reason:
+          cancelExchangeReason.trim() ||
+          `إلغاء الاستبدال ${cancelExchangeTarget.code}`,
+
+        actor_id: user?.id ?? null,
+
+        admin_password: cancelExchangePassword,
+      })
+
+      if (!result?.success) {
+        if (result?.message?.includes('اكتب كلمة مرور المدير')) {
+          setCancelExchangeTarget((prev) =>
+            prev
+              ? {
+                  ...prev,
+
+                  requires_admin_password: true,
+                }
+              : prev,
+          )
+        }
+
+        setMessage(result?.message || 'تعذر إلغاء عملية الاستبدال')
+
+        return
+      }
+
+      const code = cancelExchangeTarget.code
+
+      setCancelExchangeTarget(null)
+
+      setCancelExchangeReason('')
+
+      setCancelExchangePassword('')
+
+      setSelectedExchange(null)
+
+      setSelectedReceipt(null)
+
+      setMessage(`تم إلغاء الاستبدال ${code}`)
+
+      await Promise.all([
+        loadInvoices(salesPage),
+
+        loadReturns(returnsPage),
+
+        loadExchanges(exchangesPage),
+      ])
+    } finally {
+      setCancellingExchange(false)
+    }
+  }
+
   const returnGrossTotal = roundMoney(
     returnItems.reduce(
       (sum, item) => sum + item.return_quantity * item.unit_price,
@@ -986,6 +1210,12 @@ export default function InvoicesPage() {
     Math.ceil(returnsTotal / INVOICE_PAGE_SIZE),
   )
 
+  const exchangesTotalPages = Math.max(
+    1,
+
+    Math.ceil(exchangesTotal / INVOICE_PAGE_SIZE),
+  )
+
   return (
     <div
       style={{
@@ -1041,16 +1271,39 @@ export default function InvoicesPage() {
           }}
         >
           <div>
-            <h2 style={{ margin: '0 0 6px' }}>سجل الفواتير</h2>
-            <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700 }}>
-              عرض الفواتير القديمة وإعادة الطباعة
+            <h2
+              style={{
+                margin: '0 0 6px',
+              }}
+            >
+              {activeTab === 'sales'
+                ? 'سجل الفواتير'
+                : activeTab === 'returns'
+                  ? 'سجل المرتجعات'
+                  : 'سجل الاستبدالات'}
+            </h2>
+
+            <p
+              style={{
+                margin: 0,
+                color: '#94a3b8',
+                fontWeight: 700,
+              }}
+            >
+              {activeTab === 'sales'
+                ? 'عرض الفواتير القديمة وإعادة الطباعة'
+                : activeTab === 'returns'
+                  ? 'متابعة المرتجعات الفعالة والملغاة'
+                  : 'متابعة عمليات الاستبدال والطباعة والإلغاء'}
             </p>
           </div>
 
           <div style={{ color: '#cbd5e1', fontWeight: 800 }}>
             {activeTab === 'sales'
               ? `عدد الفواتير: ${total}`
-              : `عدد المرتجعات: ${returnsTotal}`}
+              : activeTab === 'returns'
+                ? `عدد المرتجعات: ${returnsTotal}`
+                : `عدد الاستبدالات: ${exchangesTotal}`}
           </div>
         </div>
 
@@ -1060,13 +1313,21 @@ export default function InvoicesPage() {
             gridTemplateColumns:
               activeTab === 'sales'
                 ? 'minmax(260px, 1fr) 170px 180px 180px 120px'
-                : 'minmax(260px, 1fr) 180px 180px 120px',
+                : activeTab === 'exchanges'
+                  ? 'minmax(260px, 1fr) 170px 180px 180px 120px'
+                  : 'minmax(260px, 1fr) 180px 180px 120px',
             gap: '12px',
             direction: 'rtl',
           }}
         >
           <input
-            placeholder="بحث برقم الفاتورة مثل #405 / العميل / الهاتف / الكاشير"
+            placeholder={
+              activeTab === 'exchanges'
+                ? 'بحث برقم الاستبدال / الفاتورة / العميل / الكاشير'
+                : activeTab === 'returns'
+                  ? 'بحث برقم المرتجع / الفاتورة / العميل / الكاشير'
+                  : 'بحث برقم الفاتورة مثل #405 / العميل / الهاتف / الكاشير'
+            }
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={inputStyle}
@@ -1085,6 +1346,24 @@ export default function InvoicesPage() {
               <option value="paid">مدفوعة</option>
 
               <option value="unpaid">غير مدفوعة</option>
+            </select>
+          )}
+
+          {activeTab === 'exchanges' && (
+            <select
+              value={exchangeStatusFilter}
+              onChange={(e) =>
+                setExchangeStatusFilter(
+                  e.target.value as 'all' | 'active' | 'cancelled',
+                )
+              }
+              style={inputStyle}
+            >
+              <option value="all">كل الاستبدالات</option>
+
+              <option value="active">الفعالة</option>
+
+              <option value="cancelled">الملغاة</option>
             </select>
           )}
 
@@ -1107,7 +1386,10 @@ export default function InvoicesPage() {
             onClick={() => {
               void Promise.all([
                 loadInvoices(salesPage),
+
                 loadReturns(returnsPage),
+
+                loadExchanges(exchangesPage),
               ])
             }}
             style={primaryButtonStyle}
@@ -1142,6 +1424,14 @@ export default function InvoicesPage() {
           style={tabButtonStyle(activeTab === 'returns')}
         >
           سجل المرتجعات
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('exchanges')}
+          style={tabButtonStyle(activeTab === 'exchanges')}
+        >
+          سجل الاستبدالات
         </button>
       </div>
       {activeTab === 'sales' && (
@@ -1221,7 +1511,8 @@ export default function InvoicesPage() {
                   <td style={tdStyle}>{sale.cashier_name || '—'}</td>
                   <td style={tdStyle}>
                     {Number(sale.return_count || 0) > 0 ||
-                    Number(sale.exchange_count || 0) > 0 ? (
+                    Number(sale.exchange_count || 0) > 0 ||
+                    Number(sale.cancelled_exchange_count || 0) > 0 ? (
                       <div
                         style={{
                           display: 'grid',
@@ -1271,6 +1562,35 @@ export default function InvoicesPage() {
                             >
                               عدد عمليات الاستبدال:{' '}
                               {Number(sale.exchange_count || 0)}
+                            </span>
+                          </div>
+                        )}
+
+                        {Number(sale.cancelled_exchange_count || 0) > 0 && (
+                          <div
+                            style={{
+                              display: 'grid',
+
+                              gap: '3px',
+                            }}
+                          >
+                            <strong
+                              style={{
+                                color: '#f87171',
+                              }}
+                            >
+                              استبدال ملغي
+                            </strong>
+
+                            <span
+                              style={{
+                                color: '#94a3b8',
+
+                                fontSize: '12px',
+                              }}
+                            >
+                              عدد الملغي:{' '}
+                              {Number(sale.cancelled_exchange_count || 0)}
                             </span>
                           </div>
                         )}
@@ -1727,6 +2047,771 @@ export default function InvoicesPage() {
         </div>
       )}
 
+      {activeTab === 'exchanges' && (
+        <div
+          className="glass-card invoice-list-scroll"
+          style={{
+            padding: '18px',
+
+            borderRadius: '18px',
+
+            overflow: 'auto',
+
+            height: '100%',
+
+            minHeight: 0,
+
+            width: '100%',
+
+            boxSizing: 'border-box',
+          }}
+        >
+          <h3
+            style={{
+              margin: 0,
+            }}
+          >
+            سجل الاستبدالات
+          </h3>
+
+          <PaginationBar
+            page={exchangesPage}
+            totalPages={exchangesTotalPages}
+            totalItems={exchangesTotal}
+            pageSize={INVOICE_PAGE_SIZE}
+            loading={exchangesLoading}
+            onPageChange={(page) => {
+              setExchangesPage(page)
+
+              void loadExchanges(page)
+            }}
+          />
+
+          <table
+            style={{
+              width: '100%',
+
+              borderCollapse: 'collapse',
+
+              direction: 'rtl',
+            }}
+          >
+            <thead>
+              <tr
+                style={{
+                  color: '#cbd5e1',
+
+                  textAlign: 'right',
+                }}
+              >
+                <th style={thStyle}>الاستبدال</th>
+
+                <th style={thStyle}>الفاتورة</th>
+
+                <th style={thStyle}>العميل</th>
+
+                <th style={thStyle}>المستخدم</th>
+
+                <th style={thStyle}>القديم ← الجديد</th>
+
+                <th style={thStyle}>فرق السعر / التسوية</th>
+
+                <th style={thStyle}>النقاط</th>
+
+                <th style={thStyle}>الحالة</th>
+
+                <th style={thStyle}>إجراءات</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {exchangesLoading && exchangeRows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={9}
+                    style={{
+                      ...tdStyle,
+
+                      textAlign: 'center',
+                    }}
+                  >
+                    جاري التحميل...
+                  </td>
+                </tr>
+              )}
+
+              {exchangeRows.map((exchange) => (
+                <tr
+                  key={exchange.id}
+                  style={{
+                    borderTop: '1px solid rgba(255,255,255,0.06)',
+                  }}
+                >
+                  <td
+                    style={{
+                      ...tdStyle,
+
+                      fontWeight: 900,
+
+                      color: exchange.cancelled_at ? '#f87171' : '#86efac',
+                    }}
+                  >
+                    {exchange.code}
+
+                    <div
+                      style={{
+                        marginTop: '4px',
+
+                        color: '#94a3b8',
+
+                        fontSize: '11px',
+                      }}
+                    >
+                      {formatDate(exchange.created_at)}
+                    </div>
+                  </td>
+
+                  <td style={tdStyle}>#{exchange.original_sale_id}</td>
+
+                  <td style={tdStyle}>
+                    <div
+                      style={{
+                        display: 'grid',
+
+                        gap: '3px',
+                      }}
+                    >
+                      <strong>{exchange.customer_name || 'عميل نقدي'}</strong>
+
+                      {exchange.customer_phone && (
+                        <span
+                          style={{
+                            color: '#94a3b8',
+
+                            fontSize: '11px',
+                          }}
+                        >
+                          {exchange.customer_phone}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+
+                  <td style={tdStyle}>{exchange.cashier_name || '—'}</td>
+
+                  <td style={tdStyle}>
+                    <div
+                      style={{
+                        display: 'grid',
+
+                        gap: '7px',
+
+                        minWidth: '270px',
+                      }}
+                    >
+                      {(exchange.items || []).map((item) => (
+                        <div
+                          key={item.id}
+                          style={{
+                            display: 'grid',
+
+                            gridTemplateColumns: '1fr auto 1fr',
+
+                            gap: '7px',
+
+                            alignItems: 'center',
+
+                            padding: '6px 8px',
+
+                            borderRadius: '8px',
+
+                            background: 'rgba(255,255,255,0.04)',
+                          }}
+                        >
+                          <span>
+                            {item.old_product_name}
+
+                            {' — '}
+
+                            {money(item.old_unit_price)}
+                          </span>
+
+                          <strong>←</strong>
+
+                          <span>
+                            {item.new_product_name}
+
+                            {' — '}
+
+                            {money(item.new_unit_price)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+
+                  <td style={tdStyle}>
+                    <div
+                      style={{
+                        display: 'grid',
+
+                        gap: '4px',
+                      }}
+                    >
+                      <strong
+                        style={{
+                          color:
+                            Number(exchange.difference_amount || 0) > 0
+                              ? '#fbbf24'
+                              : Number(exchange.difference_amount || 0) < 0
+                                ? '#6ee7b7'
+                                : '#cbd5e1',
+                        }}
+                      >
+                        {Number(exchange.difference_amount || 0) > 0 ? '+' : ''}
+                        {money(exchange.difference_amount)}
+                      </strong>
+
+                      {Number(exchange.cash_collection_amount || 0) > 0 && (
+                        <span
+                          style={{
+                            fontSize: '11px',
+
+                            color: '#fbbf24',
+                          }}
+                        >
+                          تحصيل: {money(exchange.cash_collection_amount)}
+                        </span>
+                      )}
+
+                      {Number(exchange.cash_refund_amount || 0) > 0 && (
+                        <span
+                          style={{
+                            fontSize: '11px',
+
+                            color: '#6ee7b7',
+                          }}
+                        >
+                          رد: {money(exchange.cash_refund_amount)}
+                        </span>
+                      )}
+
+                      {Number(exchange.debt_reduction_amount || 0) > 0 && (
+                        <span
+                          style={{
+                            fontSize: '11px',
+
+                            color: '#93c5fd',
+                          }}
+                        >
+                          خفض مديونية: {money(exchange.debt_reduction_amount)}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+
+                  <td style={tdStyle}>
+                    <div
+                      style={{
+                        display: 'grid',
+
+                        gap: '3px',
+
+                        fontSize: '12px',
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: '#22c55e',
+                        }}
+                      >
+                        مكتسبة:{' '}
+                        {Number(
+                          exchange.loyalty_earned_points_adjustment || 0,
+                        ) >= 0
+                          ? '+'
+                          : ''}
+                        {Number(exchange.loyalty_earned_points_adjustment || 0)}
+                      </span>
+
+                      <span
+                        style={{
+                          color: '#fbbf24',
+                        }}
+                      >
+                        مستخدمة:{' '}
+                        {Number(
+                          exchange.loyalty_redeemed_points_adjustment || 0,
+                        ) >= 0
+                          ? '+'
+                          : ''}
+                        {Number(
+                          exchange.loyalty_redeemed_points_adjustment || 0,
+                        )}
+                      </span>
+                    </div>
+                  </td>
+
+                  <td style={tdStyle}>
+                    {exchange.cancelled_at ? (
+                      <div
+                        style={{
+                          display: 'grid',
+
+                          gap: '3px',
+                        }}
+                      >
+                        <strong
+                          style={{
+                            color: '#f87171',
+                          }}
+                        >
+                          ملغي
+                        </strong>
+
+                        {exchange.cancel_reason && (
+                          <span
+                            style={{
+                              color: '#94a3b8',
+
+                              fontSize: '11px',
+                            }}
+                          >
+                            {exchange.cancel_reason}
+                          </span>
+                        )}
+
+                        {exchange.cancelled_by_name && (
+                          <span
+                            style={{
+                              color: '#64748b',
+
+                              fontSize: '10px',
+                            }}
+                          >
+                            بواسطة: {exchange.cancelled_by_name}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          display: 'grid',
+
+                          gap: '3px',
+                        }}
+                      >
+                        <strong
+                          style={{
+                            color: '#34d399',
+                          }}
+                        >
+                          فعال
+                        </strong>
+
+                        {!exchange.can_cancel &&
+                          exchange.cancel_block_reason && (
+                            <span
+                              style={{
+                                color: '#fbbf24',
+
+                                fontSize: '10px',
+                              }}
+                            >
+                              {exchange.cancel_block_reason}
+                            </span>
+                          )}
+                      </div>
+                    )}
+                  </td>
+
+                  <td style={tdStyle}>
+                    <div
+                      style={{
+                        display: 'flex',
+
+                        gap: '7px',
+
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedExchange(exchange)}
+                        style={smallButtonStyle}
+                      >
+                        تفاصيل
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void printSaleExchangeReceiptHtml({
+                            exchange,
+
+                            onBlocked: () =>
+                              setMessage('لم يتم فتح نافذة الطباعة'),
+
+                            onError: (msg) => setMessage(msg),
+                          })
+                        }
+                        style={smallButtonStyle}
+                      >
+                        طباعة
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void openReceipt(exchange.original_sale_id)
+                        }
+                        style={smallButtonStyle}
+                      >
+                        الفاتورة
+                      </button>
+
+                      {!exchange.cancelled_at &&
+                        exchange.can_cancel &&
+                        (isAdmin ||
+                          Number(exchange.user_id || 0) ===
+                            Number(user?.id || 0)) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCancelExchangeTarget(exchange)
+
+                              setCancelExchangeReason(
+                                `إلغاء الاستبدال ${exchange.code}`,
+                              )
+
+                              setCancelExchangePassword('')
+                            }}
+                            style={{
+                              ...smallButtonStyle,
+
+                              borderColor: '#ef4444',
+
+                              color: '#fca5a5',
+
+                              background: 'rgba(239,68,68,0.10)',
+                            }}
+                          >
+                            إلغاء
+                          </button>
+                        )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+
+              {!exchangesLoading && exchangeRows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={9}
+                    style={{
+                      ...tdStyle,
+
+                      textAlign: 'center',
+
+                      color: '#94a3b8',
+
+                      padding: '28px',
+                    }}
+                  >
+                    لا توجد عمليات استبدال
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {selectedExchange && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            position: 'fixed',
+
+            inset: 0,
+
+            background: 'rgba(0,0,0,0.60)',
+
+            zIndex: 99999,
+
+            display: 'flex',
+
+            alignItems: 'center',
+
+            justifyContent: 'center',
+
+            padding: '20px',
+          }}
+        >
+          <div
+            className="theme-modal-card"
+            style={{
+              width: 'min(900px, calc(100vw - 48px))',
+
+              maxHeight: '92vh',
+
+              overflowY: 'auto',
+
+              borderRadius: '18px',
+
+              background: '#111827',
+
+              border: '1px solid rgba(255,255,255,0.10)',
+
+              padding: '22px',
+
+              direction: 'rtl',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+
+                justifyContent: 'space-between',
+
+                gap: '12px',
+
+                marginBottom: '18px',
+              }}
+            >
+              <div>
+                <h3
+                  style={{
+                    margin: '0 0 5px',
+                  }}
+                >
+                  {selectedExchange.code}
+                </h3>
+
+                <div
+                  style={{
+                    color: '#94a3b8',
+                  }}
+                >
+                  فاتورة #{selectedExchange.original_sale_id}
+                  {' — '}
+                  {formatDate(selectedExchange.created_at)}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedExchange(null)}
+                style={closeButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+
+                gridTemplateColumns: 'repeat(3, 1fr)',
+
+                gap: '10px',
+
+                marginBottom: '16px',
+              }}
+            >
+              <div style={statCardStyle}>
+                العميل
+                <strong>{selectedExchange.customer_name || 'عميل نقدي'}</strong>
+              </div>
+
+              <div style={statCardStyle}>
+                الكاشير
+                <strong>{selectedExchange.cashier_name || '—'}</strong>
+              </div>
+
+              <div style={statCardStyle}>
+                فرق الاستبدال
+                <strong>{money(selectedExchange.difference_amount)}</strong>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+
+                gap: '8px',
+              }}
+            >
+              {selectedExchange.items.map((item) => (
+                <div
+                  key={item.id}
+                  style={{
+                    display: 'grid',
+
+                    gridTemplateColumns: '1fr auto 1fr',
+
+                    gap: '12px',
+
+                    padding: '12px',
+
+                    borderRadius: '10px',
+
+                    background: 'rgba(255,255,255,0.04)',
+                  }}
+                >
+                  <div>
+                    <strong>{item.old_product_name}</strong>
+
+                    <div
+                      style={{
+                        color: '#94a3b8',
+
+                        fontSize: '12px',
+                      }}
+                    >
+                      {item.old_size || '—'}
+                      {' / '}
+                      {item.old_color || '—'}
+                      {' — '}
+                      {money(item.old_unit_price)}
+                    </div>
+                  </div>
+
+                  <strong>←</strong>
+
+                  <div>
+                    <strong>{item.new_product_name}</strong>
+
+                    <div
+                      style={{
+                        color: '#94a3b8',
+
+                        fontSize: '12px',
+                      }}
+                    >
+                      {item.new_size || '—'}
+                      {' / '}
+                      {item.new_color || '—'}
+                      {' — '}
+                      {money(item.new_unit_price)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div
+              style={{
+                marginTop: '16px',
+
+                padding: '14px',
+
+                borderRadius: '12px',
+
+                background: 'rgba(255,255,255,0.04)',
+
+                display: 'grid',
+
+                gap: '7px',
+              }}
+            >
+              <SummaryLine
+                label="قيمة العرض قبل"
+                value={money(selectedExchange.old_group_total)}
+              />
+
+              <SummaryLine
+                label="قيمة العرض بعد"
+                value={money(selectedExchange.new_group_total)}
+              />
+
+              <SummaryLine
+                label="فرق الاستبدال"
+                value={money(selectedExchange.difference_amount)}
+                strong
+              />
+
+              <SummaryLine
+                label="تحصيل كاش"
+                value={money(selectedExchange.cash_collection_amount)}
+              />
+
+              <SummaryLine
+                label="رد كاش"
+                value={money(selectedExchange.cash_refund_amount)}
+              />
+
+              <SummaryLine
+                label="خفض مديونية"
+                value={money(selectedExchange.debt_reduction_amount)}
+              />
+            </div>
+
+            {selectedExchange.cancelled_at && (
+              <div
+                style={{
+                  marginTop: '14px',
+
+                  padding: '12px',
+
+                  borderRadius: '10px',
+
+                  border: '1px solid rgba(239,68,68,0.30)',
+
+                  background: 'rgba(239,68,68,0.10)',
+
+                  color: '#fca5a5',
+                }}
+              >
+                <strong>العملية ملغاة</strong>
+
+                <div>{selectedExchange.cancel_reason || '—'}</div>
+
+                {selectedExchange.cancelled_by_name && (
+                  <div>ألغيت بواسطة: {selectedExchange.cancelled_by_name}</div>
+                )}
+              </div>
+            )}
+
+            <div
+              style={{
+                display: 'flex',
+
+                justifyContent: 'flex-end',
+
+                gap: '10px',
+
+                marginTop: '18px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  void printSaleExchangeReceiptHtml({
+                    exchange: selectedExchange,
+
+                    onBlocked: () => setMessage('لم يتم فتح نافذة الطباعة'),
+
+                    onError: (msg) => setMessage(msg),
+                  })
+                }
+                style={primaryButtonStyle}
+              >
+                طباعة إيصال الاستبدال
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedExchange(null)}
+                style={secondaryButtonStyle}
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedReceipt && (
         <div
           className="theme-modal-overlay"
@@ -1906,7 +2991,21 @@ export default function InvoicesPage() {
                         fontWeight: 800,
                       }}
                     >
-                      <span>{exchange.code}</span>
+                      <span>
+                        {exchange.code}
+
+                        {' — '}
+
+                        <strong
+                          style={{
+                            color: exchange.cancelled_at
+                              ? '#f87171'
+                              : '#34d399',
+                          }}
+                        >
+                          {exchange.cancelled_at ? 'ملغي' : 'فعال'}
+                        </strong>
+                      </span>
 
                       <span>{formatDate(exchange.created_at)}</span>
 
@@ -1933,6 +3032,15 @@ export default function InvoicesPage() {
                       المستخدم: {exchange.cashier_name || '—'}
                       {' | '}
                       السبب: {exchange.reason || '—'}
+                      {exchange.cancelled_at && (
+                        <>
+                          {' | '}
+                          إلغاء: {exchange.cancel_reason || '—'}
+                          {exchange.cancelled_by_name
+                            ? ` — بواسطة ${exchange.cancelled_by_name}`
+                            : ''}
+                        </>
+                      )}
                     </div>
 
                     {(exchange.items || []).map((item: any) => (
@@ -2740,7 +3848,11 @@ export default function InvoicesPage() {
           setSelectedReceipt(null)
           setSelectedReturnHistory([])
 
-          void loadInvoices(salesPage)
+          void Promise.all([
+            loadInvoices(salesPage),
+
+            loadExchanges(exchangesPage),
+          ])
         }}
       />
 
@@ -2790,6 +3902,34 @@ export default function InvoicesPage() {
           setCancelReturnPassword('')
         }}
         onConfirm={() => void confirmCancelReturn()}
+      />
+
+      <FinancialCancelModal
+        open={Boolean(cancelExchangeTarget)}
+        title="إلغاء عملية استبدال"
+        description={
+          cancelExchangeTarget
+            ? `${cancelExchangeTarget.code} — فاتورة #${cancelExchangeTarget.original_sale_id} — فرق ${money(cancelExchangeTarget.difference_amount)}`
+            : ''
+        }
+        requirePassword={Boolean(cancelExchangeTarget?.requires_admin_password)}
+        reason={cancelExchangeReason}
+        password={cancelExchangePassword}
+        loading={cancellingExchange}
+        onReasonChange={setCancelExchangeReason}
+        onPasswordChange={setCancelExchangePassword}
+        onClose={() => {
+          if (cancellingExchange) {
+            return
+          }
+
+          setCancelExchangeTarget(null)
+
+          setCancelExchangeReason('')
+
+          setCancelExchangePassword('')
+        }}
+        onConfirm={() => void confirmCancelExchange()}
       />
     </div>
   )

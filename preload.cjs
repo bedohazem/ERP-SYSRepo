@@ -88,6 +88,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('sales:exchange-state', saleId),
 
   createSaleExchange: (input) => ipcRenderer.invoke('sales:exchange', input),
+
+  listSaleExchanges: (input) =>
+    ipcRenderer.invoke('sales:list-exchanges', input),
+
+  cancelSaleExchange: (input) =>
+    ipcRenderer.invoke('sales:cancel-exchange', input),
   getCustomers: () => ipcRenderer.invoke('customers:list'),
   listCustomers: (input) => ipcRenderer.invoke('customers:list-page', input),
   searchCustomers: (query) => ipcRenderer.invoke('customers:search', query),

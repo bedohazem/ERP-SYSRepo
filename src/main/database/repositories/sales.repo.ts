@@ -1108,9 +1108,32 @@ export function listSales(input?: {
 
         IFNULL((
           SELECT COUNT(*)
+
           FROM sale_exchanges se
-          WHERE se.original_sale_id = s.id
-        ), 0) AS exchange_count
+
+          WHERE
+            se.original_sale_id =
+              s.id
+
+            AND
+              se.cancelled_at
+              IS NULL
+        ), 0) AS exchange_count,
+
+        IFNULL((
+          SELECT COUNT(*)
+
+          FROM sale_exchanges se
+
+          WHERE
+            se.original_sale_id =
+              s.id
+
+            AND
+              se.cancelled_at
+              IS NOT NULL
+        ), 0)
+          AS cancelled_exchange_count
 
       FROM sales s
       LEFT JOIN customers c ON c.id = s.customer_id
@@ -2414,9 +2437,17 @@ export function cancelSaleInvoice(input: {
     const exchangesRow = db
       .prepare(
         `
-        SELECT COUNT(*) AS count
+        SELECT
+          COUNT(*) AS count
+
         FROM sale_exchanges
-        WHERE original_sale_id = ?
+
+        WHERE
+          original_sale_id = ?
+
+          AND
+            cancelled_at
+            IS NULL
         `,
       )
       .get(saleId) as {

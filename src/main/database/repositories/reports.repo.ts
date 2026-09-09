@@ -95,7 +95,13 @@ export function getReportsSummary(input?: ReportFilter) {
   const exchangesWhere = buildWhere(
     'se',
     input,
-    [`IFNULL(os.type, 'sale') = 'sale'`, `os.cancelled_at IS NULL`],
+    [
+      `IFNULL(os.type, 'sale') = 'sale'`,
+
+      `os.cancelled_at IS NULL`,
+
+      `se.cancelled_at IS NULL`,
+    ],
     'se.user_id',
     `COALESCE(
         NULLIF(
@@ -848,6 +854,10 @@ export function getReportsSummary(input?: ReportFilter) {
             IS NULL
 
           AND
+            se.cancelled_at
+            IS NULL
+
+          AND
             IFNULL(
               os.type,
               'sale'
@@ -913,6 +923,10 @@ export function getReportsSummary(input?: ReportFilter) {
 
         WHERE
           os.cancelled_at
+            IS NULL
+
+          AND
+            se.cancelled_at
             IS NULL
 
           AND
@@ -1049,7 +1063,11 @@ export function getReportsSummary(input?: ReportFilter) {
               se.original_sale_id
 
         WHERE
-          os.cancelled_at
+          se.cancelled_at
+            IS NULL
+
+          AND
+            os.cancelled_at
             IS NULL
 
           AND
@@ -1185,6 +1203,11 @@ export function getReportsSummary(input?: ReportFilter) {
               se.original_sale_id
 
         WHERE
+          se.cancelled_at
+            IS NULL
+
+          AND
+
           os.cancelled_at
             IS NULL
 
@@ -1420,6 +1443,10 @@ export function getReportsSummary(input?: ReportFilter) {
         WHERE
           os.customer_id
             IS NOT NULL
+
+          AND
+            se.cancelled_at
+            IS NULL
 
           AND
             os.cancelled_at
