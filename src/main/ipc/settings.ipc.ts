@@ -1,5 +1,10 @@
 import { BrowserWindow, app, dialog, ipcMain, nativeImage } from 'electron'
-import type { OpenDialogOptions, SaveDialogOptions } from 'electron'
+import type {
+  IpcMainInvokeEvent,
+  OpenDialogOptions,
+  SaveDialogOptions,
+} from 'electron'
+import { requireAuthenticatedAdmin } from '../auth-session'
 import { getActorId, logAction } from './activity-helper'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -74,6 +79,12 @@ function updateOpenWindowsIcon(logoUrl: string) {
   BrowserWindow.getAllWindows().forEach((window) => {
     window.setIcon(appIcon)
   })
+}
+
+function recheckAdmin(event: IpcMainInvokeEvent, actorId: number) {
+  if (requireAuthenticatedAdmin(event) !== actorId) {
+    throw new Error('تغيّر المستخدم أثناء العملية، ابدأ العملية من جديد')
+  }
 }
 
 export function registerSettingsIpc(): void {
@@ -163,7 +174,7 @@ export function registerSettingsIpc(): void {
     'settings:restore-database',
     async (event, input?: { actor_id?: number }) => {
       try {
-        requireAdmin(getActorId(input))
+        const actorId = requireAuthenticatedAdmin(event)
         const parentWindow = BrowserWindow.fromWebContents(event.sender)
 
         const options: OpenDialogOptions = {
@@ -191,6 +202,7 @@ export function registerSettingsIpc(): void {
         const targetDbPath = getDbPath()
         const backupBeforeRestorePath = `${targetDbPath}.before-restore-${Date.now()}.bak`
 
+        recheckAdmin(event, actorId)
         closeDb()
 
         if (fs.existsSync(targetDbPath)) {
@@ -202,7 +214,7 @@ export function registerSettingsIpc(): void {
         getDb()
 
         logAction({
-          actor_id: getActorId(input),
+          actor_id: actorId,
           action: 'database_restored',
           entity: 'settings',
           entity_id: null,
@@ -237,7 +249,7 @@ export function registerSettingsIpc(): void {
     'settings:reset-database',
     async (event, input?: { actor_id?: number }) => {
       try {
-        requireAdmin(getActorId(input))
+        const actorId = requireAuthenticatedAdmin(event)
         const parentWindow = BrowserWindow.fromWebContents(event.sender)
         const saveResult = parentWindow
           ? await dialog.showSaveDialog(parentWindow, {
@@ -273,6 +285,8 @@ export function registerSettingsIpc(): void {
           }
         }
 
+        recheckAdmin(event, actorId)
+
         const safetyBackupPath = saveResult.filePath
         const confirmResult = parentWindow
           ? await dialog.showMessageBox(parentWindow, {
@@ -304,14 +318,18 @@ export function registerSettingsIpc(): void {
           }
         }
 
+        recheckAdmin(event, actorId)
+
         const db = getDb()
 
         await db.backup(safetyBackupPath)
 
+        recheckAdmin(event, actorId)
+
         resetDatabaseData()
 
         logAction({
-          actor_id: getActorId(input),
+          actor_id: actorId,
           action: 'database_reset',
           entity: 'settings',
           entity_id: null,
