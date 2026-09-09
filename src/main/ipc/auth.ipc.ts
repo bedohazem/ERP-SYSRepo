@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { getActorId, logAction } from './activity-helper'
+import { logAction } from './activity-helper'
 import {
   createUser,
   findUserByUsername,
@@ -10,7 +10,11 @@ import {
   updateUser,
   upgradeUserPasswordHash,
 } from '../database/repositories/user.repo'
-import { requireAdmin } from './permission-helper'
+import {
+  clearAuthSession,
+  startAuthSession,
+  requireAuthenticatedAdmin,
+} from '../auth-session'
 import { isPasswordHashed, verifyPassword } from '../security/password'
 
 type AuthPayload = {
@@ -29,58 +33,67 @@ function getErrorMessage(error: unknown) {
 }
 
 export function registerAuthIpc(): void {
-  ipcMain.handle('auth:register', (_, data: AuthPayload) => {
+  ipcMain.handle('auth:login', (event, data: AuthPayload) => {
     try {
-      const user = createUser(
-        data.name ?? '',
-        data.username,
-        data.password,
-        data.role ?? 'cashier',
-      )
+      clearAuthSession(event)
+
+      if (
+        typeof data?.username !== 'string' ||
+        typeof data?.password !== 'string'
+      ) {
+        throw new Error('اسم المستخدم وكلمة المرور مطلوبان')
+      }
+
+      const user = findUserByUsername(data.username)
+
+      if (!user) {
+        return {
+          success: false,
+          message: 'المستخدم غير موجود أو غير مفعل',
+        }
+      }
+
+      if (!verifyPassword(data.password, user.password)) {
+        return {
+          success: false,
+          message: 'كلمة المرور غير صحيحة',
+        }
+      }
+
+      if (!isPasswordHashed(user.password)) {
+        upgradeUserPasswordHash(user.id, data.password)
+      }
+
+      startAuthSession(event, user.id)
 
       return {
         success: true,
-        user,
+        user: {
+          id: user.id,
+          name: user.name,
+          username: user.username,
+          role: user.role,
+        },
       }
     } catch (error) {
-      return {
-        success: false,
-        message: getErrorMessage(error),
-      }
+      return { success: false, message: getErrorMessage(error) }
     }
   })
 
-  ipcMain.handle('auth:login', (_, data: AuthPayload) => {
-    const user = findUserByUsername(data.username)
-
-    if (!user) {
-      return { success: false, message: 'المستخدم غير موجود أو غير مفعل' }
-    }
-
-    if (!verifyPassword(data.password, user.password)) {
-      return { success: false, message: 'كلمة المرور غير صحيحة' }
-    }
-
-    if (!isPasswordHashed(user.password)) {
-      upgradeUserPasswordHash(user.id, data.password)
-    }
-
-    return {
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        username: user.username,
-        role: user.role,
-      },
+  ipcMain.handle('auth:logout', (event) => {
+    try {
+      clearAuthSession(event)
+      return { success: true }
+    } catch (error) {
+      return { success: false, message: getErrorMessage(error) }
     }
   })
 
   ipcMain.handle(
     'users:list',
-    (_, input?: { search?: string; actor_id?: number }) => {
+    (event, input?: { search?: string; actor_id?: number }) => {
       try {
-        requireAdmin(getActorId(input))
+        requireAuthenticatedAdmin(event)
 
         return {
           success: true,
@@ -99,7 +112,7 @@ export function registerAuthIpc(): void {
   ipcMain.handle(
     'users:list-page',
     (
-      _,
+      event,
       input?: {
         search?: string
         limit?: number
@@ -108,7 +121,7 @@ export function registerAuthIpc(): void {
       },
     ) => {
       try {
-        requireAdmin(getActorId(input))
+        requireAuthenticatedAdmin(event)
 
         const result = listUsersPage(input)
 
@@ -134,9 +147,9 @@ export function registerAuthIpc(): void {
 
   ipcMain.handle(
     'users:create',
-    (_, data: AuthPayload & { actor_id?: number }) => {
+    (event, data: AuthPayload & { actor_id?: number }) => {
       try {
-        requireAdmin(getActorId(data))
+        const actorId = requireAuthenticatedAdmin(event)
 
         const user = createUser(
           data.name ?? '',
@@ -146,7 +159,7 @@ export function registerAuthIpc(): void {
         )
 
         logAction({
-          actor_id: getActorId(data),
+          actor_id: actorId,
           action: 'user_created',
           entity: 'users',
           entity_id: user.id,
@@ -157,27 +170,21 @@ export function registerAuthIpc(): void {
           },
         })
 
-        return {
-          success: true,
-          user,
-        }
+        return { success: true, user }
       } catch (error) {
-        return {
-          success: false,
-          message: getErrorMessage(error),
-        }
+        return { success: false, message: getErrorMessage(error) }
       }
     },
   )
 
-  ipcMain.handle('users:update', (_, input) => {
+  ipcMain.handle('users:update', (event, input) => {
     try {
-      requireAdmin(getActorId(input))
+      const actorId = requireAuthenticatedAdmin(event)
 
       const user = updateUser(input)
 
       logAction({
-        actor_id: getActorId(input),
+        actor_id: actorId,
         action: 'user_updated',
         entity: 'users',
         entity_id: user.id,
@@ -189,28 +196,22 @@ export function registerAuthIpc(): void {
         },
       })
 
-      return {
-        success: true,
-        user,
-      }
+      return { success: true, user }
     } catch (error) {
-      return {
-        success: false,
-        message: getErrorMessage(error),
-      }
+      return { success: false, message: getErrorMessage(error) }
     }
   })
 
   ipcMain.handle(
     'users:set-active',
-    (_, userId: number, isActive: number, actorId?: number) => {
+    (event, userId: number, isActive: number) => {
       try {
-        requireAdmin(actorId)
+        const actorId = requireAuthenticatedAdmin(event)
 
         const user = setUserActive(userId, isActive)
 
         logAction({
-          actor_id: actorId ?? null,
+          actor_id: actorId,
           action: isActive ? 'user_activated' : 'user_deactivated',
           entity: 'users',
           entity_id: userId,
@@ -220,29 +221,23 @@ export function registerAuthIpc(): void {
           },
         })
 
-        return {
-          success: true,
-          user,
-        }
+        return { success: true, user }
       } catch (error) {
-        return {
-          success: false,
-          message: getErrorMessage(error),
-        }
+        return { success: false, message: getErrorMessage(error) }
       }
     },
   )
 
   ipcMain.handle(
     'users:reset-password',
-    (_, userId: number, password: string, actorId?: number) => {
+    (event, userId: number, password: string) => {
       try {
-        requireAdmin(actorId)
+        const actorId = requireAuthenticatedAdmin(event)
 
         const user = resetUserPassword(userId, password)
 
         logAction({
-          actor_id: actorId ?? null,
+          actor_id: actorId,
           action: 'user_password_reset',
           entity: 'users',
           entity_id: userId,
@@ -251,15 +246,9 @@ export function registerAuthIpc(): void {
           },
         })
 
-        return {
-          success: true,
-          user,
-        }
+        return { success: true, user }
       } catch (error) {
-        return {
-          success: false,
-          message: getErrorMessage(error),
-        }
+        return { success: false, message: getErrorMessage(error) }
       }
     },
   )

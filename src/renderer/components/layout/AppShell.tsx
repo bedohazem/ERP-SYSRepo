@@ -401,9 +401,14 @@ export default function AppShell({
       })
   }, [])
 
-  function handleLogout() {
-    logout()
-    navigate('/')
+  async function handleLogout() {
+    try {
+      await logout()
+      navigate('/')
+    } catch (error) {
+      console.error('Logout error:', error)
+      window.alert('تعذر تسجيل الخروج، حاول مرة أخرى')
+    }
   }
 
   useEffect(() => {

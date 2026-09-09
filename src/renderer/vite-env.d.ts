@@ -96,12 +96,7 @@ declare global {
         }
       }>
 
-      register: (data: {
-        name: string
-        username: string
-        password: string
-        role?: string
-      }) => Promise<{
+      logout: () => Promise<{
         success: boolean
         message?: string
       }>
