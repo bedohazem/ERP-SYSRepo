@@ -843,19 +843,6 @@ export default function InvoicesPage() {
       return
     }
 
-    const remainingAmount = Math.max(
-      0,
-      roundMoney(Number(returnReceipt.sale.remaining_amount || 0)),
-    )
-
-    if (
-      returnReceipt.sale.customer_id &&
-      Math.abs(remainingAmount - Math.round(remainingAmount)) > 0.001
-    ) {
-      setMessage('مديونية الفاتورة تحتوي على كسور ويجب تسويتها قبل عمل المرتجع')
-      return
-    }
-
     setSavingReturn(true)
 
     try {
@@ -1058,6 +1045,10 @@ export default function InvoicesPage() {
     }
   }
 
+  const hasReturnSelection = returnItems.some(
+    (item) => Number(item.return_quantity || 0) > 0,
+  )
+
   const returnGrossTotal = roundMoney(
     returnItems.reduce(
       (sum, item) =>
@@ -1228,16 +1219,17 @@ export default function InvoicesPage() {
 
   const rawReturnRemainingAmount = Math.max(
     0,
-    Number(returnReceipt?.sale?.remaining_amount || 0),
+    roundMoney(Number(returnReceipt?.sale?.remaining_amount || 0)),
   )
 
-  const roundedReturnRemainingAmount = Math.round(rawReturnRemainingAmount)
-
   const returnDebtReduction = returnReceipt?.sale?.customer_id
-    ? Math.min(returnTotal, roundedReturnRemainingAmount)
+    ? roundMoney(Math.min(returnTotal, rawReturnRemainingAmount))
     : 0
 
-  const returnCashRefund = Math.max(0, returnTotal - returnDebtReduction)
+  const returnCashRefund = Math.max(
+    0,
+    roundMoney(returnTotal - returnDebtReduction),
+  )
 
   const salesTotalPages = Math.max(1, Math.ceil(total / INVOICE_PAGE_SIZE))
 
@@ -3842,12 +3834,12 @@ export default function InvoicesPage() {
                 <button
                   type="button"
                   onClick={submitReturn}
-                  disabled={savingReturn || returnTotal <= 0}
+                  disabled={savingReturn || !hasReturnSelection}
                   style={{
                     ...primaryButtonStyle,
-                    opacity: savingReturn || returnTotal <= 0 ? 0.6 : 1,
+                    opacity: savingReturn || !hasReturnSelection ? 0.6 : 1,
                     cursor:
-                      savingReturn || returnTotal <= 0
+                      savingReturn || !hasReturnSelection
                         ? 'not-allowed'
                         : 'pointer',
                   }}

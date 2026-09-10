@@ -4,6 +4,7 @@ import {
   calculateSaleEarnedPoints,
   getSaleCurrentState,
 } from './sales-current-state.repo'
+import { syncCustomerTotalSpent } from './sales.repo'
 
 export type CreateSaleExchangeInput = {
   original_sale_id: number
@@ -1250,19 +1251,8 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       updateGiftState.run(unit.current_is_gift, unit.id, saleId)
     }
 
-    if (sale.customer_id && differenceAmount !== 0) {
-      db.prepare(
-        `
-        UPDATE customers
-        SET
-          total_spent = MAX(
-            IFNULL(total_spent, 0) + ?,
-            0
-          ),
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-        `,
-      ).run(differenceAmount, sale.customer_id)
+    if (sale.customer_id) {
+      syncCustomerTotalSpent(Number(sale.customer_id))
     }
 
     if (sale.customer_id && loyaltyBalanceAdjustment !== 0) {
@@ -2471,33 +2461,6 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
       )
     }
 
-    if (exchange.customer_id && Number(exchange.difference_amount || 0) !== 0) {
-      db.prepare(
-        `
-          UPDATE customers
-
-          SET
-            total_spent =
-              MAX(
-                IFNULL(
-                  total_spent,
-                  0
-                ) - ?,
-                0
-              ),
-
-            updated_at =
-              CURRENT_TIMESTAMP
-
-          WHERE id = ?
-          `,
-      ).run(
-        Number(exchange.difference_amount || 0),
-
-        Number(exchange.customer_id),
-      )
-    }
-
     if (exchange.customer_id && reverseLoyaltyBalanceAdjustment !== 0) {
       db.prepare(
         `
@@ -2613,6 +2576,10 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
       exchangeId,
     )
+
+    if (exchange.customer_id) {
+      syncCustomerTotalSpent(Number(exchange.customer_id))
+    }
 
     return {
       ok: true,

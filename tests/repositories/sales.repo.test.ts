@@ -1282,7 +1282,7 @@ describe('sales repository', () => {
     expect(getCashMovementTotal('out')).toBe(1)
   })
 
-  it('blocks return when customer debt contains fractional pounds', () => {
+  it('allows fractional debt settlement and restores it on return cancellation', () => {
     const variant = seedProduct()
     const customerId = createTestCustomer()
 
@@ -1312,19 +1312,59 @@ describe('sales repository', () => {
 
     const receipt = getSaleReceipt(sale.saleId) as any
 
-    expect(() =>
-      createSaleReturn({
-        original_sale_id: sale.saleId,
-        user_id: 1,
-        items: [
-          {
-            sale_item_id: receipt.items[0].id,
-            variant_id: receipt.items[0].variant_id,
-            quantity: 1,
-          },
-        ],
-      }),
-    ).toThrow('مديونية الفاتورة تحتوي على كسور')
+    createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 1,
+      payment_method: 'store_cash',
+      notes: 'Cash buffer for return rounding',
+      created_by: 1,
+    })
+
+    const result = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      items: [
+        {
+          sale_item_id: receipt.items[0].id,
+          variant_id: receipt.items[0].variant_id,
+          quantity: 1,
+        },
+      ],
+    })
+
+    expect(result.return_value).toBe(101)
+    expect(result.debt_reduction_amount).toBe(50.5)
+    expect(result.refundAmount).toBe(50.5)
+    expect(getCashMovementTotal('out')).toBe(50.5)
+
+    const afterReturn = getSaleReceipt(sale.saleId) as any
+    expect(afterReturn.sale.remaining_amount).toBe(0)
+
+    cancelSaleReturn({
+      return_id: result.returnId,
+      actor_id: 1,
+      reason: 'Verify fractional debt restoration',
+    })
+
+    const afterCancellation = getSaleReceipt(sale.saleId) as any
+    expect(afterCancellation.sale.remaining_amount).toBe(50.5)
+
+    const customer = getDb()
+      .prepare(
+        `
+        SELECT balance, total_spent
+        FROM customers
+        WHERE id = ?
+      `,
+      )
+      .get(customerId) as {
+      balance: number
+      total_spent: number
+    }
+
+    expect(customer.balance).toBe(50.5)
+    expect(customer.total_spent).toBe(100.5)
   })
 
   it('calculates sale return value proportionally when original sale has loyalty discount', () => {

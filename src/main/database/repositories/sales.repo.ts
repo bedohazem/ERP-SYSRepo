@@ -113,7 +113,7 @@ function roundMoney(value: number) {
   return Number(Number(value || 0).toFixed(2))
 }
 
-function syncCustomerTotalSpent(customerIdInput: number) {
+export function syncCustomerTotalSpent(customerIdInput: number) {
   const customerId = Number(customerIdInput || 0)
 
   if (!customerId) {
@@ -844,16 +844,15 @@ export function createSale(input: CreateSaleInput) {
     if (customerId) {
       db.prepare(
         `
-    UPDATE customers
-    SET
-      total_spent =
-        IFNULL(total_spent, 0) + ?,
-      balance =
-        IFNULL(balance, 0) + ?,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-    `,
-      ).run(grandTotal, remainingAmount, customerId)
+        UPDATE customers
+        SET
+          balance = IFNULL(balance, 0) + ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
+      ).run(remainingAmount, customerId)
+
+      syncCustomerTotalSpent(customerId)
     }
 
     if (customerId && loyalty.enabled) {
@@ -2025,22 +2024,14 @@ export function createSaleReturn(input: {
       roundMoney(Number(originalSale.remaining_amount || 0)),
     )
 
-    const roundedRemainingAmount = Math.round(originalRemainingAmount)
-
-    if (
-      originalSale.customer_id &&
-      Math.abs(originalRemainingAmount - roundedRemainingAmount) > 0.001
-    ) {
-      throw new Error(
-        'لا يمكن عمل المرتجع لأن مديونية الفاتورة تحتوي على كسور. يجب تسوية المديونية أولًا.',
-      )
-    }
-
     const debtReductionAmount = originalSale.customer_id
-      ? Math.min(returnValue, roundedRemainingAmount)
+      ? roundMoney(Math.min(returnValue, originalRemainingAmount))
       : 0
 
-    const cashRefundAmount = Math.max(0, returnValue - debtReductionAmount)
+    const cashRefundAmount = Math.max(
+      0,
+      roundMoney(returnValue - debtReductionAmount),
+    )
 
     const returnResult = db
       .prepare(
@@ -2099,7 +2090,7 @@ export function createSaleReturn(input: {
     if (originalSale.customer_id && debtReductionAmount > 0) {
       const newSaleRemainingAmount = Math.max(
         0,
-        originalRemainingAmount - debtReductionAmount,
+        roundMoney(originalRemainingAmount - debtReductionAmount),
       )
 
       const newSalePaymentStatus =
@@ -2658,10 +2649,6 @@ export function cancelSaleInvoice(input: {
             IFNULL(balance, 0) - ?,
             0
           ),
-          total_spent = MAX(
-            IFNULL(total_spent, 0) - ?,
-            0
-          ),
           points_balance = MAX(
             IFNULL(points_balance, 0)
             - ?
@@ -2671,13 +2658,7 @@ export function cancelSaleInvoice(input: {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         `,
-      ).run(
-        remainingAmount,
-        grandTotal,
-        earnedPoints,
-        redeemedPoints,
-        customerId,
-      )
+      ).run(remainingAmount, earnedPoints, redeemedPoints, customerId)
 
       const pointsAdjustment = redeemedPoints - earnedPoints
 
@@ -2716,6 +2697,10 @@ export function cancelSaleInvoice(input: {
       WHERE id = ?
       `,
     ).run(input.actor_id ?? null, reason, saleId)
+
+    if (customerId) {
+      syncCustomerTotalSpent(customerId)
+    }
 
     return {
       ok: true,
