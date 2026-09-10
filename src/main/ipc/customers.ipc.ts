@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { requireAdmin, requireAnyAdminPassword } from './permission-helper'
-import { getActorId, logAction } from './activity-helper'
+import { logAction } from './activity-helper'
 import {
   adjustCustomerPoints,
   createCustomer,
@@ -147,9 +147,9 @@ export function registerCustomersIpc(): void {
     return result
   })
 
-  ipcMain.handle('customers:cancel-payment', (_, input) => {
+  ipcMain.handle('customers:cancel-payment', (event, input) => {
     try {
-      const actorId = getActorId(input)
+      const actorId = requireAuthenticatedUser(event).id
 
       const access = getCustomerPaymentBatchAccess(
         Number(input?.batch_id),
@@ -201,9 +201,9 @@ export function registerCustomersIpc(): void {
     }
   })
 
-  ipcMain.handle('customers:update-payment', (_, input) => {
+  ipcMain.handle('customers:update-payment', (event, input) => {
     try {
-      const actorId = getActorId(input)
+      const actorId = requireAuthenticatedUser(event).id
 
       const access = getCustomerPaymentBatchAccess(
         Number(input?.batch_id),
