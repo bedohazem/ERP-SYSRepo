@@ -41,9 +41,14 @@ export function registerExpenseIpc(): void {
     })
   })
 
-  ipcMain.handle('expenses:update', (_, input) => {
+  ipcMain.handle('expenses:update', (event, input) => {
     try {
-      requireAdminPassword(input?.actor_id, input?.admin_password)
+      const user = requireAuthenticatedUser(event)
+      const isAdmin = user.role === 'admin'
+
+      if (isAdmin) {
+        requireAdminPassword(user.id, input?.admin_password)
+      }
 
       return updateExpense({
         id: Number(input?.id),
@@ -58,7 +63,9 @@ export function registerExpenseIpc(): void {
 
         notes: input?.notes,
 
-        actor_id: input?.actor_id ?? null,
+        actor_id: user.id,
+
+        can_manage_all: isAdmin,
       })
     } catch (error) {
       return {
@@ -69,18 +76,25 @@ export function registerExpenseIpc(): void {
     }
   })
 
-  ipcMain.handle('expenses:cancel', (_, input) => {
+  ipcMain.handle('expenses:cancel', (event, input) => {
     try {
-      requireAdminPassword(input?.actor_id, input?.admin_password)
+      const user = requireAuthenticatedUser(event)
+      const isAdmin = user.role === 'admin'
+
+      if (isAdmin) {
+        requireAdminPassword(user.id, input?.admin_password)
+      }
 
       return cancelExpense({
         id: Number(input?.id),
         reason: input?.reason,
-        actor_id: input?.actor_id ?? null,
+        actor_id: user.id,
+        can_manage_all: isAdmin,
       })
     } catch (error) {
       return {
         success: false,
+
         message: error instanceof Error ? error.message : 'تعذر إلغاء المصروف',
       }
     }

@@ -15,6 +15,7 @@ export type CancelExpenseInput = {
   id: number
   reason?: string | null
   actor_id?: number | null
+  can_manage_all?: boolean
 }
 
 export type UpdateExpenseInput = {
@@ -25,6 +26,7 @@ export type UpdateExpenseInput = {
   payment_method?: string
   notes?: string | null
   actor_id?: number | null
+  can_manage_all?: boolean
 }
 
 function appendCreatedByFilter(
@@ -290,6 +292,15 @@ export function updateExpense(input: UpdateExpenseInput) {
     throw new Error('المصروف غير موجود')
   }
 
+  const actorId = Number(input.actor_id || 0)
+
+  if (
+    input.can_manage_all !== true &&
+    (!actorId || Number(expense.created_by || 0) !== actorId)
+  ) {
+    throw new Error('غير مصرح لك بتعديل هذا المصروف')
+  }
+
   if (expense.cancelled_at) {
     throw new Error('لا يمكن تعديل مصروف ملغي')
   }
@@ -506,6 +517,15 @@ export function cancelExpense(input: CancelExpenseInput) {
 
   if (!expense) {
     throw new Error('المصروف غير موجود')
+  }
+
+  const actorId = Number(input.actor_id || 0)
+
+  if (
+    input.can_manage_all !== true &&
+    (!actorId || Number(expense.created_by || 0) !== actorId)
+  ) {
+    throw new Error('غير مصرح لك بإلغاء هذا المصروف')
   }
 
   if (expense.cancelled_at) {

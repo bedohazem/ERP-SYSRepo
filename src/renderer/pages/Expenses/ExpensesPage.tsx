@@ -14,6 +14,7 @@ type Expense = {
   amount: number
   payment_method: string
   notes?: string
+  created_by?: number | null
   created_by_name?: string
   created_at: string
   cancelled_at?: string | null
@@ -161,7 +162,7 @@ export default function ExpensesPage() {
           cancelExpenseReason.trim() ||
           `إلغاء مصروف: ${cancelExpenseTarget.title}`,
         actor_id: currentUser?.id ?? null,
-        admin_password: cancelExpensePassword,
+        admin_password: isAdmin ? cancelExpensePassword : undefined,
       })
 
       if (!result?.success) {
@@ -230,7 +231,7 @@ export default function ExpensesPage() {
       return
     }
 
-    if (!editExpensePassword.trim()) {
+    if (isAdmin && !editExpensePassword.trim()) {
       showMessage('error', 'اكتب كلمة مرور المدير')
       return
     }
@@ -253,7 +254,7 @@ export default function ExpensesPage() {
 
         actor_id: currentUser?.id ?? null,
 
-        admin_password: editExpensePassword,
+        admin_password: isAdmin ? editExpensePassword : undefined,
       })
 
       if (!result.success) {
@@ -976,7 +977,10 @@ export default function ExpensesPage() {
                     </td>
 
                     <td style={tdStyle}>
-                      {isAdmin && !expense.cancelled_at ? (
+                      {!expense.cancelled_at &&
+                      (isAdmin ||
+                        Number(expense.created_by || 0) ===
+                          Number(currentUser?.id || 0)) ? (
                         <div
                           style={{
                             display: 'flex',
@@ -1171,17 +1175,19 @@ export default function ExpensesPage() {
               />
             </div>
 
-            <div>
-              <label style={labelStyle}>كلمة مرور المدير</label>
+            {isAdmin && (
+              <div>
+                <label style={labelStyle}>كلمة مرور المدير</label>
 
-              <input
-                type="password"
-                value={editExpensePassword}
-                onChange={(e) => setEditExpensePassword(e.target.value)}
-                placeholder="كلمة مرور المدير"
-                style={inputStyle}
-              />
-            </div>
+                <input
+                  type="password"
+                  value={editExpensePassword}
+                  onChange={(e) => setEditExpensePassword(e.target.value)}
+                  placeholder="كلمة مرور المدير"
+                  style={inputStyle}
+                />
+              </div>
+            )}
 
             <div
               style={{
@@ -1234,6 +1240,7 @@ export default function ExpensesPage() {
         }
         reason={cancelExpenseReason}
         password={cancelExpensePassword}
+        requirePassword={isAdmin}
         loading={cancellingExpense}
         onReasonChange={setCancelExpenseReason}
         onPasswordChange={setCancelExpensePassword}
