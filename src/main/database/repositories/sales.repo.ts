@@ -1,7 +1,10 @@
 import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
 import { calculateActivePromotionForSale } from './promotions.repo'
-import { getSaleCurrentState } from './sales-current-state.repo'
+import {
+  calculateSaleEarnedPoints,
+  getSaleCurrentState,
+} from './sales-current-state.repo'
 
 export type CreateSaleLineInput = {
   variant_id: number
@@ -2752,6 +2755,10 @@ export function cancelSaleReturn(input: {
       throw new Error(`يجب إلغاء المرتجع الأحدث ${laterCode} أولًا`)
     }
 
+    const loyaltyBeforeCancellation = getSaleCurrentState(
+      Number(saleReturn.original_sale_id),
+    )
+
     const items = db
       .prepare(
         `
@@ -2987,41 +2994,69 @@ export function cancelSaleReturn(input: {
       )
     }
 
-    const reversedPoints = Math.max(
-      0,
-      Number(saleReturn.loyalty_points_reversed || 0),
+    const beforeEarned = Number(
+      loyaltyBeforeCancellation.financials.current_loyalty_points_earned || 0,
     )
 
-    if (saleReturn.customer_id && reversedPoints > 0) {
+    const nextNetTotal = Math.max(
+      0,
+      roundMoney(
+        loyaltyBeforeCancellation.financials.current_grand_total -
+          loyaltyBeforeCancellation.financials.total_return_value +
+          Number(saleReturn.refund_amount || 0),
+      ),
+    )
+
+    const targetEarned = calculateSaleEarnedPoints(
+      loyaltyBeforeCancellation,
+      nextNetTotal,
+      beforeEarned +
+        Math.max(0, Number(saleReturn.loyalty_points_reversed || 0)),
+    )
+
+    const reversedPoints = Math.round(targetEarned - beforeEarned)
+
+    if (saleReturn.customer_id && reversedPoints !== 0) {
+      if (reversedPoints < 0) {
+        const customer = db
+          .prepare('SELECT points_balance FROM customers WHERE id = ? LIMIT 1')
+          .get(Number(saleReturn.customer_id)) as
+          | { points_balance: number }
+          | undefined
+
+        if (Number(customer?.points_balance || 0) + reversedPoints < 0) {
+          throw new Error('رصيد نقاط العميل غير كافٍ لتسوية إلغاء المرتجع')
+        }
+      }
+
       db.prepare(
         `
-    UPDATE customers
-    SET
-      points_balance =
-        IFNULL(points_balance, 0) + ?,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-    `,
+        UPDATE customers
+        SET
+          points_balance = IFNULL(points_balance, 0) + ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `,
       ).run(reversedPoints, Number(saleReturn.customer_id))
 
       db.prepare(
         `
-    INSERT INTO loyalty_transactions (
-      customer_id,
-      sale_id,
-      type,
-      points,
-      amount,
-      notes
-    )
-    VALUES (?, ?, 'adjust', ?, ?, ?)
-    `,
+        INSERT INTO loyalty_transactions (
+          customer_id,
+          sale_id,
+          type,
+          points,
+          amount,
+          notes
+        )
+        VALUES (?, ?, 'adjust', ?, ?, ?)
+      `,
       ).run(
         Number(saleReturn.customer_id),
         saleId,
         reversedPoints,
         Number(saleReturn.refund_amount || 0),
-        `إرجاع نقاط بسبب إلغاء المرتجع ${returnCode}`,
+        `تسوية نقاط بسبب إلغاء المرتجع ${returnCode}`,
       )
     }
 

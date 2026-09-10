@@ -1,6 +1,9 @@
 import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
-import { getSaleCurrentState } from './sales-current-state.repo'
+import {
+  calculateSaleEarnedPoints,
+  getSaleCurrentState,
+} from './sales-current-state.repo'
 
 export type CreateSaleExchangeInput = {
   original_sale_id: number
@@ -1646,30 +1649,14 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
         CASE
           WHEN EXISTS (
             SELECT 1
-
-            FROM sale_returns sr
-
-            WHERE
-              sr.original_sale_id =
-                se.original_sale_id
-
-              AND
-                sr.cancelled_at
-                IS NULL
-
-              AND
-                datetime(
-                  sr.created_at
-                ) >=
-                datetime(
-                  se.created_at
-                )
+            FROM sale_promotion_units spu
+            WHERE spu.sale_id = se.original_sale_id
+              AND spu.promotion_group_id = se.promotion_group_id
+              AND spu.is_returned = 1
           )
-
           THEN 1
           ELSE 0
-        END
-          AS has_later_active_return,
+        END AS has_later_active_return, 
 
         CASE
           WHEN EXISTS (
@@ -2040,37 +2027,6 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
       throw new Error('يجب إلغاء آخر عملية استبدال أولًا')
     }
 
-    const laterReturn = db
-      .prepare(
-        `
-          SELECT id
-
-          FROM sale_returns
-
-          WHERE
-            original_sale_id = ?
-
-            AND
-              cancelled_at
-              IS NULL
-
-            AND
-              datetime(
-                created_at
-              ) >=
-              datetime(?)
-
-          ORDER BY id DESC
-
-          LIMIT 1
-          `,
-      )
-      .get(saleId, exchange.created_at)
-
-    if (laterReturn) {
-      throw new Error('يجب إلغاء المرتجع الأحدث أولًا')
-    }
-
     const beforeState = parseExchangeStateJson(
       exchange.before_state_json,
 
@@ -2202,41 +2158,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
       }
     }
 
-    const earnedAdjustment = Number(
-      exchange.loyalty_earned_points_adjustment || 0,
-    )
-
-    const redeemedAdjustment = Number(
-      exchange.loyalty_redeemed_points_adjustment || 0,
-    )
-
-    const originalLoyaltyBalanceAdjustment =
-      earnedAdjustment - redeemedAdjustment
-
-    const reverseLoyaltyBalanceAdjustment = -originalLoyaltyBalanceAdjustment
-
-    if (exchange.customer_id && reverseLoyaltyBalanceAdjustment < 0) {
-      const customer = db
-        .prepare(
-          `
-            SELECT
-              points_balance
-
-            FROM customers
-
-            WHERE id = ?
-
-            LIMIT 1
-            `,
-        )
-        .get(exchange.customer_id) as any
-
-      const currentPoints = Number(customer?.points_balance || 0)
-
-      if (currentPoints + reverseLoyaltyBalanceAdjustment < 0) {
-        throw new Error('لا يمكن إلغاء الاستبدال لأن نقاطه تم استخدامها بالفعل')
-      }
-    }
+    const loyaltyBeforeCancellation = getSaleCurrentState(saleId)
 
     const paymentMethod = resolveCashAccount(
       exchange.payment_method || 'store_cash',
@@ -2435,6 +2357,43 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
         saleId,
       )
+    }
+
+    const loyaltyAfterCancellation = getSaleCurrentState(saleId)
+
+    const beforeEarned = Number(
+      loyaltyBeforeCancellation.financials.current_loyalty_points_earned || 0,
+    )
+
+    const targetEarned = calculateSaleEarnedPoints(
+      loyaltyAfterCancellation,
+      loyaltyAfterCancellation.financials.net_grand_total,
+      beforeEarned - Number(exchange.loyalty_earned_points_adjustment || 0),
+    )
+
+    const earnedAdjustment = Math.round(beforeEarned - targetEarned)
+
+    const redeemedAdjustment = Number(
+      exchange.loyalty_redeemed_points_adjustment || 0,
+    )
+
+    const reverseLoyaltyBalanceAdjustment =
+      -earnedAdjustment + redeemedAdjustment
+
+    if (exchange.customer_id && reverseLoyaltyBalanceAdjustment < 0) {
+      const customer = db
+        .prepare('SELECT points_balance FROM customers WHERE id = ? LIMIT 1')
+        .get(Number(exchange.customer_id)) as
+        | { points_balance: number }
+        | undefined
+
+      if (
+        Number(customer?.points_balance || 0) +
+          reverseLoyaltyBalanceAdjustment <
+        0
+      ) {
+        throw new Error('لا يمكن إلغاء الاستبدال لأن نقاطه تم استخدامها بالفعل')
+      }
     }
 
     if (exchange.customer_id && debtReductionAmount > 0) {

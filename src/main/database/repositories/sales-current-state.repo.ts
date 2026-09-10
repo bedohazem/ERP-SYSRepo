@@ -644,19 +644,20 @@ export function getSaleCurrentState(saleIdInput: number) {
     )
     .all(saleId) as any[]
 
-  const currentLoyaltyPointsEarned = Math.max(
-    0,
-
-    Number(sale.loyalty_points_earned || 0) +
-      Number(exchangeSummary?.loyalty_earned_points_adjustment || 0) -
-      Number(returnSummary?.returned_loyalty_points_reversed || 0),
-  )
-
   const ledgerLoyaltyPointsRedeemed = Math.max(
     0,
-
     Number(sale.loyalty_points_redeemed || 0) +
       Number(exchangeSummary?.loyalty_redeemed_points_adjustment || 0),
+  )
+
+  const currentLoyaltyPointsEarned = Math.max(
+    0,
+    loyaltySnapshotIsExact && !sale.cancelled_at
+      ? loyalty.reduce((sum, entry) => sum + Number(entry.points || 0), 0) +
+          ledgerLoyaltyPointsRedeemed
+      : Number(sale.loyalty_points_earned || 0) +
+          Number(exchangeSummary?.loyalty_earned_points_adjustment || 0) -
+          Number(returnSummary?.returned_loyalty_points_reversed || 0),
   )
 
   const getExchangeItems = db.prepare(
@@ -897,4 +898,30 @@ export function getSaleCurrentState(saleIdInput: number) {
 
     promotion_units: promotionUnits,
   }
+}
+
+export function calculateSaleEarnedPoints(
+  state: ReturnType<typeof getSaleCurrentState>,
+  netTotal: number,
+  fallback: number,
+): number {
+  const snapshot = state.loyalty_snapshot
+
+  if (!snapshot.is_exact) {
+    return Math.max(0, fallback)
+  }
+
+  if (
+    !state.sale.customer_id ||
+    !snapshot.enabled ||
+    snapshot.earn_amount <= 0 ||
+    snapshot.earn_points <= 0
+  ) {
+    return 0
+  }
+
+  return (
+    Math.floor(Math.max(0, netTotal) / snapshot.earn_amount) *
+    snapshot.earn_points
+  )
 }
