@@ -116,6 +116,7 @@ export function registerSettingsIpc(): void {
     'settings:backup-database',
     async (event, input?: { actor_id?: number }) => {
       try {
+        const actorId = requireAuthenticatedAdmin(event)
         const parentWindow = BrowserWindow.fromWebContents(event.sender)
 
         const options: SaveDialogOptions = {
@@ -142,12 +143,14 @@ export function registerSettingsIpc(): void {
           }
         }
 
+        recheckAdmin(event, actorId)
+
         const db = getDb()
 
         await db.backup(result.filePath)
 
         logAction({
-          actor_id: getActorId(input),
+          actor_id: actorId,
           action: 'database_backup_created',
           entity: 'settings',
           entity_id: null,
@@ -352,7 +355,8 @@ export function registerSettingsIpc(): void {
     },
   )
 
-  ipcMain.handle('settings:get-auto-backup-info', () => {
+  ipcMain.handle('settings:get-auto-backup-info', (event) => {
+    requireAuthenticatedAdmin(event)
     return getAutoBackupInfo()
   })
 
@@ -360,7 +364,7 @@ export function registerSettingsIpc(): void {
     'settings:choose-auto-backup-dir',
     async (event, input?: { actor_id?: number }) => {
       try {
-        requireAdmin(getActorId(input))
+        const actorId = requireAuthenticatedAdmin(event)
 
         const parentWindow = BrowserWindow.fromWebContents(event.sender)
 
@@ -381,12 +385,13 @@ export function registerSettingsIpc(): void {
           }
         }
 
+        recheckAdmin(event, actorId)
         setAutoBackupDir(result.filePaths[0])
         const backup = await createAutoBackup('manual')
         const info = backup.info || getAutoBackupInfo()
 
         logAction({
-          actor_id: getActorId(input),
+          actor_id: actorId,
           action: 'auto_backup_dir_changed',
           entity: 'settings',
           entity_id: null,
@@ -413,14 +418,14 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle(
     'settings:run-auto-backup-now',
-    async (_, input?: { actor_id?: number }) => {
+    async (event, input?: { actor_id?: number }) => {
       try {
-        requireAdmin(getActorId(input))
+        const actorId = requireAuthenticatedAdmin(event)
 
         const result = await createAutoBackup('manual')
 
         logAction({
-          actor_id: getActorId(input),
+          actor_id: actorId,
           action: 'auto_backup_run_now',
           entity: 'settings',
           entity_id: null,
