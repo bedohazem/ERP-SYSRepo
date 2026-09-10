@@ -9,18 +9,36 @@ import {
 } from '../database/repositories/expense.repo'
 
 import { requireAdminPassword } from './permission-helper'
+import { requireAuthenticatedUser } from '../auth-session'
 
 export function registerExpenseIpc(): void {
-  ipcMain.handle('expenses:create', (_, input) => {
-    return createExpense(input)
+  ipcMain.handle('expenses:create', (event, input) => {
+    const user = requireAuthenticatedUser(event)
+
+    return createExpense({
+      ...input,
+      created_by: user.id,
+    })
   })
 
-  ipcMain.handle('expenses:list', (_, input) => {
-    return listExpenses(input)
+  ipcMain.handle('expenses:list', (event, input) => {
+    const user = requireAuthenticatedUser(event)
+
+    return listExpenses({
+      ...input,
+
+      created_by: user.role === 'admin' ? undefined : user.id,
+    })
   })
 
-  ipcMain.handle('expenses:list-page', (_, input) => {
-    return listExpensesPage(input)
+  ipcMain.handle('expenses:list-page', (event, input) => {
+    const user = requireAuthenticatedUser(event)
+
+    return listExpensesPage({
+      ...input,
+
+      created_by: user.role === 'admin' ? undefined : user.id,
+    })
   })
 
   ipcMain.handle('expenses:update', (_, input) => {

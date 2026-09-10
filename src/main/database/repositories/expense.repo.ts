@@ -27,6 +27,26 @@ export type UpdateExpenseInput = {
   actor_id?: number | null
 }
 
+function appendCreatedByFilter(
+  where: string[],
+  params: any[],
+  createdBy?: number | null,
+) {
+  if (createdBy === undefined || createdBy === null) {
+    return
+  }
+
+  const userId = Number(createdBy)
+
+  if (!Number.isFinite(userId) || userId <= 0) {
+    where.push('1 = 0')
+    return
+  }
+
+  where.push('e.created_by = ?')
+  params.push(userId)
+}
+
 export function createExpense(input: CreateExpenseInput) {
   const db = getDb()
 
@@ -102,7 +122,11 @@ export function createExpense(input: CreateExpenseInput) {
   return tx()
 }
 
-export function listExpenses(input?: { date_from?: string; date_to?: string }) {
+export function listExpenses(input?: {
+  date_from?: string
+  date_to?: string
+  created_by?: number | null
+}) {
   const db = getDb()
 
   const where: string[] = [`e.cancelled_at IS NULL`]
@@ -117,6 +141,8 @@ export function listExpenses(input?: { date_from?: string; date_to?: string }) {
     where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`)
     params.push(`${input.date_to} 23:59:59`)
   }
+
+  appendCreatedByFilter(where, params, input?.created_by)
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 
@@ -140,6 +166,7 @@ export function listExpenses(input?: { date_from?: string; date_to?: string }) {
 export function listExpensesPage(input?: {
   date_from?: string
   date_to?: string
+  created_by?: number | null
   limit?: number
   offset?: number
 }) {
@@ -160,6 +187,8 @@ export function listExpensesPage(input?: {
     where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`)
     params.push(`${input.date_to} 23:59:59`)
   }
+
+  appendCreatedByFilter(where, params, input?.created_by)
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 

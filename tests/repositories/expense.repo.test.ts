@@ -262,6 +262,68 @@ describe('expense repository', () => {
     expect(secondPage.offset).toBe(2)
   })
 
+  it('filters cashier expenses by creator while admin scope sees all expenses', () => {
+    const db = getDb()
+
+    db.prepare(
+      `
+    INSERT OR IGNORE INTO users (
+      id,
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+    VALUES (?, ?, ?, ?, ?, 1)
+    `,
+    ).run(2, 'Cashier Two', 'cashier-two', 'test-password', 'cashier')
+
+    createExpense({
+      title: 'Admin Expense',
+      amount: 100,
+      payment_method: 'store_cash',
+      created_by: 1,
+    })
+
+    createExpense({
+      title: 'Cashier Expense',
+      amount: 200,
+      payment_method: 'store_cash',
+      created_by: 2,
+    })
+
+    const cashierPage = listExpensesPage({
+      created_by: 2,
+      limit: 50,
+      offset: 0,
+    })
+
+    expect(cashierPage.total).toBe(1)
+    expect(cashierPage.total_amount).toBe(200)
+    expect(cashierPage.rows).toHaveLength(1)
+
+    expect((cashierPage.rows[0] as any).title).toBe('Cashier Expense')
+
+    expect(Number((cashierPage.rows[0] as any).created_by)).toBe(2)
+
+    const cashierList = listExpenses({
+      created_by: 2,
+    }) as ExpenseTestRow[]
+
+    expect(cashierList).toHaveLength(1)
+    expect(cashierList[0].title).toBe('Cashier Expense')
+
+    const adminPage = listExpensesPage({
+      limit: 50,
+      offset: 0,
+    })
+
+    expect(adminPage.total).toBe(2)
+    expect(adminPage.total_amount).toBe(300)
+    expect(adminPage.rows).toHaveLength(2)
+  })
+
   it('updates expense and replaces its active cash movement', () => {
     const created = createExpense({
       title: 'Old Expense',

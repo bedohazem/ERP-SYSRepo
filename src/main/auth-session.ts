@@ -69,7 +69,10 @@ export function startAuthSession(
   })
 }
 
-export function requireAuthenticatedAdmin(event: IpcMainInvokeEvent): number {
+export function requireAuthenticatedUser(event: IpcMainInvokeEvent): {
+  id: number
+  role: string
+} {
   const sender = requireMainFrame(event)
   const session = sessions.get(sender)
 
@@ -81,8 +84,18 @@ export function requireAuthenticatedAdmin(event: IpcMainInvokeEvent): number {
 
   if (!user || user.is_active !== 1 || user.password !== session.passwordHash) {
     sessions.delete(sender)
+
     throw new Error('انتهت جلسة الدخول، سجل الدخول مرة أخرى')
   }
+
+  return {
+    id: user.id,
+    role: user.role,
+  }
+}
+
+export function requireAuthenticatedAdmin(event: IpcMainInvokeEvent): number {
+  const user = requireAuthenticatedUser(event)
 
   if (user.role !== 'admin') {
     throw new Error('هذه العملية متاحة لمدير النظام فقط')
