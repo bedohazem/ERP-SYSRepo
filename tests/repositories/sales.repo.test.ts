@@ -1204,6 +1204,84 @@ describe('sales repository', () => {
     ).toBe(true)
   })
 
+  it('allows a later return to be zero when previous rounding already covered its value', () => {
+    const variant = seedProduct()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 4,
+      discount_value: 3,
+      grand_total: 1,
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 1,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 2,
+        },
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 1,
+        },
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 1,
+        },
+      ],
+    })
+
+    expect(sale.grand_total).toBe(1)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    const firstReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      items: [
+        {
+          sale_item_id: receipt.items[0].id,
+          variant_id: receipt.items[0].variant_id,
+          quantity: 1,
+        },
+      ],
+    })
+
+    expect(firstReturn.return_value).toBe(1)
+
+    const secondReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      items: [
+        {
+          sale_item_id: receipt.items[1].id,
+          variant_id: receipt.items[1].variant_id,
+          quantity: 1,
+        },
+      ],
+    })
+
+    expect(secondReturn.return_value).toBe(0)
+
+    expect(getCashMovementTotal('out')).toBe(1)
+  })
+
   it('blocks return when customer debt contains fractional pounds', () => {
     const variant = seedProduct()
     const customerId = createTestCustomer()

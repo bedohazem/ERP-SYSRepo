@@ -143,7 +143,7 @@ function syncCustomerTotalSpent(customerIdInput: number) {
             FROM sale_returns sr
             JOIN sales s
               ON s.id = sr.original_sale_id
-            WHERE sr.customer_id = ?
+            WHERE s.customer_id = ?
               AND sr.cancelled_at IS NULL
               AND s.cancelled_at IS NULL
               AND IFNULL(s.type, 'sale') = 'sale'
@@ -1904,12 +1904,6 @@ export function createSaleReturn(input: {
     const exactIncrementalReturnValue = roundMoney(
       cumulativeExactReturnValue - previousReturnedValue,
     )
-
-    if (exactIncrementalReturnValue < -0.01) {
-      throw new Error(
-        'تعذر حساب قيمة المرتجع بسبب عدم تطابق القيم المالية السابقة للفاتورة',
-      )
-    }
 
     const returnValue = Math.max(0, Math.round(exactIncrementalReturnValue))
 
