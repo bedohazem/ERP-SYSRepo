@@ -1693,7 +1693,7 @@ declare global {
         payment_method?: string
         notes?: string | null
         actor_id?: number | null
-        admin_password: string
+        admin_password?: string
       }) => Promise<{
         success: boolean
         message?: string
@@ -1709,7 +1709,7 @@ declare global {
         id: number
         reason?: string | null
         actor_id?: number | null
-        admin_password: string
+        admin_password?: string
       }) => Promise<{
         success: boolean
         message?: string
