@@ -1821,12 +1821,13 @@ export function createSaleReturn(input: {
 
     const returnValue = Math.max(
       0,
-
-      roundMoney(
-        returnSubTotal -
-          returnPromotionDiscount -
-          saleDiscountPart -
-          loyaltyDiscountPart,
+      Math.round(
+        roundMoney(
+          returnSubTotal -
+            returnPromotionDiscount -
+            saleDiscountPart -
+            loyaltyDiscountPart,
+        ),
       ),
     )
 

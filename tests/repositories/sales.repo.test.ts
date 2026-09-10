@@ -16,6 +16,7 @@ import {
   createPromotion,
   togglePromotion,
 } from '../../src/main/database/repositories/promotions.repo'
+import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
 
 type SaleVariantTestRow = {
   variant_id: number
@@ -1083,6 +1084,59 @@ describe('sales repository', () => {
     expect(getStockByBarcode('SALE001')).toBe(9)
   })
 
+  it('rounds fractional partial return total without exceeding remaining sale value', () => {
+    const variant = seedProduct()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 300,
+      discount_value: 1,
+      grand_total: 299,
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 299,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 2,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+    const saleItemId = receipt.items[0].id
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      reason: 'Fractional return rounding test',
+      items: [
+        {
+          sale_item_id: saleItemId,
+          variant_id: variant.variant_id,
+          quantity: 1,
+        },
+      ],
+    })
+
+    /*
+     * Original total = 299
+     * Two identical units.
+     * Discount share for one unit = 0.50
+     * Exact return = 149.50
+     * Rounded return = 150
+     */
+    expect(saleReturn.return_value).toBe(150)
+    expect(saleReturn.refundAmount).toBe(150)
+    expect(getCashMovementTotal('out')).toBe(150)
+  })
+
   it('calculates sale return value proportionally when original sale has loyalty discount', () => {
     const variant = seedProduct()
     const customerId = createTestCustomer()
@@ -1425,6 +1479,17 @@ describe('sales repository', () => {
 
     expect(receipt.items[0].promotion_discount_value).toBe(37.5)
 
+    expect(receipt.items[0].promotion_discount_value).toBe(37.5)
+
+    createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 1,
+      payment_method: 'store_cash',
+      notes: 'Test cash buffer for rounded return',
+      created_by: 1,
+    })
+
     const result = createSaleReturn({
       original_sale_id: sale.saleId,
 
@@ -1441,7 +1506,8 @@ describe('sales repository', () => {
       ],
     })
 
-    expect(result.return_value).toBe(102.5)
+    expect(result.return_value).toBe(103)
+    expect(result.refundAmount).toBe(103)
 
     const db = getDb()
 
@@ -1462,7 +1528,7 @@ describe('sales repository', () => {
 
     expect(Number(returnRow.promotion_discount_value)).toBe(37.5)
 
-    expect(Number(returnRow.refund_amount)).toBe(102.5)
+    expect(Number(returnRow.refund_amount)).toBe(103)
   })
 
   it('applies buy 2 get 1 promotion', () => {
