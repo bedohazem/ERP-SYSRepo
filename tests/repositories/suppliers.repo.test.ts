@@ -188,6 +188,31 @@ describe('suppliers repository', () => {
     expect(suppliers.some((item) => item.id === supplier.id)).toBe(false)
   })
 
+  it('rejects deleting a supplier with outstanding balance', () => {
+    const supplier = createSupplier({
+      name: 'Supplier With Balance',
+      phone: '01033334444',
+    }) as SupplierTestRow
+
+    getDb()
+      .prepare(
+        `
+      UPDATE suppliers
+      SET balance = ?
+      WHERE id = ?
+      `,
+      )
+      .run(500, supplier.id)
+
+    expect(() => deleteSupplier(supplier.id)).toThrow(
+      'لا يمكن حذف المورد لأن له مستحقات',
+    )
+
+    const afterDelete = getSupplierById(supplier.id) as SupplierTestRow
+
+    expect(afterDelete.is_active).toBe(1)
+  })
+
   it('does not return inactive suppliers in search', () => {
     const supplier = createSupplier({
       name: 'Inactive Search Supplier',

@@ -230,6 +230,68 @@ export function updateSupplier(input: SupplierUpdateInput) {
 export function deleteSupplier(id: number) {
   const db = getDb()
 
+  const supplierId = Number(id)
+
+  if (!supplierId) {
+    throw new Error('رقم المورد غير صحيح')
+  }
+
+  const supplier = db
+    .prepare(
+      `
+      SELECT
+        id,
+        name,
+        IFNULL(balance, 0) AS balance
+      FROM suppliers
+      WHERE id = ?
+        AND is_active = 1
+      LIMIT 1
+      `,
+    )
+    .get(supplierId) as
+    | {
+        id: number
+        name: string
+        balance: number
+      }
+    | undefined
+
+  if (!supplier) {
+    throw new Error('المورد غير موجود')
+  }
+
+  const openDebtRow = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(remaining_amount),
+          0
+        ) AS open_debt
+      FROM purchase_invoices
+      WHERE supplier_id = ?
+        AND cancelled_at IS NULL
+        AND remaining_amount > 0
+      `,
+    )
+    .get(supplierId) as
+    | {
+        open_debt: number
+      }
+    | undefined
+
+  const outstandingAmount = Math.max(
+    Number(supplier.balance || 0),
+    Number(openDebtRow?.open_debt || 0),
+  )
+
+  if (Number(outstandingAmount.toFixed(2)) > 0) {
+    throw new Error(
+      `لا يمكن حذف المورد لأن له مستحقات بقيمة ${outstandingAmount.toFixed(2)} ج.م`,
+    )
+  }
+
   db.prepare(
     `
     UPDATE suppliers
@@ -237,8 +299,8 @@ export function deleteSupplier(id: number) {
       is_active = 0,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `,
-  ).run(Number(id))
+    `,
+  ).run(supplierId)
 
   return { ok: true }
 }

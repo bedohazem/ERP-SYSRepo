@@ -294,9 +294,10 @@ export default function CustomersPage() {
       setDeleteTarget(null)
       setMessage('تم حذف العميل')
       await loadCustomers(customerPage)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete customer:', error)
-      setMessage('حدث خطأ أثناء حذف العميل')
+
+      setMessage(error?.message || 'حدث خطأ أثناء حذف العميل')
     } finally {
       setDeletingCustomer(false)
     }

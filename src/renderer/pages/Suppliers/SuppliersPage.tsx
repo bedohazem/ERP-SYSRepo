@@ -238,9 +238,10 @@ export default function SuppliersPage() {
       setDeleteTarget(null)
       showMessage('تم حذف المورد')
       await loadSuppliers(supplierPage)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete supplier:', error)
-      showMessage('حدث خطأ أثناء حذف المورد')
+
+      showMessage(error?.message || 'حدث خطأ أثناء حذف المورد')
     } finally {
       setDeletingSupplier(false)
     }
@@ -1073,19 +1074,20 @@ export default function SuppliersPage() {
                         تعديل
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => requestDeleteSupplier(supplier)}
-                        style={{
-                          ...smallButtonStyle,
-                          borderColor: '#ef4444',
-                          color: '#fca5a5',
-                          background: 'rgba(239,68,68,0.10)',
-                        }}
-                      >
-                        حذف
-                      </button>
-
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => requestDeleteSupplier(supplier)}
+                          style={{
+                            ...smallButtonStyle,
+                            borderColor: '#ef4444',
+                            color: '#fca5a5',
+                            background: 'rgba(239,68,68,0.10)',
+                          }}
+                        >
+                          حذف
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => openStatement(supplier)}

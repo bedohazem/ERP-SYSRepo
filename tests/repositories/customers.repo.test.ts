@@ -293,6 +293,24 @@ describe('customers repository', () => {
     expect(customers.some((item) => item.id === customer.id)).toBe(false)
   })
 
+  it('rejects deleting a customer with outstanding debt', () => {
+    const customer = createTestCustomer()
+
+    createPartialSale(customer.id, 100)
+
+    const beforeDelete = getCustomerById(customer.id) as CustomerTestRow
+
+    expect(beforeDelete.balance).toBe(200)
+
+    expect(() => deleteCustomer(customer.id)).toThrow(
+      'لا يمكن حذف العميل لأن عليه مديونية',
+    )
+
+    const afterDelete = getCustomerById(customer.id) as CustomerTestRow
+
+    expect(afterDelete.is_active).toBe(1)
+  })
+
   it('adjusts customer loyalty points', () => {
     const customer = createTestCustomer()
 

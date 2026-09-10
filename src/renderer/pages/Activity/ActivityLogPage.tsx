@@ -562,6 +562,22 @@ export default function ActivityLogPage() {
               <option value="supplier_updated">تعديل مورد</option>
               <option value="supplier_deactivated">تعطيل مورد</option>
 
+              <option value="customer_created">إضافة عميل</option>
+
+              <option value="customer_updated">تعديل عميل</option>
+
+              <option value="customer_deactivated">تعطيل عميل</option>
+
+              <option value="customer_points_adjusted">تعديل نقاط عميل</option>
+
+              <option value="customer_payment_created">تسجيل دفعة عميل</option>
+
+              <option value="customer_payment_updated">تعديل دفعة عميل</option>
+
+              <option value="customer_payment_cancelled">
+                إلغاء دفعة عميل
+              </option>
+
               <option value="database_backup_created">Backup</option>
               <option value="database_restored">Restore</option>
             </select>
@@ -585,6 +601,9 @@ export default function ActivityLogPage() {
               <option value="stock_counts">جلسات الجرد</option>
               <option value="users">المستخدمين</option>
               <option value="suppliers">الموردين</option>
+              <option value="customers">العملاء</option>
+
+              <option value="customer_payment_batches">دفعات العملاء</option>
               <option value="settings">الإعدادات</option>
             </select>
           </Field>
@@ -894,6 +913,15 @@ function getActionLabel(action: string) {
     case 'customer_payment_created':
       return 'دفعة عميل'
 
+    case 'customer_payment_updated':
+      return 'تعديل دفعة عميل'
+
+    case 'customer_payment_cancelled':
+      return 'إلغاء دفعة عميل'
+
+    case 'customer_points_adjusted':
+      return 'تعديل نقاط عميل'
+
     case 'supplier_payment_created':
       return 'دفعة مورد'
 
@@ -936,6 +964,11 @@ function getEntityLabel(entity?: string | null) {
       return 'المستخدمين'
     case 'suppliers':
       return 'الموردين'
+    case 'customers':
+      return 'العملاء'
+
+    case 'customer_payment_batches':
+      return 'دفعات العملاء'
     case 'settings':
       return 'الإعدادات'
 

@@ -17,6 +17,10 @@ import {
   getCustomerPaymentBatchAccess,
   updateCustomerPaymentBatch,
 } from '../database/repositories/customers.repo'
+import {
+  requireAuthenticatedAdmin,
+  requireAuthenticatedUser,
+} from '../auth-session'
 
 export function registerCustomersIpc(): void {
   ipcMain.handle('customers:list', () => {
@@ -35,30 +39,112 @@ export function registerCustomersIpc(): void {
     return getCustomerById(Number(id))
   })
 
-  ipcMain.handle('customers:create', (_, input) => {
-    return createCustomer(input)
+  ipcMain.handle('customers:create', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
+    const customer = createCustomer(input) as any
+
+    logAction({
+      actor_id: actorId,
+      action: 'customer_created',
+      entity: 'customers',
+      entity_id: Number(customer?.id || 0) || null,
+      details: {
+        name: customer?.name || input?.name,
+        phone: customer?.phone || input?.phone,
+      },
+    })
+
+    return customer
   })
 
-  ipcMain.handle('customers:update', (_, input) => {
-    return updateCustomer(input)
+  ipcMain.handle('customers:update', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
+    const customer = updateCustomer(input) as any
+
+    logAction({
+      actor_id: actorId,
+      action: 'customer_updated',
+      entity: 'customers',
+      entity_id: Number(input?.id),
+      details: {
+        name: customer?.name || input?.name,
+        phone: customer?.phone || input?.phone,
+      },
+    })
+
+    return customer
   })
 
-  ipcMain.handle('customers:delete', (_, id: number, actorId?: number) => {
-    requireAdmin(actorId ?? null)
-    return deleteCustomer(Number(id))
+  ipcMain.handle('customers:delete', (event, id: number) => {
+    const actorId = requireAuthenticatedAdmin(event)
+
+    const customer = getCustomerById(Number(id)) as any
+
+    const result = deleteCustomer(Number(id))
+
+    logAction({
+      actor_id: actorId,
+      action: 'customer_deactivated',
+      entity: 'customers',
+      entity_id: Number(id),
+      details: {
+        name: customer?.name || '',
+        phone: customer?.phone || '',
+        balance: Number(customer?.balance || 0),
+      },
+    })
+
+    return result
   })
 
   ipcMain.handle('customers:history', (_, customerId: number) => {
     return getCustomerHistory(Number(customerId))
   })
 
-  ipcMain.handle('customers:adjust-points', (_, input) => {
-    requireAdmin(getActorId(input))
-    return adjustCustomerPoints(input)
+  ipcMain.handle('customers:adjust-points', (event, input) => {
+    const actorId = requireAuthenticatedAdmin(event)
+
+    const result = adjustCustomerPoints(input)
+
+    logAction({
+      actor_id: actorId,
+      action: 'customer_points_adjusted',
+      entity: 'customers',
+      entity_id: Number(input?.customer_id),
+      details: {
+        customer_id: Number(input?.customer_id),
+        points: Number(input?.points || 0),
+        notes: input?.notes || '',
+      },
+    })
+
+    return result
   })
 
-  ipcMain.handle('customers:record-payment', (_, input) => {
-    return recordCustomerPayment(input)
+  ipcMain.handle('customers:record-payment', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
+    const result = recordCustomerPayment({
+      ...input,
+      actor_id: actorId,
+    })
+
+    logAction({
+      actor_id: actorId,
+      action: 'customer_payment_created',
+      entity: 'customer_payment_batches',
+      entity_id: result.payment_batch_id,
+      details: {
+        customer_id: result.customer_id,
+        amount: result.paid_amount,
+        payment_method: input?.payment_method || 'cash',
+        allocations: result.allocations,
+      },
+    })
+
+    return result
   })
 
   ipcMain.handle('customers:cancel-payment', (_, input) => {

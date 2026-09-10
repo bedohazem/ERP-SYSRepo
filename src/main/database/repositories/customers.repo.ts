@@ -275,14 +275,78 @@ export function updateCustomer(input: CustomerUpdateInput) {
 export function deleteCustomer(id: number) {
   const db = getDb()
 
+  const customerId = Number(id)
+
+  if (!customerId) {
+    throw new Error('رقم العميل غير صحيح')
+  }
+
+  const customer = db
+    .prepare(
+      `
+      SELECT
+        id,
+        name,
+        IFNULL(balance, 0) AS balance
+      FROM customers
+      WHERE id = ?
+        AND is_active = 1
+      LIMIT 1
+      `,
+    )
+    .get(customerId) as
+    | {
+        id: number
+        name: string
+        balance: number
+      }
+    | undefined
+
+  if (!customer) {
+    throw new Error('العميل غير موجود')
+  }
+
+  const openDebtRow = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(remaining_amount),
+          0
+        ) AS open_debt
+      FROM sales
+      WHERE customer_id = ?
+        AND IFNULL(type, 'sale') = 'sale'
+        AND cancelled_at IS NULL
+        AND remaining_amount > 0
+      `,
+    )
+    .get(customerId) as
+    | {
+        open_debt: number
+      }
+    | undefined
+
+  const outstandingAmount = Math.max(
+    Number(customer.balance || 0),
+    Number(openDebtRow?.open_debt || 0),
+  )
+
+  if (Number(outstandingAmount.toFixed(2)) > 0) {
+    throw new Error(
+      `لا يمكن حذف العميل لأن عليه مديونية بقيمة ${outstandingAmount.toFixed(2)} ج.م`,
+    )
+  }
+
   db.prepare(
     `
     UPDATE customers
-    SET is_active = 0,
-        updated_at = CURRENT_TIMESTAMP
+    SET
+      is_active = 0,
+      updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `,
-  ).run(id)
+    `,
+  ).run(customerId)
 
   return { ok: true }
 }

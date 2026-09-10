@@ -8,6 +8,7 @@ import {
   listSuppliers,
   updateSupplier,
 } from '../database/repositories/suppliers.repo'
+import { requireAuthenticatedAdmin } from '../auth-session'
 
 export function registerSuppliersIpc(): void {
   ipcMain.handle('suppliers:list', (_, search?: string) => {
@@ -56,15 +57,23 @@ export function registerSuppliersIpc(): void {
     return supplier
   })
 
-  ipcMain.handle('suppliers:delete', (_, id: number, actorId?: number) => {
-    const result = deleteSupplier(id)
+  ipcMain.handle('suppliers:delete', (event, id: number) => {
+    const actorId = requireAuthenticatedAdmin(event)
+
+    const supplier = getSupplierById(Number(id)) as any
+
+    const result = deleteSupplier(Number(id))
 
     logAction({
-      actor_id: actorId ?? null,
+      actor_id: actorId,
       action: 'supplier_deactivated',
       entity: 'suppliers',
-      entity_id: id,
-      details: {},
+      entity_id: Number(id),
+      details: {
+        name: supplier?.name || '',
+        phone: supplier?.phone || '',
+        balance: Number(supplier?.balance || 0),
+      },
     })
 
     return result
