@@ -54,6 +54,7 @@ type ActivePromotion = {
   category_id?: number | null
 
   product_ids?: number[]
+  ends_at?: number | null
 }
 
 type CustomerOption = {
@@ -1582,6 +1583,34 @@ export default function SalesPage() {
     nextInvoiceId,
     barcodeMode,
   ])
+
+  useEffect(() => {
+    if (activePromotion?.ends_at == null) return
+
+    const endsAt = Number(activePromotion.ends_at)
+
+    const checkExpiry = () => {
+      if (Date.now() < endsAt) return
+
+      setActivePromotion(null)
+      setShowPaymentModal(false)
+
+      showMessage(
+        'error',
+        'انتهت مدة العرض. راجع الإجمالي وافتح الدفع مرة أخرى',
+      )
+    }
+
+    checkExpiry()
+
+    const timer = window.setInterval(checkExpiry, 1000)
+    window.addEventListener('focus', checkExpiry)
+
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', checkExpiry)
+    }
+  }, [activePromotion])
 
   useEffect(() => {
     window.focus()

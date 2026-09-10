@@ -16,7 +16,7 @@ export type PromotionInput = {
   buy_qty?: number | null
   free_qty?: number | null
   scope_type: PromotionScope
-
+  duration_hours?: number | null
   category_id?: number | null
   product_ids?: number[]
 
@@ -31,7 +31,89 @@ function normalizeProductIds(value?: number[]) {
   )
 }
 
+function normalizePromotionDuration(value?: number | null): number | null {
+  if (value === undefined || value === null) {
+    return null
+  }
+
+  const hours = Number(value)
+  const endTime = Date.now() + hours * 60 * 60 * 1000
+
+  if (
+    !Number.isFinite(hours) ||
+    hours <= 0 ||
+    !Number.isFinite(new Date(endTime).getTime())
+  ) {
+    throw new Error('مدة العرض لازم تكون رقم أكبر من صفر')
+  }
+
+  return hours
+}
+
+function expirePromotions() {
+  getDb()
+    .prepare(
+      `
+      UPDATE promotions
+      SET
+        is_active = 0,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE is_active = 1
+        AND ends_at IS NOT NULL
+        AND ends_at <= ?
+    `,
+    )
+    .run(Date.now())
+}
+
+function savePromotionDuration(promotionId: number, value?: number | null) {
+  if (value === undefined) return
+
+  const hours = normalizePromotionDuration(value)
+  const db = getDb()
+
+  expirePromotions()
+
+  const current = db
+    .prepare(
+      `
+      SELECT duration_hours, is_active
+      FROM promotions
+      WHERE id = ?
+    `,
+    )
+    .get(promotionId) as
+    | { duration_hours: number | null; is_active: number }
+    | undefined
+
+  if (!current) {
+    throw new Error('العرض غير موجود')
+  }
+
+  const previousHours =
+    current.duration_hours === null ? null : Number(current.duration_hours)
+
+  if (hours === previousHours) return
+
+  const endsAt =
+    current.is_active && hours !== null
+      ? Math.round(Date.now() + hours * 60 * 60 * 1000)
+      : null
+
+  db.prepare(
+    `
+    UPDATE promotions
+    SET
+      duration_hours = ?,
+      ends_at = ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `,
+  ).run(hours, endsAt, promotionId)
+}
+
 function validatePromotion(input: PromotionInput) {
+  normalizePromotionDuration(input.duration_hours)
   const name = String(input.name || '').trim()
 
   if (!name) {
@@ -370,6 +452,7 @@ export function calculateActivePromotionForSale(items: PromotionSaleItem[]) {
 }
 
 export function listPromotions() {
+  expirePromotions()
   const db = getDb()
 
   return db
@@ -415,6 +498,7 @@ export function listPromotions() {
 }
 
 export function getPromotion(promotionId: number) {
+  expirePromotions()
   const db = getDb()
 
   const promotion = db
@@ -461,6 +545,7 @@ export function getPromotion(promotionId: number) {
 }
 
 export function getActivePromotion() {
+  expirePromotions()
   const db = getDb()
 
   const row = db
@@ -548,7 +633,7 @@ export function createPromotion(input: PromotionInput) {
     const promotionId = Number(result.lastInsertRowid)
 
     replacePromotionProducts(promotionId, productIds)
-
+    savePromotionDuration(promotionId, input.duration_hours)
     return promotionId
   })
 
@@ -637,6 +722,7 @@ export function updatePromotion(
     )
 
     replacePromotionProducts(id, productIds)
+    savePromotionDuration(id, input.duration_hours)
   })
 
   tx()
@@ -648,56 +734,63 @@ export function updatePromotion(
 
 export function togglePromotion(promotionId: number, isActive: number) {
   const db = getDb()
-
   const id = Number(promotionId)
-
-  const existing = db
-    .prepare(
-      `
-        SELECT id
-        FROM promotions
-        WHERE id = ?
-        LIMIT 1
-        `,
-    )
-    .get(id)
-
-  if (!existing) {
-    throw new Error('العرض غير موجود')
-  }
-
   const nextActive = Number(isActive) ? 1 : 0
 
   const tx = db.transaction(() => {
+    expirePromotions()
+
+    const existing = db
+      .prepare(
+        `
+        SELECT id, duration_hours
+        FROM promotions
+        WHERE id = ?
+        LIMIT 1
+      `,
+      )
+      .get(id) as { id: number; duration_hours: number | null } | undefined
+
+    if (!existing) {
+      throw new Error('العرض غير موجود')
+    }
+
+    const hours = normalizePromotionDuration(existing.duration_hours)
+
+    const endsAt =
+      nextActive && hours !== null
+        ? Math.round(Date.now() + hours * 60 * 60 * 1000)
+        : null
+
     if (nextActive) {
       db.prepare(
         `
-          UPDATE promotions
-          SET
-            is_active = 0,
-            updated_at =
-              CURRENT_TIMESTAMP
-          WHERE is_active = 1
-          `,
+        UPDATE promotions
+        SET
+          is_active = 0,
+          ends_at = NULL,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE is_active = 1
+      `,
       ).run()
     }
 
     db.prepare(
       `
-        UPDATE promotions
-        SET
-          is_active = ?,
-          updated_at =
-            CURRENT_TIMESTAMP
-        WHERE id = ?
-        `,
-    ).run(nextActive, id)
+      UPDATE promotions
+      SET
+        is_active = ?,
+        ends_at = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `,
+    ).run(nextActive, endsAt, id)
+
+    return {
+      success: true,
+      is_active: nextActive,
+    }
   })
 
-  tx()
-
-  return {
-    success: true,
-    is_active: nextActive,
-  }
+  return tx()
 }

@@ -23,6 +23,8 @@ type PromotionRow = {
   is_active: number
   products_count?: number
   products_names?: string | null
+  duration_hours?: number | null
+  ends_at?: number | null
 }
 
 type Category = {
@@ -54,6 +56,8 @@ const emptyForm = {
   category_id: '',
 
   product_ids: [] as number[],
+  duration_value: '',
+  duration_unit: 'hours' as 'hours' | 'days',
 }
 
 export default function PromotionsPage() {
@@ -77,6 +81,33 @@ export default function PromotionsPage() {
 
   useEffect(() => {
     void loadData()
+  }, [])
+
+  useEffect(() => {
+    const refreshExpired = () => {
+      const now = Date.now()
+
+      setPromotions((rows) => {
+        const isExpired = (row: PromotionRow) =>
+          Boolean(row.is_active) &&
+          row.ends_at != null &&
+          Number(row.ends_at) <= now
+
+        if (!rows.some(isExpired)) return rows
+
+        return rows.map((row) =>
+          isExpired(row) ? { ...row, is_active: 0 } : row,
+        )
+      })
+    }
+
+    const timer = window.setInterval(refreshExpired, 1000)
+    window.addEventListener('focus', refreshExpired)
+
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshExpired)
+    }
   }, [])
 
   async function loadData() {
@@ -131,6 +162,12 @@ export default function PromotionsPage() {
         return
       }
 
+      const durationHours =
+        details.duration_hours == null ? null : Number(details.duration_hours)
+
+      const durationUnit =
+        durationHours !== null && durationHours % 24 === 0 ? 'days' : 'hours'
+
       setForm({
         id: Number(details.id),
 
@@ -151,6 +188,13 @@ export default function PromotionsPage() {
         product_ids: Array.isArray(details.product_ids)
           ? details.product_ids.map(Number)
           : [],
+
+        duration_value:
+          durationHours === null
+            ? ''
+            : String(durationHours / (durationUnit === 'days' ? 24 : 1)),
+
+        duration_unit: durationUnit,
       })
 
       window.scrollTo({
@@ -208,6 +252,19 @@ export default function PromotionsPage() {
       return
     }
 
+    const durationHours =
+      form.duration_value.trim() === ''
+        ? null
+        : Number(form.duration_value) * (form.duration_unit === 'days' ? 24 : 1)
+
+    if (
+      durationHours !== null &&
+      (!Number.isFinite(durationHours) || durationHours <= 0)
+    ) {
+      showMessage('اكتب مدة أكبر من صفر أو سيبها فاضية')
+      return
+    }
+
     setSaving(true)
 
     try {
@@ -228,6 +285,7 @@ export default function PromotionsPage() {
         product_ids: form.scope_type === 'products' ? form.product_ids : [],
 
         actor_id: user?.id,
+        duration_hours: durationHours,
       }
 
       const result = form.id
@@ -501,6 +559,47 @@ export default function PromotionsPage() {
           )}
 
           <label style={fieldStyle}>
+            <span>مدة العرض — اختياري</span>
+
+            <input
+              type="number"
+              min={0}
+              step="any"
+              value={form.duration_value}
+              onChange={(e) =>
+                setForm((current) => ({
+                  ...current,
+                  duration_value: e.target.value,
+                }))
+              }
+              placeholder="فاضي = حتى الإيقاف اليدوي"
+              style={inputStyle}
+            />
+          </label>
+
+          <label style={fieldStyle}>
+            <span>وحدة المدة</span>
+
+            <select
+              value={form.duration_unit}
+              onChange={(e) =>
+                setForm((current) => ({
+                  ...current,
+                  duration_unit: e.target.value as 'hours' | 'days',
+                }))
+              }
+              style={inputStyle}
+            >
+              <option value="hours">ساعات</option>
+              <option value="days">أيام</option>
+            </select>
+
+            <small style={{ color: '#94a3b8', fontWeight: 400 }}>
+              المدة تبدأ من التفعيل. تغيير مدة عرض فعال يبدأها من الحفظ.
+            </small>
+          </label>
+
+          <label style={fieldStyle}>
             <span>يطبق على</span>
 
             <select
@@ -721,6 +820,33 @@ export default function PromotionsPage() {
                     >
                       على: {scopeLabel(promotion)}
                     </div>
+                    <div
+                      style={{
+                        marginTop: '6px',
+                        color: '#94a3b8',
+                      }}
+                    >
+                      المدة:{' '}
+                      {promotion.duration_hours == null
+                        ? 'حتى الإيقاف اليدوي'
+                        : Number(promotion.duration_hours) % 24 === 0
+                          ? `${Number(promotion.duration_hours) / 24} يوم`
+                          : `${promotion.duration_hours} ساعة`}
+                    </div>
+
+                    {!!promotion.is_active && promotion.ends_at != null && (
+                      <div
+                        style={{
+                          marginTop: '4px',
+                          color: '#c4b5fd',
+                        }}
+                      >
+                        ينتهي:{' '}
+                        {new Date(Number(promotion.ends_at)).toLocaleString(
+                          'ar-EG',
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <strong
@@ -728,7 +854,12 @@ export default function PromotionsPage() {
                       color: promotion.is_active ? '#4ade80' : '#94a3b8',
                     }}
                   >
-                    {promotion.is_active ? '● فعال' : 'متوقف'}
+                    {promotion.is_active
+                      ? '● فعال'
+                      : promotion.ends_at != null &&
+                          Number(promotion.ends_at) <= Date.now()
+                        ? 'انتهت المدة'
+                        : 'متوقف'}
                   </strong>
                 </div>
 
