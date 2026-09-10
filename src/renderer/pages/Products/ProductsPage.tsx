@@ -220,12 +220,7 @@ export default function ProductsPage() {
     if (variants.length === 0) return false
 
     return variants.every(
-      (v) =>
-        v.barcode.trim() &&
-        v.size.trim() &&
-        v.color.trim() &&
-        v.buy_price.trim() &&
-        v.sell_price.trim(),
+      (v) => v.barcode.trim() && v.buy_price.trim() && v.sell_price.trim(),
     )
   }, [name, variants])
 
@@ -410,16 +405,6 @@ export default function ProductsPage() {
 
     if (!newEditVariant.barcode.trim()) {
       showMessage('error', 'الباركود مطلوب')
-      return
-    }
-
-    if (!newEditVariant.size.trim()) {
-      showMessage('error', 'المقاس مطلوب')
-      return
-    }
-
-    if (!newEditVariant.color.trim()) {
-      showMessage('error', 'اللون مطلوب')
       return
     }
 

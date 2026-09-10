@@ -103,8 +103,8 @@ export default function PurchasesPage() {
 
   const [quickProductName, setQuickProductName] = useState('')
   const [quickBarcode, setQuickBarcode] = useState('')
-  const [quickSize, setQuickSize] = useState('قطعة')
-  const [quickColor, setQuickColor] = useState('عام')
+  const [quickSize, setQuickSize] = useState('')
+  const [quickColor, setQuickColor] = useState('')
   const [quickBuyPrice, setQuickBuyPrice] = useState('')
   const [quickSellPrice, setQuickSellPrice] = useState('')
   const [quickQuantity, setQuickQuantity] = useState('1')
@@ -461,8 +461,8 @@ export default function PurchasesPage() {
     setQuickExistingProducts([])
     setQuickExistingProductId('')
 
-    setQuickSize('قطعة')
-    setQuickColor('عام')
+    setQuickSize('')
+    setQuickColor('')
     setQuickBuyPrice('')
     setQuickSellPrice('')
     setQuickQuantity('1')
@@ -472,8 +472,8 @@ export default function PurchasesPage() {
   async function saveQuickProductFromPurchase() {
     const name = quickProductName.trim()
     const barcode = quickBarcode.trim()
-    const size = quickSize.trim() || 'قطعة'
-    const color = quickColor.trim() || 'عام'
+    const size = quickSize.trim()
+    const color = quickColor.trim()
     const buyPrice = Number(quickBuyPrice || 0)
     const sellPrice = Number(quickSellPrice || 0)
     const quantity = Math.max(1, Number(quickQuantity || 1))
