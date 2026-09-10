@@ -113,6 +113,78 @@ function roundMoney(value: number) {
   return Number(Number(value || 0).toFixed(2))
 }
 
+function syncCustomerTotalSpent(customerIdInput: number) {
+  const customerId = Number(customerIdInput || 0)
+
+  if (!customerId) {
+    return
+  }
+
+  const db = getDb()
+
+  const row = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          (
+            SELECT SUM(s.grand_total)
+            FROM sales s
+            WHERE s.customer_id = ?
+              AND IFNULL(s.type, 'sale') = 'sale'
+              AND s.cancelled_at IS NULL
+          ),
+          0
+        )
+        -
+        IFNULL(
+          (
+            SELECT SUM(sr.refund_amount)
+            FROM sale_returns sr
+            JOIN sales s
+              ON s.id = sr.original_sale_id
+            WHERE sr.customer_id = ?
+              AND sr.cancelled_at IS NULL
+              AND s.cancelled_at IS NULL
+              AND IFNULL(s.type, 'sale') = 'sale'
+          ),
+          0
+        )
+        +
+        IFNULL(
+          (
+            SELECT SUM(se.difference_amount)
+            FROM sale_exchanges se
+            JOIN sales s
+              ON s.id = se.original_sale_id
+            WHERE s.customer_id = ?
+              AND se.cancelled_at IS NULL
+              AND s.cancelled_at IS NULL
+              AND IFNULL(s.type, 'sale') = 'sale'
+          ),
+          0
+        ) AS total_spent
+      `,
+    )
+    .get(customerId, customerId, customerId) as
+    | {
+        total_spent: number
+      }
+    | undefined
+
+  const totalSpent = Math.max(0, roundMoney(Number(row?.total_spent || 0)))
+
+  db.prepare(
+    `
+    UPDATE customers
+    SET
+      total_spent = ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+    `,
+  ).run(totalSpent, customerId)
+}
+
 export function createSale(input: CreateSaleInput) {
   const db = getDb()
 
@@ -1697,18 +1769,6 @@ export function createSaleReturn(input: {
 
           IFNULL(
             SUM(
-              refund_amount +
-              IFNULL(
-                loyalty_discount_value,
-                0
-              )
-            ),
-            0
-          )
-            AS returned_before_loyalty,
-
-          IFNULL(
-            SUM(
               loyalty_discount_value
             ),
             0
@@ -1774,62 +1834,84 @@ export function createSaleReturn(input: {
       ),
     )
 
-    const currentBeforeLoyalty = Math.max(
-      0,
-
-      returnAfterPromotion - saleDiscountPart,
-    )
-
     const invoiceBeforeLoyalty = Math.max(
       0,
-
-      currentInvoiceAfterPromotion - currentNormalDiscount,
+      roundMoney(currentInvoiceAfterPromotion - currentNormalDiscount),
     )
 
     const currentLoyaltyDiscount = Math.max(
       0,
-
       Number(
         currentStateBeforeReturn.financials.current_loyalty_discount_value || 0,
       ),
     )
 
-    const cumulativeBeforeLoyalty =
-      Number(previousReturns?.returned_before_loyalty || 0) +
-      currentBeforeLoyalty
+    /*
+     * نحسب الإجمالي التراكمي الدقيق قبل خصم النقاط
+     * من القيم الأصلية للمرتجعات، وليس من refund_amount
+     * لأن refund_amount أصبح قيمة نقدية مقربة.
+     */
+    const cumulativeBeforeLoyalty = Math.max(
+      0,
+      roundMoney(cumulativeAfterPromotion - targetNormalDiscount),
+    )
 
     const targetLoyaltyDiscount =
       invoiceBeforeLoyalty > 0
         ? roundMoney(
             currentLoyaltyDiscount *
-              Math.min(
-                cumulativeBeforeLoyalty / invoiceBeforeLoyalty,
-
-                1,
-              ),
+              Math.min(cumulativeBeforeLoyalty / invoiceBeforeLoyalty, 1),
           )
         : 0
 
     const loyaltyDiscountPart = Math.max(
       0,
-
       roundMoney(
         targetLoyaltyDiscount -
           Number(previousReturns?.returned_loyalty_discount || 0),
       ),
     )
 
-    const returnValue = Math.max(
+    /*
+     * القيمة الحقيقية التراكمية للمرتجعات قبل التقريب.
+     */
+    const cumulativeExactReturnValue = Math.max(
       0,
-      Math.round(
-        roundMoney(
-          returnSubTotal -
-            returnPromotionDiscount -
-            saleDiscountPart -
-            loyaltyDiscountPart,
-        ),
-      ),
+      roundMoney(cumulativeBeforeLoyalty - targetLoyaltyDiscount),
     )
+
+    /*
+     * المرتجعات التي تم دفعها بالفعل.
+     * هذه قيمة نقدية تاريخية ولا نعيد حسابها.
+     */
+    const previousReturnedValue = Math.max(
+      0,
+      Number(previousReturns?.returned_value || 0),
+    )
+
+    /*
+     * نحسب ما يستحقه المرتجع الحالي بعد أخذ كل
+     * المرتجعات السابقة في الاعتبار ثم نقرب مرة واحدة.
+     *
+     * مثال:
+     * 332.50 -> 333
+     * المرتجع التالي يصبح:
+     * 665 - 333 = 332
+     *
+     * وبالتالي:
+     * 333 + 332 + 285 = 950
+     */
+    const exactIncrementalReturnValue = roundMoney(
+      cumulativeExactReturnValue - previousReturnedValue,
+    )
+
+    if (exactIncrementalReturnValue < -0.01) {
+      throw new Error(
+        'تعذر حساب قيمة المرتجع بسبب عدم تطابق القيم المالية السابقة للفاتورة',
+      )
+    }
+
+    const returnValue = Math.max(0, Math.round(exactIncrementalReturnValue))
 
     /*
      * Exact snapshots can recalculate
@@ -1946,11 +2028,22 @@ export function createSaleReturn(input: {
 
     const originalRemainingAmount = Math.max(
       0,
-      Number(originalSale.remaining_amount || 0),
+      roundMoney(Number(originalSale.remaining_amount || 0)),
     )
 
+    const roundedRemainingAmount = Math.round(originalRemainingAmount)
+
+    if (
+      originalSale.customer_id &&
+      Math.abs(originalRemainingAmount - roundedRemainingAmount) > 0.001
+    ) {
+      throw new Error(
+        'لا يمكن عمل المرتجع لأن مديونية الفاتورة تحتوي على كسور. يجب تسوية المديونية أولًا.',
+      )
+    }
+
     const debtReductionAmount = originalSale.customer_id
-      ? Math.min(returnValue, originalRemainingAmount)
+      ? Math.min(returnValue, roundedRemainingAmount)
       : 0
 
     const cashRefundAmount = Math.max(0, returnValue - debtReductionAmount)
@@ -2133,18 +2226,7 @@ export function createSaleReturn(input: {
     }
 
     if (originalSale.customer_id) {
-      db.prepare(
-        `
-    UPDATE customers
-    SET
-      total_spent = MAX(
-        IFNULL(total_spent, 0) - ?,
-        0
-      ),
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-    `,
-      ).run(returnValue, originalSale.customer_id)
+      syncCustomerTotalSpent(Number(originalSale.customer_id))
     }
 
     if (originalSale.customer_id && loyaltyPointsToReverse > 0) {
@@ -2979,22 +3061,6 @@ export function cancelSaleReturn(input: {
       ).run(saleId, `تسوية مديونية بسبب مرتجع ${returnCode}%`)
     }
 
-    if (saleReturn.customer_id) {
-      db.prepare(
-        `
-    UPDATE customers
-    SET
-      total_spent =
-        IFNULL(total_spent, 0) + ?,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-    `,
-      ).run(
-        Number(saleReturn.refund_amount || 0),
-        Number(saleReturn.customer_id),
-      )
-    }
-
     const beforeEarned = Number(
       loyaltyBeforeCancellation.financials.current_loyalty_points_earned || 0,
     )
@@ -3071,6 +3137,10 @@ export function cancelSaleReturn(input: {
       WHERE id = ?
       `,
     ).run(input.actor_id ?? null, reason, returnId)
+
+    if (saleReturn.customer_id) {
+      syncCustomerTotalSpent(Number(saleReturn.customer_id))
+    }
 
     return {
       ok: true,

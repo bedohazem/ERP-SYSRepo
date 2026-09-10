@@ -1084,18 +1084,18 @@ describe('sales repository', () => {
     expect(getStockByBarcode('SALE001')).toBe(9)
   })
 
-  it('rounds fractional partial return total without exceeding remaining sale value', () => {
+  it('rounds returns to whole pounds while preserving the cumulative invoice value', () => {
     const variant = seedProduct()
 
     const sale = createSale({
       user_id: 1,
       customer_id: null,
-      sub_total: 300,
-      discount_value: 1,
-      grand_total: 299,
+      sub_total: 1000,
+      discount_value: 50,
+      grand_total: 950,
       change_amount: 0,
       payment_method: 'cash',
-      paid: 299,
+      paid: 950,
       items: [
         {
           variant_id: variant.variant_id,
@@ -1103,38 +1103,150 @@ describe('sales repository', () => {
           barcode: variant.barcode,
           size: variant.size,
           color: variant.color,
-          quantity: 2,
-          unit_price: 150,
+          quantity: 1,
+          unit_price: 350,
+        },
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 350,
+        },
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 300,
         },
       ],
     })
 
-    const receipt = getSaleReceipt(sale.saleId) as any
-    const saleItemId = receipt.items[0].id
+    expect(sale.grand_total).toBe(950)
 
-    const saleReturn = createSaleReturn({
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    const firstReturn = createSaleReturn({
       original_sale_id: sale.saleId,
       user_id: 1,
-      reason: 'Fractional return rounding test',
+      reason: 'First rounded return',
       items: [
         {
-          sale_item_id: saleItemId,
-          variant_id: variant.variant_id,
+          sale_item_id: receipt.items[0].id,
+          variant_id: receipt.items[0].variant_id,
           quantity: 1,
         },
       ],
     })
 
-    /*
-     * Original total = 299
-     * Two identical units.
-     * Discount share for one unit = 0.50
-     * Exact return = 149.50
-     * Rounded return = 150
-     */
-    expect(saleReturn.return_value).toBe(150)
-    expect(saleReturn.refundAmount).toBe(150)
-    expect(getCashMovementTotal('out')).toBe(150)
+    expect(firstReturn.return_value).toBe(333)
+    expect(firstReturn.refundAmount).toBe(333)
+
+    const secondReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      reason: 'Second rounded return',
+      items: [
+        {
+          sale_item_id: receipt.items[1].id,
+          variant_id: receipt.items[1].variant_id,
+          quantity: 1,
+        },
+      ],
+    })
+
+    expect(secondReturn.return_value).toBe(332)
+    expect(secondReturn.refundAmount).toBe(332)
+
+    const thirdReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      reason: 'Third rounded return',
+      items: [
+        {
+          sale_item_id: receipt.items[2].id,
+          variant_id: receipt.items[2].variant_id,
+          quantity: 1,
+        },
+      ],
+    })
+
+    expect(thirdReturn.return_value).toBe(285)
+    expect(thirdReturn.refundAmount).toBe(285)
+
+    expect(getCashMovementTotal('out')).toBe(950)
+
+    const rows = getDb()
+      .prepare(
+        `
+      SELECT refund_amount
+      FROM sale_returns
+      WHERE original_sale_id = ?
+        AND cancelled_at IS NULL
+      ORDER BY id ASC
+      `,
+      )
+      .all(sale.saleId) as Array<{
+      refund_amount: number
+    }>
+
+    expect(rows.map((row) => Number(row.refund_amount))).toEqual([
+      333, 332, 285,
+    ])
+
+    expect(
+      rows.every((row) => Number.isInteger(Number(row.refund_amount))),
+    ).toBe(true)
+  })
+
+  it('blocks return when customer debt contains fractional pounds', () => {
+    const variant = seedProduct()
+    const customerId = createTestCustomer()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customerId,
+      sub_total: 100.5,
+      discount_value: 0,
+      grand_total: 100.5,
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 50,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 100.5,
+        },
+      ],
+    })
+
+    expect(sale.remaining_amount).toBe(50.5)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    expect(() =>
+      createSaleReturn({
+        original_sale_id: sale.saleId,
+        user_id: 1,
+        items: [
+          {
+            sale_item_id: receipt.items[0].id,
+            variant_id: receipt.items[0].variant_id,
+            quantity: 1,
+          },
+        ],
+      }),
+    ).toThrow('مديونية الفاتورة تحتوي على كسور')
   })
 
   it('calculates sale return value proportionally when original sale has loyalty discount', () => {
@@ -1476,8 +1588,6 @@ describe('sales repository', () => {
     const receipt = getSaleReceipt(sale.saleId) as any
 
     expect(receipt.sale.promotion_discount_value).toBe(37.5)
-
-    expect(receipt.items[0].promotion_discount_value).toBe(37.5)
 
     expect(receipt.items[0].promotion_discount_value).toBe(37.5)
 

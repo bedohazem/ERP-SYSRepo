@@ -727,7 +727,10 @@ export default function InvoicesPage() {
 
   async function openReturnPopup(saleId: number) {
     try {
-      const receipt = await window.api.getSaleReceipt(saleId)
+      const [receipt, currentState] = await Promise.all([
+        window.api.getSaleReceipt(saleId),
+        window.api.getSaleCurrentState(saleId),
+      ])
 
       let exchangeState: any | null = null
 
@@ -757,7 +760,10 @@ export default function InvoicesPage() {
 
       const draftItems = buildReturnDraftItems(receipt, exchangeState)
 
-      setReturnReceipt(receipt)
+      setReturnReceipt({
+        ...receipt,
+        financials: currentState.financials,
+      })
 
       setReturnReason('')
 
@@ -834,6 +840,19 @@ export default function InvoicesPage() {
 
     if (selectedItems.length === 0) {
       setMessage('اختار كمية مرتجع أولا')
+      return
+    }
+
+    const remainingAmount = Math.max(
+      0,
+      roundMoney(Number(returnReceipt.sale.remaining_amount || 0)),
+    )
+
+    if (
+      returnReceipt.sale.customer_id &&
+      Math.abs(remainingAmount - Math.round(remainingAmount)) > 0.001
+    ) {
+      setMessage('مديونية الفاتورة تحتوي على كسور ويجب تسويتها قبل عمل المرتجع')
       return
     }
 
@@ -1041,38 +1060,18 @@ export default function InvoicesPage() {
 
   const returnGrossTotal = roundMoney(
     returnItems.reduce(
-      (sum, item) => sum + item.return_quantity * item.unit_price,
+      (sum, item) =>
+        sum + Number(item.return_quantity || 0) * Number(item.unit_price || 0),
       0,
     ),
   )
 
   const previousReturnGrossTotal = roundMoney(
-    returnItems.reduce(
-      (sum, item) => sum + item.returned_quantity * item.unit_price,
-      0,
-    ),
+    Number(returnReceipt?.financials?.returned_sub_total || 0),
   )
 
   const previousPromotionDiscount = roundMoney(
-    returnItems.reduce((sum, item) => {
-      const soldQty = Math.max(0, Number(item.sold_quantity || 0))
-
-      if (soldQty <= 0) {
-        return sum
-      }
-
-      const returnedQty = Math.min(
-        soldQty,
-        Math.max(0, Number(item.returned_quantity || 0)),
-      )
-
-      const originalItemPromotion = Math.max(
-        0,
-        Number(item.promotion_discount_value || 0),
-      )
-
-      return sum + roundMoney(originalItemPromotion * (returnedQty / soldQty))
-    }, 0),
+    Number(returnReceipt?.financials?.returned_promotion_discount || 0),
   )
 
   const returnPromotionDiscountShare = roundMoney(
@@ -1110,106 +1109,132 @@ export default function InvoicesPage() {
     }, 0),
   )
 
-  const originalSaleSubTotal = Number(returnReceipt?.sale?.sub_total || 0)
-
-  const originalPromotionDiscount = Math.max(
-    0,
-    Number(returnReceipt?.sale?.promotion_discount_value || 0),
+  const currentInvoiceSubTotal = Number(
+    returnReceipt?.financials?.current_sub_total ??
+      returnReceipt?.sale?.sub_total ??
+      0,
   )
 
-  const originalAfterPromotion = Math.max(
+  const currentPromotionDiscount = Math.max(
     0,
-    originalSaleSubTotal - originalPromotionDiscount,
+    Number(
+      returnReceipt?.financials?.current_promotion_discount_value ??
+        returnReceipt?.sale?.promotion_discount_value ??
+        0,
+    ),
+  )
+
+  const currentInvoiceAfterPromotion = Math.max(
+    0,
+    roundMoney(currentInvoiceSubTotal - currentPromotionDiscount),
   )
 
   const previousAfterPromotion = Math.max(
     0,
-    previousReturnGrossTotal - previousPromotionDiscount,
+    roundMoney(previousReturnGrossTotal - previousPromotionDiscount),
   )
 
   const returnAfterPromotion = Math.max(
     0,
-    returnGrossTotal - returnPromotionDiscountShare,
+    roundMoney(returnGrossTotal - returnPromotionDiscountShare),
   )
 
-  const cumulativeAfterPromotion = previousAfterPromotion + returnAfterPromotion
+  const cumulativeAfterPromotion = roundMoney(
+    previousAfterPromotion + returnAfterPromotion,
+  )
 
-  const originalNormalDiscount = Math.max(
+  const currentNormalDiscount = Math.max(
     0,
-    Number(returnReceipt?.sale?.discount_value || 0),
+    Number(
+      returnReceipt?.financials?.current_normal_discount_value ??
+        returnReceipt?.sale?.discount_value ??
+        0,
+    ),
   )
 
-  const previousNormalTarget =
-    originalAfterPromotion > 0
-      ? roundMoney(
-          originalNormalDiscount *
-            Math.min(previousAfterPromotion / originalAfterPromotion, 1),
-        )
-      : 0
+  const previousNormalDiscount = Math.max(
+    0,
+    Number(returnReceipt?.financials?.returned_normal_discount || 0),
+  )
 
-  const cumulativeNormalTarget =
-    originalAfterPromotion > 0
+  const targetNormalDiscount =
+    currentInvoiceAfterPromotion > 0
       ? roundMoney(
-          originalNormalDiscount *
-            Math.min(cumulativeAfterPromotion / originalAfterPromotion, 1),
+          currentNormalDiscount *
+            Math.min(
+              cumulativeAfterPromotion / currentInvoiceAfterPromotion,
+              1,
+            ),
         )
       : 0
 
   const returnDiscountShare = Math.max(
     0,
-    roundMoney(cumulativeNormalTarget - previousNormalTarget),
+    roundMoney(targetNormalDiscount - previousNormalDiscount),
   )
 
-  const currentBeforeLoyalty = Math.max(
+  const invoiceBeforeLoyalty = Math.max(
     0,
-    returnAfterPromotion - returnDiscountShare,
+    roundMoney(currentInvoiceAfterPromotion - currentNormalDiscount),
   )
 
-  const originalBeforeLoyalty = Math.max(
+  const cumulativeBeforeLoyalty = Math.max(
     0,
-    originalAfterPromotion - originalNormalDiscount,
+    roundMoney(cumulativeAfterPromotion - targetNormalDiscount),
   )
 
-  const previousBeforeLoyalty = Math.max(
+  const currentLoyaltyDiscount = Math.max(
     0,
-    previousAfterPromotion - previousNormalTarget,
+    Number(
+      returnReceipt?.financials?.current_loyalty_discount_value ??
+        returnReceipt?.sale?.loyalty_discount_value ??
+        0,
+    ),
   )
 
-  const cumulativeBeforeLoyalty = previousBeforeLoyalty + currentBeforeLoyalty
-
-  const originalLoyaltyDiscount = Math.max(
+  const previousLoyaltyDiscount = Math.max(
     0,
-    Number(returnReceipt?.sale?.loyalty_discount_value || 0),
+    Number(returnReceipt?.financials?.returned_loyalty_discount || 0),
   )
 
-  const previousLoyaltyTarget =
-    originalBeforeLoyalty > 0
+  const targetLoyaltyDiscount =
+    invoiceBeforeLoyalty > 0
       ? roundMoney(
-          originalLoyaltyDiscount *
-            Math.min(previousBeforeLoyalty / originalBeforeLoyalty, 1),
-        )
-      : 0
-
-  const cumulativeLoyaltyTarget =
-    originalBeforeLoyalty > 0
-      ? roundMoney(
-          originalLoyaltyDiscount *
-            Math.min(cumulativeBeforeLoyalty / originalBeforeLoyalty, 1),
+          currentLoyaltyDiscount *
+            Math.min(cumulativeBeforeLoyalty / invoiceBeforeLoyalty, 1),
         )
       : 0
 
   const returnLoyaltyDiscountShare = Math.max(
     0,
-    roundMoney(cumulativeLoyaltyTarget - previousLoyaltyTarget),
+    roundMoney(targetLoyaltyDiscount - previousLoyaltyDiscount),
   )
 
-  const returnTotal = Math.max(
+  const cumulativeExactReturnValue = Math.max(
     0,
-    roundMoney(currentBeforeLoyalty - returnLoyaltyDiscountShare),
+    roundMoney(cumulativeBeforeLoyalty - targetLoyaltyDiscount),
   )
+
+  const previousReturnedValue = Math.max(
+    0,
+    Number(returnReceipt?.financials?.total_return_value || 0),
+  )
+
+  const exactIncrementalReturnValue = roundMoney(
+    cumulativeExactReturnValue - previousReturnedValue,
+  )
+
+  const returnTotal = Math.max(0, Math.round(exactIncrementalReturnValue))
+
+  const rawReturnRemainingAmount = Math.max(
+    0,
+    Number(returnReceipt?.sale?.remaining_amount || 0),
+  )
+
+  const roundedReturnRemainingAmount = Math.round(rawReturnRemainingAmount)
 
   const returnDebtReduction = returnReceipt?.sale?.customer_id
-    ? Math.min(returnTotal, Number(returnReceipt?.sale?.remaining_amount || 0))
+    ? Math.min(returnTotal, roundedReturnRemainingAmount)
     : 0
 
   const returnCashRefund = Math.max(0, returnTotal - returnDebtReduction)
