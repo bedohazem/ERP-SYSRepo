@@ -399,7 +399,11 @@ export default function ReportsPage() {
           />
         </div>
 
-        <DailySalesBars rows={data.dailySales} />
+        <DailySalesBars
+          rows={[...data.dailySales].sort((a, b) =>
+            String(b.day).localeCompare(String(a.day)),
+          )}
+        />
       </div>
     </div>
   )
