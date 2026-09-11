@@ -13,6 +13,7 @@ export type ActivityLogFilter = {
   action?: string
   actions?: string[]
   entity?: string
+  entities?: string[]
   user_id?: number | null
   date_from?: string
   date_to?: string
@@ -95,7 +96,23 @@ export function listActivityLogs(input?: ActivityLogFilter) {
     params.push(input.action)
   }
 
-  if (input?.entity && input.entity !== 'all') {
+  const selectedEntities = Array.from(
+    new Set(
+      Array.isArray(input?.entities)
+        ? input.entities
+            .map((value) => String(value || '').trim())
+            .filter((value) => Boolean(value) && value !== 'all')
+        : [],
+    ),
+  )
+
+  if (selectedEntities.length > 0) {
+    const placeholders = selectedEntities.map(() => '?').join(', ')
+
+    where.push(`al.entity IN (${placeholders})`)
+
+    params.push(...selectedEntities)
+  } else if (input?.entity && input.entity !== 'all') {
     where.push(`al.entity = ?`)
     params.push(input.entity)
   }

@@ -6,7 +6,7 @@ import {
   getPaymentMethodLabel,
 } from '../../utils/payment-method'
 import FinancialCancelModal from '../../components/FinancialCancelModal'
-
+import MultiSelectFilter from '../../components/MultiSelectFilter'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 
 type CashSummary = {
@@ -56,6 +56,42 @@ type CashDayClosePreview = {
     total: number
   }>
 }
+
+const CASH_TYPE_FILTER_OPTIONS = [
+  { value: 'sale', label: 'بيع' },
+  {
+    value: 'sale_return',
+    label: 'مرتجع بيع',
+  },
+  {
+    value: 'purchase_return',
+    label: 'مرتجع شراء',
+  },
+  {
+    value: 'customer_payment',
+    label: 'دفعة عميل',
+  },
+  {
+    value: 'supplier_payment',
+    label: 'دفعة مورد',
+  },
+  { value: 'expense', label: 'مصروف' },
+  { value: 'deposit', label: 'إيداع' },
+  { value: 'withdraw', label: 'سحب' },
+  {
+    value: 'liability_payment',
+    label: 'دفعة التزام',
+  },
+  {
+    value: 'transfer',
+    label: 'تحويل داخلي',
+  },
+]
+
+const CASH_DIRECTION_FILTER_OPTIONS = [
+  { value: 'in', label: 'داخل' },
+  { value: 'out', label: 'خارج' },
+]
 
 export default function CashPage() {
   const currentUser = useAuthStore((s) => s.user)
@@ -137,11 +173,11 @@ export default function CashPage() {
 
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [filterType, setFilterType] = useState('all')
-  const [filterDirection, setFilterDirection] = useState<'all' | 'in' | 'out'>(
-    'all',
-  )
-  const [filterPaymentMethod, setFilterPaymentMethod] = useState('all')
+  const [filterTypes, setFilterTypes] = useState<string[]>([])
+
+  const [filterDirections, setFilterDirections] = useState<string[]>([])
+
+  const [filterPaymentMethods, setFilterPaymentMethods] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [manualModalOpen, setManualModalOpen] = useState(false)
   const [dayCloseModalOpen, setDayCloseModalOpen] = useState(false)
@@ -210,9 +246,12 @@ export default function CashPage() {
     const filters = {
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
-      type: filterType,
-      direction: filterDirection,
-      payment_method: filterPaymentMethod,
+      types: filterTypes.length > 0 ? filterTypes : undefined,
+
+      directions: filterDirections.length > 0 ? filterDirections : undefined,
+
+      payment_methods:
+        filterPaymentMethods.length > 0 ? filterPaymentMethods : undefined,
       search: search || undefined,
     }
 
@@ -789,34 +828,50 @@ export default function CashPage() {
     }
   }
 
-  function openWithdrawSelectedAccountBalance() {
-    if (filterPaymentMethod === 'all') {
-      showMessage('error', 'اختار حساب مالي من الفلتر الأول عشان تسحب رصيده')
-      return
-    }
+  // function openWithdrawSelectedAccountBalance() {
+  //   if (filterPaymentMethods.length === 0) {
+  //     showMessage('error', 'اختار حساب مالي واحد عشان تسحب رصيده')
 
-    const selectedAccount = accountBalances.find(
-      (account) => account.value === filterPaymentMethod,
-    )
+  //     return
+  //   }
 
-    const balance = Number(selectedAccount?.balance || 0)
+  //   if (filterPaymentMethods.length > 1) {
+  //     showMessage('error', 'اختار حساب مالي واحد فقط عشان تسحب رصيده')
 
-    if (balance <= 0) {
-      showMessage(
-        'error',
-        `لا يوجد رصيد متاح في ${selectedAccount?.label || getPaymentMethodLabel(filterPaymentMethod)}`,
-      )
-      return
-    }
+  //     return
+  //   }
 
-    setMovementType('withdraw')
-    setPaymentMethod(filterPaymentMethod)
-    setAmount(balance.toFixed(2))
-    setNotes(
-      `سحب رصيد ${selectedAccount?.label || getPaymentMethodLabel(filterPaymentMethod)}`,
-    )
-    setManualModalOpen(true)
-  }
+  //   const selectedPaymentMethod = filterPaymentMethods[0]
+
+  //   const selectedAccount = accountBalances.find(
+  //     (account) => account.value === selectedPaymentMethod,
+  //   )
+
+  //   const balance = Number(selectedAccount?.balance || 0)
+
+  //   if (balance <= 0) {
+  //     showMessage(
+  //       'error',
+  //       `لا يوجد رصيد متاح في ${
+  //         selectedAccount?.label || getPaymentMethodLabel(selectedPaymentMethod)
+  //       }`,
+  //     )
+
+  //     return
+  //   }
+
+  //   setMovementType('withdraw')
+  //   setPaymentMethod(selectedPaymentMethod)
+  //   setAmount(balance.toFixed(2))
+
+  //   setNotes(
+  //     `سحب رصيد ${
+  //       selectedAccount?.label || getPaymentMethodLabel(selectedPaymentMethod)
+  //     }`,
+  //   )
+
+  //   setManualModalOpen(true)
+  // }
 
   function handleCreateMovement() {
     void saveCashMovement()
@@ -893,9 +948,14 @@ export default function CashPage() {
     const baseFilters = {
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
-      type: filterType,
-      direction: filterDirection,
-      payment_method: filterPaymentMethod,
+
+      types: filterTypes.length > 0 ? filterTypes : undefined,
+
+      directions: filterDirections.length > 0 ? filterDirections : undefined,
+
+      payment_methods:
+        filterPaymentMethods.length > 0 ? filterPaymentMethods : undefined,
+
       search: search || undefined,
     }
 
@@ -947,12 +1007,22 @@ export default function CashPage() {
     const filtersText = [
       dateFrom ? `من تاريخ: ${dateFrom}` : null,
       dateTo ? `إلى تاريخ: ${dateTo}` : null,
-      filterType !== 'all' ? `نوع العملية: ${getTypeLabel(filterType)}` : null,
-      filterDirection !== 'all'
-        ? `الاتجاه: ${filterDirection === 'in' ? 'داخل' : 'خارج'}`
+      filterTypes.length > 0
+        ? `نوع العملية: ${filterTypes
+            .map((item) => getTypeLabel(item))
+            .join('، ')}`
         : null,
-      filterPaymentMethod !== 'all'
-        ? `الحساب المالي: ${getPaymentMethodLabel(filterPaymentMethod)}`
+
+      filterDirections.length > 0
+        ? `الاتجاه: ${filterDirections
+            .map((item) => (item === 'in' ? 'داخل' : 'خارج'))
+            .join('، ')}`
+        : null,
+
+      filterPaymentMethods.length > 0
+        ? `الحساب المالي: ${filterPaymentMethods
+            .map((item) => getPaymentMethodLabel(item))
+            .join('، ')}`
         : null,
       search.trim() ? `بحث: ${search.trim()}` : null,
     ].filter(Boolean)
@@ -1404,7 +1474,7 @@ export default function CashPage() {
           >
             + حركة يدوية
           </button>
-          <button
+          {/* <button
             type="button"
             onClick={openWithdrawSelectedAccountBalance}
             style={{
@@ -1420,7 +1490,7 @@ export default function CashPage() {
             }}
           >
             سحب رصيد الحساب
-          </button>
+          </button> */}
         </div>
       </div>
 
@@ -1434,6 +1504,10 @@ export default function CashPage() {
           gap: '8px',
           alignItems: 'end',
           minHeight: '52px',
+
+          position: 'relative',
+          zIndex: 50,
+          overflow: 'visible',
         }}
       >
         <Field label="من">
@@ -1454,54 +1528,41 @@ export default function CashPage() {
           />
         </Field>
 
-        <Field label="النوع">
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            style={{ ...inputStyle, height: '36px' }}
-          >
-            <option value="all">الكل</option>
-            <option value="sale">بيع</option>
-            <option value="sale_return">مرتجع بيع</option>
-            <option value="purchase_return">مرتجع شراء</option>
-            <option value="customer_payment">دفعة عميل</option>
-            <option value="supplier_payment">دفعة مورد</option>
-            <option value="expense">مصروف</option>
-            <option value="deposit">إيداع</option>
-            <option value="withdraw">سحب</option>
-            <option value="liability_payment">دفعة التزام</option>
-            <option value="transfer">تحويل داخلي</option>
-          </select>
-        </Field>
+        <MultiSelectFilter
+          label="النوع"
+          allLabel="كل الأنواع"
+          options={CASH_TYPE_FILTER_OPTIONS}
+          selected={filterTypes}
+          onChange={setFilterTypes}
+          controlStyle={{
+            ...inputStyle,
+            height: '36px',
+          }}
+        />
 
-        <Field label="الاتجاه">
-          <select
-            value={filterDirection}
-            onChange={(e) =>
-              setFilterDirection(e.target.value as 'all' | 'in' | 'out')
-            }
-            style={{ ...inputStyle, height: '36px' }}
-          >
-            <option value="all">الكل</option>
-            <option value="in">داخل</option>
-            <option value="out">خارج</option>
-          </select>
-        </Field>
+        <MultiSelectFilter
+          label="الاتجاه"
+          allLabel="كل الاتجاهات"
+          options={CASH_DIRECTION_FILTER_OPTIONS}
+          selected={filterDirections}
+          onChange={setFilterDirections}
+          controlStyle={{
+            ...inputStyle,
+            height: '36px',
+          }}
+        />
 
-        <Field label="الحساب">
-          <select
-            value={filterPaymentMethod}
-            onChange={(e) => setFilterPaymentMethod(e.target.value)}
-            style={{ ...inputStyle, height: '36px' }}
-          >
-            <option value="all">كل الحسابات</option>
-            {CASH_ACCOUNT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </Field>
+        <MultiSelectFilter
+          label="الحساب"
+          allLabel="كل الحسابات"
+          options={CASH_ACCOUNT_OPTIONS}
+          selected={filterPaymentMethods}
+          onChange={setFilterPaymentMethods}
+          controlStyle={{
+            ...inputStyle,
+            height: '36px',
+          }}
+        />
 
         <Field label="بحث">
           <input
@@ -1529,9 +1590,9 @@ export default function CashPage() {
             onClick={() => {
               setDateFrom('')
               setDateTo('')
-              setFilterType('all')
-              setFilterDirection('all')
-              setFilterPaymentMethod('all')
+              setFilterTypes([])
+              setFilterDirections([])
+              setFilterPaymentMethods([])
               setSearch('')
               setMovementsPage(1)
               setTimeout(() => void loadData(1), 0)

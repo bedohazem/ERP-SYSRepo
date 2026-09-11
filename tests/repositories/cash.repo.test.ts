@@ -206,6 +206,70 @@ describe('cash repository', () => {
     expect(cardRows[0].payment_method).toBe('fawry_machine')
   })
 
+  it('filters cash movements by multiple types directions and accounts', () => {
+    createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 500,
+      payment_method: 'cash',
+      notes: 'Store deposit',
+      created_by: 1,
+    })
+
+    createCashMovement({
+      type: 'expense',
+      direction: 'out',
+      amount: 100,
+      payment_method: 'cash',
+      notes: 'Store expense',
+      created_by: 1,
+    })
+
+    createCashMovement({
+      type: 'customer_payment',
+      direction: 'in',
+      amount: 200,
+      payment_method: 'card',
+      notes: 'Fawry payment',
+      created_by: 1,
+    })
+
+    createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 300,
+      payment_method: 'bank',
+      notes: 'Bank deposit',
+      created_by: 1,
+    })
+
+    const result = listCashMovements({
+      types: ['deposit', 'expense'],
+      directions: ['in'],
+      payment_methods: ['store_cash', 'owner_bank'],
+    })
+
+    expect(result.total).toBe(2)
+
+    const rows = result.rows as CashMovementTestRow[]
+
+    expect(rows.map((row) => row.notes)).toEqual([
+      'Bank deposit',
+      'Store deposit',
+    ])
+
+    const summary = getCashSummary({
+      types: ['deposit', 'expense'],
+      directions: ['in'],
+      payment_methods: ['store_cash', 'owner_bank'],
+    })
+
+    expect(summary.total_in).toBe(800)
+    expect(summary.total_out).toBe(0)
+    expect(summary.balance).toBe(800)
+    expect(summary.movements_count).toBe(2)
+  })
+
   it('searches cash movements by notes', () => {
     createCashMovement({
       type: 'deposit',

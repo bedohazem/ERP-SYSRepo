@@ -33,9 +33,16 @@ export type CashMovementInput = {
 export type CashFilterInput = {
   date_from?: string
   date_to?: string
+
   type?: string
+  types?: string[]
+
   direction?: 'all' | 'in' | 'out'
+  directions?: string[]
+
   payment_method?: string
+  payment_methods?: string[]
+
   search?: string
   reference_type?: string
   created_by?: number | null
@@ -183,18 +190,66 @@ function buildCashWhere(
     params.push(input.date_to)
   }
 
-  if (input?.type && input.type !== 'all') {
+  const selectedTypes = Array.from(
+    new Set(
+      Array.isArray(input?.types)
+        ? input.types
+            .map((value) => String(value || '').trim())
+            .filter((value) => Boolean(value) && value !== 'all')
+        : [],
+    ),
+  )
+
+  if (selectedTypes.length > 0) {
+    const placeholders = selectedTypes.map(() => '?').join(', ')
+
+    where.push(`cm.type IN (${placeholders})`)
+
+    params.push(...selectedTypes)
+  } else if (input?.type && input.type !== 'all') {
     where.push(`cm.type = ?`)
     params.push(input.type)
   }
 
-  if (input?.direction && input.direction !== 'all') {
+  const selectedDirections = Array.from(
+    new Set(
+      Array.isArray(input?.directions)
+        ? input.directions.filter((value) => value === 'in' || value === 'out')
+        : [],
+    ),
+  )
+
+  if (selectedDirections.length > 0) {
+    const placeholders = selectedDirections.map(() => '?').join(', ')
+
+    where.push(`cm.direction IN (${placeholders})`)
+
+    params.push(...selectedDirections)
+  } else if (input?.direction && input.direction !== 'all') {
     where.push(`cm.direction = ?`)
     params.push(input.direction)
   }
 
-  if (input?.payment_method && input.payment_method !== 'all') {
+  const selectedPaymentMethods = Array.from(
+    new Set(
+      Array.isArray(input?.payment_methods)
+        ? input.payment_methods
+            .map((value) => String(value || '').trim())
+            .filter((value) => Boolean(value) && value !== 'all')
+            .map((value) => resolveCashAccount(value))
+        : [],
+    ),
+  )
+
+  if (selectedPaymentMethods.length > 0) {
+    const placeholders = selectedPaymentMethods.map(() => '?').join(', ')
+
+    where.push(`cm.payment_method IN (${placeholders})`)
+
+    params.push(...selectedPaymentMethods)
+  } else if (input?.payment_method && input.payment_method !== 'all') {
     where.push(`cm.payment_method = ?`)
+
     params.push(resolveCashAccount(input.payment_method))
   }
 

@@ -154,6 +154,45 @@ describe('activity repository', () => {
     ])
   })
 
+  it('filters activity logs by multiple entities', () => {
+    createActivityLog({
+      user_id: 1,
+      action: 'cash_in',
+      entity: 'cash_movements',
+      entity_id: 1,
+      details: 'cash',
+    })
+
+    createActivityLog({
+      user_id: 1,
+      action: 'expense_created',
+      entity: 'expenses',
+      entity_id: 2,
+      details: 'expense',
+    })
+
+    createActivityLog({
+      user_id: 1,
+      action: 'customer_created',
+      entity: 'customers',
+      entity_id: 3,
+      details: 'customer',
+    })
+
+    const result = listActivityLogs({
+      entities: ['cash_movements', 'expenses'],
+    })
+
+    expect(result.total).toBe(2)
+
+    const rows = result.rows as ActivityLogTestRow[]
+
+    expect(rows.map((row) => row.entity)).toEqual([
+      'expenses',
+      'cash_movements',
+    ])
+  })
+
   it('filters activity logs by entity', () => {
     createActivityLog({
       user_id: 1,

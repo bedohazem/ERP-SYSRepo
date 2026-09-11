@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 import { getPaymentMethodLabel } from '../../utils/payment-method'
+import MultiSelectFilter from '../../components/MultiSelectFilter'
 type ActivityFilters = {
   date_from?: string
   date_to?: string
   action?: string
   actions?: string[]
   entity?: string
+  entities?: string[]
   search?: string
   limit?: number
   offset?: number
@@ -110,6 +112,44 @@ const ACTIVITY_ACTION_OPTIONS = [
   },
 ]
 
+const ACTIVITY_ENTITY_OPTIONS = [
+  { value: 'sales', label: 'المبيعات' },
+  {
+    value: 'purchase_invoices',
+    label: 'المشتريات',
+  },
+  {
+    value: 'cash_movements',
+    label: 'الخزنة',
+  },
+  { value: 'expenses', label: 'المصروفات' },
+  { value: 'products', label: 'المنتجات' },
+  {
+    value: 'product_variants',
+    label: 'أصناف المنتجات',
+  },
+  {
+    value: 'sale_returns',
+    label: 'مرتجعات البيع',
+  },
+  {
+    value: 'sale_exchanges',
+    label: 'استبدالات البيع',
+  },
+  {
+    value: 'stock_counts',
+    label: 'جلسات الجرد',
+  },
+  { value: 'users', label: 'المستخدمين' },
+  { value: 'suppliers', label: 'الموردين' },
+  { value: 'customers', label: 'العملاء' },
+  {
+    value: 'customer_payment_batches',
+    label: 'دفعات العملاء',
+  },
+  { value: 'settings', label: 'الإعدادات' },
+]
+
 export default function ActivityLogPage() {
   const [logs, setLogs] = useState<ActivityLog[]>([])
   const [total, setTotal] = useState(0)
@@ -134,19 +174,8 @@ export default function ActivityLogPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [actions, setActions] = useState<string[]>([])
-  const [actionMenuOpen, setActionMenuOpen] = useState(false)
-  const [entity, setEntity] = useState('all')
+  const [entities, setEntities] = useState<string[]>([])
   const [search, setSearch] = useState('')
-
-  function toggleAction(value: string) {
-    setActions((current) => {
-      if (current.includes(value)) {
-        return current.filter((item) => item !== value)
-      }
-
-      return [...current, value]
-    })
-  }
 
   function getFilters(targetPage = page): ActivityFilters {
     const safePage = Math.max(1, Number(targetPage || 1))
@@ -155,7 +184,7 @@ export default function ActivityLogPage() {
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
       actions: actions.length > 0 ? actions : undefined,
-      entity,
+      entities: entities.length > 0 ? entities : undefined,
       search: search.trim() || undefined,
       limit: SYSTEM_PAGE_SIZE,
       offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
@@ -195,7 +224,6 @@ export default function ActivityLogPage() {
 
   function clearFilters() {
     const emptyFilters: ActivityFilters = {
-      entity: 'all',
       limit: SYSTEM_PAGE_SIZE,
       offset: 0,
     }
@@ -203,8 +231,7 @@ export default function ActivityLogPage() {
     setDateFrom('')
     setDateTo('')
     setActions([])
-    setActionMenuOpen(false)
-    setEntity('all')
+    setEntities([])
     setSearch('')
 
     setPage(1)
@@ -218,7 +245,7 @@ export default function ActivityLogPage() {
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
       actions: actions.length > 0 ? actions : undefined,
-      entity,
+      entities: entities.length > 0 ? entities : undefined,
       search: search.trim() || undefined,
     }
 
@@ -273,7 +300,9 @@ export default function ActivityLogPage() {
             .map((item) => getActionLabel(item))
             .join('، ')}`
         : null,
-      entity !== 'all' ? `الموديول: ${getEntityLabel(entity)}` : null,
+      entities.length > 0
+        ? `القسم: ${entities.map((item) => getEntityLabel(item)).join('، ')}`
+        : null,
       search.trim() ? `بحث: ${search.trim()}` : null,
     ].filter(Boolean)
 
@@ -470,7 +499,7 @@ export default function ActivityLogPage() {
                     <tr>
                       <th>#</th>
                       <th>العملية</th>
-                      <th>الموديول</th>
+                      <th>القسم</th>
                       <th>رقم المرجع</th>
                       <th>التفاصيل</th>
                       <th>المستخدم</th>
@@ -507,7 +536,6 @@ export default function ActivityLogPage() {
 
   useEffect(() => {
     void loadLogs(1, {
-      entity: 'all',
       limit: SYSTEM_PAGE_SIZE,
       offset: 0,
     })
@@ -570,6 +598,10 @@ export default function ActivityLogPage() {
           display: 'grid',
           gap: '12px',
           minHeight: 0,
+
+          position: 'relative',
+          zIndex: 50,
+          overflow: 'visible',
         }}
       >
         <div
@@ -628,139 +660,29 @@ export default function ActivityLogPage() {
             />
           </Field>
 
-          <div
-            style={{
-              display: 'grid',
-              gap: '8px',
-              position: 'relative',
+          <MultiSelectFilter
+            label="نوع العملية"
+            allLabel="كل العمليات"
+            options={ACTIVITY_ACTION_OPTIONS}
+            selected={actions}
+            onChange={setActions}
+            controlStyle={{
+              ...inputStyle,
+              minHeight: '42px',
             }}
-          >
-            <span
-              style={{
-                color: '#cbd5e1',
-                fontWeight: 800,
-              }}
-            >
-              نوع العملية
-            </span>
+          />
 
-            <button
-              type="button"
-              onClick={() => setActionMenuOpen((current) => !current)}
-              style={{
-                ...inputStyle,
-                cursor: 'pointer',
-                textAlign: 'right',
-                minHeight: '42px',
-              }}
-            >
-              {actions.length === 0
-                ? 'كل العمليات'
-                : actions.length === 1
-                  ? getActionLabel(actions[0])
-                  : `${actions.length} عمليات محددة`}
-            </button>
-
-            {actionMenuOpen && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 'calc(100% + 6px)',
-                  right: 0,
-                  left: 0,
-                  zIndex: 100,
-                  maxHeight: '340px',
-                  overflowY: 'auto',
-                  padding: '10px',
-                  borderRadius: '12px',
-                  background: '#0f172a',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  boxShadow: '0 18px 45px rgba(0,0,0,0.35)',
-                  display: 'grid',
-                  gap: '6px',
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setActions([])}
-                  style={{
-                    ...secondaryButtonStyle,
-                    width: '100%',
-                    textAlign: 'right',
-                    marginBottom: '4px',
-                  }}
-                >
-                  ✓ كل العمليات
-                </button>
-
-                {ACTIVITY_ACTION_OPTIONS.map((option) => {
-                  const checked = actions.includes(option.value)
-
-                  return (
-                    <label
-                      key={option.value}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '9px',
-                        padding: '8px 9px',
-                        borderRadius: '9px',
-                        cursor: 'pointer',
-                        background: checked
-                          ? 'rgba(37,99,235,0.16)'
-                          : 'transparent',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleAction(option.value)}
-                      />
-
-                      <span>{option.label}</span>
-                    </label>
-                  )
-                })}
-
-                <button
-                  type="button"
-                  onClick={() => setActionMenuOpen(false)}
-                  style={{
-                    ...primaryButtonStyle,
-                    width: '100%',
-                    marginTop: '5px',
-                  }}
-                >
-                  تم
-                </button>
-              </div>
-            )}
-          </div>
-
-          <Field label="الموديول">
-            <select
-              value={entity}
-              onChange={(e) => setEntity(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="all">كل الموديولات</option>
-              <option value="sales">المبيعات</option>
-              <option value="purchase_invoices">المشتريات</option>
-              <option value="cash_movements">الخزنة</option>
-              <option value="expenses">المصروفات</option>
-              <option value="products">المنتجات</option>
-              <option value="product_variants">أصناف المنتجات</option>
-              <option value="sale_returns">مرتجعات البيع</option>
-              <option value="sale_exchanges">استبدالات البيع</option>
-              <option value="stock_counts">جلسات الجرد</option>
-              <option value="users">المستخدمين</option>
-              <option value="suppliers">الموردين</option>
-              <option value="customers">العملاء</option>
-
-              <option value="customer_payment_batches">دفعات العملاء</option>
-              <option value="settings">الإعدادات</option>
-            </select>
-          </Field>
+          <MultiSelectFilter
+            label="القسم"
+            allLabel="كل الأقسام"
+            options={ACTIVITY_ENTITY_OPTIONS}
+            selected={entities}
+            onChange={setEntities}
+            controlStyle={{
+              ...inputStyle,
+              minHeight: '42px',
+            }}
+          />
 
           <Field label="بحث">
             <input
@@ -813,6 +735,9 @@ export default function ActivityLogPage() {
           height: '100%',
           minHeight: 0,
           overflow: 'hidden',
+
+          position: 'relative',
+          zIndex: 1,
           display: 'grid',
           gridTemplateRows: 'auto minmax(0, 1fr)',
           gap: '10px',
@@ -848,7 +773,7 @@ export default function ActivityLogPage() {
               <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                 <th style={thStyle}>#</th>
                 <th style={thStyle}>العملية</th>
-                <th style={thStyle}>الموديول</th>
+                <th style={thStyle}>القسم</th>
                 <th style={thStyle}>رقم المرجع</th>
                 <th style={thStyle}>التفاصيل</th>
                 <th style={thStyle}>المستخدم</th>

@@ -987,6 +987,7 @@ declare global {
         action?: string
         actions?: string[]
         entity?: string
+        entities?: string[]
         user_id?: number | null
         date_from?: string
         date_to?: string
@@ -1512,8 +1513,11 @@ declare global {
         date_from?: string
         date_to?: string
         type?: string
+        types?: string[]
         direction?: 'all' | 'in' | 'out'
+        directions?: string[]
         payment_method?: string
+        payment_methods?: string[]
         search?: string
         reference_type?: string
         created_by?: number | null
@@ -1528,8 +1532,11 @@ declare global {
         date_from?: string
         date_to?: string
         type?: string
+        types?: string[]
         direction?: 'all' | 'in' | 'out'
+        directions?: string[]
         payment_method?: string
+        payment_methods?: string[]
         search?: string
         reference_type?: string
         created_by?: number | null
