@@ -64,6 +64,10 @@ const CASH_TYPE_FILTER_OPTIONS = [
     label: 'مرتجع بيع',
   },
   {
+    value: 'sale_exchange',
+    label: 'استبدال بيع',
+  },
+  {
     value: 'purchase_return',
     label: 'مرتجع شراء',
   },
@@ -887,6 +891,8 @@ export default function CashPage() {
         return 'بيع'
       case 'sale_return':
         return 'مرتجع بيع'
+      case 'sale_exchange':
+        return 'استبدال بيع'
       case 'customer_payment':
         return 'دفعة عميل'
       case 'supplier_payment':

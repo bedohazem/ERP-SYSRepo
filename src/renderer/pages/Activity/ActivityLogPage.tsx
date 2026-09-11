@@ -1206,7 +1206,7 @@ function formatUnknownDetails(parsed: Record<string, any>) {
     id: 'المعرف',
     type: 'النوع',
     action: 'العملية',
-    entity: 'الموديول',
+    entity: 'القسم',
     entity_id: 'رقم المرجع',
     customer_id: 'رقم العميل',
     supplier_id: 'رقم المورد',
