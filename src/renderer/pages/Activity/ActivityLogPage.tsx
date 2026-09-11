@@ -5,11 +5,110 @@ type ActivityFilters = {
   date_from?: string
   date_to?: string
   action?: string
+  actions?: string[]
   entity?: string
   search?: string
   limit?: number
   offset?: number
 }
+
+const ACTIVITY_ACTION_OPTIONS = [
+  { value: 'sale_created', label: 'إنشاء فاتورة بيع' },
+  { value: 'sale_return_created', label: 'مرتجع بيع' },
+  { value: 'sale_cancelled', label: 'إلغاء فاتورة بيع' },
+  {
+    value: 'sale_return_cancelled',
+    label: 'إلغاء مرتجع بيع',
+  },
+  {
+    value: 'sale_exchange_created',
+    label: 'إنشاء استبدال',
+  },
+  {
+    value: 'sale_exchange_cancelled',
+    label: 'إلغاء استبدال',
+  },
+
+  { value: 'purchase_created', label: 'إنشاء فاتورة شراء' },
+
+  { value: 'stock_count_created', label: 'إنشاء جرد' },
+  { value: 'stock_count_approved', label: 'اعتماد جرد' },
+  { value: 'stock_count_canceled', label: 'إلغاء جرد' },
+
+  { value: 'cash_in', label: 'دخول خزنة' },
+  { value: 'cash_out', label: 'خروج خزنة' },
+  { value: 'cash_deposit', label: 'إيداع خزنة' },
+  { value: 'cash_withdraw', label: 'سحب خزنة' },
+
+  { value: 'expense_created', label: 'إضافة مصروف' },
+
+  { value: 'product_created', label: 'إضافة منتج' },
+  { value: 'product_updated', label: 'تعديل منتج' },
+  { value: 'product_activated', label: 'تفعيل منتج' },
+  {
+    value: 'product_deactivated',
+    label: 'تعطيل منتج',
+  },
+
+  { value: 'variant_created', label: 'إضافة صنف' },
+  { value: 'variant_updated', label: 'تعديل صنف' },
+  { value: 'variant_activated', label: 'تفعيل صنف' },
+  {
+    value: 'variant_deactivated',
+    label: 'تعطيل صنف',
+  },
+
+  { value: 'user_created', label: 'إضافة مستخدم' },
+  { value: 'user_updated', label: 'تعديل مستخدم' },
+  { value: 'user_activated', label: 'تفعيل مستخدم' },
+  {
+    value: 'user_deactivated',
+    label: 'تعطيل مستخدم',
+  },
+  {
+    value: 'user_password_reset',
+    label: 'تغيير كلمة مرور',
+  },
+
+  { value: 'supplier_created', label: 'إضافة مورد' },
+  { value: 'supplier_updated', label: 'تعديل مورد' },
+  {
+    value: 'supplier_deactivated',
+    label: 'تعطيل مورد',
+  },
+
+  { value: 'customer_created', label: 'إضافة عميل' },
+  { value: 'customer_updated', label: 'تعديل عميل' },
+  {
+    value: 'customer_deactivated',
+    label: 'تعطيل عميل',
+  },
+  {
+    value: 'customer_points_adjusted',
+    label: 'تعديل نقاط عميل',
+  },
+  {
+    value: 'customer_payment_created',
+    label: 'تسجيل دفعة عميل',
+  },
+  {
+    value: 'customer_payment_updated',
+    label: 'تعديل دفعة عميل',
+  },
+  {
+    value: 'customer_payment_cancelled',
+    label: 'إلغاء دفعة عميل',
+  },
+
+  {
+    value: 'database_backup_created',
+    label: 'Backup',
+  },
+  {
+    value: 'database_restored',
+    label: 'Restore',
+  },
+]
 
 export default function ActivityLogPage() {
   const [logs, setLogs] = useState<ActivityLog[]>([])
@@ -34,9 +133,20 @@ export default function ActivityLogPage() {
 
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [action, setAction] = useState('all')
+  const [actions, setActions] = useState<string[]>([])
+  const [actionMenuOpen, setActionMenuOpen] = useState(false)
   const [entity, setEntity] = useState('all')
   const [search, setSearch] = useState('')
+
+  function toggleAction(value: string) {
+    setActions((current) => {
+      if (current.includes(value)) {
+        return current.filter((item) => item !== value)
+      }
+
+      return [...current, value]
+    })
+  }
 
   function getFilters(targetPage = page): ActivityFilters {
     const safePage = Math.max(1, Number(targetPage || 1))
@@ -44,7 +154,7 @@ export default function ActivityLogPage() {
     return {
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
-      action,
+      actions: actions.length > 0 ? actions : undefined,
       entity,
       search: search.trim() || undefined,
       limit: SYSTEM_PAGE_SIZE,
@@ -85,7 +195,6 @@ export default function ActivityLogPage() {
 
   function clearFilters() {
     const emptyFilters: ActivityFilters = {
-      action: 'all',
       entity: 'all',
       limit: SYSTEM_PAGE_SIZE,
       offset: 0,
@@ -93,7 +202,8 @@ export default function ActivityLogPage() {
 
     setDateFrom('')
     setDateTo('')
-    setAction('all')
+    setActions([])
+    setActionMenuOpen(false)
     setEntity('all')
     setSearch('')
 
@@ -107,7 +217,7 @@ export default function ActivityLogPage() {
     const baseFilters = {
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
-      action,
+      actions: actions.length > 0 ? actions : undefined,
       entity,
       search: search.trim() || undefined,
     }
@@ -158,7 +268,11 @@ export default function ActivityLogPage() {
     const filtersText = [
       dateFrom ? `من تاريخ: ${dateFrom}` : null,
       dateTo ? `إلى تاريخ: ${dateTo}` : null,
-      action !== 'all' ? `نوع العملية: ${getActionLabel(action)}` : null,
+      actions.length > 0
+        ? `نوع العملية: ${actions
+            .map((item) => getActionLabel(item))
+            .join('، ')}`
+        : null,
       entity !== 'all' ? `الموديول: ${getEntityLabel(entity)}` : null,
       search.trim() ? `بحث: ${search.trim()}` : null,
     ].filter(Boolean)
@@ -393,7 +507,6 @@ export default function ActivityLogPage() {
 
   useEffect(() => {
     void loadLogs(1, {
-      action: 'all',
       entity: 'all',
       limit: SYSTEM_PAGE_SIZE,
       offset: 0,
@@ -515,73 +628,114 @@ export default function ActivityLogPage() {
             />
           </Field>
 
-          <Field label="نوع العملية">
-            <select
-              value={action}
-              onChange={(e) => setAction(e.target.value)}
-              style={inputStyle}
+          <div
+            style={{
+              display: 'grid',
+              gap: '8px',
+              position: 'relative',
+            }}
+          >
+            <span
+              style={{
+                color: '#cbd5e1',
+                fontWeight: 800,
+              }}
             >
-              <option value="all">كل العمليات</option>
+              نوع العملية
+            </span>
 
-              <option value="sale_created">إنشاء فاتورة بيع</option>
-              <option value="sale_return_created">مرتجع بيع</option>
-              <option value="sale_cancelled">إلغاء فاتورة بيع</option>
-              <option value="sale_return_cancelled">إلغاء مرتجع بيع</option>
-              <option value="sale_exchange_created">إنشاء استبدال</option>
-              <option value="sale_exchange_cancelled">إلغاء استبدال</option>
+            <button
+              type="button"
+              onClick={() => setActionMenuOpen((current) => !current)}
+              style={{
+                ...inputStyle,
+                cursor: 'pointer',
+                textAlign: 'right',
+                minHeight: '42px',
+              }}
+            >
+              {actions.length === 0
+                ? 'كل العمليات'
+                : actions.length === 1
+                  ? getActionLabel(actions[0])
+                  : `${actions.length} عمليات محددة`}
+            </button>
 
-              <option value="purchase_created">إنشاء فاتورة شراء</option>
+            {actionMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  right: 0,
+                  left: 0,
+                  zIndex: 100,
+                  maxHeight: '340px',
+                  overflowY: 'auto',
+                  padding: '10px',
+                  borderRadius: '12px',
+                  background: '#0f172a',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  boxShadow: '0 18px 45px rgba(0,0,0,0.35)',
+                  display: 'grid',
+                  gap: '6px',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setActions([])}
+                  style={{
+                    ...secondaryButtonStyle,
+                    width: '100%',
+                    textAlign: 'right',
+                    marginBottom: '4px',
+                  }}
+                >
+                  ✓ كل العمليات
+                </button>
 
-              <option value="stock_count_created">إنشاء جرد</option>
-              <option value="stock_count_approved">اعتماد جرد</option>
-              <option value="stock_count_canceled">إلغاء جرد</option>
+                {ACTIVITY_ACTION_OPTIONS.map((option) => {
+                  const checked = actions.includes(option.value)
 
-              <option value="cash_in">دخول خزنة</option>
-              <option value="cash_out">خروج خزنة</option>
-              <option value="cash_deposit">إيداع خزنة</option>
-              <option value="cash_withdraw">سحب خزنة</option>
+                  return (
+                    <label
+                      key={option.value}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '9px',
+                        padding: '8px 9px',
+                        borderRadius: '9px',
+                        cursor: 'pointer',
+                        background: checked
+                          ? 'rgba(37,99,235,0.16)'
+                          : 'transparent',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleAction(option.value)}
+                      />
 
-              <option value="expense_created">إضافة مصروف</option>
+                      <span>{option.label}</span>
+                    </label>
+                  )
+                })}
 
-              <option value="product_created">إضافة منتج</option>
-              <option value="product_updated">تعديل منتج</option>
-              <option value="product_activated">تفعيل منتج</option>
-              <option value="product_deactivated">تعطيل منتج</option>
-              <option value="variant_updated">تعديل صنف</option>
-              <option value="variant_created">إضافة صنف</option>
-              <option value="variant_activated">تفعيل صنف</option>
-              <option value="variant_deactivated">تعطيل صنف</option>
-
-              <option value="user_created">إضافة مستخدم</option>
-              <option value="user_updated">تعديل مستخدم</option>
-              <option value="user_activated">تفعيل مستخدم</option>
-              <option value="user_deactivated">تعطيل مستخدم</option>
-              <option value="user_password_reset">تغيير كلمة مرور</option>
-
-              <option value="supplier_created">إضافة مورد</option>
-              <option value="supplier_updated">تعديل مورد</option>
-              <option value="supplier_deactivated">تعطيل مورد</option>
-
-              <option value="customer_created">إضافة عميل</option>
-
-              <option value="customer_updated">تعديل عميل</option>
-
-              <option value="customer_deactivated">تعطيل عميل</option>
-
-              <option value="customer_points_adjusted">تعديل نقاط عميل</option>
-
-              <option value="customer_payment_created">تسجيل دفعة عميل</option>
-
-              <option value="customer_payment_updated">تعديل دفعة عميل</option>
-
-              <option value="customer_payment_cancelled">
-                إلغاء دفعة عميل
-              </option>
-
-              <option value="database_backup_created">Backup</option>
-              <option value="database_restored">Restore</option>
-            </select>
-          </Field>
+                <button
+                  type="button"
+                  onClick={() => setActionMenuOpen(false)}
+                  style={{
+                    ...primaryButtonStyle,
+                    width: '100%',
+                    marginTop: '5px',
+                  }}
+                >
+                  تم
+                </button>
+              </div>
+            )}
+          </div>
 
           <Field label="الموديول">
             <select

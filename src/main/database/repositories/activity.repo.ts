@@ -11,6 +11,7 @@ export type ActivityLogInput = {
 export type ActivityLogFilter = {
   search?: string
   action?: string
+  actions?: string[]
   entity?: string
   user_id?: number | null
   date_from?: string
@@ -73,7 +74,23 @@ export function listActivityLogs(input?: ActivityLogFilter) {
     params.push(`${input.date_to} 23:59:59`)
   }
 
-  if (input?.action && input.action !== 'all') {
+  const selectedActions = Array.from(
+    new Set(
+      Array.isArray(input?.actions)
+        ? input.actions
+            .map((value) => String(value || '').trim())
+            .filter((value) => Boolean(value) && value !== 'all')
+        : [],
+    ),
+  )
+
+  if (selectedActions.length > 0) {
+    const placeholders = selectedActions.map(() => '?').join(', ')
+
+    where.push(`al.action IN (${placeholders})`)
+
+    params.push(...selectedActions)
+  } else if (input?.action && input.action !== 'all') {
     where.push(`al.action = ?`)
     params.push(input.action)
   }

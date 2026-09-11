@@ -985,6 +985,7 @@ declare global {
       getActivityLogs: (input?: {
         search?: string
         action?: string
+        actions?: string[]
         entity?: string
         user_id?: number | null
         date_from?: string

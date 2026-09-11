@@ -115,6 +115,45 @@ describe('activity repository', () => {
     expect(logs[0].action).toBe('cash_in')
   })
 
+  it('filters activity logs by multiple actions', () => {
+    createActivityLog({
+      user_id: 1,
+      action: 'cash_in',
+      entity: 'cash_movements',
+      entity_id: 1,
+      details: 'cash in',
+    })
+
+    createActivityLog({
+      user_id: 1,
+      action: 'cash_out',
+      entity: 'cash_movements',
+      entity_id: 2,
+      details: 'cash out',
+    })
+
+    createActivityLog({
+      user_id: 1,
+      action: 'expense_created',
+      entity: 'expenses',
+      entity_id: 3,
+      details: 'expense',
+    })
+
+    const result = listActivityLogs({
+      actions: ['cash_in', 'expense_created'],
+    })
+
+    expect(result.total).toBe(2)
+
+    const rows = result.rows as ActivityLogTestRow[]
+
+    expect(rows.map((row) => row.action)).toEqual([
+      'expense_created',
+      'cash_in',
+    ])
+  })
+
   it('filters activity logs by entity', () => {
     createActivityLog({
       user_id: 1,
