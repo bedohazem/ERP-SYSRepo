@@ -12,6 +12,7 @@ function roundMoney(value: number) {
 }
 
 export type CreatePurchaseInput = {
+  actor_id?: number | null
   supplier_id: number
   paid_amount?: number
   sub_total?: number
@@ -416,7 +417,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         reference_id: purchaseId,
         reference_type: 'purchase_invoice',
         notes: `دفع فاتورة شراء رقم ${purchaseId}`,
-        created_by: (input as any).actor_id ?? null,
+        created_by: input.actor_id ?? null,
       })
     }
 

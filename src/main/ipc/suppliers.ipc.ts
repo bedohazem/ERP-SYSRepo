@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { getActorId, logAction } from './activity-helper'
+import { logAction } from './activity-helper'
 import {
   createSupplier,
   deleteSupplier,
@@ -8,7 +8,10 @@ import {
   listSuppliers,
   updateSupplier,
 } from '../database/repositories/suppliers.repo'
-import { requireAuthenticatedAdmin } from '../auth-session'
+import {
+  requireAuthenticatedAdmin,
+  requireAuthenticatedUser,
+} from '../auth-session'
 
 export function registerSuppliersIpc(): void {
   ipcMain.handle('suppliers:list', (_, search?: string) => {
@@ -23,11 +26,13 @@ export function registerSuppliersIpc(): void {
     return getSupplierById(Number(id))
   })
 
-  ipcMain.handle('suppliers:create', (_, input) => {
+  ipcMain.handle('suppliers:create', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
     const supplier = createSupplier(input)
 
     logAction({
-      actor_id: getActorId(input),
+      actor_id: actorId,
       action: 'supplier_created',
       entity: 'suppliers',
       entity_id: (supplier as any)?.id ?? null,
@@ -39,12 +44,13 @@ export function registerSuppliersIpc(): void {
 
     return supplier
   })
-
-  ipcMain.handle('suppliers:update', (_, input) => {
+  
+  ipcMain.handle('suppliers:update', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
     const supplier = updateSupplier(input)
 
     logAction({
-      actor_id: getActorId(input),
+      actor_id: actorId,
       action: 'supplier_updated',
       entity: 'suppliers',
       entity_id: input.id,

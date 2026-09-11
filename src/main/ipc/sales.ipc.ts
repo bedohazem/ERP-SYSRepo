@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
-import { getActorId, logAction } from './activity-helper'
+import { logAction } from './activity-helper'
+import { requireAuthenticatedUser } from '../auth-session'
 import {
   createSale,
   getSaleReceipt,
@@ -55,11 +56,16 @@ export function registerSalesIpc(): void {
     return getVariantByBarcode(barcode ?? '')
   })
 
-  ipcMain.handle('sales:create', (_, input) => {
-    const result = createSale(input)
+  ipcMain.handle('sales:create', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
+    const result = createSale({
+      ...input,
+      user_id: actorId,
+    })
 
     logAction({
-      actor_id: getActorId(input),
+      actor_id: actorId,
       action: 'sale_created',
       entity: 'sales',
       entity_id: result.saleId,
@@ -91,11 +97,15 @@ export function registerSalesIpc(): void {
     return getSaleExchangeState(Number(saleId))
   })
 
-  ipcMain.handle('sales:exchange', (_, input) => {
-    const result = createSaleExchange(input)
+  ipcMain.handle('sales:exchange', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+    const result = createSaleExchange({
+      ...input,
+      user_id: actorId,
+    })
 
     logAction({
-      actor_id: getActorId(input),
+      actor_id: actorId,
       action: 'sale_exchange_created',
       entity: 'sale_exchanges',
       entity_id: result.exchangeId,
@@ -121,10 +131,10 @@ export function registerSalesIpc(): void {
     return listSaleExchanges(input)
   })
 
-  ipcMain.handle('sales:cancel-exchange', (_, input) => {
-    try {
-      const actorId = getActorId(input)
+  ipcMain.handle('sales:cancel-exchange', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
 
+    try {
       const access = getSaleExchangeCancellationAccess(
         Number(input?.exchange_id),
 
@@ -194,11 +204,15 @@ export function registerSalesIpc(): void {
     return listSaleReturns(input)
   })
 
-  ipcMain.handle('sales:return', (_, input) => {
-    const result = createSaleReturn(input) as any
+  ipcMain.handle('sales:return', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+    const result = createSaleReturn({
+      ...input,
+      user_id: actorId,
+    }) as any
 
     logAction({
-      actor_id: getActorId(input),
+      actor_id: actorId,
       action: 'sale_return_created',
       entity: 'sale_returns',
       entity_id: result.returnId ?? result.returnSaleId,
@@ -214,10 +228,10 @@ export function registerSalesIpc(): void {
     return result
   })
 
-  ipcMain.handle('sales:cancel', (_, input) => {
-    try {
-      const actorId = getActorId(input)
+  ipcMain.handle('sales:cancel', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
 
+    try {
       const access = getSaleCancellationAccess(Number(input?.sale_id), actorId)
 
       if (Number(access.user_id || 0) !== Number(actorId || 0)) {
@@ -259,10 +273,10 @@ export function registerSalesIpc(): void {
     }
   })
 
-  ipcMain.handle('sales:cancel-return', (_, input) => {
-    try {
-      const actorId = getActorId(input)
+  ipcMain.handle('sales:cancel-return', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
 
+    try {
       const access = getSaleReturnCancellationAccess(
         Number(input?.return_id),
         actorId,

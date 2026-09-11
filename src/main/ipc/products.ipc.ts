@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
-import { getActorId, logAction } from './activity-helper'
-import { requireAdmin } from './permission-helper'
+import { logAction } from './activity-helper'
+import { requireAuthenticatedAdmin } from '../auth-session'
 import {
   createProduct,
   getCategories,
@@ -29,13 +29,13 @@ export function registerProductsIpc(): void {
     },
   )
 
-  ipcMain.handle('products:create-category', (_, input) => {
+  ipcMain.handle('products:create-category', (event, input) => {
     try {
-      requireAdmin(getActorId(input))
+      const actorId = requireAuthenticatedAdmin(event)
       const result = createCategory(input)
 
       logAction({
-        actor_id: getActorId(input),
+        actor_id: actorId,
         action: 'category_created',
         entity: 'categories',
         entity_id: result.id,
@@ -51,13 +51,13 @@ export function registerProductsIpc(): void {
     }
   })
 
-  ipcMain.handle('products:update-category', (_, input) => {
+  ipcMain.handle('products:update-category', (event, input) => {
     try {
-      requireAdmin(getActorId(input))
+      const actorId = requireAuthenticatedAdmin(event)
       const result = updateCategory(input)
 
       logAction({
-        actor_id: getActorId(input),
+        actor_id: actorId,
         action: 'category_updated',
         entity: 'categories',
         entity_id: input.id,
@@ -75,13 +75,13 @@ export function registerProductsIpc(): void {
 
   ipcMain.handle(
     'products:toggle-category',
-    (_, categoryId: number, isActive: number, actorId?: number) => {
+    (event, categoryId: number, isActive: number, actorId?: number) => {
       try {
-        requireAdmin(actorId)
+        const actorId = requireAuthenticatedAdmin(event)
         const result = toggleCategoryActive(categoryId, isActive)
 
         logAction({
-          actor_id: actorId ?? null,
+          actor_id: actorId,
           action: isActive ? 'category_activated' : 'category_deactivated',
           entity: 'categories',
           entity_id: categoryId,
@@ -130,14 +130,14 @@ export function registerProductsIpc(): void {
     },
   )
 
-  ipcMain.handle('products:create', (_, input) => {
+  ipcMain.handle('products:create', (event, input) => {
     try {
-      requireAdmin(getActorId(input))
+      const actorId = requireAuthenticatedAdmin(event)
 
       const result = createProduct(input)
 
       logAction({
-        actor_id: getActorId(input),
+        actor_id: actorId,
         action: 'product_created',
         entity: 'products',
         entity_id: result.productId,
@@ -156,14 +156,14 @@ export function registerProductsIpc(): void {
     }
   })
 
-  ipcMain.handle('products:add-variant', (_, input) => {
+  ipcMain.handle('products:add-variant', (event, input) => {
     try {
-      requireAdmin(getActorId(input))
+      const actorId = requireAuthenticatedAdmin(event)
 
       const result = addProductVariant(input)
 
       logAction({
-        actor_id: getActorId(input),
+        actor_id: actorId,
         action: 'variant_created',
         entity: 'product_variants',
         entity_id: result.variantId,
@@ -189,14 +189,14 @@ export function registerProductsIpc(): void {
     }
   })
 
-  ipcMain.handle('products:update', (_, input) => {
+  ipcMain.handle('products:update', (event, input) => {
     try {
-      requireAdmin(getActorId(input))
+      const actorId = requireAuthenticatedAdmin(event)
 
       const result = updateProduct(input)
 
       logAction({
-        actor_id: getActorId(input),
+        actor_id: actorId,
         action: 'product_updated',
         entity: 'products',
         entity_id: input.id,
@@ -215,14 +215,14 @@ export function registerProductsIpc(): void {
     }
   })
 
-  ipcMain.handle('products:update-variant', (_, input) => {
+  ipcMain.handle('products:update-variant', (event, input) => {
     try {
-      requireAdmin(getActorId(input))
+      const actorId = requireAuthenticatedAdmin(event)
 
       const result = updateVariant(input)
 
       logAction({
-        actor_id: getActorId(input),
+        actor_id: actorId,
         action: 'variant_updated',
         entity: 'product_variants',
         entity_id: input.id,
@@ -248,14 +248,14 @@ export function registerProductsIpc(): void {
 
   ipcMain.handle(
     'products:toggle-active',
-    (_, productId: number, isActive: number, actorId?: number) => {
+    (event, productId: number, isActive: number, actorId?: number) => {
       try {
-        requireAdmin(actorId)
+        const actorId = requireAuthenticatedAdmin(event)
 
         const result = toggleProductActive(productId, isActive)
 
         logAction({
-          actor_id: actorId ?? null,
+          actor_id: actorId,
           action: isActive ? 'product_activated' : 'product_deactivated',
           entity: 'products',
           entity_id: productId,
@@ -274,14 +274,14 @@ export function registerProductsIpc(): void {
 
   ipcMain.handle(
     'products:toggle-variant-active',
-    (_, variantId: number, isActive: number, actorId?: number) => {
+    (event, variantId: number, isActive: number, actorId?: number) => {
       try {
-        requireAdmin(actorId)
+        const actorId = requireAuthenticatedAdmin(event)
 
         const result = toggleVariantActive(variantId, isActive)
 
         logAction({
-          actor_id: actorId ?? null,
+          actor_id: actorId,
           action: isActive ? 'variant_activated' : 'variant_deactivated',
           entity: 'product_variants',
           entity_id: variantId,

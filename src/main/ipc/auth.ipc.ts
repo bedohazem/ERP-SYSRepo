@@ -14,6 +14,7 @@ import {
   clearAuthSession,
   startAuthSession,
   requireAuthenticatedAdmin,
+  requireAuthenticatedUser,
 } from '../auth-session'
 import { isPasswordHashed, verifyPassword } from '../security/password'
 
@@ -41,12 +42,32 @@ export function registerAuthIpc(): void {
         typeof data?.username !== 'string' ||
         typeof data?.password !== 'string'
       ) {
+        logAction({
+          actor_id: null,
+          action: 'auth_login_failed',
+          entity: 'auth',
+          entity_id: null,
+          details: {
+            username: typeof data?.username === 'string' ? data.username : '',
+            reason: 'بيانات دخول غير مكتملة',
+          },
+        })
         throw new Error('اسم المستخدم وكلمة المرور مطلوبان')
       }
 
       const user = findUserByUsername(data.username)
 
       if (!user) {
+        logAction({
+          actor_id: null,
+          action: 'auth_login_failed',
+          entity: 'auth',
+          entity_id: null,
+          details: {
+            username: data.username,
+            reason: 'المستخدم غير موجود أو غير مفعل',
+          },
+        })
         return {
           success: false,
           message: 'المستخدم غير موجود أو غير مفعل',
@@ -54,6 +75,16 @@ export function registerAuthIpc(): void {
       }
 
       if (!verifyPassword(data.password, user.password)) {
+        logAction({
+          actor_id: null,
+          action: 'auth_login_failed',
+          entity: 'auth',
+          entity_id: null,
+          details: {
+            username: data.username,
+            reason: 'كلمة المرور غير صحيحة',
+          },
+        })
         return {
           success: false,
           message: 'كلمة المرور غير صحيحة',
@@ -65,7 +96,17 @@ export function registerAuthIpc(): void {
       }
 
       startAuthSession(event, user.id)
-
+      logAction({
+        actor_id: user.id,
+        action: 'auth_login_succeeded',
+        entity: 'auth',
+        entity_id: user.id,
+        details: {
+          name: user.name,
+          username: user.username,
+          role: user.role,
+        },
+      })
       return {
         success: true,
         user: {
@@ -81,14 +122,37 @@ export function registerAuthIpc(): void {
   })
 
   ipcMain.handle('auth:logout', (event) => {
+    let actorId: number | null = null
+
     try {
+      actorId = requireAuthenticatedUser(event).id
+    } catch {
+      actorId = null
+    }
+
+    try {
+      if (actorId) {
+        logAction({
+          actor_id: actorId,
+          action: 'auth_logout',
+          entity: 'auth',
+          entity_id: actorId,
+          details: {},
+        })
+      }
+
       clearAuthSession(event)
-      return { success: true }
+
+      return {
+        success: true,
+      }
     } catch (error) {
-      return { success: false, message: getErrorMessage(error) }
+      return {
+        success: false,
+        message: getErrorMessage(error),
+      }
     }
   })
-
   ipcMain.handle(
     'users:list',
     (event, input?: { search?: string; actor_id?: number }) => {

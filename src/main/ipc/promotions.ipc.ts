@@ -9,9 +9,8 @@ import {
   updatePromotion,
 } from '../database/repositories/promotions.repo'
 
-import { getActorId, logAction } from './activity-helper'
-
-import { requireAdmin } from './permission-helper'
+import { logAction } from './activity-helper'
+import { requireAuthenticatedAdmin } from '../auth-session'
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'حدث خطأ غير متوقع'
@@ -30,11 +29,9 @@ export function registerPromotionsIpc(): void {
     return getActivePromotion()
   })
 
-  ipcMain.handle('promotions:create', (_, input) => {
+  ipcMain.handle('promotions:create', (event, input) => {
     try {
-      const actorId = getActorId(input)
-
-      requireAdmin(actorId)
+      const actorId = requireAuthenticatedAdmin(event)
 
       const result = createPromotion({
         ...input,
@@ -69,11 +66,9 @@ export function registerPromotionsIpc(): void {
     }
   })
 
-  ipcMain.handle('promotions:update', (_, input) => {
+  ipcMain.handle('promotions:update', (event, input) => {
     try {
-      const actorId = getActorId(input)
-
-      requireAdmin(actorId)
+      const actorId = requireAuthenticatedAdmin(event)
 
       const result = updatePromotion({
         ...input,
@@ -108,11 +103,9 @@ export function registerPromotionsIpc(): void {
     }
   })
 
-  ipcMain.handle('promotions:toggle', (_, input) => {
+  ipcMain.handle('promotions:toggle', (event, input) => {
     try {
-      const actorId = getActorId(input)
-
-      requireAdmin(actorId)
+      const actorId = requireAuthenticatedAdmin(event)
 
       const result = togglePromotion(Number(input.id), Number(input.is_active))
 

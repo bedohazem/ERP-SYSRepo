@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
-import { getActorId, logAction } from './activity-helper'
+import { logAction } from './activity-helper'
+import { requireAuthenticatedUser } from '../auth-session'
 import {
   createPurchaseInvoice,
   getPurchaseInvoice,
@@ -22,11 +23,16 @@ import {
 } from './permission-helper'
 
 export function registerPurchasesIpc(): void {
-  ipcMain.handle('purchases:create', (_, input) => {
-    const result = createPurchaseInvoice(input)
+  ipcMain.handle('purchases:create', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
+    const result = createPurchaseInvoice({
+      ...input,
+      actor_id: actorId,
+    })
 
     logAction({
-      actor_id: getActorId(input),
+      actor_id: actorId,
       action: 'purchase_created',
       entity: 'purchase_invoices',
       entity_id: result.purchaseId,
@@ -51,16 +57,16 @@ export function registerPurchasesIpc(): void {
     return getPurchaseInvoice(Number(purchaseId))
   })
 
-  ipcMain.handle('purchases:cancel', (_, input) => {
-    requireAdminPassword(getActorId(input), input?.admin_password)
+  ipcMain.handle('purchases:cancel', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
     const result = cancelPurchaseInvoice({
       purchase_id: Number(input.purchase_id),
       reason: input.reason || '',
-      actor_id: getActorId(input),
+      actor_id: actorId,
     })
 
     logAction({
-      actor_id: getActorId(input),
+      actor_id: actorId,
       action: 'purchase_cancelled',
       entity: 'purchase_invoices',
       entity_id: Number(input.purchase_id),
@@ -77,15 +83,17 @@ export function registerPurchasesIpc(): void {
     return result
   })
 
-  ipcMain.handle('purchases:returns:create', (_, input) => {
+  ipcMain.handle('purchases:returns:create', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
     const result = createPurchaseReturn({
       ...input,
       purchase_id: Number(input.purchase_id),
-      actor_id: getActorId(input),
+      actor_id: actorId,
     })
 
     logAction({
-      actor_id: getActorId(input),
+      actor_id: actorId,
       action: 'purchase_return_created',
       entity: 'purchase_returns',
       entity_id: result.return_id,
@@ -109,8 +117,8 @@ export function registerPurchasesIpc(): void {
     return getPurchaseReturn(Number(returnId))
   })
 
-  ipcMain.handle('suppliers:record-payment', (_, input) => {
-    const actorId = getActorId(input)
+  ipcMain.handle('suppliers:record-payment', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
 
     const result = recordSupplierPayment({
       ...input,
@@ -138,9 +146,9 @@ export function registerPurchasesIpc(): void {
     return result
   })
 
-  ipcMain.handle('suppliers:cancel-payment', (_, input) => {
+  ipcMain.handle('suppliers:cancel-payment', (event, input) => {
     try {
-      const actorId = getActorId(input)
+      const actorId = requireAuthenticatedUser(event).id
 
       const access = getSupplierPaymentBatchAccess(
         Number(input?.batch_id),
@@ -192,9 +200,9 @@ export function registerPurchasesIpc(): void {
     }
   })
 
-  ipcMain.handle('suppliers:update-payment', (_, input) => {
+  ipcMain.handle('suppliers:update-payment', (event, input) => {
     try {
-      const actorId = getActorId(input)
+      const actorId = requireAuthenticatedUser(event).id
 
       const access = getSupplierPaymentBatchAccess(
         Number(input?.batch_id),

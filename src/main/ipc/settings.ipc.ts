@@ -4,8 +4,11 @@ import type {
   OpenDialogOptions,
   SaveDialogOptions,
 } from 'electron'
-import { requireAuthenticatedAdmin } from '../auth-session'
-import { getActorId, logAction } from './activity-helper'
+import {
+  requireAuthenticatedAdmin,
+  requireAuthenticatedUser,
+} from '../auth-session'
+import { logAction } from './activity-helper'
 import fs from 'node:fs'
 import path from 'node:path'
 import {
@@ -25,7 +28,6 @@ import {
   saveAppTheme,
 } from '../database/repositories/settings.repo'
 import { closeDb, getDb, getDbPath, resetDatabaseData } from '../database/db'
-import { requireAdmin } from './permission-helper'
 import {
   createAutoBackup,
   getAutoBackupInfo,
@@ -87,29 +89,79 @@ function recheckAdmin(event: IpcMainInvokeEvent, actorId: number) {
   }
 }
 
+function getOptionalActorId(event: IpcMainInvokeEvent): number | null {
+  try {
+    return requireAuthenticatedUser(event).id
+  } catch {
+    return null
+  }
+}
+
 export function registerSettingsIpc(): void {
   ipcMain.handle('settings:get-barcode-print', () => {
     return getBarcodePrintSettings()
   })
 
-  ipcMain.handle('settings:save-barcode-print', (_, input) => {
-    return saveBarcodePrintSettings(input)
+  ipcMain.handle('settings:save-barcode-print', (event, input) => {
+    const actorId = requireAuthenticatedAdmin(event)
+
+    const result = saveBarcodePrintSettings(input)
+
+    logAction({
+      actor_id: actorId,
+      action: 'barcode_print_settings_saved',
+      entity: 'settings',
+      entity_id: null,
+      details: {
+        description: 'تم تحديث إعدادات طباعة الباركود',
+      },
+    })
+
+    return result
   })
 
   ipcMain.handle('settings:get-receipt-print', () => {
     return getReceiptPrintSettings()
   })
 
-  ipcMain.handle('settings:save-receipt-print', (_, input) => {
-    return saveReceiptPrintSettings(input)
+  ipcMain.handle('settings:save-receipt-print', (event, input) => {
+    const actorId = requireAuthenticatedAdmin(event)
+
+    const result = saveReceiptPrintSettings(input)
+
+    logAction({
+      actor_id: actorId,
+      action: 'receipt_print_settings_saved',
+      entity: 'settings',
+      entity_id: null,
+      details: {
+        description: 'تم تحديث إعدادات طباعة الفاتورة',
+      },
+    })
+
+    return result
   })
 
   ipcMain.handle('settings:get-loyalty', () => {
     return getLoyaltySettings()
   })
 
-  ipcMain.handle('settings:save-loyalty', (_, input) => {
-    return saveLoyaltySettings(input)
+  ipcMain.handle('settings:save-loyalty', (event, input) => {
+    const actorId = requireAuthenticatedAdmin(event)
+
+    const result = saveLoyaltySettings(input)
+
+    logAction({
+      actor_id: actorId,
+      action: 'loyalty_settings_saved',
+      entity: 'settings',
+      entity_id: null,
+      details: {
+        description: 'تم تحديث إعدادات نقاط الولاء',
+      },
+    })
+
+    return result
   })
 
   ipcMain.handle(
@@ -446,19 +498,49 @@ export function registerSettingsIpc(): void {
     return getAppLicenseStatus()
   })
 
-  ipcMain.handle('settings:activate-app', (_, code: string) => {
-    return activateApp(code)
+  ipcMain.handle('settings:activate-app', (event, code: string) => {
+    const result = activateApp(code)
+
+    if (result?.success !== false) {
+      logAction({
+        actor_id: getOptionalActorId(event),
+        action: 'app_activated',
+        entity: 'settings',
+        entity_id: null,
+        details: {
+          description: 'تم تفعيل البرنامج',
+        },
+      })
+    }
+
+    return result
   })
 
-  ipcMain.handle('settings:deactivate-app', () => {
-    return deactivateApp()
+  ipcMain.handle('settings:deactivate-app', (event) => {
+    const actorId = getOptionalActorId(event)
+
+    const result = deactivateApp()
+
+    if (result?.success !== false) {
+      logAction({
+        actor_id: actorId,
+        action: 'app_deactivated',
+        entity: 'settings',
+        entity_id: null,
+        details: {
+          description: 'تم إلغاء تفعيل البرنامج',
+        },
+      })
+    }
+
+    return result
   })
 
   ipcMain.handle(
     'settings:save-app-logo-url',
-    (_, url: string, input?: { actor_id?: number }) => {
+    (event, url: string, input?: { actor_id?: number }) => {
       try {
-        requireAdmin(getActorId(input))
+        const actorId = requireAuthenticatedAdmin(event)
 
         const saved = saveAppLogoUrl(url)
 
@@ -466,6 +548,15 @@ export function registerSettingsIpc(): void {
           updateOpenWindowsIcon(url)
         }
 
+        logAction({
+          actor_id: actorId,
+          action: 'app_logo_saved',
+          entity: 'settings',
+          entity_id: null,
+          details: {
+            has_logo: Boolean(String(url || '').trim()),
+          },
+        })
         return saved
       } catch (error) {
         return {
@@ -478,6 +569,7 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle('settings:choose-app-logo', async (event) => {
     try {
+      const actorId = requireAuthenticatedAdmin(event)
       const parentWindow = BrowserWindow.fromWebContents(event.sender)
 
       const result = parentWindow
@@ -511,6 +603,16 @@ export function registerSettingsIpc(): void {
 
       const saved = saveAppLogoUrl(logoUrl)
       updateOpenWindowsIcon(logoUrl)
+      logAction({
+        actor_id: actorId,
+        action: 'app_logo_saved',
+        entity: 'settings',
+        entity_id: null,
+        details: {
+          file_name: path.basename(selectedPath),
+          has_logo: true,
+        },
+      })
 
       return {
         success: true,
@@ -527,16 +629,24 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle(
     'settings:save-app-name',
-    (_, name: string, input?: { actor_id?: number }) => {
+    (event, name: string, input?: { actor_id?: number }) => {
       try {
-        requireAdmin(getActorId(input))
+        const actorId = requireAuthenticatedAdmin(event)
 
         const saved = saveAppName(name)
 
         BrowserWindow.getAllWindows().forEach((window) => {
           window.setTitle(saved.status.app_name || 'ERP Store')
         })
-
+        logAction({
+          actor_id: actorId,
+          action: 'app_name_saved',
+          entity: 'settings',
+          entity_id: null,
+          details: {
+            name: saved.status.app_name,
+          },
+        })
         return saved
       } catch (error) {
         return {
@@ -549,11 +659,24 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle(
     'settings:save-store-contact-info',
-    (_, phone: string, address: string, input?: { actor_id?: number }) => {
+    (event, phone: string, address: string, input?: { actor_id?: number }) => {
       try {
-        requireAdmin(getActorId(input))
+        const actorId = requireAuthenticatedAdmin(event)
 
-        return saveStoreContactInfo(phone, address)
+        const saved = saveStoreContactInfo(phone, address)
+
+        logAction({
+          actor_id: actorId,
+          action: 'store_contact_info_saved',
+          entity: 'settings',
+          entity_id: null,
+          details: {
+            phone,
+            address,
+          },
+        })
+
+        return saved
       } catch (error) {
         return {
           success: false,
@@ -563,15 +686,29 @@ export function registerSettingsIpc(): void {
     },
   )
 
-  ipcMain.handle('settings:save-store-qr-settings', (_, input?: any) => {
+  ipcMain.handle('settings:save-store-qr-settings', (event, input?: any) => {
     try {
-      requireAdmin(getActorId(input))
+      const actorId = requireAuthenticatedAdmin(event)
 
-      return saveStoreQrSettings({
+      const payload = {
         store_qr_enabled: Boolean(input?.store_qr_enabled),
+
         store_qr_title: String(input?.store_qr_title || '').trim(),
+
         store_qr_primary_url: String(input?.store_qr_primary_url || '').trim(),
+      }
+
+      const saved = saveStoreQrSettings(payload)
+
+      logAction({
+        actor_id: actorId,
+        action: 'store_qr_settings_saved',
+        entity: 'settings',
+        entity_id: null,
+        details: payload,
       })
+
+      return saved
     } catch (error) {
       return {
         success: false,
@@ -582,9 +719,23 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle(
     'settings:save-app-theme',
-    (_, theme: 'dark' | 'light', input?: { actor_id?: number }) => {
+    (event, theme: 'dark' | 'light', input?: { actor_id?: number }) => {
       try {
-        return saveAppTheme(theme)
+        const actorId = requireAuthenticatedUser(event).id
+
+        const saved = saveAppTheme(theme)
+
+        logAction({
+          actor_id: actorId,
+          action: 'app_theme_saved',
+          entity: 'settings',
+          entity_id: null,
+          details: {
+            theme,
+          },
+        })
+
+        return saved
       } catch (error) {
         return {
           success: false,

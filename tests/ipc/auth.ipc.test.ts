@@ -94,6 +94,56 @@ describe('auth IPC authorization', () => {
     expect(handlers.has('auth:register')).toBe(false)
   })
 
+  it('records login logout and failed login activity', async () => {
+    const first = makeClient()
+
+    const admin = await login(first.event)
+
+    expect((await invoke(first.event, 'auth:logout')).success).toBe(true)
+
+    const second = makeClient()
+
+    const failed = await invoke(second.event, 'auth:login', {
+      username: 'admin',
+      password: 'wrong-password',
+    })
+
+    expect(failed.success).toBe(false)
+
+    const logs = getDb()
+      .prepare(
+        `
+        SELECT
+          user_id,
+          action,
+          entity
+        FROM activity_logs
+        ORDER BY id ASC
+        `,
+      )
+      .all() as Array<{
+      user_id: number | null
+      action: string
+      entity: string
+    }>
+
+    expect(logs.map((row) => row.action)).toEqual([
+      'auth_login_succeeded',
+      'auth_logout',
+      'auth_login_failed',
+    ])
+
+    expect(logs[0].user_id).toBe(admin.id)
+
+    expect(logs[1].user_id).toBe(admin.id)
+
+    expect(logs[2].user_id).toBeNull()
+
+    for (const row of logs) {
+      expect(row.entity).toBe('auth')
+    }
+  })
+
   it.each(['anonymous', 'cashier'])(
     'rejects forged admin IDs from %s without changing users',
     async (kind) => {
@@ -104,6 +154,11 @@ describe('auth IPC authorization', () => {
       if (kind === 'cashier') {
         await login(event, cashier.username, '5678')
       }
+
+      // تجاهل Log تسجيل الدخول هنا؛
+      // الاختبار مخصص للتأكد أن المحاولات
+      // غير المصرح بها لا تنشئ Logs.
+      getDb().prepare('DELETE FROM activity_logs').run()
 
       const before = getDb().prepare('SELECT * FROM users ORDER BY id').all()
 
@@ -153,7 +208,9 @@ describe('auth IPC authorization', () => {
   it('lets the authenticated admin manage users and records the real actor', async () => {
     const { event } = makeClient()
     const admin = await login(event)
-
+    // تسجيل الدخول له Audit منفصل.
+    // هنا نختبر Logs إدارة المستخدمين فقط.
+    getDb().prepare('DELETE FROM activity_logs').run()
     const created = await invoke(event, 'users:create', {
       name: 'Managed',
       username: 'managed',

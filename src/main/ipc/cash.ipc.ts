@@ -13,42 +13,59 @@ import {
   listCashMovements,
 } from '../database/repositories/cash.repo'
 import { requireAdminPassword } from './permission-helper'
+import { requireAuthenticatedUser } from '../auth-session'
 
 export function registerCashIpc(): void {
   ipcMain.handle('cash:summary', (_, input) => {
     return getCashSummary(input)
   })
 
-  ipcMain.handle('cash:transfer', (_, input) => {
-    return createCashTransfer(input)
+  ipcMain.handle('cash:transfer', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
+    return createCashTransfer({
+      ...input,
+      created_by: actorId,
+    })
   })
 
   ipcMain.handle('cash:list', (_, input) => {
     return listCashMovements(input)
   })
 
-  ipcMain.handle('cash:create-movement', (_, input) => {
-    return createCashMovement(input)
+  ipcMain.handle('cash:create-movement', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
+    return createCashMovement({
+      ...input,
+      created_by: actorId,
+    })
   })
 
   ipcMain.handle('cash:day-close-preview', (_, businessDate: string) => {
     return getCashDayClosePreview(businessDate)
   })
 
-  ipcMain.handle('cash:close-day', (_, input) => {
-    return closeCashDay(input)
+  ipcMain.handle('cash:close-day', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
+    return closeCashDay({
+      ...input,
+      closed_by: actorId,
+    })
   })
 
-  ipcMain.handle('cash:cancel-day-close', (_, input) => {
+  ipcMain.handle('cash:cancel-day-close', (event, input) => {
     try {
-      requireAdminPassword(input?.actor_id, input?.admin_password)
+      const actorId = requireAuthenticatedUser(event).id
+      requireAdminPassword(actorId, input?.admin_password)
 
       return cancelCashDayClosing({
         closing_id: Number(input?.closing_id),
 
         reason: input?.reason,
 
-        actor_id: input?.actor_id ?? null,
+        actor_id: actorId,
       })
     } catch (error) {
       return {
@@ -60,9 +77,10 @@ export function registerCashIpc(): void {
     }
   })
 
-  ipcMain.handle('cash:update-day-close', (_, input) => {
+  ipcMain.handle('cash:update-day-close', (event, input) => {
     try {
-      requireAdminPassword(input?.actor_id, input?.admin_password)
+      const actorId = requireAuthenticatedUser(event).id
+      requireAdminPassword(actorId, input?.admin_password)
 
       return updateCashDayClosing({
         closing_id: Number(input?.closing_id),
@@ -71,7 +89,7 @@ export function registerCashIpc(): void {
 
         target_account: input?.target_account,
 
-        actor_id: input?.actor_id ?? null,
+        actor_id: actorId,
       })
     } catch (error) {
       return {
@@ -83,9 +101,10 @@ export function registerCashIpc(): void {
     }
   })
 
-  ipcMain.handle('cash:update-movement', (_, input) => {
+  ipcMain.handle('cash:update-movement', (event, input) => {
     try {
-      requireAdminPassword(input?.actor_id, input?.admin_password)
+      const actorId = requireAuthenticatedUser(event).id
+      requireAdminPassword(actorId, input?.admin_password)
 
       return updateCashMovement({
         id: Number(input?.id),
@@ -102,7 +121,7 @@ export function registerCashIpc(): void {
 
         notes: input?.notes,
 
-        actor_id: input?.actor_id ?? null,
+        actor_id: actorId,
       })
     } catch (error) {
       return {
@@ -114,14 +133,15 @@ export function registerCashIpc(): void {
     }
   })
 
-  ipcMain.handle('cash:cancel-movement', (_, input) => {
+  ipcMain.handle('cash:cancel-movement', (event, input) => {
     try {
-      requireAdminPassword(input?.actor_id, input?.admin_password)
+      const actorId = requireAuthenticatedUser(event).id
+      requireAdminPassword(actorId, input?.admin_password)
 
       return cancelCashMovement({
         id: Number(input?.id),
         reason: input?.reason,
-        actor_id: input?.actor_id ?? null,
+        actor_id: actorId,
       })
     } catch (error) {
       return {
