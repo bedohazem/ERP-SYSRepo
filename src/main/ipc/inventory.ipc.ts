@@ -1,4 +1,6 @@
 import { ipcMain } from 'electron'
+import { logAction } from './activity-helper'
+import { requireAuthenticatedUser } from '../auth-session'
 import {
   adjustVariantStock,
   getInventoryList,
@@ -15,8 +17,32 @@ export function registerInventoryIpc(): void {
     return listInventoryPage(input)
   })
 
-  ipcMain.handle('inventory:adjust-stock', (_, input) => {
-    return adjustVariantStock(input)
+  ipcMain.handle('inventory:adjust-stock', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
+    const result = adjustVariantStock(input)
+
+    if (Number(result.diff || 0) !== 0) {
+      logAction({
+        actor_id: actorId,
+        action: 'inventory_stock_adjusted',
+        entity: 'inventory',
+        entity_id: Number(result.variant_id),
+        details: {
+          variant_id: Number(result.variant_id),
+
+          old_stock: Number(result.old_stock),
+
+          new_stock: Number(result.new_stock),
+
+          diff: Number(result.diff),
+
+          notes: input?.notes || '',
+        },
+      })
+    }
+
+    return result
   })
 
   ipcMain.handle('inventory:movements', (_, input) => {

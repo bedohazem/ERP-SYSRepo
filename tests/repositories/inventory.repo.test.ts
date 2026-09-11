@@ -293,7 +293,7 @@ describe('inventory repository', () => {
         variant_id: 0,
         target_stock: 10,
       }),
-    ).toThrow('Variant ID is required')
+    ).toThrow('رقم الصنف مطلوب')
   })
 
   it('rejects stock adjustment for missing variant', () => {

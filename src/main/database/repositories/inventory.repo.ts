@@ -338,7 +338,7 @@ export function adjustVariantStock(input: {
   const targetStock = Number(input.target_stock)
 
   if (!variantId) {
-    throw new Error('Variant ID is required')
+    throw new Error('رقم الصنف مطلوب')
   }
 
   if (!Number.isFinite(targetStock) || targetStock < 0) {

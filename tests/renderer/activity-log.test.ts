@@ -17,6 +17,12 @@ describe('activity log Arabic display', () => {
     expect(getActivityActionLabel('cash_day_close_updated')).toBe(
       'تعديل تقفيل يوم',
     )
+
+    expect(getActivityActionLabel('inventory_stock_adjusted')).toBe(
+      'تسوية مخزون',
+    )
+
+    expect(getActivityEntityLabel('inventory')).toBe('المخزون')
   })
 
   it('does not expose unknown backend action names', () => {

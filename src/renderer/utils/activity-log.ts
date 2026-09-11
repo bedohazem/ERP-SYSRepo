@@ -17,7 +17,7 @@ export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   sale_return_cancelled: 'إلغاء مرتجع بيع',
   sale_exchange_created: 'إنشاء استبدال بيع',
   sale_exchange_cancelled: 'إلغاء استبدال بيع',
-
+  inventory_stock_adjusted: 'تسوية مخزون',
   purchase_created: 'إنشاء فاتورة شراء',
   purchase_cancelled: 'إلغاء فاتورة شراء',
   purchase_return_created: 'إنشاء مرتجع شراء',
@@ -146,7 +146,7 @@ export const ACTIVITY_ENTITY_LABELS: Record<string, string> = {
 
   sale_returns: 'مرتجعات البيع',
   sale_exchanges: 'استبدالات البيع',
-
+  inventory: 'المخزون',
   purchase_invoices: 'المشتريات',
   purchase_returns: 'مرتجعات الشراء',
 
