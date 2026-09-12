@@ -97,6 +97,8 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
 
   const [closeReason, setCloseReason] = useState('')
 
+  const [adminPassword, setAdminPassword] = useState('')
+
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -191,6 +193,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
       setClosingAmount('')
       setLeftForNextShift('')
       setCloseReason('')
+      setAdminPassword('')
 
       setModal('close')
     } catch (err) {
@@ -285,6 +288,12 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
       return
     }
 
+    if (adminClosingOtherShift && !adminPassword.trim()) {
+      setError('اكتب كلمة مرور المدير')
+
+      return
+    }
+
     setBusy(true)
     setError('')
 
@@ -297,6 +306,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
         left_for_next_shift: leftAmount,
 
         close_reason: closeReason.trim() || null,
+        admin_password: adminClosingOtherShift ? adminPassword : undefined,
       })
 
       setOpenShift(null)
@@ -885,6 +895,26 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                     height: 'auto',
                     resize: 'vertical',
                     paddingTop: '10px',
+                    marginTop: '8px',
+                  }}
+                />
+                <label
+                  style={{
+                    display: 'block',
+                    marginTop: '18px',
+                    fontWeight: 800,
+                  }}
+                >
+                  كلمة مرور المدير
+                </label>
+
+                <input
+                  type="password"
+                  value={adminPassword}
+                  onChange={(event) => setAdminPassword(event.target.value)}
+                  autoComplete="current-password"
+                  style={{
+                    ...inputStyle,
                     marginTop: '8px',
                   }}
                 />

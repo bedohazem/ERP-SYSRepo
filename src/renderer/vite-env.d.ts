@@ -1580,6 +1580,7 @@ declare global {
         closing_counted_amount: number
         left_for_next_shift: number
         close_reason?: string | null
+        admin_password?: string
       }) => Promise<any>
 
       getCashDayClosePreview: (businessDate: string) => Promise<{

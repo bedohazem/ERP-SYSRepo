@@ -18,6 +18,7 @@ import {
   getOpenCashShift,
   openCashShift,
   getCashShiftOpeningPreview,
+  getCashShiftById,
 } from '../database/repositories/cash-shifts.repo'
 import { requireAdminPassword } from './permission-helper'
 import { requireAuthenticatedUser } from '../auth-session'
@@ -188,10 +189,25 @@ export function registerCashIpc(): void {
   })
 
   ipcMain.handle('cash-shifts:close', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actor = requireAuthenticatedUser(event)
+
+    const shiftId = Number(input?.shift_id)
+
+    const shift = getCashShiftById(shiftId)
+
+    if (!shift) {
+      throw new Error('الشفت غير موجود')
+    }
+
+    const isAdminClosingOtherShift =
+      actor.role === 'admin' && Number(shift.opened_by) !== actor.id
+
+    if (isAdminClosingOtherShift) {
+      requireAdminPassword(actor.id, input?.admin_password)
+    }
 
     return closeCashShift({
-      shift_id: Number(input?.shift_id),
+      shift_id: shiftId,
 
       closing_counted_amount: Number(input?.closing_counted_amount),
 
@@ -199,7 +215,7 @@ export function registerCashIpc(): void {
 
       close_reason: input?.close_reason,
 
-      closed_by: actorId,
+      closed_by: actor.id,
     })
   })
 }
