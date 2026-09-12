@@ -11,7 +11,11 @@ import {
   cancelSaleReturn,
   listSales,
 } from '../../src/main/database/repositories/sales.repo'
-import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
+import {
+  closeCashShift,
+  getOpenCashShift,
+  openCashShift,
+} from '../../src/main/database/repositories/cash-shifts.repo'
 import {
   createPromotion,
   togglePromotion,
@@ -893,6 +897,117 @@ describe('sales repository', () => {
 
     expect(getStockByBarcode('SALE001')).toBe(9)
     expect(getCashMovementTotal('out')).toBe(150)
+  })
+
+  it('requires a new open shift for return and links refund to current shift', () => {
+    const db = getDb()
+
+    const variant = seedProduct()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 300,
+      discount_value: 0,
+      grand_total: 300,
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 300,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 2,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const originalShift = getOpenCashShift()
+
+    expect(originalShift).toBeTruthy()
+
+    closeCashShift({
+      shift_id: originalShift!.id,
+      closing_counted_amount: 300,
+      left_for_next_shift: 300,
+      closed_by: 1,
+    })
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    const saleItemId = receipt.items[0].id
+
+    expect(() =>
+      createSaleReturn({
+        original_sale_id: sale.saleId,
+        user_id: 1,
+        reason: 'Return without shift',
+        items: [
+          {
+            sale_item_id: saleItemId,
+            variant_id: variant.variant_id,
+            quantity: 1,
+          },
+        ],
+      }),
+    ).toThrow('لا يمكن تسجيل مرتجع بيع بدون شفت مفتوح')
+
+    const currentShift = openCashShift({
+      opening_counted_amount: 300,
+      opened_by: 1,
+    })
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      reason: 'Return in next shift',
+      items: [
+        {
+          sale_item_id: saleItemId,
+          variant_id: variant.variant_id,
+          quantity: 1,
+        },
+      ],
+    })
+
+    expect(saleReturn.shift_id).toBe(currentShift.id)
+
+    expect(saleReturn.shift_id).not.toBe(originalShift!.id)
+
+    const returnRow = db
+      .prepare(
+        `
+      SELECT shift_id
+      FROM sale_returns
+      WHERE id = ?
+    `,
+      )
+      .get(saleReturn.returnId) as {
+      shift_id: number
+    }
+
+    expect(returnRow.shift_id).toBe(currentShift.id)
+
+    const refundMovement = db
+      .prepare(
+        `
+      SELECT shift_id
+      FROM cash_movements
+      WHERE reference_type = 'sale_return'
+        AND reference_id = ?
+        AND direction = 'out'
+      LIMIT 1
+    `,
+      )
+      .get(saleReturn.returnId) as {
+      shift_id: number
+    }
+
+    expect(refundMovement.shift_id).toBe(currentShift.id)
   })
 
   it('reduces customer debt before cash refund when returning from partial sale', () => {

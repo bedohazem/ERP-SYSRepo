@@ -223,6 +223,7 @@ export function registerSalesIpc(): void {
         refund_amount: result.refundAmount,
         reason: input.reason,
         items_count: input.items?.length || 0,
+        shift_id: result.shift_id,
       },
     })
 

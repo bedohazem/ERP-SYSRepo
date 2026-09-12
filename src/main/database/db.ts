@@ -1004,7 +1004,13 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'sale_returns', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'sale_returns', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'sale_returns', 'cancel_reason', 'TEXT')
+    safeAddColumn(db, 'sale_returns', 'shift_id', 'INTEGER')
 
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_sale_returns_shift_id
+      ON sale_returns(shift_id);
+    `)
     safeAddColumn(db, 'sale_returns', 'debt_reduction_amount', 'REAL')
 
     safeAddColumn(db, 'sale_returns', 'cash_refund_amount', 'REAL')

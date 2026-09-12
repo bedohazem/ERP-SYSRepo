@@ -422,6 +422,7 @@ declare global {
         user_id: number
         reason?: string | null
         refund_payment_method?: string | null
+        shift_id?: number
         items: Array<{
           sale_item_id: number
           variant_id: number
@@ -467,6 +468,7 @@ declare global {
           cancelled_by?: number | null
           cancel_reason?: string | null
           requires_admin_password?: number | boolean
+          shift_id?: number | null
         }>
         total: number
         limit: number

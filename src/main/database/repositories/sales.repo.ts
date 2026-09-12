@@ -1360,6 +1360,12 @@ export function createSaleReturn(input: {
     throw new Error('لا توجد أصناف للمرتجع')
   }
 
+  const openShift = getOpenCashShift()
+
+  if (!openShift) {
+    throw new Error('لا يمكن تسجيل مرتجع بيع بدون شفت مفتوح')
+  }
+
   const tx = db.transaction(() => {
     const originalSale = db
       .prepare(
@@ -2051,6 +2057,7 @@ export function createSaleReturn(input: {
           original_sale_id,
           customer_id,
           user_id,
+          shift_id,
           sub_total,
           promotion_discount_value,
           normal_discount_value,
@@ -2063,13 +2070,14 @@ export function createSaleReturn(input: {
           notes,
           loyalty_points_reversed
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
         originalSaleId,
         originalSale.customer_id ?? null,
         userId,
+        openShift.id,
         returnSubTotal,
         returnPromotionDiscount,
         saleDiscountPart,
@@ -2095,6 +2103,7 @@ export function createSaleReturn(input: {
         reference_type: 'sale_return',
         notes: `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
         created_by: userId,
+        shift_id: openShift.id,
       })
     }
 
@@ -2269,6 +2278,7 @@ export function createSaleReturn(input: {
       debt_reduction_amount: debtReductionAmount,
       return_value: returnValue,
       loyalty_points_reversed: loyaltyPointsToReverse,
+      shift_id: openShift.id,
     }
   })
 
@@ -2286,6 +2296,7 @@ export function getSaleReturnHistory(originalSaleId: number) {
         sr.original_sale_id,
         sr.customer_id,
         sr.user_id,
+        sr.shift_id,
         sr.sub_total,
         sr.loyalty_discount_value,
         sr.refund_amount,
@@ -3199,6 +3210,7 @@ export function listSaleReturns(input?: {
         sr.original_sale_id,
         sr.customer_id,
         sr.user_id,
+        sr.shift_id,
         sr.sub_total,
         sr.loyalty_discount_value,
         sr.refund_amount,
