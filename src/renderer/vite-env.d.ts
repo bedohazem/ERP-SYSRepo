@@ -486,6 +486,7 @@ declare global {
         sale_id?: number
         refunded_amount?: number
         removed_debt?: number
+        cancelled_shift_id?: number
       }>
 
       cancelSaleReturn: (input: {

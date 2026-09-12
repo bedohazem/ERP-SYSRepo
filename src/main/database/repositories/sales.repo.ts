@@ -2453,6 +2453,14 @@ export function cancelSaleInvoice(input: {
     throw new Error('رقم فاتورة البيع غير صحيح')
   }
 
+  const openShift = getOpenCashShift()
+
+  if (!openShift) {
+    throw new Error('لا يمكن إلغاء فاتورة بيع بدون شفت مفتوح')
+  }
+
+  const cancellationBusinessDate = getRelativeLocalDateKey(0)
+
   const reason = input.reason?.trim() || 'إلغاء فاتورة بيع'
 
   const tx = db.transaction(() => {
@@ -2474,42 +2482,6 @@ export function cancelSaleInvoice(input: {
 
     if (sale.cancelled_at) {
       throw new Error('فاتورة البيع ملغاة بالفعل')
-    }
-
-    const saleBusinessDateRow = db
-      .prepare(
-        `
-    SELECT
-      COALESCE(
-        NULLIF(business_date, ''),
-        date(created_at, 'localtime')
-      ) AS business_date
-    FROM sales
-    WHERE id = ?
-    LIMIT 1
-    `,
-      )
-      .get(saleId) as { business_date: string } | undefined
-
-    const saleBusinessDate = saleBusinessDateRow?.business_date || ''
-
-    if (saleBusinessDate) {
-      const closedDay = db
-        .prepare(
-          `
-      SELECT id
-      FROM cash_day_closings
-      WHERE business_date = ?
-      LIMIT 1
-      `,
-        )
-        .get(saleBusinessDate)
-
-      if (closedDay) {
-        throw new Error(
-          `لا يمكن إلغاء فاتورة تخص يوم ${saleBusinessDate} لأنه تم تقفيله`,
-        )
-      }
     }
 
     const returnsRow = db
@@ -2638,6 +2610,8 @@ export function cancelSaleInvoice(input: {
         reference_type: 'sale_cancel',
         notes: `رد قيمة فاتورة بيع ملغاة رقم ${saleId}`,
         created_by: input.actor_id ?? null,
+        business_date: cancellationBusinessDate,
+        shift_id: openShift.id,
       })
     }
 
@@ -2713,12 +2687,13 @@ export function cancelSaleInvoice(input: {
       SET
         cancelled_at = CURRENT_TIMESTAMP,
         cancelled_by = ?,
+        cancelled_shift_id = ?,
         cancel_reason = ?,
         payment_status = 'cancelled',
         remaining_amount = 0
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, reason, saleId)
+    ).run(input.actor_id ?? null, openShift.id, reason, saleId)
 
     if (customerId) {
       syncCustomerTotalSpent(customerId)
@@ -2730,6 +2705,7 @@ export function cancelSaleInvoice(input: {
       refunded_amount: paidAmount,
       removed_debt: remainingAmount,
       restored_items: items.length,
+      cancelled_shift_id: openShift.id,
     }
   })
 

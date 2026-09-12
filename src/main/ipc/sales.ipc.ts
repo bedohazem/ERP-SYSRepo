@@ -260,6 +260,7 @@ export function registerSalesIpc(): void {
           reason: input?.reason,
           refunded_amount: result.refunded_amount,
           removed_debt: result.removed_debt,
+          shift_id: result.cancelled_shift_id,
         },
       })
 
