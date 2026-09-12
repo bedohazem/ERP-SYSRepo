@@ -22,6 +22,10 @@ describe('activity log Arabic display', () => {
       'تسوية مخزون',
     )
 
+    expect(getActivityActionLabel('cash_shift_opened')).toBe('فتح شفت')
+
+    expect(getActivityEntityLabel('cash_shifts')).toBe('الشفتات')
+
     expect(getActivityEntityLabel('inventory')).toBe('المخزون')
   })
 

@@ -606,6 +606,89 @@ export function getDb(): Database.Database {
         FOREIGN KEY (closed_by) REFERENCES users(id)
       );
 
+      CREATE TABLE IF NOT EXISTS cash_shifts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        status TEXT NOT NULL DEFAULT 'open'
+          CHECK (status IN ('open', 'closed')),
+
+        opened_by INTEGER NOT NULL,
+        opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+        previous_shift_id INTEGER,
+
+        expected_opening_amount REAL,
+        opening_counted_amount REAL NOT NULL DEFAULT 0,
+        opening_difference REAL NOT NULL DEFAULT 0,
+
+        expected_closing_amount REAL,
+        closing_counted_amount REAL,
+        closing_difference REAL,
+
+        left_for_next_shift REAL,
+        safe_transfer_amount REAL,
+
+        closed_by INTEGER,
+        closed_at TEXT,
+        close_reason TEXT,
+
+        FOREIGN KEY (opened_by)
+          REFERENCES users(id),
+
+        FOREIGN KEY (closed_by)
+          REFERENCES users(id),
+
+        FOREIGN KEY (previous_shift_id)
+          REFERENCES cash_shifts(id)
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS
+        idx_cash_shifts_single_open
+      ON cash_shifts(status)
+      WHERE status = 'open';
+
+      CREATE INDEX IF NOT EXISTS
+        idx_cash_shifts_opened_at
+      ON cash_shifts(opened_at);
+
+      CREATE TABLE IF NOT EXISTS cash_shift_variances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        shift_id INTEGER NOT NULL,
+
+        stage TEXT NOT NULL
+          CHECK (stage IN ('opening', 'closing')),
+
+        kind TEXT NOT NULL
+          CHECK (kind IN ('shortage', 'surplus')),
+
+        amount REAL NOT NULL DEFAULT 0,
+
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'resolved')),
+
+        resolution_type TEXT,
+        resolution_notes TEXT,
+
+        resolved_by INTEGER,
+        resolved_at TEXT,
+
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (shift_id)
+          REFERENCES cash_shifts(id)
+          ON DELETE CASCADE,
+
+        FOREIGN KEY (resolved_by)
+          REFERENCES users(id),
+
+        UNIQUE (shift_id, stage)
+      );
+
+      CREATE INDEX IF NOT EXISTS
+        idx_cash_shift_variances_status
+      ON cash_shift_variances(status);
+
       CREATE TABLE IF NOT EXISTS expenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL,
@@ -953,7 +1036,13 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'store_liability_payments', 'notes', 'TEXT')
 
     safeAddColumn(db, 'cash_movements', 'business_date', 'TEXT')
+    safeAddColumn(db, 'cash_movements', 'shift_id', 'INTEGER')
 
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_cash_movements_shift_id
+      ON cash_movements(shift_id);
+    `)
     safeAddColumn(db, 'cash_movements', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'cash_movements', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'cash_movements', 'cancel_reason', 'TEXT')
@@ -1201,6 +1290,10 @@ export function resetDatabaseData(): void {
       
 
       DELETE FROM activity_logs;
+
+      DELETE FROM cash_shift_variances;
+      DELETE FROM cash_shifts;
+
       DELETE FROM expenses;
       DELETE FROM cash_day_closings;
       DELETE FROM cash_movements;

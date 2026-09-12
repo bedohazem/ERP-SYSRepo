@@ -75,6 +75,9 @@ export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   cash_day_closed: 'تقفيل يوم الخزنة',
   cash_day_close_updated: 'تعديل تقفيل يوم',
   cash_day_close_cancelled: 'إلغاء تقفيل يوم',
+  cash_shift_opened: 'فتح شفت',
+  cash_shift_closed: 'إغلاق شفت',
+  cash_shift_variance_resolved: 'معالجة فرق شفت',
   cash_movement_updated: 'تعديل حركة خزنة',
   cash_movement_cancelled: 'إلغاء حركة خزنة',
   cash_transfer_updated: 'تعديل تحويل بين الحسابات',
@@ -156,6 +159,8 @@ export const ACTIVITY_ENTITY_LABELS: Record<string, string> = {
 
   cash_movements: 'الخزنة',
   cash_day_closings: 'تقفيل الخزنة',
+  cash_shifts: 'الشفتات',
+  cash_shift_variances: 'فروقات الشفتات',
   cash_drawer: 'درج الكاشير',
 
   expenses: 'المصروفات',
