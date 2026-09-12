@@ -75,6 +75,7 @@ export function registerSalesIpc(): void {
         paid: input.paid,
         payment_method: input.payment_method,
         items_count: input.items?.length || 0,
+        shift_id: result.shift_id,
       },
     })
 

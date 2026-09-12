@@ -990,6 +990,13 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'sales', 'payment_status', `TEXT DEFAULT 'paid'`)
 
     safeAddColumn(db, 'sales', 'business_date', 'TEXT')
+    safeAddColumn(db, 'sales', 'shift_id', 'INTEGER')
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_sales_shift_id
+      ON sales(shift_id);
+    `)
     safeAddColumn(db, 'sales', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'sales', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'sales', 'cancel_reason', 'TEXT')

@@ -5,6 +5,7 @@ import {
   calculateSaleEarnedPoints,
   getSaleCurrentState,
 } from './sales-current-state.repo'
+import { getOpenCashShift } from './cash-shifts.repo'
 
 export type CreateSaleLineInput = {
   variant_id: number
@@ -196,6 +197,12 @@ export function createSale(input: CreateSaleInput) {
     throw new Error('Sale items are required')
   }
 
+  const openShift = getOpenCashShift()
+
+  if (!openShift) {
+    throw new Error('لا يمكن تسجيل فاتورة بيع بدون شفت مفتوح')
+  }
+
   const loyalty = getLoyaltySettingsForSale()
   const businessDate = resolveSaleBusinessDate(input.business_date)
 
@@ -330,6 +337,7 @@ export function createSale(input: CreateSaleInput) {
           customer_id,
           user_id,
           business_date,
+          shift_id,
           sub_total,
           discount_value,
 
@@ -351,7 +359,7 @@ export function createSale(input: CreateSaleInput) {
         VALUES (
           'sale',
           ?, ?, ?, ?, ?,
-          ?, ?, ?,
+          ?, ?, ?,?,
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `,
@@ -360,6 +368,7 @@ export function createSale(input: CreateSaleInput) {
         customerId,
         input.user_id,
         businessDate,
+        openShift.id,
         subTotal,
         normalDiscount,
 
@@ -471,6 +480,7 @@ export function createSale(input: CreateSaleInput) {
         notes: `تحصيل فاتورة بيع رقم ${saleId}`,
         created_by: input.user_id,
         business_date: businessDate,
+        shift_id: openShift.id,
       })
     }
 
@@ -929,6 +939,7 @@ export function createSale(input: CreateSaleInput) {
       paid_amount: paidAmount,
       remaining_amount: remainingAmount,
       payment_status: paymentStatus,
+      shift_id: openShift.id,
     }
   })
 

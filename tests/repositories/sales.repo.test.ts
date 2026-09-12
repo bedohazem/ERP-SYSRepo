@@ -11,7 +11,7 @@ import {
   cancelSaleReturn,
   listSales,
 } from '../../src/main/database/repositories/sales.repo'
-
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
 import {
   createPromotion,
   togglePromotion,
@@ -202,6 +202,10 @@ describe('sales repository', () => {
     resetDatabaseData()
 
     resetLoyaltySettingsForSalesTests()
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
   })
 
   it('rejects missing user_id', () => {
@@ -246,6 +250,101 @@ describe('sales repository', () => {
         items: [],
       }),
     ).toThrow('Sale items are required')
+  })
+
+  it('requires an open shift and links the sale cash movement to it', () => {
+    const db = getDb()
+
+    db.prepare(
+      `
+    DELETE FROM cash_shifts
+  `,
+    ).run()
+
+    const variant = seedProduct()
+
+    expect(() =>
+      createSale({
+        user_id: 1,
+        customer_id: null,
+        sub_total: 150,
+        discount_value: 0,
+        grand_total: 150,
+        change_amount: 0,
+        payment_method: 'cash',
+        paid: 150,
+        items: [
+          {
+            variant_id: variant.variant_id,
+            product_name: variant.product_name,
+            barcode: variant.barcode,
+            size: variant.size,
+            color: variant.color,
+            quantity: 1,
+            unit_price: 150,
+          },
+        ],
+      }),
+    ).toThrow('لا يمكن تسجيل فاتورة بيع بدون شفت مفتوح')
+
+    const shift = openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
+
+    const result = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 150,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(result.shift_id).toBe(shift.id)
+
+    const sale = db
+      .prepare(
+        `
+      SELECT shift_id
+      FROM sales
+      WHERE id = ?
+    `,
+      )
+      .get(result.saleId) as {
+      shift_id: number
+    }
+
+    expect(sale.shift_id).toBe(shift.id)
+
+    const movement = db
+      .prepare(
+        `
+      SELECT shift_id
+      FROM cash_movements
+      WHERE reference_type = 'sale'
+        AND reference_id = ?
+      LIMIT 1
+    `,
+      )
+      .get(result.saleId) as {
+      shift_id: number
+    }
+
+    expect(movement.shift_id).toBe(shift.id)
   })
 
   it('rejects item quantity less than or equal zero', () => {
