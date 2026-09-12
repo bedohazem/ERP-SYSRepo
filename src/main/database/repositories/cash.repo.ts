@@ -14,6 +14,7 @@ export type CashMovementInput = {
     | 'withdraw'
     | 'deposit'
     | 'transfer'
+    | 'shift_adjustment'
 
   direction: 'in' | 'out'
 
@@ -28,6 +29,7 @@ export type CashMovementInput = {
 
   created_by?: number | null
   business_date?: string | null
+  shift_id?: number | null
 }
 
 export type CashFilterInput = {
@@ -46,12 +48,14 @@ export type CashFilterInput = {
   search?: string
   reference_type?: string
   created_by?: number | null
+  shift_id?: number | null
   limit?: number
   offset?: number
 }
 
 export type CashAccountKey =
   | 'store_cash'
+  | 'store_safe'
   | 'owner_cash'
   | 'owner_bank'
   | 'owner_vodafone'
@@ -76,6 +80,7 @@ export type CashDayCloseInput = {
 export function resolveCashAccount(value?: string | null): CashAccountKey {
   switch (value) {
     case 'store_cash':
+    case 'store_safe':
     case 'owner_cash':
     case 'owner_bank':
     case 'owner_vodafone':
@@ -146,6 +151,8 @@ function getAccountLabel(account: CashAccountKey) {
   switch (account) {
     case 'store_cash':
       return 'كاش درج المحل'
+    case 'store_safe':
+      return 'الخزنة الآمنة'
     case 'owner_cash':
       return 'كاش مع المالك'
     case 'owner_bank':
@@ -263,6 +270,11 @@ function buildCashWhere(
     params.push(Number(input.created_by))
   }
 
+  if (input?.shift_id) {
+    where.push(`cm.shift_id = ?`)
+    params.push(Number(input.shift_id))
+  }
+
   if (input?.search?.trim()) {
     where.push(`(
       cm.notes LIKE ?
@@ -328,9 +340,10 @@ export function createCashMovement(input: CashMovementInput) {
         reference_type,
         notes,
         created_by,
-        business_date
+        business_date,
+        shift_id
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     )
     .run(
@@ -343,6 +356,7 @@ export function createCashMovement(input: CashMovementInput) {
       input.notes ?? null,
       input.created_by ?? null,
       businessDate,
+      input.shift_id ?? null,
     )
 
   const movementId = Number(result.lastInsertRowid)
@@ -359,6 +373,7 @@ export function createCashMovement(input: CashMovementInput) {
       payment_method: account,
       notes: input.notes ?? null,
       business_date: businessDate,
+      shift_id: input.shift_id ?? null,
     }),
   })
 

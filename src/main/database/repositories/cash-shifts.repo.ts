@@ -1,5 +1,6 @@
 import { getDb } from '../db'
 import { createActivityLog } from './activity.repo'
+import { createCashMovement, getCashSummary } from './cash.repo'
 
 export type CashShiftRow = {
   id: number
@@ -33,6 +34,14 @@ export type CashShiftRow = {
 export type OpenCashShiftInput = {
   opening_counted_amount: number
   opened_by: number
+}
+
+export type CloseCashShiftInput = {
+  shift_id: number
+  closing_counted_amount: number
+  left_for_next_shift: number
+  closed_by: number
+  close_reason?: string | null
 }
 
 function roundMoney(value: number) {
@@ -245,6 +254,36 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
       )
     }
 
+    const currentDrawerBalance = roundMoney(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    )
+
+    const accountReconciliationAmount = roundMoney(
+      openingCountedAmount - currentDrawerBalance,
+    )
+
+    if (Math.abs(accountReconciliationAmount) > 0.01) {
+      createCashMovement({
+        type: 'shift_adjustment',
+
+        direction: accountReconciliationAmount > 0 ? 'in' : 'out',
+
+        amount: Math.abs(accountReconciliationAmount),
+
+        payment_method: 'store_cash',
+
+        reference_id: shiftId,
+        reference_type: 'cash_shift_opening_reconcile',
+
+        notes: `تسوية رصيد درج المحل عند فتح الشفت #${shiftId}`,
+
+        created_by: openedBy,
+        shift_id: shiftId,
+      })
+    }
+
     createActivityLog({
       user_id: openedBy,
 
@@ -262,6 +301,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
         opening_counted_amount: openingCountedAmount,
 
         opening_difference: openingDifference,
+        account_reconciliation_amount: accountReconciliationAmount,
       }),
     })
 
@@ -272,6 +312,381 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
     }
 
     return shift
+  })
+
+  return tx()
+}
+
+export function getCashShiftExpectedBalance(shiftId: number) {
+  const db = getDb()
+
+  const shift = getCashShiftById(shiftId)
+
+  if (!shift) {
+    throw new Error('الشفت غير موجود')
+  }
+
+  const totals = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(
+            CASE
+              WHEN direction = 'in'
+              THEN amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS total_in,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN direction = 'out'
+              THEN amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS total_out
+
+      FROM cash_movements
+
+      WHERE shift_id = ?
+        AND payment_method = 'store_cash'
+        AND cancelled_at IS NULL
+
+        AND type != 'shift_adjustment'
+
+        AND IFNULL(
+          reference_type,
+          ''
+        ) != 'cash_shift_safe_transfer'
+      `,
+    )
+    .get(shift.id) as
+    | {
+        total_in: number
+        total_out: number
+      }
+    | undefined
+
+  const cashIn = roundMoney(Number(totals?.total_in || 0))
+
+  const cashOut = roundMoney(Number(totals?.total_out || 0))
+
+  const expectedClosingAmount = roundMoney(
+    Number(shift.opening_counted_amount || 0) + cashIn - cashOut,
+  )
+
+  const breakdown = db
+    .prepare(
+      `
+      SELECT
+        type,
+        direction,
+        IFNULL(SUM(amount), 0) AS total
+
+      FROM cash_movements
+
+      WHERE shift_id = ?
+        AND payment_method = 'store_cash'
+        AND cancelled_at IS NULL
+
+        AND type != 'shift_adjustment'
+
+        AND IFNULL(
+          reference_type,
+          ''
+        ) != 'cash_shift_safe_transfer'
+
+      GROUP BY
+        type,
+        direction
+
+      ORDER BY
+        type ASC,
+        direction ASC
+      `,
+    )
+    .all(shift.id)
+    .map((row: any) => ({
+      type: String(row.type || ''),
+      direction: row.direction as 'in' | 'out',
+      total: roundMoney(Number(row.total || 0)),
+    }))
+
+  return {
+    shift_id: shift.id,
+
+    opening_counted_amount: roundMoney(
+      Number(shift.opening_counted_amount || 0),
+    ),
+
+    cash_in: cashIn,
+    cash_out: cashOut,
+
+    expected_closing_amount: expectedClosingAmount,
+
+    breakdown,
+  }
+}
+
+export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
+  const db = getDb()
+
+  const shiftId = Number(input.shift_id || 0)
+  const closedBy = Number(input.closed_by || 0)
+
+  const closingCountedAmount = roundMoney(Number(input.closing_counted_amount))
+
+  const leftForNextShift = roundMoney(Number(input.left_for_next_shift))
+
+  if (!shiftId) {
+    throw new Error('رقم الشفت غير صحيح')
+  }
+
+  if (!closedBy) {
+    throw new Error('المستخدم غير صحيح')
+  }
+
+  if (!Number.isFinite(closingCountedAmount) || closingCountedAmount < 0) {
+    throw new Error('قيمة جرد إغلاق الشفت غير صحيحة')
+  }
+
+  if (!Number.isFinite(leftForNextShift) || leftForNextShift < 0) {
+    throw new Error('المبلغ المتروك للشفت التالي غير صحيح')
+  }
+
+  if (leftForNextShift > closingCountedAmount) {
+    throw new Error(
+      'المبلغ المتروك للشفت التالي أكبر من المبلغ الموجود فعليًا في الدرج',
+    )
+  }
+
+  const tx = db.transaction(() => {
+    const shift = getCashShiftById(shiftId)
+
+    if (!shift) {
+      throw new Error('الشفت غير موجود')
+    }
+
+    if (shift.status !== 'open') {
+      throw new Error('هذا الشفت مغلق بالفعل')
+    }
+
+    const actor = db
+      .prepare(
+        `
+        SELECT
+          id,
+          role,
+          is_active
+
+        FROM users
+
+        WHERE id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(closedBy) as
+      | {
+          id: number
+          role: string
+          is_active: number
+        }
+      | undefined
+
+    if (!actor || Number(actor.is_active) !== 1) {
+      throw new Error('المستخدم غير موجود أو غير مفعل')
+    }
+
+    const isAdmin = actor.role === 'admin'
+
+    const isShiftOwner = Number(shift.opened_by) === closedBy
+
+    if (!isAdmin && !isShiftOwner) {
+      throw new Error('لا يمكن إغلاق الشفت إلا بواسطة صاحب الشفت أو المدير')
+    }
+
+    const preview = getCashShiftExpectedBalance(shift.id)
+
+    const expectedClosingAmount = roundMoney(preview.expected_closing_amount)
+
+    const closingDifference = roundMoney(
+      closingCountedAmount - expectedClosingAmount,
+    )
+
+    let closingVarianceId: number | null = null
+
+    if (Math.abs(closingDifference) > 0.01) {
+      const varianceResult = db
+        .prepare(
+          `
+          INSERT INTO cash_shift_variances (
+            shift_id,
+            stage,
+            kind,
+            amount,
+            status
+          )
+
+          VALUES (
+            ?,
+            'closing',
+            ?,
+            ?,
+            'pending'
+          )
+          `,
+        )
+        .run(
+          shift.id,
+
+          closingDifference < 0 ? 'shortage' : 'surplus',
+
+          Math.abs(closingDifference),
+        )
+
+      closingVarianceId = Number(varianceResult.lastInsertRowid)
+
+      createCashMovement({
+        type: 'shift_adjustment',
+
+        direction: closingDifference > 0 ? 'in' : 'out',
+
+        amount: Math.abs(closingDifference),
+
+        payment_method: 'store_cash',
+
+        reference_id: closingVarianceId,
+
+        reference_type: 'cash_shift_variance',
+
+        notes:
+          closingDifference < 0
+            ? `تسوية عجز إغلاق الشفت #${shift.id}`
+            : `تسوية زيادة إغلاق الشفت #${shift.id}`,
+
+        created_by: closedBy,
+        shift_id: shift.id,
+      })
+    }
+
+    const safeTransferAmount = roundMoney(
+      closingCountedAmount - leftForNextShift,
+    )
+
+    if (safeTransferAmount > 0) {
+      const outResult = createCashMovement({
+        type: 'transfer',
+
+        direction: 'out',
+
+        amount: safeTransferAmount,
+
+        payment_method: 'store_cash',
+
+        reference_id: shift.id,
+
+        reference_type: 'cash_shift_safe_transfer',
+
+        notes: `توريد إغلاق الشفت #${shift.id} إلى الخزنة الآمنة`,
+
+        created_by: closedBy,
+        shift_id: shift.id,
+      })
+
+      createCashMovement({
+        type: 'transfer',
+
+        direction: 'in',
+
+        amount: safeTransferAmount,
+
+        payment_method: 'store_safe',
+
+        reference_id: Number(outResult.lastInsertRowid || 0),
+
+        reference_type: 'cash_shift_safe_transfer',
+
+        notes: `توريد إغلاق الشفت #${shift.id} إلى الخزنة الآمنة`,
+
+        created_by: closedBy,
+        shift_id: shift.id,
+      })
+    }
+
+    db.prepare(
+      `
+      UPDATE cash_shifts
+
+      SET
+        status = 'closed',
+
+        expected_closing_amount = ?,
+        closing_counted_amount = ?,
+        closing_difference = ?,
+
+        left_for_next_shift = ?,
+        safe_transfer_amount = ?,
+
+        closed_by = ?,
+        closed_at = CURRENT_TIMESTAMP,
+        close_reason = ?
+
+      WHERE id = ?
+        AND status = 'open'
+      `,
+    ).run(
+      expectedClosingAmount,
+      closingCountedAmount,
+      closingDifference,
+
+      leftForNextShift,
+      safeTransferAmount,
+
+      closedBy,
+
+      input.close_reason?.trim() || null,
+
+      shift.id,
+    )
+
+    createActivityLog({
+      user_id: closedBy,
+
+      action: 'cash_shift_closed',
+
+      entity: 'cash_shifts',
+
+      entity_id: shift.id,
+
+      details: JSON.stringify({
+        expected_closing_amount: expectedClosingAmount,
+
+        closing_counted_amount: closingCountedAmount,
+
+        closing_difference: closingDifference,
+
+        left_for_next_shift: leftForNextShift,
+
+        safe_transfer_amount: safeTransferAmount,
+
+        closing_variance_id: closingVarianceId,
+      }),
+    })
+
+    const closedShift = getCashShiftById(shift.id)
+
+    if (!closedShift) {
+      throw new Error('تعذر تحميل الشفت بعد إغلاقه')
+    }
+
+    return closedShift
   })
 
   return tx()

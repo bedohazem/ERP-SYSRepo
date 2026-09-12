@@ -394,6 +394,22 @@ const DETAIL_LABELS: Record<string, string> = {
 
   backup: 'بيانات النسخة الاحتياطية',
   info: 'معلومات إضافية',
+
+  shift_id: 'رقم الشفت',
+  previous_shift_id: 'رقم الشفت السابق',
+  expected_opening_amount: 'رصيد الافتتاح المتوقع',
+  opening_counted_amount: 'رصيد الافتتاح الفعلي',
+  opening_difference: 'فرق الافتتاح',
+  account_reconciliation_amount: 'تسوية رصيد الدرج',
+  expected_closing_amount: 'رصيد الإغلاق المتوقع',
+  closing_counted_amount: 'رصيد الإغلاق الفعلي',
+  closing_difference: 'فرق الإغلاق',
+  left_for_next_shift: 'المبلغ المتروك للشفت التالي',
+  safe_transfer_amount: 'المبلغ المورد للخزنة الآمنة',
+  closing_variance_id: 'رقم فرق الإغلاق',
+  closed_by: 'تم الإغلاق بواسطة',
+  closed_at: 'تاريخ الإغلاق',
+  close_reason: 'سبب الإغلاق',
 }
 
 const MONEY_KEYS = new Set([
@@ -427,6 +443,19 @@ const MONEY_KEYS = new Set([
   'opening_drawer_balance',
   'counted_amount',
   'carry_over_amount',
+  'expected_opening_amount',
+  'opening_counted_amount',
+  'opening_difference',
+  'account_reconciliation_amount',
+  'expected_closing_amount',
+  'closing_counted_amount',
+  'closing_difference',
+  'left_for_next_shift',
+  'safe_transfer_amount',
+  'closing_variance_id',
+  'closed_by',
+  'closed_at',
+  'close_reason',
 ])
 
 const STATUS_LABELS: Record<string, string> = {
@@ -439,6 +468,9 @@ const STATUS_LABELS: Record<string, string> = {
   approved: 'معتمد',
   active: 'فعال',
   inactive: 'غير فعال',
+  closed: 'مغلق',
+  pending: 'قيد المراجعة',
+  resolved: 'تمت المعالجة',
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -456,7 +488,7 @@ const TYPE_LABELS: Record<string, string> = {
   withdraw: 'سحب',
   deposit: 'إيداع',
   transfer: 'تحويل',
-
+  shift_adjustment: 'تسوية رصيد شفت',
   percentage: 'نسبة مئوية',
   percent: 'نسبة مئوية',
   fixed: 'مبلغ ثابت',
