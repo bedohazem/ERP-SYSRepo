@@ -418,11 +418,21 @@ describe('cash shifts repository', () => {
       }),
     ).toThrow('لا يمكن إغلاق الشفت إلا بواسطة صاحب الشفت أو المدير')
 
+    expect(() =>
+      closeCashShift({
+        shift_id: shift.id,
+        closing_counted_amount: 0,
+        left_for_next_shift: 0,
+        closed_by: 1,
+      }),
+    ).toThrow('سبب إغلاق المدير للشفت مطلوب')
+
     const closed = closeCashShift({
       shift_id: shift.id,
       closing_counted_amount: 0,
       left_for_next_shift: 0,
       closed_by: 1,
+      close_reason: 'إغلاق إداري للشفت',
     })
 
     expect(closed.status).toBe('closed')

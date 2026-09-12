@@ -512,6 +512,10 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
       throw new Error('لا يمكن إغلاق الشفت إلا بواسطة صاحب الشفت أو المدير')
     }
 
+    if (isAdmin && !isShiftOwner && !input.close_reason?.trim()) {
+      throw new Error('سبب إغلاق المدير للشفت مطلوب')
+    }
+
     const preview = getCashShiftExpectedBalance(shift.id)
 
     const expectedClosingAmount = roundMoney(preview.expected_closing_amount)

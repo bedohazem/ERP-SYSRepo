@@ -12,6 +12,12 @@ import {
   updateCashDayClosing,
   listCashMovements,
 } from '../database/repositories/cash.repo'
+import {
+  closeCashShift,
+  getCashShiftExpectedBalance,
+  getOpenCashShift,
+  openCashShift,
+} from '../database/repositories/cash-shifts.repo'
 import { requireAdminPassword } from './permission-helper'
 import { requireAuthenticatedUser } from '../auth-session'
 
@@ -150,5 +156,43 @@ export function registerCashIpc(): void {
           error instanceof Error ? error.message : 'تعذر إلغاء حركة الخزنة',
       }
     }
+  })
+
+  ipcMain.handle('cash-shifts:get-open', (event) => {
+    requireAuthenticatedUser(event)
+
+    return getOpenCashShift()
+  })
+
+  ipcMain.handle('cash-shifts:open', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
+    return openCashShift({
+      opening_counted_amount: Number(input?.opening_counted_amount),
+
+      opened_by: actorId,
+    })
+  })
+
+  ipcMain.handle('cash-shifts:preview', (event, shiftId) => {
+    requireAuthenticatedUser(event)
+
+    return getCashShiftExpectedBalance(Number(shiftId))
+  })
+
+  ipcMain.handle('cash-shifts:close', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
+    return closeCashShift({
+      shift_id: Number(input?.shift_id),
+
+      closing_counted_amount: Number(input?.closing_counted_amount),
+
+      left_for_next_shift: Number(input?.left_for_next_shift),
+
+      close_reason: input?.close_reason,
+
+      closed_by: actorId,
+    })
   })
 }

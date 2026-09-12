@@ -1551,6 +1551,29 @@ declare global {
 
       createCashMovement: (input: any) => Promise<any>
       createCashTransfer: (input: any) => Promise<any>
+      getOpenCashShift: () => Promise<any | null>
+
+      openCashShift: (input: { opening_counted_amount: number }) => Promise<any>
+
+      getCashShiftExpectedBalance: (shiftId: number) => Promise<{
+        shift_id: number
+        opening_counted_amount: number
+        cash_in: number
+        cash_out: number
+        expected_closing_amount: number
+        breakdown: Array<{
+          type: string
+          direction: 'in' | 'out'
+          total: number
+        }>
+      }>
+
+      closeCashShift: (input: {
+        shift_id: number
+        closing_counted_amount: number
+        left_for_next_shift: number
+        close_reason?: string | null
+      }) => Promise<any>
 
       getCashDayClosePreview: (businessDate: string) => Promise<{
         business_date: string
