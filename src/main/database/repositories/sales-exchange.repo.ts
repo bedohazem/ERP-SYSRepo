@@ -5,6 +5,7 @@ import {
   getSaleCurrentState,
 } from './sales-current-state.repo'
 import { syncCustomerTotalSpent } from './sales.repo'
+import { getOpenCashShift } from './cash-shifts.repo'
 
 export type CreateSaleExchangeInput = {
   original_sale_id: number
@@ -391,6 +392,12 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
   if (!input.items?.length) {
     throw new Error('لا توجد أصناف للاستبدال')
+  }
+
+  const openShift = getOpenCashShift()
+
+  if (!openShift) {
+    throw new Error('لا يمكن تسجيل استبدال بدون شفت مفتوح')
   }
 
   const normalizedItems = input.items.map((item) => ({
@@ -892,6 +899,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         INSERT INTO sale_exchanges (
           original_sale_id,
           user_id,
+          shift_id,
           promotion_group_id,
 
           old_group_total,
@@ -932,7 +940,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           business_date
         )
         VALUES (
-          ?, ?, ?,
+          ?, ?, ?, ?,
           ?, ?, ?,
           ?, ?,
           ?, ?,
@@ -951,6 +959,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       .run(
         saleId,
         userId,
+        openShift.id,
         promotionGroupId,
 
         oldGroupTotal,
@@ -1015,6 +1024,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         notes: `تحصيل فرق استبدال ${exchangeCode} ` + `لفاتورة رقم ${saleId}`,
         created_by: userId,
         business_date: businessDate,
+        shift_id: openShift.id,
       })
     }
 
@@ -1029,6 +1039,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         notes: `رد فرق استبدال ${exchangeCode} ` + `لفاتورة رقم ${saleId}`,
         created_by: userId,
         business_date: businessDate,
+        shift_id: openShift.id,
       })
     }
 
@@ -1363,6 +1374,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       debt_reduction_amount: debtReductionAmount,
 
       payment_method: paymentMethod,
+      shift_id: openShift.id,
     }
   })
 

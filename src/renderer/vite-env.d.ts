@@ -594,6 +594,7 @@ declare global {
         debt_reduction_amount: number
 
         payment_method: string
+        shift_id: number
       }>
 
       listSaleExchanges: (input?: {
@@ -617,6 +618,7 @@ declare global {
           original_sale_id: number
 
           user_id: number | null
+          shift_id?: number | null
 
           promotion_group_id: string
 

@@ -19,6 +19,11 @@ import {
   createSaleExchange,
   getSaleExchangeState,
 } from '../../src/main/database/repositories/sales-exchange.repo'
+import {
+  closeCashShift,
+  getOpenCashShift,
+  openCashShift,
+} from '../../src/main/database/repositories/cash-shifts.repo'
 
 type TestVariant = {
   variant_id: number
@@ -237,6 +242,11 @@ describe('sale promotion exchanges', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
   })
 
   it('exchanges one gift unit and makes the new cheapest unit the gift', () => {
@@ -295,6 +305,97 @@ describe('sale promotion exchanges', () => {
 
     expect(cashMovement.direction).toBe('in')
     expect(Number(cashMovement.amount)).toBe(100)
+  })
+
+  it('requires an open shift and links exchange cash movement to the current shift', () => {
+    const db = getDb()
+
+    const result = createPromotionSale(['EX250', 'EX200', 'EX150'])
+
+    const originalShift = getOpenCashShift()
+
+    expect(originalShift).toBeTruthy()
+
+    closeCashShift({
+      shift_id: originalShift!.id,
+      closing_counted_amount: 450,
+      left_for_next_shift: 450,
+      closed_by: 1,
+    })
+
+    const giftUnit = getUnitByPrice(result.sale.saleId, 150)
+
+    expect(() =>
+      createSaleExchange({
+        original_sale_id: result.sale.saleId,
+        user_id: 1,
+        payment_method: 'store_cash',
+        items: [
+          {
+            promotion_unit_id: Number(giftUnit.id),
+            new_variant_id: result.variants.EX300.variant_id,
+          },
+        ],
+      }),
+    ).toThrow('لا يمكن تسجيل استبدال بدون شفت مفتوح')
+
+    const currentShift = openCashShift({
+      opening_counted_amount: 450,
+      opened_by: 1,
+    })
+
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+
+      user_id: 1,
+
+      payment_method: 'store_cash',
+
+      reason: 'استبدال في شفت جديد',
+
+      items: [
+        {
+          promotion_unit_id: Number(giftUnit.id),
+
+          new_variant_id: result.variants.EX300.variant_id,
+        },
+      ],
+    })
+
+    expect(exchange.shift_id).toBe(currentShift.id)
+
+    expect(exchange.shift_id).not.toBe(originalShift!.id)
+
+    const exchangeRow = db
+      .prepare(
+        `
+        SELECT shift_id
+        FROM sale_exchanges
+        WHERE id = ?
+      `,
+      )
+      .get(exchange.exchangeId) as {
+      shift_id: number
+    }
+
+    expect(exchangeRow.shift_id).toBe(currentShift.id)
+
+    const cashMovement = db
+      .prepare(
+        `
+        SELECT shift_id
+        FROM cash_movements
+        WHERE reference_type =
+          'sale_exchange'
+          AND reference_id = ?
+        LIMIT 1
+      `,
+      )
+      .get(exchange.exchangeId) as {
+      shift_id: number
+    }
+
+    expect(cashMovement.shift_id).toBe(currentShift.id)
   })
 
   it('uses the original promotion scope even after the live promotion changes', () => {

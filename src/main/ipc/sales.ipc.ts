@@ -121,6 +121,7 @@ export function registerSalesIpc(): void {
         amount_to_refund: result.amount_to_refund,
         debt_reduction_amount: result.debt_reduction_amount,
         payment_method: result.payment_method,
+        shift_id: result.shift_id,
         items_count: input.items?.length || 0,
       },
     })
