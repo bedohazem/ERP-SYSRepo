@@ -436,7 +436,7 @@ declare global {
         originalSaleId: number
         refundAmount: number
         loyalty_points_reversed: number
-        shift_id?: number
+        shift_id: number
       }>
 
       listSaleReturns: (input?: {
