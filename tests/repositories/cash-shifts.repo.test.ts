@@ -7,6 +7,7 @@ import {
   getCashShiftExpectedBalance,
   getOpenCashShift,
   openCashShift,
+  getCashShiftOpeningPreview,
 } from '../../src/main/database/repositories/cash-shifts.repo'
 
 import {
@@ -42,6 +43,28 @@ describe('cash shifts repository', () => {
         payment_method: 'store_cash',
       }).balance,
     ).toBe(500)
+  })
+
+  it('shows previous handover before opening the next shift', () => {
+    const firstShift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    })
+
+    closeCashShift({
+      shift_id: firstShift.id,
+      closing_counted_amount: 500,
+      left_for_next_shift: 300,
+      closed_by: 1,
+    })
+
+    const preview = getCashShiftOpeningPreview()
+
+    expect(preview.can_open).toBe(true)
+
+    expect(preview.previous_shift_id).toBe(firstShift.id)
+
+    expect(preview.expected_opening_amount).toBe(300)
   })
 
   it('prevents opening more than one shift at the same time', () => {

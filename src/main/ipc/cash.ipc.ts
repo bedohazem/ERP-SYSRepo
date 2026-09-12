@@ -17,6 +17,7 @@ import {
   getCashShiftExpectedBalance,
   getOpenCashShift,
   openCashShift,
+  getCashShiftOpeningPreview,
 } from '../database/repositories/cash-shifts.repo'
 import { requireAdminPassword } from './permission-helper'
 import { requireAuthenticatedUser } from '../auth-session'
@@ -162,6 +163,12 @@ export function registerCashIpc(): void {
     requireAuthenticatedUser(event)
 
     return getOpenCashShift()
+  })
+
+  ipcMain.handle('cash-shifts:opening-preview', (event) => {
+    requireAuthenticatedUser(event)
+
+    return getCashShiftOpeningPreview()
   })
 
   ipcMain.handle('cash-shifts:open', (event, input) => {

@@ -110,6 +110,64 @@ export function getOpenCashShift(): CashShiftRow | null {
   return row || null
 }
 
+export function getCashShiftOpeningPreview() {
+  const db = getDb()
+
+  const currentOpenShift = getOpenCashShift()
+
+  if (currentOpenShift) {
+    return {
+      can_open: false,
+      open_shift: currentOpenShift,
+      previous_shift_id: null,
+      expected_opening_amount: null,
+    }
+  }
+
+  const previousShift = db
+    .prepare(
+      `
+      SELECT
+        id,
+        left_for_next_shift,
+        closed_at
+
+      FROM cash_shifts
+
+      WHERE status = 'closed'
+
+      ORDER BY id DESC
+
+      LIMIT 1
+      `,
+    )
+    .get() as
+    | {
+        id: number
+        left_for_next_shift: number | null
+        closed_at: string | null
+      }
+    | undefined
+
+  const expectedOpeningAmount =
+    previousShift?.left_for_next_shift === null ||
+    previousShift?.left_for_next_shift === undefined
+      ? null
+      : roundMoney(Number(previousShift.left_for_next_shift))
+
+  return {
+    can_open: true,
+
+    open_shift: null,
+
+    previous_shift_id: previousShift?.id ?? null,
+
+    expected_opening_amount: expectedOpeningAmount,
+
+    previous_closed_at: previousShift?.closed_at ?? null,
+  }
+}
+
 export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
   const db = getDb()
 

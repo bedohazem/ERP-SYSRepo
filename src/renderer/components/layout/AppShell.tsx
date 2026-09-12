@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth.store'
 import { useAppStore } from '../../store/app.store'
+import ShiftHeaderControl from '../shifts/ShiftHeaderControl'
 
 type AppTheme = 'dark' | 'light'
 
@@ -475,9 +476,7 @@ export default function AppShell({
         style={{
           gridArea: 'main',
           display: 'grid',
-          gridTemplateRows: isMobile
-            ? 'auto minmax(0, 1fr)'
-            : '88px minmax(0, 1fr)',
+          gridTemplateRows: 'auto minmax(0, 1fr)',
           gap: isMobile ? '10px' : '16px',
           minWidth: 0,
           minHeight: 0,
@@ -532,6 +531,11 @@ export default function AppShell({
               gap: '10px',
             }}
           >
+            <ShiftHeaderControl
+              user={user}
+              isLight={isLight}
+              isMobile={isMobile}
+            />
             <button
               type="button"
               onClick={togglePageSticky}

@@ -1551,6 +1551,13 @@ declare global {
 
       createCashMovement: (input: any) => Promise<any>
       createCashTransfer: (input: any) => Promise<any>
+      getCashShiftOpeningPreview: () => Promise<{
+        can_open: boolean
+        open_shift: any | null
+        previous_shift_id: number | null
+        expected_opening_amount: number | null
+        previous_closed_at?: string | null
+      }>
       getOpenCashShift: () => Promise<any | null>
 
       openCashShift: (input: { opening_counted_amount: number }) => Promise<any>

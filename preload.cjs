@@ -193,6 +193,8 @@ contextBridge.exposeInMainWorld('api', {
   cancelCashMovement: (input) =>
     ipcRenderer.invoke('cash:cancel-movement', input),
   createCashTransfer: (input) => ipcRenderer.invoke('cash:transfer', input),
+  getCashShiftOpeningPreview: () =>
+    ipcRenderer.invoke('cash-shifts:opening-preview'),
   getOpenCashShift: () => ipcRenderer.invoke('cash-shifts:get-open'),
 
   openCashShift: (input) => ipcRenderer.invoke('cash-shifts:open', input),
