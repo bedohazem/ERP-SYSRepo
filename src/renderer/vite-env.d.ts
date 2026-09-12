@@ -422,7 +422,6 @@ declare global {
         user_id: number
         reason?: string | null
         refund_payment_method?: string | null
-        shift_id?: number
         items: Array<{
           sale_item_id: number
           variant_id: number
@@ -437,6 +436,7 @@ declare global {
         originalSaleId: number
         refundAmount: number
         loyalty_points_reversed: number
+        shift_id?: number
       }>
 
       listSaleReturns: (input?: {
