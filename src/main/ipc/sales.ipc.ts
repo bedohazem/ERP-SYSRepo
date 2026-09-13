@@ -310,6 +310,7 @@ export function registerSalesIpc(): void {
           sale_id: result.sale_id,
           cash_restored: result.cash_restored,
           debt_restored: result.debt_restored,
+          shift_id: result.cancelled_shift_id,
         },
       })
 

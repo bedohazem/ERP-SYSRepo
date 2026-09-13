@@ -2725,6 +2725,14 @@ export function cancelSaleReturn(input: {
     throw new Error('رقم المرتجع غير صحيح')
   }
 
+  const openShift = getOpenCashShift()
+
+  if (!openShift) {
+    throw new Error('لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح')
+  }
+
+  const cancellationBusinessDate = getRelativeLocalDateKey(0)
+
   const reason = input.reason?.trim() || 'إلغاء مرتجع بيع'
 
   const returnCode = `RET-${String(returnId).padStart(5, '0')}`
@@ -2754,39 +2762,6 @@ export function cancelSaleReturn(input: {
 
     if (saleReturn.cancelled_at) {
       throw new Error('مرتجع البيع ملغي بالفعل')
-    }
-
-    const returnBusinessDateRow = db
-      .prepare(
-        `
-    SELECT
-      date(created_at, 'localtime') AS business_date
-    FROM sale_returns
-    WHERE id = ?
-    LIMIT 1
-    `,
-      )
-      .get(returnId) as { business_date: string } | undefined
-
-    const returnBusinessDate = returnBusinessDateRow?.business_date || ''
-
-    if (returnBusinessDate) {
-      const closedDay = db
-        .prepare(
-          `
-      SELECT id
-      FROM cash_day_closings
-      WHERE business_date = ?
-      LIMIT 1
-      `,
-        )
-        .get(returnBusinessDate)
-
-      if (closedDay) {
-        throw new Error(
-          `لا يمكن إلغاء مرتجع يخص يوم ${returnBusinessDate} لأنه تم تقفيله`,
-        )
-      }
     }
 
     if (saleReturn.sale_cancelled_at) {
@@ -2949,6 +2924,8 @@ export function cancelSaleReturn(input: {
         reference_type: 'sale_return_cancel',
         notes: `عكس مرتجع بيع ملغي ${returnCode}`,
         created_by: input.actor_id ?? null,
+        business_date: cancellationBusinessDate,
+        shift_id: openShift.id,
       })
     }
 
@@ -3110,10 +3087,11 @@ export function cancelSaleReturn(input: {
       SET
         cancelled_at = CURRENT_TIMESTAMP,
         cancelled_by = ?,
+        cancelled_shift_id = ?,
         cancel_reason = ?
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, reason, returnId)
+    ).run(input.actor_id ?? null, openShift.id, reason, returnId)
 
     if (saleReturn.customer_id) {
       syncCustomerTotalSpent(Number(saleReturn.customer_id))
@@ -3126,6 +3104,7 @@ export function cancelSaleReturn(input: {
       cash_restored: cashRefundAmount,
       debt_restored: debtReductionAmount,
       items_count: items.length,
+      cancelled_shift_id: openShift.id,
     }
   })
 
@@ -3196,7 +3175,8 @@ export function listSaleReturns(input?: {
         sr.cancelled_at,
         sr.cancelled_by,
         sr.cancel_reason,
-
+        sr.cancelled_shift_id,
+        
         CASE
           WHEN sr.user_id = ?
             AND datetime(sr.created_at)

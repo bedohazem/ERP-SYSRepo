@@ -469,6 +469,7 @@ declare global {
           cancel_reason?: string | null
           requires_admin_password?: number | boolean
           shift_id?: number | null
+          cancelled_shift_id?: number | null
         }>
         total: number
         limit: number
@@ -501,6 +502,7 @@ declare global {
         sale_id?: number
         cash_restored?: number
         debt_restored?: number
+        cancelled_shift_id?: number
       }>
 
       getSaleExchangeState: (saleId: number) => Promise<{

@@ -2907,4 +2907,122 @@ describe('sales repository', () => {
 
     expect(refundMovement.direction).toBe('out')
   })
+
+  it('cancels a previous-shift return in the current shift', () => {
+    const db = getDb()
+
+    const variant = seedProduct()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 300,
+      discount_value: 0,
+      grand_total: 300,
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 300,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 2,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      reason: 'Return in original shift',
+      items: [
+        {
+          sale_item_id: receipt.items[0].id,
+          variant_id: variant.variant_id,
+          quantity: 1,
+        },
+      ],
+    })
+
+    expect(saleReturn.refundAmount).toBe(150)
+
+    const originalShift = getOpenCashShift()
+
+    expect(originalShift).toBeTruthy()
+
+    closeCashShift({
+      shift_id: originalShift!.id,
+      closing_counted_amount: 150,
+      left_for_next_shift: 150,
+      closed_by: 1,
+    })
+
+    expect(() =>
+      cancelSaleReturn({
+        return_id: saleReturn.returnId,
+        actor_id: 1,
+        reason: 'Cancel return without shift',
+      }),
+    ).toThrow('لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح')
+
+    const currentShift = openCashShift({
+      opening_counted_amount: 150,
+      opened_by: 1,
+    })
+
+    const cancelled = cancelSaleReturn({
+      return_id: saleReturn.returnId,
+      actor_id: 1,
+      reason: 'إلغاء المرتجع في شفت جديد',
+    })
+
+    expect(cancelled.cancelled_shift_id).toBe(currentShift.id)
+
+    const returnRow = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        cancelled_shift_id
+      FROM sale_returns
+      WHERE id = ?
+    `,
+      )
+      .get(saleReturn.returnId) as {
+      shift_id: number
+      cancelled_shift_id: number
+    }
+
+    expect(returnRow.shift_id).toBe(originalShift!.id)
+
+    expect(returnRow.cancelled_shift_id).toBe(currentShift.id)
+
+    const movement = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        direction
+      FROM cash_movements
+      WHERE reference_type =
+        'sale_return_cancel'
+        AND reference_id = ?
+      LIMIT 1
+    `,
+      )
+      .get(saleReturn.returnId) as {
+      shift_id: number
+      direction: string
+    }
+
+    expect(movement.shift_id).toBe(currentShift.id)
+
+    expect(movement.direction).toBe('in')
+  })
 })
