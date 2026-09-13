@@ -460,4 +460,77 @@ describe('cash shifts repository', () => {
 
     expect(closed.status).toBe('closed')
   })
+
+  it('moves legacy drawer excess to safe on the first shift without reducing total cash', () => {
+    createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 3267,
+      payment_method: 'store_cash',
+      created_by: 1,
+    })
+
+    const beforeDrawer = Number(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    )
+
+    const beforeSafe = Number(
+      getCashSummary({
+        payment_method: 'store_safe',
+      }).balance,
+    )
+
+    expect(beforeDrawer + beforeSafe).toBe(3267)
+
+    const shift = openCashShift({
+      opening_counted_amount: 10,
+      opened_by: 1,
+    })
+
+    const drawer = Number(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    )
+
+    const safe = Number(
+      getCashSummary({
+        payment_method: 'store_safe',
+      }).balance,
+    )
+
+    expect(drawer).toBe(10)
+    expect(safe).toBe(3257)
+
+    expect(drawer + safe).toBe(3267)
+
+    const preview = getCashShiftExpectedBalance(shift.id)
+
+    expect(preview.expected_closing_amount).toBe(10)
+  })
+
+  it('rejects invalid shift amounts', () => {
+    expect(() =>
+      openCashShift({
+        opening_counted_amount: Number.NaN,
+        opened_by: 1,
+      }),
+    ).toThrow('رصيد افتتاح الشفت غير صحيح')
+
+    const shift = openCashShift({
+      opening_counted_amount: 100,
+      opened_by: 1,
+    })
+
+    expect(() =>
+      closeCashShift({
+        shift_id: shift.id,
+        closing_counted_amount: Number.NaN,
+        left_for_next_shift: 0,
+        closed_by: 1,
+      }),
+    ).toThrow('قيمة جرد إغلاق الشفت غير صحيحة')
+  })
 })

@@ -97,6 +97,14 @@ const CASH_DIRECTION_FILTER_OPTIONS = [
   { value: 'out', label: 'خارج' },
 ]
 
+const CASH_SUMMARY_ACCOUNT_OPTIONS = [
+  ...CASH_ACCOUNT_OPTIONS,
+  {
+    value: 'store_safe',
+    label: 'الخزنة الآمنة',
+  },
+]
+
 export default function CashPage() {
   const currentUser = useAuthStore((s) => s.user)
   const isAdmin = currentUser?.role === 'admin'
@@ -273,7 +281,7 @@ export default function CashPage() {
       })
 
       const accountSummaryRows = await Promise.all(
-        CASH_ACCOUNT_OPTIONS.map(async (option) => {
+        CASH_SUMMARY_ACCOUNT_OPTIONS.map(async (option) => {
           const accountSummary = await window.api.getCashSummary({
             payment_method: option.value,
           })

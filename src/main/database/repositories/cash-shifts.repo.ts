@@ -45,7 +45,7 @@ export type CloseCashShiftInput = {
 }
 
 function roundMoney(value: number) {
-  return Number(Number(value || 0).toFixed(2))
+  return Number(value.toFixed(2))
 }
 
 function getShiftSelectSql() {
@@ -173,15 +173,20 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
 
   const openedBy = Number(input.opened_by || 0)
 
-  const openingCountedAmount = roundMoney(Number(input.opening_counted_amount))
+  const rawOpeningCountedAmount = Number(input.opening_counted_amount)
 
-  if (!openedBy) {
+  if (!Number.isInteger(openedBy) || openedBy <= 0) {
     throw new Error('المستخدم غير صحيح')
   }
 
-  if (!Number.isFinite(openingCountedAmount) || openingCountedAmount < 0) {
+  if (
+    !Number.isFinite(rawOpeningCountedAmount) ||
+    rawOpeningCountedAmount < 0
+  ) {
     throw new Error('رصيد افتتاح الشفت غير صحيح')
   }
+
+  const openingCountedAmount = roundMoney(rawOpeningCountedAmount)
 
   const tx = db.transaction(() => {
     const currentOpenShift = db
@@ -313,33 +318,124 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
     }
 
     const currentDrawerBalance = roundMoney(
-      getCashSummary({
-        payment_method: 'store_cash',
-      }).balance,
+      Number(
+        getCashSummary({
+          payment_method: 'store_cash',
+        }).balance,
+      ),
     )
 
-    const accountReconciliationAmount = roundMoney(
-      openingCountedAmount - currentDrawerBalance,
-    )
+    let accountReconciliationAmount = 0
+    let openingSafeTransferAmount = 0
 
-    if (Math.abs(accountReconciliationAmount) > 0.01) {
-      createCashMovement({
-        type: 'shift_adjustment',
+    /*
+     * أول شفت فقط هو نقطة الانتقال
+     * من نظام الخزنة القديم لنظام الشفتات.
+     *
+     * أي رصيد قديم زائد عن مبلغ افتتاح
+     * الشفت لا يختفي من رأس المال،
+     * بل ينتقل للخزنة الآمنة.
+     */
+    if (!previousShift) {
+      const legacyDrawerExcess = roundMoney(
+        currentDrawerBalance - openingCountedAmount,
+      )
 
-        direction: accountReconciliationAmount > 0 ? 'in' : 'out',
+      if (legacyDrawerExcess > 0.01) {
+        openingSafeTransferAmount = legacyDrawerExcess
 
-        amount: Math.abs(accountReconciliationAmount),
+        const outResult = createCashMovement({
+          type: 'transfer',
 
-        payment_method: 'store_cash',
+          direction: 'out',
 
-        reference_id: shiftId,
-        reference_type: 'cash_shift_opening_reconcile',
+          amount: openingSafeTransferAmount,
 
-        notes: `تسوية رصيد درج المحل عند فتح الشفت #${shiftId}`,
+          payment_method: 'store_cash',
 
-        created_by: openedBy,
-        shift_id: shiftId,
-      })
+          reference_id: shiftId,
+
+          reference_type: 'cash_shift_safe_transfer',
+
+          notes: `ترحيل الرصيد السابق عند فتح أول شفت #${shiftId} إلى الخزنة الآمنة`,
+
+          created_by: openedBy,
+          shift_id: shiftId,
+        })
+
+        createCashMovement({
+          type: 'transfer',
+
+          direction: 'in',
+
+          amount: openingSafeTransferAmount,
+
+          payment_method: 'store_safe',
+
+          reference_id: Number(outResult.lastInsertRowid || 0),
+
+          reference_type: 'cash_shift_safe_transfer',
+
+          notes: `ترحيل الرصيد السابق عند فتح أول شفت #${shiftId} إلى الخزنة الآمنة`,
+
+          created_by: openedBy,
+          shift_id: shiftId,
+        })
+      } else if (legacyDrawerExcess < -0.01) {
+        accountReconciliationAmount = roundMoney(
+          openingCountedAmount - currentDrawerBalance,
+        )
+
+        createCashMovement({
+          type: 'shift_adjustment',
+
+          direction: 'in',
+
+          amount: accountReconciliationAmount,
+
+          payment_method: 'store_cash',
+
+          reference_id: shiftId,
+
+          reference_type: 'cash_shift_opening_reconcile',
+
+          notes: `تسوية رصيد درج المحل عند فتح الشفت #${shiftId}`,
+
+          created_by: openedBy,
+          shift_id: shiftId,
+        })
+      }
+    } else {
+      /*
+       * بعد أول شفت:
+       * الرصيد المفروض جاء من تسليم الشفت
+       * السابق، وأي اختلاف فعلي يعتبر
+       * عجز/زيادة افتتاح.
+       */
+      accountReconciliationAmount = roundMoney(
+        openingCountedAmount - currentDrawerBalance,
+      )
+
+      if (Math.abs(accountReconciliationAmount) > 0.01) {
+        createCashMovement({
+          type: 'shift_adjustment',
+
+          direction: accountReconciliationAmount > 0 ? 'in' : 'out',
+
+          amount: Math.abs(accountReconciliationAmount),
+
+          payment_method: 'store_cash',
+
+          reference_id: shiftId,
+
+          reference_type: 'cash_shift_opening_reconcile',
+
+          notes: `تسوية رصيد درج المحل عند فتح الشفت #${shiftId}`,
+
+          created_by: openedBy,
+          shift_id: shiftId,
+        })
+      }
     }
 
     createActivityLog({
@@ -360,6 +456,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
 
         opening_difference: openingDifference,
         account_reconciliation_amount: accountReconciliationAmount,
+        opening_safe_transfer_amount: openingSafeTransferAmount,
       }),
     })
 
@@ -498,25 +595,32 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
   const shiftId = Number(input.shift_id || 0)
   const closedBy = Number(input.closed_by || 0)
 
-  const closingCountedAmount = roundMoney(Number(input.closing_counted_amount))
+  const rawClosingCountedAmount = Number(input.closing_counted_amount)
 
-  const leftForNextShift = roundMoney(Number(input.left_for_next_shift))
+  const rawLeftForNextShift = Number(input.left_for_next_shift)
 
-  if (!shiftId) {
+  if (!Number.isInteger(shiftId) || shiftId <= 0) {
     throw new Error('رقم الشفت غير صحيح')
   }
 
-  if (!closedBy) {
+  if (!Number.isInteger(closedBy) || closedBy <= 0) {
     throw new Error('المستخدم غير صحيح')
   }
 
-  if (!Number.isFinite(closingCountedAmount) || closingCountedAmount < 0) {
+  if (
+    !Number.isFinite(rawClosingCountedAmount) ||
+    rawClosingCountedAmount < 0
+  ) {
     throw new Error('قيمة جرد إغلاق الشفت غير صحيحة')
   }
 
-  if (!Number.isFinite(leftForNextShift) || leftForNextShift < 0) {
+  if (!Number.isFinite(rawLeftForNextShift) || rawLeftForNextShift < 0) {
     throw new Error('المبلغ المتروك للشفت التالي غير صحيح')
   }
+
+  const closingCountedAmount = roundMoney(rawClosingCountedAmount)
+
+  const leftForNextShift = roundMoney(rawLeftForNextShift)
 
   if (leftForNextShift > closingCountedAmount) {
     throw new Error(
