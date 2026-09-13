@@ -3176,7 +3176,6 @@ export function listSaleReturns(input?: {
         sr.cancelled_by,
         sr.cancel_reason,
         sr.cancelled_shift_id,
-        
         CASE
           WHEN sr.user_id = ?
             AND datetime(sr.created_at)
