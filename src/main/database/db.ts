@@ -16,6 +16,168 @@ export function closeDb(): void {
   }
 }
 
+function repairLegacyFirstShiftOpeningTransfer(db: Database.Database) {
+  const firstShift = db
+    .prepare(
+      `
+      SELECT id
+      FROM cash_shifts
+      ORDER BY id ASC
+      LIMIT 1
+      `,
+    )
+    .get() as
+    | {
+        id: number
+      }
+    | undefined
+
+  if (!firstShift) {
+    return
+  }
+
+  const badMovement = db
+    .prepare(
+      `
+      SELECT
+        id,
+        amount,
+        created_by,
+        business_date,
+        created_at,
+        shift_id
+
+      FROM cash_movements
+
+      WHERE shift_id = ?
+        AND reference_id = ?
+        AND type = 'shift_adjustment'
+        AND direction = 'out'
+        AND payment_method = 'store_cash'
+        AND reference_type =
+          'cash_shift_opening_reconcile'
+        AND cancelled_at IS NULL
+
+      ORDER BY id ASC
+      LIMIT 1
+      `,
+    )
+    .get(firstShift.id, firstShift.id) as
+    | {
+        id: number
+        amount: number
+        created_by: number | null
+        business_date: string | null
+        created_at: string | null
+        shift_id: number
+      }
+    | undefined
+
+  if (!badMovement || Number(badMovement.amount || 0) <= 0) {
+    return
+  }
+
+  const tx = db.transaction(() => {
+    const safeMovementExists = db
+      .prepare(
+        `
+        SELECT id
+
+        FROM cash_movements
+
+        WHERE
+          reference_id = ?
+          AND reference_type =
+            'cash_shift_safe_transfer'
+          AND payment_method =
+            'store_safe'
+          AND direction = 'in'
+          AND cancelled_at IS NULL
+
+        LIMIT 1
+        `,
+      )
+      .get(badMovement.id)
+
+    /*
+     * الحركة القديمة لم تكن سحبًا حقيقيًا.
+     * كانت في الحقيقة نقلًا من الدرج
+     * إلى الخزنة الآمنة.
+     */
+    db.prepare(
+      `
+      UPDATE cash_movements
+
+      SET
+        type = 'transfer',
+
+        reference_type =
+          'cash_shift_safe_transfer',
+
+        notes = ?
+
+      WHERE id = ?
+      `,
+    ).run(
+      `تصحيح ترحيل الرصيد السابق عند فتح أول شفت #${firstShift.id} إلى الخزنة الآمنة`,
+      badMovement.id,
+    )
+
+    if (!safeMovementExists) {
+      db.prepare(
+        `
+        INSERT INTO cash_movements (
+          type,
+          amount,
+          direction,
+          payment_method,
+
+          reference_id,
+          reference_type,
+
+          notes,
+
+          created_by,
+          business_date,
+          shift_id,
+          created_at
+        )
+
+        VALUES (
+          'transfer',
+          ?,
+          'in',
+          'store_safe',
+
+          ?,
+          'cash_shift_safe_transfer',
+
+          ?,
+
+          ?,
+          ?,
+          ?,
+          ?
+        )
+        `,
+      ).run(
+        Number(badMovement.amount),
+
+        badMovement.id,
+
+        `تصحيح ترحيل الرصيد السابق عند فتح أول شفت #${firstShift.id} إلى الخزنة الآمنة`,
+
+        badMovement.created_by,
+        badMovement.business_date,
+        badMovement.shift_id,
+        badMovement.created_at,
+      )
+    }
+  })
+
+  tx()
+}
+
 export function getDb(): Database.Database {
   if (!db) {
     const dbPath = getDbPath()
@@ -1080,6 +1242,7 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'cash_movements', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'cash_movements', 'cancel_reason', 'TEXT')
     safeAddColumn(db, 'cash_movements', 'replacement_movement_id', 'INTEGER')
+    repairLegacyFirstShiftOpeningTransfer(db)
     safeAddColumn(db, 'expenses', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'expenses', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'expenses', 'cancel_reason', 'TEXT')
