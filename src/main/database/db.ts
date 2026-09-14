@@ -1222,7 +1222,24 @@ export function getDb(): Database.Database {
       `TEXT DEFAULT 'cash'`,
     )
     safeAddColumn(db, 'customer_payments', 'notes', 'TEXT')
+    safeAddColumn(db, 'customer_payment_batches', 'shift_id', 'INTEGER')
 
+    safeAddColumn(
+      db,
+      'customer_payment_batches',
+      'cancelled_shift_id',
+      'INTEGER',
+    )
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_customer_payment_batches_shift_id
+      ON customer_payment_batches(shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_customer_payment_batches_cancelled_shift_id
+      ON customer_payment_batches(cancelled_shift_id);
+    `)
     safeAddColumn(db, 'store_liabilities', 'category', 'TEXT')
     safeAddColumn(db, 'store_liabilities', 'paid_amount', 'REAL DEFAULT 0')
     safeAddColumn(db, 'store_liabilities', 'remaining_amount', 'REAL DEFAULT 0')

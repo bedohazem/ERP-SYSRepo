@@ -817,6 +817,7 @@ declare global {
         customer_id: number
         payment_batch_id: number
         paid_amount: number
+        shift_id: number
         allocations?: Array<{
           sale_id: number | null
           amount: number
@@ -836,7 +837,7 @@ declare global {
         customer_id?: number
 
         cancelled_amount?: number
-
+        cancelled_shift_id?: number
         allocations?: Array<{
           sale_id: number
           amount: number
@@ -862,7 +863,7 @@ declare global {
         new_amount?: number
 
         payment_method?: string
-
+        shift_id?: number
         allocations?: Array<{
           sale_id: number
           amount: number

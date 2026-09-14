@@ -141,6 +141,7 @@ export function registerCustomersIpc(): void {
         amount: result.paid_amount,
         payment_method: input?.payment_method || 'cash',
         allocations: result.allocations,
+        shift_id: result.shift_id,
       },
     })
 
@@ -187,6 +188,7 @@ export function registerCustomersIpc(): void {
           amount: result.cancelled_amount,
 
           reason: input?.reason,
+          shift_id: result.cancelled_shift_id,
         },
       })
 
@@ -249,6 +251,7 @@ export function registerCustomersIpc(): void {
           new_amount: result.new_amount,
 
           payment_method: result.payment_method,
+          shift_id: result.shift_id,
         },
       })
 

@@ -1,5 +1,22 @@
 import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
+import { requireOperationalCashShift } from './cash-shifts.repo'
+
+function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
+  const row = db
+    .prepare(
+      `
+      SELECT
+        date('now', 'localtime')
+          AS business_date
+      `,
+    )
+    .get() as {
+    business_date: string
+  }
+
+  return String(row?.business_date || '')
+}
 
 export type CustomerInput = {
   name: string
@@ -478,6 +495,13 @@ export function recordCustomerPayment(input: {
   const saleId = input.sale_id ? Number(input.sale_id) : null
   const amountInput = Number(input.amount || 0)
 
+  const actorId = Number(input.actor_id || 0)
+
+  const openShift = requireOperationalCashShift(
+    actorId,
+    'لا يمكن تسجيل دفعة عميل بدون شفت مفتوح',
+  )
+
   if (!customerId) {
     throw new Error('Customer ID is required')
   }
@@ -495,30 +519,23 @@ export function recordCustomerPayment(input: {
       throw new Error('العميل غير موجود')
     }
 
-    const businessDateRow = db
-      .prepare(
-        `
-    SELECT date('now', 'localtime') AS business_date
-    `,
-      )
-      .get() as { business_date: string }
-
-    const businessDate = String(businessDateRow?.business_date || '')
+    const businessDate = getCurrentBusinessDate(db)
 
     const batchResult = db
       .prepare(
         `
-    INSERT INTO customer_payment_batches (
-      customer_id,
-      sale_id,
-      amount,
-      payment_method,
-      notes,
-      created_by,
-      business_date
-    )
-    VALUES (?, ?, 0, ?, ?, ?, ?)
-    `,
+        INSERT INTO customer_payment_batches (
+          customer_id,
+          sale_id,
+          amount,
+          payment_method,
+          notes,
+          created_by,
+          business_date,
+          shift_id
+        )
+        VALUES (?, ?, 0, ?, ?, ?, ?, ?)
+        `,
       )
       .run(
         customerId,
@@ -527,6 +544,7 @@ export function recordCustomerPayment(input: {
         input.notes?.trim() || null,
         input.actor_id ?? null,
         businessDate,
+        openShift.id,
       )
 
     const paymentBatchId = Number(batchResult.lastInsertRowid)
@@ -712,6 +730,7 @@ export function recordCustomerPayment(input: {
 
       created_by: input.actor_id ?? null,
       business_date: businessDate,
+      shift_id: openShift.id,
     })
 
     return {
@@ -724,6 +743,7 @@ export function recordCustomerPayment(input: {
       paid_amount: totalPaid,
 
       allocations,
+      shift_id: openShift.id,
     }
   })
 
@@ -793,6 +813,15 @@ export function cancelCustomerPaymentBatch(input: {
     throw new Error('رقم دفعة العميل غير صحيح')
   }
 
+  const actorId = Number(input.actor_id || 0)
+
+  const openShift = requireOperationalCashShift(
+    actorId,
+    'لا يمكن إلغاء دفعة عميل بدون شفت مفتوح',
+  )
+
+  const cancellationBusinessDate = getCurrentBusinessDate(db)
+
   const reason = String(input.reason || '').trim() || 'إلغاء دفعة عميل'
 
   const batch = db
@@ -821,27 +850,6 @@ export function cancelCustomerPaymentBatch(input: {
 
   if (batch.cancelled_at) {
     throw new Error('دفعة العميل ملغاة بالفعل')
-  }
-
-  const accountingDate = String(batch.accounting_date || '')
-
-  if (accountingDate) {
-    const closing = db
-      .prepare(
-        `
-        SELECT id
-        FROM cash_day_closings
-        WHERE business_date = ?
-        LIMIT 1
-        `,
-      )
-      .get(accountingDate)
-
-    if (closing) {
-      throw new Error(
-        `لا يمكن إلغاء الدفعة لأن يوم ${accountingDate} تم تقفيله`,
-      )
-    }
   }
 
   const allocations = db
@@ -1000,26 +1008,41 @@ export function cancelCustomerPaymentBatch(input: {
       UPDATE customer_payment_batches
 
       SET
-        cancelled_at = CURRENT_TIMESTAMP,
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
         cancelled_by = ?,
+
+        cancelled_shift_id = ?,
+
         cancel_reason = ?
 
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, reason, batchId)
+    ).run(actorId, openShift.id, reason, batchId)
 
-    db.prepare(
-      `
-      UPDATE cash_movements
+    createCashMovement({
+      type: 'customer_payment',
 
-      SET
-        cancelled_at = CURRENT_TIMESTAMP,
-        cancelled_by = ?,
-        cancel_reason = ?
+      direction: 'out',
 
-      WHERE id = ?
-      `,
-    ).run(input.actor_id ?? null, reason, Number(cashMovement.id))
+      amount: allocationTotal,
+
+      payment_method:
+        cashMovement.payment_method || batch.payment_method || 'cash',
+
+      reference_id: batchId,
+
+      reference_type: 'customer_payment_cancel',
+
+      notes: `عكس دفعة عميل ملغاة #${batchId}`,
+
+      created_by: actorId,
+
+      business_date: cancellationBusinessDate,
+
+      shift_id: openShift.id,
+    })
 
     return {
       success: true,
@@ -1029,6 +1052,8 @@ export function cancelCustomerPaymentBatch(input: {
       customer_id: Number(batch.customer_id),
 
       cancelled_amount: allocationTotal,
+
+      cancelled_shift_id: openShift.id,
 
       allocations: allocations.map((allocation) => ({
         sale_id: Number(allocation.sale_id),
@@ -1052,6 +1077,15 @@ export function updateCustomerPaymentBatch(input: {
 
   const batchId = Number(input.batch_id || 0)
   const amountInput = Number(input.amount || 0)
+
+  const actorId = Number(input.actor_id || 0)
+
+  const openShift = requireOperationalCashShift(
+    actorId,
+    'لا يمكن تعديل دفعة عميل بدون شفت مفتوح',
+  )
+
+  const correctionBusinessDate = getCurrentBusinessDate(db)
 
   if (!batchId) {
     throw new Error('رقم دفعة العميل غير صحيح')
@@ -1087,27 +1121,6 @@ export function updateCustomerPaymentBatch(input: {
 
   if (batch.cancelled_at) {
     throw new Error('لا يمكن تعديل دفعة ملغاة')
-  }
-
-  const accountingDate = String(batch.accounting_date || '')
-
-  if (accountingDate) {
-    const closing = db
-      .prepare(
-        `
-        SELECT id
-        FROM cash_day_closings
-        WHERE business_date = ?
-        LIMIT 1
-        `,
-      )
-      .get(accountingDate)
-
-    if (closing) {
-      throw new Error(
-        `لا يمكن تعديل الدفعة لأن يوم ${accountingDate} تم تقفيله`,
-      )
-    }
   }
 
   const customer = db
@@ -1295,11 +1308,6 @@ export function updateCustomerPaymentBatch(input: {
       ? (batch.notes ?? null)
       : input.notes?.trim() || null
 
-  const originalCreatedBy =
-    batch.created_by == null
-      ? (input.actor_id ?? null)
-      : Number(batch.created_by)
-
   const tx = db.transaction(() => {
     // عكس تأثير الدفعة القديمة على الفواتير
     for (const allocation of allocations) {
@@ -1353,19 +1361,25 @@ export function updateCustomerPaymentBatch(input: {
           notes,
           created_by,
           business_date,
-          created_at
+          shift_id
         )
         VALUES (?, ?, 0, ?, ?, ?, ?, ?)
         `,
       )
       .run(
         Number(batch.customer_id),
+
         batch.sale_id ?? null,
+
         newPaymentMethod,
+
         newNotes,
-        originalCreatedBy,
-        accountingDate || null,
-        batch.created_at,
+
+        actorId,
+
+        correctionBusinessDate,
+
+        openShift.id,
       )
 
     const newBatchId = Number(newBatchResult.lastInsertRowid)
@@ -1375,29 +1389,20 @@ export function updateCustomerPaymentBatch(input: {
       `
       UPDATE customer_payment_batches
       SET
-        cancelled_at = CURRENT_TIMESTAMP,
-        cancelled_by = ?,
-        cancel_reason = ?,
-        replacement_batch_id = ?
-      WHERE id = ?
-      `,
-    ).run(input.actor_id ?? null, 'تم تعديل دفعة العميل', newBatchId, batchId)
+        cancelled_at =
+          CURRENT_TIMESTAMP,
 
-    // إلغاء حركة الكاش القديمة
-    db.prepare(
-      `
-      UPDATE cash_movements
-      SET
-        cancelled_at = CURRENT_TIMESTAMP,
         cancelled_by = ?,
-        cancel_reason = ?
+
+        cancelled_shift_id = ?,
+
+        cancel_reason = ?,
+
+        replacement_batch_id = ?
+
       WHERE id = ?
       `,
-    ).run(
-      input.actor_id ?? null,
-      'تم تعديل دفعة العميل',
-      Number(cashMovement.id),
-    )
+    ).run(actorId, openShift.id, 'تم تعديل دفعة العميل', newBatchId, batchId)
 
     const insertPayment = db.prepare(`
       INSERT INTO customer_payments (
@@ -1569,20 +1574,60 @@ export function updateCustomerPaymentBatch(input: {
       `,
     ).run(totalPaid, Number(batch.customer_id))
 
+    /*
+     * أولًا نسجل الدفعة الجديدة.
+     *
+     * الترتيب مهم لو الحساب القديم
+     * والجديد هما نفس الحساب:
+     * الدفعة الجديدة تدخل أولًا،
+     * ثم نعكس القديمة.
+     */
     createCashMovement({
       type: 'customer_payment',
+
       direction: 'in',
+
       amount: totalPaid,
+
       payment_method: newPaymentMethod,
 
       reference_id: newBatchId,
+
       reference_type: 'customer_payment',
 
       notes: newNotes || 'دفعة عميل معدلة',
 
-      created_by: originalCreatedBy,
+      created_by: actorId,
 
-      business_date: accountingDate || null,
+      business_date: correctionBusinessDate,
+
+      shift_id: openShift.id,
+    })
+
+    /*
+     * لا نلغي حركة الدفعة التاريخية.
+     * نسجل عكسها في الشفت الحالي.
+     */
+    createCashMovement({
+      type: 'customer_payment',
+
+      direction: 'out',
+
+      amount: oldTotal,
+
+      payment_method: oldAccount,
+
+      reference_id: batchId,
+
+      reference_type: 'customer_payment_update_reverse',
+
+      notes: `عكس دفعة عميل قديمة بسبب التعديل #${batchId}`,
+
+      created_by: actorId,
+
+      business_date: correctionBusinessDate,
+
+      shift_id: openShift.id,
     })
 
     return {
@@ -1599,6 +1644,8 @@ export function updateCustomerPaymentBatch(input: {
       payment_method: newPaymentMethod,
 
       allocations: newAllocations,
+
+      shift_id: openShift.id,
     }
   })
 
