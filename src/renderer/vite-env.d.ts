@@ -622,7 +622,7 @@ declare global {
 
           user_id: number | null
           shift_id?: number | null
-
+          cancelled_shift_id?: number | null
           promotion_group_id: string
 
           old_group_total: number
@@ -675,8 +675,6 @@ declare global {
           is_latest_active: number | boolean
 
           has_later_active_return: number | boolean
-
-          is_day_closed: number | boolean
 
           can_cancel: boolean
 
@@ -759,6 +757,7 @@ declare global {
         loyalty_balance_reversed?: number
 
         restored_items?: number
+        cancelled_shift_id?: number
       }>
 
       // =========================

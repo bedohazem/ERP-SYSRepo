@@ -1658,34 +1658,7 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
           )
           THEN 1
           ELSE 0
-        END AS has_later_active_return, 
-
-        CASE
-          WHEN EXISTS (
-            SELECT 1
-
-            FROM
-              cash_day_closings
-              cdc
-
-            WHERE
-              cdc.business_date =
-                COALESCE(
-                  NULLIF(
-                    se.business_date,
-                    ''
-                  ),
-                  date(
-                    se.created_at,
-                    'localtime'
-                  )
-                )
-          )
-
-          THEN 1
-          ELSE 0
-        END
-          AS is_day_closed
+        END AS has_later_active_return
 
       FROM sale_exchanges se
 
@@ -1801,8 +1774,6 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
       cancelBlockReason = 'يجب إلغاء آخر عملية استبدال أولًا'
     } else if (Number(row.has_later_active_return || 0) === 1) {
       cancelBlockReason = 'يجب إلغاء المرتجع الأحدث أولًا'
-    } else if (Number(row.is_day_closed || 0) === 1) {
-      cancelBlockReason = 'يوم الاستبدال تم تقفيله'
     }
 
     return {
@@ -1868,6 +1839,12 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
     throw new Error('رقم الاستبدال غير صحيح')
   }
 
+  const openShift = getOpenCashShift()
+
+  if (!openShift) {
+    throw new Error('لا يمكن إلغاء استبدال بدون شفت مفتوح')
+  }
+
   const reason = input.reason?.trim() || 'إلغاء عملية استبدال'
 
   const exchangeCode = `EXC-${String(exchangeId).padStart(5, '0')}`
@@ -1919,86 +1896,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
     const saleId = Number(exchange.original_sale_id)
 
-    const exchangeDateRow = db
-      .prepare(
-        `
-          SELECT
-            COALESCE(
-              NULLIF(
-                business_date,
-                ''
-              ),
-              date(
-                created_at,
-                'localtime'
-              )
-            )
-              AS business_date
-
-          FROM sale_exchanges
-
-          WHERE id = ?
-
-          LIMIT 1
-          `,
-      )
-      .get(exchangeId) as
-      | {
-          business_date: string
-        }
-      | undefined
-
-    const resolvedAccountingDate = String(exchangeDateRow?.business_date || '')
-
-    if (resolvedAccountingDate) {
-      const closed = db
-        .prepare(
-          `
-            SELECT id
-
-            FROM
-              cash_day_closings
-
-            WHERE
-              business_date = ?
-
-            LIMIT 1
-            `,
-        )
-        .get(resolvedAccountingDate)
-
-      if (closed) {
-        throw new Error(
-          `لا يمكن إلغاء استبدال يخص يوم ${resolvedAccountingDate} لأنه تم تقفيله`,
-        )
-      }
-    }
-
     const cancelBusinessDate = getLocalDateKey()
-
-    if (cancelBusinessDate !== resolvedAccountingDate) {
-      const currentDayClosed = db
-        .prepare(
-          `
-            SELECT id
-
-            FROM
-              cash_day_closings
-
-            WHERE
-              business_date = ?
-
-            LIMIT 1
-            `,
-        )
-        .get(cancelBusinessDate)
-
-      if (currentDayClosed) {
-        throw new Error(
-          `لا يمكن إلغاء الاستبدال لأن يوم ${cancelBusinessDate} تم تقفيله`,
-        )
-      }
-    }
 
     const latestActive = db
       .prepare(
@@ -2200,7 +2098,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         reference_id: exchangeId,
 
         reference_type: 'sale_exchange_cancel',
-
+        shift_id: openShift.id,
         notes: `رد تحصيل بسبب إلغاء ${exchangeCode}`,
 
         created_by: input.actor_id ?? null,
@@ -2229,7 +2127,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         reference_id: exchangeId,
 
         reference_type: 'sale_exchange_cancel',
-
+        shift_id: openShift.id,
         notes: `استرداد رد فرق بسبب إلغاء ${exchangeCode}`,
 
         created_by: input.actor_id ?? null,
@@ -2577,17 +2475,13 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
           cancelled_by = ?,
 
+          cancelled_shift_id = ?,
+
           cancel_reason = ?
 
         WHERE id = ?
         `,
-    ).run(
-      input.actor_id ?? null,
-
-      reason,
-
-      exchangeId,
-    )
+    ).run(input.actor_id ?? null, openShift.id, reason, exchangeId)
 
     if (exchange.customer_id) {
       syncCustomerTotalSpent(Number(exchange.customer_id))
@@ -2611,6 +2505,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
       loyalty_balance_reversed: reverseLoyaltyBalanceAdjustment,
 
       restored_items: items.length,
+      cancelled_shift_id: openShift.id,
     }
   })
 

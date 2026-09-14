@@ -1099,6 +1099,13 @@ export function getDb(): Database.Database {
 
     safeAddColumn(db, 'sale_exchanges', 'cancel_reason', 'TEXT')
     safeAddColumn(db, 'sale_exchanges', 'shift_id', 'INTEGER')
+    safeAddColumn(db, 'sale_exchanges', 'cancelled_shift_id', 'INTEGER')
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_sale_exchanges_cancelled_shift_id
+      ON sale_exchanges(cancelled_shift_id);
+    `)
 
     db.exec(`
       CREATE INDEX IF NOT EXISTS

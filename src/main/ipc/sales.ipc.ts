@@ -180,6 +180,7 @@ export function registerSalesIpc(): void {
           debt_restored: result.debt_restored,
 
           loyalty_balance_reversed: result.loyalty_balance_reversed,
+          shift_id: result.cancelled_shift_id,
         },
       })
 
