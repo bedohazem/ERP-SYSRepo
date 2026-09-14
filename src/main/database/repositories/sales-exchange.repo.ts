@@ -5,7 +5,7 @@ import {
   getSaleCurrentState,
 } from './sales-current-state.repo'
 import { syncCustomerTotalSpent } from './sales.repo'
-import { getOpenCashShift } from './cash-shifts.repo'
+import { requireOperationalCashShift } from './cash-shifts.repo'
 
 export type CreateSaleExchangeInput = {
   original_sale_id: number
@@ -394,11 +394,10 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
     throw new Error('لا توجد أصناف للاستبدال')
   }
 
-  const openShift = getOpenCashShift()
-
-  if (!openShift) {
-    throw new Error('لا يمكن تسجيل استبدال بدون شفت مفتوح')
-  }
+  const openShift = requireOperationalCashShift(
+    input.user_id,
+    'لا يمكن تسجيل استبدال بدون شفت مفتوح',
+  )
 
   const normalizedItems = input.items.map((item) => ({
     promotion_unit_id: Number(item.promotion_unit_id),
@@ -1839,11 +1838,10 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
     throw new Error('رقم الاستبدال غير صحيح')
   }
 
-  const openShift = getOpenCashShift()
-
-  if (!openShift) {
-    throw new Error('لا يمكن إلغاء استبدال بدون شفت مفتوح')
-  }
+  const openShift = requireOperationalCashShift(
+    Number(input.actor_id || 0),
+    'لا يمكن إلغاء استبدال بدون شفت مفتوح',
+  )
 
   const reason = input.reason?.trim() || 'إلغاء عملية استبدال'
 

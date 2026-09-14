@@ -8,6 +8,7 @@ import {
   getOpenCashShift,
   openCashShift,
   getCashShiftOpeningPreview,
+  requireOperationalCashShift,
 } from '../../src/main/database/repositories/cash-shifts.repo'
 
 import {
@@ -79,6 +80,78 @@ describe('cash shifts repository', () => {
         opened_by: 1,
       }),
     ).toThrow('يوجد شفت مفتوح بالفعل')
+  })
+
+  it('prevents a cashier from operating on another cashier shift', () => {
+    const db = getDb()
+
+    db.prepare(
+      `
+    INSERT INTO users (
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+    VALUES (?, ?, ?, 'cashier', 1)
+    `,
+    ).run('Shift Cashier One', 'shift_cashier_one', 'x')
+
+    db.prepare(
+      `
+    INSERT INTO users (
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+    VALUES (?, ?, ?, 'cashier', 1)
+    `,
+    ).run('Shift Cashier Two', 'shift_cashier_two', 'x')
+
+    const firstCashier = db
+      .prepare(
+        `
+      SELECT id
+      FROM users
+      WHERE username =
+        'shift_cashier_one'
+    `,
+      )
+      .get() as {
+      id: number
+    }
+
+    const secondCashier = db
+      .prepare(
+        `
+      SELECT id
+      FROM users
+      WHERE username =
+        'shift_cashier_two'
+    `,
+      )
+      .get() as {
+      id: number
+    }
+
+    const shift = openCashShift({
+      opening_counted_amount: 100,
+      opened_by: firstCashier.id,
+    })
+
+    expect(requireOperationalCashShift(firstCashier.id).id).toBe(shift.id)
+
+    expect(() => requireOperationalCashShift(secondCashier.id)).toThrow(
+      'الشفت المفتوح تابع لمستخدم آخر',
+    )
+
+    /*
+     * المستخدم رقم 1 هو الأدمن الافتراضي.
+     */
+    expect(requireOperationalCashShift(1).id).toBe(shift.id)
   })
 
   it('calculates expected drawer balance from shift cash movements', () => {

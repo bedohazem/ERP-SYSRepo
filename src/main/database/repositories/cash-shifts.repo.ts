@@ -110,6 +110,64 @@ export function getOpenCashShift(): CashShiftRow | null {
   return row || null
 }
 
+export function requireOperationalCashShift(
+  actorIdInput: number,
+  noShiftMessage = 'لا يوجد شفت مفتوح',
+): CashShiftRow {
+  const db = getDb()
+
+  const actorId = Number(actorIdInput || 0)
+
+  if (!Number.isInteger(actorId) || actorId <= 0) {
+    throw new Error('المستخدم غير صحيح')
+  }
+
+  const actor = db
+    .prepare(
+      `
+      SELECT
+        id,
+        role,
+        is_active
+
+      FROM users
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(actorId) as
+    | {
+        id: number
+        role: string
+        is_active: number
+      }
+    | undefined
+
+  if (!actor || Number(actor.is_active) !== 1) {
+    throw new Error('المستخدم غير موجود أو غير مفعل')
+  }
+
+  const shift = getOpenCashShift()
+
+  if (!shift) {
+    throw new Error(noShiftMessage)
+  }
+
+  /*
+   * الكاشير لا يعمل على شفت مستخدم آخر.
+   *
+   * الأدمن مسموح له بالعمل أثناء الشفت
+   * المفتوح لأغراض الإدارة والطوارئ.
+   */
+  if (actor.role !== 'admin' && Number(shift.opened_by) !== actorId) {
+    throw new Error('الشفت المفتوح تابع لمستخدم آخر')
+  }
+
+  return shift
+}
+
 export function getCashShiftOpeningPreview() {
   const db = getDb()
 

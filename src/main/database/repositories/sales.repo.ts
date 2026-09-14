@@ -5,7 +5,7 @@ import {
   calculateSaleEarnedPoints,
   getSaleCurrentState,
 } from './sales-current-state.repo'
-import { getOpenCashShift } from './cash-shifts.repo'
+import { requireOperationalCashShift } from './cash-shifts.repo'
 
 export type CreateSaleLineInput = {
   variant_id: number
@@ -197,11 +197,10 @@ export function createSale(input: CreateSaleInput) {
     throw new Error('Sale items are required')
   }
 
-  const openShift = getOpenCashShift()
-
-  if (!openShift) {
-    throw new Error('لا يمكن تسجيل فاتورة بيع بدون شفت مفتوح')
-  }
+  const openShift = requireOperationalCashShift(
+    input.user_id,
+    'لا يمكن تسجيل فاتورة بيع بدون شفت مفتوح',
+  )
 
   const loyalty = getLoyaltySettingsForSale()
   const businessDate = resolveSaleBusinessDate(input.business_date)
@@ -1360,11 +1359,10 @@ export function createSaleReturn(input: {
     throw new Error('لا توجد أصناف للمرتجع')
   }
 
-  const openShift = getOpenCashShift()
-
-  if (!openShift) {
-    throw new Error('لا يمكن تسجيل مرتجع بيع بدون شفت مفتوح')
-  }
+  const openShift = requireOperationalCashShift(
+    input.user_id,
+    'لا يمكن تسجيل مرتجع بيع بدون شفت مفتوح',
+  )
 
   const tx = db.transaction(() => {
     const originalSale = db
@@ -2453,11 +2451,10 @@ export function cancelSaleInvoice(input: {
     throw new Error('رقم فاتورة البيع غير صحيح')
   }
 
-  const openShift = getOpenCashShift()
-
-  if (!openShift) {
-    throw new Error('لا يمكن إلغاء فاتورة بيع بدون شفت مفتوح')
-  }
+  const openShift = requireOperationalCashShift(
+    Number(input.actor_id || 0),
+    'لا يمكن إلغاء فاتورة بيع بدون شفت مفتوح',
+  )
 
   const cancellationBusinessDate = getRelativeLocalDateKey(0)
 
@@ -2725,11 +2722,10 @@ export function cancelSaleReturn(input: {
     throw new Error('رقم المرتجع غير صحيح')
   }
 
-  const openShift = getOpenCashShift()
-
-  if (!openShift) {
-    throw new Error('لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح')
-  }
+  const openShift = requireOperationalCashShift(
+    Number(input.actor_id || 0),
+    'لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح',
+  )
 
   const cancellationBusinessDate = getRelativeLocalDateKey(0)
 
