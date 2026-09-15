@@ -43,6 +43,7 @@ export function registerPurchasesIpc(): void {
         remaining_amount: result.remaining_amount,
         payment_status: result.payment_status,
         items_count: input.items?.length || 0,
+        shift_id: result.shift_id,
       },
     })
 
@@ -77,6 +78,7 @@ export function registerPurchasesIpc(): void {
         reversed_paid: result.reversed_paid,
         reversed_remaining: result.reversed_remaining,
         items_count: result.items_count,
+        shift_id: result.cancelled_shift_id,
       },
     })
 
@@ -103,6 +105,7 @@ export function registerPurchasesIpc(): void {
         total_amount: result.total_amount,
         items_count: input.items?.length || 0,
         notes: input.notes || '',
+        shift_id: result.shift_id,
       },
     })
 
@@ -140,6 +143,7 @@ export function registerPurchasesIpc(): void {
         amount: result.paid_amount,
 
         allocations: result.allocations,
+        shift_id: result.shift_id,
       },
     })
 
@@ -186,6 +190,7 @@ export function registerPurchasesIpc(): void {
           amount: result.cancelled_amount,
 
           reason: input?.reason || '',
+          shift_id: result.cancelled_shift_id,
         },
       })
 
@@ -248,6 +253,7 @@ export function registerPurchasesIpc(): void {
           new_amount: result.new_amount,
 
           payment_method: result.payment_method,
+          shift_id: result.shift_id,
         },
       })
 

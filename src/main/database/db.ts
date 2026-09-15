@@ -1275,6 +1275,37 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'store_liability_payments', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'store_liability_payments', 'cancel_reason', 'TEXT')
 
+    safeAddColumn(db, 'purchase_invoices', 'shift_id', 'INTEGER')
+
+    safeAddColumn(db, 'purchase_invoices', 'cancelled_shift_id', 'INTEGER')
+
+    safeAddColumn(db, 'supplier_payment_batches', 'shift_id', 'INTEGER')
+
+    safeAddColumn(
+      db,
+      'supplier_payment_batches',
+      'cancelled_shift_id',
+      'INTEGER',
+    )
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_purchase_invoices_shift_id
+      ON purchase_invoices(shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_purchase_invoices_cancelled_shift_id
+      ON purchase_invoices(cancelled_shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_supplier_payment_batches_shift_id
+      ON supplier_payment_batches(shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_supplier_payment_batches_cancelled_shift_id
+      ON supplier_payment_batches(cancelled_shift_id);
+    `)
+
     safeAddColumn(
       db,
       'store_liability_payments',

@@ -1309,6 +1309,7 @@ declare global {
         paid_amount: number
         remaining_amount: number
         payment_status: string
+        shift_id?: number | null
       }>
 
       listPurchaseInvoices: (input?: {
@@ -1358,6 +1359,7 @@ declare global {
         reversed_paid: number
         reversed_remaining: number
         items_count: number
+        cancelled_shift_id?: number | null
       }>
 
       createPurchaseReturn: (input: {
@@ -1382,6 +1384,7 @@ declare global {
         cash_refund_amount?: number
         refund_mode?: string
         refund_payment_method?: string | null
+        createPurchaseReturn
       }>
 
       listPurchaseReturns: (input?: {
@@ -1412,6 +1415,7 @@ declare global {
         supplier_id: number
         payment_batch_id: number
         paid_amount: number
+        shift_id?: number | null
         allocations?: Array<{
           purchase_id: number | null
           amount: number
@@ -1431,7 +1435,7 @@ declare global {
         supplier_id?: number
 
         cancelled_amount?: number
-
+        cancelled_shift_id?: number | null
         allocations?: Array<{
           purchase_id: number
           amount: number
@@ -1458,7 +1462,7 @@ declare global {
         new_amount?: number
 
         payment_method?: string
-
+        shift_id?: number | null
         allocations?: Array<{
           purchase_id: number
           amount: number

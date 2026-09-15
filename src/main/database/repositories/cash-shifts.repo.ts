@@ -1,6 +1,10 @@
 import { getDb } from '../db'
 import { createActivityLog } from './activity.repo'
-import { createCashMovement, getCashSummary } from './cash.repo'
+import {
+  createCashMovement,
+  getCashSummary,
+  resolveCashAccount,
+} from './cash.repo'
 
 export type CashShiftRow = {
   id: number
@@ -166,6 +170,66 @@ export function requireOperationalCashShift(
   }
 
   return shift
+}
+
+export function resolveFinancialOperationShift(
+  actorIdInput: number,
+  paymentMethods: Array<string | null | undefined>,
+  noShiftMessage = 'لا يوجد شفت مفتوح',
+): CashShiftRow | null {
+  const db = getDb()
+
+  const actorId = Number(actorIdInput || 0)
+
+  if (!Number.isInteger(actorId) || actorId <= 0) {
+    throw new Error('المستخدم غير صحيح')
+  }
+
+  const actor = db
+    .prepare(
+      `
+      SELECT
+        id,
+        role,
+        is_active
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+      `,
+    )
+    .get(actorId) as
+    | {
+        id: number
+        role: string
+        is_active: number
+      }
+    | undefined
+
+  if (!actor || Number(actor.is_active) !== 1) {
+    throw new Error('المستخدم غير موجود أو غير مفعل')
+  }
+
+  const accounts = paymentMethods.length > 0 ? paymentMethods : ['cash']
+
+  const touchesDrawer = accounts.some(
+    (method) => resolveCashAccount(method || 'cash') === 'store_cash',
+  )
+
+  /*
+   * الأدمن يقدر يعمل عملية على
+   * حسابات المالك/البنك بدون شفت.
+   *
+   * لكن أي عملية تمس درج المحل
+   * لازم يكون لها شفت.
+   *
+   * والكاشير أصلًا أي عملية مالية
+   * له لازم تكون أثناء شفته.
+   */
+  if (actor.role === 'admin' && !touchesDrawer) {
+    return null
+  }
+
+  return requireOperationalCashShift(actorId, noShiftMessage)
 }
 
 export function getCashShiftOpeningPreview() {
