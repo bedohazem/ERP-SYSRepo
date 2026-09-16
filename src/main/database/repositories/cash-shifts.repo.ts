@@ -53,6 +53,57 @@ export type CashShiftDaySummaryInput = {
   user_id?: number | null
 }
 
+export type CashShiftVarianceStatus = 'pending' | 'resolved'
+
+export type CashShiftVarianceResolutionType = 'approved' | 'explained' | 'other'
+
+export type CashShiftVarianceRow = {
+  id: number
+  shift_id: number
+
+  stage: 'opening' | 'closing'
+  kind: 'shortage' | 'surplus'
+
+  amount: number
+
+  status: CashShiftVarianceStatus
+
+  resolution_type: CashShiftVarianceResolutionType | null
+
+  resolution_notes: string | null
+
+  resolved_by: number | null
+  resolved_by_name?: string | null
+  resolved_at: string | null
+
+  created_at: string
+
+  shift_status: 'open' | 'closed'
+
+  opened_by: number
+  opened_by_name?: string | null
+
+  shift_opened_at: string
+  shift_closed_at: string | null
+}
+
+export type CashShiftVarianceFilterInput = {
+  status?: 'all' | CashShiftVarianceStatus
+
+  limit?: number
+  offset?: number
+}
+
+export type ResolveCashShiftVarianceInput = {
+  variance_id: number
+
+  resolution_type: CashShiftVarianceResolutionType
+
+  resolution_notes: string
+
+  resolved_by: number
+}
+
 function roundMoney(value: number) {
   return Number(value.toFixed(2))
 }
@@ -82,6 +133,41 @@ function getShiftSelectSql() {
 
     LEFT JOIN users closed_user
       ON closed_user.id = cs.closed_by
+  `
+}
+
+function getVarianceSelectSql() {
+  return `
+    SELECT
+      csv.*,
+
+      cs.status
+        AS shift_status,
+
+      cs.opened_by,
+
+      cs.opened_at
+        AS shift_opened_at,
+
+      cs.closed_at
+        AS shift_closed_at,
+
+      opener.name
+        AS opened_by_name,
+
+      resolver.name
+        AS resolved_by_name
+
+    FROM cash_shift_variances csv
+
+    JOIN cash_shifts cs
+      ON cs.id = csv.shift_id
+
+    LEFT JOIN users opener
+      ON opener.id = cs.opened_by
+
+    LEFT JOIN users resolver
+      ON resolver.id = csv.resolved_by
   `
 }
 
@@ -913,6 +999,251 @@ export function getCashShiftDaySummary(input: CashShiftDaySummaryInput) {
 
     ending_drawer_balance: endingDrawerBalance,
   }
+}
+
+export function getCashShiftVarianceById(
+  varianceIdInput: number,
+): CashShiftVarianceRow | null {
+  const db = getDb()
+
+  const varianceId = Number(varianceIdInput || 0)
+
+  if (!varianceId) {
+    return null
+  }
+
+  const row = db
+    .prepare(
+      `
+      ${getVarianceSelectSql()}
+
+      WHERE csv.id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(varianceId) as CashShiftVarianceRow | undefined
+
+  return row || null
+}
+
+export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
+  const db = getDb()
+
+  const status = input?.status || 'pending'
+
+  if (status !== 'all' && status !== 'pending' && status !== 'resolved') {
+    throw new Error('حالة فرق الشفت غير صحيحة')
+  }
+
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+
+  const offset = Math.max(Number(input?.offset || 0), 0)
+
+  const params: any[] = []
+
+  let whereSql = ''
+
+  if (status !== 'all') {
+    whereSql = `
+      WHERE csv.status = ?
+    `
+
+    params.push(status)
+  }
+
+  const rows = db
+    .prepare(
+      `
+      ${getVarianceSelectSql()}
+
+      ${whereSql}
+
+      ORDER BY
+        CASE
+          WHEN csv.status = 'pending'
+            THEN 0
+          ELSE 1
+        END,
+
+        csv.id DESC
+
+      LIMIT ?
+      OFFSET ?
+      `,
+    )
+    .all(...params, limit, offset) as CashShiftVarianceRow[]
+
+  const totalRow = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS total
+
+      FROM cash_shift_variances csv
+
+      ${whereSql}
+      `,
+    )
+    .get(...params) as {
+    total: number
+  }
+
+  const pendingRow = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS total
+
+      FROM cash_shift_variances
+
+      WHERE status = 'pending'
+      `,
+    )
+    .get() as {
+    total: number
+  }
+
+  return {
+    rows,
+
+    total: Number(totalRow?.total || 0),
+
+    pending_count: Number(pendingRow?.total || 0),
+
+    limit,
+    offset,
+  }
+}
+
+export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
+  const db = getDb()
+
+  const varianceId = Number(input.variance_id || 0)
+
+  const resolvedBy = Number(input.resolved_by || 0)
+
+  const resolutionType = String(
+    input.resolution_type || '',
+  ) as CashShiftVarianceResolutionType
+
+  const resolutionNotes = String(input.resolution_notes || '').trim()
+
+  if (!Number.isInteger(varianceId) || varianceId <= 0) {
+    throw new Error('رقم فرق الشفت غير صحيح')
+  }
+
+  if (!Number.isInteger(resolvedBy) || resolvedBy <= 0) {
+    throw new Error('المستخدم غير صحيح')
+  }
+
+  if (!['approved', 'explained', 'other'].includes(resolutionType)) {
+    throw new Error('نوع مراجعة فرق الشفت غير صحيح')
+  }
+
+  if (!resolutionNotes) {
+    throw new Error('اكتب ملاحظات مراجعة فرق الشفت')
+  }
+
+  const actor = db
+    .prepare(
+      `
+      SELECT
+        id,
+        role,
+        is_active
+
+      FROM users
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(resolvedBy) as
+    | {
+        id: number
+        role: string
+        is_active: number
+      }
+    | undefined
+
+  if (!actor || Number(actor.is_active) !== 1 || actor.role !== 'admin') {
+    throw new Error('مراجعة فروق الشفتات متاحة لمدير النظام فقط')
+  }
+
+  const current = getCashShiftVarianceById(varianceId)
+
+  if (!current) {
+    throw new Error('فرق الشفت غير موجود')
+  }
+
+  if (current.status === 'resolved') {
+    throw new Error('تمت مراجعة فرق الشفت بالفعل')
+  }
+
+  const tx = db.transaction(() => {
+    const result = db
+      .prepare(
+        `
+        UPDATE cash_shift_variances
+
+        SET
+          status = 'resolved',
+
+          resolution_type = ?,
+
+          resolution_notes = ?,
+
+          resolved_by = ?,
+
+          resolved_at =
+            CURRENT_TIMESTAMP
+
+        WHERE id = ?
+          AND status = 'pending'
+        `,
+      )
+      .run(resolutionType, resolutionNotes, resolvedBy, varianceId)
+
+    if (Number(result.changes || 0) !== 1) {
+      throw new Error('تعذر مراجعة فرق الشفت')
+    }
+
+    createActivityLog({
+      user_id: resolvedBy,
+
+      action: 'cash_shift_variance_resolved',
+
+      entity: 'cash_shift_variances',
+
+      entity_id: varianceId,
+
+      details: JSON.stringify({
+        shift_id: current.shift_id,
+
+        stage: current.stage,
+
+        kind: current.kind,
+
+        amount: Number(current.amount || 0),
+
+        resolution_type: resolutionType,
+
+        resolution_notes: resolutionNotes,
+      }),
+    })
+
+    const resolved = getCashShiftVarianceById(varianceId)
+
+    if (!resolved) {
+      throw new Error('تعذر تحميل فرق الشفت بعد المراجعة')
+    }
+
+    return resolved
+  })
+
+  return tx()
 }
 
 export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {

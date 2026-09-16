@@ -1613,6 +1613,62 @@ declare global {
         ending_drawer_balance: number
       }>
 
+      listCashShiftVariances: (input?: {
+        status?: 'all' | 'pending' | 'resolved'
+        limit?: number
+        offset?: number
+      }) => Promise<{
+        rows: Array<{
+          id: number
+          shift_id: number
+
+          stage: 'opening' | 'closing'
+          kind: 'shortage' | 'surplus'
+
+          amount: number
+
+          status: 'pending' | 'resolved'
+
+          resolution_type: 'approved' | 'explained' | 'other' | null
+
+          resolution_notes: string | null
+
+          resolved_by: number | null
+          resolved_by_name?: string | null
+          resolved_at: string | null
+
+          created_at: string
+
+          shift_status: 'open' | 'closed'
+
+          opened_by: number
+          opened_by_name?: string | null
+
+          shift_opened_at: string
+          shift_closed_at: string | null
+        }>
+
+        total: number
+        pending_count: number
+
+        limit: number
+        offset: number
+      }>
+
+      resolveCashShiftVariance: (input: {
+        variance_id: number
+
+        resolution_type: 'approved' | 'explained' | 'other'
+
+        resolution_notes: string
+
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+        variance?: any
+      }>
+
       closeCashShift: (input: {
         shift_id: number
         closing_counted_amount: number

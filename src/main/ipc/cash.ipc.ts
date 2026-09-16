@@ -18,8 +18,10 @@ import {
   getCashShiftById,
   resolveFinancialOperationShift,
   getCashShiftDaySummary,
+  listCashShiftVariances,
+  resolveCashShiftVariance,
 } from '../database/repositories/cash-shifts.repo'
-import { requireAdminPassword } from './permission-helper'
+import { requireAdmin, requireAdminPassword } from './permission-helper'
 import { requireAuthenticatedUser } from '../auth-session'
 
 export function registerCashIpc(): void {
@@ -188,6 +190,50 @@ export function registerCashIpc(): void {
 
       user_id: user.role === 'admin' ? (input?.user_id ?? null) : user.id,
     })
+  })
+
+  ipcMain.handle('cash-shifts:list-variances', (event, input) => {
+    const actor = requireAuthenticatedUser(event)
+
+    requireAdmin(actor.id)
+
+    return listCashShiftVariances({
+      status: input?.status || 'pending',
+
+      limit: Number(input?.limit || 50),
+
+      offset: Number(input?.offset || 0),
+    })
+  })
+
+  ipcMain.handle('cash-shifts:resolve-variance', (event, input) => {
+    try {
+      const actor = requireAuthenticatedUser(event)
+
+      requireAdminPassword(actor.id, input?.admin_password)
+
+      const variance = resolveCashShiftVariance({
+        variance_id: Number(input?.variance_id),
+
+        resolution_type: input?.resolution_type,
+
+        resolution_notes: String(input?.resolution_notes || ''),
+
+        resolved_by: actor.id,
+      })
+
+      return {
+        success: true,
+        variance,
+      }
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر مراجعة فرق الشفت',
+      }
+    }
   })
 
   ipcMain.handle('cash-shifts:get-open', (event) => {

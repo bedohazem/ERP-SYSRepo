@@ -11,6 +11,8 @@ import {
   requireOperationalCashShift,
   resolveFinancialOperationShift,
   getCashShiftDaySummary,
+  listCashShiftVariances,
+  resolveCashShiftVariance,
 } from '../../src/main/database/repositories/cash-shifts.repo'
 
 import {
@@ -386,6 +388,193 @@ describe('cash shifts repository', () => {
         payment_method: 'store_safe',
       }).balance,
     ).toBe(1000)
+  })
+
+  it('resolves a pending shift variance without changing cash balances', () => {
+    const shift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    })
+
+    createCashMovement({
+      type: 'sale',
+      direction: 'in',
+      amount: 1000,
+      payment_method: 'store_cash',
+      created_by: 1,
+      shift_id: shift.id,
+    })
+
+    closeCashShift({
+      shift_id: shift.id,
+
+      closing_counted_amount: 1400,
+
+      left_for_next_shift: 400,
+
+      closed_by: 1,
+    })
+
+    const pendingBefore = listCashShiftVariances({
+      status: 'pending',
+    })
+
+    expect(pendingBefore.total).toBe(1)
+
+    const variance = pendingBefore.rows[0]
+
+    expect(variance.shift_id).toBe(shift.id)
+
+    expect(variance.stage).toBe('closing')
+
+    expect(variance.kind).toBe('shortage')
+
+    expect(Number(variance.amount)).toBe(100)
+
+    const drawerBefore = getCashSummary({
+      payment_method: 'store_cash',
+    }).balance
+
+    const safeBefore = getCashSummary({
+      payment_method: 'store_safe',
+    }).balance
+
+    const resolved = resolveCashShiftVariance({
+      variance_id: variance.id,
+
+      resolution_type: 'explained',
+
+      resolution_notes: 'تمت مراجعة العجز واعتماد نتيجة الجرد',
+
+      resolved_by: 1,
+    })
+
+    expect(resolved.status).toBe('resolved')
+
+    expect(resolved.resolution_type).toBe('explained')
+
+    expect(resolved.resolution_notes).toBe(
+      'تمت مراجعة العجز واعتماد نتيجة الجرد',
+    )
+
+    expect(resolved.resolved_by).toBe(1)
+
+    expect(resolved.resolved_at).toBeTruthy()
+
+    expect(
+      listCashShiftVariances({
+        status: 'pending',
+      }).total,
+    ).toBe(0)
+
+    expect(
+      listCashShiftVariances({
+        status: 'resolved',
+      }).total,
+    ).toBe(1)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(drawerBefore)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_safe',
+      }).balance,
+    ).toBe(safeBefore)
+
+    expect(() =>
+      resolveCashShiftVariance({
+        variance_id: variance.id,
+
+        resolution_type: 'approved',
+
+        resolution_notes: 'محاولة مراجعة ثانية',
+
+        resolved_by: 1,
+      }),
+    ).toThrow('تمت مراجعة فرق الشفت بالفعل')
+  })
+
+  it('allows only admins to resolve shift variances', () => {
+    const db = getDb()
+
+    db.prepare(
+      `
+    INSERT INTO users (
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+
+    VALUES (
+      ?,
+      ?,
+      ?,
+      'cashier',
+      1
+    )
+    `,
+    ).run('Variance Cashier', 'variance_cashier', 'x')
+
+    const cashier = db
+      .prepare(
+        `
+      SELECT id
+
+      FROM users
+
+      WHERE username =
+        'variance_cashier'
+      `,
+      )
+      .get() as {
+      id: number
+    }
+
+    const shift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    })
+
+    createCashMovement({
+      type: 'sale',
+      direction: 'in',
+      amount: 100,
+      payment_method: 'store_cash',
+      created_by: 1,
+      shift_id: shift.id,
+    })
+
+    closeCashShift({
+      shift_id: shift.id,
+
+      closing_counted_amount: 550,
+
+      left_for_next_shift: 550,
+
+      closed_by: 1,
+    })
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows[0]
+
+    expect(() =>
+      resolveCashShiftVariance({
+        variance_id: variance.id,
+
+        resolution_type: 'explained',
+
+        resolution_notes: 'Trying as cashier',
+
+        resolved_by: cashier.id,
+      }),
+    ).toThrow('مراجعة فروق الشفتات متاحة لمدير النظام فقط')
   })
 
   it('records closing surplus and keeps it pending', () => {

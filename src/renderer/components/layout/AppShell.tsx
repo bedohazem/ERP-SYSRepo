@@ -137,6 +137,13 @@ const menuItems: MenuItem[] = [
     roles: ['admin'],
   },
   {
+    to: '/shifts',
+    label: 'إدارة الشفتات',
+    icon: '🕒',
+    title: 'إدارة الشفتات',
+    roles: ['admin'],
+  },
+  {
     to: '/activity',
     label: 'سجل العمليات',
     icon: '🕘',
