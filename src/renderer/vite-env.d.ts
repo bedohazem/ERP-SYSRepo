@@ -1613,6 +1613,94 @@ declare global {
         ending_drawer_balance: number
       }>
 
+      getCashShifts: (input?: {
+        status?: 'all' | 'open' | 'closed'
+
+        user_id?: number | null
+
+        date_from?: string | null
+        date_to?: string | null
+
+        limit?: number
+        offset?: number
+      }) => Promise<{
+        rows: Array<{
+          id: number
+
+          status: 'open' | 'closed'
+
+          opened_by: number
+          opened_by_name?: string | null
+          opened_at: string
+
+          previous_shift_id: number | null
+
+          expected_opening_amount: number | null
+
+          opening_counted_amount: number
+
+          opening_difference: number
+
+          expected_closing_amount: number | null
+
+          closing_counted_amount: number | null
+
+          closing_difference: number | null
+
+          left_for_next_shift: number | null
+
+          safe_transfer_amount: number | null
+
+          closed_by: number | null
+
+          closed_by_name?: string | null
+
+          closed_at: string | null
+
+          close_reason: string | null
+
+          duration_minutes: number
+
+          cash_in: number
+          cash_out: number
+
+          variance_count: number
+
+          pending_variance_count: number
+        }>
+
+        total: number
+        limit: number
+        offset: number
+      }>
+
+      getCashShiftDetails: (shiftId: number) => Promise<{
+        shift: any
+
+        preview: {
+          shift_id: number
+
+          opening_counted_amount: number
+
+          cash_in: number
+          cash_out: number
+
+          expected_closing_amount: number
+
+          breakdown: Array<{
+            type: string
+
+            direction: 'in' | 'out'
+
+            total: number
+          }>
+        }
+
+        movements: any[]
+
+        variances: any[]
+      }>
+
       listCashShiftVariances: (input?: {
         status?: 'all' | 'pending' | 'resolved'
         limit?: number

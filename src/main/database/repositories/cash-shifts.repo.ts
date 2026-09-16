@@ -53,6 +53,28 @@ export type CashShiftDaySummaryInput = {
   user_id?: number | null
 }
 
+export type CashShiftHistoryFilterInput = {
+  status?: 'all' | 'open' | 'closed'
+
+  user_id?: number | null
+
+  date_from?: string | null
+  date_to?: string | null
+
+  limit?: number
+  offset?: number
+}
+
+export type CashShiftHistoryRow = CashShiftRow & {
+  duration_minutes: number
+
+  cash_in: number
+  cash_out: number
+
+  variance_count: number
+  pending_variance_count: number
+}
+
 export type CashShiftVarianceStatus = 'pending' | 'resolved'
 
 export type CashShiftVarianceResolutionType = 'approved' | 'explained' | 'other'
@@ -116,6 +138,20 @@ function normalizeShiftBusinessDate(value?: string | null) {
   }
 
   return businessDate
+}
+
+function normalizeShiftHistoryDate(value?: string | null) {
+  const date = String(value || '').trim()
+
+  if (!date) {
+    return null
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error('تاريخ فلتر الشفتات غير صحيح')
+  }
+
+  return date
 }
 
 function getShiftSelectSql() {
@@ -998,6 +1034,262 @@ export function getCashShiftDaySummary(input: CashShiftDaySummaryInput) {
     balance_before_handover: balanceBeforeHandover,
 
     ending_drawer_balance: endingDrawerBalance,
+  }
+}
+
+export function listCashShifts(input?: CashShiftHistoryFilterInput) {
+  const db = getDb()
+
+  const status = input?.status || 'all'
+
+  if (status !== 'all' && status !== 'open' && status !== 'closed') {
+    throw new Error('حالة الشفت غير صحيحة')
+  }
+
+  const userId = Number(input?.user_id || 0)
+
+  const dateFrom = normalizeShiftHistoryDate(input?.date_from)
+
+  const dateTo = normalizeShiftHistoryDate(input?.date_to)
+
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    throw new Error('تاريخ البداية أكبر من تاريخ النهاية')
+  }
+
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+
+  const offset = Math.max(Number(input?.offset || 0), 0)
+
+  const where: string[] = []
+  const params: any[] = []
+
+  if (status !== 'all') {
+    where.push(`cs.status = ?`)
+    params.push(status)
+  }
+
+  if (userId > 0) {
+    where.push(`cs.opened_by = ?`)
+    params.push(userId)
+  }
+
+  if (dateFrom) {
+    where.push(`date(cs.opened_at, 'localtime') >= ?`)
+
+    params.push(dateFrom)
+  }
+
+  if (dateTo) {
+    where.push(`date(cs.opened_at, 'localtime') <= ?`)
+
+    params.push(dateTo)
+  }
+
+  const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
+
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        cs.*,
+
+        opened_user.name
+          AS opened_by_name,
+
+        closed_user.name
+          AS closed_by_name,
+
+        MAX(
+          0,
+          CAST(
+            (
+              julianday(
+                COALESCE(
+                  cs.closed_at,
+                  CURRENT_TIMESTAMP
+                )
+              ) -
+              julianday(cs.opened_at)
+            ) * 1440
+            AS INTEGER
+          )
+        ) AS duration_minutes,
+
+        (
+          SELECT
+            IFNULL(SUM(cm.amount), 0)
+
+          FROM cash_movements cm
+
+          WHERE cm.shift_id = cs.id
+
+            AND cm.payment_method =
+              'store_cash'
+
+            AND cm.direction = 'in'
+
+            AND cm.cancelled_at IS NULL
+
+            AND cm.type !=
+              'shift_adjustment'
+
+            AND IFNULL(
+              cm.reference_type,
+              ''
+            ) !=
+              'cash_shift_safe_transfer'
+        ) AS cash_in,
+
+        (
+          SELECT
+            IFNULL(SUM(cm.amount), 0)
+
+          FROM cash_movements cm
+
+          WHERE cm.shift_id = cs.id
+
+            AND cm.payment_method =
+              'store_cash'
+
+            AND cm.direction = 'out'
+
+            AND cm.cancelled_at IS NULL
+
+            AND cm.type !=
+              'shift_adjustment'
+
+            AND IFNULL(
+              cm.reference_type,
+              ''
+            ) !=
+              'cash_shift_safe_transfer'
+        ) AS cash_out,
+
+        (
+          SELECT COUNT(*)
+
+          FROM cash_shift_variances csv
+
+          WHERE csv.shift_id = cs.id
+        ) AS variance_count,
+
+        (
+          SELECT COUNT(*)
+
+          FROM cash_shift_variances csv
+
+          WHERE csv.shift_id = cs.id
+            AND csv.status = 'pending'
+        ) AS pending_variance_count
+
+      FROM cash_shifts cs
+
+      LEFT JOIN users opened_user
+        ON opened_user.id = cs.opened_by
+
+      LEFT JOIN users closed_user
+        ON closed_user.id = cs.closed_by
+
+      ${whereSql}
+
+      ORDER BY cs.id DESC
+
+      LIMIT ?
+      OFFSET ?
+      `,
+    )
+    .all(...params, limit, offset) as CashShiftHistoryRow[]
+
+  const totalRow = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS total
+
+      FROM cash_shifts cs
+
+      ${whereSql}
+      `,
+    )
+    .get(...params) as {
+    total: number
+  }
+
+  return {
+    rows: rows.map((row) => ({
+      ...row,
+
+      duration_minutes: Number(row.duration_minutes || 0),
+
+      cash_in: roundMoney(Number(row.cash_in || 0)),
+
+      cash_out: roundMoney(Number(row.cash_out || 0)),
+
+      variance_count: Number(row.variance_count || 0),
+
+      pending_variance_count: Number(row.pending_variance_count || 0),
+    })),
+
+    total: Number(totalRow?.total || 0),
+
+    limit,
+    offset,
+  }
+}
+
+export function getCashShiftDetails(shiftIdInput: number) {
+  const db = getDb()
+
+  const shiftId = Number(shiftIdInput || 0)
+
+  if (!Number.isInteger(shiftId) || shiftId <= 0) {
+    throw new Error('رقم الشفت غير صحيح')
+  }
+
+  const shift = getCashShiftById(shiftId)
+
+  if (!shift) {
+    throw new Error('الشفت غير موجود')
+  }
+
+  const preview = getCashShiftExpectedBalance(shiftId)
+
+  const movements = db
+    .prepare(
+      `
+      SELECT
+        cm.*,
+
+        u.name AS created_by_name
+
+      FROM cash_movements cm
+
+      LEFT JOIN users u
+        ON u.id = cm.created_by
+
+      WHERE cm.shift_id = ?
+
+      ORDER BY cm.id ASC
+      `,
+    )
+    .all(shiftId)
+
+  const variances = db
+    .prepare(
+      `
+      ${getVarianceSelectSql()}
+
+      WHERE csv.shift_id = ?
+
+      ORDER BY csv.id ASC
+      `,
+    )
+    .all(shiftId) as CashShiftVarianceRow[]
+
+  return {
+    shift,
+    preview,
+    movements,
+    variances,
   }
 }
 

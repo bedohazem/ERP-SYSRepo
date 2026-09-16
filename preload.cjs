@@ -187,6 +187,10 @@ contextBridge.exposeInMainWorld('api', {
   getCashSummary: (input) => ipcRenderer.invoke('cash:summary', input),
   getCashShiftDaySummary: (input) =>
     ipcRenderer.invoke('cash-shifts:day-summary', input),
+  getCashShifts: (input) => ipcRenderer.invoke('cash-shifts:list', input),
+
+  getCashShiftDetails: (shiftId) =>
+    ipcRenderer.invoke('cash-shifts:details', shiftId),
   listCashShiftVariances: (input) =>
     ipcRenderer.invoke('cash-shifts:list-variances', input),
 

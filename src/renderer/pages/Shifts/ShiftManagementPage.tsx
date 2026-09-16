@@ -7,6 +7,7 @@ import {
   getCashShiftVarianceStageLabel,
   getCashShiftVarianceStatusLabel,
 } from '../../utils/cash-shifts'
+import ShiftHistorySection from './ShiftHistorySection'
 
 type CashShift = {
   id: number
@@ -413,6 +414,8 @@ export default function ShiftManagementPage() {
           </div>
         </section>
       )}
+
+      <ShiftHistorySection />
 
       <section
         className="glass-card"

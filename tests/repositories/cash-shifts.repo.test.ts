@@ -12,6 +12,8 @@ import {
   resolveFinancialOperationShift,
   getCashShiftDaySummary,
   listCashShiftVariances,
+  getCashShiftDetails,
+  listCashShifts,
   resolveCashShiftVariance,
 } from '../../src/main/database/repositories/cash-shifts.repo'
 
@@ -935,5 +937,143 @@ describe('cash shifts repository', () => {
     expect(summary.balance_before_handover).toBe(150)
 
     expect(summary.ending_drawer_balance).toBe(150)
+  })
+
+  it('lists shift history with operational drawer totals', () => {
+    const firstShift = openCashShift({
+      opening_counted_amount: 500,
+
+      opened_by: 1,
+    })
+
+    createCashMovement({
+      type: 'sale',
+
+      direction: 'in',
+
+      amount: 200,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+
+      shift_id: firstShift.id,
+    })
+
+    createCashMovement({
+      type: 'expense',
+
+      direction: 'out',
+
+      amount: 50,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+
+      shift_id: firstShift.id,
+    })
+
+    closeCashShift({
+      shift_id: firstShift.id,
+
+      closing_counted_amount: 650,
+
+      left_for_next_shift: 100,
+
+      closed_by: 1,
+    })
+
+    const secondShift = openCashShift({
+      opening_counted_amount: 100,
+
+      opened_by: 1,
+    })
+
+    const all = listCashShifts({
+      status: 'all',
+    })
+
+    expect(all.total).toBe(2)
+
+    expect(all.rows[0].id).toBe(secondShift.id)
+
+    const closed = listCashShifts({
+      status: 'closed',
+    })
+
+    expect(closed.total).toBe(1)
+
+    expect(closed.rows[0].id).toBe(firstShift.id)
+
+    expect(closed.rows[0].cash_in).toBe(200)
+
+    expect(closed.rows[0].cash_out).toBe(50)
+
+    expect(closed.rows[0].safe_transfer_amount).toBe(550)
+
+    expect(closed.rows[0].pending_variance_count).toBe(0)
+  })
+
+  it('returns complete shift details', () => {
+    const shift = openCashShift({
+      opening_counted_amount: 300,
+
+      opened_by: 1,
+    })
+
+    createCashMovement({
+      type: 'sale',
+
+      direction: 'in',
+
+      amount: 150,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+
+      shift_id: shift.id,
+    })
+
+    createCashMovement({
+      type: 'expense',
+
+      direction: 'out',
+
+      amount: 25,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+
+      shift_id: shift.id,
+    })
+
+    closeCashShift({
+      shift_id: shift.id,
+
+      closing_counted_amount: 425,
+
+      left_for_next_shift: 100,
+
+      closed_by: 1,
+    })
+
+    const details = getCashShiftDetails(shift.id)
+
+    expect(details.shift.id).toBe(shift.id)
+
+    expect(details.shift.status).toBe('closed')
+
+    expect(details.preview.cash_in).toBe(150)
+
+    expect(details.preview.cash_out).toBe(25)
+
+    expect(details.preview.expected_closing_amount).toBe(425)
+
+    expect(details.movements.length).toBeGreaterThanOrEqual(4)
+
+    expect(details.variances).toHaveLength(0)
   })
 })

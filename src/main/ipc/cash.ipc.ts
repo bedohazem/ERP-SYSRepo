@@ -19,6 +19,8 @@ import {
   resolveFinancialOperationShift,
   getCashShiftDaySummary,
   listCashShiftVariances,
+  listCashShifts,
+  getCashShiftDetails,
   resolveCashShiftVariance,
 } from '../database/repositories/cash-shifts.repo'
 import { requireAdmin, requireAdminPassword } from './permission-helper'
@@ -190,6 +192,34 @@ export function registerCashIpc(): void {
 
       user_id: user.role === 'admin' ? (input?.user_id ?? null) : user.id,
     })
+  })
+
+  ipcMain.handle('cash-shifts:list', (event, input) => {
+    const actor = requireAuthenticatedUser(event)
+
+    requireAdmin(actor.id)
+
+    return listCashShifts({
+      status: input?.status || 'all',
+
+      user_id: input?.user_id ?? null,
+
+      date_from: input?.date_from,
+
+      date_to: input?.date_to,
+
+      limit: Number(input?.limit || 50),
+
+      offset: Number(input?.offset || 0),
+    })
+  })
+
+  ipcMain.handle('cash-shifts:details', (event, shiftId) => {
+    const actor = requireAuthenticatedUser(event)
+
+    requireAdmin(actor.id)
+
+    return getCashShiftDetails(Number(shiftId))
   })
 
   ipcMain.handle('cash-shifts:list-variances', (event, input) => {

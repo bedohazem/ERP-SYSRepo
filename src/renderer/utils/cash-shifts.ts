@@ -68,3 +68,35 @@ export function canResolveCashShiftVariance(
 ) {
   return variance?.status === 'pending'
 }
+
+export function getCashShiftStatusLabel(value?: string | null) {
+  switch (value) {
+    case 'open':
+      return 'مفتوح'
+
+    case 'closed':
+      return 'مغلق'
+
+    default:
+      return 'غير معروف'
+  }
+}
+
+export function formatCashShiftDuration(minutesInput?: number | null) {
+  const minutes = Math.max(0, Math.floor(Number(minutesInput || 0)))
+
+  const hours = Math.floor(minutes / 60)
+
+  const remainingMinutes = minutes % 60
+
+  if (hours <= 0) {
+    return `${remainingMinutes} دقيقة`
+  }
+
+  if (remainingMinutes <= 0) {
+    return `${hours} ساعة`
+  }
+
+  return `${hours} ساعة و ${remainingMinutes} دقيقة`
+}
+

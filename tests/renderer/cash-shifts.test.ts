@@ -6,6 +6,8 @@ import {
   getCashShiftVarianceResolutionLabel,
   getCashShiftVarianceStageLabel,
   getCashShiftVarianceStatusLabel,
+  formatCashShiftDuration,
+  getCashShiftStatusLabel,
 } from '../../src/renderer/utils/cash-shifts'
 
 describe('cash shift management display', () => {
@@ -49,5 +51,17 @@ describe('cash shift management display', () => {
     ).toBe(false)
 
     expect(canResolveCashShiftVariance(null)).toBe(false)
+  })
+
+  it('formats shift status and duration', () => {
+    expect(getCashShiftStatusLabel('open')).toBe('مفتوح')
+
+    expect(getCashShiftStatusLabel('closed')).toBe('مغلق')
+
+    expect(formatCashShiftDuration(45)).toBe('45 دقيقة')
+
+    expect(formatCashShiftDuration(120)).toBe('2 ساعة')
+
+    expect(formatCashShiftDuration(135)).toBe('2 ساعة و 15 دقيقة')
   })
 })
