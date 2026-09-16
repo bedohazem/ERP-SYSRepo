@@ -73,6 +73,10 @@ const CASH_TYPE_FILTER_OPTIONS = [
     value: 'transfer',
     label: 'تحويل داخلي',
   },
+  {
+    value: 'shift_adjustment',
+    label: 'تسوية شفت',
+  },
 ]
 
 const CASH_DIRECTION_FILTER_OPTIONS = [
@@ -591,6 +595,8 @@ export default function CashPage() {
         return 'تحويل داخلي'
       case 'purchase_return':
         return 'مرتجع شراء'
+      case 'shift_adjustment':
+        return 'تسوية شفت'
 
       default:
         return type
