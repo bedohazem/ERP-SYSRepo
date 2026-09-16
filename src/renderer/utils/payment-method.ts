@@ -17,15 +17,6 @@ export const CASH_ACCOUNT_OPTIONS: Array<{
   { value: 'fawry_machine', label: 'ماكينة فوري' },
 ]
 
-export const DAY_CLOSE_TARGET_OPTIONS: Array<{
-  value: CashAccountKey
-  label: string
-}> = [
-  { value: 'owner_cash', label: 'كاش مع المالك' },
-  { value: 'owner_bank', label: 'حساب بنك / فيزا المالك' },
-  { value: 'owner_vodafone', label: 'فودافون كاش المالك' },
-]
-
 export const CUSTOMER_PAYMENT_METHOD_OPTIONS = [
   { value: 'cash', label: 'كاش' },
   { value: 'card', label: 'كارت / فيزا' },

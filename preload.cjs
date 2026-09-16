@@ -205,15 +205,6 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('cash-shifts:preview', shiftId),
 
   closeCashShift: (input) => ipcRenderer.invoke('cash-shifts:close', input),
-  getCashDayClosePreview: (businessDate) =>
-    ipcRenderer.invoke('cash:day-close-preview', businessDate),
-
-  closeCashDay: (input) => ipcRenderer.invoke('cash:close-day', input),
-  cancelCashDayClosing: (input) =>
-    ipcRenderer.invoke('cash:cancel-day-close', input),
-
-  updateCashDayClosing: (input) =>
-    ipcRenderer.invoke('cash:update-day-close', input),
 
   createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
   updateExpense: (input) => ipcRenderer.invoke('expenses:update', input),

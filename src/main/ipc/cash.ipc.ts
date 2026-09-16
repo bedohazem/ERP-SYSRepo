@@ -1,15 +1,11 @@
 import { ipcMain } from 'electron'
 
 import {
-  closeCashDay,
   createCashMovement,
   createCashTransfer,
-  getCashDayClosePreview,
   getCashSummary,
   cancelCashMovement,
   updateCashMovement,
-  cancelCashDayClosing,
-  updateCashDayClosing,
   getCashMovementMutationContext,
   listCashMovements,
 } from '../database/repositories/cash.repo'
@@ -86,65 +82,6 @@ export function registerCashIpc(): void {
       created_by: actorId,
       shift_id: openShift?.id ?? null,
     })
-  })
-
-  ipcMain.handle('cash:day-close-preview', (_, businessDate: string) => {
-    return getCashDayClosePreview(businessDate)
-  })
-
-  ipcMain.handle('cash:close-day', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
-
-    return closeCashDay({
-      ...input,
-      closed_by: actorId,
-    })
-  })
-
-  ipcMain.handle('cash:cancel-day-close', (event, input) => {
-    try {
-      const actorId = requireAuthenticatedUser(event).id
-      requireAdminPassword(actorId, input?.admin_password)
-
-      return cancelCashDayClosing({
-        closing_id: Number(input?.closing_id),
-
-        reason: input?.reason,
-
-        actor_id: actorId,
-      })
-    } catch (error) {
-      return {
-        success: false,
-
-        message:
-          error instanceof Error ? error.message : 'تعذر إلغاء تقفيل اليوم',
-      }
-    }
-  })
-
-  ipcMain.handle('cash:update-day-close', (event, input) => {
-    try {
-      const actorId = requireAuthenticatedUser(event).id
-      requireAdminPassword(actorId, input?.admin_password)
-
-      return updateCashDayClosing({
-        closing_id: Number(input?.closing_id),
-
-        carry_over_amount: Number(input?.carry_over_amount),
-
-        target_account: input?.target_account,
-
-        actor_id: actorId,
-      })
-    } catch (error) {
-      return {
-        success: false,
-
-        message:
-          error instanceof Error ? error.message : 'تعذر تعديل تقفيل اليوم',
-      }
-    }
   })
 
   ipcMain.handle('cash:update-movement', (event, input) => {
