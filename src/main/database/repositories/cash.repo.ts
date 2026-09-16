@@ -67,6 +67,7 @@ export type CashTransferInput = {
   amount: number
   notes?: string | null
   created_by?: number | null
+  shift_id?: number | null
 }
 
 export type CashDayCloseInput = {
@@ -529,6 +530,7 @@ export function createCashTransfer(input: CashTransferInput) {
       reference_type: 'cash_transfer',
       notes: input.notes || `تحويل من ${fromAccount} إلى ${toAccount}`,
       created_by: input.created_by ?? null,
+      shift_id: input.shift_id ?? null,
     })
 
     const inResult = createCashMovement({
@@ -540,6 +542,7 @@ export function createCashTransfer(input: CashTransferInput) {
       reference_type: 'cash_transfer',
       notes: input.notes || `تحويل من ${fromAccount} إلى ${toAccount}`,
       created_by: input.created_by ?? null,
+      shift_id: input.shift_id ?? null,
     })
 
     return {
@@ -549,6 +552,7 @@ export function createCashTransfer(input: CashTransferInput) {
       amount,
       out_id: Number(outResult.lastInsertRowid || 0),
       in_id: Number(inResult.lastInsertRowid || 0),
+      shift_id: input.shift_id ?? null,
     }
   })
 

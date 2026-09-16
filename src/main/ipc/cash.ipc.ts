@@ -19,6 +19,7 @@ import {
   openCashShift,
   getCashShiftOpeningPreview,
   getCashShiftById,
+  resolveFinancialOperationShift,
 } from '../database/repositories/cash-shifts.repo'
 import { requireAdminPassword } from './permission-helper'
 import { requireAuthenticatedUser } from '../auth-session'
@@ -31,9 +32,16 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash:transfer', (event, input) => {
     const actorId = requireAuthenticatedUser(event).id
 
+    const openShift = resolveFinancialOperationShift(
+      actorId,
+      [input?.from_account, input?.to_account],
+      'لا يمكن تنفيذ تحويل يؤثر على درج المحل بدون شفت مفتوح',
+    )
+
     return createCashTransfer({
       ...input,
       created_by: actorId,
+      shift_id: openShift?.id ?? null,
     })
   })
 
@@ -44,9 +52,37 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash:create-movement', (event, input) => {
     const actorId = requireAuthenticatedUser(event).id
 
+    const type =
+      input?.type === 'deposit'
+        ? 'deposit'
+        : input?.type === 'withdraw'
+          ? 'withdraw'
+          : null
+
+    if (!type) {
+      throw new Error('نوع حركة الخزنة اليدوية غير صحيح')
+    }
+
+    const direction: 'in' | 'out' = type === 'deposit' ? 'in' : 'out'
+
+    const paymentMethod = input?.payment_method || 'store_cash'
+
+    const openShift = resolveFinancialOperationShift(
+      actorId,
+      [paymentMethod],
+      'لا يمكن تسجيل حركة على درج المحل بدون شفت مفتوح',
+    )
+
     return createCashMovement({
-      ...input,
+      type,
+      direction,
+      amount: Number(input?.amount),
+      payment_method: paymentMethod,
+      reference_id: null,
+      reference_type: 'manual',
+      notes: input?.notes,
       created_by: actorId,
+      shift_id: openShift?.id ?? null,
     })
   })
 

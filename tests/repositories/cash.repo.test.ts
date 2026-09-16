@@ -12,6 +12,8 @@ import {
   updateCashDayClosing,
 } from '../../src/main/database/repositories/cash.repo'
 
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
+
 type CashMovementTestRow = {
   id: number
   type: string
@@ -112,6 +114,48 @@ describe('cash repository', () => {
     expect(summary.total_out).toBe(200)
     expect(summary.balance).toBe(300)
     expect(summary.movements_count).toBe(2)
+  })
+
+  it('links both cash transfer movements to the active shift', () => {
+    const db = getDb()
+
+    const shift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    })
+
+    const result = createCashTransfer({
+      from_account: 'store_cash',
+      to_account: 'owner_bank',
+      amount: 200,
+      created_by: 1,
+      shift_id: shift.id,
+    })
+
+    expect(result.shift_id).toBe(shift.id)
+
+    const outMovement = db
+      .prepare(
+        `
+        SELECT *
+        FROM cash_movements
+        WHERE id = ?
+        `,
+      )
+      .get(result.out_id) as any
+
+    const inMovement = db
+      .prepare(
+        `
+        SELECT *
+        FROM cash_movements
+        WHERE id = ?
+        `,
+      )
+      .get(result.in_id) as any
+
+    expect(Number(outMovement.shift_id)).toBe(shift.id)
+    expect(Number(inMovement.shift_id)).toBe(shift.id)
   })
 
   it('lists cash movements ordered by newest first', () => {
