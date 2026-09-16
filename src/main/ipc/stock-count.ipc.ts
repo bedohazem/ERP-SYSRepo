@@ -22,13 +22,74 @@ function getErrorMessage(error: unknown) {
   return 'حدث خطأ غير متوقع'
 }
 
+function getCashierSessionView(session: any) {
+  if (!session) {
+    return session
+  }
+
+  const {
+    matched_count: _matchedCount,
+    shortage_count: _shortageCount,
+    surplus_count: _surplusCount,
+    buy_difference_value: _buyDifferenceValue,
+    sell_difference_value: _sellDifferenceValue,
+    ...safeSession
+  } = session
+
+  return safeSession
+}
+
+function getCashierSessionDetailsView(details: any) {
+  if (!details) {
+    return details
+  }
+
+  return {
+    session: getCashierSessionView(details.session),
+
+    items: Array.isArray(details.items)
+      ? details.items.map((item: any) => {
+          const {
+            system_stock: _systemStock,
+
+            difference: _difference,
+
+            buy_difference_value: _buyDifferenceValue,
+
+            sell_difference_value: _sellDifferenceValue,
+
+            ...safeItem
+          } = item
+
+          return safeItem
+        })
+      : [],
+  }
+}
+
 export function registerStockCountIpc(): void {
-  ipcMain.handle('stock-count:list', () => {
-    return listStockCountSessions()
+  ipcMain.handle('stock-count:list', (event) => {
+    const actor = requireAuthenticatedUser(event)
+
+    const sessions = listStockCountSessions()
+
+    if (actor.role === 'admin') {
+      return sessions
+    }
+
+    return sessions.map(getCashierSessionView)
   })
 
-  ipcMain.handle('stock-count:get', (_, sessionId: number) => {
-    return getStockCountSession(Number(sessionId))
+  ipcMain.handle('stock-count:get', (event, sessionId: number) => {
+    const actor = requireAuthenticatedUser(event)
+
+    const details = getStockCountSession(Number(sessionId))
+
+    if (actor.role === 'admin') {
+      return details
+    }
+
+    return getCashierSessionDetailsView(details)
   })
 
   ipcMain.handle('stock-count:create', (event, input) => {

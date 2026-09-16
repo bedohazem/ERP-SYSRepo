@@ -17,18 +17,18 @@ type StockCountSession = {
   approved_by_name?: string | null
   items_count: number
   counted_count: number
-  matched_count: number
-  shortage_count: number
-  surplus_count: number
-  buy_difference_value: number
-  sell_difference_value: number
+  matched_count?: number | null
+  shortage_count?: number | null
+  surplus_count?: number | null
+  buy_difference_value?: number | null
+  sell_difference_value?: number | null
 }
 
 type StockCountItem = {
   id: number
   session_id: number
   variant_id: number
-  system_stock: number
+  system_stock?: number | null
   actual_stock?: number | null
   notes?: string | null
   product_name: string
@@ -39,9 +39,9 @@ type StockCountItem = {
   color?: string | null
   buy_price: number
   sell_price: number
-  difference: number
-  buy_difference_value: number
-  sell_difference_value: number
+  difference?: number | null
+  buy_difference_value?: number | null
+  sell_difference_value?: number | null
 }
 
 type Category = {
@@ -97,48 +97,79 @@ export default function StockCountPage() {
     const items = selected?.items || []
 
     const counted = items.filter(
-      (x) => x.actual_stock !== null && x.actual_stock !== undefined,
+      (item) => item.actual_stock !== null && item.actual_stock !== undefined,
     )
-    const matched = counted.filter(
-      (x) => Number(x.actual_stock) === Number(x.system_stock),
-    )
-    const shortage = counted.filter(
-      (x) => Number(x.actual_stock) < Number(x.system_stock),
-    )
-    const surplus = counted.filter(
-      (x) => Number(x.actual_stock) > Number(x.system_stock),
-    )
+
     const uncounted = items.filter(
-      (x) => x.actual_stock === null || x.actual_stock === undefined,
+      (item) => item.actual_stock === null || item.actual_stock === undefined,
     )
 
-    const buyDiff = counted.reduce((sum, item) => {
-      return (
-        sum +
-        (Number(item.actual_stock || 0) - Number(item.system_stock || 0)) *
-          Number(item.buy_price || 0)
-      )
-    }, 0)
+    /*
+     * الكاشير يعرف فقط
+     * ما الذي تم عده وما لم يتم عده.
+     */
+    if (!isAdmin) {
+      return {
+        total: items.length,
 
-    const sellDiff = counted.reduce((sum, item) => {
-      return (
+        counted: counted.length,
+
+        uncounted: uncounted.length,
+
+        matched: 0,
+        shortage: 0,
+        surplus: 0,
+
+        buyDiff: 0,
+        sellDiff: 0,
+      }
+    }
+
+    const matched = counted.filter(
+      (item) => Number(item.actual_stock) === Number(item.system_stock),
+    )
+
+    const shortage = counted.filter(
+      (item) => Number(item.actual_stock) < Number(item.system_stock),
+    )
+
+    const surplus = counted.filter(
+      (item) => Number(item.actual_stock) > Number(item.system_stock),
+    )
+
+    const buyDiff = counted.reduce(
+      (sum, item) =>
         sum +
         (Number(item.actual_stock || 0) - Number(item.system_stock || 0)) *
-          Number(item.sell_price || 0)
-      )
-    }, 0)
+          Number(item.buy_price || 0),
+      0,
+    )
+
+    const sellDiff = counted.reduce(
+      (sum, item) =>
+        sum +
+        (Number(item.actual_stock || 0) - Number(item.system_stock || 0)) *
+          Number(item.sell_price || 0),
+      0,
+    )
 
     return {
       total: items.length,
+
       counted: counted.length,
+
       uncounted: uncounted.length,
+
       matched: matched.length,
+
       shortage: shortage.length,
+
       surplus: surplus.length,
+
       buyDiff,
       sellDiff,
     }
-  }, [selected])
+  }, [selected, isAdmin])
 
   const visibleItems = useMemo(() => {
     const items = selected?.items || []
@@ -147,9 +178,17 @@ export default function StockCountPage() {
     return items.filter((item) => {
       const actual = item.actual_stock
       const diff =
-        actual === null || actual === undefined
-          ? null
-          : Number(actual) - Number(item.system_stock)
+        isAdmin &&
+        actual !== null &&
+        actual !== undefined &&
+        item.system_stock !== null &&
+        item.system_stock !== undefined
+          ? Number(actual) - Number(item.system_stock)
+          : null
+
+      if (!isAdmin && filter !== 'all' && filter !== 'uncounted') {
+        return false
+      }
 
       if (filter === 'uncounted' && actual !== null && actual !== undefined)
         return false
@@ -178,7 +217,7 @@ export default function StockCountPage() {
         .toLowerCase()
         .includes(q)
     })
-  }, [selected, search, filter, countCategoryFilter])
+  }, [selected, isAdmin, search, filter, countCategoryFilter])
 
   const pagedSessions = useMemo(() => {
     const start = (sessionPage - 1) * SYSTEM_PAGE_SIZE
@@ -694,9 +733,17 @@ export default function StockCountPage() {
                 <th style={thStyle}>الحالة</th>
                 <th style={thStyle}>الأصناف</th>
                 <th style={thStyle}>تم جرده</th>
-                <th style={thStyle}>عجز</th>
-                <th style={thStyle}>زيادة</th>
-                <th style={thStyle}>فرق الشراء</th>
+
+                {isAdmin && (
+                  <>
+                    <th style={thStyle}>عجز</th>
+
+                    <th style={thStyle}>زيادة</th>
+
+                    <th style={thStyle}>فرق الشراء</th>
+                  </>
+                )}
+
                 <th style={thStyle}>المنشئ</th>
                 <th style={thStyle}>التاريخ</th>
                 <th style={thStyle}>إجراءات</th>
@@ -716,11 +763,17 @@ export default function StockCountPage() {
                   </td>
                   <td style={tdStyle}>{session.items_count || 0}</td>
                   <td style={tdStyle}>{session.counted_count || 0}</td>
-                  <td style={tdStyle}>{session.shortage_count || 0}</td>
-                  <td style={tdStyle}>{session.surplus_count || 0}</td>
-                  <td style={tdStyle}>
-                    {money(session.buy_difference_value || 0)}
-                  </td>
+                  {isAdmin && (
+                    <>
+                      <td style={tdStyle}>{session.shortage_count || 0}</td>
+
+                      <td style={tdStyle}>{session.surplus_count || 0}</td>
+
+                      <td style={tdStyle}>
+                        {money(session.buy_difference_value || 0)}
+                      </td>
+                    </>
+                  )}
                   <td style={tdStyle}>{session.created_by_name || '—'}</td>
                   <td style={tdStyle}>{formatDate(session.created_at)}</td>
                   <td style={tdStyle}>
@@ -738,7 +791,7 @@ export default function StockCountPage() {
               {sessions.length === 0 && (
                 <tr>
                   <td
-                    colSpan={11}
+                    colSpan={isAdmin ? 11 : 8}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -855,11 +908,19 @@ export default function StockCountPage() {
             <InfoCard title="إجمالي الأصناف" value={String(summary.total)} />
             <InfoCard title="تم جرده" value={String(summary.counted)} />
             <InfoCard title="غير مجرود" value={String(summary.uncounted)} />
-            <InfoCard title="مطابق" value={String(summary.matched)} />
-            <InfoCard title="عجز" value={String(summary.shortage)} />
-            <InfoCard title="زيادة" value={String(summary.surplus)} />
-            <InfoCard title="فرق الشراء" value={money(summary.buyDiff)} />
-            <InfoCard title="فرق البيع" value={money(summary.sellDiff)} />
+            {isAdmin && (
+              <>
+                <InfoCard title="مطابق" value={String(summary.matched)} />
+
+                <InfoCard title="عجز" value={String(summary.shortage)} />
+
+                <InfoCard title="زيادة" value={String(summary.surplus)} />
+
+                <InfoCard title="فرق الشراء" value={money(summary.buyDiff)} />
+
+                <InfoCard title="فرق البيع" value={money(summary.sellDiff)} />
+              </>
+            )}
           </div>
 
           {isOpen && (
@@ -932,10 +993,18 @@ export default function StockCountPage() {
               style={inputStyle}
             >
               <option value="all">كل الأصناف</option>
+
               <option value="uncounted">غير مجرود</option>
-              <option value="matched">مطابق</option>
-              <option value="shortage">عجز</option>
-              <option value="surplus">زيادة</option>
+
+              {isAdmin && (
+                <>
+                  <option value="matched">مطابق</option>
+
+                  <option value="shortage">عجز</option>
+
+                  <option value="surplus">زيادة</option>
+                </>
+              )}
             </select>
 
             <select
@@ -970,15 +1039,29 @@ export default function StockCountPage() {
               <thead>
                 <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                   <th style={thStyle}>المنتج</th>
+
                   <th style={thStyle}>باركود</th>
+
                   <th style={thStyle}>المقاس</th>
+
                   <th style={thStyle}>اللون</th>
+
                   <th style={thStyle}>سعر البيع</th>
-                  <th style={thStyle}>النظام</th>
-                  <th style={thStyle}>الفعلي</th>
-                  <th style={thStyle}>الفرق</th>
-                  <th style={thStyle}>فرق الشراء</th>
+
+                  {isAdmin && <th style={thStyle}>النظام</th>}
+
+                  <th style={thStyle}>الكمية المعدودة</th>
+
+                  {isAdmin && (
+                    <>
+                      <th style={thStyle}>الفرق</th>
+
+                      <th style={thStyle}>فرق الشراء</th>
+                    </>
+                  )}
+
                   <th style={thStyle}>ملاحظات</th>
+
                   <th style={thStyle}>إجراءات</th>
                 </tr>
               </thead>
@@ -987,7 +1070,7 @@ export default function StockCountPage() {
                 {loadingDetails && (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={isAdmin ? 11 : 8}
                       style={{ ...tdStyle, textAlign: 'center' }}
                     >
                       جاري التحميل...
@@ -1011,9 +1094,13 @@ export default function StockCountPage() {
                       actual !== undefined &&
                       Number.isFinite(Number(actual))
 
-                    const diff = counted
-                      ? Number(actual) - Number(item.system_stock)
-                      : null
+                    const diff =
+                      isAdmin &&
+                      counted &&
+                      item.system_stock !== null &&
+                      item.system_stock !== undefined
+                        ? Number(actual) - Number(item.system_stock)
+                        : null
 
                     const hasDraft = Object.prototype.hasOwnProperty.call(
                       actualDrafts,
@@ -1064,9 +1151,11 @@ export default function StockCountPage() {
                         <td style={tdStyle}>
                           {money(Number(item.sell_price || 0))}
                         </td>
-                        <td style={tdStyle}>
-                          {Number(item.system_stock || 0)}
-                        </td>
+                        {isAdmin && (
+                          <td style={tdStyle}>
+                            {Number(item.system_stock || 0)}
+                          </td>
+                        )}
 
                         <td style={tdStyle}>
                           {isOpen ? (
@@ -1090,28 +1179,34 @@ export default function StockCountPage() {
                           )}
                         </td>
 
-                        <td
-                          style={{
-                            ...tdStyle,
-                            fontWeight: 900,
-                            color:
-                              diff === null
-                                ? '#94a3b8'
-                                : diff > 0
-                                  ? '#6ee7b7'
-                                  : diff < 0
-                                    ? '#fca5a5'
-                                    : '#cbd5e1',
-                          }}
-                        >
-                          {diff === null ? '—' : diff}
-                        </td>
+                        {isAdmin && (
+                          <>
+                            <td
+                              style={{
+                                ...tdStyle,
 
-                        <td style={tdStyle}>
-                          {diff === null
-                            ? '—'
-                            : money(diff * Number(item.buy_price || 0))}
-                        </td>
+                                fontWeight: 900,
+
+                                color:
+                                  diff === null
+                                    ? '#94a3b8'
+                                    : diff > 0
+                                      ? '#6ee7b7'
+                                      : diff < 0
+                                        ? '#fca5a5'
+                                        : '#cbd5e1',
+                              }}
+                            >
+                              {diff === null ? '—' : diff}
+                            </td>
+
+                            <td style={tdStyle}>
+                              {diff === null
+                                ? '—'
+                                : money(diff * Number(item.buy_price || 0))}
+                            </td>
+                          </>
+                        )}
 
                         <td style={tdStyle}>
                           {isOpen ? (
@@ -1187,7 +1282,7 @@ export default function StockCountPage() {
                 {!loadingDetails && visibleItems.length === 0 && (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={isAdmin ? 11 : 8}
                       style={{
                         ...tdStyle,
                         textAlign: 'center',
