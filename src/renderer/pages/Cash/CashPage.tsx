@@ -159,7 +159,6 @@ export default function CashPage() {
   const [filterPaymentMethods, setFilterPaymentMethods] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [manualModalOpen, setManualModalOpen] = useState(false)
-  const [dayCloseModalOpen, setDayCloseModalOpen] = useState(false)
 
   const [transferModalOpen, setTransferModalOpen] = useState(false)
   const [transferFromAccount, setTransferFromAccount] = useState('store_cash')
@@ -1459,14 +1458,6 @@ export default function CashPage() {
                             gap: '7px',
                             flexWrap: 'wrap',
                           }}
-                        ></div>
-                      ) : isAdmin && canManageCashMovement(item) ? (
-                        <div
-                          style={{
-                            display: 'flex',
-                            gap: '7px',
-                            flexWrap: 'wrap',
-                          }}
                         >
                           <button
                             type="button"
@@ -1526,7 +1517,7 @@ export default function CashPage() {
                             : item.type === 'transfer' &&
                                 item.reference_type === 'day_close' &&
                                 item.direction === 'in'
-                              ? 'طرف تقفيل اليوم'
+                              ? 'طرف تقفيل يوم قديم'
                               : 'من المصدر'}
                         </span>
                       )}
