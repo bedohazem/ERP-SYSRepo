@@ -8,6 +8,10 @@ function positive(value: unknown) {
   return Math.max(0, Number(value || 0))
 }
 
+function isRegularUnitGroupId(value?: string | null) {
+  return String(value || '').startsWith('regular:')
+}
+
 export function getSaleCurrentState(saleIdInput: number) {
   const db = getDb()
 
@@ -196,6 +200,10 @@ export function getSaleCurrentState(saleIdInput: number) {
     promotionUnits.map((unit) => String(unit.promotion_group_id)),
   )
 
+  const representedOriginalItemIds = new Set(
+    promotionUnits.map((unit) => Number(unit.original_sale_item_id)),
+  )
+
   /*
    * Aggregate current promotion units for
    * display. Paid/gift states are deliberately
@@ -206,18 +214,35 @@ export function getSaleCurrentState(saleIdInput: number) {
   for (const unit of promotionUnits) {
     const groupId = String(unit.promotion_group_id)
 
-    const key = [
-      groupId,
-      Number(unit.current_variant_id),
-      Number(unit.current_unit_price),
-      Number(unit.current_is_gift),
-    ].join(':')
+    const isRegular = isRegularUnitGroupId(groupId)
+
+    const key = isRegular
+      ? [
+          'regular',
+
+          Number(unit.original_sale_item_id),
+
+          Number(unit.current_variant_id),
+
+          Number(unit.current_unit_price),
+        ].join(':')
+      : [
+          groupId,
+
+          Number(unit.current_variant_id),
+
+          Number(unit.current_unit_price),
+
+          Number(unit.current_is_gift),
+        ].join(':')
 
     let bucket = currentUnitBuckets.get(key)
 
     if (!bucket) {
       bucket = {
-        id: `promotion-unit-${Number(unit.id)}`,
+        id: isRegular
+          ? Number(unit.original_sale_item_id)
+          : `promotion-unit-${Number(unit.id)}`,
 
         sale_id: saleId,
 
@@ -241,9 +266,9 @@ export function getSaleCurrentState(saleIdInput: number) {
 
         line_total: 0,
 
-        is_gift: Number(unit.current_is_gift || 0),
+        is_gift: isRegular ? 0 : Number(unit.current_is_gift || 0),
 
-        promotion_group_id: groupId,
+        promotion_group_id: isRegular ? null : groupId,
 
         returned_quantity: 0,
 
@@ -305,6 +330,9 @@ export function getSaleCurrentState(saleIdInput: number) {
    */
   const unchangedItems = originalItems
     .filter((item) => {
+      if (representedOriginalItemIds.has(Number(item.id))) {
+        return false
+      }
       const groupId = item.promotion_group_id
 
       if (!groupId) {

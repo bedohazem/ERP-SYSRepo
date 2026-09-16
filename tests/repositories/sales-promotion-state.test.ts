@@ -14,6 +14,7 @@ import {
   createSale,
   getSaleReceipt,
 } from '../../src/main/database/repositories/sales.repo'
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
 
 type TestVariant = {
   variant_id: number
@@ -153,6 +154,11 @@ describe('sale promotion exchange state', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
   })
 
   it('stores an immutable promotion snapshot and one state row per bundle unit', () => {

@@ -22,6 +22,7 @@ import {
 import { createSaleExchange } from '../../src/main/database/repositories/sales-exchange.repo'
 
 import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo'
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
 
 type TestVariant = {
   variant_id: number
@@ -264,6 +265,11 @@ describe('sale current state after exchanges', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
   })
 
   it('keeps original receipt and exposes current receipt after exchanging the gift', () => {

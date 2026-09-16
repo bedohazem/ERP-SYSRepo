@@ -28,6 +28,7 @@ import {
   getCashDayClosePreview,
   getCashSummary,
 } from '../../src/main/database/repositories/cash.repo'
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
 
 type VariantRow = {
   variant_id: number
@@ -306,6 +307,11 @@ describe('sale exchange loyalty accounting', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
   })
 
   it('recalculates earned points using the loyalty rules saved at sale time', () => {

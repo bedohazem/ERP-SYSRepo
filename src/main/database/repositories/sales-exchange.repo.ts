@@ -249,6 +249,179 @@ function getExchangeVariant(db: ReturnType<typeof getDb>, variantId: number) {
     .get(variantId) as ExchangeVariantRow | undefined
 }
 
+const REGULAR_EXCHANGE_GROUP_PREFIX = 'regular:'
+
+function isRegularExchangeGroup(value?: string | null) {
+  return String(value || '').startsWith(REGULAR_EXCHANGE_GROUP_PREFIX)
+}
+
+function buildRegularExchangeGroupId(saleItemId: number, unitIndex: number) {
+  return `${REGULAR_EXCHANGE_GROUP_PREFIX}${saleItemId}:${unitIndex}`
+}
+
+function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
+  const apply = () => {
+    const items = db
+      .prepare(
+        `
+        SELECT
+          si.*,
+
+          IFNULL(
+            (
+              SELECT
+                SUM(sri.quantity)
+
+              FROM sale_returns sr
+
+              JOIN sale_return_items sri
+                ON sri.return_id =
+                  sr.id
+
+              WHERE
+                sr.original_sale_id =
+                  si.sale_id
+
+                AND sr.cancelled_at
+                  IS NULL
+
+                AND
+                  sri.original_sale_item_id
+                  = si.id
+            ),
+            0
+          ) AS returned_quantity
+
+        FROM sale_items si
+
+        WHERE
+          si.sale_id = ?
+
+          AND
+            si.promotion_group_id
+            IS NULL
+
+        ORDER BY si.id ASC
+        `,
+      )
+      .all(saleId) as any[]
+
+    const getExistingCount = db.prepare(
+      `
+        SELECT
+          COUNT(*) AS count
+
+        FROM sale_promotion_units
+
+        WHERE
+          sale_id = ?
+
+          AND
+            original_sale_item_id = ?
+
+          AND
+            promotion_group_id
+            LIKE 'regular:%'
+        `,
+    )
+
+    const insertUnit = db.prepare(
+      `
+        INSERT INTO sale_promotion_units (
+          sale_id,
+          original_sale_item_id,
+          promotion_group_id,
+
+          original_variant_id,
+          current_variant_id,
+
+          original_unit_price,
+          current_unit_price,
+
+          original_unit_cost,
+          current_unit_cost,
+
+          original_is_gift,
+          current_is_gift,
+
+          is_returned
+        )
+
+        VALUES (
+          ?, ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          0, 0,
+          ?
+        )
+        `,
+    )
+
+    for (const item of items) {
+      const quantity = Number(item.quantity || 0)
+
+      /*
+       * الاستبدال هنا Piece-based.
+       * أي كمية كسرية تفضل على مسار
+       * المرتجع التقليدي ولا ننشئ لها Units.
+       */
+      if (quantity <= 0 || !Number.isInteger(quantity)) {
+        continue
+      }
+
+      const existing = getExistingCount.get(saleId, Number(item.id)) as {
+        count: number
+      }
+
+      const existingCount = Number(existing?.count || 0)
+
+      if (existingCount > 0) {
+        if (existingCount !== quantity) {
+          throw new Error('بيانات وحدات الفاتورة غير مكتملة')
+        }
+
+        continue
+      }
+
+      const returnedQuantity = Math.min(
+        quantity,
+        Math.max(0, Math.floor(Number(item.returned_quantity || 0))),
+      )
+
+      for (let index = 0; index < quantity; index += 1) {
+        insertUnit.run(
+          saleId,
+
+          Number(item.id),
+
+          buildRegularExchangeGroupId(Number(item.id), index + 1),
+
+          Number(item.variant_id),
+          Number(item.variant_id),
+
+          Number(item.unit_price || 0),
+
+          Number(item.unit_price || 0),
+
+          Number(item.unit_cost || 0),
+
+          Number(item.unit_cost || 0),
+
+          index < returnedQuantity ? 1 : 0,
+        )
+      }
+    }
+  }
+
+  if (db.inTransaction) {
+    apply()
+    return
+  }
+
+  db.transaction(apply)()
+}
+
 function isVariantInsideSnapshot(
   variant: ExchangeVariantRow,
   snapshot: PromotionSnapshotRow,
@@ -294,6 +467,12 @@ export function getSaleExchangeState(saleIdInput: number) {
     throw new Error('الفاتورة الأصلية غير موجودة')
   }
 
+  if (sale.cancelled_at) {
+    throw new Error('لا يمكن عمل استبدال على فاتورة ملغاة')
+  }
+
+  ensureRegularSaleUnits(db, saleId)
+
   const snapshot = db
     .prepare(
       `
@@ -304,10 +483,6 @@ export function getSaleExchangeState(saleIdInput: number) {
       `,
     )
     .get(saleId) as PromotionSnapshotRow | undefined
-
-  if (!snapshot) {
-    throw new Error('الفاتورة لا تحتوي على نسخة محفوظة من العرض الأصلي')
-  }
 
   const units = db
     .prepare(
@@ -344,6 +519,9 @@ export function getSaleExchangeState(saleIdInput: number) {
     string,
     {
       promotion_group_id: string
+
+      group_kind: 'promotion' | 'regular'
+
       units: any[]
     }
   >()
@@ -358,6 +536,9 @@ export function getSaleExchangeState(saleIdInput: number) {
     } else {
       groupMap.set(groupId, {
         promotion_group_id: groupId,
+
+        group_kind: isRegularExchangeGroup(groupId) ? 'regular' : 'promotion',
+
         units: [unit],
       })
     }
@@ -367,10 +548,13 @@ export function getSaleExchangeState(saleIdInput: number) {
 
   return {
     sale,
-    snapshot: {
-      ...snapshot,
-      product_ids: parseProductIds(snapshot.product_ids_json),
-    },
+    snapshot: snapshot
+      ? {
+          ...snapshot,
+
+          product_ids: parseProductIds(snapshot.product_ids_json),
+        }
+      : null,
     groups: Array.from(groupMap.values()),
     financials: currentState.financials,
   }
@@ -443,6 +627,8 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       throw new Error('لا يمكن عمل استبدال على فاتورة ملغاة')
     }
 
+    ensureRegularSaleUnits(db, saleId)
+
     const snapshot = db
       .prepare(
         `
@@ -453,26 +639,6 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         `,
       )
       .get(saleId) as PromotionSnapshotRow | undefined
-
-    if (!snapshot) {
-      throw new Error(
-        'لا يمكن استبدال عرض قديم لا يحتوي على نسخة محفوظة من شروط العرض',
-      )
-    }
-
-    if (snapshot.promotion_type !== 'buy_x_get_y') {
-      throw new Error('الاستبدال بهذه الطريقة متاح لعروض اشتري وخد فقط')
-    }
-
-    const buyQty = Math.floor(Number(snapshot.buy_qty || 0))
-
-    const freeQty = Math.floor(Number(snapshot.free_qty || 0))
-
-    if (buyQty <= 0 || freeQty <= 0) {
-      throw new Error('شروط العرض الأصلي غير صالحة للاستبدال')
-    }
-
-    const groupSize = buyQty + freeQty
 
     const getUnit = db.prepare(
       `
@@ -507,8 +673,12 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         (unit) => String(unit.promotion_group_id) !== promotionGroupId,
       )
     ) {
-      throw new Error('عملية الاستبدال الواحدة يجب أن تكون داخل عرض واحد فقط')
+      throw new Error(
+        'عملية الاستبدال الواحدة يجب أن تكون داخل مجموعة واحدة فقط',
+      )
     }
+
+    const isRegularExchange = isRegularExchangeGroup(promotionGroupId)
 
     const groupUnits = db
       .prepare(
@@ -522,20 +692,58 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       )
       .all(saleId, promotionGroupId) as PromotionUnitRow[]
 
-    if (groupUnits.length !== groupSize) {
-      throw new Error('بيانات العرض المحفوظة غير مكتملة')
-    }
+    let freeQty = 0
 
-    if (groupUnits.some((unit) => Number(unit.is_returned) === 1)) {
-      throw new Error('لا يمكن استبدال عرض تم إرجاعه')
-    }
+    if (isRegularExchange) {
+      /*
+       * كل قطعة عادية لها Group مستقل.
+       * لذلك الاستبدال العادي = قطعة واحدة.
+       */
+      if (groupUnits.length !== 1 || selectedUnits.length !== 1) {
+        throw new Error('بيانات قطعة الاستبدال غير صحيحة')
+      }
 
-    if (normalizedItems.length !== 1 && normalizedItems.length !== groupSize) {
-      throw new Error(
-        'الاستبدال داخل العرض مسموح لقطعة واحدة أو العرض كاملًا فقط',
-      )
-    }
+      if (Number(groupUnits[0].is_returned || 0) === 1) {
+        throw new Error('القطعة تم إرجاعها بالفعل')
+      }
+    } else {
+      if (!snapshot) {
+        throw new Error(
+          'لا يمكن استبدال عرض قديم لا يحتوي على نسخة محفوظة من شروط العرض',
+        )
+      }
 
+      if (snapshot.promotion_type !== 'buy_x_get_y') {
+        throw new Error('الاستبدال الخاص بالعرض متاح لعروض اشتري وخد فقط')
+      }
+
+      const buyQty = Math.floor(Number(snapshot.buy_qty || 0))
+
+      freeQty = Math.floor(Number(snapshot.free_qty || 0))
+
+      if (buyQty <= 0 || freeQty <= 0) {
+        throw new Error('شروط العرض الأصلي غير صالحة للاستبدال')
+      }
+
+      const groupSize = buyQty + freeQty
+
+      if (groupUnits.length !== groupSize) {
+        throw new Error('بيانات العرض المحفوظة غير مكتملة')
+      }
+
+      if (groupUnits.some((unit) => Number(unit.is_returned) === 1)) {
+        throw new Error('لا يمكن استبدال عرض تم إرجاعه')
+      }
+
+      if (
+        normalizedItems.length !== 1 &&
+        normalizedItems.length !== groupSize
+      ) {
+        throw new Error(
+          'الاستبدال داخل العرض مسموح لقطعة واحدة أو العرض كاملًا فقط',
+        )
+      }
+    }
     const replacementMap = new Map<number, ExchangeVariantRow>()
 
     const outgoingQuantities = new Map<number, number>()
@@ -557,7 +765,10 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         throw new Error('الصنف البديل غير موجود أو غير فعال')
       }
 
-      if (!isVariantInsideSnapshot(newVariant, snapshot)) {
+      if (
+        !isRegularExchange &&
+        !isVariantInsideSnapshot(newVariant, snapshot!)
+      ) {
         throw new Error('الصنف البديل خارج نطاق العرض الأصلي')
       }
 
@@ -627,17 +838,24 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       }
     })
 
-    const giftUnitIds = new Set(
-      [...afterState]
-        .sort(
-          (a, b) => a.current_unit_price - b.current_unit_price || a.id - b.id,
-        )
-        .slice(0, freeQty)
-        .map((unit) => unit.id),
-    )
+    if (isRegularExchange) {
+      for (const unit of afterState) {
+        unit.current_is_gift = 0
+      }
+    } else {
+      const giftUnitIds = new Set(
+        [...afterState]
+          .sort(
+            (a, b) =>
+              a.current_unit_price - b.current_unit_price || a.id - b.id,
+          )
+          .slice(0, freeQty)
+          .map((unit) => unit.id),
+      )
 
-    for (const unit of afterState) {
-      unit.current_is_gift = giftUnitIds.has(unit.id) ? 1 : 0
+      for (const unit of afterState) {
+        unit.current_is_gift = giftUnitIds.has(unit.id) ? 1 : 0
+      }
     }
 
     const newGroupTotal = roundMoney(

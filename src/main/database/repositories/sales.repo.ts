@@ -1435,6 +1435,53 @@ export function createSaleReturn(input: {
         ORDER BY spu.id ASC
       `)
 
+    const getCurrentRegularItemUnits = db.prepare(
+      `
+      SELECT
+        spu.*,
+
+        pv.barcode
+          AS current_barcode,
+
+        pv.size
+          AS current_size,
+
+        pv.color
+          AS current_color,
+
+        COALESCE(
+          spu.current_unit_cost,
+          pv.buy_price
+        )
+          AS current_unit_cost,
+
+        p.name
+          AS current_product_name
+
+      FROM sale_promotion_units spu
+
+      JOIN product_variants pv
+        ON pv.id =
+          spu.current_variant_id
+
+      JOIN products p
+        ON p.id =
+          pv.product_id
+
+      WHERE
+        spu.sale_id = ?
+
+        AND
+          spu.original_sale_item_id = ?
+
+        AND
+          spu.promotion_group_id
+          LIKE 'regular:%'
+
+      ORDER BY spu.id ASC
+      `,
+    )
+
     const getAlreadyReturnedQty = db.prepare(`
       SELECT
         IFNULL(
@@ -1507,6 +1554,73 @@ export function createSaleReturn(input: {
       const requestedQty = Number(item.quantity || 0)
 
       if (requestedQty <= 0) {
+        continue
+      }
+
+      const regularUnits = getCurrentRegularItemUnits.all(
+        originalSaleId,
+        Number(originalItem.id),
+      ) as any[]
+
+      if (regularUnits.length > 0) {
+        if (!Number.isInteger(requestedQty)) {
+          throw new Error(
+            'كمية المرتجع للصنف المستبدل يجب أن تكون عددًا صحيحًا',
+          )
+        }
+
+        const requestedVariantId = Number(item.variant_id || 0)
+
+        const availableUnits = regularUnits.filter(
+          (unit) =>
+            Number(unit.is_returned || 0) === 0 &&
+            Number(unit.current_variant_id) === requestedVariantId,
+        )
+
+        if (requestedQty > availableUnits.length) {
+          throw new Error(
+            `الكمية المطلوبة أكبر من المتاح للمرتجع للصنف: ${originalItem.product_name}`,
+          )
+        }
+
+        const selectedUnits = availableUnits.slice(0, requestedQty)
+
+        for (const unit of selectedUnits) {
+          const unitPrice = Number(unit.current_unit_price || 0)
+
+          const lineTotal = roundMoney(unitPrice)
+
+          returnSubTotal += lineTotal
+
+          preparedItems.push({
+            originalItem,
+
+            promotionUnitId: Number(unit.id),
+
+            variantId: Number(unit.current_variant_id),
+
+            productName: String(
+              unit.current_product_name || originalItem.product_name,
+            ),
+
+            barcode: unit.current_barcode ?? null,
+
+            size: unit.current_size ?? null,
+
+            color: unit.current_color ?? null,
+
+            unitCost: Number(unit.current_unit_cost || 0),
+
+            quantity: 1,
+
+            unitPrice,
+
+            lineTotal,
+
+            promotionDiscount: 0,
+          })
+        }
+
         continue
       }
 

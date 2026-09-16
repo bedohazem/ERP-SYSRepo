@@ -22,7 +22,7 @@ import {
 import { createSaleExchange } from '../../src/main/database/repositories/sales-exchange.repo'
 
 import { getReportsSummary } from '../../src/main/database/repositories/reports.repo'
-
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
 type VariantRow = {
   variant_id: number
   product_id: number
@@ -216,6 +216,11 @@ describe('reports with sale exchanges', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
   })
 
   it('includes an exchange in sales discounts products customers and profit', () => {
