@@ -9,6 +9,7 @@ import {
   listProductsPage,
   searchSaleVariants,
   updateProduct,
+  createCategory,
 } from '../../src/main/database/repositories/product.repo'
 
 type ProductVariantTestRow = {
@@ -530,6 +531,99 @@ describe('product repository', () => {
     const search = searchSaleVariants('Discount Product')
 
     expect(search[0].sell_price).toBe(500)
+  })
+
+  it('filters products without category and returns the filtered total', () => {
+    const category = createCategory({
+      name: 'Categorized Products',
+    })
+
+    createProduct({
+      name: 'Product With Category',
+
+      category_id: category.id,
+
+      variants: [
+        {
+          barcode: 'CAT-FILTER-001',
+
+          size: 'M',
+          color: 'Black',
+
+          buy_price: 10,
+          sell_price: 20,
+
+          min_stock: 1,
+          opening_qty: 0,
+        },
+      ],
+    })
+
+    createProduct({
+      name: 'Product Without Category 1',
+
+      category_id: null,
+
+      variants: [
+        {
+          barcode: 'NO-CAT-001',
+
+          size: 'M',
+          color: 'Blue',
+
+          buy_price: 10,
+          sell_price: 20,
+
+          min_stock: 1,
+          opening_qty: 0,
+        },
+      ],
+    })
+
+    createProduct({
+      name: 'Product Without Category 2',
+
+      category_id: null,
+
+      variants: [
+        {
+          barcode: 'NO-CAT-002',
+
+          size: 'L',
+          color: 'Red',
+
+          buy_price: 10,
+          sell_price: 20,
+
+          min_stock: 1,
+          opening_qty: 0,
+        },
+      ],
+    })
+
+    const result = listProductsPage({
+      categoryId: 'uncategorized',
+
+      limit: 50,
+      offset: 0,
+    })
+
+    expect(result.total).toBe(2)
+
+    expect(result.rows).toHaveLength(2)
+
+    expect(result.rows.every((row: any) => row.category_id === null)).toBe(true)
+
+    const categorized = listProductsPage({
+      categoryId: category.id,
+
+      limit: 50,
+      offset: 0,
+    })
+
+    expect(categorized.total).toBe(1)
+
+    expect((categorized.rows[0] as any).name).toBe('Product With Category')
   })
 
   it('rejects discount price equal to or above regular price', () => {

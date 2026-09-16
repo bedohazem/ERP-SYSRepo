@@ -1545,6 +1545,9 @@ export default function ProductsPage() {
               style={inputStyle}
             >
               <option value="all">كل التصنيفات</option>
+
+              <option value="uncategorized">بدون تصنيف</option>
+
               {categories.map((cat) => (
                 <option key={cat.id} value={cat.id}>
                   {cat.name}
@@ -1602,6 +1605,31 @@ export default function ProductsPage() {
               />
               <span>عرض الاصناف الموقوفة</span>
             </label>
+            <div
+              style={{
+                marginInlineStart: 'auto',
+
+                display: 'flex',
+                alignItems: 'center',
+
+                padding: '7px 12px',
+
+                borderRadius: '10px',
+
+                border: '1px solid rgba(56,189,248,0.22)',
+
+                background: 'rgba(56,189,248,0.08)',
+
+                color: '#7dd3fc',
+
+                fontSize: '13px',
+                fontWeight: 900,
+
+                whiteSpace: 'nowrap',
+              }}
+            >
+              عدد المنتجات: {productsTotal}
+            </div>
           </div>
         </div>
       )}
