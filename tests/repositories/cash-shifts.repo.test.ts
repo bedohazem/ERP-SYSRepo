@@ -1076,4 +1076,207 @@ describe('cash shifts repository', () => {
 
     expect(details.variances).toHaveLength(0)
   })
+
+  it('filters and paginates shift history by user', () => {
+    const db = getDb()
+
+    db.prepare(
+      `
+    INSERT INTO users (
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+
+    VALUES (
+      ?,
+      ?,
+      ?,
+      'cashier',
+      1
+    )
+    `,
+    ).run('History Cashier', 'history_cashier', 'x')
+
+    const cashier = db
+      .prepare(
+        `
+      SELECT id
+
+      FROM users
+
+      WHERE username =
+        'history_cashier'
+      `,
+      )
+      .get() as {
+      id: number
+    }
+
+    const first = openCashShift({
+      opening_counted_amount: 100,
+
+      opened_by: 1,
+    })
+
+    closeCashShift({
+      shift_id: first.id,
+
+      closing_counted_amount: 100,
+
+      left_for_next_shift: 100,
+
+      closed_by: 1,
+    })
+
+    const second = openCashShift({
+      opening_counted_amount: 100,
+
+      opened_by: cashier.id,
+    })
+
+    closeCashShift({
+      shift_id: second.id,
+
+      closing_counted_amount: 100,
+
+      left_for_next_shift: 100,
+
+      closed_by: cashier.id,
+    })
+
+    const adminRows = listCashShifts({
+      user_id: 1,
+    })
+
+    expect(adminRows.total).toBe(1)
+
+    expect(adminRows.rows[0].id).toBe(first.id)
+
+    const cashierRows = listCashShifts({
+      user_id: cashier.id,
+    })
+
+    expect(cashierRows.total).toBe(1)
+
+    expect(cashierRows.rows[0].id).toBe(second.id)
+
+    const firstPage = listCashShifts({
+      limit: 1,
+      offset: 0,
+    })
+
+    const secondPage = listCashShifts({
+      limit: 1,
+      offset: 1,
+    })
+
+    expect(firstPage.total).toBe(2)
+
+    expect(firstPage.rows).toHaveLength(1)
+
+    expect(secondPage.rows).toHaveLength(1)
+
+    expect(firstPage.rows[0].id).not.toBe(secondPage.rows[0].id)
+  })
+
+  it('filters and paginates shift variances by user', () => {
+    const db = getDb()
+
+    db.prepare(
+      `
+    INSERT INTO users (
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+
+    VALUES (
+      ?,
+      ?,
+      ?,
+      'cashier',
+      1
+    )
+    `,
+    ).run('Variance Filter Cashier', 'variance_filter_cashier', 'x')
+
+    const cashier = db
+      .prepare(
+        `
+      SELECT id
+
+      FROM users
+
+      WHERE username =
+        'variance_filter_cashier'
+      `,
+      )
+      .get() as {
+      id: number
+    }
+
+    const first = openCashShift({
+      opening_counted_amount: 500,
+
+      opened_by: 1,
+    })
+
+    closeCashShift({
+      shift_id: first.id,
+
+      closing_counted_amount: 450,
+
+      left_for_next_shift: 450,
+
+      closed_by: 1,
+    })
+
+    const second = openCashShift({
+      opening_counted_amount: 400,
+
+      opened_by: cashier.id,
+    })
+
+    const adminVariances = listCashShiftVariances({
+      status: 'all',
+      user_id: 1,
+    })
+
+    expect(adminVariances.total).toBe(1)
+
+    expect(adminVariances.rows[0].shift_id).toBe(first.id)
+
+    const cashierVariances = listCashShiftVariances({
+      status: 'all',
+
+      user_id: cashier.id,
+    })
+
+    expect(cashierVariances.total).toBe(1)
+
+    expect(cashierVariances.rows[0].shift_id).toBe(second.id)
+
+    const pageOne = listCashShiftVariances({
+      status: 'all',
+      limit: 1,
+      offset: 0,
+    })
+
+    const pageTwo = listCashShiftVariances({
+      status: 'all',
+      limit: 1,
+      offset: 1,
+    })
+
+    expect(pageOne.total).toBe(2)
+
+    expect(pageOne.rows).toHaveLength(1)
+
+    expect(pageTwo.rows).toHaveLength(1)
+  })
 })

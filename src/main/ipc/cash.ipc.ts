@@ -230,6 +230,12 @@ export function registerCashIpc(): void {
     return listCashShiftVariances({
       status: input?.status || 'pending',
 
+      user_id: input?.user_id ?? null,
+
+      date_from: input?.date_from,
+
+      date_to: input?.date_to,
+
       limit: Number(input?.limit || 50),
 
       offset: Number(input?.offset || 0),

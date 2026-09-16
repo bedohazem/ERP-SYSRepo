@@ -7,7 +7,7 @@ import {
   getCashShiftVarianceStageLabel,
   getCashShiftVarianceStatusLabel,
 } from '../../utils/cash-shifts'
-
+import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 import { getPaymentMethodLabel } from '../../utils/payment-method'
 
 type ShiftRow = {
@@ -99,10 +99,24 @@ type ShiftDetails = {
   }>
 }
 
-export default function ShiftHistorySection() {
+type ShiftUserOption = {
+  id: number
+  name: string
+  role: string
+}
+
+type Props = {
+  users: ShiftUserOption[]
+}
+
+export default function ShiftHistorySection({ users }: Props) {
   const [rows, setRows] = useState<ShiftRow[]>([])
 
   const [total, setTotal] = useState(0)
+
+  const [page, setPage] = useState(1)
+
+  const [userId, setUserId] = useState('')
 
   const [status, setStatus] = useState<'all' | 'open' | 'closed'>('all')
 
@@ -118,25 +132,32 @@ export default function ShiftHistorySection() {
 
   const [error, setError] = useState('')
 
-  async function loadHistory() {
+  async function loadHistory(targetPage = page) {
     setLoading(true)
     setError('')
+
+    const safePage = Math.max(1, Number(targetPage || 1))
 
     try {
       const result = await window.api.getCashShifts({
         status,
 
+        user_id: userId ? Number(userId) : undefined,
+
         date_from: dateFrom || undefined,
 
         date_to: dateTo || undefined,
 
-        limit: 200,
-        offset: 0,
+        limit: SYSTEM_PAGE_SIZE,
+
+        offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
       })
 
       setRows(Array.isArray(result.rows) ? result.rows : [])
 
       setTotal(Number(result.total || 0))
+
+      setPage(safePage)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'تعذر تحميل سجل الشفتات')
     } finally {
@@ -160,7 +181,7 @@ export default function ShiftHistorySection() {
   }
 
   useEffect(() => {
-    void loadHistory()
+    void loadHistory(1)
   }, [])
 
   return (
@@ -228,6 +249,23 @@ export default function ShiftHistorySection() {
               </select>
             </Field>
 
+            <Field label="المستخدم">
+              <select
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">كل المستخدمين</option>
+
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                    {user.role === 'admin' ? ' — مدير' : ' — كاشير'}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
             <Field label="من">
               <input
                 type="date"
@@ -248,7 +286,10 @@ export default function ShiftHistorySection() {
 
             <button
               type="button"
-              onClick={() => void loadHistory()}
+              onClick={() => {
+                setPage(1)
+                void loadHistory(1)
+              }}
               disabled={loading}
               style={primaryButtonStyle}
             >
@@ -268,15 +309,14 @@ export default function ShiftHistorySection() {
           </div>
         ) : null}
 
-        <div
-          style={{
-            color: '#64748b',
-            fontWeight: 700,
-            fontSize: '12px',
+        <PaginationBar
+          page={page}
+          totalItems={total}
+          loading={loading}
+          onPageChange={(nextPage) => {
+            void loadHistory(nextPage)
           }}
-        >
-          عدد النتائج: {total}
-        </div>
+        />
 
         <div
           style={{

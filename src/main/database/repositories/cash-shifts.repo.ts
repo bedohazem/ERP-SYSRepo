@@ -112,6 +112,11 @@ export type CashShiftVarianceRow = {
 export type CashShiftVarianceFilterInput = {
   status?: 'all' | CashShiftVarianceStatus
 
+  user_id?: number | null
+
+  date_from?: string | null
+  date_to?: string | null
+
   limit?: number
   offset?: number
 }
@@ -1328,21 +1333,48 @@ export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
     throw new Error('حالة فرق الشفت غير صحيحة')
   }
 
+  const userId = Number(input?.user_id || 0)
+
+  const dateFrom = normalizeShiftHistoryDate(input?.date_from)
+
+  const dateTo = normalizeShiftHistoryDate(input?.date_to)
+
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    throw new Error('تاريخ البداية أكبر من تاريخ النهاية')
+  }
+
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
 
   const offset = Math.max(Number(input?.offset || 0), 0)
 
+  const where: string[] = []
   const params: any[] = []
 
-  let whereSql = ''
-
   if (status !== 'all') {
-    whereSql = `
-      WHERE csv.status = ?
-    `
+    where.push(`csv.status = ?`)
 
     params.push(status)
   }
+
+  if (userId > 0) {
+    where.push(`cs.opened_by = ?`)
+
+    params.push(userId)
+  }
+
+  if (dateFrom) {
+    where.push(`date(cs.opened_at, 'localtime') >= ?`)
+
+    params.push(dateFrom)
+  }
+
+  if (dateTo) {
+    where.push(`date(cs.opened_at, 'localtime') <= ?`)
+
+    params.push(dateTo)
+  }
+
+  const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
 
   const rows = db
     .prepare(
@@ -1374,6 +1406,9 @@ export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
 
       FROM cash_shift_variances csv
 
+      JOIN cash_shifts cs
+        ON cs.id = csv.shift_id
+
       ${whereSql}
       `,
     )
@@ -1381,6 +1416,11 @@ export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
     total: number
   }
 
+  /*
+   * ده يفضل Global عشان المدير
+   * يعرف دائمًا إجمالي الفروق
+   * المعلقة حتى لو عامل فلتر.
+   */
   const pendingRow = db
     .prepare(
       `

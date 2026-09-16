@@ -9,6 +9,8 @@ import {
 } from '../../utils/cash-shifts'
 import ShiftHistorySection from './ShiftHistorySection'
 
+import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
+
 type CashShift = {
   id: number
 
@@ -74,10 +76,26 @@ type VarianceStatusFilter = 'all' | 'pending' | 'resolved'
 
 type ResolutionType = 'approved' | 'explained' | 'other'
 
+type ShiftUserOption = {
+  id: number
+  name: string
+  role: string
+}
+
 export default function ShiftManagementPage() {
   const [openShift, setOpenShift] = useState<CashShift | null>(null)
 
   const [variances, setVariances] = useState<CashShiftVariance[]>([])
+
+  const [shiftUsers, setShiftUsers] = useState<ShiftUserOption[]>([])
+
+  const [variancePage, setVariancePage] = useState(1)
+
+  const [varianceUserId, setVarianceUserId] = useState('')
+
+  const [varianceDateFrom, setVarianceDateFrom] = useState('')
+
+  const [varianceDateTo, setVarianceDateTo] = useState('')
 
   const [statusFilter, setStatusFilter] =
     useState<VarianceStatusFilter>('pending')
@@ -117,8 +135,10 @@ export default function ShiftManagementPage() {
     }, 2200)
   }
 
-  async function loadData(filter = statusFilter) {
+  async function loadData(filter = statusFilter, page = variancePage) {
     setLoading(true)
+
+    const safePage = Math.max(1, Number(page || 1))
 
     try {
       const [currentShift, varianceResult] = await Promise.all([
@@ -126,8 +146,16 @@ export default function ShiftManagementPage() {
 
         window.api.listCashShiftVariances({
           status: filter,
-          limit: 200,
-          offset: 0,
+
+          user_id: varianceUserId ? Number(varianceUserId) : undefined,
+
+          date_from: varianceDateFrom || undefined,
+
+          date_to: varianceDateTo || undefined,
+
+          limit: SYSTEM_PAGE_SIZE,
+
+          offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
         }),
       ])
 
@@ -140,6 +168,8 @@ export default function ShiftManagementPage() {
       setTotal(Number(varianceResult?.total || 0))
 
       setPendingCount(Number(varianceResult?.pending_count || 0))
+
+      setVariancePage(safePage)
     } catch (error) {
       console.error(error)
 
@@ -154,8 +184,33 @@ export default function ShiftManagementPage() {
     }
   }
 
+  async function loadShiftUsers() {
+    try {
+      const result = await window.api.getUsers({
+        search: '',
+      })
+
+      if (!result?.success) {
+        return
+      }
+
+      setShiftUsers(
+        Array.isArray(result.users)
+          ? result.users.map((user: any) => ({
+              id: Number(user.id),
+              name: String(user.name || ''),
+              role: String(user.role || ''),
+            }))
+          : [],
+      )
+    } catch (error) {
+      console.error('Failed to load shift users:', error)
+    }
+  }
+
   useEffect(() => {
-    void loadData('pending')
+    void loadShiftUsers()
+    void loadData('pending', 1)
   }, [])
 
   function openVarianceReview(variance: CashShiftVariance) {
@@ -226,7 +281,7 @@ export default function ShiftManagementPage() {
 
       showMessage('success', 'تم اعتماد مراجعة فرق الشفت')
 
-      await loadData(statusFilter)
+      await loadData(statusFilter, variancePage)
     } catch (error) {
       showMessage(
         'error',
@@ -415,7 +470,7 @@ export default function ShiftManagementPage() {
         </section>
       )}
 
-      <ShiftHistorySection />
+      <ShiftHistorySection users={shiftUsers} />
 
       <section
         className="glass-card"
@@ -431,6 +486,15 @@ export default function ShiftManagementPage() {
           gap: '14px',
         }}
       >
+        <PaginationBar
+          page={variancePage}
+          totalItems={total}
+          loading={loading}
+          onPageChange={(page) => {
+            void loadData(statusFilter, page)
+          }}
+        />
+
         <div
           style={{
             display: 'flex',
@@ -468,40 +532,86 @@ export default function ShiftManagementPage() {
             </div>
           </div>
 
-          <label
+          <div
             style={{
-              display: 'grid',
-
-              gap: '5px',
-
-              minWidth: '190px',
-
-              color: '#94a3b8',
-
-              fontWeight: 800,
-
-              fontSize: '12px',
+              display: 'flex',
+              gap: '8px',
+              flexWrap: 'wrap',
+              alignItems: 'end',
             }}
           >
-            الحالة
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                const next = e.target.value as VarianceStatusFilter
+            <Field label="الحالة">
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  const next = e.target.value as VarianceStatusFilter
 
-                setStatusFilter(next)
+                  setStatusFilter(next)
+                  setVariancePage(1)
 
-                void loadData(next)
+                  void loadData(next, 1)
+                }}
+                style={inputStyle}
+              >
+                <option value="pending">قيد المراجعة</option>
+
+                <option value="resolved">تمت المراجعة</option>
+
+                <option value="all">الكل</option>
+              </select>
+            </Field>
+
+            <Field label="المستخدم">
+              <select
+                value={varianceUserId}
+                onChange={(e) => setVarianceUserId(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="">كل المستخدمين</option>
+
+                {shiftUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name}
+                    {user.role === 'admin' ? ' — مدير' : ' — كاشير'}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="من">
+              <input
+                type="date"
+                value={varianceDateFrom}
+                onChange={(e) => setVarianceDateFrom(e.target.value)}
+                style={inputStyle}
+              />
+            </Field>
+
+            <Field label="إلى">
+              <input
+                type="date"
+                value={varianceDateTo}
+                onChange={(e) => setVarianceDateTo(e.target.value)}
+                style={inputStyle}
+              />
+            </Field>
+
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setVariancePage(1)
+
+                void loadData(statusFilter, 1)
               }}
-              style={inputStyle}
+              style={{
+                ...primaryButtonStyle,
+                minHeight: '42px',
+              }}
             >
-              <option value="pending">قيد المراجعة</option>
-
-              <option value="resolved">تمت المراجعة</option>
-
-              <option value="all">الكل</option>
-            </select>
-          </label>
+              تطبيق
+            </button>
+          </div>
         </div>
 
         <div
