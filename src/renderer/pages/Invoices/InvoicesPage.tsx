@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuthStore } from '../../store/auth.store'
 import {
   CASH_ACCOUNT_OPTIONS,
+  CUSTOMER_PAYMENT_METHOD_OPTIONS,
   getPaymentMethodLabel,
 } from '../../utils/payment-method'
 
@@ -499,6 +500,7 @@ export default function InvoicesPage() {
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>(
     'all',
   )
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all')
 
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -544,7 +546,8 @@ export default function InvoicesPage() {
         search,
 
         payment_filter: paymentFilter,
-
+        payment_method:
+          paymentMethodFilter === 'all' ? undefined : paymentMethodFilter,
         date_from: dateFrom || undefined,
 
         date_to: dateTo || undefined,
@@ -644,7 +647,14 @@ export default function InvoicesPage() {
     }, 250)
 
     return () => clearTimeout(handle)
-  }, [search, dateFrom, dateTo, paymentFilter, exchangeStatusFilter])
+  }, [
+    search,
+    dateFrom,
+    dateTo,
+    paymentFilter,
+    paymentMethodFilter,
+    exchangeStatusFilter,
+  ])
 
   useEffect(() => {
     if (!message) return
@@ -1340,7 +1350,7 @@ export default function InvoicesPage() {
             display: 'grid',
             gridTemplateColumns:
               activeTab === 'sales'
-                ? 'minmax(260px, 1fr) 170px 180px 180px 120px'
+                ? 'minmax(220px, 1fr) 160px 185px 170px 170px 120px'
                 : activeTab === 'exchanges'
                   ? 'minmax(260px, 1fr) 170px 180px 180px 120px'
                   : 'minmax(260px, 1fr) 180px 180px 120px',
@@ -1374,6 +1384,26 @@ export default function InvoicesPage() {
               <option value="paid">مدفوعة</option>
 
               <option value="unpaid">غير مدفوعة</option>
+            </select>
+          )}
+
+          {activeTab === 'sales' && (
+            <select
+              value={paymentMethodFilter}
+              onChange={(e) => {
+                setPaymentMethodFilter(e.target.value)
+
+                setSalesPage(1)
+              }}
+              style={inputStyle}
+            >
+              <option value="all">كل وسائل الدفع</option>
+
+              {CUSTOMER_PAYMENT_METHOD_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           )}
 

@@ -3025,4 +3025,100 @@ describe('sales repository', () => {
 
     expect(movement.direction).toBe('in')
   })
+
+  it('filters invoice history by payment method', () => {
+    const variant = seedProduct()
+
+    const cashSale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 150,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const cardSale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'card',
+
+      paid: 150,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const cardResult = listSales({
+      payment_method: 'card',
+    })
+
+    expect(cardResult.total).toBe(1)
+
+    expect(cardResult.rows).toHaveLength(1)
+
+    expect(Number(cardResult.rows[0].id)).toBe(cardSale.saleId)
+
+    expect(cardResult.rows[0].payment_method).toBe('card')
+
+    const cashResult = listSales({
+      payment_method: 'cash',
+    })
+
+    expect(cashResult.total).toBe(1)
+
+    expect(Number(cashResult.rows[0].id)).toBe(cashSale.saleId)
+
+    const allResult = listSales()
+
+    expect(allResult.total).toBe(2)
+  })
 })

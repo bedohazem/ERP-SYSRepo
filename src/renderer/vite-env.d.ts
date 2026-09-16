@@ -359,7 +359,7 @@ declare global {
         search?: string
 
         payment_filter?: 'all' | 'paid' | 'unpaid'
-
+        payment_method?: string | null
         date_from?: string
         date_to?: string
         limit?: number

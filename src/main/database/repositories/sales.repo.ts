@@ -1035,16 +1035,21 @@ export function listSales(input?: {
 
   payment_filter?: 'all' | 'paid' | 'unpaid'
 
+  payment_method?: string | null
+
   date_from?: string
   date_to?: string
+
   limit?: number
   offset?: number
+
   actor_id?: number | null
 }) {
   const db = getDb()
 
   const search = input?.search?.trim() || ''
   const paymentFilter = input?.payment_filter ?? 'all'
+  const paymentMethod = String(input?.payment_method || '').trim()
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
   const offset = Math.max(Number(input?.offset || 0), 0)
   const actorId = Number(input?.actor_id || 0)
@@ -1097,6 +1102,12 @@ export function listSales(input?: {
       ) > 0
     )
   `)
+  }
+
+  if (paymentMethod) {
+    where.push(`s.payment_method = ?`)
+
+    params.push(paymentMethod)
   }
 
   if (input?.date_from) {
