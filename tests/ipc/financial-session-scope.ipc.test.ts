@@ -334,6 +334,7 @@ describe('financial IPC session scope', () => {
     })
 
     expect(closed.status).toBe('closed')
+    expect(closed.closed_at).toBeTruthy()
 
     expect('expected_closing_amount' in closed).toBe(false)
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-
+import { printShiftCloseReceipt } from '../../utils/shiftReceiptPrint'
 type ShiftUser = {
   id: number
   name: string
@@ -13,7 +13,7 @@ type CashShift = {
   opened_by: number
   opened_by_name?: string | null
   opened_at: string
-
+  closed_at?: string | null
   opening_counted_amount: number
   opening_difference: number
 
@@ -337,12 +337,32 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
         }),
       )
 
-      showToast(
-        'success',
-        user?.role === 'admin'
-          ? 'تم إغلاق الشفت وتسجيل نتيجة الجرد'
-          : 'تم إغلاق الشفت وإرسال الجرد للمراجعة',
-      )
+      if (user?.role === 'cashier') {
+        const printResult = await printShiftCloseReceipt({
+          shift_id: openShift.id,
+
+          cashier_name: openShift.opened_by_name || user.name || 'الكاشير',
+
+          opened_at: openShift.opened_at,
+
+          closed_at: closedShift?.closed_at || new Date().toISOString(),
+
+          closing_counted_amount: counted,
+
+          left_for_next_shift: leftAmount,
+        })
+
+        if (printResult.ok) {
+          showToast('success', 'تم إغلاق الشفت وطباعة إيصال الإغلاق')
+        } else {
+          showToast(
+            'error',
+            `تم إغلاق الشفت لكن ${printResult.message || 'تعذر طباعة الإيصال'}`,
+          )
+        }
+      } else {
+        showToast('success', 'تم إغلاق الشفت وتسجيل نتيجة الجرد')
+      }
     } catch (err) {
       showToast('error', 'تعذر إغلاق الشفت')
     } finally {

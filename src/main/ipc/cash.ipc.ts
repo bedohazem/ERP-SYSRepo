@@ -44,6 +44,8 @@ function getCashierShiftView(shift: any) {
     opened_by_name: shift.opened_by_name ?? null,
 
     opened_at: shift.opened_at,
+
+    closed_at: shift.closed_at ?? null,
   }
 }
 
