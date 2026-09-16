@@ -23,19 +23,27 @@ import {
 } from '../auth-session'
 
 export function registerCustomersIpc(): void {
-  ipcMain.handle('customers:list', () => {
+  ipcMain.handle('customers:list', (event) => {
+    requireAuthenticatedUser(event)
+
     return getCustomers()
   })
 
-  ipcMain.handle('customers:list-page', (_, input) => {
+  ipcMain.handle('customers:list-page', (event, input) => {
+    requireAuthenticatedUser(event)
+
     return listCustomers(input)
   })
 
-  ipcMain.handle('customers:search', (_, query: string) => {
+  ipcMain.handle('customers:search', (event, query: string) => {
+    requireAuthenticatedUser(event)
+
     return searchCustomers(query ?? '')
   })
 
-  ipcMain.handle('customers:get-by-id', (_, id: number) => {
+  ipcMain.handle('customers:get-by-id', (event, id: number) => {
+    requireAuthenticatedUser(event)
+
     return getCustomerById(Number(id))
   })
 
@@ -99,7 +107,9 @@ export function registerCustomersIpc(): void {
     return result
   })
 
-  ipcMain.handle('customers:history', (_, customerId: number) => {
+  ipcMain.handle('customers:history', (event, customerId: number) => {
+    requireAuthenticatedUser(event)
+
     return getCustomerHistory(Number(customerId))
   })
 
@@ -266,10 +276,9 @@ export function registerCustomersIpc(): void {
     }
   })
 
-  ipcMain.handle(
-    'customers:statement',
-    (_, customerId: number, actorId?: number) => {
-      return getCustomerStatement(Number(customerId), actorId ?? null)
-    },
-  )
+  ipcMain.handle('customers:statement', (event, customerId: number) => {
+    const actorId = requireAuthenticatedUser(event).id
+
+    return getCustomerStatement(Number(customerId), actorId)
+  })
 }

@@ -364,13 +364,12 @@ export default function CustomersPage() {
     setStatementPage(1)
 
     try {
-      const data = await window.api.getCustomerStatement(
-        customer.id,
-        currentUser?.id,
-      )
+      const data = await window.api.getCustomerStatement(customer.id)
+
       setStatementData(data)
     } catch (error) {
       console.error('Failed to load customer statement:', error)
+
       setMessage('حدث خطأ أثناء تحميل كشف الحساب')
     } finally {
       setStatementLoading(false)
@@ -414,10 +413,7 @@ export default function CustomersPage() {
       await loadCustomers(customerPage)
 
       if (statementData?.customer?.id === paymentCustomer.id) {
-        const data = await window.api.getCustomerStatement(
-          paymentCustomer.id,
-          currentUser?.id,
-        )
+        const data = await window.api.getCustomerStatement(paymentCustomer.id)
         setStatementData(data)
       }
     } catch (error) {
@@ -586,10 +582,7 @@ export default function CustomersPage() {
       await loadCustomers(customerPage)
 
       if (customerId) {
-        const data = await window.api.getCustomerStatement(
-          customerId,
-          currentUser?.id,
-        )
+        const data = await window.api.getCustomerStatement(customerId)
 
         setStatementData(data)
       }

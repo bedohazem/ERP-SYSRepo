@@ -8,26 +8,29 @@ import {
   listSuppliers,
   updateSupplier,
 } from '../database/repositories/suppliers.repo'
-import {
-  requireAuthenticatedAdmin,
-  requireAuthenticatedUser,
-} from '../auth-session'
+import { requireAuthenticatedAdmin } from '../auth-session'
 
 export function registerSuppliersIpc(): void {
-  ipcMain.handle('suppliers:list', (_, search?: string) => {
+  ipcMain.handle('suppliers:list', (event, search?: string) => {
+    requireAuthenticatedAdmin(event)
+
     return getSuppliers(search ?? '')
   })
 
-  ipcMain.handle('suppliers:list-page', (_, input) => {
+  ipcMain.handle('suppliers:list-page', (event, input) => {
+    requireAuthenticatedAdmin(event)
+
     return listSuppliers(input)
   })
 
-  ipcMain.handle('suppliers:get-by-id', (_, id: number) => {
+  ipcMain.handle('suppliers:get-by-id', (event, id: number) => {
+    requireAuthenticatedAdmin(event)
+
     return getSupplierById(Number(id))
   })
 
   ipcMain.handle('suppliers:create', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actorId = requireAuthenticatedAdmin(event)
 
     const supplier = createSupplier(input)
 
@@ -44,9 +47,9 @@ export function registerSuppliersIpc(): void {
 
     return supplier
   })
-  
+
   ipcMain.handle('suppliers:update', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actorId = requireAuthenticatedAdmin(event)
     const supplier = updateSupplier(input)
 
     logAction({

@@ -870,10 +870,7 @@ declare global {
         }>
       }>
 
-      getCustomerStatement: (
-        customerId: number,
-        actorId?: number,
-      ) => Promise<{
+      getCustomerStatement: (customerId: number) => Promise<{
         customer: any
         sales: any[]
         payments: any[]
@@ -1469,10 +1466,7 @@ declare global {
         }>
       }>
 
-      getSupplierStatement: (
-        supplierId: number,
-        actorId?: number,
-      ) => Promise<{
+      getSupplierStatement: (supplierId: number) => Promise<{
         supplier: any
         purchases: any[]
         payments: any[]

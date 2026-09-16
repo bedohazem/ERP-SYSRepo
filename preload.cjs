@@ -112,8 +112,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('customers:cancel-payment', input),
   updateCustomerPayment: (input) =>
     ipcRenderer.invoke('customers:update-payment', input),
-  getCustomerStatement: (customerId, actorId) =>
-    ipcRenderer.invoke('customers:statement', customerId, actorId),
+  getCustomerStatement: (customerId) =>
+    ipcRenderer.invoke('customers:statement', customerId),
 
   getLoyaltySettings: () => ipcRenderer.invoke('settings:get-loyalty'),
   saveLoyaltySettings: (input) =>
@@ -181,8 +181,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('suppliers:cancel-payment', input),
   updateSupplierPayment: (input) =>
     ipcRenderer.invoke('suppliers:update-payment', input),
-  getSupplierStatement: (supplierId, actorId) =>
-    ipcRenderer.invoke('suppliers:statement', supplierId, actorId),
+  getSupplierStatement: (supplierId) =>
+    ipcRenderer.invoke('suppliers:statement', supplierId),
 
   getCashSummary: (input) => ipcRenderer.invoke('cash:summary', input),
   getCashShiftDaySummary: (input) =>
