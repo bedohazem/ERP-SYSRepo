@@ -29,6 +29,24 @@ import {
   requireAuthenticatedUser,
 } from '../auth-session'
 
+function getCashierShiftView(shift: any) {
+  if (!shift) {
+    return null
+  }
+
+  return {
+    id: Number(shift.id),
+
+    status: shift.status,
+
+    opened_by: Number(shift.opened_by),
+
+    opened_by_name: shift.opened_by_name ?? null,
+
+    opened_at: shift.opened_at,
+  }
+}
+
 export function registerCashIpc(): void {
   ipcMain.handle('cash:summary', (event, input) => {
     const user = requireAuthenticatedUser(event)
@@ -195,12 +213,12 @@ export function registerCashIpc(): void {
   })
 
   ipcMain.handle('cash-shifts:day-summary', (event, input) => {
-    const user = requireAuthenticatedUser(event)
+    requireAuthenticatedAdmin(event)
 
     return getCashShiftDaySummary({
       business_date: String(input?.business_date || ''),
 
-      user_id: user.role === 'admin' ? (input?.user_id ?? null) : user.id,
+      user_id: input?.user_id ?? null,
     })
   })
 
@@ -283,41 +301,67 @@ export function registerCashIpc(): void {
   })
 
   ipcMain.handle('cash-shifts:get-open', (event) => {
-    requireAuthenticatedUser(event)
+    const actor = requireAuthenticatedUser(event)
 
-    return getOpenCashShift()
+    const shift = getOpenCashShift()
+
+    if (actor.role === 'admin') {
+      return shift
+    }
+
+    return getCashierShiftView(shift)
   })
 
   ipcMain.handle('cash-shifts:opening-preview', (event) => {
-    requireAuthenticatedUser(event)
+    const actor = requireAuthenticatedUser(event)
 
-    return getCashShiftOpeningPreview()
+    const preview = getCashShiftOpeningPreview()
+
+    if (actor.role === 'admin') {
+      return preview
+    }
+
+    return {
+      can_open: preview.can_open,
+
+      open_shift: getCashierShiftView(preview.open_shift),
+
+      /*
+       * Blind count:
+       * الكاشير لا يعرف تسليم
+       * الشفت السابق قبل العد.
+       */
+      previous_shift_id: null,
+
+      expected_opening_amount: null,
+
+      previous_closed_at: null,
+    }
   })
 
   ipcMain.handle('cash-shifts:open', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actor = requireAuthenticatedUser(event)
 
-    return openCashShift({
+    const shift = openCashShift({
       opening_counted_amount: Number(input?.opening_counted_amount),
 
-      opened_by: actorId,
+      opened_by: actor.id,
     })
+
+    if (actor.role === 'admin') {
+      return shift
+    }
+
+    return getCashierShiftView(shift)
   })
 
   ipcMain.handle('cash-shifts:preview', (event, shiftId) => {
-    const actor = requireAuthenticatedUser(event)
+    requireAuthenticatedAdmin(event)
 
     const shift = getCashShiftById(Number(shiftId))
 
     if (!shift) {
       throw new Error('الشفت غير موجود')
-    }
-
-    if (
-      actor.role !== 'admin' &&
-      Number(shift.opened_by) !== Number(actor.id)
-    ) {
-      throw new Error('غير مصرح لك بعرض تفاصيل هذا الشفت')
     }
 
     return getCashShiftExpectedBalance(shift.id)
@@ -341,7 +385,7 @@ export function registerCashIpc(): void {
       requireAdminPassword(actor.id, input?.admin_password)
     }
 
-    return closeCashShift({
+    const closedShift = closeCashShift({
       shift_id: shiftId,
 
       closing_counted_amount: Number(input?.closing_counted_amount),
@@ -352,5 +396,11 @@ export function registerCashIpc(): void {
 
       closed_by: actor.id,
     })
+
+    if (actor.role === 'admin') {
+      return closedShift
+    }
+
+    return getCashierShiftView(closedShift)
   })
 }

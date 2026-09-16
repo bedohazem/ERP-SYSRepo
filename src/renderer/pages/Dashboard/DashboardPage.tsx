@@ -50,13 +50,6 @@ type DashboardState = {
 }
 
 type CashierDailyRevenue = {
-  drawerCash: number
-  drawerOpening: number
-  drawerCashIn: number
-  drawerCashOut: number
-  drawerEndBalance: number
-  drawerAlreadyClosed: boolean
-
   instapayBank: number
   vodafoneCash: number
   fawryMachine: number
@@ -133,13 +126,6 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState('')
 
   const [cashierRevenue, setCashierRevenue] = useState<CashierDailyRevenue>({
-    drawerCash: 0,
-    drawerOpening: 0,
-    drawerCashIn: 0,
-    drawerCashOut: 0,
-    drawerEndBalance: 0,
-    drawerAlreadyClosed: false,
-
     instapayBank: 0,
     vodafoneCash: 0,
     fawryMachine: 0,
@@ -202,7 +188,6 @@ export default function DashboardPage() {
         month,
         overview,
 
-        selectedDayShifts,
         todayInstapayBank,
         todayVodafoneCash,
         todayFawryMachine,
@@ -226,11 +211,6 @@ export default function DashboardPage() {
         }),
         window.api.getReportsSummary({
           ...reportUserFilter,
-        }),
-
-        window.api.getCashShiftDaySummary({
-          business_date: dashboardDate,
-          user_id: cashierId,
         }),
 
         window.api.getCashSummary({
@@ -283,20 +263,6 @@ export default function DashboardPage() {
       setData({ today, month, overview })
 
       setCashierRevenue({
-        drawerCash: Number(selectedDayShifts?.balance_before_handover || 0),
-
-        drawerOpening: Number(selectedDayShifts?.opening_drawer_balance || 0),
-
-        drawerCashIn: Number(selectedDayShifts?.cash_in || 0),
-
-        drawerCashOut: Number(selectedDayShifts?.cash_out || 0),
-
-        drawerEndBalance: Number(selectedDayShifts?.ending_drawer_balance || 0),
-
-        drawerAlreadyClosed: Boolean(
-          selectedDayShifts?.shifts_count > 0 && selectedDayShifts?.all_closed,
-        ),
-
         instapayBank: Number(todayInstapayBank?.balance || 0),
         vodafoneCash: Number(todayVodafoneCash?.balance || 0),
         fawryMachine: Number(todayFawryMachine?.balance || 0),
@@ -1396,42 +1362,6 @@ function CashierRevenueView({
             gap: '12px',
           }}
         >
-          <CashierMiniCard
-            title="رصيد افتتاح أول شفت"
-            value={money(revenue.drawerOpening)}
-            subtitle="المبلغ الفعلي الذي بدأ به أول شفت للكاشير"
-          />
-
-          <CashierMiniCard
-            title="إجمالي داخل الدرج"
-            value={money(revenue.drawerCashIn)}
-            subtitle="الحركات التشغيلية الداخلة للدرج خلال شفتات التاريخ المحدد"
-          />
-
-          <CashierMiniCard
-            title="إجمالي خارج الدرج"
-            value={money(revenue.drawerCashOut)}
-            subtitle="الحركات التشغيلية الخارجة من الدرج خلال شفتات التاريخ المحدد"
-          />
-
-          <CashierMiniCard
-            title={
-              revenue.drawerAlreadyClosed
-                ? 'جرد إغلاق آخر شفت'
-                : 'الرصيد المتوقع لآخر شفت'
-            }
-            value={money(revenue.drawerCash)}
-            subtitle="لا يشمل توريد إغلاق الشفت إلى الخزنة الآمنة"
-          />
-
-          {revenue.drawerAlreadyClosed ? (
-            <CashierMiniCard
-              title="المتبقي للشفت التالي"
-              value={money(revenue.drawerEndBalance)}
-              subtitle="المبلغ الذي تُرك في الدرج بعد إغلاق آخر شفت"
-            />
-          ) : null}
-
           <CashierMiniCard
             title="صافي حركة بنك / إنستاباي"
             value={money(revenue.instapayBank)}

@@ -100,7 +100,26 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
   const [adminPassword, setAdminPassword] = useState('')
 
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
+  const [toast, setToast] = useState<{
+    id: number
+    type: 'success' | 'error'
+    message: string
+  } | null>(null)
+
+  function showToast(type: 'success' | 'error', message: string) {
+    const nextToast = {
+      id: Date.now() + Math.random(),
+
+      type,
+      message,
+    }
+
+    setToast(nextToast)
+
+    window.setTimeout(() => {
+      setToast((current) => (current?.id === nextToast.id ? null : current))
+    }, 2600)
+  }
 
   async function refreshShift() {
     try {
@@ -138,6 +157,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
   )
 
   const closingDifference =
+    user?.role === 'admin' &&
     closingPreview &&
     closingAmount.trim() !== '' &&
     Number.isFinite(Number(closingAmount))
@@ -154,7 +174,6 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
 
   async function openOpeningModal() {
     setBusy(true)
-    setError('')
 
     try {
       const preview = await window.api.getCashShiftOpeningPreview()
@@ -169,9 +188,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
       setOpeningAmount('')
       setModal('open')
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'تعذر تحميل بيانات فتح الشفت',
-      )
+      showToast('error', 'تعذر تحميل بيانات فتح الشفت')
     } finally {
       setBusy(false)
     }
@@ -183,12 +200,23 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
     }
 
     setBusy(true)
-    setError('')
 
     try {
-      const preview = await window.api.getCashShiftExpectedBalance(openShift.id)
+      /*
+       * الأدمن فقط يرى preview المالي.
+       *
+       * الكاشير يدخل عدّه Blind
+       * بدون معرفة هدف النظام.
+       */
+      if (user?.role === 'admin') {
+        const preview = await window.api.getCashShiftExpectedBalance(
+          openShift.id,
+        )
 
-      setClosingPreview(preview)
+        setClosingPreview(preview)
+      } else {
+        setClosingPreview(null)
+      }
 
       setClosingAmount('')
       setLeftForNextShift('')
@@ -197,7 +225,8 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
 
       setModal('close')
     } catch (err) {
-      setError(
+      showToast(
+        'error',
         err instanceof Error ? err.message : 'تعذر تحميل بيانات إغلاق الشفت',
       )
     } finally {
@@ -209,13 +238,12 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
     const amount = Number(openingAmount)
 
     if (openingAmount.trim() === '' || !Number.isFinite(amount) || amount < 0) {
-      setError('اكتب المبلغ الموجود فعليًا في الدرج')
+      showToast('error', 'اكتب المبلغ الموجود فعليًا في الدرج')
 
       return
     }
 
     setBusy(true)
-    setError('')
 
     try {
       const shift = await window.api.openCashShift({
@@ -231,24 +259,16 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
         }),
       )
 
-      if (Math.abs(Number(shift?.opening_difference || 0)) > 0.01) {
-        const difference = Number(shift.opening_difference)
-
-        window.alert(
-          difference < 0
-            ? `تم فتح الشفت ويوجد عجز استلام ${money(Math.abs(difference))}`
-            : `تم فتح الشفت ويوجد زيادة استلام ${money(difference)}`,
-        )
-      }
+      showToast('success', 'تم فتح الشفت وتسجيل جرد الافتتاح')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'تعذر فتح الشفت')
+      showToast('error', 'تعذر فتح الشفت')
     } finally {
       setBusy(false)
     }
   }
 
   async function submitCloseShift() {
-    if (!openShift || !closingPreview) {
+    if (!openShift) {
       return
     }
 
@@ -261,7 +281,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
       !Number.isFinite(counted) ||
       counted < 0
     ) {
-      setError('اكتب المبلغ الفعلي بعد عد الدرج')
+      showToast('error', 'اكتب المبلغ الفعلي بعد عد الدرج')
 
       return
     }
@@ -271,31 +291,30 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
       !Number.isFinite(leftAmount) ||
       leftAmount < 0
     ) {
-      setError('اكتب المبلغ المتروك للشفت التالي')
+      showToast('error', 'اكتب المبلغ المتروك للشفت التالي')
 
       return
     }
 
     if (leftAmount > counted) {
-      setError('المبلغ المتروك أكبر من الموجود في الدرج')
+      showToast('error', 'المبلغ المتروك أكبر من الموجود في الدرج')
 
       return
     }
 
     if (adminClosingOtherShift && !closeReason.trim()) {
-      setError('اكتب سبب إغلاق المدير للشفت')
+      showToast('error', 'اكتب سبب إغلاق المدير للشفت')
 
       return
     }
 
     if (adminClosingOtherShift && !adminPassword.trim()) {
-      setError('اكتب كلمة مرور المدير')
+      showToast('error', 'اكتب كلمة مرور المدير')
 
       return
     }
 
     setBusy(true)
-    setError('')
 
     try {
       const closedShift = await window.api.closeCashShift({
@@ -318,23 +337,14 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
         }),
       )
 
-      const difference = Number(closedShift?.closing_difference || 0)
-
-      if (Math.abs(difference) <= 0.01) {
-        window.alert('تم إغلاق الشفت بنجاح والجرد مطابق')
-      } else if (difference < 0) {
-        window.alert(
-          `تم إغلاق الشفت وتسجيل عجز ${money(
-            Math.abs(difference),
-          )} قيد المراجعة`,
-        )
-      } else {
-        window.alert(
-          `تم إغلاق الشفت وتسجيل زيادة ${money(difference)} قيد المراجعة`,
-        )
-      }
+      showToast(
+        'success',
+        user?.role === 'admin'
+          ? 'تم إغلاق الشفت وتسجيل نتيجة الجرد'
+          : 'تم إغلاق الشفت وإرسال الجرد للمراجعة',
+      )
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'تعذر إغلاق الشفت')
+      showToast('error', 'تعذر إغلاق الشفت')
     } finally {
       setBusy(false)
     }
@@ -383,6 +393,41 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
 
   return (
     <>
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+
+            top: '24px',
+            left: '50%',
+
+            transform: 'translateX(-50%)',
+
+            zIndex: 1000001,
+
+            padding: '12px 18px',
+
+            borderRadius: '14px',
+
+            background:
+              toast.type === 'success'
+                ? 'rgba(16,185,129,0.96)'
+                : 'rgba(239,68,68,0.96)',
+
+            color: '#fff',
+
+            fontWeight: 900,
+
+            boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
+
+            pointerEvents: 'none',
+
+            direction: 'rtl',
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
       <div
         style={{
           minHeight: '42px',
@@ -532,7 +577,6 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                 data-escape-close="true"
                 onClick={() => {
                   setModal(null)
-                  setError('')
                 }}
                 style={{
                   ...secondaryButtonStyle,
@@ -543,47 +587,47 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                 ✕
               </button>
             </div>
-
-            <div
-              style={{
-                marginTop: '22px',
-                padding: '14px',
-                borderRadius: '14px',
-                background: isLight ? '#f8fafc' : '#0f172a',
-              }}
-            >
-              {openingPreview?.expected_opening_amount === null ? (
-                <div
-                  style={{
-                    color: mutedColor,
-                  }}
-                >
-                  أول شفت بالنظام — لا يوجد مبلغ تسليم سابق
-                </div>
-              ) : (
-                <>
+            {user?.role === 'admin' && (
+              <div
+                style={{
+                  marginTop: '22px',
+                  padding: '14px',
+                  borderRadius: '14px',
+                  background: isLight ? '#f8fafc' : '#0f172a',
+                }}
+              >
+                {openingPreview?.expected_opening_amount === null ? (
                   <div
                     style={{
                       color: mutedColor,
-                      fontSize: '13px',
                     }}
                   >
-                    المبلغ المسلم من الشفت السابق
+                    أول شفت بالنظام — لا يوجد مبلغ تسليم سابق
                   </div>
+                ) : (
+                  <>
+                    <div
+                      style={{
+                        color: mutedColor,
+                        fontSize: '13px',
+                      }}
+                    >
+                      المبلغ المسلم من الشفت السابق
+                    </div>
 
-                  <strong
-                    style={{
-                      display: 'block',
-                      marginTop: '5px',
-                      fontSize: '20px',
-                    }}
-                  >
-                    {money(openingPreview?.expected_opening_amount)}
-                  </strong>
-                </>
-              )}
-            </div>
-
+                    <strong
+                      style={{
+                        display: 'block',
+                        marginTop: '5px',
+                        fontSize: '20px',
+                      }}
+                    >
+                      {money(openingPreview?.expected_opening_amount)}
+                    </strong>
+                  </>
+                )}
+              </div>
+            )}
             <label
               style={{
                 display: 'block',
@@ -607,12 +651,14 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
               }}
             />
 
-            {openingPreview?.expected_opening_amount !== null &&
+            {user?.role === 'admin' &&
+              openingPreview?.expected_opening_amount !== null &&
               openingAmount.trim() !== '' &&
               Number.isFinite(Number(openingAmount)) && (
                 <div
                   style={{
                     marginTop: '12px',
+
                     fontWeight: 800,
                   }}
                 >
@@ -623,18 +669,6 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                   )}
                 </div>
               )}
-
-            {error && (
-              <div
-                style={{
-                  marginTop: '14px',
-                  color: '#ef4444',
-                  fontWeight: 800,
-                }}
-              >
-                {error}
-              </div>
-            )}
 
             <div
               style={{
@@ -665,7 +699,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
         </div>
       )}
 
-      {modal === 'close' && openShift && closingPreview && (
+      {modal === 'close' && openShift && (
         <div
           className="theme-modal-overlay"
           style={{
@@ -727,7 +761,6 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                 data-escape-close="true"
                 onClick={() => {
                   setModal(null)
-                  setError('')
                 }}
                 style={{
                   ...secondaryButtonStyle,
@@ -739,60 +772,85 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
               </button>
             </div>
 
-            <div
-              style={{
-                marginTop: '20px',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
-                gap: '10px',
-              }}
-            >
-              <SummaryBox
-                label="افتتاح الشفت"
-                value={money(closingPreview.opening_counted_amount)}
-                isLight={isLight}
-              />
+            {user?.role === 'admin' && closingPreview ? (
+              <>
+                <div
+                  style={{
+                    marginTop: '20px',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    gap: '10px',
+                  }}
+                >
+                  <SummaryBox
+                    label="افتتاح الشفت"
+                    value={money(closingPreview.opening_counted_amount)}
+                    isLight={isLight}
+                  />
 
-              <SummaryBox
-                label="دخول كاش"
-                value={money(closingPreview.cash_in)}
-                isLight={isLight}
-              />
+                  <SummaryBox
+                    label="دخول كاش"
+                    value={money(closingPreview.cash_in)}
+                    isLight={isLight}
+                  />
 
-              <SummaryBox
-                label="خروج كاش"
-                value={money(closingPreview.cash_out)}
-                isLight={isLight}
-              />
-            </div>
+                  <SummaryBox
+                    label="خروج كاش"
+                    value={money(closingPreview.cash_out)}
+                    isLight={isLight}
+                  />
+                </div>
 
-            <div
-              style={{
-                marginTop: '12px',
-                padding: '15px',
-                borderRadius: '14px',
-                background: isLight ? '#eff6ff' : '#172554',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: '13px',
-                  color: mutedColor,
-                }}
-              >
-                المفروض في الدرج
-              </div>
+                <div
+                  style={{
+                    marginTop: '12px',
+                    padding: '15px',
+                    borderRadius: '14px',
+                    background: isLight ? '#eff6ff' : '#172554',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: '13px',
+                      color: mutedColor,
+                    }}
+                  >
+                    المفروض في الدرج
+                  </div>
 
-              <strong
-                style={{
-                  display: 'block',
-                  marginTop: '4px',
-                  fontSize: '24px',
-                }}
-              >
-                {money(closingPreview.expected_closing_amount)}
-              </strong>
-            </div>
+                  <strong
+                    style={{
+                      display: 'block',
+                      marginTop: '4px',
+                      fontSize: '24px',
+                    }}
+                  >
+                    {money(closingPreview.expected_closing_amount)}
+                  </strong>
+                </div>
+
+                {closingDifference !== null && (
+                  <div
+                    style={{
+                      marginTop: '10px',
+                      fontWeight: 900,
+                      color:
+                        Math.abs(closingDifference) <= 0.01
+                          ? '#22c55e'
+                          : closingDifference < 0
+                            ? '#ef4444'
+                            : '#f59e0b',
+                    }}
+                  >
+                    {Math.abs(closingDifference) <= 0.01
+                      ? 'الجرد مطابق'
+                      : closingDifference < 0
+                        ? `عجز ${money(Math.abs(closingDifference))}`
+                        : `زيادة ${money(closingDifference)}`}
+                  </div>
+                )}
+              </>
+            ) : null}
 
             <label
               style={{
@@ -816,27 +874,6 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                 marginTop: '8px',
               }}
             />
-
-            {closingDifference !== null && (
-              <div
-                style={{
-                  marginTop: '10px',
-                  fontWeight: 900,
-                  color:
-                    Math.abs(closingDifference) <= 0.01
-                      ? '#22c55e'
-                      : closingDifference < 0
-                        ? '#ef4444'
-                        : '#f59e0b',
-                }}
-              >
-                {Math.abs(closingDifference) <= 0.01
-                  ? 'الجرد مطابق'
-                  : closingDifference < 0
-                    ? `عجز ${money(Math.abs(closingDifference))}`
-                    : `زيادة ${money(closingDifference)}`}
-              </div>
-            )}
 
             <label
               style={{
@@ -919,18 +956,6 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                   }}
                 />
               </>
-            )}
-
-            {error && (
-              <div
-                style={{
-                  marginTop: '14px',
-                  color: '#ef4444',
-                  fontWeight: 800,
-                }}
-              >
-                {error}
-              </div>
             )}
 
             <div

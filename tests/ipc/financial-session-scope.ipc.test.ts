@@ -21,7 +21,10 @@ import {
 
 import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
 
-import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
+import {
+  closeCashShift,
+  openCashShift,
+} from '../../src/main/database/repositories/cash-shifts.repo'
 
 import { startAuthSession } from '../../src/main/auth-session'
 
@@ -240,12 +243,10 @@ describe('financial IPC session scope', () => {
     ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
   })
 
-  it('prevents a cashier from previewing another user shift', async () => {
-    const admin = findUserByUsername('admin')!
-
+  it('blocks cashiers from seeing expected shift balances', async () => {
     const cashier = createUser(
-      'Preview Cashier',
-      'preview_cashier',
+      'Blind Cashier',
+      'blind_cashier',
       '5678',
       'cashier',
     )
@@ -253,7 +254,7 @@ describe('financial IPC session scope', () => {
     const shift = openCashShift({
       opening_counted_amount: 100,
 
-      opened_by: admin.id,
+      opened_by: cashier.id,
     })
 
     const cashierClient = makeClient()
@@ -262,7 +263,91 @@ describe('financial IPC session scope', () => {
 
     await expect(
       invoke(cashierClient.event, 'cash-shifts:preview', shift.id),
-    ).rejects.toThrow('غير مصرح لك بعرض تفاصيل هذا الشفت')
+    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+
+    await expect(
+      invoke(cashierClient.event, 'cash-shifts:day-summary', {
+        business_date: '2026-09-16',
+      }),
+    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+  })
+
+  it('redacts reconciliation targets from cashier shift responses', async () => {
+    const admin = findUserByUsername('admin')!
+
+    const previousShift = openCashShift({
+      opening_counted_amount: 100,
+
+      opened_by: admin.id,
+    })
+
+    closeCashShift({
+      shift_id: previousShift.id,
+
+      closing_counted_amount: 100,
+
+      left_for_next_shift: 80,
+
+      closed_by: admin.id,
+    })
+
+    const cashier = createUser(
+      'Blind Reconciliation Cashier',
+      'blind_reconciliation_cashier',
+      '5678',
+      'cashier',
+    )
+
+    const cashierClient = makeClient()
+
+    startAuthSession(cashierClient.event, cashier.id)
+
+    const preview = await invoke(
+      cashierClient.event,
+      'cash-shifts:opening-preview',
+    )
+
+    expect(preview.expected_opening_amount).toBeNull()
+
+    expect(preview.previous_shift_id).toBeNull()
+
+    const opened = await invoke(cashierClient.event, 'cash-shifts:open', {
+      opening_counted_amount: 70,
+    })
+
+    expect('expected_opening_amount' in opened).toBe(false)
+
+    expect('opening_difference' in opened).toBe(false)
+
+    const current = await invoke(cashierClient.event, 'cash-shifts:get-open')
+
+    expect(current.id).toBe(opened.id)
+
+    expect('opening_difference' in current).toBe(false)
+
+    const closed = await invoke(cashierClient.event, 'cash-shifts:close', {
+      shift_id: opened.id,
+
+      closing_counted_amount: 60,
+
+      left_for_next_shift: 50,
+    })
+
+    expect(closed.status).toBe('closed')
+
+    expect('expected_closing_amount' in closed).toBe(false)
+
+    expect('closing_difference' in closed).toBe(false)
+  })
+
+  it('keeps reconciliation details available to admins', async () => {
+    const admin = findUserByUsername('admin')!
+
+    const shift = openCashShift({
+      opening_counted_amount: 250,
+
+      opened_by: admin.id,
+    })
 
     const adminClient = makeClient()
 
@@ -275,5 +360,7 @@ describe('financial IPC session scope', () => {
     )
 
     expect(preview.shift_id).toBe(shift.id)
+
+    expect(preview.expected_closing_amount).toBe(250)
   })
 })
