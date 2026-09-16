@@ -1209,6 +1209,27 @@ describe('purchases repository', () => {
 
     expect(cancelled.cancelled_shift_id).toBe(shift2.id)
 
+    const cancelledPurchaseRow = db
+      .prepare(
+        `
+    SELECT
+      cancelled_by,
+      cancelled_shift_id,
+      cancel_reason
+
+    FROM purchase_invoices
+
+    WHERE id = ?
+    `,
+      )
+      .get(purchase.purchaseId) as any
+
+    expect(Number(cancelledPurchaseRow.cancelled_by)).toBe(1)
+
+    expect(Number(cancelledPurchaseRow.cancelled_shift_id)).toBe(shift2.id)
+
+    expect(cancelledPurchaseRow.cancel_reason).toBe('إلغاء في شفت جديد')
+
     /*
      * حركة الدفع الأصلية لا تلغى.
      */

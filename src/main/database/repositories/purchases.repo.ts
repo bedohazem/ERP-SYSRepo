@@ -638,8 +638,8 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
         status = 'cancelled',
         cancelled_at = CURRENT_TIMESTAMP,
         cancelled_by = ?,
-        cancel_reason = ?,
         cancelled_shift_id = ?,
+        cancel_reason = ?,
         payment_status = 'cancelled',
         remaining_amount = 0
       WHERE id = ?

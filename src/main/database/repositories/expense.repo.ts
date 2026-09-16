@@ -1,6 +1,7 @@
 import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
 import { createActivityLog } from './activity.repo'
+import { resolveFinancialOperationShift } from './cash-shifts.repo'
 
 export type CreateExpenseInput = {
   title: string
@@ -27,6 +28,22 @@ export type UpdateExpenseInput = {
   notes?: string | null
   actor_id?: number | null
   can_manage_all?: boolean
+}
+
+function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
+  const row = db
+    .prepare(
+      `
+      SELECT
+        date('now', 'localtime')
+          AS business_date
+      `,
+    )
+    .get() as {
+    business_date: string
+  }
+
+  return String(row?.business_date || '')
 }
 
 function appendCreatedByFilter(
@@ -64,6 +81,18 @@ export function createExpense(input: CreateExpenseInput) {
     throw new Error('قيمة المصروف غير صحيحة')
   }
 
+  const actorId = Number(input.created_by || 0)
+
+  const paymentMethod = resolveCashAccount(input.payment_method || 'cash')
+
+  const openShift = resolveFinancialOperationShift(
+    actorId,
+    [paymentMethod],
+    'لا يمكن تسجيل مصروف من درج المحل بدون شفت مفتوح',
+  )
+
+  const businessDate = getCurrentBusinessDate(db)
+
   const tx = db.transaction(() => {
     const result = db
       .prepare(
@@ -74,50 +103,77 @@ export function createExpense(input: CreateExpenseInput) {
           amount,
           payment_method,
           notes,
-          created_by
+          created_by,
+          shift_id
         )
-        VALUES (?, ?, ?, ?, ?, ?)
-      `,
+
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
       )
       .run(
         title,
         input.category?.trim() || null,
         amount,
-        input.payment_method || 'cash',
+        paymentMethod,
         input.notes?.trim() || null,
-        input.created_by ?? null,
+        actorId,
+        openShift?.id ?? null,
       )
 
     const expenseId = Number(result.lastInsertRowid)
 
     createActivityLog({
-      user_id: input.created_by ?? null,
+      user_id: actorId,
+
       action: 'expense_created',
+
       entity: 'expenses',
+
       entity_id: expenseId,
+
       details: JSON.stringify({
         title,
+
         category: input.category?.trim() || null,
+
         amount,
-        payment_method: input.payment_method || 'cash',
+
+        payment_method: paymentMethod,
+
         notes: input.notes?.trim() || null,
+
+        shift_id: openShift?.id ?? null,
       }),
     })
 
     createCashMovement({
       type: 'expense',
+
       direction: 'out',
+
       amount,
-      payment_method: input.payment_method || 'cash',
+
+      payment_method: paymentMethod,
+
       reference_id: expenseId,
+
       reference_type: 'expense',
+
       notes: `مصروف: ${title}`,
-      created_by: input.created_by ?? null,
+
+      created_by: actorId,
+
+      business_date: businessDate,
+
+      shift_id: openShift?.id ?? null,
     })
 
     return {
       id: expenseId,
+
       success: true,
+
+      shift_id: openShift?.id ?? null,
     }
   })
 
@@ -308,27 +364,18 @@ export function updateExpense(input: UpdateExpenseInput) {
   const cashMovement = db
     .prepare(
       `
-      SELECT
-        cm.*,
-
-        COALESCE(
-          NULLIF(
-            cm.business_date,
-            ''
-          ),
-
-          date(
-            cm.created_at,
-            'localtime'
-          )
-        ) AS accounting_date
+      SELECT cm.*
 
       FROM cash_movements cm
 
-      WHERE cm.type = 'expense'
+      WHERE cm.type =
+        'expense'
+
+        AND cm.direction =
+          'out'
 
         AND cm.reference_type =
-            'expense'
+          'expense'
 
         AND cm.reference_id = ?
 
@@ -361,26 +408,6 @@ export function updateExpense(input: UpdateExpenseInput) {
     throw new Error('حساب المصروف لا يطابق حركة الخزنة')
   }
 
-  const accountingDate = String(cashMovement.accounting_date || '')
-
-  const closing = db
-    .prepare(
-      `
-      SELECT id
-
-      FROM cash_day_closings
-
-      WHERE business_date = ?
-
-      LIMIT 1
-      `,
-    )
-    .get(accountingDate)
-
-  if (closing) {
-    throw new Error(`لا يمكن تعديل المصروف لأن يوم ${accountingDate} تم تقفيله`)
-  }
-
   const category = String(input.category || '').trim() || null
 
   const notes = String(input.notes || '').trim() || null
@@ -389,8 +416,13 @@ export function updateExpense(input: UpdateExpenseInput) {
     input.payment_method || expense.payment_method || 'store_cash',
   )
 
-  const originalCreatedBy =
-    cashMovement.created_by ?? expense.created_by ?? null
+  const openShift = resolveFinancialOperationShift(
+    actorId,
+    [cashMovement.payment_method, paymentMethod],
+    'لا يمكن تعديل مصروف يؤثر على درج المحل بدون شفت مفتوح',
+  )
+
+  const correctionBusinessDate = getCurrentBusinessDate(db)
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -402,29 +434,53 @@ export function updateExpense(input: UpdateExpenseInput) {
         category = ?,
         amount = ?,
         payment_method = ?,
-        notes = ?
+        notes = ?,
+        updated_shift_id = ?
 
       WHERE id = ?
       `,
-    ).run(title, category, amount, paymentMethod, notes, expenseId)
+    ).run(
+      title,
+      category,
+      amount,
+      paymentMethod,
+      notes,
+      openShift?.id ?? null,
+      expenseId,
+    )
 
-    db.prepare(
-      `
-      UPDATE cash_movements
+    /*
+     * لا نلغي حركة المصروف القديمة.
+     * نعكسها في الشفت الحالي.
+     */
+    const reverse = createCashMovement({
+      type: 'expense',
 
-      SET
-        cancelled_at =
-          CURRENT_TIMESTAMP,
+      direction: 'in',
 
-        cancelled_by = ?,
+      amount: Number(cashMovement.amount || 0),
 
-        cancel_reason =
-          'تم تعديل المصروف'
+      payment_method: cashMovement.payment_method,
 
-      WHERE id = ?
-      `,
-    ).run(input.actor_id ?? null, Number(cashMovement.id))
+      reference_id: expenseId,
 
+      reference_type: 'expense_update_reverse',
+
+      notes: `عكس المصروف القديم بسبب التعديل #${expenseId}`,
+
+      created_by: actorId,
+
+      business_date: correctionBusinessDate,
+
+      shift_id: openShift?.id ?? null,
+    })
+
+    const reverseCashMovementId = Number(reverse.lastInsertRowid || 0)
+
+    /*
+     * نسجل القيمة الجديدة
+     * كحركة مالية جديدة.
+     */
     const replacement = createCashMovement({
       type: 'expense',
 
@@ -440,15 +496,17 @@ export function updateExpense(input: UpdateExpenseInput) {
 
       notes: `مصروف: ${title}`,
 
-      created_by: originalCreatedBy,
+      created_by: actorId,
 
-      business_date: accountingDate,
+      business_date: correctionBusinessDate,
+
+      shift_id: openShift?.id ?? null,
     })
 
     const newCashMovementId = Number(replacement.lastInsertRowid || 0)
 
     createActivityLog({
-      user_id: input.actor_id ?? null,
+      user_id: actorId,
 
       action: 'expense_updated',
 
@@ -473,7 +531,9 @@ export function updateExpense(input: UpdateExpenseInput) {
 
         after: {
           title,
+
           category,
+
           amount,
 
           payment_method: paymentMethod,
@@ -481,6 +541,10 @@ export function updateExpense(input: UpdateExpenseInput) {
           notes,
 
           cash_movement_id: newCashMovementId,
+
+          reverse_cash_movement_id: reverseCashMovementId,
+
+          shift_id: openShift?.id ?? null,
         },
       }),
     })
@@ -492,7 +556,11 @@ export function updateExpense(input: UpdateExpenseInput) {
 
       old_cash_movement_id: Number(cashMovement.id),
 
+      reverse_cash_movement_id: reverseCashMovementId,
+
       cash_movement_id: newCashMovementId,
+
+      updated_shift_id: openShift?.id ?? null,
     }
   })
 
@@ -504,12 +572,19 @@ export function cancelExpense(input: CancelExpenseInput) {
 
   const expenseId = Number(input.id)
 
+  if (!expenseId) {
+    throw new Error('رقم المصروف غير صحيح')
+  }
+
   const expense = db
     .prepare(
       `
       SELECT *
+
       FROM expenses
+
       WHERE id = ?
+
       LIMIT 1
       `,
     )
@@ -535,43 +610,43 @@ export function cancelExpense(input: CancelExpenseInput) {
   const cashMovement = db
     .prepare(
       `
-      SELECT
-        cm.*,
-        COALESCE(
-          NULLIF(cm.business_date, ''),
-          date(cm.created_at, 'localtime')
-        ) AS accounting_date
+      SELECT cm.*
 
       FROM cash_movements cm
 
-      WHERE cm.type = 'expense'
-        AND cm.reference_type = 'expense'
+      WHERE cm.type =
+        'expense'
+
+        AND cm.direction =
+          'out'
+
+        AND cm.reference_type =
+          'expense'
+
         AND cm.reference_id = ?
 
       ORDER BY cm.id DESC
+
       LIMIT 1
       `,
     )
     .get(expenseId) as any
 
-  if (cashMovement && !cashMovement.cancelled_at) {
-    const closing = db
-      .prepare(
-        `
-        SELECT id
-        FROM cash_day_closings
-        WHERE business_date = ?
-        LIMIT 1
-        `,
-      )
-      .get(cashMovement.accounting_date)
-
-    if (closing) {
-      throw new Error(
-        `لا يمكن إلغاء المصروف لأن يوم ${cashMovement.accounting_date} تم تقفيله`,
-      )
-    }
+  if (!cashMovement) {
+    throw new Error('حركة الخزنة الخاصة بالمصروف غير موجودة')
   }
+
+  if (cashMovement.cancelled_at) {
+    throw new Error('حركة الخزنة الخاصة بالمصروف ملغاة بالفعل')
+  }
+
+  const openShift = resolveFinancialOperationShift(
+    actorId,
+    [cashMovement.payment_method],
+    'لا يمكن إلغاء مصروف يؤثر على درج المحل بدون شفت مفتوح',
+  )
+
+  const cancellationBusinessDate = getCurrentBusinessDate(db)
 
   const reason = String(input.reason || '').trim() || 'إلغاء مصروف'
 
@@ -579,44 +654,79 @@ export function cancelExpense(input: CancelExpenseInput) {
     db.prepare(
       `
       UPDATE expenses
+
       SET
-        cancelled_at = CURRENT_TIMESTAMP,
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
         cancelled_by = ?,
+
+        cancelled_shift_id = ?,
+
         cancel_reason = ?
+
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, reason, expenseId)
+    ).run(actorId, openShift?.id ?? null, reason, expenseId)
 
-    if (cashMovement && !cashMovement.cancelled_at) {
-      db.prepare(
-        `
-        UPDATE cash_movements
-        SET
-          cancelled_at = CURRENT_TIMESTAMP,
-          cancelled_by = ?,
-          cancel_reason = ?
-        WHERE id = ?
-        `,
-      ).run(input.actor_id ?? null, reason, cashMovement.id)
-    }
+    const reverse = createCashMovement({
+      type: 'expense',
+
+      direction: 'in',
+
+      amount: Number(cashMovement.amount || 0),
+
+      payment_method: cashMovement.payment_method,
+
+      reference_id: expenseId,
+
+      reference_type: 'expense_cancel',
+
+      notes: `عكس مصروف ملغي #${expenseId}`,
+
+      created_by: actorId,
+
+      business_date: cancellationBusinessDate,
+
+      shift_id: openShift?.id ?? null,
+    })
+
+    const reverseCashMovementId = Number(reverse.lastInsertRowid || 0)
 
     createActivityLog({
-      user_id: input.actor_id ?? null,
+      user_id: actorId,
+
       action: 'expense_cancelled',
+
       entity: 'expenses',
+
       entity_id: expenseId,
+
       details: JSON.stringify({
         title: expense.title,
+
         amount: expense.amount,
+
         payment_method: expense.payment_method,
+
         reason,
-        cash_movement_id: cashMovement?.id ?? null,
+
+        original_cash_movement_id: cashMovement.id,
+
+        reverse_cash_movement_id: reverseCashMovementId,
+
+        shift_id: openShift?.id ?? null,
       }),
     })
 
     return {
       success: true,
+
       id: expenseId,
+
+      cancelled_shift_id: openShift?.id ?? null,
+
+      reverse_cash_movement_id: reverseCashMovementId,
     }
   })
 

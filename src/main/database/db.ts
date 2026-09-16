@@ -1271,9 +1271,48 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'expenses', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'expenses', 'cancel_reason', 'TEXT')
 
+    safeAddColumn(db, 'expenses', 'shift_id', 'INTEGER')
+
+    safeAddColumn(db, 'expenses', 'updated_shift_id', 'INTEGER')
+
+    safeAddColumn(db, 'expenses', 'cancelled_shift_id', 'INTEGER')
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_expenses_shift_id
+      ON expenses(shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_expenses_updated_shift_id
+      ON expenses(updated_shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_expenses_cancelled_shift_id
+      ON expenses(cancelled_shift_id);
+    `)
+
     safeAddColumn(db, 'store_liability_payments', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'store_liability_payments', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'store_liability_payments', 'cancel_reason', 'TEXT')
+
+    safeAddColumn(db, 'store_liability_payments', 'shift_id', 'INTEGER')
+
+    safeAddColumn(
+      db,
+      'store_liability_payments',
+      'cancelled_shift_id',
+      'INTEGER',
+    )
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_store_liability_payments_shift_id
+      ON store_liability_payments(shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_store_liability_payments_cancelled_shift_id
+      ON store_liability_payments(cancelled_shift_id);
+    `)
 
     safeAddColumn(db, 'purchase_invoices', 'shift_id', 'INTEGER')
 

@@ -21,6 +21,7 @@ import { createPurchaseInvoice } from '../../src/main/database/repositories/purc
 import { createSupplier } from '../../src/main/database/repositories/suppliers.repo'
 
 import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
 
 type ReportVariantTestRow = {
   variant_id: number
@@ -169,6 +170,11 @@ describe('reports repository', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
   })
 
   it('returns empty summary when there is no business data', () => {

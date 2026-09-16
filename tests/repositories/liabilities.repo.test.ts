@@ -9,8 +9,14 @@ import {
   listLiabilitiesPage,
   recordLiabilityPayment,
   updateLiability,
+  cancelLiabilityPayment,
   updateLiabilityPayment,
 } from '../../src/main/database/repositories/liabilities.repo'
+import {
+  closeCashShift,
+  getOpenCashShift,
+  openCashShift,
+} from '../../src/main/database/repositories/cash-shifts.repo'
 
 type LiabilityTestRow = {
   id: number
@@ -123,7 +129,22 @@ describe('liabilities repository', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+
     seedStoreCashBalance()
+
+    openCashShift({
+      opening_counted_amount: 1000000,
+
+      opened_by: 1,
+    })
+
+    getDb()
+      .prepare(
+        `
+      DELETE FROM activity_logs
+      `,
+      )
+      .run()
   })
 
   it('creates an open liability without initial payment', () => {
@@ -318,6 +339,7 @@ describe('liabilities repository', () => {
       total_amount: 1000,
       paid_amount: 200,
       payment_method: 'cash',
+      actor_id: 1,
     })
 
     expect(() =>
@@ -349,6 +371,7 @@ describe('liabilities repository', () => {
       total_amount: 500,
       paid_amount: 500,
       payment_method: 'cash',
+      actor_id: 1,
     })
 
     const allRows = listLiabilities() as LiabilityTestRow[]
@@ -467,6 +490,7 @@ describe('liabilities repository', () => {
       total_amount: 1000,
       paid_amount: 300,
       payment_method: 'cash',
+      actor_id: 1,
     })
 
     createLiability({
@@ -475,6 +499,7 @@ describe('liabilities repository', () => {
       total_amount: 500,
       paid_amount: 500,
       payment_method: 'cash',
+      actor_id: 1,
     })
 
     const summary = getLiabilitiesSummary()
@@ -730,7 +755,7 @@ describe('liabilities repository', () => {
 
     expect(Number(replacement.amount)).toBe(500)
 
-    expect(replacement.created_at).toBe(oldPayment.created_at)
+    expect(Number(replacement.shift_id)).toBe(getOpenCashShift()!.id)
 
     const oldCashAfter = db
       .prepare(
@@ -744,7 +769,32 @@ describe('liabilities repository', () => {
       )
       .get(oldCash.id) as any
 
-    expect(oldCashAfter.cancelled_at).toBeTruthy()
+    expect(oldCashAfter.cancelled_at).toBeNull()
+
+    const reverseCash = db
+      .prepare(
+        `
+    SELECT *
+
+    FROM cash_movements
+
+    WHERE reference_type =
+      'store_liability_payment_update_reverse'
+
+      AND reference_id = ?
+
+    ORDER BY id DESC
+
+    LIMIT 1
+    `,
+      )
+      .get(payment.payment_id) as any
+
+    expect(reverseCash).toBeTruthy()
+
+    expect(reverseCash.direction).toBe('in')
+
+    expect(Number(reverseCash.amount)).toBe(300)
 
     const newCash = db
       .prepare(
@@ -773,9 +823,19 @@ describe('liabilities repository', () => {
         `
       SELECT
         IFNULL(
-          SUM(amount),
+          SUM(
+            CASE
+              WHEN direction = 'out'
+                THEN amount
+
+              WHEN direction = 'in'
+                THEN -amount
+
+              ELSE 0
+            END
+          ),
           0
-        ) AS total
+        ) AS net_out
 
       FROM cash_movements
 
@@ -787,10 +847,152 @@ describe('liabilities repository', () => {
       `,
       )
       .get() as {
-      total: number
+      net_out: number
     }
 
-    expect(Number(activeCash.total)).toBe(700)
+    expect(Number(activeCash.net_out)).toBe(700)
+  })
+
+  it('cancels a previous-shift liability payment in the current shift', () => {
+    const db = getDb()
+
+    const created = createLiability({
+      party_name: 'Cross Shift Party',
+
+      title: 'Cross Shift Liability',
+
+      total_amount: 1000,
+
+      paid_amount: 200,
+
+      payment_method: 'store_cash',
+
+      actor_id: 1,
+    })
+
+    const payment = recordLiabilityPayment({
+      liability_id: created.liability_id,
+
+      amount: 300,
+
+      payment_method: 'store_cash',
+
+      actor_id: 1,
+    })
+
+    const shift1 = getOpenCashShift()!
+
+    const originalCash = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE reference_type =
+        'store_liability_payment'
+
+        AND reference_id = ?
+
+      LIMIT 1
+      `,
+      )
+      .get(payment.payment_id) as any
+
+    expect(Number(originalCash.shift_id)).toBe(shift1.id)
+
+    closeCashShift({
+      shift_id: shift1.id,
+
+      closing_counted_amount: 999500,
+
+      left_for_next_shift: 999500,
+
+      closed_by: 1,
+    })
+
+    const shift2 = openCashShift({
+      opening_counted_amount: 999500,
+
+      opened_by: 1,
+    })
+
+    const cancelled = cancelLiabilityPayment({
+      payment_id: payment.payment_id,
+
+      reason: 'Cancel in next shift',
+
+      actor_id: 1,
+    })
+
+    expect(cancelled.cancelled_shift_id).toBe(shift2.id)
+
+    const oldCashAfter = db
+      .prepare(
+        `
+      SELECT
+        cancelled_at,
+        shift_id
+
+      FROM cash_movements
+
+      WHERE id = ?
+      `,
+      )
+      .get(originalCash.id) as any
+
+    expect(oldCashAfter.cancelled_at).toBeNull()
+
+    expect(Number(oldCashAfter.shift_id)).toBe(shift1.id)
+
+    const paymentRow = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        cancelled_shift_id
+
+      FROM store_liability_payments
+
+      WHERE id = ?
+      `,
+      )
+      .get(payment.payment_id) as any
+
+    expect(Number(paymentRow.shift_id)).toBe(shift1.id)
+
+    expect(Number(paymentRow.cancelled_shift_id)).toBe(shift2.id)
+
+    const reverse = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE reference_type =
+        'store_liability_payment_cancel'
+
+        AND reference_id = ?
+
+      ORDER BY id DESC
+
+      LIMIT 1
+      `,
+      )
+      .get(payment.payment_id) as any
+
+    expect(reverse.direction).toBe('in')
+
+    expect(Number(reverse.amount)).toBe(300)
+
+    expect(Number(reverse.shift_id)).toBe(shift2.id)
+
+    const liability = getLiabilityById(created.liability_id)
+
+    expect(liability.paid_amount).toBe(200)
+
+    expect(liability.remaining_amount).toBe(800)
   })
 
   it('rejects liability payment update above available liability amount', () => {
