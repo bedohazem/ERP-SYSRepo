@@ -21,6 +21,7 @@ import {
   getCashShiftOpeningPreview,
   getCashShiftById,
   resolveFinancialOperationShift,
+  getCashShiftDaySummary,
 } from '../database/repositories/cash-shifts.repo'
 import { requireAdminPassword } from './permission-helper'
 import { requireAuthenticatedUser } from '../auth-session'
@@ -240,6 +241,16 @@ export function registerCashIpc(): void {
           error instanceof Error ? error.message : 'تعذر إلغاء حركة الخزنة',
       }
     }
+  })
+
+  ipcMain.handle('cash-shifts:day-summary', (event, input) => {
+    const user = requireAuthenticatedUser(event)
+
+    return getCashShiftDaySummary({
+      business_date: String(input?.business_date || ''),
+
+      user_id: user.role === 'admin' ? (input?.user_id ?? null) : user.id,
+    })
   })
 
   ipcMain.handle('cash-shifts:get-open', (event) => {

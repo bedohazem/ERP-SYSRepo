@@ -10,6 +10,7 @@ import {
   getCashShiftOpeningPreview,
   requireOperationalCashShift,
   resolveFinancialOperationShift,
+  getCashShiftDaySummary,
 } from '../../src/main/database/repositories/cash-shifts.repo'
 
 import {
@@ -672,5 +673,78 @@ describe('cash shifts repository', () => {
         closed_by: 1,
       }),
     ).toThrow('قيمة جرد إغلاق الشفت غير صحيحة')
+  })
+
+  it('summarizes drawer activity from shifts without counting safe handover transfers', () => {
+    const db = getDb()
+
+    const dayRow = db
+      .prepare(
+        `
+      SELECT date('now', 'localtime') AS day
+      `,
+      )
+      .get() as {
+      day: string
+    }
+
+    const firstShift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    })
+
+    createCashMovement({
+      type: 'sale',
+      direction: 'in',
+      amount: 300,
+      payment_method: 'store_cash',
+      created_by: 1,
+      shift_id: firstShift.id,
+    })
+
+    closeCashShift({
+      shift_id: firstShift.id,
+      closing_counted_amount: 800,
+      left_for_next_shift: 200,
+      closed_by: 1,
+    })
+
+    const secondShift = openCashShift({
+      opening_counted_amount: 200,
+      opened_by: 1,
+    })
+
+    createCashMovement({
+      type: 'expense',
+      direction: 'out',
+      amount: 50,
+      payment_method: 'store_cash',
+      created_by: 1,
+      shift_id: secondShift.id,
+    })
+
+    const summary = getCashShiftDaySummary({
+      business_date: dayRow.day,
+      user_id: 1,
+    })
+
+    expect(summary.shifts_count).toBe(2)
+    expect(summary.closed_shifts_count).toBe(1)
+
+    expect(summary.has_open_shift).toBe(true)
+    expect(summary.all_closed).toBe(false)
+
+    expect(summary.first_shift_id).toBe(firstShift.id)
+
+    expect(summary.last_shift_id).toBe(secondShift.id)
+
+    expect(summary.opening_drawer_balance).toBe(500)
+
+    expect(summary.cash_in).toBe(300)
+    expect(summary.cash_out).toBe(50)
+
+    expect(summary.balance_before_handover).toBe(150)
+
+    expect(summary.ending_drawer_balance).toBe(150)
   })
 })

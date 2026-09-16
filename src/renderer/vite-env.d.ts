@@ -1587,6 +1587,32 @@ declare global {
         }>
       }>
 
+      getCashShiftDaySummary: (input: {
+        business_date: string
+        user_id?: number | null
+      }) => Promise<{
+        business_date: string
+        user_id: number | null
+
+        shifts_count: number
+        closed_shifts_count: number
+
+        has_open_shift: boolean
+        all_closed: boolean
+
+        first_shift_id: number | null
+        last_shift_id: number | null
+        last_shift_status: 'open' | 'closed' | null
+
+        opening_drawer_balance: number
+
+        cash_in: number
+        cash_out: number
+
+        balance_before_handover: number
+        ending_drawer_balance: number
+      }>
+
       closeCashShift: (input: {
         shift_id: number
         closing_counted_amount: number

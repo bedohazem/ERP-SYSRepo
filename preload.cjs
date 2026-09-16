@@ -185,6 +185,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('suppliers:statement', supplierId, actorId),
 
   getCashSummary: (input) => ipcRenderer.invoke('cash:summary', input),
+  getCashShiftDaySummary: (input) =>
+    ipcRenderer.invoke('cash-shifts:day-summary', input),
   getCashMovements: (input) => ipcRenderer.invoke('cash:list', input),
   createCashMovement: (input) =>
     ipcRenderer.invoke('cash:create-movement', input),

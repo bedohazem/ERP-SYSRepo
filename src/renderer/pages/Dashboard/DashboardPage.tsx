@@ -202,7 +202,7 @@ export default function DashboardPage() {
         month,
         overview,
 
-        selectedDayDrawer,
+        selectedDayShifts,
         todayInstapayBank,
         todayVodafoneCash,
         todayFawryMachine,
@@ -228,7 +228,10 @@ export default function DashboardPage() {
           ...reportUserFilter,
         }),
 
-        window.api.getCashDayClosePreview(dashboardDate),
+        window.api.getCashShiftDaySummary({
+          business_date: dashboardDate,
+          user_id: cashierId,
+        }),
 
         window.api.getCashSummary({
           ...cashierDayFilter,
@@ -280,19 +283,19 @@ export default function DashboardPage() {
       setData({ today, month, overview })
 
       setCashierRevenue({
-        drawerCash: Number(selectedDayDrawer?.system_closing_balance || 0),
+        drawerCash: Number(selectedDayShifts?.balance_before_handover || 0),
 
-        drawerOpening: Number(selectedDayDrawer?.opening_drawer_balance || 0),
+        drawerOpening: Number(selectedDayShifts?.opening_drawer_balance || 0),
 
-        drawerCashIn: Number(selectedDayDrawer?.day_cash_in || 0),
+        drawerCashIn: Number(selectedDayShifts?.cash_in || 0),
 
-        drawerCashOut: Number(selectedDayDrawer?.day_cash_out || 0),
+        drawerCashOut: Number(selectedDayShifts?.cash_out || 0),
 
-        drawerEndBalance: selectedDayDrawer?.already_closed
-          ? Number(selectedDayDrawer?.closing?.carry_over_amount || 0)
-          : Number(selectedDayDrawer?.system_closing_balance || 0),
+        drawerEndBalance: Number(selectedDayShifts?.ending_drawer_balance || 0),
 
-        drawerAlreadyClosed: Boolean(selectedDayDrawer?.already_closed),
+        drawerAlreadyClosed: Boolean(
+          selectedDayShifts?.shifts_count > 0 && selectedDayShifts?.all_closed,
+        ),
 
         instapayBank: Number(todayInstapayBank?.balance || 0),
         vodafoneCash: Number(todayVodafoneCash?.balance || 0),
@@ -1394,38 +1397,38 @@ function CashierRevenueView({
           }}
         >
           <CashierMiniCard
-            title="رصيد أول اليوم"
+            title="رصيد افتتاح أول شفت"
             value={money(revenue.drawerOpening)}
-            subtitle="رصيد درج المحل لكل المستخدمين قبل حركات التاريخ المحدد"
+            subtitle="المبلغ الفعلي الذي بدأ به أول شفت للكاشير"
           />
 
           <CashierMiniCard
             title="إجمالي داخل الدرج"
             value={money(revenue.drawerCashIn)}
-            subtitle="كل الحركات الداخلة للدرج من جميع المستخدمين خلال التاريخ"
+            subtitle="الحركات التشغيلية الداخلة للدرج خلال شفتات التاريخ المحدد"
           />
 
           <CashierMiniCard
             title="إجمالي خارج الدرج"
             value={money(revenue.drawerCashOut)}
-            subtitle="كل الحركات الخارجة من الدرج من جميع المستخدمين خلال التاريخ"
+            subtitle="الحركات التشغيلية الخارجة من الدرج خلال شفتات التاريخ المحدد"
           />
 
           <CashierMiniCard
             title={
               revenue.drawerAlreadyClosed
-                ? 'رصيد الدرج قبل التقفيل'
-                : 'رصيد الدرج نهاية التاريخ'
+                ? 'جرد إغلاق آخر شفت'
+                : 'الرصيد المتوقع لآخر شفت'
             }
             value={money(revenue.drawerCash)}
-            subtitle="رصيد أول اليوم + الداخل - الخارج"
+            subtitle="لا يشمل توريد إغلاق الشفت إلى الخزنة الآمنة"
           />
 
           {revenue.drawerAlreadyClosed ? (
             <CashierMiniCard
-              title="المرحل لليوم التالي"
+              title="المتبقي للشفت التالي"
               value={money(revenue.drawerEndBalance)}
-              subtitle="المبلغ الذي تُرك فعليًا في الدرج بعد التقفيل"
+              subtitle="المبلغ الذي تُرك في الدرج بعد إغلاق آخر شفت"
             />
           ) : null}
 

@@ -48,8 +48,23 @@ export type CloseCashShiftInput = {
   close_reason?: string | null
 }
 
+export type CashShiftDaySummaryInput = {
+  business_date: string
+  user_id?: number | null
+}
+
 function roundMoney(value: number) {
   return Number(value.toFixed(2))
+}
+
+function normalizeShiftBusinessDate(value?: string | null) {
+  const businessDate = String(value || '').trim()
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) {
+    throw new Error('تاريخ ملخص الشفتات غير صحيح')
+  }
+
+  return businessDate
 }
 
 function getShiftSelectSql() {
@@ -708,6 +723,195 @@ export function getCashShiftExpectedBalance(shiftId: number) {
     expected_closing_amount: expectedClosingAmount,
 
     breakdown,
+  }
+}
+
+export function getCashShiftDaySummary(input: CashShiftDaySummaryInput) {
+  const db = getDb()
+
+  const businessDate = normalizeShiftBusinessDate(input.business_date)
+
+  const userId = Number(input.user_id || 0)
+
+  const where = [`date(cs.opened_at, 'localtime') = ?`]
+
+  const params: any[] = [businessDate]
+
+  if (userId > 0) {
+    where.push(`cs.opened_by = ?`)
+    params.push(userId)
+  }
+
+  const shifts = db
+    .prepare(
+      `
+      ${getShiftSelectSql()}
+
+      WHERE ${where.join(' AND ')}
+
+      ORDER BY
+        cs.opened_at ASC,
+        cs.id ASC
+      `,
+    )
+    .all(...params) as CashShiftRow[]
+
+  if (shifts.length === 0) {
+    return {
+      business_date: businessDate,
+
+      user_id: userId > 0 ? userId : null,
+
+      shifts_count: 0,
+      closed_shifts_count: 0,
+
+      has_open_shift: false,
+      all_closed: false,
+
+      first_shift_id: null,
+      last_shift_id: null,
+      last_shift_status: null,
+
+      opening_drawer_balance: 0,
+
+      cash_in: 0,
+      cash_out: 0,
+
+      balance_before_handover: 0,
+      ending_drawer_balance: 0,
+    }
+  }
+
+  const shiftIds = shifts.map((shift) => Number(shift.id))
+
+  const placeholders = shiftIds.map(() => '?').join(', ')
+
+  /*
+   * نحسب فقط التشغيل الحقيقي للدرج.
+   *
+   * لا نحسب:
+   * - تسويات فتح/إغلاق الشفت
+   * - توريد إغلاق الشفت إلى الخزنة الآمنة
+   *
+   * لأنهما جزء من reconciliation/handover
+   * وليس مبيعات أو مصروفات اليوم.
+   */
+  const totals = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(
+            CASE
+              WHEN cm.direction = 'in'
+                THEN cm.amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS total_in,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN cm.direction = 'out'
+                THEN cm.amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS total_out
+
+      FROM cash_movements cm
+
+      WHERE cm.shift_id IN (${placeholders})
+
+        AND cm.payment_method = 'store_cash'
+
+        AND cm.cancelled_at IS NULL
+
+        AND cm.type != 'shift_adjustment'
+
+        AND IFNULL(
+          cm.reference_type,
+          ''
+        ) != 'cash_shift_safe_transfer'
+      `,
+    )
+    .get(...shiftIds) as
+    | {
+        total_in: number
+        total_out: number
+      }
+    | undefined
+
+  const firstShift = shifts[0]
+
+  const lastShift = shifts[shifts.length - 1]
+
+  const cashIn = roundMoney(Number(totals?.total_in || 0))
+
+  const cashOut = roundMoney(Number(totals?.total_out || 0))
+
+  let balanceBeforeHandover = 0
+  let endingDrawerBalance = 0
+
+  if (lastShift.status === 'closed') {
+    balanceBeforeHandover = roundMoney(
+      Number(
+        lastShift.closing_counted_amount ??
+          lastShift.expected_closing_amount ??
+          lastShift.opening_counted_amount ??
+          0,
+      ),
+    )
+
+    endingDrawerBalance = roundMoney(
+      Number(lastShift.left_for_next_shift ?? balanceBeforeHandover),
+    )
+  } else {
+    const preview = getCashShiftExpectedBalance(lastShift.id)
+
+    balanceBeforeHandover = roundMoney(
+      Number(preview.expected_closing_amount || 0),
+    )
+
+    endingDrawerBalance = balanceBeforeHandover
+  }
+
+  const closedShiftsCount = shifts.filter(
+    (shift) => shift.status === 'closed',
+  ).length
+
+  return {
+    business_date: businessDate,
+
+    user_id: userId > 0 ? userId : null,
+
+    shifts_count: shifts.length,
+
+    closed_shifts_count: closedShiftsCount,
+
+    has_open_shift: shifts.some((shift) => shift.status === 'open'),
+
+    all_closed: shifts.length > 0 && closedShiftsCount === shifts.length,
+
+    first_shift_id: Number(firstShift.id),
+
+    last_shift_id: Number(lastShift.id),
+
+    last_shift_status: lastShift.status,
+
+    opening_drawer_balance: roundMoney(
+      Number(firstShift.opening_counted_amount || 0),
+    ),
+
+    cash_in: cashIn,
+    cash_out: cashOut,
+
+    balance_before_handover: balanceBeforeHandover,
+
+    ending_drawer_balance: endingDrawerBalance,
   }
 }
 
