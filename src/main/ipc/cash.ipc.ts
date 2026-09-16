@@ -24,15 +24,24 @@ import {
   resolveCashShiftVariance,
 } from '../database/repositories/cash-shifts.repo'
 import { requireAdmin, requireAdminPassword } from './permission-helper'
-import { requireAuthenticatedUser } from '../auth-session'
+import {
+  requireAuthenticatedAdmin,
+  requireAuthenticatedUser,
+} from '../auth-session'
 
 export function registerCashIpc(): void {
-  ipcMain.handle('cash:summary', (_, input) => {
-    return getCashSummary(input)
+  ipcMain.handle('cash:summary', (event, input) => {
+    const user = requireAuthenticatedUser(event)
+
+    return getCashSummary({
+      ...(input || {}),
+
+      created_by: user.role === 'admin' ? input?.created_by : user.id,
+    })
   })
 
   ipcMain.handle('cash:transfer', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actorId = requireAuthenticatedAdmin(event)
 
     const openShift = resolveFinancialOperationShift(
       actorId,
@@ -47,12 +56,13 @@ export function registerCashIpc(): void {
     })
   })
 
-  ipcMain.handle('cash:list', (_, input) => {
+  ipcMain.handle('cash:list', (event, input) => {
+    requireAuthenticatedAdmin(event)
+
     return listCashMovements(input)
   })
-
   ipcMain.handle('cash:create-movement', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actorId = requireAuthenticatedAdmin(event)
 
     const type =
       input?.type === 'deposit'
@@ -295,9 +305,22 @@ export function registerCashIpc(): void {
   })
 
   ipcMain.handle('cash-shifts:preview', (event, shiftId) => {
-    requireAuthenticatedUser(event)
+    const actor = requireAuthenticatedUser(event)
 
-    return getCashShiftExpectedBalance(Number(shiftId))
+    const shift = getCashShiftById(Number(shiftId))
+
+    if (!shift) {
+      throw new Error('الشفت غير موجود')
+    }
+
+    if (
+      actor.role !== 'admin' &&
+      Number(shift.opened_by) !== Number(actor.id)
+    ) {
+      throw new Error('غير مصرح لك بعرض تفاصيل هذا الشفت')
+    }
+
+    return getCashShiftExpectedBalance(shift.id)
   })
 
   ipcMain.handle('cash-shifts:close', (event, input) => {
