@@ -320,7 +320,9 @@ export default function ShiftHistorySection({ users }: Props) {
 
         <div
           style={{
-            overflow: 'auto',
+            width: '100%',
+            maxWidth: '100%',
+            overflow: 'hidden',
             border: '1px solid rgba(255,255,255,0.08)',
             borderRadius: '14px',
           }}
@@ -328,41 +330,35 @@ export default function ShiftHistorySection({ users }: Props) {
           <table
             style={{
               width: '100%',
-              minWidth: '1250px',
               borderCollapse: 'collapse',
               direction: 'rtl',
+              tableLayout: 'fixed',
             }}
           >
+            <colgroup>
+              <col style={{ width: '4%' }} />
+              <col style={{ width: '9%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '18%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '10%' }} />
+            </colgroup>
+
             <thead>
               <tr>
                 <th style={thStyle}>الشفت</th>
-
                 <th style={thStyle}>الكاشير</th>
-
                 <th style={thStyle}>الحالة</th>
-
-                <th style={thStyle}>الفتح</th>
-
-                <th style={thStyle}>المدة</th>
-
-                <th style={thStyle}>افتتاح</th>
-
-                <th style={thStyle}>داخل</th>
-
-                <th style={thStyle}>خارج</th>
-
-                <th style={thStyle}>المتوقع</th>
-
-                <th style={thStyle}>الفعلي</th>
-
-                <th style={thStyle}>الفرق</th>
-
-                <th style={thStyle}>للشفت التالي</th>
-
-                <th style={thStyle}>توريد الآمنة</th>
-
-                <th style={thStyle}>الفروق</th>
-
+                <th style={thStyle}>وقت الشفت</th>
+                <th style={thStyle}>الافتتاح</th>
+                <th style={thStyle}>حركة الدرج</th>
+                <th style={thStyle}>الجرد</th>
+                <th style={thStyle}>التسليم</th>
+                <th style={thStyle}>الفروق والمراجعة</th>
                 <th style={thStyle}>إجراء</th>
               </tr>
             </thead>
@@ -371,7 +367,7 @@ export default function ShiftHistorySection({ users }: Props) {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={15}
+                    colSpan={10}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -391,7 +387,9 @@ export default function ShiftHistorySection({ users }: Props) {
                       borderTop: '1px solid rgba(255,255,255,0.06)',
                     }}
                   >
-                    <td style={tdStyle}>#{row.id}</td>
+                    <td style={tdStyle}>
+                      <strong>#{row.id}</strong>
+                    </td>
 
                     <td style={tdStyle}>{row.opened_by_name || '—'}</td>
 
@@ -405,64 +403,207 @@ export default function ShiftHistorySection({ users }: Props) {
                       </strong>
                     </td>
 
-                    <td style={tdStyle}>{formatDate(row.opened_at)}</td>
-
                     <td style={tdStyle}>
-                      {formatCashShiftDuration(row.duration_minutes)}
-                    </td>
+                      <div style={stackStyle}>
+                        <span>{formatDate(row.opened_at)}</span>
 
-                    <td style={tdStyle}>{money(row.opening_counted_amount)}</td>
-
-                    <td style={tdStyle}>{money(row.cash_in)}</td>
-
-                    <td style={tdStyle}>{money(row.cash_out)}</td>
-
-                    <td style={tdStyle}>
-                      {row.expected_closing_amount == null
-                        ? '—'
-                        : money(row.expected_closing_amount)}
+                        <span style={secondaryTextStyle}>
+                          {formatCashShiftDuration(row.duration_minutes)}
+                        </span>
+                      </div>
                     </td>
 
                     <td style={tdStyle}>
-                      {row.closing_counted_amount == null
-                        ? '—'
-                        : money(row.closing_counted_amount)}
+                      <div style={stackStyle}>
+                        <strong>
+                          {tableMoney(row.opening_counted_amount)}
+                        </strong>
+
+                        {Number(row.opening_difference || 0) !== 0 ? (
+                          <span
+                            style={{
+                              fontSize: '9px',
+                              fontWeight: 800,
+                              color:
+                                Number(row.opening_difference) < 0
+                                  ? '#f87171'
+                                  : '#fbbf24',
+                            }}
+                          >
+                            {Number(row.opening_difference) < 0
+                              ? `عجز ${tableMoney(
+                                  Math.abs(Number(row.opening_difference)),
+                                )}`
+                              : `زيادة ${tableMoney(
+                                  Number(row.opening_difference),
+                                )}`}
+                          </span>
+                        ) : (
+                          <span style={secondaryTextStyle}>بدون فرق</span>
+                        )}
+                      </div>
                     </td>
 
                     <td style={tdStyle}>
-                      {row.closing_difference == null
-                        ? '—'
-                        : money(row.closing_difference)}
+                      <div style={stackStyle}>
+                        <span>
+                          <span style={labelStyle}>داخل:</span>{' '}
+                          <strong
+                            style={{
+                              color: '#34d399',
+                            }}
+                          >
+                            {tableMoney(row.cash_in)}
+                          </strong>
+                        </span>
+
+                        <span>
+                          <span style={labelStyle}>خارج:</span>{' '}
+                          <strong
+                            style={{
+                              color: '#f87171',
+                            }}
+                          >
+                            {tableMoney(row.cash_out)}
+                          </strong>
+                        </span>
+                      </div>
                     </td>
 
                     <td style={tdStyle}>
-                      {row.left_for_next_shift == null
-                        ? '—'
-                        : money(row.left_for_next_shift)}
+                      <div style={stackStyle}>
+                        <span>
+                          <span style={labelStyle}>المتوقع:</span>{' '}
+                          <strong>
+                            {row.expected_closing_amount == null
+                              ? '—'
+                              : tableMoney(row.expected_closing_amount)}
+                          </strong>
+                        </span>
+
+                        <span>
+                          <span style={labelStyle}>الفعلي:</span>{' '}
+                          <strong>
+                            {row.closing_counted_amount == null
+                              ? '—'
+                              : tableMoney(row.closing_counted_amount)}
+                          </strong>
+                        </span>
+
+                        <span>
+                          <span style={labelStyle}>الفرق:</span>{' '}
+                          <strong
+                            style={{
+                              color:
+                                row.closing_difference == null
+                                  ? '#94a3b8'
+                                  : Number(row.closing_difference) < 0
+                                    ? '#f87171'
+                                    : Number(row.closing_difference) > 0
+                                      ? '#fbbf24'
+                                      : '#34d399',
+                            }}
+                          >
+                            {row.closing_difference == null
+                              ? '—'
+                              : tableMoney(row.closing_difference)}
+                          </strong>
+                        </span>
+                      </div>
                     </td>
 
                     <td style={tdStyle}>
-                      {row.safe_transfer_amount == null
-                        ? '—'
-                        : money(row.safe_transfer_amount)}
+                      <div style={stackStyle}>
+                        <span>
+                          <span style={labelStyle}>التالي:</span>{' '}
+                          <strong>
+                            {row.left_for_next_shift == null
+                              ? '—'
+                              : tableMoney(row.left_for_next_shift)}
+                          </strong>
+                        </span>
+
+                        <span>
+                          <span style={labelStyle}>الآمنة:</span>{' '}
+                          <strong>
+                            {row.safe_transfer_amount == null
+                              ? '—'
+                              : tableMoney(row.safe_transfer_amount)}
+                          </strong>
+                        </span>
+                      </div>
                     </td>
 
                     <td style={tdStyle}>
-                      <span
-                        style={{
-                          color:
-                            row.pending_variance_count > 0
-                              ? '#fbbf24'
-                              : '#94a3b8',
-                          fontWeight: 900,
-                        }}
-                      >
-                        {row.variance_count}
+                      <div style={stackStyle}>
+                        <span
+                          style={{
+                            color:
+                              row.pending_variance_count > 0
+                                ? '#fbbf24'
+                                : '#94a3b8',
+                            fontWeight: 900,
+                          }}
+                        >
+                          {row.variance_count}
+                          {row.pending_variance_count > 0
+                            ? ` (${row.pending_variance_count} معلقة)`
+                            : ''}
+                        </span>
 
-                        {row.pending_variance_count > 0
-                          ? ` (${row.pending_variance_count} معلقة)`
-                          : ''}
-                      </span>
+                        {Number(row.opening_difference || 0) !== 0 ? (
+                          <span
+                            style={{
+                              fontSize: '9px',
+                              fontWeight: 800,
+                              color:
+                                Number(row.opening_difference) < 0
+                                  ? '#f87171'
+                                  : '#fbbf24',
+                            }}
+                          >
+                            افتتاح:{' '}
+                            {Number(row.opening_difference) < 0
+                              ? `عجز ${tableMoney(
+                                  Math.abs(Number(row.opening_difference)),
+                                )}`
+                              : `زيادة ${tableMoney(
+                                  Number(row.opening_difference),
+                                )}`}
+                          </span>
+                        ) : null}
+
+                        {row.closing_difference != null &&
+                        Number(row.closing_difference) !== 0 ? (
+                          <span
+                            style={{
+                              fontSize: '9px',
+                              fontWeight: 800,
+                              color:
+                                Number(row.closing_difference) < 0
+                                  ? '#f87171'
+                                  : '#fbbf24',
+                            }}
+                          >
+                            إغلاق:{' '}
+                            {Number(row.closing_difference) < 0
+                              ? `عجز ${tableMoney(
+                                  Math.abs(Number(row.closing_difference)),
+                                )}`
+                              : `زيادة ${tableMoney(
+                                  Number(row.closing_difference),
+                                )}`}
+                          </span>
+                        ) : null}
+
+                        {Number(row.opening_difference || 0) === 0 &&
+                        (row.closing_difference == null ||
+                          Number(row.closing_difference) === 0) ? (
+                          <span style={secondaryTextStyle}>
+                            لا يوجد فرق مالي
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
 
                     <td style={tdStyle}>
@@ -481,7 +622,7 @@ export default function ShiftHistorySection({ users }: Props) {
               {!loading && rows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={15}
+                    colSpan={10}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -962,6 +1103,10 @@ function money(value?: number | null) {
   return `${Number(value || 0).toFixed(2)} ج.م`
 }
 
+function tableMoney(value?: number | null) {
+  return Number(value || 0).toFixed(2)
+}
+
 function formatDate(value?: string | null) {
   if (!value) {
     return '—'
@@ -1084,23 +1229,48 @@ const secondaryButtonStyle: React.CSSProperties = {
 
 const smallButtonStyle: React.CSSProperties = {
   ...primaryButtonStyle,
-  minHeight: '30px',
-  fontSize: '11px',
+  minHeight: '28px',
+  padding: '0 7px',
+  fontSize: '10px',
 }
 
 const thStyle: React.CSSProperties = {
-  padding: '10px',
+  padding: '9px 5px',
   color: '#cbd5e1',
   fontWeight: 900,
-  textAlign: 'right',
-  whiteSpace: 'nowrap',
+  fontSize: '11px',
+  lineHeight: 1.2,
+  textAlign: 'center',
+  verticalAlign: 'middle',
 }
 
 const tdStyle: React.CSSProperties = {
-  padding: '10px',
+  padding: '9px 5px',
   color: '#e5e7eb',
-  textAlign: 'right',
-  whiteSpace: 'nowrap',
+  fontSize: '11px',
+  lineHeight: 1.3,
+  textAlign: 'center',
+  verticalAlign: 'middle',
+  overflow: 'hidden',
+}
+
+const stackStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: '3px',
+  alignItems: 'center',
+  justifyItems: 'center',
+}
+
+const labelStyle: React.CSSProperties = {
+  color: '#94a3b8',
+  fontSize: '9px',
+  fontWeight: 700,
+}
+
+const secondaryTextStyle: React.CSSProperties = {
+  color: '#94a3b8',
+  fontSize: '9px',
+  fontWeight: 700,
 }
 
 const modalOverlayStyle: React.CSSProperties = {
