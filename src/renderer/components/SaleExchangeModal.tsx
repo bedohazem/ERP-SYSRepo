@@ -24,6 +24,9 @@ type ExchangeUnit = {
 
 type ExchangeGroup = {
   promotion_group_id: string
+
+  group_kind: 'promotion' | 'regular'
+
   units: ExchangeUnit[]
 }
 
@@ -32,14 +35,16 @@ type ExchangeState = {
 
   snapshot: {
     promotion_type: string
+
     buy_qty: number | null
     free_qty: number | null
 
     scope_type: string
+
     category_id: number | null
 
     product_ids: number[]
-  }
+  } | null
 
   groups: ExchangeGroup[]
   financials: {
@@ -187,10 +192,6 @@ export default function SaleExchangeModal({
           return
         }
 
-        if (result.snapshot?.promotion_type !== 'buy_x_get_y') {
-          throw new Error('الاستبدال من هذه الشاشة متاح لعروض اشتري وخد فقط')
-        }
-
         const activeGroups = (result.groups || []).filter(
           (group) =>
             group.units.length > 0 &&
@@ -198,13 +199,16 @@ export default function SaleExchangeModal({
         )
 
         if (activeGroups.length === 0) {
-          throw new Error('لا يوجد عرض متاح للاستبدال في هذه الفاتورة')
+          throw new Error('لا توجد قطع متاحة للاستبدال في هذه الفاتورة')
         }
 
         const nextState: ExchangeState = {
           sale: result.sale,
-          snapshot: result.snapshot,
+
+          snapshot: result.snapshot || null,
+
           groups: activeGroups,
+
           financials: result.financials,
         }
 
@@ -239,6 +243,11 @@ export default function SaleExchangeModal({
     )
   }, [state, groupId])
 
+  const selectedIsPromotion = Boolean(
+    selectedGroup?.group_kind === 'promotion' &&
+    state?.snapshot?.promotion_type === 'buy_x_get_y',
+  )
+
   const preview = useMemo(() => {
     if (!state || !selectedGroup) {
       return {
@@ -264,9 +273,14 @@ export default function SaleExchangeModal({
       oldUnits.reduce((sum, unit) => sum + unit.price, 0),
     )
 
-    const oldGroupPromotionDiscount = roundMoney(
-      oldUnits.reduce((sum, unit) => sum + (unit.isGift ? unit.price : 0), 0),
-    )
+    const oldGroupPromotionDiscount = selectedIsPromotion
+      ? roundMoney(
+          oldUnits.reduce(
+            (sum, unit) => sum + (unit.isGift ? unit.price : 0),
+            0,
+          ),
+        )
+      : 0
 
     const oldTotal = roundMoney(oldGroupGross - oldGroupPromotionDiscount)
 
@@ -284,17 +298,18 @@ export default function SaleExchangeModal({
       }
     })
 
-    const freeQty = Math.max(
-      0,
-      Math.floor(Number(state.snapshot.free_qty || 0)),
-    )
+    const freeQty = selectedIsPromotion
+      ? Math.max(0, Math.floor(Number(state.snapshot?.free_qty || 0)))
+      : 0
 
-    const giftIds = new Set(
-      [...nextUnits]
-        .sort((a, b) => a.price - b.price || a.id - b.id)
-        .slice(0, freeQty)
-        .map((unit) => unit.id),
-    )
+    const giftIds = selectedIsPromotion
+      ? new Set(
+          [...nextUnits]
+            .sort((a, b) => a.price - b.price || a.id - b.id)
+            .slice(0, freeQty)
+            .map((unit) => unit.id),
+        )
+      : new Set<number>()
 
     const newGroupGross = roundMoney(
       nextUnits.reduce((sum, unit) => sum + unit.price, 0),
@@ -376,14 +391,26 @@ export default function SaleExchangeModal({
       currentInvoiceNet,
       nextInvoiceNet,
     }
-  }, [state, selectedGroup, drafts])
+  }, [state, selectedGroup, selectedIsPromotion, drafts])
 
   function isEligibleVariant(variant: any) {
-    if (!state) {
+    if (!state || !selectedGroup) {
       return false
     }
 
+    /*
+     * الفاتورة العادية:
+     * أي Variant فعال مسموح.
+     */
+    if (selectedGroup.group_kind === 'regular') {
+      return true
+    }
+
     const snapshot = state.snapshot
+
+    if (!snapshot) {
+      return false
+    }
 
     if (snapshot.scope_type === 'all') {
       return true
@@ -459,7 +486,8 @@ export default function SaleExchangeModal({
         query,
 
         categoryId:
-          state.snapshot.scope_type === 'category'
+          selectedGroup?.group_kind === 'promotion' &&
+          state.snapshot?.scope_type === 'category'
             ? state.snapshot.category_id
             : null,
 
@@ -485,7 +513,11 @@ export default function SaleExchangeModal({
       )
 
       if (eligible.length === 0) {
-        setError('لم يتم العثور على صنف بديل مؤهل لنفس العرض الأصلي')
+        setError(
+          selectedGroup?.group_kind === 'promotion'
+            ? 'لم يتم العثور على صنف بديل مؤهل لنفس العرض الأصلي'
+            : 'لم يتم العثور على صنف بديل متاح',
+        )
       }
     } catch (searchError) {
       setError(getErrorMessage(searchError, 'تعذر البحث عن الصنف البديل'))
@@ -522,12 +554,12 @@ export default function SaleExchangeModal({
     }
 
     if (!selectedGroup) {
-      setError('اختار العرض المطلوب استبداله')
+      setError('اختار القطعة أو العرض المطلوب استبداله')
       return
     }
 
     if (drafts.length === 0) {
-      setError('اختار قطعة واحدة أو اختار استبدال العرض كاملًا')
+      setError('اختار القطعة المطلوب استبدالها')
       return
     }
 
@@ -636,7 +668,9 @@ export default function SaleExchangeModal({
                 fontWeight: 700,
               }}
             >
-              يتم إعادة حساب العرض حسب شروطه الأصلية، والأرخص يصبح الهدية.
+              {selectedIsPromotion
+                ? 'يتم إعادة حساب العرض حسب شروطه الأصلية، والأرخص يصبح الهدية.'
+                : 'اختار القطعة الحالية ثم الصنف البديل، وسيتم حساب فرق السعر تلقائيًا.'}
             </div>
           </div>
 
@@ -704,7 +738,7 @@ export default function SaleExchangeModal({
                     fontWeight: 800,
                   }}
                 >
-                  اختار العرض
+                  اختار القطعة / العرض
                 </label>
 
                 <select
@@ -720,7 +754,13 @@ export default function SaleExchangeModal({
                       key={group.promotion_group_id}
                       value={group.promotion_group_id}
                     >
-                      عرض {index + 1}
+                      {group.group_kind === 'regular'
+                        ? `${
+                            group.units[0]?.current_product_name || 'قطعة'
+                          } — ${group.units[0]?.current_size || '—'} / ${
+                            group.units[0]?.current_color || '—'
+                          }`
+                        : `عرض ${index + 1} — ${group.units.length} قطع`}
                     </option>
                   ))}
                 </select>
@@ -739,15 +779,21 @@ export default function SaleExchangeModal({
                     flexWrap: 'wrap',
                   }}
                 >
-                  <strong>القطع الحالية داخل العرض</strong>
+                  <strong>
+                    {selectedIsPromotion
+                      ? 'القطع الحالية داخل العرض'
+                      : 'القطعة الحالية'}
+                  </strong>
 
-                  <button
-                    type="button"
-                    onClick={startWholeGroupExchange}
-                    style={secondaryButtonStyle}
-                  >
-                    استبدال العرض كاملًا
-                  </button>
+                  {selectedIsPromotion && (
+                    <button
+                      type="button"
+                      onClick={startWholeGroupExchange}
+                      style={secondaryButtonStyle}
+                    >
+                      استبدال العرض كاملًا
+                    </button>
+                  )}
                 </div>
 
                 <div
@@ -802,7 +848,11 @@ export default function SaleExchangeModal({
                           fontWeight: 900,
                         }}
                       >
-                        {Number(unit.current_is_gift) === 1 ? 'هدية' : 'مدفوعة'}
+                        {selectedIsPromotion
+                          ? Number(unit.current_is_gift) === 1
+                            ? 'هدية'
+                            : 'مدفوعة'
+                          : 'قطعة عادية'}
                       </span>
 
                       <button
@@ -926,12 +976,16 @@ export default function SaleExchangeModal({
                   }}
                 >
                   <div style={summaryCardStyle}>
-                    قيمة العرض الحالية
+                    {selectedIsPromotion
+                      ? 'قيمة العرض الحالية'
+                      : 'قيمة القطعة الحالية'}
                     <strong>{money(preview.oldTotal)}</strong>
                   </div>
 
                   <div style={summaryCardStyle}>
-                    قيمة العرض بعد الاستبدال
+                    {selectedIsPromotion
+                      ? 'قيمة العرض بعد الاستبدال'
+                      : 'قيمة القطعة بعد الاستبدال'}
                     <strong>{money(preview.newTotal)}</strong>
                   </div>
 

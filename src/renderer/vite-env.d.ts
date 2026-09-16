@@ -520,10 +520,11 @@ declare global {
           category_id: number | null
           product_ids_json: string
           product_ids: number[]
-        }
+        } | null
 
         groups: Array<{
           promotion_group_id: string
+          group_kind: 'promotion' | 'regular'
           units: Array<{
             id: number
             sale_id: number

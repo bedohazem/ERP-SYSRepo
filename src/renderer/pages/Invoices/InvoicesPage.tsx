@@ -1795,21 +1795,23 @@ export default function InvoicesPage() {
                         طباعة
                       </button>
 
-                      {!sale.cancelled_at &&
-                        Number(sale.promotion_id || 0) > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setExchangeSaleId(sale.id)}
-                            style={{
-                              ...smallButtonStyle,
-                              borderColor: '#22c55e',
-                              color: '#86efac',
-                              background: 'rgba(34,197,94,0.10)',
-                            }}
-                          >
-                            استبدال
-                          </button>
-                        )}
+                      {!sale.cancelled_at && (
+                        <button
+                          type="button"
+                          onClick={() => setExchangeSaleId(sale.id)}
+                          style={{
+                            ...smallButtonStyle,
+
+                            borderColor: '#22c55e',
+
+                            color: '#86efac',
+
+                            background: 'rgba(34,197,94,0.10)',
+                          }}
+                        >
+                          استبدال
+                        </button>
+                      )}
 
                       {!sale.cancelled_at && (
                         <button
@@ -2744,12 +2746,12 @@ export default function InvoicesPage() {
               }}
             >
               <SummaryLine
-                label="قيمة العرض قبل"
+                label="القيمة قبل الاستبدال"
                 value={money(selectedExchange.old_group_total)}
               />
 
               <SummaryLine
-                label="قيمة العرض بعد"
+                label="القيمة بعد الاستبدال"
                 value={money(selectedExchange.new_group_total)}
               />
 
