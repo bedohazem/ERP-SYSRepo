@@ -9,6 +9,7 @@ import {
   openCashShift,
   getCashShiftOpeningPreview,
   requireOperationalCashShift,
+  resolveFinancialOperationShift,
 } from '../../src/main/database/repositories/cash-shifts.repo'
 
 import {
@@ -152,6 +153,72 @@ describe('cash shifts repository', () => {
      * المستخدم رقم 1 هو الأدمن الافتراضي.
      */
     expect(requireOperationalCashShift(1).id).toBe(shift.id)
+  })
+
+  it('allows admin non-drawer financial operations without an open shift', () => {
+    expect(resolveFinancialOperationShift(1, ['owner_bank'])).toBeNull()
+
+    expect(resolveFinancialOperationShift(1, ['owner_cash'])).toBeNull()
+
+    expect(resolveFinancialOperationShift(1, ['owner_vodafone'])).toBeNull()
+
+    expect(() =>
+      resolveFinancialOperationShift(
+        1,
+        ['store_cash'],
+        'لا يمكن تنفيذ العملية بدون شفت مفتوح',
+      ),
+    ).toThrow('لا يمكن تنفيذ العملية بدون شفت مفتوح')
+  })
+
+  it('requires cashiers to have their own shift for every financial account', () => {
+    const db = getDb()
+
+    db.prepare(
+      `
+      INSERT INTO users (
+        name,
+        username,
+        password,
+        role,
+        is_active
+      )
+      VALUES (?, ?, ?, 'cashier', 1)
+      `,
+    ).run('Financial Shift Cashier', 'financial_shift_cashier', 'x')
+
+    const cashier = db
+      .prepare(
+        `
+        SELECT id
+        FROM users
+        WHERE username = 'financial_shift_cashier'
+        `,
+      )
+      .get() as {
+      id: number
+    }
+
+    expect(() =>
+      resolveFinancialOperationShift(
+        cashier.id,
+        ['owner_bank'],
+        'لا يمكن تنفيذ العملية بدون شفت مفتوح',
+      ),
+    ).toThrow('لا يمكن تنفيذ العملية بدون شفت مفتوح')
+
+    const shift = openCashShift({
+      opening_counted_amount: 100,
+      opened_by: cashier.id,
+    })
+
+    expect(resolveFinancialOperationShift(cashier.id, ['owner_bank'])?.id).toBe(
+      shift.id,
+    )
+
+    expect(resolveFinancialOperationShift(cashier.id, ['store_cash'])?.id).toBe(
+      shift.id,
+    )
   })
 
   it('calculates expected drawer balance from shift cash movements', () => {
