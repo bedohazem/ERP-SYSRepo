@@ -202,7 +202,7 @@ export default function CashPage() {
   const [transferring, setTransferring] = useState(false)
 
   function canManageCashMovement(item: CashMovement) {
-    if (item.cancelled_at) {
+    if (item.cancelled_at || Number(item.replacement_movement_id || 0) > 0) {
       return false
     }
 

@@ -10,6 +10,7 @@ import {
   updateCashMovement,
   cancelCashDayClosing,
   updateCashDayClosing,
+  getCashMovementMutationContext,
   listCashMovements,
 } from '../database/repositories/cash.repo'
 import {
@@ -148,10 +149,37 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash:update-movement', (event, input) => {
     try {
       const actorId = requireAuthenticatedUser(event).id
+
       requireAdminPassword(actorId, input?.admin_password)
 
+      const movementId = Number(input?.id)
+
+      const mutationContext = getCashMovementMutationContext(movementId)
+
+      const requestedAccounts: string[] = []
+
+      if (mutationContext.kind === 'manual') {
+        if (input?.payment_method) {
+          requestedAccounts.push(String(input.payment_method))
+        }
+      } else {
+        if (input?.from_account) {
+          requestedAccounts.push(String(input.from_account))
+        }
+
+        if (input?.to_account) {
+          requestedAccounts.push(String(input.to_account))
+        }
+      }
+
+      const openShift = resolveFinancialOperationShift(
+        actorId,
+        [...mutationContext.accounts, ...requestedAccounts],
+        'لا يمكن تعديل حركة تؤثر على درج المحل بدون شفت مفتوح',
+      )
+
       return updateCashMovement({
-        id: Number(input?.id),
+        id: movementId,
 
         type: input?.type,
 
@@ -166,6 +194,8 @@ export function registerCashIpc(): void {
         notes: input?.notes,
 
         actor_id: actorId,
+
+        shift_id: openShift?.id ?? null,
       })
     } catch (error) {
       return {
@@ -180,16 +210,32 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash:cancel-movement', (event, input) => {
     try {
       const actorId = requireAuthenticatedUser(event).id
+
       requireAdminPassword(actorId, input?.admin_password)
 
+      const movementId = Number(input?.id)
+
+      const mutationContext = getCashMovementMutationContext(movementId)
+
+      const openShift = resolveFinancialOperationShift(
+        actorId,
+        mutationContext.accounts,
+        'لا يمكن إلغاء حركة تؤثر على درج المحل بدون شفت مفتوح',
+      )
+
       return cancelCashMovement({
-        id: Number(input?.id),
+        id: movementId,
+
         reason: input?.reason,
+
         actor_id: actorId,
+
+        shift_id: openShift?.id ?? null,
       })
     } catch (error) {
       return {
         success: false,
+
         message:
           error instanceof Error ? error.message : 'تعذر إلغاء حركة الخزنة',
       }
