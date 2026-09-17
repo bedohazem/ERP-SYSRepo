@@ -52,6 +52,18 @@ type DashboardState = {
 type CashierDashboardSummary = {
   date: string
 
+  shift: {
+    id: number
+
+    status: 'open' | 'closed'
+
+    opening_counted_amount: number
+
+    opened_at: string
+
+    closed_at: string | null
+  } | null
+
   sales: {
     invoices_count: number
     cancelled_invoices_count: number
@@ -83,6 +95,7 @@ type CashierDashboardSummary = {
 
   operations: {
     customer_payments_count: number
+    customer_payments_total: number
     cancelled_customer_payments_count: number
 
     expenses_count: number
@@ -95,7 +108,7 @@ type CashierDashboardSummary = {
 
 const emptyCashierDashboard: CashierDashboardSummary = {
   date: '',
-
+  shift: null,
   sales: {
     invoices_count: 0,
     cancelled_invoices_count: 0,
@@ -127,6 +140,7 @@ const emptyCashierDashboard: CashierDashboardSummary = {
 
   operations: {
     customer_payments_count: 0,
+    customer_payments_total: 0,
     cancelled_customer_payments_count: 0,
 
     expenses_count: 0,
@@ -195,17 +209,15 @@ export default function DashboardPage() {
     getMonthStartKey(new Date()),
   )
 
-  const [cashierDate, setCashierDate] = useState(todayKey)
-
-  async function loadDashboard(targetDate = cashierDate) {
-    setLoading(true)
+  async function loadDashboard(silent = false) {
+    if (!silent) {
+      setLoading(true)
+    }
     setMessage('')
 
     try {
       if (isCashier) {
-        const result = await window.api.getCashierDashboardSummary({
-          date: targetDate || todayKey,
-        })
+        const result = await window.api.getCashierDashboardSummary()
 
         setCashierSummary(result)
       } else {
@@ -250,7 +262,9 @@ export default function DashboardPage() {
 
       setMessage('حدث خطأ أثناء تحميل لوحة التحكم')
     } finally {
-      setLoading(false)
+      if (!silent) {
+        setLoading(false)
+      }
     }
   }
 
@@ -268,15 +282,31 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => {
-    if (!user?.id || !isCashier) return
+    if (!user?.id || !isCashier) {
+      return
+    }
 
-    void loadDashboard(cashierDate)
-  }, [user?.id, isCashier, cashierDate])
+    void loadDashboard()
+
+    /*
+     * لو تم قفل الشفت وفتح
+     * شفت جديد، الشاشة تتغير
+     * تلقائيًا حتى لو المستخدم
+     * فضل واقف على الـDashboard.
+     */
+    const timer = window.setInterval(() => {
+      void loadDashboard(true)
+    }, 15_000)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [user?.id, isCashier])
 
   useEffect(() => {
     if (!user?.id || isCashier) return
 
-    void loadDashboard(todayKey)
+    void loadDashboard()
   }, [user?.id, isCashier, todayKey])
 
   const bestProduct = data.month.topProducts[0]
@@ -286,15 +316,10 @@ export default function DashboardPage() {
   if (isCashier) {
     return (
       <CashierRevenueView
-        selectedDate={cashierDate}
-        maxDate={todayKey}
         cashierName={user?.name || user?.username || 'الكاشير'}
         summary={cashierSummary}
         lastUpdated={lastUpdated}
         loading={loading}
-        onDateChange={(date) => {
-          setCashierDate(date || todayKey)
-        }}
         onNewSale={() => navigate('/sales')}
         onInvoices={() => navigate('/invoices')}
         onCustomers={() => navigate('/customers')}
@@ -895,6 +920,34 @@ function money(value: unknown) {
   return `${Number(value || 0).toFixed(2)} ج.م`
 }
 
+function formatShiftTime(value?: string | null) {
+  if (!value) {
+    return '—'
+  }
+
+  try {
+    const raw = String(value)
+
+    const hasTimezone = /Z$|[+-]\d{2}:\d{2}$/.test(raw)
+
+    const normalized = hasTimezone ? raw : `${raw.replace(' ', 'T')}Z`
+
+    const date = new Date(normalized)
+
+    if (Number.isNaN(date.getTime())) {
+      return raw
+    }
+
+    return date.toLocaleTimeString('ar-EG', {
+      hour: '2-digit',
+
+      minute: '2-digit',
+    })
+  } catch {
+    return String(value)
+  }
+}
+
 function formatDateOnly(value?: string) {
   if (!value) return '—'
 
@@ -1118,30 +1171,22 @@ const toastStyle: CSSProperties = {
 }
 
 function CashierRevenueView({
-  selectedDate,
-  maxDate,
   cashierName,
   summary,
   lastUpdated,
   loading,
-  onDateChange,
   onNewSale,
   onInvoices,
   onCustomers,
   onExpenses,
   onStockCount,
 }: {
-  selectedDate: string
-  maxDate: string
-
   cashierName: string
 
   summary: CashierDashboardSummary
 
   lastUpdated: string
   loading: boolean
-
-  onDateChange: (date: string) => void
 
   onNewSale: () => void
   onInvoices: () => void
@@ -1202,17 +1247,67 @@ function CashierRevenueView({
               {cashierName}
             </h2>
 
-            <p
+            <div
               style={{
-                margin: '8px 0 0',
+                display: 'flex',
 
-                color: '#94a3b8',
+                alignItems: 'center',
 
-                fontWeight: 700,
+                gap: '8px',
+
+                marginTop: '10px',
+
+                flexWrap: 'wrap',
               }}
             >
-              التاريخ: {selectedDate}
-            </p>
+              <span
+                style={{
+                  display: 'inline-flex',
+
+                  alignItems: 'center',
+
+                  gap: '7px',
+
+                  padding: '7px 12px',
+
+                  borderRadius: '999px',
+
+                  background: summary.shift
+                    ? 'rgba(34,197,94,0.10)'
+                    : 'rgba(239,68,68,0.10)',
+
+                  border: summary.shift
+                    ? '1px solid rgba(34,197,94,0.28)'
+                    : '1px solid rgba(239,68,68,0.28)',
+
+                  color: summary.shift ? '#86efac' : '#fca5a5',
+
+                  fontWeight: 900,
+
+                  fontSize: '13px',
+                }}
+              >
+                <span>{summary.shift ? '●' : '○'}</span>
+
+                {summary.shift
+                  ? `الشفت المفتوح #${summary.shift.id}`
+                  : 'لا يوجد شفت مفتوح'}
+              </span>
+
+              {summary.shift && (
+                <span
+                  style={{
+                    color: '#94a3b8',
+
+                    fontWeight: 800,
+
+                    fontSize: '13px',
+                  }}
+                >
+                  بدأ الساعة {formatShiftTime(summary.shift.opened_at)}
+                </span>
+              )}
+            </div>
 
             <p
               style={{
@@ -1240,55 +1335,6 @@ function CashierRevenueView({
               alignItems: 'flex-end',
             }}
           >
-            <label
-              style={{
-                display: 'grid',
-
-                gap: '6px',
-
-                color: '#94a3b8',
-
-                fontWeight: 800,
-
-                fontSize: '13px',
-              }}
-            >
-              <span>عرض يوم</span>
-
-              <input
-                type="date"
-                value={selectedDate}
-                max={maxDate}
-                disabled={loading}
-                onChange={(e) => onDateChange(e.target.value)}
-                style={{
-                  minHeight: '44px',
-
-                  borderRadius: '12px',
-
-                  border: '1px solid rgba(255,255,255,0.12)',
-
-                  background: 'rgba(255,255,255,0.06)',
-
-                  color: '#fff',
-
-                  padding: '0 12px',
-
-                  fontWeight: 800,
-
-                  colorScheme: 'dark',
-                }}
-              />
-            </label>
-
-            <button
-              type="button"
-              onClick={() => onDateChange(maxDate)}
-              style={secondaryButtonStyle}
-            >
-              اليوم
-            </button>
-
             <button
               type="button"
               onClick={onNewSale}
@@ -1404,6 +1450,21 @@ function CashierRevenueView({
           subtitle="الأرقام المالية بعد الإلغاء والمرتجعات والاستبدالات"
         />
 
+        <CashierMiniCard
+          title="رصيد بداية الشفت"
+          value={
+            summary.shift ? money(summary.shift.opening_counted_amount) : '—'
+          }
+          subtitle={
+            summary.shift
+              ? `شفت #${summary.shift.id} • ${
+                  summary.shift.status === 'open' ? 'مفتوح حاليًا' : 'مغلق'
+                }`
+              : 'لا يوجد شفت مسجل في هذا اليوم'
+          }
+          tone="blue"
+        />
+
         <div
           style={{
             ...statsGridStyle,
@@ -1468,8 +1529,10 @@ function CashierRevenueView({
 
           <CashierMiniCard
             title="دفعات العملاء"
-            value={String(summary.operations.customer_payments_count)}
-            subtitle={`عمليات ملغاة: ${
+            value={money(summary.operations.customer_payments_total)}
+            subtitle={`${
+              summary.operations.customer_payments_count
+            } دفعة • ملغاة: ${
               summary.operations.cancelled_customer_payments_count
             }`}
             tone="blue"
@@ -1478,7 +1541,7 @@ function CashierRevenueView({
           <CashierMiniCard
             title="جلسات الجرد"
             value={String(summary.operations.stock_count_sessions_count)}
-            subtitle="جلسات الجرد التي بدأتها في التاريخ المحدد"
+            subtitle="جلسات الجرد التي عملت عليها خلال الشفت"
             tone="blue"
           />
         </div>

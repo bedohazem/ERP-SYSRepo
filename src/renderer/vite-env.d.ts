@@ -1036,8 +1036,32 @@ declare global {
       // Reports
       // =========================
 
-      getCashierDashboardSummary: (input: { date: string }) => Promise<{
+      getCashierDashboardSummary: () => Promise<{
         date: string
+
+        shift: {
+          id: number
+
+          status: 'open' | 'closed'
+
+          opening_counted_amount: number
+
+          opened_at: string
+
+          closed_at: string | null
+        } | null
+
+        shift: {
+          id: number
+
+          status: 'open' | 'closed'
+
+          opening_counted_amount: number
+
+          opened_at: string
+
+          closed_at: string | null
+        } | null
 
         sales: {
           invoices_count: number
@@ -1070,10 +1094,15 @@ declare global {
 
         operations: {
           customer_payments_count: number
+
+          customer_payments_total: number
+
           cancelled_customer_payments_count: number
 
           expenses_count: number
+
           cancelled_expenses_count: number
+
           expenses_total: number
 
           stock_count_sessions_count: number

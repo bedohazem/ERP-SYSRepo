@@ -7,7 +7,6 @@ type ReportFilter = {
 }
 
 export type CashierDashboardInput = {
-  date: string
   user_id: number
 }
 
@@ -1819,26 +1818,130 @@ export function getReportsSummary(input?: ReportFilter) {
 export function getCashierDashboardSummary(input: CashierDashboardInput) {
   const db = getDb()
 
-  const date = String(input?.date || '').trim()
-
   const userId = Number(input?.user_id || 0)
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new Error('تاريخ لوحة الكاشير غير صحيح')
-  }
 
   if (!Number.isInteger(userId) || userId <= 0) {
     throw new Error('المستخدم غير صحيح')
   }
 
+  /*
+   * Dashboard الكاشير مرتبطة
+   * بالشفت المفتوح نفسه،
+   * وليس بتاريخ اليوم.
+   */
+  const shift = db
+    .prepare(
+      `
+      SELECT
+        cs.id,
+        cs.status,
+        cs.opening_counted_amount,
+        cs.opened_at,
+        cs.closed_at,
+
+        date(
+          cs.opened_at,
+          'localtime'
+        ) AS business_date
+
+      FROM cash_shifts cs
+
+      WHERE
+        cs.status = 'open'
+
+        AND
+          cs.opened_by = ?
+
+      ORDER BY
+        cs.id DESC
+
+      LIMIT 1
+      `,
+    )
+    .get(userId) as any
+
+  /*
+   * لو مفيش شفت مفتوح:
+   * ممنوع نعرض أرقام الشفت السابق.
+   */
+  if (!shift) {
+    return {
+      date: '',
+
+      shift: null,
+
+      sales: {
+        invoices_count: 0,
+
+        cancelled_invoices_count: 0,
+
+        invoice_sales: 0,
+
+        returns_count: 0,
+
+        cancelled_returns_count: 0,
+
+        returns_total: 0,
+
+        exchanges_count: 0,
+
+        cancelled_exchanges_count: 0,
+
+        exchange_adjustment: 0,
+
+        exchange_cash_collection: 0,
+
+        exchange_cash_refund: 0,
+
+        exchange_cash_difference: 0,
+
+        exchange_debt_reduction: 0,
+
+        net_sales: 0,
+      },
+
+      discounts: {
+        normal: 0,
+        promotion: 0,
+        loyalty: 0,
+        total: 0,
+      },
+
+      operations: {
+        customer_payments_count: 0,
+
+        customer_payments_total: 0,
+
+        cancelled_customer_payments_count: 0,
+
+        expenses_count: 0,
+
+        cancelled_expenses_count: 0,
+
+        expenses_total: 0,
+
+        stock_count_sessions_count: 0,
+      },
+    }
+  }
+
+  const shiftId = Number(shift.id)
+
+  /*
+   * فواتير البيع التي أنشأها
+   * هذا الكاشير داخل الشفت الحالي.
+   */
   const sales = db
     .prepare(
       `
       SELECT
-        COUNT(*) AS invoices_count,
+        COUNT(*)
+          AS invoices_count,
 
         IFNULL(
-          SUM(s.grand_total),
+          SUM(
+            s.grand_total
+          ),
           0
         ) AS invoice_sales,
 
@@ -1884,23 +1987,16 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           s.cancelled_at
           IS NULL
 
-        AND s.user_id = ?
-
         AND
-          COALESCE(
-            NULLIF(
-              s.business_date,
-              ''
-            ),
-            date(
-              s.created_at,
-              'localtime'
-            )
-          ) = ?
+          s.shift_id = ?
       `,
     )
-    .get(userId, date) as any
+    .get(shiftId) as any
 
+  /*
+   * الإلغاءات التي نفذها
+   * الكاشير في الشفت الحالي.
+   */
   const cancelledSales = db
     .prepare(
       `
@@ -1910,36 +2006,26 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
       FROM sales s
 
       WHERE
-        IFNULL(
-          s.type,
-          'sale'
-        ) = 'sale'
+        s.cancelled_at
+        IS NOT NULL
 
         AND
-          s.cancelled_at
-          IS NOT NULL
-
-        AND s.user_id = ?
-
-        AND
-          date(
-            s.cancelled_at,
-            'localtime'
-          ) = ?
+          s.cancelled_shift_id = ?
       `,
     )
-    .get(userId, date) as any
+    .get(shiftId) as any
 
   /*
-   * المرتجع ينسب لصاحب
-   * الفاتورة الأصلية،
-   * وليس لمن ضغط زر المرتجع.
+   * المرتجعات هنا مرتبطة
+   * بالشفت الذي تم فيه المرتجع،
+   * وليس بصاحب الفاتورة القديمة.
    */
   const returns = db
     .prepare(
       `
       SELECT
-        COUNT(*) AS returns_count,
+        COUNT(*)
+          AS returns_count,
 
         IFNULL(
           SUM(
@@ -1954,25 +2040,27 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
               WHEN
                 sr.normal_discount_value
                 IS NOT NULL
+
               THEN
                 sr.normal_discount_value
 
-              ELSE MAX(
-                0,
+              ELSE
+                MAX(
+                  0,
 
-                sr.sub_total
-                - sr.refund_amount
+                  sr.sub_total
+                  - sr.refund_amount
 
-                - IFNULL(
-                    sr.loyalty_discount_value,
-                    0
-                  )
+                  - IFNULL(
+                      sr.loyalty_discount_value,
+                      0
+                    )
 
-                - IFNULL(
-                    sr.promotion_discount_value,
-                    0
-                  )
-              )
+                  - IFNULL(
+                      sr.promotion_discount_value,
+                      0
+                    )
+                )
             END
           ),
           0
@@ -2014,21 +2102,10 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           IS NULL
 
         AND
-          IFNULL(
-            os.type,
-            'sale'
-          ) = 'sale'
-
-        AND os.user_id = ?
-
-        AND
-          date(
-            sr.created_at,
-            'localtime'
-          ) = ?
+          sr.shift_id = ?
       `,
     )
-    .get(userId, date) as any
+    .get(shiftId) as any
 
   const cancelledReturns = db
     .prepare(
@@ -2038,35 +2115,26 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
 
       FROM sale_returns sr
 
-      JOIN sales os
-        ON
-          os.id =
-            sr.original_sale_id
-
       WHERE
         sr.cancelled_at
         IS NOT NULL
 
-        AND os.user_id = ?
-
         AND
-          date(
-            sr.cancelled_at,
-            'localtime'
-          ) = ?
+          sr.cancelled_shift_id = ?
       `,
     )
-    .get(userId, date) as any
+    .get(shiftId) as any
 
   /*
-   * الاستبدال كذلك ينسب
-   * لصاحب الفاتورة الأصلية.
+   * الاستبدالات التي تم تنفيذها
+   * في الشفت الحالي فقط.
    */
   const exchanges = db
     .prepare(
       `
       SELECT
-        COUNT(*) AS exchanges_count,
+        COUNT(*)
+          AS exchanges_count,
 
         IFNULL(
           SUM(
@@ -2095,7 +2163,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           ),
           0
         ) AS exchange_debt_reduction,
-        
+
         IFNULL(
           SUM(
             COALESCE(
@@ -2160,27 +2228,10 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           IS NULL
 
         AND
-          IFNULL(
-            os.type,
-            'sale'
-          ) = 'sale'
-
-        AND os.user_id = ?
-
-        AND
-          COALESCE(
-            NULLIF(
-              se.business_date,
-              ''
-            ),
-            date(
-              se.created_at,
-              'localtime'
-            )
-          ) = ?
+          se.shift_id = ?
       `,
     )
-    .get(userId, date) as any
+    .get(shiftId) as any
 
   const cancelledExchanges = db
     .prepare(
@@ -2190,58 +2241,44 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
 
       FROM sale_exchanges se
 
-      JOIN sales os
-        ON
-          os.id =
-            se.original_sale_id
-
       WHERE
         se.cancelled_at
         IS NOT NULL
 
-        AND os.user_id = ?
-
         AND
-          date(
-            se.cancelled_at,
-            'localtime'
-          ) = ?
+          se.cancelled_shift_id = ?
       `,
     )
-    .get(userId, date) as any
+    .get(shiftId) as any
 
   /*
-   * الحاجات دي عمليات نفذها
-   * الكاشير نفسه، لذلك هنا
-   * نعتمد created_by.
+   * دفعات العملاء:
+   * عدد + إجمالي قيمة.
    */
   const customerPayments = db
     .prepare(
       `
       SELECT
-        COUNT(*) AS count
+        COUNT(*) AS count,
+
+        IFNULL(
+          SUM(
+            b.amount
+          ),
+          0
+        ) AS total
 
       FROM customer_payment_batches b
 
       WHERE
-        b.cancelled_at IS NULL
-
-        AND b.created_by = ?
+        b.cancelled_at
+        IS NULL
 
         AND
-          COALESCE(
-            NULLIF(
-              b.business_date,
-              ''
-            ),
-            date(
-              b.created_at,
-              'localtime'
-            )
-          ) = ?
+          b.shift_id = ?
       `,
     )
-    .get(userId, date) as any
+    .get(shiftId) as any
 
   const cancelledCustomerPayments = db
     .prepare(
@@ -2254,17 +2291,11 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
         WHERE
           b.cancelled_at
           IS NOT NULL
-
-          AND b.created_by = ?
-
           AND
-            date(
-              b.cancelled_at,
-              'localtime'
-            ) = ?
+            b.cancelled_shift_id = ?
         `,
     )
-    .get(userId, date) as any
+    .get(shiftId) as any
 
   const expenses = db
     .prepare(
@@ -2273,25 +2304,23 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
         COUNT(*) AS count,
 
         IFNULL(
-          SUM(e.amount),
+          SUM(
+            e.amount
+          ),
           0
         ) AS total
 
       FROM expenses e
 
       WHERE
-        e.cancelled_at IS NULL
-
-        AND e.created_by = ?
+        e.cancelled_at
+        IS NULL
 
         AND
-          date(
-            e.created_at,
-            'localtime'
-          ) = ?
+          e.shift_id = ?
       `,
     )
-    .get(userId, date) as any
+    .get(shiftId) as any
 
   const cancelledExpenses = db
     .prepare(
@@ -2305,36 +2334,51 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
         e.cancelled_at
         IS NOT NULL
 
-        AND e.created_by = ?
-
         AND
-          date(
-            e.cancelled_at,
-            'localtime'
-          ) = ?
+          e.cancelled_shift_id = ?
       `,
     )
-    .get(userId, date) as any
+    .get(shiftId) as any
 
+  /*
+   * جلسات الجرد ليس لها shift_id
+   * حاليًا، والكاشير لا ينشئ
+   * الجلسة أصلًا.
+   *
+   * لذلك نحسب جلسات الجرد التي
+   * عمل عليها فعليًا منذ فتح الشفت.
+   */
   const stockCounts = db
     .prepare(
       `
       SELECT
-        COUNT(*) AS count
+        COUNT(
+          DISTINCT
+          al.entity_id
+        ) AS count
 
-      FROM stock_count_sessions scs
+      FROM activity_logs al
 
       WHERE
-        scs.created_by = ?
+        al.user_id = ?
 
         AND
-          date(
-            scs.created_at,
-            'localtime'
-          ) = ?
+          al.entity =
+            'stock_counts'
+
+        AND
+          al.action IN (
+            'stock_count_item_updated',
+            'stock_count_barcode_scanned'
+          )
+
+        AND
+          datetime(
+            al.created_at
+          ) >= datetime(?)
       `,
     )
-    .get(userId, date) as any
+    .get(userId, shift.opened_at) as any
 
   const invoiceSales = reportMoney(sales?.invoice_sales)
 
@@ -2388,14 +2432,26 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
     normalDiscount + promotionDiscount + loyaltyDiscount,
   )
 
-  /*
-   * المعادلة الوحيدة المعتمدة
-   * في شاشة الكاشير.
-   */
   const netSales = reportMoney(invoiceSales + exchangeAdjustment - returnsTotal)
 
   return {
-    date,
+    date: String(shift.business_date || ''),
+
+    /*
+     * لا نرجع expected opening
+     * ولا opening difference.
+     */
+    shift: {
+      id: shiftId,
+
+      status: 'open' as const,
+
+      opening_counted_amount: reportMoney(shift.opening_counted_amount),
+
+      opened_at: String(shift.opened_at || ''),
+
+      closed_at: null,
+    },
 
     sales: {
       invoices_count: Number(sales?.invoices_count || 0),
@@ -2415,6 +2471,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
       cancelled_exchanges_count: Number(cancelledExchanges?.count || 0),
 
       exchange_adjustment: exchangeAdjustment,
+
       exchange_cash_collection: exchangeCashCollection,
 
       exchange_cash_refund: exchangeCashRefund,
@@ -2438,6 +2495,8 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
 
     operations: {
       customer_payments_count: Number(customerPayments?.count || 0),
+
+      customer_payments_total: reportMoney(customerPayments?.total),
 
       cancelled_customer_payments_count: Number(
         cancelledCustomerPayments?.count || 0,

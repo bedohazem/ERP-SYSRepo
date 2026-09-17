@@ -24,12 +24,18 @@ import { createPurchaseInvoice } from '../../src/main/database/repositories/purc
 import { createSupplier } from '../../src/main/database/repositories/suppliers.repo'
 
 import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
-import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
+import {
+  closeCashShift,
+  getOpenCashShift,
+  openCashShift,
+} from '../../src/main/database/repositories/cash-shifts.repo'
 import { createUser } from '../../src/main/database/repositories/user.repo'
 import {
   createSaleExchange,
   getSaleExchangeState,
 } from '../../src/main/database/repositories/sales-exchange.repo'
+import { recordCustomerPayment } from '../../src/main/database/repositories/customers.repo'
+
 type ReportVariantTestRow = {
   variant_id: number
   product_id: number
@@ -786,7 +792,7 @@ describe('reports repository', () => {
     expect(second?.net_sales).toBe(200)
   })
 
-  it('removes returned invoice discounts from the cashier dashboard even when another user creates the return', () => {
+  it('removes returned invoice discounts from the active shift dashboard even when another admin creates the return', () => {
     const variant = seedReportProduct({
       name: 'Cashier Discount Return',
 
@@ -799,23 +805,12 @@ describe('reports repository', () => {
       sellPrice: 200,
     })
 
-    const saleOwner = createUser(
-      'Dashboard Cashier',
-
-      'dashboard_cashier',
-
-      '1234',
-
-      /*
-       * Admin فقط داخل التست
-       * عشان يشتغل على نفس
-       * الشفت المفتوح.
-       */
-      'admin',
-    )
-
+    /*
+     * beforeEach فتح شفت
+     * المستخدم 1 بالفعل.
+     */
     const sale = createSale({
-      user_id: saleOwner.id,
+      user_id: 1,
 
       customer_id: null,
 
@@ -853,13 +848,25 @@ describe('reports repository', () => {
     const receipt = getSaleReceipt(sale.saleId) as any
 
     /*
-     * المرتجع ينفذه المستخدم 1
-     * وليس صاحب الفاتورة.
+     * مستخدم Admin آخر
+     * ينفذ المرتجع،
+     * لكن العملية نفسها تحدث
+     * داخل نفس الشفت المفتوح.
      */
+    const secondAdmin = createUser(
+      'Return Admin',
+
+      'return_admin',
+
+      '1234',
+
+      'admin',
+    )
+
     createSaleReturn({
       original_sale_id: sale.saleId,
 
-      user_id: 1,
+      user_id: secondAdmin.id,
 
       reason: 'Full dashboard return',
 
@@ -874,26 +881,8 @@ describe('reports repository', () => {
       ],
     })
 
-    const db = getDb()
-
-    const today = db
-      .prepare(
-        `
-        SELECT
-          date(
-            'now',
-            'localtime'
-          ) AS day
-        `,
-      )
-      .get() as {
-      day: string
-    }
-
     const dashboard = getCashierDashboardSummary({
-      date: today.day,
-
-      user_id: saleOwner.id,
+      user_id: 1,
     })
 
     expect(dashboard.sales.invoice_sales).toBe(150)
@@ -1036,8 +1025,6 @@ describe('reports repository', () => {
     }
 
     const dashboard = getCashierDashboardSummary({
-      date: today.day,
-
       user_id: 1,
     })
 
@@ -1052,5 +1039,296 @@ describe('reports repository', () => {
     expect(dashboard.sales.exchange_cash_difference).toBe(-180)
 
     expect(dashboard.sales.net_sales).toBe(20)
+  })
+
+  it('shows customer payment total and counted shift opening on cashier dashboard', () => {
+    const variant = seedReportProduct({
+      name: 'Dashboard Payment Product',
+
+      barcode: 'DASH-PAYMENT',
+
+      openingQty: 20,
+
+      buyPrice: 100,
+
+      sellPrice: 500,
+    })
+
+    const customer = createTestCustomer(
+      'Dashboard Payment Customer',
+
+      '01088888888',
+    )
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: customer.id,
+
+      sub_total: 500,
+
+      discount_value: 0,
+
+      grand_total: 500,
+
+      paid: 200,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 500,
+        },
+      ],
+    })
+
+    recordCustomerPayment({
+      customer_id: customer.id,
+
+      sale_id: sale.saleId,
+
+      amount: 125,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    const db = getDb()
+
+    db.prepare(
+      `
+      UPDATE cash_shifts
+
+      SET
+        opening_counted_amount =
+          350
+
+      WHERE
+        status = 'open'
+
+        AND opened_by = 1
+      `,
+    ).run()
+
+    const today = db
+      .prepare(
+        `
+        SELECT
+          date(
+            'now',
+            'localtime'
+          ) AS day
+        `,
+      )
+      .get() as {
+      day: string
+    }
+
+    const dashboard = getCashierDashboardSummary({
+      user_id: 1,
+    })
+
+    expect(dashboard.operations.customer_payments_count).toBe(1)
+
+    expect(dashboard.operations.customer_payments_total).toBe(125)
+
+    expect(dashboard.shift).toBeTruthy()
+
+    expect(dashboard.shift?.opening_counted_amount).toBe(350)
+
+    expect(dashboard.shift?.status).toBe('open')
+  })
+
+  it('resets the cashier dashboard when a new shift starts', () => {
+    const variant = seedReportProduct({
+      name: 'Shift Dashboard Product',
+
+      barcode: 'SHIFT-DASHBOARD',
+
+      openingQty: 20,
+
+      buyPrice: 50,
+
+      sellPrice: 100,
+    })
+
+    /*
+     * beforeEach فتح بالفعل
+     * الشفت الأول للمستخدم 1.
+     */
+    const firstShift = getOpenCashShift()
+
+    expect(firstShift).toBeTruthy()
+
+    createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 100,
+
+      discount_value: 0,
+
+      grand_total: 100,
+
+      paid: 100,
+
+      change_amount: 0,
+
+      payment_method: 'owner_bank',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 100,
+        },
+      ],
+    })
+
+    const firstDashboard = getCashierDashboardSummary({
+      user_id: 1,
+    })
+
+    expect(firstDashboard.shift?.id).toBe(firstShift!.id)
+
+    expect(firstDashboard.sales.invoice_sales).toBe(100)
+
+    closeCashShift({
+      shift_id: firstShift!.id,
+
+      closing_counted_amount: 0,
+
+      left_for_next_shift: 0,
+
+      closed_by: 1,
+    })
+
+    const secondCashier = createUser(
+      'Second Shift Cashier',
+
+      'second_shift_cashier',
+
+      '1234',
+
+      /*
+       * Admin في التست فقط
+       * لتجنب قيود تشغيلية
+       * ليست موضوع الاختبار.
+       */
+      'admin',
+    )
+
+    const secondShift = openCashShift({
+      opening_counted_amount: 75,
+
+      opened_by: secondCashier.id,
+    })
+
+    /*
+     * بمجرد فتح شفت جديد:
+     * Dashboard تبدأ من صفر.
+     */
+    const emptySecondDashboard = getCashierDashboardSummary({
+      user_id: secondCashier.id,
+    })
+
+    expect(emptySecondDashboard.shift?.id).toBe(secondShift.id)
+
+    expect(emptySecondDashboard.shift?.opening_counted_amount).toBe(75)
+
+    expect(emptySecondDashboard.sales.invoice_sales).toBe(0)
+
+    expect(emptySecondDashboard.sales.invoices_count).toBe(0)
+
+    createSale({
+      user_id: secondCashier.id,
+
+      customer_id: null,
+
+      sub_total: 200,
+
+      discount_value: 0,
+
+      grand_total: 200,
+
+      paid: 200,
+
+      change_amount: 0,
+
+      payment_method: 'owner_bank',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 2,
+
+          unit_price: 100,
+        },
+      ],
+    })
+
+    const secondDashboard = getCashierDashboardSummary({
+      user_id: secondCashier.id,
+    })
+
+    expect(secondDashboard.shift?.id).toBe(secondShift.id)
+
+    expect(secondDashboard.sales.invoice_sales).toBe(200)
+
+    expect(secondDashboard.sales.invoices_count).toBe(1)
+
+    /*
+     * مبيعات الشفت الأول
+     * لم تنتقل للشفت الثاني.
+     */
+    expect(secondDashboard.sales.invoice_sales).not.toBe(300)
+
+    /*
+     * صاحب الشفت القديم لا يرى
+     * بياناته القديمة في Dashboard
+     * بعد انتهاء شفته.
+     */
+    const oldCashierDashboard = getCashierDashboardSummary({
+      user_id: 1,
+    })
+
+    expect(oldCashierDashboard.shift).toBeNull()
+
+    expect(oldCashierDashboard.sales.invoice_sales).toBe(0)
   })
 })

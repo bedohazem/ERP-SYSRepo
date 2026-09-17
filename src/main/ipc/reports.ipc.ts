@@ -17,16 +17,10 @@ export function registerReportsIpc(): void {
     return getReportsSummary(input || {})
   })
 
-  ipcMain.handle('reports:cashier-dashboard', (event, input) => {
+  ipcMain.handle('reports:cashier-dashboard', (event) => {
     const user = requireAuthenticatedUser(event)
 
     return getCashierDashboardSummary({
-      date: String(input?.date || ''),
-
-      /*
-       * ممنوع نأخذ ID من
-       * الـrenderer.
-       */
       user_id: user.id,
     })
   })

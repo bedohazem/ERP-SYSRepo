@@ -148,7 +148,7 @@ describe('financial IPC session scope', () => {
     expect(Number(result.balance)).toBe(40)
   })
 
-  it('gives cashiers only their safe dashboard and blocks full reports', async () => {
+  it('gives cashiers only their active shift dashboard and blocks full reports', async () => {
     const db = getDb()
 
     const admin = findUserByUsername('admin')!
@@ -163,12 +163,22 @@ describe('financial IPC session scope', () => {
       'cashier',
     )
 
+    /*
+     * شفت قديم للمدير.
+     */
+    const adminShift = openCashShift({
+      opening_counted_amount: 0,
+
+      opened_by: admin.id,
+    })
+
     const insertSale = db.prepare(
       `
         INSERT INTO sales (
           type,
           user_id,
           business_date,
+          shift_id,
           sub_total,
           discount_value,
           grand_total,
@@ -185,6 +195,7 @@ describe('financial IPC session scope', () => {
             'localtime'
           ),
           ?,
+          ?,
           0,
           ?,
           ?,
@@ -194,23 +205,28 @@ describe('financial IPC session scope', () => {
         `,
     )
 
-    insertSale.run(admin.id, 100, 100, 100)
+    insertSale.run(admin.id, adminShift.id, 100, 100, 100)
 
-    insertSale.run(cashier.id, 40, 40, 40)
+    closeCashShift({
+      shift_id: adminShift.id,
 
-    const today = db
-      .prepare(
-        `
-        SELECT
-          date(
-            'now',
-            'localtime'
-          ) AS day
-        `,
-      )
-      .get() as {
-      day: string
-    }
+      closing_counted_amount: 0,
+
+      left_for_next_shift: 0,
+
+      closed_by: admin.id,
+    })
+
+    /*
+     * يبدأ شفت الكاشير الجديد.
+     */
+    const cashierShift = openCashShift({
+      opening_counted_amount: 0,
+
+      opened_by: cashier.id,
+    })
+
+    insertSale.run(cashier.id, cashierShift.id, 40, 40, 40)
 
     const { event } = makeClient()
 
@@ -220,16 +236,18 @@ describe('financial IPC session scope', () => {
       'هذه العملية متاحة لمدير النظام فقط',
     )
 
+    /*
+     * محاولة إرسال ID المدير
+     * لا تغير الشفت الذي يراه
+     * الكاشير.
+     */
     const result = await invoke(event, 'reports:cashier-dashboard', {
-      date: today.day,
-
-      /*
-       * حتى لو حاول يبعث
-       * ID المدير،
-       * الـIPC يتجاهله.
-       */
       user_id: admin.id,
+
+      shift_id: adminShift.id,
     })
+
+    expect(result.shift?.id).toBe(cashierShift.id)
 
     expect(result.sales.invoices_count).toBe(1)
 
