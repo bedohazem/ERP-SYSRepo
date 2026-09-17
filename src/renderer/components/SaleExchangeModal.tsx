@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CASH_ACCOUNT_OPTIONS } from '../utils/payment-method'
+import {
+  getPromotionRulesText,
+  getPromotionScopeLabel,
+  getPromotionTypeLabel,
+} from '../utils/promotion-display'
 
 type ExchangeUnit = {
   id: number
@@ -35,7 +40,8 @@ type ExchangeState = {
 
   snapshot: {
     promotion_type: string
-
+    promotion_name: string
+    promotion_value: number
     buy_qty: number | null
     free_qty: number | null
 
@@ -257,6 +263,18 @@ export default function SaleExchangeModal({
     Boolean(state?.sale?.promotion_id || state?.sale?.promotion_name)
 
   const promotionName = String(state?.sale?.promotion_name || 'عرض')
+
+  const historicalPromotionName = String(
+    state?.snapshot?.promotion_name || promotionName,
+  )
+
+  const promotionTypeLabel = getPromotionTypeLabel(
+    state?.snapshot?.promotion_type,
+  )
+
+  const promotionRulesText = getPromotionRulesText(state?.snapshot)
+
+  const promotionScopeLabel = getPromotionScopeLabel(state?.snapshot)
 
   const preview = useMemo(() => {
     if (!state || !selectedGroup) {
@@ -741,7 +759,7 @@ export default function SaleExchangeModal({
                   fontWeight: 800,
                 }}
               >
-                العرض المطبق على الفاتورة
+                العرض وقت البيع
               </span>
 
               <strong
@@ -749,8 +767,29 @@ export default function SaleExchangeModal({
                   color: '#86efac',
                 }}
               >
-                {promotionName}
+                {historicalPromotionName}
               </strong>
+              <span
+                style={{
+                  color: '#cbd5e1',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                }}
+              >
+                {promotionTypeLabel}
+              </span>
+
+              <span
+                style={{
+                  color: '#94a3b8',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                }}
+              >
+                {promotionRulesText}
+                {' — '}
+                النطاق: {promotionScopeLabel}
+              </span>
             </div>
 
             <strong

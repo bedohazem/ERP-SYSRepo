@@ -12,6 +12,11 @@ import FinancialCancelModal from '../../components/FinancialCancelModal'
 import SaleExchangeModal from '../../components/SaleExchangeModal'
 
 import { getActiveSaleReturnHistory } from '../../utils/sale-return-history'
+import {
+  getPromotionRulesText,
+  getPromotionScopeLabel,
+  getPromotionTypeLabel,
+} from '../../utils/promotion-display'
 
 type SaleRow = {
   id: number
@@ -185,7 +190,7 @@ type ReceiptData = {
   }
 
   financials?: any
-
+  promotion_snapshot?: any | null
   exchanges?: any[]
 }
 
@@ -256,6 +261,8 @@ async function loadCurrentReceiptData(saleId: number): Promise<ReceiptData> {
 
   return {
     ...state.current_receipt,
+
+    promotion_snapshot: state.promotion_snapshot,
 
     original_receipt: state.original_receipt,
 
@@ -2997,14 +3004,113 @@ export default function InvoicesPage() {
                       العرض المطبق
                     </span>
 
-                    <strong
-                      style={{
-                        color: '#86efac',
-                        fontSize: '15px',
-                      }}
-                    >
-                      {selectedReceipt.sale.promotion_name || 'عرض'}
-                    </strong>
+                    {Number(
+                      selectedReceipt.sale.promotion_discount_value || 0,
+                    ) > 0 && (
+                      <div
+                        style={{
+                          gridColumn: '1 / -1',
+
+                          padding: '14px',
+
+                          borderRadius: '12px',
+
+                          border: '1px solid rgba(34,197,94,0.28)',
+
+                          background: 'rgba(34,197,94,0.08)',
+
+                          display: 'grid',
+
+                          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+
+                          gap: '14px',
+                        }}
+                      >
+                        <div style={statCardStyle}>
+                          العرض وقت البيع
+                          <strong
+                            style={{
+                              color: '#86efac',
+                            }}
+                          >
+                            {selectedReceipt.promotion_snapshot
+                              ?.promotion_name ||
+                              selectedReceipt.sale.promotion_name ||
+                              'عرض'}
+                          </strong>
+                        </div>
+
+                        <div style={statCardStyle}>
+                          نوع العرض
+                          <strong>
+                            {getPromotionTypeLabel(
+                              selectedReceipt.promotion_snapshot
+                                ?.promotion_type,
+                            )}
+                          </strong>
+                        </div>
+
+                        <div style={statCardStyle}>
+                          شروط العرض
+                          <strong>
+                            {getPromotionRulesText(
+                              selectedReceipt.promotion_snapshot,
+                            )}
+                          </strong>
+                        </div>
+
+                        <div style={statCardStyle}>
+                          نطاق العرض
+                          <strong>
+                            {getPromotionScopeLabel(
+                              selectedReceipt.promotion_snapshot,
+                            )}
+                          </strong>
+                        </div>
+
+                        <div
+                          style={{
+                            gridColumn: '1 / -1',
+
+                            display: 'flex',
+                            justifyContent: 'space-between',
+
+                            alignItems: 'center',
+
+                            gap: '12px',
+
+                            flexWrap: 'wrap',
+
+                            paddingTop: '10px',
+
+                            borderTop: '1px solid rgba(34,197,94,0.18)',
+                          }}
+                        >
+                          <span
+                            style={{
+                              color: '#94a3b8',
+                              fontWeight: 800,
+                            }}
+                          >
+                            خصم العرض وقت البيع
+                          </span>
+
+                          <strong
+                            style={{
+                              color: '#86efac',
+                              fontSize: '15px',
+                            }}
+                          >
+                            {money(
+                              selectedReceipt.financials
+                                ?.original_promotion_discount_value ??
+                                selectedReceipt.sale.promotion_discount_value ??
+                                0,
+                            )}
+                          </strong>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div

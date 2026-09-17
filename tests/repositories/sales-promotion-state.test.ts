@@ -15,6 +15,7 @@ import {
   getSaleReceipt,
 } from '../../src/main/database/repositories/sales.repo'
 import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
+import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo'
 
 type TestVariant = {
   variant_id: number
@@ -296,5 +297,23 @@ describe('sale promotion exchange state', () => {
     expect(Number(snapshot.free_qty)).toBe(1)
     expect(Number(snapshot.category_id)).toBe(result.promoCategoryId)
     expect(snapshot.scope_type).toBe('category')
+
+    const state = getSaleCurrentState(result.sale.saleId)
+
+    expect(state.promotion_snapshot).toBeTruthy()
+
+    expect(state.promotion_snapshot.promotion_name).toBe('Original Buy 2 Get 1')
+
+    expect(state.promotion_snapshot.promotion_type).toBe('buy_x_get_y')
+
+    expect(Number(state.promotion_snapshot.buy_qty)).toBe(2)
+
+    expect(Number(state.promotion_snapshot.free_qty)).toBe(1)
+
+    expect(state.promotion_snapshot.scope_type).toBe('category')
+
+    expect(Number(state.promotion_snapshot.category_id)).toBe(
+      result.promoCategoryId,
+    )
   })
 })

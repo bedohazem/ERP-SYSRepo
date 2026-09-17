@@ -292,6 +292,32 @@ declare global {
       getSaleCurrentState: (saleId: number) => Promise<{
         sale: any
 
+        promotion_snapshot: {
+          sale_id: number
+
+          promotion_id: number
+
+          promotion_name: string
+
+          promotion_type:
+            | 'percent'
+            | 'fixed_per_item'
+            | 'fixed_invoice'
+            | 'buy_x_get_y'
+
+          promotion_value: number
+
+          buy_qty: number | null
+
+          free_qty: number | null
+
+          scope_type: 'all' | 'category' | 'products'
+
+          category_id: number | null
+
+          product_ids_json: string
+        } | null
+
         financials: {
           original_sub_total: number
 

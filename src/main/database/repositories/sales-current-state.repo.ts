@@ -55,6 +55,30 @@ export function getSaleCurrentState(saleIdInput: number) {
     throw new Error('الفاتورة غير موجودة')
   }
 
+  const promotionSnapshot = db
+    .prepare(
+      `
+    SELECT
+      sale_id,
+      promotion_id,
+      promotion_name,
+      promotion_type,
+      promotion_value,
+      buy_qty,
+      free_qty,
+      scope_type,
+      category_id,
+      product_ids_json
+
+    FROM sale_promotion_snapshots
+
+    WHERE sale_id = ?
+
+    LIMIT 1
+    `,
+    )
+    .get(saleId) as any
+
   const loyaltySnapshot = db
     .prepare(
       `
@@ -942,6 +966,8 @@ export function getSaleCurrentState(saleIdInput: number) {
     sale: currentSale,
 
     financials,
+
+    promotion_snapshot: promotionSnapshot || null,
 
     loyalty_snapshot: effectiveLoyaltySnapshot,
 
