@@ -1652,7 +1652,7 @@ export default function CashPage() {
                   onChange={(e) => setTransferFromAccount(e.target.value)}
                   style={inputStyle}
                 >
-                  {CASH_ACCOUNT_OPTIONS.map((option) => {
+                  {CASH_SUMMARY_ACCOUNT_OPTIONS.map((option) => {
                     const balance = Number(
                       accountBalances.find(
                         (account) => account.value === option.value,
@@ -1674,7 +1674,7 @@ export default function CashPage() {
                   onChange={(e) => setTransferToAccount(e.target.value)}
                   style={inputStyle}
                 >
-                  {CASH_ACCOUNT_OPTIONS.map((option) => (
+                  {CASH_SUMMARY_ACCOUNT_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -1759,7 +1759,7 @@ export default function CashPage() {
                   onChange={(e) => setEditTransferFrom(e.target.value)}
                   style={inputStyle}
                 >
-                  {CASH_ACCOUNT_OPTIONS.map((option) => (
+                  {CASH_SUMMARY_ACCOUNT_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -1773,7 +1773,7 @@ export default function CashPage() {
                   onChange={(e) => setEditTransferTo(e.target.value)}
                   style={inputStyle}
                 >
-                  {CASH_ACCOUNT_OPTIONS.map((option) => (
+                  {CASH_SUMMARY_ACCOUNT_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
