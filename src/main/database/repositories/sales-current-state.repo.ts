@@ -133,6 +133,10 @@ export function getSaleCurrentState(saleIdInput: number) {
     )
     .all(saleId) as any[]
 
+  const originalItemById = new Map<number, any>(
+    originalItems.map((item: any) => [Number(item.id), item]),
+  )
+
   const loyalty = db
     .prepare(
       `
@@ -216,6 +220,19 @@ export function getSaleCurrentState(saleIdInput: number) {
 
     const isRegular = isRegularUnitGroupId(groupId)
 
+    const originalItem = originalItemById.get(
+      Number(unit.original_sale_item_id),
+    )
+
+    const originalItemQuantity = Math.max(
+      1,
+      Number(originalItem?.quantity || 1),
+    )
+
+    const originalPromotionDiscountPerUnit = isRegular
+      ? positive(originalItem?.promotion_discount_value) / originalItemQuantity
+      : 0
+
     const key = isRegular
       ? [
           'regular',
@@ -266,6 +283,8 @@ export function getSaleCurrentState(saleIdInput: number) {
 
         line_total: 0,
 
+        is_regular_unit: isRegular,
+
         is_gift: isRegular ? 0 : Number(unit.current_is_gift || 0),
 
         promotion_group_id: isRegular ? null : groupId,
@@ -283,6 +302,10 @@ export function getSaleCurrentState(saleIdInput: number) {
     }
 
     bucket.quantity += 1
+
+    if (isRegular) {
+      bucket.promotion_discount_value += originalPromotionDiscountPerUnit
+    }
 
     bucket.returned_quantity += Number(unit.is_returned || 0) === 1 ? 1 : 0
 
@@ -313,7 +336,11 @@ export function getSaleCurrentState(saleIdInput: number) {
 
         line_total: lineTotal,
 
-        promotion_discount_value: Number(item.is_gift) === 1 ? lineTotal : 0,
+        promotion_discount_value: item.is_regular_unit
+          ? roundMoney(Number(item.promotion_discount_value || 0))
+          : Number(item.is_gift) === 1
+            ? lineTotal
+            : 0,
       }
     },
   )

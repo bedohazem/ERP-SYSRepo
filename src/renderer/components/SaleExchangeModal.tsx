@@ -248,6 +248,16 @@ export default function SaleExchangeModal({
     state?.snapshot?.promotion_type === 'buy_x_get_y',
   )
 
+  const recordedPromotionDiscount = Number(
+    state?.sale?.promotion_discount_value || 0,
+  )
+
+  const hasRecordedPromotion =
+    recordedPromotionDiscount > 0 &&
+    Boolean(state?.sale?.promotion_id || state?.sale?.promotion_name)
+
+  const promotionName = String(state?.sale?.promotion_name || 'عرض')
+
   const preview = useMemo(() => {
     if (!state || !selectedGroup) {
       return {
@@ -670,7 +680,11 @@ export default function SaleExchangeModal({
             >
               {selectedIsPromotion
                 ? 'يتم إعادة حساب العرض حسب شروطه الأصلية، والأرخص يصبح الهدية.'
-                : 'اختار القطعة الحالية ثم الصنف البديل، وسيتم حساب فرق السعر تلقائيًا.'}
+                : hasRecordedPromotion
+                  ? `الفاتورة عليها عرض "${promotionName}" بخصم ${money(
+                      recordedPromotionDiscount,
+                    )}. يتم الحفاظ على خصم العرض المسجل أثناء الاستبدال.`
+                  : 'اختار القطعة الحالية ثم الصنف البديل، وسيتم حساب فرق السعر تلقائيًا.'}
             </div>
           </div>
 
@@ -692,6 +706,61 @@ export default function SaleExchangeModal({
             ×
           </button>
         </div>
+
+        {state && hasRecordedPromotion && (
+          <div
+            style={{
+              padding: '12px 14px',
+              marginBottom: '14px',
+
+              borderRadius: '12px',
+
+              border: '1px solid rgba(34,197,94,0.30)',
+
+              background: 'rgba(34,197,94,0.08)',
+
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+
+              gap: '12px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div
+              style={{
+                display: 'grid',
+                gap: '3px',
+              }}
+            >
+              <span
+                style={{
+                  color: '#94a3b8',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                }}
+              >
+                العرض المطبق على الفاتورة
+              </span>
+
+              <strong
+                style={{
+                  color: '#86efac',
+                }}
+              >
+                {promotionName}
+              </strong>
+            </div>
+
+            <strong
+              style={{
+                color: '#f8fafc',
+              }}
+            >
+              خصم العرض: {money(recordedPromotionDiscount)}
+            </strong>
+          </div>
+        )}
 
         {error && (
           <div
