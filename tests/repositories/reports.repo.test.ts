@@ -22,6 +22,7 @@ import { createSupplier } from '../../src/main/database/repositories/suppliers.r
 
 import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
 import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
+import { createUser } from '../../src/main/database/repositories/user.repo'
 
 type ReportVariantTestRow = {
   variant_id: number
@@ -100,6 +101,23 @@ type ReportsSummaryTestResult = {
     total_manual_withdrawals: number
     final_net_profit: number
   }
+  cashierSales: Array<{
+    user_id: number | null
+
+    cashier_name: string
+
+    sales_count: number
+    sales_total: number
+
+    returns_count: number
+    returns_total: number
+
+    exchange_count: number
+
+    exchange_adjustment: number
+
+    net_sales: number
+  }>
   topProducts: ReportTopProductRow[]
   dailySales: ReportDailySaleRow[]
   paymentMethods: ReportPaymentMethodRow[]
@@ -190,7 +208,7 @@ describe('reports repository', () => {
     expect(report.summary.total_expenses).toBe(0)
     expect(report.summary.total_liability_payments).toBe(0)
     expect(report.summary.total_purchase_invoices).toBe(0)
-
+    expect(report.cashierSales).toHaveLength(0)
     expect(report.summary.total_manual_deposits).toBe(0)
 
     expect(report.summary.total_manual_withdrawals).toBe(0)
@@ -617,5 +635,148 @@ describe('reports repository', () => {
     expect(report.summary.total_manual_deposits).toBe(500)
 
     expect(report.summary.total_manual_withdrawals).toBe(120)
+  })
+  it('groups monthly sales by cashier', () => {
+    const variant = seedReportProduct({
+      name: 'Cashier Monthly Product',
+
+      barcode: 'CASHIER-MONTHLY',
+
+      openingQty: 50,
+
+      buyPrice: 50,
+
+      sellPrice: 100,
+    })
+
+    const secondUser = createUser(
+      'Second Cashier',
+
+      'second_cashier_report',
+
+      '1234',
+
+      /*
+       * Admin هنا فقط لتسهيل
+       * تشغيل الـrepository test
+       * على نفس الشفت المفتوح.
+       */
+      'admin',
+    )
+
+    const firstSale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 100,
+      discount_value: 0,
+      grand_total: 100,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 100,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 100,
+        },
+      ],
+    })
+
+    const secondSale = createSale({
+      user_id: secondUser.id,
+
+      customer_id: null,
+
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 200,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 200,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 2,
+
+          unit_price: 100,
+        },
+      ],
+    })
+
+    const db = getDb()
+
+    db.prepare(
+      `
+      UPDATE sales
+      SET business_date = ?
+      WHERE id = ?
+      `,
+    ).run('2026-09-05', firstSale.saleId)
+
+    db.prepare(
+      `
+      UPDATE sales
+      SET business_date = ?
+      WHERE id = ?
+      `,
+    ).run('2026-09-06', secondSale.saleId)
+
+    const report = getReportsSummary({
+      date_from: '2026-09-01',
+
+      date_to: '2026-09-30',
+    }) as ReportsSummaryTestResult
+
+    expect(report.cashierSales).toHaveLength(2)
+
+    const first = report.cashierSales.find((row) => Number(row.user_id) === 1)
+
+    const second = report.cashierSales.find(
+      (row) => Number(row.user_id) === Number(secondUser.id),
+    )
+
+    expect(first).toBeTruthy()
+    expect(second).toBeTruthy()
+
+    expect(first?.sales_count).toBe(1)
+
+    expect(first?.sales_total).toBe(100)
+
+    expect(first?.net_sales).toBe(100)
+
+    expect(second?.sales_count).toBe(1)
+
+    expect(second?.sales_total).toBe(200)
+
+    expect(second?.net_sales).toBe(200)
   })
 })

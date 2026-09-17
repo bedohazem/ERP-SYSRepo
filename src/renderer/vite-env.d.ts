@@ -1079,6 +1079,23 @@ declare global {
         topProducts: Array<any>
         dailySales: Array<any>
         paymentMethods: Array<any>
+        cashierSales: Array<{
+          user_id: number | null
+
+          cashier_name: string
+
+          sales_count: number
+          sales_total: number
+
+          returns_count: number
+          returns_total: number
+
+          exchange_count: number
+
+          exchange_adjustment: number
+
+          net_sales: number
+        }>
         lowStock: Array<any>
         topCustomers: Array<any>
       }>

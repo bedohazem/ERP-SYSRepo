@@ -1264,6 +1264,240 @@ export function getReportsSummary(input?: ReportFilter) {
     )
     .all(...combinedWhere.params)
 
+  const cashierSales = db
+    .prepare(
+      `
+    SELECT
+      x.user_id,
+
+      COALESCE(
+        u.name,
+        'مستخدم غير معروف'
+      ) AS cashier_name,
+
+      IFNULL(
+        SUM(x.sales_count),
+        0
+      ) AS sales_count,
+
+      IFNULL(
+        SUM(x.sale_amount),
+        0
+      ) AS sales_total,
+
+      IFNULL(
+        SUM(x.returns_count),
+        0
+      ) AS returns_count,
+
+      IFNULL(
+        SUM(x.return_amount),
+        0
+      ) AS returns_total,
+
+      IFNULL(
+        SUM(x.exchange_count),
+        0
+      ) AS exchange_count,
+
+      IFNULL(
+        SUM(
+          x.exchange_adjustment
+        ),
+        0
+      ) AS exchange_adjustment,
+
+      IFNULL(
+        SUM(
+          x.sale_amount
+          - x.return_amount
+          + x.exchange_adjustment
+        ),
+        0
+      ) AS net_sales
+
+    FROM (
+      /*
+       * البيع ينسب للكاشير
+       * الذي أنشأ الفاتورة.
+       */
+      SELECT
+        s.user_id,
+
+        COALESCE(
+          NULLIF(
+            s.business_date,
+            ''
+          ),
+          date(
+            s.created_at,
+            'localtime'
+          )
+        ) AS business_date,
+
+        1 AS sales_count,
+
+        s.grand_total
+          AS sale_amount,
+
+        0 AS returns_count,
+
+        0 AS return_amount,
+
+        0 AS exchange_count,
+
+        0 AS exchange_adjustment
+
+      FROM sales s
+
+      WHERE
+        IFNULL(
+          s.type,
+          'sale'
+        ) = 'sale'
+
+        AND
+          s.cancelled_at
+          IS NULL
+
+      UNION ALL
+
+      /*
+       * المرتجع يقلل مبيعات
+       * صاحب الفاتورة الأصلية،
+       * حتى لو نفذه مستخدم آخر.
+       */
+      SELECT
+        os.user_id,
+
+        date(
+          sr.created_at,
+          'localtime'
+        ) AS business_date,
+
+        0 AS sales_count,
+
+        0 AS sale_amount,
+
+        1 AS returns_count,
+
+        sr.refund_amount
+          AS return_amount,
+
+        0 AS exchange_count,
+
+        0 AS exchange_adjustment
+
+      FROM sale_returns sr
+
+      JOIN sales os
+        ON os.id =
+          sr.original_sale_id
+
+      WHERE
+        sr.cancelled_at
+        IS NULL
+
+        AND
+          os.cancelled_at
+          IS NULL
+
+        AND
+          IFNULL(
+            os.type,
+            'sale'
+          ) = 'sale'
+
+      UNION ALL
+
+      /*
+       * فرق الاستبدال يضاف أو
+       * يخصم من صاحب الفاتورة
+       * الأصلية.
+       */
+      SELECT
+        os.user_id,
+
+        COALESCE(
+          NULLIF(
+            se.business_date,
+            ''
+          ),
+          date(
+            se.created_at,
+            'localtime'
+          )
+        ) AS business_date,
+
+        0 AS sales_count,
+
+        0 AS sale_amount,
+
+        0 AS returns_count,
+
+        0 AS return_amount,
+
+        1 AS exchange_count,
+
+        se.difference_amount
+          AS exchange_adjustment
+
+      FROM sale_exchanges se
+
+      JOIN sales os
+        ON os.id =
+          se.original_sale_id
+
+      WHERE
+        se.cancelled_at
+        IS NULL
+
+        AND
+          os.cancelled_at
+          IS NULL
+
+        AND
+          IFNULL(
+            os.type,
+            'sale'
+          ) = 'sale'
+    ) x
+
+    LEFT JOIN users u
+      ON u.id = x.user_id
+
+    ${combinedWhere.whereSql}
+
+    GROUP BY
+      x.user_id,
+      u.name
+
+    ORDER BY
+      net_sales DESC,
+      cashier_name ASC
+    `,
+    )
+    .all(...combinedWhere.params)
+    .map((row: any) => ({
+      user_id: row.user_id === null ? null : Number(row.user_id),
+
+      cashier_name: String(row.cashier_name || 'مستخدم غير معروف'),
+
+      sales_count: Number(row.sales_count || 0),
+
+      sales_total: Number(row.sales_total || 0),
+
+      returns_count: Number(row.returns_count || 0),
+
+      returns_total: Number(row.returns_total || 0),
+
+      exchange_count: Number(row.exchange_count || 0),
+
+      exchange_adjustment: Number(row.exchange_adjustment || 0),
+
+      net_sales: Number(row.net_sales || 0),
+    }))
+
   const lowStock = db
     .prepare(
       `
@@ -1567,6 +1801,7 @@ export function getReportsSummary(input?: ReportFilter) {
     topProducts,
     dailySales,
     paymentMethods,
+    cashierSales,
     lowStock,
     topCustomers,
   }
