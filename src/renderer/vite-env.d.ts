@@ -1051,24 +1051,16 @@ declare global {
           closed_at: string | null
         } | null
 
-        shift: {
-          id: number
-
-          status: 'open' | 'closed'
-
-          opening_counted_amount: number
-
-          opened_at: string
-
-          closed_at: string | null
-        } | null
-
         sales: {
           invoices_count: number
           cancelled_invoices_count: number
 
           invoice_sales: number
+          paid_sales_total: number
 
+          outstanding_debt_total: number
+
+          outstanding_debt_invoices_count: number
           returns_count: number
           cancelled_returns_count: number
           returns_total: number

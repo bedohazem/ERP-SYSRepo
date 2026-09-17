@@ -1331,4 +1331,98 @@ describe('reports repository', () => {
 
     expect(oldCashierDashboard.sales.invoice_sales).toBe(0)
   })
+
+  it('shows paid sales and outstanding debt for active shift invoices', () => {
+    const variant = seedReportProduct({
+      name: 'Shift Credit Sale',
+
+      barcode: 'SHIFT-CREDIT-SALE',
+
+      openingQty: 20,
+
+      buyPrice: 100,
+
+      sellPrice: 300,
+    })
+
+    const customer = createTestCustomer(
+      'Credit Customer',
+
+      '01077777777',
+    )
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: customer.id,
+
+      sub_total: 300,
+
+      discount_value: 0,
+
+      grand_total: 300,
+
+      paid: 150,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 300,
+        },
+      ],
+    })
+
+    let dashboard = getCashierDashboardSummary({
+      user_id: 1,
+    })
+
+    expect(dashboard.sales.invoice_sales).toBe(300)
+
+    expect(dashboard.sales.paid_sales_total).toBe(150)
+
+    expect(dashboard.sales.outstanding_debt_total).toBe(150)
+
+    expect(dashboard.sales.outstanding_debt_invoices_count).toBe(1)
+
+    /*
+     * العميل دفع 50
+     * أثناء نفس الشفت.
+     */
+    recordCustomerPayment({
+      customer_id: customer.id,
+
+      sale_id: sale.saleId,
+
+      amount: 50,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    dashboard = getCashierDashboardSummary({
+      user_id: 1,
+    })
+
+    expect(dashboard.sales.paid_sales_total).toBe(200)
+
+    expect(dashboard.sales.outstanding_debt_total).toBe(100)
+
+    expect(dashboard.sales.outstanding_debt_invoices_count).toBe(1)
+  })
 })

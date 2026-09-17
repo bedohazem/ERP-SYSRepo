@@ -1877,6 +1877,12 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
 
         invoice_sales: 0,
 
+        paid_sales_total: 0,
+
+        outstanding_debt_total: 0,
+
+        outstanding_debt_invoices_count: 0,
+
         returns_count: 0,
 
         cancelled_returns_count: 0,
@@ -1944,6 +1950,105 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           ),
           0
         ) AS invoice_sales,
+
+        /*
+          * القيمة الحالية المدفوعة فعلًا
+          * من فواتير هذا الشفت.
+          *
+          * نراعي:
+          * - الاستبدالات
+          * - المرتجعات
+          * - المديونية الحالية
+          */
+          IFNULL(
+            SUM(
+              MAX(
+                0,
+
+                s.grand_total
+
+                +
+                IFNULL(
+                  (
+                    SELECT
+                      SUM(
+                        se.difference_amount
+                      )
+
+                    FROM sale_exchanges se
+
+                    WHERE
+                      se.original_sale_id =
+                        s.id
+
+                      AND
+                        se.cancelled_at
+                        IS NULL
+                  ),
+                  0
+                )
+
+                -
+                IFNULL(
+                  (
+                    SELECT
+                      SUM(
+                        sr.refund_amount
+                      )
+
+                    FROM sale_returns sr
+
+                    WHERE
+                      sr.original_sale_id =
+                        s.id
+
+                      AND
+                        sr.cancelled_at
+                        IS NULL
+                  ),
+                  0
+                )
+
+                -
+                IFNULL(
+                  s.remaining_amount,
+                  0
+                )
+              )
+            ),
+            0
+          ) AS paid_sales_total,
+
+          IFNULL(
+            SUM(
+              MAX(
+                0,
+                IFNULL(
+                  s.remaining_amount,
+                  0
+                )
+              )
+            ),
+            0
+          ) AS outstanding_debt_total,
+
+          IFNULL(
+            SUM(
+              CASE
+                WHEN
+                  ROUND(
+                    IFNULL(
+                      s.remaining_amount,
+                      0
+                    ),
+                    2
+                  ) > 0
+                THEN 1
+                ELSE 0
+              END
+            ),
+            0
+          ) AS outstanding_debt_invoices_count,
 
         IFNULL(
           SUM(
@@ -2459,7 +2564,13 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
       cancelled_invoices_count: Number(cancelledSales?.count || 0),
 
       invoice_sales: invoiceSales,
+      paid_sales_total: reportMoney(sales?.paid_sales_total),
 
+      outstanding_debt_total: reportMoney(sales?.outstanding_debt_total),
+
+      outstanding_debt_invoices_count: Number(
+        sales?.outstanding_debt_invoices_count || 0,
+      ),
       returns_count: Number(returns?.returns_count || 0),
 
       cancelled_returns_count: Number(cancelledReturns?.count || 0),

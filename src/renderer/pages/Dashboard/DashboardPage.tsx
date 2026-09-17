@@ -69,7 +69,9 @@ type CashierDashboardSummary = {
     cancelled_invoices_count: number
 
     invoice_sales: number
-
+    paid_sales_total: number
+    outstanding_debt_total: number
+    outstanding_debt_invoices_count: number
     returns_count: number
     cancelled_returns_count: number
     returns_total: number
@@ -114,7 +116,9 @@ const emptyCashierDashboard: CashierDashboardSummary = {
     cancelled_invoices_count: 0,
 
     invoice_sales: 0,
-
+    paid_sales_total: 0,
+    outstanding_debt_total: 0,
+    outstanding_debt_invoices_count: 0,
     returns_count: 0,
     cancelled_returns_count: 0,
     returns_total: 0,
@@ -1460,7 +1464,7 @@ function CashierRevenueView({
               ? `شفت #${summary.shift.id} • ${
                   summary.shift.status === 'open' ? 'مفتوح حاليًا' : 'مغلق'
                 }`
-              : 'لا يوجد شفت مسجل في هذا اليوم'
+              : 'لا يوجد شفت مفتوح'
           }
           tone="blue"
         />
@@ -1482,6 +1486,21 @@ function CashierRevenueView({
             title="مبيعات الفواتير"
             value={money(summary.sales.invoice_sales)}
             subtitle="قيمة الفواتير بعد الخصومات وقبل المرتجعات والاستبدالات"
+            tone="green"
+          />
+
+          <CashierMiniCard
+            title="المبيعات المحصلة"
+            value={money(summary.sales.paid_sales_total)}
+            subtitle={
+              summary.sales.outstanding_debt_total > 0
+                ? `⚠ باقي على فواتير الشفت: ${money(
+                    summary.sales.outstanding_debt_total,
+                  )} • ${
+                    summary.sales.outstanding_debt_invoices_count
+                  } فاتورة عليها باقي`
+                : '✓ كل فواتير الشفت مدفوعة بالكامل'
+            }
             tone="green"
           />
 
@@ -1516,6 +1535,18 @@ function CashierRevenueView({
               )}` +
               ` • ملغاة: ${summary.sales.cancelled_exchanges_count}`
             }
+            tone="violet"
+          />
+
+          <CashierMiniCard
+            title="الخصومات الفعلية"
+            value={money(summary.discounts.total)}
+            subtitle={
+              `عادي: ${money(summary.discounts.normal)}` +
+              ` • عروض: ${money(summary.discounts.promotion)}` +
+              ` • نقاط: ${money(summary.discounts.loyalty)}`
+            }
+            tone="amber"
           />
 
           <CashierMiniCard
