@@ -14,7 +14,10 @@ import {
   createLiability,
   recordLiabilityPayment,
 } from '../../src/main/database/repositories/liabilities.repo'
-import { getReportsSummary } from '../../src/main/database/repositories/reports.repo'
+import {
+  getCashierDashboardSummary,
+  getReportsSummary,
+} from '../../src/main/database/repositories/reports.repo'
 
 import { createPurchaseInvoice } from '../../src/main/database/repositories/purchases.repo'
 
@@ -778,5 +781,128 @@ describe('reports repository', () => {
     expect(second?.sales_total).toBe(200)
 
     expect(second?.net_sales).toBe(200)
+  })
+
+  it('removes returned invoice discounts from the cashier dashboard even when another user creates the return', () => {
+    const variant = seedReportProduct({
+      name: 'Cashier Discount Return',
+
+      barcode: 'CASHIER-DISCOUNT-RETURN',
+
+      openingQty: 20,
+
+      buyPrice: 100,
+
+      sellPrice: 200,
+    })
+
+    const saleOwner = createUser(
+      'Dashboard Cashier',
+
+      'dashboard_cashier',
+
+      '1234',
+
+      /*
+       * Admin فقط داخل التست
+       * عشان يشتغل على نفس
+       * الشفت المفتوح.
+       */
+      'admin',
+    )
+
+    const sale = createSale({
+      user_id: saleOwner.id,
+
+      customer_id: null,
+
+      sub_total: 200,
+
+      discount_value: 50,
+
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 150,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 200,
+        },
+      ],
+    })
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    /*
+     * المرتجع ينفذه المستخدم 1
+     * وليس صاحب الفاتورة.
+     */
+    createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      reason: 'Full dashboard return',
+
+      items: [
+        {
+          sale_item_id: receipt.items[0].id,
+
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+        },
+      ],
+    })
+
+    const db = getDb()
+
+    const today = db
+      .prepare(
+        `
+        SELECT
+          date(
+            'now',
+            'localtime'
+          ) AS day
+        `,
+      )
+      .get() as {
+      day: string
+    }
+
+    const dashboard = getCashierDashboardSummary({
+      date: today.day,
+
+      user_id: saleOwner.id,
+    })
+
+    expect(dashboard.sales.invoice_sales).toBe(150)
+
+    expect(dashboard.sales.returns_total).toBe(150)
+
+    expect(dashboard.sales.net_sales).toBe(0)
+
+    expect(dashboard.discounts.normal).toBe(0)
+
+    expect(dashboard.discounts.total).toBe(0)
+
+    expect(dashboard.sales.returns_count).toBe(1)
   })
 })

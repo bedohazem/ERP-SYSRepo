@@ -148,62 +148,96 @@ describe('financial IPC session scope', () => {
     expect(Number(result.balance)).toBe(40)
   })
 
-  it('forces cashiers to their own reports', async () => {
+  it('gives cashiers only their safe dashboard and blocks full reports', async () => {
     const db = getDb()
 
     const admin = findUserByUsername('admin')!
 
     const cashier = createUser(
       'Report Cashier',
+
       'report_cashier',
+
       '5678',
+
       'cashier',
     )
 
     const insertSale = db.prepare(
       `
-            INSERT INTO sales (
-              type,
-              user_id,
-              sub_total,
-              discount_value,
-              grand_total,
-              paid,
-              change_amount,
-              payment_method
-            )
+        INSERT INTO sales (
+          type,
+          user_id,
+          business_date,
+          sub_total,
+          discount_value,
+          grand_total,
+          paid,
+          change_amount,
+          payment_method
+        )
 
-            VALUES (
-              'sale',
-              ?,
-              ?,
-              0,
-              ?,
-              ?,
-              0,
-              'cash'
-            )
-            `,
+        VALUES (
+          'sale',
+          ?,
+          date(
+            'now',
+            'localtime'
+          ),
+          ?,
+          0,
+          ?,
+          ?,
+          0,
+          'cash'
+        )
+        `,
     )
 
     insertSale.run(admin.id, 100, 100, 100)
 
     insertSale.run(cashier.id, 40, 40, 40)
 
+    const today = db
+      .prepare(
+        `
+        SELECT
+          date(
+            'now',
+            'localtime'
+          ) AS day
+        `,
+      )
+      .get() as {
+      day: string
+    }
+
     const { event } = makeClient()
 
     startAuthSession(event, cashier.id)
 
-    const result = await invoke(event, 'reports:summary', {
+    await expect(invoke(event, 'reports:summary', {})).rejects.toThrow(
+      'هذه العملية متاحة لمدير النظام فقط',
+    )
+
+    const result = await invoke(event, 'reports:cashier-dashboard', {
+      date: today.day,
+
       /*
-       * محاولة قراءة تقرير المدير.
+       * حتى لو حاول يبعث
+       * ID المدير،
+       * الـIPC يتجاهله.
        */
       user_id: admin.id,
     })
 
-    expect(Number(result.summary.sales_count)).toBe(1)
+    expect(result.sales.invoices_count).toBe(1)
 
-    expect(Number(result.summary.gross_sales)).toBe(40)
+    expect(result.sales.invoice_sales).toBe(40)
+
+    expect('cashAccounts' in result).toBe(false)
+
+    expect('cashTotalCapital' in result).toBe(false)
   })
 
   it('blocks cashiers from admin cash operations', async () => {

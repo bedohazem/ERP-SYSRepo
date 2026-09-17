@@ -1035,6 +1035,46 @@ declare global {
       // =========================
       // Reports
       // =========================
+
+      getCashierDashboardSummary: (input: { date: string }) => Promise<{
+        date: string
+
+        sales: {
+          invoices_count: number
+          cancelled_invoices_count: number
+
+          invoice_sales: number
+
+          returns_count: number
+          cancelled_returns_count: number
+          returns_total: number
+
+          exchanges_count: number
+          cancelled_exchanges_count: number
+          exchange_adjustment: number
+
+          net_sales: number
+        }
+
+        discounts: {
+          normal: number
+          promotion: number
+          loyalty: number
+          total: number
+        }
+
+        operations: {
+          customer_payments_count: number
+          cancelled_customer_payments_count: number
+
+          expenses_count: number
+          cancelled_expenses_count: number
+          expenses_total: number
+
+          stock_count_sessions_count: number
+        }
+      }>
+
       getReportsSummary: (input?: {
         date_from?: string
         date_to?: string

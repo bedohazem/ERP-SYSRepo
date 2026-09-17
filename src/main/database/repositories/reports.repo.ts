@@ -6,6 +6,15 @@ type ReportFilter = {
   user_id?: number
 }
 
+export type CashierDashboardInput = {
+  date: string
+  user_id: number
+}
+
+function reportMoney(value: unknown) {
+  return Number(Number(value || 0).toFixed(2))
+}
+
 function buildWhere(
   alias: string,
   input?: ReportFilter,
@@ -1804,5 +1813,603 @@ export function getReportsSummary(input?: ReportFilter) {
     cashierSales,
     lowStock,
     topCustomers,
+  }
+}
+
+export function getCashierDashboardSummary(input: CashierDashboardInput) {
+  const db = getDb()
+
+  const date = String(input?.date || '').trim()
+
+  const userId = Number(input?.user_id || 0)
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error('تاريخ لوحة الكاشير غير صحيح')
+  }
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new Error('المستخدم غير صحيح')
+  }
+
+  const sales = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS invoices_count,
+
+        IFNULL(
+          SUM(s.grand_total),
+          0
+        ) AS invoice_sales,
+
+        IFNULL(
+          SUM(
+            IFNULL(
+              s.discount_value,
+              0
+            )
+          ),
+          0
+        ) AS normal_discounts,
+
+        IFNULL(
+          SUM(
+            IFNULL(
+              s.promotion_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS promotion_discounts,
+
+        IFNULL(
+          SUM(
+            IFNULL(
+              s.loyalty_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS loyalty_discounts
+
+      FROM sales s
+
+      WHERE
+        IFNULL(
+          s.type,
+          'sale'
+        ) = 'sale'
+
+        AND
+          s.cancelled_at
+          IS NULL
+
+        AND s.user_id = ?
+
+        AND
+          COALESCE(
+            NULLIF(
+              s.business_date,
+              ''
+            ),
+            date(
+              s.created_at,
+              'localtime'
+            )
+          ) = ?
+      `,
+    )
+    .get(userId, date) as any
+
+  const cancelledSales = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS count
+
+      FROM sales s
+
+      WHERE
+        IFNULL(
+          s.type,
+          'sale'
+        ) = 'sale'
+
+        AND
+          s.cancelled_at
+          IS NOT NULL
+
+        AND s.user_id = ?
+
+        AND
+          date(
+            s.cancelled_at,
+            'localtime'
+          ) = ?
+      `,
+    )
+    .get(userId, date) as any
+
+  /*
+   * المرتجع ينسب لصاحب
+   * الفاتورة الأصلية،
+   * وليس لمن ضغط زر المرتجع.
+   */
+  const returns = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS returns_count,
+
+        IFNULL(
+          SUM(
+            sr.refund_amount
+          ),
+          0
+        ) AS returns_total,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                sr.normal_discount_value
+                IS NOT NULL
+              THEN
+                sr.normal_discount_value
+
+              ELSE MAX(
+                0,
+
+                sr.sub_total
+                - sr.refund_amount
+
+                - IFNULL(
+                    sr.loyalty_discount_value,
+                    0
+                  )
+
+                - IFNULL(
+                    sr.promotion_discount_value,
+                    0
+                  )
+              )
+            END
+          ),
+          0
+        ) AS returned_normal_discount,
+
+        IFNULL(
+          SUM(
+            IFNULL(
+              sr.promotion_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS returned_promotion_discount,
+
+        IFNULL(
+          SUM(
+            IFNULL(
+              sr.loyalty_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS returned_loyalty_discount
+
+      FROM sale_returns sr
+
+      JOIN sales os
+        ON
+          os.id =
+            sr.original_sale_id
+
+      WHERE
+        sr.cancelled_at
+        IS NULL
+
+        AND
+          os.cancelled_at
+          IS NULL
+
+        AND
+          IFNULL(
+            os.type,
+            'sale'
+          ) = 'sale'
+
+        AND os.user_id = ?
+
+        AND
+          date(
+            sr.created_at,
+            'localtime'
+          ) = ?
+      `,
+    )
+    .get(userId, date) as any
+
+  const cancelledReturns = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS count
+
+      FROM sale_returns sr
+
+      JOIN sales os
+        ON
+          os.id =
+            sr.original_sale_id
+
+      WHERE
+        sr.cancelled_at
+        IS NOT NULL
+
+        AND os.user_id = ?
+
+        AND
+          date(
+            sr.cancelled_at,
+            'localtime'
+          ) = ?
+      `,
+    )
+    .get(userId, date) as any
+
+  /*
+   * الاستبدال كذلك ينسب
+   * لصاحب الفاتورة الأصلية.
+   */
+  const exchanges = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS exchanges_count,
+
+        IFNULL(
+          SUM(
+            se.difference_amount
+          ),
+          0
+        ) AS exchange_adjustment,
+
+        IFNULL(
+          SUM(
+            COALESCE(
+              se.new_normal_discount_value,
+              se.old_normal_discount_value,
+              0
+            )
+            -
+            COALESCE(
+              se.old_normal_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS normal_discount_adjustment,
+
+        IFNULL(
+          SUM(
+            COALESCE(
+              se.new_promotion_discount_value,
+              se.old_promotion_discount_value,
+              0
+            )
+            -
+            COALESCE(
+              se.old_promotion_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS promotion_discount_adjustment,
+
+        IFNULL(
+          SUM(
+            COALESCE(
+              se.new_loyalty_discount_value,
+              se.old_loyalty_discount_value,
+              0
+            )
+            -
+            COALESCE(
+              se.old_loyalty_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS loyalty_discount_adjustment
+
+      FROM sale_exchanges se
+
+      JOIN sales os
+        ON
+          os.id =
+            se.original_sale_id
+
+      WHERE
+        se.cancelled_at
+        IS NULL
+
+        AND
+          os.cancelled_at
+          IS NULL
+
+        AND
+          IFNULL(
+            os.type,
+            'sale'
+          ) = 'sale'
+
+        AND os.user_id = ?
+
+        AND
+          COALESCE(
+            NULLIF(
+              se.business_date,
+              ''
+            ),
+            date(
+              se.created_at,
+              'localtime'
+            )
+          ) = ?
+      `,
+    )
+    .get(userId, date) as any
+
+  const cancelledExchanges = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS count
+
+      FROM sale_exchanges se
+
+      JOIN sales os
+        ON
+          os.id =
+            se.original_sale_id
+
+      WHERE
+        se.cancelled_at
+        IS NOT NULL
+
+        AND os.user_id = ?
+
+        AND
+          date(
+            se.cancelled_at,
+            'localtime'
+          ) = ?
+      `,
+    )
+    .get(userId, date) as any
+
+  /*
+   * الحاجات دي عمليات نفذها
+   * الكاشير نفسه، لذلك هنا
+   * نعتمد created_by.
+   */
+  const customerPayments = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS count
+
+      FROM customer_payment_batches b
+
+      WHERE
+        b.cancelled_at IS NULL
+
+        AND b.created_by = ?
+
+        AND
+          COALESCE(
+            NULLIF(
+              b.business_date,
+              ''
+            ),
+            date(
+              b.created_at,
+              'localtime'
+            )
+          ) = ?
+      `,
+    )
+    .get(userId, date) as any
+
+  const cancelledCustomerPayments = db
+    .prepare(
+      `
+        SELECT
+          COUNT(*) AS count
+
+        FROM customer_payment_batches b
+
+        WHERE
+          b.cancelled_at
+          IS NOT NULL
+
+          AND b.created_by = ?
+
+          AND
+            date(
+              b.cancelled_at,
+              'localtime'
+            ) = ?
+        `,
+    )
+    .get(userId, date) as any
+
+  const expenses = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS count,
+
+        IFNULL(
+          SUM(e.amount),
+          0
+        ) AS total
+
+      FROM expenses e
+
+      WHERE
+        e.cancelled_at IS NULL
+
+        AND e.created_by = ?
+
+        AND
+          date(
+            e.created_at,
+            'localtime'
+          ) = ?
+      `,
+    )
+    .get(userId, date) as any
+
+  const cancelledExpenses = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS count
+
+      FROM expenses e
+
+      WHERE
+        e.cancelled_at
+        IS NOT NULL
+
+        AND e.created_by = ?
+
+        AND
+          date(
+            e.cancelled_at,
+            'localtime'
+          ) = ?
+      `,
+    )
+    .get(userId, date) as any
+
+  const stockCounts = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS count
+
+      FROM stock_count_sessions scs
+
+      WHERE
+        scs.created_by = ?
+
+        AND
+          date(
+            scs.created_at,
+            'localtime'
+          ) = ?
+      `,
+    )
+    .get(userId, date) as any
+
+  const invoiceSales = reportMoney(sales?.invoice_sales)
+
+  const returnsTotal = reportMoney(returns?.returns_total)
+
+  const exchangeAdjustment = reportMoney(exchanges?.exchange_adjustment)
+
+  const normalDiscount = Math.max(
+    0,
+
+    reportMoney(
+      Number(sales?.normal_discounts || 0) -
+        Number(returns?.returned_normal_discount || 0) +
+        Number(exchanges?.normal_discount_adjustment || 0),
+    ),
+  )
+
+  const promotionDiscount = Math.max(
+    0,
+
+    reportMoney(
+      Number(sales?.promotion_discounts || 0) -
+        Number(returns?.returned_promotion_discount || 0) +
+        Number(exchanges?.promotion_discount_adjustment || 0),
+    ),
+  )
+
+  const loyaltyDiscount = Math.max(
+    0,
+
+    reportMoney(
+      Number(sales?.loyalty_discounts || 0) -
+        Number(returns?.returned_loyalty_discount || 0) +
+        Number(exchanges?.loyalty_discount_adjustment || 0),
+    ),
+  )
+
+  const totalDiscount = reportMoney(
+    normalDiscount + promotionDiscount + loyaltyDiscount,
+  )
+
+  /*
+   * المعادلة الوحيدة المعتمدة
+   * في شاشة الكاشير.
+   */
+  const netSales = reportMoney(invoiceSales + exchangeAdjustment - returnsTotal)
+
+  return {
+    date,
+
+    sales: {
+      invoices_count: Number(sales?.invoices_count || 0),
+
+      cancelled_invoices_count: Number(cancelledSales?.count || 0),
+
+      invoice_sales: invoiceSales,
+
+      returns_count: Number(returns?.returns_count || 0),
+
+      cancelled_returns_count: Number(cancelledReturns?.count || 0),
+
+      returns_total: returnsTotal,
+
+      exchanges_count: Number(exchanges?.exchanges_count || 0),
+
+      cancelled_exchanges_count: Number(cancelledExchanges?.count || 0),
+
+      exchange_adjustment: exchangeAdjustment,
+
+      net_sales: netSales,
+    },
+
+    discounts: {
+      normal: normalDiscount,
+
+      promotion: promotionDiscount,
+
+      loyalty: loyaltyDiscount,
+
+      total: totalDiscount,
+    },
+
+    operations: {
+      customer_payments_count: Number(customerPayments?.count || 0),
+
+      cancelled_customer_payments_count: Number(
+        cancelledCustomerPayments?.count || 0,
+      ),
+
+      expenses_count: Number(expenses?.count || 0),
+
+      cancelled_expenses_count: Number(cancelledExpenses?.count || 0),
+
+      expenses_total: reportMoney(expenses?.total),
+
+      stock_count_sessions_count: Number(stockCounts?.count || 0),
+    },
   }
 }

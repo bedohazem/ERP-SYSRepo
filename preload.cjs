@@ -132,7 +132,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('settings:run-auto-backup-now', input),
 
   getReportsSummary: (input) => ipcRenderer.invoke('reports:summary', input),
-
+  getCashierDashboardSummary: (input) =>
+    ipcRenderer.invoke('reports:cashier-dashboard', input),
   getInventoryList: (input) => ipcRenderer.invoke('inventory:list', input),
   getInventoryPage: (input) => ipcRenderer.invoke('inventory:list-page', input),
   adjustVariantStock: (input) =>

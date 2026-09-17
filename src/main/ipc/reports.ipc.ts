@@ -1,17 +1,33 @@
 import { ipcMain } from 'electron'
 
-import { getReportsSummary } from '../database/repositories/reports.repo'
+import {
+  getCashierDashboardSummary,
+  getReportsSummary,
+} from '../database/repositories/reports.repo'
 
-import { requireAuthenticatedUser } from '../auth-session'
+import {
+  requireAuthenticatedAdmin,
+  requireAuthenticatedUser,
+} from '../auth-session'
 
 export function registerReportsIpc(): void {
   ipcMain.handle('reports:summary', (event, input) => {
+    requireAuthenticatedAdmin(event)
+
+    return getReportsSummary(input || {})
+  })
+
+  ipcMain.handle('reports:cashier-dashboard', (event, input) => {
     const user = requireAuthenticatedUser(event)
 
-    return getReportsSummary({
-      ...(input || {}),
+    return getCashierDashboardSummary({
+      date: String(input?.date || ''),
 
-      user_id: user.role === 'admin' ? input?.user_id : user.id,
+      /*
+       * ممنوع نأخذ ID من
+       * الـrenderer.
+       */
+      user_id: user.id,
     })
   })
 }
