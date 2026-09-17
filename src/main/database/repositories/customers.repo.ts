@@ -2,21 +2,7 @@ import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
 import { requireOperationalCashShift } from './cash-shifts.repo'
 
-function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
-  const row = db
-    .prepare(
-      `
-      SELECT
-        date('now', 'localtime')
-          AS business_date
-      `,
-    )
-    .get() as {
-    business_date: string
-  }
-
-  return String(row?.business_date || '')
-}
+import { getShiftBusinessDate } from '../shift-business-date'
 
 export type CustomerInput = {
   name: string
@@ -519,7 +505,7 @@ export function recordCustomerPayment(input: {
       throw new Error('العميل غير موجود')
     }
 
-    const businessDate = getCurrentBusinessDate(db)
+    const businessDate = getShiftBusinessDate(openShift.id)
 
     const batchResult = db
       .prepare(
@@ -820,7 +806,7 @@ export function cancelCustomerPaymentBatch(input: {
     'لا يمكن إلغاء دفعة عميل بدون شفت مفتوح',
   )
 
-  const cancellationBusinessDate = getCurrentBusinessDate(db)
+  const cancellationBusinessDate = getShiftBusinessDate(openShift.id)
 
   const reason = String(input.reason || '').trim() || 'إلغاء دفعة عميل'
 
@@ -1085,7 +1071,7 @@ export function updateCustomerPaymentBatch(input: {
     'لا يمكن تعديل دفعة عميل بدون شفت مفتوح',
   )
 
-  const correctionBusinessDate = getCurrentBusinessDate(db)
+  const correctionBusinessDate = getShiftBusinessDate(openShift.id)
 
   if (!batchId) {
     throw new Error('رقم دفعة العميل غير صحيح')

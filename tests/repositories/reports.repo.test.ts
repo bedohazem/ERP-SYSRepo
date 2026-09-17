@@ -488,93 +488,6 @@ describe('reports repository', () => {
     expect(futureReport.dailySales).toHaveLength(0)
   })
 
-  it('attributes a later return to the actual return date', () => {
-    const variant = seedReportProduct({
-      name: 'Historical Return Product',
-      barcode: 'REPORT-HISTORICAL-RETURN',
-      openingQty: 20,
-      buyPrice: 100,
-      sellPrice: 150,
-    })
-
-    const sale = createSale({
-      user_id: 1,
-      customer_id: null,
-      sub_total: 300,
-      discount_value: 0,
-      grand_total: 300,
-      change_amount: 0,
-      payment_method: 'cash',
-      paid: 300,
-      items: [
-        {
-          variant_id: variant.variant_id,
-          product_name: variant.product_name,
-          barcode: variant.barcode,
-          size: variant.size,
-          color: variant.color,
-          quantity: 2,
-          unit_price: 150,
-        },
-      ],
-    })
-
-    const receipt = getSaleReceipt(sale.saleId) as any
-
-    createSaleReturn({
-      original_sale_id: sale.saleId,
-      user_id: 1,
-      reason: 'Later return',
-      items: [
-        {
-          sale_item_id: receipt.items[0].id,
-          variant_id: variant.variant_id,
-          quantity: 1,
-        },
-      ],
-    })
-
-    const db = getDb()
-
-    db.prepare(
-      `
-    UPDATE sales
-    SET
-      created_at = '2026-08-10 10:00:00',
-      business_date = '2026-08-10'
-    WHERE id = ?
-  `,
-    ).run(sale.saleId)
-
-    db.prepare(
-      `
-    UPDATE sale_returns
-    SET created_at = '2026-08-12 10:00:00'
-    WHERE original_sale_id = ?
-  `,
-    ).run(sale.saleId)
-
-    const august10 = getReportsSummary({
-      date_from: '2026-08-10',
-      date_to: '2026-08-10',
-    }) as ReportsSummaryTestResult
-
-    const august12 = getReportsSummary({
-      date_from: '2026-08-12',
-      date_to: '2026-08-12',
-    }) as ReportsSummaryTestResult
-
-    expect(august10.summary.gross_sales).toBe(300)
-    expect(august10.summary.total_returns).toBe(0)
-    expect(august10.summary.net_sales).toBe(300)
-    expect(august10.summary.returns_count).toBe(0)
-
-    expect(august12.summary.gross_sales).toBe(0)
-    expect(august12.summary.total_returns).toBe(150)
-    expect(august12.summary.net_sales).toBe(-150)
-    expect(august12.summary.returns_count).toBe(1)
-  })
-
   it('reports purchase invoices and manual cash movements', () => {
     const variant = seedReportProduct({
       name: 'Purchase Report Product',
@@ -1424,5 +1337,198 @@ describe('reports repository', () => {
     expect(dashboard.sales.outstanding_debt_total).toBe(100)
 
     expect(dashboard.sales.outstanding_debt_invoices_count).toBe(1)
+  })
+
+  it('keeps shift operations on the shift opening business date', () => {
+    const db = getDb()
+
+    const shift = getOpenCashShift()!
+
+    /*
+     * نحاكي شفت بدأ في
+     * تاريخ قديم واستمر بعد
+     * منتصف الليل.
+     */
+    db.prepare(
+      `
+      UPDATE cash_shifts
+
+      SET
+        opened_at =
+          '2020-01-15 20:00:00'
+
+      WHERE id = ?
+      `,
+    ).run(shift.id)
+
+    const shiftDate = db
+      .prepare(
+        `
+        SELECT
+          date(
+            opened_at,
+            'localtime'
+          ) AS day
+
+        FROM cash_shifts
+
+        WHERE id = ?
+        `,
+      )
+      .get(shift.id) as {
+      day: string
+    }
+
+    const variant = seedReportProduct({
+      name: 'Shift Date Product',
+
+      barcode: 'SHIFT-DATE-PRODUCT',
+
+      openingQty: 20,
+
+      buyPrice: 50,
+
+      sellPrice: 100,
+    })
+
+    const sale = createSale({
+      user_id: 1,
+
+      /*
+       * حتى لو حاول أي caller
+       * يرسل تاريخ مختلف،
+       * الشفت هو المصدر.
+       */
+      business_date: '2099-01-01',
+
+      customer_id: null,
+
+      sub_total: 200,
+
+      discount_value: 0,
+
+      grand_total: 200,
+
+      paid: 200,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 2,
+
+          unit_price: 100,
+        },
+      ],
+    })
+
+    const saleRow = db
+      .prepare(
+        `
+        SELECT
+          business_date,
+          shift_id
+
+        FROM sales
+
+        WHERE id = ?
+        `,
+      )
+      .get(sale.saleId) as {
+      business_date: string
+      shift_id: number
+    }
+
+    expect(saleRow.shift_id).toBe(shift.id)
+
+    expect(saleRow.business_date).toBe(shiftDate.day)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      reason: 'Shift date return',
+
+      items: [
+        {
+          sale_item_id: receipt.items[0].id,
+
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+        },
+      ],
+    })
+
+    createExpense({
+      title: 'Shift date expense',
+
+      amount: 10,
+
+      payment_method: 'cash',
+
+      created_by: 1,
+    })
+
+    const report = getReportsSummary({
+      date_from: shiftDate.day,
+
+      date_to: shiftDate.day,
+    }) as ReportsSummaryTestResult
+
+    expect(report.summary.sales_count).toBe(1)
+
+    expect(report.summary.gross_sales).toBe(200)
+
+    expect(report.summary.returns_count).toBe(1)
+
+    expect(report.summary.total_returns).toBe(100)
+
+    expect(report.summary.total_expenses).toBe(10)
+
+    const movements = db
+      .prepare(
+        `
+        SELECT
+          business_date
+
+        FROM cash_movements
+
+        WHERE
+          shift_id = ?
+
+          AND
+            reference_type
+            IN (
+              'sale',
+              'sale_return',
+              'expense'
+            )
+        `,
+      )
+      .all(shift.id) as Array<{
+      business_date: string
+    }>
+
+    expect(movements.length).toBeGreaterThan(0)
+
+    expect(
+      movements.every((movement) => movement.business_date === shiftDate.day),
+    ).toBe(true)
   })
 })

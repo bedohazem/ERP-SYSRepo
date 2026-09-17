@@ -1,6 +1,6 @@
 import { getDb } from '../db'
 import { createActivityLog } from './activity.repo'
-
+import { getShiftBusinessDate } from '../shift-business-date'
 export type CashMovementInput = {
   type:
     | 'sale'
@@ -303,9 +303,14 @@ export function createCashMovement(input: CashMovementInput) {
   const direction = input.direction
   const account = resolveCashAccount(input.payment_method || 'store_cash')
 
-  const businessDate = input.business_date
-    ? normalizeBusinessDate(input.business_date)
-    : null
+  const shiftId = Number(input.shift_id || 0)
+
+  const businessDate =
+    shiftId > 0
+      ? getShiftBusinessDate(shiftId)
+      : input.business_date
+        ? normalizeBusinessDate(input.business_date)
+        : null
 
   if (!type) {
     throw new Error('نوع حركة الخزنة مطلوب')

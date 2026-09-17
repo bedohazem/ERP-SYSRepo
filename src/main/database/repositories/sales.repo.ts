@@ -7,6 +7,8 @@ import {
 } from './sales-current-state.repo'
 import { requireOperationalCashShift } from './cash-shifts.repo'
 
+import { getShiftBusinessDate } from '../shift-business-date'
+
 export type CreateSaleLineInput = {
   variant_id: number
   product_name: string
@@ -66,48 +68,6 @@ function getLoyaltySettingsForSale() {
     pointValue: Number(getSetting('loyalty_point_value', '1')),
     minRedeemPoints: Number(getSetting('loyalty_min_redeem_points', '1')),
   }
-}
-
-function getLocalDateKey(date: Date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-
-  return `${year}-${month}-${day}`
-}
-
-function getRelativeLocalDateKey(days: number) {
-  const date = new Date()
-
-  date.setHours(12, 0, 0, 0)
-  date.setDate(date.getDate() + days)
-
-  return getLocalDateKey(date)
-}
-
-function resolveSaleBusinessDate(value?: string | null) {
-  const requestedDate = value?.trim() || ''
-  const today = getRelativeLocalDateKey(0)
-
-  if (!requestedDate) {
-    return today
-  }
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
-    throw new Error('تاريخ الفاتورة غير صحيح')
-  }
-
-  const allowedDates = new Set([
-    getRelativeLocalDateKey(-1),
-    today,
-    getRelativeLocalDateKey(1),
-  ])
-
-  if (!allowedDates.has(requestedDate)) {
-    throw new Error('مسموح بتاريخ الفاتورة: أمس أو اليوم أو غدًا فقط')
-  }
-
-  return requestedDate
 }
 
 function roundMoney(value: number) {
@@ -203,7 +163,8 @@ export function createSale(input: CreateSaleInput) {
   )
 
   const loyalty = getLoyaltySettingsForSale()
-  const businessDate = resolveSaleBusinessDate(input.business_date)
+
+  const businessDate = getShiftBusinessDate(openShift.id)
 
   const customerId = input.customer_id ? Number(input.customer_id) : null
   const requestedRedeemPoints = Number(input.loyalty_points_redeemed || 0)
@@ -2581,7 +2542,7 @@ export function cancelSaleInvoice(input: {
     'لا يمكن إلغاء فاتورة بيع بدون شفت مفتوح',
   )
 
-  const cancellationBusinessDate = getRelativeLocalDateKey(0)
+  const cancellationBusinessDate = getShiftBusinessDate(openShift.id)
 
   const reason = input.reason?.trim() || 'إلغاء فاتورة بيع'
 
@@ -2852,7 +2813,7 @@ export function cancelSaleReturn(input: {
     'لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح',
   )
 
-  const cancellationBusinessDate = getRelativeLocalDateKey(0)
+  const cancellationBusinessDate = getShiftBusinessDate(openShift.id)
 
   const reason = input.reason?.trim() || 'إلغاء مرتجع بيع'
 

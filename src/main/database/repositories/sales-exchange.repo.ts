@@ -6,6 +6,7 @@ import {
 } from './sales-current-state.repo'
 import { syncCustomerTotalSpent } from './sales.repo'
 import { requireOperationalCashShift } from './cash-shifts.repo'
+import { getShiftBusinessDate } from '../shift-business-date'
 
 export type CreateSaleExchangeInput = {
   original_sale_id: number
@@ -101,16 +102,6 @@ type ExchangeVariantRow = {
 
 function roundMoney(value: number) {
   return Number(Number(value || 0).toFixed(2))
-}
-
-function getLocalDateKey() {
-  const date = new Date()
-
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-
-  return `${year}-${month}-${day}`
 }
 
 function parseProductIds(value: string) {
@@ -1073,7 +1064,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       input.payment_method?.trim() || sale.payment_method || 'store_cash',
     )
 
-    const businessDate = getLocalDateKey()
+    const businessDate = getShiftBusinessDate(openShift.id)
 
     const closedDay = db
       .prepare(
@@ -2112,7 +2103,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
     const saleId = Number(exchange.original_sale_id)
 
-    const cancelBusinessDate = getLocalDateKey()
+    const cancelBusinessDate = getShiftBusinessDate(openShift.id)
 
     const latestActive = db
       .prepare(

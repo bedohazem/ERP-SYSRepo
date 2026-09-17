@@ -2,6 +2,7 @@ import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
 import { createActivityLog } from './activity.repo'
 import { resolveFinancialOperationShift } from './cash-shifts.repo'
+import { getShiftBusinessDate } from '../shift-business-date'
 
 export type CreateExpenseInput = {
   title: string
@@ -91,7 +92,9 @@ export function createExpense(input: CreateExpenseInput) {
     'لا يمكن تسجيل مصروف من درج المحل بدون شفت مفتوح',
   )
 
-  const businessDate = getCurrentBusinessDate(db)
+  const businessDate = openShift
+    ? getShiftBusinessDate(openShift.id)
+    : getCurrentBusinessDate(db)
 
   const tx = db.transaction(() => {
     const result = db
@@ -422,7 +425,9 @@ export function updateExpense(input: UpdateExpenseInput) {
     'لا يمكن تعديل مصروف يؤثر على درج المحل بدون شفت مفتوح',
   )
 
-  const correctionBusinessDate = getCurrentBusinessDate(db)
+  const correctionBusinessDate = openShift
+    ? getShiftBusinessDate(openShift.id)
+    : getCurrentBusinessDate(db)
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -646,7 +651,9 @@ export function cancelExpense(input: CancelExpenseInput) {
     'لا يمكن إلغاء مصروف يؤثر على درج المحل بدون شفت مفتوح',
   )
 
-  const cancellationBusinessDate = getCurrentBusinessDate(db)
+  const cancellationBusinessDate = openShift
+    ? getShiftBusinessDate(openShift.id)
+    : getCurrentBusinessDate(db)
 
   const reason = String(input.reason || '').trim() || 'إلغاء مصروف'
 

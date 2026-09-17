@@ -78,15 +78,156 @@ function getCashAccountLabel(account: string) {
 export function getReportsSummary(input?: ReportFilter) {
   const db = getDb()
 
+  const saleBusinessDate: string = `
+    COALESCE(
+      (
+        SELECT
+          date(
+            cs.opened_at,
+            'localtime'
+          )
+
+        FROM cash_shifts cs
+
+        WHERE
+          cs.id = s.shift_id
+      ),
+
+      NULLIF(
+        s.business_date,
+        ''
+      ),
+
+      date(
+        s.created_at,
+        'localtime'
+      )
+    )
+  `
+
+  const returnBusinessDate: string = `
+    COALESCE(
+      (
+        SELECT
+          date(
+            cs.opened_at,
+            'localtime'
+          )
+
+        FROM cash_shifts cs
+
+        WHERE
+          cs.id = sr.shift_id
+      ),
+
+      date(
+        sr.created_at,
+        'localtime'
+      )
+    )
+  `
+
+  const exchangeBusinessDate: string = `
+    COALESCE(
+      (
+        SELECT
+          date(
+            cs.opened_at,
+            'localtime'
+          )
+
+        FROM cash_shifts cs
+
+        WHERE
+          cs.id = se.shift_id
+      ),
+
+      NULLIF(
+        se.business_date,
+        ''
+      ),
+
+      date(
+        se.created_at,
+        'localtime'
+      )
+    )
+  `
+
+  const expenseBusinessDate: string = `
+    COALESCE(
+      (
+        SELECT
+          date(
+            cs.opened_at,
+            'localtime'
+          )
+
+        FROM cash_shifts cs
+
+        WHERE
+          cs.id = e.shift_id
+      ),
+
+      date(
+        e.created_at,
+        'localtime'
+      )
+    )
+  `
+
+  const cancelledSaleBusinessDate: string = `
+    COALESCE(
+      (
+        SELECT
+          date(
+            cs.opened_at,
+            'localtime'
+          )
+
+        FROM cash_shifts cs
+
+        WHERE
+          cs.id =
+            s.cancelled_shift_id
+      ),
+
+      date(
+        s.cancelled_at,
+        'localtime'
+      )
+    )
+  `
+
+  const cancelledReturnBusinessDate: string = `
+    COALESCE(
+      (
+        SELECT
+          date(
+            cs.opened_at,
+            'localtime'
+          )
+
+        FROM cash_shifts cs
+
+        WHERE
+          cs.id =
+            sr.cancelled_shift_id
+      ),
+
+      date(
+        sr.cancelled_at,
+        'localtime'
+      )
+    )
+  `
+
   const salesWhere = buildWhere(
     's',
     input,
     [`IFNULL(s.type, 'sale') = 'sale'`, `s.cancelled_at IS NULL`],
     's.user_id',
-    `COALESCE(
-      NULLIF(s.business_date, ''),
-      date(s.created_at, 'localtime')
-    )`,
+    saleBusinessDate,
   )
 
   const returnsWhere = buildWhere(
@@ -98,6 +239,7 @@ export function getReportsSummary(input?: ReportFilter) {
       `sr.cancelled_at IS NULL`,
     ],
     'sr.user_id',
+    returnBusinessDate,
   )
 
   const exchangesWhere = buildWhere(
@@ -105,22 +247,11 @@ export function getReportsSummary(input?: ReportFilter) {
     input,
     [
       `IFNULL(os.type, 'sale') = 'sale'`,
-
       `os.cancelled_at IS NULL`,
-
       `se.cancelled_at IS NULL`,
     ],
     'se.user_id',
-    `COALESCE(
-        NULLIF(
-          se.business_date,
-          ''
-        ),
-        date(
-          se.created_at,
-          'localtime'
-        )
-      )`,
+    exchangeBusinessDate,
   )
 
   const cancelledSalesWhere = buildWhere(
@@ -128,7 +259,7 @@ export function getReportsSummary(input?: ReportFilter) {
     input,
     [`IFNULL(s.type, 'sale') = 'sale'`, `s.cancelled_at IS NOT NULL`],
     's.user_id',
-    `date(s.cancelled_at, 'localtime')`,
+    cancelledSaleBusinessDate,
   )
 
   const cancelledReturnsWhere = buildWhere(
@@ -136,7 +267,7 @@ export function getReportsSummary(input?: ReportFilter) {
     input,
     [`sr.cancelled_at IS NOT NULL`],
     'sr.user_id',
-    `date(sr.cancelled_at, 'localtime')`,
+    cancelledReturnBusinessDate,
   )
 
   const combinedWhere = buildWhere(
@@ -615,7 +746,13 @@ export function getReportsSummary(input?: ReportFilter) {
     Number(returnsProfitRow.returned_profit_after_discounts || 0) +
     Number(exchangeProfitRow.net_profit_adjustment || 0)
 
-  const expensesWhere = buildWhere('e', input, [`e.cancelled_at IS NULL`])
+  const expensesWhere = buildWhere(
+    'e',
+    input,
+    [`e.cancelled_at IS NULL`],
+    undefined,
+    expenseBusinessDate,
+  )
 
   const liabilityPaymentsWhere = buildWhere('p', input, [
     `p.cancelled_at IS NULL`,
@@ -769,16 +906,8 @@ export function getReportsSummary(input?: ReportFilter) {
           si.line_total
             AS total,
 
-          COALESCE(
-            NULLIF(
-              s.business_date,
-              ''
-            ),
-            date(
-              s.created_at,
-              'localtime'
-            )
-          ) AS business_date,
+          ${saleBusinessDate}
+            AS business_date,
 
           s.user_id
 
@@ -820,16 +949,8 @@ export function getReportsSummary(input?: ReportFilter) {
             sei.quantity
           ) AS total,
 
-          COALESCE(
-            NULLIF(
-              se.business_date,
-              ''
-            ),
-            date(
-              se.created_at,
-              'localtime'
-            )
-          ) AS business_date,
+          ${exchangeBusinessDate}
+            AS business_date,
 
           se.user_id
 
@@ -892,16 +1013,8 @@ export function getReportsSummary(input?: ReportFilter) {
             sei.quantity
           ) AS total,
 
-          COALESCE(
-            NULLIF(
-              se.business_date,
-              ''
-            ),
-            date(
-              se.created_at,
-              'localtime'
-            )
-          ) AS business_date,
+          ${exchangeBusinessDate}
+            AS business_date,
 
           se.user_id
 
@@ -957,10 +1070,8 @@ export function getReportsSummary(input?: ReportFilter) {
           -sri.line_total
             AS total,
 
-          date(
-            sr.created_at,
-            'localtime'
-          ) AS business_date,
+          ${returnBusinessDate}
+            AS business_date,
 
           sr.user_id
 
@@ -1016,16 +1127,8 @@ export function getReportsSummary(input?: ReportFilter) {
 
       FROM (
         SELECT
-          COALESCE(
-            NULLIF(
-              s.business_date,
-              ''
-            ),
-            date(
-              s.created_at,
-              'localtime'
-            )
-          ) AS business_date,
+          ${saleBusinessDate}
+            AS business_date,
 
           s.user_id,
 
@@ -1047,16 +1150,8 @@ export function getReportsSummary(input?: ReportFilter) {
         UNION ALL
 
         SELECT
-          COALESCE(
-            NULLIF(
-              se.business_date,
-              ''
-            ),
-            date(
-              se.created_at,
-              'localtime'
-            )
-          ) AS business_date,
+          ${exchangeBusinessDate}
+            AS business_date,
 
           se.user_id,
 
@@ -1087,10 +1182,8 @@ export function getReportsSummary(input?: ReportFilter) {
         UNION ALL
 
         SELECT
-          date(
-            sr.created_at,
-            'localtime'
-          ) AS business_date,
+          ${returnBusinessDate}
+            AS business_date,
 
           sr.user_id,
 
@@ -1141,6 +1234,9 @@ export function getReportsSummary(input?: ReportFilter) {
         ) AS total
 
       FROM (
+        /*
+         * فواتير البيع.
+         */
         SELECT
           IFNULL(
             s.payment_method,
@@ -1152,16 +1248,8 @@ export function getReportsSummary(input?: ReportFilter) {
           s.grand_total
             AS amount,
 
-          COALESCE(
-            NULLIF(
-              s.business_date,
-              ''
-            ),
-            date(
-              s.created_at,
-              'localtime'
-            )
-          ) AS business_date,
+          ${saleBusinessDate}
+            AS business_date,
 
           s.user_id
 
@@ -1179,6 +1267,9 @@ export function getReportsSummary(input?: ReportFilter) {
 
         UNION ALL
 
+        /*
+         * فرق الاستبدال.
+         */
         SELECT
           IFNULL(
             os.payment_method,
@@ -1190,16 +1281,8 @@ export function getReportsSummary(input?: ReportFilter) {
           se.difference_amount
             AS amount,
 
-          COALESCE(
-            NULLIF(
-              se.business_date,
-              ''
-            ),
-            date(
-              se.created_at,
-              'localtime'
-            )
-          ) AS business_date,
+          ${exchangeBusinessDate}
+            AS business_date,
 
           se.user_id
 
@@ -1215,8 +1298,7 @@ export function getReportsSummary(input?: ReportFilter) {
             IS NULL
 
           AND
-
-          os.cancelled_at
+            os.cancelled_at
             IS NULL
 
           AND
@@ -1227,6 +1309,10 @@ export function getReportsSummary(input?: ReportFilter) {
 
         UNION ALL
 
+        /*
+         * المرتجعات تخصم من
+         * وسيلة دفع الفاتورة الأصلية.
+         */
         SELECT
           IFNULL(
             os.payment_method,
@@ -1238,10 +1324,8 @@ export function getReportsSummary(input?: ReportFilter) {
           -sr.refund_amount
             AS amount,
 
-          date(
-            sr.created_at,
-            'localtime'
-          ) AS business_date,
+          ${returnBusinessDate}
+            AS business_date,
 
           sr.user_id
 
@@ -1275,215 +1359,201 @@ export function getReportsSummary(input?: ReportFilter) {
   const cashierSales = db
     .prepare(
       `
-    SELECT
-      x.user_id,
-
-      COALESCE(
-        u.name,
-        'مستخدم غير معروف'
-      ) AS cashier_name,
-
-      IFNULL(
-        SUM(x.sales_count),
-        0
-      ) AS sales_count,
-
-      IFNULL(
-        SUM(x.sale_amount),
-        0
-      ) AS sales_total,
-
-      IFNULL(
-        SUM(x.returns_count),
-        0
-      ) AS returns_count,
-
-      IFNULL(
-        SUM(x.return_amount),
-        0
-      ) AS returns_total,
-
-      IFNULL(
-        SUM(x.exchange_count),
-        0
-      ) AS exchange_count,
-
-      IFNULL(
-        SUM(
-          x.exchange_adjustment
-        ),
-        0
-      ) AS exchange_adjustment,
-
-      IFNULL(
-        SUM(
-          x.sale_amount
-          - x.return_amount
-          + x.exchange_adjustment
-        ),
-        0
-      ) AS net_sales
-
-    FROM (
-      /*
-       * البيع ينسب للكاشير
-       * الذي أنشأ الفاتورة.
-       */
       SELECT
-        s.user_id,
+        x.user_id,
 
         COALESCE(
-          NULLIF(
-            s.business_date,
-            ''
-          ),
-          date(
-            s.created_at,
-            'localtime'
-          )
-        ) AS business_date,
+          u.name,
+          'مستخدم غير معروف'
+        ) AS cashier_name,
 
-        1 AS sales_count,
-
-        s.grand_total
-          AS sale_amount,
-
-        0 AS returns_count,
-
-        0 AS return_amount,
-
-        0 AS exchange_count,
-
-        0 AS exchange_adjustment
-
-      FROM sales s
-
-      WHERE
         IFNULL(
-          s.type,
-          'sale'
-        ) = 'sale'
+          SUM(x.sales_count),
+          0
+        ) AS sales_count,
 
-        AND
-          s.cancelled_at
-          IS NULL
+        IFNULL(
+          SUM(x.sale_amount),
+          0
+        ) AS sales_total,
 
-      UNION ALL
+        IFNULL(
+          SUM(x.returns_count),
+          0
+        ) AS returns_count,
 
-      /*
-       * المرتجع يقلل مبيعات
-       * صاحب الفاتورة الأصلية،
-       * حتى لو نفذه مستخدم آخر.
-       */
-      SELECT
-        os.user_id,
+        IFNULL(
+          SUM(x.return_amount),
+          0
+        ) AS returns_total,
 
-        date(
-          sr.created_at,
-          'localtime'
-        ) AS business_date,
+        IFNULL(
+          SUM(x.exchange_count),
+          0
+        ) AS exchange_count,
 
-        0 AS sales_count,
-
-        0 AS sale_amount,
-
-        1 AS returns_count,
-
-        sr.refund_amount
-          AS return_amount,
-
-        0 AS exchange_count,
-
-        0 AS exchange_adjustment
-
-      FROM sale_returns sr
-
-      JOIN sales os
-        ON os.id =
-          sr.original_sale_id
-
-      WHERE
-        sr.cancelled_at
-        IS NULL
-
-        AND
-          os.cancelled_at
-          IS NULL
-
-        AND
-          IFNULL(
-            os.type,
-            'sale'
-          ) = 'sale'
-
-      UNION ALL
-
-      /*
-       * فرق الاستبدال يضاف أو
-       * يخصم من صاحب الفاتورة
-       * الأصلية.
-       */
-      SELECT
-        os.user_id,
-
-        COALESCE(
-          NULLIF(
-            se.business_date,
-            ''
+        IFNULL(
+          SUM(
+            x.exchange_adjustment
           ),
-          date(
-            se.created_at,
-            'localtime'
-          )
-        ) AS business_date,
+          0
+        ) AS exchange_adjustment,
 
-        0 AS sales_count,
+        IFNULL(
+          SUM(
+            x.sale_amount
+            - x.return_amount
+            + x.exchange_adjustment
+          ),
+          0
+        ) AS net_sales
 
-        0 AS sale_amount,
+      FROM (
+        /*
+         * البيع ينسب للكاشير
+         * صاحب الفاتورة.
+         */
+        SELECT
+          s.user_id,
 
-        0 AS returns_count,
+          ${saleBusinessDate}
+            AS business_date,
 
-        0 AS return_amount,
+          1 AS sales_count,
 
-        1 AS exchange_count,
+          s.grand_total
+            AS sale_amount,
 
-        se.difference_amount
-          AS exchange_adjustment
+          0 AS returns_count,
 
-      FROM sale_exchanges se
+          0 AS return_amount,
 
-      JOIN sales os
-        ON os.id =
-          se.original_sale_id
+          0 AS exchange_count,
 
-      WHERE
-        se.cancelled_at
-        IS NULL
+          0 AS exchange_adjustment
 
-        AND
-          os.cancelled_at
-          IS NULL
+        FROM sales s
 
-        AND
+        WHERE
           IFNULL(
-            os.type,
+            s.type,
             'sale'
           ) = 'sale'
-    ) x
 
-    LEFT JOIN users u
-      ON u.id = x.user_id
+          AND
+            s.cancelled_at
+            IS NULL
 
-    ${combinedWhere.whereSql}
+        UNION ALL
 
-    GROUP BY
-      x.user_id,
-      u.name
+        /*
+         * المرتجع يقلل مبيعات
+         * صاحب الفاتورة الأصلية،
+         * حتى لو مستخدم آخر
+         * هو الذي نفذ المرتجع.
+         */
+        SELECT
+          os.user_id,
 
-    ORDER BY
-      net_sales DESC,
-      cashier_name ASC
-    `,
+          ${returnBusinessDate}
+            AS business_date,
+
+          0 AS sales_count,
+
+          0 AS sale_amount,
+
+          1 AS returns_count,
+
+          sr.refund_amount
+            AS return_amount,
+
+          0 AS exchange_count,
+
+          0 AS exchange_adjustment
+
+        FROM sale_returns sr
+
+        JOIN sales os
+          ON
+            os.id =
+              sr.original_sale_id
+
+        WHERE
+          sr.cancelled_at
+            IS NULL
+
+          AND
+            os.cancelled_at
+            IS NULL
+
+          AND
+            IFNULL(
+              os.type,
+              'sale'
+            ) = 'sale'
+
+        UNION ALL
+
+        /*
+         * فرق الاستبدال ينسب
+         * لصاحب الفاتورة الأصلية.
+         */
+        SELECT
+          os.user_id,
+
+          ${exchangeBusinessDate}
+            AS business_date,
+
+          0 AS sales_count,
+
+          0 AS sale_amount,
+
+          0 AS returns_count,
+
+          0 AS return_amount,
+
+          1 AS exchange_count,
+
+          se.difference_amount
+            AS exchange_adjustment
+
+        FROM sale_exchanges se
+
+        JOIN sales os
+          ON
+            os.id =
+              se.original_sale_id
+
+        WHERE
+          se.cancelled_at
+            IS NULL
+
+          AND
+            os.cancelled_at
+            IS NULL
+
+          AND
+            IFNULL(
+              os.type,
+              'sale'
+            ) = 'sale'
+      ) x
+
+      LEFT JOIN users u
+        ON
+          u.id =
+            x.user_id
+
+      ${combinedWhere.whereSql}
+
+      GROUP BY
+        x.user_id,
+        u.name
+
+      ORDER BY
+        net_sales DESC,
+        cashier_name ASC
+      `,
     )
     .all(...combinedWhere.params)
     .map((row: any) => ({
@@ -1557,21 +1627,13 @@ export function getReportsSummary(input?: ReportFilter) {
 
       JOIN (
         /*
-         * Original sales.
+         * المبيعات الأصلية.
          */
         SELECT
           s.customer_id,
 
-          COALESCE(
-            NULLIF(
-              s.business_date,
-              ''
-            ),
-            date(
-              s.created_at,
-              'localtime'
-            )
-          ) AS business_date,
+          ${saleBusinessDate}
+            AS business_date,
 
           s.user_id,
 
@@ -1599,16 +1661,15 @@ export function getReportsSummary(input?: ReportFilter) {
         UNION ALL
 
         /*
-         * Active returns reduce customer spend
-         * on the actual return date.
+         * المرتجعات تقلل إنفاق
+         * العميل بتاريخ الشفت
+         * الذي تم فيه المرتجع.
          */
         SELECT
           sr.customer_id,
 
-          date(
-            sr.created_at,
-            'localtime'
-          ) AS business_date,
+          ${returnBusinessDate}
+            AS business_date,
 
           sr.user_id,
 
@@ -1645,28 +1706,14 @@ export function getReportsSummary(input?: ReportFilter) {
         UNION ALL
 
         /*
-         * Exchanges affect customer spend by
-         * the actual exchange difference.
-         *
-         * Positive difference:
-         * customer spent more.
-         *
-         * Negative difference:
-         * customer received/refunded value.
+         * فرق الاستبدال يؤثر
+         * على إجمالي إنفاق العميل.
          */
         SELECT
           os.customer_id,
 
-          COALESCE(
-            NULLIF(
-              se.business_date,
-              ''
-            ),
-            date(
-              se.created_at,
-              'localtime'
-            )
-          ) AS business_date,
+          ${exchangeBusinessDate}
+            AS business_date,
 
           se.user_id,
 
