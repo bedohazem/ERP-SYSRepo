@@ -439,17 +439,18 @@ export default function SaleExchangeModal({
     return false
   }
 
-  function startSingleExchange(unit: ExchangeUnit) {
+  function startSingleExchange(group: ExchangeGroup, unit: ExchangeUnit) {
+    setGroupId(String(group.promotion_group_id))
+
     setDrafts([createDraft(unit)])
+
     setError('')
   }
 
-  function startWholeGroupExchange() {
-    if (!selectedGroup) {
-      return
-    }
+  function startWholeGroupExchange(group: ExchangeGroup) {
+    setGroupId(String(group.promotion_group_id))
 
-    setDrafts(selectedGroup.units.map(createDraft))
+    setDrafts(group.units.map(createDraft))
 
     setError('')
   }
@@ -793,149 +794,319 @@ export default function SaleExchangeModal({
 
         {!loading && state && (
           <>
-            {state.groups.length > 1 && (
+            <div
+              style={{
+                display: 'grid',
+                gap: '12px',
+                marginBottom: '18px',
+              }}
+            >
+              <div>
+                <strong
+                  style={{
+                    fontSize: '16px',
+                    color: '#f8fafc',
+                  }}
+                >
+                  أصناف الفاتورة المتاحة للاستبدال
+                </strong>
+
+                <div
+                  style={{
+                    marginTop: '4px',
+                    color: '#94a3b8',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                  }}
+                >
+                  اختار القطعة التي تريد استبدالها
+                </div>
+              </div>
+
               <div
                 style={{
                   display: 'grid',
-                  gap: '8px',
-                  marginBottom: '16px',
+
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+
+                  gap: '10px',
                 }}
               >
-                <label
-                  style={{
-                    color: '#cbd5e1',
-                    fontWeight: 800,
-                  }}
-                >
-                  اختار القطعة / العرض
-                </label>
+                {state.groups.map((group, groupIndex) => {
+                  const isPromotionGroup =
+                    group.group_kind === 'promotion' &&
+                    state.snapshot?.promotion_type === 'buy_x_get_y'
 
-                <select
-                  value={groupId}
-                  onChange={(event) => {
-                    setGroupId(event.target.value)
-                    setDrafts([])
-                  }}
-                  style={inputStyle}
-                >
-                  {state.groups.map((group, index) => (
-                    <option
-                      key={group.promotion_group_id}
-                      value={group.promotion_group_id}
-                    >
-                      {group.group_kind === 'regular'
-                        ? `${
-                            group.units[0]?.current_product_name || 'قطعة'
-                          } — ${group.units[0]?.current_size || '—'} / ${
-                            group.units[0]?.current_color || '—'
-                          }`
-                        : `عرض ${index + 1} — ${group.units.length} قطع`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+                  const isSelected =
+                    String(groupId) === String(group.promotion_group_id) &&
+                    drafts.length > 0
 
-            {selectedGroup && (
-              <>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: '12px',
-                    marginBottom: '12px',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <strong>
-                    {selectedIsPromotion
-                      ? 'القطع الحالية داخل العرض'
-                      : 'القطعة الحالية'}
-                  </strong>
+                  if (isPromotionGroup) {
+                    return (
+                      <div
+                        key={group.promotion_group_id}
+                        style={{
+                          padding: '14px',
 
-                  {selectedIsPromotion && (
-                    <button
-                      type="button"
-                      onClick={startWholeGroupExchange}
-                      style={secondaryButtonStyle}
-                    >
-                      استبدال العرض كاملًا
-                    </button>
-                  )}
-                </div>
+                          borderRadius: '14px',
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gap: '10px',
-                    marginBottom: '18px',
-                  }}
-                >
-                  {selectedGroup.units.map((unit) => (
+                          border: isSelected
+                            ? '1px solid rgba(139,92,246,0.75)'
+                            : '1px solid rgba(34,197,94,0.25)',
+
+                          background: isSelected
+                            ? 'rgba(139,92,246,0.10)'
+                            : 'rgba(34,197,94,0.06)',
+
+                          display: 'grid',
+                          gap: '10px',
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '10px',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'grid',
+                              gap: '3px',
+                            }}
+                          >
+                            <strong
+                              style={{
+                                color: '#86efac',
+                              }}
+                            >
+                              {promotionName}
+                            </strong>
+
+                            <span
+                              style={{
+                                color: '#94a3b8',
+                                fontSize: '11px',
+                              }}
+                            >
+                              مجموعة عرض {groupIndex + 1}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => startWholeGroupExchange(group)}
+                            style={secondaryButtonStyle}
+                          >
+                            استبدال العرض كاملًا
+                          </button>
+                        </div>
+
+                        {group.units.map((unit) => (
+                          <div
+                            key={unit.id}
+                            style={{
+                              display: 'grid',
+
+                              gridTemplateColumns: 'minmax(0, 1fr) auto auto',
+
+                              alignItems: 'center',
+
+                              gap: '10px',
+
+                              padding: '10px 12px',
+
+                              borderRadius: '10px',
+
+                              background: 'rgba(255,255,255,0.04)',
+
+                              border: '1px solid rgba(255,255,255,0.07)',
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: 'grid',
+                                gap: '3px',
+                              }}
+                            >
+                              <strong>{unit.current_product_name}</strong>
+
+                              <span
+                                style={{
+                                  color: '#94a3b8',
+                                  fontSize: '11px',
+                                }}
+                              >
+                                {unit.current_size || '—'}
+                                {' / '}
+                                {unit.current_color || '—'}
+                              </span>
+
+                              <span
+                                style={{
+                                  color:
+                                    Number(unit.current_is_gift) === 1
+                                      ? '#6ee7b7'
+                                      : '#cbd5e1',
+
+                                  fontSize: '11px',
+                                  fontWeight: 900,
+                                }}
+                              >
+                                {Number(unit.current_is_gift) === 1
+                                  ? 'هدية داخل العرض'
+                                  : 'قطعة مدفوعة داخل العرض'}
+                              </span>
+                            </div>
+
+                            <strong>{money(unit.current_unit_price)}</strong>
+
+                            <button
+                              type="button"
+                              onClick={() => startSingleExchange(group, unit)}
+                              style={smallButtonStyle}
+                            >
+                              استبدال
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  }
+
+                  const unit = group.units[0]
+
+                  if (!unit) {
+                    return null
+                  }
+
+                  return (
                     <div
-                      key={unit.id}
+                      key={group.promotion_group_id}
                       style={{
+                        padding: '14px',
+
+                        borderRadius: '14px',
+
+                        border: isSelected
+                          ? '1px solid rgba(139,92,246,0.75)'
+                          : '1px solid rgba(255,255,255,0.09)',
+
+                        background: isSelected
+                          ? 'rgba(139,92,246,0.10)'
+                          : 'rgba(255,255,255,0.035)',
+
                         display: 'grid',
-                        gridTemplateColumns:
-                          'minmax(220px, 1fr) 120px 110px 130px',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '12px',
-                        borderRadius: '12px',
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(255,255,255,0.08)',
+                        gap: '12px',
                       }}
                     >
                       <div
                         style={{
-                          display: 'grid',
-                          gap: '4px',
+                          display: 'flex',
+
+                          justifyContent: 'space-between',
+
+                          alignItems: 'flex-start',
+
+                          gap: '12px',
                         }}
                       >
-                        <strong>{unit.current_product_name}</strong>
-
-                        <span
+                        <div
                           style={{
-                            color: '#94a3b8',
-                            fontSize: '12px',
+                            display: 'grid',
+                            gap: '5px',
+                            minWidth: 0,
                           }}
                         >
-                          {unit.current_size || '—'} /{' '}
-                          {unit.current_color || '—'}
-                        </span>
+                          <strong
+                            style={{
+                              fontSize: '14px',
+                              color: '#f8fafc',
+                            }}
+                          >
+                            {unit.current_product_name}
+                          </strong>
+
+                          <span
+                            style={{
+                              color: '#94a3b8',
+                              fontSize: '12px',
+                            }}
+                          >
+                            المقاس: {unit.current_size || '—'}
+                            {'  •  '}
+                            اللون: {unit.current_color || '—'}
+                          </span>
+                        </div>
+
+                        <strong
+                          style={{
+                            color: '#f8fafc',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {money(unit.current_unit_price)}
+                        </strong>
                       </div>
 
-                      <strong>{money(unit.current_unit_price)}</strong>
-
-                      <span
+                      <div
                         style={{
-                          color:
-                            Number(unit.current_is_gift) === 1
-                              ? '#6ee7b7'
-                              : '#cbd5e1',
-                          fontWeight: 900,
+                          display: 'flex',
+
+                          justifyContent: 'space-between',
+
+                          alignItems: 'center',
+
+                          gap: '10px',
+
+                          flexWrap: 'wrap',
                         }}
                       >
-                        {selectedIsPromotion
-                          ? Number(unit.current_is_gift) === 1
-                            ? 'هدية'
-                            : 'مدفوعة'
-                          : 'قطعة عادية'}
-                      </span>
+                        <span
+                          style={{
+                            display: 'inline-flex',
 
-                      <button
-                        type="button"
-                        onClick={() => startSingleExchange(unit)}
-                        style={smallButtonStyle}
-                      >
-                        استبدال القطعة
-                      </button>
+                            alignItems: 'center',
+
+                            padding: '5px 9px',
+
+                            borderRadius: '999px',
+
+                            background: hasRecordedPromotion
+                              ? 'rgba(34,197,94,0.10)'
+                              : 'rgba(148,163,184,0.10)',
+
+                            border: hasRecordedPromotion
+                              ? '1px solid rgba(34,197,94,0.28)'
+                              : '1px solid rgba(148,163,184,0.20)',
+
+                            color: hasRecordedPromotion ? '#86efac' : '#cbd5e1',
+
+                            fontSize: '11px',
+
+                            fontWeight: 900,
+                          }}
+                        >
+                          {hasRecordedPromotion
+                            ? `ضمن عرض: ${promotionName}`
+                            : 'قطعة عادية'}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => startSingleExchange(group, unit)}
+                          style={smallButtonStyle}
+                        >
+                          استبدال هذه القطعة
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </>
-            )}
+                  )
+                })}
+              </div>
+            </div>
 
             {drafts.length > 0 && (
               <div
