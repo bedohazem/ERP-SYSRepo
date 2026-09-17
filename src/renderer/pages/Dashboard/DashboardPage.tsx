@@ -65,7 +65,12 @@ type CashierDashboardSummary = {
     exchanges_count: number
     cancelled_exchanges_count: number
     exchange_adjustment: number
+    exchange_cash_collection: number
+    exchange_cash_refund: number
 
+    exchange_cash_difference: number
+
+    exchange_debt_reduction: number
     net_sales: number
   }
 
@@ -104,7 +109,12 @@ const emptyCashierDashboard: CashierDashboardSummary = {
     exchanges_count: 0,
     cancelled_exchanges_count: 0,
     exchange_adjustment: 0,
+    exchange_cash_collection: 0,
+    exchange_cash_refund: 0,
 
+    exchange_cash_difference: 0,
+
+    exchange_debt_reduction: 0,
     net_sales: 0,
   },
 
@@ -1350,7 +1360,7 @@ function CashierRevenueView({
             />
 
             <ReconciliationCard
-              title="فروق الاستبدال"
+              title="تعديل قيمة المبيعات بالاستبدال"
               value={signedMoney(summary.sales.exchange_adjustment)}
             />
 
@@ -1379,7 +1389,7 @@ function CashierRevenueView({
           >
             مبيعات الفواتير
             {' + '}
-            فروق الاستبدال
+            تعديل قيمة المبيعات بالاستبدال
             {' - '}
             المرتجعات
             {' = '}
@@ -1404,6 +1414,14 @@ function CashierRevenueView({
             title="فواتير البيع"
             value={String(summary.sales.invoices_count)}
             subtitle={`ملغاة: ${summary.sales.cancelled_invoices_count}`}
+            tone="blue"
+          />
+
+          <CashierMiniCard
+            title="مبيعات الفواتير"
+            value={money(summary.sales.invoice_sales)}
+            subtitle="قيمة الفواتير بعد الخصومات وقبل المرتجعات والاستبدالات"
+            tone="green"
           />
 
           <CashierMiniCard
@@ -1412,6 +1430,7 @@ function CashierRevenueView({
             subtitle={`${summary.sales.returns_count} عملية • ملغاة: ${
               summary.sales.cancelled_returns_count
             }`}
+            tone="red"
           />
 
           <CashierMiniCard
@@ -1420,15 +1439,21 @@ function CashierRevenueView({
             subtitle={`${summary.sales.exchanges_count} عملية • ملغاة: ${
               summary.sales.cancelled_exchanges_count
             }`}
+            tone="violet"
           />
 
           <CashierMiniCard
-            title="الخصومات الفعلية"
-            value={money(summary.discounts.total)}
+            title="فرق الاستبدال النقدي"
+            value={signedMoney(summary.sales.exchange_cash_difference)}
             subtitle={
-              `عادي: ${money(summary.discounts.normal)}` +
-              ` • عروض: ${money(summary.discounts.promotion)}` +
-              ` • نقاط: ${money(summary.discounts.loyalty)}`
+              `${summary.sales.exchanges_count} عملية` +
+              ` • تخفيض مديونية: ${money(
+                summary.sales.exchange_debt_reduction,
+              )}` +
+              ` • تعديل قيمة البيع: ${signedMoney(
+                summary.sales.exchange_adjustment,
+              )}` +
+              ` • ملغاة: ${summary.sales.cancelled_exchanges_count}`
             }
           />
 
@@ -1438,6 +1463,7 @@ function CashierRevenueView({
             subtitle={`${summary.operations.expenses_count} عملية • ملغاة: ${
               summary.operations.cancelled_expenses_count
             }`}
+            tone="blue"
           />
 
           <CashierMiniCard
@@ -1446,12 +1472,14 @@ function CashierRevenueView({
             subtitle={`عمليات ملغاة: ${
               summary.operations.cancelled_customer_payments_count
             }`}
+            tone="blue"
           />
 
           <CashierMiniCard
             title="جلسات الجرد"
             value={String(summary.operations.stock_count_sessions_count)}
             subtitle="جلسات الجرد التي بدأتها في التاريخ المحدد"
+            tone="blue"
           />
         </div>
       </section>
@@ -1575,26 +1603,96 @@ function CashierMiniCard({
   title,
   value,
   subtitle,
+  tone = 'blue',
 }: {
   title: string
   value: string
   subtitle: string
+  tone?: 'green' | 'red' | 'violet' | 'amber' | 'blue'
 }) {
+  const tones = {
+    green: {
+      background: 'rgba(34,197,94,0.08)',
+      border: 'rgba(34,197,94,0.25)',
+      value: '#86efac',
+    },
+
+    red: {
+      background: 'rgba(239,68,68,0.08)',
+      border: 'rgba(239,68,68,0.25)',
+      value: '#fca5a5',
+    },
+
+    violet: {
+      background: 'rgba(139,92,246,0.09)',
+      border: 'rgba(139,92,246,0.28)',
+      value: '#c4b5fd',
+    },
+
+    amber: {
+      background: 'rgba(245,158,11,0.08)',
+      border: 'rgba(245,158,11,0.28)',
+      value: '#fcd34d',
+    },
+
+    blue: {
+      background: 'rgba(59,130,246,0.08)',
+      border: 'rgba(59,130,246,0.25)',
+      value: '#93c5fd',
+    },
+  }
+
+  const selected = tones[tone]
+
   return (
     <div
       className="glass-card"
       style={{
         padding: '16px',
+
         borderRadius: '16px',
+
         display: 'grid',
+
         gap: '8px',
+
         textAlign: 'right',
-        border: '1px solid rgba(255,255,255,0.08)',
+
+        background: selected.background,
+
+        border: `1px solid ${selected.border}`,
       }}
     >
-      <div style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</div>
-      <strong style={{ color: '#f8fafc', fontSize: '22px' }}>{value}</strong>
-      <div style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>
+      <div
+        style={{
+          color: '#94a3b8',
+          fontWeight: 800,
+        }}
+      >
+        {title}
+      </div>
+
+      <strong
+        style={{
+          color: selected.value,
+
+          fontSize: '22px',
+        }}
+      >
+        {value}
+      </strong>
+
+      <div
+        style={{
+          color: '#64748b',
+
+          fontSize: '13px',
+
+          fontWeight: 700,
+
+          lineHeight: 1.6,
+        }}
+      >
         {subtitle}
       </div>
     </div>

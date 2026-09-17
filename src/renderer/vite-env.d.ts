@@ -1052,7 +1052,12 @@ declare global {
           exchanges_count: number
           cancelled_exchanges_count: number
           exchange_adjustment: number
+          exchange_cash_collection: number
+          exchange_cash_refund: number
 
+          exchange_cash_difference: number
+
+          exchange_debt_reduction: number
           net_sales: number
         }
 

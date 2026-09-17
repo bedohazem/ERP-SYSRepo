@@ -2077,6 +2077,27 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
 
         IFNULL(
           SUM(
+            se.cash_collection_amount
+          ),
+          0
+        ) AS exchange_cash_collection,
+
+        IFNULL(
+          SUM(
+            se.cash_refund_amount
+          ),
+          0
+        ) AS exchange_cash_refund,
+
+        IFNULL(
+          SUM(
+            se.debt_reduction_amount
+          ),
+          0
+        ) AS exchange_debt_reduction,
+        
+        IFNULL(
+          SUM(
             COALESCE(
               se.new_normal_discount_value,
               se.old_normal_discount_value,
@@ -2321,6 +2342,18 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
 
   const exchangeAdjustment = reportMoney(exchanges?.exchange_adjustment)
 
+  const exchangeCashCollection = reportMoney(
+    exchanges?.exchange_cash_collection,
+  )
+
+  const exchangeCashRefund = reportMoney(exchanges?.exchange_cash_refund)
+
+  const exchangeCashDifference = reportMoney(
+    exchangeCashCollection - exchangeCashRefund,
+  )
+
+  const exchangeDebtReduction = reportMoney(exchanges?.exchange_debt_reduction)
+
   const normalDiscount = Math.max(
     0,
 
@@ -2382,6 +2415,13 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
       cancelled_exchanges_count: Number(cancelledExchanges?.count || 0),
 
       exchange_adjustment: exchangeAdjustment,
+      exchange_cash_collection: exchangeCashCollection,
+
+      exchange_cash_refund: exchangeCashRefund,
+
+      exchange_cash_difference: exchangeCashDifference,
+
+      exchange_debt_reduction: exchangeDebtReduction,
 
       net_sales: netSales,
     },

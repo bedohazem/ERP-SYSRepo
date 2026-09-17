@@ -26,7 +26,10 @@ import { createSupplier } from '../../src/main/database/repositories/suppliers.r
 import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
 import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
 import { createUser } from '../../src/main/database/repositories/user.repo'
-
+import {
+  createSaleExchange,
+  getSaleExchangeState,
+} from '../../src/main/database/repositories/sales-exchange.repo'
 type ReportVariantTestRow = {
   variant_id: number
   product_id: number
@@ -904,5 +907,150 @@ describe('reports repository', () => {
     expect(dashboard.discounts.total).toBe(0)
 
     expect(dashboard.sales.returns_count).toBe(1)
+  })
+
+  it('separates exchange invoice adjustment from cash refund when the sale has debt', () => {
+    const oldVariant = seedReportProduct({
+      name: 'Old Debt Exchange Product',
+
+      barcode: 'REPORT-EX-DEBT-OLD',
+
+      openingQty: 10,
+
+      buyPrice: 200,
+
+      sellPrice: 450,
+    })
+
+    const newVariant = seedReportProduct({
+      name: 'New Debt Exchange Product',
+
+      barcode: 'REPORT-EX-DEBT-NEW',
+
+      openingQty: 10,
+
+      buyPrice: 10,
+
+      sellPrice: 20,
+    })
+
+    const customer = createTestCustomer(
+      'Exchange Debt Customer',
+
+      '01099999999',
+    )
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: customer.id,
+
+      sub_total: 450,
+
+      discount_value: 0,
+
+      grand_total: 450,
+
+      paid: 200,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+
+          product_name: oldVariant.product_name,
+
+          barcode: oldVariant.barcode,
+
+          size: oldVariant.size,
+
+          color: oldVariant.color,
+
+          quantity: 1,
+
+          unit_price: 450,
+        },
+      ],
+    })
+
+    const state = getSaleExchangeState(sale.saleId)
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    )
+
+    expect(regularGroup).toBeTruthy()
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          promotion_unit_id: Number(regularGroup!.units[0].id),
+
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    })
+
+    /*
+     * قيمة الفاتورة نزلت
+     * من 450 إلى 20.
+     */
+    expect(exchange.difference_amount).toBe(-430)
+
+    /*
+     * المديونية القديمة 250
+     * يتم إلغاؤها أولًا.
+     */
+    expect(exchange.debt_reduction_amount).toBe(250)
+
+    /*
+     * العميل دفع 200،
+     * وأخذ منتج بـ20،
+     * إذن الرد النقدي 180.
+     */
+    expect(exchange.amount_to_refund).toBe(180)
+
+    const db = getDb()
+
+    const today = db
+      .prepare(
+        `
+        SELECT
+          date(
+            'now',
+            'localtime'
+          ) AS day
+        `,
+      )
+      .get() as {
+      day: string
+    }
+
+    const dashboard = getCashierDashboardSummary({
+      date: today.day,
+
+      user_id: 1,
+    })
+
+    expect(dashboard.sales.invoice_sales).toBe(450)
+
+    expect(dashboard.sales.exchange_adjustment).toBe(-430)
+
+    expect(dashboard.sales.exchange_debt_reduction).toBe(250)
+
+    expect(dashboard.sales.exchange_cash_refund).toBe(180)
+
+    expect(dashboard.sales.exchange_cash_difference).toBe(-180)
+
+    expect(dashboard.sales.net_sales).toBe(20)
   })
 })

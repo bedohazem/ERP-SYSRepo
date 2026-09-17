@@ -284,6 +284,11 @@ export default function SaleExchangeModal({
 
         difference: 0,
 
+        debtReduction: 0,
+        cashRefund: 0,
+        cashCollection: 0,
+        cashDifference: 0,
+
         currentInvoiceNet: 0,
         nextInvoiceNet: 0,
       }
@@ -410,11 +415,38 @@ export default function SaleExchangeModal({
 
     const difference = roundMoney(nextInvoiceNet - currentInvoiceNet)
 
+    const currentDebt = state.sale?.customer_id
+      ? Math.max(0, Number(state.sale?.remaining_amount || 0))
+      : 0
+
+    let debtReduction = 0
+    let cashRefund = 0
+    let cashCollection = 0
+
+    if (difference > 0) {
+      cashCollection = difference
+    }
+
+    if (difference < 0) {
+      const customerCredit = Math.abs(difference)
+
+      debtReduction = Math.min(customerCredit, currentDebt)
+
+      cashRefund = roundMoney(customerCredit - debtReduction)
+    }
+
+    const cashDifference = roundMoney(cashCollection - cashRefund)
+
     return {
       oldTotal,
       newTotal,
 
       difference,
+
+      debtReduction,
+      cashRefund,
+      cashCollection,
+      cashDifference,
 
       currentInvoiceNet,
       nextInvoiceNet,
@@ -1269,24 +1301,92 @@ export default function SaleExchangeModal({
                   </div>
 
                   <div style={summaryCardStyle}>
-                    فرق الاستبدال الفعلي
+                    الفرق النقدي للاستبدال
                     <strong
                       style={{
                         color:
-                          preview.difference > 0
+                          preview.cashDifference > 0
                             ? '#fbbf24'
-                            : preview.difference < 0
+                            : preview.cashDifference < 0
                               ? '#6ee7b7'
                               : '#fff',
                       }}
                     >
-                      {preview.difference > 0
-                        ? `على العميل ${money(preview.difference)}`
-                        : preview.difference < 0
-                          ? `للعميل ${money(Math.abs(preview.difference))}`
+                      {preview.cashDifference > 0
+                        ? `على العميل ${money(preview.cashDifference)}`
+                        : preview.cashDifference < 0
+                          ? `للعميل ${money(Math.abs(preview.cashDifference))}`
                           : money(0)}
                     </strong>
                   </div>
+
+                  <div style={summaryCardStyle}>
+                    تعديل قيمة الفاتورة
+                    <strong
+                      style={{
+                        color: '#c4b5fd',
+                      }}
+                    >
+                      {preview.difference > 0
+                        ? `+${money(preview.difference)}`
+                        : preview.difference < 0
+                          ? `-${money(Math.abs(preview.difference))}`
+                          : money(0)}
+                    </strong>
+                  </div>
+
+                  {preview.difference < 0 && (
+                    <div
+                      style={{
+                        gridColumn: '1 / -1',
+
+                        display: 'grid',
+
+                        gridTemplateColumns:
+                          'repeat(auto-fit, minmax(200px, 1fr))',
+
+                        gap: '10px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          ...summaryCardStyle,
+
+                          background: 'rgba(245,158,11,0.08)',
+
+                          border: '1px solid rgba(245,158,11,0.24)',
+                        }}
+                      >
+                        تخفيض مديونية العميل
+                        <strong
+                          style={{
+                            color: '#fcd34d',
+                          }}
+                        >
+                          {money(preview.debtReduction)}
+                        </strong>
+                      </div>
+
+                      <div
+                        style={{
+                          ...summaryCardStyle,
+
+                          background: 'rgba(34,197,94,0.08)',
+
+                          border: '1px solid rgba(34,197,94,0.24)',
+                        }}
+                      >
+                        المبلغ الذي يُرد للعميل
+                        <strong
+                          style={{
+                            color: '#86efac',
+                          }}
+                        >
+                          {money(preview.cashRefund)}
+                        </strong>
+                      </div>
+                    </div>
+                  )}
 
                   <div
                     style={{
