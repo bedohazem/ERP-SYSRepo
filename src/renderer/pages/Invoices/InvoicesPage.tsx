@@ -1678,7 +1678,11 @@ export default function InvoicesPage() {
                         <span style={{ color: '#94a3b8', fontSize: '11px' }}>
                           عادي: {money(sale.discount_value || 0)}
                           {' / '}
-                          عرض: {money(sale.promotion_discount_value || 0)}
+                          عرض
+                          {sale.promotion_name
+                            ? ` (${sale.promotion_name})`
+                            : ''}
+                          : {money(sale.promotion_discount_value || 0)}
                           {' / '}
                           نقاط: {money(sale.loyalty_discount_value || 0)}
                         </span>
@@ -2957,6 +2961,63 @@ export default function InvoicesPage() {
                   )}
                 </strong>
               </div>
+              {Number(selectedReceipt.sale.promotion_discount_value || 0) >
+                0 && (
+                <div
+                  style={{
+                    marginBottom: '18px',
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+
+                    border: '1px solid rgba(34,197,94,0.28)',
+
+                    background: 'rgba(34,197,94,0.08)',
+
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+
+                    gap: '12px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: '4px',
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: '12px',
+                        fontWeight: 800,
+                      }}
+                    >
+                      العرض المطبق
+                    </span>
+
+                    <strong
+                      style={{
+                        color: '#86efac',
+                        fontSize: '15px',
+                      }}
+                    >
+                      {selectedReceipt.sale.promotion_name || 'عرض'}
+                    </strong>
+                  </div>
+
+                  <div
+                    style={{
+                      color: '#e5e7eb',
+                      fontWeight: 900,
+                    }}
+                  >
+                    خصم العرض:{' '}
+                    {money(selectedReceipt.sale.promotion_discount_value || 0)}
+                  </div>
+                </div>
+              )}
             </div>
 
             <table
@@ -3252,7 +3313,11 @@ export default function InvoicesPage() {
                       />
 
                       <SummaryLine
-                        label="خصم العرض"
+                        label={
+                          selectedReceipt.original_receipt.sale.promotion_name
+                            ? `خصم العرض — ${selectedReceipt.original_receipt.sale.promotion_name}`
+                            : 'خصم العرض'
+                        }
                         value={money(
                           selectedReceipt.original_receipt.sale
                             .promotion_discount_value || 0,
@@ -3385,7 +3450,11 @@ export default function InvoicesPage() {
               />
 
               <SummaryLine
-                label="خصم العرض الحالي"
+                label={
+                  selectedReceipt.sale.promotion_name
+                    ? `خصم العرض — ${selectedReceipt.sale.promotion_name}`
+                    : 'خصم العرض الحالي'
+                }
                 value={money(
                   selectedReceipt.financials
                     ?.current_promotion_discount_value ??
