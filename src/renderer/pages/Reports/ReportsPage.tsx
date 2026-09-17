@@ -163,7 +163,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     void loadReports()
-  }, [])
+  }, [dateFrom, dateTo])
 
   return (
     <div
@@ -239,6 +239,12 @@ export default function ReportsPage() {
 
                 setMonthFilter(value)
 
+                if (!value) {
+                  setDateFrom('')
+                  setDateTo('')
+                  return
+                }
+
                 const range = getMonthRange(value)
 
                 if (!range) {
@@ -246,7 +252,6 @@ export default function ReportsPage() {
                 }
 
                 setDateFrom(range.from)
-
                 setDateTo(range.to)
               }}
               title="اختيار شهر كامل"
@@ -274,14 +279,6 @@ export default function ReportsPage() {
               }}
               style={inputStyle}
             />
-
-            <button
-              type="button"
-              onClick={loadReports}
-              style={primaryButtonStyle}
-            >
-              {loading ? 'جاري التحميل...' : 'تحديث'}
-            </button>
           </div>
         </div>
       </div>
