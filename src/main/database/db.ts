@@ -16,6 +16,168 @@ export function closeDb(): void {
   }
 }
 
+function repairLegacyFirstShiftOpeningTransfer(db: Database.Database) {
+  const firstShift = db
+    .prepare(
+      `
+      SELECT id
+      FROM cash_shifts
+      ORDER BY id ASC
+      LIMIT 1
+      `,
+    )
+    .get() as
+    | {
+        id: number
+      }
+    | undefined
+
+  if (!firstShift) {
+    return
+  }
+
+  const badMovement = db
+    .prepare(
+      `
+      SELECT
+        id,
+        amount,
+        created_by,
+        business_date,
+        created_at,
+        shift_id
+
+      FROM cash_movements
+
+      WHERE shift_id = ?
+        AND reference_id = ?
+        AND type = 'shift_adjustment'
+        AND direction = 'out'
+        AND payment_method = 'store_cash'
+        AND reference_type =
+          'cash_shift_opening_reconcile'
+        AND cancelled_at IS NULL
+
+      ORDER BY id ASC
+      LIMIT 1
+      `,
+    )
+    .get(firstShift.id, firstShift.id) as
+    | {
+        id: number
+        amount: number
+        created_by: number | null
+        business_date: string | null
+        created_at: string | null
+        shift_id: number
+      }
+    | undefined
+
+  if (!badMovement || Number(badMovement.amount || 0) <= 0) {
+    return
+  }
+
+  const tx = db.transaction(() => {
+    const safeMovementExists = db
+      .prepare(
+        `
+        SELECT id
+
+        FROM cash_movements
+
+        WHERE
+          reference_id = ?
+          AND reference_type =
+            'cash_shift_safe_transfer'
+          AND payment_method =
+            'store_safe'
+          AND direction = 'in'
+          AND cancelled_at IS NULL
+
+        LIMIT 1
+        `,
+      )
+      .get(badMovement.id)
+
+    /*
+     * الحركة القديمة لم تكن سحبًا حقيقيًا.
+     * كانت في الحقيقة نقلًا من الدرج
+     * إلى الخزنة الآمنة.
+     */
+    db.prepare(
+      `
+      UPDATE cash_movements
+
+      SET
+        type = 'transfer',
+
+        reference_type =
+          'cash_shift_safe_transfer',
+
+        notes = ?
+
+      WHERE id = ?
+      `,
+    ).run(
+      `تصحيح ترحيل الرصيد السابق عند فتح أول شفت #${firstShift.id} إلى الخزنة الآمنة`,
+      badMovement.id,
+    )
+
+    if (!safeMovementExists) {
+      db.prepare(
+        `
+        INSERT INTO cash_movements (
+          type,
+          amount,
+          direction,
+          payment_method,
+
+          reference_id,
+          reference_type,
+
+          notes,
+
+          created_by,
+          business_date,
+          shift_id,
+          created_at
+        )
+
+        VALUES (
+          'transfer',
+          ?,
+          'in',
+          'store_safe',
+
+          ?,
+          'cash_shift_safe_transfer',
+
+          ?,
+
+          ?,
+          ?,
+          ?,
+          ?
+        )
+        `,
+      ).run(
+        Number(badMovement.amount),
+
+        badMovement.id,
+
+        `تصحيح ترحيل الرصيد السابق عند فتح أول شفت #${firstShift.id} إلى الخزنة الآمنة`,
+
+        badMovement.created_by,
+        badMovement.business_date,
+        badMovement.shift_id,
+        badMovement.created_at,
+      )
+    }
+  })
+
+  tx()
+}
+
 export function getDb(): Database.Database {
   if (!db) {
     const dbPath = getDbPath()
@@ -606,6 +768,89 @@ export function getDb(): Database.Database {
         FOREIGN KEY (closed_by) REFERENCES users(id)
       );
 
+      CREATE TABLE IF NOT EXISTS cash_shifts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        status TEXT NOT NULL DEFAULT 'open'
+          CHECK (status IN ('open', 'closed')),
+
+        opened_by INTEGER NOT NULL,
+        opened_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+        previous_shift_id INTEGER,
+
+        expected_opening_amount REAL,
+        opening_counted_amount REAL NOT NULL DEFAULT 0,
+        opening_difference REAL NOT NULL DEFAULT 0,
+
+        expected_closing_amount REAL,
+        closing_counted_amount REAL,
+        closing_difference REAL,
+
+        left_for_next_shift REAL,
+        safe_transfer_amount REAL,
+
+        closed_by INTEGER,
+        closed_at TEXT,
+        close_reason TEXT,
+
+        FOREIGN KEY (opened_by)
+          REFERENCES users(id),
+
+        FOREIGN KEY (closed_by)
+          REFERENCES users(id),
+
+        FOREIGN KEY (previous_shift_id)
+          REFERENCES cash_shifts(id)
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS
+        idx_cash_shifts_single_open
+      ON cash_shifts(status)
+      WHERE status = 'open';
+
+      CREATE INDEX IF NOT EXISTS
+        idx_cash_shifts_opened_at
+      ON cash_shifts(opened_at);
+
+      CREATE TABLE IF NOT EXISTS cash_shift_variances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        shift_id INTEGER NOT NULL,
+
+        stage TEXT NOT NULL
+          CHECK (stage IN ('opening', 'closing')),
+
+        kind TEXT NOT NULL
+          CHECK (kind IN ('shortage', 'surplus')),
+
+        amount REAL NOT NULL DEFAULT 0,
+
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'resolved')),
+
+        resolution_type TEXT,
+        resolution_notes TEXT,
+
+        resolved_by INTEGER,
+        resolved_at TEXT,
+
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (shift_id)
+          REFERENCES cash_shifts(id)
+          ON DELETE CASCADE,
+
+        FOREIGN KEY (resolved_by)
+          REFERENCES users(id),
+
+        UNIQUE (shift_id, stage)
+      );
+
+      CREATE INDEX IF NOT EXISTS
+        idx_cash_shift_variances_status
+      ON cash_shift_variances(status);
+
       CREATE TABLE IF NOT EXISTS expenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT NOT NULL,
@@ -853,7 +1098,20 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'sale_exchanges', 'cancelled_by', 'INTEGER')
 
     safeAddColumn(db, 'sale_exchanges', 'cancel_reason', 'TEXT')
+    safeAddColumn(db, 'sale_exchanges', 'shift_id', 'INTEGER')
+    safeAddColumn(db, 'sale_exchanges', 'cancelled_shift_id', 'INTEGER')
 
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_sale_exchanges_cancelled_shift_id
+      ON sale_exchanges(cancelled_shift_id);
+    `)
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_sale_exchanges_shift_id
+      ON sale_exchanges(shift_id);
+    `)
     safeAddColumn(
       db,
       'sale_loyalty_snapshots',
@@ -907,14 +1165,41 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'sales', 'payment_status', `TEXT DEFAULT 'paid'`)
 
     safeAddColumn(db, 'sales', 'business_date', 'TEXT')
+    safeAddColumn(db, 'sales', 'shift_id', 'INTEGER')
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_sales_shift_id
+      ON sales(shift_id);
+    `)
     safeAddColumn(db, 'sales', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'sales', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'sales', 'cancel_reason', 'TEXT')
+    safeAddColumn(db, 'sales', 'cancelled_shift_id', 'INTEGER')
 
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_sales_cancelled_shift_id
+      ON sales(cancelled_shift_id);
+    `)
     safeAddColumn(db, 'sale_returns', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'sale_returns', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'sale_returns', 'cancel_reason', 'TEXT')
+    safeAddColumn(db, 'sale_returns', 'shift_id', 'INTEGER')
 
+    safeAddColumn(db, 'sale_returns', 'cancelled_shift_id', 'INTEGER')
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_sale_returns_cancelled_shift_id
+      ON sale_returns(cancelled_shift_id);
+    `)
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_sale_returns_shift_id
+      ON sale_returns(shift_id);
+    `)
     safeAddColumn(db, 'sale_returns', 'debt_reduction_amount', 'REAL')
 
     safeAddColumn(db, 'sale_returns', 'cash_refund_amount', 'REAL')
@@ -937,7 +1222,24 @@ export function getDb(): Database.Database {
       `TEXT DEFAULT 'cash'`,
     )
     safeAddColumn(db, 'customer_payments', 'notes', 'TEXT')
+    safeAddColumn(db, 'customer_payment_batches', 'shift_id', 'INTEGER')
 
+    safeAddColumn(
+      db,
+      'customer_payment_batches',
+      'cancelled_shift_id',
+      'INTEGER',
+    )
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_customer_payment_batches_shift_id
+      ON customer_payment_batches(shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_customer_payment_batches_cancelled_shift_id
+      ON customer_payment_batches(cancelled_shift_id);
+    `)
     safeAddColumn(db, 'store_liabilities', 'category', 'TEXT')
     safeAddColumn(db, 'store_liabilities', 'paid_amount', 'REAL DEFAULT 0')
     safeAddColumn(db, 'store_liabilities', 'remaining_amount', 'REAL DEFAULT 0')
@@ -953,18 +1255,95 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'store_liability_payments', 'notes', 'TEXT')
 
     safeAddColumn(db, 'cash_movements', 'business_date', 'TEXT')
+    safeAddColumn(db, 'cash_movements', 'shift_id', 'INTEGER')
 
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_cash_movements_shift_id
+      ON cash_movements(shift_id);
+    `)
     safeAddColumn(db, 'cash_movements', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'cash_movements', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'cash_movements', 'cancel_reason', 'TEXT')
     safeAddColumn(db, 'cash_movements', 'replacement_movement_id', 'INTEGER')
+    repairLegacyFirstShiftOpeningTransfer(db)
     safeAddColumn(db, 'expenses', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'expenses', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'expenses', 'cancel_reason', 'TEXT')
 
+    safeAddColumn(db, 'expenses', 'shift_id', 'INTEGER')
+
+    safeAddColumn(db, 'expenses', 'updated_shift_id', 'INTEGER')
+
+    safeAddColumn(db, 'expenses', 'cancelled_shift_id', 'INTEGER')
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_expenses_shift_id
+      ON expenses(shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_expenses_updated_shift_id
+      ON expenses(updated_shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_expenses_cancelled_shift_id
+      ON expenses(cancelled_shift_id);
+    `)
+
     safeAddColumn(db, 'store_liability_payments', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'store_liability_payments', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'store_liability_payments', 'cancel_reason', 'TEXT')
+
+    safeAddColumn(db, 'store_liability_payments', 'shift_id', 'INTEGER')
+
+    safeAddColumn(
+      db,
+      'store_liability_payments',
+      'cancelled_shift_id',
+      'INTEGER',
+    )
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_store_liability_payments_shift_id
+      ON store_liability_payments(shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_store_liability_payments_cancelled_shift_id
+      ON store_liability_payments(cancelled_shift_id);
+    `)
+
+    safeAddColumn(db, 'purchase_invoices', 'shift_id', 'INTEGER')
+
+    safeAddColumn(db, 'purchase_invoices', 'cancelled_shift_id', 'INTEGER')
+
+    safeAddColumn(db, 'supplier_payment_batches', 'shift_id', 'INTEGER')
+
+    safeAddColumn(
+      db,
+      'supplier_payment_batches',
+      'cancelled_shift_id',
+      'INTEGER',
+    )
+
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS
+        idx_purchase_invoices_shift_id
+      ON purchase_invoices(shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_purchase_invoices_cancelled_shift_id
+      ON purchase_invoices(cancelled_shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_supplier_payment_batches_shift_id
+      ON supplier_payment_batches(shift_id);
+
+      CREATE INDEX IF NOT EXISTS
+        idx_supplier_payment_batches_cancelled_shift_id
+      ON supplier_payment_batches(cancelled_shift_id);
+    `)
 
     safeAddColumn(
       db,
@@ -1201,6 +1580,10 @@ export function resetDatabaseData(): void {
       
 
       DELETE FROM activity_logs;
+
+      DELETE FROM cash_shift_variances;
+      DELETE FROM cash_shifts;
+
       DELETE FROM expenses;
       DELETE FROM cash_day_closings;
       DELETE FROM cash_movements;

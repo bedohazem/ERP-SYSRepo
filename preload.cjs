@@ -112,8 +112,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('customers:cancel-payment', input),
   updateCustomerPayment: (input) =>
     ipcRenderer.invoke('customers:update-payment', input),
-  getCustomerStatement: (customerId, actorId) =>
-    ipcRenderer.invoke('customers:statement', customerId, actorId),
+  getCustomerStatement: (customerId) =>
+    ipcRenderer.invoke('customers:statement', customerId),
 
   getLoyaltySettings: () => ipcRenderer.invoke('settings:get-loyalty'),
   saveLoyaltySettings: (input) =>
@@ -132,7 +132,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('settings:run-auto-backup-now', input),
 
   getReportsSummary: (input) => ipcRenderer.invoke('reports:summary', input),
-
+  getCashierDashboardSummary: () =>
+    ipcRenderer.invoke('reports:cashier-dashboard'),
   getInventoryList: (input) => ipcRenderer.invoke('inventory:list', input),
   getInventoryPage: (input) => ipcRenderer.invoke('inventory:list-page', input),
   adjustVariantStock: (input) =>
@@ -181,10 +182,21 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('suppliers:cancel-payment', input),
   updateSupplierPayment: (input) =>
     ipcRenderer.invoke('suppliers:update-payment', input),
-  getSupplierStatement: (supplierId, actorId) =>
-    ipcRenderer.invoke('suppliers:statement', supplierId, actorId),
+  getSupplierStatement: (supplierId) =>
+    ipcRenderer.invoke('suppliers:statement', supplierId),
 
   getCashSummary: (input) => ipcRenderer.invoke('cash:summary', input),
+  getCashShiftDaySummary: (input) =>
+    ipcRenderer.invoke('cash-shifts:day-summary', input),
+  getCashShifts: (input) => ipcRenderer.invoke('cash-shifts:list', input),
+
+  getCashShiftDetails: (shiftId) =>
+    ipcRenderer.invoke('cash-shifts:details', shiftId),
+  listCashShiftVariances: (input) =>
+    ipcRenderer.invoke('cash-shifts:list-variances', input),
+
+  resolveCashShiftVariance: (input) =>
+    ipcRenderer.invoke('cash-shifts:resolve-variance', input),
   getCashMovements: (input) => ipcRenderer.invoke('cash:list', input),
   createCashMovement: (input) =>
     ipcRenderer.invoke('cash:create-movement', input),
@@ -193,16 +205,16 @@ contextBridge.exposeInMainWorld('api', {
   cancelCashMovement: (input) =>
     ipcRenderer.invoke('cash:cancel-movement', input),
   createCashTransfer: (input) => ipcRenderer.invoke('cash:transfer', input),
+  getCashShiftOpeningPreview: () =>
+    ipcRenderer.invoke('cash-shifts:opening-preview'),
+  getOpenCashShift: () => ipcRenderer.invoke('cash-shifts:get-open'),
 
-  getCashDayClosePreview: (businessDate) =>
-    ipcRenderer.invoke('cash:day-close-preview', businessDate),
+  openCashShift: (input) => ipcRenderer.invoke('cash-shifts:open', input),
 
-  closeCashDay: (input) => ipcRenderer.invoke('cash:close-day', input),
-  cancelCashDayClosing: (input) =>
-    ipcRenderer.invoke('cash:cancel-day-close', input),
+  getCashShiftExpectedBalance: (shiftId) =>
+    ipcRenderer.invoke('cash-shifts:preview', shiftId),
 
-  updateCashDayClosing: (input) =>
-    ipcRenderer.invoke('cash:update-day-close', input),
+  closeCashShift: (input) => ipcRenderer.invoke('cash-shifts:close', input),
 
   createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
   updateExpense: (input) => ipcRenderer.invoke('expenses:update', input),

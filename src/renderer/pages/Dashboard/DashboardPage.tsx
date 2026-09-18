@@ -49,39 +49,110 @@ type DashboardState = {
   overview: ReportsData
 }
 
-type CashierDailyRevenue = {
-  drawerCash: number
-  drawerOpening: number
-  drawerCashIn: number
-  drawerCashOut: number
-  drawerEndBalance: number
-  drawerAlreadyClosed: boolean
+type CashierDashboardSummary = {
+  date: string
 
-  instapayBank: number
-  vodafoneCash: number
-  fawryMachine: number
-  ownerCash: number
+  shift: {
+    id: number
 
-  netSales: number
-  saleCollectionsIn: number
-  customerPaymentsIn: number
-  totalCustomerCollections: number
-  newReceivables: number
+    status: 'open' | 'closed'
 
-  exchangeAdjustment: number
+    opening_counted_amount: number
 
-  exchangeCashIn: number
-  exchangeCashOut: number
+    opened_at: string
 
-  exchangeDebtReduction: number
+    closed_at: string | null
+  } | null
 
-  totalDiscounts: number
+  sales: {
+    invoices_count: number
+    cancelled_invoices_count: number
 
-  saleReturnsValue: number
-  saleReturnsCashOut: number
-  saleReturnsDebtReduction: number
+    invoice_sales: number
+    paid_sales_total: number
+    outstanding_debt_total: number
+    outstanding_debt_invoices_count: number
+    returns_count: number
+    cancelled_returns_count: number
+    returns_total: number
 
-  expensesOut: number
+    exchanges_count: number
+    cancelled_exchanges_count: number
+    exchange_adjustment: number
+    exchange_cash_collection: number
+    exchange_cash_refund: number
+
+    exchange_cash_difference: number
+
+    exchange_debt_reduction: number
+    net_sales: number
+  }
+
+  discounts: {
+    normal: number
+    promotion: number
+    loyalty: number
+    total: number
+  }
+
+  operations: {
+    customer_payments_count: number
+    customer_payments_total: number
+    cancelled_customer_payments_count: number
+
+    expenses_count: number
+    cancelled_expenses_count: number
+    expenses_total: number
+
+    stock_count_sessions_count: number
+  }
+}
+
+const emptyCashierDashboard: CashierDashboardSummary = {
+  date: '',
+  shift: null,
+  sales: {
+    invoices_count: 0,
+    cancelled_invoices_count: 0,
+
+    invoice_sales: 0,
+    paid_sales_total: 0,
+    outstanding_debt_total: 0,
+    outstanding_debt_invoices_count: 0,
+    returns_count: 0,
+    cancelled_returns_count: 0,
+    returns_total: 0,
+
+    exchanges_count: 0,
+    cancelled_exchanges_count: 0,
+    exchange_adjustment: 0,
+    exchange_cash_collection: 0,
+    exchange_cash_refund: 0,
+
+    exchange_cash_difference: 0,
+
+    exchange_debt_reduction: 0,
+    net_sales: 0,
+  },
+
+  discounts: {
+    normal: 0,
+    promotion: 0,
+    loyalty: 0,
+    total: 0,
+  },
+
+  operations: {
+    customer_payments_count: 0,
+    customer_payments_total: 0,
+    cancelled_customer_payments_count: 0,
+
+    expenses_count: 0,
+    cancelled_expenses_count: 0,
+    expenses_total: 0,
+
+    stock_count_sessions_count: 0,
+  },
 }
 
 const emptyReports: ReportsData = {
@@ -132,229 +203,72 @@ export default function DashboardPage() {
   const [message, setMessage] = useState('')
   const [lastUpdated, setLastUpdated] = useState('')
 
-  const [cashierRevenue, setCashierRevenue] = useState<CashierDailyRevenue>({
-    drawerCash: 0,
-    drawerOpening: 0,
-    drawerCashIn: 0,
-    drawerCashOut: 0,
-    drawerEndBalance: 0,
-    drawerAlreadyClosed: false,
+  const [cashierSummary, setCashierSummary] = useState<CashierDashboardSummary>(
+    emptyCashierDashboard,
+  )
 
-    instapayBank: 0,
-    vodafoneCash: 0,
-    fawryMachine: 0,
-    ownerCash: 0,
-
-    netSales: 0,
-    saleCollectionsIn: 0,
-    customerPaymentsIn: 0,
-    totalCustomerCollections: 0,
-    newReceivables: 0,
-
-    exchangeAdjustment: 0,
-
-    exchangeCashIn: 0,
-    exchangeCashOut: 0,
-
-    exchangeDebtReduction: 0,
-
-    totalDiscounts: 0,
-
-    saleReturnsValue: 0,
-    saleReturnsCashOut: 0,
-    saleReturnsDebtReduction: 0,
-
-    expensesOut: 0,
-  })
   const [todayKey, setTodayKey] = useState(() => getLocalDateKey(new Date()))
 
   const [monthStartKey, setMonthStartKey] = useState(() =>
     getMonthStartKey(new Date()),
   )
 
-  const [cashierDate, setCashierDate] = useState(todayKey)
-
-  async function loadDashboard(targetDate = cashierDate) {
-    setLoading(true)
+  async function loadDashboard(silent = false) {
+    if (!silent) {
+      setLoading(true)
+    }
     setMessage('')
 
-    const cashierId = isCashier ? Number(user?.id || 0) : undefined
-
-    const dashboardDate = isCashier ? targetDate : todayKey
-
-    const dashboardMonthStartKey =
-      isCashier && /^\d{4}-\d{2}-\d{2}$/.test(dashboardDate)
-        ? `${dashboardDate.slice(0, 7)}-01`
-        : monthStartKey
-
-    const reportUserFilter =
-      isCashier && cashierId ? { user_id: cashierId } : {}
-
-    const cashierDayFilter = {
-      date_from: dashboardDate,
-      date_to: dashboardDate,
-      created_by: cashierId,
-    }
-
     try {
-      const [
-        today,
-        month,
-        overview,
+      if (isCashier) {
+        const result = await window.api.getCashierDashboardSummary()
 
-        selectedDayDrawer,
-        todayInstapayBank,
-        todayVodafoneCash,
-        todayFawryMachine,
-        todayOwnerCash,
+        setCashierSummary(result)
+      } else {
+        const [today, month, overview] = await Promise.all([
+          window.api.getReportsSummary({
+            date_from: todayKey,
 
-        todaySalesCash,
-        todayCustomerPayments,
-        todaySaleReturns,
-        todaySaleExchanges,
-        todayExpenses,
-      ] = await Promise.all([
-        window.api.getReportsSummary({
-          ...reportUserFilter,
-          date_from: dashboardDate,
-          date_to: dashboardDate,
-        }),
-        window.api.getReportsSummary({
-          ...reportUserFilter,
-          date_from: dashboardMonthStartKey,
-          date_to: dashboardDate,
-        }),
-        window.api.getReportsSummary({
-          ...reportUserFilter,
-        }),
+            date_to: todayKey,
+          }),
 
-        window.api.getCashDayClosePreview(dashboardDate),
+          window.api.getReportsSummary({
+            date_from: monthStartKey,
 
-        window.api.getCashSummary({
-          ...cashierDayFilter,
-          payment_method: 'owner_bank',
-        }),
+            date_to: todayKey,
+          }),
 
-        window.api.getCashSummary({
-          ...cashierDayFilter,
-          payment_method: 'owner_vodafone',
-        }),
+          window.api.getReportsSummary(),
+        ])
 
-        window.api.getCashSummary({
-          ...cashierDayFilter,
-          payment_method: 'fawry_machine',
-        }),
-
-        window.api.getCashSummary({
-          ...cashierDayFilter,
-          payment_method: 'owner_cash',
-        }),
-
-        window.api.getCashSummary({
-          ...cashierDayFilter,
-          type: 'sale',
-        }),
-
-        window.api.getCashSummary({
-          ...cashierDayFilter,
-          type: 'customer_payment',
-        }),
-
-        window.api.getCashSummary({
-          ...cashierDayFilter,
-          type: 'sale_return',
-        }),
-
-        window.api.getCashSummary({
-          ...cashierDayFilter,
-
-          type: 'sale_exchange',
-        }),
-
-        window.api.getCashSummary({
-          ...cashierDayFilter,
-          type: 'expense',
-        }),
-      ])
-
-      setData({ today, month, overview })
-
-      setCashierRevenue({
-        drawerCash: Number(selectedDayDrawer?.system_closing_balance || 0),
-
-        drawerOpening: Number(selectedDayDrawer?.opening_drawer_balance || 0),
-
-        drawerCashIn: Number(selectedDayDrawer?.day_cash_in || 0),
-
-        drawerCashOut: Number(selectedDayDrawer?.day_cash_out || 0),
-
-        drawerEndBalance: selectedDayDrawer?.already_closed
-          ? Number(selectedDayDrawer?.closing?.carry_over_amount || 0)
-          : Number(selectedDayDrawer?.system_closing_balance || 0),
-
-        drawerAlreadyClosed: Boolean(selectedDayDrawer?.already_closed),
-
-        instapayBank: Number(todayInstapayBank?.balance || 0),
-        vodafoneCash: Number(todayVodafoneCash?.balance || 0),
-        fawryMachine: Number(todayFawryMachine?.balance || 0),
-        ownerCash: Number(todayOwnerCash?.balance || 0),
-
-        netSales: Number(today.summary.net_sales || 0),
-
-        saleCollectionsIn: Number(todaySalesCash?.total_in || 0),
-
-        customerPaymentsIn: Number(todayCustomerPayments?.total_in || 0),
-
-        totalCustomerCollections:
-          Number(todaySalesCash?.total_in || 0) +
-          Number(todayCustomerPayments?.total_in || 0) +
-          Number(todaySaleExchanges?.total_in || 0),
-
-        exchangeAdjustment: Number(today.summary.exchange_adjustment || 0),
-
-        exchangeCashIn: Number(todaySaleExchanges?.total_in || 0),
-
-        exchangeCashOut: Number(todaySaleExchanges?.total_out || 0),
-
-        exchangeDebtReduction: Number(
-          today.summary.exchange_debt_reduction || 0,
-        ),
-
-        newReceivables: Math.max(
-          0,
-
-          Number(today.summary.gross_sales || 0) -
-            Number(today.summary.exchange_adjustment || 0) -
-            Number(todaySalesCash?.total_in || 0),
-        ),
-
-        totalDiscounts: Number(today.summary.total_discounts || 0),
-
-        saleReturnsValue: Number(today.summary.total_returns || 0),
-
-        saleReturnsCashOut: Number(todaySaleReturns?.total_out || 0),
-
-        saleReturnsDebtReduction: Math.max(
-          0,
-          Number(today.summary.total_returns || 0) -
-            Number(todaySaleReturns?.total_out || 0),
-        ),
-
-        expensesOut: Number(todayExpenses?.total_out || 0),
-      })
+        setData({
+          today,
+          month,
+          overview,
+        })
+      }
 
       setLastUpdated(
         new Date().toLocaleTimeString('ar-EG', {
           hour: '2-digit',
+
           minute: '2-digit',
         }),
       )
     } catch (error) {
       console.error('Failed to load dashboard:', error)
-      setData(emptyDashboard)
+
+      if (isCashier) {
+        setCashierSummary(emptyCashierDashboard)
+      } else {
+        setData(emptyDashboard)
+      }
+
       setMessage('حدث خطأ أثناء تحميل لوحة التحكم')
     } finally {
-      setLoading(false)
+      if (!silent) {
+        setLoading(false)
+      }
     }
   }
 
@@ -372,15 +286,31 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => {
-    if (!user?.id || !isCashier) return
+    if (!user?.id || !isCashier) {
+      return
+    }
 
-    void loadDashboard(cashierDate)
-  }, [user?.id, isCashier, cashierDate])
+    void loadDashboard()
+
+    /*
+     * لو تم قفل الشفت وفتح
+     * شفت جديد، الشاشة تتغير
+     * تلقائيًا حتى لو المستخدم
+     * فضل واقف على الـDashboard.
+     */
+    const timer = window.setInterval(() => {
+      void loadDashboard(true)
+    }, 15_000)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [user?.id, isCashier])
 
   useEffect(() => {
     if (!user?.id || isCashier) return
 
-    void loadDashboard(todayKey)
+    void loadDashboard()
   }, [user?.id, isCashier, todayKey])
 
   const bestProduct = data.month.topProducts[0]
@@ -390,22 +320,15 @@ export default function DashboardPage() {
   if (isCashier) {
     return (
       <CashierRevenueView
-        selectedDate={cashierDate}
-        maxDate={todayKey}
         cashierName={user?.name || user?.username || 'الكاشير'}
-        revenue={cashierRevenue}
-        salesCount={data.today.summary.sales_count}
-        returnsCount={data.today.summary.returns_count}
-        cancelledSalesCount={data.today.summary.cancelled_sales_count}
-        cancelledReturnsCount={data.today.summary.cancelled_returns_count}
-        normalDiscounts={data.today.summary.normal_discounts}
-        loyaltyDiscounts={data.today.summary.loyalty_discounts}
+        summary={cashierSummary}
         lastUpdated={lastUpdated}
         loading={loading}
-        onDateChange={(date) => {
-          setCashierDate(date || todayKey)
-        }}
         onNewSale={() => navigate('/sales')}
+        onInvoices={() => navigate('/invoices')}
+        onCustomers={() => navigate('/customers')}
+        onExpenses={() => navigate('/expenses')}
+        onStockCount={() => navigate('/stock-count')}
       />
     )
   }
@@ -1001,6 +924,34 @@ function money(value: unknown) {
   return `${Number(value || 0).toFixed(2)} ج.م`
 }
 
+function formatShiftTime(value?: string | null) {
+  if (!value) {
+    return '—'
+  }
+
+  try {
+    const raw = String(value)
+
+    const hasTimezone = /Z$|[+-]\d{2}:\d{2}$/.test(raw)
+
+    const normalized = hasTimezone ? raw : `${raw.replace(' ', 'T')}Z`
+
+    const date = new Date(normalized)
+
+    if (Number.isNaN(date.getTime())) {
+      return raw
+    }
+
+    return date.toLocaleTimeString('ar-EG', {
+      hour: '2-digit',
+
+      minute: '2-digit',
+    })
+  } catch {
+    return String(value)
+  }
+}
+
 function formatDateOnly(value?: string) {
   if (!value) return '—'
 
@@ -1224,38 +1175,36 @@ const toastStyle: CSSProperties = {
 }
 
 function CashierRevenueView({
-  selectedDate,
-  maxDate,
   cashierName,
-  revenue,
-  salesCount,
-  returnsCount,
-  normalDiscounts,
-  loyaltyDiscounts,
+  summary,
   lastUpdated,
   loading,
-  cancelledSalesCount,
-  cancelledReturnsCount,
-  onDateChange,
   onNewSale,
+  onInvoices,
+  onCustomers,
+  onExpenses,
+  onStockCount,
 }: {
-  selectedDate: string
-  maxDate: string
   cashierName: string
-  revenue: CashierDailyRevenue
-  salesCount: number
-  returnsCount: number
-  normalDiscounts: number
-  loyaltyDiscounts: number
+
+  summary: CashierDashboardSummary
+
   lastUpdated: string
   loading: boolean
-  cancelledSalesCount: number
-  cancelledReturnsCount: number
-  onDateChange: (date: string) => void
+
   onNewSale: () => void
+  onInvoices: () => void
+  onCustomers: () => void
+  onExpenses: () => void
+  onStockCount: () => void
 }) {
   return (
-    <div style={{ display: 'grid', gap: '18px' }}>
+    <div
+      style={{
+        display: 'grid',
+        gap: '18px',
+      }}
+    >
       <section
         className="glass-card"
         style={{
@@ -1269,84 +1218,131 @@ function CashierRevenueView({
         <div
           style={{
             display: 'flex',
+
             justifyContent: 'space-between',
+
             gap: '14px',
+
             alignItems: 'center',
+
             flexWrap: 'wrap',
           }}
         >
           <div>
             <div
-              style={{ color: '#93c5fd', fontWeight: 900, marginBottom: '6px' }}
+              style={{
+                color: '#93c5fd',
+
+                fontWeight: 900,
+
+                marginBottom: '6px',
+              }}
             >
-              ملخص يوم الكاشير
+              ملخص عمل الكاشير
             </div>
 
-            <h2 style={{ margin: 0, fontSize: '30px' }}>
-              إيرادات التاريخ المحدد
+            <h2
+              style={{
+                margin: 0,
+
+                fontSize: '28px',
+              }}
+            >
+              {cashierName}
             </h2>
 
-            <p style={{ margin: '8px 0 0', color: '#94a3b8', fontWeight: 700 }}>
-              التاريخ: {selectedDate} • الكاشير: {cashierName}
-            </p>
+            <div
+              style={{
+                display: 'flex',
 
-            <p style={{ margin: '6px 0 0', color: '#64748b', fontWeight: 700 }}>
+                alignItems: 'center',
+
+                gap: '8px',
+
+                marginTop: '10px',
+
+                flexWrap: 'wrap',
+              }}
+            >
+              <span
+                style={{
+                  display: 'inline-flex',
+
+                  alignItems: 'center',
+
+                  gap: '7px',
+
+                  padding: '7px 12px',
+
+                  borderRadius: '999px',
+
+                  background: summary.shift
+                    ? 'rgba(34,197,94,0.10)'
+                    : 'rgba(239,68,68,0.10)',
+
+                  border: summary.shift
+                    ? '1px solid rgba(34,197,94,0.28)'
+                    : '1px solid rgba(239,68,68,0.28)',
+
+                  color: summary.shift ? '#86efac' : '#fca5a5',
+
+                  fontWeight: 900,
+
+                  fontSize: '13px',
+                }}
+              >
+                <span>{summary.shift ? '●' : '○'}</span>
+
+                {summary.shift
+                  ? `الشفت المفتوح #${summary.shift.id}`
+                  : 'لا يوجد شفت مفتوح'}
+              </span>
+
+              {summary.shift && (
+                <span
+                  style={{
+                    color: '#94a3b8',
+
+                    fontWeight: 800,
+
+                    fontSize: '13px',
+                  }}
+                >
+                  بدأ الساعة {formatShiftTime(summary.shift.opened_at)}
+                </span>
+              )}
+            </div>
+
+            <p
+              style={{
+                margin: '6px 0 0',
+
+                color: '#64748b',
+
+                fontWeight: 700,
+              }}
+            >
               {lastUpdated
                 ? `آخر تحديث: ${lastUpdated}`
-                : 'يتم تحميل البيانات الآن...'}
+                : 'يتم تحميل البيانات...'}
             </p>
           </div>
 
           <div
             style={{
               display: 'flex',
+
               gap: '10px',
+
               flexWrap: 'wrap',
+
               alignItems: 'flex-end',
             }}
           >
-            <label
-              style={{
-                display: 'grid',
-                gap: '6px',
-                color: '#94a3b8',
-                fontWeight: 800,
-                fontSize: '13px',
-              }}
-            >
-              <span>عرض يوم</span>
-
-              <input
-                type="date"
-                value={selectedDate}
-                max={maxDate}
-                disabled={loading}
-                onChange={(e) => onDateChange(e.target.value)}
-                style={{
-                  minHeight: '44px',
-                  borderRadius: '12px',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  background: 'rgba(255,255,255,0.06)',
-                  color: '#fff',
-                  padding: '0 12px',
-                  fontWeight: 800,
-                  colorScheme: 'dark',
-                }}
-              />
-            </label>
-
-            <button
-              type="button"
-              onClick={() => onDateChange(maxDate)}
-              style={secondaryButtonStyle}
-            >
-              اليوم
-            </button>
-
             <button
               type="button"
               onClick={onNewSale}
-              style={secondaryButtonStyle}
+              style={primaryButtonStyle}
             >
               فاتورة جديدة
             </button>
@@ -1355,184 +1351,281 @@ function CashierRevenueView({
 
         <div
           style={{
-            padding: '26px',
+            padding: '22px',
+
             borderRadius: '22px',
+
             background:
-              'linear-gradient(135deg, rgba(34,197,94,0.22), rgba(37,99,235,0.16))',
-            border: '1px solid rgba(34,197,94,0.25)',
-            textAlign: 'center',
+              'linear-gradient(135deg, rgba(34,197,94,0.20), rgba(37,99,235,0.12))',
+
+            border: '1px solid rgba(34,197,94,0.24)',
+
+            display: 'grid',
+
+            gap: '18px',
           }}
         >
           <div
-            style={{ color: '#bbf7d0', fontWeight: 900, marginBottom: '10px' }}
-          >
-            صافي مبيعات التاريخ المحدد
-          </div>
-
-          <strong
             style={{
-              display: 'block',
-              fontSize: '44px',
-              color: '#fff',
-              lineHeight: 1.2,
+              textAlign: 'center',
             }}
           >
-            {money(revenue.netSales)}
-          </strong>
+            <div
+              style={{
+                color: '#bbf7d0',
 
-          <div style={{ color: '#94a3b8', fontWeight: 800, marginTop: '10px' }}>
-            قيمة البيع تخص يوم إصدار الفاتورة، أما التحصيل فيظهر في يوم دخول
-            الفلوس فعليًا
+                fontWeight: 900,
+
+                marginBottom: '8px',
+              }}
+            >
+              صافي المبيعات
+            </div>
+
+            <strong
+              style={{
+                display: 'block',
+
+                fontSize: '42px',
+
+                color: '#fff',
+              }}
+            >
+              {money(summary.sales.net_sales)}
+            </strong>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+
+              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+
+              gap: '10px',
+            }}
+          >
+            <ReconciliationCard
+              title="مبيعات الفواتير"
+              value={money(summary.sales.invoice_sales)}
+            />
+
+            <ReconciliationCard
+              title="تعديل قيمة المبيعات بالاستبدال"
+              value={signedMoney(summary.sales.exchange_adjustment)}
+            />
+
+            <ReconciliationCard
+              title="المرتجعات"
+              value={money(-summary.sales.returns_total)}
+            />
+
+            <ReconciliationCard
+              title="الناتج"
+              value={money(summary.sales.net_sales)}
+              strong
+            />
+          </div>
+
+          <div
+            style={{
+              color: '#94a3b8',
+
+              fontWeight: 800,
+
+              textAlign: 'center',
+
+              fontSize: '13px',
+            }}
+          >
+            مبيعات الفواتير
+            {' + '}
+            تعديل قيمة المبيعات بالاستبدال
+            {' - '}
+            المرتجعات
+            {' = '}
+            صافي المبيعات
           </div>
         </div>
+      </section>
+
+      <section>
+        <SectionHeader
+          title="ملخص الحركة"
+          subtitle="الأرقام المالية بعد الإلغاء والمرتجعات والاستبدالات"
+        />
+
+        <CashierMiniCard
+          title="رصيد بداية الشفت"
+          value={
+            summary.shift ? money(summary.shift.opening_counted_amount) : '—'
+          }
+          subtitle={
+            summary.shift
+              ? `شفت #${summary.shift.id} • ${
+                  summary.shift.status === 'open' ? 'مفتوح حاليًا' : 'مغلق'
+                }`
+              : 'لا يوجد شفت مفتوح'
+          }
+          tone="blue"
+        />
+
+        <div
+          style={{
+            ...statsGridStyle,
+            marginTop: '12px',
+          }}
+        >
+          <CashierMiniCard
+            title="فواتير البيع"
+            value={String(summary.sales.invoices_count)}
+            subtitle={`ملغاة: ${summary.sales.cancelled_invoices_count}`}
+            tone="blue"
+          />
+
+          <CashierMiniCard
+            title="مبيعات الفواتير"
+            value={money(summary.sales.invoice_sales)}
+            subtitle="قيمة الفواتير بعد الخصومات وقبل المرتجعات والاستبدالات"
+            tone="green"
+          />
+
+          <CashierMiniCard
+            title="المبيعات المحصلة"
+            value={money(summary.sales.paid_sales_total)}
+            subtitle={
+              summary.sales.outstanding_debt_total > 0
+                ? `⚠ باقي على فواتير الشفت: ${money(
+                    summary.sales.outstanding_debt_total,
+                  )} • ${
+                    summary.sales.outstanding_debt_invoices_count
+                  } فاتورة عليها باقي`
+                : '✓ كل فواتير الشفت مدفوعة بالكامل'
+            }
+            tone="green"
+          />
+
+          <CashierMiniCard
+            title="المرتجعات"
+            value={money(summary.sales.returns_total)}
+            subtitle={`${summary.sales.returns_count} عملية • ملغاة: ${
+              summary.sales.cancelled_returns_count
+            }`}
+            tone="red"
+          />
+
+          <CashierMiniCard
+            title="الاستبدالات"
+            value={signedMoney(summary.sales.exchange_adjustment)}
+            subtitle={`${summary.sales.exchanges_count} عملية • ملغاة: ${
+              summary.sales.cancelled_exchanges_count
+            }`}
+            tone="violet"
+          />
+
+          <CashierMiniCard
+            title="فرق الاستبدال النقدي"
+            value={signedMoney(summary.sales.exchange_cash_difference)}
+            subtitle={
+              `${summary.sales.exchanges_count} عملية` +
+              ` • تخفيض مديونية: ${money(
+                summary.sales.exchange_debt_reduction,
+              )}` +
+              ` • تعديل قيمة البيع: ${signedMoney(
+                summary.sales.exchange_adjustment,
+              )}` +
+              ` • ملغاة: ${summary.sales.cancelled_exchanges_count}`
+            }
+            tone="violet"
+          />
+
+          <CashierMiniCard
+            title="الخصومات الفعلية"
+            value={money(summary.discounts.total)}
+            subtitle={
+              `عادي: ${money(summary.discounts.normal)}` +
+              ` • عروض: ${money(summary.discounts.promotion)}` +
+              ` • نقاط: ${money(summary.discounts.loyalty)}`
+            }
+            tone="amber"
+          />
+
+          <CashierMiniCard
+            title="المصروفات المسجلة"
+            value={money(summary.operations.expenses_total)}
+            subtitle={`${summary.operations.expenses_count} عملية • ملغاة: ${
+              summary.operations.cancelled_expenses_count
+            }`}
+            tone="blue"
+          />
+
+          <CashierMiniCard
+            title="دفعات العملاء"
+            value={money(summary.operations.customer_payments_total)}
+            subtitle={`${
+              summary.operations.customer_payments_count
+            } دفعة • ملغاة: ${
+              summary.operations.cancelled_customer_payments_count
+            }`}
+            tone="blue"
+          />
+
+          <CashierMiniCard
+            title="جلسات الجرد"
+            value={String(summary.operations.stock_count_sessions_count)}
+            subtitle="جلسات الجرد التي عملت عليها خلال الشفت"
+            tone="blue"
+          />
+        </div>
+      </section>
+
+      <section className="glass-card" style={cardStyle}>
+        <SectionHeader
+          title="اختصارات الكاشير"
+          subtitle="كل العمليات المتاحة لك من مكان واحد"
+        />
 
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '12px',
+
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+
+            gap: '10px',
           }}
         >
-          <CashierMiniCard
-            title="رصيد أول اليوم"
-            value={money(revenue.drawerOpening)}
-            subtitle="رصيد درج المحل لكل المستخدمين قبل حركات التاريخ المحدد"
+          <QuickAction
+            icon="🧾"
+            title="فاتورة جديدة"
+            subtitle="إنشاء فاتورة بيع"
+            onClick={onNewSale}
           />
 
-          <CashierMiniCard
-            title="إجمالي داخل الدرج"
-            value={money(revenue.drawerCashIn)}
-            subtitle="كل الحركات الداخلة للدرج من جميع المستخدمين خلال التاريخ"
+          <QuickAction
+            icon="📄"
+            title="سجل الفواتير"
+            subtitle="مرتجع أو استبدال أو إلغاء"
+            onClick={onInvoices}
           />
 
-          <CashierMiniCard
-            title="إجمالي خارج الدرج"
-            value={money(revenue.drawerCashOut)}
-            subtitle="كل الحركات الخارجة من الدرج من جميع المستخدمين خلال التاريخ"
+          <QuickAction
+            icon="👤"
+            title="العملاء"
+            subtitle="دفعة عميل وكشف الحساب"
+            onClick={onCustomers}
           />
 
-          <CashierMiniCard
-            title={
-              revenue.drawerAlreadyClosed
-                ? 'رصيد الدرج قبل التقفيل'
-                : 'رصيد الدرج نهاية التاريخ'
-            }
-            value={money(revenue.drawerCash)}
-            subtitle="رصيد أول اليوم + الداخل - الخارج"
+          <QuickAction
+            icon="💳"
+            title="المصروفات"
+            subtitle="إضافة ومراجعة مصروفاتك"
+            onClick={onExpenses}
           />
 
-          {revenue.drawerAlreadyClosed ? (
-            <CashierMiniCard
-              title="المرحل لليوم التالي"
-              value={money(revenue.drawerEndBalance)}
-              subtitle="المبلغ الذي تُرك فعليًا في الدرج بعد التقفيل"
-            />
-          ) : null}
-
-          <CashierMiniCard
-            title="صافي حركة بنك / إنستاباي"
-            value={money(revenue.instapayBank)}
-            subtitle="صافي ما سجله الكاشير على الحساب خلال التاريخ المحدد"
-          />
-
-          <CashierMiniCard
-            title="صافي حركة فودافون كاش"
-            value={money(revenue.vodafoneCash)}
-            subtitle="صافي ما سجله الكاشير خلال التاريخ المحدد"
-          />
-
-          <CashierMiniCard
-            title="صافي حركة فوري"
-            value={money(revenue.fawryMachine)}
-            subtitle="صافي ما سجله الكاشير على ماكينة فوري خلال التاريخ المحدد"
-          />
-
-          <CashierMiniCard
-            title="صافي حركة كاش المالك"
-            value={money(revenue.ownerCash)}
-            subtitle="صافي حركة الكاش مع المالك خلال التاريخ المحدد"
-          />
-
-          <CashierMiniCard
-            title="صافي مبيعات التاريخ المحدد"
-            value={money(revenue.netSales)}
-            subtitle={`${salesCount} فاتورة بيع`}
-          />
-
-          <CashierMiniCard
-            title="الفواتير الملغاة"
-            value={String(cancelledSalesCount)}
-            subtitle="عدد فواتير البيع التي تم إلغاؤها في التاريخ المحدد"
-          />
-
-          <CashierMiniCard
-            title="المحصل وقت البيع"
-            value={money(revenue.saleCollectionsIn)}
-            subtitle="فلوس اتدفعت لحظة إنشاء فواتير التاريخ المحدد"
-          />
-
-          <CashierMiniCard
-            title="آجل نشأ من فواتير التاريخ"
-            value={money(revenue.newReceivables)}
-            subtitle="الجزء غير المدفوع لحظة إنشاء الفواتير قبل أي سداد لاحق"
-          />
-
-          <CashierMiniCard
-            title="تحصيل مديونيات عملاء"
-            value={money(revenue.customerPaymentsIn)}
-            subtitle="دفعات اتسجلت خلال التاريخ على فواتير مفتوحة"
-          />
-
-          <CashierMiniCard
-            title="إجمالي تحصيل العملاء"
-            value={money(revenue.totalCustomerCollections)}
-            subtitle="المحصل وقت البيع + دفعات الفواتير المفتوحة"
-          />
-
-          <CashierMiniCard
-            title="الخصومات"
-            value={money(revenue.totalDiscounts)}
-            subtitle="خصم عادي + عرض + نقاط"
-          />
-
-          <CashierMiniCard
-            title="إجمالي مرتجعات البيع"
-            value={money(revenue.saleReturnsValue)}
-            subtitle={`${returnsCount} عملية مرتجع تمت في التاريخ المحدد`}
-          />
-
-          <CashierMiniCard
-            title="فروق الاستبدال"
-            value={money(revenue.exchangeAdjustment)}
-            subtitle={
-              `تحصيل: ${money(revenue.exchangeCashIn)}` +
-              ` / رد كاش: ${money(revenue.exchangeCashOut)}` +
-              ` / خفض مديونية: ${money(revenue.exchangeDebtReduction)}`
-            }
-          />
-
-          <CashierMiniCard
-            title="المرتجعات الملغاة"
-            value={String(cancelledReturnsCount)}
-            subtitle="عدد عمليات المرتجع التي تم إلغاؤها في التاريخ المحدد"
-          />
-
-          <CashierMiniCard
-            title="كاش خرج لمرتجعات البيع"
-            value={money(revenue.saleReturnsCashOut)}
-            subtitle="فلوس خرجت فعليًا للعميل بسبب المرتجعات"
-          />
-
-          <CashierMiniCard
-            title="تخفيض مديونية بسبب المرتجعات"
-            value={money(revenue.saleReturnsDebtReduction)}
-            subtitle="قيمة مرتجعات خصمت من رصيد العملاء بدون خروج كاش"
-          />
-
-          <CashierMiniCard
-            title="المصاريف"
-            value={money(revenue.expensesOut)}
-            subtitle="مصروفات التاريخ المحدد"
+          <QuickAction
+            icon="🧮"
+            title="الجرد"
+            subtitle="بدء أو استكمال جلسة جرد"
+            onClick={onStockCount}
           />
         </div>
       </section>
@@ -1540,30 +1633,160 @@ function CashierRevenueView({
   )
 }
 
+function ReconciliationCard({
+  title,
+  value,
+  strong,
+}: {
+  title: string
+  value: string
+  strong?: boolean
+}) {
+  return (
+    <div
+      style={{
+        padding: '14px',
+
+        borderRadius: '14px',
+
+        background: strong ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.045)',
+
+        border: strong
+          ? '1px solid rgba(34,197,94,0.28)'
+          : '1px solid rgba(255,255,255,0.07)',
+
+        display: 'grid',
+
+        gap: '6px',
+
+        textAlign: 'center',
+      }}
+    >
+      <span
+        style={{
+          color: '#94a3b8',
+
+          fontWeight: 800,
+
+          fontSize: '12px',
+        }}
+      >
+        {title}
+      </span>
+
+      <strong
+        style={{
+          color: strong ? '#86efac' : '#f8fafc',
+
+          fontSize: '18px',
+        }}
+      >
+        {value}
+      </strong>
+    </div>
+  )
+}
+
+function signedMoney(value: unknown) {
+  const amount = Number(value || 0)
+
+  return `${amount > 0 ? '+' : ''}${amount.toFixed(2)} ج.م`
+}
+
 function CashierMiniCard({
   title,
   value,
   subtitle,
+  tone = 'blue',
 }: {
   title: string
   value: string
   subtitle: string
+  tone?: 'green' | 'red' | 'violet' | 'amber' | 'blue'
 }) {
+  const tones = {
+    green: {
+      background: 'rgba(34,197,94,0.08)',
+      border: 'rgba(34,197,94,0.25)',
+      value: '#86efac',
+    },
+
+    red: {
+      background: 'rgba(239,68,68,0.08)',
+      border: 'rgba(239,68,68,0.25)',
+      value: '#fca5a5',
+    },
+
+    violet: {
+      background: 'rgba(139,92,246,0.09)',
+      border: 'rgba(139,92,246,0.28)',
+      value: '#c4b5fd',
+    },
+
+    amber: {
+      background: 'rgba(245,158,11,0.08)',
+      border: 'rgba(245,158,11,0.28)',
+      value: '#fcd34d',
+    },
+
+    blue: {
+      background: 'rgba(59,130,246,0.08)',
+      border: 'rgba(59,130,246,0.25)',
+      value: '#93c5fd',
+    },
+  }
+
+  const selected = tones[tone]
+
   return (
     <div
       className="glass-card"
       style={{
         padding: '16px',
+
         borderRadius: '16px',
+
         display: 'grid',
+
         gap: '8px',
+
         textAlign: 'right',
-        border: '1px solid rgba(255,255,255,0.08)',
+
+        background: selected.background,
+
+        border: `1px solid ${selected.border}`,
       }}
     >
-      <div style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</div>
-      <strong style={{ color: '#f8fafc', fontSize: '22px' }}>{value}</strong>
-      <div style={{ color: '#64748b', fontSize: '13px', fontWeight: 700 }}>
+      <div
+        style={{
+          color: '#94a3b8',
+          fontWeight: 800,
+        }}
+      >
+        {title}
+      </div>
+
+      <strong
+        style={{
+          color: selected.value,
+
+          fontSize: '22px',
+        }}
+      >
+        {value}
+      </strong>
+
+      <div
+        style={{
+          color: '#64748b',
+
+          fontSize: '13px',
+
+          fontWeight: 700,
+
+          lineHeight: 1.6,
+        }}
+      >
         {subtitle}
       </div>
     </div>

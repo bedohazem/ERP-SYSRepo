@@ -11,25 +11,29 @@ import {
   updateLiability,
   updateLiabilityPayment,
 } from '../database/repositories/liabilities.repo'
-import { requireAuthenticatedUser } from '../auth-session'
-import { requireAdmin, requireAdminPassword } from './permission-helper'
+import { requireAuthenticatedAdmin } from '../auth-session'
+import { requireAdminPassword } from './permission-helper'
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'حدث خطأ غير متوقع'
 }
 
 export function registerLiabilitiesIpc(): void {
-  ipcMain.handle('liabilities:list', (_, input) => {
+  ipcMain.handle('liabilities:list', (event, input) => {
+    requireAuthenticatedAdmin(event)
+
     return listLiabilities(input)
   })
 
-  ipcMain.handle('liabilities:list-page', (_, input) => {
+  ipcMain.handle('liabilities:list-page', (event, input) => {
+    requireAuthenticatedAdmin(event)
+
     return listLiabilitiesPage(input)
   })
 
   ipcMain.handle('liabilities:create', (event, input) => {
     try {
-      const actorId = requireAuthenticatedUser(event).id
+      const actorId = requireAuthenticatedAdmin(event)
 
       return createLiability({
         ...input,
@@ -45,7 +49,7 @@ export function registerLiabilitiesIpc(): void {
 
   ipcMain.handle('liabilities:update', (event, input) => {
     try {
-      const actorId = requireAuthenticatedUser(event).id
+      const actorId = requireAuthenticatedAdmin(event)
       requireAdminPassword(actorId, input?.admin_password)
 
       return updateLiability({
@@ -76,7 +80,7 @@ export function registerLiabilitiesIpc(): void {
 
   ipcMain.handle('liabilities:record-payment', (event, input) => {
     try {
-      const actorId = requireAuthenticatedUser(event).id
+      const actorId = requireAuthenticatedAdmin(event)
 
       return recordLiabilityPayment({
         ...input,
@@ -90,14 +94,15 @@ export function registerLiabilitiesIpc(): void {
     }
   })
 
-  ipcMain.handle('liabilities:statement', (_, liabilityId: number) => {
+  ipcMain.handle('liabilities:statement', (event, liabilityId: number) => {
+    requireAuthenticatedAdmin(event)
+
     return getLiabilityStatement(liabilityId)
   })
 
   ipcMain.handle('liabilities:cancel', (event, input) => {
     try {
-      const actorId = requireAuthenticatedUser(event).id
-      requireAdmin(actorId)
+      const actorId = requireAuthenticatedAdmin(event)
       return cancelLiability({
         ...input,
         actor_id: actorId,
@@ -110,13 +115,15 @@ export function registerLiabilitiesIpc(): void {
     }
   })
 
-  ipcMain.handle('liabilities:summary', (_, input) => {
+  ipcMain.handle('liabilities:summary', (event, input) => {
+    requireAuthenticatedAdmin(event)
+
     return getLiabilitiesSummary(input)
   })
 
   ipcMain.handle('liabilities:cancel-payment', (event, input) => {
     try {
-      const actorId = requireAuthenticatedUser(event).id
+      const actorId = requireAuthenticatedAdmin(event)
       requireAdminPassword(actorId, input?.admin_password)
 
       return cancelLiabilityPayment({
@@ -134,7 +141,7 @@ export function registerLiabilitiesIpc(): void {
 
   ipcMain.handle('liabilities:update-payment', (event, input) => {
     try {
-      const actorId = requireAuthenticatedUser(event).id
+      const actorId = requireAuthenticatedAdmin(event)
       requireAdminPassword(actorId, input?.admin_password)
 
       return updateLiabilityPayment({

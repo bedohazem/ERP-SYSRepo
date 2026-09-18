@@ -38,6 +38,23 @@ type ReportsData = {
   topProducts: any[]
   dailySales: any[]
   paymentMethods: any[]
+  cashierSales: Array<{
+    user_id: number | null
+
+    cashier_name: string
+
+    sales_count: number
+    sales_total: number
+
+    returns_count: number
+    returns_total: number
+
+    exchange_count: number
+
+    exchange_adjustment: number
+
+    net_sales: number
+  }>
   lowStock: any[]
   topCustomers: any[]
 }
@@ -73,13 +90,54 @@ const emptyReports: ReportsData = {
   topProducts: [],
   dailySales: [],
   paymentMethods: [],
+  cashierSales: [],
   lowStock: [],
   topCustomers: [],
+}
+
+function getMonthRange(value: string) {
+  const match = /^(\d{4})-(\d{2})$/.exec(value)
+
+  if (!match) {
+    return null
+  }
+
+  const year = Number(match[1])
+
+  const month = Number(match[2])
+
+  if (!Number.isInteger(year) || month < 1 || month > 12) {
+    return null
+  }
+
+  const lastDay = new Date(year, month, 0).getDate()
+
+  return {
+    from: `${value}-01`,
+
+    to: `${value}-${String(lastDay).padStart(2, '0')}`,
+  }
+}
+
+function formatMonthLabel(value: string) {
+  const range = getMonthRange(value)
+
+  if (!range) {
+    return ''
+  }
+
+  const [year, month] = value.split('-').map(Number)
+
+  return new Intl.DateTimeFormat('ar-EG', {
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(year, month - 1, 1))
 }
 
 export default function ReportsPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [monthFilter, setMonthFilter] = useState('')
   const [data, setData] = useState<ReportsData>(emptyReports)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
@@ -105,7 +163,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     void loadReports()
-  }, [])
+  }, [dateFrom, dateTo])
 
   return (
     <div
@@ -174,26 +232,53 @@ export default function ReportsPage() {
 
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <input
+              type="month"
+              value={monthFilter}
+              onChange={(e) => {
+                const value = e.target.value
+
+                setMonthFilter(value)
+
+                if (!value) {
+                  setDateFrom('')
+                  setDateTo('')
+                  return
+                }
+
+                const range = getMonthRange(value)
+
+                if (!range) {
+                  return
+                }
+
+                setDateFrom(range.from)
+                setDateTo(range.to)
+              }}
+              title="اختيار شهر كامل"
+              style={inputStyle}
+            />
+
+            <input
               type="date"
               value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
+              onChange={(e) => {
+                setMonthFilter('')
+
+                setDateFrom(e.target.value)
+              }}
               style={inputStyle}
             />
 
             <input
               type="date"
               value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
+              onChange={(e) => {
+                setMonthFilter('')
+
+                setDateTo(e.target.value)
+              }}
               style={inputStyle}
             />
-
-            <button
-              type="button"
-              onClick={loadReports}
-              style={primaryButtonStyle}
-            >
-              {loading ? 'جاري التحميل...' : 'تحديث'}
-            </button>
           </div>
         </div>
       </div>
@@ -313,6 +398,36 @@ export default function ReportsPage() {
             gap: '14px',
           }}
         >
+          <ReportTable
+            title={
+              monthFilter
+                ? `مبيعات الكاشير — ${formatMonthLabel(monthFilter)}`
+                : 'مبيعات الكاشير حسب الفترة المحددة'
+            }
+            emptyText="لا توجد مبيعات للكاشير في الفترة المحددة"
+            columns={[
+              'الكاشير',
+              'عدد الفواتير',
+              'مبيعات الفواتير',
+              'المرتجعات',
+              'فروق الاستبدال',
+              'صافي المبيعات',
+            ]}
+            rows={data.cashierSales.map((x) => [
+              x.cashier_name,
+
+              x.sales_count,
+
+              money(x.sales_total),
+
+              `${x.returns_count} — ${money(x.returns_total)}`,
+
+              `${x.exchange_count} — ${money(x.exchange_adjustment)}`,
+
+              money(x.net_sales),
+            ])}
+          />
+
           <ReportTable
             title="أرصدة الحسابات المالية الحالية"
             emptyText="لا توجد حركات مالية"

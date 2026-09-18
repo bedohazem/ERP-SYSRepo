@@ -16,6 +16,7 @@ import SuppliersPage from './pages/Suppliers/SuppliersPage'
 import PurchasesPage from './pages/Purchases/PurchasesPage'
 import PurchaseHistoryPage from './pages/Purchases/PurchaseHistoryPage'
 import CashPage from './pages/Cash/CashPage'
+import ShiftManagementPage from './pages/Shifts/ShiftManagementPage'
 import ExpensesPage from './pages/Expenses/ExpensesPage'
 import UsersPage from './pages/Users/UsersPage'
 import ActivityLogPage from './pages/Activity/ActivityLogPage'
@@ -98,6 +99,10 @@ export const router = createHashRouter([
   {
     path: '/cash',
     element: withShell('الخزنة', <CashPage />, ['admin']),
+  },
+  {
+    path: '/shifts',
+    element: withShell('إدارة الشفتات', <ShiftManagementPage />, ['admin']),
   },
   {
     path: '/expenses',

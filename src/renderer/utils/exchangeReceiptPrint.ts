@@ -375,7 +375,7 @@ export function buildSaleExchangeReceiptHtml(
 
             <div class="summary-row">
               <span>
-                قيمة العرض قبل
+                القيمة قبل الاستبدال
               </span>
 
               <strong>
@@ -386,7 +386,7 @@ export function buildSaleExchangeReceiptHtml(
 
             <div class="summary-row">
               <span>
-                قيمة العرض بعد
+                القيمة بعد الاستبدال
               </span>
 
               <strong>

@@ -10,7 +10,14 @@ import {
   createCashTransfer,
   updateCashMovement,
   updateCashDayClosing,
+  cancelCashMovement,
 } from '../../src/main/database/repositories/cash.repo'
+
+import {
+  closeCashShift,
+  getCashShiftExpectedBalance,
+  openCashShift,
+} from '../../src/main/database/repositories/cash-shifts.repo'
 
 type CashMovementTestRow = {
   id: number
@@ -112,6 +119,48 @@ describe('cash repository', () => {
     expect(summary.total_out).toBe(200)
     expect(summary.balance).toBe(300)
     expect(summary.movements_count).toBe(2)
+  })
+
+  it('links both cash transfer movements to the active shift', () => {
+    const db = getDb()
+
+    const shift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    })
+
+    const result = createCashTransfer({
+      from_account: 'store_cash',
+      to_account: 'owner_bank',
+      amount: 200,
+      created_by: 1,
+      shift_id: shift.id,
+    })
+
+    expect(result.shift_id).toBe(shift.id)
+
+    const outMovement = db
+      .prepare(
+        `
+        SELECT *
+        FROM cash_movements
+        WHERE id = ?
+        `,
+      )
+      .get(result.out_id) as any
+
+    const inMovement = db
+      .prepare(
+        `
+        SELECT *
+        FROM cash_movements
+        WHERE id = ?
+        `,
+      )
+      .get(result.in_id) as any
+
+    expect(Number(outMovement.shift_id)).toBe(shift.id)
+    expect(Number(inMovement.shift_id)).toBe(shift.id)
   })
 
   it('lists cash movements ordered by newest first', () => {
@@ -758,13 +807,34 @@ describe('cash repository', () => {
       )
       .get(oldId) as any
 
-    expect(oldMovement.cancelled_at).toBeTruthy()
+    expect(oldMovement.cancelled_at).toBeNull()
 
     if (!('movement_id' in result)) {
       throw new Error('Expected manual cash movement update result')
     }
 
     expect(Number(oldMovement.replacement_movement_id)).toBe(result.movement_id)
+
+    const reverseMovement = db
+      .prepare(
+        `
+        SELECT *
+        FROM cash_movements
+        WHERE reference_type = 'manual_update_reverse'
+          AND reference_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+        `,
+      )
+      .get(oldId) as any
+
+    expect(reverseMovement).toBeTruthy()
+
+    expect(reverseMovement.direction).toBe('out')
+
+    expect(Number(reverseMovement.amount)).toBe(500)
+
+    expect(result.reverse_movement_id).toBe(Number(reverseMovement.id))
 
     expect(
       getCashSummary({
@@ -856,66 +926,192 @@ describe('cash repository', () => {
       )
       .all(transfer.out_id, transfer.in_id) as any[]
 
-    expect(oldRows.every((row) => Boolean(row.cancelled_at))).toBe(true)
+    expect(oldRows.every((row) => row.cancelled_at == null)).toBe(true)
 
     expect(
       oldRows.every((row) => Number(row.replacement_movement_id || 0) > 0),
     ).toBe(true)
   })
 
-  it('blocks manual cash movement editing after day close', () => {
-    const created = createCashMovement({
-      type: 'deposit',
+  it('records a previous-shift manual correction in the current shift', () => {
+    const db = getDb()
 
-      direction: 'in',
-
-      amount: 500,
-
-      payment_method: 'store_cash',
-
-      reference_type: 'manual',
-
-      created_by: 1,
+    const shift1 = openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
     })
 
-    const dateRow = getDb()
-      .prepare(
-        `
-      SELECT
-        date(
-          'now',
-          'localtime'
-        ) AS day
-      `,
-      )
-      .get() as {
-      day: string
-    }
+    const created = createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 500,
+      payment_method: 'store_cash',
+      reference_type: 'manual',
+      created_by: 1,
+      shift_id: shift1.id,
+    })
 
-    closeCashDay({
-      business_date: dateRow.day,
+    const oldId = Number(created.lastInsertRowid)
 
-      counted_amount: 500,
-
-      carry_over_amount: 500,
-
-      target_account: 'owner_cash',
-
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: 500,
+      left_for_next_shift: 500,
       closed_by: 1,
     })
 
-    expect(() =>
-      updateCashMovement({
-        id: Number(created.lastInsertRowid),
+    const shift2 = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    })
 
-        type: 'deposit',
+    const result = updateCashMovement({
+      id: oldId,
+      type: 'deposit',
+      amount: 600,
+      payment_method: 'store_cash',
+      actor_id: 1,
+      shift_id: shift2.id,
+    })
 
-        amount: 600,
+    if (!('movement_id' in result)) {
+      throw new Error('Expected manual movement result')
+    }
 
+    expect(result.shift_id).toBe(shift2.id)
+
+    const original = db
+      .prepare(
+        `
+        SELECT *
+        FROM cash_movements
+        WHERE id = ?
+        `,
+      )
+      .get(oldId) as any
+
+    expect(Number(original.shift_id)).toBe(shift1.id)
+
+    expect(original.cancelled_at).toBeNull()
+
+    const reverse = db
+      .prepare(
+        `
+        SELECT *
+        FROM cash_movements
+        WHERE reference_type =
+          'manual_update_reverse'
+          AND reference_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+        `,
+      )
+      .get(oldId) as any
+
+    expect(reverse.direction).toBe('out')
+
+    expect(Number(reverse.amount)).toBe(500)
+
+    expect(Number(reverse.shift_id)).toBe(shift2.id)
+
+    const replacement = db
+      .prepare(
+        `
+        SELECT *
+        FROM cash_movements
+        WHERE id = ?
+        `,
+      )
+      .get(result.movement_id) as any
+
+    expect(replacement.direction).toBe('in')
+
+    expect(Number(replacement.amount)).toBe(600)
+
+    expect(Number(replacement.shift_id)).toBe(shift2.id)
+
+    expect(getCashShiftExpectedBalance(shift2.id).expected_closing_amount).toBe(
+      600,
+    )
+  })
+
+  it('cancels a transfer by reversing it in the active shift', () => {
+    const db = getDb()
+
+    const shift = openCashShift({
+      opening_counted_amount: 1000,
+      opened_by: 1,
+    })
+
+    const transfer = createCashTransfer({
+      from_account: 'store_cash',
+      to_account: 'owner_cash',
+      amount: 400,
+      notes: 'Cancelable transfer',
+      created_by: 1,
+      shift_id: shift.id,
+    })
+
+    const result = cancelCashMovement({
+      id: transfer.out_id,
+      reason: 'Cancel transfer',
+      actor_id: 1,
+      shift_id: shift.id,
+    })
+
+    expect(result.success).toBe(true)
+
+    expect(result.shift_id).toBe(shift.id)
+
+    expect(
+      getCashSummary({
         payment_method: 'store_cash',
+      }).balance,
+    ).toBe(1000)
 
-        actor_id: 1,
-      }),
-    ).toThrow(`لا يمكن تعديل حركة تخص يوم ${dateRow.day} لأنه تم تقفيله`)
+    expect(
+      getCashSummary({
+        payment_method: 'owner_cash',
+      }).balance,
+    ).toBe(0)
+
+    const oldRows = db
+      .prepare(
+        `
+        SELECT *
+        FROM cash_movements
+        WHERE id IN (?, ?)
+        ORDER BY id ASC
+        `,
+      )
+      .all(transfer.out_id, transfer.in_id) as any[]
+
+    expect(oldRows.every((row) => row.cancelled_at == null)).toBe(true)
+
+    expect(
+      oldRows.every((row) => Number(row.replacement_movement_id || 0) > 0),
+    ).toBe(true)
+
+    const reverseRows = db
+      .prepare(
+        `
+        SELECT *
+        FROM cash_movements
+        WHERE reference_type =
+          'cash_transfer_cancel_reverse'
+        ORDER BY id ASC
+        `,
+      )
+      .all() as any[]
+
+    expect(reverseRows).toHaveLength(2)
+
+    expect(reverseRows.every((row) => Number(row.shift_id) === shift.id)).toBe(
+      true,
+    )
+
+    expect(getCashShiftExpectedBalance(shift.id).expected_closing_amount).toBe(
+      1000,
+    )
   })
 })

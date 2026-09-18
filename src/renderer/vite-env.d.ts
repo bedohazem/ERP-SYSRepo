@@ -280,6 +280,7 @@ declare global {
         promotion_name?: string | null
         promotion_discount_value?: number
         grand_total?: number
+        shift_id?: number
       }>
 
       getSaleReceipt: (saleId: number) => Promise<{
@@ -290,6 +291,32 @@ declare global {
 
       getSaleCurrentState: (saleId: number) => Promise<{
         sale: any
+
+        promotion_snapshot: {
+          sale_id: number
+
+          promotion_id: number
+
+          promotion_name: string
+
+          promotion_type:
+            | 'percent'
+            | 'fixed_per_item'
+            | 'fixed_invoice'
+            | 'buy_x_get_y'
+
+          promotion_value: number
+
+          buy_qty: number | null
+
+          free_qty: number | null
+
+          scope_type: 'all' | 'category' | 'products'
+
+          category_id: number | null
+
+          product_ids_json: string
+        } | null
 
         financials: {
           original_sub_total: number
@@ -358,7 +385,7 @@ declare global {
         search?: string
 
         payment_filter?: 'all' | 'paid' | 'unpaid'
-
+        payment_method?: string | null
         date_from?: string
         date_to?: string
         limit?: number
@@ -435,6 +462,7 @@ declare global {
         originalSaleId: number
         refundAmount: number
         loyalty_points_reversed: number
+        shift_id: number
       }>
 
       listSaleReturns: (input?: {
@@ -466,6 +494,8 @@ declare global {
           cancelled_by?: number | null
           cancel_reason?: string | null
           requires_admin_password?: number | boolean
+          shift_id?: number | null
+          cancelled_shift_id?: number | null
         }>
         total: number
         limit: number
@@ -483,6 +513,7 @@ declare global {
         sale_id?: number
         refunded_amount?: number
         removed_debt?: number
+        cancelled_shift_id?: number
       }>
 
       cancelSaleReturn: (input: {
@@ -497,6 +528,7 @@ declare global {
         sale_id?: number
         cash_restored?: number
         debt_restored?: number
+        cancelled_shift_id?: number
       }>
 
       getSaleExchangeState: (saleId: number) => Promise<{
@@ -514,10 +546,11 @@ declare global {
           category_id: number | null
           product_ids_json: string
           product_ids: number[]
-        }
+        } | null
 
         groups: Array<{
           promotion_group_id: string
+          group_kind: 'promotion' | 'regular'
           units: Array<{
             id: number
             sale_id: number
@@ -591,6 +624,7 @@ declare global {
         debt_reduction_amount: number
 
         payment_method: string
+        shift_id: number
       }>
 
       listSaleExchanges: (input?: {
@@ -614,7 +648,8 @@ declare global {
           original_sale_id: number
 
           user_id: number | null
-
+          shift_id?: number | null
+          cancelled_shift_id?: number | null
           promotion_group_id: string
 
           old_group_total: number
@@ -667,8 +702,6 @@ declare global {
           is_latest_active: number | boolean
 
           has_later_active_return: number | boolean
-
-          is_day_closed: number | boolean
 
           can_cancel: boolean
 
@@ -751,6 +784,7 @@ declare global {
         loyalty_balance_reversed?: number
 
         restored_items?: number
+        cancelled_shift_id?: number
       }>
 
       // =========================
@@ -810,6 +844,7 @@ declare global {
         customer_id: number
         payment_batch_id: number
         paid_amount: number
+        shift_id: number
         allocations?: Array<{
           sale_id: number | null
           amount: number
@@ -829,7 +864,7 @@ declare global {
         customer_id?: number
 
         cancelled_amount?: number
-
+        cancelled_shift_id?: number
         allocations?: Array<{
           sale_id: number
           amount: number
@@ -855,17 +890,14 @@ declare global {
         new_amount?: number
 
         payment_method?: string
-
+        shift_id?: number
         allocations?: Array<{
           sale_id: number
           amount: number
         }>
       }>
 
-      getCustomerStatement: (
-        customerId: number,
-        actorId?: number,
-      ) => Promise<{
+      getCustomerStatement: (customerId: number) => Promise<{
         customer: any
         sales: any[]
         payments: any[]
@@ -1003,6 +1035,72 @@ declare global {
       // =========================
       // Reports
       // =========================
+
+      getCashierDashboardSummary: () => Promise<{
+        date: string
+
+        shift: {
+          id: number
+
+          status: 'open' | 'closed'
+
+          opening_counted_amount: number
+
+          opened_at: string
+
+          closed_at: string | null
+        } | null
+
+        sales: {
+          invoices_count: number
+          cancelled_invoices_count: number
+
+          invoice_sales: number
+          paid_sales_total: number
+
+          outstanding_debt_total: number
+
+          outstanding_debt_invoices_count: number
+          returns_count: number
+          cancelled_returns_count: number
+          returns_total: number
+
+          exchanges_count: number
+          cancelled_exchanges_count: number
+          exchange_adjustment: number
+          exchange_cash_collection: number
+          exchange_cash_refund: number
+
+          exchange_cash_difference: number
+
+          exchange_debt_reduction: number
+          net_sales: number
+        }
+
+        discounts: {
+          normal: number
+          promotion: number
+          loyalty: number
+          total: number
+        }
+
+        operations: {
+          customer_payments_count: number
+
+          customer_payments_total: number
+
+          cancelled_customer_payments_count: number
+
+          expenses_count: number
+
+          cancelled_expenses_count: number
+
+          expenses_total: number
+
+          stock_count_sessions_count: number
+        }
+      }>
+
       getReportsSummary: (input?: {
         date_from?: string
         date_to?: string
@@ -1047,6 +1145,23 @@ declare global {
         topProducts: Array<any>
         dailySales: Array<any>
         paymentMethods: Array<any>
+        cashierSales: Array<{
+          user_id: number | null
+
+          cashier_name: string
+
+          sales_count: number
+          sales_total: number
+
+          returns_count: number
+          returns_total: number
+
+          exchange_count: number
+
+          exchange_adjustment: number
+
+          net_sales: number
+        }>
         lowStock: Array<any>
         topCustomers: Array<any>
       }>
@@ -1301,6 +1416,7 @@ declare global {
         paid_amount: number
         remaining_amount: number
         payment_status: string
+        shift_id?: number | null
       }>
 
       listPurchaseInvoices: (input?: {
@@ -1350,6 +1466,7 @@ declare global {
         reversed_paid: number
         reversed_remaining: number
         items_count: number
+        cancelled_shift_id?: number | null
       }>
 
       createPurchaseReturn: (input: {
@@ -1374,6 +1491,7 @@ declare global {
         cash_refund_amount?: number
         refund_mode?: string
         refund_payment_method?: string | null
+        createPurchaseReturn
       }>
 
       listPurchaseReturns: (input?: {
@@ -1404,6 +1522,7 @@ declare global {
         supplier_id: number
         payment_batch_id: number
         paid_amount: number
+        shift_id?: number | null
         allocations?: Array<{
           purchase_id: number | null
           amount: number
@@ -1423,7 +1542,7 @@ declare global {
         supplier_id?: number
 
         cancelled_amount?: number
-
+        cancelled_shift_id?: number | null
         allocations?: Array<{
           purchase_id: number
           amount: number
@@ -1450,17 +1569,14 @@ declare global {
         new_amount?: number
 
         payment_method?: string
-
+        shift_id?: number | null
         allocations?: Array<{
           purchase_id: number
           amount: number
         }>
       }>
 
-      getSupplierStatement: (
-        supplierId: number,
-        actorId?: number,
-      ) => Promise<{
+      getSupplierStatement: (supplierId: number) => Promise<{
         supplier: any
         purchases: any[]
         payments: any[]
@@ -1551,16 +1667,23 @@ declare global {
 
       createCashMovement: (input: any) => Promise<any>
       createCashTransfer: (input: any) => Promise<any>
+      getCashShiftOpeningPreview: () => Promise<{
+        can_open: boolean
+        open_shift: any | null
+        previous_shift_id: number | null
+        expected_opening_amount: number | null
+        previous_closed_at?: string | null
+      }>
+      getOpenCashShift: () => Promise<any | null>
 
-      getCashDayClosePreview: (businessDate: string) => Promise<{
-        business_date: string
-        already_closed: boolean
-        closing: any | null
-        can_manage_closing: boolean
-        opening_drawer_balance: number
-        day_cash_in: number
-        day_cash_out: number
-        system_closing_balance: number
+      openCashShift: (input: { opening_counted_amount: number }) => Promise<any>
+
+      getCashShiftExpectedBalance: (shiftId: number) => Promise<{
+        shift_id: number
+        opening_counted_amount: number
+        cash_in: number
+        cash_out: number
+        expected_closing_amount: number
         breakdown: Array<{
           type: string
           direction: 'in' | 'out'
@@ -1568,58 +1691,189 @@ declare global {
         }>
       }>
 
-      closeCashDay: (input: {
+      getCashShiftDaySummary: (input: {
         business_date: string
-        counted_amount: number
-        carry_over_amount?: number
-        target_account?: string
-        closed_by?: number | null
+        user_id?: number | null
       }) => Promise<{
-        ok: boolean
-        closing_id: number
         business_date: string
+        user_id: number | null
+
+        shifts_count: number
+        closed_shifts_count: number
+
+        has_open_shift: boolean
+        all_closed: boolean
+
+        first_shift_id: number | null
+        last_shift_id: number | null
+        last_shift_status: 'open' | 'closed' | null
+
         opening_drawer_balance: number
-        day_cash_in: number
-        day_cash_out: number
-        system_closing_balance: number
-        counted_closing_balance: number
-        difference: number
-        carry_over_amount: number
-        transfer_amount: number
-        target_account: string | null
+
+        cash_in: number
+        cash_out: number
+
+        balance_before_handover: number
+        ending_drawer_balance: number
       }>
 
-      cancelCashDayClosing: (input: {
-        closing_id: number
-        reason?: string | null
-        actor_id?: number | null
+      getCashShifts: (input?: {
+        status?: 'all' | 'open' | 'closed'
+
+        user_id?: number | null
+
+        date_from?: string | null
+        date_to?: string | null
+
+        limit?: number
+        offset?: number
+      }) => Promise<{
+        rows: Array<{
+          id: number
+
+          status: 'open' | 'closed'
+
+          opened_by: number
+          opened_by_name?: string | null
+          opened_at: string
+
+          previous_shift_id: number | null
+
+          expected_opening_amount: number | null
+
+          opening_counted_amount: number
+
+          opening_difference: number
+
+          expected_closing_amount: number | null
+
+          closing_counted_amount: number | null
+
+          closing_difference: number | null
+
+          left_for_next_shift: number | null
+
+          safe_transfer_amount: number | null
+
+          closed_by: number | null
+
+          closed_by_name?: string | null
+
+          closed_at: string | null
+
+          close_reason: string | null
+
+          duration_minutes: number
+
+          cash_in: number
+          cash_out: number
+
+          variance_count: number
+
+          pending_variance_count: number
+        }>
+
+        total: number
+        limit: number
+        offset: number
+      }>
+
+      getCashShiftDetails: (shiftId: number) => Promise<{
+        shift: any
+
+        preview: {
+          shift_id: number
+
+          opening_counted_amount: number
+
+          cash_in: number
+          cash_out: number
+
+          expected_closing_amount: number
+
+          breakdown: Array<{
+            type: string
+
+            direction: 'in' | 'out'
+
+            total: number
+          }>
+        }
+
+        movements: any[]
+
+        variances: any[]
+      }>
+
+      listCashShiftVariances: (input?: {
+        status?: 'all' | 'pending' | 'resolved'
+
+        user_id?: number | null
+
+        date_from?: string | null
+        date_to?: string | null
+
+        limit?: number
+        offset?: number
+      }) => Promise<{
+        rows: Array<{
+          id: number
+          shift_id: number
+
+          stage: 'opening' | 'closing'
+          kind: 'shortage' | 'surplus'
+
+          amount: number
+
+          status: 'pending' | 'resolved'
+
+          resolution_type: 'approved' | 'explained' | 'other' | null
+
+          resolution_notes: string | null
+
+          resolved_by: number | null
+          resolved_by_name?: string | null
+          resolved_at: string | null
+
+          created_at: string
+
+          shift_status: 'open' | 'closed'
+
+          opened_by: number
+          opened_by_name?: string | null
+
+          shift_opened_at: string
+          shift_closed_at: string | null
+        }>
+
+        total: number
+        pending_count: number
+
+        limit: number
+        offset: number
+      }>
+
+      resolveCashShiftVariance: (input: {
+        variance_id: number
+
+        resolution_type: 'approved' | 'explained' | 'other'
+
+        resolution_notes: string
+
         admin_password: string
       }) => Promise<{
         success: boolean
         message?: string
-        closing_id?: number
-        business_date?: string
+        variance?: any
       }>
 
-      updateCashDayClosing: (input: {
-        closing_id: number
-        carry_over_amount: number
-        target_account?: string
-        actor_id?: number | null
-        admin_password: string
-      }) => Promise<{
-        success: boolean
-        message?: string
-
-        closing_id?: number
-        business_date?: string
-
-        counted_closing_balance?: number
-        carry_over_amount?: number
-        transfer_amount?: number
-
-        target_account?: string | null
-      }>
+      closeCashShift: (input: {
+        shift_id: number
+        closing_counted_amount: number
+        left_for_next_shift: number
+        close_reason?: string | null
+        admin_password?: string
+      }) => Promise<any>
 
       updateCashMovement: (input: {
         id: number

@@ -16,6 +16,12 @@ import {
   getSupplierStatement,
 } from '../../src/main/database/repositories/purchases.repo'
 
+import {
+  closeCashShift,
+  getOpenCashShift,
+  openCashShift,
+} from '../../src/main/database/repositories/cash-shifts.repo'
+
 type PurchaseVariantTestRow = {
   variant_id: number
   product_id: number
@@ -185,6 +191,10 @@ describe('purchases repository', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
     seedStoreCashBalance()
   })
 
@@ -195,6 +205,7 @@ describe('purchases repository', () => {
       createPurchaseInvoice({
         supplier_id: 0,
         paid_amount: 0,
+        actor_id: 1,
         items: [
           {
             variant_id: variant.variant_id,
@@ -282,6 +293,7 @@ describe('purchases repository', () => {
 
     const result = createPurchaseInvoice({
       supplier_id: supplierId,
+      actor_id: 1,
       paid_amount: 500,
       payment_method: 'cash',
       items: [
@@ -321,6 +333,7 @@ describe('purchases repository', () => {
 
     const result = createPurchaseInvoice({
       supplier_id: supplierId,
+      actor_id: 1,
       paid_amount: 200,
       payment_method: 'cash',
       items: [
@@ -376,6 +389,7 @@ describe('purchases repository', () => {
 
     const result = createPurchaseInvoice({
       supplier_id: supplierId,
+      actor_id: 1,
       paid_amount: 700,
       payment_method: 'cash',
       items: [
@@ -445,6 +459,7 @@ describe('purchases repository', () => {
       purchase_id: purchase.purchaseId,
       amount: 200,
       payment_method: 'cash',
+      actor_id: 1,
       notes: 'Partial supplier payment',
     })
 
@@ -565,7 +580,28 @@ describe('purchases repository', () => {
       )
       .get(payment.payment_batch_id) as any
 
-    expect(movement.cancelled_at).toBeTruthy()
+    expect(movement.cancelled_at).toBeNull()
+
+    const reverseMovement = db
+      .prepare(
+        `
+        SELECT *
+        FROM cash_movements
+
+        WHERE reference_type =
+          'supplier_payment_cancel'
+
+          AND reference_id = ?
+
+        ORDER BY id DESC
+        LIMIT 1
+        `,
+      )
+      .get(payment.payment_batch_id) as any
+
+    expect(reverseMovement).toBeTruthy()
+    expect(reverseMovement.direction).toBe('in')
+    expect(Number(reverseMovement.amount)).toBe(200)
   })
 
   it('updates latest supplier payment and replaces its financial effects', () => {
@@ -690,7 +726,28 @@ describe('purchases repository', () => {
       )
       .get(payment.payment_batch_id) as any
 
-    expect(oldCashMovement.cancelled_at).toBeTruthy()
+    expect(oldCashMovement.cancelled_at).toBeNull()
+
+    const reverseMovement = db
+      .prepare(
+        `
+        SELECT *
+        FROM cash_movements
+
+        WHERE reference_type =
+          'supplier_payment_update_reverse'
+
+          AND reference_id = ?
+
+        ORDER BY id DESC
+        LIMIT 1
+        `,
+      )
+      .get(payment.payment_batch_id) as any
+
+    expect(reverseMovement).toBeTruthy()
+    expect(reverseMovement.direction).toBe('in')
+    expect(Number(reverseMovement.amount)).toBe(200)
 
     const newCashMovement = db
       .prepare(
@@ -801,6 +858,8 @@ describe('purchases repository', () => {
     createPurchaseInvoice({
       supplier_id: supplierId,
 
+      actor_id: 1,
+
       paid_amount: 50,
 
       payment_method: 'cash',
@@ -898,6 +957,7 @@ describe('purchases repository', () => {
       purchase_id: purchase.purchaseId,
       amount: 500,
       payment_method: 'cash',
+      actor_id: 1,
       notes: 'Full supplier payment',
     })
 
@@ -916,6 +976,7 @@ describe('purchases repository', () => {
         supplier_id: supplierId,
         amount: 0,
         payment_method: 'cash',
+        actor_id: 1,
       }),
     ).toThrow()
   })
@@ -926,6 +987,7 @@ describe('purchases repository', () => {
         supplier_id: 999999,
         amount: 100,
         payment_method: 'cash',
+        actor_id: 1,
       }),
     ).toThrow('المورد غير موجود')
   })
@@ -954,6 +1016,7 @@ describe('purchases repository', () => {
         supplier_id: supplierId,
         amount: 700,
         payment_method: 'cash',
+        actor_id: 1,
       }),
     ).toThrow('قيمة الدفع أكبر من رصيد المورد')
 
@@ -967,6 +1030,7 @@ describe('purchases repository', () => {
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
+      actor_id: 1,
       paid_amount: 100,
       payment_method: 'cash',
       items: [
@@ -981,6 +1045,7 @@ describe('purchases repository', () => {
     recordSupplierPayment({
       supplier_id: supplierId,
       purchase_id: purchase.purchaseId,
+      actor_id: 1,
       amount: 200,
       payment_method: 'cash',
       notes: 'Second payment',
@@ -1001,6 +1066,7 @@ describe('purchases repository', () => {
 
     const paid = createPurchaseInvoice({
       supplier_id: supplierId,
+      actor_id: 1,
       paid_amount: 100,
 
       items: [
@@ -1014,6 +1080,7 @@ describe('purchases repository', () => {
 
     const partial = createPurchaseInvoice({
       supplier_id: supplierId,
+      actor_id: 1,
       paid_amount: 50,
 
       items: [
@@ -1055,5 +1122,151 @@ describe('purchases repository', () => {
     expect(unpaidIds).toContain(unpaid.purchaseId)
 
     expect(unpaidIds).not.toContain(paid.purchaseId)
+  })
+
+  it('keeps purchase and supplier cash history immutable across shifts', () => {
+    const db = getDb()
+
+    /*
+     * جهز درج بـ1000 عن طريق
+     * إغلاق الشفت الحالي وفتح واحد
+     * بالجرد الفعلي.
+     */
+    const firstOpen = getOpenCashShift()!
+
+    closeCashShift({
+      shift_id: firstOpen.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    })
+
+    const shift1 = openCashShift({
+      opening_counted_amount: 1000,
+      opened_by: 1,
+    })
+
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      actor_id: 1,
+
+      supplier_id: supplierId,
+
+      paid_amount: 200,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 2,
+
+          unit_cost: 150,
+        },
+      ],
+    })
+
+    expect(purchase.shift_id).toBe(shift1.id)
+
+    const purchaseMovement = db
+      .prepare(
+        `
+      SELECT *
+      FROM cash_movements
+      WHERE reference_type =
+        'purchase_invoice'
+        AND reference_id = ?
+      LIMIT 1
+    `,
+      )
+      .get(purchase.purchaseId) as any
+
+    expect(Number(purchaseMovement.shift_id)).toBe(shift1.id)
+
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: 800,
+      left_for_next_shift: 800,
+      closed_by: 1,
+    })
+
+    const shift2 = openCashShift({
+      opening_counted_amount: 800,
+      opened_by: 1,
+    })
+
+    const cancelled = cancelPurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+
+      reason: 'إلغاء في شفت جديد',
+
+      actor_id: 1,
+    })
+
+    expect(cancelled.cancelled_shift_id).toBe(shift2.id)
+
+    const cancelledPurchaseRow = db
+      .prepare(
+        `
+    SELECT
+      cancelled_by,
+      cancelled_shift_id,
+      cancel_reason
+
+    FROM purchase_invoices
+
+    WHERE id = ?
+    `,
+      )
+      .get(purchase.purchaseId) as any
+
+    expect(Number(cancelledPurchaseRow.cancelled_by)).toBe(1)
+
+    expect(Number(cancelledPurchaseRow.cancelled_shift_id)).toBe(shift2.id)
+
+    expect(cancelledPurchaseRow.cancel_reason).toBe('إلغاء في شفت جديد')
+
+    /*
+     * حركة الدفع الأصلية لا تلغى.
+     */
+    const originalAfterCancel = db
+      .prepare(
+        `
+      SELECT
+        cancelled_at,
+        shift_id
+      FROM cash_movements
+      WHERE id = ?
+    `,
+      )
+      .get(purchaseMovement.id) as any
+
+    expect(originalAfterCancel.cancelled_at).toBeNull()
+
+    expect(Number(originalAfterCancel.shift_id)).toBe(shift1.id)
+
+    const reverse = db
+      .prepare(
+        `
+      SELECT *
+      FROM cash_movements
+      WHERE reference_type =
+        'purchase_cancel'
+        AND reference_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `,
+      )
+      .get(purchase.purchaseId) as any
+
+    expect(reverse.direction).toBe('in')
+
+    expect(Number(reverse.amount)).toBe(200)
+
+    expect(Number(reverse.shift_id)).toBe(shift2.id)
   })
 })

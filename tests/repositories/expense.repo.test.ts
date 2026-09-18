@@ -1,13 +1,18 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
 import {
+  cancelExpense,
   createExpense,
   listExpenses,
   listExpensesPage,
   updateExpense,
 } from '../../src/main/database/repositories/expense.repo'
 
-import { closeCashDay } from '../../src/main/database/repositories/cash.repo'
+import {
+  closeCashShift,
+  getOpenCashShift,
+  openCashShift,
+} from '../../src/main/database/repositories/cash-shifts.repo'
 
 type ExpenseTestRow = {
   id: number
@@ -115,7 +120,27 @@ describe('expense repository', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+
     seedStoreCashBalance()
+
+    openCashShift({
+      opening_counted_amount: 1000000,
+
+      opened_by: 1,
+    })
+
+    /*
+     * فتح الشفت نفسه له Activity Log،
+     * والاختبارات القديمة بتحسب Logs
+     * المصروف فقط.
+     */
+    getDb()
+      .prepare(
+        `
+      DELETE FROM activity_logs
+      `,
+      )
+      .run()
   })
 
   it('creates an expense and records cash movement and activity log', () => {
@@ -138,7 +163,7 @@ describe('expense repository', () => {
     expect(expenses[0].title).toBe('Internet Bill')
     expect(expenses[0].category).toBe('utilities')
     expect(expenses[0].amount).toBe(250)
-    expect(expenses[0].payment_method).toBe('cash')
+    expect(expenses[0].payment_method).toBe('store_cash')
     expect(expenses[0].notes).toBe('monthly internet')
     expect(expenses[0].created_by).toBe(1)
 
@@ -157,12 +182,13 @@ describe('expense repository', () => {
     createExpense({
       title: 'Office Supplies',
       amount: 100,
+      created_by: 1,
     })
 
     const expenses = listExpenses() as ExpenseTestRow[]
 
     expect(expenses).toHaveLength(1)
-    expect(expenses[0].payment_method).toBe('cash')
+    expect(expenses[0].payment_method).toBe('store_cash')
 
     expect(getCashMovementTotal('out')).toBe(100)
   })
@@ -171,11 +197,13 @@ describe('expense repository', () => {
     createExpense({
       title: 'First Expense',
       amount: 100,
+      created_by: 1,
     })
 
     createExpense({
       title: 'Second Expense',
       amount: 200,
+      created_by: 1,
     })
 
     const expenses = listExpenses() as ExpenseTestRow[]
@@ -225,16 +253,19 @@ describe('expense repository', () => {
     createExpense({
       title: 'Paged Expense 1',
       amount: 100,
+      created_by: 1,
     })
 
     createExpense({
       title: 'Paged Expense 2',
       amount: 200,
+      created_by: 1,
     })
 
     createExpense({
       title: 'Paged Expense 3',
       amount: 300,
+      created_by: 1,
     })
 
     const firstPage = listExpensesPage({
@@ -284,6 +315,24 @@ describe('expense repository', () => {
       amount: 100,
       payment_method: 'store_cash',
       created_by: 1,
+    })
+
+    const adminShift = getOpenCashShift()!
+
+    closeCashShift({
+      shift_id: adminShift.id,
+
+      closing_counted_amount: 999900,
+
+      left_for_next_shift: 999900,
+
+      closed_by: 1,
+    })
+
+    openCashShift({
+      opening_counted_amount: 999900,
+
+      opened_by: 2,
     })
 
     createExpense({
@@ -409,9 +458,109 @@ describe('expense repository', () => {
       )
       .get(oldMovement.id) as any
 
-    expect(oldAfter.cancelled_at).toBeTruthy()
+    expect(oldAfter.cancelled_at).toBeNull()
+
+    const reverseMovement = db
+      .prepare(
+        `
+    SELECT *
+
+    FROM cash_movements
+
+    WHERE reference_type =
+      'expense_update_reverse'
+
+      AND reference_id = ?
+
+    ORDER BY id DESC
+
+    LIMIT 1
+    `,
+      )
+      .get(created.id) as any
+
+    expect(reverseMovement).toBeTruthy()
+
+    expect(reverseMovement.direction).toBe('in')
+
+    expect(Number(reverseMovement.amount)).toBe(250)
 
     const activeMovement = db
+      .prepare(
+        `
+        SELECT *
+
+        FROM cash_movements
+
+        WHERE reference_type =
+          'expense'
+
+          AND reference_id = ?
+
+          AND direction = 'out'
+
+        ORDER BY id DESC
+
+        LIMIT 1
+        `,
+      )
+      .get(created.id) as any
+
+    expect(Number(activeMovement.amount)).toBe(400)
+
+    expect(activeMovement.id).not.toBe(oldMovement.id)
+
+    const expenseNet = db
+      .prepare(
+        `
+    SELECT
+      IFNULL(
+        SUM(
+          CASE
+            WHEN direction = 'out'
+              THEN amount
+
+            WHEN direction = 'in'
+              THEN -amount
+
+            ELSE 0
+          END
+        ),
+        0
+      ) AS net_out
+
+    FROM cash_movements
+
+    WHERE type =
+      'expense'
+
+      AND cancelled_at
+        IS NULL
+    `,
+      )
+      .get() as {
+      net_out: number
+    }
+
+    expect(Number(expenseNet.net_out)).toBe(400)
+  })
+
+  it('updates and cancels a previous-shift expense in the current shift', () => {
+    const db = getDb()
+
+    const shift1 = getOpenCashShift()!
+
+    const created = createExpense({
+      title: 'Previous Shift Expense',
+
+      amount: 100,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+    })
+
+    const originalMovement = db
       .prepare(
         `
       SELECT *
@@ -423,93 +572,135 @@ describe('expense repository', () => {
 
         AND reference_id = ?
 
-        AND cancelled_at
-          IS NULL
+      ORDER BY id ASC
 
       LIMIT 1
       `,
       )
       .get(created.id) as any
 
-    expect(Number(activeMovement.amount)).toBe(400)
+    expect(Number(originalMovement.shift_id)).toBe(shift1.id)
 
-    expect(activeMovement.id).not.toBe(oldMovement.id)
+    closeCashShift({
+      shift_id: shift1.id,
 
-    const activeExpenseOut = db
-      .prepare(
-        `
-      SELECT
-        IFNULL(
-          SUM(amount),
-          0
-        ) AS total
+      closing_counted_amount: 999900,
 
-      FROM cash_movements
-
-      WHERE type = 'expense'
-        AND direction = 'out'
-        AND cancelled_at
-          IS NULL
-      `,
-      )
-      .get() as {
-      total: number
-    }
-
-    expect(Number(activeExpenseOut.total)).toBe(400)
-  })
-
-  it('blocks expense editing after the business day is closed', () => {
-    const created = createExpense({
-      title: 'Closed Expense',
-
-      amount: 100,
-
-      payment_method: 'store_cash',
-
-      created_by: 1,
-    })
-
-    const db = getDb()
-
-    const dateRow = db
-      .prepare(
-        `
-      SELECT
-        date(
-          'now',
-          'localtime'
-        ) AS day
-      `,
-      )
-      .get() as {
-      day: string
-    }
-
-    closeCashDay({
-      business_date: dateRow.day,
-
-      counted_amount: 999900,
-
-      carry_over_amount: 999900,
-
-      target_account: 'owner_cash',
+      left_for_next_shift: 999900,
 
       closed_by: 1,
     })
 
-    expect(() =>
-      updateExpense({
-        id: created.id,
+    const shift2 = openCashShift({
+      opening_counted_amount: 999900,
 
-        title: 'Changed Expense',
+      opened_by: 1,
+    })
 
-        amount: 200,
+    const updated = updateExpense({
+      id: created.id,
 
-        payment_method: 'store_cash',
+      title: 'Corrected Expense',
 
-        actor_id: 1,
-      }),
-    ).toThrow(`لا يمكن تعديل المصروف لأن يوم ${dateRow.day} تم تقفيله`)
+      amount: 150,
+
+      payment_method: 'store_cash',
+
+      actor_id: 1,
+    })
+
+    expect(updated.updated_shift_id).toBe(shift2.id)
+
+    const expenseAfterUpdate = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        updated_shift_id
+
+      FROM expenses
+
+      WHERE id = ?
+      `,
+      )
+      .get(created.id) as any
+
+    expect(Number(expenseAfterUpdate.shift_id)).toBe(shift1.id)
+
+    expect(Number(expenseAfterUpdate.updated_shift_id)).toBe(shift2.id)
+
+    const originalAfterUpdate = db
+      .prepare(
+        `
+        SELECT
+          cancelled_at,
+          shift_id
+
+        FROM cash_movements
+
+        WHERE id = ?
+        `,
+      )
+      .get(originalMovement.id) as any
+
+    expect(originalAfterUpdate.cancelled_at).toBeNull()
+
+    expect(Number(originalAfterUpdate.shift_id)).toBe(shift1.id)
+
+    const cancelled = cancelExpense({
+      id: created.id,
+
+      reason: 'Cancel in current shift',
+
+      actor_id: 1,
+    })
+
+    expect(cancelled.cancelled_shift_id).toBe(shift2.id)
+
+    const expenseAfterCancel = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        updated_shift_id,
+        cancelled_shift_id
+
+      FROM expenses
+
+      WHERE id = ?
+      `,
+      )
+      .get(created.id) as any
+
+    expect(Number(expenseAfterCancel.shift_id)).toBe(shift1.id)
+
+    expect(Number(expenseAfterCancel.updated_shift_id)).toBe(shift2.id)
+
+    expect(Number(expenseAfterCancel.cancelled_shift_id)).toBe(shift2.id)
+
+    const cancelReverse = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM cash_movements
+
+      WHERE reference_type =
+        'expense_cancel'
+
+        AND reference_id = ?
+
+      ORDER BY id DESC
+
+      LIMIT 1
+      `,
+      )
+      .get(created.id) as any
+
+    expect(cancelReverse.direction).toBe('in')
+
+    expect(Number(cancelReverse.amount)).toBe(150)
+
+    expect(Number(cancelReverse.shift_id)).toBe(shift2.id)
   })
 })

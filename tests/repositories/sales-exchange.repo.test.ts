@@ -19,6 +19,12 @@ import {
   createSaleExchange,
   getSaleExchangeState,
 } from '../../src/main/database/repositories/sales-exchange.repo'
+import {
+  closeCashShift,
+  getOpenCashShift,
+  openCashShift,
+} from '../../src/main/database/repositories/cash-shifts.repo'
+import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo'
 
 type TestVariant = {
   variant_id: number
@@ -232,11 +238,119 @@ function getFullReturnInput(saleId: number) {
     }))
 }
 
+function createRegularExchangeSale() {
+  const category = createCategory({
+    name: 'Regular Exchange Category',
+  })
+
+  createProduct({
+    name: 'Regular Exchange Product',
+
+    category_id: category.id,
+
+    image_path: null,
+    description: null,
+
+    variants: [
+      {
+        barcode: 'REG100',
+
+        size: 'M',
+        color: 'Black',
+
+        buy_price: 50,
+        sell_price: 100,
+
+        min_stock: 1,
+        opening_qty: 20,
+      },
+
+      {
+        barcode: 'REG150',
+
+        size: 'L',
+        color: 'Blue',
+
+        buy_price: 70,
+        sell_price: 150,
+
+        min_stock: 1,
+        opening_qty: 20,
+      },
+    ],
+  })
+
+  const oldVariant = getVariantByBarcode('REG100') as TestVariant
+
+  const newVariant = getVariantByBarcode('REG150') as TestVariant
+
+  const sale = createSale({
+    user_id: 1,
+
+    customer_id: null,
+
+    promotion_id: null,
+
+    sub_total: 100,
+
+    discount_value: 0,
+
+    grand_total: 100,
+
+    paid: 100,
+
+    change_amount: 0,
+
+    payment_method: 'cash',
+
+    items: [
+      {
+        variant_id: oldVariant.variant_id,
+
+        product_name: oldVariant.product_name,
+
+        barcode: oldVariant.barcode,
+
+        size: oldVariant.size,
+
+        color: oldVariant.color,
+
+        quantity: 1,
+
+        unit_price: 100,
+      },
+    ],
+  })
+
+  const saleItem = getDb()
+    .prepare(
+      `
+        SELECT *
+        FROM sale_items
+        WHERE sale_id = ?
+        LIMIT 1
+        `,
+    )
+    .get(sale.saleId) as any
+
+  return {
+    sale,
+    saleItem,
+    oldVariant,
+    newVariant,
+  }
+}
+
 describe('sale promotion exchanges', () => {
   beforeEach(() => {
     closeDb()
     getDb()
     resetDatabaseData()
+
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
   })
 
   it('exchanges one gift unit and makes the new cheapest unit the gift', () => {
@@ -295,6 +409,247 @@ describe('sale promotion exchanges', () => {
 
     expect(cashMovement.direction).toBe('in')
     expect(Number(cashMovement.amount)).toBe(100)
+  })
+
+  it('exchanges a regular invoice item without a promotion', () => {
+    const result = createRegularExchangeSale()
+
+    const state = getSaleExchangeState(result.sale.saleId)
+
+    expect(state.snapshot).toBeNull()
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    )
+
+    expect(regularGroup).toBeTruthy()
+
+    if (!regularGroup) {
+      throw new Error('Regular exchange group was not created')
+    }
+
+    expect(regularGroup.units).toHaveLength(1)
+
+    const unit = regularGroup.units[0]
+
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+
+      user_id: 1,
+
+      payment_method: 'store_cash',
+
+      reason: 'تغيير مقاس',
+
+      items: [
+        {
+          promotion_unit_id: Number(unit.id),
+
+          new_variant_id: result.newVariant.variant_id,
+        },
+      ],
+    })
+
+    expect(exchange.difference_amount).toBe(50)
+
+    expect(exchange.amount_to_collect).toBe(50)
+
+    expect(getStock('REG100')).toBe(20)
+
+    expect(getStock('REG150')).toBe(19)
+
+    const current = getSaleCurrentState(result.sale.saleId)
+
+    expect(
+      current.current_receipt.items.some(
+        (item: any) =>
+          Number(item.variant_id) === Number(result.newVariant.variant_id),
+      ),
+    ).toBe(true)
+
+    const cashMovement = getDb()
+      .prepare(
+        `
+          SELECT *
+          FROM cash_movements
+          WHERE
+            reference_type =
+              'sale_exchange'
+
+            AND
+              reference_id = ?
+          LIMIT 1
+          `,
+      )
+      .get(exchange.exchangeId) as any
+
+    expect(cashMovement.direction).toBe('in')
+
+    expect(Number(cashMovement.amount)).toBe(50)
+  })
+
+  it('returns the current replacement item after a regular exchange', () => {
+    const result = createRegularExchangeSale()
+
+    const state = getSaleExchangeState(result.sale.saleId)
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    )
+
+    if (!regularGroup) {
+      throw new Error('Regular exchange group was not created')
+    }
+
+    const unit = regularGroup.units[0]
+
+    createSaleExchange({
+      original_sale_id: result.sale.saleId,
+
+      user_id: 1,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          promotion_unit_id: Number(unit.id),
+
+          new_variant_id: result.newVariant.variant_id,
+        },
+      ],
+    })
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: result.sale.saleId,
+
+      user_id: 1,
+
+      refund_payment_method: 'store_cash',
+
+      reason: 'مرتجع بعد الاستبدال',
+
+      items: [
+        {
+          sale_item_id: Number(result.saleItem.id),
+
+          variant_id: Number(result.newVariant.variant_id),
+
+          quantity: 1,
+        },
+      ],
+    })
+
+    expect(saleReturn.return_value).toBe(150)
+
+    expect(getStock('REG100')).toBe(20)
+
+    expect(getStock('REG150')).toBe(20)
+
+    const returnItem = getDb()
+      .prepare(
+        `
+          SELECT *
+          FROM sale_return_items
+          WHERE return_id = ?
+          LIMIT 1
+          `,
+      )
+      .get(saleReturn.returnId) as any
+
+    expect(Number(returnItem.variant_id)).toBe(result.newVariant.variant_id)
+
+    expect(Number(returnItem.promotion_unit_id)).toBeGreaterThan(0)
+  })
+
+  it('requires an open shift and links exchange cash movement to the current shift', () => {
+    const db = getDb()
+
+    const result = createPromotionSale(['EX250', 'EX200', 'EX150'])
+
+    const originalShift = getOpenCashShift()
+
+    expect(originalShift).toBeTruthy()
+
+    closeCashShift({
+      shift_id: originalShift!.id,
+      closing_counted_amount: 450,
+      left_for_next_shift: 450,
+      closed_by: 1,
+    })
+
+    const giftUnit = getUnitByPrice(result.sale.saleId, 150)
+
+    expect(() =>
+      createSaleExchange({
+        original_sale_id: result.sale.saleId,
+        user_id: 1,
+        payment_method: 'store_cash',
+        items: [
+          {
+            promotion_unit_id: Number(giftUnit.id),
+            new_variant_id: result.variants.EX300.variant_id,
+          },
+        ],
+      }),
+    ).toThrow('لا يمكن تسجيل استبدال بدون شفت مفتوح')
+
+    const currentShift = openCashShift({
+      opening_counted_amount: 450,
+      opened_by: 1,
+    })
+
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+
+      user_id: 1,
+
+      payment_method: 'store_cash',
+
+      reason: 'استبدال في شفت جديد',
+
+      items: [
+        {
+          promotion_unit_id: Number(giftUnit.id),
+
+          new_variant_id: result.variants.EX300.variant_id,
+        },
+      ],
+    })
+
+    expect(exchange.shift_id).toBe(currentShift.id)
+
+    expect(exchange.shift_id).not.toBe(originalShift!.id)
+
+    const exchangeRow = db
+      .prepare(
+        `
+        SELECT shift_id
+        FROM sale_exchanges
+        WHERE id = ?
+      `,
+      )
+      .get(exchange.exchangeId) as {
+      shift_id: number
+    }
+
+    expect(exchangeRow.shift_id).toBe(currentShift.id)
+
+    const cashMovement = db
+      .prepare(
+        `
+        SELECT shift_id
+        FROM cash_movements
+        WHERE reference_type =
+          'sale_exchange'
+          AND reference_id = ?
+        LIMIT 1
+      `,
+      )
+      .get(exchange.exchangeId) as {
+      shift_id: number
+    }
+
+    expect(cashMovement.shift_id).toBe(currentShift.id)
   })
 
   it('uses the original promotion scope even after the live promotion changes', () => {
@@ -568,6 +923,12 @@ describe('sale promotion exchanges', () => {
     const result = createPromotionSale(['EX250', 'EX200', 'EX150'])
 
     const state = getSaleExchangeState(result.sale.saleId)
+
+    expect(state.snapshot).toBeTruthy()
+
+    if (!state.snapshot) {
+      throw new Error('Promotion snapshot is missing')
+    }
 
     expect(state.snapshot.promotion_type).toBe('buy_x_get_y')
 

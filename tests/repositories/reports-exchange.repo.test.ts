@@ -22,7 +22,7 @@ import {
 import { createSaleExchange } from '../../src/main/database/repositories/sales-exchange.repo'
 
 import { getReportsSummary } from '../../src/main/database/repositories/reports.repo'
-
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
 type VariantRow = {
   variant_id: number
   product_id: number
@@ -216,6 +216,11 @@ describe('reports with sale exchanges', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
   })
 
   it('includes an exchange in sales discounts products customers and profit', () => {
@@ -329,72 +334,133 @@ describe('reports with sale exchanges', () => {
     expect(reportAfterCostChange.summary.net_profit_after_discounts).toBe(230)
   })
 
-  it('attributes the exchange adjustment to the exchange date instead of the original sale date', () => {
+  it('attributes sale and exchange to the shift opening business date', () => {
     const result = seedExchangeReportSale()
 
+    const shiftRow = result.db
+      .prepare(
+        `
+        SELECT
+          shift_id
+
+        FROM sales
+
+        WHERE id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(result.sale.saleId) as {
+      shift_id: number
+    }
+
+    /*
+     * نحاكي شفت بدأ يوم 10 أغسطس
+     * واستمر بعد منتصف الليل.
+     */
     result.db
       .prepare(
         `
-          UPDATE sales
-          SET
-            business_date =
-              '2026-08-10',
-            created_at =
-              '2026-08-10 10:00:00'
-          WHERE id = ?
-          `,
+        UPDATE cash_shifts
+
+        SET
+          opened_at =
+            '2026-08-10 20:00:00'
+
+        WHERE id = ?
+        `,
+      )
+      .run(shiftRow.shift_id)
+
+    /*
+     * حتى لو business_date القديم
+     * داخل الفاتورة مختلف،
+     * تاريخ الشفت هو المصدر الحقيقي.
+     */
+    result.db
+      .prepare(
+        `
+        UPDATE sales
+
+        SET
+          business_date =
+            '2026-08-10',
+          created_at =
+            '2026-08-10 22:00:00'
+
+        WHERE id = ?
+        `,
       )
       .run(result.sale.saleId)
 
+    /*
+     * ونحاكي أن الاستبدال حصل
+     * فعليًا بعد منتصف الليل.
+     *
+     * رغم إن business_date هنا 12،
+     * لازم التقرير يحسبه على يوم 10
+     * لأنه تابع لنفس الشفت.
+     */
     result.db
       .prepare(
         `
-          UPDATE sale_exchanges
-          SET
-            business_date =
-              '2026-08-12',
-            created_at =
-              '2026-08-12 10:00:00'
-          WHERE id = ?
-          `,
+        UPDATE sale_exchanges
+
+        SET
+          business_date =
+            '2026-08-12',
+          created_at =
+            '2026-08-12 01:00:00'
+
+        WHERE id = ?
+        `,
       )
       .run(result.exchange.exchangeId)
 
-    const saleDay = getReportsSummary({
+    const shiftDay = getReportsSummary({
       date_from: '2026-08-10',
       date_to: '2026-08-10',
     }) as any
 
-    expect(saleDay.summary.sales_count).toBe(1)
+    /*
+     * البيع والاستبدال الاثنين
+     * داخل نفس يوم الشفت.
+     */
+    expect(shiftDay.summary.sales_count).toBe(1)
 
-    expect(saleDay.summary.exchange_count).toBe(0)
+    expect(shiftDay.summary.exchange_count).toBe(1)
 
-    expect(saleDay.summary.gross_sales).toBe(450)
+    expect(shiftDay.summary.exchange_adjustment).toBe(100)
 
-    expect(saleDay.summary.promotion_discounts).toBe(150)
+    expect(shiftDay.summary.gross_sales).toBe(550)
 
-    expect(saleDay.summary.net_profit_after_discounts).toBe(180)
+    expect(shiftDay.summary.net_sales).toBe(550)
 
-    const exchangeDay = getReportsSummary({
+    expect(shiftDay.summary.promotion_discounts).toBe(200)
+
+    expect(shiftDay.summary.gross_profit_before_discounts).toBe(430)
+
+    expect(shiftDay.summary.net_profit_after_discounts).toBe(230)
+
+    /*
+     * يوم 12 لا يجب أن يظهر فيه شيء،
+     * رغم created_at/business_date
+     * الخاصين بالاستبدال.
+     */
+    const calendarDay = getReportsSummary({
       date_from: '2026-08-12',
       date_to: '2026-08-12',
     }) as any
 
-    expect(exchangeDay.summary.sales_count).toBe(0)
+    expect(calendarDay.summary.sales_count).toBe(0)
 
-    expect(exchangeDay.summary.exchange_count).toBe(1)
+    expect(calendarDay.summary.exchange_count).toBe(0)
 
-    expect(exchangeDay.summary.exchange_adjustment).toBe(100)
+    expect(calendarDay.summary.exchange_adjustment).toBe(0)
 
-    expect(exchangeDay.summary.gross_sales).toBe(100)
+    expect(calendarDay.summary.gross_sales).toBe(0)
 
-    expect(exchangeDay.summary.net_sales).toBe(100)
-
-    expect(exchangeDay.summary.promotion_discounts).toBe(50)
-
-    expect(exchangeDay.summary.gross_profit_before_discounts).toBe(100)
-
-    expect(exchangeDay.summary.net_profit_after_discounts).toBe(50)
+    expect(calendarDay.summary.net_sales).toBe(0)
   })
 
   it('returns the exchanged bundle without leaving sales profit or products behind', () => {

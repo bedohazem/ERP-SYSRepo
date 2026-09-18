@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CASH_ACCOUNT_OPTIONS } from '../utils/payment-method'
+import {
+  getPromotionRulesText,
+  getPromotionScopeLabel,
+  getPromotionTypeLabel,
+} from '../utils/promotion-display'
 
 type ExchangeUnit = {
   id: number
@@ -24,6 +29,9 @@ type ExchangeUnit = {
 
 type ExchangeGroup = {
   promotion_group_id: string
+
+  group_kind: 'promotion' | 'regular'
+
   units: ExchangeUnit[]
 }
 
@@ -32,14 +40,17 @@ type ExchangeState = {
 
   snapshot: {
     promotion_type: string
+    promotion_name: string
+    promotion_value: number
     buy_qty: number | null
     free_qty: number | null
 
     scope_type: string
+
     category_id: number | null
 
     product_ids: number[]
-  }
+  } | null
 
   groups: ExchangeGroup[]
   financials: {
@@ -187,10 +198,6 @@ export default function SaleExchangeModal({
           return
         }
 
-        if (result.snapshot?.promotion_type !== 'buy_x_get_y') {
-          throw new Error('الاستبدال من هذه الشاشة متاح لعروض اشتري وخد فقط')
-        }
-
         const activeGroups = (result.groups || []).filter(
           (group) =>
             group.units.length > 0 &&
@@ -198,13 +205,16 @@ export default function SaleExchangeModal({
         )
 
         if (activeGroups.length === 0) {
-          throw new Error('لا يوجد عرض متاح للاستبدال في هذه الفاتورة')
+          throw new Error('لا توجد قطع متاحة للاستبدال في هذه الفاتورة')
         }
 
         const nextState: ExchangeState = {
           sale: result.sale,
-          snapshot: result.snapshot,
+
+          snapshot: result.snapshot || null,
+
           groups: activeGroups,
+
           financials: result.financials,
         }
 
@@ -239,6 +249,33 @@ export default function SaleExchangeModal({
     )
   }, [state, groupId])
 
+  const selectedIsPromotion = Boolean(
+    selectedGroup?.group_kind === 'promotion' &&
+    state?.snapshot?.promotion_type === 'buy_x_get_y',
+  )
+
+  const recordedPromotionDiscount = Number(
+    state?.sale?.promotion_discount_value || 0,
+  )
+
+  const hasRecordedPromotion =
+    recordedPromotionDiscount > 0 &&
+    Boolean(state?.sale?.promotion_id || state?.sale?.promotion_name)
+
+  const promotionName = String(state?.sale?.promotion_name || 'عرض')
+
+  const historicalPromotionName = String(
+    state?.snapshot?.promotion_name || promotionName,
+  )
+
+  const promotionTypeLabel = getPromotionTypeLabel(
+    state?.snapshot?.promotion_type,
+  )
+
+  const promotionRulesText = getPromotionRulesText(state?.snapshot)
+
+  const promotionScopeLabel = getPromotionScopeLabel(state?.snapshot)
+
   const preview = useMemo(() => {
     if (!state || !selectedGroup) {
       return {
@@ -246,6 +283,11 @@ export default function SaleExchangeModal({
         newTotal: 0,
 
         difference: 0,
+
+        debtReduction: 0,
+        cashRefund: 0,
+        cashCollection: 0,
+        cashDifference: 0,
 
         currentInvoiceNet: 0,
         nextInvoiceNet: 0,
@@ -264,9 +306,14 @@ export default function SaleExchangeModal({
       oldUnits.reduce((sum, unit) => sum + unit.price, 0),
     )
 
-    const oldGroupPromotionDiscount = roundMoney(
-      oldUnits.reduce((sum, unit) => sum + (unit.isGift ? unit.price : 0), 0),
-    )
+    const oldGroupPromotionDiscount = selectedIsPromotion
+      ? roundMoney(
+          oldUnits.reduce(
+            (sum, unit) => sum + (unit.isGift ? unit.price : 0),
+            0,
+          ),
+        )
+      : 0
 
     const oldTotal = roundMoney(oldGroupGross - oldGroupPromotionDiscount)
 
@@ -284,17 +331,18 @@ export default function SaleExchangeModal({
       }
     })
 
-    const freeQty = Math.max(
-      0,
-      Math.floor(Number(state.snapshot.free_qty || 0)),
-    )
+    const freeQty = selectedIsPromotion
+      ? Math.max(0, Math.floor(Number(state.snapshot?.free_qty || 0)))
+      : 0
 
-    const giftIds = new Set(
-      [...nextUnits]
-        .sort((a, b) => a.price - b.price || a.id - b.id)
-        .slice(0, freeQty)
-        .map((unit) => unit.id),
-    )
+    const giftIds = selectedIsPromotion
+      ? new Set(
+          [...nextUnits]
+            .sort((a, b) => a.price - b.price || a.id - b.id)
+            .slice(0, freeQty)
+            .map((unit) => unit.id),
+        )
+      : new Set<number>()
 
     const newGroupGross = roundMoney(
       nextUnits.reduce((sum, unit) => sum + unit.price, 0),
@@ -367,23 +415,62 @@ export default function SaleExchangeModal({
 
     const difference = roundMoney(nextInvoiceNet - currentInvoiceNet)
 
+    const currentDebt = state.sale?.customer_id
+      ? Math.max(0, Number(state.sale?.remaining_amount || 0))
+      : 0
+
+    let debtReduction = 0
+    let cashRefund = 0
+    let cashCollection = 0
+
+    if (difference > 0) {
+      cashCollection = difference
+    }
+
+    if (difference < 0) {
+      const customerCredit = Math.abs(difference)
+
+      debtReduction = Math.min(customerCredit, currentDebt)
+
+      cashRefund = roundMoney(customerCredit - debtReduction)
+    }
+
+    const cashDifference = roundMoney(cashCollection - cashRefund)
+
     return {
       oldTotal,
       newTotal,
 
       difference,
 
+      debtReduction,
+      cashRefund,
+      cashCollection,
+      cashDifference,
+
       currentInvoiceNet,
       nextInvoiceNet,
     }
-  }, [state, selectedGroup, drafts])
+  }, [state, selectedGroup, selectedIsPromotion, drafts])
 
   function isEligibleVariant(variant: any) {
-    if (!state) {
+    if (!state || !selectedGroup) {
       return false
     }
 
+    /*
+     * الفاتورة العادية:
+     * أي Variant فعال مسموح.
+     */
+    if (selectedGroup.group_kind === 'regular') {
+      return true
+    }
+
     const snapshot = state.snapshot
+
+    if (!snapshot) {
+      return false
+    }
 
     if (snapshot.scope_type === 'all') {
       return true
@@ -402,17 +489,18 @@ export default function SaleExchangeModal({
     return false
   }
 
-  function startSingleExchange(unit: ExchangeUnit) {
+  function startSingleExchange(group: ExchangeGroup, unit: ExchangeUnit) {
+    setGroupId(String(group.promotion_group_id))
+
     setDrafts([createDraft(unit)])
+
     setError('')
   }
 
-  function startWholeGroupExchange() {
-    if (!selectedGroup) {
-      return
-    }
+  function startWholeGroupExchange(group: ExchangeGroup) {
+    setGroupId(String(group.promotion_group_id))
 
-    setDrafts(selectedGroup.units.map(createDraft))
+    setDrafts(group.units.map(createDraft))
 
     setError('')
   }
@@ -459,7 +547,8 @@ export default function SaleExchangeModal({
         query,
 
         categoryId:
-          state.snapshot.scope_type === 'category'
+          selectedGroup?.group_kind === 'promotion' &&
+          state.snapshot?.scope_type === 'category'
             ? state.snapshot.category_id
             : null,
 
@@ -485,7 +574,11 @@ export default function SaleExchangeModal({
       )
 
       if (eligible.length === 0) {
-        setError('لم يتم العثور على صنف بديل مؤهل لنفس العرض الأصلي')
+        setError(
+          selectedGroup?.group_kind === 'promotion'
+            ? 'لم يتم العثور على صنف بديل مؤهل لنفس العرض الأصلي'
+            : 'لم يتم العثور على صنف بديل متاح',
+        )
       }
     } catch (searchError) {
       setError(getErrorMessage(searchError, 'تعذر البحث عن الصنف البديل'))
@@ -522,12 +615,12 @@ export default function SaleExchangeModal({
     }
 
     if (!selectedGroup) {
-      setError('اختار العرض المطلوب استبداله')
+      setError('اختار القطعة أو العرض المطلوب استبداله')
       return
     }
 
     if (drafts.length === 0) {
-      setError('اختار قطعة واحدة أو اختار استبدال العرض كاملًا')
+      setError('اختار القطعة المطلوب استبدالها')
       return
     }
 
@@ -636,7 +729,13 @@ export default function SaleExchangeModal({
                 fontWeight: 700,
               }}
             >
-              يتم إعادة حساب العرض حسب شروطه الأصلية، والأرخص يصبح الهدية.
+              {selectedIsPromotion
+                ? 'يتم إعادة حساب العرض حسب شروطه الأصلية، والأرخص يصبح الهدية.'
+                : hasRecordedPromotion
+                  ? `الفاتورة عليها عرض "${promotionName}" بخصم ${money(
+                      recordedPromotionDiscount,
+                    )}. يتم الحفاظ على خصم العرض المسجل أثناء الاستبدال.`
+                  : 'اختار القطعة الحالية ثم الصنف البديل، وسيتم حساب فرق السعر تلقائيًا.'}
             </div>
           </div>
 
@@ -658,6 +757,82 @@ export default function SaleExchangeModal({
             ×
           </button>
         </div>
+
+        {state && hasRecordedPromotion && (
+          <div
+            style={{
+              padding: '12px 14px',
+              marginBottom: '14px',
+
+              borderRadius: '12px',
+
+              border: '1px solid rgba(34,197,94,0.30)',
+
+              background: 'rgba(34,197,94,0.08)',
+
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+
+              gap: '12px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div
+              style={{
+                display: 'grid',
+                gap: '3px',
+              }}
+            >
+              <span
+                style={{
+                  color: '#94a3b8',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                }}
+              >
+                العرض وقت البيع
+              </span>
+
+              <strong
+                style={{
+                  color: '#86efac',
+                }}
+              >
+                {historicalPromotionName}
+              </strong>
+              <span
+                style={{
+                  color: '#cbd5e1',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                }}
+              >
+                {promotionTypeLabel}
+              </span>
+
+              <span
+                style={{
+                  color: '#94a3b8',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                }}
+              >
+                {promotionRulesText}
+                {' — '}
+                النطاق: {promotionScopeLabel}
+              </span>
+            </div>
+
+            <strong
+              style={{
+                color: '#f8fafc',
+              }}
+            >
+              خصم العرض: {money(recordedPromotionDiscount)}
+            </strong>
+          </div>
+        )}
 
         {error && (
           <div
@@ -690,133 +865,319 @@ export default function SaleExchangeModal({
 
         {!loading && state && (
           <>
-            {state.groups.length > 1 && (
+            <div
+              style={{
+                display: 'grid',
+                gap: '12px',
+                marginBottom: '18px',
+              }}
+            >
+              <div>
+                <strong
+                  style={{
+                    fontSize: '16px',
+                    color: '#f8fafc',
+                  }}
+                >
+                  أصناف الفاتورة المتاحة للاستبدال
+                </strong>
+
+                <div
+                  style={{
+                    marginTop: '4px',
+                    color: '#94a3b8',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                  }}
+                >
+                  اختار القطعة التي تريد استبدالها
+                </div>
+              </div>
+
               <div
                 style={{
                   display: 'grid',
-                  gap: '8px',
-                  marginBottom: '16px',
+
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+
+                  gap: '10px',
                 }}
               >
-                <label
-                  style={{
-                    color: '#cbd5e1',
-                    fontWeight: 800,
-                  }}
-                >
-                  اختار العرض
-                </label>
+                {state.groups.map((group, groupIndex) => {
+                  const isPromotionGroup =
+                    group.group_kind === 'promotion' &&
+                    state.snapshot?.promotion_type === 'buy_x_get_y'
 
-                <select
-                  value={groupId}
-                  onChange={(event) => {
-                    setGroupId(event.target.value)
-                    setDrafts([])
-                  }}
-                  style={inputStyle}
-                >
-                  {state.groups.map((group, index) => (
-                    <option
-                      key={group.promotion_group_id}
-                      value={group.promotion_group_id}
-                    >
-                      عرض {index + 1}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+                  const isSelected =
+                    String(groupId) === String(group.promotion_group_id) &&
+                    drafts.length > 0
 
-            {selectedGroup && (
-              <>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: '12px',
-                    marginBottom: '12px',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <strong>القطع الحالية داخل العرض</strong>
+                  if (isPromotionGroup) {
+                    return (
+                      <div
+                        key={group.promotion_group_id}
+                        style={{
+                          padding: '14px',
 
-                  <button
-                    type="button"
-                    onClick={startWholeGroupExchange}
-                    style={secondaryButtonStyle}
-                  >
-                    استبدال العرض كاملًا
-                  </button>
-                </div>
+                          borderRadius: '14px',
 
-                <div
-                  style={{
-                    display: 'grid',
-                    gap: '10px',
-                    marginBottom: '18px',
-                  }}
-                >
-                  {selectedGroup.units.map((unit) => (
+                          border: isSelected
+                            ? '1px solid rgba(139,92,246,0.75)'
+                            : '1px solid rgba(34,197,94,0.25)',
+
+                          background: isSelected
+                            ? 'rgba(139,92,246,0.10)'
+                            : 'rgba(34,197,94,0.06)',
+
+                          display: 'grid',
+                          gap: '10px',
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '10px',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'grid',
+                              gap: '3px',
+                            }}
+                          >
+                            <strong
+                              style={{
+                                color: '#86efac',
+                              }}
+                            >
+                              {promotionName}
+                            </strong>
+
+                            <span
+                              style={{
+                                color: '#94a3b8',
+                                fontSize: '11px',
+                              }}
+                            >
+                              مجموعة عرض {groupIndex + 1}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => startWholeGroupExchange(group)}
+                            style={secondaryButtonStyle}
+                          >
+                            استبدال العرض كاملًا
+                          </button>
+                        </div>
+
+                        {group.units.map((unit) => (
+                          <div
+                            key={unit.id}
+                            style={{
+                              display: 'grid',
+
+                              gridTemplateColumns: 'minmax(0, 1fr) auto auto',
+
+                              alignItems: 'center',
+
+                              gap: '10px',
+
+                              padding: '10px 12px',
+
+                              borderRadius: '10px',
+
+                              background: 'rgba(255,255,255,0.04)',
+
+                              border: '1px solid rgba(255,255,255,0.07)',
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: 'grid',
+                                gap: '3px',
+                              }}
+                            >
+                              <strong>{unit.current_product_name}</strong>
+
+                              <span
+                                style={{
+                                  color: '#94a3b8',
+                                  fontSize: '11px',
+                                }}
+                              >
+                                {unit.current_size || '—'}
+                                {' / '}
+                                {unit.current_color || '—'}
+                              </span>
+
+                              <span
+                                style={{
+                                  color:
+                                    Number(unit.current_is_gift) === 1
+                                      ? '#6ee7b7'
+                                      : '#cbd5e1',
+
+                                  fontSize: '11px',
+                                  fontWeight: 900,
+                                }}
+                              >
+                                {Number(unit.current_is_gift) === 1
+                                  ? 'هدية داخل العرض'
+                                  : 'قطعة مدفوعة داخل العرض'}
+                              </span>
+                            </div>
+
+                            <strong>{money(unit.current_unit_price)}</strong>
+
+                            <button
+                              type="button"
+                              onClick={() => startSingleExchange(group, unit)}
+                              style={smallButtonStyle}
+                            >
+                              استبدال
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  }
+
+                  const unit = group.units[0]
+
+                  if (!unit) {
+                    return null
+                  }
+
+                  return (
                     <div
-                      key={unit.id}
+                      key={group.promotion_group_id}
                       style={{
+                        padding: '14px',
+
+                        borderRadius: '14px',
+
+                        border: isSelected
+                          ? '1px solid rgba(139,92,246,0.75)'
+                          : '1px solid rgba(255,255,255,0.09)',
+
+                        background: isSelected
+                          ? 'rgba(139,92,246,0.10)'
+                          : 'rgba(255,255,255,0.035)',
+
                         display: 'grid',
-                        gridTemplateColumns:
-                          'minmax(220px, 1fr) 120px 110px 130px',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '12px',
-                        borderRadius: '12px',
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(255,255,255,0.08)',
+                        gap: '12px',
                       }}
                     >
                       <div
                         style={{
-                          display: 'grid',
-                          gap: '4px',
+                          display: 'flex',
+
+                          justifyContent: 'space-between',
+
+                          alignItems: 'flex-start',
+
+                          gap: '12px',
                         }}
                       >
-                        <strong>{unit.current_product_name}</strong>
-
-                        <span
+                        <div
                           style={{
-                            color: '#94a3b8',
-                            fontSize: '12px',
+                            display: 'grid',
+                            gap: '5px',
+                            minWidth: 0,
                           }}
                         >
-                          {unit.current_size || '—'} /{' '}
-                          {unit.current_color || '—'}
-                        </span>
+                          <strong
+                            style={{
+                              fontSize: '14px',
+                              color: '#f8fafc',
+                            }}
+                          >
+                            {unit.current_product_name}
+                          </strong>
+
+                          <span
+                            style={{
+                              color: '#94a3b8',
+                              fontSize: '12px',
+                            }}
+                          >
+                            المقاس: {unit.current_size || '—'}
+                            {'  •  '}
+                            اللون: {unit.current_color || '—'}
+                          </span>
+                        </div>
+
+                        <strong
+                          style={{
+                            color: '#f8fafc',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {money(unit.current_unit_price)}
+                        </strong>
                       </div>
 
-                      <strong>{money(unit.current_unit_price)}</strong>
-
-                      <span
+                      <div
                         style={{
-                          color:
-                            Number(unit.current_is_gift) === 1
-                              ? '#6ee7b7'
-                              : '#cbd5e1',
-                          fontWeight: 900,
+                          display: 'flex',
+
+                          justifyContent: 'space-between',
+
+                          alignItems: 'center',
+
+                          gap: '10px',
+
+                          flexWrap: 'wrap',
                         }}
                       >
-                        {Number(unit.current_is_gift) === 1 ? 'هدية' : 'مدفوعة'}
-                      </span>
+                        <span
+                          style={{
+                            display: 'inline-flex',
 
-                      <button
-                        type="button"
-                        onClick={() => startSingleExchange(unit)}
-                        style={smallButtonStyle}
-                      >
-                        استبدال القطعة
-                      </button>
+                            alignItems: 'center',
+
+                            padding: '5px 9px',
+
+                            borderRadius: '999px',
+
+                            background: hasRecordedPromotion
+                              ? 'rgba(34,197,94,0.10)'
+                              : 'rgba(148,163,184,0.10)',
+
+                            border: hasRecordedPromotion
+                              ? '1px solid rgba(34,197,94,0.28)'
+                              : '1px solid rgba(148,163,184,0.20)',
+
+                            color: hasRecordedPromotion ? '#86efac' : '#cbd5e1',
+
+                            fontSize: '11px',
+
+                            fontWeight: 900,
+                          }}
+                        >
+                          {hasRecordedPromotion
+                            ? `ضمن عرض: ${promotionName}`
+                            : 'قطعة عادية'}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => startSingleExchange(group, unit)}
+                          style={smallButtonStyle}
+                        >
+                          استبدال هذه القطعة
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </>
-            )}
+                  )
+                })}
+              </div>
+            </div>
 
             {drafts.length > 0 && (
               <div
@@ -926,34 +1287,106 @@ export default function SaleExchangeModal({
                   }}
                 >
                   <div style={summaryCardStyle}>
-                    قيمة العرض الحالية
+                    {selectedIsPromotion
+                      ? 'قيمة العرض الحالية'
+                      : 'قيمة القطعة الحالية'}
                     <strong>{money(preview.oldTotal)}</strong>
                   </div>
 
                   <div style={summaryCardStyle}>
-                    قيمة العرض بعد الاستبدال
+                    {selectedIsPromotion
+                      ? 'قيمة العرض بعد الاستبدال'
+                      : 'قيمة القطعة بعد الاستبدال'}
                     <strong>{money(preview.newTotal)}</strong>
                   </div>
 
                   <div style={summaryCardStyle}>
-                    فرق الاستبدال الفعلي
+                    الفرق النقدي للاستبدال
                     <strong
                       style={{
                         color:
-                          preview.difference > 0
+                          preview.cashDifference > 0
                             ? '#fbbf24'
-                            : preview.difference < 0
+                            : preview.cashDifference < 0
                               ? '#6ee7b7'
                               : '#fff',
                       }}
                     >
-                      {preview.difference > 0
-                        ? `على العميل ${money(preview.difference)}`
-                        : preview.difference < 0
-                          ? `للعميل ${money(Math.abs(preview.difference))}`
+                      {preview.cashDifference > 0
+                        ? `على العميل ${money(preview.cashDifference)}`
+                        : preview.cashDifference < 0
+                          ? `للعميل ${money(Math.abs(preview.cashDifference))}`
                           : money(0)}
                     </strong>
                   </div>
+
+                  <div style={summaryCardStyle}>
+                    تعديل قيمة الفاتورة
+                    <strong
+                      style={{
+                        color: '#c4b5fd',
+                      }}
+                    >
+                      {preview.difference > 0
+                        ? `+${money(preview.difference)}`
+                        : preview.difference < 0
+                          ? `-${money(Math.abs(preview.difference))}`
+                          : money(0)}
+                    </strong>
+                  </div>
+
+                  {preview.difference < 0 && (
+                    <div
+                      style={{
+                        gridColumn: '1 / -1',
+
+                        display: 'grid',
+
+                        gridTemplateColumns:
+                          'repeat(auto-fit, minmax(200px, 1fr))',
+
+                        gap: '10px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          ...summaryCardStyle,
+
+                          background: 'rgba(245,158,11,0.08)',
+
+                          border: '1px solid rgba(245,158,11,0.24)',
+                        }}
+                      >
+                        تخفيض مديونية العميل
+                        <strong
+                          style={{
+                            color: '#fcd34d',
+                          }}
+                        >
+                          {money(preview.debtReduction)}
+                        </strong>
+                      </div>
+
+                      <div
+                        style={{
+                          ...summaryCardStyle,
+
+                          background: 'rgba(34,197,94,0.08)',
+
+                          border: '1px solid rgba(34,197,94,0.24)',
+                        }}
+                      >
+                        المبلغ الذي يُرد للعميل
+                        <strong
+                          style={{
+                            color: '#86efac',
+                          }}
+                        >
+                          {money(preview.cashRefund)}
+                        </strong>
+                      </div>
+                    </div>
+                  )}
 
                   <div
                     style={{

@@ -22,6 +22,10 @@ describe('activity log Arabic display', () => {
       'تسوية مخزون',
     )
 
+    expect(getActivityActionLabel('cash_shift_opened')).toBe('فتح شفت')
+
+    expect(getActivityEntityLabel('cash_shifts')).toBe('الشفتات')
+
     expect(getActivityEntityLabel('inventory')).toBe('المخزون')
   })
 
@@ -75,6 +79,7 @@ describe('activity log Arabic display', () => {
         payment_status: 'partial',
         type: 'supplier_payment',
         is_active: 1,
+        shift_id: 12,
       }),
     )
 
@@ -82,5 +87,6 @@ describe('activity log Arabic display', () => {
     expect(result).toContain('مدفوع جزئيًا')
     expect(result).toContain('دفعة مورد')
     expect(result).toContain('نعم')
+    expect(result).toContain('رقم الشفت')
   })
 })

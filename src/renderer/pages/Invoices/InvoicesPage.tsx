@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuthStore } from '../../store/auth.store'
 import {
   CASH_ACCOUNT_OPTIONS,
+  CUSTOMER_PAYMENT_METHOD_OPTIONS,
   getPaymentMethodLabel,
 } from '../../utils/payment-method'
 
@@ -11,6 +12,11 @@ import FinancialCancelModal from '../../components/FinancialCancelModal'
 import SaleExchangeModal from '../../components/SaleExchangeModal'
 
 import { getActiveSaleReturnHistory } from '../../utils/sale-return-history'
+import {
+  getPromotionRulesText,
+  getPromotionScopeLabel,
+  getPromotionTypeLabel,
+} from '../../utils/promotion-display'
 
 type SaleRow = {
   id: number
@@ -184,7 +190,7 @@ type ReceiptData = {
   }
 
   financials?: any
-
+  promotion_snapshot?: any | null
   exchanges?: any[]
 }
 
@@ -255,6 +261,8 @@ async function loadCurrentReceiptData(saleId: number): Promise<ReceiptData> {
 
   return {
     ...state.current_receipt,
+
+    promotion_snapshot: state.promotion_snapshot,
 
     original_receipt: state.original_receipt,
 
@@ -499,6 +507,7 @@ export default function InvoicesPage() {
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>(
     'all',
   )
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all')
 
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -544,7 +553,8 @@ export default function InvoicesPage() {
         search,
 
         payment_filter: paymentFilter,
-
+        payment_method:
+          paymentMethodFilter === 'all' ? undefined : paymentMethodFilter,
         date_from: dateFrom || undefined,
 
         date_to: dateTo || undefined,
@@ -644,7 +654,14 @@ export default function InvoicesPage() {
     }, 250)
 
     return () => clearTimeout(handle)
-  }, [search, dateFrom, dateTo, paymentFilter, exchangeStatusFilter])
+  }, [
+    search,
+    dateFrom,
+    dateTo,
+    paymentFilter,
+    paymentMethodFilter,
+    exchangeStatusFilter,
+  ])
 
   useEffect(() => {
     if (!message) return
@@ -1340,7 +1357,7 @@ export default function InvoicesPage() {
             display: 'grid',
             gridTemplateColumns:
               activeTab === 'sales'
-                ? 'minmax(260px, 1fr) 170px 180px 180px 120px'
+                ? 'minmax(220px, 1fr) 160px 185px 170px 170px 120px'
                 : activeTab === 'exchanges'
                   ? 'minmax(260px, 1fr) 170px 180px 180px 120px'
                   : 'minmax(260px, 1fr) 180px 180px 120px',
@@ -1374,6 +1391,26 @@ export default function InvoicesPage() {
               <option value="paid">مدفوعة</option>
 
               <option value="unpaid">غير مدفوعة</option>
+            </select>
+          )}
+
+          {activeTab === 'sales' && (
+            <select
+              value={paymentMethodFilter}
+              onChange={(e) => {
+                setPaymentMethodFilter(e.target.value)
+
+                setSalesPage(1)
+              }}
+              style={inputStyle}
+            >
+              <option value="all">كل وسائل الدفع</option>
+
+              {CUSTOMER_PAYMENT_METHOD_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           )}
 
@@ -1648,7 +1685,11 @@ export default function InvoicesPage() {
                         <span style={{ color: '#94a3b8', fontSize: '11px' }}>
                           عادي: {money(sale.discount_value || 0)}
                           {' / '}
-                          عرض: {money(sale.promotion_discount_value || 0)}
+                          عرض
+                          {sale.promotion_name
+                            ? ` (${sale.promotion_name})`
+                            : ''}
+                          : {money(sale.promotion_discount_value || 0)}
                           {' / '}
                           نقاط: {money(sale.loyalty_discount_value || 0)}
                         </span>
@@ -1795,21 +1836,23 @@ export default function InvoicesPage() {
                         طباعة
                       </button>
 
-                      {!sale.cancelled_at &&
-                        Number(sale.promotion_id || 0) > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setExchangeSaleId(sale.id)}
-                            style={{
-                              ...smallButtonStyle,
-                              borderColor: '#22c55e',
-                              color: '#86efac',
-                              background: 'rgba(34,197,94,0.10)',
-                            }}
-                          >
-                            استبدال
-                          </button>
-                        )}
+                      {!sale.cancelled_at && (
+                        <button
+                          type="button"
+                          onClick={() => setExchangeSaleId(sale.id)}
+                          style={{
+                            ...smallButtonStyle,
+
+                            borderColor: '#22c55e',
+
+                            color: '#86efac',
+
+                            background: 'rgba(34,197,94,0.10)',
+                          }}
+                        >
+                          استبدال
+                        </button>
+                      )}
 
                       {!sale.cancelled_at && (
                         <button
@@ -2744,12 +2787,12 @@ export default function InvoicesPage() {
               }}
             >
               <SummaryLine
-                label="قيمة العرض قبل"
+                label="القيمة قبل الاستبدال"
                 value={money(selectedExchange.old_group_total)}
               />
 
               <SummaryLine
-                label="قيمة العرض بعد"
+                label="القيمة بعد الاستبدال"
                 value={money(selectedExchange.new_group_total)}
               />
 
@@ -2925,6 +2968,162 @@ export default function InvoicesPage() {
                   )}
                 </strong>
               </div>
+              {Number(selectedReceipt.sale.promotion_discount_value || 0) >
+                0 && (
+                <div
+                  style={{
+                    marginBottom: '18px',
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+
+                    border: '1px solid rgba(34,197,94,0.28)',
+
+                    background: 'rgba(34,197,94,0.08)',
+
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+
+                    gap: '12px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: '4px',
+                    }}
+                  >
+                    <span
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: '12px',
+                        fontWeight: 800,
+                      }}
+                    >
+                      العرض المطبق
+                    </span>
+
+                    {Number(
+                      selectedReceipt.sale.promotion_discount_value || 0,
+                    ) > 0 && (
+                      <div
+                        style={{
+                          gridColumn: '1 / -1',
+
+                          padding: '14px',
+
+                          borderRadius: '12px',
+
+                          border: '1px solid rgba(34,197,94,0.28)',
+
+                          background: 'rgba(34,197,94,0.08)',
+
+                          display: 'grid',
+
+                          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+
+                          gap: '14px',
+                        }}
+                      >
+                        <div style={statCardStyle}>
+                          العرض وقت البيع
+                          <strong
+                            style={{
+                              color: '#86efac',
+                            }}
+                          >
+                            {selectedReceipt.promotion_snapshot
+                              ?.promotion_name ||
+                              selectedReceipt.sale.promotion_name ||
+                              'عرض'}
+                          </strong>
+                        </div>
+
+                        <div style={statCardStyle}>
+                          نوع العرض
+                          <strong>
+                            {getPromotionTypeLabel(
+                              selectedReceipt.promotion_snapshot
+                                ?.promotion_type,
+                            )}
+                          </strong>
+                        </div>
+
+                        <div style={statCardStyle}>
+                          شروط العرض
+                          <strong>
+                            {getPromotionRulesText(
+                              selectedReceipt.promotion_snapshot,
+                            )}
+                          </strong>
+                        </div>
+
+                        <div style={statCardStyle}>
+                          نطاق العرض
+                          <strong>
+                            {getPromotionScopeLabel(
+                              selectedReceipt.promotion_snapshot,
+                            )}
+                          </strong>
+                        </div>
+
+                        <div
+                          style={{
+                            gridColumn: '1 / -1',
+
+                            display: 'flex',
+                            justifyContent: 'space-between',
+
+                            alignItems: 'center',
+
+                            gap: '12px',
+
+                            flexWrap: 'wrap',
+
+                            paddingTop: '10px',
+
+                            borderTop: '1px solid rgba(34,197,94,0.18)',
+                          }}
+                        >
+                          <span
+                            style={{
+                              color: '#94a3b8',
+                              fontWeight: 800,
+                            }}
+                          >
+                            خصم العرض وقت البيع
+                          </span>
+
+                          <strong
+                            style={{
+                              color: '#86efac',
+                              fontSize: '15px',
+                            }}
+                          >
+                            {money(
+                              selectedReceipt.financials
+                                ?.original_promotion_discount_value ??
+                                selectedReceipt.sale.promotion_discount_value ??
+                                0,
+                            )}
+                          </strong>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      color: '#e5e7eb',
+                      fontWeight: 900,
+                    }}
+                  >
+                    خصم العرض:{' '}
+                    {money(selectedReceipt.sale.promotion_discount_value || 0)}
+                  </div>
+                </div>
+              )}
             </div>
 
             <table
@@ -3220,7 +3419,11 @@ export default function InvoicesPage() {
                       />
 
                       <SummaryLine
-                        label="خصم العرض"
+                        label={
+                          selectedReceipt.original_receipt.sale.promotion_name
+                            ? `خصم العرض — ${selectedReceipt.original_receipt.sale.promotion_name}`
+                            : 'خصم العرض'
+                        }
                         value={money(
                           selectedReceipt.original_receipt.sale
                             .promotion_discount_value || 0,
@@ -3353,7 +3556,11 @@ export default function InvoicesPage() {
               />
 
               <SummaryLine
-                label="خصم العرض الحالي"
+                label={
+                  selectedReceipt.sale.promotion_name
+                    ? `خصم العرض — ${selectedReceipt.sale.promotion_name}`
+                    : 'خصم العرض الحالي'
+                }
                 value={money(
                   selectedReceipt.financials
                     ?.current_promotion_discount_value ??

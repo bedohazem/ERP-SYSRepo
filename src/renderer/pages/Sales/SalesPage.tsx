@@ -413,19 +413,6 @@ function money(value: number | string | null | undefined): string {
   return Number.isFinite(n) ? n.toFixed(2) : '0.00'
 }
 
-function getRelativeLocalDateKey(days: number) {
-  const date = new Date()
-
-  date.setHours(12, 0, 0, 0)
-  date.setDate(date.getDate() + days)
-
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-
-  return `${year}-${month}-${day}`
-}
-
 function escapeHtml(value: unknown) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -1217,7 +1204,6 @@ export default function SalesPage() {
       const result = await window.api.createSale({
         user_id: user.id,
         customer_id: activeInvoice.customer?.id ?? null,
-        business_date: activeInvoice.businessDateDraft || null,
         promotion_id: activePromotion?.id ?? null,
         sub_total: subTotal,
         discount_value: normalDiscountValue,
@@ -3047,56 +3033,6 @@ export default function SalesPage() {
                   }
                 }}
               />
-            </label>
-
-            <label style={paymentLabelStyle}>
-              تاريخ الفاتورة
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr auto',
-                  gap: '8px',
-                  alignItems: 'stretch',
-                }}
-              >
-                <input
-                  type="date"
-                  value={activeInvoice.businessDateDraft}
-                  min={getRelativeLocalDateKey(-1)}
-                  max={getRelativeLocalDateKey(1)}
-                  onChange={(e) =>
-                    updateActiveInvoice({
-                      businessDateDraft: e.target.value,
-                    })
-                  }
-                  style={{
-                    ...paymentInputStyle,
-                    colorScheme: 'dark',
-                  }}
-                />
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateActiveInvoice({
-                      businessDateDraft: '',
-                    })
-                  }
-                  style={secondaryOutlineButtonStyle}
-                >
-                  تلقائي
-                </button>
-              </div>
-              <span
-                style={{
-                  color: '#94a3b8',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                }}
-              >
-                اتركه فارغًا ليستخدم تاريخ ووقت البيع الفعلي تلقائيًا — مسموح
-                أمس أو اليوم أو غدًا.
-              </span>
             </label>
 
             <label style={paymentLabelStyle}>

@@ -1,5 +1,7 @@
 import { getDb } from '../db'
-import { createCashMovement } from './cash.repo'
+import { createCashMovement, resolveCashAccount } from './cash.repo'
+
+import { resolveFinancialOperationShift } from './cash-shifts.repo'
 
 function roundMoney(value: number) {
   const amount = Number(value || 0)
@@ -9,6 +11,22 @@ function roundMoney(value: number) {
   }
 
   return Math.round((amount + Number.EPSILON) * 100) / 100
+}
+
+function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
+  const row = db
+    .prepare(
+      `
+      SELECT
+        date('now', 'localtime')
+          AS business_date
+      `,
+    )
+    .get() as {
+    business_date: string
+  }
+
+  return String(row?.business_date || '')
 }
 
 export type CreatePurchaseInput = {
@@ -80,6 +98,16 @@ function ensurePurchaseReturnSchema() {
       created_by INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
+  `,
+  ).run()
+
+  safeRun(`ALTER TABLE purchase_returns ADD COLUMN shift_id INTEGER`)
+
+  db.prepare(
+    `
+  CREATE INDEX IF NOT EXISTS
+    idx_purchase_returns_shift_id
+  ON purchase_returns(shift_id)
   `,
   ).run()
 
@@ -194,6 +222,19 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
   const supplierId = Number(input.supplier_id)
   const paidAmountInput = Number(input.paid_amount || 0)
 
+  const actorId = Number(input.actor_id || 0)
+
+  const paymentMethod = resolveCashAccount(input.payment_method || 'cash')
+
+  const openShift =
+    paidAmountInput > 0
+      ? resolveFinancialOperationShift(
+          actorId,
+          [paymentMethod],
+          'لا يمكن دفع فاتورة شراء من درج المحل بدون شفت مفتوح',
+        )
+      : null
+
   if (!supplierId) {
     throw new Error('اختار المورد')
   }
@@ -301,9 +342,10 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
           payment_status,
           payment_method,
           notes,
-          status
+          status,
+          shift_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
       `,
       )
       .run(
@@ -316,8 +358,9 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         paidAmount,
         remainingAmount,
         paymentStatus,
-        input.payment_method || 'cash',
+        paymentMethod,
         input.notes?.trim() || null,
+        openShift?.id ?? null,
       )
 
     const purchaseId = Number(purchaseResult.lastInsertRowid)
@@ -405,19 +448,26 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         supplierId,
         purchaseId,
         paidAmount,
-        input.payment_method || 'cash',
+        paymentMethod,
         `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}`,
       )
 
       createCashMovement({
         type: 'supplier_payment',
         direction: 'out',
+
         amount: paidAmount,
-        payment_method: input.payment_method || 'cash',
+
+        payment_method: paymentMethod,
+
         reference_id: purchaseId,
         reference_type: 'purchase_invoice',
+
         notes: `دفع فاتورة شراء رقم ${purchaseId}`,
-        created_by: input.actor_id ?? null,
+
+        created_by: actorId,
+
+        shift_id: openShift?.id ?? null,
       })
     }
 
@@ -427,6 +477,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       paid_amount: paidAmount,
       remaining_amount: remainingAmount,
       payment_status: paymentStatus,
+      shift_id: openShift?.id ?? null,
     }
   })
 
@@ -564,6 +615,20 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
 
     const totalAmount = Number(purchase.total_amount || 0)
     const paidAmount = Number(purchase.paid_amount || 0)
+
+    const actorId = Number(input.actor_id || 0)
+
+    const paymentMethod = resolveCashAccount(purchase.payment_method || 'cash')
+
+    const openShift =
+      paidAmount > 0
+        ? resolveFinancialOperationShift(
+            actorId,
+            [paymentMethod],
+            'لا يمكن إلغاء فاتورة شراء وإرجاع كاش للدرج بدون شفت مفتوح',
+          )
+        : null
+
     const remainingAmount = Number(purchase.remaining_amount || 0)
 
     db.prepare(
@@ -573,12 +638,18 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
         status = 'cancelled',
         cancelled_at = CURRENT_TIMESTAMP,
         cancelled_by = ?,
+        cancelled_shift_id = ?,
         cancel_reason = ?,
         payment_status = 'cancelled',
         remaining_amount = 0
       WHERE id = ?
     `,
-    ).run(input.actor_id ?? null, input.reason?.trim() || null, purchaseId)
+    ).run(
+      actorId,
+      openShift?.id ?? null,
+      input.reason?.trim() || null,
+      purchaseId,
+    )
 
     db.prepare(
       `
@@ -595,21 +666,23 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       createCashMovement({
         type: 'supplier_payment',
         direction: 'in',
-        amount: paidAmount,
-        payment_method: purchase.payment_method || 'cash',
-        reference_id: purchaseId,
-        reference_type: 'purchase_cancel',
-        notes: `عكس دفعة فاتورة شراء ملغاة رقم ${purchaseId}`,
-        created_by: input.actor_id ?? null,
-      })
 
-      db.prepare(
-        `
-        DELETE FROM supplier_payments
-        WHERE purchase_id = ?
-          AND batch_id IS NULL
-      `,
-      ).run(purchaseId)
+        amount: paidAmount,
+
+        payment_method: paymentMethod,
+
+        reference_id: purchaseId,
+
+        reference_type: 'purchase_cancel',
+
+        notes: `عكس دفعة فاتورة شراء ملغاة رقم ${purchaseId}`,
+
+        created_by: actorId,
+
+        business_date: getCurrentBusinessDate(db),
+
+        shift_id: openShift?.id ?? null,
+      })
     }
 
     return {
@@ -620,6 +693,7 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       reversed_paid: paidAmount,
       reversed_remaining: remainingAmount,
       items_count: items.length,
+      cancelled_shift_id: openShift?.id ?? null,
     }
   })
 
@@ -756,6 +830,20 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       input.refund_payment_method?.trim() ||
       purchase.payment_method ||
       'store_cash'
+
+    const actorId = Number(input.actor_id || 0)
+
+    const resolvedRefundAccount = resolveCashAccount(refundPaymentMethod)
+
+    const openShift =
+      refundMode === 'cash' && cashRefundAmount > 0
+        ? resolveFinancialOperationShift(
+            actorId,
+            [resolvedRefundAccount],
+            'لا يمكن استلام كاش مرتجع شراء في درج المحل بدون شفت مفتوح',
+          )
+        : null
+
     const supplierBalanceReduction = roundMoney(
       debtReductionAmount + (refundMode === 'credit' ? cashRefundAmount : 0),
     )
@@ -772,9 +860,10 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
           refund_payment_method,
           refund_mode,
           notes,
-          created_by
+          created_by,
+          shift_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -787,6 +876,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         refundMode,
         input.notes?.trim() || null,
         input.actor_id ?? null,
+        openShift?.id ?? null,
       )
 
     const returnId = Number(returnResult.lastInsertRowid)
@@ -885,12 +975,22 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       createCashMovement({
         type: 'purchase_return',
         direction: 'in',
+
         amount: cashRefundAmount,
-        payment_method: refundPaymentMethod,
+
+        payment_method: resolvedRefundAccount,
+
         reference_id: returnId,
+
         reference_type: 'purchase_return',
+
         notes: `استلام فرق مرتجع شراء رقم ${returnId} من فاتورة ${purchaseId}`,
-        created_by: input.actor_id ?? null,
+
+        created_by: actorId,
+
+        business_date: getCurrentBusinessDate(db),
+
+        shift_id: openShift?.id ?? null,
       })
     }
 
@@ -905,6 +1005,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       refund_mode: refundMode,
       refund_payment_method: refundMode === 'cash' ? refundPaymentMethod : null,
       items_count: preparedItems.length,
+      shift_id: openShift?.id ?? null,
     }
   })
 
@@ -1235,6 +1336,16 @@ export function recordSupplierPayment(input: {
   const purchaseId = input.purchase_id ? Number(input.purchase_id) : null
   const amountInput = roundMoney(Number(input.amount || 0))
 
+  const actorId = Number(input.actor_id || 0)
+
+  const paymentMethod = resolveCashAccount(input.payment_method || 'cash')
+
+  const openShift = resolveFinancialOperationShift(
+    actorId,
+    [paymentMethod],
+    'لا يمكن تسجيل دفعة مورد من درج المحل بدون شفت مفتوح',
+  )
+
   if (!supplierId) {
     throw new Error('Supplier ID is required')
   }
@@ -1284,18 +1395,20 @@ export function recordSupplierPayment(input: {
       payment_method,
       notes,
       created_by,
-      business_date
+      business_date,
+      shift_id
     )
-    VALUES (?, ?, 0, ?, ?, ?, ?)
+    VALUES (?, ?, 0, ?, ?, ?, ?, ?)
     `,
       )
       .run(
         supplierId,
         purchaseId,
-        input.payment_method || 'cash',
+        paymentMethod,
         input.notes?.trim() || null,
         input.actor_id ?? null,
         businessDate,
+        openShift?.id ?? null,
       )
 
     const paymentBatchId = Number(batchResult.lastInsertRowid)
@@ -1369,7 +1482,7 @@ export function recordSupplierPayment(input: {
         purchaseId,
         paymentBatchId,
         finalAmount,
-        input.payment_method || 'cash',
+        paymentMethod,
         input.notes?.trim() || `دفعة على فاتورة شراء رقم ${purchaseId}`,
       )
 
@@ -1421,7 +1534,7 @@ export function recordSupplierPayment(input: {
           purchase.id,
           paymentBatchId,
           payNow,
-          input.payment_method || 'cash',
+          paymentMethod,
           input.notes?.trim() ||
             `دفعة عامة موزعة على فاتورة شراء رقم ${purchase.id}`,
         )
@@ -1468,7 +1581,7 @@ export function recordSupplierPayment(input: {
 
       amount: totalPaid,
 
-      payment_method: input.payment_method || 'cash',
+      payment_method: paymentMethod,
 
       reference_id: paymentBatchId,
       reference_type: 'supplier_payment',
@@ -1478,6 +1591,7 @@ export function recordSupplierPayment(input: {
       created_by: input.actor_id ?? null,
 
       business_date: businessDate,
+      shift_id: openShift?.id ?? null,
     })
 
     return {
@@ -1490,6 +1604,7 @@ export function recordSupplierPayment(input: {
       paid_amount: totalPaid,
 
       allocations,
+      shift_id: openShift?.id ?? null,
     }
   })
 
@@ -1556,30 +1671,6 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
 
   if (Number(latestBatch?.id || 0) !== batchId) {
     throw new Error('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للمورد')
-  }
-
-  const accountingDate = String(batch.accounting_date || '')
-
-  if (accountingDate) {
-    const closing = db
-      .prepare(
-        `
-        SELECT id
-
-        FROM cash_day_closings
-
-        WHERE business_date = ?
-
-        LIMIT 1
-        `,
-      )
-      .get(accountingDate)
-
-    if (closing) {
-      throw new Error(
-        `لا يمكن تعديل أو إلغاء الدفعة لأن يوم ${accountingDate} تم تقفيله`,
-      )
-    }
   }
 
   const allocations = db
@@ -1732,7 +1823,6 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
   return {
     db,
     batch,
-    accountingDate,
     allocations,
     allocationTotal,
     cashMovement,
@@ -1796,6 +1886,16 @@ export function cancelSupplierPaymentBatch(input: {
   const context = getSupplierPaymentBatchMutationContext(batchId)
 
   const { db, batch, allocations, allocationTotal, cashMovement } = context
+
+  const actorId = Number(input.actor_id || 0)
+
+  const openShift = resolveFinancialOperationShift(
+    actorId,
+    [cashMovement.payment_method],
+    'لا يمكن إلغاء دفعة مورد تؤثر على درج المحل بدون شفت مفتوح',
+  )
+
+  const cancellationBusinessDate = getCurrentBusinessDate(db)
 
   const reason = String(input.reason || '').trim() || 'إلغاء دفعة مورد'
 
@@ -1861,28 +1961,34 @@ export function cancelSupplierPaymentBatch(input: {
           CURRENT_TIMESTAMP,
 
         cancelled_by = ?,
-
+        cancelled_shift_id = ?,
         cancel_reason = ?
 
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, reason, batchId)
+    ).run(actorId, openShift?.id ?? null, reason, batchId)
 
-    db.prepare(
-      `
-      UPDATE cash_movements
+    createCashMovement({
+      type: 'supplier_payment',
 
-      SET
-        cancelled_at =
-          CURRENT_TIMESTAMP,
+      direction: 'in',
 
-        cancelled_by = ?,
+      amount: allocationTotal,
 
-        cancel_reason = ?
+      payment_method: cashMovement.payment_method,
 
-      WHERE id = ?
-      `,
-    ).run(input.actor_id ?? null, reason, Number(cashMovement.id))
+      reference_id: batchId,
+
+      reference_type: 'supplier_payment_cancel',
+
+      notes: `عكس دفعة مورد ملغاة #${batchId}`,
+
+      created_by: actorId,
+
+      business_date: cancellationBusinessDate,
+
+      shift_id: openShift?.id ?? null,
+    })
 
     return {
       success: true,
@@ -1892,6 +1998,8 @@ export function cancelSupplierPaymentBatch(input: {
       supplier_id: Number(batch.supplier_id),
 
       cancelled_amount: allocationTotal,
+
+      cancelled_shift_id: openShift?.id ?? null,
 
       allocations: allocations.map((allocation) => ({
         purchase_id: Number(allocation.purchase_id),
@@ -1930,7 +2038,6 @@ export function updateSupplierPaymentBatch(input: {
   const {
     db,
     batch,
-    accountingDate,
     allocations,
     allocationTotal: oldTotal,
     cashMovement,
@@ -1996,19 +2103,24 @@ export function updateSupplierPaymentBatch(input: {
     )
   }
 
-  const newPaymentMethod =
-    String(input.payment_method || batch.payment_method || 'cash').trim() ||
-    'cash'
+  const newPaymentMethod = resolveCashAccount(
+    input.payment_method || batch.payment_method || 'cash',
+  )
+
+  const actorId = Number(input.actor_id || 0)
+
+  const openShift = resolveFinancialOperationShift(
+    actorId,
+    [cashMovement.payment_method, newPaymentMethod],
+    'لا يمكن تعديل دفعة مورد تؤثر على درج المحل بدون شفت مفتوح',
+  )
+
+  const correctionBusinessDate = getCurrentBusinessDate(db)
 
   const newNotes =
     input.notes === undefined
       ? (batch.notes ?? null)
       : input.notes?.trim() || null
-
-  const originalCreatedBy =
-    batch.created_by == null
-      ? (input.actor_id ?? null)
-      : Number(batch.created_by)
 
   const tx = db.transaction(() => {
     // عكس تأثير الدفعة القديمة
@@ -2085,7 +2197,7 @@ export function updateSupplierPaymentBatch(input: {
           notes,
           created_by,
           business_date,
-          created_at
+          shift_id
         )
 
         VALUES (?, ?, 0, ?, ?, ?, ?, ?)
@@ -2100,11 +2212,11 @@ export function updateSupplierPaymentBatch(input: {
 
         newNotes,
 
-        originalCreatedBy,
+        actorId,
 
-        accountingDate || null,
+        correctionBusinessDate,
 
-        batch.created_at,
+        openShift?.id ?? null,
       )
 
     const newBatchId = Number(newBatchResult.lastInsertRowid)
@@ -2119,33 +2231,36 @@ export function updateSupplierPaymentBatch(input: {
           CURRENT_TIMESTAMP,
 
         cancelled_by = ?,
-
+        cancelled_shift_id = ?,
         cancel_reason =
           'تم تعديل دفعة المورد',
-
         replacement_batch_id = ?
 
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, newBatchId, batchId)
+    ).run(actorId, openShift?.id ?? null, newBatchId, batchId)
 
-    // إلغاء حركة الدفع القديمة
-    db.prepare(
-      `
-      UPDATE cash_movements
+    createCashMovement({
+      type: 'supplier_payment',
 
-      SET
-        cancelled_at =
-          CURRENT_TIMESTAMP,
+      direction: 'in',
 
-        cancelled_by = ?,
+      amount: oldTotal,
 
-        cancel_reason =
-          'تم تعديل دفعة المورد'
+      payment_method: cashMovement.payment_method,
 
-      WHERE id = ?
-      `,
-    ).run(input.actor_id ?? null, Number(cashMovement.id))
+      reference_id: batchId,
+
+      reference_type: 'supplier_payment_update_reverse',
+
+      notes: `عكس دفعة مورد قديمة بسبب التعديل #${batchId}`,
+
+      created_by: actorId,
+
+      business_date: correctionBusinessDate,
+
+      shift_id: openShift?.id ?? null,
+    })
 
     const insertPayment = db.prepare(
       `
@@ -2389,9 +2504,11 @@ export function updateSupplierPaymentBatch(input: {
 
       notes: newNotes || 'دفعة مورد معدلة',
 
-      created_by: originalCreatedBy,
+      created_by: actorId,
 
-      business_date: accountingDate || null,
+      business_date: correctionBusinessDate,
+
+      shift_id: openShift?.id ?? null,
     })
 
     return {
@@ -2410,6 +2527,8 @@ export function updateSupplierPaymentBatch(input: {
       payment_method: newPaymentMethod,
 
       allocations: newAllocations,
+
+      shift_id: openShift?.id ?? null,
     }
   })
 

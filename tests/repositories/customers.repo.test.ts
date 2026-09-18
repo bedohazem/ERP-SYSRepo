@@ -37,6 +37,12 @@ import {
   updateCustomerPaymentBatch,
 } from '../../src/main/database/repositories/customers.repo'
 
+import {
+  closeCashShift,
+  getOpenCashShift,
+  openCashShift,
+} from '../../src/main/database/repositories/cash-shifts.repo'
+
 type CustomerTestRow = {
   id: number
   name: string
@@ -169,6 +175,11 @@ describe('customers repository', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
   })
 
   it('creates a customer', () => {
@@ -355,6 +366,7 @@ describe('customers repository', () => {
 
     const payment = recordCustomerPayment({
       customer_id: customer.id,
+      actor_id: 1,
       sale_id: sale.saleId,
       amount: 150,
       payment_method: 'cash',
@@ -447,13 +459,267 @@ describe('customers repository', () => {
       )
       .get(payment.payment_batch_id) as any
 
-    expect(movement.cancelled_at).toBeTruthy()
+    expect(movement.cancelled_at).toBeNull()
+
+    const reverseMovement = db
+      .prepare(
+        `
+    SELECT *
+    FROM cash_movements
+
+    WHERE
+      reference_type =
+        'customer_payment_cancel'
+
+      AND reference_id = ?
+
+    ORDER BY id DESC
+
+    LIMIT 1
+    `,
+      )
+      .get(payment.payment_batch_id) as any
+
+    expect(reverseMovement).toBeTruthy()
+
+    expect(reverseMovement.direction).toBe('out')
+
+    expect(Number(reverseMovement.amount)).toBe(150)
 
     const statement = getCustomerStatement(customer.id) as any
 
     expect(statement.summary.total_paid).toBe(100)
 
     expect(statement.summary.balance).toBe(200)
+  })
+
+  it('keeps customer payment history immutable across shifts for create update and cancel', () => {
+    const db = getDb()
+
+    const customer = createTestCustomer()
+
+    const sale = createPartialSale(customer.id, 100)
+
+    const originalShift = getOpenCashShift()
+
+    expect(originalShift).toBeTruthy()
+
+    const payment = recordCustomerPayment({
+      customer_id: customer.id,
+
+      sale_id: sale.saleId,
+
+      amount: 150,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    expect(payment.shift_id).toBe(originalShift!.id)
+
+    const originalMovement = db
+      .prepare(
+        `
+      SELECT *
+      FROM cash_movements
+
+      WHERE
+        reference_type =
+          'customer_payment'
+
+        AND reference_id = ?
+
+        AND direction = 'in'
+
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      )
+      .get(payment.payment_batch_id) as any
+
+    expect(Number(originalMovement.shift_id)).toBe(originalShift!.id)
+
+    closeCashShift({
+      shift_id: originalShift!.id,
+
+      closing_counted_amount: 250,
+
+      left_for_next_shift: 250,
+
+      closed_by: 1,
+    })
+
+    const correctionShift = openCashShift({
+      opening_counted_amount: 250,
+      opened_by: 1,
+    })
+
+    const updated = updateCustomerPaymentBatch({
+      batch_id: payment.payment_batch_id,
+
+      amount: 75,
+
+      payment_method: 'cash',
+
+      notes: 'Corrected in next shift',
+
+      actor_id: 1,
+    })
+
+    expect(updated.shift_id).toBe(correctionShift.id)
+
+    const oldBatch = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        cancelled_shift_id,
+        replacement_batch_id
+      FROM customer_payment_batches
+      WHERE id = ?
+      `,
+      )
+      .get(payment.payment_batch_id) as any
+
+    expect(Number(oldBatch.shift_id)).toBe(originalShift!.id)
+
+    expect(Number(oldBatch.cancelled_shift_id)).toBe(correctionShift.id)
+
+    const newBatch = db
+      .prepare(
+        `
+      SELECT
+        shift_id
+      FROM customer_payment_batches
+      WHERE id = ?
+      `,
+      )
+      .get(updated.batch_id) as any
+
+    expect(Number(newBatch.shift_id)).toBe(correctionShift.id)
+
+    /*
+     * الحركة التاريخية الأصلية
+     * لا تتلغى.
+     */
+    const originalMovementAfterUpdate = db
+      .prepare(
+        `
+        SELECT
+          cancelled_at,
+          shift_id
+        FROM cash_movements
+        WHERE id = ?
+        `,
+      )
+      .get(originalMovement.id) as any
+
+    expect(originalMovementAfterUpdate.cancelled_at).toBeNull()
+
+    expect(Number(originalMovementAfterUpdate.shift_id)).toBe(originalShift!.id)
+
+    const updateReverse = db
+      .prepare(
+        `
+      SELECT *
+      FROM cash_movements
+
+      WHERE
+        reference_type =
+          'customer_payment_update_reverse'
+
+        AND reference_id = ?
+
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      )
+      .get(payment.payment_batch_id) as any
+
+    expect(Number(updateReverse.shift_id)).toBe(correctionShift.id)
+
+    expect(updateReverse.direction).toBe('out')
+
+    expect(Number(updateReverse.amount)).toBe(150)
+
+    /*
+     * دلوقتي نلغي الدفعة
+     * البديلة 75.
+     */
+    const cancelled = cancelCustomerPaymentBatch({
+      batch_id: Number(updated.batch_id),
+
+      reason: 'Cancel corrected payment',
+
+      actor_id: 1,
+    })
+
+    expect(cancelled.cancelled_shift_id).toBe(correctionShift.id)
+
+    const cancelReverse = db
+      .prepare(
+        `
+      SELECT *
+      FROM cash_movements
+
+      WHERE
+        reference_type =
+          'customer_payment_cancel'
+
+        AND reference_id = ?
+
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      )
+      .get(updated.batch_id) as any
+
+    expect(Number(cancelReverse.shift_id)).toBe(correctionShift.id)
+
+    expect(cancelReverse.direction).toBe('out')
+
+    expect(Number(cancelReverse.amount)).toBe(75)
+
+    /*
+     * في النهاية يفضل فقط
+     * مبلغ البيع الأصلي 100
+     * داخل الدرج.
+     */
+    const drawer = db
+      .prepare(
+        `
+      SELECT
+        IFNULL(
+          SUM(
+            CASE
+              WHEN direction = 'in'
+                THEN amount
+
+              WHEN direction = 'out'
+                THEN -amount
+
+              ELSE 0
+            END
+          ),
+          0
+        ) AS balance
+
+      FROM cash_movements
+
+      WHERE
+        payment_method =
+          'store_cash'
+
+        AND cancelled_at
+          IS NULL
+      `,
+      )
+      .get() as {
+      balance: number
+    }
+
+    expect(Number(drawer.balance)).toBe(100)
   })
 
   it('updates customer payment batch and replaces its financial effects', () => {
@@ -619,6 +885,7 @@ describe('customers repository', () => {
       sale_id: sale.saleId,
       amount: 500,
       payment_method: 'cash',
+      actor_id: 1,
     })
 
     expect(payment.ok).toBe(true)
@@ -671,6 +938,7 @@ describe('customers repository', () => {
       amount: 350,
       payment_method: 'cash',
       notes: 'General customer payment',
+      actor_id: 1,
     })
 
     expect(payment.ok).toBe(true)
@@ -718,6 +986,7 @@ describe('customers repository', () => {
         customer_id: customer.id,
         amount: 0,
         payment_method: 'cash',
+        actor_id: 1,
       }),
     ).toThrow()
   })
@@ -728,6 +997,7 @@ describe('customers repository', () => {
         customer_id: 999999,
         amount: 100,
         payment_method: 'cash',
+        actor_id: 1,
       }),
     ).toThrow('العميل غير موجود')
   })
@@ -740,6 +1010,7 @@ describe('customers repository', () => {
         customer_id: customer.id,
         amount: 100,
         payment_method: 'cash',
+        actor_id: 1,
       }),
     ).toThrow('لا يوجد رصيد مستحق على العميل')
   })
@@ -753,6 +1024,7 @@ describe('customers repository', () => {
       sale_id: sale.saleId,
       amount: 50,
       payment_method: 'cash',
+      actor_id: 1,
     })
 
     const statement = getCustomerStatement(customer.id) as any
@@ -983,6 +1255,7 @@ describe('customers repository', () => {
           amount: laterPaid,
           payment_method: 'cash',
           notes: 'تسوية مديونية بسبب استبدال - دفعة فعلية',
+          actor_id: 1,
         })
 
         checkStatement(total, netPaid + laterPaid, balance - laterPaid)

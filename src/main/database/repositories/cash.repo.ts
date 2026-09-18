@@ -1,6 +1,6 @@
 import { getDb } from '../db'
 import { createActivityLog } from './activity.repo'
-
+import { getShiftBusinessDate } from '../shift-business-date'
 export type CashMovementInput = {
   type:
     | 'sale'
@@ -14,6 +14,7 @@ export type CashMovementInput = {
     | 'withdraw'
     | 'deposit'
     | 'transfer'
+    | 'shift_adjustment'
 
   direction: 'in' | 'out'
 
@@ -28,6 +29,7 @@ export type CashMovementInput = {
 
   created_by?: number | null
   business_date?: string | null
+  shift_id?: number | null
 }
 
 export type CashFilterInput = {
@@ -46,12 +48,14 @@ export type CashFilterInput = {
   search?: string
   reference_type?: string
   created_by?: number | null
+  shift_id?: number | null
   limit?: number
   offset?: number
 }
 
 export type CashAccountKey =
   | 'store_cash'
+  | 'store_safe'
   | 'owner_cash'
   | 'owner_bank'
   | 'owner_vodafone'
@@ -63,6 +67,7 @@ export type CashTransferInput = {
   amount: number
   notes?: string | null
   created_by?: number | null
+  shift_id?: number | null
 }
 
 export type CashDayCloseInput = {
@@ -76,6 +81,7 @@ export type CashDayCloseInput = {
 export function resolveCashAccount(value?: string | null): CashAccountKey {
   switch (value) {
     case 'store_cash':
+    case 'store_safe':
     case 'owner_cash':
     case 'owner_bank':
     case 'owner_vodafone':
@@ -146,6 +152,8 @@ function getAccountLabel(account: CashAccountKey) {
   switch (account) {
     case 'store_cash':
       return 'كاش درج المحل'
+    case 'store_safe':
+      return 'الخزنة الآمنة'
     case 'owner_cash':
       return 'كاش مع المالك'
     case 'owner_bank':
@@ -263,6 +271,11 @@ function buildCashWhere(
     params.push(Number(input.created_by))
   }
 
+  if (input?.shift_id) {
+    where.push(`cm.shift_id = ?`)
+    params.push(Number(input.shift_id))
+  }
+
   if (input?.search?.trim()) {
     where.push(`(
       cm.notes LIKE ?
@@ -290,9 +303,14 @@ export function createCashMovement(input: CashMovementInput) {
   const direction = input.direction
   const account = resolveCashAccount(input.payment_method || 'store_cash')
 
-  const businessDate = input.business_date
-    ? normalizeBusinessDate(input.business_date)
-    : null
+  const shiftId = Number(input.shift_id || 0)
+
+  const businessDate =
+    shiftId > 0
+      ? getShiftBusinessDate(shiftId)
+      : input.business_date
+        ? normalizeBusinessDate(input.business_date)
+        : null
 
   if (!type) {
     throw new Error('نوع حركة الخزنة مطلوب')
@@ -328,9 +346,10 @@ export function createCashMovement(input: CashMovementInput) {
         reference_type,
         notes,
         created_by,
-        business_date
+        business_date,
+        shift_id
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     )
     .run(
@@ -343,6 +362,7 @@ export function createCashMovement(input: CashMovementInput) {
       input.notes ?? null,
       input.created_by ?? null,
       businessDate,
+      input.shift_id ?? null,
     )
 
   const movementId = Number(result.lastInsertRowid)
@@ -359,6 +379,7 @@ export function createCashMovement(input: CashMovementInput) {
       payment_method: account,
       notes: input.notes ?? null,
       business_date: businessDate,
+      shift_id: input.shift_id ?? null,
     }),
   })
 
@@ -514,6 +535,7 @@ export function createCashTransfer(input: CashTransferInput) {
       reference_type: 'cash_transfer',
       notes: input.notes || `تحويل من ${fromAccount} إلى ${toAccount}`,
       created_by: input.created_by ?? null,
+      shift_id: input.shift_id ?? null,
     })
 
     const inResult = createCashMovement({
@@ -525,6 +547,7 @@ export function createCashTransfer(input: CashTransferInput) {
       reference_type: 'cash_transfer',
       notes: input.notes || `تحويل من ${fromAccount} إلى ${toAccount}`,
       created_by: input.created_by ?? null,
+      shift_id: input.shift_id ?? null,
     })
 
     return {
@@ -534,6 +557,7 @@ export function createCashTransfer(input: CashTransferInput) {
       amount,
       out_id: Number(outResult.lastInsertRowid || 0),
       in_id: Number(inResult.lastInsertRowid || 0),
+      shift_id: input.shift_id ?? null,
     }
   })
 
@@ -548,6 +572,22 @@ function roundMoney(value: number) {
   }
 
   return Math.round((amount + Number.EPSILON) * 100) / 100
+}
+
+function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
+  const row = db
+    .prepare(
+      `
+      SELECT
+        date('now', 'localtime')
+          AS business_date
+      `,
+    )
+    .get() as {
+    business_date: string
+  }
+
+  return String(row?.business_date || '')
 }
 
 function normalizeBusinessDate(value?: string | null) {
@@ -1296,6 +1336,129 @@ export function updateCashDayClosing(input: {
   return tx()
 }
 
+export function getCashMovementMutationContext(movementIdInput: number) {
+  const db = getDb()
+
+  normalizeLegacyCashMovementAccounts()
+
+  const movementId = Number(movementIdInput || 0)
+
+  if (!movementId) {
+    throw new Error('رقم حركة الخزنة غير صحيح')
+  }
+
+  const movement = db
+    .prepare(
+      `
+      SELECT *
+      FROM cash_movements
+      WHERE id = ?
+      LIMIT 1
+      `,
+    )
+    .get(movementId) as any
+
+  if (!movement) {
+    throw new Error('حركة الخزنة غير موجودة')
+  }
+
+  if (movement.cancelled_at) {
+    throw new Error('حركة الخزنة ملغاة بالفعل')
+  }
+
+  if (Number(movement.replacement_movement_id || 0) > 0) {
+    throw new Error('تم تعديل أو عكس هذه الحركة بالفعل')
+  }
+
+  const isManual =
+    movement.reference_type === 'manual' &&
+    (movement.type === 'deposit' || movement.type === 'withdraw')
+
+  const isTransfer =
+    movement.type === 'transfer' && movement.reference_type === 'cash_transfer'
+
+  if (!isManual && !isTransfer) {
+    throw new Error('هذه الحركة مرتبطة بعملية أخرى ويجب تعديلها من مصدرها')
+  }
+
+  if (isManual) {
+    return {
+      kind: 'manual' as const,
+      movement,
+      accounts: [resolveCashAccount(movement.payment_method)],
+    }
+  }
+
+  const outId =
+    movement.direction === 'in'
+      ? Number(movement.reference_id || 0)
+      : Number(movement.id)
+
+  const outMovement = db
+    .prepare(
+      `
+      SELECT *
+      FROM cash_movements
+      WHERE id = ?
+        AND type = 'transfer'
+        AND direction = 'out'
+        AND reference_type = 'cash_transfer'
+      LIMIT 1
+      `,
+    )
+    .get(outId) as any
+
+  const inMovement = db
+    .prepare(
+      `
+      SELECT *
+      FROM cash_movements
+      WHERE type = 'transfer'
+        AND direction = 'in'
+        AND reference_type = 'cash_transfer'
+        AND reference_id = ?
+      ORDER BY id ASC
+      LIMIT 1
+      `,
+    )
+    .get(outId) as any
+
+  if (!outMovement || !inMovement) {
+    throw new Error('تعذر العثور على طرفي التحويل')
+  }
+
+  if (outMovement.cancelled_at || inMovement.cancelled_at) {
+    throw new Error('التحويل ملغي بالفعل')
+  }
+
+  if (
+    Number(outMovement.replacement_movement_id || 0) > 0 ||
+    Number(inMovement.replacement_movement_id || 0) > 0
+  ) {
+    throw new Error('تم تعديل أو عكس هذا التحويل بالفعل')
+  }
+
+  if (
+    Math.abs(Number(outMovement.amount || 0) - Number(inMovement.amount || 0)) >
+    0.01
+  ) {
+    throw new Error('قيمة طرفي التحويل غير متطابقة')
+  }
+
+  return {
+    kind: 'transfer' as const,
+    movement,
+    outMovement,
+    inMovement,
+    accounts: Array.from(
+      new Set([
+        resolveCashAccount(outMovement.payment_method),
+        resolveCashAccount(inMovement.payment_method),
+      ]),
+    ),
+  }
+}
+
 export function updateCashMovement(input: {
   id: number
 
@@ -1311,6 +1474,7 @@ export function updateCashMovement(input: {
   notes?: string | null
 
   actor_id?: number | null
+  shift_id?: number | null
 }) {
   const db = getDb()
 
@@ -1328,78 +1492,19 @@ export function updateCashMovement(input: {
     throw new Error('مبلغ حركة الخزنة غير صحيح')
   }
 
-  const movement = db
-    .prepare(
-      `
-      SELECT
-        cm.*,
+  const context = getCashMovementMutationContext(movementId)
 
-        COALESCE(
-          NULLIF(
-            cm.business_date,
-            ''
-          ),
+  const actorId = Number(input.actor_id || 0)
 
-          date(
-            cm.created_at,
-            'localtime'
-          )
-        ) AS accounting_date
+  const correctionShiftId =
+    input.shift_id === undefined || input.shift_id === null
+      ? null
+      : Number(input.shift_id)
 
-      FROM cash_movements cm
+  const correctionBusinessDate = getCurrentBusinessDate(db)
 
-      WHERE cm.id = ?
-
-      LIMIT 1
-      `,
-    )
-    .get(movementId) as any
-
-  if (!movement) {
-    throw new Error('حركة الخزنة غير موجودة')
-  }
-
-  if (movement.cancelled_at) {
-    throw new Error('حركة الخزنة ملغاة بالفعل')
-  }
-
-  const isManual =
-    movement.reference_type === 'manual' &&
-    (movement.type === 'deposit' || movement.type === 'withdraw')
-
-  const isTransfer =
-    movement.type === 'transfer' && movement.reference_type === 'cash_transfer'
-
-  if (!isManual && !isTransfer) {
-    throw new Error('هذه الحركة مرتبطة بعملية أخرى ويجب تعديلها من مصدرها')
-  }
-
-  function ensureOpenDate(row: any) {
-    const accountingDate = String(row.accounting_date || '')
-
-    const closing = db
-      .prepare(
-        `
-        SELECT id
-
-        FROM cash_day_closings
-
-        WHERE business_date = ?
-
-        LIMIT 1
-        `,
-      )
-      .get(accountingDate)
-
-    if (closing) {
-      throw new Error(
-        `لا يمكن تعديل حركة تخص يوم ${accountingDate} لأنه تم تقفيله`,
-      )
-    }
-  }
-
-  if (isManual) {
-    ensureOpenDate(movement)
+  if (context.kind === 'manual') {
+    const movement = context.movement
 
     const newType =
       input.type === 'withdraw'
@@ -1411,7 +1516,7 @@ export function updateCashMovement(input: {
     const newDirection: 'in' | 'out' = newType === 'deposit' ? 'in' : 'out'
 
     const newAccount = resolveCashAccount(
-      input.payment_method || movement.payment_method,
+      input.payment_method || movement.payment_method || 'store_cash',
     )
 
     const notes =
@@ -1419,31 +1524,37 @@ export function updateCashMovement(input: {
         ? (movement.notes ?? null)
         : String(input.notes || '').trim() || null
 
-    const originalCreatedBy = movement.created_by ?? input.actor_id ?? null
-
-    const accountingDate = String(movement.accounting_date || '')
+    const reverseDirection: 'in' | 'out' =
+      movement.direction === 'in' ? 'out' : 'in'
 
     const tx = db.transaction(() => {
-      db.prepare(
-        `
-          UPDATE cash_movements
+      /*
+       * لا نعدل أو نلغي الحركة التاريخية.
+       * نسجل عكسها في الشفت الحالي.
+       */
+      const reverse = createCashMovement({
+        type: movement.type,
 
-          SET
-            cancelled_at =
-              CURRENT_TIMESTAMP,
+        direction: reverseDirection,
 
-            cancelled_by = ?,
+        amount: Number(movement.amount || 0),
 
-            cancel_reason =
-              'تم تعديل حركة الخزنة'
+        payment_method: movement.payment_method,
 
-          WHERE id = ?
-          `,
-      ).run(
-        input.actor_id ?? null,
+        reference_id: Number(movement.id),
 
-        movement.id,
-      )
+        reference_type: 'manual_update_reverse',
+
+        notes: `عكس حركة خزنة قديمة بسبب التعديل #${movement.id}`,
+
+        created_by: actorId,
+
+        business_date: correctionBusinessDate,
+
+        shift_id: correctionShiftId,
+      })
+
+      const reverseMovementId = Number(reverse.lastInsertRowid || 0)
 
       const replacement = createCashMovement({
         type: newType,
@@ -1460,61 +1571,34 @@ export function updateCashMovement(input: {
 
         notes: notes || (newType === 'deposit' ? 'إيداع يدوي' : 'سحب يدوي'),
 
-        created_by: originalCreatedBy,
+        created_by: actorId,
 
-        business_date: accountingDate,
+        business_date: correctionBusinessDate,
+
+        shift_id: correctionShiftId,
       })
 
       const newMovementId = Number(replacement.lastInsertRowid || 0)
 
       /*
-          نحافظ على وقت الحركة الأصلي.
-        */
+       * replacement_movement_id هنا لا يعني
+       * حذف الحركة القديمة محاسبيًا.
+       *
+       * هو فقط يمنع تعديلها مرة ثانية
+       * بعد تسجيل التصحيح.
+       */
       db.prepare(
         `
-          UPDATE cash_movements
+        UPDATE cash_movements
 
-          SET created_at = ?
+        SET replacement_movement_id = ?
 
-          WHERE id = ?
-          `,
-      ).run(movement.created_at, newMovementId)
-
-      db.prepare(
-        `
-          UPDATE cash_movements
-
-          SET
-            replacement_movement_id = ?
-
-          WHERE id = ?
-          `,
+        WHERE id = ?
+        `,
       ).run(newMovementId, movement.id)
 
-      /*
-          بعد التعديل، لا نسمح لأي
-          حساب يصبح رصيده سالبًا.
-        */
-      const affectedAccounts = new Set([
-        resolveCashAccount(movement.payment_method),
-
-        newAccount,
-      ])
-
-      for (const account of affectedAccounts) {
-        const balance = getAccountBalance(account)
-
-        if (balance < -0.0001) {
-          throw new Error(
-            `لا يمكن تعديل الحركة لأن رصيد ${getAccountLabel(
-              account,
-            )} سيصبح سالبًا`,
-          )
-        }
-      }
-
       createActivityLog({
-        user_id: input.actor_id ?? null,
+        user_id: actorId,
 
         action: 'cash_movement_updated',
 
@@ -1535,6 +1619,14 @@ export function updateCashMovement(input: {
             payment_method: movement.payment_method,
 
             notes: movement.notes,
+
+            shift_id: movement.shift_id ?? null,
+          },
+
+          correction: {
+            reverse_movement_id: reverseMovementId,
+
+            shift_id: correctionShiftId,
           },
 
           after: {
@@ -1549,6 +1641,8 @@ export function updateCashMovement(input: {
             payment_method: newAccount,
 
             notes,
+
+            shift_id: correctionShiftId,
           },
         }),
       })
@@ -1557,6 +1651,8 @@ export function updateCashMovement(input: {
         success: true,
 
         replaced_movement_id: Number(movement.id),
+
+        reverse_movement_id: reverseMovementId,
 
         movement_id: newMovementId,
 
@@ -1567,120 +1663,17 @@ export function updateCashMovement(input: {
         amount,
 
         payment_method: newAccount,
+
+        shift_id: correctionShiftId,
       }
     })
 
     return tx()
   }
 
-  /*
-    -----------------------------
-    تعديل تحويل بين حسابين
-    -----------------------------
-  */
+  const { outMovement, inMovement } = context
 
-  const outId =
-    movement.direction === 'in'
-      ? Number(movement.reference_id || 0)
-      : Number(movement.id)
-
-  const outMovement = db
-    .prepare(
-      `
-      SELECT
-        cm.*,
-
-        COALESCE(
-          NULLIF(
-            cm.business_date,
-            ''
-          ),
-
-          date(
-            cm.created_at,
-            'localtime'
-          )
-        ) AS accounting_date
-
-      FROM cash_movements cm
-
-      WHERE cm.id = ?
-
-        AND cm.type =
-          'transfer'
-
-        AND cm.direction =
-          'out'
-
-        AND cm.reference_type =
-          'cash_transfer'
-
-      LIMIT 1
-      `,
-    )
-    .get(outId) as any
-
-  const inMovement = db
-    .prepare(
-      `
-      SELECT
-        cm.*,
-
-        COALESCE(
-          NULLIF(
-            cm.business_date,
-            ''
-          ),
-
-          date(
-            cm.created_at,
-            'localtime'
-          )
-        ) AS accounting_date
-
-      FROM cash_movements cm
-
-      WHERE cm.type =
-        'transfer'
-
-        AND cm.direction =
-          'in'
-
-        AND cm.reference_type =
-          'cash_transfer'
-
-        AND cm.reference_id = ?
-
-      ORDER BY cm.id ASC
-
-      LIMIT 1
-      `,
-    )
-    .get(outId) as any
-
-  if (!outMovement || !inMovement) {
-    throw new Error('تعذر العثور على طرفي التحويل')
-  }
-
-  if (outMovement.cancelled_at || inMovement.cancelled_at) {
-    throw new Error('التحويل ملغي بالفعل')
-  }
-
-  ensureOpenDate(outMovement)
-  ensureOpenDate(inMovement)
-
-  if (
-    String(outMovement.accounting_date) !== String(inMovement.accounting_date)
-  ) {
-    throw new Error('تاريخ طرفي التحويل غير متطابق')
-  }
-
-  if (
-    Math.abs(Number(outMovement.amount || 0) - Number(inMovement.amount || 0)) >
-    0.01
-  ) {
-    throw new Error('قيمة طرفي التحويل غير متطابقة')
-  }
+  const oldAmount = roundMoney(Number(outMovement.amount || 0))
 
   const fromAccount = resolveCashAccount(
     input.from_account || outMovement.payment_method,
@@ -1694,41 +1687,68 @@ export function updateCashMovement(input: {
     throw new Error('لا يمكن التحويل لنفس الحساب')
   }
 
-  const destinationBalance = getAccountBalance(inMovement.payment_method)
-
-  if (destinationBalance + 0.0001 < Number(inMovement.amount || 0)) {
-    throw new Error(
-      'لا يمكن تعديل التحويل لأن رصيد الحساب المستلم لا يكفي لعكس التحويل القديم',
-    )
-  }
-
   const notes =
     input.notes === undefined
       ? (outMovement.notes ?? null)
       : String(input.notes || '').trim() || null
 
-  const originalCreatedBy = outMovement.created_by ?? input.actor_id ?? null
-
-  const accountingDate = String(outMovement.accounting_date || '')
-
   const tx = db.transaction(() => {
-    db.prepare(
-      `
-        UPDATE cash_movements
+    /*
+     * عكس التحويل القديم:
+     * الحساب المستلم القديم يخرج منه المبلغ،
+     * والحساب المصدر القديم يرجع له المبلغ.
+     */
+    const reverseOut = createCashMovement({
+      type: 'transfer',
 
-        SET
-          cancelled_at =
-            CURRENT_TIMESTAMP,
+      direction: 'out',
 
-          cancelled_by = ?,
+      amount: oldAmount,
 
-          cancel_reason =
-            'تم تعديل تحويل الخزنة'
+      payment_method: inMovement.payment_method,
 
-        WHERE id IN (?, ?)
-        `,
-    ).run(input.actor_id ?? null, outMovement.id, inMovement.id)
+      reference_id: Number(outMovement.id),
 
+      reference_type: 'cash_transfer_update_reverse',
+
+      notes: `عكس تحويل خزنة قديم بسبب التعديل #${outMovement.id}`,
+
+      created_by: actorId,
+
+      business_date: correctionBusinessDate,
+
+      shift_id: correctionShiftId,
+    })
+
+    const reverseOutId = Number(reverseOut.lastInsertRowid || 0)
+
+    const reverseIn = createCashMovement({
+      type: 'transfer',
+
+      direction: 'in',
+
+      amount: oldAmount,
+
+      payment_method: outMovement.payment_method,
+
+      reference_id: reverseOutId,
+
+      reference_type: 'cash_transfer_update_reverse',
+
+      notes: `عكس تحويل خزنة قديم بسبب التعديل #${outMovement.id}`,
+
+      created_by: actorId,
+
+      business_date: correctionBusinessDate,
+
+      shift_id: correctionShiftId,
+    })
+
+    const reverseInId = Number(reverseIn.lastInsertRowid || 0)
+
+    /*
+     * تسجيل التحويل المصحح كعملية جديدة.
+     */
     const newOut = createCashMovement({
       type: 'transfer',
 
@@ -1744,9 +1764,11 @@ export function updateCashMovement(input: {
 
       notes: notes || `تحويل من ${fromAccount} إلى ${toAccount}`,
 
-      created_by: originalCreatedBy,
+      created_by: actorId,
 
-      business_date: accountingDate,
+      business_date: correctionBusinessDate,
+
+      shift_id: correctionShiftId,
     })
 
     const newOutId = Number(newOut.lastInsertRowid || 0)
@@ -1766,50 +1788,32 @@ export function updateCashMovement(input: {
 
       notes: notes || `تحويل من ${fromAccount} إلى ${toAccount}`,
 
-      created_by: originalCreatedBy,
+      created_by: actorId,
 
-      business_date: accountingDate,
+      business_date: correctionBusinessDate,
+
+      shift_id: correctionShiftId,
     })
 
     const newInId = Number(newIn.lastInsertRowid || 0)
 
     db.prepare(
       `
-        UPDATE cash_movements
+      UPDATE cash_movements
 
-        SET created_at = ?
+      SET
+        replacement_movement_id =
+          CASE
+            WHEN id = ?
+              THEN ?
+            WHEN id = ?
+              THEN ?
+            ELSE
+              replacement_movement_id
+          END
 
-        WHERE id = ?
-        `,
-    ).run(outMovement.created_at, newOutId)
-
-    db.prepare(
-      `
-        UPDATE cash_movements
-
-        SET created_at = ?
-
-        WHERE id = ?
-        `,
-    ).run(inMovement.created_at, newInId)
-
-    db.prepare(
-      `
-        UPDATE cash_movements
-
-        SET
-          replacement_movement_id =
-            CASE
-              WHEN id = ?
-                THEN ?
-              WHEN id = ?
-                THEN ?
-              ELSE
-                replacement_movement_id
-            END
-
-        WHERE id IN (?, ?)
-        `,
+      WHERE id IN (?, ?)
+      `,
     ).run(
       outMovement.id,
       newOutId,
@@ -1822,7 +1826,7 @@ export function updateCashMovement(input: {
     )
 
     createActivityLog({
-      user_id: input.actor_id ?? null,
+      user_id: actorId,
 
       action: 'cash_transfer_updated',
 
@@ -1836,11 +1840,21 @@ export function updateCashMovement(input: {
 
           in_id: inMovement.id,
 
-          amount: Number(outMovement.amount || 0),
+          amount: oldAmount,
 
           from_account: outMovement.payment_method,
 
           to_account: inMovement.payment_method,
+
+          shift_id: outMovement.shift_id ?? null,
+        },
+
+        correction: {
+          reverse_out_id: reverseOutId,
+
+          reverse_in_id: reverseInId,
+
+          shift_id: correctionShiftId,
         },
 
         after: {
@@ -1853,6 +1867,8 @@ export function updateCashMovement(input: {
           from_account: fromAccount,
 
           to_account: toAccount,
+
+          shift_id: correctionShiftId,
         },
       }),
     })
@@ -1862,6 +1878,8 @@ export function updateCashMovement(input: {
 
       replaced_movement_ids: [Number(outMovement.id), Number(inMovement.id)],
 
+      reverse_movement_ids: [reverseOutId, reverseInId],
+
       movement_ids: [newOutId, newInId],
 
       amount,
@@ -1869,6 +1887,8 @@ export function updateCashMovement(input: {
       from_account: fromAccount,
 
       to_account: toAccount,
+
+      shift_id: correctionShiftId,
     }
   })
 
@@ -1879,212 +1899,240 @@ export function cancelCashMovement(input: {
   id: number
   reason?: string | null
   actor_id?: number | null
+  shift_id?: number | null
 }) {
   const db = getDb()
 
   normalizeLegacyCashMovementAccounts()
 
-  const movementId = Number(input.id)
+  const movementId = Number(input.id || 0)
 
-  const movement = db
-    .prepare(
-      `
-      SELECT
-        cm.*,
-        COALESCE(
-          NULLIF(cm.business_date, ''),
-          date(cm.created_at, 'localtime')
-        ) AS accounting_date
-      FROM cash_movements cm
-      WHERE cm.id = ?
-      LIMIT 1
-      `,
-    )
-    .get(movementId) as any
-
-  if (!movement) {
-    throw new Error('حركة الخزنة غير موجودة')
+  if (!movementId) {
+    throw new Error('رقم حركة الخزنة غير صحيح')
   }
 
-  if (movement.cancelled_at) {
-    throw new Error('حركة الخزنة ملغاة بالفعل')
-  }
+  const context = getCashMovementMutationContext(movementId)
 
-  const isManual =
-    movement.reference_type === 'manual' &&
-    (movement.type === 'deposit' || movement.type === 'withdraw')
+  const actorId = Number(input.actor_id || 0)
 
-  const isTransfer =
-    movement.type === 'transfer' && movement.reference_type === 'cash_transfer'
+  const correctionShiftId =
+    input.shift_id === undefined || input.shift_id === null
+      ? null
+      : Number(input.shift_id)
 
-  if (!isManual && !isTransfer) {
-    throw new Error('هذه الحركة مرتبطة بعملية أخرى ويجب إلغاؤها من مصدرها')
-  }
+  const correctionBusinessDate = getCurrentBusinessDate(db)
 
   const reason = String(input.reason || '').trim() || 'إلغاء حركة خزنة'
 
-  function ensureOpenDate(row: any) {
-    const accountingDate = String(row.accounting_date || '')
+  if (context.kind === 'manual') {
+    const movement = context.movement
 
-    const closing = db
-      .prepare(
-        `
-        SELECT id
-        FROM cash_day_closings
-        WHERE business_date = ?
-        LIMIT 1
-        `,
-      )
-      .get(accountingDate)
-
-    if (closing) {
-      throw new Error(
-        `لا يمكن إلغاء حركة تخص يوم ${accountingDate} لأنه تم تقفيله`,
-      )
-    }
-  }
-
-  if (isManual) {
-    ensureOpenDate(movement)
-
-    if (movement.direction === 'in') {
-      const currentBalance = getAccountBalance(movement.payment_method)
-
-      if (currentBalance + 0.0001 < Number(movement.amount || 0)) {
-        throw new Error(
-          'لا يمكن إلغاء الإيداع لأن الرصيد الحالي لا يكفي لعكس الحركة',
-        )
-      }
-    }
+    const reverseDirection: 'in' | 'out' =
+      movement.direction === 'in' ? 'out' : 'in'
 
     const tx = db.transaction(() => {
+      const reverse = createCashMovement({
+        type: movement.type,
+
+        direction: reverseDirection,
+
+        amount: Number(movement.amount || 0),
+
+        payment_method: movement.payment_method,
+
+        reference_id: Number(movement.id),
+
+        reference_type: 'manual_cancel_reverse',
+
+        notes: `عكس حركة خزنة ملغاة #${movement.id}`,
+
+        created_by: actorId,
+
+        business_date: correctionBusinessDate,
+
+        shift_id: correctionShiftId,
+      })
+
+      const reverseMovementId = Number(reverse.lastInsertRowid || 0)
+
       db.prepare(
         `
         UPDATE cash_movements
-        SET
-          cancelled_at = CURRENT_TIMESTAMP,
-          cancelled_by = ?,
-          cancel_reason = ?
+
+        SET replacement_movement_id = ?
+
         WHERE id = ?
         `,
-      ).run(input.actor_id ?? null, reason, movement.id)
+      ).run(reverseMovementId, movement.id)
 
       createActivityLog({
-        user_id: input.actor_id ?? null,
+        user_id: actorId,
+
         action: 'cash_movement_cancelled',
+
         entity: 'cash_movements',
+
         entity_id: movement.id,
+
         details: JSON.stringify({
           type: movement.type,
+
           direction: movement.direction,
+
           amount: movement.amount,
+
           payment_method: movement.payment_method,
+
           reason,
+
+          reverse_movement_id: reverseMovementId,
+
+          shift_id: correctionShiftId,
         }),
       })
 
       return {
         success: true,
+
         cancelled_ids: [movement.id],
+
+        reverse_movement_id: reverseMovementId,
+
+        shift_id: correctionShiftId,
       }
     })
 
     return tx()
   }
 
-  const outId =
-    movement.direction === 'in'
-      ? Number(movement.reference_id || 0)
-      : Number(movement.id)
+  const { outMovement, inMovement } = context
 
-  const outMovement = db
-    .prepare(
-      `
-      SELECT
-        cm.*,
-        COALESCE(
-          NULLIF(cm.business_date, ''),
-          date(cm.created_at, 'localtime')
-        ) AS accounting_date
-      FROM cash_movements cm
-      WHERE cm.id = ?
-        AND cm.type = 'transfer'
-        AND cm.direction = 'out'
-        AND cm.reference_type = 'cash_transfer'
-      LIMIT 1
-      `,
-    )
-    .get(outId) as any
-
-  const inMovement = db
-    .prepare(
-      `
-      SELECT
-        cm.*,
-        COALESCE(
-          NULLIF(cm.business_date, ''),
-          date(cm.created_at, 'localtime')
-        ) AS accounting_date
-      FROM cash_movements cm
-      WHERE cm.type = 'transfer'
-        AND cm.direction = 'in'
-        AND cm.reference_type = 'cash_transfer'
-        AND cm.reference_id = ?
-      ORDER BY cm.id ASC
-      LIMIT 1
-      `,
-    )
-    .get(outId) as any
-
-  if (!outMovement || !inMovement) {
-    throw new Error('تعذر العثور على طرفي التحويل')
-  }
-
-  if (outMovement.cancelled_at || inMovement.cancelled_at) {
-    throw new Error('التحويل ملغي بالفعل')
-  }
-
-  ensureOpenDate(outMovement)
-  ensureOpenDate(inMovement)
-
-  const destinationBalance = getAccountBalance(inMovement.payment_method)
-
-  if (destinationBalance + 0.0001 < Number(inMovement.amount || 0)) {
-    throw new Error(
-      'لا يمكن إلغاء التحويل لأن رصيد الحساب المستلم لا يكفي لعكسه',
-    )
-  }
+  const oldAmount = roundMoney(Number(outMovement.amount || 0))
 
   const tx = db.transaction(() => {
+    /*
+     * عكس التحويل بدل حذف
+     * أو إلغاء التاريخ القديم.
+     */
+    const reverseOut = createCashMovement({
+      type: 'transfer',
+
+      direction: 'out',
+
+      amount: oldAmount,
+
+      payment_method: inMovement.payment_method,
+
+      reference_id: Number(outMovement.id),
+
+      reference_type: 'cash_transfer_cancel_reverse',
+
+      notes: `عكس تحويل خزنة ملغى #${outMovement.id}`,
+
+      created_by: actorId,
+
+      business_date: correctionBusinessDate,
+
+      shift_id: correctionShiftId,
+    })
+
+    const reverseOutId = Number(reverseOut.lastInsertRowid || 0)
+
+    const reverseIn = createCashMovement({
+      type: 'transfer',
+
+      direction: 'in',
+
+      amount: oldAmount,
+
+      payment_method: outMovement.payment_method,
+
+      reference_id: reverseOutId,
+
+      reference_type: 'cash_transfer_cancel_reverse',
+
+      notes: `عكس تحويل خزنة ملغى #${outMovement.id}`,
+
+      created_by: actorId,
+
+      business_date: correctionBusinessDate,
+
+      shift_id: correctionShiftId,
+    })
+
+    const reverseInId = Number(reverseIn.lastInsertRowid || 0)
+
+    /*
+     * نستخدم replacement_movement_id
+     * كعلامة إن العملية القديمة
+     * تم عكسها بالفعل.
+     */
     db.prepare(
       `
       UPDATE cash_movements
+
       SET
-        cancelled_at = CURRENT_TIMESTAMP,
-        cancelled_by = ?,
-        cancel_reason = ?
+        replacement_movement_id =
+          CASE
+            WHEN id = ?
+              THEN ?
+            WHEN id = ?
+              THEN ?
+            ELSE
+              replacement_movement_id
+          END
+
       WHERE id IN (?, ?)
       `,
-    ).run(input.actor_id ?? null, reason, outMovement.id, inMovement.id)
+    ).run(
+      outMovement.id,
+      reverseInId,
+
+      inMovement.id,
+      reverseOutId,
+
+      outMovement.id,
+      inMovement.id,
+    )
 
     createActivityLog({
-      user_id: input.actor_id ?? null,
+      user_id: actorId,
+
       action: 'cash_transfer_cancelled',
+
       entity: 'cash_movements',
+
       entity_id: outMovement.id,
+
       details: JSON.stringify({
         out_id: outMovement.id,
+
         in_id: inMovement.id,
-        amount: outMovement.amount,
+
+        amount: oldAmount,
+
         from_account: outMovement.payment_method,
+
         to_account: inMovement.payment_method,
+
         reason,
+
+        reverse_out_id: reverseOutId,
+
+        reverse_in_id: reverseInId,
+
+        shift_id: correctionShiftId,
       }),
     })
 
     return {
       success: true,
+
       cancelled_ids: [outMovement.id, inMovement.id],
+
+      reverse_movement_ids: [reverseOutId, reverseInId],
+
+      shift_id: correctionShiftId,
     }
   })
 

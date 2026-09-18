@@ -14,13 +14,27 @@ import {
   createLiability,
   recordLiabilityPayment,
 } from '../../src/main/database/repositories/liabilities.repo'
-import { getReportsSummary } from '../../src/main/database/repositories/reports.repo'
+import {
+  getCashierDashboardSummary,
+  getReportsSummary,
+} from '../../src/main/database/repositories/reports.repo'
 
 import { createPurchaseInvoice } from '../../src/main/database/repositories/purchases.repo'
 
 import { createSupplier } from '../../src/main/database/repositories/suppliers.repo'
 
 import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
+import {
+  closeCashShift,
+  getOpenCashShift,
+  openCashShift,
+} from '../../src/main/database/repositories/cash-shifts.repo'
+import { createUser } from '../../src/main/database/repositories/user.repo'
+import {
+  createSaleExchange,
+  getSaleExchangeState,
+} from '../../src/main/database/repositories/sales-exchange.repo'
+import { recordCustomerPayment } from '../../src/main/database/repositories/customers.repo'
 
 type ReportVariantTestRow = {
   variant_id: number
@@ -99,6 +113,23 @@ type ReportsSummaryTestResult = {
     total_manual_withdrawals: number
     final_net_profit: number
   }
+  cashierSales: Array<{
+    user_id: number | null
+
+    cashier_name: string
+
+    sales_count: number
+    sales_total: number
+
+    returns_count: number
+    returns_total: number
+
+    exchange_count: number
+
+    exchange_adjustment: number
+
+    net_sales: number
+  }>
   topProducts: ReportTopProductRow[]
   dailySales: ReportDailySaleRow[]
   paymentMethods: ReportPaymentMethodRow[]
@@ -169,6 +200,11 @@ describe('reports repository', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
   })
 
   it('returns empty summary when there is no business data', () => {
@@ -184,7 +220,7 @@ describe('reports repository', () => {
     expect(report.summary.total_expenses).toBe(0)
     expect(report.summary.total_liability_payments).toBe(0)
     expect(report.summary.total_purchase_invoices).toBe(0)
-
+    expect(report.cashierSales).toHaveLength(0)
     expect(report.summary.total_manual_deposits).toBe(0)
 
     expect(report.summary.total_manual_withdrawals).toBe(0)
@@ -452,93 +488,6 @@ describe('reports repository', () => {
     expect(futureReport.dailySales).toHaveLength(0)
   })
 
-  it('attributes a later return to the actual return date', () => {
-    const variant = seedReportProduct({
-      name: 'Historical Return Product',
-      barcode: 'REPORT-HISTORICAL-RETURN',
-      openingQty: 20,
-      buyPrice: 100,
-      sellPrice: 150,
-    })
-
-    const sale = createSale({
-      user_id: 1,
-      customer_id: null,
-      sub_total: 300,
-      discount_value: 0,
-      grand_total: 300,
-      change_amount: 0,
-      payment_method: 'cash',
-      paid: 300,
-      items: [
-        {
-          variant_id: variant.variant_id,
-          product_name: variant.product_name,
-          barcode: variant.barcode,
-          size: variant.size,
-          color: variant.color,
-          quantity: 2,
-          unit_price: 150,
-        },
-      ],
-    })
-
-    const receipt = getSaleReceipt(sale.saleId) as any
-
-    createSaleReturn({
-      original_sale_id: sale.saleId,
-      user_id: 1,
-      reason: 'Later return',
-      items: [
-        {
-          sale_item_id: receipt.items[0].id,
-          variant_id: variant.variant_id,
-          quantity: 1,
-        },
-      ],
-    })
-
-    const db = getDb()
-
-    db.prepare(
-      `
-    UPDATE sales
-    SET
-      created_at = '2026-08-10 10:00:00',
-      business_date = '2026-08-10'
-    WHERE id = ?
-  `,
-    ).run(sale.saleId)
-
-    db.prepare(
-      `
-    UPDATE sale_returns
-    SET created_at = '2026-08-12 10:00:00'
-    WHERE original_sale_id = ?
-  `,
-    ).run(sale.saleId)
-
-    const august10 = getReportsSummary({
-      date_from: '2026-08-10',
-      date_to: '2026-08-10',
-    }) as ReportsSummaryTestResult
-
-    const august12 = getReportsSummary({
-      date_from: '2026-08-12',
-      date_to: '2026-08-12',
-    }) as ReportsSummaryTestResult
-
-    expect(august10.summary.gross_sales).toBe(300)
-    expect(august10.summary.total_returns).toBe(0)
-    expect(august10.summary.net_sales).toBe(300)
-    expect(august10.summary.returns_count).toBe(0)
-
-    expect(august12.summary.gross_sales).toBe(0)
-    expect(august12.summary.total_returns).toBe(150)
-    expect(august12.summary.net_sales).toBe(-150)
-    expect(august12.summary.returns_count).toBe(1)
-  })
-
   it('reports purchase invoices and manual cash movements', () => {
     const variant = seedReportProduct({
       name: 'Purchase Report Product',
@@ -611,5 +560,975 @@ describe('reports repository', () => {
     expect(report.summary.total_manual_deposits).toBe(500)
 
     expect(report.summary.total_manual_withdrawals).toBe(120)
+  })
+  it('groups monthly sales by cashier', () => {
+    const variant = seedReportProduct({
+      name: 'Cashier Monthly Product',
+
+      barcode: 'CASHIER-MONTHLY',
+
+      openingQty: 50,
+
+      buyPrice: 50,
+
+      sellPrice: 100,
+    })
+
+    const secondUser = createUser(
+      'Second Cashier',
+
+      'second_cashier_report',
+
+      '1234',
+
+      /*
+       * Admin هنا فقط لتسهيل
+       * تشغيل الـrepository test
+       * على نفس الشفت المفتوح.
+       */
+      'admin',
+    )
+
+    const firstSale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 100,
+      discount_value: 0,
+      grand_total: 100,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 100,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 100,
+        },
+      ],
+    })
+
+    const secondSale = createSale({
+      user_id: secondUser.id,
+
+      customer_id: null,
+
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 200,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 200,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 2,
+
+          unit_price: 100,
+        },
+      ],
+    })
+
+    const db = getDb()
+
+    db.prepare(
+      `
+      UPDATE sales
+      SET business_date = ?
+      WHERE id = ?
+      `,
+    ).run('2026-09-05', firstSale.saleId)
+
+    db.prepare(
+      `
+      UPDATE sales
+      SET business_date = ?
+      WHERE id = ?
+      `,
+    ).run('2026-09-06', secondSale.saleId)
+
+    const report = getReportsSummary({
+      date_from: '2026-09-01',
+
+      date_to: '2026-09-30',
+    }) as ReportsSummaryTestResult
+
+    expect(report.cashierSales).toHaveLength(2)
+
+    const first = report.cashierSales.find((row) => Number(row.user_id) === 1)
+
+    const second = report.cashierSales.find(
+      (row) => Number(row.user_id) === Number(secondUser.id),
+    )
+
+    expect(first).toBeTruthy()
+    expect(second).toBeTruthy()
+
+    expect(first?.sales_count).toBe(1)
+
+    expect(first?.sales_total).toBe(100)
+
+    expect(first?.net_sales).toBe(100)
+
+    expect(second?.sales_count).toBe(1)
+
+    expect(second?.sales_total).toBe(200)
+
+    expect(second?.net_sales).toBe(200)
+  })
+
+  it('removes returned invoice discounts from the active shift dashboard even when another admin creates the return', () => {
+    const variant = seedReportProduct({
+      name: 'Cashier Discount Return',
+
+      barcode: 'CASHIER-DISCOUNT-RETURN',
+
+      openingQty: 20,
+
+      buyPrice: 100,
+
+      sellPrice: 200,
+    })
+
+    /*
+     * beforeEach فتح شفت
+     * المستخدم 1 بالفعل.
+     */
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 200,
+
+      discount_value: 50,
+
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 150,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 200,
+        },
+      ],
+    })
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    /*
+     * مستخدم Admin آخر
+     * ينفذ المرتجع،
+     * لكن العملية نفسها تحدث
+     * داخل نفس الشفت المفتوح.
+     */
+    const secondAdmin = createUser(
+      'Return Admin',
+
+      'return_admin',
+
+      '1234',
+
+      'admin',
+    )
+
+    createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: secondAdmin.id,
+
+      reason: 'Full dashboard return',
+
+      items: [
+        {
+          sale_item_id: receipt.items[0].id,
+
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+        },
+      ],
+    })
+
+    const dashboard = getCashierDashboardSummary({
+      user_id: 1,
+    })
+
+    expect(dashboard.sales.invoice_sales).toBe(150)
+
+    expect(dashboard.sales.returns_total).toBe(150)
+
+    expect(dashboard.sales.net_sales).toBe(0)
+
+    expect(dashboard.discounts.normal).toBe(0)
+
+    expect(dashboard.discounts.total).toBe(0)
+
+    expect(dashboard.sales.returns_count).toBe(1)
+  })
+
+  it('separates exchange invoice adjustment from cash refund when the sale has debt', () => {
+    const oldVariant = seedReportProduct({
+      name: 'Old Debt Exchange Product',
+
+      barcode: 'REPORT-EX-DEBT-OLD',
+
+      openingQty: 10,
+
+      buyPrice: 200,
+
+      sellPrice: 450,
+    })
+
+    const newVariant = seedReportProduct({
+      name: 'New Debt Exchange Product',
+
+      barcode: 'REPORT-EX-DEBT-NEW',
+
+      openingQty: 10,
+
+      buyPrice: 10,
+
+      sellPrice: 20,
+    })
+
+    const customer = createTestCustomer(
+      'Exchange Debt Customer',
+
+      '01099999999',
+    )
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: customer.id,
+
+      sub_total: 450,
+
+      discount_value: 0,
+
+      grand_total: 450,
+
+      paid: 200,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+
+          product_name: oldVariant.product_name,
+
+          barcode: oldVariant.barcode,
+
+          size: oldVariant.size,
+
+          color: oldVariant.color,
+
+          quantity: 1,
+
+          unit_price: 450,
+        },
+      ],
+    })
+
+    const state = getSaleExchangeState(sale.saleId)
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    )
+
+    expect(regularGroup).toBeTruthy()
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          promotion_unit_id: Number(regularGroup!.units[0].id),
+
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    })
+
+    /*
+     * قيمة الفاتورة نزلت
+     * من 450 إلى 20.
+     */
+    expect(exchange.difference_amount).toBe(-430)
+
+    /*
+     * المديونية القديمة 250
+     * يتم إلغاؤها أولًا.
+     */
+    expect(exchange.debt_reduction_amount).toBe(250)
+
+    /*
+     * العميل دفع 200،
+     * وأخذ منتج بـ20،
+     * إذن الرد النقدي 180.
+     */
+    expect(exchange.amount_to_refund).toBe(180)
+
+    const db = getDb()
+
+    const today = db
+      .prepare(
+        `
+        SELECT
+          date(
+            'now',
+            'localtime'
+          ) AS day
+        `,
+      )
+      .get() as {
+      day: string
+    }
+
+    const dashboard = getCashierDashboardSummary({
+      user_id: 1,
+    })
+
+    expect(dashboard.sales.invoice_sales).toBe(450)
+
+    expect(dashboard.sales.exchange_adjustment).toBe(-430)
+
+    expect(dashboard.sales.exchange_debt_reduction).toBe(250)
+
+    expect(dashboard.sales.exchange_cash_refund).toBe(180)
+
+    expect(dashboard.sales.exchange_cash_difference).toBe(-180)
+
+    expect(dashboard.sales.net_sales).toBe(20)
+  })
+
+  it('shows customer payment total and counted shift opening on cashier dashboard', () => {
+    const variant = seedReportProduct({
+      name: 'Dashboard Payment Product',
+
+      barcode: 'DASH-PAYMENT',
+
+      openingQty: 20,
+
+      buyPrice: 100,
+
+      sellPrice: 500,
+    })
+
+    const customer = createTestCustomer(
+      'Dashboard Payment Customer',
+
+      '01088888888',
+    )
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: customer.id,
+
+      sub_total: 500,
+
+      discount_value: 0,
+
+      grand_total: 500,
+
+      paid: 200,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 500,
+        },
+      ],
+    })
+
+    recordCustomerPayment({
+      customer_id: customer.id,
+
+      sale_id: sale.saleId,
+
+      amount: 125,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    const db = getDb()
+
+    db.prepare(
+      `
+      UPDATE cash_shifts
+
+      SET
+        opening_counted_amount =
+          350
+
+      WHERE
+        status = 'open'
+
+        AND opened_by = 1
+      `,
+    ).run()
+
+    const today = db
+      .prepare(
+        `
+        SELECT
+          date(
+            'now',
+            'localtime'
+          ) AS day
+        `,
+      )
+      .get() as {
+      day: string
+    }
+
+    const dashboard = getCashierDashboardSummary({
+      user_id: 1,
+    })
+
+    expect(dashboard.operations.customer_payments_count).toBe(1)
+
+    expect(dashboard.operations.customer_payments_total).toBe(125)
+
+    expect(dashboard.shift).toBeTruthy()
+
+    expect(dashboard.shift?.opening_counted_amount).toBe(350)
+
+    expect(dashboard.shift?.status).toBe('open')
+  })
+
+  it('resets the cashier dashboard when a new shift starts', () => {
+    const variant = seedReportProduct({
+      name: 'Shift Dashboard Product',
+
+      barcode: 'SHIFT-DASHBOARD',
+
+      openingQty: 20,
+
+      buyPrice: 50,
+
+      sellPrice: 100,
+    })
+
+    /*
+     * beforeEach فتح بالفعل
+     * الشفت الأول للمستخدم 1.
+     */
+    const firstShift = getOpenCashShift()
+
+    expect(firstShift).toBeTruthy()
+
+    createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 100,
+
+      discount_value: 0,
+
+      grand_total: 100,
+
+      paid: 100,
+
+      change_amount: 0,
+
+      payment_method: 'owner_bank',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 100,
+        },
+      ],
+    })
+
+    const firstDashboard = getCashierDashboardSummary({
+      user_id: 1,
+    })
+
+    expect(firstDashboard.shift?.id).toBe(firstShift!.id)
+
+    expect(firstDashboard.sales.invoice_sales).toBe(100)
+
+    closeCashShift({
+      shift_id: firstShift!.id,
+
+      closing_counted_amount: 0,
+
+      left_for_next_shift: 0,
+
+      closed_by: 1,
+    })
+
+    const secondCashier = createUser(
+      'Second Shift Cashier',
+
+      'second_shift_cashier',
+
+      '1234',
+
+      /*
+       * Admin في التست فقط
+       * لتجنب قيود تشغيلية
+       * ليست موضوع الاختبار.
+       */
+      'admin',
+    )
+
+    const secondShift = openCashShift({
+      opening_counted_amount: 75,
+
+      opened_by: secondCashier.id,
+    })
+
+    /*
+     * بمجرد فتح شفت جديد:
+     * Dashboard تبدأ من صفر.
+     */
+    const emptySecondDashboard = getCashierDashboardSummary({
+      user_id: secondCashier.id,
+    })
+
+    expect(emptySecondDashboard.shift?.id).toBe(secondShift.id)
+
+    expect(emptySecondDashboard.shift?.opening_counted_amount).toBe(75)
+
+    expect(emptySecondDashboard.sales.invoice_sales).toBe(0)
+
+    expect(emptySecondDashboard.sales.invoices_count).toBe(0)
+
+    createSale({
+      user_id: secondCashier.id,
+
+      customer_id: null,
+
+      sub_total: 200,
+
+      discount_value: 0,
+
+      grand_total: 200,
+
+      paid: 200,
+
+      change_amount: 0,
+
+      payment_method: 'owner_bank',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 2,
+
+          unit_price: 100,
+        },
+      ],
+    })
+
+    const secondDashboard = getCashierDashboardSummary({
+      user_id: secondCashier.id,
+    })
+
+    expect(secondDashboard.shift?.id).toBe(secondShift.id)
+
+    expect(secondDashboard.sales.invoice_sales).toBe(200)
+
+    expect(secondDashboard.sales.invoices_count).toBe(1)
+
+    /*
+     * مبيعات الشفت الأول
+     * لم تنتقل للشفت الثاني.
+     */
+    expect(secondDashboard.sales.invoice_sales).not.toBe(300)
+
+    /*
+     * صاحب الشفت القديم لا يرى
+     * بياناته القديمة في Dashboard
+     * بعد انتهاء شفته.
+     */
+    const oldCashierDashboard = getCashierDashboardSummary({
+      user_id: 1,
+    })
+
+    expect(oldCashierDashboard.shift).toBeNull()
+
+    expect(oldCashierDashboard.sales.invoice_sales).toBe(0)
+  })
+
+  it('shows paid sales and outstanding debt for active shift invoices', () => {
+    const variant = seedReportProduct({
+      name: 'Shift Credit Sale',
+
+      barcode: 'SHIFT-CREDIT-SALE',
+
+      openingQty: 20,
+
+      buyPrice: 100,
+
+      sellPrice: 300,
+    })
+
+    const customer = createTestCustomer(
+      'Credit Customer',
+
+      '01077777777',
+    )
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: customer.id,
+
+      sub_total: 300,
+
+      discount_value: 0,
+
+      grand_total: 300,
+
+      paid: 150,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 300,
+        },
+      ],
+    })
+
+    let dashboard = getCashierDashboardSummary({
+      user_id: 1,
+    })
+
+    expect(dashboard.sales.invoice_sales).toBe(300)
+
+    expect(dashboard.sales.paid_sales_total).toBe(150)
+
+    expect(dashboard.sales.outstanding_debt_total).toBe(150)
+
+    expect(dashboard.sales.outstanding_debt_invoices_count).toBe(1)
+
+    /*
+     * العميل دفع 50
+     * أثناء نفس الشفت.
+     */
+    recordCustomerPayment({
+      customer_id: customer.id,
+
+      sale_id: sale.saleId,
+
+      amount: 50,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    dashboard = getCashierDashboardSummary({
+      user_id: 1,
+    })
+
+    expect(dashboard.sales.paid_sales_total).toBe(200)
+
+    expect(dashboard.sales.outstanding_debt_total).toBe(100)
+
+    expect(dashboard.sales.outstanding_debt_invoices_count).toBe(1)
+  })
+
+  it('keeps shift operations on the shift opening business date', () => {
+    const db = getDb()
+
+    const shift = getOpenCashShift()!
+
+    /*
+     * نحاكي شفت بدأ في
+     * تاريخ قديم واستمر بعد
+     * منتصف الليل.
+     */
+    db.prepare(
+      `
+      UPDATE cash_shifts
+
+      SET
+        opened_at =
+          '2020-01-15 20:00:00'
+
+      WHERE id = ?
+      `,
+    ).run(shift.id)
+
+    const shiftDate = db
+      .prepare(
+        `
+        SELECT
+          date(
+            opened_at,
+            'localtime'
+          ) AS day
+
+        FROM cash_shifts
+
+        WHERE id = ?
+        `,
+      )
+      .get(shift.id) as {
+      day: string
+    }
+
+    const variant = seedReportProduct({
+      name: 'Shift Date Product',
+
+      barcode: 'SHIFT-DATE-PRODUCT',
+
+      openingQty: 20,
+
+      buyPrice: 50,
+
+      sellPrice: 100,
+    })
+
+    const sale = createSale({
+      user_id: 1,
+
+      /*
+       * حتى لو حاول أي caller
+       * يرسل تاريخ مختلف،
+       * الشفت هو المصدر.
+       */
+      business_date: '2099-01-01',
+
+      customer_id: null,
+
+      sub_total: 200,
+
+      discount_value: 0,
+
+      grand_total: 200,
+
+      paid: 200,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 2,
+
+          unit_price: 100,
+        },
+      ],
+    })
+
+    const saleRow = db
+      .prepare(
+        `
+        SELECT
+          business_date,
+          shift_id
+
+        FROM sales
+
+        WHERE id = ?
+        `,
+      )
+      .get(sale.saleId) as {
+      business_date: string
+      shift_id: number
+    }
+
+    expect(saleRow.shift_id).toBe(shift.id)
+
+    expect(saleRow.business_date).toBe(shiftDate.day)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      reason: 'Shift date return',
+
+      items: [
+        {
+          sale_item_id: receipt.items[0].id,
+
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+        },
+      ],
+    })
+
+    createExpense({
+      title: 'Shift date expense',
+
+      amount: 10,
+
+      payment_method: 'cash',
+
+      created_by: 1,
+    })
+
+    const report = getReportsSummary({
+      date_from: shiftDate.day,
+
+      date_to: shiftDate.day,
+    }) as ReportsSummaryTestResult
+
+    expect(report.summary.sales_count).toBe(1)
+
+    expect(report.summary.gross_sales).toBe(200)
+
+    expect(report.summary.returns_count).toBe(1)
+
+    expect(report.summary.total_returns).toBe(100)
+
+    expect(report.summary.total_expenses).toBe(10)
+
+    const movements = db
+      .prepare(
+        `
+        SELECT
+          business_date
+
+        FROM cash_movements
+
+        WHERE
+          shift_id = ?
+
+          AND
+            reference_type
+            IN (
+              'sale',
+              'sale_return',
+              'expense'
+            )
+        `,
+      )
+      .all(shift.id) as Array<{
+      business_date: string
+    }>
+
+    expect(movements.length).toBeGreaterThan(0)
+
+    expect(
+      movements.every((movement) => movement.business_date === shiftDate.day),
+    ).toBe(true)
   })
 })

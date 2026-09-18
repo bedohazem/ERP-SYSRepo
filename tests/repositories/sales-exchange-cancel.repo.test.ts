@@ -31,9 +31,10 @@ import { getSaleCurrentState } from '../../src/main/database/repositories/sales-
 import { getReportsSummary } from '../../src/main/database/repositories/reports.repo'
 
 import {
-  closeCashDay,
-  getCashDayClosePreview,
-} from '../../src/main/database/repositories/cash.repo'
+  closeCashShift,
+  getOpenCashShift,
+  openCashShift,
+} from '../../src/main/database/repositories/cash-shifts.repo'
 
 type VariantRow = {
   variant_id: number
@@ -67,18 +68,6 @@ function setLoyaltyEnabled(enabled: boolean) {
   update.run('1', 'loyalty_point_value')
 
   update.run('1', 'loyalty_min_redeem_points')
-}
-
-function localDateKey() {
-  const date = new Date()
-
-  const year = date.getFullYear()
-
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-
-  const day = String(date.getDate()).padStart(2, '0')
-
-  return `${year}-${month}-${day}`
 }
 
 function seedCatalog() {
@@ -366,6 +355,10 @@ describe('sale exchange cancellation', () => {
     resetDatabaseData()
 
     setLoyaltyEnabled(false)
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
   })
 
   it('cancels the latest exchange and restores stock current state cash reports and audit history', () => {
@@ -761,7 +754,9 @@ describe('sale exchange cancellation', () => {
     expect(state.financials.current_loyalty_points_earned).toBe(4)
   })
 
-  it('rejects cancellation when the exchange accounting day is closed', () => {
+  it('cancels a previous-shift exchange in the current shift', () => {
+    const db = getDb()
+
     const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150'])
 
     const gift = getUnitByPrice(result.sale.saleId, 150)
@@ -770,6 +765,8 @@ describe('sale exchange cancellation', () => {
       original_sale_id: result.sale.saleId,
 
       user_id: 1,
+
+      payment_method: 'store_cash',
 
       items: [
         {
@@ -780,16 +777,18 @@ describe('sale exchange cancellation', () => {
       ],
     })
 
-    const today = localDateKey()
+    expect(exchange.amount_to_collect).toBe(100)
 
-    const preview = getCashDayClosePreview(today)
+    const originalShift = getOpenCashShift()
 
-    closeCashDay({
-      business_date: today,
+    expect(originalShift).toBeTruthy()
 
-      counted_amount: preview.system_closing_balance,
+    closeCashShift({
+      shift_id: originalShift!.id,
 
-      carry_over_amount: preview.system_closing_balance,
+      closing_counted_amount: 550,
+
+      left_for_next_shift: 550,
 
       closed_by: 1,
     })
@@ -800,8 +799,69 @@ describe('sale exchange cancellation', () => {
 
         actor_id: 1,
 
-        reason: 'إلغاء بعد التقفيل',
+        reason: 'إلغاء بدون شفت',
       }),
-    ).toThrow('تم تقفيله')
+    ).toThrow('لا يمكن إلغاء استبدال بدون شفت مفتوح')
+
+    const currentShift = openCashShift({
+      opening_counted_amount: 550,
+      opened_by: 1,
+    })
+
+    const cancelled = cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+
+      actor_id: 1,
+
+      reason: 'إلغاء الاستبدال في شفت جديد',
+    })
+
+    expect(cancelled.cancelled_shift_id).toBe(currentShift.id)
+
+    const exchangeRow = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        cancelled_shift_id
+      FROM sale_exchanges
+      WHERE id = ?
+    `,
+      )
+      .get(exchange.exchangeId) as {
+      shift_id: number
+      cancelled_shift_id: number
+    }
+
+    expect(exchangeRow.shift_id).toBe(originalShift!.id)
+
+    expect(exchangeRow.cancelled_shift_id).toBe(currentShift.id)
+
+    const reverseMovement = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        direction,
+        amount
+      FROM cash_movements
+      WHERE reference_type =
+        'sale_exchange_cancel'
+        AND reference_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `,
+      )
+      .get(exchange.exchangeId) as {
+      shift_id: number
+      direction: string
+      amount: number
+    }
+
+    expect(reverseMovement.shift_id).toBe(currentShift.id)
+
+    expect(reverseMovement.direction).toBe('out')
+
+    expect(Number(reverseMovement.amount)).toBe(100)
   })
 })

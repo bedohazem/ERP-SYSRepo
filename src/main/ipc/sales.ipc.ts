@@ -75,6 +75,7 @@ export function registerSalesIpc(): void {
         paid: input.paid,
         payment_method: input.payment_method,
         items_count: input.items?.length || 0,
+        shift_id: result.shift_id,
       },
     })
 
@@ -120,6 +121,7 @@ export function registerSalesIpc(): void {
         amount_to_refund: result.amount_to_refund,
         debt_reduction_amount: result.debt_reduction_amount,
         payment_method: result.payment_method,
+        shift_id: result.shift_id,
         items_count: input.items?.length || 0,
       },
     })
@@ -178,6 +180,7 @@ export function registerSalesIpc(): void {
           debt_restored: result.debt_restored,
 
           loyalty_balance_reversed: result.loyalty_balance_reversed,
+          shift_id: result.cancelled_shift_id,
         },
       })
 
@@ -222,6 +225,7 @@ export function registerSalesIpc(): void {
         refund_amount: result.refundAmount,
         reason: input.reason,
         items_count: input.items?.length || 0,
+        shift_id: result.shift_id,
       },
     })
 
@@ -257,6 +261,7 @@ export function registerSalesIpc(): void {
           reason: input?.reason,
           refunded_amount: result.refunded_amount,
           removed_debt: result.removed_debt,
+          shift_id: result.cancelled_shift_id,
         },
       })
 
@@ -306,6 +311,7 @@ export function registerSalesIpc(): void {
           sale_id: result.sale_id,
           cash_restored: result.cash_restored,
           debt_restored: result.debt_restored,
+          shift_id: result.cancelled_shift_id,
         },
       })
 

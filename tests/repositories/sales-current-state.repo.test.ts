@@ -19,9 +19,13 @@ import {
   listSales,
 } from '../../src/main/database/repositories/sales.repo'
 
-import { createSaleExchange } from '../../src/main/database/repositories/sales-exchange.repo'
+import {
+  createSaleExchange,
+  getSaleExchangeState,
+} from '../../src/main/database/repositories/sales-exchange.repo'
 
 import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo'
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
 
 type TestVariant = {
   variant_id: number
@@ -264,6 +268,11 @@ describe('sale current state after exchanges', () => {
     closeDb()
     getDb()
     resetDatabaseData()
+
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    })
   })
 
   it('keeps original receipt and exposes current receipt after exchanging the gift', () => {
@@ -656,5 +665,107 @@ describe('sale current state after exchanges', () => {
         ],
       }),
     ).toThrow('المخزون غير كافٍ للصنف البديل')
+  })
+
+  it('preserves a fixed invoice promotion when regular exchange units are prepared', () => {
+    const catalog = seedCatalog()
+
+    const promotion = createPromotion({
+      name: 'Fixed Invoice 145',
+
+      type: 'fixed_invoice',
+
+      value: 145,
+
+      buy_qty: null,
+      free_qty: null,
+
+      scope_type: 'all',
+
+      category_id: null,
+
+      product_ids: [],
+
+      actor_id: 1,
+    })
+
+    togglePromotion(promotion.promotionId, 1)
+
+    const items = [
+      catalog.variants.EX250,
+      catalog.variants.EX200,
+      catalog.variants.EX150,
+    ].map((variant) => ({
+      variant_id: variant.variant_id,
+
+      product_name: variant.product_name,
+
+      barcode: variant.barcode,
+
+      size: variant.size,
+
+      color: variant.color,
+
+      quantity: 1,
+
+      unit_price: variant.sell_price,
+    }))
+
+    const subTotal = items.reduce(
+      (sum, item) => sum + Number(item.unit_price),
+      0,
+    )
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      promotion_id: promotion.promotionId,
+
+      sub_total: subTotal,
+
+      discount_value: 0,
+
+      grand_total: subTotal - 145,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: subTotal - 145,
+
+      items,
+    })
+
+    expect(sale.promotion_discount_value).toBe(145)
+
+    const before = getSaleCurrentState(sale.saleId)
+
+    expect(before.financials.current_promotion_discount_value).toBe(145)
+
+    /*
+     * فتح شاشة الاستبدال هو
+     * الذي ينشئ Regular Units.
+     */
+    const exchangeState = getSaleExchangeState(sale.saleId)
+
+    expect(exchangeState.snapshot?.promotion_type).toBe('fixed_invoice')
+
+    expect(
+      exchangeState.groups.every(
+        (group: any) => group.group_kind === 'regular',
+      ),
+    ).toBe(true)
+
+    expect(exchangeState.financials.current_promotion_discount_value).toBe(145)
+
+    expect(exchangeState.financials.current_grand_total).toBe(subTotal - 145)
+
+    const after = getSaleCurrentState(sale.saleId)
+
+    expect(after.financials.current_promotion_discount_value).toBe(145)
+
+    expect(after.financials.current_grand_total).toBe(subTotal - 145)
   })
 })

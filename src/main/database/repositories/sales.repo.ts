@@ -5,6 +5,9 @@ import {
   calculateSaleEarnedPoints,
   getSaleCurrentState,
 } from './sales-current-state.repo'
+import { requireOperationalCashShift } from './cash-shifts.repo'
+
+import { getShiftBusinessDate } from '../shift-business-date'
 
 export type CreateSaleLineInput = {
   variant_id: number
@@ -65,48 +68,6 @@ function getLoyaltySettingsForSale() {
     pointValue: Number(getSetting('loyalty_point_value', '1')),
     minRedeemPoints: Number(getSetting('loyalty_min_redeem_points', '1')),
   }
-}
-
-function getLocalDateKey(date: Date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-
-  return `${year}-${month}-${day}`
-}
-
-function getRelativeLocalDateKey(days: number) {
-  const date = new Date()
-
-  date.setHours(12, 0, 0, 0)
-  date.setDate(date.getDate() + days)
-
-  return getLocalDateKey(date)
-}
-
-function resolveSaleBusinessDate(value?: string | null) {
-  const requestedDate = value?.trim() || ''
-  const today = getRelativeLocalDateKey(0)
-
-  if (!requestedDate) {
-    return today
-  }
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
-    throw new Error('تاريخ الفاتورة غير صحيح')
-  }
-
-  const allowedDates = new Set([
-    getRelativeLocalDateKey(-1),
-    today,
-    getRelativeLocalDateKey(1),
-  ])
-
-  if (!allowedDates.has(requestedDate)) {
-    throw new Error('مسموح بتاريخ الفاتورة: أمس أو اليوم أو غدًا فقط')
-  }
-
-  return requestedDate
 }
 
 function roundMoney(value: number) {
@@ -196,8 +157,14 @@ export function createSale(input: CreateSaleInput) {
     throw new Error('Sale items are required')
   }
 
+  const openShift = requireOperationalCashShift(
+    input.user_id,
+    'لا يمكن تسجيل فاتورة بيع بدون شفت مفتوح',
+  )
+
   const loyalty = getLoyaltySettingsForSale()
-  const businessDate = resolveSaleBusinessDate(input.business_date)
+
+  const businessDate = getShiftBusinessDate(openShift.id)
 
   const customerId = input.customer_id ? Number(input.customer_id) : null
   const requestedRedeemPoints = Number(input.loyalty_points_redeemed || 0)
@@ -330,6 +297,7 @@ export function createSale(input: CreateSaleInput) {
           customer_id,
           user_id,
           business_date,
+          shift_id,
           sub_total,
           discount_value,
 
@@ -351,7 +319,7 @@ export function createSale(input: CreateSaleInput) {
         VALUES (
           'sale',
           ?, ?, ?, ?, ?,
-          ?, ?, ?,
+          ?, ?, ?,?,
           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
       `,
@@ -360,6 +328,7 @@ export function createSale(input: CreateSaleInput) {
         customerId,
         input.user_id,
         businessDate,
+        openShift.id,
         subTotal,
         normalDiscount,
 
@@ -471,6 +440,7 @@ export function createSale(input: CreateSaleInput) {
         notes: `تحصيل فاتورة بيع رقم ${saleId}`,
         created_by: input.user_id,
         business_date: businessDate,
+        shift_id: openShift.id,
       })
     }
 
@@ -929,6 +899,7 @@ export function createSale(input: CreateSaleInput) {
       paid_amount: paidAmount,
       remaining_amount: remainingAmount,
       payment_status: paymentStatus,
+      shift_id: openShift.id,
     }
   })
 
@@ -1025,16 +996,21 @@ export function listSales(input?: {
 
   payment_filter?: 'all' | 'paid' | 'unpaid'
 
+  payment_method?: string | null
+
   date_from?: string
   date_to?: string
+
   limit?: number
   offset?: number
+
   actor_id?: number | null
 }) {
   const db = getDb()
 
   const search = input?.search?.trim() || ''
   const paymentFilter = input?.payment_filter ?? 'all'
+  const paymentMethod = String(input?.payment_method || '').trim()
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
   const offset = Math.max(Number(input?.offset || 0), 0)
   const actorId = Number(input?.actor_id || 0)
@@ -1087,6 +1063,12 @@ export function listSales(input?: {
       ) > 0
     )
   `)
+  }
+
+  if (paymentMethod) {
+    where.push(`s.payment_method = ?`)
+
+    params.push(paymentMethod)
   }
 
   if (input?.date_from) {
@@ -1349,6 +1331,11 @@ export function createSaleReturn(input: {
     throw new Error('لا توجد أصناف للمرتجع')
   }
 
+  const openShift = requireOperationalCashShift(
+    input.user_id,
+    'لا يمكن تسجيل مرتجع بيع بدون شفت مفتوح',
+  )
+
   const tx = db.transaction(() => {
     const originalSale = db
       .prepare(
@@ -1419,6 +1406,53 @@ export function createSaleReturn(input: {
 
         ORDER BY spu.id ASC
       `)
+
+    const getCurrentRegularItemUnits = db.prepare(
+      `
+      SELECT
+        spu.*,
+
+        pv.barcode
+          AS current_barcode,
+
+        pv.size
+          AS current_size,
+
+        pv.color
+          AS current_color,
+
+        COALESCE(
+          spu.current_unit_cost,
+          pv.buy_price
+        )
+          AS current_unit_cost,
+
+        p.name
+          AS current_product_name
+
+      FROM sale_promotion_units spu
+
+      JOIN product_variants pv
+        ON pv.id =
+          spu.current_variant_id
+
+      JOIN products p
+        ON p.id =
+          pv.product_id
+
+      WHERE
+        spu.sale_id = ?
+
+        AND
+          spu.original_sale_item_id = ?
+
+        AND
+          spu.promotion_group_id
+          LIKE 'regular:%'
+
+      ORDER BY spu.id ASC
+      `,
+    )
 
     const getAlreadyReturnedQty = db.prepare(`
       SELECT
@@ -1492,6 +1526,73 @@ export function createSaleReturn(input: {
       const requestedQty = Number(item.quantity || 0)
 
       if (requestedQty <= 0) {
+        continue
+      }
+
+      const regularUnits = getCurrentRegularItemUnits.all(
+        originalSaleId,
+        Number(originalItem.id),
+      ) as any[]
+
+      if (regularUnits.length > 0) {
+        if (!Number.isInteger(requestedQty)) {
+          throw new Error(
+            'كمية المرتجع للصنف المستبدل يجب أن تكون عددًا صحيحًا',
+          )
+        }
+
+        const requestedVariantId = Number(item.variant_id || 0)
+
+        const availableUnits = regularUnits.filter(
+          (unit) =>
+            Number(unit.is_returned || 0) === 0 &&
+            Number(unit.current_variant_id) === requestedVariantId,
+        )
+
+        if (requestedQty > availableUnits.length) {
+          throw new Error(
+            `الكمية المطلوبة أكبر من المتاح للمرتجع للصنف: ${originalItem.product_name}`,
+          )
+        }
+
+        const selectedUnits = availableUnits.slice(0, requestedQty)
+
+        for (const unit of selectedUnits) {
+          const unitPrice = Number(unit.current_unit_price || 0)
+
+          const lineTotal = roundMoney(unitPrice)
+
+          returnSubTotal += lineTotal
+
+          preparedItems.push({
+            originalItem,
+
+            promotionUnitId: Number(unit.id),
+
+            variantId: Number(unit.current_variant_id),
+
+            productName: String(
+              unit.current_product_name || originalItem.product_name,
+            ),
+
+            barcode: unit.current_barcode ?? null,
+
+            size: unit.current_size ?? null,
+
+            color: unit.current_color ?? null,
+
+            unitCost: Number(unit.current_unit_cost || 0),
+
+            quantity: 1,
+
+            unitPrice,
+
+            lineTotal,
+
+            promotionDiscount: 0,
+          })
+        }
+
         continue
       }
 
@@ -2040,6 +2141,7 @@ export function createSaleReturn(input: {
           original_sale_id,
           customer_id,
           user_id,
+          shift_id,
           sub_total,
           promotion_discount_value,
           normal_discount_value,
@@ -2052,13 +2154,14 @@ export function createSaleReturn(input: {
           notes,
           loyalty_points_reversed
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
         originalSaleId,
         originalSale.customer_id ?? null,
         userId,
+        openShift.id,
         returnSubTotal,
         returnPromotionDiscount,
         saleDiscountPart,
@@ -2084,6 +2187,7 @@ export function createSaleReturn(input: {
         reference_type: 'sale_return',
         notes: `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
         created_by: userId,
+        shift_id: openShift.id,
       })
     }
 
@@ -2258,6 +2362,7 @@ export function createSaleReturn(input: {
       debt_reduction_amount: debtReductionAmount,
       return_value: returnValue,
       loyalty_points_reversed: loyaltyPointsToReverse,
+      shift_id: openShift.id,
     }
   })
 
@@ -2275,6 +2380,7 @@ export function getSaleReturnHistory(originalSaleId: number) {
         sr.original_sale_id,
         sr.customer_id,
         sr.user_id,
+        sr.shift_id,
         sr.sub_total,
         sr.loyalty_discount_value,
         sr.refund_amount,
@@ -2431,6 +2537,13 @@ export function cancelSaleInvoice(input: {
     throw new Error('رقم فاتورة البيع غير صحيح')
   }
 
+  const openShift = requireOperationalCashShift(
+    Number(input.actor_id || 0),
+    'لا يمكن إلغاء فاتورة بيع بدون شفت مفتوح',
+  )
+
+  const cancellationBusinessDate = getShiftBusinessDate(openShift.id)
+
   const reason = input.reason?.trim() || 'إلغاء فاتورة بيع'
 
   const tx = db.transaction(() => {
@@ -2452,42 +2565,6 @@ export function cancelSaleInvoice(input: {
 
     if (sale.cancelled_at) {
       throw new Error('فاتورة البيع ملغاة بالفعل')
-    }
-
-    const saleBusinessDateRow = db
-      .prepare(
-        `
-    SELECT
-      COALESCE(
-        NULLIF(business_date, ''),
-        date(created_at, 'localtime')
-      ) AS business_date
-    FROM sales
-    WHERE id = ?
-    LIMIT 1
-    `,
-      )
-      .get(saleId) as { business_date: string } | undefined
-
-    const saleBusinessDate = saleBusinessDateRow?.business_date || ''
-
-    if (saleBusinessDate) {
-      const closedDay = db
-        .prepare(
-          `
-      SELECT id
-      FROM cash_day_closings
-      WHERE business_date = ?
-      LIMIT 1
-      `,
-        )
-        .get(saleBusinessDate)
-
-      if (closedDay) {
-        throw new Error(
-          `لا يمكن إلغاء فاتورة تخص يوم ${saleBusinessDate} لأنه تم تقفيله`,
-        )
-      }
     }
 
     const returnsRow = db
@@ -2616,6 +2693,8 @@ export function cancelSaleInvoice(input: {
         reference_type: 'sale_cancel',
         notes: `رد قيمة فاتورة بيع ملغاة رقم ${saleId}`,
         created_by: input.actor_id ?? null,
+        business_date: cancellationBusinessDate,
+        shift_id: openShift.id,
       })
     }
 
@@ -2691,12 +2770,13 @@ export function cancelSaleInvoice(input: {
       SET
         cancelled_at = CURRENT_TIMESTAMP,
         cancelled_by = ?,
+        cancelled_shift_id = ?,
         cancel_reason = ?,
         payment_status = 'cancelled',
         remaining_amount = 0
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, reason, saleId)
+    ).run(input.actor_id ?? null, openShift.id, reason, saleId)
 
     if (customerId) {
       syncCustomerTotalSpent(customerId)
@@ -2708,6 +2788,7 @@ export function cancelSaleInvoice(input: {
       refunded_amount: paidAmount,
       removed_debt: remainingAmount,
       restored_items: items.length,
+      cancelled_shift_id: openShift.id,
     }
   })
 
@@ -2726,6 +2807,13 @@ export function cancelSaleReturn(input: {
   if (!returnId) {
     throw new Error('رقم المرتجع غير صحيح')
   }
+
+  const openShift = requireOperationalCashShift(
+    Number(input.actor_id || 0),
+    'لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح',
+  )
+
+  const cancellationBusinessDate = getShiftBusinessDate(openShift.id)
 
   const reason = input.reason?.trim() || 'إلغاء مرتجع بيع'
 
@@ -2756,39 +2844,6 @@ export function cancelSaleReturn(input: {
 
     if (saleReturn.cancelled_at) {
       throw new Error('مرتجع البيع ملغي بالفعل')
-    }
-
-    const returnBusinessDateRow = db
-      .prepare(
-        `
-    SELECT
-      date(created_at, 'localtime') AS business_date
-    FROM sale_returns
-    WHERE id = ?
-    LIMIT 1
-    `,
-      )
-      .get(returnId) as { business_date: string } | undefined
-
-    const returnBusinessDate = returnBusinessDateRow?.business_date || ''
-
-    if (returnBusinessDate) {
-      const closedDay = db
-        .prepare(
-          `
-      SELECT id
-      FROM cash_day_closings
-      WHERE business_date = ?
-      LIMIT 1
-      `,
-        )
-        .get(returnBusinessDate)
-
-      if (closedDay) {
-        throw new Error(
-          `لا يمكن إلغاء مرتجع يخص يوم ${returnBusinessDate} لأنه تم تقفيله`,
-        )
-      }
     }
 
     if (saleReturn.sale_cancelled_at) {
@@ -2951,6 +3006,8 @@ export function cancelSaleReturn(input: {
         reference_type: 'sale_return_cancel',
         notes: `عكس مرتجع بيع ملغي ${returnCode}`,
         created_by: input.actor_id ?? null,
+        business_date: cancellationBusinessDate,
+        shift_id: openShift.id,
       })
     }
 
@@ -3112,10 +3169,11 @@ export function cancelSaleReturn(input: {
       SET
         cancelled_at = CURRENT_TIMESTAMP,
         cancelled_by = ?,
+        cancelled_shift_id = ?,
         cancel_reason = ?
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, reason, returnId)
+    ).run(input.actor_id ?? null, openShift.id, reason, returnId)
 
     if (saleReturn.customer_id) {
       syncCustomerTotalSpent(Number(saleReturn.customer_id))
@@ -3128,6 +3186,7 @@ export function cancelSaleReturn(input: {
       cash_restored: cashRefundAmount,
       debt_restored: debtReductionAmount,
       items_count: items.length,
+      cancelled_shift_id: openShift.id,
     }
   })
 
@@ -3188,6 +3247,7 @@ export function listSaleReturns(input?: {
         sr.original_sale_id,
         sr.customer_id,
         sr.user_id,
+        sr.shift_id,
         sr.sub_total,
         sr.loyalty_discount_value,
         sr.refund_amount,
@@ -3197,7 +3257,7 @@ export function listSaleReturns(input?: {
         sr.cancelled_at,
         sr.cancelled_by,
         sr.cancel_reason,
-
+        sr.cancelled_shift_id,
         CASE
           WHEN sr.user_id = ?
             AND datetime(sr.created_at)

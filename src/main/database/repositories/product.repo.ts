@@ -390,13 +390,27 @@ export function getProducts(
   const term = search.trim()
   const query = `%${term}%`
 
-  const selectedCategoryId =
-    categoryId && categoryId !== 'all' ? Number(categoryId) : null
+  const categoryFilter = String(categoryId ?? 'all')
 
-  const categorySql = selectedCategoryId ? `AND p.category_id = ?` : ''
+  const isUncategorized = categoryFilter === 'uncategorized'
+
+  const selectedCategoryId =
+    !isUncategorized && categoryFilter !== 'all' ? Number(categoryFilter) : null
+
+  const hasSelectedCategory =
+    selectedCategoryId !== null &&
+    Number.isFinite(selectedCategoryId) &&
+    selectedCategoryId > 0
+
+  const categorySql = isUncategorized
+    ? `AND p.category_id IS NULL`
+    : hasSelectedCategory
+      ? `AND p.category_id = ?`
+      : ''
 
   const params = [
-    ...(selectedCategoryId ? [selectedCategoryId] : []),
+    ...(hasSelectedCategory ? [selectedCategoryId] : []),
+
     query,
     query,
     term,
@@ -469,19 +483,30 @@ export function listProductsPage(input?: {
 
   const includeInactive = Boolean(input?.includeInactive)
 
+  const categoryFilter = String(input?.categoryId ?? 'all')
+
+  const isUncategorized = categoryFilter === 'uncategorized'
+
   const selectedCategoryId =
-    input?.categoryId && input.categoryId !== 'all'
-      ? Number(input.categoryId)
-      : null
+    !isUncategorized && categoryFilter !== 'all' ? Number(categoryFilter) : null
+
+  const hasSelectedCategory =
+    selectedCategoryId !== null &&
+    Number.isFinite(selectedCategoryId) &&
+    selectedCategoryId > 0
 
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
 
   const offset = Math.max(Number(input?.offset || 0), 0)
 
-  const categorySql = selectedCategoryId ? `AND p.category_id = ?` : ''
+  const categorySql = isUncategorized
+    ? `AND p.category_id IS NULL`
+    : hasSelectedCategory
+      ? `AND p.category_id = ?`
+      : ''
 
   const params: any[] = [
-    ...(selectedCategoryId ? [selectedCategoryId] : []),
+    ...(hasSelectedCategory ? [selectedCategoryId] : []),
 
     query,
     query,

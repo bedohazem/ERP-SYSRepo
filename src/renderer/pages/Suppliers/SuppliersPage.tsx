@@ -252,10 +252,7 @@ export default function SuppliersPage() {
     setSupplierStatementPage(1)
 
     try {
-      const data = await window.api.getSupplierStatement(
-        supplier.id,
-        currentUser?.id,
-      )
+      const data = await window.api.getSupplierStatement(supplier.id)
       setStatementData(data)
     } catch (error) {
       console.error('Failed to load supplier statement:', error)
@@ -571,10 +568,7 @@ export default function SuppliersPage() {
       await loadSuppliers(supplierPage)
 
       if (statementData?.supplier?.id === paymentSupplier.id) {
-        const data = await window.api.getSupplierStatement(
-          paymentSupplier.id,
-          currentUser?.id,
-        )
+        const data = await window.api.getSupplierStatement(paymentSupplier.id)
         setStatementData(data)
       }
     } catch (error) {
@@ -756,10 +750,7 @@ export default function SuppliersPage() {
       await loadSuppliers(supplierPage)
 
       if (supplierId) {
-        const data = await window.api.getSupplierStatement(
-          supplierId,
-          currentUser?.id,
-        )
+        const data = await window.api.getSupplierStatement(supplierId)
 
         setStatementData(data)
       }
