@@ -2244,6 +2244,14 @@ export function cancelCashShiftVarianceCorrection(
   }
 
   const tx = db.transaction(() => {
+    reopenCashShiftVarianceForCorrection({
+      variance_id: Number(correction.variance_id),
+
+      actor_id: cancelledBy,
+
+      reason: `إلغاء تصحيح فرق الشفت #${correctionId}`,
+    })
+
     if (
       correction.reference_type === 'shift_variance_sale_correction' &&
       Number(correction.reference_id || 0) > 0
@@ -2496,14 +2504,6 @@ export function cancelCashShiftVarianceCorrection(
     })
 
     return getCashShiftVarianceReview(correction.variance_id)
-  })
-
-  reopenCashShiftVarianceForCorrection({
-    variance_id: Number(correction.variance_id),
-
-    actor_id: cancelledBy,
-
-    reason: `إلغاء تصحيح فرق الشفت #${correctionId}`,
   })
 
   return tx()

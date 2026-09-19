@@ -583,6 +583,14 @@ export function updateClosedShiftExpenseCorrection(
     throw new Error('لا يمكن تعديل تصحيح ملغي')
   }
 
+  if (correction.variance_stage !== 'closing') {
+    throw new Error('التعديل متاح لفروق إغلاق الشفت فقط')
+  }
+
+  if (correction.shift_status !== 'closed') {
+    throw new Error('الشفت يجب أن يكون مغلقًا')
+  }
+
   const expenseId = Number(correction.reference_id || 0)
 
   if (!expenseId) {

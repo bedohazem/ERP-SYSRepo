@@ -486,7 +486,7 @@ export default function ShiftVarianceReviewModal({
       showMessage(
         'success',
 
-        editingCorrectionType === 'sale'
+        wasEditing
           ? `تم تعديل فاتورة التصحيح #${result.sale_id}`
           : `تم تسجيل فاتورة التصحيح #${result.sale_id}`,
       )
@@ -1077,7 +1077,9 @@ export default function ShiftVarianceReviewModal({
                   onClick={() => void saveSaleCorrection()}
                   style={primaryButtonStyle}
                 >
-                  تسجيل فاتورة على الشفت القديم — بدون حركة كاش
+                  {editingCorrectionType === 'sale'
+                    ? 'حفظ تعديل فاتورة التصحيح — بدون حركة كاش'
+                    : 'تسجيل فاتورة على الشفت القديم — بدون حركة كاش'}
                 </button>
 
                 {editingCorrectionId && (
@@ -1142,7 +1144,9 @@ export default function ShiftVarianceReviewModal({
                   onClick={() => void saveExpenseCorrection()}
                   style={primaryButtonStyle}
                 >
-                  تسجيل المصروف على الشفت القديم — بدون حركة كاش
+                  {editingCorrectionType === 'expense'
+                    ? 'حفظ تعديل المصروف التصحيحي — بدون حركة كاش'
+                    : 'تسجيل المصروف على الشفت القديم — بدون حركة كاش'}
                 </button>
 
                 {editingCorrectionId && (

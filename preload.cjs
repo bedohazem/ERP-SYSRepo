@@ -229,8 +229,9 @@ contextBridge.exposeInMainWorld('api', {
   createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
   createShiftVarianceExpenseCorrection: (input) =>
     ipcRenderer.invoke('expenses:create-shift-variance-correction', input),
-  updateShiftVarianceSaleCorrection: (input) =>
-    ipcRenderer.invoke('sales:update-shift-variance-correction', input),
+
+  updateShiftVarianceExpenseCorrection: (input) =>
+    ipcRenderer.invoke('expenses:update-shift-variance-correction', input),
   updateExpense: (input) => ipcRenderer.invoke('expenses:update', input),
   cancelExpense: (input) => ipcRenderer.invoke('expenses:cancel', input),
   getExpenses: (input) => ipcRenderer.invoke('expenses:list', input),

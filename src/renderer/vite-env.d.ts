@@ -1938,7 +1938,9 @@ declare global {
           reference_type?: string | null
 
           reference_id?: number | null
+          document_title?: string | null
 
+          document_category?: string | null
           created_by: number
 
           created_by_name?: string | null
@@ -1959,9 +1961,7 @@ declare global {
         correction_id: number
 
         reason: string
-        document_title?: string | null
 
-        document_category?: string | null
         admin_password: string
       }) => Promise<{
         success: boolean
