@@ -22,6 +22,9 @@ import {
   listCashShifts,
   getCashShiftDetails,
   resolveCashShiftVariance,
+  getCashShiftVarianceReview,
+  addCashShiftVarianceCorrection,
+  cancelCashShiftVarianceCorrection,
 } from '../database/repositories/cash-shifts.repo'
 import { requireAdmin, requireAdminPassword } from './permission-helper'
 import {
@@ -270,6 +273,74 @@ export function registerCashIpc(): void {
 
       offset: Number(input?.offset || 0),
     })
+  })
+
+  ipcMain.handle('cash-shifts:variance-review', (event, varianceId) => {
+    const actor = requireAuthenticatedUser(event)
+
+    requireAdmin(actor.id)
+
+    return getCashShiftVarianceReview(Number(varianceId))
+  })
+
+  ipcMain.handle('cash-shifts:add-variance-correction', (event, input) => {
+    try {
+      const actor = requireAuthenticatedUser(event)
+
+      requireAdminPassword(actor.id, input?.admin_password)
+
+      const review = addCashShiftVarianceCorrection({
+        variance_id: Number(input?.variance_id),
+
+        reason_code: input?.reason_code,
+
+        amount: Number(input?.amount),
+
+        notes: input?.notes,
+
+        created_by: actor.id,
+      })
+
+      return {
+        success: true,
+        review,
+      }
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر إضافة تصحيح فرق الشفت',
+      }
+    }
+  })
+
+  ipcMain.handle('cash-shifts:cancel-variance-correction', (event, input) => {
+    try {
+      const actor = requireAuthenticatedUser(event)
+
+      requireAdminPassword(actor.id, input?.admin_password)
+
+      const review = cancelCashShiftVarianceCorrection({
+        correction_id: Number(input?.correction_id),
+
+        reason: String(input?.reason || ''),
+
+        cancelled_by: actor.id,
+      })
+
+      return {
+        success: true,
+        review,
+      }
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر إلغاء تصحيح فرق الشفت',
+      }
+    }
   })
 
   ipcMain.handle('cash-shifts:resolve-variance', (event, input) => {

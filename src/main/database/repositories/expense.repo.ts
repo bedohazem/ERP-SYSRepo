@@ -1,7 +1,11 @@
 import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
 import { createActivityLog } from './activity.repo'
-import { resolveFinancialOperationShift } from './cash-shifts.repo'
+import {
+  resolveFinancialOperationShift,
+  getCashShiftVarianceById,
+  getCashShiftVarianceReview,
+} from './cash-shifts.repo'
 import { getShiftBusinessDate } from '../shift-business-date'
 
 export type CreateExpenseInput = {
@@ -11,6 +15,20 @@ export type CreateExpenseInput = {
   payment_method?: string
   notes?: string | null
   created_by?: number | null
+}
+
+export type CreateClosedShiftExpenseCorrectionInput = {
+  variance_id: number
+
+  title: string
+
+  category?: string | null
+
+  amount: number
+
+  notes?: string | null
+
+  actor_id: number
 }
 
 export type CancelExpenseInput = {
@@ -46,6 +64,35 @@ function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
 
   return String(row?.business_date || '')
 }
+
+const EXPENSE_BUSINESS_DATE_SQL = `
+  COALESCE(
+    NULLIF(
+      e.business_date,
+      ''
+    ),
+
+    (
+      SELECT
+        date(
+          cs.opened_at,
+          'localtime'
+        )
+
+      FROM cash_shifts cs
+
+      WHERE
+        cs.id = e.shift_id
+
+      LIMIT 1
+    ),
+
+    date(
+      e.created_at,
+      'localtime'
+    )
+  )
+`
 
 function appendCreatedByFilter(
   where: string[],
@@ -107,10 +154,11 @@ export function createExpense(input: CreateExpenseInput) {
           payment_method,
           notes,
           created_by,
+          business_date,
           shift_id
         )
 
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
       )
       .run(
@@ -120,6 +168,7 @@ export function createExpense(input: CreateExpenseInput) {
         paymentMethod,
         input.notes?.trim() || null,
         actorId,
+        businessDate,
         openShift?.id ?? null,
       )
 
@@ -183,6 +232,237 @@ export function createExpense(input: CreateExpenseInput) {
   return tx()
 }
 
+export function createClosedShiftExpenseCorrection(
+  input: CreateClosedShiftExpenseCorrectionInput,
+) {
+  const db = getDb()
+
+  const varianceId = Number(input.variance_id || 0)
+
+  const actorId = Number(input.actor_id || 0)
+
+  const title = String(input.title || '').trim()
+
+  const category = String(input.category || '').trim()
+
+  const notes = String(input.notes || '').trim()
+
+  const amount = Number(input.amount || 0)
+
+  if (!Number.isInteger(varianceId) || varianceId <= 0) {
+    throw new Error('رقم فرق الشفت غير صحيح')
+  }
+
+  if (!Number.isInteger(actorId) || actorId <= 0) {
+    throw new Error('المستخدم غير صحيح')
+  }
+
+  if (!title) {
+    throw new Error('عنوان المصروف مطلوب')
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('قيمة المصروف غير صحيحة')
+  }
+
+  const variance = getCashShiftVarianceById(varianceId)
+
+  if (!variance) {
+    throw new Error('فرق الشفت غير موجود')
+  }
+
+  if (variance.status !== 'pending') {
+    throw new Error('تم إنهاء مراجعة فرق الشفت بالفعل')
+  }
+
+  if (variance.stage !== 'closing') {
+    throw new Error('المصروف التصحيحي متاح لفروق إغلاق الشفت فقط')
+  }
+
+  if (variance.shift_status !== 'closed') {
+    throw new Error('الشفت يجب أن يكون مغلقًا')
+  }
+
+  if (variance.remaining_kind !== 'shortage') {
+    throw new Error('المصروف غير المسجل يستخدم عند وجود عجز متبقي')
+  }
+
+  const actor = db
+    .prepare(
+      `
+      SELECT
+        id,
+        role,
+        is_active
+
+      FROM users
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(actorId) as
+    | {
+        id: number
+        role: string
+        is_active: number
+      }
+    | undefined
+
+  if (!actor || Number(actor.is_active) !== 1 || actor.role !== 'admin') {
+    throw new Error('التصحيح متاح لمدير النظام فقط')
+  }
+
+  const businessDate = getShiftBusinessDate(variance.shift_id)
+
+  const expenseAmount = Number(amount.toFixed(2))
+
+  const tx = db.transaction(() => {
+    const expenseResult = db
+      .prepare(
+        `
+        INSERT INTO expenses (
+          title,
+          category,
+          amount,
+          payment_method,
+          notes,
+          created_by,
+          business_date,
+          shift_id
+        )
+
+        VALUES (
+          ?,
+          ?,
+          ?,
+          'store_cash',
+          ?,
+          ?,
+          ?,
+          ?
+        )
+        `,
+      )
+      .run(
+        title,
+
+        category || null,
+
+        expenseAmount,
+
+        [`تصحيح فرق الشفت #${variance.shift_id}`, notes || null]
+          .filter(Boolean)
+          .join(' — '),
+
+        Number(variance.opened_by),
+
+        businessDate,
+
+        variance.shift_id,
+      )
+
+    const expenseId = Number(expenseResult.lastInsertRowid)
+
+    /*
+     * لا ننشئ Cash Movement هنا.
+     * المبلغ خرج فعلًا وقت الشفت
+     * وتمت تسوية الدرج عند الإغلاق.
+     */
+
+    const correctionResult = db
+      .prepare(
+        `
+        INSERT INTO cash_shift_variance_corrections (
+          variance_id,
+
+          reason_code,
+
+          amount,
+
+          effect_amount,
+
+          notes,
+
+          reference_type,
+          reference_id,
+
+          created_by
+        )
+
+        VALUES (
+          ?,
+          'unregistered_expense',
+          ?,
+          ?,
+          ?,
+          'shift_variance_expense_correction',
+          ?,
+          ?
+        )
+        `,
+      )
+      .run(
+        variance.id,
+
+        expenseAmount,
+
+        expenseAmount,
+
+        notes || null,
+
+        expenseId,
+
+        actorId,
+      )
+
+    const correctionId = Number(correctionResult.lastInsertRowid)
+
+    createActivityLog({
+      user_id: actorId,
+
+      action: 'shift_variance_expense_correction_created',
+
+      entity: 'expenses',
+
+      entity_id: expenseId,
+
+      details: JSON.stringify({
+        variance_id: variance.id,
+
+        shift_id: variance.shift_id,
+
+        expense_id: expenseId,
+
+        correction_id: correctionId,
+
+        amount: expenseAmount,
+
+        business_date: businessDate,
+
+        cash_movement_created: false,
+      }),
+    })
+
+    return {
+      success: true,
+
+      expense_id: expenseId,
+
+      correction_id: correctionId,
+
+      shift_id: variance.shift_id,
+
+      amount: expenseAmount,
+
+      review: getCashShiftVarianceReview(variance.id),
+    }
+  })
+
+  return tx()
+}
+
 export function listExpenses(input?: {
   date_from?: string
   date_to?: string
@@ -194,13 +474,13 @@ export function listExpenses(input?: {
   const params: any[] = []
 
   if (input?.date_from) {
-    where.push(`datetime(e.created_at, 'localtime') >= datetime(?)`)
-    params.push(`${input.date_from} 00:00:00`)
+    where.push(`${EXPENSE_BUSINESS_DATE_SQL} >= ?`)
+    params.push(input.date_from)
   }
 
   if (input?.date_to) {
-    where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`)
-    params.push(`${input.date_to} 23:59:59`)
+    where.push(`${EXPENSE_BUSINESS_DATE_SQL} <= ?`)
+    params.push(input.date_to)
   }
 
   appendCreatedByFilter(where, params, input?.created_by)
@@ -240,13 +520,13 @@ export function listExpensesPage(input?: {
   const params: any[] = []
 
   if (input?.date_from) {
-    where.push(`datetime(e.created_at, 'localtime') >= datetime(?)`)
-    params.push(`${input.date_from} 00:00:00`)
+    where.push(`${EXPENSE_BUSINESS_DATE_SQL} >= ?`)
+    params.push(input.date_from)
   }
 
   if (input?.date_to) {
-    where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`)
-    params.push(`${input.date_to} 23:59:59`)
+    where.push(`${EXPENSE_BUSINESS_DATE_SQL} <= ?`)
+    params.push(input.date_to)
   }
 
   appendCreatedByFilter(where, params, input?.created_by)
@@ -312,10 +592,44 @@ export function listExpensesPage(input?: {
   }
 }
 
+function assertExpenseIsNotActiveVarianceCorrection(expenseId: number) {
+  const db = getDb()
+
+  const correction = db
+    .prepare(
+      `
+      SELECT
+        id
+
+      FROM cash_shift_variance_corrections
+
+      WHERE
+        reference_type =
+          'shift_variance_expense_correction'
+
+        AND reference_id = ?
+
+        AND cancelled_at
+          IS NULL
+
+      LIMIT 1
+      `,
+    )
+    .get(expenseId)
+
+  if (correction) {
+    throw new Error(
+      'هذا مصروف تصحيح فرق شفت. يتم تعديله أو إلغاؤه من مراجعة فرق الشفت فقط',
+    )
+  }
+}
+
 export function updateExpense(input: UpdateExpenseInput) {
   const db = getDb()
 
   const expenseId = Number(input.id || 0)
+
+  assertExpenseIsNotActiveVarianceCorrection(expenseId)
 
   if (!expenseId) {
     throw new Error('رقم المصروف غير صحيح')
@@ -576,6 +890,8 @@ export function cancelExpense(input: CancelExpenseInput) {
   const db = getDb()
 
   const expenseId = Number(input.id)
+
+  assertExpenseIsNotActiveVarianceCorrection(expenseId)
 
   if (!expenseId) {
     throw new Error('رقم المصروف غير صحيح')

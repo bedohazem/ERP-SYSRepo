@@ -11,6 +11,7 @@ import {
   cancelSaleReturn,
   listSaleReturns,
   getSaleCancellationAccess,
+  createClosedShiftCashSaleCorrection,
   getSaleReturnCancellationAccess,
 } from '../database/repositories/sales.repo'
 
@@ -27,7 +28,11 @@ import {
   listSaleExchanges,
 } from '../database/repositories/sales-exchange.repo'
 
-import { requireAdmin, requireAnyAdminPassword } from './permission-helper'
+import {
+  requireAdmin,
+  requireAnyAdminPassword,
+  requireAdminPassword,
+} from './permission-helper'
 
 import { getSaleCurrentState } from '../database/repositories/sales-current-state.repo'
 
@@ -80,6 +85,53 @@ export function registerSalesIpc(): void {
     })
 
     return result
+  })
+
+  ipcMain.handle('sales:create-shift-variance-correction', (event, input) => {
+    try {
+      const actor = requireAuthenticatedUser(event)
+
+      requireAdminPassword(actor.id, input?.admin_password)
+
+      const result = createClosedShiftCashSaleCorrection({
+        variance_id: Number(input?.variance_id),
+
+        actor_id: actor.id,
+
+        notes: input?.notes,
+
+        items: Array.isArray(input?.items) ? input.items : [],
+      })
+
+      logAction({
+        actor_id: actor.id,
+
+        action: 'shift_variance_sale_correction_created',
+
+        entity: 'sales',
+
+        entity_id: result.sale_id,
+
+        details: {
+          variance_id: input?.variance_id,
+
+          shift_id: result.shift_id,
+
+          grand_total: result.grand_total,
+
+          cash_movement_created: false,
+        },
+      })
+
+      return result
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر تسجيل فاتورة التصحيح',
+      }
+    }
   })
 
   ipcMain.handle('sales:get-receipt', (_, saleId: number) => {

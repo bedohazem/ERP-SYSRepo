@@ -5,8 +5,12 @@ import {
   calculateSaleEarnedPoints,
   getSaleCurrentState,
 } from './sales-current-state.repo'
-import { requireOperationalCashShift } from './cash-shifts.repo'
-
+import {
+  requireOperationalCashShift,
+  getCashShiftVarianceById,
+  getCashShiftVarianceReview,
+} from './cash-shifts.repo'
+import { createActivityLog } from './activity.repo'
 import { getShiftBusinessDate } from '../shift-business-date'
 
 export type CreateSaleLineInput = {
@@ -45,6 +49,20 @@ type CreateSaleInput = {
     barcode?: string | null
     size?: string | null
     color?: string | null
+    quantity: number
+    unit_price: number
+  }>
+}
+
+export type CreateClosedShiftCashSaleCorrectionInput = {
+  variance_id: number
+
+  actor_id: number
+
+  notes?: string | null
+
+  items: Array<{
+    variant_id: number
     quantity: number
     unit_price: number
   }>
@@ -144,6 +162,565 @@ export function syncCustomerTotalSpent(customerIdInput: number) {
     WHERE id = ?
     `,
   ).run(totalSpent, customerId)
+}
+
+export function createClosedShiftCashSaleCorrection(
+  input: CreateClosedShiftCashSaleCorrectionInput,
+) {
+  const db = getDb()
+
+  const varianceId = Number(input.variance_id || 0)
+
+  const actorId = Number(input.actor_id || 0)
+
+  const notes = String(input.notes || '').trim()
+
+  if (!Number.isInteger(varianceId) || varianceId <= 0) {
+    throw new Error('رقم فرق الشفت غير صحيح')
+  }
+
+  if (!Number.isInteger(actorId) || actorId <= 0) {
+    throw new Error('المستخدم غير صحيح')
+  }
+
+  if (!Array.isArray(input.items) || input.items.length === 0) {
+    throw new Error('أضف أصناف الفاتورة التصحيحية')
+  }
+
+  const variance = getCashShiftVarianceById(varianceId)
+
+  if (!variance) {
+    throw new Error('فرق الشفت غير موجود')
+  }
+
+  if (variance.status !== 'pending') {
+    throw new Error('تم إنهاء مراجعة فرق الشفت بالفعل')
+  }
+
+  if (variance.stage !== 'closing') {
+    throw new Error('فاتورة التصحيح متاحة لفروق إغلاق الشفت فقط')
+  }
+
+  if (variance.shift_status !== 'closed') {
+    throw new Error('الشفت يجب أن يكون مغلقًا')
+  }
+
+  if (variance.remaining_kind !== 'surplus') {
+    throw new Error('البيع غير المسجل يستخدم عند وجود زيادة متبقية')
+  }
+
+  const actor = db
+    .prepare(
+      `
+      SELECT
+        id,
+        role,
+        is_active
+
+      FROM users
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(actorId) as
+    | {
+        id: number
+        role: string
+        is_active: number
+      }
+    | undefined
+
+  if (!actor || Number(actor.is_active) !== 1 || actor.role !== 'admin') {
+    throw new Error('التصحيح متاح لمدير النظام فقط')
+  }
+
+  const preparedItems = input.items.map((item) => {
+    const variantId = Number(item.variant_id || 0)
+
+    const quantity = Number(item.quantity || 0)
+
+    const unitPrice = Number(item.unit_price || 0)
+
+    if (!Number.isInteger(variantId) || variantId <= 0) {
+      throw new Error('الصنف غير صحيح')
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error('كمية الصنف غير صحيحة')
+    }
+
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      throw new Error('سعر الصنف غير صحيح')
+    }
+
+    return {
+      variant_id: variantId,
+
+      quantity,
+
+      unit_price: roundMoney(unitPrice),
+    }
+  })
+
+  const variantIds = Array.from(
+    new Set(preparedItems.map((item) => item.variant_id)),
+  )
+
+  const getVariant = db.prepare(
+    `
+    SELECT
+      pv.id
+        AS variant_id,
+
+      p.name
+        AS product_name,
+
+      pv.barcode,
+
+      pv.size,
+
+      pv.color,
+
+      pv.buy_price,
+
+      IFNULL(
+        (
+          SELECT
+            SUM(
+              CASE
+                WHEN sm.type = 'in'
+                  THEN sm.quantity
+
+                WHEN sm.type = 'out'
+                  THEN -sm.quantity
+
+                ELSE 0
+              END
+            )
+
+          FROM stock_movements sm
+
+          WHERE
+            sm.variant_id = pv.id
+        ),
+        0
+      )
+        AS stock
+
+    FROM product_variants pv
+
+    JOIN products p
+      ON p.id = pv.product_id
+
+    WHERE pv.id = ?
+
+    LIMIT 1
+    `,
+  )
+
+  const quantitiesByVariant = new Map<number, number>()
+
+  for (const item of preparedItems) {
+    quantitiesByVariant.set(
+      item.variant_id,
+
+      Number(quantitiesByVariant.get(item.variant_id) || 0) + item.quantity,
+    )
+  }
+
+  const variantRows = new Map<number, any>()
+
+  for (const variantId of variantIds) {
+    const variant = getVariant.get(variantId) as any
+
+    if (!variant) {
+      throw new Error(`الصنف رقم ${variantId} غير موجود`)
+    }
+
+    const required = Number(quantitiesByVariant.get(variantId) || 0)
+
+    const available = Number(variant.stock || 0)
+
+    if (required > available) {
+      throw new Error(
+        `المخزون غير كافي للصنف ${variant.product_name}. المتاح: ${available}`,
+      )
+    }
+
+    variantRows.set(variantId, variant)
+  }
+
+  const grandTotal = roundMoney(
+    preparedItems.reduce(
+      (sum, item) => sum + item.quantity * item.unit_price,
+
+      0,
+    ),
+  )
+
+  if (grandTotal <= 0) {
+    throw new Error('إجمالي فاتورة التصحيح يجب أن يكون أكبر من صفر')
+  }
+
+  const businessDate = getShiftBusinessDate(variance.shift_id)
+
+  const tx = db.transaction(() => {
+    const saleResult = db
+      .prepare(
+        `
+        INSERT INTO sales (
+          type,
+
+          customer_id,
+
+          user_id,
+
+          business_date,
+
+          shift_id,
+
+          sub_total,
+
+          discount_value,
+
+          promotion_id,
+
+          promotion_name,
+
+          promotion_discount_value,
+
+          grand_total,
+
+          paid,
+
+          remaining_amount,
+
+          payment_status,
+
+          change_amount,
+
+          payment_method,
+
+          notes,
+
+          loyalty_points_earned,
+
+          loyalty_points_redeemed,
+
+          loyalty_discount_value
+        )
+
+        VALUES (
+          'sale',
+
+          NULL,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          0,
+
+          NULL,
+
+          NULL,
+
+          0,
+
+          ?,
+
+          ?,
+
+          0,
+
+          'paid',
+
+          0,
+
+          'cash',
+
+          ?,
+
+          0,
+
+          0,
+
+          0
+        )
+        `,
+      )
+      .run(
+        Number(variance.opened_by),
+
+        businessDate,
+
+        variance.shift_id,
+
+        grandTotal,
+
+        grandTotal,
+
+        grandTotal,
+
+        [`فاتورة تصحيح فرق الشفت #${variance.shift_id}`, notes || null]
+          .filter(Boolean)
+          .join(' — '),
+      )
+
+    const saleId = Number(saleResult.lastInsertRowid)
+
+    /*
+     * الفاتورة التصحيحية لا تستخدم
+     * عروضًا أو نقاط ولاء.
+     */
+    db.prepare(
+      `
+      INSERT INTO sale_loyalty_snapshots (
+        sale_id,
+
+        enabled,
+
+        earn_amount,
+
+        earn_points,
+
+        point_value,
+
+        min_redeem_points,
+
+        source
+      )
+
+      VALUES (
+        ?,
+        0,
+        100,
+        1,
+        1,
+        1,
+        'exact'
+      )
+      `,
+    ).run(saleId)
+
+    const insertItem = db.prepare(
+      `
+        INSERT INTO sale_items (
+          sale_id,
+
+          variant_id,
+
+          product_name,
+
+          barcode,
+
+          size,
+
+          color,
+
+          quantity,
+
+          unit_cost,
+
+          unit_price,
+
+          promotion_discount_value,
+
+          line_total,
+
+          is_gift,
+
+          promotion_group_id
+        )
+
+        VALUES (
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          0,
+          ?,
+          0,
+          NULL
+        )
+        `,
+    )
+
+    const insertStock = db.prepare(
+      `
+        INSERT INTO stock_movements (
+          variant_id,
+
+          type,
+
+          quantity,
+
+          reference_id,
+
+          reference_type,
+
+          notes
+        )
+
+        VALUES (
+          ?,
+          'out',
+          ?,
+          ?,
+          'shift_variance_sale_correction',
+          ?
+        )
+        `,
+    )
+
+    for (const item of preparedItems) {
+      const variant = variantRows.get(item.variant_id)
+
+      const lineTotal = roundMoney(item.quantity * item.unit_price)
+
+      insertItem.run(
+        saleId,
+
+        item.variant_id,
+
+        String(variant.product_name || ''),
+
+        variant.barcode ?? null,
+
+        variant.size ?? null,
+
+        variant.color ?? null,
+
+        item.quantity,
+
+        Number(variant.buy_price || 0),
+
+        item.unit_price,
+
+        lineTotal,
+      )
+
+      insertStock.run(
+        item.variant_id,
+
+        item.quantity,
+
+        saleId,
+
+        `تصحيح بيع غير مسجل للشفت #${variance.shift_id} — فاتورة #${saleId}`,
+      )
+    }
+
+    /*
+     * لا ننشئ Cash Movement.
+     * الكاش كان موجودًا فعلًا وقت
+     * جرد الشفت القديم.
+     */
+
+    const correctionResult = db
+      .prepare(
+        `
+        INSERT INTO cash_shift_variance_corrections (
+          variance_id,
+
+          reason_code,
+
+          amount,
+
+          effect_amount,
+
+          notes,
+
+          reference_type,
+
+          reference_id,
+
+          created_by
+        )
+
+        VALUES (
+          ?,
+          'unregistered_cash_sale',
+          ?,
+          ?,
+          ?,
+          'shift_variance_sale_correction',
+          ?,
+          ?
+        )
+        `,
+      )
+      .run(
+        variance.id,
+
+        grandTotal,
+
+        -grandTotal,
+
+        notes || null,
+
+        saleId,
+
+        actorId,
+      )
+
+    const correctionId = Number(correctionResult.lastInsertRowid)
+
+    createActivityLog({
+      user_id: actorId,
+
+      action: 'shift_variance_sale_correction_created',
+
+      entity: 'sales',
+
+      entity_id: saleId,
+
+      details: JSON.stringify({
+        variance_id: variance.id,
+
+        shift_id: variance.shift_id,
+
+        sale_id: saleId,
+
+        correction_id: correctionId,
+
+        amount: grandTotal,
+
+        business_date: businessDate,
+
+        attributed_to: variance.opened_by,
+
+        cash_movement_created: false,
+      }),
+    })
+
+    return {
+      success: true,
+
+      sale_id: saleId,
+
+      correction_id: correctionId,
+
+      shift_id: variance.shift_id,
+
+      grand_total: grandTotal,
+
+      review: getCashShiftVarianceReview(variance.id),
+    }
+  })
+
+  return tx()
 }
 
 export function createSale(input: CreateSaleInput) {
@@ -2535,6 +3112,34 @@ export function cancelSaleInvoice(input: {
 
   if (!saleId) {
     throw new Error('رقم فاتورة البيع غير صحيح')
+  }
+
+  const varianceCorrection = db
+    .prepare(
+      `
+      SELECT
+        id
+
+      FROM cash_shift_variance_corrections
+
+      WHERE
+        reference_type =
+          'shift_variance_sale_correction'
+
+        AND reference_id = ?
+
+        AND cancelled_at
+          IS NULL
+
+      LIMIT 1
+      `,
+    )
+    .get(saleId)
+
+  if (varianceCorrection) {
+    throw new Error(
+      'هذه فاتورة تصحيح فرق شفت. يتم إلغاؤها من شاشة مراجعة فرق الشفت فقط',
+    )
   }
 
   const openShift = requireOperationalCashShift(

@@ -72,6 +72,8 @@ contextBridge.exposeInMainWorld('api', {
 
   togglePromotion: (input) => ipcRenderer.invoke('promotions:toggle', input),
   createSale: (input) => ipcRenderer.invoke('sales:create', input),
+  createShiftVarianceSaleCorrection: (input) =>
+    ipcRenderer.invoke('sales:create-shift-variance-correction', input),
   cancelSaleInvoice: (input) => ipcRenderer.invoke('sales:cancel', input),
   getSaleReceipt: (saleId) => ipcRenderer.invoke('sales:get-receipt', saleId),
 
@@ -195,6 +197,15 @@ contextBridge.exposeInMainWorld('api', {
   listCashShiftVariances: (input) =>
     ipcRenderer.invoke('cash-shifts:list-variances', input),
 
+  getCashShiftVarianceReview: (varianceId) =>
+    ipcRenderer.invoke('cash-shifts:variance-review', varianceId),
+
+  addCashShiftVarianceCorrection: (input) =>
+    ipcRenderer.invoke('cash-shifts:add-variance-correction', input),
+
+  cancelCashShiftVarianceCorrection: (input) =>
+    ipcRenderer.invoke('cash-shifts:cancel-variance-correction', input),
+
   resolveCashShiftVariance: (input) =>
     ipcRenderer.invoke('cash-shifts:resolve-variance', input),
   getCashMovements: (input) => ipcRenderer.invoke('cash:list', input),
@@ -217,6 +228,8 @@ contextBridge.exposeInMainWorld('api', {
   closeCashShift: (input) => ipcRenderer.invoke('cash-shifts:close', input),
 
   createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
+  createShiftVarianceExpenseCorrection: (input) =>
+    ipcRenderer.invoke('expenses:create-shift-variance-correction', input),
   updateExpense: (input) => ipcRenderer.invoke('expenses:update', input),
   cancelExpense: (input) => ipcRenderer.invoke('expenses:cancel', input),
   getExpenses: (input) => ipcRenderer.invoke('expenses:list', input),

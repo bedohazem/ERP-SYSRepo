@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-
+import ShiftVarianceReviewModal from '../../components/shifts/ShiftVarianceReviewModal'
 import {
   canResolveCashShiftVariance,
   getCashShiftVarianceKindLabel,
@@ -46,7 +46,17 @@ type CashShiftVariance = {
   kind: 'shortage' | 'surplus'
 
   amount: number
+  original_signed_amount: number
 
+  correction_effect_amount: number
+
+  remaining_signed_amount: number
+
+  remaining_amount: number
+
+  remaining_kind: 'shortage' | 'surplus' | 'balanced'
+
+  correction_count: number
   status: 'pending' | 'resolved'
 
   resolution_type: 'approved' | 'explained' | 'other' | null
@@ -74,8 +84,6 @@ type CashShiftVariance = {
 
 type VarianceStatusFilter = 'all' | 'pending' | 'resolved'
 
-type ResolutionType = 'approved' | 'explained' | 'other'
-
 type ShiftUserOption = {
   id: number
   name: string
@@ -102,6 +110,10 @@ export default function ShiftManagementPage() {
 
   const [pendingCount, setPendingCount] = useState(0)
 
+  const [pendingShortageTotal, setPendingShortageTotal] = useState(0)
+
+  const [pendingSurplusTotal, setPendingSurplusTotal] = useState(0)
+
   const [total, setTotal] = useState(0)
 
   const [loading, setLoading] = useState(false)
@@ -114,15 +126,6 @@ export default function ShiftManagementPage() {
   const [resolveTarget, setResolveTarget] = useState<CashShiftVariance | null>(
     null,
   )
-
-  const [resolutionType, setResolutionType] =
-    useState<ResolutionType>('explained')
-
-  const [resolutionNotes, setResolutionNotes] = useState('')
-
-  const [adminPassword, setAdminPassword] = useState('')
-
-  const [resolving, setResolving] = useState(false)
 
   function showMessage(type: 'success' | 'error', text: string) {
     setMessage({
@@ -168,6 +171,12 @@ export default function ShiftManagementPage() {
       setTotal(Number(varianceResult?.total || 0))
 
       setPendingCount(Number(varianceResult?.pending_count || 0))
+
+      setPendingShortageTotal(
+        Number(varianceResult?.pending_shortage_total || 0),
+      )
+
+      setPendingSurplusTotal(Number(varianceResult?.pending_surplus_total || 0))
 
       setVariancePage(safePage)
     } catch (error) {
@@ -219,77 +228,10 @@ export default function ShiftManagementPage() {
     }
 
     setResolveTarget(variance)
-
-    setResolutionType('explained')
-
-    setResolutionNotes('')
-
-    setAdminPassword('')
   }
 
   function closeVarianceReview() {
-    if (resolving) {
-      return
-    }
-
     setResolveTarget(null)
-
-    setResolutionType('explained')
-
-    setResolutionNotes('')
-
-    setAdminPassword('')
-  }
-
-  async function submitVarianceReview() {
-    if (!resolveTarget || resolving) {
-      return
-    }
-
-    if (!resolutionNotes.trim()) {
-      showMessage('error', 'اكتب نتيجة مراجعة فرق الشفت')
-
-      return
-    }
-
-    if (!adminPassword.trim()) {
-      showMessage('error', 'اكتب كلمة مرور المدير')
-
-      return
-    }
-
-    setResolving(true)
-
-    try {
-      const result = await window.api.resolveCashShiftVariance({
-        variance_id: resolveTarget.id,
-
-        resolution_type: resolutionType,
-
-        resolution_notes: resolutionNotes.trim(),
-
-        admin_password: adminPassword,
-      })
-
-      if (!result?.success) {
-        showMessage('error', result?.message || 'تعذر مراجعة فرق الشفت')
-
-        return
-      }
-
-      closeVarianceReview()
-
-      showMessage('success', 'تم اعتماد مراجعة فرق الشفت')
-
-      await loadData(statusFilter, variancePage)
-    } catch (error) {
-      showMessage(
-        'error',
-        error instanceof Error ? error.message : 'تعذر مراجعة فرق الشفت',
-      )
-    } finally {
-      setResolving(false)
-    }
   }
 
   return (
@@ -645,7 +587,7 @@ export default function ShiftManagementPage() {
                 <th style={thStyle}>الفرق</th>
 
                 <th style={thStyle}>المبلغ</th>
-
+                <th style={thStyle}>المتبقي</th>
                 <th style={thStyle}>التاريخ</th>
 
                 <th style={thStyle}>الحالة</th>
@@ -660,7 +602,7 @@ export default function ShiftManagementPage() {
               {loading && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     style={{
                       ...tdStyle,
 
@@ -712,7 +654,27 @@ export default function ShiftManagementPage() {
                     >
                       {money(variance.amount)}
                     </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        fontWeight: 900,
 
+                        color:
+                          variance.remaining_kind === 'shortage'
+                            ? '#f87171'
+                            : variance.remaining_kind === 'surplus'
+                              ? '#34d399'
+                              : '#60a5fa',
+                      }}
+                    >
+                      {variance.remaining_kind === 'balanced'
+                        ? 'متطابق'
+                        : `${
+                            variance.remaining_kind === 'shortage'
+                              ? 'عجز'
+                              : 'زيادة'
+                          } ${money(variance.remaining_amount)}`}
+                    </td>
                     <td style={tdStyle}>{formatDate(variance.created_at)}</td>
 
                     <td style={tdStyle}>
@@ -811,7 +773,7 @@ export default function ShiftManagementPage() {
               {!loading && variances.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     style={{
                       ...tdStyle,
 
@@ -830,144 +792,12 @@ export default function ShiftManagementPage() {
           </table>
         </div>
       </section>
-
       {resolveTarget && (
-        <div className="theme-modal-overlay" style={modalOverlayStyle}>
-          <div className="theme-modal-card" style={modalCardStyle}>
-            <div
-              style={{
-                display: 'flex',
-
-                justifyContent: 'space-between',
-
-                gap: '12px',
-
-                alignItems: 'center',
-
-                marginBottom: '16px',
-              }}
-            >
-              <div>
-                <h3
-                  style={{
-                    margin: '0 0 5px',
-                  }}
-                >
-                  مراجعة فرق الشفت #{resolveTarget.shift_id}
-                </h3>
-
-                <div
-                  style={{
-                    color: '#94a3b8',
-
-                    fontSize: '12px',
-                  }}
-                >
-                  {getCashShiftVarianceKindLabel(resolveTarget.kind)}
-
-                  {' — '}
-
-                  {money(resolveTarget.amount)}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={closeVarianceReview}
-                style={closeButtonStyle}
-              >
-                ×
-              </button>
-            </div>
-
-            <div
-              style={{
-                display: 'grid',
-
-                gap: '12px',
-              }}
-            >
-              <Field label="نتيجة المراجعة">
-                <select
-                  value={resolutionType}
-                  onChange={(e) =>
-                    setResolutionType(e.target.value as ResolutionType)
-                  }
-                  style={inputStyle}
-                >
-                  <option value="explained">تم تفسير سبب الفرق</option>
-
-                  <option value="approved">تم التحقق واعتماد الفرق</option>
-
-                  <option value="other">أخرى</option>
-                </select>
-              </Field>
-
-              <Field label="ملاحظات المراجعة">
-                <textarea
-                  value={resolutionNotes}
-                  onChange={(e) => setResolutionNotes(e.target.value)}
-                  placeholder="اكتب سبب الفرق ونتيجة المراجعة"
-                  style={{
-                    ...inputStyle,
-
-                    height: '100px',
-
-                    padding: '10px 12px',
-
-                    resize: 'vertical',
-                  }}
-                />
-              </Field>
-
-              <Field label="كلمة مرور المدير">
-                <input
-                  type="password"
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  placeholder="كلمة مرور المدير"
-                  style={inputStyle}
-                />
-              </Field>
-
-              <div
-                style={{
-                  display: 'flex',
-
-                  gap: '10px',
-                }}
-              >
-                <button
-                  type="button"
-                  disabled={resolving}
-                  onClick={() => void submitVarianceReview()}
-                  style={{
-                    ...primaryButtonStyle,
-
-                    flex: 1,
-
-                    opacity: resolving ? 0.6 : 1,
-                  }}
-                >
-                  {resolving ? 'جاري الحفظ...' : 'اعتماد المراجعة'}
-                </button>
-
-                <button
-                  type="button"
-                  disabled={resolving}
-                  onClick={closeVarianceReview}
-                  style={{
-                    ...secondaryButtonStyle,
-
-                    flex: 1,
-                  }}
-                >
-                  رجوع
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ShiftVarianceReviewModal
+          varianceId={resolveTarget.id}
+          onClose={closeVarianceReview}
+          onChanged={() => loadData(statusFilter, variancePage)}
+        />
       )}
     </div>
   )
@@ -1183,24 +1013,6 @@ const primaryButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
 }
 
-const secondaryButtonStyle: React.CSSProperties = {
-  minHeight: '42px',
-
-  borderRadius: '11px',
-
-  border: '1px solid rgba(255,255,255,0.12)',
-
-  background: 'rgba(255,255,255,0.06)',
-
-  color: '#fff',
-
-  fontWeight: 900,
-
-  padding: '0 16px',
-
-  cursor: 'pointer',
-}
-
 const thStyle: React.CSSProperties = {
   padding: '12px',
 
@@ -1223,62 +1035,4 @@ const tdStyle: React.CSSProperties = {
   textAlign: 'right',
 
   whiteSpace: 'nowrap',
-}
-
-const modalOverlayStyle: React.CSSProperties = {
-  position: 'fixed',
-
-  inset: 0,
-
-  zIndex: 1000000,
-
-  display: 'flex',
-
-  alignItems: 'center',
-
-  justifyContent: 'center',
-
-  padding: '20px',
-
-  background: 'rgba(2,6,23,0.82)',
-
-  backdropFilter: 'blur(7px)',
-}
-
-const modalCardStyle: React.CSSProperties = {
-  width: '520px',
-
-  maxWidth: '100%',
-
-  padding: '18px',
-
-  borderRadius: '20px',
-
-  background: 'var(--bg-soft)',
-
-  border: '1px solid var(--border)',
-
-  color: 'var(--text)',
-
-  direction: 'rtl',
-
-  boxShadow: '0 30px 100px rgba(0,0,0,0.75)',
-}
-
-const closeButtonStyle: React.CSSProperties = {
-  width: '34px',
-
-  height: '34px',
-
-  borderRadius: '10px',
-
-  border: '1px solid rgba(255,255,255,0.12)',
-
-  background: 'rgba(255,255,255,0.05)',
-
-  color: 'var(--text)',
-
-  fontSize: '18px',
-
-  cursor: 'pointer',
 }

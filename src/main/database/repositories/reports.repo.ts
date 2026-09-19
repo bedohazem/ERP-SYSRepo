@@ -169,6 +169,11 @@ export function getReportsSummary(input?: ReportFilter) {
           cs.id = e.shift_id
       ),
 
+      NULLIF(
+        e.business_date,
+        ''
+      ),
+
       date(
         e.created_at,
         'localtime'

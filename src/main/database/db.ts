@@ -440,6 +440,44 @@ export function getDb(): Database.Database {
         promotion_group_id
       );
 
+            CREATE TABLE IF NOT EXISTS cash_shift_variance_corrections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        variance_id INTEGER NOT NULL,
+
+        reason_code TEXT NOT NULL,
+
+        amount REAL NOT NULL,
+
+        effect_amount REAL NOT NULL,
+
+        notes TEXT,
+
+        reference_type TEXT,
+        reference_id INTEGER,
+
+        created_by INTEGER NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+        cancelled_at TEXT,
+        cancelled_by INTEGER,
+        cancel_reason TEXT,
+
+        FOREIGN KEY (variance_id)
+          REFERENCES cash_shift_variances(id)
+          ON DELETE CASCADE,
+
+        FOREIGN KEY (created_by)
+          REFERENCES users(id),
+
+        FOREIGN KEY (cancelled_by)
+          REFERENCES users(id)
+      );
+
+      CREATE INDEX IF NOT EXISTS
+        idx_cash_shift_variance_corrections_variance
+      ON cash_shift_variance_corrections(variance_id);
+
       CREATE TABLE IF NOT EXISTS sale_exchanges (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
 
@@ -859,6 +897,7 @@ export function getDb(): Database.Database {
         payment_method TEXT DEFAULT 'cash',
         notes TEXT,
         created_by INTEGER,
+        business_date TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
@@ -1272,7 +1311,41 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'expenses', 'cancel_reason', 'TEXT')
 
     safeAddColumn(db, 'expenses', 'shift_id', 'INTEGER')
+    safeAddColumn(db, 'expenses', 'business_date', 'TEXT')
 
+    db.prepare(
+      `
+      UPDATE expenses
+
+      SET business_date =
+        COALESCE(
+          (
+            SELECT
+              date(
+                cs.opened_at,
+                'localtime'
+              )
+
+            FROM cash_shifts cs
+
+            WHERE
+              cs.id =
+                expenses.shift_id
+
+            LIMIT 1
+          ),
+
+          date(
+            expenses.created_at,
+            'localtime'
+          )
+        )
+
+      WHERE
+        business_date IS NULL
+        OR TRIM(business_date) = ''
+      `,
+    ).run()
     safeAddColumn(db, 'expenses', 'updated_shift_id', 'INTEGER')
 
     safeAddColumn(db, 'expenses', 'cancelled_shift_id', 'INTEGER')
@@ -1581,6 +1654,7 @@ export function resetDatabaseData(): void {
 
       DELETE FROM activity_logs;
 
+      DELETE FROM cash_shift_variance_corrections;
       DELETE FROM cash_shift_variances;
       DELETE FROM cash_shifts;
 

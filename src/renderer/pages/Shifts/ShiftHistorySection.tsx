@@ -655,6 +655,22 @@ function ShiftDetailsModal({
 }) {
   const shift = details.shift
 
+  const visibleMovements = details.movements.filter((movement) => {
+    /*
+     * توريد إغلاق الشفت مسجل بطرفين:
+     * out من الدرج + in للخزنة الآمنة.
+     * نعرض طرف الدرج فقط حتى لا يبدو مكررًا.
+     */
+    if (
+      movement.reference_type === 'cash_shift_safe_transfer' &&
+      movement.payment_method === 'store_safe'
+    ) {
+      return false
+    }
+
+    return true
+  })
+
   function printReport() {
     const printWindow = window.open('', '_blank', 'width=1000,height=800')
 
@@ -662,7 +678,7 @@ function ShiftDetailsModal({
       return
     }
 
-    const movementsHtml = details.movements
+    const movementsHtml = visibleMovements
       .map(
         (movement) => `
             <tr>
@@ -985,7 +1001,7 @@ function ShiftDetailsModal({
             </thead>
 
             <tbody>
-              {details.movements.map((movement) => (
+              {visibleMovements.map((movement) => (
                 <tr key={movement.id}>
                   <td style={tdStyle}>{getMovementTypeLabel(movement.type)}</td>
 

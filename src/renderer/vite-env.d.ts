@@ -283,6 +283,34 @@ declare global {
         shift_id?: number
       }>
 
+      createShiftVarianceSaleCorrection: (input: {
+        variance_id: number
+
+        notes?: string | null
+
+        admin_password: string
+
+        items: Array<{
+          variant_id: number
+          quantity: number
+          unit_price: number
+        }>
+      }) => Promise<{
+        success: boolean
+
+        message?: string
+
+        sale_id?: number
+
+        correction_id?: number
+
+        shift_id?: number
+
+        grand_total?: number
+
+        review?: any
+      }>
+
       getSaleReceipt: (saleId: number) => Promise<{
         sale: any
         items: any[]
@@ -1824,7 +1852,17 @@ declare global {
           kind: 'shortage' | 'surplus'
 
           amount: number
+          original_signed_amount: number
 
+          correction_effect_amount: number
+
+          remaining_signed_amount: number
+
+          remaining_amount: number
+
+          remaining_kind: 'shortage' | 'surplus' | 'balanced'
+
+          correction_count: number
           status: 'pending' | 'resolved'
 
           resolution_type: 'approved' | 'explained' | 'other' | null
@@ -1848,9 +1886,79 @@ declare global {
 
         total: number
         pending_count: number
-
+        pending_shortage_total: number
+        pending_surplus_total: number
+        pending_net_total: number
         limit: number
         offset: number
+      }>
+
+      getCashShiftVarianceReview: (varianceId: number) => Promise<{
+        variance: any
+
+        corrections: Array<{
+          id: number
+
+          variance_id: number
+
+          reason_code: string
+
+          amount: number
+
+          effect_amount: number
+
+          notes?: string | null
+
+          reference_type?: string | null
+
+          reference_id?: number | null
+
+          created_by: number
+
+          created_by_name?: string | null
+
+          created_at: string
+
+          cancelled_at?: string | null
+
+          cancelled_by?: number | null
+
+          cancelled_by_name?: string | null
+
+          cancel_reason?: string | null
+        }>
+      }>
+
+      addCashShiftVarianceCorrection: (input: {
+        variance_id: number
+
+        reason_code: string
+
+        amount: number
+
+        notes?: string | null
+
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+
+        message?: string
+
+        review?: any
+      }>
+
+      cancelCashShiftVarianceCorrection: (input: {
+        correction_id: number
+
+        reason: string
+
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+
+        message?: string
+
+        review?: any
       }>
 
       resolveCashShiftVariance: (input: {
@@ -1946,7 +2054,37 @@ declare global {
         limit: number
         offset: number
       }>
+
       createExpense: (input: any) => Promise<any>
+
+      createShiftVarianceExpenseCorrection: (input: {
+        variance_id: number
+
+        title: string
+
+        category?: string | null
+
+        amount: number
+
+        notes?: string | null
+
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+
+        message?: string
+
+        expense_id?: number
+
+        correction_id?: number
+
+        shift_id?: number
+
+        amount?: number
+
+        review?: any
+      }>
+
       updateExpense: (input: {
         id: number
         title: string
