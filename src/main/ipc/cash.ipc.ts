@@ -23,7 +23,6 @@ import {
   getCashShiftDetails,
   resolveCashShiftVariance,
   getCashShiftVarianceReview,
-  addCashShiftVarianceCorrection,
   cancelCashShiftVarianceCorrection,
 } from '../database/repositories/cash-shifts.repo'
 import { requireAdmin, requireAdminPassword } from './permission-helper'
@@ -281,38 +280,6 @@ export function registerCashIpc(): void {
     requireAdmin(actor.id)
 
     return getCashShiftVarianceReview(Number(varianceId))
-  })
-
-  ipcMain.handle('cash-shifts:add-variance-correction', (event, input) => {
-    try {
-      const actor = requireAuthenticatedUser(event)
-
-      requireAdminPassword(actor.id, input?.admin_password)
-
-      const review = addCashShiftVarianceCorrection({
-        variance_id: Number(input?.variance_id),
-
-        reason_code: input?.reason_code,
-
-        amount: Number(input?.amount),
-
-        notes: input?.notes,
-
-        created_by: actor.id,
-      })
-
-      return {
-        success: true,
-        review,
-      }
-    } catch (error) {
-      return {
-        success: false,
-
-        message:
-          error instanceof Error ? error.message : 'تعذر إضافة تصحيح فرق الشفت',
-      }
-    }
   })
 
   ipcMain.handle('cash-shifts:cancel-variance-correction', (event, input) => {

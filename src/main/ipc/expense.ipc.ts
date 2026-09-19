@@ -7,6 +7,7 @@ import {
   listExpenses,
   updateExpense,
   createClosedShiftExpenseCorrection,
+  updateClosedShiftExpenseCorrection,
 } from '../database/repositories/expense.repo'
 
 import { requireAdminPassword } from './permission-helper'
@@ -53,6 +54,40 @@ export function registerExpenseIpc(): void {
             error instanceof Error
               ? error.message
               : 'تعذر تسجيل المصروف التصحيحي',
+        }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    'expenses:update-shift-variance-correction',
+    (event, input) => {
+      try {
+        const user = requireAuthenticatedUser(event)
+
+        requireAdminPassword(user.id, input?.admin_password)
+
+        return updateClosedShiftExpenseCorrection({
+          correction_id: Number(input?.correction_id),
+
+          title: input?.title,
+
+          category: input?.category,
+
+          amount: Number(input?.amount),
+
+          notes: input?.notes,
+
+          actor_id: user.id,
+        })
+      } catch (error) {
+        return {
+          success: false,
+
+          message:
+            error instanceof Error
+              ? error.message
+              : 'تعذر تعديل المصروف التصحيحي',
         }
       }
     },

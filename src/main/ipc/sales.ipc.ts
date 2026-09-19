@@ -13,6 +13,7 @@ import {
   getSaleCancellationAccess,
   createClosedShiftCashSaleCorrection,
   getSaleReturnCancellationAccess,
+  updateClosedShiftCashSaleCorrection,
 } from '../database/repositories/sales.repo'
 
 import {
@@ -103,26 +104,6 @@ export function registerSalesIpc(): void {
         items: Array.isArray(input?.items) ? input.items : [],
       })
 
-      logAction({
-        actor_id: actor.id,
-
-        action: 'shift_variance_sale_correction_created',
-
-        entity: 'sales',
-
-        entity_id: result.sale_id,
-
-        details: {
-          variance_id: input?.variance_id,
-
-          shift_id: result.shift_id,
-
-          grand_total: result.grand_total,
-
-          cash_movement_created: false,
-        },
-      })
-
       return result
     } catch (error) {
       return {
@@ -130,6 +111,31 @@ export function registerSalesIpc(): void {
 
         message:
           error instanceof Error ? error.message : 'تعذر تسجيل فاتورة التصحيح',
+      }
+    }
+  })
+
+  ipcMain.handle('sales:update-shift-variance-correction', (event, input) => {
+    try {
+      const actor = requireAuthenticatedUser(event)
+
+      requireAdminPassword(actor.id, input?.admin_password)
+
+      return updateClosedShiftCashSaleCorrection({
+        correction_id: Number(input?.correction_id),
+
+        actor_id: actor.id,
+
+        notes: input?.notes,
+
+        items: Array.isArray(input?.items) ? input.items : [],
+      })
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر تعديل فاتورة التصحيح',
       }
     }
   })

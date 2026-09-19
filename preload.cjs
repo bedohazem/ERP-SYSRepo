@@ -74,6 +74,8 @@ contextBridge.exposeInMainWorld('api', {
   createSale: (input) => ipcRenderer.invoke('sales:create', input),
   createShiftVarianceSaleCorrection: (input) =>
     ipcRenderer.invoke('sales:create-shift-variance-correction', input),
+  updateShiftVarianceSaleCorrection: (input) =>
+    ipcRenderer.invoke('sales:update-shift-variance-correction', input),
   cancelSaleInvoice: (input) => ipcRenderer.invoke('sales:cancel', input),
   getSaleReceipt: (saleId) => ipcRenderer.invoke('sales:get-receipt', saleId),
 
@@ -200,9 +202,6 @@ contextBridge.exposeInMainWorld('api', {
   getCashShiftVarianceReview: (varianceId) =>
     ipcRenderer.invoke('cash-shifts:variance-review', varianceId),
 
-  addCashShiftVarianceCorrection: (input) =>
-    ipcRenderer.invoke('cash-shifts:add-variance-correction', input),
-
   cancelCashShiftVarianceCorrection: (input) =>
     ipcRenderer.invoke('cash-shifts:cancel-variance-correction', input),
 
@@ -230,6 +229,8 @@ contextBridge.exposeInMainWorld('api', {
   createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
   createShiftVarianceExpenseCorrection: (input) =>
     ipcRenderer.invoke('expenses:create-shift-variance-correction', input),
+  updateShiftVarianceSaleCorrection: (input) =>
+    ipcRenderer.invoke('sales:update-shift-variance-correction', input),
   updateExpense: (input) => ipcRenderer.invoke('expenses:update', input),
   cancelExpense: (input) => ipcRenderer.invoke('expenses:cancel', input),
   getExpenses: (input) => ipcRenderer.invoke('expenses:list', input),

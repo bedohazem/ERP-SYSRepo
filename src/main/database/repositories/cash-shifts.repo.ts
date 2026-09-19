@@ -181,6 +181,9 @@ export type CashShiftVarianceCorrectionRow = {
   cancelled_by_name?: string | null
 
   cancel_reason: string | null
+  document_title?: string | null
+
+  document_category?: string | null
 }
 
 export type CashShiftVarianceFilterInput = {
@@ -1859,7 +1862,51 @@ export function listCashShiftVarianceCorrections(varianceIdInput: number) {
           AS created_by_name,
 
         canceller.name
-          AS cancelled_by_name
+          AS cancelled_by_name,
+
+        CASE
+          WHEN
+            csvc.reference_type =
+              'shift_variance_expense_correction'
+
+          THEN (
+            SELECT
+              e.title
+
+            FROM expenses e
+
+            WHERE
+              e.id =
+                csvc.reference_id
+
+            LIMIT 1
+          )
+
+          ELSE NULL
+        END
+          AS document_title,
+
+        CASE
+          WHEN
+            csvc.reference_type =
+              'shift_variance_expense_correction'
+
+          THEN (
+            SELECT
+              e.category
+
+            FROM expenses e
+
+            WHERE
+              e.id =
+                csvc.reference_id
+
+            LIMIT 1
+          )
+
+          ELSE NULL
+        END
+          AS document_category
 
       FROM cash_shift_variance_corrections csvc
 
@@ -1895,6 +1942,97 @@ export function getCashShiftVarianceReview(varianceIdInput: number) {
 
     corrections: listCashShiftVarianceCorrections(variance.id),
   }
+}
+
+export function reopenCashShiftVarianceForCorrection(input: {
+  variance_id: number
+  actor_id: number
+  reason: string
+}) {
+  const db = getDb()
+
+  const varianceId = Number(input.variance_id || 0)
+
+  const actorId = Number(input.actor_id || 0)
+
+  const reason = String(input.reason || '').trim()
+
+  if (!Number.isInteger(varianceId) || varianceId <= 0) {
+    throw new Error('رقم فرق الشفت غير صحيح')
+  }
+
+  requireCashShiftVarianceAdmin(actorId)
+
+  const current = getCashShiftVarianceById(varianceId)
+
+  if (!current) {
+    throw new Error('فرق الشفت غير موجود')
+  }
+
+  if (current.stage !== 'closing') {
+    throw new Error('إعادة فتح التصحيحات متاحة لفروق إغلاق الشفت فقط')
+  }
+
+  if (current.status === 'pending') {
+    return current
+  }
+
+  const result = db
+    .prepare(
+      `
+      UPDATE cash_shift_variances
+
+      SET
+        status = 'pending',
+
+        resolution_type = NULL,
+
+        resolution_notes = NULL,
+
+        resolved_by = NULL,
+
+        resolved_at = NULL
+
+      WHERE
+        id = ?
+
+        AND
+          status = 'resolved'
+      `,
+    )
+    .run(varianceId)
+
+  if (Number(result.changes || 0) !== 1) {
+    throw new Error('تعذر إعادة فتح مراجعة فرق الشفت')
+  }
+
+  createActivityLog({
+    user_id: actorId,
+
+    action: 'cash_shift_variance_reopened',
+
+    entity: 'cash_shift_variances',
+
+    entity_id: varianceId,
+
+    details: JSON.stringify({
+      shift_id: current.shift_id,
+
+      previous_resolution_type: current.resolution_type,
+
+      previous_resolution_notes: current.resolution_notes,
+
+      reason,
+    }),
+  })
+
+  const reopened = getCashShiftVarianceById(varianceId)
+
+  if (!reopened) {
+    throw new Error('تعذر تحميل فرق الشفت بعد إعادة فتحه')
+  }
+
+  return reopened
 }
 
 export function addCashShiftVarianceCorrection(
@@ -2103,10 +2241,6 @@ export function cancelCashShiftVarianceCorrection(
 
   if (correction.cancelled_at) {
     throw new Error('تم إلغاء هذا التصحيح بالفعل')
-  }
-
-  if (correction.variance_status !== 'pending') {
-    throw new Error('لا يمكن تعديل فرق شفت تمت مراجعته')
   }
 
   const tx = db.transaction(() => {
@@ -2362,6 +2496,14 @@ export function cancelCashShiftVarianceCorrection(
     })
 
     return getCashShiftVarianceReview(correction.variance_id)
+  })
+
+  reopenCashShiftVarianceForCorrection({
+    variance_id: Number(correction.variance_id),
+
+    actor_id: cancelledBy,
+
+    reason: `إلغاء تصحيح فرق الشفت #${correctionId}`,
   })
 
   return tx()

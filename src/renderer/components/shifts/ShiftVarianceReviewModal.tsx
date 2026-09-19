@@ -1,8 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import {
   getCashShiftVarianceCorrectionReasonLabel,
@@ -42,10 +38,7 @@ type ReviewData = {
     remaining_signed_amount: number
     remaining_amount: number
 
-    remaining_kind:
-      | 'shortage'
-      | 'surplus'
-      | 'balanced'
+    remaining_kind: 'shortage' | 'surplus' | 'balanced'
 
     correction_count: number
 
@@ -66,7 +59,9 @@ type ReviewData = {
     effect_amount: number
 
     notes?: string | null
+    document_title?: string | null
 
+    document_category?: string | null
     reference_type?: string | null
     reference_id?: number | null
 
@@ -83,73 +78,61 @@ export default function ShiftVarianceReviewModal({
   onClose,
   onChanged,
 }: Props) {
-  const [review, setReview] =
-    useState<ReviewData | null>(null)
+  const [review, setReview] = useState<ReviewData | null>(null)
 
-  const [loading, setLoading] =
-    useState(true)
+  const [loading, setLoading] = useState(true)
 
-  const [saving, setSaving] =
-    useState(false)
+  const [saving, setSaving] = useState(false)
 
-  const [message, setMessage] =
-    useState<{
-      type: 'success' | 'error'
-      text: string
-    } | null>(null)
+  const [message, setMessage] = useState<{
+    type: 'success' | 'error'
+    text: string
+  } | null>(null)
 
-  const [adminPassword, setAdminPassword] =
-    useState('')
+  const [adminPassword, setAdminPassword] = useState('')
 
-  const [finalNotes, setFinalNotes] =
-    useState('')
+  const [finalNotes, setFinalNotes] = useState('')
 
-  const [openingReason, setOpeningReason] =
-    useState('handover_mismatch')
+  const [openingReason, setOpeningReason] = useState('handover_mismatch')
 
-  const [saleBarcode, setSaleBarcode] =
-    useState('')
+  const [saleBarcode, setSaleBarcode] = useState('')
 
-  const [saleItems, setSaleItems] =
-    useState<SaleCorrectionItem[]>([])
+  const [saleItems, setSaleItems] = useState<SaleCorrectionItem[]>([])
 
-  const [saleNotes, setSaleNotes] =
-    useState('')
+  const [saleNotes, setSaleNotes] = useState('')
 
-  const [expenseTitle, setExpenseTitle] =
-    useState('')
+  const [expenseTitle, setExpenseTitle] = useState('')
 
-  const [expenseCategory, setExpenseCategory] =
-    useState('')
+  const [expenseCategory, setExpenseCategory] = useState('')
 
-  const [expenseAmount, setExpenseAmount] =
-    useState('')
+  const [expenseAmount, setExpenseAmount] = useState('')
 
-  const [expenseNotes, setExpenseNotes] =
-    useState('')
+  const [expenseNotes, setExpenseNotes] = useState('')
+
+  const [editingCorrectionId, setEditingCorrectionId] = useState<number | null>(
+    null,
+  )
+
+  const [editingCorrectionType, setEditingCorrectionType] = useState<
+    'sale' | 'expense' | null
+  >(null)
 
   const openingReasonOptions = [
     {
       value: 'handover_mismatch',
-      label:
-        'المبلغ المستلم فعليًا مختلف عن المسجل في الشفت السابق',
+      label: 'المبلغ المستلم فعليًا مختلف عن المسجل في الشفت السابق',
     },
     {
       value: 'counting_error',
-      label:
-        'خطأ في عد مبلغ افتتاح الشفت',
+      label: 'خطأ في عد مبلغ افتتاح الشفت',
     },
     {
-      value:
-        'cash_added_between_shifts',
-      label:
-        'تمت إضافة أو سحب نقدية بين الشفتين',
+      value: 'cash_added_between_shifts',
+      label: 'تمت إضافة أو سحب نقدية بين الشفتين',
     },
     {
-      value:
-        'previous_handover_wrong',
-      label:
-        'مبلغ التسليم المسجل في الشفت السابق غير صحيح',
+      value: 'previous_handover_wrong',
+      label: 'مبلغ التسليم المسجل في الشفت السابق غير صحيح',
     },
     {
       value: 'other',
@@ -157,10 +140,7 @@ export default function ShiftVarianceReviewModal({
     },
   ]
 
-  function showMessage(
-    type: 'success' | 'error',
-    text: string,
-  ) {
+  function showMessage(type: 'success' | 'error', text: string) {
     setMessage({
       type,
       text,
@@ -171,20 +151,13 @@ export default function ShiftVarianceReviewModal({
     setLoading(true)
 
     try {
-      const result =
-        await window.api.getCashShiftVarianceReview(
-          varianceId,
-        )
+      const result = await window.api.getCashShiftVarianceReview(varianceId)
 
-      setReview(
-        result as ReviewData,
-      )
+      setReview(result as ReviewData)
     } catch (error) {
       showMessage(
         'error',
-        error instanceof Error
-          ? error.message
-          : 'تعذر تحميل مراجعة فرق الشفت',
+        error instanceof Error ? error.message : 'تعذر تحميل مراجعة فرق الشفت',
       )
     } finally {
       setLoading(false)
@@ -195,271 +168,267 @@ export default function ShiftVarianceReviewModal({
     void loadReview()
   }, [varianceId])
 
-  const saleTotal =
-    useMemo(
-      () =>
-        Number(
-          saleItems
-            .reduce(
-              (sum, item) =>
-                sum +
-                Number(
-                  item.quantity || 0,
-                ) *
-                  Number(
-                    item.unit_price ||
-                      0,
-                  ),
+  const saleTotal = useMemo(
+    () =>
+      Number(
+        saleItems
+          .reduce(
+            (sum, item) =>
+              sum + Number(item.quantity || 0) * Number(item.unit_price || 0),
 
-              0,
-            )
-            .toFixed(2),
-        ),
+            0,
+          )
+          .toFixed(2),
+      ),
 
-      [saleItems],
-    )
+    [saleItems],
+  )
 
   async function addBarcodeItem() {
-    const barcode =
-      saleBarcode.trim()
+    const barcode = saleBarcode.trim()
 
     if (!barcode) {
-      showMessage(
-        'error',
-        'اكتب أو امسح الباركود',
-      )
+      showMessage('error', 'اكتب أو امسح الباركود')
 
       return
     }
 
     try {
-      const variant =
-        await window.api.getVariantByBarcode(
-          barcode,
-        )
+      const variant = await window.api.getVariantByBarcode(barcode)
 
       if (!variant) {
-        showMessage(
-          'error',
-          'الباركود غير موجود',
-        )
+        showMessage('error', 'الباركود غير موجود')
 
         return
       }
 
-      const stock =
-        Number(
-          variant.stock || 0,
-        )
+      const stock = Number(variant.stock || 0)
 
       if (stock <= 0) {
-        showMessage(
-          'error',
-          'الصنف ليس له رصيد متاح',
-        )
+        showMessage('error', 'الصنف ليس له رصيد متاح')
 
         return
       }
 
-      setSaleItems(
-        (current) => {
-          const existing =
-            current.find(
-              (item) =>
-                item.variant_id ===
-                Number(
-                  variant.variant_id,
-                ),
-            )
+      setSaleItems((current) => {
+        const existing = current.find(
+          (item) => item.variant_id === Number(variant.variant_id),
+        )
 
-          if (existing) {
-            if (
-              existing.quantity +
-                1 >
-              stock
-            ) {
-              showMessage(
-                'error',
-                'الكمية أكبر من الرصيد المتاح',
-              )
+        if (existing) {
+          if (existing.quantity + 1 > stock) {
+            showMessage('error', 'الكمية أكبر من الرصيد المتاح')
 
-              return current
-            }
-
-            return current.map(
-              (item) =>
-                item.variant_id ===
-                existing.variant_id
-                  ? {
-                      ...item,
-
-                      quantity:
-                        item.quantity +
-                        1,
-                    }
-                  : item,
-            )
+            return current
           }
 
-          return [
-            ...current,
+          return current.map((item) =>
+            item.variant_id === existing.variant_id
+              ? {
+                  ...item,
 
-            {
-              variant_id:
-                Number(
-                  variant.variant_id,
-                ),
+                  quantity: item.quantity + 1,
+                }
+              : item,
+          )
+        }
 
-              product_name:
-                String(
-                  variant.product_name ||
-                    '',
-                ),
+        return [
+          ...current,
 
-              barcode:
-                String(
-                  variant.barcode ||
-                    '',
-                ),
+          {
+            variant_id: Number(variant.variant_id),
 
-              size:
-                variant.size,
+            product_name: String(variant.product_name || ''),
 
-              color:
-                variant.color,
+            barcode: String(variant.barcode || ''),
 
-              stock,
+            size: variant.size,
 
-              quantity: 1,
+            color: variant.color,
 
-              unit_price:
-                Number(
-                  variant.sell_price ||
-                    0,
-                ),
-            },
-          ]
-        },
-      )
+            stock,
+
+            quantity: 1,
+
+            unit_price: Number(variant.sell_price || 0),
+          },
+        ]
+      })
 
       setSaleBarcode('')
     } catch (error) {
       showMessage(
         'error',
-        error instanceof Error
-          ? error.message
-          : 'تعذر إضافة الصنف',
+        error instanceof Error ? error.message : 'تعذر إضافة الصنف',
       )
     }
   }
 
-  function updateSaleItem(
-    variantId: number,
-    patch: Partial<
-      Pick<
-        SaleCorrectionItem,
-        'quantity' | 'unit_price'
-      >
-    >,
-  ) {
-    setSaleItems(
-      (current) =>
-        current.map(
-          (item) => {
-            if (
-              item.variant_id !==
-              variantId
-            ) {
-              return item
-            }
+  function updateSaleItemQuantity(variantId: number, quantityInput: number) {
+    setSaleItems((current) =>
+      current.map((item) => {
+        if (item.variant_id !== variantId) {
+          return item
+        }
 
-            const next = {
-              ...item,
-              ...patch,
-            }
+        const quantity = Math.max(
+          0,
+          Math.min(
+            Number(quantityInput || 0),
 
-            next.quantity =
-              Math.max(
-                0,
-                Math.min(
-                  Number(
-                    next.quantity ||
-                      0,
-                  ),
-                  Number(
-                    item.stock || 0,
-                  ),
-                ),
-              )
+            Number(item.stock || 0),
+          ),
+        )
 
-            next.unit_price =
-              Math.max(
-                0,
-                Number(
-                  next.unit_price ||
-                    0,
-                ),
-              )
-
-            return next
-          },
-        ),
+        return {
+          ...item,
+          quantity,
+        }
+      }),
     )
   }
 
+  function resetCorrectionEditor() {
+    setEditingCorrectionId(null)
+
+    setEditingCorrectionType(null)
+
+    setSaleBarcode('')
+    setSaleItems([])
+    setSaleNotes('')
+
+    setExpenseTitle('')
+    setExpenseCategory('')
+    setExpenseAmount('')
+    setExpenseNotes('')
+  }
+
+  async function startEditCorrection(
+    correction: ReviewData['corrections'][number],
+  ) {
+    if (correction.cancelled_at) {
+      return
+    }
+
+    setMessage(null)
+
+    if (correction.reference_type === 'shift_variance_sale_correction') {
+      const saleId = Number(correction.reference_id || 0)
+
+      if (!saleId) {
+        showMessage('error', 'فاتورة التصحيح المرتبطة غير صحيحة')
+
+        return
+      }
+
+      setSaving(true)
+
+      try {
+        const receipt = await window.api.getSaleReceipt(saleId)
+
+        const items = await Promise.all(
+          (receipt.items || []).map(async (item: any) => {
+            const variant = await window.api.getVariantByBarcode(
+              String(item.barcode || ''),
+            )
+
+            if (!variant) {
+              throw new Error(
+                `الصنف ${item.product_name || item.barcode} غير موجود أو غير مفعل`,
+              )
+            }
+
+            return {
+              variant_id: Number(item.variant_id),
+
+              product_name: String(
+                variant.product_name || item.product_name || '',
+              ),
+
+              barcode: String(variant.barcode || item.barcode || ''),
+
+              size: variant.size,
+
+              color: variant.color,
+
+              /*
+               * كمية الفاتورة القديمة
+               * متخصمة بالفعل.
+               * نضيفها للرصيد المتاح
+               * أثناء التعديل.
+               */
+              stock: Number(variant.stock || 0) + Number(item.quantity || 0),
+
+              quantity: Number(item.quantity || 0),
+
+              /*
+               * السعر دائمًا من المنتج.
+               */
+              unit_price: Number(variant.sell_price || 0),
+            }
+          }),
+        )
+
+        setSaleItems(items)
+
+        setSaleNotes(correction.notes || '')
+
+        setEditingCorrectionId(correction.id)
+
+        setEditingCorrectionType('sale')
+      } catch (error) {
+        showMessage(
+          'error',
+          error instanceof Error ? error.message : 'تعذر تحميل فاتورة التصحيح',
+        )
+      } finally {
+        setSaving(false)
+      }
+
+      return
+    }
+
+    if (correction.reference_type === 'shift_variance_expense_correction') {
+      setExpenseTitle(correction.document_title || '')
+
+      setExpenseCategory(correction.document_category || '')
+
+      setExpenseAmount(String(correction.amount || ''))
+
+      setExpenseNotes(correction.notes || '')
+
+      setEditingCorrectionId(correction.id)
+
+      setEditingCorrectionType('expense')
+    }
+  }
+
   async function saveSaleCorrection() {
-    if (
-      !review ||
-      saving
-    ) {
+    if (!review || saving) {
       return
     }
 
-    if (
-      saleItems.length === 0
-    ) {
-      showMessage(
-        'error',
-        'أضف أصناف البيع',
-      )
+    if (saleItems.length === 0) {
+      showMessage('error', 'أضف أصناف البيع')
 
       return
     }
 
-    if (
-      saleItems.some(
-        (item) =>
-          Number(
-            item.quantity || 0,
-          ) <= 0,
-      )
-    ) {
-      showMessage(
-        'error',
-        'راجع كميات الأصناف',
-      )
+    if (saleItems.some((item) => Number(item.quantity || 0) <= 0)) {
+      showMessage('error', 'راجع كميات الأصناف')
 
       return
     }
 
-    if (
-      saleTotal <= 0
-    ) {
-      showMessage(
-        'error',
-        'إجمالي البيع غير صحيح',
-      )
+    if (saleTotal <= 0) {
+      showMessage('error', 'إجمالي البيع غير صحيح')
 
       return
     }
 
-    if (
-      !adminPassword.trim()
-    ) {
-      showMessage(
-        'error',
-        'اكتب كلمة مرور المدير',
-      )
+    if (!adminPassword.trim()) {
+      showMessage('error', 'اكتب كلمة مرور المدير')
 
       return
     }
@@ -468,69 +437,65 @@ export default function ShiftVarianceReviewModal({
 
     try {
       const result =
-        await window.api.createShiftVarianceSaleCorrection(
-          {
-            variance_id:
-              review.variance.id,
+        editingCorrectionType === 'sale' && editingCorrectionId
+          ? await window.api.updateShiftVarianceSaleCorrection({
+              correction_id: editingCorrectionId,
 
-            notes:
-              saleNotes.trim() ||
-              null,
+              notes: saleNotes.trim() || null,
 
-            admin_password:
-              adminPassword,
+              admin_password: adminPassword,
 
-            items:
-              saleItems.map(
-                (item) => ({
-                  variant_id:
-                    item.variant_id,
+              items: saleItems.map((item) => ({
+                variant_id: item.variant_id,
 
-                  quantity:
-                    item.quantity,
+                quantity: item.quantity,
+              })),
+            })
+          : await window.api.createShiftVarianceSaleCorrection({
+              variance_id: review.variance.id,
 
-                  unit_price:
-                    item.unit_price,
-                }),
-              ),
-          },
-        )
+              notes: saleNotes.trim() || null,
+
+              admin_password: adminPassword,
+
+              items: saleItems.map((item) => ({
+                variant_id: item.variant_id,
+
+                quantity: item.quantity,
+              })),
+            })
 
       if (!result.success) {
-        showMessage(
-          'error',
-          result.message ||
-            'تعذر تسجيل فاتورة التصحيح',
-        )
+        showMessage('error', result.message || 'تعذر تسجيل فاتورة التصحيح')
 
         return
       }
 
       if (result.review) {
-        setReview(
-          result.review as ReviewData,
-        )
+        setReview(result.review as ReviewData)
       } else {
         await loadReview()
       }
 
-      setSaleItems([])
-      setSaleBarcode('')
-      setSaleNotes('')
+      const wasEditing =
+        editingCorrectionType === 'sale' && Boolean(editingCorrectionId)
+
+      resetCorrectionEditor()
       setAdminPassword('')
 
       showMessage(
         'success',
-        `تم تسجيل فاتورة التصحيح #${result.sale_id}`,
+
+        editingCorrectionType === 'sale'
+          ? `تم تعديل فاتورة التصحيح #${result.sale_id}`
+          : `تم تسجيل فاتورة التصحيح #${result.sale_id}`,
       )
 
       await onChanged()
     } catch (error) {
       showMessage(
         'error',
-        error instanceof Error
-          ? error.message
-          : 'تعذر تسجيل فاتورة التصحيح',
+        error instanceof Error ? error.message : 'تعذر تسجيل فاتورة التصحيح',
       )
     } finally {
       setSaving(false)
@@ -538,97 +503,78 @@ export default function ShiftVarianceReviewModal({
   }
 
   async function saveExpenseCorrection() {
-    if (
-      !review ||
-      saving
-    ) {
+    if (!review || saving) {
       return
     }
 
-    if (
-      !expenseTitle.trim()
-    ) {
-      showMessage(
-        'error',
-        'اكتب اسم المصروف',
-      )
+    if (!expenseTitle.trim()) {
+      showMessage('error', 'اكتب اسم المصروف')
 
       return
     }
 
-    const amount =
-      Number(
-        expenseAmount || 0,
-      )
+    const amount = Number(expenseAmount || 0)
 
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
-      showMessage(
-        'error',
-        'اكتب مبلغ مصروف صحيح',
-      )
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showMessage('error', 'اكتب مبلغ مصروف صحيح')
 
       return
     }
 
-    if (
-      !adminPassword.trim()
-    ) {
-      showMessage(
-        'error',
-        'اكتب كلمة مرور المدير',
-      )
+    if (!adminPassword.trim()) {
+      showMessage('error', 'اكتب كلمة مرور المدير')
 
       return
     }
 
     setSaving(true)
 
+    const wasEditing =
+      editingCorrectionType === 'expense' && Boolean(editingCorrectionId)
+
     try {
       const result =
-        await window.api.createShiftVarianceExpenseCorrection(
-          {
-            variance_id:
-              review.variance.id,
+        wasEditing && editingCorrectionId
+          ? await window.api.updateShiftVarianceExpenseCorrection({
+              correction_id: editingCorrectionId,
 
-            title:
-              expenseTitle.trim(),
+              title: expenseTitle.trim(),
 
-            category:
-              expenseCategory.trim() ||
-              null,
+              category: expenseCategory.trim() || null,
 
-            amount,
+              amount,
 
-            notes:
-              expenseNotes.trim() ||
-              null,
+              notes: expenseNotes.trim() || null,
 
-            admin_password:
-              adminPassword,
-          },
-        )
+              admin_password: adminPassword,
+            })
+          : await window.api.createShiftVarianceExpenseCorrection({
+              variance_id: review.variance.id,
+
+              title: expenseTitle.trim(),
+
+              category: expenseCategory.trim() || null,
+
+              amount,
+
+              notes: expenseNotes.trim() || null,
+
+              admin_password: adminPassword,
+            })
 
       if (!result.success) {
-        showMessage(
-          'error',
-          result.message ||
-            'تعذر تسجيل المصروف التصحيحي',
-        )
+        showMessage('error', result.message || 'تعذر تسجيل المصروف التصحيحي')
 
         return
       }
 
       if (result.review) {
-        setReview(
-          result.review as ReviewData,
-        )
+        setReview(result.review as ReviewData)
       } else {
         await loadReview()
       }
 
+      resetCorrectionEditor()
       setExpenseTitle('')
       setExpenseCategory('')
       setExpenseAmount('')
@@ -637,47 +583,35 @@ export default function ShiftVarianceReviewModal({
 
       showMessage(
         'success',
-        `تم تسجيل المصروف التصحيحي #${result.expense_id}`,
+
+        wasEditing
+          ? `تم تعديل المصروف التصحيحي #${result.expense_id}`
+          : `تم تسجيل المصروف التصحيحي #${result.expense_id}`,
       )
 
       await onChanged()
     } catch (error) {
       showMessage(
         'error',
-        error instanceof Error
-          ? error.message
-          : 'تعذر تسجيل المصروف التصحيحي',
+        error instanceof Error ? error.message : 'تعذر تسجيل المصروف التصحيحي',
       )
     } finally {
       setSaving(false)
     }
   }
 
-  async function cancelCorrection(
-    correctionId: number,
-  ) {
-    if (
-      !review ||
-      saving
-    ) {
+  async function cancelCorrection(correctionId: number) {
+    if (!review || saving) {
       return
     }
 
-    if (
-      !adminPassword.trim()
-    ) {
-      showMessage(
-        'error',
-        'اكتب كلمة مرور المدير أولًا',
-      )
+    if (!adminPassword.trim()) {
+      showMessage('error', 'اكتب كلمة مرور المدير أولًا')
 
       return
     }
 
-    const reason =
-      window.prompt(
-        'اكتب سبب إلغاء التصحيح',
-      )
+    const reason = window.prompt('اكتب سبب إلغاء التصحيح')
 
     if (!reason?.trim()) {
       return
@@ -686,52 +620,35 @@ export default function ShiftVarianceReviewModal({
     setSaving(true)
 
     try {
-      const result =
-        await window.api.cancelCashShiftVarianceCorrection(
-          {
-            correction_id:
-              correctionId,
+      const result = await window.api.cancelCashShiftVarianceCorrection({
+        correction_id: correctionId,
 
-            reason:
-              reason.trim(),
+        reason: reason.trim(),
 
-            admin_password:
-              adminPassword,
-          },
-        )
+        admin_password: adminPassword,
+      })
 
       if (!result.success) {
-        showMessage(
-          'error',
-          result.message ||
-            'تعذر إلغاء التصحيح',
-        )
+        showMessage('error', result.message || 'تعذر إلغاء التصحيح')
 
         return
       }
 
       if (result.review) {
-        setReview(
-          result.review as ReviewData,
-        )
+        setReview(result.review as ReviewData)
       } else {
         await loadReview()
       }
 
       setAdminPassword('')
 
-      showMessage(
-        'success',
-        'تم إلغاء التصحيح والمستند المرتبط به',
-      )
+      showMessage('success', 'تم إلغاء التصحيح والمستند المرتبط به')
 
       await onChanged()
     } catch (error) {
       showMessage(
         'error',
-        error instanceof Error
-          ? error.message
-          : 'تعذر إلغاء التصحيح',
+        error instanceof Error ? error.message : 'تعذر إلغاء التصحيح',
       )
     } finally {
       setSaving(false)
@@ -739,37 +656,22 @@ export default function ShiftVarianceReviewModal({
   }
 
   async function finishReview() {
-    if (
-      !review ||
-      saving
-    ) {
+    if (!review || saving) {
       return
     }
 
-    if (
-      !adminPassword.trim()
-    ) {
-      showMessage(
-        'error',
-        'اكتب كلمة مرور المدير',
+    if (!adminPassword.trim()) {
+      showMessage('error', 'اكتب كلمة مرور المدير')
+
+      return
+    }
+
+    const variance = review.variance
+
+    if (variance.stage === 'opening') {
+      const selected = openingReasonOptions.find(
+        (item) => item.value === openingReason,
       )
-
-      return
-    }
-
-    const variance =
-      review.variance
-
-    if (
-      variance.stage ===
-      'opening'
-    ) {
-      const selected =
-        openingReasonOptions.find(
-          (item) =>
-            item.value ===
-            openingReason,
-        )
 
       if (!selected) {
         return
@@ -778,9 +680,7 @@ export default function ShiftVarianceReviewModal({
       const notes = [
         `سبب فرق الافتتاح: ${selected.label}`,
 
-        finalNotes.trim()
-          ? `ملاحظات: ${finalNotes.trim()}`
-          : null,
+        finalNotes.trim() ? `ملاحظات: ${finalNotes.trim()}` : null,
       ]
         .filter(Boolean)
         .join('\n')
@@ -788,29 +688,18 @@ export default function ShiftVarianceReviewModal({
       setSaving(true)
 
       try {
-        const result =
-          await window.api.resolveCashShiftVariance(
-            {
-              variance_id:
-                variance.id,
+        const result = await window.api.resolveCashShiftVariance({
+          variance_id: variance.id,
 
-              resolution_type:
-                'approved',
+          resolution_type: 'approved',
 
-              resolution_notes:
-                notes,
+          resolution_notes: notes,
 
-              admin_password:
-                adminPassword,
-            },
-          )
+          admin_password: adminPassword,
+        })
 
         if (!result.success) {
-          showMessage(
-            'error',
-            result.message ||
-              'تعذر اعتماد فرق الاستلام',
-          )
+          showMessage('error', result.message || 'تعذر اعتماد فرق الاستلام')
 
           return
         }
@@ -824,24 +713,12 @@ export default function ShiftVarianceReviewModal({
       return
     }
 
-    const remaining =
-      Number(
-        variance.remaining_signed_amount ||
-          0,
-      )
+    const remaining = Number(variance.remaining_signed_amount || 0)
 
-    const balanced =
-      Math.abs(remaining) <=
-      0.01
+    const balanced = Math.abs(remaining) <= 0.01
 
-    if (
-      !balanced &&
-      !finalNotes.trim()
-    ) {
-      showMessage(
-        'error',
-        'اكتب سبب اعتماد الفرق المتبقي كفرق حقيقي',
-      )
+    if (!balanced && !finalNotes.trim()) {
+      showMessage('error', 'اكتب سبب اعتماد الفرق المتبقي كفرق حقيقي')
 
       return
     }
@@ -849,34 +726,21 @@ export default function ShiftVarianceReviewModal({
     setSaving(true)
 
     try {
-      const result =
-        await window.api.resolveCashShiftVariance(
-          {
-            variance_id:
-              variance.id,
+      const result = await window.api.resolveCashShiftVariance({
+        variance_id: variance.id,
 
-            resolution_type:
-              balanced
-                ? 'explained'
-                : 'approved',
+        resolution_type: balanced ? 'explained' : 'approved',
 
-            resolution_notes:
-              balanced
-                ? finalNotes.trim() ||
-                  'تم تفسير فرق الشفت بالكامل ووصل حساب الفروقات إلى صفر'
-                : finalNotes.trim(),
+        resolution_notes: balanced
+          ? finalNotes.trim() ||
+            'تم تفسير فرق الشفت بالكامل ووصل حساب الفروقات إلى صفر'
+          : finalNotes.trim(),
 
-            admin_password:
-              adminPassword,
-          },
-        )
+        admin_password: adminPassword,
+      })
 
       if (!result.success) {
-        showMessage(
-          'error',
-          result.message ||
-            'تعذر إنهاء المراجعة',
-        )
+        showMessage('error', result.message || 'تعذر إنهاء المراجعة')
 
         return
       }
@@ -891,9 +755,7 @@ export default function ShiftVarianceReviewModal({
   if (loading) {
     return (
       <div style={overlayStyle}>
-        <div style={cardStyle}>
-          جاري تحميل حساب الفروقات...
-        </div>
+        <div style={cardStyle}>جاري تحميل حساب الفروقات...</div>
       </div>
     )
   }
@@ -902,26 +764,14 @@ export default function ShiftVarianceReviewModal({
     return null
   }
 
-  const variance =
-    review.variance
+  const variance = review.variance
 
   const balanced =
-    Math.abs(
-      Number(
-        variance.remaining_signed_amount ||
-          0,
-      ),
-    ) <= 0.01
+    Math.abs(Number(variance.remaining_signed_amount || 0)) <= 0.01
 
   return (
-    <div
-      className="theme-modal-overlay"
-      style={overlayStyle}
-    >
-      <div
-        className="theme-modal-card"
-        style={cardStyle}
-      >
+    <div className="theme-modal-overlay" style={overlayStyle}>
+      <div className="theme-modal-card" style={cardStyle}>
         <div style={headerStyle}>
           <div>
             <h3
@@ -929,8 +779,7 @@ export default function ShiftVarianceReviewModal({
                 margin: '0 0 5px',
               }}
             >
-              {variance.stage ===
-              'opening'
+              {variance.stage === 'opening'
                 ? `مراجعة استلام الشفت #${variance.shift_id}`
                 : `حساب فروقات الشفت #${variance.shift_id}`}
             </h3>
@@ -941,9 +790,7 @@ export default function ShiftVarianceReviewModal({
                 fontSize: '12px',
               }}
             >
-              {getCashShiftVarianceStageLabel(
-                variance.stage,
-              )}
+              {getCashShiftVarianceStageLabel(variance.stage)}
             </div>
           </div>
 
@@ -960,29 +807,21 @@ export default function ShiftVarianceReviewModal({
         {message && (
           <div
             style={{
-              padding:
-                '10px 12px',
+              padding: '10px 12px',
 
-              borderRadius:
-                '12px',
+              borderRadius: '12px',
 
               background:
-                message.type ===
-                'error'
+                message.type === 'error'
                   ? 'rgba(239,68,68,0.12)'
                   : 'rgba(16,185,129,0.12)',
 
               border:
-                message.type ===
-                'error'
+                message.type === 'error'
                   ? '1px solid rgba(239,68,68,0.28)'
                   : '1px solid rgba(16,185,129,0.28)',
 
-              color:
-                message.type ===
-                'error'
-                  ? '#fca5a5'
-                  : '#6ee7b7',
+              color: message.type === 'error' ? '#fca5a5' : '#6ee7b7',
 
               fontWeight: 800,
             }}
@@ -991,61 +830,41 @@ export default function ShiftVarianceReviewModal({
           </div>
         )}
 
-        {variance.stage ===
-        'opening' ? (
+        {variance.stage === 'opening' ? (
           <>
             <div style={cardsStyle}>
               <AmountCard
                 label="المفروض استلامه"
-                value={Number(
-                  variance.expected_opening_amount ||
-                    0,
-                )}
+                value={Number(variance.expected_opening_amount || 0)}
                 signed={false}
               />
 
               <AmountCard
                 label="المبلغ المعدود"
-                value={Number(
-                  variance.opening_counted_amount ||
-                    0,
-                )}
+                value={Number(variance.opening_counted_amount || 0)}
                 signed={false}
               />
 
               <AmountCard
                 label="فرق الاستلام"
-                value={
-                  variance.original_signed_amount
-                }
+                value={variance.original_signed_amount}
                 strong
               />
             </div>
 
             <section style={sectionStyle}>
-              <strong>
-                سبب فرق الاستلام
-              </strong>
+              <strong>سبب فرق الاستلام</strong>
 
               <select
                 value={openingReason}
-                onChange={(event) =>
-                  setOpeningReason(
-                    event.target.value,
-                  )
-                }
+                onChange={(event) => setOpeningReason(event.target.value)}
                 style={inputStyle}
               >
-                {openingReasonOptions.map(
-                  (option) => (
-                    <option
-                      key={option.value}
-                      value={option.value}
-                    >
-                      {option.label}
-                    </option>
-                  ),
-                )}
+                {openingReasonOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </section>
           </>
@@ -1054,41 +873,34 @@ export default function ShiftVarianceReviewModal({
             <div style={cardsStyle}>
               <AmountCard
                 label="الفرق الأصلي"
-                value={
-                  variance.original_signed_amount
-                }
+                value={variance.original_signed_amount}
               />
 
               <AmountCard
                 label="صافي التصحيحات"
-                value={
-                  variance.correction_effect_amount
-                }
+                value={variance.correction_effect_amount}
               />
 
               <AmountCard
                 label="المتبقي"
-                value={
-                  variance.remaining_signed_amount
-                }
+                value={variance.remaining_signed_amount}
                 strong
               />
             </div>
 
             <div style={infoStyle}>
-              تسوية الدرج تمت بالفعل وقت
-              إغلاق الشفت. المستندات
-              التصحيحية هنا تؤثر على
-              المبيعات أو المصروفات
-              والمخزون فقط، ولا تنشئ
-              حركة كاش جديدة.
+              تسوية الدرج تمت بالفعل وقت إغلاق الشفت. المستندات التصحيحية هنا
+              تؤثر على المبيعات أو المصروفات والمخزون فقط، ولا تنشئ حركة كاش
+              جديدة.
             </div>
 
-            {variance.remaining_kind ===
-              'surplus' && (
+            {(variance.remaining_kind === 'surplus' ||
+              editingCorrectionType === 'sale') && (
               <section style={sectionStyle}>
                 <strong>
-                  بيع كاش تم ولم يُسجل
+                  {editingCorrectionType === 'sale'
+                    ? 'تعديل فاتورة التصحيح'
+                    : 'بيع كاش تم ولم يُسجل'}
                 </strong>
 
                 <div
@@ -1099,16 +911,9 @@ export default function ShiftVarianceReviewModal({
                 >
                   <input
                     value={saleBarcode}
-                    onChange={(event) =>
-                      setSaleBarcode(
-                        event.target.value,
-                      )
-                    }
+                    onChange={(event) => setSaleBarcode(event.target.value)}
                     onKeyDown={(event) => {
-                      if (
-                        event.key ===
-                        'Enter'
-                      ) {
+                      if (event.key === 'Enter') {
                         event.preventDefault()
 
                         void addBarcodeItem()
@@ -1123,198 +928,142 @@ export default function ShiftVarianceReviewModal({
 
                   <button
                     type="button"
-                    onClick={() =>
-                      void addBarcodeItem()
-                    }
+                    onClick={() => void addBarcodeItem()}
                     style={secondaryButtonStyle}
                   >
                     إضافة
                   </button>
                 </div>
 
-                {saleItems.length >
-                  0 && (
+                {saleItems.length > 0 && (
                   <div
                     style={{
-                      display:
-                        'grid',
+                      display: 'grid',
                       gap: '8px',
                     }}
                   >
-                    {saleItems.map(
-                      (item) => (
+                    {saleItems.map((item) => (
+                      <div key={item.variant_id} style={itemCardStyle}>
                         <div
-                          key={
-                            item.variant_id
-                          }
-                          style={
-                            itemCardStyle
-                          }
+                          style={{
+                            minWidth: 0,
+                          }}
                         >
-                          <div
-                            style={{
-                              minWidth:
-                                0,
-                            }}
-                          >
-                            <strong>
-                              {
-                                item.product_name
-                              }
-                            </strong>
+                          <strong>{item.product_name}</strong>
 
-                            <div
-                              style={
-                                mutedStyle
-                              }
-                            >
-                              {
-                                item.barcode
-                              }
-                              {' • '}
-                              {item.size ||
-                                '—'}
-                              {' • '}
-                              {item.color ||
-                                '—'}
-                            </div>
+                          <div style={mutedStyle}>
+                            {item.barcode}
+                            {' • '}
+                            {item.size || '—'}
+                            {' • '}
+                            {item.color || '—'}
                           </div>
+                        </div>
 
-                          <label
-                            style={
-                              miniFieldStyle
-                            }
-                          >
-                            الكمية
+                        <label style={miniFieldStyle}>
+                          الكمية
+                          <input
+                            type="number"
+                            min={0.01}
+                            max={item.stock}
+                            step="1"
+                            value={item.quantity}
+                            onChange={(event) =>
+                              updateSaleItemQuantity(
+                                item.variant_id,
 
-                            <input
-                              type="number"
-                              min={0.01}
-                              max={
-                                item.stock
-                              }
-                              step="1"
-                              value={
-                                item.quantity
-                              }
-                              onChange={(
-                                event,
-                              ) =>
-                                updateSaleItem(
-                                  item.variant_id,
-                                  {
-                                    quantity:
-                                      Number(
-                                        event
-                                          .target
-                                          .value,
-                                      ),
-                                  },
-                                )
-                              }
-                              style={
-                                miniInputStyle
-                              }
-                            />
-                          </label>
-
-                          <label
-                            style={
-                              miniFieldStyle
-                            }
-                          >
-                            السعر
-
-                            <input
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              value={
-                                item.unit_price
-                              }
-                              onChange={(
-                                event,
-                              ) =>
-                                updateSaleItem(
-                                  item.variant_id,
-                                  {
-                                    unit_price:
-                                      Number(
-                                        event
-                                          .target
-                                          .value,
-                                      ),
-                                  },
-                                )
-                              }
-                              style={
-                                miniInputStyle
-                              }
-                            />
-                          </label>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setSaleItems(
-                                (current) =>
-                                  current.filter(
-                                    (
-                                      row,
-                                    ) =>
-                                      row.variant_id !==
-                                      item.variant_id,
-                                  ),
+                                Number(event.target.value),
                               )
                             }
-                            style={
-                              dangerButtonStyle
-                            }
+                            style={miniInputStyle}
+                          />
+                        </label>
+
+                        <label style={miniFieldStyle}>
+                          السعر
+                          <div
+                            style={{
+                              ...miniInputStyle,
+
+                              display: 'flex',
+
+                              alignItems: 'center',
+
+                              justifyContent: 'center',
+
+                              cursor: 'default',
+
+                              color: '#e2e8f0',
+
+                              fontWeight: 900,
+                            }}
                           >
-                            حذف
-                          </button>
-                        </div>
-                      ),
-                    )}
+                            {money(item.unit_price)}
+                          </div>
+                        </label>
+
+                        <label style={miniFieldStyle}>
+                          الإجمالي
+                          <div
+                            style={{
+                              ...miniInputStyle,
+
+                              display: 'flex',
+
+                              alignItems: 'center',
+
+                              justifyContent: 'center',
+
+                              cursor: 'default',
+
+                              color: '#6ee7b7',
+
+                              fontWeight: 900,
+                            }}
+                          >
+                            {money(item.quantity * item.unit_price)}
+                          </div>
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSaleItems((current) =>
+                              current.filter(
+                                (row) => row.variant_id !== item.variant_id,
+                              ),
+                            )
+                          }
+                          style={dangerButtonStyle}
+                        >
+                          حذف
+                        </button>
+                      </div>
+                    ))}
 
                     <div
                       style={{
-                        display:
-                          'flex',
+                        display: 'flex',
 
-                        justifyContent:
-                          'space-between',
+                        justifyContent: 'space-between',
 
-                        padding:
-                          '12px',
+                        padding: '12px',
 
-                        borderRadius:
-                          '12px',
+                        borderRadius: '12px',
 
-                        background:
-                          'rgba(16,185,129,0.08)',
+                        background: 'rgba(16,185,129,0.08)',
                       }}
                     >
-                      <strong>
-                        إجمالي الفاتورة
-                      </strong>
+                      <strong>إجمالي الفاتورة</strong>
 
-                      <strong>
-                        {money(
-                          saleTotal,
-                        )}
-                      </strong>
+                      <strong>{money(saleTotal)}</strong>
                     </div>
                   </div>
                 )}
 
                 <textarea
                   value={saleNotes}
-                  onChange={(event) =>
-                    setSaleNotes(
-                      event.target.value,
-                    )
-                  }
+                  onChange={(event) => setSaleNotes(event.target.value)}
                   placeholder="ملاحظات الفاتورة التصحيحية — اختياري"
                   style={{
                     ...inputStyle,
@@ -1325,44 +1074,44 @@ export default function ShiftVarianceReviewModal({
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() =>
-                    void saveSaleCorrection()
-                  }
+                  onClick={() => void saveSaleCorrection()}
                   style={primaryButtonStyle}
                 >
-                  تسجيل فاتورة على الشفت
-                  القديم — بدون حركة كاش
+                  تسجيل فاتورة على الشفت القديم — بدون حركة كاش
                 </button>
+
+                {editingCorrectionId && (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={resetCorrectionEditor}
+                    style={secondaryButtonStyle}
+                  >
+                    إلغاء التعديل
+                  </button>
+                )}
               </section>
             )}
 
-            {variance.remaining_kind ===
-              'shortage' && (
+            {(variance.remaining_kind === 'shortage' ||
+              editingCorrectionType === 'expense') && (
               <section style={sectionStyle}>
                 <strong>
-                  مصروف دُفع ولم يُسجل
+                  {editingCorrectionType === 'expense'
+                    ? 'تعديل المصروف التصحيحي'
+                    : 'مصروف دُفع ولم يُسجل'}
                 </strong>
 
                 <input
                   value={expenseTitle}
-                  onChange={(event) =>
-                    setExpenseTitle(
-                      event.target.value,
-                    )
-                  }
+                  onChange={(event) => setExpenseTitle(event.target.value)}
                   placeholder="اسم المصروف"
                   style={inputStyle}
                 />
 
                 <input
-                  value={
-                    expenseCategory
-                  }
-                  onChange={(event) =>
-                    setExpenseCategory(
-                      event.target.value,
-                    )
-                  }
+                  value={expenseCategory}
+                  onChange={(event) => setExpenseCategory(event.target.value)}
                   placeholder="التصنيف — اختياري"
                   style={inputStyle}
                 />
@@ -1371,25 +1120,15 @@ export default function ShiftVarianceReviewModal({
                   type="number"
                   min={0}
                   step="0.01"
-                  value={
-                    expenseAmount
-                  }
-                  onChange={(event) =>
-                    setExpenseAmount(
-                      event.target.value,
-                    )
-                  }
+                  value={expenseAmount}
+                  onChange={(event) => setExpenseAmount(event.target.value)}
                   placeholder="قيمة المصروف"
                   style={inputStyle}
                 />
 
                 <textarea
                   value={expenseNotes}
-                  onChange={(event) =>
-                    setExpenseNotes(
-                      event.target.value,
-                    )
-                  }
+                  onChange={(event) => setExpenseNotes(event.target.value)}
                   placeholder="ملاحظات — اختياري"
                   style={{
                     ...inputStyle,
@@ -1400,210 +1139,202 @@ export default function ShiftVarianceReviewModal({
                 <button
                   type="button"
                   disabled={saving}
-                  onClick={() =>
-                    void saveExpenseCorrection()
-                  }
+                  onClick={() => void saveExpenseCorrection()}
                   style={primaryButtonStyle}
                 >
-                  تسجيل المصروف على الشفت
-                  القديم — بدون حركة كاش
+                  تسجيل المصروف على الشفت القديم — بدون حركة كاش
                 </button>
+
+                {editingCorrectionId && (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={resetCorrectionEditor}
+                    style={secondaryButtonStyle}
+                  >
+                    إلغاء التعديل
+                  </button>
+                )}
               </section>
             )}
 
             <section style={sectionStyle}>
-              <strong>
-                سجل التصحيحات
-              </strong>
+              <strong>سجل التصحيحات</strong>
 
-              {review.corrections.length ===
-              0 ? (
-                <div style={mutedStyle}>
-                  لا توجد تصحيحات مسجلة.
-                </div>
+              {review.corrections.length === 0 ? (
+                <div style={mutedStyle}>لا توجد تصحيحات مسجلة.</div>
               ) : (
-                review.corrections.map(
-                  (correction) => {
-                    const cancelled =
-                      Boolean(
-                        correction.cancelled_at,
-                      )
+                review.corrections.map((correction) => {
+                  const cancelled = Boolean(correction.cancelled_at)
 
-                    return (
+                  return (
+                    <div
+                      key={correction.id}
+                      style={{
+                        ...itemCardStyle,
+                        opacity: cancelled ? 0.55 : 1,
+                      }}
+                    >
                       <div
-                        key={
-                          correction.id
-                        }
                         style={{
-                          ...itemCardStyle,
-                          opacity:
-                            cancelled
-                              ? 0.55
-                              : 1,
+                          flex: 1,
+                          minWidth: '220px',
                         }}
                       >
-                        <div
-                          style={{
-                            flex: 1,
-                            minWidth:
-                              '220px',
-                          }}
-                        >
-                          <strong>
-                            {getCashShiftVarianceCorrectionReasonLabel(
-                              correction.reason_code,
-                            )}
-                          </strong>
-
-                          <div
-                            style={
-                              mutedStyle
-                            }
-                          >
-                            {signedMoney(
-                              correction.effect_amount,
-                            )}
-
-                            {correction.reference_id
-                              ? ` • مستند #${correction.reference_id}`
-                              : ''}
-                          </div>
-
-                          {correction.notes && (
-                            <div
-                              style={
-                                mutedStyle
-                              }
-                            >
-                              {
-                                correction.notes
-                              }
-                            </div>
+                        <strong>
+                          {getCashShiftVarianceCorrectionReasonLabel(
+                            correction.reason_code,
                           )}
+                        </strong>
 
-                          {cancelled && (
-                            <div
-                              style={{
-                                color:
-                                  '#fca5a5',
+                        <div style={mutedStyle}>
+                          {signedMoney(correction.effect_amount)}
 
-                                fontSize:
-                                  '11px',
-                              }}
-                            >
-                              ملغي:
-                              {' '}
-                              {correction.cancel_reason ||
-                                '—'}
-                            </div>
-                          )}
+                          {correction.reference_id
+                            ? ` • مستند #${correction.reference_id}`
+                            : ''}
                         </div>
 
-                        {!cancelled && (
+                        {correction.notes && (
+                          <div style={mutedStyle}>{correction.notes}</div>
+                        )}
+
+                        {cancelled && (
+                          <div
+                            style={{
+                              color: '#fca5a5',
+
+                              fontSize: '11px',
+                            }}
+                          >
+                            ملغي: {correction.cancel_reason || '—'}
+                          </div>
+                        )}
+                      </div>
+
+                      {!cancelled && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '7px',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          {(correction.reference_type ===
+                            'shift_variance_sale_correction' ||
+                            correction.reference_type ===
+                              'shift_variance_expense_correction') && (
+                            <button
+                              type="button"
+                              disabled={saving}
+                              onClick={() =>
+                                void startEditCorrection(correction)
+                              }
+                              style={secondaryButtonStyle}
+                            >
+                              تعديل
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             disabled={saving}
-                            onClick={() =>
-                              void cancelCorrection(
-                                correction.id,
-                              )
-                            }
-                            style={
-                              dangerButtonStyle
-                            }
+                            onClick={() => void cancelCorrection(correction.id)}
+                            style={dangerButtonStyle}
                           >
-                            إلغاء التصحيح
+                            إلغاء
                           </button>
-                        )}
-                      </div>
-                    )
-                  },
-                )
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
               )}
             </section>
           </>
         )}
 
         <section style={sectionStyle}>
-          {variance.stage ===
-            'closing' &&
-            !balanced && (
-              <textarea
-                value={finalNotes}
-                onChange={(event) =>
-                  setFinalNotes(
-                    event.target.value,
-                  )
-                }
-                placeholder={
-                  variance.remaining_kind ===
-                  'shortage'
-                    ? 'لو المتبقي عجز حقيقي اكتب السبب هنا'
-                    : 'لو المتبقي زيادة حقيقية اكتب السبب هنا'
-                }
-                style={{
-                  ...inputStyle,
-                  minHeight: '70px',
-                }}
-              />
-            )}
+          {variance.stage === 'closing' && !balanced && (
+            <textarea
+              value={finalNotes}
+              onChange={(event) => setFinalNotes(event.target.value)}
+              placeholder={
+                variance.remaining_kind === 'shortage'
+                  ? 'لو المتبقي عجز حقيقي اكتب السبب هنا'
+                  : 'لو المتبقي زيادة حقيقية اكتب السبب هنا'
+              }
+              style={{
+                ...inputStyle,
+                minHeight: '70px',
+              }}
+            />
+          )}
 
-          {variance.stage ===
-            'opening' && (
-              <textarea
-                value={finalNotes}
-                onChange={(event) =>
-                  setFinalNotes(
-                    event.target.value,
-                  )
-                }
-                placeholder="ملاحظات فرق الاستلام — اختياري"
-                style={{
-                  ...inputStyle,
-                  minHeight: '70px',
-                }}
-              />
-            )}
+          {variance.stage === 'opening' && (
+            <textarea
+              value={finalNotes}
+              onChange={(event) => setFinalNotes(event.target.value)}
+              placeholder="ملاحظات فرق الاستلام — اختياري"
+              style={{
+                ...inputStyle,
+                minHeight: '70px',
+              }}
+            />
+          )}
 
           <input
             type="password"
             value={adminPassword}
-            onChange={(event) =>
-              setAdminPassword(
-                event.target.value,
-              )
-            }
+            onChange={(event) => setAdminPassword(event.target.value)}
             placeholder="كلمة مرور المدير"
             style={inputStyle}
           />
 
-          <button
-            type="button"
-            disabled={saving}
-            onClick={() =>
-              void finishReview()
-            }
-            style={{
-              ...primaryButtonStyle,
+          {variance.status === 'resolved' ? (
+            <div
+              style={{
+                padding: '12px',
 
-              background:
-                variance.stage ===
-                'opening'
-                  ? 'linear-gradient(135deg, #2563eb, #3b82f6)'
-                  : balanced
-                    ? 'linear-gradient(135deg, #059669, #10b981)'
-                    : 'linear-gradient(135deg, #b45309, #f59e0b)',
-            }}
-          >
-            {variance.stage ===
-            'opening'
-              ? 'اعتماد مراجعة فرق الاستلام'
-              : balanced
-                ? 'إنهاء المراجعة — الحساب متطابق'
-                : `اعتماد الفرق المتبقي ${money(
-                    variance.remaining_amount,
-                  )}`}
-          </button>
+                borderRadius: '12px',
+
+                background: 'rgba(16,185,129,0.08)',
+
+                border: '1px solid rgba(16,185,129,0.22)',
+
+                color: '#6ee7b7',
+
+                fontWeight: 800,
+
+                lineHeight: 1.7,
+              }}
+            >
+              تمت مراجعة فرق الشفت. يمكنك تعديل أو إلغاء أي مستند تصحيحي، وعندها
+              ستعود المراجعة تلقائيًا إلى «قيد المراجعة».
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void finishReview()}
+              style={{
+                ...primaryButtonStyle,
+
+                background:
+                  variance.stage === 'opening'
+                    ? 'linear-gradient(135deg, #2563eb, #3b82f6)'
+                    : balanced
+                      ? 'linear-gradient(135deg, #059669, #10b981)'
+                      : 'linear-gradient(135deg, #b45309, #f59e0b)',
+              }}
+            >
+              {variance.stage === 'opening'
+                ? 'اعتماد مراجعة فرق الاستلام'
+                : balanced
+                  ? 'إنهاء المراجعة — الحساب متطابق'
+                  : `اعتماد الفرق المتبقي ${money(variance.remaining_amount)}`}
+            </button>
+          )}
         </section>
       </div>
     </div>
@@ -1611,27 +1342,17 @@ export default function ShiftVarianceReviewModal({
 }
 
 function money(value: unknown) {
-  return `${Number(
-    value || 0,
-  ).toFixed(2)} ج.م`
+  return `${Number(value || 0).toFixed(2)} ج.م`
 }
 
-function signedMoney(
-  value: unknown,
-) {
-  const amount =
-    Number(value || 0)
+function signedMoney(value: unknown) {
+  const amount = Number(value || 0)
 
-  if (
-    Math.abs(amount) <=
-    0.001
-  ) {
+  if (Math.abs(amount) <= 0.001) {
     return '0.00 ج.م'
   }
 
-  return `${
-    amount > 0 ? '+' : ''
-  }${amount.toFixed(2)} ج.م`
+  return `${amount > 0 ? '+' : ''}${amount.toFixed(2)} ج.م`
 }
 
 function AmountCard({
@@ -1652,11 +1373,9 @@ function AmountCard({
 
         borderRadius: '12px',
 
-        background:
-          'rgba(255,255,255,0.045)',
+        background: 'rgba(255,255,255,0.045)',
 
-        border:
-          '1px solid rgba(255,255,255,0.06)',
+        border: '1px solid rgba(255,255,255,0.06)',
 
         display: 'grid',
 
@@ -1674,22 +1393,16 @@ function AmountCard({
 
       <strong
         style={{
-          fontSize:
-            strong
-              ? '19px'
-              : '16px',
+          fontSize: strong ? '19px' : '16px',
         }}
       >
-        {signed
-          ? signedMoney(value)
-          : money(value)}
+        {signed ? signedMoney(value) : money(value)}
       </strong>
     </div>
   )
 }
 
-const overlayStyle:
-  React.CSSProperties = {
+const overlayStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
   zIndex: 1000000,
@@ -1700,24 +1413,19 @@ const overlayStyle:
 
   padding: '22px',
 
-  background:
-    'rgba(2,6,23,0.92)',
+  background: 'rgba(2,6,23,0.92)',
 
-  backdropFilter:
-    'blur(8px)',
+  backdropFilter: 'blur(8px)',
 
   overflow: 'hidden',
 
   boxSizing: 'border-box',
 }
 
-const cardStyle:
-  React.CSSProperties = {
-  width:
-    'min(820px, calc(100vw - 44px))',
+const cardStyle: React.CSSProperties = {
+  width: 'min(820px, calc(100vw - 44px))',
 
-  maxHeight:
-    'calc(100vh - 44px)',
+  maxHeight: 'calc(100vh - 44px)',
 
   overflowY: 'auto',
   overflowX: 'hidden',
@@ -1731,11 +1439,9 @@ const cardStyle:
 
   background: '#101827',
 
-  border:
-    '1px solid rgba(148,163,184,0.20)',
+  border: '1px solid rgba(148,163,184,0.20)',
 
-  boxShadow:
-    '0 30px 100px rgba(0,0,0,0.80)',
+  boxShadow: '0 30px 100px rgba(0,0,0,0.80)',
 
   color: '#f8fafc',
 
@@ -1744,52 +1450,42 @@ const cardStyle:
   boxSizing: 'border-box',
 }
 
-const headerStyle:
-  React.CSSProperties = {
+const headerStyle: React.CSSProperties = {
   display: 'flex',
-  justifyContent:
-    'space-between',
+  justifyContent: 'space-between',
   alignItems: 'center',
   gap: '12px',
 }
 
-const cardsStyle:
-  React.CSSProperties = {
+const cardsStyle: React.CSSProperties = {
   display: 'grid',
 
-  gridTemplateColumns:
-    'repeat(auto-fit, minmax(170px, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
 
   gap: '10px',
 }
 
-const sectionStyle:
-  React.CSSProperties = {
+const sectionStyle: React.CSSProperties = {
   display: 'grid',
   gap: '10px',
 
   padding: '14px',
 
-  border:
-    '1px solid rgba(255,255,255,0.08)',
+  border: '1px solid rgba(255,255,255,0.08)',
 
   borderRadius: '14px',
 
-  background:
-    'rgba(255,255,255,0.018)',
+  background: 'rgba(255,255,255,0.018)',
 }
 
-const infoStyle:
-  React.CSSProperties = {
+const infoStyle: React.CSSProperties = {
   padding: '12px',
 
   borderRadius: '12px',
 
-  background:
-    'rgba(59,130,246,0.08)',
+  background: 'rgba(59,130,246,0.08)',
 
-  border:
-    '1px solid rgba(59,130,246,0.20)',
+  border: '1px solid rgba(59,130,246,0.20)',
 
   color: '#bfdbfe',
 
@@ -1800,8 +1496,7 @@ const infoStyle:
   lineHeight: 1.8,
 }
 
-const inputStyle:
-  React.CSSProperties = {
+const inputStyle: React.CSSProperties = {
   width: '100%',
 
   minHeight: '42px',
@@ -1810,11 +1505,9 @@ const inputStyle:
 
   borderRadius: '10px',
 
-  border:
-    '1px solid rgba(255,255,255,0.14)',
+  border: '1px solid rgba(255,255,255,0.14)',
 
-  background:
-    'rgba(15,23,42,0.92)',
+  background: 'rgba(15,23,42,0.92)',
 
   color: '#fff',
 
@@ -1823,8 +1516,7 @@ const inputStyle:
   outline: 'none',
 }
 
-const miniFieldStyle:
-  React.CSSProperties = {
+const miniFieldStyle: React.CSSProperties = {
   display: 'grid',
   gap: '4px',
 
@@ -1833,8 +1525,7 @@ const miniFieldStyle:
   color: '#94a3b8',
 }
 
-const miniInputStyle:
-  React.CSSProperties = {
+const miniInputStyle: React.CSSProperties = {
   width: '90px',
 
   minHeight: '34px',
@@ -1843,23 +1534,19 @@ const miniInputStyle:
 
   borderRadius: '8px',
 
-  border:
-    '1px solid rgba(255,255,255,0.12)',
+  border: '1px solid rgba(255,255,255,0.12)',
 
-  background:
-    'rgba(15,23,42,0.92)',
+  background: 'rgba(15,23,42,0.92)',
 
   color: '#fff',
 }
 
-const itemCardStyle:
-  React.CSSProperties = {
+const itemCardStyle: React.CSSProperties = {
   display: 'flex',
 
   alignItems: 'center',
 
-  justifyContent:
-    'space-between',
+  justifyContent: 'space-between',
 
   gap: '10px',
 
@@ -1869,15 +1556,12 @@ const itemCardStyle:
 
   borderRadius: '11px',
 
-  background:
-    'rgba(255,255,255,0.04)',
+  background: 'rgba(255,255,255,0.04)',
 
-  border:
-    '1px solid rgba(255,255,255,0.06)',
+  border: '1px solid rgba(255,255,255,0.06)',
 }
 
-const mutedStyle:
-  React.CSSProperties = {
+const mutedStyle: React.CSSProperties = {
   color: '#94a3b8',
 
   fontSize: '11px',
@@ -1885,16 +1569,14 @@ const mutedStyle:
   lineHeight: 1.6,
 }
 
-const primaryButtonStyle:
-  React.CSSProperties = {
+const primaryButtonStyle: React.CSSProperties = {
   minHeight: '42px',
 
   border: 'none',
 
   borderRadius: '11px',
 
-  background:
-    'linear-gradient(135deg, #2563eb, #3b82f6)',
+  background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
 
   color: '#fff',
 
@@ -1905,17 +1587,14 @@ const primaryButtonStyle:
   padding: '0 14px',
 }
 
-const secondaryButtonStyle:
-  React.CSSProperties = {
+const secondaryButtonStyle: React.CSSProperties = {
   minHeight: '42px',
 
   borderRadius: '10px',
 
-  border:
-    '1px solid rgba(59,130,246,0.30)',
+  border: '1px solid rgba(59,130,246,0.30)',
 
-  background:
-    'rgba(59,130,246,0.10)',
+  background: 'rgba(59,130,246,0.10)',
 
   color: '#bfdbfe',
 
@@ -1926,17 +1605,14 @@ const secondaryButtonStyle:
   padding: '0 14px',
 }
 
-const dangerButtonStyle:
-  React.CSSProperties = {
+const dangerButtonStyle: React.CSSProperties = {
   minHeight: '32px',
 
   borderRadius: '9px',
 
-  border:
-    '1px solid rgba(239,68,68,0.30)',
+  border: '1px solid rgba(239,68,68,0.30)',
 
-  background:
-    'rgba(239,68,68,0.08)',
+  background: 'rgba(239,68,68,0.08)',
 
   color: '#fca5a5',
 
@@ -1947,18 +1623,15 @@ const dangerButtonStyle:
   padding: '0 10px',
 }
 
-const closeButtonStyle:
-  React.CSSProperties = {
+const closeButtonStyle: React.CSSProperties = {
   width: '38px',
   height: '38px',
 
   borderRadius: '10px',
 
-  border:
-    '1px solid rgba(255,255,255,0.10)',
+  border: '1px solid rgba(255,255,255,0.10)',
 
-  background:
-    'rgba(255,255,255,0.06)',
+  background: 'rgba(255,255,255,0.06)',
 
   color: '#fff',
 

@@ -293,7 +293,33 @@ declare global {
         items: Array<{
           variant_id: number
           quantity: number
-          unit_price: number
+        }>
+      }) => Promise<{
+        success: boolean
+
+        message?: string
+
+        sale_id?: number
+
+        correction_id?: number
+
+        shift_id?: number
+
+        grand_total?: number
+
+        review?: any
+      }>
+
+      updateShiftVarianceSaleCorrection: (input: {
+        correction_id: number
+
+        notes?: string | null
+
+        admin_password: string
+
+        items: Array<{
+          variant_id: number
+          quantity: number
         }>
       }) => Promise<{
         success: boolean
@@ -1929,29 +1955,13 @@ declare global {
         }>
       }>
 
-      addCashShiftVarianceCorrection: (input: {
-        variance_id: number
-
-        reason_code: string
-
-        amount: number
-
-        notes?: string | null
-
-        admin_password: string
-      }) => Promise<{
-        success: boolean
-
-        message?: string
-
-        review?: any
-      }>
-
       cancelCashShiftVarianceCorrection: (input: {
         correction_id: number
 
         reason: string
+        document_title?: string | null
 
+        document_category?: string | null
         admin_password: string
       }) => Promise<{
         success: boolean
@@ -2059,6 +2069,34 @@ declare global {
 
       createShiftVarianceExpenseCorrection: (input: {
         variance_id: number
+
+        title: string
+
+        category?: string | null
+
+        amount: number
+
+        notes?: string | null
+
+        admin_password: string
+      }) => Promise<{
+        success: boolean
+
+        message?: string
+
+        expense_id?: number
+
+        correction_id?: number
+
+        shift_id?: number
+
+        amount?: number
+
+        review?: any
+      }>
+
+      updateShiftVarianceExpenseCorrection: (input: {
+        correction_id: number
 
         title: string
 

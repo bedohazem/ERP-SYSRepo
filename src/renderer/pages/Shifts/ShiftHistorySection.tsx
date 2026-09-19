@@ -93,6 +93,18 @@ type ShiftDetails = {
 
     amount: number
 
+    original_signed_amount: number
+
+    correction_effect_amount: number
+
+    remaining_signed_amount: number
+
+    remaining_amount: number
+
+    remaining_kind: 'shortage' | 'surplus' | 'balanced'
+
+    correction_count: number
+
     status: 'pending' | 'resolved'
 
     resolution_notes?: string | null
@@ -941,7 +953,7 @@ function ShiftDetailsModal({
           />
 
           <InfoCard
-            title="فرق الإغلاق"
+            title="فرق الإغلاق وقت الجرد"
             value={
               shift.closing_difference == null
                 ? '—'
@@ -1041,27 +1053,90 @@ function ShiftDetailsModal({
                   key={variance.id}
                   style={{
                     padding: '12px',
+
                     borderRadius: '12px',
+
                     background: 'rgba(255,255,255,0.04)',
+
+                    border: '1px solid rgba(255,255,255,0.06)',
+
+                    display: 'grid',
+
+                    gap: '7px',
                   }}
                 >
-                  {getCashShiftVarianceStageLabel(variance.stage)}
+                  <div>
+                    <strong>
+                      {getCashShiftVarianceStageLabel(variance.stage)}
+                    </strong>
+                    {' — '}
+                    الفرق الأصلي:{' '}
+                    <strong>
+                      {getCashShiftVarianceKindLabel(variance.kind)}{' '}
+                      {money(variance.amount)}
+                    </strong>
+                  </div>
 
-                  {' — '}
+                  {variance.stage === 'closing' && (
+                    <>
+                      <div>
+                        صافي التصحيحات:{' '}
+                        <strong>
+                          {signedMoney(variance.correction_effect_amount)}
+                        </strong>
+                      </div>
 
-                  {getCashShiftVarianceKindLabel(variance.kind)}
+                      <div>
+                        المتبقي:{' '}
+                        <strong
+                          style={{
+                            color:
+                              variance.remaining_kind === 'balanced'
+                                ? '#34d399'
+                                : variance.remaining_kind === 'shortage'
+                                  ? '#f87171'
+                                  : '#fbbf24',
+                          }}
+                        >
+                          {variance.remaining_kind === 'balanced'
+                            ? 'متطابق — 0.00 ج.م'
+                            : `${
+                                variance.remaining_kind === 'shortage'
+                                  ? 'عجز'
+                                  : 'زيادة'
+                              } ${money(variance.remaining_amount)}`}
+                        </strong>
+                      </div>
 
-                  {' — '}
+                      <div
+                        style={{
+                          color: '#94a3b8',
 
-                  {money(variance.amount)}
+                          fontSize: '11px',
+                        }}
+                      >
+                        عدد التصحيحات: {variance.correction_count}
+                      </div>
+                    </>
+                  )}
 
-                  {' — '}
+                  <div>
+                    الحالة:{' '}
+                    <strong>
+                      {getCashShiftVarianceStatusLabel(variance.status)}
+                    </strong>
+                  </div>
 
-                  {getCashShiftVarianceStatusLabel(variance.status)}
-
-                  {variance.resolution_notes
-                    ? ` — ${variance.resolution_notes}`
-                    : ''}
+                  {variance.resolution_notes && (
+                    <div
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: '11px',
+                      }}
+                    >
+                      نتيجة المراجعة: {variance.resolution_notes}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1117,6 +1192,16 @@ function getMovementTypeLabel(type: string) {
 
 function money(value?: number | null) {
   return `${Number(value || 0).toFixed(2)} ج.م`
+}
+
+function signedMoney(value?: number | null) {
+  const amount = Number(value || 0)
+
+  if (Math.abs(amount) <= 0.001) {
+    return '0.00 ج.م'
+  }
+
+  return `${amount > 0 ? '+' : ''}${amount.toFixed(2)} ج.م`
 }
 
 function tableMoney(value?: number | null) {

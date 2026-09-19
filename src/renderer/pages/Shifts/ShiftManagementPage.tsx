@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import ShiftVarianceReviewModal from '../../components/shifts/ShiftVarianceReviewModal'
 import {
-  canResolveCashShiftVariance,
   getCashShiftVarianceKindLabel,
   getCashShiftVarianceResolutionLabel,
   getCashShiftVarianceStageLabel,
@@ -223,10 +222,6 @@ export default function ShiftManagementPage() {
   }, [])
 
   function openVarianceReview(variance: CashShiftVariance) {
-    if (!canResolveCashShiftVariance(variance)) {
-      return
-    }
-
     setResolveTarget(variance)
   }
 
@@ -739,33 +734,23 @@ export default function ShiftManagementPage() {
                     </td>
 
                     <td style={tdStyle}>
-                      {canResolveCashShiftVariance(variance) ? (
-                        <button
-                          type="button"
-                          onClick={() => openVarianceReview(variance)}
-                          style={{
-                            ...primaryButtonStyle,
+                      <button
+                        type="button"
+                        onClick={() => openVarianceReview(variance)}
+                        style={{
+                          ...primaryButtonStyle,
 
-                            height: '32px',
+                          height: '32px',
 
-                            padding: '0 12px',
+                          padding: '0 12px',
 
-                            fontSize: '11px',
-                          }}
-                        >
-                          مراجعة
-                        </button>
-                      ) : (
-                        <span
-                          style={{
-                            color: '#64748b',
-
-                            fontSize: '11px',
-                          }}
-                        >
-                          مكتملة
-                        </span>
-                      )}
+                          fontSize: '11px',
+                        }}
+                      >
+                        {variance.status === 'pending'
+                          ? 'مراجعة'
+                          : 'عرض / تعديل'}
+                      </button>
                     </td>
                   </tr>
                 ))}
