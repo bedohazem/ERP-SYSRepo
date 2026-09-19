@@ -749,7 +749,9 @@ export default function ShiftManagementPage() {
                       >
                         {variance.status === 'pending'
                           ? 'مراجعة'
-                          : 'عرض / تعديل'}
+                          : variance.stage === 'closing'
+                            ? 'عرض / تعديل'
+                            : 'عرض'}
                       </button>
                     </td>
                   </tr>

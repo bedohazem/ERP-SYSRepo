@@ -3,15 +3,20 @@ import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
 import {
   cancelExpense,
   createExpense,
+  createClosedShiftExpenseCorrection,
   listExpenses,
   listExpensesPage,
   updateExpense,
+  updateClosedShiftExpenseCorrection,
 } from '../../src/main/database/repositories/expense.repo'
 
 import {
+  cancelCashShiftVarianceCorrection,
   closeCashShift,
   getOpenCashShift,
+  listCashShiftVariances,
   openCashShift,
+  resolveCashShiftVariance,
 } from '../../src/main/database/repositories/cash-shifts.repo'
 
 type ExpenseTestRow = {
@@ -702,5 +707,203 @@ describe('expense repository', () => {
     expect(Number(cancelReverse.amount)).toBe(150)
 
     expect(Number(cancelReverse.shift_id)).toBe(shift2.id)
+  })
+
+  it('creates updates and cancels a closed shift expense correction without moving cash', () => {
+    const db = getDb()
+
+    const shift = getOpenCashShift()
+
+    if (!shift) {
+      throw new Error('Expected open shift')
+    }
+
+    closeCashShift({
+      shift_id: shift.id,
+
+      closing_counted_amount: 999900,
+
+      left_for_next_shift: 999900,
+
+      closed_by: 1,
+    })
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows.find((item) => item.stage === 'closing')
+
+    if (!variance) {
+      throw new Error('Expected closing variance')
+    }
+
+    expect(variance.remaining_kind).toBe('shortage')
+
+    expect(variance.remaining_amount).toBe(100)
+
+    const cashMovementCountBefore = getCashMovementsCount()
+
+    const cashInBefore = getCashMovementTotal('in')
+
+    const cashOutBefore = getCashMovementTotal('out')
+
+    const created = createClosedShiftExpenseCorrection({
+      variance_id: variance.id,
+
+      title: 'Historical Expense',
+
+      category: 'operations',
+
+      amount: 100,
+
+      notes: 'Missing old expense',
+
+      actor_id: 1,
+    })
+
+    expect(created.success).toBe(true)
+
+    expect(created.review.variance.remaining_signed_amount).toBe(0)
+
+    expect(created.review.variance.remaining_kind).toBe('balanced')
+
+    expect(getCashMovementsCount()).toBe(cashMovementCountBefore)
+
+    expect(getCashMovementTotal('in')).toBe(cashInBefore)
+
+    expect(getCashMovementTotal('out')).toBe(cashOutBefore)
+
+    const createdExpense = db
+      .prepare(
+        `
+        SELECT *
+
+        FROM expenses
+
+        WHERE id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(created.expense_id) as any
+
+    expect(createdExpense.title).toBe('Historical Expense')
+
+    expect(Number(createdExpense.amount)).toBe(100)
+
+    expect(createdExpense.payment_method).toBe('store_cash')
+
+    expect(Number(createdExpense.shift_id)).toBe(shift.id)
+
+    resolveCashShiftVariance({
+      variance_id: variance.id,
+
+      resolution_type: 'explained',
+
+      resolution_notes: 'تم تفسير الفرق بالكامل',
+
+      resolved_by: 1,
+    })
+
+    const updated = updateClosedShiftExpenseCorrection({
+      correction_id: created.correction_id,
+
+      title: 'Historical Expense Updated',
+
+      category: 'operations-updated',
+
+      amount: 120,
+
+      notes: 'Updated correction',
+
+      actor_id: 1,
+    })
+
+    expect(updated.success).toBe(true)
+
+    /*
+     * الفرق الأصلي -100
+     * المصروف التصحيحي +120
+     * إذن المتبقي +20 زيادة.
+     */
+    expect(updated.review.variance.remaining_signed_amount).toBe(20)
+
+    expect(updated.review.variance.remaining_kind).toBe('surplus')
+
+    expect(updated.review.variance.remaining_amount).toBe(20)
+
+    /*
+     * بما إننا عدلنا مستندًا بعد
+     * إنهاء المراجعة، لازم ترجع
+     * Pending تلقائيًا.
+     */
+    expect(updated.review.variance.status).toBe('pending')
+
+    expect(getCashMovementsCount()).toBe(cashMovementCountBefore)
+
+    expect(getCashMovementTotal('in')).toBe(cashInBefore)
+
+    expect(getCashMovementTotal('out')).toBe(cashOutBefore)
+
+    const expenseAfterUpdate = db
+      .prepare(
+        `
+        SELECT *
+
+        FROM expenses
+
+        WHERE id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(created.expense_id) as any
+
+    expect(expenseAfterUpdate.title).toBe('Historical Expense Updated')
+
+    expect(Number(expenseAfterUpdate.amount)).toBe(120)
+
+    expect(expenseAfterUpdate.category).toBe('operations-updated')
+
+    const cancelled = cancelCashShiftVarianceCorrection({
+      correction_id: created.correction_id,
+
+      reason: 'اختبار إلغاء التصحيح',
+
+      cancelled_by: 1,
+    })
+
+    /*
+     * بعد إلغاء التصحيح:
+     * يرجع الفرق الأصلي فقط = -100.
+     */
+    expect(cancelled.variance.remaining_signed_amount).toBe(-100)
+
+    expect(cancelled.variance.remaining_kind).toBe('shortage')
+
+    expect(cancelled.variance.remaining_amount).toBe(100)
+
+    expect(cancelled.variance.status).toBe('pending')
+
+    const expenseAfterCancel = db
+      .prepare(
+        `
+        SELECT *
+
+        FROM expenses
+
+        WHERE id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(created.expense_id) as any
+
+    expect(expenseAfterCancel.cancelled_at).not.toBeNull()
+
+    expect(getCashMovementsCount()).toBe(cashMovementCountBefore)
+
+    expect(getCashMovementTotal('in')).toBe(cashInBefore)
+
+    expect(getCashMovementTotal('out')).toBe(cashOutBefore)
   })
 })
