@@ -10,6 +10,7 @@ import { useAuthStore } from '../../store/auth.store'
 import {
   CUSTOMER_PAYMENT_METHOD_OPTIONS,
   getPaymentMethodLabel,
+  ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS,
 } from '../../utils/payment-method'
 import { printSaleReceiptHtml } from '../../utils/receiptPrint'
 
@@ -3044,7 +3045,10 @@ export default function SalesPage() {
                   gap: '10px',
                 }}
               >
-                {CUSTOMER_PAYMENT_METHOD_OPTIONS.map((option) => {
+                {(user?.role === 'admin'
+                  ? ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS
+                  : CUSTOMER_PAYMENT_METHOD_OPTIONS
+                ).map((option) => {
                   const active = activeInvoice.paymentMethod === option.value
 
                   return (

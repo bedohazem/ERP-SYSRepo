@@ -28,6 +28,8 @@ import {
   closeCashShift,
   getOpenCashShift,
   openCashShift,
+  listCashShiftVariances,
+  resolveCashShiftVariance,
 } from '../../src/main/database/repositories/cash-shifts.repo'
 import { createUser } from '../../src/main/database/repositories/user.repo'
 import {
@@ -1103,7 +1105,7 @@ describe('reports repository', () => {
 
       change_amount: 0,
 
-      payment_method: 'owner_bank',
+      payment_method: 'cash',
 
       items: [
         {
@@ -1135,8 +1137,7 @@ describe('reports repository', () => {
     closeCashShift({
       shift_id: firstShift!.id,
 
-      closing_counted_amount: 0,
-
+      closing_counted_amount: 100,
       left_for_next_shift: 0,
 
       closed_by: 1,
@@ -1194,7 +1195,7 @@ describe('reports repository', () => {
 
       change_amount: 0,
 
-      payment_method: 'owner_bank',
+      payment_method: 'cash',
 
       items: [
         {
@@ -1530,5 +1531,48 @@ describe('reports repository', () => {
     expect(
       movements.every((movement) => movement.business_date === shiftDate.day),
     ).toBe(true)
+  })
+
+  it('includes approved closing surplus in final net profit', () => {
+    const shift = getOpenCashShift()
+
+    expect(shift).toBeTruthy()
+
+    createCashMovement({
+      type: 'sale',
+      direction: 'in',
+      amount: 100,
+      payment_method: 'store_cash',
+      created_by: 1,
+      shift_id: shift!.id,
+    })
+
+    closeCashShift({
+      shift_id: shift!.id,
+      closing_counted_amount: 150,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    })
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows.find((row) => row.shift_id === shift!.id && row.stage === 'closing')
+
+    expect(variance).toBeTruthy()
+    expect(variance!.kind).toBe('surplus')
+    expect(Number(variance!.amount)).toBe(50)
+
+    resolveCashShiftVariance({
+      variance_id: variance!.id,
+      resolution_type: 'approved',
+      resolution_notes: 'زيادة إغلاق حقيقية',
+      resolved_by: 1,
+    })
+
+    const report = getReportsSummary()
+
+    expect(report.summary.approved_closing_surplus).toBe(50)
+    expect(report.summary.approved_closing_shortage).toBe(0)
+    expect(report.summary.final_net_profit).toBe(50)
   })
 })

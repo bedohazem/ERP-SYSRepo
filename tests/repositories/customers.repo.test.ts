@@ -1336,4 +1336,67 @@ describe('customers repository', () => {
       ).toBeCloseTo(300 - paid, 2)
     },
   )
+
+  it('allows admin customer payment to store safe without an open shift', () => {
+    const db = getDb()
+
+    const customer = createTestCustomer('01099999999')
+
+    const sale = createPartialSale(customer.id, 100)
+
+    const shift = getOpenCashShift()
+
+    expect(shift).toBeTruthy()
+
+    closeCashShift({
+      shift_id: shift!.id,
+      closing_counted_amount: 100,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    })
+
+    expect(getOpenCashShift()).toBeNull()
+
+    const result = recordCustomerPayment({
+      customer_id: customer.id,
+      sale_id: sale.saleId,
+      amount: 50,
+      payment_method: 'store_safe',
+      actor_id: 1,
+      notes: 'تحصيل من الخزنة الآمنة بعد إغلاق الشفت',
+    })
+
+    expect(result.shift_id).toBeNull()
+    expect(result.paid_amount).toBe(50)
+
+    const batch = db
+      .prepare(
+        `
+      SELECT shift_id, payment_method
+      FROM customer_payment_batches
+      WHERE id = ?
+      `,
+      )
+      .get(result.payment_batch_id) as any
+
+    expect(batch.shift_id).toBeNull()
+    expect(batch.payment_method).toBe('store_safe')
+
+    const movement = db
+      .prepare(
+        `
+      SELECT shift_id, payment_method, amount, direction
+      FROM cash_movements
+      WHERE reference_type = 'customer_payment'
+        AND reference_id = ?
+      LIMIT 1
+      `,
+      )
+      .get(result.payment_batch_id) as any
+
+    expect(movement.shift_id).toBeNull()
+    expect(movement.payment_method).toBe('store_safe')
+    expect(movement.direction).toBe('in')
+    expect(Number(movement.amount)).toBe(50)
+  })
 })

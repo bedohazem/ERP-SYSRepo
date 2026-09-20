@@ -280,7 +280,7 @@ declare global {
         promotion_name?: string | null
         promotion_discount_value?: number
         grand_total?: number
-        shift_id?: number
+        shift_id?: number | null
       }>
 
       getSaleReceipt: (saleId: number) => Promise<{
@@ -844,7 +844,7 @@ declare global {
         customer_id: number
         payment_batch_id: number
         paid_amount: number
-        shift_id: number
+        shift_id: number | null
         allocations?: Array<{
           sale_id: number | null
           amount: number

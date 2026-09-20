@@ -3,6 +3,7 @@ import { useAuthStore } from '../../store/auth.store'
 import {
   CUSTOMER_PAYMENT_METHOD_OPTIONS,
   getPaymentMethodLabel,
+  ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS,
 } from '../../utils/payment-method'
 
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
@@ -1560,7 +1561,10 @@ export default function CustomersPage() {
                     onChange={(e) => setPaymentActionMethod(e.target.value)}
                     style={inputStyle}
                   >
-                    {CUSTOMER_PAYMENT_METHOD_OPTIONS.map((option) => (
+                    {(isAdmin
+                      ? ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS
+                      : CUSTOMER_PAYMENT_METHOD_OPTIONS
+                    ).map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
                       </option>
@@ -1731,7 +1735,10 @@ export default function CustomersPage() {
                   onChange={(e) => setPaymentMethod(e.target.value)}
                   style={inputStyle}
                 >
-                  {CUSTOMER_PAYMENT_METHOD_OPTIONS.map((option) => (
+                  {(isAdmin
+                    ? ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS
+                    : CUSTOMER_PAYMENT_METHOD_OPTIONS
+                  ).map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>

@@ -290,7 +290,7 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('لا يمكن تسجيل فاتورة بيع بدون شفت مفتوح')
+    ).toThrow('لا يمكن تسجيل فاتورة بيع من درج المحل بدون شفت مفتوح')
 
     const shift = openCashShift({
       opening_counted_amount: 0,
@@ -350,6 +350,68 @@ describe('sales repository', () => {
     }
 
     expect(movement.shift_id).toBe(shift.id)
+  })
+
+  it('allows admin sale to store safe without an open shift', () => {
+    const db = getDb()
+
+    db.prepare(`DELETE FROM cash_shifts`).run()
+
+    const variant = seedProduct()
+
+    const result = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+      change_amount: 0,
+      payment_method: 'store_safe',
+      paid: 150,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(result.shift_id).toBeNull()
+
+    const sale = db
+      .prepare(
+        `
+      SELECT shift_id, payment_method
+      FROM sales
+      WHERE id = ?
+      `,
+      )
+      .get(result.saleId) as any
+
+    expect(sale.shift_id).toBeNull()
+    expect(sale.payment_method).toBe('store_safe')
+
+    const movement = db
+      .prepare(
+        `
+      SELECT shift_id, payment_method, amount, direction
+      FROM cash_movements
+      WHERE reference_type = 'sale'
+        AND reference_id = ?
+      LIMIT 1
+      `,
+      )
+      .get(result.saleId) as any
+
+    expect(movement.shift_id).toBeNull()
+    expect(movement.payment_method).toBe('store_safe')
+    expect(movement.direction).toBe('in')
+    expect(Number(movement.amount)).toBe(150)
   })
 
   it('rejects item quantity less than or equal zero', () => {

@@ -3,6 +3,7 @@ import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 import { useAuthStore } from '../../store/auth.store'
 import {
   CASH_ACCOUNT_OPTIONS,
+  ADMIN_CASH_ACCOUNT_OPTIONS,
   getPaymentMethodLabel,
 } from '../../utils/payment-method'
 import FinancialCancelModal from '../../components/FinancialCancelModal'
@@ -726,7 +727,10 @@ export default function ExpensesPage() {
               onChange={(e) => setPaymentMethod(e.target.value)}
               style={inputStyle}
             >
-              {CASH_ACCOUNT_OPTIONS.map((option) => (
+              {(isAdmin
+                ? ADMIN_CASH_ACCOUNT_OPTIONS
+                : CASH_ACCOUNT_OPTIONS
+              ).map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -1152,7 +1156,10 @@ export default function ExpensesPage() {
                 onChange={(e) => setEditExpensePaymentMethod(e.target.value)}
                 style={inputStyle}
               >
-                {CASH_ACCOUNT_OPTIONS.map((option) => (
+                {(isAdmin
+                  ? ADMIN_CASH_ACCOUNT_OPTIONS
+                  : CASH_ACCOUNT_OPTIONS
+                ).map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>

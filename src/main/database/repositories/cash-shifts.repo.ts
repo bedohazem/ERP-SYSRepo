@@ -358,9 +358,15 @@ export function resolveFinancialOperationShift(
 
   const accounts = paymentMethods.length > 0 ? paymentMethods : ['cash']
 
-  const touchesDrawer = accounts.some(
-    (method) => resolveCashAccount(method || 'cash') === 'store_cash',
+  const resolvedAccounts = accounts.map((method) =>
+    resolveCashAccount(method || 'cash'),
   )
+
+  if (actor.role !== 'admin' && resolvedAccounts.includes('store_safe')) {
+    throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط')
+  }
+
+  const touchesDrawer = resolvedAccounts.includes('store_cash')
 
   /*
    * الأدمن يقدر يعمل عملية على

@@ -24,6 +24,16 @@ export const CUSTOMER_PAYMENT_METHOD_OPTIONS = [
   { value: 'bank_transfer', label: 'تحويل بنكي / انستا باي' },
 ]
 
+export const ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS = [
+  ...CUSTOMER_PAYMENT_METHOD_OPTIONS,
+  { value: 'store_safe', label: 'الخزنة الآمنة' },
+]
+
+export const ADMIN_CASH_ACCOUNT_OPTIONS = [
+  ...CASH_ACCOUNT_OPTIONS,
+  { value: 'store_safe' as const, label: 'الخزنة الآمنة' },
+]
+
 export function getPaymentMethodLabel(value?: string | null) {
   switch (value) {
     case 'cash':

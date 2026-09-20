@@ -1,8 +1,25 @@
 import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
-import { requireOperationalCashShift } from './cash-shifts.repo'
+import {
+  requireOperationalCashShift,
+  resolveFinancialOperationShift,
+} from './cash-shifts.repo'
 
 import { getShiftBusinessDate } from '../shift-business-date'
+
+function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
+  const row = db
+    .prepare(
+      `
+      SELECT date('now', 'localtime') AS business_date
+      `,
+    )
+    .get() as {
+    business_date: string
+  }
+
+  return String(row?.business_date || '')
+}
 
 export type CustomerInput = {
   name: string
@@ -483,9 +500,12 @@ export function recordCustomerPayment(input: {
 
   const actorId = Number(input.actor_id || 0)
 
-  const openShift = requireOperationalCashShift(
+  const paymentMethod = String(input.payment_method || 'cash').trim() || 'cash'
+
+  const openShift = resolveFinancialOperationShift(
     actorId,
-    'لا يمكن تسجيل دفعة عميل بدون شفت مفتوح',
+    [paymentMethod],
+    'لا يمكن تسجيل دفعة عميل من درج المحل بدون شفت مفتوح',
   )
 
   if (!customerId) {
@@ -505,7 +525,9 @@ export function recordCustomerPayment(input: {
       throw new Error('العميل غير موجود')
     }
 
-    const businessDate = getShiftBusinessDate(openShift.id)
+    const businessDate = openShift
+      ? getShiftBusinessDate(openShift.id)
+      : getCurrentBusinessDate(db)
 
     const batchResult = db
       .prepare(
@@ -526,11 +548,11 @@ export function recordCustomerPayment(input: {
       .run(
         customerId,
         saleId,
-        input.payment_method || 'cash',
+        paymentMethod,
         input.notes?.trim() || null,
         input.actor_id ?? null,
         businessDate,
-        openShift.id,
+        openShift?.id ?? null,
       )
 
     const paymentBatchId = Number(batchResult.lastInsertRowid)
@@ -607,7 +629,7 @@ export function recordCustomerPayment(input: {
         saleId,
         paymentBatchId,
         finalAmount,
-        input.payment_method || 'cash',
+        paymentMethod,
         input.notes?.trim() || `دفعة على فاتورة بيع رقم ${saleId}`,
       )
 
@@ -666,7 +688,7 @@ export function recordCustomerPayment(input: {
           sale.id,
           paymentBatchId,
           payNow,
-          input.payment_method || 'cash',
+          paymentMethod,
           input.notes?.trim() ||
             `دفعة عامة موزعة على فاتورة بيع رقم ${sale.id}`,
         )
@@ -707,7 +729,7 @@ export function recordCustomerPayment(input: {
       type: 'customer_payment',
       direction: 'in',
       amount: totalPaid,
-      payment_method: input.payment_method || 'cash',
+      payment_method: paymentMethod,
 
       reference_id: paymentBatchId,
       reference_type: 'customer_payment',
@@ -716,7 +738,7 @@ export function recordCustomerPayment(input: {
 
       created_by: input.actor_id ?? null,
       business_date: businessDate,
-      shift_id: openShift.id,
+      shift_id: openShift?.id ?? null,
     })
 
     return {
@@ -729,7 +751,7 @@ export function recordCustomerPayment(input: {
       paid_amount: totalPaid,
 
       allocations,
-      shift_id: openShift.id,
+      shift_id: openShift?.id ?? null,
     }
   })
 

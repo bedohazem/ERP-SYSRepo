@@ -5,7 +5,10 @@ import {
   calculateSaleEarnedPoints,
   getSaleCurrentState,
 } from './sales-current-state.repo'
-import { requireOperationalCashShift } from './cash-shifts.repo'
+import {
+  requireOperationalCashShift,
+  resolveFinancialOperationShift,
+} from './cash-shifts.repo'
 
 import { getShiftBusinessDate } from '../shift-business-date'
 
@@ -72,6 +75,20 @@ function getLoyaltySettingsForSale() {
 
 function roundMoney(value: number) {
   return Number(Number(value || 0).toFixed(2))
+}
+
+function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
+  const row = db
+    .prepare(
+      `
+      SELECT date('now', 'localtime') AS business_date
+      `,
+    )
+    .get() as {
+    business_date: string
+  }
+
+  return String(row?.business_date || '')
 }
 
 export function syncCustomerTotalSpent(customerIdInput: number) {
@@ -157,14 +174,23 @@ export function createSale(input: CreateSaleInput) {
     throw new Error('Sale items are required')
   }
 
-  const openShift = requireOperationalCashShift(
+  const paymentMethod = String(input.payment_method || 'cash').trim() || 'cash'
+
+  const openShift = resolveFinancialOperationShift(
     input.user_id,
-    'لا يمكن تسجيل فاتورة بيع بدون شفت مفتوح',
+    [paymentMethod],
+    'لا يمكن تسجيل فاتورة بيع من درج المحل بدون شفت مفتوح',
   )
 
   const loyalty = getLoyaltySettingsForSale()
 
-  const businessDate = getShiftBusinessDate(openShift.id)
+  const requestedBusinessDate = String(input.business_date || '').trim()
+
+  const businessDate = openShift
+    ? getShiftBusinessDate(openShift.id)
+    : /^\d{4}-\d{2}-\d{2}$/.test(requestedBusinessDate)
+      ? requestedBusinessDate
+      : getCurrentBusinessDate(db)
 
   const customerId = input.customer_id ? Number(input.customer_id) : null
   const requestedRedeemPoints = Number(input.loyalty_points_redeemed || 0)
@@ -328,7 +354,7 @@ export function createSale(input: CreateSaleInput) {
         customerId,
         input.user_id,
         businessDate,
-        openShift.id,
+        openShift?.id ?? null,
         subTotal,
         normalDiscount,
 
@@ -434,13 +460,13 @@ export function createSale(input: CreateSaleInput) {
         type: 'sale',
         direction: 'in',
         amount: paidAmount,
-        payment_method: input.payment_method || 'cash',
+        payment_method: paymentMethod,
         reference_id: saleId,
         reference_type: 'sale',
         notes: `تحصيل فاتورة بيع رقم ${saleId}`,
         created_by: input.user_id,
         business_date: businessDate,
-        shift_id: openShift.id,
+        shift_id: openShift?.id ?? null,
       })
     }
 
@@ -899,7 +925,7 @@ export function createSale(input: CreateSaleInput) {
       paid_amount: paidAmount,
       remaining_amount: remainingAmount,
       payment_status: paymentStatus,
-      shift_id: openShift.id,
+      shift_id: openShift?.id ?? null,
     }
   })
 
