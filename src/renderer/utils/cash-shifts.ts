@@ -168,13 +168,13 @@ export function getCashShiftVarianceStatusLabel(value?: string | null) {
 export function getCashShiftVarianceResolutionLabel(value?: string | null) {
   switch (value) {
     case 'approved':
-      return 'تم التحقق واعتماد الفرق'
+      return 'فرق فعلي معتمد — يؤثر على رأس المال'
 
     case 'explained':
-      return 'تم تفسير سبب الفرق'
+      return 'معالجة يدوية — بدون تأثير على رأس المال'
 
     case 'other':
-      return 'مراجعة أخرى'
+      return 'مراجعة قديمة'
 
     default:
       return '—'

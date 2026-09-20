@@ -144,6 +144,13 @@ export type CashShiftVarianceRow = {
   opening_counted_amount: number
 
   opening_difference: number
+
+  expected_closing_amount: number | null
+
+  closing_counted_amount: number | null
+
+  closing_difference: number | null
+
   opened_by_name?: string | null
 
   shift_opened_at: string
@@ -435,6 +442,12 @@ function getVarianceSelectSql() {
       cs.opening_counted_amount,
 
       cs.opening_difference,
+
+      cs.expected_closing_amount,
+
+      cs.closing_counted_amount,
+
+      cs.closing_difference,
 
       cs.opened_at
         AS shift_opened_at,
@@ -2306,12 +2319,12 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
 
   requireCashShiftVarianceAdmin(resolvedBy)
 
-  if (!['approved', 'explained', 'other'].includes(resolutionType)) {
+  if (!['approved', 'explained'].includes(resolutionType)) {
     throw new Error('نوع مراجعة فرق الشفت غير صحيح')
   }
 
   if (!resolutionNotes) {
-    throw new Error('اكتب ملاحظات مراجعة فرق الشفت')
+    throw new Error('اكتب سبب قرار مراجعة فرق الشفت')
   }
 
   const current = getCashShiftVarianceById(varianceId)
@@ -2325,19 +2338,31 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
   }
 
   /*
-   * explained معناها إن كل الفرق
-   * تم تفسيره بالكامل.
-   *
-   * لذلك لازم الرصيد المتبقي يكون صفر.
+   * فرق الافتتاح لا يدخل في قرار
+   * تأثير رأس المال الخاص بإغلاق الشفت.
    */
-  if (
-    resolutionType === 'explained' &&
-    Math.abs(Number(current.remaining_signed_amount || 0)) > 0.01
-  ) {
-    throw new Error(
-      'لا يمكن إنهاء الفرق كتفسير كامل قبل وصول حساب الفروقات إلى صفر',
-    )
+  if (current.stage === 'opening' && resolutionType !== 'approved') {
+    throw new Error('فرق استلام الشفت يتم اعتماده كمراجعة استلام فقط')
   }
+
+  const originalSignedAmount =
+    current.kind === 'surplus'
+      ? roundMoney(Math.abs(Number(current.amount || 0)))
+      : roundMoney(-Math.abs(Number(current.amount || 0)))
+
+  /*
+   * approved:
+   * الفرق حقيقي ويؤثر على رأس المال.
+   *
+   * explained:
+   * الفرق ليس عجزًا/زيادة حقيقية
+   * وسيعالج المدير سببه يدويًا،
+   * لذلك تأثيره على رأس المال = صفر.
+   */
+  const capitalEffectAmount =
+    current.stage === 'closing' && resolutionType === 'approved'
+      ? originalSignedAmount
+      : 0
 
   const tx = db.transaction(() => {
     const result = db
@@ -2354,8 +2379,7 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
 
           resolved_by = ?,
 
-          resolved_at =
-            CURRENT_TIMESTAMP
+          resolved_at = CURRENT_TIMESTAMP
 
         WHERE
           id = ?
@@ -2396,13 +2420,13 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
 
         original_amount: Number(current.amount || 0),
 
-        correction_effect_amount: Number(current.correction_effect_amount || 0),
-
-        remaining_signed_amount: Number(current.remaining_signed_amount || 0),
+        original_signed_amount: originalSignedAmount,
 
         resolution_type: resolutionType,
 
         resolution_notes: resolutionNotes,
+
+        capital_effect_amount: capitalEffectAmount,
       }),
     })
 

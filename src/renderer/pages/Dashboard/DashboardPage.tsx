@@ -390,7 +390,7 @@ export default function DashboardPage() {
           icon="🏦"
           title="رأس المال الحالي"
           value={money(data.overview.cashTotalCapital)}
-          subtitle="إجمالي أرصدة الحسابات المالية"
+          subtitle="بعد قرارات فروقات الشفت المعتمدة"
           tone="amber"
         />
         <StatCard

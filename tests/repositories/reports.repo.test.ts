@@ -27,7 +27,9 @@ import { createCashMovement } from '../../src/main/database/repositories/cash.re
 import {
   closeCashShift,
   getOpenCashShift,
+  listCashShiftVariances,
   openCashShift,
+  resolveCashShiftVariance,
 } from '../../src/main/database/repositories/cash-shifts.repo'
 import { createUser } from '../../src/main/database/repositories/user.repo'
 import {
@@ -135,6 +137,7 @@ type ReportsSummaryTestResult = {
   paymentMethods: ReportPaymentMethodRow[]
   lowStock: ReportLowStockRow[]
   topCustomers: ReportTopCustomerRow[]
+  cashTotalCapital: number
 }
 
 function seedReportProduct(options?: {
@@ -1530,5 +1533,113 @@ describe('reports repository', () => {
     expect(
       movements.every((movement) => movement.business_date === shiftDate.day),
     ).toBe(true)
+  })
+
+  it('keeps a pending closing shortage out of capital until the manager approves it', () => {
+    const shift = getOpenCashShift()!
+
+    createCashMovement({
+      type: 'sale',
+
+      direction: 'in',
+
+      amount: 1000,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+
+      shift_id: shift.id,
+    })
+
+    closeCashShift({
+      shift_id: shift.id,
+
+      closing_counted_amount: 900,
+
+      left_for_next_shift: 900,
+
+      closed_by: 1,
+    })
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows.find((row) => row.stage === 'closing')
+
+    if (!variance) {
+      throw new Error('Expected closing variance')
+    }
+
+    const pendingReport = getReportsSummary() as ReportsSummaryTestResult
+
+    expect(pendingReport.cashTotalCapital).toBe(1000)
+
+    resolveCashShiftVariance({
+      variance_id: variance.id,
+
+      resolution_type: 'approved',
+
+      resolution_notes: 'عجز نقدي فعلي',
+
+      resolved_by: 1,
+    })
+
+    const approvedReport = getReportsSummary() as ReportsSummaryTestResult
+
+    expect(approvedReport.cashTotalCapital).toBe(900)
+  })
+
+  it('keeps a manually handled closing surplus out of capital', () => {
+    const shift = getOpenCashShift()!
+
+    createCashMovement({
+      type: 'sale',
+
+      direction: 'in',
+
+      amount: 1000,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+
+      shift_id: shift.id,
+    })
+
+    closeCashShift({
+      shift_id: shift.id,
+
+      closing_counted_amount: 1200,
+
+      left_for_next_shift: 1200,
+
+      closed_by: 1,
+    })
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows.find((row) => row.stage === 'closing')
+
+    if (!variance) {
+      throw new Error('Expected closing variance')
+    }
+
+    const pendingReport = getReportsSummary() as ReportsSummaryTestResult
+
+    expect(pendingReport.cashTotalCapital).toBe(1000)
+
+    resolveCashShiftVariance({
+      variance_id: variance.id,
+
+      resolution_type: 'explained',
+
+      resolution_notes: 'سيتم التعامل مع السبب يدويًا',
+
+      resolved_by: 1,
+    })
+
+    const manualReport = getReportsSummary() as ReportsSummaryTestResult
+
+    expect(manualReport.cashTotalCapital).toBe(1000)
   })
 })

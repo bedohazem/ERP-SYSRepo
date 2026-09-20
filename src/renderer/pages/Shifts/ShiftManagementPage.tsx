@@ -582,7 +582,7 @@ export default function ShiftManagementPage() {
                 <th style={thStyle}>الفرق</th>
 
                 <th style={thStyle}>المبلغ</th>
-                <th style={thStyle}>المتبقي</th>
+                <th style={thStyle}>تأثير رأس المال</th>
                 <th style={thStyle}>التاريخ</th>
 
                 <th style={thStyle}>الحالة</th>
@@ -652,23 +652,26 @@ export default function ShiftManagementPage() {
                     <td
                       style={{
                         ...tdStyle,
+
                         fontWeight: 900,
 
                         color:
-                          variance.remaining_kind === 'shortage'
-                            ? '#f87171'
-                            : variance.remaining_kind === 'surplus'
-                              ? '#34d399'
+                          variance.status === 'pending'
+                            ? '#fbbf24'
+                            : variance.resolution_type === 'approved'
+                              ? variance.kind === 'shortage'
+                                ? '#f87171'
+                                : '#34d399'
                               : '#60a5fa',
                       }}
                     >
-                      {variance.remaining_kind === 'balanced'
-                        ? 'متطابق'
-                        : `${
-                            variance.remaining_kind === 'shortage'
-                              ? 'عجز'
-                              : 'زيادة'
-                          } ${money(variance.remaining_amount)}`}
+                      {variance.status === 'pending'
+                        ? 'معلّق حتى قرار المدير'
+                        : variance.resolution_type === 'approved'
+                          ? `${variance.kind === 'shortage' ? '-' : '+'}${money(
+                              variance.amount,
+                            )}`
+                          : money(0)}
                     </td>
                     <td style={tdStyle}>{formatDate(variance.created_at)}</td>
 
@@ -747,11 +750,7 @@ export default function ShiftManagementPage() {
                           fontSize: '11px',
                         }}
                       >
-                        {variance.status === 'pending'
-                          ? 'مراجعة'
-                          : variance.stage === 'closing'
-                            ? 'عرض / تعديل'
-                            : 'عرض'}
+                        {variance.status === 'pending' ? 'مراجعة' : 'عرض'}
                       </button>
                     </td>
                   </tr>
