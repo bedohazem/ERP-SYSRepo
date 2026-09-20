@@ -1642,4 +1642,132 @@ describe('reports repository', () => {
 
     expect(manualReport.cashTotalCapital).toBe(1000)
   })
+
+  it('adds an approved closing surplus to capital', () => {
+    const shift = getOpenCashShift()!
+
+    createCashMovement({
+      type: 'sale',
+
+      direction: 'in',
+
+      amount: 1000,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+
+      shift_id: shift.id,
+    })
+
+    closeCashShift({
+      shift_id: shift.id,
+
+      closing_counted_amount: 1200,
+
+      left_for_next_shift: 1200,
+
+      closed_by: 1,
+    })
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows.find((row) => row.stage === 'closing')
+
+    if (!variance) {
+      throw new Error('Expected closing variance')
+    }
+
+    expect(variance.kind).toBe('surplus')
+
+    expect(Number(variance.amount)).toBe(200)
+
+    const pendingReport = getReportsSummary() as ReportsSummaryTestResult
+
+    /*
+     * الزيادة لم يعتمدها المدير بعد،
+     * فلا تدخل رأس المال.
+     */
+    expect(pendingReport.cashTotalCapital).toBe(1000)
+
+    resolveCashShiftVariance({
+      variance_id: variance.id,
+
+      resolution_type: 'approved',
+
+      resolution_notes: 'زيادة نقدية فعلية',
+
+      resolved_by: 1,
+    })
+
+    const approvedReport = getReportsSummary() as ReportsSummaryTestResult
+
+    /*
+     * بعد اعتماد المدير:
+     * +200 تدخل رأس المال.
+     */
+    expect(approvedReport.cashTotalCapital).toBe(1200)
+  })
+
+  it('keeps a manually handled closing shortage out of capital', () => {
+    const shift = getOpenCashShift()!
+
+    createCashMovement({
+      type: 'sale',
+
+      direction: 'in',
+
+      amount: 1000,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+
+      shift_id: shift.id,
+    })
+
+    closeCashShift({
+      shift_id: shift.id,
+
+      closing_counted_amount: 800,
+
+      left_for_next_shift: 800,
+
+      closed_by: 1,
+    })
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows.find((row) => row.stage === 'closing')
+
+    if (!variance) {
+      throw new Error('Expected closing variance')
+    }
+
+    expect(variance.kind).toBe('shortage')
+
+    expect(Number(variance.amount)).toBe(200)
+
+    const pendingReport = getReportsSummary() as ReportsSummaryTestResult
+
+    expect(pendingReport.cashTotalCapital).toBe(1000)
+
+    resolveCashShiftVariance({
+      variance_id: variance.id,
+
+      resolution_type: 'explained',
+
+      resolution_notes: 'السبب سيتم التعامل معه يدويًا',
+
+      resolved_by: 1,
+    })
+
+    const manualReport = getReportsSummary() as ReportsSummaryTestResult
+
+    /*
+     * المدير قرر أن العجز
+     * لا يخصم من رأس المال.
+     */
+    expect(manualReport.cashTotalCapital).toBe(1000)
+  })
 })
