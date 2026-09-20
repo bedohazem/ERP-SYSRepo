@@ -1214,7 +1214,7 @@ export default function CashPage() {
         <MultiSelectFilter
           label="الحساب"
           allLabel="كل الحسابات"
-          options={CASH_ACCOUNT_OPTIONS}
+          options={CASH_SUMMARY_ACCOUNT_OPTIONS}
           selected={filterPaymentMethods}
           onChange={setFilterPaymentMethods}
           controlStyle={{
