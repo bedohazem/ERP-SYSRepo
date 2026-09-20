@@ -49,7 +49,7 @@ type CashShiftVariance = {
 
   status: 'pending' | 'resolved'
 
-  resolution_type: 'approved' | 'explained' | 'other' | null
+  resolution_type: 'approved' | 'rejected' | 'explained' | 'other' | null
 
   resolution_notes: string | null
 
@@ -74,7 +74,15 @@ type CashShiftVariance = {
 
 type VarianceStatusFilter = 'all' | 'pending' | 'resolved'
 
-type ResolutionType = 'approved' | 'explained' | 'other'
+type ResolutionType = 'approved' | 'rejected' | 'explained' | 'other'
+
+const VARIANCE_REVERSAL_ACCOUNT_OPTIONS = [
+  { value: 'store_safe', label: 'الخزنة الآمنة' },
+  { value: 'owner_cash', label: 'كاش مع المالك' },
+  { value: 'owner_bank', label: 'حساب بنك / فيزا المالك' },
+  { value: 'owner_vodafone', label: 'فودافون كاش المالك' },
+  { value: 'fawry_machine', label: 'ماكينة فوري' },
+]
 
 type ShiftUserOption = {
   id: number
@@ -119,7 +127,7 @@ export default function ShiftManagementPage() {
     useState<ResolutionType>('explained')
 
   const [resolutionNotes, setResolutionNotes] = useState('')
-
+  const [reversalAccount, setReversalAccount] = useState('store_safe')
   const [adminPassword, setAdminPassword] = useState('')
 
   const [resolving, setResolving] = useState(false)
@@ -220,7 +228,9 @@ export default function ShiftManagementPage() {
 
     setResolveTarget(variance)
 
-    setResolutionType('explained')
+    setResolutionType(variance.stage === 'closing' ? 'approved' : 'explained')
+
+    setReversalAccount('store_safe')
 
     setResolutionNotes('')
 
@@ -235,7 +245,7 @@ export default function ShiftManagementPage() {
     setResolveTarget(null)
 
     setResolutionType('explained')
-
+    setReversalAccount('store_safe')
     setResolutionNotes('')
 
     setAdminPassword('')
@@ -267,6 +277,9 @@ export default function ShiftManagementPage() {
         resolution_type: resolutionType,
 
         resolution_notes: resolutionNotes.trim(),
+
+        reversal_account:
+          resolutionType === 'rejected' ? reversalAccount : undefined,
 
         admin_password: adminPassword,
       })
@@ -895,13 +908,56 @@ export default function ShiftManagementPage() {
                   }
                   style={inputStyle}
                 >
-                  <option value="explained">تم تفسير سبب الفرق</option>
+                  {resolveTarget.stage === 'closing' ? (
+                    <>
+                      <option value="approved">
+                        نعم - اعتماد الفرق كفرق حقيقي
+                      </option>
 
-                  <option value="approved">تم التحقق واعتماد الفرق</option>
+                      <option value="rejected">
+                        لا - سأقوم بتسجيل العملية الصحيحة يدويًا
+                      </option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="explained">تم تفسير سبب الفرق</option>
 
-                  <option value="other">أخرى</option>
+                      <option value="approved">تم التحقق واعتماد الفرق</option>
+
+                      <option value="other">أخرى</option>
+                    </>
+                  )}
                 </select>
               </Field>
+
+              {resolveTarget.stage === 'closing' &&
+                resolutionType === 'rejected' && (
+                  <Field label="الحساب الذي ستسجل عليه العملية الصحيحة">
+                    <select
+                      value={reversalAccount}
+                      onChange={(e) => setReversalAccount(e.target.value)}
+                      style={inputStyle}
+                    >
+                      {VARIANCE_REVERSAL_ACCOUNT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div
+                      style={{
+                        marginTop: '6px',
+                        color: '#94a3b8',
+                        fontSize: '12px',
+                        lineHeight: 1.7,
+                      }}
+                    >
+                      استخدم نفس الحساب عند تسجيل البيع أو المصروف أو التحصيل
+                      الصحيح.
+                    </div>
+                  </Field>
+                )}
 
               <Field label="ملاحظات المراجعة">
                 <textarea

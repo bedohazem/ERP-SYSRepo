@@ -26,6 +26,8 @@ type ReportsData = {
     exchange_cash_refund: number
     exchange_debt_reduction: number
     exchange_discount_adjustment: number
+    approved_closing_surplus: number
+    approved_closing_shortage: number
   }
   cashAccounts: Array<{
     payment_method: string
@@ -84,6 +86,8 @@ const emptyReports: ReportsData = {
     exchange_cash_refund: 0,
     exchange_debt_reduction: 0,
     exchange_discount_adjustment: 0,
+    approved_closing_surplus: 0,
+    approved_closing_shortage: 0,
   },
   cashAccounts: [],
   cashTotalCapital: 0,
@@ -312,6 +316,18 @@ export default function ReportsPage() {
         <StatCard
           title="المصروفات"
           value={money(data.summary.total_expenses)}
+          danger
+        />
+
+        <StatCard
+          title="زيادة إغلاق معتمدة"
+          value={money(data.summary.approved_closing_surplus)}
+          success
+        />
+
+        <StatCard
+          title="عجز إغلاق معتمد"
+          value={money(data.summary.approved_closing_shortage)}
           danger
         />
 

@@ -781,6 +781,18 @@ export function getReportsSummary(input?: ReportFilter) {
   )`,
   )
 
+  const closingVarianceWhere = buildWhere(
+    'csv',
+    input,
+    [
+      `csv.stage = 'closing'`,
+      `csv.status = 'resolved'`,
+      `csv.resolution_type = 'approved'`,
+    ],
+    'cs.opened_by',
+    `date(cs.opened_at, 'localtime')`,
+  )
+
   const expensesRow = db
     .prepare(
       `
@@ -857,6 +869,45 @@ export function getReportsSummary(input?: ReportFilter) {
     total_manual_withdrawals: number
   }
 
+  const closingVarianceRow = db
+    .prepare(
+      `
+    SELECT
+      IFNULL(
+        SUM(
+          CASE
+            WHEN csv.kind = 'surplus'
+            THEN csv.amount
+            ELSE 0
+          END
+        ),
+        0
+      ) AS approved_closing_surplus,
+
+      IFNULL(
+        SUM(
+          CASE
+            WHEN csv.kind = 'shortage'
+            THEN csv.amount
+            ELSE 0
+          END
+        ),
+        0
+      ) AS approved_closing_shortage
+
+    FROM cash_shift_variances csv
+
+    JOIN cash_shifts cs
+      ON cs.id = csv.shift_id
+
+    ${closingVarianceWhere.whereSql}
+    `,
+    )
+    .get(...closingVarianceWhere.params) as {
+    approved_closing_surplus: number
+    approved_closing_shortage: number
+  }
+
   const totalExpenses = Number(expensesRow.total_expenses || 0)
   const totalLiabilityPayments = Number(
     liabilityPaymentsRow.total_liability_payments || 0,
@@ -872,7 +923,19 @@ export function getReportsSummary(input?: ReportFilter) {
     manualCashRow.total_manual_withdrawals || 0,
   )
 
-  const finalNetProfit = netProfitAfterDiscounts - totalExpenses
+  const approvedClosingSurplus = Number(
+    closingVarianceRow.approved_closing_surplus || 0,
+  )
+
+  const approvedClosingShortage = Number(
+    closingVarianceRow.approved_closing_shortage || 0,
+  )
+
+  const finalNetProfit =
+    netProfitAfterDiscounts -
+    totalExpenses +
+    approvedClosingSurplus -
+    approvedClosingShortage
 
   const topProducts = db
     .prepare(
@@ -1817,6 +1880,8 @@ export function getReportsSummary(input?: ReportFilter) {
       sales_count: Number(salesSummary.sales_count || 0),
       exchange_count: Number(exchangeSummary.exchange_count || 0),
       exchange_adjustment: exchangeAdjustment,
+      approved_closing_surplus: approvedClosingSurplus,
+      approved_closing_shortage: approvedClosingShortage,
       exchange_cash_collection: Number(
         exchangeSummary.exchange_cash_collection || 0,
       ),

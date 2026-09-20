@@ -284,7 +284,9 @@ export function registerCashIpc(): void {
         resolution_type: input?.resolution_type,
 
         resolution_notes: String(input?.resolution_notes || ''),
-
+        reversal_account: input?.reversal_account
+          ? String(input.reversal_account)
+          : null,
         resolved_by: actor.id,
       })
 

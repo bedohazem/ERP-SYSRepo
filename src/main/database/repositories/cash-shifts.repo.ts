@@ -77,7 +77,11 @@ export type CashShiftHistoryRow = CashShiftRow & {
 
 export type CashShiftVarianceStatus = 'pending' | 'resolved'
 
-export type CashShiftVarianceResolutionType = 'approved' | 'explained' | 'other'
+export type CashShiftVarianceResolutionType =
+  | 'approved'
+  | 'rejected'
+  | 'explained'
+  | 'other'
 
 export type CashShiftVarianceRow = {
   id: number
@@ -129,6 +133,7 @@ export type ResolveCashShiftVarianceInput = {
   resolution_notes: string
 
   resolved_by: number
+  reversal_account?: string | null
 }
 
 function roundMoney(value: number) {
@@ -1469,7 +1474,9 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
     throw new Error('المستخدم غير صحيح')
   }
 
-  if (!['approved', 'explained', 'other'].includes(resolutionType)) {
+  if (
+    !['approved', 'rejected', 'explained', 'other'].includes(resolutionType)
+  ) {
     throw new Error('نوع مراجعة فرق الشفت غير صحيح')
   }
 
@@ -1514,7 +1521,67 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
     throw new Error('تمت مراجعة فرق الشفت بالفعل')
   }
 
+  let reversalAccount: ReturnType<typeof resolveCashAccount> | null = null
+
+  if (resolutionType === 'rejected') {
+    if (current.stage !== 'closing') {
+      throw new Error('عدم اعتماد الفرق متاح حاليًا لفروق إغلاق الشفت فقط')
+    }
+
+    const rawReversalAccount = String(input.reversal_account || '').trim()
+
+    if (!rawReversalAccount) {
+      throw new Error('اختر الحساب الذي سيتم عكس فرق الإغلاق عليه')
+    }
+
+    reversalAccount = resolveCashAccount(rawReversalAccount)
+
+    if (reversalAccount === 'store_cash') {
+      throw new Error('لا يمكن عكس فرق شفت مغلق على درج المحل')
+    }
+  }
+
   const tx = db.transaction(() => {
+    const varianceAmount = roundMoney(Number(current.amount || 0))
+
+    if (resolutionType === 'rejected' && reversalAccount) {
+      if (current.kind === 'surplus') {
+        const accountBalance = roundMoney(
+          Number(
+            getCashSummary({
+              payment_method: reversalAccount,
+            }).balance,
+          ),
+        )
+
+        if (accountBalance + 0.01 < varianceAmount) {
+          throw new Error('رصيد الحساب المختار غير كافٍ لعكس مبلغ الزيادة')
+        }
+      }
+
+      createCashMovement({
+        type: 'shift_adjustment',
+
+        direction: current.kind === 'surplus' ? 'out' : 'in',
+
+        amount: varianceAmount,
+
+        payment_method: reversalAccount,
+
+        reference_id: current.id,
+
+        reference_type: 'cash_shift_variance_reversal',
+
+        notes:
+          current.kind === 'surplus'
+            ? `عدم اعتماد زيادة إغلاق الشفت #${current.shift_id}`
+            : `عدم اعتماد عجز إغلاق الشفت #${current.shift_id}`,
+
+        created_by: resolvedBy,
+
+        shift_id: null,
+      })
+    }
     const result = db
       .prepare(
         `
@@ -1563,6 +1630,7 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
         resolution_type: resolutionType,
 
         resolution_notes: resolutionNotes,
+        reversal_account: reversalAccount,
       }),
     })
 

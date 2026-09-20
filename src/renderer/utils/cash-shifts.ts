@@ -4,7 +4,11 @@ export type CashShiftVarianceKind = 'shortage' | 'surplus'
 
 export type CashShiftVarianceStatus = 'pending' | 'resolved'
 
-export type CashShiftVarianceResolutionType = 'approved' | 'explained' | 'other'
+export type CashShiftVarianceResolutionType =
+  | 'approved'
+  | 'rejected'
+  | 'explained'
+  | 'other'
 
 export function getCashShiftVarianceStageLabel(value?: string | null) {
   switch (value) {
@@ -49,7 +53,8 @@ export function getCashShiftVarianceResolutionLabel(value?: string | null) {
   switch (value) {
     case 'approved':
       return 'تم التحقق واعتماد الفرق'
-
+    case 'rejected':
+      return 'لم يتم اعتماد الفرق'
     case 'explained':
       return 'تم تفسير سبب الفرق'
 
@@ -99,4 +104,3 @@ export function formatCashShiftDuration(minutesInput?: number | null) {
 
   return `${hours} ساعة و ${remainingMinutes} دقيقة`
 }
-

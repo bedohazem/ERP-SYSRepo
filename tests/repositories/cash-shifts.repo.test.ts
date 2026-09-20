@@ -640,6 +640,209 @@ describe('cash shifts repository', () => {
     ).toBe(1200)
   })
 
+  it('reverses rejected closing shortage into the selected non-drawer account', () => {
+    const shift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    })
+
+    createCashMovement({
+      type: 'sale',
+      direction: 'in',
+      amount: 1000,
+      payment_method: 'store_cash',
+      created_by: 1,
+      shift_id: shift.id,
+    })
+
+    closeCashShift({
+      shift_id: shift.id,
+      closing_counted_amount: 1400,
+      left_for_next_shift: 400,
+      closed_by: 1,
+    })
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows[0]
+
+    expect(variance.kind).toBe('shortage')
+    expect(Number(variance.amount)).toBe(100)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(400)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_safe',
+      }).balance,
+    ).toBe(1000)
+
+    const resolved = resolveCashShiftVariance({
+      variance_id: variance.id,
+      resolution_type: 'rejected',
+      resolution_notes: 'العجز ناتج عن مصروف لم يتم تسجيله',
+      reversal_account: 'store_safe',
+      resolved_by: 1,
+    })
+
+    expect(resolved.status).toBe('resolved')
+    expect(resolved.resolution_type).toBe('rejected')
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(400)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_safe',
+      }).balance,
+    ).toBe(1100)
+
+    const reversal = getDb()
+      .prepare(
+        `
+      SELECT *
+      FROM cash_movements
+      WHERE reference_type = 'cash_shift_variance_reversal'
+        AND reference_id = ?
+      LIMIT 1
+      `,
+      )
+      .get(variance.id) as any
+
+    expect(reversal).toBeTruthy()
+    expect(reversal.direction).toBe('in')
+    expect(Number(reversal.amount)).toBe(100)
+    expect(reversal.payment_method).toBe('store_safe')
+    expect(reversal.shift_id).toBeNull()
+  })
+
+  it('reverses rejected closing surplus from the selected non-drawer account', () => {
+    const shift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    })
+
+    createCashMovement({
+      type: 'sale',
+      direction: 'in',
+      amount: 1000,
+      payment_method: 'store_cash',
+      created_by: 1,
+      shift_id: shift.id,
+    })
+
+    closeCashShift({
+      shift_id: shift.id,
+      closing_counted_amount: 1600,
+      left_for_next_shift: 400,
+      closed_by: 1,
+    })
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows[0]
+
+    expect(variance.kind).toBe('surplus')
+    expect(Number(variance.amount)).toBe(100)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_safe',
+      }).balance,
+    ).toBe(1200)
+
+    const resolved = resolveCashShiftVariance({
+      variance_id: variance.id,
+      resolution_type: 'rejected',
+      resolution_notes: 'الزيادة ناتجة عن عملية لم يتم تسجيلها',
+      reversal_account: 'store_safe',
+      resolved_by: 1,
+    })
+
+    expect(resolved.status).toBe('resolved')
+    expect(resolved.resolution_type).toBe('rejected')
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(400)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_safe',
+      }).balance,
+    ).toBe(1100)
+
+    const reversal = getDb()
+      .prepare(
+        `
+      SELECT *
+      FROM cash_movements
+      WHERE reference_type = 'cash_shift_variance_reversal'
+        AND reference_id = ?
+      LIMIT 1
+      `,
+      )
+      .get(variance.id) as any
+
+    expect(reversal).toBeTruthy()
+    expect(reversal.direction).toBe('out')
+    expect(Number(reversal.amount)).toBe(100)
+    expect(reversal.payment_method).toBe('store_safe')
+    expect(reversal.shift_id).toBeNull()
+  })
+
+  it('does not allow rejected closing variance to be reversed against store drawer', () => {
+    const shift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    })
+
+    createCashMovement({
+      type: 'sale',
+      direction: 'in',
+      amount: 1000,
+      payment_method: 'store_cash',
+      created_by: 1,
+      shift_id: shift.id,
+    })
+
+    closeCashShift({
+      shift_id: shift.id,
+      closing_counted_amount: 1600,
+      left_for_next_shift: 400,
+      closed_by: 1,
+    })
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows[0]
+
+    expect(() =>
+      resolveCashShiftVariance({
+        variance_id: variance.id,
+        resolution_type: 'rejected',
+        resolution_notes: 'محاولة عكس الفرق على درج المحل',
+        reversal_account: 'store_cash',
+        resolved_by: 1,
+      }),
+    ).toThrow('لا يمكن عكس فرق شفت مغلق على درج المحل')
+
+    expect(
+      listCashShiftVariances({
+        status: 'pending',
+      }).total,
+    ).toBe(1)
+  })
+
   it('compares next shift actual opening against previous handover', () => {
     const firstShift = openCashShift({
       opening_counted_amount: 500,
