@@ -1637,6 +1637,7 @@ declare global {
         search?: string
         reference_type?: string
         created_by?: number | null
+        exclude_shift_adjustments?: boolean
       }) => Promise<{
         total_in: number
         total_out: number

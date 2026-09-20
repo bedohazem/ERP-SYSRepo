@@ -35,20 +35,17 @@ export type CashMovementInput = {
 export type CashFilterInput = {
   date_from?: string
   date_to?: string
-
   type?: string
   types?: string[]
-
   direction?: 'all' | 'in' | 'out'
   directions?: string[]
-
   payment_method?: string
   payment_methods?: string[]
-
   search?: string
   reference_type?: string
   created_by?: number | null
   shift_id?: number | null
+  exclude_shift_adjustments?: boolean
   limit?: number
   offset?: number
 }
@@ -175,6 +172,10 @@ function buildCashWhere(
 ) {
   const where: string[] = options?.activeOnly ? [`cm.cancelled_at IS NULL`] : []
   const params: any[] = []
+
+  if (input?.exclude_shift_adjustments) {
+    where.push(`cm.type != 'shift_adjustment'`)
+  }
 
   if (input?.date_from) {
     where.push(`
@@ -424,7 +425,18 @@ export function listCashMovements(input?: CashFilterInput) {
 
   normalizeLegacyCashMovementAccounts()
 
-  const { whereSql, params } = buildCashWhere(input)
+  const { whereSql, params } = buildCashWhere({
+    ...(input || {}),
+
+    /*
+     * تسويات فتح وإغلاق الشفت
+     * حركات نظام داخلية لضبط
+     * الرصيد الفعلي للدرج.
+     *
+     * لا تظهر كحركات خزنة للمستخدم.
+     */
+    exclude_shift_adjustments: true,
+  })
 
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
 

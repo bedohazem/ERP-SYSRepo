@@ -73,10 +73,6 @@ const CASH_TYPE_FILTER_OPTIONS = [
     value: 'transfer',
     label: 'تحويل داخلي',
   },
-  {
-    value: 'shift_adjustment',
-    label: 'تسوية شفت',
-  },
 ]
 
 const CASH_DIRECTION_FILTER_OPTIONS = [
@@ -216,7 +212,11 @@ export default function CashPage() {
     }
 
     try {
-      const summaryData = await window.api.getCashSummary(filters)
+      const summaryData = await window.api.getCashSummary({
+        ...filters,
+
+        exclude_shift_adjustments: true,
+      })
       const movementsData = await window.api.getCashMovements(movementFilters)
       const drawerSummary = await window.api.getCashSummary({
         payment_method: 'store_cash',
@@ -595,8 +595,6 @@ export default function CashPage() {
         return 'تحويل داخلي'
       case 'purchase_return':
         return 'مرتجع شراء'
-      case 'shift_adjustment':
-        return 'تسوية شفت'
 
       default:
         return type
@@ -912,7 +910,7 @@ export default function CashPage() {
 
           <div class="summary">
             <div class="card">
-              <div class="card-title">رأس المال الإجمالي</div>
+              <div class="card-title">إجمالي النقدية الفعلية</div>
               <div class="card-value">${money(totalCapital)}</div>
             </div>
 
@@ -1048,7 +1046,7 @@ export default function CashPage() {
         }}
       >
         <SummaryCard
-          title="رأس المال الإجمالي"
+          title="إجمالي النقدية الفعلية"
           value={money(totalCapital)}
           color="#facc15"
           border="rgba(250,204,21,0.35)"

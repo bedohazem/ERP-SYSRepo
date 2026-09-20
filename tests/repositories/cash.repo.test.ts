@@ -189,6 +189,66 @@ describe('cash repository', () => {
     expect(rows[1].notes).toBe('First movement')
   })
 
+  it('hides internal shift adjustments from cash movement history without changing account balance', () => {
+    createCashMovement({
+      type: 'shift_adjustment',
+
+      direction: 'in',
+
+      amount: 200,
+
+      payment_method: 'store_cash',
+
+      reference_type: 'cash_shift_variance',
+
+      notes: 'Internal shift adjustment',
+
+      created_by: 1,
+    })
+
+    createCashMovement({
+      type: 'sale',
+
+      direction: 'in',
+
+      amount: 1000,
+
+      payment_method: 'store_cash',
+
+      reference_type: 'sale',
+
+      notes: 'Visible sale',
+
+      created_by: 1,
+    })
+
+    const physicalSummary = getCashSummary({
+      payment_method: 'store_cash',
+    })
+
+    expect(physicalSummary.balance).toBe(1200)
+
+    const visibleSummary = getCashSummary({
+      payment_method: 'store_cash',
+
+      exclude_shift_adjustments: true,
+    })
+
+    expect(visibleSummary.total_in).toBe(1000)
+
+    expect(visibleSummary.balance).toBe(1000)
+
+    const history = listCashMovements({
+      payment_method: 'store_cash',
+    })
+
+    expect(history.total).toBe(1)
+
+    expect(history.rows).toHaveLength(1)
+
+    expect((history.rows[0] as CashMovementTestRow).type).toBe('sale')
+  })
+
   it('filters cash movements by direction', () => {
     createCashMovement({
       type: 'deposit',
