@@ -14,7 +14,6 @@ import {
   listCashShiftVariances,
   getCashShiftDetails,
   listCashShifts,
-  cancelCashShiftVarianceCorrection,
   getCashShiftVarianceReview,
   resolveCashShiftVariance,
 } from '../../src/main/database/repositories/cash-shifts.repo'

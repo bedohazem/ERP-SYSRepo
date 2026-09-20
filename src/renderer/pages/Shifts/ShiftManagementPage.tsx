@@ -45,17 +45,7 @@ type CashShiftVariance = {
   kind: 'shortage' | 'surplus'
 
   amount: number
-  original_signed_amount: number
 
-  correction_effect_amount: number
-
-  remaining_signed_amount: number
-
-  remaining_amount: number
-
-  remaining_kind: 'shortage' | 'surplus' | 'balanced'
-
-  correction_count: number
   status: 'pending' | 'resolved'
 
   resolution_type: 'approved' | 'explained' | 'other' | null

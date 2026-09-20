@@ -10,26 +10,18 @@ import {
   getSaleReceipt,
   cancelSaleReturn,
   listSales,
-  createClosedShiftCashSaleCorrection,
-  updateClosedShiftCashSaleCorrection,
   cancelSaleInvoice,
 } from '../../src/main/database/repositories/sales.repo'
 import {
   closeCashShift,
   getOpenCashShift,
-  listCashShiftVariances,
-  resolveCashShiftVariance,
-  cancelCashShiftVarianceCorrection,
   openCashShift,
 } from '../../src/main/database/repositories/cash-shifts.repo'
 import {
   createPromotion,
   togglePromotion,
 } from '../../src/main/database/repositories/promotions.repo'
-import {
-  createCashMovement,
-  getCashSummary,
-} from '../../src/main/database/repositories/cash.repo'
+import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
 
 type SaleVariantTestRow = {
   variant_id: number
@@ -3128,188 +3120,5 @@ describe('sales repository', () => {
     const allResult = listSales()
 
     expect(allResult.total).toBe(2)
-  })
-
-  it('uses product price for closed shift sale correction and reopens review when edited', () => {
-    const db = getDb()
-
-    const variant = seedProduct()
-
-    const shift = getOpenCashShift()
-
-    if (!shift) {
-      throw new Error('Expected open shift')
-    }
-
-    closeCashShift({
-      shift_id: shift.id,
-
-      closing_counted_amount: 150,
-
-      left_for_next_shift: 150,
-
-      closed_by: 1,
-    })
-
-    const variance = listCashShiftVariances({
-      status: 'pending',
-    }).rows.find((item) => item.stage === 'closing')
-
-    if (!variance) {
-      throw new Error('Expected closing variance')
-    }
-
-    const cashBefore = getCashSummary({
-      payment_method: 'store_cash',
-    }).balance
-
-    const created = createClosedShiftCashSaleCorrection({
-      variance_id: variance.id,
-
-      actor_id: 1,
-
-      items: [
-        {
-          variant_id: variant.variant_id,
-
-          quantity: 1,
-        },
-      ],
-    })
-
-    expect(created.grand_total).toBe(150)
-
-    expect(created.review.variance.remaining_signed_amount).toBe(0)
-
-    expect(
-      getCashSummary({
-        payment_method: 'store_cash',
-      }).balance,
-    ).toBe(cashBefore)
-
-    const receipt = getSaleReceipt(created.sale_id)
-
-    expect(Number((receipt.items[0] as any).unit_price)).toBe(150)
-
-    resolveCashShiftVariance({
-      variance_id: variance.id,
-
-      resolution_type: 'explained',
-
-      resolution_notes: 'تم تفسير الفرق بالكامل',
-
-      resolved_by: 1,
-    })
-
-    db.prepare(
-      `
-      UPDATE product_variants
-
-      SET
-        sell_price = 175,
-        discount_price = NULL
-
-      WHERE
-        id = ?
-      `,
-    ).run(variant.variant_id)
-
-    const updated = updateClosedShiftCashSaleCorrection({
-      correction_id: created.correction_id,
-
-      actor_id: 1,
-
-      items: [
-        {
-          variant_id: variant.variant_id,
-
-          quantity: 1,
-        },
-      ],
-    })
-
-    expect(updated.grand_total).toBe(175)
-
-    expect(updated.review.variance.status).toBe('pending')
-
-    expect(updated.review.variance.remaining_signed_amount).toBe(-25)
-
-    expect(
-      getCashSummary({
-        payment_method: 'store_cash',
-      }).balance,
-    ).toBe(cashBefore)
-  })
-
-  it('cancels a resolved shift sale correction and reopens variance without moving cash', () => {
-    const variant = seedProduct()
-
-    const shift = getOpenCashShift()
-
-    if (!shift) {
-      throw new Error('Expected open shift')
-    }
-
-    closeCashShift({
-      shift_id: shift.id,
-
-      closing_counted_amount: 150,
-
-      left_for_next_shift: 150,
-
-      closed_by: 1,
-    })
-
-    const variance = listCashShiftVariances({
-      status: 'pending',
-    }).rows.find((item) => item.stage === 'closing')!
-
-    const created = createClosedShiftCashSaleCorrection({
-      variance_id: variance.id,
-
-      actor_id: 1,
-
-      items: [
-        {
-          variant_id: variant.variant_id,
-
-          quantity: 1,
-        },
-      ],
-    })
-
-    resolveCashShiftVariance({
-      variance_id: variance.id,
-
-      resolution_type: 'explained',
-
-      resolution_notes: 'تم التفسير',
-
-      resolved_by: 1,
-    })
-
-    const cashBefore = getCashSummary({
-      payment_method: 'store_cash',
-    }).balance
-
-    const cancelled = cancelCashShiftVarianceCorrection({
-      correction_id: created.correction_id,
-
-      reason: 'اختبار الإلغاء',
-
-      cancelled_by: 1,
-    })
-
-    expect(cancelled.variance.status).toBe('pending')
-
-    expect(cancelled.variance.remaining_signed_amount).toBe(150)
-
-    expect(getStockByBarcode('SALE001')).toBe(10)
-
-    expect(
-      getCashSummary({
-        payment_method: 'store_cash',
-      }).balance,
-    ).toBe(cashBefore)
   })
 })

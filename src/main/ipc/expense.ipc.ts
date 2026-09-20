@@ -6,8 +6,6 @@ import {
   listExpensesPage,
   listExpenses,
   updateExpense,
-  createClosedShiftExpenseCorrection,
-  updateClosedShiftExpenseCorrection,
 } from '../database/repositories/expense.repo'
 
 import { requireAdminPassword } from './permission-helper'
@@ -22,76 +20,6 @@ export function registerExpenseIpc(): void {
       created_by: user.id,
     })
   })
-
-  ipcMain.handle(
-    'expenses:create-shift-variance-correction',
-    (event, input) => {
-      try {
-        const user = requireAuthenticatedUser(event)
-
-        requireAdminPassword(user.id, input?.admin_password)
-
-        const result = createClosedShiftExpenseCorrection({
-          variance_id: Number(input?.variance_id),
-
-          title: input?.title,
-
-          category: input?.category,
-
-          amount: Number(input?.amount),
-
-          notes: input?.notes,
-
-          actor_id: user.id,
-        })
-
-        return result
-      } catch (error) {
-        return {
-          success: false,
-
-          message:
-            error instanceof Error
-              ? error.message
-              : 'تعذر تسجيل المصروف التصحيحي',
-        }
-      }
-    },
-  )
-
-  ipcMain.handle(
-    'expenses:update-shift-variance-correction',
-    (event, input) => {
-      try {
-        const user = requireAuthenticatedUser(event)
-
-        requireAdminPassword(user.id, input?.admin_password)
-
-        return updateClosedShiftExpenseCorrection({
-          correction_id: Number(input?.correction_id),
-
-          title: input?.title,
-
-          category: input?.category,
-
-          amount: Number(input?.amount),
-
-          notes: input?.notes,
-
-          actor_id: user.id,
-        })
-      } catch (error) {
-        return {
-          success: false,
-
-          message:
-            error instanceof Error
-              ? error.message
-              : 'تعذر تعديل المصروف التصحيحي',
-        }
-      }
-    },
-  )
 
   ipcMain.handle('expenses:list', (event, input) => {
     const user = requireAuthenticatedUser(event)

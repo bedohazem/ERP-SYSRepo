@@ -79,26 +79,6 @@ export type CashShiftVarianceStatus = 'pending' | 'resolved'
 
 export type CashShiftVarianceResolutionType = 'approved' | 'explained' | 'other'
 
-export type CashShiftVarianceRemainingKind = 'shortage' | 'surplus' | 'balanced'
-
-export type CashShiftVarianceCorrectionReason =
-  | 'unregistered_cash_sale'
-  | 'unregistered_customer_payment'
-  | 'unregistered_cash_deposit'
-  | 'payment_recorded_non_cash_but_cash'
-  | 'recorded_expense_not_paid'
-  | 'recorded_return_not_refunded'
-  | 'withdrawal_recorded_not_done'
-  | 'cancelled_sale_cash_kept'
-  | 'unregistered_expense'
-  | 'unregistered_cash_withdrawal'
-  | 'unregistered_safe_transfer'
-  | 'unregistered_return'
-  | 'payment_recorded_cash_but_non_cash'
-  | 'duplicate_cash_sale'
-  | 'sale_not_fully_collected'
-  | 'credit_sale_marked_cash'
-
 export type CashShiftVarianceRow = {
   id: number
   shift_id: number
@@ -107,18 +87,6 @@ export type CashShiftVarianceRow = {
   kind: 'shortage' | 'surplus'
 
   amount: number
-
-  original_signed_amount: number
-
-  correction_effect_amount: number
-
-  remaining_signed_amount: number
-
-  remaining_amount: number
-
-  remaining_kind: CashShiftVarianceRemainingKind
-
-  correction_count: number
 
   status: CashShiftVarianceStatus
 
@@ -158,41 +126,6 @@ export type CashShiftVarianceRow = {
   shift_closed_at: string | null
 }
 
-export type CashShiftVarianceCorrectionRow = {
-  id: number
-
-  variance_id: number
-
-  reason_code: CashShiftVarianceCorrectionReason
-
-  amount: number
-
-  effect_amount: number
-
-  notes: string | null
-
-  reference_type: string | null
-
-  reference_id: number | null
-
-  created_by: number
-
-  created_by_name?: string | null
-
-  created_at: string
-
-  cancelled_at: string | null
-
-  cancelled_by: number | null
-
-  cancelled_by_name?: string | null
-
-  cancel_reason: string | null
-  document_title?: string | null
-
-  document_category?: string | null
-}
-
 export type CashShiftVarianceFilterInput = {
   status?: 'all' | CashShiftVarianceStatus
 
@@ -215,62 +148,8 @@ export type ResolveCashShiftVarianceInput = {
   resolved_by: number
 }
 
-export type CancelCashShiftVarianceCorrectionInput = {
-  correction_id: number
-
-  reason: string
-
-  cancelled_by: number
-}
-
 function roundMoney(value: number) {
   return Number(value.toFixed(2))
-}
-
-function getVarianceOriginalSignedSql() {
-  return `
-    (
-      CASE
-        WHEN csv.kind = 'surplus'
-          THEN IFNULL(csv.amount, 0)
-
-        ELSE
-          -IFNULL(csv.amount, 0)
-      END
-    )
-  `
-}
-
-function getVarianceCorrectionEffectSql() {
-  return `
-    IFNULL(
-      (
-        SELECT
-          SUM(csvc.effect_amount)
-
-        FROM cash_shift_variance_corrections csvc
-
-        WHERE
-          csvc.variance_id = csv.id
-
-          AND
-            csvc.cancelled_at
-            IS NULL
-      ),
-      0
-    )
-  `
-}
-
-function getVarianceRemainingSignedSql() {
-  return `
-    ROUND(
-      ${getVarianceOriginalSignedSql()}
-      +
-      ${getVarianceCorrectionEffectSql()},
-      2
-    )
-  `
 }
 
 function normalizeVarianceRow(row: CashShiftVarianceRow): CashShiftVarianceRow {
@@ -278,20 +157,6 @@ function normalizeVarianceRow(row: CashShiftVarianceRow): CashShiftVarianceRow {
     ...row,
 
     amount: roundMoney(Number(row.amount || 0)),
-
-    original_signed_amount: roundMoney(Number(row.original_signed_amount || 0)),
-
-    correction_effect_amount: roundMoney(
-      Number(row.correction_effect_amount || 0),
-    ),
-
-    remaining_signed_amount: roundMoney(
-      Number(row.remaining_signed_amount || 0),
-    ),
-
-    remaining_amount: roundMoney(Number(row.remaining_amount || 0)),
-
-    correction_count: Number(row.correction_count || 0),
   }
 }
 
@@ -377,58 +242,9 @@ function getShiftSelectSql() {
 }
 
 function getVarianceSelectSql() {
-  const originalSigned = getVarianceOriginalSignedSql()
-
-  const correctionEffect = getVarianceCorrectionEffectSql()
-
-  const remainingSigned = getVarianceRemainingSignedSql()
-
   return `
     SELECT
       csv.*,
-
-      ${originalSigned}
-        AS original_signed_amount,
-
-      ${correctionEffect}
-        AS correction_effect_amount,
-
-      ${remainingSigned}
-        AS remaining_signed_amount,
-
-      ABS(
-        ${remainingSigned}
-      )
-        AS remaining_amount,
-
-      CASE
-        WHEN
-          ${remainingSigned} > 0.01
-        THEN 'surplus'
-
-        WHEN
-          ${remainingSigned} < -0.01
-        THEN 'shortage'
-
-        ELSE 'balanced'
-      END
-        AS remaining_kind,
-
-      (
-        SELECT
-          COUNT(*)
-
-        FROM cash_shift_variance_corrections csvc_count
-
-        WHERE
-          csvc_count.variance_id =
-            csv.id
-
-          AND
-            csvc_count.cancelled_at
-            IS NULL
-      )
-        AS correction_count,
 
       cs.status
         AS shift_status,
@@ -1700,8 +1516,6 @@ export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
     total: number
   }
 
-  const remainingSigned = getVarianceRemainingSignedSql()
-
   const pendingBalances = db
     .prepare(
       `
@@ -1709,13 +1523,8 @@ export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
         IFNULL(
           SUM(
             CASE
-              WHEN
-                x.remaining_signed_amount
-                < -0.01
-              THEN
-                ABS(
-                  x.remaining_signed_amount
-                )
+              WHEN kind = 'shortage'
+                THEN amount
               ELSE 0
             END
           ),
@@ -1726,11 +1535,8 @@ export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
         IFNULL(
           SUM(
             CASE
-              WHEN
-                x.remaining_signed_amount
-                > 0.01
-              THEN
-                x.remaining_signed_amount
+              WHEN kind = 'surplus'
+                THEN amount
               ELSE 0
             END
           ),
@@ -1740,25 +1546,23 @@ export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
 
         IFNULL(
           SUM(
-            x.remaining_signed_amount
+            CASE
+              WHEN kind = 'surplus'
+                THEN amount
+              ELSE -amount
+            END
           ),
           0
         )
           AS net_total
 
-      FROM (
-        SELECT
-          ${remainingSigned}
-            AS remaining_signed_amount
+      FROM cash_shift_variances
 
-        FROM cash_shift_variances csv
+      WHERE
+        status = 'pending'
 
-        WHERE
-          csv.status = 'pending'
-
-          AND
-            csv.stage = 'closing'
-      ) x
+        AND
+          stage = 'closing'
       `,
     )
     .get() as {
@@ -1789,93 +1593,6 @@ export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
   }
 }
 
-export function listCashShiftVarianceCorrections(varianceIdInput: number) {
-  const db = getDb()
-
-  const varianceId = Number(varianceIdInput || 0)
-
-  if (!Number.isInteger(varianceId) || varianceId <= 0) {
-    throw new Error('رقم فرق الشفت غير صحيح')
-  }
-
-  return db
-    .prepare(
-      `
-      SELECT
-        csvc.*,
-
-        creator.name
-          AS created_by_name,
-
-        canceller.name
-          AS cancelled_by_name,
-
-        CASE
-          WHEN
-            csvc.reference_type =
-              'shift_variance_expense_correction'
-
-          THEN (
-            SELECT
-              e.title
-
-            FROM expenses e
-
-            WHERE
-              e.id =
-                csvc.reference_id
-
-            LIMIT 1
-          )
-
-          ELSE NULL
-        END
-          AS document_title,
-
-        CASE
-          WHEN
-            csvc.reference_type =
-              'shift_variance_expense_correction'
-
-          THEN (
-            SELECT
-              e.category
-
-            FROM expenses e
-
-            WHERE
-              e.id =
-                csvc.reference_id
-
-            LIMIT 1
-          )
-
-          ELSE NULL
-        END
-          AS document_category
-
-      FROM cash_shift_variance_corrections csvc
-
-      LEFT JOIN users creator
-        ON
-          creator.id =
-            csvc.created_by
-
-      LEFT JOIN users canceller
-        ON
-          canceller.id =
-            csvc.cancelled_by
-
-      WHERE
-        csvc.variance_id = ?
-
-      ORDER BY
-        csvc.id ASC
-      `,
-    )
-    .all(varianceId) as CashShiftVarianceCorrectionRow[]
-}
-
 export function getCashShiftVarianceReview(varianceIdInput: number) {
   const variance = getCashShiftVarianceById(varianceIdInput)
 
@@ -1885,419 +1602,7 @@ export function getCashShiftVarianceReview(varianceIdInput: number) {
 
   return {
     variance,
-
-    corrections: listCashShiftVarianceCorrections(variance.id),
   }
-}
-
-export function reopenCashShiftVarianceForCorrection(input: {
-  variance_id: number
-  actor_id: number
-  reason: string
-}) {
-  const db = getDb()
-
-  const varianceId = Number(input.variance_id || 0)
-
-  const actorId = Number(input.actor_id || 0)
-
-  const reason = String(input.reason || '').trim()
-
-  if (!Number.isInteger(varianceId) || varianceId <= 0) {
-    throw new Error('رقم فرق الشفت غير صحيح')
-  }
-
-  requireCashShiftVarianceAdmin(actorId)
-
-  const current = getCashShiftVarianceById(varianceId)
-
-  if (!current) {
-    throw new Error('فرق الشفت غير موجود')
-  }
-
-  if (current.stage !== 'closing') {
-    throw new Error('إعادة فتح التصحيحات متاحة لفروق إغلاق الشفت فقط')
-  }
-
-  if (current.status === 'pending') {
-    return current
-  }
-
-  const result = db
-    .prepare(
-      `
-      UPDATE cash_shift_variances
-
-      SET
-        status = 'pending',
-
-        resolution_type = NULL,
-
-        resolution_notes = NULL,
-
-        resolved_by = NULL,
-
-        resolved_at = NULL
-
-      WHERE
-        id = ?
-
-        AND
-          status = 'resolved'
-      `,
-    )
-    .run(varianceId)
-
-  if (Number(result.changes || 0) !== 1) {
-    throw new Error('تعذر إعادة فتح مراجعة فرق الشفت')
-  }
-
-  createActivityLog({
-    user_id: actorId,
-
-    action: 'cash_shift_variance_reopened',
-
-    entity: 'cash_shift_variances',
-
-    entity_id: varianceId,
-
-    details: JSON.stringify({
-      shift_id: current.shift_id,
-
-      previous_resolution_type: current.resolution_type,
-
-      previous_resolution_notes: current.resolution_notes,
-
-      reason,
-    }),
-  })
-
-  const reopened = getCashShiftVarianceById(varianceId)
-
-  if (!reopened) {
-    throw new Error('تعذر تحميل فرق الشفت بعد إعادة فتحه')
-  }
-
-  return reopened
-}
-
-export function cancelCashShiftVarianceCorrection(
-  input: CancelCashShiftVarianceCorrectionInput,
-) {
-  const db = getDb()
-
-  const correctionId = Number(input.correction_id || 0)
-
-  const cancelledBy = Number(input.cancelled_by || 0)
-
-  const reason = String(input.reason || '').trim()
-
-  if (!Number.isInteger(correctionId) || correctionId <= 0) {
-    throw new Error('رقم تصحيح فرق الشفت غير صحيح')
-  }
-
-  requireCashShiftVarianceAdmin(cancelledBy)
-
-  if (!reason) {
-    throw new Error('سبب إلغاء التصحيح مطلوب')
-  }
-
-  const correction = db
-    .prepare(
-      `
-      SELECT
-        csvc.*,
-
-        csv.status
-          AS variance_status
-
-      FROM cash_shift_variance_corrections csvc
-
-      JOIN cash_shift_variances csv
-        ON
-          csv.id =
-            csvc.variance_id
-
-      WHERE
-        csvc.id = ?
-
-      LIMIT 1
-      `,
-    )
-    .get(correctionId) as any
-
-  if (!correction) {
-    throw new Error('تصحيح فرق الشفت غير موجود')
-  }
-
-  if (correction.cancelled_at) {
-    throw new Error('تم إلغاء هذا التصحيح بالفعل')
-  }
-
-  const tx = db.transaction(() => {
-    reopenCashShiftVarianceForCorrection({
-      variance_id: Number(correction.variance_id),
-
-      actor_id: cancelledBy,
-
-      reason: `إلغاء تصحيح فرق الشفت #${correctionId}`,
-    })
-
-    if (
-      correction.reference_type === 'shift_variance_sale_correction' &&
-      Number(correction.reference_id || 0) > 0
-    ) {
-      const saleId = Number(correction.reference_id)
-
-      const sale = db
-        .prepare(
-          `
-          SELECT
-            *
-
-          FROM sales
-
-          WHERE id = ?
-
-          LIMIT 1
-          `,
-        )
-        .get(saleId) as any
-
-      if (!sale) {
-        throw new Error('فاتورة التصحيح المرتبطة غير موجودة')
-      }
-
-      if (sale.cancelled_at) {
-        throw new Error('فاتورة التصحيح ملغاة بالفعل')
-      }
-
-      const returnRow = db
-        .prepare(
-          `
-          SELECT
-            COUNT(*) AS count
-
-          FROM sale_returns
-
-          WHERE
-            original_sale_id = ?
-
-            AND
-              cancelled_at
-              IS NULL
-          `,
-        )
-        .get(saleId) as any
-
-      if (Number(returnRow?.count || 0) > 0) {
-        throw new Error('لا يمكن إلغاء التصحيح بعد وجود مرتجع على الفاتورة')
-      }
-
-      const exchangeRow = db
-        .prepare(
-          `
-          SELECT
-            COUNT(*) AS count
-
-          FROM sale_exchanges
-
-          WHERE
-            original_sale_id = ?
-
-            AND
-              cancelled_at
-              IS NULL
-          `,
-        )
-        .get(saleId) as any
-
-      if (Number(exchangeRow?.count || 0) > 0) {
-        throw new Error('لا يمكن إلغاء التصحيح بعد وجود استبدال على الفاتورة')
-      }
-
-      const items = db
-        .prepare(
-          `
-          SELECT
-            *
-
-          FROM sale_items
-
-          WHERE
-            sale_id = ?
-
-          ORDER BY id ASC
-          `,
-        )
-        .all(saleId) as any[]
-
-      const restoreStock = db.prepare(
-        `
-          INSERT INTO stock_movements (
-            variant_id,
-
-            type,
-
-            quantity,
-
-            reference_id,
-
-            reference_type,
-
-            notes
-          )
-
-          VALUES (
-            ?,
-            'in',
-            ?,
-            ?,
-            'shift_variance_sale_correction_cancel',
-            ?
-          )
-          `,
-      )
-
-      for (const item of items) {
-        restoreStock.run(
-          Number(item.variant_id),
-
-          Number(item.quantity || 0),
-
-          saleId,
-
-          `إلغاء فاتورة تصحيح فرق شفت #${saleId}`,
-        )
-      }
-
-      db.prepare(
-        `
-        UPDATE sales
-
-        SET
-          cancelled_at =
-            CURRENT_TIMESTAMP,
-
-          cancelled_by = ?,
-
-          cancel_reason = ?,
-
-          payment_status =
-            'cancelled',
-
-          remaining_amount = 0
-
-        WHERE id = ?
-        `,
-      ).run(
-        cancelledBy,
-
-        `إلغاء تصحيح فرق شفت: ${reason}`,
-
-        saleId,
-      )
-    }
-
-    if (
-      correction.reference_type === 'shift_variance_expense_correction' &&
-      Number(correction.reference_id || 0) > 0
-    ) {
-      const expenseId = Number(correction.reference_id)
-
-      const result = db
-        .prepare(
-          `
-          UPDATE expenses
-
-          SET
-            cancelled_at =
-              CURRENT_TIMESTAMP,
-
-            cancelled_by = ?,
-
-            cancel_reason = ?
-
-          WHERE
-            id = ?
-
-            AND
-              cancelled_at
-              IS NULL
-          `,
-        )
-        .run(
-          cancelledBy,
-
-          `إلغاء تصحيح فرق شفت: ${reason}`,
-
-          expenseId,
-        )
-
-      if (Number(result.changes || 0) !== 1) {
-        throw new Error('المصروف التصحيحي غير موجود أو ملغي بالفعل')
-      }
-    }
-
-    const result = db
-      .prepare(
-        `
-        UPDATE cash_shift_variance_corrections
-
-        SET
-          cancelled_at =
-            CURRENT_TIMESTAMP,
-
-          cancelled_by = ?,
-
-          cancel_reason = ?
-
-        WHERE
-          id = ?
-
-          AND
-            cancelled_at
-            IS NULL
-        `,
-      )
-      .run(
-        cancelledBy,
-
-        reason,
-
-        correctionId,
-      )
-
-    if (Number(result.changes || 0) !== 1) {
-      throw new Error('تعذر إلغاء تصحيح فرق الشفت')
-    }
-
-    createActivityLog({
-      user_id: cancelledBy,
-
-      action: 'cash_shift_variance_correction_cancelled',
-
-      entity: 'cash_shift_variance_corrections',
-
-      entity_id: correctionId,
-
-      details: JSON.stringify({
-        variance_id: correction.variance_id,
-
-        reference_type: correction.reference_type,
-
-        reference_id: correction.reference_id,
-
-        reason,
-
-        cash_movement_created: false,
-      }),
-    })
-
-    return getCashShiftVarianceReview(correction.variance_id)
-  })
-
-  return tx()
 }
 
 export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {

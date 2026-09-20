@@ -47,8 +47,6 @@ type ReviewData = {
 
     closing_difference?: number | null
   }
-
-  corrections?: any[]
 }
 
 function money(value?: number | null) {
