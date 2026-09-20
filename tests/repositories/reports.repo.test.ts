@@ -1572,7 +1572,7 @@ describe('reports repository', () => {
 
     const pendingReport = getReportsSummary() as ReportsSummaryTestResult
 
-    expect(pendingReport.cashTotalCapital).toBe(1000)
+    expect(pendingReport.cashTotalCapital).toBe(900)
 
     resolveCashShiftVariance({
       variance_id: variance.id,
@@ -1626,7 +1626,7 @@ describe('reports repository', () => {
 
     const pendingReport = getReportsSummary() as ReportsSummaryTestResult
 
-    expect(pendingReport.cashTotalCapital).toBe(1000)
+    expect(pendingReport.cashTotalCapital).toBe(1200)
 
     resolveCashShiftVariance({
       variance_id: variance.id,
@@ -1688,7 +1688,7 @@ describe('reports repository', () => {
      * الزيادة لم يعتمدها المدير بعد،
      * فلا تدخل رأس المال.
      */
-    expect(pendingReport.cashTotalCapital).toBe(1000)
+    expect(pendingReport.cashTotalCapital).toBe(1200)
 
     resolveCashShiftVariance({
       variance_id: variance.id,
@@ -1750,7 +1750,7 @@ describe('reports repository', () => {
 
     const pendingReport = getReportsSummary() as ReportsSummaryTestResult
 
-    expect(pendingReport.cashTotalCapital).toBe(1000)
+    expect(pendingReport.cashTotalCapital).toBe(800)
 
     resolveCashShiftVariance({
       variance_id: variance.id,

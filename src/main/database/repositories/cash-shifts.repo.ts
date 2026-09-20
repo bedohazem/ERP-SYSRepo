@@ -1642,10 +1642,6 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
     throw new Error('تمت مراجعة فرق الشفت بالفعل')
   }
 
-  /*
-   * فرق الافتتاح لا يدخل في قرار
-   * تأثير رأس المال الخاص بإغلاق الشفت.
-   */
   if (current.stage === 'opening' && resolutionType !== 'approved') {
     throw new Error('فرق استلام الشفت يتم اعتماده كمراجعة استلام فقط')
   }
@@ -1655,43 +1651,91 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
       ? roundMoney(Math.abs(Number(current.amount || 0)))
       : roundMoney(-Math.abs(Number(current.amount || 0)))
 
-  /*
-   * approved:
-   * الفرق حقيقي ويؤثر على رأس المال.
-   *
-   * explained:
-   * الفرق ليس عجزًا/زيادة حقيقية
-   * وسيعالج المدير سببه يدويًا،
-   * لذلك تأثيره على رأس المال = صفر.
-   */
-  const capitalEffectAmount =
-    current.stage === 'closing' && resolutionType === 'approved'
-      ? originalSignedAmount
-      : 0
-
   const tx = db.transaction(() => {
+    /*
+     * لو المدير قال إن فرق الإغلاق
+     * غير فعلي:
+     *
+     * نلغي تسوية الجرد الداخلية
+     * التي أنشئت عند الإغلاق.
+     *
+     * مثال العجز:
+     * adjustment = -200
+     * إلغاؤه يعيد 200 إلى الكاش.
+     *
+     * مثال الزيادة:
+     * adjustment = +200
+     * إلغاؤه يستبعد 200 من الكاش.
+     *
+     * وبعد ذلك يعالج المدير السبب
+     * الحقيقي يدويًا من مكانه الصحيح.
+     */
+    if (current.stage === 'closing' && resolutionType === 'explained') {
+      const adjustmentResult = db
+        .prepare(
+          `
+              UPDATE cash_movements
+
+              SET
+                cancelled_at =
+                  CURRENT_TIMESTAMP,
+
+                cancelled_by = ?,
+
+                cancel_reason = ?
+
+              WHERE
+                type =
+                  'shift_adjustment'
+
+                AND
+                  reference_type =
+                  'cash_shift_variance'
+
+                AND
+                  reference_id = ?
+
+                AND
+                  cancelled_at
+                  IS NULL
+              `,
+        )
+        .run(
+          resolvedBy,
+
+          `الفرق غير فعلي: ${resolutionNotes}`,
+
+          varianceId,
+        )
+
+      if (Number(adjustmentResult.changes || 0) !== 1) {
+        throw new Error('تعذر إلغاء أثر فرق الشفت من الكاش')
+      }
+    }
+
     const result = db
       .prepare(
         `
-        UPDATE cash_shift_variances
+          UPDATE cash_shift_variances
 
-        SET
-          status = 'resolved',
+          SET
+            status = 'resolved',
 
-          resolution_type = ?,
+            resolution_type = ?,
 
-          resolution_notes = ?,
+            resolution_notes = ?,
 
-          resolved_by = ?,
+            resolved_by = ?,
 
-          resolved_at = CURRENT_TIMESTAMP
+            resolved_at =
+              CURRENT_TIMESTAMP
 
-        WHERE
-          id = ?
+          WHERE
+            id = ?
 
-          AND
-            status = 'pending'
-        `,
+            AND
+              status = 'pending'
+          `,
       )
       .run(
         resolutionType,
@@ -1731,7 +1775,8 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
 
         resolution_notes: resolutionNotes,
 
-        capital_effect_amount: capitalEffectAmount,
+        cash_adjustment_action:
+          resolutionType === 'approved' ? 'kept' : 'cancelled',
       }),
     })
 

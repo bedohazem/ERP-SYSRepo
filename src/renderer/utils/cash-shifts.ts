@@ -49,7 +49,7 @@ export function getCashShiftVarianceResolutionLabel(value?: string | null) {
       return 'فرق فعلي معتمد — يؤثر على رأس المال'
 
     case 'explained':
-      return 'معالجة يدوية — بدون تأثير على رأس المال'
+      return 'الفرق غير فعلي — تم إلغاء أثره من الكاش'
 
     case 'other':
       return 'مراجعة قديمة'

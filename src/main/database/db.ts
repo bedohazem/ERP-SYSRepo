@@ -1305,6 +1305,82 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'cash_movements', 'cancelled_by', 'INTEGER')
     safeAddColumn(db, 'cash_movements', 'cancel_reason', 'TEXT')
     safeAddColumn(db, 'cash_movements', 'replacement_movement_id', 'INTEGER')
+
+    /*
+     * إصلاح الفروق التي سبق للمدير
+     * اختيار معالجتها يدويًا قبل
+     * تطبيق السلوك الجديد.
+     *
+     * لو كانت تسوية الفرق ما زالت
+     * فعالة نلغيها تلقائيًا.
+     */
+    db.prepare(
+      `
+      UPDATE cash_movements
+
+      SET
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
+        cancelled_by =
+          COALESCE(
+            cancelled_by,
+
+            (
+              SELECT
+                csv.resolved_by
+
+              FROM cash_shift_variances csv
+
+              WHERE
+                csv.id =
+                  cash_movements.reference_id
+
+              LIMIT 1
+            )
+          ),
+
+        cancel_reason =
+          COALESCE(
+            cancel_reason,
+            'الفرق غير فعلي وتم اختيار المعالجة اليدوية'
+          )
+
+      WHERE
+        type =
+          'shift_adjustment'
+
+        AND
+          reference_type =
+          'cash_shift_variance'
+
+        AND
+          cancelled_at
+          IS NULL
+
+        AND
+          reference_id
+          IN (
+            SELECT
+              csv.id
+
+            FROM cash_shift_variances csv
+
+            WHERE
+              csv.stage =
+                'closing'
+
+              AND
+                csv.status =
+                'resolved'
+
+              AND
+                csv.resolution_type =
+                'explained'
+          )
+      `,
+    ).run()
+
     repairLegacyFirstShiftOpeningTransfer(db)
     safeAddColumn(db, 'expenses', 'cancelled_at', 'TEXT')
     safeAddColumn(db, 'expenses', 'cancelled_by', 'INTEGER')

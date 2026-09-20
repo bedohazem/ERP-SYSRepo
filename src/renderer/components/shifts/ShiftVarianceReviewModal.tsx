@@ -185,6 +185,11 @@ export default function ShiftVarianceReviewModal({
       ? 'اعتماد كعجز فعلي — يخصم من رأس المال'
       : 'اعتماد كزيادة فعلية — تضاف إلى رأس المال'
 
+  const manualButtonLabel =
+    variance.kind === 'shortage'
+      ? 'العجز غير فعلي — إرجاع الفرق للكاش وسأعالج السبب يدويًا'
+      : 'الزيادة غير فعلية — استبعاد الفرق من الكاش وسأعالج السبب يدويًا'
+
   return (
     <div className="theme-modal-overlay" style={overlayStyle}>
       <div className="theme-modal-card" style={cardStyle}>
@@ -301,10 +306,9 @@ export default function ShiftVarianceReviewModal({
             <div style={infoBoxStyle}>
               {isClosing ? (
                 <>
-                  الجرد الفعلي ورصيد الدرج والخزنة لن يتم تغييرهم من هذه الشاشة.
-                  قرارك هنا يحدد فقط هل فرق الإغلاق يعتبر خسارة / زيادة حقيقية
-                  تؤثر على رأس المال أم سيتم التعامل مع سببه يدويًا بدون تأثير
-                  مباشر على رأس المال.
+                  لو الفرق فعلي اعتمده وسيظل أثر الجرد كما هو. لو الفرق غير فعلي
+                  سيتم إلغاء أثر فرق الجرد من الكاش، وبعدها تسجل السبب الحقيقي
+                  يدويًا من مكانه الصحيح في النظام.
                 </>
               ) : (
                 <>
@@ -367,7 +371,7 @@ export default function ShiftVarianceReviewModal({
                   }}
                   style={manualButtonStyle}
                 >
-                  لا يؤثر على رأس المال — سأعالج السبب يدويًا
+                  {manualButtonLabel}
                 </button>
               </div>
             ) : (

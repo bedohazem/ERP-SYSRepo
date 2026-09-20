@@ -1813,68 +1813,25 @@ export function getReportsSummary(input?: ReportFilter) {
     }))
 
   /*
-   * cashAccounts تمثل النقدية الفعلية
-   * الموجودة في الحسابات.
+   * رأس المال النقدي هنا يساوي
+   * الأرصدة الفعلية للحسابات.
    *
-   * أما رأس المال المعروض في الـDashboard
-   * فلا نعتمد عليه فرق إغلاق الشفت
-   * إلا بعد أن يقرر المدير أن الفرق حقيقي.
+   * فرق الشفت نفسه يتم التعامل
+   * معه داخل cash_movements:
    *
-   * لذلك:
+   * approved:
+   * تظل تسوية الفرق فعالة.
    *
-   * Pending  -> تأثير الفرق على رأس المال = صفر.
-   * Explained -> معالجة يدوية = صفر.
-   * Approved -> الفرق حقيقي ويظل تأثيره موجودًا.
+   * explained:
+   * يتم إلغاء تسوية الفرق،
+   * ثم يعالج المدير السبب يدويًا.
    */
   const physicalCashTotal = cashAccounts.reduce(
     (sum: number, account: any) => sum + Number(account.balance || 0),
     0,
   )
 
-  const varianceCapitalNeutralizationRow = db
-    .prepare(
-      `
-      SELECT
-        IFNULL(
-          SUM(
-            CASE
-              WHEN csv.kind = 'surplus'
-                THEN -ABS(
-                  IFNULL(csv.amount, 0)
-                )
-
-              ELSE
-                ABS(
-                  IFNULL(csv.amount, 0)
-                )
-            END
-          ),
-          0
-        ) AS amount
-
-      FROM cash_shift_variances csv
-
-      WHERE
-        csv.stage = 'closing'
-
-        AND (
-          csv.status <> 'resolved'
-
-          OR
-            IFNULL(
-              csv.resolution_type,
-              ''
-            ) <> 'approved'
-        )
-      `,
-    )
-    .get() as {
-    amount: number
-  }
-
-  const cashTotalCapital = reportMoney(
-    physicalCashTotal + Number(varianceCapitalNeutralizationRow?.amount || 0),
-  )
+  const cashTotalCapital = reportMoney(physicalCashTotal)
 
   return {
     summary: {
