@@ -338,6 +338,28 @@ export function getDb(): Database.Database {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS sale_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        sale_id INTEGER NOT NULL,
+
+        payment_method TEXT NOT NULL,
+
+        amount REAL NOT NULL DEFAULT 0,
+
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (sale_id)
+          REFERENCES sales(id)
+          ON DELETE CASCADE,
+
+        UNIQUE (sale_id, payment_method)
+      );
+
+      CREATE INDEX IF NOT EXISTS
+        idx_sale_payments_sale_id
+      ON sale_payments(sale_id);
+
       CREATE TABLE IF NOT EXISTS sale_items (
         id INTEGER PRIMARY KEY,
         sale_id INTEGER NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
@@ -1167,6 +1189,51 @@ export function getDb(): Database.Database {
     safeAddColumn(db, 'sales', 'business_date', 'TEXT')
     safeAddColumn(db, 'sales', 'shift_id', 'INTEGER')
 
+    db.prepare(
+      `
+      INSERT OR IGNORE INTO sale_payments (
+        sale_id,
+        payment_method,
+        amount,
+        created_at
+      )
+
+      SELECT
+        s.id,
+
+        CASE
+          WHEN s.payment_method IN ('cash', 'store_cash')
+            THEN 'store_cash'
+
+          WHEN s.payment_method IN ('card', 'fawry_machine')
+            THEN 'fawry_machine'
+
+          WHEN s.payment_method IN ('wallet', 'owner_vodafone')
+            THEN 'owner_vodafone'
+
+          WHEN s.payment_method IN ('bank', 'bank_transfer', 'owner_bank')
+            THEN 'owner_bank'
+
+          WHEN s.payment_method = 'store_safe'
+            THEN 'store_safe'
+
+          ELSE IFNULL(s.payment_method, 'store_cash')
+        END,
+
+        MIN(
+          MAX(IFNULL(s.paid, 0), 0),
+          MAX(IFNULL(s.grand_total, 0), 0)
+        ),
+
+        s.created_at
+
+      FROM sales s
+
+      WHERE IFNULL(s.type, 'sale') = 'sale'
+        AND IFNULL(s.paid, 0) > 0
+      `,
+    ).run()
+
     db.exec(`
       CREATE INDEX IF NOT EXISTS
         idx_sales_shift_id
@@ -1613,6 +1680,7 @@ export function resetDatabaseData(): void {
       DELETE FROM sale_loyalty_snapshots;
 
       DELETE FROM sale_items;
+      DELETE FROM sale_payments;
       DELETE FROM sales;
       DELETE FROM customers;
 

@@ -66,6 +66,8 @@ export function getPaymentMethodLabel(value?: string | null) {
 
     case 'fawry_machine':
       return 'ماكينة فوري'
+    case 'split':
+      return 'دفع متعدد'
 
     default:
       return value || '—'

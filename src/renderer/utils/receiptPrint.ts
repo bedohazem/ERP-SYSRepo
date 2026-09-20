@@ -4,6 +4,12 @@ import { getPaymentMethodLabel } from './payment-method'
 export type SaleReceiptData = {
   sale: any
   items: any[]
+
+  payments?: Array<{
+    payment_method: string
+    amount: number
+  }>
+
   loyalty?: any[]
 }
 
@@ -204,6 +210,16 @@ export function buildSaleReceiptHtml(
   printSettings: ReceiptPrintSettings = DEFAULT_RECEIPT_PRINT_SETTINGS,
 ) {
   const sale = receipt.sale
+  const paymentText = receipt.payments?.length
+    ? receipt.payments
+        .map(
+          (payment) =>
+            `${getPaymentMethodLabel(
+              payment.payment_method,
+            )}: ${Number(payment.amount || 0).toFixed(2)}`,
+        )
+        .join(' + ')
+    : getPaymentMethodLabel(sale.payment_method)
   const finance = getReceiptFinance(receipt, returnHistory)
 
   const {
@@ -795,7 +811,7 @@ export function buildSaleReceiptHtml(
             <div class="sale-info-item">
               <span>طريقة الدفع</span>
               <strong>
-                ${escapeHtml(getPaymentMethodLabel(sale.payment_method))}
+                ${escapeHtml(paymentText)}
               </strong>
             </div>
 

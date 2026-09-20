@@ -1621,4 +1621,71 @@ describe('reports repository', () => {
     expect(report.summary.approved_opening_shortage).toBe(0)
     expect(report.summary.final_net_profit).toBe(50)
   })
+
+  it('reports split invoice amounts under each payment method', () => {
+    const variant = seedReportProduct({
+      name: 'Split Payment Product',
+      barcode: 'REPORT-SPLIT',
+      openingQty: 10,
+      buyPrice: 100,
+      sellPrice: 150,
+    })
+
+    createSale({
+      user_id: 1,
+      customer_id: null,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      paid: 150,
+      change_amount: 0,
+      payment_method: 'split',
+
+      payments: [
+        {
+          payment_method: 'cash',
+          amount: 50,
+        },
+        {
+          payment_method: 'bank_transfer',
+          amount: 100,
+        },
+      ],
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const report = getReportsSummary() as ReportsSummaryTestResult
+
+    expect(report.summary.sales_count).toBe(1)
+    expect(report.summary.gross_sales).toBe(150)
+
+    const cash = report.paymentMethods.find(
+      (row) => row.payment_method === 'cash',
+    )
+
+    const bank = report.paymentMethods.find(
+      (row) => row.payment_method === 'bank_transfer',
+    )
+
+    expect(cash).toBeTruthy()
+    expect(Number(cash!.count)).toBe(1)
+    expect(Number(cash!.total)).toBe(50)
+
+    expect(bank).toBeTruthy()
+    expect(Number(bank!.count)).toBe(1)
+    expect(Number(bank!.total)).toBe(100)
+  })
 })

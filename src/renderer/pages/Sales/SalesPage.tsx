@@ -112,6 +112,12 @@ type SaleReceipt = {
     unit_price: number
     line_total: number
   }>
+  payments?: Array<{
+    id: number
+    sale_id: number
+    payment_method: string
+    amount: number
+  }>
   loyalty: Array<{
     id: number
     type: 'earn' | 'redeem' | 'adjust' | string
@@ -484,6 +490,12 @@ export default function SalesPage() {
   const [cashDrawerAutoOpen, setCashDrawerAutoOpen] = useState(true)
   const [barcodeMode, setBarcodeMode] = useState(true)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
+
+  const [splitPaymentEnabled, setSplitPaymentEnabled] = useState(false)
+
+  const [splitPaymentDrafts, setSplitPaymentDrafts] = useState<
+    Record<string, string>
+  >({})
   const [activePromotion, setActivePromotion] =
     useState<ActivePromotion | null>(null)
   const [customers, setCustomers] = useState<CustomerOption[]>([])
@@ -617,8 +629,26 @@ export default function SalesPage() {
     totalAfterNormalDiscount - loyaltyDiscountValue,
   )
 
-  const paidReceivedRaw =
-    activeInvoice.paidDraft.trim() === ''
+  const paymentOptions =
+    user?.role === 'admin'
+      ? ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS
+      : CUSTOMER_PAYMENT_METHOD_OPTIONS
+
+  const splitPayments = paymentOptions
+    .map((option) => ({
+      payment_method: option.value,
+
+      amount: Math.max(0, Number(splitPaymentDrafts[option.value] || 0)),
+    }))
+    .filter((payment) => Number.isFinite(payment.amount) && payment.amount > 0)
+
+  const splitPaidReceived = roundMoney(
+    splitPayments.reduce((total, payment) => total + payment.amount, 0),
+  )
+
+  const paidReceivedRaw = splitPaymentEnabled
+    ? splitPaidReceived
+    : activeInvoice.paidDraft.trim() === ''
       ? grandTotal
       : Number(activeInvoice.paidDraft || 0)
 
@@ -627,7 +657,9 @@ export default function SalesPage() {
     : 0
 
   const paidAmount = Math.min(paidReceived, grandTotal)
-  const changeAmount = Math.max(0, paidReceived - grandTotal)
+  const changeAmount = splitPaymentEnabled
+    ? 0
+    : Math.max(0, paidReceived - grandTotal)
   const remainingAmount = Math.max(0, grandTotal - paidReceived)
 
   const paymentStatus =
@@ -691,8 +723,10 @@ export default function SalesPage() {
     )
 
     // كل مرة نفتح نافذة الدفع نبدأ بإجمالي الفاتورة الحالي
-    updateActiveInvoice({
-      paidDraft: nextGrandTotal.toFixed(2),
+    setSplitPaymentEnabled(false)
+
+    setSplitPaymentDrafts({
+      cash: nextGrandTotal.toFixed(2),
     })
 
     setShowPaymentModal(true)
@@ -1199,6 +1233,19 @@ export default function SalesPage() {
       return
     }
 
+    if (splitPaymentEnabled && splitPaidReceived > grandTotal + 0.01) {
+      showMessage('error', 'إجمالي وسائل الدفع أكبر من إجمالي الفاتورة')
+
+      return
+    }
+
+    if (splitPaymentEnabled && splitPayments.length === 0 && grandTotal > 0) {
+      if (!activeInvoice.customer) {
+        showMessage('error', 'اكتب مبلغ في وسيلة دفع واحدة على الأقل')
+        return
+      }
+    }
+
     setSaving(true)
 
     try {
@@ -1212,8 +1259,13 @@ export default function SalesPage() {
         paid: paidAmount,
         remaining_amount: remainingAmount,
         payment_status: paymentStatus,
-        change_amount: changeAmount,
-        payment_method: activeInvoice.paymentMethod || 'cash',
+        change_amount: splitPaymentEnabled ? 0 : changeAmount,
+        payment_method: splitPaymentEnabled
+          ? splitPayments.length > 1
+            ? 'split'
+            : splitPayments[0]?.payment_method || 'cash'
+          : activeInvoice.paymentMethod || 'cash',
+        payments: splitPaymentEnabled ? splitPayments : undefined,
         notes: null,
         loyalty_points_redeemed: redeemPoints,
         loyalty_discount_value: loyaltyDiscountValue,
@@ -1229,9 +1281,15 @@ export default function SalesPage() {
       })
 
       const savedSaleId = Number(result.saleId)
-      const savedPaymentMethod = activeInvoice.paymentMethod || 'cash'
+      const usesCashDrawer = splitPaymentEnabled
+        ? splitPayments.some(
+            (payment) =>
+              payment.payment_method === 'cash' ||
+              payment.payment_method === 'store_cash',
+          )
+        : activeInvoice.paymentMethod === 'cash'
 
-      if (savedPaymentMethod === 'cash' && cashDrawerAutoOpen) {
+      if (usesCashDrawer && cashDrawerAutoOpen) {
         void handleOpenCashDrawer('sale', savedSaleId, false)
       }
 
@@ -1250,6 +1308,8 @@ export default function SalesPage() {
 
         setShowPaymentModal(false)
         showMessage('success', successText)
+        setSplitPaymentEnabled(false)
+        setSplitPaymentDrafts({})
       }
 
       updateActiveInvoice({
@@ -2648,7 +2708,16 @@ export default function SalesPage() {
               <div style={receiptInfoCardStyle}>
                 <span>طريقة الدفع</span>
                 <strong>
-                  {getPaymentMethodLabel(receiptData.sale.payment_method)}
+                  {receiptData.payments?.length
+                    ? receiptData.payments
+                        .map(
+                          (payment) =>
+                            `${getPaymentMethodLabel(
+                              payment.payment_method,
+                            )}: ${money(payment.amount)} ج.م`,
+                        )
+                        .join(' + ')
+                    : getPaymentMethodLabel(receiptData.sale.payment_method)}
                 </strong>
               </div>
             </div>
@@ -3010,83 +3079,166 @@ export default function SalesPage() {
               </strong>
             </div>
 
-            <label style={paymentLabelStyle}>
-              المدفوع
-              <input
-                type="number"
-                min={0}
-                autoFocus
-                value={activeInvoice.paidDraft}
-                onChange={(e) =>
-                  updateActiveInvoice({ paidDraft: e.target.value })
+            <button
+              type="button"
+              onClick={() => {
+                const next = !splitPaymentEnabled
+
+                setSplitPaymentEnabled(next)
+
+                if (next) {
+                  setSplitPaymentDrafts({
+                    cash: grandTotal.toFixed(2),
+                  })
                 }
-                style={{
-                  ...paymentInputStyle,
-                  borderColor: '#7c3aed',
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    void saveSale()
-                  }
+              }}
+              style={{
+                ...clearButtonStyle,
+                width: '100%',
+                minHeight: '44px',
+              }}
+            >
+              {splitPaymentEnabled
+                ? 'إلغاء تقسيم الدفع'
+                : 'تقسيم الدفع على أكثر من وسيلة'}
+            </button>
 
-                  if (e.key === 'Escape') {
-                    setShowPaymentModal(false)
-                  }
-                }}
-              />
-            </label>
+            {!splitPaymentEnabled && (
+              <>
+                <label style={paymentLabelStyle}>
+                  المدفوع
+                  <input
+                    type="number"
+                    min={0}
+                    autoFocus
+                    value={activeInvoice.paidDraft}
+                    onChange={(e) =>
+                      updateActiveInvoice({
+                        paidDraft: e.target.value,
+                      })
+                    }
+                    style={{
+                      ...paymentInputStyle,
+                      borderColor: '#7c3aed',
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        void saveSale()
+                      }
 
-            <label style={paymentLabelStyle}>
-              طريقة الدفع
+                      if (e.key === 'Escape') {
+                        setShowPaymentModal(false)
+                      }
+                    }}
+                  />
+                </label>
+
+                <label style={paymentLabelStyle}>
+                  طريقة الدفع
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                      gap: '10px',
+                    }}
+                  >
+                    {paymentOptions.map((option) => {
+                      const active =
+                        activeInvoice.paymentMethod === option.value
+
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            updateActiveInvoice({
+                              paymentMethod: option.value,
+                            })
+                          }
+                          style={{
+                            minHeight: '58px',
+                            borderRadius: '14px',
+                            border: active
+                              ? '1px solid rgba(124,58,237,0.95)'
+                              : '1px solid rgba(255,255,255,0.12)',
+                            background: active
+                              ? 'linear-gradient(135deg, rgba(37,99,235,0.36), rgba(124,58,237,0.44))'
+                              : 'rgba(255,255,255,0.055)',
+                            color: active ? '#fff' : '#cbd5e1',
+                            fontWeight: 950,
+                            cursor: 'pointer',
+                            display: 'grid',
+                            placeItems: 'center',
+                            textAlign: 'center',
+                            padding: '8px 10px',
+                            boxShadow: active
+                              ? '0 0 0 3px rgba(124,58,237,0.16)'
+                              : 'none',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </label>
+              </>
+            )}
+
+            {splitPaymentEnabled && (
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                   gap: '10px',
                 }}
               >
-                {(user?.role === 'admin'
-                  ? ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS
-                  : CUSTOMER_PAYMENT_METHOD_OPTIONS
-                ).map((option) => {
-                  const active = activeInvoice.paymentMethod === option.value
+                <strong>تقسيم مبلغ الفاتورة</strong>
 
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() =>
-                        updateActiveInvoice({ paymentMethod: option.value })
+                {paymentOptions.map((option) => (
+                  <label
+                    key={option.value}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(120px, 1fr) 150px',
+                      gap: '10px',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span>{option.label}</span>
+
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={splitPaymentDrafts[option.value] || ''}
+                      onChange={(e) =>
+                        setSplitPaymentDrafts((prev) => ({
+                          ...prev,
+                          [option.value]: e.target.value,
+                        }))
                       }
-                      style={{
-                        minHeight: '58px',
-                        borderRadius: '14px',
-                        border: active
-                          ? '1px solid rgba(124,58,237,0.95)'
-                          : '1px solid rgba(255,255,255,0.12)',
-                        background: active
-                          ? 'linear-gradient(135deg, rgba(37,99,235,0.36), rgba(124,58,237,0.44))'
-                          : 'rgba(255,255,255,0.055)',
-                        color: active ? '#fff' : '#cbd5e1',
-                        fontWeight: 950,
-                        cursor: 'pointer',
-                        display: 'grid',
-                        placeItems: 'center',
-                        textAlign: 'center',
-                        padding: '8px 10px',
-                        boxShadow: active
-                          ? '0 0 0 3px rgba(124,58,237,0.16)'
-                          : 'none',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  )
-                })}
-              </div>
-            </label>
+                      placeholder="0.00"
+                      style={paymentInputStyle}
+                    />
+                  </label>
+                ))}
 
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '10px 12px',
+                    borderRadius: '12px',
+                    background: 'rgba(255,255,255,0.06)',
+                  }}
+                >
+                  <span>إجمالي المدفوع بالوسائل</span>
+
+                  <strong>{money(splitPaidReceived)} ج.م</strong>
+                </div>
+              </div>
+            )}
             <div
               style={{
                 padding: '14px',

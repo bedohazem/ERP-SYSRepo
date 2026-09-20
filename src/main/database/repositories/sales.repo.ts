@@ -34,6 +34,10 @@ type CreateSaleInput = {
   grand_total: number
   change_amount: number
   payment_method: string
+  payments?: Array<{
+    payment_method: string
+    amount: number
+  }>
   notes?: string | null
 
   loyalty_points_redeemed?: number
@@ -176,9 +180,26 @@ export function createSale(input: CreateSaleInput) {
 
   const paymentMethod = String(input.payment_method || 'cash').trim() || 'cash'
 
+  const requestedPayments = Array.isArray(input.payments)
+    ? input.payments
+        .map((payment) => ({
+          payment_method:
+            String(payment?.payment_method || '').trim() || 'cash',
+
+          amount: roundMoney(Number(payment?.amount || 0)),
+        }))
+        .filter(
+          (payment) => Number.isFinite(payment.amount) && payment.amount > 0,
+        )
+    : []
+
   const openShift = resolveFinancialOperationShift(
     input.user_id,
-    [paymentMethod],
+
+    requestedPayments.length > 0
+      ? requestedPayments.map((payment) => payment.payment_method)
+      : [paymentMethod],
+
     'لا يمكن تسجيل فاتورة بيع من درج المحل بدون شفت مفتوح',
   )
 
@@ -296,12 +317,65 @@ export function createSale(input: CreateSaleInput) {
       totalAfterNormalDiscount - loyaltyDiscountValue,
     )
 
-    const paidAmount = Math.min(
-      Math.max(Number(input.paid ?? grandTotal), 0),
-      grandTotal,
+    const paymentTotals = new Map<string, number>()
+
+    for (const payment of requestedPayments) {
+      const account = resolveCashAccount(payment.payment_method)
+
+      paymentTotals.set(
+        account,
+        roundMoney(
+          Number(paymentTotals.get(account) || 0) + Number(payment.amount || 0),
+        ),
+      )
+    }
+
+    const salePayments =
+      requestedPayments.length > 0
+        ? Array.from(paymentTotals.entries()).map(
+            ([payment_method, amount]) => ({
+              payment_method,
+              amount: roundMoney(amount),
+            }),
+          )
+        : []
+
+    const splitPaidAmount = roundMoney(
+      salePayments.reduce(
+        (total, payment) => total + Number(payment.amount || 0),
+        0,
+      ),
     )
 
-    const remainingAmount = Math.max(0, grandTotal - paidAmount)
+    if (splitPaidAmount > grandTotal + 0.01) {
+      throw new Error('إجمالي مبالغ وسائل الدفع أكبر من إجمالي الفاتورة')
+    }
+
+    const paidAmount =
+      requestedPayments.length > 0
+        ? splitPaidAmount
+        : Math.min(Math.max(Number(input.paid ?? grandTotal), 0), grandTotal)
+
+    const effectivePayments =
+      requestedPayments.length > 0
+        ? salePayments
+        : paidAmount > 0
+          ? [
+              {
+                payment_method: resolveCashAccount(paymentMethod),
+                amount: paidAmount,
+              },
+            ]
+          : []
+
+    const remainingAmount = Math.max(0, roundMoney(grandTotal - paidAmount))
+
+    const invoicePaymentMethod =
+      requestedPayments.length > 0
+        ? effectivePayments.length > 1
+          ? 'split'
+          : effectivePayments[0]?.payment_method || paymentMethod
+        : paymentMethod
 
     const paymentStatus =
       remainingAmount === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid'
@@ -370,8 +444,8 @@ export function createSale(input: CreateSaleInput) {
         paidAmount,
         remainingAmount,
         paymentStatus,
-        Number(input.change_amount || 0),
-        input.payment_method || 'cash',
+        requestedPayments.length > 0 ? 0 : Number(input.change_amount || 0),
+        invoicePaymentMethod,
         input.notes ?? null,
         earnedPoints,
         redeemPoints,
@@ -379,6 +453,22 @@ export function createSale(input: CreateSaleInput) {
       )
 
     const saleId = Number(saleResult.lastInsertRowid)
+
+    const insertSalePayment = db.prepare(
+      `
+      INSERT INTO sale_payments (
+        sale_id,
+        payment_method,
+        amount
+      )
+
+      VALUES (?, ?, ?)
+      `,
+    )
+
+    for (const payment of effectivePayments) {
+      insertSalePayment.run(saleId, payment.payment_method, payment.amount)
+    }
 
     db.prepare(
       `
@@ -455,17 +545,26 @@ export function createSale(input: CreateSaleInput) {
       )
     }
 
-    if (paidAmount > 0) {
+    for (const payment of effectivePayments) {
       createCashMovement({
         type: 'sale',
+
         direction: 'in',
-        amount: paidAmount,
-        payment_method: paymentMethod,
+
+        amount: payment.amount,
+
+        payment_method: payment.payment_method,
+
         reference_id: saleId,
+
         reference_type: 'sale',
+
         notes: `تحصيل فاتورة بيع رقم ${saleId}`,
+
         created_by: input.user_id,
+
         business_date: businessDate,
+
         shift_id: openShift?.id ?? null,
       })
     }
@@ -923,6 +1022,7 @@ export function createSale(input: CreateSaleInput) {
       promotion_discount_value: promotionDiscount,
       grand_total: grandTotal,
       paid_amount: paidAmount,
+      payments: effectivePayments,
       remaining_amount: remainingAmount,
       payment_status: paymentStatus,
       shift_id: openShift?.id ?? null,
@@ -1010,9 +1110,29 @@ export function getSaleReceipt(saleId: number) {
     )
     .all(saleId)
 
+  const payments = db
+    .prepare(
+      `
+      SELECT
+        id,
+        sale_id,
+        payment_method,
+        amount,
+        created_at
+
+      FROM sale_payments
+
+      WHERE sale_id = ?
+
+      ORDER BY id ASC
+      `,
+    )
+    .all(saleId)
+
   return {
     sale,
     items,
+    payments,
     loyalty,
   }
 }
@@ -1092,9 +1212,21 @@ export function listSales(input?: {
   }
 
   if (paymentMethod) {
-    where.push(`s.payment_method = ?`)
+    const paymentAccount = resolveCashAccount(paymentMethod)
 
-    params.push(paymentMethod)
+    where.push(`
+      EXISTS (
+        SELECT 1
+
+        FROM sale_payments sp
+
+        WHERE sp.sale_id = s.id
+          AND sp.payment_method = ?
+          AND sp.amount > 0
+      )
+    `)
+
+    params.push(paymentAccount)
   }
 
   if (input?.date_from) {
@@ -2701,6 +2833,38 @@ export function cancelSaleInvoice(input: {
 
     const paidAmount = Math.max(0, Number(sale.paid || 0))
 
+    const storedPayments = db
+      .prepare(
+        `
+        SELECT
+          payment_method,
+          amount
+
+        FROM sale_payments
+
+        WHERE sale_id = ?
+
+        ORDER BY id ASC
+        `,
+      )
+      .all(saleId) as Array<{
+      payment_method: string
+      amount: number
+    }>
+
+    const refundPayments =
+      storedPayments.length > 0
+        ? storedPayments
+        : paidAmount > 0
+          ? [
+              {
+                payment_method: sale.payment_method || 'store_cash',
+
+                amount: paidAmount,
+              },
+            ]
+          : []
+
     const remainingAmount = Math.max(0, Number(sale.remaining_amount || 0))
 
     const grandTotal = Math.max(0, Number(sale.grand_total || 0))
@@ -2709,17 +2873,30 @@ export function cancelSaleInvoice(input: {
      * رد المبلغ المدفوع للعميل الآن.
      * الحركة الأصلية تظل محفوظة.
      */
-    if (paidAmount > 0) {
+    for (const payment of refundPayments) {
+      if (Number(payment.amount || 0) <= 0) {
+        continue
+      }
+
       createCashMovement({
         type: 'sale',
+
         direction: 'out',
-        amount: paidAmount,
-        payment_method: sale.payment_method || 'store_cash',
+
+        amount: Number(payment.amount),
+
+        payment_method: payment.payment_method,
+
         reference_id: saleId,
+
         reference_type: 'sale_cancel',
+
         notes: `رد قيمة فاتورة بيع ملغاة رقم ${saleId}`,
+
         created_by: input.actor_id ?? null,
+
         business_date: cancellationBusinessDate,
+
         shift_id: openShift.id,
       })
     }

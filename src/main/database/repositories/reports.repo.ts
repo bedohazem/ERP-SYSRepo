@@ -1362,22 +1362,34 @@ export function getReportsSummary(input?: ReportFilter) {
          * فواتير البيع.
          */
         SELECT
-          IFNULL(
-            s.payment_method,
-            'cash'
-          ) AS payment_method,
+          CASE
+            WHEN sp.payment_method IN ('cash', 'store_cash')
+              THEN 'cash'
+
+            WHEN sp.payment_method IN ('card', 'fawry_machine')
+              THEN 'card'
+
+            WHEN sp.payment_method IN ('wallet', 'owner_vodafone')
+              THEN 'wallet'
+
+            WHEN sp.payment_method IN ('bank', 'bank_transfer', 'owner_bank')
+              THEN 'bank_transfer'
+
+            ELSE sp.payment_method
+          END AS payment_method,
 
           1 AS invoice_count,
 
-          s.grand_total
-            AS amount,
+          sp.amount AS amount,
 
-          ${saleBusinessDate}
-            AS business_date,
+          ${saleBusinessDate} AS business_date,
 
           s.user_id
 
-        FROM sales s
+        FROM sale_payments sp
+
+        JOIN sales s
+          ON s.id = sp.sale_id
 
         WHERE
           IFNULL(
@@ -1385,9 +1397,7 @@ export function getReportsSummary(input?: ReportFilter) {
             'sale'
           ) = 'sale'
 
-          AND
-            s.cancelled_at
-            IS NULL
+          AND s.cancelled_at IS NULL
 
         UNION ALL
 
@@ -1395,10 +1405,41 @@ export function getReportsSummary(input?: ReportFilter) {
          * فرق الاستبدال.
          */
         SELECT
-          IFNULL(
-            os.payment_method,
-            'cash'
-          ) AS payment_method,
+          CASE
+            WHEN COALESCE(
+              se.payment_method,
+              os.payment_method,
+              'cash'
+            ) IN ('cash', 'store_cash')
+              THEN 'cash'
+
+            WHEN COALESCE(
+              se.payment_method,
+              os.payment_method,
+              'cash'
+            ) IN ('card', 'fawry_machine')
+              THEN 'card'
+
+            WHEN COALESCE(
+              se.payment_method,
+              os.payment_method,
+              'cash'
+            ) IN ('wallet', 'owner_vodafone')
+              THEN 'wallet'
+
+            WHEN COALESCE(
+              se.payment_method,
+              os.payment_method,
+              'cash'
+            ) IN ('bank', 'bank_transfer', 'owner_bank')
+              THEN 'bank_transfer'
+
+            ELSE COALESCE(
+              se.payment_method,
+              os.payment_method,
+              'cash'
+            )
+          END AS payment_method,
 
           0 AS invoice_count,
 
@@ -1438,10 +1479,41 @@ export function getReportsSummary(input?: ReportFilter) {
          * وسيلة دفع الفاتورة الأصلية.
          */
         SELECT
-          IFNULL(
-            os.payment_method,
-            'cash'
-          ) AS payment_method,
+          CASE
+            WHEN COALESCE(
+              sr.payment_method,
+              os.payment_method,
+              'cash'
+            ) IN ('cash', 'store_cash')
+              THEN 'cash'
+
+            WHEN COALESCE(
+              sr.payment_method,
+              os.payment_method,
+              'cash'
+            ) IN ('card', 'fawry_machine')
+              THEN 'card'
+
+            WHEN COALESCE(
+              sr.payment_method,
+              os.payment_method,
+              'cash'
+            ) IN ('wallet', 'owner_vodafone')
+              THEN 'wallet'
+
+            WHEN COALESCE(
+              sr.payment_method,
+              os.payment_method,
+              'cash'
+            ) IN ('bank', 'bank_transfer', 'owner_bank')
+              THEN 'bank_transfer'
+
+            ELSE COALESCE(
+              sr.payment_method,
+              os.payment_method,
+              'cash'
+            )
+          END AS payment_method,
 
           0 AS invoice_count,
 

@@ -286,6 +286,13 @@ declare global {
       getSaleReceipt: (saleId: number) => Promise<{
         sale: any
         items: any[]
+        payments: Array<{
+          id: number
+          sale_id: number
+          payment_method: string
+          amount: number
+          created_at?: string | null
+        }>
         loyalty: any[]
       }>
 

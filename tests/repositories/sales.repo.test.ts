@@ -3183,4 +3183,321 @@ describe('sales repository', () => {
 
     expect(allResult.total).toBe(2)
   })
+
+  it('stores split payments and exposes them on receipt and payment filters', () => {
+    const db = getDb()
+    const variant = seedProduct()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      paid: 150,
+      change_amount: 0,
+      payment_method: 'split',
+
+      payments: [
+        {
+          payment_method: 'cash',
+          amount: 50,
+        },
+        {
+          payment_method: 'bank_transfer',
+          amount: 100,
+        },
+      ],
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const saleRow = db
+      .prepare(
+        `
+      SELECT
+        payment_method,
+        paid,
+        remaining_amount,
+        payment_status
+      FROM sales
+      WHERE id = ?
+      `,
+      )
+      .get(sale.saleId) as any
+
+    expect(saleRow.payment_method).toBe('split')
+    expect(Number(saleRow.paid)).toBe(150)
+    expect(Number(saleRow.remaining_amount)).toBe(0)
+    expect(saleRow.payment_status).toBe('paid')
+
+    const rows = db
+      .prepare(
+        `
+      SELECT payment_method, amount
+      FROM sale_payments
+      WHERE sale_id = ?
+      ORDER BY id ASC
+      `,
+      )
+      .all(sale.saleId) as any[]
+
+    expect(rows).toHaveLength(2)
+
+    const storedPayments = Object.fromEntries(
+      rows.map((row) => [String(row.payment_method), Number(row.amount)]),
+    )
+
+    expect(storedPayments).toEqual({
+      store_cash: 50,
+      owner_bank: 100,
+    })
+
+    const receipt = getSaleReceipt(sale.saleId)
+
+    expect(receipt.payments).toHaveLength(2)
+
+    const receiptPayments = Object.fromEntries(
+      receipt.payments.map((row: any) => [
+        String(row.payment_method),
+        Number(row.amount),
+      ]),
+    )
+
+    expect(receiptPayments).toEqual({
+      store_cash: 50,
+      owner_bank: 100,
+    })
+
+    const cashFilter = listSales({
+      payment_method: 'cash',
+    })
+
+    expect(cashFilter.total).toBe(1)
+    expect(Number(cashFilter.rows[0].id)).toBe(sale.saleId)
+
+    const bankFilter = listSales({
+      payment_method: 'bank_transfer',
+    })
+
+    expect(bankFilter.total).toBe(1)
+    expect(Number(bankFilter.rows[0].id)).toBe(sale.saleId)
+  })
+
+  it('uses only the drawer part of split payment for shift closing balance', () => {
+    const db = getDb()
+    const variant = seedProduct()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      paid: 150,
+      change_amount: 0,
+      payment_method: 'split',
+
+      payments: [
+        {
+          payment_method: 'cash',
+          amount: 50,
+        },
+        {
+          payment_method: 'bank_transfer',
+          amount: 100,
+        },
+      ],
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const movements = db
+      .prepare(
+        `
+      SELECT
+        payment_method,
+        direction,
+        amount
+      FROM cash_movements
+      WHERE reference_type = 'sale'
+        AND reference_id = ?
+        AND cancelled_at IS NULL
+      ORDER BY id ASC
+      `,
+      )
+      .all(sale.saleId) as any[]
+
+    expect(movements).toHaveLength(2)
+
+    const drawerMovement = movements.find(
+      (row) => row.payment_method === 'store_cash',
+    )
+
+    const bankMovement = movements.find(
+      (row) => row.payment_method === 'owner_bank',
+    )
+
+    expect(drawerMovement).toBeTruthy()
+    expect(drawerMovement.direction).toBe('in')
+    expect(Number(drawerMovement.amount)).toBe(50)
+
+    expect(bankMovement).toBeTruthy()
+    expect(bankMovement.direction).toBe('in')
+    expect(Number(bankMovement.amount)).toBe(100)
+
+    const shift = getOpenCashShift()
+
+    expect(shift).toBeTruthy()
+
+    const closed = closeCashShift({
+      shift_id: shift!.id,
+
+      closing_counted_amount: 50,
+
+      left_for_next_shift: 0,
+
+      closed_by: 1,
+    })
+
+    expect(closed.expected_closing_amount).toBe(50)
+    expect(closed.closing_counted_amount).toBe(50)
+    expect(closed.closing_difference).toBe(0)
+  })
+
+  it('refunds every split payment to its original account when sale is cancelled', () => {
+    const db = getDb()
+    const variant = seedProduct()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      paid: 150,
+      change_amount: 0,
+      payment_method: 'split',
+
+      payments: [
+        {
+          payment_method: 'cash',
+          amount: 50,
+        },
+        {
+          payment_method: 'bank_transfer',
+          amount: 100,
+        },
+      ],
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    cancelSaleInvoice({
+      sale_id: sale.saleId,
+      actor_id: 1,
+      reason: 'اختبار إلغاء فاتورة دفع متعدد',
+    })
+
+    const refunds = db
+      .prepare(
+        `
+      SELECT
+        payment_method,
+        direction,
+        amount
+      FROM cash_movements
+      WHERE reference_type = 'sale_cancel'
+        AND reference_id = ?
+        AND cancelled_at IS NULL
+      ORDER BY id ASC
+      `,
+      )
+      .all(sale.saleId) as any[]
+
+    expect(refunds).toHaveLength(2)
+
+    const cashRefund = refunds.find(
+      (row) => row.payment_method === 'store_cash',
+    )
+
+    const bankRefund = refunds.find(
+      (row) => row.payment_method === 'owner_bank',
+    )
+
+    expect(cashRefund).toBeTruthy()
+    expect(cashRefund.direction).toBe('out')
+    expect(Number(cashRefund.amount)).toBe(50)
+
+    expect(bankRefund).toBeTruthy()
+    expect(bankRefund.direction).toBe('out')
+    expect(Number(bankRefund.amount)).toBe(100)
+
+    const balances = db
+      .prepare(
+        `
+      SELECT
+        payment_method,
+
+        SUM(
+          CASE
+            WHEN direction = 'in'
+              THEN amount
+            ELSE -amount
+          END
+        ) AS balance
+
+      FROM cash_movements
+
+      WHERE reference_id = ?
+        AND reference_type IN (
+          'sale',
+          'sale_cancel'
+        )
+
+      GROUP BY payment_method
+      `,
+      )
+      .all(sale.saleId) as any[]
+
+    for (const row of balances) {
+      expect(Number(row.balance)).toBe(0)
+    }
+  })
 })
