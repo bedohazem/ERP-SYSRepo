@@ -28,6 +28,8 @@ type ReportsData = {
     exchange_discount_adjustment: number
     approved_closing_surplus: number
     approved_closing_shortage: number
+    approved_opening_surplus: number
+    approved_opening_shortage: number
   }
   cashAccounts: Array<{
     payment_method: string
@@ -88,6 +90,8 @@ const emptyReports: ReportsData = {
     exchange_discount_adjustment: 0,
     approved_closing_surplus: 0,
     approved_closing_shortage: 0,
+    approved_opening_surplus: 0,
+    approved_opening_shortage: 0,
   },
   cashAccounts: [],
   cashTotalCapital: 0,
@@ -328,6 +332,18 @@ export default function ReportsPage() {
         <StatCard
           title="عجز إغلاق معتمد"
           value={money(data.summary.approved_closing_shortage)}
+          danger
+        />
+
+        <StatCard
+          title="زيادة افتتاح معتمدة"
+          value={money(data.summary.approved_opening_surplus)}
+          success
+        />
+
+        <StatCard
+          title="عجز افتتاح معتمد"
+          value={money(data.summary.approved_opening_shortage)}
           danger
         />
 

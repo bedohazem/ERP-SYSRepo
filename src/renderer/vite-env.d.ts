@@ -1134,6 +1134,8 @@ declare global {
           exchange_discount_adjustment: number
           approved_closing_surplus: number
           approved_closing_shortage: number
+          approved_opening_surplus: number
+          approved_opening_shortage: number
         }
         cashAccounts: Array<{
           payment_method: string
@@ -1832,6 +1834,7 @@ declare global {
           resolution_type:
             | 'approved'
             | 'rejected'
+            | 'corrected'
             | 'explained'
             | 'other'
             | null
@@ -1863,10 +1866,16 @@ declare global {
       resolveCashShiftVariance: (input: {
         variance_id: number
 
-        resolution_type: 'approved' | 'rejected' | 'explained' | 'other'
+        resolution_type:
+          | 'approved'
+          | 'rejected'
+          | 'corrected'
+          | 'explained'
+          | 'other'
 
         resolution_notes: string
         reversal_account?: string | null
+        corrected_opening_amount?: number | null
         admin_password: string
       }) => Promise<{
         success: boolean

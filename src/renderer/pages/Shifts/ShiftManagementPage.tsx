@@ -49,7 +49,13 @@ type CashShiftVariance = {
 
   status: 'pending' | 'resolved'
 
-  resolution_type: 'approved' | 'rejected' | 'explained' | 'other' | null
+  resolution_type:
+    | 'approved'
+    | 'rejected'
+    | 'corrected'
+    | 'explained'
+    | 'other'
+    | null
 
   resolution_notes: string | null
 
@@ -74,7 +80,12 @@ type CashShiftVariance = {
 
 type VarianceStatusFilter = 'all' | 'pending' | 'resolved'
 
-type ResolutionType = 'approved' | 'rejected' | 'explained' | 'other'
+type ResolutionType =
+  | 'approved'
+  | 'rejected'
+  | 'corrected'
+  | 'explained'
+  | 'other'
 
 const VARIANCE_REVERSAL_ACCOUNT_OPTIONS = [
   { value: 'store_safe', label: 'الخزنة الآمنة' },
@@ -128,6 +139,7 @@ export default function ShiftManagementPage() {
 
   const [resolutionNotes, setResolutionNotes] = useState('')
   const [reversalAccount, setReversalAccount] = useState('store_safe')
+  const [correctedOpeningAmount, setCorrectedOpeningAmount] = useState('')
   const [adminPassword, setAdminPassword] = useState('')
 
   const [resolving, setResolving] = useState(false)
@@ -228,7 +240,13 @@ export default function ShiftManagementPage() {
 
     setResolveTarget(variance)
 
-    setResolutionType(variance.stage === 'closing' ? 'approved' : 'explained')
+    setResolutionType('approved')
+
+    setCorrectedOpeningAmount(
+      variance.stage === 'opening' && openShift?.id === variance.shift_id
+        ? String(openShift.opening_counted_amount ?? '')
+        : '',
+    )
 
     setReversalAccount('store_safe')
 
@@ -243,7 +261,7 @@ export default function ShiftManagementPage() {
     }
 
     setResolveTarget(null)
-
+    setCorrectedOpeningAmount('')
     setResolutionType('explained')
     setReversalAccount('store_safe')
     setResolutionNotes('')
@@ -262,6 +280,19 @@ export default function ShiftManagementPage() {
       return
     }
 
+    if (resolveTarget.stage === 'opening' && resolutionType === 'corrected') {
+      const correctedAmount = Number(correctedOpeningAmount)
+
+      if (
+        correctedOpeningAmount.trim() === '' ||
+        !Number.isFinite(correctedAmount) ||
+        correctedAmount < 0
+      ) {
+        showMessage('error', 'اكتب الجرد الصحيح عند افتتاح الشفت')
+        return
+      }
+    }
+
     if (!adminPassword.trim()) {
       showMessage('error', 'اكتب كلمة مرور المدير')
 
@@ -277,7 +308,10 @@ export default function ShiftManagementPage() {
         resolution_type: resolutionType,
 
         resolution_notes: resolutionNotes.trim(),
-
+        corrected_opening_amount:
+          resolutionType === 'corrected'
+            ? Number(correctedOpeningAmount)
+            : undefined,
         reversal_account:
           resolutionType === 'rejected' ? reversalAccount : undefined,
 
@@ -292,7 +326,16 @@ export default function ShiftManagementPage() {
 
       closeVarianceReview()
 
-      showMessage('success', 'تم اعتماد مراجعة فرق الشفت')
+      if (resolutionType === 'corrected') {
+        showMessage(
+          'success',
+          result.variance?.status === 'resolved'
+            ? 'تم تصحيح جرد الافتتاح وإغلاق الفرق'
+            : 'تم تصحيح الجرد وتحديث فرق الافتتاح المتبقي',
+        )
+      } else {
+        showMessage('success', 'تم اعتماد مراجعة فرق الشفت')
+      }
 
       await loadData(statusFilter, variancePage)
     } catch (error) {
@@ -920,11 +963,13 @@ export default function ShiftManagementPage() {
                     </>
                   ) : (
                     <>
-                      <option value="explained">تم تفسير سبب الفرق</option>
+                      <option value="approved">
+                        اعتماد الفرق كعجز / زيادة حقيقية
+                      </option>
 
-                      <option value="approved">تم التحقق واعتماد الفرق</option>
-
-                      <option value="other">أخرى</option>
+                      {resolveTarget.shift_status === 'open' && (
+                        <option value="corrected">تصحيح جرد الافتتاح</option>
+                      )}
                     </>
                   )}
                 </select>
@@ -975,6 +1020,35 @@ export default function ShiftManagementPage() {
                   }}
                 />
               </Field>
+
+              {resolveTarget.stage === 'opening' &&
+                resolutionType === 'corrected' && (
+                  <Field label="الجرد الصحيح عند افتتاح الشفت">
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={correctedOpeningAmount}
+                      onChange={(e) =>
+                        setCorrectedOpeningAmount(e.target.value)
+                      }
+                      placeholder="اكتب المبلغ الصحيح"
+                      style={inputStyle}
+                    />
+
+                    <div
+                      style={{
+                        marginTop: '6px',
+                        color: '#94a3b8',
+                        fontSize: '12px',
+                        lineHeight: 1.7,
+                      }}
+                    >
+                      سيتم تعديل رصيد درج المحل وإعادة حساب فرق الافتتاح. إذا
+                      أصبح الفرق صفر سيتم إغلاق المراجعة تلقائيًا.
+                    </div>
+                  </Field>
+                )}
 
               <Field label="كلمة مرور المدير">
                 <input

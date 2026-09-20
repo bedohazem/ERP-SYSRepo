@@ -114,6 +114,8 @@ type ReportsSummaryTestResult = {
     total_manual_deposits: number
     total_manual_withdrawals: number
     final_net_profit: number
+    approved_opening_surplus: number
+    approved_opening_shortage: number
   }
   cashierSales: Array<{
     user_id: number | null
@@ -1573,6 +1575,50 @@ describe('reports repository', () => {
 
     expect(report.summary.approved_closing_surplus).toBe(50)
     expect(report.summary.approved_closing_shortage).toBe(0)
+    expect(report.summary.final_net_profit).toBe(50)
+  })
+
+  it('includes approved opening surplus in final net profit', () => {
+    const firstShift = getOpenCashShift()
+
+    expect(firstShift).toBeTruthy()
+
+    closeCashShift({
+      shift_id: firstShift!.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    })
+
+    const secondShift = openCashShift({
+      opening_counted_amount: 50,
+      opened_by: 1,
+    })
+
+    expect(secondShift.expected_opening_amount).toBe(0)
+    expect(secondShift.opening_difference).toBe(50)
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows.find(
+      (row) => row.shift_id === secondShift.id && row.stage === 'opening',
+    )
+
+    expect(variance).toBeTruthy()
+    expect(variance!.kind).toBe('surplus')
+    expect(Number(variance!.amount)).toBe(50)
+
+    resolveCashShiftVariance({
+      variance_id: variance!.id,
+      resolution_type: 'approved',
+      resolution_notes: 'زيادة افتتاح حقيقية',
+      resolved_by: 1,
+    })
+
+    const report = getReportsSummary()
+
+    expect(report.summary.approved_opening_surplus).toBe(50)
+    expect(report.summary.approved_opening_shortage).toBe(0)
     expect(report.summary.final_net_profit).toBe(50)
   })
 })

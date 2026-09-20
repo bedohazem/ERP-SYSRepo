@@ -287,6 +287,12 @@ export function registerCashIpc(): void {
         reversal_account: input?.reversal_account
           ? String(input.reversal_account)
           : null,
+
+        corrected_opening_amount:
+          input?.corrected_opening_amount === null ||
+          input?.corrected_opening_amount === undefined
+            ? null
+            : Number(input.corrected_opening_amount),
         resolved_by: actor.id,
       })
 

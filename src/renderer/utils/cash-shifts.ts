@@ -8,16 +8,17 @@ export type CashShiftVarianceResolutionType =
   | 'approved'
   | 'rejected'
   | 'explained'
+  | 'corrected'
   | 'other'
 
 export function getCashShiftVarianceStageLabel(value?: string | null) {
   switch (value) {
     case 'opening':
       return 'افتتاح الشفت'
-
     case 'closing':
       return 'إغلاق الشفت'
-
+    case 'corrected':
+      return 'تم تصحيح جرد الافتتاح'
     default:
       return 'غير معروف'
   }

@@ -793,6 +793,18 @@ export function getReportsSummary(input?: ReportFilter) {
     `date(cs.opened_at, 'localtime')`,
   )
 
+  const openingVarianceWhere = buildWhere(
+    'csv',
+    input,
+    [
+      `csv.stage = 'opening'`,
+      `csv.status = 'resolved'`,
+      `csv.resolution_type = 'approved'`,
+    ],
+    'cs.opened_by',
+    `date(cs.opened_at, 'localtime')`,
+  )
+
   const expensesRow = db
     .prepare(
       `
@@ -908,6 +920,45 @@ export function getReportsSummary(input?: ReportFilter) {
     approved_closing_shortage: number
   }
 
+  const openingVarianceRow = db
+    .prepare(
+      `
+    SELECT
+      IFNULL(
+        SUM(
+          CASE
+            WHEN csv.kind = 'surplus'
+            THEN csv.amount
+            ELSE 0
+          END
+        ),
+        0
+      ) AS approved_opening_surplus,
+
+      IFNULL(
+        SUM(
+          CASE
+            WHEN csv.kind = 'shortage'
+            THEN csv.amount
+            ELSE 0
+          END
+        ),
+        0
+      ) AS approved_opening_shortage
+
+    FROM cash_shift_variances csv
+
+    JOIN cash_shifts cs
+      ON cs.id = csv.shift_id
+
+    ${openingVarianceWhere.whereSql}
+    `,
+    )
+    .get(...openingVarianceWhere.params) as {
+    approved_opening_surplus: number
+    approved_opening_shortage: number
+  }
+
   const totalExpenses = Number(expensesRow.total_expenses || 0)
   const totalLiabilityPayments = Number(
     liabilityPaymentsRow.total_liability_payments || 0,
@@ -931,11 +982,21 @@ export function getReportsSummary(input?: ReportFilter) {
     closingVarianceRow.approved_closing_shortage || 0,
   )
 
+  const approvedOpeningSurplus = Number(
+    openingVarianceRow.approved_opening_surplus || 0,
+  )
+
+  const approvedOpeningShortage = Number(
+    openingVarianceRow.approved_opening_shortage || 0,
+  )
+
   const finalNetProfit =
     netProfitAfterDiscounts -
     totalExpenses +
     approvedClosingSurplus -
-    approvedClosingShortage
+    approvedClosingShortage +
+    approvedOpeningSurplus -
+    approvedOpeningShortage
 
   const topProducts = db
     .prepare(
@@ -1915,6 +1976,8 @@ export function getReportsSummary(input?: ReportFilter) {
       total_manual_deposits: totalManualDeposits,
       total_manual_withdrawals: totalManualWithdrawals,
       final_net_profit: finalNetProfit,
+      approved_opening_surplus: approvedOpeningSurplus,
+      approved_opening_shortage: approvedOpeningShortage,
     },
     cashAccounts,
     cashTotalCapital,

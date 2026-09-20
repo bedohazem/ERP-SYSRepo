@@ -907,6 +907,191 @@ describe('cash shifts repository', () => {
     ).toBe(750)
   })
 
+  it('corrects opening shortage to zero and resolves the variance', () => {
+    const firstShift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    })
+
+    closeCashShift({
+      shift_id: firstShift.id,
+      closing_counted_amount: 500,
+      left_for_next_shift: 500,
+      closed_by: 1,
+    })
+
+    const secondShift = openCashShift({
+      opening_counted_amount: 450,
+      opened_by: 1,
+    })
+
+    expect(secondShift.expected_opening_amount).toBe(500)
+    expect(secondShift.opening_counted_amount).toBe(450)
+    expect(secondShift.opening_difference).toBe(-50)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(450)
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows.find(
+      (row) => row.shift_id === secondShift.id && row.stage === 'opening',
+    )
+
+    expect(variance).toBeTruthy()
+    expect(variance!.kind).toBe('shortage')
+    expect(Number(variance!.amount)).toBe(50)
+
+    const corrected = resolveCashShiftVariance({
+      variance_id: variance!.id,
+      resolution_type: 'corrected',
+      resolution_notes: 'تم إعادة عد درج المحل',
+      corrected_opening_amount: 500,
+      resolved_by: 1,
+    })
+
+    expect(corrected.status).toBe('resolved')
+    expect(corrected.resolution_type).toBe('corrected')
+    expect(Number(corrected.amount)).toBe(0)
+
+    const updatedShift = getOpenCashShift()
+
+    expect(updatedShift?.id).toBe(secondShift.id)
+    expect(updatedShift?.opening_counted_amount).toBe(500)
+    expect(updatedShift?.opening_difference).toBe(0)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(500)
+
+    const correctionMovement = getDb()
+      .prepare(
+        `
+      SELECT *
+      FROM cash_movements
+      WHERE reference_type = 'cash_shift_opening_count_correction'
+        AND reference_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      )
+      .get(variance!.id) as any
+
+    expect(correctionMovement).toBeTruthy()
+    expect(correctionMovement.direction).toBe('in')
+    expect(Number(correctionMovement.amount)).toBe(50)
+    expect(correctionMovement.payment_method).toBe('store_cash')
+    expect(correctionMovement.shift_id).toBe(secondShift.id)
+  })
+
+  it('keeps opening variance pending after a partial count correction', () => {
+    const firstShift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    })
+
+    closeCashShift({
+      shift_id: firstShift.id,
+      closing_counted_amount: 500,
+      left_for_next_shift: 500,
+      closed_by: 1,
+    })
+
+    const secondShift = openCashShift({
+      opening_counted_amount: 450,
+      opened_by: 1,
+    })
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows.find(
+      (row) => row.shift_id === secondShift.id && row.stage === 'opening',
+    )
+
+    expect(variance).toBeTruthy()
+    expect(Number(variance!.amount)).toBe(50)
+
+    const corrected = resolveCashShiftVariance({
+      variance_id: variance!.id,
+      resolution_type: 'corrected',
+      resolution_notes: 'تم إعادة العد وظهر أن الجرد الصحيح 480',
+      corrected_opening_amount: 480,
+      resolved_by: 1,
+    })
+
+    expect(corrected.status).toBe('pending')
+    expect(corrected.resolution_type).toBeNull()
+    expect(corrected.kind).toBe('shortage')
+    expect(Number(corrected.amount)).toBe(20)
+
+    const updatedShift = getOpenCashShift()
+
+    expect(updatedShift?.opening_counted_amount).toBe(480)
+    expect(updatedShift?.opening_difference).toBe(-20)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(480)
+  })
+
+  it('prevents correcting opening count after the shift is closed', () => {
+    const firstShift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    })
+
+    closeCashShift({
+      shift_id: firstShift.id,
+      closing_counted_amount: 500,
+      left_for_next_shift: 500,
+      closed_by: 1,
+    })
+
+    const secondShift = openCashShift({
+      opening_counted_amount: 450,
+      opened_by: 1,
+    })
+
+    const variance = listCashShiftVariances({
+      status: 'pending',
+    }).rows.find(
+      (row) => row.shift_id === secondShift.id && row.stage === 'opening',
+    )
+
+    expect(variance).toBeTruthy()
+
+    closeCashShift({
+      shift_id: secondShift.id,
+      closing_counted_amount: 450,
+      left_for_next_shift: 450,
+      closed_by: 1,
+    })
+
+    expect(() =>
+      resolveCashShiftVariance({
+        variance_id: variance!.id,
+        resolution_type: 'corrected',
+        resolution_notes: 'محاولة تعديل شفت مغلق',
+        corrected_opening_amount: 500,
+        resolved_by: 1,
+      }),
+    ).toThrow('لا يمكن تصحيح جرد افتتاح شفت بعد إغلاقه، يمكن اعتماد الفرق فقط')
+
+    const stillPending = listCashShiftVariances({
+      status: 'pending',
+    }).rows.find((row) => row.id === variance!.id)
+
+    expect(stillPending).toBeTruthy()
+    expect(Number(stillPending!.amount)).toBe(50)
+  })
+
   it('allows only shift owner or admin to close shift', () => {
     const db = getDb()
 

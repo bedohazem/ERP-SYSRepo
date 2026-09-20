@@ -80,6 +80,7 @@ export type CashShiftVarianceStatus = 'pending' | 'resolved'
 export type CashShiftVarianceResolutionType =
   | 'approved'
   | 'rejected'
+  | 'corrected'
   | 'explained'
   | 'other'
 
@@ -134,6 +135,7 @@ export type ResolveCashShiftVarianceInput = {
 
   resolved_by: number
   reversal_account?: string | null
+  corrected_opening_amount?: number | null
 }
 
 function roundMoney(value: number) {
@@ -1481,7 +1483,9 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
   }
 
   if (
-    !['approved', 'rejected', 'explained', 'other'].includes(resolutionType)
+    !['approved', 'rejected', 'corrected', 'explained', 'other'].includes(
+      resolutionType,
+    )
   ) {
     throw new Error('نوع مراجعة فرق الشفت غير صحيح')
   }
@@ -1527,6 +1531,58 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
     throw new Error('تمت مراجعة فرق الشفت بالفعل')
   }
 
+  let openingShift: CashShiftRow | null = null
+  let correctedOpeningAmount: number | null = null
+
+  if (resolutionType === 'corrected') {
+    if (current.stage !== 'opening') {
+      throw new Error('تصحيح الجرد متاح لفروق افتتاح الشفت فقط')
+    }
+
+    if (
+      input.corrected_opening_amount === null ||
+      input.corrected_opening_amount === undefined
+    ) {
+      throw new Error('اكتب الجرد الصحيح عند افتتاح الشفت')
+    }
+
+    const rawCorrectedOpeningAmount = Number(input.corrected_opening_amount)
+
+    if (
+      !Number.isFinite(rawCorrectedOpeningAmount) ||
+      rawCorrectedOpeningAmount < 0
+    ) {
+      throw new Error('الجرد الصحيح عند افتتاح الشفت غير صحيح')
+    }
+
+    correctedOpeningAmount = roundMoney(rawCorrectedOpeningAmount)
+
+    openingShift = getCashShiftById(current.shift_id)
+
+    if (!openingShift) {
+      throw new Error('الشفت المرتبط بفرق الافتتاح غير موجود')
+    }
+
+    if (openingShift.status !== 'open') {
+      throw new Error(
+        'لا يمكن تصحيح جرد افتتاح شفت بعد إغلاقه، يمكن اعتماد الفرق فقط',
+      )
+    }
+
+    if (openingShift.expected_opening_amount === null) {
+      throw new Error('لا يوجد رصيد افتتاح متوقع لهذا الشفت')
+    }
+
+    if (
+      Math.abs(
+        correctedOpeningAmount -
+          roundMoney(Number(openingShift.opening_counted_amount || 0)),
+      ) <= 0.01
+    ) {
+      throw new Error('الجرد الصحيح يساوي الجرد المسجل بالفعل')
+    }
+  }
+
   let reversalAccount: ReturnType<typeof resolveCashAccount> | null = null
 
   if (resolutionType === 'rejected') {
@@ -1549,6 +1605,147 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
 
   const tx = db.transaction(() => {
     const varianceAmount = roundMoney(Number(current.amount || 0))
+
+    if (
+      resolutionType === 'corrected' &&
+      openingShift &&
+      correctedOpeningAmount !== null
+    ) {
+      const previousOpeningCounted = roundMoney(
+        Number(openingShift.opening_counted_amount || 0),
+      )
+
+      const expectedOpeningAmount = roundMoney(
+        Number(openingShift.expected_opening_amount || 0),
+      )
+
+      const correctionAmount = roundMoney(
+        correctedOpeningAmount - previousOpeningCounted,
+      )
+
+      if (Math.abs(correctionAmount) > 0.01) {
+        createCashMovement({
+          type: 'shift_adjustment',
+
+          direction: correctionAmount > 0 ? 'in' : 'out',
+
+          amount: Math.abs(correctionAmount),
+
+          payment_method: 'store_cash',
+
+          reference_id: current.id,
+
+          reference_type: 'cash_shift_opening_count_correction',
+
+          notes: `تصحيح جرد افتتاح الشفت #${current.shift_id} من ${previousOpeningCounted.toFixed(
+            2,
+          )} إلى ${correctedOpeningAmount.toFixed(2)}`,
+
+          created_by: resolvedBy,
+
+          shift_id: current.shift_id,
+        })
+      }
+
+      const newOpeningDifference = roundMoney(
+        correctedOpeningAmount - expectedOpeningAmount,
+      )
+
+      const shiftResult = db
+        .prepare(
+          `
+          UPDATE cash_shifts
+
+          SET
+            opening_counted_amount = ?,
+            opening_difference = ?
+
+          WHERE id = ?
+            AND status = 'open'
+          `,
+        )
+        .run(correctedOpeningAmount, newOpeningDifference, current.shift_id)
+
+      if (Number(shiftResult.changes || 0) !== 1) {
+        throw new Error('تعذر تحديث جرد افتتاح الشفت')
+      }
+
+      if (Math.abs(newOpeningDifference) <= 0.01) {
+        db.prepare(
+          `
+          UPDATE cash_shift_variances
+
+          SET
+            kind = ?,
+            amount = 0,
+            status = 'resolved',
+            resolution_type = 'corrected',
+            resolution_notes = ?,
+            resolved_by = ?,
+            resolved_at = CURRENT_TIMESTAMP
+
+          WHERE id = ?
+            AND status = 'pending'
+          `,
+        ).run(current.kind, resolutionNotes, resolvedBy, varianceId)
+      } else {
+        db.prepare(
+          `
+          UPDATE cash_shift_variances
+
+          SET
+            kind = ?,
+            amount = ?,
+            status = 'pending',
+            resolution_type = NULL,
+            resolution_notes = NULL,
+            resolved_by = NULL,
+            resolved_at = NULL
+
+          WHERE id = ?
+            AND status = 'pending'
+          `,
+        ).run(
+          newOpeningDifference < 0 ? 'shortage' : 'surplus',
+          Math.abs(newOpeningDifference),
+          varianceId,
+        )
+      }
+
+      createActivityLog({
+        user_id: resolvedBy,
+
+        action: 'cash_shift_opening_count_corrected',
+
+        entity: 'cash_shift_variances',
+
+        entity_id: varianceId,
+
+        details: JSON.stringify({
+          shift_id: current.shift_id,
+
+          previous_opening_counted: previousOpeningCounted,
+
+          corrected_opening_counted: correctedOpeningAmount,
+
+          expected_opening_amount: expectedOpeningAmount,
+
+          previous_difference: openingShift.opening_difference,
+
+          new_difference: newOpeningDifference,
+
+          notes: resolutionNotes,
+        }),
+      })
+
+      const correctedVariance = getCashShiftVarianceById(varianceId)
+
+      if (!correctedVariance) {
+        throw new Error('تعذر تحميل فرق الافتتاح بعد التصحيح')
+      }
+
+      return correctedVariance
+    }
 
     if (resolutionType === 'rejected' && reversalAccount) {
       if (current.kind === 'surplus') {
