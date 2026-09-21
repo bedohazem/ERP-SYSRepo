@@ -68,6 +68,7 @@ export function getSaleCurrentState(saleIdInput: number) {
       FROM sale_payments
 
       WHERE sale_id = ?
+        AND payment_method <> 'split'
         AND amount > 0
 
       ORDER BY id ASC

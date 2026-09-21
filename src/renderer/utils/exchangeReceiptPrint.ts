@@ -12,7 +12,7 @@ import {
   type StoreReceiptInfo,
 } from './receiptPrint'
 
-import { getPaymentMethodLabel } from './payment-method'
+import { getPaymentMethodShortLabel } from './payment-method'
 
 export function buildSaleExchangeReceiptHtml(
   exchange: any,
@@ -490,7 +490,9 @@ export function buildSaleExchangeReceiptHtml(
               </span>
 
               <strong>
-                ${escapeHtml(getPaymentMethodLabel(exchange.payment_method))}
+                ${escapeHtml(
+                  getPaymentMethodShortLabel(exchange.payment_method),
+                )}
               </strong>
             </div>
 

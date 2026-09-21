@@ -1231,6 +1231,14 @@ export function getDb(): Database.Database {
 
       WHERE IFNULL(s.type, 'sale') = 'sale'
         AND IFNULL(s.paid, 0) > 0
+        AND IFNULL(s.payment_method, '') <> 'split'
+      `,
+    ).run()
+
+    db.prepare(
+      `
+      DELETE FROM sale_payments
+      WHERE payment_method = 'split'
       `,
     ).run()
 

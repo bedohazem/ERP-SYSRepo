@@ -1398,6 +1398,8 @@ export function getReportsSummary(input?: ReportFilter) {
           ) = 'sale'
 
           AND s.cancelled_at IS NULL
+          AND sp.payment_method <> 'split'
+          AND sp.amount > 0
 
         UNION ALL
 

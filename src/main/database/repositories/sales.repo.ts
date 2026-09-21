@@ -1123,6 +1123,8 @@ export function getSaleReceipt(saleId: number) {
       FROM sale_payments
 
       WHERE sale_id = ?
+        AND payment_method <> 'split'
+        AND amount > 0
 
       ORDER BY id ASC
       `,
@@ -1219,6 +1221,7 @@ export function listSales(input?: {
       FROM sale_payments sp
 
       WHERE sp.sale_id = s.id
+        AND sp.payment_method <> 'split'
         AND sp.amount > 0
     ) > 1
   `)
@@ -2854,6 +2857,8 @@ export function cancelSaleInvoice(input: {
         FROM sale_payments
 
         WHERE sale_id = ?
+          AND payment_method <> 'split'
+          AND amount > 0
 
         ORDER BY id ASC
         `,

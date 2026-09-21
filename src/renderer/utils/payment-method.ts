@@ -74,6 +74,39 @@ export function getPaymentMethodLabel(value?: string | null) {
   }
 }
 
+export function getPaymentMethodShortLabel(value?: string | null) {
+  switch (value) {
+    case 'cash':
+    case 'store_cash':
+      return 'كاش'
+
+    case 'card':
+    case 'fawry_machine':
+      return 'فيزا'
+
+    case 'wallet':
+    case 'owner_vodafone':
+      return 'فودافون كاش'
+
+    case 'bank':
+    case 'bank_transfer':
+    case 'owner_bank':
+      return 'انستا'
+
+    case 'owner_cash':
+      return 'كاش المالك'
+
+    case 'store_safe':
+      return 'الخزنة'
+
+    case 'split':
+      return ''
+
+    default:
+      return value || '—'
+  }
+}
+
 export function getCashAccountLabel(value?: string | null) {
   return getPaymentMethodLabel(value)
 }

@@ -6,6 +6,7 @@ import {
   CUSTOMER_PAYMENT_METHOD_OPTIONS,
   ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS,
   getPaymentMethodLabel,
+  getPaymentMethodShortLabel,
 } from '../../utils/payment-method'
 
 import { printSaleReceiptHtml } from '../../utils/receiptPrint'
@@ -2071,7 +2072,6 @@ export default function InvoicesPage() {
                 <th style={thStyle}>المستخدم</th>
                 <th style={thStyle}>الأصناف / الكمية</th>
                 <th style={thStyle}>القيمة / السبب</th>
-                <th style={thStyle}>حساب الرد</th>
                 <th style={thStyle}>الحالة</th>
                 <th style={thStyle}>إجراءات</th>
               </tr>
@@ -2080,7 +2080,7 @@ export default function InvoicesPage() {
             <tbody>
               {returnsLoading && returnRows.length === 0 && (
                 <tr>
-                  <td colSpan={9} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={8} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
@@ -2119,31 +2119,24 @@ export default function InvoicesPage() {
                       <strong style={{ color: '#fca5a5' }}>
                         {money(ret.refund_amount)}
                       </strong>
+                      {Number(ret.cash_refund_amount || 0) > 0 && (
+                        <span
+                          style={{
+                            color: '#93c5fd',
+                            fontSize: '12px',
+                            fontWeight: 800,
+                          }}
+                        >
+                          {getPaymentMethodShortLabel(ret.payment_method)}{' '}
+                          {money(ret.cash_refund_amount)}
+                        </span>
+                      )}
                       <span style={{ color: '#94a3b8', fontSize: '12px' }}>
                         {ret.reason || '—'}
                       </span>
                     </div>
                   </td>
-                  <td style={tdStyle}>
-                    {Number(ret.cash_refund_amount || 0) > 0 ? (
-                      <div style={{ display: 'grid', gap: '3px' }}>
-                        <strong>
-                          {getPaymentMethodLabel(ret.payment_method)}
-                        </strong>
 
-                        <span
-                          style={{
-                            color: '#94a3b8',
-                            fontSize: '11px',
-                          }}
-                        >
-                          رد نقدي: {money(ret.cash_refund_amount)}
-                        </span>
-                      </div>
-                    ) : (
-                      <span style={{ color: '#94a3b8' }}>بدون رد نقدي</span>
-                    )}
-                  </td>
                   <td style={tdStyle}>
                     {ret.cancelled_at ? (
                       <div style={{ display: 'grid', gap: '4px' }}>
@@ -2223,7 +2216,7 @@ export default function InvoicesPage() {
               {!returnsLoading && returnRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={8}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -2308,7 +2301,6 @@ export default function InvoicesPage() {
                 <th style={thStyle}>القديم ← الجديد</th>
 
                 <th style={thStyle}>فرق السعر / التسوية</th>
-                <th style={thStyle}>حساب التسوية</th>
 
                 <th style={thStyle}>النقاط</th>
 
@@ -2322,7 +2314,7 @@ export default function InvoicesPage() {
               {exchangesLoading && exchangeRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={9}
                     style={{
                       ...tdStyle,
 
@@ -2475,6 +2467,8 @@ export default function InvoicesPage() {
                           }}
                         >
                           تحصيل: {money(exchange.cash_collection_amount)}
+                          {' — '}
+                          {getPaymentMethodShortLabel(exchange.payment_method)}
                         </span>
                       )}
 
@@ -2487,6 +2481,8 @@ export default function InvoicesPage() {
                           }}
                         >
                           رد: {money(exchange.cash_refund_amount)}
+                          {' — '}
+                          {getPaymentMethodShortLabel(exchange.payment_method)}
                         </span>
                       )}
 
@@ -2502,17 +2498,6 @@ export default function InvoicesPage() {
                         </span>
                       )}
                     </div>
-                  </td>
-
-                  <td style={tdStyle}>
-                    {Number(exchange.cash_collection_amount || 0) > 0 ||
-                    Number(exchange.cash_refund_amount || 0) > 0 ? (
-                      <strong>
-                        {getPaymentMethodLabel(exchange.payment_method)}
-                      </strong>
-                    ) : (
-                      <span style={{ color: '#94a3b8' }}>بدون حركة نقدية</span>
-                    )}
                   </td>
 
                   <td style={tdStyle}>
@@ -2712,7 +2697,7 @@ export default function InvoicesPage() {
               {!exchangesLoading && exchangeRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={9}
                     style={{
                       ...tdStyle,
 
@@ -3101,18 +3086,23 @@ export default function InvoicesPage() {
                     lineHeight: 1.8,
                   }}
                 >
-                  {selectedReceipt.payments?.length
-                    ? selectedReceipt.payments
-                        .map(
-                          (payment) =>
-                            `${getPaymentMethodLabel(
-                              payment.payment_method,
-                            )}: ${money(payment.amount)}`,
-                        )
-                        .join(' + ')
-                    : getPaymentMethodLabel(
-                        selectedReceipt.sale.payment_method,
-                      )}
+                  {(selectedReceipt.payments ?? [])
+                    .filter(
+                      (payment) =>
+                        payment.payment_method !== 'split' &&
+                        Number(payment.amount || 0) > 0,
+                    )
+                    .map(
+                      (payment) =>
+                        `${getPaymentMethodShortLabel(
+                          payment.payment_method,
+                        )} ${money(payment.amount)}`,
+                    )
+                    .join(' + ') ||
+                    getPaymentMethodShortLabel(
+                      selectedReceipt.sale.payment_method,
+                    ) ||
+                    '—'}
                 </strong>
               </div>
               <div style={statCardStyle}>

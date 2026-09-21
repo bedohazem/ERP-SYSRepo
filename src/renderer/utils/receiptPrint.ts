@@ -1,5 +1,8 @@
 import QRCode from 'qrcode'
-import { getPaymentMethodLabel } from './payment-method'
+import {
+  getPaymentMethodLabel,
+  getPaymentMethodShortLabel,
+} from './payment-method'
 
 export type SaleReceiptData = {
   sale: any
@@ -210,16 +213,22 @@ export function buildSaleReceiptHtml(
   printSettings: ReceiptPrintSettings = DEFAULT_RECEIPT_PRINT_SETTINGS,
 ) {
   const sale = receipt.sale
-  const paymentText = receipt.payments?.length
-    ? receipt.payments
-        .map(
-          (payment) =>
-            `${getPaymentMethodLabel(
-              payment.payment_method,
-            )}: ${Number(payment.amount || 0).toFixed(2)}`,
-        )
-        .join(' + ')
-    : getPaymentMethodLabel(sale.payment_method)
+  const validPayments = (receipt.payments ?? []).filter(
+    (payment) =>
+      payment.payment_method !== 'split' && Number(payment.amount || 0) > 0,
+  )
+
+  const paymentText =
+    validPayments.length > 0
+      ? validPayments
+          .map(
+            (payment) =>
+              `${getPaymentMethodShortLabel(
+                payment.payment_method,
+              )} ${Number(payment.amount || 0).toFixed(2)}`,
+          )
+          .join(' + ')
+      : getPaymentMethodShortLabel(sale.payment_method) || '—'
   const finance = getReceiptFinance(receipt, returnHistory)
 
   const {
