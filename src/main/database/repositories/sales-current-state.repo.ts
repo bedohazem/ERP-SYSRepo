@@ -55,6 +55,32 @@ export function getSaleCurrentState(saleIdInput: number) {
     throw new Error('الفاتورة غير موجودة')
   }
 
+  const salePayments = db
+    .prepare(
+      `
+      SELECT
+        id,
+        sale_id,
+        payment_method,
+        amount,
+        created_at
+
+      FROM sale_payments
+
+      WHERE sale_id = ?
+        AND amount > 0
+
+      ORDER BY id ASC
+      `,
+    )
+    .all(saleId) as Array<{
+    id: number
+    sale_id: number
+    payment_method: string
+    amount: number
+    created_at: string
+  }>
+
   const promotionSnapshot = db
     .prepare(
       `
@@ -913,6 +939,8 @@ export function getSaleCurrentState(saleIdInput: number) {
 
     items: originalItems,
 
+    payments: salePayments,
+
     loyalty,
   }
 
@@ -958,6 +986,8 @@ export function getSaleCurrentState(saleIdInput: number) {
     sale: currentSale,
 
     items: currentItems.map(({ sort_order, ...item }) => item),
+
+    payments: salePayments,
 
     loyalty,
   }

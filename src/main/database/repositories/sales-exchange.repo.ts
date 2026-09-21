@@ -35,7 +35,7 @@ export type ListSaleExchangesInput = {
   date_to?: string
 
   status?: 'all' | 'active' | 'cancelled'
-
+  payment_method?: string | null
   actor_id?: number | null
 
   limit?: number
@@ -547,6 +547,7 @@ export function getSaleExchangeState(saleIdInput: number) {
         }
       : null,
     groups: Array.from(groupMap.values()),
+    payments: currentState.current_receipt.payments || [],
     financials: currentState.financials,
   }
 }
@@ -1661,7 +1662,7 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
   const search = input?.search?.trim() || ''
 
   const status = input?.status || 'all'
-
+  const paymentMethod = String(input?.payment_method || '').trim()
   const actorId = Number(input?.actor_id || 0)
 
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
@@ -1751,6 +1752,21 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
 
   if (status === 'cancelled') {
     where.push(`se.cancelled_at IS NOT NULL`)
+  }
+
+  if (paymentMethod) {
+    const paymentAccount = resolveCashAccount(paymentMethod)
+
+    where.push(`
+      (
+        IFNULL(se.cash_collection_amount, 0) > 0
+        OR IFNULL(se.cash_refund_amount, 0) > 0
+      )
+
+      AND se.payment_method = ?
+    `)
+
+    params.push(paymentAccount)
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''

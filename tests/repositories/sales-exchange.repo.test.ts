@@ -18,6 +18,7 @@ import {
 import {
   createSaleExchange,
   getSaleExchangeState,
+  listSaleExchanges,
 } from '../../src/main/database/repositories/sales-exchange.repo'
 import {
   closeCashShift,
@@ -409,6 +410,18 @@ describe('sale promotion exchanges', () => {
 
     expect(cashMovement.direction).toBe('in')
     expect(Number(cashMovement.amount)).toBe(100)
+    const storeCashExchanges = listSaleExchanges({
+      payment_method: 'store_cash',
+    })
+
+    expect(storeCashExchanges.total).toBe(1)
+    expect(Number(storeCashExchanges.rows[0].id)).toBe(exchange.exchangeId)
+
+    const bankExchanges = listSaleExchanges({
+      payment_method: 'owner_bank',
+    })
+
+    expect(bankExchanges.total).toBe(0)
   })
 
   it('exchanges a regular invoice item without a promotion', () => {

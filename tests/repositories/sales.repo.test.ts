@@ -10,8 +10,11 @@ import {
   getSaleReceipt,
   cancelSaleReturn,
   listSales,
+  listSaleReturns,
   cancelSaleInvoice,
 } from '../../src/main/database/repositories/sales.repo'
+
+import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo'
 import {
   closeCashShift,
   getOpenCashShift,
@@ -960,6 +963,18 @@ describe('sales repository', () => {
 
     expect(getStockByBarcode('SALE001')).toBe(9)
     expect(getCashMovementTotal('out')).toBe(150)
+    const storeCashReturns = listSaleReturns({
+      payment_method: 'store_cash',
+    })
+
+    expect(storeCashReturns.total).toBe(1)
+    expect(Number(storeCashReturns.rows[0].id)).toBe(saleReturn.returnId)
+
+    const bankReturns = listSaleReturns({
+      payment_method: 'owner_bank',
+    })
+
+    expect(bankReturns.total).toBe(0)
   })
 
   it('requires a new open shift for return and links refund to current shift', () => {
@@ -3290,6 +3305,30 @@ describe('sales repository', () => {
 
     const bankFilter = listSales({
       payment_method: 'bank_transfer',
+    })
+
+    const splitFilter = listSales({
+      payment_method: 'split',
+    })
+
+    expect(splitFilter.total).toBe(1)
+    expect(Number(splitFilter.rows[0].id)).toBe(sale.saleId)
+
+    const currentState = getSaleCurrentState(sale.saleId)
+
+    expect(currentState.current_receipt.payments).toHaveLength(2)
+    expect(currentState.original_receipt.payments).toHaveLength(2)
+
+    const currentPayments = Object.fromEntries(
+      currentState.current_receipt.payments.map((payment: any) => [
+        String(payment.payment_method),
+        Number(payment.amount),
+      ]),
+    )
+
+    expect(currentPayments).toEqual({
+      store_cash: 50,
+      owner_bank: 100,
     })
 
     expect(bankFilter.total).toBe(1)

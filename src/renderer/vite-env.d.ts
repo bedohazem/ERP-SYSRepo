@@ -375,12 +375,26 @@ declare global {
           sale: any
           items: any[]
           loyalty: any[]
+          payments: Array<{
+            id?: number
+            sale_id?: number
+            payment_method: string
+            amount: number
+            created_at?: string | null
+          }>
         }
 
         original_receipt: {
           sale: any
           items: any[]
           loyalty: any[]
+          payments: Array<{
+            id?: number
+            sale_id?: number
+            payment_method: string
+            amount: number
+            created_at?: string | null
+          }>
         }
 
         exchanges: any[]
@@ -474,6 +488,7 @@ declare global {
 
       listSaleReturns: (input?: {
         search?: string
+        payment_method?: string | null
         date_from?: string
         date_to?: string
         limit?: number
@@ -503,6 +518,8 @@ declare global {
           requires_admin_password?: number | boolean
           shift_id?: number | null
           cancelled_shift_id?: number | null
+          debt_reduction_amount?: number
+          cash_refund_amount?: number
         }>
         total: number
         limit: number
@@ -540,7 +557,10 @@ declare global {
 
       getSaleExchangeState: (saleId: number) => Promise<{
         sale: any
-
+        payments: Array<{
+          payment_method: string
+          amount: number
+        }>
         snapshot: {
           sale_id: number
           promotion_id: number
@@ -636,7 +656,7 @@ declare global {
 
       listSaleExchanges: (input?: {
         search?: string
-
+        payment_method?: string | null
         date_from?: string
         date_to?: string
 

@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CASH_ACCOUNT_OPTIONS } from '../utils/payment-method'
+import {
+  CASH_ACCOUNT_OPTIONS,
+  ADMIN_CASH_ACCOUNT_OPTIONS,
+} from '../utils/payment-method'
 import {
   getPromotionRulesText,
   getPromotionScopeLabel,
@@ -37,7 +40,10 @@ type ExchangeGroup = {
 
 type ExchangeState = {
   sale: any
-
+  payments: Array<{
+    payment_method: string
+    amount: number
+  }>
   snapshot: {
     promotion_type: string
     promotion_name: string
@@ -84,7 +90,7 @@ type ExchangeDraft = {
 type Props = {
   saleId: number | null
   userId: number | null
-
+  isAdmin?: boolean
   onClose: () => void
   onSuccess: (message: string) => void
 }
@@ -100,6 +106,7 @@ function roundMoney(value: number) {
 function resolveCashAccount(method?: string | null) {
   switch (method) {
     case 'store_cash':
+    case 'store_safe':
     case 'owner_cash':
     case 'owner_bank':
     case 'owner_vodafone':
@@ -156,6 +163,7 @@ function createDraft(unit: ExchangeUnit): ExchangeDraft {
 export default function SaleExchangeModal({
   saleId,
   userId,
+  isAdmin = false,
   onClose,
   onSuccess,
 }: Props) {
@@ -165,7 +173,7 @@ export default function SaleExchangeModal({
 
   const [drafts, setDrafts] = useState<ExchangeDraft[]>([])
 
-  const [paymentAccount, setPaymentAccount] = useState('store_cash')
+  const [paymentAccount, setPaymentAccount] = useState('')
 
   const [reason, setReason] = useState('')
 
@@ -210,7 +218,7 @@ export default function SaleExchangeModal({
 
         const nextState: ExchangeState = {
           sale: result.sale,
-
+          payments: result.payments || [],
           snapshot: result.snapshot || null,
 
           groups: activeGroups,
@@ -222,7 +230,21 @@ export default function SaleExchangeModal({
 
         setGroupId(String(activeGroups[0].promotion_group_id))
 
-        setPaymentAccount(resolveCashAccount(result.sale?.payment_method))
+        const originalPayments = Array.isArray(result.payments)
+          ? result.payments.filter(
+              (payment: any) => Number(payment.amount || 0) > 0,
+            )
+          : []
+
+        if (originalPayments.length > 1) {
+          setPaymentAccount('')
+        } else if (originalPayments.length === 1) {
+          setPaymentAccount(
+            resolveCashAccount(originalPayments[0].payment_method),
+          )
+        } else {
+          setPaymentAccount(resolveCashAccount(result.sale?.payment_method))
+        }
       } catch (loadError) {
         if (!cancelled) {
           setError(getErrorMessage(loadError, 'تعذر تحميل بيانات الاستبدال'))
@@ -626,6 +648,15 @@ export default function SaleExchangeModal({
 
     if (drafts.some((draft) => !draft.new_variant)) {
       setError('اختار الصنف البديل لكل قطعة محددة')
+      return
+    }
+
+    if (
+      (preview.cashCollection > 0 || preview.cashRefund > 0) &&
+      !paymentAccount
+    ) {
+      setError('اختر الحساب المالي لتسوية فرق الاستبدال')
+
       return
     }
 
@@ -1434,7 +1465,11 @@ export default function SaleExchangeModal({
                       }
                       style={inputStyle}
                     >
-                      {CASH_ACCOUNT_OPTIONS.map((option) => (
+                      <option value="">اختر الحساب المالي</option>
+                      {(isAdmin
+                        ? ADMIN_CASH_ACCOUNT_OPTIONS
+                        : CASH_ACCOUNT_OPTIONS
+                      ).map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>

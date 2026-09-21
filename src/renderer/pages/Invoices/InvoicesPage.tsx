@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { useAuthStore } from '../../store/auth.store'
 import {
   CASH_ACCOUNT_OPTIONS,
+  ADMIN_CASH_ACCOUNT_OPTIONS,
   CUSTOMER_PAYMENT_METHOD_OPTIONS,
+  ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS,
   getPaymentMethodLabel,
 } from '../../utils/payment-method'
 
@@ -165,6 +167,8 @@ type ReturnRow = {
   sub_total: number
   loyalty_discount_value: number
   refund_amount: number
+  debt_reduction_amount?: number
+  cash_refund_amount?: number
   payment_method: string
   reason?: string | null
   loyalty_points_reversed: number
@@ -180,13 +184,27 @@ type ReturnRow = {
 
 type ReceiptData = {
   sale: any
+
   items: any[]
+
+  payments?: Array<{
+    id?: number
+    sale_id?: number
+    payment_method: string
+    amount: number
+    created_at?: string | null
+  }>
+
   loyalty: any[]
 
   original_receipt?: {
     sale: any
     items: any[]
     loyalty: any[]
+    payments?: Array<{
+      payment_method: string
+      amount: number
+    }>
   }
 
   financials?: any
@@ -508,7 +526,11 @@ export default function InvoicesPage() {
     'all',
   )
   const [paymentMethodFilter, setPaymentMethodFilter] = useState('all')
+  const [returnPaymentMethodFilter, setReturnPaymentMethodFilter] =
+    useState('all')
 
+  const [exchangePaymentMethodFilter, setExchangePaymentMethodFilter] =
+    useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [loading, setLoading] = useState(false)
@@ -586,6 +608,10 @@ export default function InvoicesPage() {
 
       const result = await window.api.listSaleReturns({
         search,
+        payment_method:
+          returnPaymentMethodFilter === 'all'
+            ? undefined
+            : returnPaymentMethodFilter,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
         actor_id: user?.id ?? null,
@@ -613,7 +639,10 @@ export default function InvoicesPage() {
 
       const result = await window.api.listSaleExchanges({
         search,
-
+        payment_method:
+          exchangePaymentMethodFilter === 'all'
+            ? undefined
+            : exchangePaymentMethodFilter,
         date_from: dateFrom || undefined,
 
         date_to: dateTo || undefined,
@@ -660,6 +689,8 @@ export default function InvoicesPage() {
     dateTo,
     paymentFilter,
     paymentMethodFilter,
+    returnPaymentMethodFilter,
+    exchangePaymentMethodFilter,
     exchangeStatusFilter,
   ])
 
@@ -784,9 +815,25 @@ export default function InvoicesPage() {
 
       setReturnReason('')
 
-      setReturnRefundAccount(
-        resolveRefundAccountFromPaymentMethod(receipt.sale?.payment_method),
-      )
+      const originalPayments = Array.isArray(receipt.payments)
+        ? receipt.payments.filter(
+            (payment: any) => Number(payment.amount || 0) > 0,
+          )
+        : []
+
+      if (originalPayments.length > 1) {
+        setReturnRefundAccount('')
+      } else if (originalPayments.length === 1) {
+        setReturnRefundAccount(
+          resolveRefundAccountFromPaymentMethod(
+            originalPayments[0].payment_method,
+          ),
+        )
+      } else {
+        setReturnRefundAccount(
+          resolveRefundAccountFromPaymentMethod(receipt.sale?.payment_method),
+        )
+      }
 
       setReturnItems(draftItems)
     } catch (error) {
@@ -854,6 +901,12 @@ export default function InvoicesPage() {
         rawSelectedItems.map((item) => [item.sale_item_id, item]),
       ).values(),
     )
+
+    if (returnCashRefund > 0 && !returnRefundAccount) {
+      setMessage('اختر الحساب المالي الذي سيتم رد المبلغ منه')
+
+      return
+    }
 
     if (selectedItems.length === 0) {
       setMessage('اختار كمية مرتجع أولا')
@@ -1359,8 +1412,8 @@ export default function InvoicesPage() {
               activeTab === 'sales'
                 ? 'minmax(220px, 1fr) 160px 185px 170px 170px 120px'
                 : activeTab === 'exchanges'
-                  ? 'minmax(260px, 1fr) 170px 180px 180px 120px'
-                  : 'minmax(260px, 1fr) 180px 180px 120px',
+                  ? 'minmax(240px, 1fr) 160px 185px 170px 170px 120px'
+                  : 'minmax(240px, 1fr) 185px 180px 180px 120px',
             gap: '12px',
             direction: 'rtl',
           }}
@@ -1406,11 +1459,15 @@ export default function InvoicesPage() {
             >
               <option value="all">كل وسائل الدفع</option>
 
-              {CUSTOMER_PAYMENT_METHOD_OPTIONS.map((option) => (
+              {(isAdmin
+                ? ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS
+                : CUSTOMER_PAYMENT_METHOD_OPTIONS
+              ).map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
+              <option value="split">دفع متعدد</option>
             </select>
           )}
 
@@ -1429,6 +1486,50 @@ export default function InvoicesPage() {
               <option value="active">الفعالة</option>
 
               <option value="cancelled">الملغاة</option>
+            </select>
+          )}
+
+          {activeTab === 'returns' && (
+            <select
+              value={returnPaymentMethodFilter}
+              onChange={(e) => {
+                setReturnPaymentMethodFilter(e.target.value)
+                setReturnsPage(1)
+              }}
+              style={inputStyle}
+            >
+              <option value="all">كل حسابات رد المرتجع</option>
+
+              {(isAdmin
+                ? ADMIN_CASH_ACCOUNT_OPTIONS
+                : CASH_ACCOUNT_OPTIONS
+              ).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {activeTab === 'exchanges' && (
+            <select
+              value={exchangePaymentMethodFilter}
+              onChange={(e) => {
+                setExchangePaymentMethodFilter(e.target.value)
+                setExchangesPage(1)
+              }}
+              style={inputStyle}
+            >
+              <option value="all">كل حسابات التسوية</option>
+
+              {(isAdmin
+                ? ADMIN_CASH_ACCOUNT_OPTIONS
+                : CASH_ACCOUNT_OPTIONS
+              ).map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           )}
 
@@ -1970,6 +2071,7 @@ export default function InvoicesPage() {
                 <th style={thStyle}>المستخدم</th>
                 <th style={thStyle}>الأصناف / الكمية</th>
                 <th style={thStyle}>القيمة / السبب</th>
+                <th style={thStyle}>حساب الرد</th>
                 <th style={thStyle}>الحالة</th>
                 <th style={thStyle}>إجراءات</th>
               </tr>
@@ -1978,7 +2080,7 @@ export default function InvoicesPage() {
             <tbody>
               {returnsLoading && returnRows.length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={9} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
@@ -2021,6 +2123,26 @@ export default function InvoicesPage() {
                         {ret.reason || '—'}
                       </span>
                     </div>
+                  </td>
+                  <td style={tdStyle}>
+                    {Number(ret.cash_refund_amount || 0) > 0 ? (
+                      <div style={{ display: 'grid', gap: '3px' }}>
+                        <strong>
+                          {getPaymentMethodLabel(ret.payment_method)}
+                        </strong>
+
+                        <span
+                          style={{
+                            color: '#94a3b8',
+                            fontSize: '11px',
+                          }}
+                        >
+                          رد نقدي: {money(ret.cash_refund_amount)}
+                        </span>
+                      </div>
+                    ) : (
+                      <span style={{ color: '#94a3b8' }}>بدون رد نقدي</span>
+                    )}
                   </td>
                   <td style={tdStyle}>
                     {ret.cancelled_at ? (
@@ -2101,7 +2223,7 @@ export default function InvoicesPage() {
               {!returnsLoading && returnRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -2186,6 +2308,7 @@ export default function InvoicesPage() {
                 <th style={thStyle}>القديم ← الجديد</th>
 
                 <th style={thStyle}>فرق السعر / التسوية</th>
+                <th style={thStyle}>حساب التسوية</th>
 
                 <th style={thStyle}>النقاط</th>
 
@@ -2199,7 +2322,7 @@ export default function InvoicesPage() {
               {exchangesLoading && exchangeRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     style={{
                       ...tdStyle,
 
@@ -2379,6 +2502,17 @@ export default function InvoicesPage() {
                         </span>
                       )}
                     </div>
+                  </td>
+
+                  <td style={tdStyle}>
+                    {Number(exchange.cash_collection_amount || 0) > 0 ||
+                    Number(exchange.cash_refund_amount || 0) > 0 ? (
+                      <strong>
+                        {getPaymentMethodLabel(exchange.payment_method)}
+                      </strong>
+                    ) : (
+                      <span style={{ color: '#94a3b8' }}>بدون حركة نقدية</span>
+                    )}
                   </td>
 
                   <td style={tdStyle}>
@@ -2578,7 +2712,7 @@ export default function InvoicesPage() {
               {!exchangesLoading && exchangeRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     style={{
                       ...tdStyle,
 
@@ -2944,7 +3078,7 @@ export default function InvoicesPage() {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(3, 1fr)',
+                gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
                 gap: '12px',
                 marginBottom: '18px',
               }}
@@ -2958,6 +3092,28 @@ export default function InvoicesPage() {
               <div style={statCardStyle}>
                 الكاشير
                 <strong>{selectedReceipt.sale.cashier_name || '—'}</strong>
+              </div>
+              <div style={statCardStyle}>
+                دفع الفاتورة الأصلية
+                <strong
+                  style={{
+                    fontSize: '12px',
+                    lineHeight: 1.8,
+                  }}
+                >
+                  {selectedReceipt.payments?.length
+                    ? selectedReceipt.payments
+                        .map(
+                          (payment) =>
+                            `${getPaymentMethodLabel(
+                              payment.payment_method,
+                            )}: ${money(payment.amount)}`,
+                        )
+                        .join(' + ')
+                    : getPaymentMethodLabel(
+                        selectedReceipt.sale.payment_method,
+                      )}
+                </strong>
               </div>
               <div style={statCardStyle}>
                 الصافي الحالي
@@ -3979,7 +4135,11 @@ export default function InvoicesPage() {
                 onChange={(e) => setReturnRefundAccount(e.target.value)}
                 style={inputStyle}
               >
-                {CASH_ACCOUNT_OPTIONS.map((option) => (
+                <option value="">اختر حساب رد المرتجع</option>
+                {(isAdmin
+                  ? ADMIN_CASH_ACCOUNT_OPTIONS
+                  : CASH_ACCOUNT_OPTIONS
+                ).map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
@@ -4074,6 +4234,7 @@ export default function InvoicesPage() {
       <SaleExchangeModal
         saleId={exchangeSaleId}
         userId={user?.id ?? null}
+        isAdmin={isAdmin}
         onClose={() => setExchangeSaleId(null)}
         onSuccess={(successMessage) => {
           setMessage(successMessage)

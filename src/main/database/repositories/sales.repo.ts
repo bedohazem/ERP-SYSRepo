@@ -1211,7 +1211,18 @@ export function listSales(input?: {
   `)
   }
 
-  if (paymentMethod) {
+  if (paymentMethod === 'split') {
+    where.push(`
+    (
+      SELECT COUNT(*)
+
+      FROM sale_payments sp
+
+      WHERE sp.sale_id = s.id
+        AND sp.amount > 0
+    ) > 1
+  `)
+  } else if (paymentMethod) {
     const paymentAccount = resolveCashAccount(paymentMethod)
 
     where.push(`
@@ -3398,6 +3409,7 @@ export function cancelSaleReturn(input: {
 
 export function listSaleReturns(input?: {
   search?: string
+  payment_method?: string | null
   date_from?: string
   date_to?: string
   limit?: number
@@ -3407,6 +3419,7 @@ export function listSaleReturns(input?: {
   const db = getDb()
 
   const search = input?.search?.trim() || ''
+  const paymentMethod = String(input?.payment_method || '').trim()
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
   const offset = Math.max(Number(input?.offset || 0), 0)
   const actorId = Number(input?.actor_id || 0)
@@ -3428,6 +3441,17 @@ export function listSaleReturns(input?: {
 
     const q = `%${search}%`
     params.push(q, q, q, q, q, q)
+  }
+
+  if (paymentMethod) {
+    const paymentAccount = resolveCashAccount(paymentMethod)
+
+    where.push(`
+      IFNULL(sr.cash_refund_amount, 0) > 0
+      AND sr.payment_method = ?
+    `)
+
+    params.push(paymentAccount)
   }
 
   if (input?.date_from) {
@@ -3454,6 +3478,8 @@ export function listSaleReturns(input?: {
         sr.sub_total,
         sr.loyalty_discount_value,
         sr.refund_amount,
+        sr.debt_reduction_amount,
+        sr.cash_refund_amount,
         sr.payment_method,
         sr.reason,
         sr.notes,
