@@ -283,6 +283,25 @@ declare global {
         shift_id?: number | null
       }>
 
+      updateSaleInvoice: (input: any) => Promise<{
+        success: boolean
+        message?: string
+
+        saleId?: number
+
+        grand_total?: number
+
+        paid_amount?: number
+
+        remaining_amount?: number
+
+        payment_status?: string
+
+        shift_id?: number | null
+
+        edited?: boolean
+      }>
+
       getSaleReceipt: (saleId: number) => Promise<{
         sale: any
         items: any[]

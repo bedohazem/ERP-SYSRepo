@@ -11,6 +11,7 @@ import {
   cancelSaleReturn,
   listSales,
   listSaleReturns,
+  updateSaleInvoice,
   cancelSaleInvoice,
 } from '../../src/main/database/repositories/sales.repo'
 
@@ -3538,5 +3539,207 @@ describe('sales repository', () => {
     for (const row of balances) {
       expect(Number(row.balance)).toBe(0)
     }
+  })
+
+  it('edits a sale while preserving invoice id and stock', () => {
+    const variant = seedProduct()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 150,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(getStockByBarcode('SALE001')).toBe(9)
+
+    const updated = updateSaleInvoice({
+      sale_id: sale.saleId,
+      actor_id: 1,
+
+      customer_id: null,
+
+      sub_total: 300,
+      discount_value: 0,
+      grand_total: 300,
+
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 300,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 2,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(updated.saleId).toBe(sale.saleId)
+
+    expect(getStockByBarcode('SALE001')).toBe(8)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    expect(receipt.sale.id).toBe(sale.saleId)
+
+    expect(Number(receipt.sale.grand_total)).toBe(300)
+
+    expect(receipt.items).toHaveLength(1)
+
+    expect(Number(receipt.items[0].quantity)).toBe(2)
+  })
+
+  it('edits split payment without duplicating account balances', () => {
+    const db = getDb()
+    const variant = seedProduct()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      change_amount: 0,
+      payment_method: 'split',
+
+      payments: [
+        {
+          payment_method: 'cash',
+          amount: 50,
+        },
+        {
+          payment_method: 'bank_transfer',
+          amount: 100,
+        },
+      ],
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    updateSaleInvoice({
+      sale_id: sale.saleId,
+      actor_id: 1,
+
+      customer_id: null,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      change_amount: 0,
+      payment_method: 'split',
+
+      payments: [
+        {
+          payment_method: 'cash',
+          amount: 100,
+        },
+        {
+          payment_method: 'bank_transfer',
+          amount: 50,
+        },
+      ],
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const receipt = getSaleReceipt(sale.saleId)
+
+    expect(receipt.payments).toHaveLength(2)
+
+    const payments = Object.fromEntries(
+      receipt.payments.map((payment: any) => [
+        payment.payment_method,
+        Number(payment.amount),
+      ]),
+    )
+
+    expect(payments).toEqual({
+      store_cash: 100,
+      owner_bank: 50,
+    })
+
+    const balances = db
+      .prepare(
+        `
+      SELECT
+        payment_method,
+
+        SUM(
+          CASE
+            WHEN direction = 'in'
+              THEN amount
+            ELSE -amount
+          END
+        ) AS balance
+
+      FROM cash_movements
+
+      WHERE reference_id = ?
+
+        AND reference_type IN (
+          'sale',
+          'sale_edit_reversal'
+        )
+
+      GROUP BY payment_method
+      `,
+      )
+      .all(sale.saleId) as any[]
+
+    const balanceMap = Object.fromEntries(
+      balances.map((row) => [row.payment_method, Number(row.balance)]),
+    )
+
+    expect(balanceMap).toEqual({
+      store_cash: 100,
+      owner_bank: 50,
+    })
   })
 })

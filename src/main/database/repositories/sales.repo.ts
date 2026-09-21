@@ -6,6 +6,7 @@ import {
   getSaleCurrentState,
 } from './sales-current-state.repo'
 import {
+  getOpenCashShift,
   requireOperationalCashShift,
   resolveFinancialOperationShift,
 } from './cash-shifts.repo'
@@ -55,6 +56,21 @@ type CreateSaleInput = {
     quantity: number
     unit_price: number
   }>
+}
+
+type CreateSaleInternalOptions = {
+  forced_sale_id?: number | null
+  created_at?: string | null
+  invoice_user_id?: number | null
+}
+
+export type UpdateSaleInvoiceInput = Omit<
+  CreateSaleInput,
+  'user_id' | 'business_date'
+> & {
+  sale_id: number
+  actor_id: number
+  reason?: string | null
 }
 
 function getSetting(key: string, fallback: string) {
@@ -167,7 +183,10 @@ export function syncCustomerTotalSpent(customerIdInput: number) {
   ).run(totalSpent, customerId)
 }
 
-export function createSale(input: CreateSaleInput) {
+function createSaleInternal(
+  input: CreateSaleInput,
+  options: CreateSaleInternalOptions = {},
+) {
   const db = getDb()
 
   if (!input.user_id) {
@@ -214,6 +233,7 @@ export function createSale(input: CreateSaleInput) {
       : getCurrentBusinessDate(db)
 
   const customerId = input.customer_id ? Number(input.customer_id) : null
+  const invoiceUserId = Number(options.invoice_user_id || input.user_id)
   const requestedRedeemPoints = Number(input.loyalty_points_redeemed || 0)
 
   const tx = db.transaction(() => {
@@ -452,7 +472,37 @@ export function createSale(input: CreateSaleInput) {
         loyaltyDiscountValue,
       )
 
-    const saleId = Number(saleResult.lastInsertRowid)
+    let saleId = Number(saleResult.lastInsertRowid)
+
+    const forcedSaleId = Number(options.forced_sale_id || 0)
+
+    if (forcedSaleId > 0) {
+      db.prepare(
+        `
+        UPDATE sales
+        SET id = ?
+        WHERE id = ?
+        `,
+      ).run(forcedSaleId, saleId)
+
+      saleId = forcedSaleId
+    }
+
+    db.prepare(
+      `
+      UPDATE sales
+
+      SET
+        user_id = ?,
+        created_at =
+          COALESCE(
+            ?,
+            created_at
+          )
+
+      WHERE id = ?
+      `,
+    ).run(invoiceUserId, options.created_at ?? null, saleId)
 
     const insertSalePayment = db.prepare(
       `
@@ -546,6 +596,12 @@ export function createSale(input: CreateSaleInput) {
     }
 
     for (const payment of effectivePayments) {
+      const paymentShift = resolveFinancialOperationShift(
+        input.user_id,
+        [payment.payment_method],
+        'لا يمكن تسجيل فاتورة بيع من درج المحل بدون شفت مفتوح',
+      )
+
       createCashMovement({
         type: 'sale',
 
@@ -565,7 +621,7 @@ export function createSale(input: CreateSaleInput) {
 
         business_date: businessDate,
 
-        shift_id: openShift?.id ?? null,
+        shift_id: paymentShift?.id ?? null,
       })
     }
 
@@ -1032,6 +1088,10 @@ export function createSale(input: CreateSaleInput) {
   return tx()
 }
 
+export function createSale(input: CreateSaleInput) {
+  return createSaleInternal(input)
+}
+
 export function getSaleReceipt(saleId: number) {
   const db = getDb()
 
@@ -1059,35 +1119,113 @@ export function getSaleReceipt(saleId: number) {
   const items = db
     .prepare(
       `
-    SELECT
-      si.id,
-      si.sale_id,
-      si.variant_id,
-      si.product_name,
-      si.barcode,
-      si.size,
-      si.color,
-      si.quantity,
-      si.unit_price,
-      IFNULL(si.is_gift, 0) AS is_gift,
-      si.promotion_group_id,
-      IFNULL(
-        si.promotion_discount_value,
-        0
-      ) AS promotion_discount_value,
-      si.line_total,
-      IFNULL((
-        SELECT SUM(sri.quantity)
-        FROM sale_returns sr
-        JOIN sale_return_items sri ON sri.return_id = sr.id
-        WHERE sr.original_sale_id = si.sale_id
-          AND sr.cancelled_at IS NULL
-          AND sri.original_sale_item_id = si.id
-      ), 0) AS returned_quantity
-    FROM sale_items si
-    WHERE si.sale_id = ?
-    ORDER BY si.id ASC
-  `,
+      SELECT
+        si.id,
+        si.sale_id,
+        si.variant_id,
+        si.product_name,
+        si.barcode,
+        si.size,
+        si.color,
+        si.quantity,
+        si.unit_price,
+        si.unit_cost,
+
+        IFNULL(si.is_gift, 0)
+          AS is_gift,
+
+        si.promotion_group_id,
+
+        IFNULL(
+          si.promotion_discount_value,
+          0
+        ) AS promotion_discount_value,
+
+        si.line_total,
+
+        pv.product_id,
+
+        p.category_id,
+
+        c.name AS category_name,
+
+        IFNULL(
+          pv.buy_price,
+          si.unit_cost
+        ) AS buy_price,
+
+        IFNULL(
+          pv.min_stock,
+          0
+        ) AS min_stock,
+
+        IFNULL(
+          pv.is_active,
+          1
+        ) AS is_active,
+
+        IFNULL(
+          (
+            SELECT SUM(
+              CASE
+                WHEN sm.type = 'in'
+                  THEN sm.quantity
+
+                WHEN sm.type = 'out'
+                  THEN -sm.quantity
+
+                ELSE 0
+              END
+            )
+
+            FROM stock_movements sm
+
+            WHERE
+              sm.variant_id =
+                si.variant_id
+          ),
+          0
+        ) AS current_stock,
+
+        IFNULL(
+          (
+            SELECT SUM(sri.quantity)
+
+            FROM sale_returns sr
+
+            JOIN sale_return_items sri
+              ON sri.return_id = sr.id
+
+            WHERE
+              sr.original_sale_id =
+                si.sale_id
+
+              AND
+                sr.cancelled_at
+                IS NULL
+
+              AND
+                sri.original_sale_item_id =
+                  si.id
+          ),
+          0
+        ) AS returned_quantity
+
+      FROM sale_items si
+
+      LEFT JOIN product_variants pv
+        ON pv.id = si.variant_id
+
+      LEFT JOIN products p
+        ON p.id = pv.product_id
+
+      LEFT JOIN categories c
+        ON c.id = p.category_id
+
+      WHERE si.sale_id = ?
+
+      ORDER BY si.id ASC
+      `,
     )
     .all(saleId)
 
@@ -2652,6 +2790,10 @@ export function getSaleCancellationAccess(
   }
 }
 
+export function getSaleEditAccess(saleId: number, actorId?: number | null) {
+  return getSaleCancellationAccess(saleId, actorId)
+}
+
 export function getSaleReturnCancellationAccess(
   returnId: number,
   actorId?: number | null,
@@ -2694,6 +2836,446 @@ export function getSaleReturnCancellationAccess(
     user_id: row.user_id,
     requires_admin_password: Number(row.requires_admin_password || 0) === 1,
   }
+}
+
+export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
+  const db = getDb()
+
+  const saleId = Number(input.sale_id || 0)
+  const actorId = Number(input.actor_id || 0)
+
+  if (!saleId) {
+    throw new Error('رقم فاتورة البيع غير صحيح')
+  }
+
+  if (!actorId) {
+    throw new Error('المستخدم غير صحيح')
+  }
+
+  const tx = db.transaction(() => {
+    const sale = db
+      .prepare(
+        `
+        SELECT *
+        FROM sales
+
+        WHERE id = ?
+          AND IFNULL(type, 'sale') = 'sale'
+
+        LIMIT 1
+        `,
+      )
+      .get(saleId) as any
+
+    if (!sale) {
+      throw new Error('فاتورة البيع غير موجودة')
+    }
+
+    if (sale.cancelled_at) {
+      throw new Error('لا يمكن تعديل فاتورة ملغاة')
+    }
+
+    /*
+     * لا نعدل فاتورة دخل عليها مرتجع.
+     */
+    const returnsRow = db
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+
+        FROM sale_returns
+
+        WHERE original_sale_id = ?
+          AND cancelled_at IS NULL
+        `,
+      )
+      .get(saleId) as any
+
+    if (Number(returnsRow?.count || 0) > 0) {
+      throw new Error('لا يمكن تعديل الفاتورة قبل إلغاء المرتجعات الخاصة بها')
+    }
+
+    /*
+     * ولا فاتورة عليها استبدال فعال.
+     */
+    const exchangesRow = db
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+
+        FROM sale_exchanges
+
+        WHERE original_sale_id = ?
+          AND cancelled_at IS NULL
+        `,
+      )
+      .get(saleId) as any
+
+    if (Number(exchangesRow?.count || 0) > 0) {
+      throw new Error('لا يمكن تعديل الفاتورة قبل إلغاء الاستبدالات الخاصة بها')
+    }
+
+    /*
+     * ولا لو العميل دفع عليها دفعة لاحقة.
+     */
+    const laterPayments = db
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+
+        FROM customer_payments cp
+
+        LEFT JOIN customer_payment_batches b
+          ON b.id = cp.batch_id
+
+        WHERE cp.sale_id = ?
+
+          AND (
+            cp.batch_id IS NULL
+            OR b.cancelled_at IS NULL
+          )
+        `,
+      )
+      .get(saleId) as any
+
+    if (Number(laterPayments?.count || 0) > 0) {
+      throw new Error('لا يمكن تعديل الفاتورة لأنها تحتوي على دفعات عميل لاحقة')
+    }
+
+    const businessDate = String(
+      sale.business_date || getCurrentBusinessDate(db),
+    )
+
+    /*
+     * ممنوع تعديل يوم مالي تم تقفيله.
+     */
+    const closedDay = db
+      .prepare(
+        `
+        SELECT id
+
+        FROM cash_day_closings
+
+        WHERE business_date = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(businessDate)
+
+    if (closedDay) {
+      throw new Error(
+        `لا يمكن تعديل الفاتورة لأن يوم ${businessDate} تم تقفيله`,
+      )
+    }
+
+    /*
+     * لو الفاتورة مرتبطة بشفت:
+     * لازم نفس الشفت يكون ما زال مفتوحًا.
+     */
+    const originalShiftId = Number(sale.shift_id || 0)
+
+    if (originalShiftId > 0) {
+      const currentShift = getOpenCashShift()
+
+      if (!currentShift || Number(currentShift.id) !== originalShiftId) {
+        throw new Error('لا يمكن تعديل فاتورة من شفت تم إغلاقه')
+      }
+    }
+
+    const oldCustomerId = Number(sale.customer_id || 0)
+
+    const oldRemainingAmount = Math.max(0, Number(sale.remaining_amount || 0))
+
+    const oldEarnedPoints = Math.max(0, Number(sale.loyalty_points_earned || 0))
+
+    const oldRedeemedPoints = Math.max(
+      0,
+      Number(sale.loyalty_points_redeemed || 0),
+    )
+
+    /*
+     * لو نقاط الفاتورة اتصرفت بالفعل،
+     * مينفعش نرجع الفاتورة للخلف.
+     */
+    if (oldCustomerId && oldEarnedPoints > 0) {
+      const customer = db
+        .prepare(
+          `
+          SELECT points_balance
+
+          FROM customers
+
+          WHERE id = ?
+
+          LIMIT 1
+          `,
+        )
+        .get(oldCustomerId) as any
+
+      const currentPoints = Number(customer?.points_balance || 0)
+
+      if (currentPoints + oldRedeemedPoints < oldEarnedPoints) {
+        throw new Error('لا يمكن تعديل الفاتورة لأن نقاطها تم استخدامها بالفعل')
+      }
+    }
+
+    const oldItems = db
+      .prepare(
+        `
+        SELECT
+          variant_id,
+          quantity
+
+        FROM sale_items
+
+        WHERE sale_id = ?
+        `,
+      )
+      .all(saleId) as Array<{
+      variant_id: number
+      quantity: number
+    }>
+
+    const storedPayments = db
+      .prepare(
+        `
+        SELECT
+          payment_method,
+          amount
+
+        FROM sale_payments
+
+        WHERE sale_id = ?
+          AND payment_method <> 'split'
+          AND amount > 0
+
+        ORDER BY id ASC
+        `,
+      )
+      .all(saleId) as Array<{
+      payment_method: string
+      amount: number
+    }>
+
+    const oldPaidAmount = Math.max(0, Number(sale.paid || 0))
+
+    const oldPayments =
+      storedPayments.length > 0
+        ? storedPayments
+        : oldPaidAmount > 0
+          ? [
+              {
+                payment_method: resolveCashAccount(
+                  sale.payment_method || 'cash',
+                ),
+
+                amount: oldPaidAmount,
+              },
+            ]
+          : []
+
+    /*
+     * 1) عكس التحصيل القديم.
+     */
+    for (const payment of oldPayments) {
+      if (Number(payment.amount || 0) <= 0) {
+        continue
+      }
+
+      const reversalShift = resolveFinancialOperationShift(
+        actorId,
+        [payment.payment_method],
+        'لا يمكن تعديل فاتورة تمس درج المحل بدون شفت مفتوح',
+      )
+
+      createCashMovement({
+        type: 'sale',
+
+        direction: 'out',
+
+        amount: Number(payment.amount),
+
+        payment_method: payment.payment_method,
+
+        reference_id: saleId,
+
+        reference_type: 'sale_edit_reversal',
+
+        notes: `عكس تحصيل الفاتورة #${saleId} قبل التعديل`,
+
+        created_by: actorId,
+
+        business_date: businessDate,
+
+        shift_id: reversalShift?.id ?? null,
+      })
+    }
+
+    /*
+     * 2) رجّع المخزون القديم.
+     */
+    const restoreStock = db.prepare(
+      `
+      INSERT INTO stock_movements (
+        variant_id,
+        type,
+        quantity,
+        reference_id,
+        reference_type,
+        notes
+      )
+
+      VALUES (
+        ?,
+        'in',
+        ?,
+        ?,
+        'sale_edit_reversal',
+        ?
+      )
+      `,
+    )
+
+    for (const item of oldItems) {
+      restoreStock.run(
+        Number(item.variant_id),
+        Number(item.quantity || 0),
+        saleId,
+        `إرجاع مخزون الفاتورة #${saleId} قبل التعديل`,
+      )
+    }
+
+    /*
+     * 3) رجّع أثر المديونية والنقاط القديمة.
+     */
+    if (oldCustomerId) {
+      db.prepare(
+        `
+        UPDATE customers
+
+        SET
+          balance =
+            MAX(
+              IFNULL(balance, 0) - ?,
+              0
+            ),
+
+          points_balance =
+            MAX(
+              IFNULL(points_balance, 0)
+              - ?
+              + ?,
+              0
+            ),
+
+          updated_at =
+            CURRENT_TIMESTAMP
+
+        WHERE id = ?
+        `,
+      ).run(
+        oldRemainingAmount,
+        oldEarnedPoints,
+        oldRedeemedPoints,
+        oldCustomerId,
+      )
+    }
+
+    /*
+     * loyalty_transactions لا تستخدم
+     * ON DELETE CASCADE.
+     */
+    db.prepare(
+      `
+      DELETE FROM loyalty_transactions
+      WHERE sale_id = ?
+      `,
+    ).run(saleId)
+
+    /*
+     * باقي تفاصيل الفاتورة عليها Cascade.
+     */
+    db.prepare(
+      `
+      DELETE FROM sales
+      WHERE id = ?
+      `,
+    ).run(saleId)
+
+    const nextSaleInput: CreateSaleInput = {
+      user_id: actorId,
+
+      customer_id: input.customer_id ?? null,
+
+      business_date: businessDate,
+
+      promotion_id: input.promotion_id ?? null,
+
+      sub_total: input.sub_total,
+
+      discount_value: input.discount_value,
+
+      grand_total: input.grand_total,
+
+      change_amount: input.change_amount,
+
+      payment_method: input.payment_method,
+
+      payments: input.payments,
+
+      notes: input.notes ?? null,
+
+      loyalty_points_redeemed: input.loyalty_points_redeemed,
+
+      loyalty_discount_value: input.loyalty_discount_value,
+
+      paid: input.paid,
+
+      remaining_amount: input.remaining_amount,
+
+      payment_status: input.payment_status,
+
+      items: input.items,
+    }
+
+    const result = createSaleInternal(nextSaleInput, {
+      forced_sale_id: saleId,
+
+      /*
+       * الفاتورة تظل باسم
+       * الكاشير الأصلي.
+       */
+      invoice_user_id: Number(sale.user_id || 0) || actorId,
+
+      /*
+       * ونفس تاريخ إنشائها.
+       */
+      created_at: sale.created_at ?? null,
+    })
+
+    /*
+     * لو تم تغيير العميل،
+     * حدث إجمالي مشتريات العميل القديم.
+     */
+    const nextCustomerId = Number(input.customer_id || 0)
+
+    if (oldCustomerId && oldCustomerId !== nextCustomerId) {
+      syncCustomerTotalSpent(oldCustomerId)
+    }
+
+    return {
+      ...result,
+
+      saleId,
+
+      previous_customer_id: oldCustomerId || null,
+
+      edited: true,
+    }
+  })
+
+  return tx()
 }
 
 export function cancelSaleInvoice(input: {

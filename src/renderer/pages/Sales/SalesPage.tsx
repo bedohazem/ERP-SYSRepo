@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth.store'
 import {
   CUSTOMER_PAYMENT_METHOD_OPTIONS,
@@ -96,6 +97,7 @@ type SaleReceipt = {
     payment_status?: string
     change_amount?: number
     payment_method?: string | null
+    notes?: string | null
     loyalty_points_earned?: number
     loyalty_points_redeemed?: number
     loyalty_discount_value?: number
@@ -128,6 +130,30 @@ type SaleReceipt = {
   }>
 }
 
+type SaveSaleResult = {
+  success?: boolean
+  message?: string
+
+  saleId?: number
+
+  loyalty_points_earned?: number
+  loyalty_points_redeemed?: number
+  loyalty_discount_value?: number
+
+  promotion_id?: number | null
+  promotion_name?: string | null
+  promotion_discount_value?: number
+
+  grand_total?: number
+  paid_amount?: number
+  remaining_amount?: number
+  payment_status?: string
+
+  shift_id?: number | null
+
+  edited?: boolean
+}
+
 type StoreReceiptInfo = {
   app_name?: string
   app_logo_url?: string
@@ -151,6 +177,7 @@ type InvoiceTab = {
   businessDateDraft: string
   discountType: 'amount' | 'percent'
   discountDraft: string
+  notesDraft: string
 }
 
 function roundMoney(value: number) {
@@ -322,6 +349,7 @@ const createInvoice = (id: number): InvoiceTab => ({
   businessDateDraft: '',
   discountType: 'amount',
   discountDraft: '',
+  notesDraft: '',
 })
 
 function normalizeCustomer(customer: any): CustomerOption {
@@ -400,6 +428,7 @@ function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
     businessDateDraft: '',
     discountType: 'amount',
     discountDraft: '',
+    notesDraft: String(raw?.notesDraft || ''),
   }
 }
 
@@ -412,6 +441,7 @@ function serializeInvoiceDraft(invoice: InvoiceTab): InvoiceTab {
     businessDateDraft: '',
     discountType: 'amount',
     discountDraft: '',
+    notesDraft: invoice.notesDraft,
   }
 }
 
@@ -474,8 +504,48 @@ function formatReceiptDate(
   }
 }
 
+function getEditablePaymentMethod(value?: string | null) {
+  switch (value) {
+    case 'store_cash':
+      return 'cash'
+
+    case 'fawry_machine':
+      return 'card'
+
+    case 'owner_vodafone':
+      return 'wallet'
+
+    case 'owner_bank':
+      return 'bank_transfer'
+
+    case 'store_safe':
+      return 'store_safe'
+
+    case 'owner_cash':
+      return 'owner_cash'
+
+    default:
+      return value || 'cash'
+  }
+}
+
 export default function SalesPage() {
   const user = useAuthStore((s) => s.user)
+  const navigate = useNavigate()
+
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const requestedEditSaleId = Number(searchParams.get('edit') || 0)
+
+  const [editingSaleId, setEditingSaleId] = useState<number | null>(null)
+
+  const [editLoading, setEditLoading] = useState(false)
+
+  const [editReason, setEditReason] = useState('')
+
+  const [editAdminPassword, setEditAdminPassword] = useState('')
+
+  const [receiptWasEdit, setReceiptWasEdit] = useState(false)
   const [isCompact, setIsCompact] = useState(false)
 
   const [invoices, setInvoices] = useState<InvoiceTab[]>([createInvoice(1)])
@@ -535,6 +605,246 @@ export default function SalesPage() {
   const firstQtyInputRef = useRef<HTMLInputElement | null>(null)
   const customerWrapperRef = useRef<HTMLDivElement | null>(null)
   const pageRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!requestedEditSaleId || !user?.id) {
+      return
+    }
+
+    let cancelled = false
+
+    async function loadSaleForEdit() {
+      setEditLoading(true)
+
+      try {
+        const receipt = await window.api.getSaleReceipt(requestedEditSaleId)
+
+        if (cancelled) return
+
+        if (receipt.sale?.cancelled_at) {
+          throw new Error('لا يمكن تعديل فاتورة ملغاة')
+        }
+
+        const groupedItems = new Map<number, CartItem>()
+
+        for (const item of receipt.items || []) {
+          const variantId = Number(item.variant_id || 0)
+
+          if (!variantId) continue
+
+          const qty = Number(item.quantity || 0)
+
+          const existing = groupedItems.get(variantId)
+
+          if (existing) {
+            existing.quantity += qty
+
+            continue
+          }
+
+          groupedItems.set(variantId, {
+            variant_id: variantId,
+
+            product_id: Number(item.product_id || 0),
+
+            product_name: String(item.product_name || ''),
+
+            category_id:
+              item.category_id == null ? null : Number(item.category_id),
+
+            category_name: item.category_name ?? null,
+
+            barcode: String(item.barcode || ''),
+
+            size: String(item.size || ''),
+
+            color: String(item.color || ''),
+
+            /*
+             * نحافظ على سعر
+             * الفاتورة الأصلية.
+             */
+            sell_price: Number(item.unit_price || 0),
+
+            buy_price: Number(item.buy_price || item.unit_cost || 0),
+
+            /*
+             * بعد تعديل الفاتورة
+             * الـbackend يرجع كمية
+             * الفاتورة القديمة أولًا.
+             *
+             * لذلك نضيف الكمية
+             * القديمة للمتاح.
+             */
+            stock: Number(item.current_stock || 0) + qty,
+
+            min_stock: Number(item.min_stock || 0),
+
+            is_active: Number(item.is_active ?? 1),
+
+            quantity: qty,
+          })
+        }
+
+        const cart = Array.from(groupedItems.values())
+
+        /*
+         * لو نفس الصنف كان متقسم
+         * على أكتر من sale_item
+         * بسبب عرض، نضيف إجمالي
+         * الكمية القديمة مرة واحدة.
+         */
+        for (const item of cart) {
+          const totalOldQty = (receipt.items || [])
+            .filter(
+              (row: any) => Number(row.variant_id) === Number(item.variant_id),
+            )
+            .reduce(
+              (total: number, row: any) => total + Number(row.quantity || 0),
+              0,
+            )
+
+          item.quantity = totalOldQty
+
+          item.stock =
+            Number(
+              (receipt.items || []).find(
+                (row: any) =>
+                  Number(row.variant_id) === Number(item.variant_id),
+              )?.current_stock || 0,
+            ) + totalOldQty
+        }
+
+        let customer: CustomerOption | null = null
+
+        const customerId = Number(receipt.sale?.customer_id || 0)
+
+        if (customerId > 0) {
+          const rawCustomer = await window.api.getCustomerById(customerId)
+
+          if (rawCustomer) {
+            customer = normalizeCustomer(rawCustomer)
+
+            /*
+             * updateSaleInvoice
+             * هيعكس نقاط الفاتورة
+             * القديمة قبل إعادة الحفظ.
+             */
+            customer.points_balance = Math.max(
+              0,
+
+              Number(customer.points_balance || 0) +
+                Number(receipt.sale?.loyalty_points_redeemed || 0) -
+                Number(receipt.sale?.loyalty_points_earned || 0),
+            )
+          }
+        }
+
+        const payments = Array.isArray(receipt.payments)
+          ? receipt.payments.filter(
+              (payment: any) =>
+                payment.payment_method !== 'split' &&
+                Number(payment.amount || 0) > 0,
+            )
+          : []
+
+        const isSplit = payments.length > 1
+
+        const drafts: Record<string, string> = {}
+
+        for (const payment of payments) {
+          const method = getEditablePaymentMethod(payment.payment_method)
+
+          drafts[method] = String(Number(payment.amount || 0))
+        }
+
+        const singleMethod =
+          payments.length === 1
+            ? getEditablePaymentMethod(payments[0].payment_method)
+            : getEditablePaymentMethod(receipt.sale?.payment_method)
+
+        const editInvoice: InvoiceTab = {
+          ...createInvoice(1),
+
+          id: 1,
+
+          title: `تعديل فاتورة #${requestedEditSaleId}`,
+
+          cart,
+
+          customer,
+
+          loyaltyPointsDraft:
+            Number(receipt.sale?.loyalty_points_redeemed || 0) > 0
+              ? String(receipt.sale.loyalty_points_redeemed)
+              : '',
+
+          paidDraft: String(Number(receipt.sale?.paid || 0)),
+
+          paymentMethod: singleMethod || 'cash',
+
+          businessDateDraft: String(receipt.sale?.business_date || ''),
+
+          discountType: 'amount',
+
+          discountDraft:
+            Number(receipt.sale?.discount_value || 0) > 0
+              ? String(receipt.sale.discount_value)
+              : '',
+
+          notesDraft: String(receipt.sale?.notes || ''),
+        }
+
+        localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
+
+        setInvoices([editInvoice])
+
+        setActiveInvoiceId(1)
+
+        setNextInvoiceId(2)
+
+        setEditingSaleId(requestedEditSaleId)
+
+        setEditReason(`تعديل فاتورة بيع #${requestedEditSaleId}`)
+
+        setEditAdminPassword('')
+
+        setSplitPaymentEnabled(isSplit)
+
+        setSplitPaymentDrafts(isSplit ? drafts : {})
+
+        setProductResults([])
+
+        setDropdownRect(null)
+
+        setCustomerSearch('')
+
+        setShowPaymentModal(false)
+
+        setReceiptData(null)
+      } catch (error) {
+        console.error('Failed to load sale for edit:', error)
+
+        showMessage(
+          'error',
+          error instanceof Error
+            ? error.message
+            : 'تعذر تحميل الفاتورة للتعديل',
+          false,
+        )
+      } finally {
+        if (!cancelled) {
+          setEditLoading(false)
+        }
+      }
+    }
+
+    void loadSaleForEdit()
+
+    return () => {
+      cancelled = true
+    }
+  }, [requestedEditSaleId, user?.id])
 
   useEffect(() => {
     let mounted = true
@@ -722,12 +1032,31 @@ export default function SalesPage() {
       nextAfterNormal - nextRedeemPoints * pointValue,
     )
 
-    // كل مرة نفتح نافذة الدفع نبدأ بإجمالي الفاتورة الحالي
-    setSplitPaymentEnabled(false)
+    /*
+     * في البيع الجديد:
+     * المدفوع الافتراضي = إجمالي الفاتورة.
+     *
+     * في تعديل فاتورة:
+     * نحافظ على بيانات الدفع الأصلية،
+     * خصوصًا لو كانت متعددة الدفع.
+     */
+    if (editingSaleId) {
+      if (!splitPaymentEnabled && activeInvoice.paidDraft.trim() === '') {
+        updateActiveInvoice({
+          paidDraft: nextGrandTotal.toFixed(2),
+        })
+      }
+    } else {
+      updateActiveInvoice({
+        paidDraft: nextGrandTotal.toFixed(2),
+      })
 
-    setSplitPaymentDrafts({
-      cash: nextGrandTotal.toFixed(2),
-    })
+      setSplitPaymentEnabled(false)
+
+      setSplitPaymentDrafts({
+        cash: nextGrandTotal.toFixed(2),
+      })
+    }
 
     setShowPaymentModal(true)
   }
@@ -994,6 +1323,7 @@ export default function SalesPage() {
       discountDraft: '',
       discountType: 'amount',
       paymentMethod: 'cash',
+      notesDraft: '',
     })
     setProductResults([])
     setDropdownRect(null)
@@ -1017,6 +1347,7 @@ export default function SalesPage() {
       discountDraft: '',
       discountType: 'amount',
       paymentMethod: 'cash',
+      notesDraft: '',
     })
   }
 
@@ -1030,6 +1361,7 @@ export default function SalesPage() {
       discountDraft: '',
       discountType: 'amount',
       paymentMethod: 'cash',
+      notesDraft: '',
     })
 
     focusMainInput()
@@ -1246,39 +1578,88 @@ export default function SalesPage() {
       }
     }
 
+    if (editingSaleId && !editReason.trim()) {
+      showMessage('error', 'اكتب سبب تعديل الفاتورة')
+
+      return
+    }
+
     setSaving(true)
 
     try {
-      const result = await window.api.createSale({
-        user_id: user.id,
+      const salePayload = {
         customer_id: activeInvoice.customer?.id ?? null,
+
         promotion_id: activePromotion?.id ?? null,
+
         sub_total: subTotal,
+
         discount_value: normalDiscountValue,
+
         grand_total: grandTotal,
+
         paid: paidAmount,
+
         remaining_amount: remainingAmount,
+
         payment_status: paymentStatus,
+
         change_amount: splitPaymentEnabled ? 0 : changeAmount,
+
         payment_method: splitPaymentEnabled
           ? splitPayments.length > 1
             ? 'split'
             : splitPayments[0]?.payment_method || 'cash'
           : activeInvoice.paymentMethod || 'cash',
+
         payments: splitPaymentEnabled ? splitPayments : undefined,
-        notes: null,
+
+        notes: activeInvoice.notesDraft.trim() || null,
+
         loyalty_points_redeemed: redeemPoints,
+
         loyalty_discount_value: loyaltyDiscountValue,
+
         items: activeInvoice.cart.map((item) => ({
           variant_id: item.variant_id,
+
           product_name: item.product_name,
+
           barcode: item.barcode,
+
           size: item.size,
+
           color: item.color,
+
           quantity: item.quantity,
+
           unit_price: Number(item.sell_price),
         })),
-      })
+      }
+
+      const wasEditing = Boolean(editingSaleId)
+
+      const result: SaveSaleResult = editingSaleId
+        ? await window.api.updateSaleInvoice({
+            ...salePayload,
+
+            sale_id: editingSaleId,
+
+            actor_id: user.id,
+
+            reason: editReason.trim(),
+
+            admin_password: editAdminPassword || undefined,
+          })
+        : await window.api.createSale({
+            ...salePayload,
+
+            user_id: user.id,
+          })
+
+      if (wasEditing && !result.success) {
+        throw new Error(result.message || 'تعذر تعديل الفاتورة')
+      }
 
       const savedSaleId = Number(result.saleId)
       const usesCashDrawer = splitPaymentEnabled
@@ -1289,22 +1670,40 @@ export default function SalesPage() {
           )
         : activeInvoice.paymentMethod === 'cash'
 
-      if (usesCashDrawer && cashDrawerAutoOpen) {
+      if (!wasEditing && usesCashDrawer && cashDrawerAutoOpen) {
         void handleOpenCashDrawer('sale', savedSaleId, false)
       }
 
       try {
-        const receipt = await window.api.getSaleReceipt(Number(result.saleId))
+        const savedSaleId = Number(result.saleId || editingSaleId)
+        const receipt = await window.api.getSaleReceipt(Number(savedSaleId))
         setShowPaymentModal(false)
         setReceiptData(receipt)
+
+        setReceiptWasEdit(wasEditing)
+
+        if (wasEditing) {
+          setEditingSaleId(null)
+
+          setEditReason('')
+
+          setEditAdminPassword('')
+
+          setSearchParams(
+            {},
+            {
+              replace: true,
+            },
+          )
+        }
       } catch (receiptError) {
         console.error('Failed to load receipt:', receiptError)
 
         const earned = Number(result?.loyalty_points_earned || 0)
         const successText =
           earned > 0
-            ? `تم حفظ الفاتورة رقم ${result.saleId} وكسب العميل ${earned} نقطة`
-            : `تم حفظ الفاتورة رقم ${result.saleId}`
+            ? `تم حفظ الفاتورة رقم ${savedSaleId} وكسب العميل ${earned} نقطة`
+            : `تم حفظ الفاتورة رقم ${savedSaleId}`
 
         setShowPaymentModal(false)
         showMessage('success', successText)
@@ -1323,6 +1722,7 @@ export default function SalesPage() {
         businessDateDraft: '',
         discountType: 'amount',
         discountDraft: '',
+        notesDraft: '',
       })
 
       if (invoices.length === 1) {
@@ -1337,6 +1737,7 @@ export default function SalesPage() {
           businessDateDraft: '',
           discountType: 'amount',
           discountDraft: '',
+          notesDraft: '',
         })
 
         localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
@@ -1552,6 +1953,13 @@ export default function SalesPage() {
   ])
 
   useEffect(() => {
+    if (requestedEditSaleId > 0) {
+      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
+
+      setSalesDraftHydrated(true)
+
+      return
+    }
     try {
       const raw = localStorage.getItem(SALES_DRAFT_STORAGE_KEY)
 
@@ -1592,10 +2000,16 @@ export default function SalesPage() {
     } finally {
       setSalesDraftHydrated(true)
     }
-  }, [])
+  }, [requestedEditSaleId])
 
   useEffect(() => {
     if (!salesDraftHydrated) return
+
+    if (editingSaleId) {
+      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
+
+      return
+    }
 
     const hasDraft =
       invoices.length > 1 ||
@@ -1629,6 +2043,7 @@ export default function SalesPage() {
     activeInvoiceId,
     nextInvoiceId,
     barcodeMode,
+    editingSaleId,
   ])
 
   useEffect(() => {
@@ -1823,6 +2238,84 @@ export default function SalesPage() {
           }}
         >
           {pageMessage.text}
+        </div>
+      )}
+
+      {editingSaleId && (
+        <div
+          style={{
+            marginBottom: '14px',
+            padding: '14px 16px',
+
+            borderRadius: '14px',
+
+            border: '1px solid rgba(59,130,246,0.45)',
+
+            background: 'rgba(59,130,246,0.10)',
+
+            display: 'flex',
+
+            alignItems: 'center',
+
+            justifyContent: 'space-between',
+
+            gap: '12px',
+
+            flexWrap: 'wrap',
+
+            direction: 'rtl',
+          }}
+        >
+          <div
+            style={{
+              display: 'grid',
+              gap: '4px',
+            }}
+          >
+            <strong
+              style={{
+                color: '#93c5fd',
+                fontSize: '16px',
+              }}
+            >
+              تعديل الفاتورة
+              {' #'}
+              {editingSaleId}
+            </strong>
+
+            <span
+              style={{
+                color: '#cbd5e1',
+                fontSize: '12px',
+              }}
+            >
+              سيتم الاحتفاظ بنفس رقم الفاتورة وتحديث المخزون والحسابات تلقائيًا
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate('/invoices')}
+            style={{
+              ...secondaryOutlineButtonStyle,
+
+              width: 'auto',
+
+              minWidth: '190px',
+
+              height: '40px',
+
+              minHeight: '40px',
+
+              padding: '0 18px',
+
+              whiteSpace: 'nowrap',
+
+              flexShrink: 0,
+            }}
+          >
+            إلغاء التعديل والعودة للسجل
+          </button>
         </div>
       )}
 
@@ -2567,7 +3060,13 @@ export default function SalesPage() {
                   : 'pointer',
             }}
           >
-            {saving ? 'جاري الحفظ...' : 'F12 / دفع'}
+            {saving
+              ? editingSaleId
+                ? 'جاري حفظ التعديل...'
+                : 'جاري الحفظ...'
+              : editingSaleId
+                ? 'F12 / حفظ التعديل'
+                : 'F12 / دفع'}
           </button>
         </div>
       </div>
@@ -2664,7 +3163,9 @@ export default function SalesPage() {
             >
               <div style={{ display: 'grid', gap: '6px' }}>
                 <h3 style={{ margin: 0 }}>
-                  تم حفظ الفاتورة #{receiptData.sale.id}
+                  {receiptWasEdit
+                    ? `تم تعديل الفاتورة #${receiptData.sale.id}`
+                    : `تم حفظ الفاتورة #${receiptData.sale.id}`}
                 </h3>
                 <span style={{ color: '#94a3b8', fontSize: '13px' }}>
                   {formatReceiptDate(
@@ -2679,6 +3180,7 @@ export default function SalesPage() {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   setReceiptData(null)
+                  setReceiptWasEdit(false)
                   setTimeout(focusMainInput, 0)
                 }}
                 style={miniCloseButtonStyle}
@@ -2721,6 +3223,43 @@ export default function SalesPage() {
                 </strong>
               </div>
             </div>
+
+            {receiptData.sale.notes?.trim() && (
+              <div
+                style={{
+                  marginBottom: '16px',
+                  padding: '11px 14px',
+
+                  borderRadius: '12px',
+
+                  border: '1px solid rgba(59,130,246,0.22)',
+
+                  background: 'rgba(59,130,246,0.07)',
+
+                  display: 'grid',
+                  gap: '4px',
+                }}
+              >
+                <span
+                  style={{
+                    color: '#94a3b8',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                  }}
+                >
+                  ملاحظات الفاتورة
+                </span>
+
+                <strong
+                  style={{
+                    color: '#e2e8f0',
+                    fontSize: '13px',
+                  }}
+                >
+                  {receiptData.sale.notes}
+                </strong>
+              </div>
+            )}
 
             <div
               style={{
@@ -2971,18 +3510,33 @@ export default function SalesPage() {
           <div
             className="theme-modal-card"
             style={{
-              width: '520px',
-              maxWidth: '100%',
-              borderRadius: '22px',
+              width: '540px',
+              maxWidth: 'calc(100vw - 32px)',
+
+              maxHeight: 'calc(100vh - 32px)',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+
+              borderRadius: '18px',
+
               background:
                 'linear-gradient(180deg, rgba(17,24,39,0.98), rgba(15,23,42,0.98))',
+
               color: '#f8fafc',
-              padding: '22px',
+
+              padding: '18px',
+
               direction: 'rtl',
+
               boxShadow: '0 28px 80px rgba(0,0,0,0.55)',
+
               border: '1px solid rgba(255,255,255,0.10)',
+
               display: 'grid',
-              gap: '14px',
+
+              gap: '10px',
+
+              boxSizing: 'border-box',
             }}
           >
             <div
@@ -3330,6 +3884,80 @@ export default function SalesPage() {
               </div>
             )}
 
+            {editingSaleId && (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isCompact ? '1fr' : '1fr 1fr',
+                  gap: '10px',
+                  padding: '12px',
+                  borderRadius: '14px',
+                  background: 'rgba(59,130,246,0.08)',
+                  border: '1px solid rgba(59,130,246,0.22)',
+                }}
+              >
+                <label style={paymentLabelStyle}>
+                  سبب التعديل
+                  <input
+                    value={editReason}
+                    onChange={(e) => setEditReason(e.target.value)}
+                    placeholder="مثال: تعديل كمية أو طريقة دفع"
+                    style={paymentInputStyle}
+                  />
+                </label>
+
+                <label style={paymentLabelStyle}>
+                  كلمة مرور المدير
+                  <input
+                    type="password"
+                    value={editAdminPassword}
+                    onChange={(e) => setEditAdminPassword(e.target.value)}
+                    placeholder="عند الحاجة فقط"
+                    style={paymentInputStyle}
+                  />
+                </label>
+              </div>
+            )}
+
+            <label
+              style={{
+                ...paymentLabelStyle,
+                gap: '6px',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span>ملاحظات الفاتورة</span>
+
+                <span
+                  style={{
+                    color: '#64748b',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                  }}
+                >
+                  اختياري
+                </span>
+              </div>
+
+              <input
+                type="text"
+                value={activeInvoice.notesDraft}
+                onChange={(e) =>
+                  updateActiveInvoice({
+                    notesDraft: e.target.value,
+                  })
+                }
+                placeholder="مثال: العميل سيستلم الطلب مساءً"
+                style={paymentInputStyle}
+              />
+            </label>
+
             <div
               style={{
                 display: 'grid',
@@ -3377,7 +4005,13 @@ export default function SalesPage() {
                       : 1,
                 }}
               >
-                {saving ? 'جاري الدفع...' : 'F12 / دفع الفاتورة'}
+                {saving
+                  ? editingSaleId
+                    ? 'جاري حفظ التعديل...'
+                    : 'جاري الدفع...'
+                  : editingSaleId
+                    ? 'F12 / حفظ التعديل'
+                    : 'F12 / دفع الفاتورة'}
               </button>
             </div>
           </div>

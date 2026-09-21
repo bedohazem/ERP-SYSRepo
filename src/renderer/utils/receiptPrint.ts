@@ -826,6 +826,26 @@ export function buildSaleReceiptHtml(
 
           </div>
 
+          ${
+            String(sale.notes || '').trim()
+              ? `
+                <div
+                  style="
+                    margin: 8px 0;
+                    padding: 7px 8px;
+                    border: 1px solid #ddd;
+                    border-radius: 5px;
+                    text-align: right;
+                    line-height: 1.5;
+                  "
+                >
+                  <strong>ملاحظة:</strong>
+                  ${escapeHtml(sale.notes)}
+                </div>
+              `
+              : ''
+          }
+
           <table class="items-table">
             <thead>
               <tr>

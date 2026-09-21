@@ -12,6 +12,8 @@ import {
   listSaleReturns,
   getSaleCancellationAccess,
   getSaleReturnCancellationAccess,
+  getSaleEditAccess,
+  updateSaleInvoice,
 } from '../database/repositories/sales.repo'
 
 import {
@@ -81,6 +83,75 @@ export function registerSalesIpc(): void {
     })
 
     return result
+  })
+
+  ipcMain.handle('sales:update', (event, input) => {
+    const actorId = requireAuthenticatedUser(event).id
+
+    try {
+      const saleId = Number(input?.sale_id || 0)
+
+      const access = getSaleEditAccess(saleId, actorId)
+
+      if (Number(access.user_id || 0) !== Number(actorId || 0)) {
+        requireAdmin(actorId)
+      }
+
+      if (access.requires_admin_password) {
+        requireAnyAdminPassword(input?.admin_password)
+      }
+
+      const before = getSaleReceipt(saleId)
+
+      const result = updateSaleInvoice({
+        ...input,
+
+        sale_id: saleId,
+
+        actor_id: actorId,
+      })
+
+      const after = getSaleReceipt(saleId)
+
+      logAction({
+        actor_id: actorId,
+
+        action: 'sale_updated',
+
+        entity: 'sales',
+
+        entity_id: saleId,
+
+        details: {
+          reason: input?.reason || null,
+
+          before: {
+            sale: before.sale,
+            items: before.items,
+            payments: before.payments,
+          },
+
+          after: {
+            sale: after.sale,
+            items: after.items,
+            payments: after.payments,
+          },
+        },
+      })
+
+      return {
+        success: true,
+
+        ...result,
+      }
+    } catch (error) {
+      return {
+        success: false,
+
+        message:
+          error instanceof Error ? error.message : 'تعذر تعديل فاتورة البيع',
+      }
+    }
   })
 
   ipcMain.handle('sales:get-receipt', (_, saleId: number) => {

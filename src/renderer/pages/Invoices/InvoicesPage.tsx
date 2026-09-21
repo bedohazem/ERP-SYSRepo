@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth.store'
 import {
   CASH_ACCOUNT_OPTIONS,
@@ -487,6 +488,7 @@ function buildReturnDraftItems(
 }
 
 export default function InvoicesPage() {
+  const navigate = useNavigate()
   const [rows, setRows] = useState<SaleRow[]>([])
   const [total, setTotal] = useState(0)
   const [salesPage, setSalesPage] = useState(1)
@@ -1919,6 +1921,29 @@ export default function InvoicesPage() {
                         عرض
                       </button>
 
+                      {!sale.cancelled_at &&
+                        Number(sale.return_count || 0) === 0 &&
+                        Number(sale.exchange_count || 0) === 0 &&
+                        (isAdmin ||
+                          Number(sale.user_id || 0) ===
+                            Number(user?.id || 0)) && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/sales?edit=${sale.id}`)}
+                            style={{
+                              ...smallButtonStyle,
+
+                              borderColor: '#3b82f6',
+
+                              color: '#93c5fd',
+
+                              background: 'rgba(59,130,246,0.10)',
+                            }}
+                          >
+                            تعديل
+                          </button>
+                        )}
+
                       <button
                         type="button"
                         onClick={async () => {
@@ -3114,6 +3139,30 @@ export default function InvoicesPage() {
                   )}
                 </strong>
               </div>
+              {String(selectedReceipt.sale.notes || '').trim() && (
+                <div
+                  style={{
+                    ...statCardStyle,
+
+                    gridColumn: '1 / -1',
+
+                    background: 'rgba(59,130,246,0.07)',
+
+                    border: '1px solid rgba(59,130,246,0.22)',
+                  }}
+                >
+                  ملاحظات الفاتورة
+                  <strong
+                    style={{
+                      fontSize: '13px',
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    {selectedReceipt.sale.notes}
+                  </strong>
+                </div>
+              )}
+
               {Number(selectedReceipt.sale.promotion_discount_value || 0) >
                 0 && (
                 <div
