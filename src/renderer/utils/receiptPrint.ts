@@ -153,24 +153,26 @@ export async function buildReceiptQrDataUrl(
   return ''
 }
 
-export function openReceiptPrintWindow(html: string): boolean {
-  const printWindow = window.open('', '_blank', 'width=420,height=700')
+export async function openReceiptPrintWindow(html: string): Promise<boolean> {
+  try {
+    const result = await window.api.printHtmlWithDialog({
+      html,
+    })
 
-  if (!printWindow) {
+    /*
+     * الإلغاء اختيار طبيعي من المستخدم،
+     * وليس خطأ في الطباعة.
+     */
+    if (result?.canceled) {
+      return true
+    }
+
+    return Boolean(result?.ok)
+  } catch (error) {
+    console.error('Print dialog failed:', error)
+
     return false
   }
-
-  printWindow.document.open()
-  printWindow.document.write(html)
-  printWindow.document.close()
-  printWindow.focus()
-
-  setTimeout(() => {
-    printWindow.print()
-    printWindow.close()
-  }, 350)
-
-  return true
 }
 
 function getReceiptFinance(
@@ -195,6 +197,10 @@ function getReceiptFinance(
   const netPaidAmount = Math.max(0, paidNetAmount - totalReturns)
   const netTotal = Math.max(0, grandTotal - totalReturns)
 
+  const changeAmount = Math.max(0, Number(receipt.sale.change_amount || 0))
+
+  const receivedAmount = netPaidAmount + changeAmount
+
   return {
     remainingAmount,
     grandTotal,
@@ -202,6 +208,8 @@ function getReceiptFinance(
     totalReturns,
     netPaidAmount,
     netTotal,
+    changeAmount,
+    receivedAmount,
   }
 }
 
@@ -238,6 +246,8 @@ export function buildSaleReceiptHtml(
     totalReturns,
     netPaidAmount,
     netTotal,
+    changeAmount,
+    receivedAmount,
   } = finance
 
   const storeName = String(storeInfo.app_name || 'ERP Store').trim()
@@ -945,25 +955,40 @@ export function buildSaleReceiptHtml(
             <div class="summary-row paid">
               <span>المدفوع</span>
               <strong>
-                ${finance.netPaidAmount.toFixed(2)}
+                ${finance.receivedAmount.toFixed(2)}
                 ج.م
               </strong>
             </div>
 
-            <div class="summary-row">
-              <span>الباقي</span>
+            ${
+              finance.changeAmount > 0
+                ? `
+                  <div class="summary-row">
+                    <span>الباقي للعميل</span>
 
-              <strong
-                class="${
-                  finance.remainingAmount > 0
-                    ? 'remaining-debt'
-                    : 'remaining-zero'
-                }"
-              >
-                ${finance.remainingAmount.toFixed(2)}
-                ج.م
-              </strong>
-            </div>
+                    <strong class="remaining-zero">
+                      ${finance.changeAmount.toFixed(2)}
+                      ج.م
+                    </strong>
+                  </div>
+                `
+                : ''
+            }
+
+            ${
+              finance.remainingAmount > 0
+                ? `
+                  <div class="summary-row">
+                    <span>المديونية</span>
+
+                    <strong class="remaining-debt">
+                      ${finance.remainingAmount.toFixed(2)}
+                      ج.م
+                    </strong>
+                  </div>
+                `
+                : ''
+            }
 
           </div>
 
@@ -1048,7 +1073,7 @@ export async function printSaleReceiptHtml(options: {
     }
   }
 
-  const opened = openReceiptPrintWindow(html)
+  const opened = await openReceiptPrintWindow(html)
 
   if (!opened) {
     options.onBlocked?.()

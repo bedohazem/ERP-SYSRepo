@@ -596,7 +596,7 @@ export async function printSaleExchangeReceiptHtml(options: {
     }
   }
 
-  const opened = openReceiptPrintWindow(html)
+  const opened = await openReceiptPrintWindow(html)
 
   if (!opened) {
     options.onBlocked?.()

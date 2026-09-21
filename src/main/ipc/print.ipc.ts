@@ -13,6 +13,12 @@ type SilentPrintInput = {
   html: string
 }
 
+type DialogPrintInput = {
+  html: string
+}
+
+let dialogPrintInProgress = false
+
 function cleanFileName(value: string) {
   const safeName = String(value || 'report.pdf')
     .replace(/[<>:"/\\|?*]+/g, '-')
@@ -155,6 +161,135 @@ export function registerPrintIpc(): void {
 
         if (tempHtmlPath) {
           await fs.unlink(tempHtmlPath).catch(() => {})
+        }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    'print:dialog-html',
+    async (event, input: DialogPrintInput) => {
+      const html = String(input?.html || '').trim()
+
+      if (!html) {
+        return {
+          ok: false,
+          message: 'لا يوجد محتوى للطباعة',
+        }
+      }
+
+      if (dialogPrintInProgress) {
+        return {
+          ok: false,
+          busy: true,
+          message: 'نافذة الطباعة مفتوحة بالفعل',
+        }
+      }
+
+      dialogPrintInProgress = true
+
+      const parentWindow = BrowserWindow.fromWebContents(event.sender)
+
+      const printWindow = new BrowserWindow({
+        show: false,
+
+        parent: parentWindow ?? undefined,
+
+        modal: Boolean(parentWindow),
+
+        skipTaskbar: true,
+
+        width: 420,
+        height: 700,
+
+        opacity: 0,
+
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+      })
+
+      let tempHtmlPath = ''
+
+      try {
+        tempHtmlPath = path.join(
+          os.tmpdir(),
+          `erp-dialog-print-${Date.now()}.html`,
+        )
+
+        await fs.writeFile(tempHtmlPath, html, 'utf8')
+
+        await printWindow.loadFile(tempHtmlPath)
+
+        /*
+         * لازم الـmodal window تبقى ظاهرة
+         * لكي تظل نافذة الطباعة مرتبطة
+         * بنافذة البرنامج.
+         * opacity = 0 يمنع ظهورها للمستخدم.
+         */
+        printWindow.show()
+
+        const result = await new Promise<{
+          ok: boolean
+          canceled?: boolean
+          message?: string
+        }>((resolve) => {
+          printWindow.webContents.print(
+            {
+              silent: false,
+              printBackground: true,
+            },
+            (success, failureReason) => {
+              if (success) {
+                resolve({
+                  ok: true,
+                })
+
+                return
+              }
+
+              const reason = String(failureReason || '').trim()
+
+              if (reason.toLowerCase().includes('cancel')) {
+                resolve({
+                  ok: false,
+                  canceled: true,
+                })
+
+                return
+              }
+
+              resolve({
+                ok: false,
+
+                message: reason || 'تعذر فتح نافذة الطباعة',
+              })
+            },
+          )
+        })
+
+        return result
+      } catch (error) {
+        return {
+          ok: false,
+
+          message:
+            error instanceof Error ? error.message : 'تعذر فتح نافذة الطباعة',
+        }
+      } finally {
+        if (!printWindow.isDestroyed()) {
+          printWindow.destroy()
+        }
+
+        if (tempHtmlPath) {
+          await fs.unlink(tempHtmlPath).catch(() => {})
+        }
+
+        dialogPrintInProgress = false
+
+        if (parentWindow && !parentWindow.isDestroyed()) {
+          parentWindow.focus()
         }
       }
     },

@@ -1510,8 +1510,7 @@ export default function SalesPage() {
         receipt: receiptData,
         returnHistory: [],
 
-        onBlocked: () =>
-          showMessage('error', 'المتصفح منع فتح نافذة الطباعة', false),
+        onBlocked: () => showMessage('error', 'تعذر فتح نافذة الطباعة', false),
 
         onError: (message) =>
           showMessage('error', message || 'فشل طباعة الفاتورة', false),

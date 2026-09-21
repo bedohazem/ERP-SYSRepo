@@ -1354,6 +1354,13 @@ declare global {
         message?: string
       }>
 
+      printHtmlWithDialog: (input: { html: string }) => Promise<{
+        ok: boolean
+        canceled?: boolean
+        busy?: boolean
+        message?: string
+      }>
+
       getCashDrawerSettings: () => Promise<{
         printer_name: string
         auto_open_cash_sale: boolean

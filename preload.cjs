@@ -267,6 +267,9 @@ contextBridge.exposeInMainWorld('api', {
   savePdfFromHtml: (input) => ipcRenderer.invoke('print:save-pdf', input),
   printHtmlSilent: (input) => ipcRenderer.invoke('print:silent-html', input),
 
+  printHtmlWithDialog: (input) =>
+    ipcRenderer.invoke('print:dialog-html', input),
+
   getCashDrawerSettings: () => ipcRenderer.invoke('cash-drawer:get-settings'),
   saveCashDrawerSettings: (input) =>
     ipcRenderer.invoke('cash-drawer:save-settings', input),

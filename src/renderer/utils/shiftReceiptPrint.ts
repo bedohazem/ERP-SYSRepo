@@ -604,13 +604,13 @@ export async function printShiftCloseReceipt(
     }
   }
 
-  const opened = openReceiptPrintWindow(html)
+  const opened = await openReceiptPrintWindow(html)
 
   if (!opened) {
     return {
       ok: false,
 
-      message: 'المتصفح منع فتح نافذة الطباعة',
+      message: 'تعذر فتح نافذة الطباعة',
     }
   }
 
