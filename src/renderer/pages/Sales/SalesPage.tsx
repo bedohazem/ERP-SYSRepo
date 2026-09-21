@@ -546,6 +546,15 @@ export default function SalesPage() {
   const [editAdminPassword, setEditAdminPassword] = useState('')
 
   const [receiptWasEdit, setReceiptWasEdit] = useState(false)
+  function clearInvoiceEditState() {
+    setEditingSaleId(null)
+    setEditReason('')
+    setEditAdminPassword('')
+    setReceiptWasEdit(false)
+
+    setSearchParams({}, { replace: true })
+  }
+
   const [isCompact, setIsCompact] = useState(false)
 
   const [invoices, setInvoices] = useState<InvoiceTab[]>([createInvoice(1)])
@@ -1286,6 +1295,10 @@ export default function SalesPage() {
   }
 
   function addInvoice() {
+    if (editingSaleId) {
+      return
+    }
+
     const newInvoice = createInvoice(nextInvoiceId)
 
     setInvoices((prev) => [...prev, newInvoice])
@@ -1299,10 +1312,18 @@ export default function SalesPage() {
   }
 
   function closeInvoice(id: number) {
-    if (invoices.length === 1) return
+    if (editingSaleId) {
+      return
+    }
 
-    const filtered = invoices.filter((x) => x.id !== id)
+    if (invoices.length === 1) {
+      return
+    }
+
+    const filtered = invoices.filter((invoice) => invoice.id !== id)
+
     setInvoices(filtered)
+
     setProductResults([])
     setDropdownRect(null)
 
@@ -1327,15 +1348,22 @@ export default function SalesPage() {
       : [...activeInvoice.cart, { ...item, quantity: 1 }]
 
     setActiveCart(nextCart)
-    updateActiveInvoice({
-      barcodeDraft: '',
-      productDraft: '',
-      paidDraft: '',
-      discountDraft: '',
-      discountType: 'amount',
-      paymentMethod: 'cash',
-      notesDraft: '',
-    })
+
+    if (editingSaleId) {
+      updateActiveInvoice({
+        barcodeDraft: '',
+        productDraft: '',
+      })
+    } else {
+      updateActiveInvoice({
+        barcodeDraft: '',
+        productDraft: '',
+        paidDraft: '',
+        discountDraft: '',
+        discountType: 'amount',
+        paymentMethod: 'cash',
+      })
+    }
     setProductResults([])
     setDropdownRect(null)
     focusMainInput()
@@ -1353,13 +1381,14 @@ export default function SalesPage() {
 
     setActiveCart(nextCart)
 
-    updateActiveInvoice({
-      paidDraft: '',
-      discountDraft: '',
-      discountType: 'amount',
-      paymentMethod: 'cash',
-      notesDraft: '',
-    })
+    if (!editingSaleId) {
+      updateActiveInvoice({
+        paidDraft: '',
+        discountDraft: '',
+        discountType: 'amount',
+        paymentMethod: 'cash',
+      })
+    }
   }
 
   function removeLine(variantId: number) {
@@ -1367,13 +1396,14 @@ export default function SalesPage() {
       activeInvoice.cart.filter((item) => item.variant_id !== variantId),
     )
 
-    updateActiveInvoice({
-      paidDraft: '',
-      discountDraft: '',
-      discountType: 'amount',
-      paymentMethod: 'cash',
-      notesDraft: '',
-    })
+    if (!editingSaleId) {
+      updateActiveInvoice({
+        paidDraft: '',
+        discountDraft: '',
+        discountType: 'amount',
+        paymentMethod: 'cash',
+      })
+    }
 
     focusMainInput()
   }
@@ -1672,6 +1702,10 @@ export default function SalesPage() {
         throw new Error(result.message || 'تعذر تعديل الفاتورة')
       }
 
+      if (wasEditing) {
+        clearInvoiceEditState()
+      }
+
       const savedSaleId = Number(result.saleId)
       const usesCashDrawer = splitPaymentEnabled
         ? splitPayments.some(
@@ -1692,21 +1726,6 @@ export default function SalesPage() {
         setReceiptData(receipt)
 
         setReceiptWasEdit(wasEditing)
-
-        if (wasEditing) {
-          setEditingSaleId(null)
-
-          setEditReason('')
-
-          setEditAdminPassword('')
-
-          setSearchParams(
-            {},
-            {
-              replace: true,
-            },
-          )
-        }
       } catch (receiptError) {
         console.error('Failed to load receipt:', receiptError)
 
@@ -1759,6 +1778,22 @@ export default function SalesPage() {
 
         setInvoices(remainingInvoices)
         setActiveInvoiceId(remainingInvoices[0].id)
+      }
+
+      if (wasEditing) {
+        const freshInvoice = createInvoice(nextInvoiceId)
+
+        setInvoices([freshInvoice])
+
+        setActiveInvoiceId(freshInvoice.id)
+
+        setNextInvoiceId((prev) => prev + 1)
+
+        setSplitPaymentEnabled(false)
+
+        setSplitPaymentDrafts({})
+
+        localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
       }
 
       const licenseData = await window.api.getLicenseStatus()
@@ -1866,23 +1901,22 @@ export default function SalesPage() {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'F12') {
+      if (e.key === 'F12' && receiptData) {
         e.preventDefault()
         e.stopPropagation()
 
-        if (receiptData && !printingReceipt) {
+        if (!printingReceipt) {
           void printReceipt()
         }
 
         return
       }
-
       if (showAddCustomerModal || receiptData) return
 
       if (e.key === 'F8') {
         e.preventDefault()
 
-        if (!saving && !openingCashDrawer) {
+        if (!editingSaleId && !saving && !openingCashDrawer) {
           void handleOpenCashDrawer('manual', null, true)
         }
 
@@ -1928,7 +1962,11 @@ export default function SalesPage() {
 
       if (e.key === 'F9') {
         e.preventDefault()
-        addInvoice()
+
+        if (!editingSaleId) {
+          addInvoice()
+        }
+
         return
       }
 
@@ -1961,6 +1999,7 @@ export default function SalesPage() {
     requestedRedeemPoints,
     maxRedeemPoints,
     openingCashDrawer,
+    editingSaleId,
   ])
 
   useEffect(() => {
@@ -2306,7 +2345,36 @@ export default function SalesPage() {
 
           <button
             type="button"
-            onClick={() => navigate('/invoices')}
+            onClick={() => {
+              const freshInvoice = createInvoice(1)
+
+              /*
+               * مهم:
+               * نصفر فاتورة التعديل نفسها قبل إنهاء edit mode،
+               * عشان ما تتحفظش كـ draft بيع عادي.
+               */
+              setInvoices([freshInvoice])
+
+              setActiveInvoiceId(freshInvoice.id)
+
+              setNextInvoiceId(2)
+
+              setProductResults([])
+              setDropdownRect(null)
+              setCustomerSearch('')
+
+              setSplitPaymentEnabled(false)
+              setSplitPaymentDrafts({})
+
+              setShowPaymentModal(false)
+              setReceiptData(null)
+
+              clearInvoiceEditState()
+
+              localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
+
+              navigate('/invoices')
+            }}
             style={{
               ...secondaryOutlineButtonStyle,
 
@@ -2357,30 +2425,46 @@ export default function SalesPage() {
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={addInvoice}
+            disabled={Boolean(editingSaleId)}
+            title={
+              editingSaleId ? 'أنهِ تعديل الفاتورة الحالية أولًا' : undefined
+            }
             style={{
               ...primaryButtonStyle,
               width: isCompact ? '100%' : undefined,
+
+              opacity: editingSaleId ? 0.45 : 1,
+
+              cursor: editingSaleId ? 'not-allowed' : 'pointer',
             }}
           >
-            + فاتورة جديدة F9
+            {editingSaleId ? 'التعديل جارٍ...' : '+ فاتورة جديدة F9'}
           </button>
 
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => void handleOpenCashDrawer('manual', null, true)}
-            disabled={openingCashDrawer || saving}
+            disabled={Boolean(editingSaleId) || openingCashDrawer || saving}
             style={{
               ...secondaryOutlineButtonStyle,
               minWidth: isCompact ? '100%' : '130px',
               width: isCompact ? '100%' : undefined,
               borderColor: 'rgba(34,197,94,0.45)',
               color: '#86efac',
-              opacity: openingCashDrawer || saving ? 0.6 : 1,
-              cursor: openingCashDrawer || saving ? 'not-allowed' : 'pointer',
+              opacity: editingSaleId || openingCashDrawer || saving ? 0.45 : 1,
+
+              cursor:
+                editingSaleId || openingCashDrawer || saving
+                  ? 'not-allowed'
+                  : 'pointer',
             }}
           >
-            {openingCashDrawer ? 'جاري الفتح...' : 'فتح الدرج F8'}
+            {editingSaleId
+              ? 'فتح الدرج غير متاح أثناء التعديل'
+              : openingCashDrawer
+                ? 'جاري الفتح...'
+                : 'فتح الدرج F8'}
           </button>
         </div>
 
@@ -2404,6 +2488,10 @@ export default function SalesPage() {
               <div
                 key={invoice.id}
                 onClick={() => {
+                  if (editingSaleId) {
+                    return
+                  }
+
                   setActiveInvoiceId(invoice.id)
                   setProductResults([])
                   setDropdownRect(null)
@@ -2431,17 +2519,19 @@ export default function SalesPage() {
               >
                 <span>{invoice.title}</span>
 
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    closeInvoice(invoice.id)
-                  }}
-                  style={miniCloseButtonStyle}
-                >
-                  ×
-                </button>
+                {!editingSaleId && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      closeInvoice(invoice.id)
+                    }}
+                    style={miniCloseButtonStyle}
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             )
           })}
@@ -3510,483 +3600,761 @@ export default function SalesPage() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.62)',
+            background: 'rgba(0,0,0,0.68)',
             zIndex: 100000,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '20px',
+            padding: '16px',
+            overflowY: 'auto',
           }}
         >
           <div
             className="theme-modal-card"
             style={{
-              width: '540px',
-              maxWidth: 'calc(100vw - 32px)',
-
-              maxHeight: 'calc(100vh - 32px)',
+              width: isCompact ? '100%' : '880px',
+              maxWidth: 'calc(100vw - 24px)',
+              maxHeight: 'calc(100vh - 24px)',
               overflowY: 'auto',
               overflowX: 'hidden',
 
-              borderRadius: '18px',
+              borderRadius: '20px',
 
               background:
-                'linear-gradient(180deg, rgba(17,24,39,0.98), rgba(15,23,42,0.98))',
+                'linear-gradient(180deg, rgba(17,24,39,0.99), rgba(15,23,42,0.99))',
 
               color: '#f8fafc',
 
-              padding: '18px',
+              padding: isCompact ? '14px' : '18px',
 
               direction: 'rtl',
 
-              boxShadow: '0 28px 80px rgba(0,0,0,0.55)',
+              boxShadow: '0 30px 90px rgba(0,0,0,0.60)',
 
               border: '1px solid rgba(255,255,255,0.10)',
 
               display: 'grid',
-
-              gap: '10px',
+              gap: '14px',
 
               boxSizing: 'border-box',
             }}
           >
+            {/* HEADER */}
             <div
               style={{
                 display: 'flex',
+                alignItems: 'center',
                 justifyContent: 'space-between',
-                alignItems: 'center',
+                gap: '14px',
+
                 padding: '14px 16px',
+
                 borderRadius: '14px',
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.10)',
-                fontWeight: 900,
-                fontSize: '20px',
+
+                background: 'rgba(124,58,237,0.10)',
+
+                border: '1px solid rgba(124,58,237,0.30)',
               }}
             >
-              <span>الإجمالي</span>
-              <strong>{money(grandTotal)} ج.م</strong>
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                gap: '10px',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <button
-                type="button"
-                className={`discount-toggle-button ${
-                  activeInvoice.discountType === 'amount' ? 'is-active' : ''
-                }`}
-                onClick={() => changeDiscountType('amount')}
-                style={paymentToggleButtonStyle}
-              >
-                خصم جنيه
-              </button>
-
-              <button
-                type="button"
-                className={`discount-toggle-button ${
-                  activeInvoice.discountType === 'percent' ? 'is-active' : ''
-                }`}
-                onClick={() => changeDiscountType('percent')}
-                style={paymentToggleButtonStyle}
-              >
-                خصم %
-              </button>
-            </div>
-
-            <label style={paymentLabelStyle}>
-              الخصم
-              <input
-                type="number"
-                min={0}
-                value={activeInvoice.discountDraft}
-                onChange={(e) => updateDiscountDraft(e.target.value)}
-                placeholder={
-                  activeInvoice.discountType === 'percent'
-                    ? 'مثال: 10%'
-                    : 'مثال: 50'
-                }
-                style={paymentInputStyle}
-              />
-            </label>
-
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '14px 16px',
-                borderRadius: '14px',
-                background: 'rgba(124,58,237,0.12)',
-                border: '1px solid rgba(124,58,237,0.35)',
-              }}
-            >
-              <span
-                style={{
-                  color: '#c4b5fd',
-                  fontWeight: 900,
-                }}
-              >
-                الإجمالي بعد الخصم
-              </span>
-
-              <strong
-                style={{
-                  fontSize: '22px',
-                  color: '#fff',
-                }}
-              >
-                {money(grandTotal)} ج.م
-              </strong>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                const next = !splitPaymentEnabled
-
-                setSplitPaymentEnabled(next)
-
-                if (next) {
-                  setSplitPaymentDrafts({
-                    cash: grandTotal.toFixed(2),
-                  })
-                }
-              }}
-              style={{
-                ...clearButtonStyle,
-                width: '100%',
-                minHeight: '44px',
-              }}
-            >
-              {splitPaymentEnabled
-                ? 'إلغاء تقسيم الدفع'
-                : 'تقسيم الدفع على أكثر من وسيلة'}
-            </button>
-
-            {!splitPaymentEnabled && (
-              <>
-                <label style={paymentLabelStyle}>
-                  المدفوع
-                  <input
-                    type="number"
-                    min={0}
-                    autoFocus
-                    value={activeInvoice.paidDraft}
-                    onChange={(e) =>
-                      updateActiveInvoice({
-                        paidDraft: e.target.value,
-                      })
-                    }
-                    style={{
-                      ...paymentInputStyle,
-                      borderColor: '#7c3aed',
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        void saveSale()
-                      }
-
-                      if (e.key === 'Escape') {
-                        setShowPaymentModal(false)
-                      }
-                    }}
-                  />
-                </label>
-
-                <label style={paymentLabelStyle}>
-                  طريقة الدفع
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                      gap: '10px',
-                    }}
-                  >
-                    {paymentOptions.map((option) => {
-                      const active =
-                        activeInvoice.paymentMethod === option.value
-
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() =>
-                            updateActiveInvoice({
-                              paymentMethod: option.value,
-                            })
-                          }
-                          style={{
-                            minHeight: '58px',
-                            borderRadius: '14px',
-                            border: active
-                              ? '1px solid rgba(124,58,237,0.95)'
-                              : '1px solid rgba(255,255,255,0.12)',
-                            background: active
-                              ? 'linear-gradient(135deg, rgba(37,99,235,0.36), rgba(124,58,237,0.44))'
-                              : 'rgba(255,255,255,0.055)',
-                            color: active ? '#fff' : '#cbd5e1',
-                            fontWeight: 950,
-                            cursor: 'pointer',
-                            display: 'grid',
-                            placeItems: 'center',
-                            textAlign: 'center',
-                            padding: '8px 10px',
-                            boxShadow: active
-                              ? '0 0 0 3px rgba(124,58,237,0.16)'
-                              : 'none',
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </label>
-              </>
-            )}
-
-            {splitPaymentEnabled && (
               <div
                 style={{
                   display: 'grid',
-                  gap: '10px',
+                  gap: '3px',
                 }}
               >
-                <strong>تقسيم مبلغ الفاتورة</strong>
-
-                {paymentOptions.map((option) => (
-                  <label
-                    key={option.value}
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'minmax(120px, 1fr) 150px',
-                      gap: '10px',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <span>{option.label}</span>
-
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={splitPaymentDrafts[option.value] || ''}
-                      onChange={(e) =>
-                        setSplitPaymentDrafts((prev) => ({
-                          ...prev,
-                          [option.value]: e.target.value,
-                        }))
-                      }
-                      placeholder="0.00"
-                      style={paymentInputStyle}
-                    />
-                  </label>
-                ))}
-
-                <div
+                <strong
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    padding: '10px 12px',
-                    borderRadius: '12px',
-                    background: 'rgba(255,255,255,0.06)',
+                    fontSize: '16px',
+                    color: '#e9d5ff',
                   }}
                 >
-                  <span>إجمالي المدفوع بالوسائل</span>
+                  {editingSaleId
+                    ? `تعديل فاتورة #${editingSaleId}`
+                    : 'إتمام عملية البيع'}
+                </strong>
 
-                  <strong>{money(splitPaidReceived)} ج.م</strong>
-                </div>
+                <span
+                  style={{
+                    color: '#94a3b8',
+                    fontSize: '12px',
+                  }}
+                >
+                  {editingSaleId
+                    ? 'راجع البيانات ثم احفظ التعديل'
+                    : 'راجع المبلغ وطريقة الدفع قبل الحفظ'}
+                </span>
               </div>
-            )}
+
+              <div
+                style={{
+                  display: 'grid',
+                  justifyItems: 'end',
+                  gap: '2px',
+                }}
+              >
+                <span
+                  style={{
+                    color: '#94a3b8',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                  }}
+                >
+                  الإجمالي
+                </span>
+
+                <strong
+                  style={{
+                    fontSize: isCompact ? '22px' : '26px',
+
+                    color: '#fff',
+
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {money(grandTotal)} ج.م
+                </strong>
+              </div>
+            </div>
+
+            {/* MAIN CONTENT */}
             <div
               style={{
-                padding: '14px',
-                borderRadius: '14px',
-                background:
-                  changeAmount > 0
-                    ? 'rgba(16,185,129,0.10)'
-                    : remainingAmount > 0
-                      ? 'rgba(249,115,22,0.10)'
-                      : 'rgba(255,255,255,0.06)',
-                border:
-                  changeAmount > 0
-                    ? '1px solid rgba(16,185,129,0.25)'
-                    : remainingAmount > 0
-                      ? '1px solid rgba(249,115,22,0.25)'
-                      : '1px solid rgba(255,255,255,0.10)',
                 display: 'grid',
-                gap: '8px',
-                fontWeight: 900,
+
+                gridTemplateColumns: isCompact
+                  ? '1fr'
+                  : 'minmax(0, 1.05fr) minmax(0, 0.95fr)',
+
+                gap: '14px',
+
+                alignItems: 'start',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>الإجمالي قبل الخصومات</span>
+              {/* RIGHT COLUMN - PAYMENT */}
+              <div
+                style={{
+                  display: 'grid',
+                  gap: '12px',
+                  minWidth: 0,
+                }}
+              >
+                <div
+                  style={{
+                    padding: '12px',
 
-                {effectivePromotion && (
+                    borderRadius: '14px',
+
+                    background: 'rgba(255,255,255,0.035)',
+
+                    border: '1px solid rgba(255,255,255,0.08)',
+
+                    display: 'grid',
+                    gap: '10px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '10px',
+                    }}
+                  >
+                    <strong>الخصم</strong>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '6px',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className={`discount-toggle-button ${
+                          activeInvoice.discountType === 'amount'
+                            ? 'is-active'
+                            : ''
+                        }`}
+                        onClick={() => changeDiscountType('amount')}
+                        style={{
+                          ...paymentToggleButtonStyle,
+                          height: '34px',
+                          padding: '0 12px',
+                        }}
+                      >
+                        جنيه
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`discount-toggle-button ${
+                          activeInvoice.discountType === 'percent'
+                            ? 'is-active'
+                            : ''
+                        }`}
+                        onClick={() => changeDiscountType('percent')}
+                        style={{
+                          ...paymentToggleButtonStyle,
+                          height: '34px',
+                          padding: '0 12px',
+                        }}
+                      >
+                        %
+                      </button>
+                    </div>
+                  </div>
+
+                  <input
+                    type="number"
+                    min={0}
+                    value={activeInvoice.discountDraft}
+                    onChange={(e) => updateDiscountDraft(e.target.value)}
+                    placeholder={
+                      activeInvoice.discountType === 'percent'
+                        ? 'مثال: 10'
+                        : 'مثال: 50'
+                    }
+                    style={paymentInputStyle}
+                  />
+
                   <div
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
+                      alignItems: 'center',
+
+                      padding: '10px 12px',
+
+                      borderRadius: '11px',
+
+                      background: 'rgba(124,58,237,0.10)',
+
+                      border: '1px solid rgba(124,58,237,0.25)',
                     }}
                   >
-                    <span>عرض: {effectivePromotion.name}</span>
-
-                    <strong
+                    <span
                       style={{
-                        color: '#86efac',
+                        color: '#c4b5fd',
+                        fontWeight: 800,
                       }}
                     >
-                      {money(promotionDiscountValue)} ج.م
-                    </strong>
+                      بعد الخصم
+                    </span>
+
+                    <strong>{money(grandTotal)} ج.م</strong>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !splitPaymentEnabled
+
+                    setSplitPaymentEnabled(next)
+
+                    if (next) {
+                      setSplitPaymentDrafts({
+                        cash: grandTotal.toFixed(2),
+                      })
+                    }
+                  }}
+                  style={{
+                    minHeight: '42px',
+
+                    borderRadius: '11px',
+
+                    border: '1px dashed rgba(124,58,237,0.55)',
+
+                    background: splitPaymentEnabled
+                      ? 'rgba(124,58,237,0.16)'
+                      : 'rgba(255,255,255,0.025)',
+
+                    color: '#c4b5fd',
+
+                    fontWeight: 850,
+
+                    cursor: 'pointer',
+                  }}
+                >
+                  {splitPaymentEnabled
+                    ? 'إلغاء تقسيم الدفع'
+                    : 'تقسيم الدفع على أكثر من وسيلة'}
+                </button>
+
+                {!splitPaymentEnabled && (
+                  <>
+                    <label style={paymentLabelStyle}>
+                      المدفوع
+                      <input
+                        type="number"
+                        min={0}
+                        autoFocus
+                        value={activeInvoice.paidDraft}
+                        onChange={(e) =>
+                          updateActiveInvoice({
+                            paidDraft: e.target.value,
+                          })
+                        }
+                        style={{
+                          ...paymentInputStyle,
+                          borderColor: 'rgba(124,58,237,0.75)',
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            void saveSale()
+                          }
+
+                          if (e.key === 'Escape') {
+                            setShowPaymentModal(false)
+                          }
+                        }}
+                      />
+                    </label>
+
+                    <label style={paymentLabelStyle}>
+                      طريقة الدفع
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+
+                          gap: '8px',
+                        }}
+                      >
+                        {paymentOptions.map((option) => {
+                          const active =
+                            activeInvoice.paymentMethod === option.value
+
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() =>
+                                updateActiveInvoice({
+                                  paymentMethod: option.value,
+                                })
+                              }
+                              style={{
+                                minHeight: '48px',
+
+                                borderRadius: '11px',
+
+                                border: active
+                                  ? '1px solid rgba(124,58,237,0.95)'
+                                  : '1px solid rgba(255,255,255,0.10)',
+
+                                background: active
+                                  ? 'linear-gradient(135deg, rgba(37,99,235,0.34), rgba(124,58,237,0.42))'
+                                  : 'rgba(255,255,255,0.045)',
+
+                                color: active ? '#fff' : '#cbd5e1',
+
+                                fontWeight: 900,
+
+                                cursor: 'pointer',
+
+                                display: 'grid',
+
+                                placeItems: 'center',
+
+                                textAlign: 'center',
+
+                                padding: '7px 8px',
+
+                                boxShadow: active
+                                  ? '0 0 0 2px rgba(124,58,237,0.14)'
+                                  : 'none',
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </label>
+                  </>
+                )}
+
+                {splitPaymentEnabled && (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: '8px',
+
+                      padding: '12px',
+
+                      borderRadius: '14px',
+
+                      background: 'rgba(255,255,255,0.035)',
+
+                      border: '1px solid rgba(255,255,255,0.08)',
+                    }}
+                  >
+                    <strong>تقسيم مبلغ الفاتورة</strong>
+
+                    {paymentOptions.map((option) => (
+                      <label
+                        key={option.value}
+                        style={{
+                          display: 'grid',
+
+                          gridTemplateColumns: isCompact
+                            ? '1fr'
+                            : 'minmax(120px, 1fr) 130px',
+
+                          gap: '8px',
+
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span>{option.label}</span>
+
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={splitPaymentDrafts[option.value] || ''}
+                          onChange={(e) =>
+                            setSplitPaymentDrafts((prev) => ({
+                              ...prev,
+                              [option.value]: e.target.value,
+                            }))
+                          }
+                          placeholder="0.00"
+                          style={{
+                            ...paymentInputStyle,
+                            height: '42px',
+                            fontSize: '15px',
+                          }}
+                        />
+                      </label>
+                    ))}
+
+                    <div
+                      style={{
+                        display: 'flex',
+
+                        justifyContent: 'space-between',
+
+                        padding: '9px 10px',
+
+                        borderRadius: '10px',
+
+                        background: 'rgba(255,255,255,0.05)',
+                      }}
+                    >
+                      <span>إجمالي المدفوع</span>
+
+                      <strong>{money(splitPaidReceived)} ج.م</strong>
+                    </div>
                   </div>
                 )}
-                <strong>{money(subTotal)} ج.م</strong>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>الخصم</span>
-                <strong>{money(normalDiscountValue)} ج.م</strong>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>خصم النقاط</span>
-                <strong>{money(loyaltyDiscountValue)} ج.م</strong>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>المطلوب</span>
-                <strong>{money(grandTotal)} ج.م</strong>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>الباقي للعميل</span>
-                <strong style={{ color: '#16a34a' }}>
-                  {money(changeAmount)} ج.م
-                </strong>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>مديونية على العميل</span>
-                <strong style={{ color: '#ea580c' }}>
-                  {money(remainingAmount)} ج.م
-                </strong>
-              </div>
-            </div>
-
-            {remainingAmount > 0 && !activeInvoice.customer && (
-              <div
-                style={{
-                  padding: '12px',
-                  borderRadius: '12px',
-                  background: 'rgba(239,68,68,0.12)',
-                  border: '1px solid rgba(239,68,68,0.28)',
-                  color: '#fca5a5',
-                  fontWeight: 900,
-                  textAlign: 'center',
-                }}
-              >
-                لازم تختار عميل لتسجيل المديونية.
-              </div>
-            )}
-
-            {editingSaleId && (
+              {/* LEFT COLUMN - SUMMARY */}
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: isCompact ? '1fr' : '1fr 1fr',
-                  gap: '10px',
-                  padding: '12px',
-                  borderRadius: '14px',
-                  background: 'rgba(59,130,246,0.08)',
-                  border: '1px solid rgba(59,130,246,0.22)',
+                  gap: '12px',
+                  minWidth: 0,
                 }}
               >
-                <label style={paymentLabelStyle}>
-                  سبب التعديل
-                  <input
-                    value={editReason}
-                    onChange={(e) => setEditReason(e.target.value)}
-                    placeholder="مثال: تعديل كمية أو طريقة دفع"
-                    style={paymentInputStyle}
-                  />
-                </label>
-
-                <label style={paymentLabelStyle}>
-                  كلمة مرور المدير
-                  <input
-                    type="password"
-                    value={editAdminPassword}
-                    onChange={(e) => setEditAdminPassword(e.target.value)}
-                    placeholder="عند الحاجة فقط"
-                    style={paymentInputStyle}
-                  />
-                </label>
-              </div>
-            )}
-
-            <label
-              style={{
-                ...paymentLabelStyle,
-                gap: '6px',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <span>ملاحظات الفاتورة</span>
-
-                <span
+                <div
                   style={{
-                    color: '#64748b',
-                    fontSize: '11px',
-                    fontWeight: 700,
+                    padding: '12px',
+
+                    borderRadius: '14px',
+
+                    background: 'rgba(255,255,255,0.035)',
+
+                    border: '1px solid rgba(255,255,255,0.08)',
+
+                    display: 'grid',
+
+                    gap: '7px',
                   }}
                 >
-                  اختياري
-                </span>
+                  {[
+                    {
+                      label: 'الإجمالي قبل الخصومات',
+
+                      value: money(subTotal),
+
+                      color: '#f8fafc',
+                    },
+
+                    ...(normalDiscountValue > 0
+                      ? [
+                          {
+                            label: 'الخصم',
+
+                            value: money(normalDiscountValue),
+
+                            color: '#f8fafc',
+                          },
+                        ]
+                      : []),
+
+                    ...(promotionDiscountValue > 0
+                      ? [
+                          {
+                            label: effectivePromotion?.name
+                              ? `خصم العرض (${effectivePromotion.name})`
+                              : 'خصم العرض',
+
+                            value: money(promotionDiscountValue),
+
+                            color: '#86efac',
+                          },
+                        ]
+                      : []),
+
+                    ...(loyaltyDiscountValue > 0
+                      ? [
+                          {
+                            label: 'خصم النقاط',
+
+                            value: money(loyaltyDiscountValue),
+
+                            color: '#f8fafc',
+                          },
+                        ]
+                      : []),
+
+                    {
+                      label: 'المطلوب',
+
+                      value: money(grandTotal),
+
+                      color: '#c4b5fd',
+                    },
+
+                    ...(changeAmount > 0
+                      ? [
+                          {
+                            label: 'الباقي للعميل',
+
+                            value: money(changeAmount),
+
+                            color: '#22c55e',
+                          },
+                        ]
+                      : []),
+
+                    ...(remainingAmount > 0
+                      ? [
+                          {
+                            label: 'مديونية على العميل',
+
+                            value: money(remainingAmount),
+
+                            color: '#f97316',
+                          },
+                        ]
+                      : []),
+                  ].map((row) => (
+                    <div
+                      key={row.label}
+                      style={{
+                        display: 'flex',
+
+                        alignItems: 'center',
+
+                        justifyContent: 'space-between',
+
+                        gap: '12px',
+
+                        minHeight: '24px',
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: '#cbd5e1',
+
+                          fontSize: '13px',
+
+                          fontWeight: 700,
+                        }}
+                      >
+                        {row.label}
+                      </span>
+
+                      <strong
+                        style={{
+                          color: row.color,
+
+                          fontSize: '14px',
+
+                          fontWeight: 900,
+
+                          whiteSpace: 'nowrap',
+
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        {row.value} ج.م
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+
+                {remainingAmount > 0 && !activeInvoice.customer && (
+                  <div
+                    style={{
+                      padding: '10px 12px',
+
+                      borderRadius: '11px',
+
+                      background: 'rgba(239,68,68,0.10)',
+
+                      border: '1px solid rgba(239,68,68,0.24)',
+
+                      color: '#fca5a5',
+
+                      fontWeight: 800,
+
+                      fontSize: '13px',
+
+                      textAlign: 'center',
+                    }}
+                  >
+                    لازم تختار عميل لتسجيل المديونية.
+                  </div>
+                )}
+
+                {editingSaleId && (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: '10px',
+
+                      padding: '12px',
+
+                      borderRadius: '14px',
+
+                      background: 'rgba(59,130,246,0.07)',
+
+                      border: '1px solid rgba(59,130,246,0.20)',
+                    }}
+                  >
+                    <strong
+                      style={{
+                        color: '#93c5fd',
+
+                        fontSize: '13px',
+                      }}
+                    >
+                      بيانات التعديل
+                    </strong>
+
+                    <label style={paymentLabelStyle}>
+                      سبب التعديل
+                      <input
+                        value={editReason}
+                        onChange={(e) => setEditReason(e.target.value)}
+                        placeholder="مثال: تعديل كمية أو طريقة دفع"
+                        style={{
+                          ...paymentInputStyle,
+                          height: '42px',
+                          fontSize: '15px',
+                        }}
+                      />
+                    </label>
+
+                    <label style={paymentLabelStyle}>
+                      كلمة مرور المدير
+                      <input
+                        type="password"
+                        value={editAdminPassword}
+                        onChange={(e) => setEditAdminPassword(e.target.value)}
+                        placeholder="عند الحاجة فقط"
+                        style={{
+                          ...paymentInputStyle,
+                          height: '42px',
+                          fontSize: '15px',
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
+
+                <label
+                  style={{
+                    ...paymentLabelStyle,
+                    gap: '6px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+
+                      alignItems: 'center',
+
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <span>ملاحظات الفاتورة</span>
+
+                    <span
+                      style={{
+                        color: '#64748b',
+
+                        fontSize: '11px',
+
+                        fontWeight: 700,
+                      }}
+                    >
+                      اختياري
+                    </span>
+                  </div>
+
+                  <input
+                    type="text"
+                    value={activeInvoice.notesDraft}
+                    onChange={(e) =>
+                      updateActiveInvoice({
+                        notesDraft: e.target.value,
+                      })
+                    }
+                    placeholder="مثال: العميل سيستلم الطلب مساءً"
+                    style={{
+                      ...paymentInputStyle,
+                      height: '42px',
+                      fontSize: '15px',
+                    }}
+                  />
+                </label>
               </div>
+            </div>
 
-              <input
-                type="text"
-                value={activeInvoice.notesDraft}
-                onChange={(e) =>
-                  updateActiveInvoice({
-                    notesDraft: e.target.value,
-                  })
-                }
-                placeholder="مثال: العميل سيستلم الطلب مساءً"
-                style={paymentInputStyle}
-              />
-            </label>
-
+            {/* ACTIONS */}
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '12px',
-                marginTop: '6px',
+
+                gridTemplateColumns: isCompact ? '1fr' : '1fr 1fr',
+
+                gap: '10px',
+
+                paddingTop: '4px',
               }}
             >
               <button
                 type="button"
                 onClick={() => setShowPaymentModal(false)}
                 style={{
-                  height: '46px',
+                  height: '48px',
+
                   borderRadius: '12px',
-                  border: '1px solid rgba(124,58,237,0.70)',
-                  background: 'rgba(255,255,255,0.04)',
+
+                  border: '1px solid rgba(124,58,237,0.55)',
+
+                  background: 'rgba(255,255,255,0.035)',
+
                   color: '#c4b5fd',
+
                   fontWeight: 900,
+
                   cursor: 'pointer',
                 }}
               >
@@ -4000,16 +4368,25 @@ export default function SalesPage() {
                   saving || (remainingAmount > 0 && !activeInvoice.customer)
                 }
                 style={{
-                  height: '46px',
+                  height: '48px',
+
                   borderRadius: '12px',
+
                   border: 'none',
+
                   background: 'linear-gradient(135deg, #6d5dfc, #7c3aed)',
+
                   color: '#fff',
+
                   fontWeight: 900,
+
+                  fontSize: '15px',
+
                   cursor:
                     saving || (remainingAmount > 0 && !activeInvoice.customer)
                       ? 'not-allowed'
                       : 'pointer',
+
                   opacity:
                     saving || (remainingAmount > 0 && !activeInvoice.customer)
                       ? 0.6
