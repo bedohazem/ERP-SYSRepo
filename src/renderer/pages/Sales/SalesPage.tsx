@@ -625,6 +625,13 @@ export default function SalesPage() {
           throw new Error('لا يمكن تعديل فاتورة ملغاة')
         }
 
+        if (
+          Number(receipt.sale?.promotion_id || 0) > 0 ||
+          Number(receipt.sale?.promotion_discount_value || 0) > 0
+        ) {
+          throw new Error('لا يمكن تعديل فاتورة تم إنشاؤها بعرض')
+        }
+
         const groupedItems = new Map<number, CartItem>()
 
         for (const item of receipt.items || []) {
@@ -867,6 +874,8 @@ export default function SalesPage() {
   const activeInvoice =
     invoices.find((x) => x.id === activeInvoiceId) ?? invoices[0]
 
+  const effectivePromotion = editingSaleId ? null : activePromotion
+
   const subTotal = useMemo(
     () =>
       activeInvoice.cart.reduce(
@@ -877,8 +886,8 @@ export default function SalesPage() {
   )
 
   const promotionDiscountValue = useMemo(
-    () => getPromotionDiscountForCart(activePromotion, activeInvoice.cart),
-    [activePromotion, activeInvoice.cart],
+    () => getPromotionDiscountForCart(effectivePromotion, activeInvoice.cart),
+    [effectivePromotion, activeInvoice.cart],
   )
 
   const totalAfterPromotion = Math.max(0, subTotal - promotionDiscountValue)
@@ -986,14 +995,16 @@ export default function SalesPage() {
       return
     }
 
-    let latestPromotion = activePromotion
+    let latestPromotion = editingSaleId ? null : activePromotion
 
-    try {
-      latestPromotion = await window.api.getActivePromotion()
+    if (!editingSaleId) {
+      try {
+        latestPromotion = await window.api.getActivePromotion()
 
-      setActivePromotion(latestPromotion || null)
-    } catch (error) {
-      console.error('Failed to refresh promotion:', error)
+        setActivePromotion(latestPromotion || null)
+      } catch (error) {
+        console.error('Failed to refresh promotion:', error)
+      }
     }
 
     const nextPromotionDiscount = getPromotionDiscountForCart(
@@ -1590,7 +1601,7 @@ export default function SalesPage() {
       const salePayload = {
         customer_id: activeInvoice.customer?.id ?? null,
 
-        promotion_id: activePromotion?.id ?? null,
+        promotion_id: editingSaleId ? null : (activePromotion?.id ?? null),
 
         sub_total: subTotal,
 
@@ -2451,7 +2462,7 @@ export default function SalesPage() {
       >
         <h2 style={{ margin: '0 0 24px', textAlign: 'right' }}>فاتورة بيع</h2>
 
-        {activePromotion && (
+        {effectivePromotion && (
           <div
             style={{
               marginBottom: '16px',
@@ -2471,7 +2482,7 @@ export default function SalesPage() {
                 color: '#86efac',
               }}
             >
-              🎁 عرض فعال: {activePromotion.name}
+              🎁 عرض فعال: {effectivePromotion.name}
             </strong>
 
             <span>
@@ -3817,14 +3828,14 @@ export default function SalesPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>الإجمالي قبل الخصومات</span>
 
-                {activePromotion && (
+                {effectivePromotion && (
                   <div
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
                     }}
                   >
-                    <span>عرض: {activePromotion.name}</span>
+                    <span>عرض: {effectivePromotion.name}</span>
 
                     <strong
                       style={{

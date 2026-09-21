@@ -26,6 +26,10 @@ import {
   togglePromotion,
 } from '../../src/main/database/repositories/promotions.repo'
 import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
+import {
+  recordCustomerPayment,
+  cancelCustomerPaymentBatch,
+} from '../../src/main/database/repositories/customers.repo'
 
 type SaleVariantTestRow = {
   variant_id: number
@@ -3741,5 +3745,428 @@ describe('sales repository', () => {
       store_cash: 100,
       owner_bank: 50,
     })
+  })
+
+  it('prevents editing a sale that was created with a promotion', () => {
+    const variant = seedProduct()
+
+    const promotion = createPromotion({
+      name: 'Edit Protection Offer',
+      type: 'percent',
+      value: 25,
+      scope_type: 'all',
+      actor_id: 1,
+    })
+
+    togglePromotion(promotion.promotionId, 1)
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+
+      promotion_id: promotion.promotionId,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 112.5,
+
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 112.5,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+          color: variant.color,
+
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(() =>
+      updateSaleInvoice({
+        sale_id: sale.saleId,
+        actor_id: 1,
+
+        customer_id: null,
+
+        sub_total: 150,
+        discount_value: 0,
+        grand_total: 150,
+
+        change_amount: 0,
+
+        payment_method: 'cash',
+        paid: 150,
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            product_name: variant.product_name,
+
+            barcode: variant.barcode,
+
+            size: variant.size,
+            color: variant.color,
+
+            quantity: 1,
+            unit_price: 150,
+          },
+        ],
+      }),
+    ).toThrow('لا يمكن تعديل فاتورة تم إنشاؤها بعرض')
+  })
+
+  it('prevents a new active promotion from changing an old sale during edit', () => {
+    const variant = seedProduct()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 150,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+          color: variant.color,
+
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const promotion = createPromotion({
+      name: 'New Offer After Sale',
+      type: 'percent',
+      value: 25,
+      scope_type: 'all',
+      actor_id: 1,
+    })
+
+    togglePromotion(promotion.promotionId, 1)
+
+    expect(() =>
+      updateSaleInvoice({
+        sale_id: sale.saleId,
+        actor_id: 1,
+
+        customer_id: null,
+
+        sub_total: 150,
+        discount_value: 0,
+        grand_total: 150,
+
+        change_amount: 0,
+
+        payment_method: 'cash',
+        paid: 150,
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            product_name: variant.product_name,
+
+            barcode: variant.barcode,
+
+            size: variant.size,
+            color: variant.color,
+
+            quantity: 1,
+            unit_price: 150,
+          },
+        ],
+      }),
+    ).toThrow('لا يمكن تعديل الفاتورة لأن هناك عرضًا نشطًا ينطبق على أصنافها')
+  })
+
+  it('recalculates customer debt correctly when editing a credit sale', () => {
+    const variant = seedProduct()
+    const customerId = createTestCustomer()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customerId,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      paid: 50,
+      change_amount: 0,
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+          color: variant.color,
+
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(getCustomerBalance(customerId)).toBe(100)
+
+    updateSaleInvoice({
+      sale_id: sale.saleId,
+      actor_id: 1,
+
+      customer_id: customerId,
+
+      sub_total: 300,
+      discount_value: 0,
+      grand_total: 300,
+
+      paid: 100,
+      change_amount: 0,
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+          color: variant.color,
+
+          quantity: 2,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(getCustomerBalance(customerId)).toBe(200)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    expect(Number(receipt.sale.remaining_amount)).toBe(200)
+
+    expect(receipt.sale.payment_status).toBe('partial')
+  })
+
+  it('prevents editing a sale that has customer payment history even after payment cancellation', () => {
+    const variant = seedProduct()
+    const customerId = createTestCustomer()
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customerId,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      paid: 50,
+      change_amount: 0,
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+          color: variant.color,
+
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const payment = recordCustomerPayment({
+      customer_id: customerId,
+
+      sale_id: sale.saleId,
+
+      amount: 25,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    cancelCustomerPaymentBatch({
+      batch_id: payment.payment_batch_id,
+
+      actor_id: 1,
+
+      reason: 'اختبار إلغاء دفعة',
+    })
+
+    expect(() =>
+      updateSaleInvoice({
+        sale_id: sale.saleId,
+
+        actor_id: 1,
+
+        customer_id: customerId,
+
+        sub_total: 300,
+        discount_value: 0,
+        grand_total: 300,
+
+        paid: 100,
+
+        change_amount: 0,
+
+        payment_method: 'cash',
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            product_name: variant.product_name,
+
+            barcode: variant.barcode,
+
+            size: variant.size,
+
+            color: variant.color,
+
+            quantity: 2,
+
+            unit_price: 150,
+          },
+        ],
+      }),
+    ).toThrow('لا يمكن تعديل فاتورة لها سجل دفعات عميل سابق')
+  })
+
+  it('reverses old loyalty effect and applies the edited sale loyalty values once', () => {
+    const variant = seedProduct()
+    const customerId = createTestCustomer()
+
+    setCustomerPoints(customerId, 10)
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customerId,
+
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 195,
+
+      paid: 195,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      loyalty_points_redeemed: 5,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+          color: variant.color,
+
+          quantity: 2,
+          unit_price: 100,
+        },
+      ],
+    })
+
+    /*
+     * البداية 10
+     * -5 مستخدمة
+     * +1 مكتسبة
+     * = 6
+     */
+    expect(getCustomerPoints(customerId)).toBe(6)
+
+    updateSaleInvoice({
+      sale_id: sale.saleId,
+      actor_id: 1,
+
+      customer_id: customerId,
+
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 198,
+
+      paid: 198,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      loyalty_points_redeemed: 2,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+          color: variant.color,
+
+          quantity: 2,
+          unit_price: 100,
+        },
+      ],
+    })
+
+    /*
+     * نرجع أثر القديمة:
+     * 6 - 1 + 5 = 10
+     *
+     * الجديدة:
+     * 10 - 2 + 1 = 9
+     */
+    expect(getCustomerPoints(customerId)).toBe(9)
+
+    expect(getLoyaltyTransactionsCount(customerId)).toBe(2)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    expect(Number(receipt.sale.loyalty_points_redeemed)).toBe(2)
+
+    expect(Number(receipt.sale.loyalty_points_earned)).toBe(1)
   })
 })

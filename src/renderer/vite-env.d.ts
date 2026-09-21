@@ -459,6 +459,8 @@ declare global {
           total_quantity: number
           returned_quantity: number
           return_count: number
+          customer_payment_history_count?: number
+          cancelled_return_count?: number
           total_return_amount: number
           cancelled_at?: string | null
           cancelled_by?: number | null

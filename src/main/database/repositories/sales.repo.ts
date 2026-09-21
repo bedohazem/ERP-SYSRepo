@@ -1466,11 +1466,36 @@ export function listSales(input?: {
         ), 0) AS return_count,
 
         IFNULL((
+          SELECT COUNT(*)
+          FROM sale_returns sr
+          WHERE sr.original_sale_id = s.id
+            AND sr.cancelled_at IS NOT NULL
+        ), 0) AS cancelled_return_count,
+
+        IFNULL((
           SELECT SUM(sr.refund_amount)
           FROM sale_returns sr
           WHERE sr.original_sale_id = s.id
             AND sr.cancelled_at IS NULL
         ), 0) AS total_return_amount,
+
+
+        IFNULL((
+          SELECT COUNT(*)
+
+          FROM customer_payments cp
+
+          WHERE cp.sale_id = s.id
+        ), 0)
+        +
+        IFNULL((
+          SELECT COUNT(*)
+
+          FROM customer_payment_batches cpb
+
+          WHERE cpb.sale_id = s.id
+        ), 0)
+          AS customer_payment_history_count,
 
         IFNULL((
           SELECT COUNT(*)
@@ -2875,6 +2900,30 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       throw new Error('لا يمكن تعديل فاتورة ملغاة')
     }
 
+    if (
+      Number(sale.promotion_id || 0) > 0 ||
+      Number(sale.promotion_discount_value || 0) > 0
+    ) {
+      throw new Error('لا يمكن تعديل فاتورة تم إنشاؤها بعرض')
+    }
+
+    const editPromotionResult = calculateActivePromotionForSale(input.items)
+
+    const editPromotionDiscount = Math.max(
+      0,
+      Number(editPromotionResult.promotion_discount_value || 0),
+    )
+
+    if (editPromotionDiscount > 0) {
+      throw new Error(
+        'لا يمكن تعديل الفاتورة لأن هناك عرضًا نشطًا ينطبق على أصنافها',
+      )
+    }
+
+    const neutralPromotionId = editPromotionResult.promotion?.id
+      ? Number(editPromotionResult.promotion.id)
+      : null
+
     /*
      * لا نعدل فاتورة دخل عليها مرتجع.
      */
@@ -2886,13 +2935,14 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         FROM sale_returns
 
         WHERE original_sale_id = ?
-          AND cancelled_at IS NULL
         `,
       )
       .get(saleId) as any
 
     if (Number(returnsRow?.count || 0) > 0) {
-      throw new Error('لا يمكن تعديل الفاتورة قبل إلغاء المرتجعات الخاصة بها')
+      throw new Error(
+        'لا يمكن تعديل فاتورة لها سجل مرتجعات سابق، حتى لو كان المرتجع ملغيًا',
+      )
     }
 
     /*
@@ -2906,40 +2956,46 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         FROM sale_exchanges
 
         WHERE original_sale_id = ?
-          AND cancelled_at IS NULL
         `,
       )
       .get(saleId) as any
 
     if (Number(exchangesRow?.count || 0) > 0) {
-      throw new Error('لا يمكن تعديل الفاتورة قبل إلغاء الاستبدالات الخاصة بها')
+      throw new Error(
+        'لا يمكن تعديل فاتورة لها سجل استبدالات سابق، حتى لو كان الاستبدال ملغيًا',
+      )
     }
 
     /*
      * ولا لو العميل دفع عليها دفعة لاحقة.
      */
-    const laterPayments = db
+    const paymentHistoryRow = db
       .prepare(
         `
-        SELECT COUNT(*) AS count
+        SELECT
+          (
+            SELECT COUNT(*)
 
-        FROM customer_payments cp
+            FROM customer_payments cp
 
-        LEFT JOIN customer_payment_batches b
-          ON b.id = cp.batch_id
-
-        WHERE cp.sale_id = ?
-
-          AND (
-            cp.batch_id IS NULL
-            OR b.cancelled_at IS NULL
+            WHERE cp.sale_id = ?
           )
+          +
+          (
+            SELECT COUNT(*)
+
+            FROM customer_payment_batches cpb
+
+            WHERE cpb.sale_id = ?
+          ) AS count
         `,
       )
-      .get(saleId) as any
+      .get(saleId, saleId) as any
 
-    if (Number(laterPayments?.count || 0) > 0) {
-      throw new Error('لا يمكن تعديل الفاتورة لأنها تحتوي على دفعات عميل لاحقة')
+    if (Number(paymentHistoryRow?.count || 0) > 0) {
+      throw new Error(
+        'لا يمكن تعديل فاتورة لها سجل دفعات عميل سابق، حتى لو كانت الدفعة ملغاة أو معدلة',
+      )
     }
 
     const businessDate = String(
@@ -3210,7 +3266,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
 
       business_date: businessDate,
 
-      promotion_id: input.promotion_id ?? null,
+      promotion_id: neutralPromotionId,
 
       sub_total: input.sub_total,
 

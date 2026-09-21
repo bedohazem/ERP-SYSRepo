@@ -46,6 +46,8 @@ type SaleRow = {
   total_quantity: number
   returned_quantity: number
   return_count: number
+  customer_payment_history_count?: number
+  cancelled_return_count?: number
   total_return_amount: number
   cancelled_at?: string | null
   cancelled_by?: number | null
@@ -1922,8 +1924,14 @@ export default function InvoicesPage() {
                       </button>
 
                       {!sale.cancelled_at &&
+                        Number(sale.promotion_discount_value || 0) === 0 &&
+                        !sale.promotion_id &&
                         Number(sale.return_count || 0) === 0 &&
+                        Number(sale.cancelled_return_count || 0) === 0 &&
                         Number(sale.exchange_count || 0) === 0 &&
+                        Number(sale.cancelled_exchange_count || 0) === 0 &&
+                        Number(sale.customer_payment_history_count || 0) ===
+                          0 &&
                         (isAdmin ||
                           Number(sale.user_id || 0) ===
                             Number(user?.id || 0)) && (
