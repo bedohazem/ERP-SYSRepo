@@ -375,9 +375,10 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         color,
         quantity,
         unit_cost,
+        previous_buy_price,
         line_total
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
     const insertStockMovement = db.prepare(`
@@ -408,6 +409,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         item.variant.color ?? null,
         item.quantity,
         item.unitCost,
+        Number(item.variant.buy_price || 0),
         item.lineTotal,
       )
 
@@ -482,6 +484,114 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
   })
 
   return tx()
+}
+
+function recalculateVariantBuyPriceAfterPurchaseCancellation(
+  db: ReturnType<typeof getDb>,
+  variantIdInput: number,
+) {
+  const variantId = Number(variantIdInput)
+
+  if (!variantId) {
+    throw new Error('رقم الصنف غير صحيح')
+  }
+
+  /*
+   * لو فيه فاتورة شراء سليمة أخرى للصنف،
+   * نستخدم تكلفة أحدث فاتورة سليمة.
+   */
+  const latestActivePurchase = db
+    .prepare(
+      `
+      SELECT
+        pii.unit_cost
+
+      FROM purchase_items pii
+
+      JOIN purchase_invoices pi
+        ON pi.id = pii.purchase_id
+
+      WHERE pii.variant_id = ?
+
+        AND IFNULL(
+          pi.status,
+          'active'
+        ) <> 'cancelled'
+
+      ORDER BY
+        pi.id DESC,
+        pii.id DESC
+
+      LIMIT 1
+      `,
+    )
+    .get(variantId) as
+    | {
+        unit_cost: number
+      }
+    | undefined
+
+  let nextBuyPrice: number | null = null
+
+  if (latestActivePurchase) {
+    nextBuyPrice = Number(latestActivePurchase.unit_cost)
+  } else {
+    /*
+     * لو كل فواتير شراء الصنف اتلغت،
+     * نرجع للسعر الموجود قبل أول فاتورة.
+     */
+    const firstPurchase = db
+      .prepare(
+        `
+        SELECT
+          previous_buy_price
+
+        FROM purchase_items
+
+        WHERE variant_id = ?
+
+        ORDER BY
+          purchase_id ASC,
+          id ASC
+
+        LIMIT 1
+        `,
+      )
+      .get(variantId) as
+      | {
+          previous_buy_price: number | null
+        }
+      | undefined
+
+    if (
+      firstPurchase?.previous_buy_price === null ||
+      firstPurchase?.previous_buy_price === undefined
+    ) {
+      /*
+       * فاتورة قديمة من قبل إضافة Snapshot.
+       * ممنوع نخمن تكلفة ونشوّه الأرباح.
+       */
+      throw new Error(
+        'تعذر استرجاع سعر الشراء السابق لهذا الصنف لأن الفاتورة قديمة ولا تحتوي على سجل للتكلفة السابقة',
+      )
+    }
+
+    nextBuyPrice = Number(firstPurchase.previous_buy_price)
+  }
+
+  if (!Number.isFinite(nextBuyPrice) || nextBuyPrice < 0) {
+    throw new Error('سعر الشراء السابق للصنف غير صحيح')
+  }
+
+  db.prepare(
+    `
+    UPDATE product_variants
+
+    SET buy_price = ?
+
+    WHERE id = ?
+    `,
+  ).run(roundMoney(nextBuyPrice), variantId)
 }
 
 export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
@@ -650,6 +760,14 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       input.reason?.trim() || null,
       purchaseId,
     )
+
+    const affectedVariantIds = Array.from(
+      new Set(items.map((item) => Number(item.variant_id))),
+    )
+
+    for (const variantId of affectedVariantIds) {
+      recalculateVariantBuyPriceAfterPurchaseCancellation(db, variantId)
+    }
 
     db.prepare(
       `

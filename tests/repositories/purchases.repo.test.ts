@@ -431,6 +431,99 @@ describe('purchases repository', () => {
     expect(updatedVariant.buy_price).toBe(130)
   })
 
+  it('restores variant buy price after cancelling the latest purchase', () => {
+    const supplierId = createTestSupplier()
+    const variant = seedPurchaseProduct()
+
+    expect(variant.buy_price).toBe(100)
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 2,
+          unit_cost: 130,
+        },
+      ],
+    })
+
+    const afterPurchase = getVariantByBarcode(
+      'PURCHASE001',
+    ) as PurchaseVariantTestRow
+
+    expect(afterPurchase.buy_price).toBe(130)
+
+    cancelPurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+      reason: 'Test purchase cancellation',
+      actor_id: 1,
+    })
+
+    const afterCancellation = getVariantByBarcode(
+      'PURCHASE001',
+    ) as PurchaseVariantTestRow
+
+    expect(afterCancellation.buy_price).toBe(100)
+  })
+
+  it('keeps the latest active purchase cost when cancelling an older purchase', () => {
+    const supplierId = createTestSupplier()
+    const variant = seedPurchaseProduct()
+
+    const firstPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 2,
+          unit_cost: 130,
+        },
+      ],
+    })
+
+    const secondPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 2,
+          unit_cost: 160,
+        },
+      ],
+    })
+
+    expect(
+      (getVariantByBarcode('PURCHASE001') as PurchaseVariantTestRow).buy_price,
+    ).toBe(160)
+
+    cancelPurchaseInvoice({
+      purchase_id: firstPurchase.purchaseId,
+      reason: 'Cancel older purchase',
+      actor_id: 1,
+    })
+
+    expect(
+      (getVariantByBarcode('PURCHASE001') as PurchaseVariantTestRow).buy_price,
+    ).toBe(160)
+
+    cancelPurchaseInvoice({
+      purchase_id: secondPurchase.purchaseId,
+      reason: 'Cancel latest purchase',
+      actor_id: 1,
+    })
+
+    expect(
+      (getVariantByBarcode('PURCHASE001') as PurchaseVariantTestRow).buy_price,
+    ).toBe(100)
+  })
+
   it('records supplier payment and reduces supplier balance', () => {
     const supplierId = createTestSupplier()
     const variant = seedPurchaseProduct()

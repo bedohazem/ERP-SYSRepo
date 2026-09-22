@@ -625,6 +625,7 @@ export function getDb(): Database.Database {
         color TEXT,
         quantity REAL NOT NULL,
         unit_cost REAL NOT NULL,
+        previous_buy_price REAL,
         line_total REAL NOT NULL,
         FOREIGN KEY (purchase_id) REFERENCES purchase_invoices(id),
         FOREIGN KEY (variant_id) REFERENCES product_variants(id)
@@ -1388,6 +1389,8 @@ export function getDb(): Database.Database {
         idx_store_liability_payments_cancelled_shift_id
       ON store_liability_payments(cancelled_shift_id);
     `)
+
+    safeAddColumn(db, 'purchase_items', 'previous_buy_price', 'REAL')
 
     safeAddColumn(db, 'purchase_invoices', 'shift_id', 'INTEGER')
 
