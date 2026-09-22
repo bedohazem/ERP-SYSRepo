@@ -110,6 +110,30 @@ declare global {
         }
       }>
 
+      requestAdminPasswordRecovery: () => Promise<{
+        success: boolean
+        message?: string
+
+        device_code?: string
+        request_id?: string
+
+        expires_at?: string
+        expires_in_seconds?: number
+      }>
+
+      recoverAdminPassword: (input: {
+        request_id: string
+
+        username: string
+
+        recovery_code: string
+
+        new_password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+      }>
+
       changeOwnPassword: (input: { password: string }) => Promise<{
         success: boolean
         message?: string

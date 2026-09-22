@@ -1,7 +1,12 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 
 import { logAction } from './activity-helper'
+import {
+  createAdminPasswordRecoveryRequest,
+  recoverAdminPassword,
+} from '../security/admin-recovery'
 
+import { isSupportRecoveryConfigured } from '../security/support-recovery-token'
 import {
   changeOwnPassword,
   createInitialAdmin,
@@ -226,6 +231,110 @@ export function registerAuthIpc(): void {
       }
     }
   })
+
+  ipcMain.handle('auth:recovery-request', () => {
+    try {
+      if (!isSupportRecoveryConfigured()) {
+        throw new Error('خاصية استرجاع كلمة المرور غير مفعلة في هذه النسخة')
+      }
+
+      const request = createAdminPasswordRecoveryRequest()
+
+      logAction({
+        actor_id: null,
+
+        action: 'auth_recovery_requested',
+
+        entity: 'auth',
+
+        entity_id: null,
+
+        details: {
+          request_id: request.request_id,
+
+          device_code: request.device_code,
+
+          expires_at: request.expires_at,
+        },
+      })
+
+      return {
+        success: true,
+        ...request,
+      }
+    } catch (error) {
+      return {
+        success: false,
+
+        message: getErrorMessage(error),
+      }
+    }
+  })
+
+  ipcMain.handle(
+    'auth:recover-admin',
+    (
+      event,
+      input: {
+        request_id?: string
+        username?: string
+        recovery_code?: string
+        new_password?: string
+      },
+    ) => {
+      try {
+        if (!isSupportRecoveryConfigured()) {
+          throw new Error('خاصية استرجاع كلمة المرور غير مفعلة في هذه النسخة')
+        }
+
+        const result = recoverAdminPassword(input)
+
+        /*
+         * أي Session قديمة لنفس
+         * الـRenderer تنتهي.
+         */
+        clearAuthSession(event)
+
+        /*
+         * لو العميل وصل للـRecovery
+         * بعد 5 محاولات Login خاطئة،
+         * نفك الـLogin lock بعد نجاح
+         * الاسترجاع.
+         */
+        clearLoginFailures(event)
+
+        logAction({
+          actor_id: null,
+
+          action: 'admin_password_recovered',
+
+          entity: 'users',
+
+          entity_id: result.user.id,
+
+          details: {
+            username: result.user.username,
+
+            request_id: result.request_id,
+
+            method: 'support_signed_recovery',
+          },
+        })
+
+        return {
+          success: true,
+
+          message: 'تم تغيير كلمة مرور المدير بنجاح. يمكنك تسجيل الدخول الآن.',
+        }
+      } catch (error) {
+        return {
+          success: false,
+
+          message: getErrorMessage(error),
+        }
+      }
+    },
+  )
 
   ipcMain.handle('auth:login', (event, data: AuthPayload) => {
     try {

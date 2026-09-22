@@ -4,6 +4,7 @@ import FirstRunSetup from './FirstRunSetup'
 import ForcedPasswordChange from './ForcedPasswordChange'
 import { useAuthStore } from '../../store/auth.store'
 import { useEffect, useRef, useState } from 'react'
+import AdminPasswordRecovery from './AdminPasswordRecovery'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
@@ -32,6 +33,8 @@ export default function LoginPage() {
     username: string
     role: string
   } | null>(null)
+
+  const [showAdminRecovery, setShowAdminRecovery] = useState(false)
 
   const [loading, setLoading] = useState(false)
   const [appLogoUrl, setAppLogoUrl] = useState('')
@@ -272,6 +275,23 @@ export default function LoginPage() {
   if (passwordChangeUser) {
     return (
       <ForcedPasswordChange user={passwordChangeUser} appTheme={appTheme} />
+    )
+  }
+
+  if (showAdminRecovery) {
+    return (
+      <AdminPasswordRecovery
+        appTheme={appTheme}
+        onClose={(recoveredUsername) => {
+          setShowAdminRecovery(false)
+
+          if (recoveredUsername) {
+            setUsername(recoveredUsername)
+
+            setPassword('')
+          }
+        }}
+      />
     )
   }
 
@@ -533,6 +553,30 @@ export default function LoginPage() {
                   }}
                 >
                   {loading ? 'جاري الدخول...' : 'دخول'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError('')
+
+                    setShowAdminRecovery(true)
+                  }}
+                  style={{
+                    border: 'none',
+
+                    background: 'transparent',
+
+                    color: isLight ? '#2563eb' : '#93c5fd',
+
+                    fontWeight: 800,
+
+                    cursor: 'pointer',
+
+                    padding: '8px',
+                  }}
+                >
+                  نسيت كلمة مرور المدير؟
                 </button>
               </div>
             </form>

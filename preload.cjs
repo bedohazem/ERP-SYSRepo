@@ -7,6 +7,12 @@ contextBridge.exposeInMainWorld('api', {
   bootstrapInitialAdmin: (data) =>
     ipcRenderer.invoke('auth:bootstrap-admin', data),
 
+  requestAdminPasswordRecovery: () =>
+    ipcRenderer.invoke('auth:recovery-request'),
+
+  recoverAdminPassword: (input) =>
+    ipcRenderer.invoke('auth:recover-admin', input),
+
   changeOwnPassword: (input) =>
     ipcRenderer.invoke('auth:change-password', input),
 

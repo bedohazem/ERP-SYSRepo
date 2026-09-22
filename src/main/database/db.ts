@@ -197,6 +197,24 @@ export function getDb(): Database.Database {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS auth_recovery_requests (
+        request_id TEXT PRIMARY KEY,
+
+        device_code TEXT NOT NULL,
+
+        created_at_ms INTEGER NOT NULL,
+
+        expires_at_ms INTEGER NOT NULL,
+
+        used_at_ms INTEGER
+      );
+
+      CREATE INDEX IF NOT EXISTS
+        idx_auth_recovery_requests_expiry
+      ON auth_recovery_requests(
+        expires_at_ms
+      );
+
       CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
@@ -1665,7 +1683,7 @@ export function resetDatabaseData(): void {
       
 
       DELETE FROM activity_logs;
-
+      DELETE FROM auth_recovery_requests;
       DELETE FROM cash_shift_variances;
       DELETE FROM cash_shifts;
 
