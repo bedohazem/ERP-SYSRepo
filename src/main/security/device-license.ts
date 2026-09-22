@@ -9,14 +9,16 @@ import { validateAppActivationForDevice } from './app-activation-token'
 const TRIAL_DAYS = 7
 
 /*
- * هذا المفتاح لحماية/كشف تلف Local Store فقط.
+ * Local store consistency key only.
  *
- * لم يعد مصدر صلاحية التفعيل المدفوع.
- * التفعيل المدفوع يعتمد حصريًا على
- * Ed25519 signed activation token.
+ * This is NOT an activation credential
+ * and is NOT an authorization boundary.
+ *
+ * Paid activation is verified exclusively
+ * through Ed25519 signed activation tokens.
  */
-const LOCAL_STORE_INTEGRITY_SECRET =
-  'CHANGE_THIS_TO_A_LONG_RANDOM_SECRET_ERP_STORE_2026'
+const LOCAL_STORE_INTEGRITY_KEY =
+  '85de4ead5e11b4e8be99e0c140a164ba88f785ebb756552d529f65c4ef3e72d8'
 
 const REG_PATH = 'HKCU\\Software\\ERPStore'
 const REG_VALUE = 'LicenseData'
@@ -165,9 +167,9 @@ function addDays(date: Date, days: number) {
   return next
 }
 
-function signLicense(data: Omit<LicenseRecord, 'signature'>) {
+function signLocalStoreRecord(data: Omit<LicenseRecord, 'signature'>) {
   return crypto
-    .createHmac('sha256', LOCAL_STORE_INTEGRITY_SECRET)
+    .createHmac('sha256', LOCAL_STORE_INTEGRITY_KEY)
     .update(JSON.stringify(data))
     .digest('hex')
 }
@@ -179,14 +181,14 @@ function buildRecord(
 
   return {
     ...payload,
-    signature: signLicense(payload),
+    signature: signLocalStoreRecord(payload),
   }
 }
 
-function isValidSignature(record: LicenseRecord) {
+function isValidLocalStoreSignature(record: LicenseRecord) {
   const { signature, ...payload } = record
 
-  return signature === signLicense(payload)
+  return signature === signLocalStoreRecord(payload)
 }
 
 function parseRecord(raw: string): LicenseRecord | null {
@@ -194,7 +196,9 @@ function parseRecord(raw: string): LicenseRecord | null {
     const record = JSON.parse(raw) as LicenseRecord
 
     if (!record || !record.signature) return null
-    if (!isValidSignature(record)) return null
+    if (!isValidLocalStoreSignature(record)) {
+      return null
+    }
     if (record.machine_id_hash !== getMachineHash()) return null
 
     return record
@@ -526,12 +530,6 @@ export function getDeviceLicenseStatus(): LicenseStatus {
     .map((x) => x.record)
     .filter(Boolean) as LicenseRecord[]
 
-  const legacyActivated = validRecords.some(
-    (record) =>
-      Boolean(record.activated) &&
-      !String(record.activation_token || '').trim(),
-  )
-
   const tampered = results.some((x) => x.tampered)
 
   // لو مفيش ولا نسخة صحيحة، وفيه ملف متلاعب فيه، اقفل البرنامج
@@ -629,10 +627,7 @@ export function getDeviceLicenseStatus(): LicenseStatus {
     days_left: daysLeft,
     expired,
     blocked: false,
-    message:
-      legacyActivated && !activated
-        ? 'التفعيل القديم يحتاج إلى تحديث بكود التفعيل الآمن الجديد'
-        : '',
+    message: '',
     device_code: record.device_code,
   }
 }

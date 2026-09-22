@@ -795,6 +795,9 @@ describe('customers repository', () => {
     expect(Number(newBatch.amount)).toBe(75)
 
     expect(newBatch.cancelled_at).toBeNull()
+    expect(newBatch.created_at).toBe(oldBatch.created_at)
+
+    expect(Number(newBatch.created_by)).toBe(Number(oldBatch.created_by))
 
     const activeCash = db
       .prepare(

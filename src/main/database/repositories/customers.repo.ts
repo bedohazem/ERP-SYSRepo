@@ -1369,9 +1369,11 @@ export function updateCustomerPaymentBatch(input: {
           notes,
           created_by,
           business_date,
-          shift_id
+          shift_id,
+          created_at
         )
-        VALUES (?, ?, 0, ?, ?, ?, ?, ?)
+
+        VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?)
         `,
       )
       .run(
@@ -1383,11 +1385,13 @@ export function updateCustomerPaymentBatch(input: {
 
         newNotes,
 
-        actorId,
+        batch.created_by ?? null,
 
         correctionBusinessDate,
 
         openShift.id,
+
+        batch.created_at,
       )
 
     const newBatchId = Number(newBatchResult.lastInsertRowid)
