@@ -76,7 +76,7 @@ const publicKeyTsPath = path.join(
   'src',
   'main',
   'security',
-  'support-recovery-public-key.ts',
+  'support-signing-public-key.ts',
 )
 
 fs.writeFileSync(
@@ -84,13 +84,13 @@ fs.writeFileSync(
   [
     '// Public key only.',
     '// Safe to ship with the application.',
-    `export const SUPPORT_RECOVERY_PUBLIC_KEY_PEM = ${JSON.stringify(publicPem)}`,
+    `export const SUPPORT_SIGNING_PUBLIC_KEY_PEM = ${JSON.stringify(publicPem)}`,
     '',
   ].join('\n'),
   'utf8',
 )
 
-console.log('\nتم إنشاء مفاتيح Support Recovery بنجاح.')
+console.log('\nتم إنشاء مفاتيح ERP Support Signing بنجاح.')
 
 console.log(`\nPRIVATE KEY - احتفظ به سريًا وخارج المشروع:\n${privateKeyPath}`)
 

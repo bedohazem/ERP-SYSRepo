@@ -255,7 +255,24 @@ describe('admin password recovery', () => {
       username: 'admin',
     })
 
-    const forged = `${valid.slice(0, -1)}${valid.endsWith('A') ? 'B' : 'A'}`
+    const [prefix, encodedPayload, encodedSignature] = valid.split('.')
+
+    const forgedSignature = Buffer.from(encodedSignature, 'base64url')
+
+    /*
+     * نغيّر byte حقيقي داخل
+     * توقيع Ed25519 بدل تغيير
+     * حرف Base64 قد لا يغير
+     * الـdecoded bytes.
+     */
+    forgedSignature[0] ^= 0xff
+
+    const forged = [
+      prefix,
+      encodedPayload,
+
+      forgedSignature.toString('base64url'),
+    ].join('.')
 
     expect(() =>
       recoverAdminPassword(

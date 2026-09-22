@@ -15,7 +15,11 @@ target/
 # OS files
 .DS_Store
 Thumbs.db
-/tools/license-generator
-/tools/release/ERP License Generator-win32-x64
+
+/tools/release/
 /release
 /cloud-server
+
+# NEVER commit signing private keys
+*.pem
+*.key

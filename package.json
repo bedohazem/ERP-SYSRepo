@@ -17,11 +17,13 @@
     "test:ready": "npm run test:prepare && vitest --run",
     "electron:prepare": "electron-rebuild -f -w better-sqlite3",
     "dev:ready": "npm run electron:prepare && npm run dev",
-    "license:build": "electron-packager ./tools/license-generator \"ERP License Generator\" --platform=win32 --arch=x64 --out=tools/release --overwrite --asar --electron-version=38.0.0",
     "dist:dir": "npm run typecheck && npm run build:renderer && npm run build:main && npm run electron:prepare && electron-builder --win dir --x64",
     "dist:win": "npm run typecheck && npm run build:renderer && npm run build:main && npm run electron:prepare && electron-builder --win nsis --x64",
     "build:main": "node scripts/build-main.mjs",
-    "support:generate-recovery-keys": "node scripts/generate-support-recovery-keys.mjs",
+    "license:build": "npm run support:build",
+    "support:generator": "electron ./tools/license-generator",
+    "support:build": "electron-packager ./tools/license-generator \"ERP Support Generator\" --platform=win32 --arch=x64 --out=tools/release --overwrite --asar --electron-version=38.8.6",
+    "support:generate-signing-keys": "node scripts/generate-support-signing-keys.mjs",
     "support:recovery-code": "node scripts/generate-admin-recovery-code.mjs"
   },
   "dependencies": {

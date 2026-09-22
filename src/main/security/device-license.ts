@@ -4,11 +4,20 @@ import crypto from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { app } from 'electron'
 import { machineIdSync } from 'node-machine-id'
+import { validateAppActivationForDevice } from './app-activation-token'
 
 const TRIAL_DAYS = 7
 
 // غير السر ده قبل التسليم وخليه طويل وعشوائي جدًا
-const LICENSE_SECRET = 'CHANGE_THIS_TO_A_LONG_RANDOM_SECRET_ERP_STORE_2026'
+/*
+ * هذا المفتاح لحماية/كشف تلف Local Store فقط.
+ *
+ * لم يعد مصدر صلاحية التفعيل المدفوع.
+ * التفعيل المدفوع يعتمد حصريًا على
+ * Ed25519 signed activation token.
+ */
+const LOCAL_STORE_INTEGRITY_SECRET =
+  'CHANGE_THIS_TO_A_LONG_RANDOM_SECRET_ERP_STORE_2026'
 
 const REG_PATH = 'HKCU\\Software\\ERPStore'
 const REG_VALUE = 'LicenseData'
@@ -23,6 +32,7 @@ type LicenseRecord = {
   license_state_changed_at: string
   activated: boolean
   activated_at?: string | null
+  activation_token?: string | null
   invalidated?: boolean
   signature: string
 }
@@ -166,23 +176,9 @@ function formatCode(value: string) {
   return value.match(/.{1,4}/g)?.join('-') || value
 }
 
-function generateActivationCodeForDevice(deviceCode: string) {
-  const cleanDeviceCode = normalizeCode(deviceCode)
-
-  const hash = crypto
-    .createHmac('sha256', LICENSE_SECRET)
-    .update(cleanDeviceCode)
-    .digest('hex')
-    .toUpperCase()
-
-  const codeBody = hash.slice(0, 16)
-
-  return `ERPS-${formatCode(codeBody)}`
-}
-
 function signLicense(data: Omit<LicenseRecord, 'signature'>) {
   return crypto
-    .createHmac('sha256', LICENSE_SECRET)
+    .createHmac('sha256', LOCAL_STORE_INTEGRITY_SECRET)
     .update(JSON.stringify(data))
     .digest('hex')
 }
@@ -402,7 +398,7 @@ function createTrialRecord() {
   const expiresAt = addDays(now, TRIAL_DAYS)
 
   const record = buildRecord({
-    schema_version: 1,
+    schema_version: 2,
     machine_id_hash: machineHash,
     device_code: deviceCode,
     trial_started_at: now.toISOString(),
@@ -411,6 +407,7 @@ function createTrialRecord() {
     license_state_changed_at: now.toISOString(),
     activated: false,
     activated_at: null,
+    activation_token: null,
     invalidated: false,
   })
 
@@ -442,39 +439,75 @@ function getLicenseStateTime(record: LicenseRecord) {
 
 function mergeRecords(records: LicenseRecord[]) {
   const machineHash = getMachineHash()
+
   const deviceCode = getDeviceCodeFromHash(machineHash)
 
-  const trialStartedAt = minDateIso(records.map((x) => x.trial_started_at))
-  const trialExpiresAt = minDateIso(records.map((x) => x.trial_expires_at))
-  const lastSeenAt = maxDateIso(records.map((x) => x.last_seen_at))
+  const trialStartedAt = minDateIso(
+    records.map((record) => record.trial_started_at),
+  )
 
-  const newestStateRecord = [...records].sort((a, b) => {
-    return (
+  const trialExpiresAt = minDateIso(
+    records.map((record) => record.trial_expires_at),
+  )
+
+  const lastSeenAt = maxDateIso(records.map((record) => record.last_seen_at))
+
+  const newestStateRecord = [...records].sort(
+    (a, b) =>
       new Date(getLicenseStateTime(b)).getTime() -
-      new Date(getLicenseStateTime(a)).getTime()
-    )
-  })[0]
+      new Date(getLicenseStateTime(a)).getTime(),
+  )[0]
 
   const stateChangedAt = getLicenseStateTime(newestStateRecord)
 
-  const activated = Boolean(newestStateRecord?.activated)
+  const activationToken =
+    String(newestStateRecord?.activation_token || '').trim() || null
+
+  let activationPayload: ReturnType<
+    typeof validateAppActivationForDevice
+  > | null = null
+
+  if (activationToken) {
+    try {
+      activationPayload = validateAppActivationForDevice(
+        activationToken,
+        deviceCode,
+      )
+    } catch {
+      activationPayload = null
+    }
+  }
+
+  const activated = Boolean(activationPayload)
 
   const activatedAt = activated
-    ? newestStateRecord?.activated_at || stateChangedAt
+    ? newestStateRecord?.activated_at ||
+      new Date(Number(activationPayload?.issued_at || 0) * 1000).toISOString()
     : null
 
-  const invalidated = records.some((x) => x.invalidated)
+  const invalidated = records.some((record) => record.invalidated)
 
   return buildRecord({
-    schema_version: 1,
+    schema_version: 2,
+
     machine_id_hash: machineHash,
+
     device_code: deviceCode,
+
     trial_started_at: trialStartedAt,
+
     trial_expires_at: trialExpiresAt,
+
     last_seen_at: lastSeenAt,
+
     license_state_changed_at: stateChangedAt,
+
     activated,
+
     activated_at: activatedAt,
+
+    activation_token: activated ? activationToken : null,
+
     invalidated,
   })
 }
@@ -504,6 +537,12 @@ export function getDeviceLicenseStatus(): LicenseStatus {
     .map((x) => x.record)
     .filter(Boolean) as LicenseRecord[]
 
+  const legacyActivated = validRecords.some(
+    (record) =>
+      Boolean(record.activated) &&
+      !String(record.activation_token || '').trim(),
+  )
+
   const tampered = results.some((x) => x.tampered)
 
   // لو مفيش ولا نسخة صحيحة، وفيه ملف متلاعب فيه، اقفل البرنامج
@@ -515,6 +554,29 @@ export function getDeviceLicenseStatus(): LicenseStatus {
   let record = validRecords.length
     ? mergeRecords(validRecords)
     : createTrialRecord()
+
+  let activationPayload: ReturnType<
+    typeof validateAppActivationForDevice
+  > | null = null
+
+  const storedActivationToken = String(record.activation_token || '').trim()
+
+  if (storedActivationToken) {
+    try {
+      activationPayload = validateAppActivationForDevice(
+        storedActivationToken,
+        record.device_code,
+      )
+    } catch {
+      /*
+       * Signed token موجود
+       * لكنه غير صالح = تلاعب.
+       */
+      return blockedStatus('تم اكتشاف كود تفعيل غير صالح')
+    }
+  }
+
+  const activated = Boolean(activationPayload)
 
   if (tampered && validRecords.length > 0) {
     writeAllStores(record)
@@ -540,9 +602,9 @@ export function getDeviceLicenseStatus(): LicenseStatus {
   }
 
   const expiresAt = new Date(record.trial_expires_at)
-  const expired = !record.activated && now.getTime() > expiresAt.getTime()
+  const expired = !activated && now.getTime() > expiresAt.getTime()
 
-  const daysLeft = record.activated
+  const daysLeft = activated
     ? TRIAL_DAYS
     : Math.max(
         0,
@@ -553,6 +615,14 @@ export function getDeviceLicenseStatus(): LicenseStatus {
 
   record = buildRecord({
     ...record,
+    activated,
+
+    activated_at: activated
+      ? record.activated_at ||
+        new Date(Number(activationPayload?.issued_at || 0) * 1000).toISOString()
+      : null,
+
+    activation_token: activated ? storedActivationToken : null,
     license_state_changed_at:
       record.license_state_changed_at ||
       record.activated_at ||
@@ -563,54 +633,83 @@ export function getDeviceLicenseStatus(): LicenseStatus {
   writeAllStores(record)
 
   return {
-    activated: record.activated,
+    activated,
     trial_started_at: record.trial_started_at,
     trial_days: TRIAL_DAYS,
     trial_expires_at: record.trial_expires_at,
     days_left: daysLeft,
     expired,
     blocked: false,
-    message: '',
+    message:
+      legacyActivated && !activated
+        ? 'التفعيل القديم يحتاج إلى تحديث بكود التفعيل الآمن الجديد'
+        : '',
     device_code: record.device_code,
   }
 }
 
-export function activateDevice(code: string) {
+export function activateDevice(
+  code: string,
+  options?: {
+    publicKeyPem?: string
+  },
+) {
   const machineHash = getMachineHash()
-  const deviceCode = getDeviceCodeFromHash(machineHash)
-  const expectedCode = generateActivationCodeForDevice(deviceCode)
 
-  if (normalizeCode(code) !== normalizeCode(expectedCode)) {
+  const deviceCode = getDeviceCodeFromHash(machineHash)
+
+  let activation
+
+  try {
+    activation = validateAppActivationForDevice(code, deviceCode, {
+      publicKeyPem: options?.publicKeyPem,
+    })
+  } catch (error) {
     return {
       success: false,
-      message: 'كود التفعيل غير صحيح',
+
+      message: error instanceof Error ? error.message : 'كود التفعيل غير صحيح',
     }
   }
 
   const now = new Date()
+
   const stateChangedAt = now.toISOString()
 
   const results = readAllStores()
+
   const validRecords = results
-    .map((x) => x.record)
+    .map((result) => result.record)
     .filter(Boolean) as LicenseRecord[]
 
   const merged = validRecords.length ? mergeRecords(validRecords) : null
 
   const trialStartedAt = merged?.trial_started_at || now.toISOString()
+
   const trialExpiresAt =
     merged?.trial_expires_at || addDays(now, TRIAL_DAYS).toISOString()
 
   const record = buildRecord({
-    schema_version: 1,
+    schema_version: 2,
+
     machine_id_hash: machineHash,
+
     device_code: deviceCode,
+
     trial_started_at: trialStartedAt,
+
     trial_expires_at: trialExpiresAt,
+
     last_seen_at: stateChangedAt,
+
     license_state_changed_at: stateChangedAt,
+
     activated: true,
-    activated_at: stateChangedAt,
+
+    activated_at: new Date(activation.issued_at * 1000).toISOString(),
+
+    activation_token: String(code).trim(),
+
     invalidated: false,
   })
 
@@ -618,12 +717,12 @@ export function activateDevice(code: string) {
 
   writeAllStores(record)
 
-  const status = getDeviceLicenseStatus()
-
   return {
     success: true,
+
     message: 'تم تفعيل البرنامج بنجاح',
-    status,
+
+    status: getDeviceLicenseStatus(),
   }
 }
 
@@ -645,7 +744,7 @@ export function deactivateDevice() {
     merged?.trial_expires_at || addDays(now, TRIAL_DAYS).toISOString()
 
   const record = buildRecord({
-    schema_version: 1,
+    schema_version: 2,
     machine_id_hash: machineHash,
     device_code: deviceCode,
     trial_started_at: trialStartedAt,
@@ -654,6 +753,7 @@ export function deactivateDevice() {
     license_state_changed_at: stateChangedAt,
     activated: false,
     activated_at: null,
+    activation_token:null,
     invalidated: false,
   })
 

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 
-import { SUPPORT_RECOVERY_PUBLIC_KEY_PEM } from './support-recovery-public-key'
+import { SUPPORT_SIGNING_PUBLIC_KEY_PEM } from './support-signing-public-key'
 
 export const SUPPORT_RECOVERY_TOKEN_MAX_TTL_SECONDS = 15 * 60
 
@@ -27,7 +27,7 @@ export function normalizeRecoveryCode(value: unknown): string {
 }
 
 export function isSupportRecoveryConfigured(): boolean {
-  const pem = String(SUPPORT_RECOVERY_PUBLIC_KEY_PEM || '').trim()
+  const pem = String(SUPPORT_SIGNING_PUBLIC_KEY_PEM || '').trim()
 
   if (!pem) {
     return false
@@ -44,7 +44,7 @@ export function isSupportRecoveryConfigured(): boolean {
 
 export function verifySupportRecoveryToken(
   tokenInput: unknown,
-  publicKeyPem = SUPPORT_RECOVERY_PUBLIC_KEY_PEM,
+  publicKeyPem = SUPPORT_SIGNING_PUBLIC_KEY_PEM,
 ): SupportRecoveryTokenPayload {
   const token = String(tokenInput ?? '').trim()
 
