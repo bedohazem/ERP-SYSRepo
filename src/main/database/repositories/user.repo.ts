@@ -8,6 +8,7 @@ export type UserRow = {
   password: string
   role: string
   is_active: number
+  must_change_password: number
   created_at: string
 }
 
@@ -202,12 +203,21 @@ export function createUser(
   username: string,
   password: string,
   role: string = 'cashier',
+  options?: {
+    mustChangePassword?: boolean
+  },
 ): PublicUserRow {
   const db = getDb()
 
   const cleanName = name.trim()
+
   const cleanUsername = username.trim()
-  const cleanPassword = password.trim()
+
+  /*
+   * لا نعمل trim للباسورد.
+   */
+  const rawPassword = String(password ?? '')
+
   const cleanRole = normalizeRole(role)
 
   if (!cleanName) {
@@ -218,7 +228,12 @@ export function createUser(
     throw new Error('اسم الدخول مطلوب')
   }
 
-  if (cleanPassword.length < 4) {
+  /*
+   * Repository fallback فقط.
+   * الـIPC يطبق السياسة
+   * الأقوى 8 + حرف + رقم.
+   */
+  if (rawPassword.length < 4) {
     throw new Error('كلمة المرور يجب ألا تقل عن 4 أحرف')
   }
 
@@ -227,11 +242,27 @@ export function createUser(
   const result = db
     .prepare(
       `
-      INSERT INTO users (name, username, password, role, is_active)
-      VALUES (?, ?, ?, ?, 1)
+      INSERT INTO users (
+        name,
+        username,
+        password,
+        role,
+        is_active,
+        must_change_password
+      )
+
+      VALUES (
+        ?, ?, ?, ?, 1, ?
+      )
       `,
     )
-    .run(cleanName, cleanUsername, hashPassword(cleanPassword), cleanRole)
+    .run(
+      cleanName,
+      cleanUsername,
+      hashPassword(rawPassword),
+      cleanRole,
+      options?.mustChangePassword ? 1 : 0,
+    )
 
   const created = getUserByIdInternal(Number(result.lastInsertRowid))
 
@@ -316,11 +347,13 @@ export function setUserActive(userId: number, isActive: number): PublicUserRow {
 export function resetUserPassword(
   userId: number,
   password: string,
+  mustChangePassword = true,
 ): PublicUserRow {
   const db = getDb()
-  const cleanPassword = password.trim()
 
-  if (cleanPassword.length < 4) {
+  const rawPassword = String(password ?? '')
+
+  if (rawPassword.length < 4) {
     throw new Error('كلمة المرور يجب ألا تقل عن 4 أحرف')
   }
 
@@ -330,10 +363,17 @@ export function resetUserPassword(
     throw new Error('المستخدم غير موجود')
   }
 
-  db.prepare(`UPDATE users SET password = ? WHERE id = ?`).run(
-    hashPassword(cleanPassword),
-    userId,
-  )
+  db.prepare(
+    `
+    UPDATE users
+
+    SET
+      password = ?,
+      must_change_password = ?
+
+    WHERE id = ?
+    `,
+  ).run(hashPassword(rawPassword), mustChangePassword ? 1 : 0, userId)
 
   const updated = getUserByIdInternal(userId)
 
@@ -344,12 +384,104 @@ export function resetUserPassword(
   return toPublicUser(updated)
 }
 
+export function changeOwnPassword(
+  userId: number,
+  password: string,
+): PublicUserRow {
+  return resetUserPassword(userId, password, false)
+}
+
+export function setUserPasswordChangeRequired(
+  userId: number,
+  required: boolean,
+): void {
+  const db = getDb()
+
+  db.prepare(
+    `
+    UPDATE users
+
+    SET
+      must_change_password = ?
+
+    WHERE id = ?
+    `,
+  ).run(required ? 1 : 0, userId)
+}
+
+export function getAuthBootstrapStatus() {
+  const db = getDb()
+
+  const row = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS total_users,
+
+        SUM(
+          CASE
+            WHEN
+              role = 'admin'
+              AND is_active = 1
+            THEN 1
+            ELSE 0
+          END
+        ) AS active_admins
+
+      FROM users
+      `,
+    )
+    .get() as {
+    total_users: number
+    active_admins: number | null
+  }
+
+  const totalUsers = Number(row?.total_users || 0)
+
+  const activeAdmins = Number(row?.active_admins || 0)
+
+  return {
+    total_users: totalUsers,
+
+    active_admins: activeAdmins,
+
+    needs_setup: totalUsers === 0,
+
+    blocked: totalUsers > 0 && activeAdmins === 0,
+  }
+}
+
+export function createInitialAdmin(
+  name: string,
+  username: string,
+  password: string,
+): PublicUserRow {
+  const status = getAuthBootstrapStatus()
+
+  if (!status.needs_setup) {
+    throw new Error('تم إعداد حساب مدير للنظام بالفعل')
+  }
+
+  return createUser(name, username, password, 'admin', {
+    mustChangePassword: false,
+  })
+}
+
 export function findUserByUsername(username: string): UserRow | undefined {
   const db = getDb()
 
   return db
-    .prepare(`SELECT * FROM users WHERE username = ? AND is_active = 1`)
-    .get(username) as UserRow | undefined
+    .prepare(
+      `
+      SELECT *
+      FROM users
+
+      WHERE
+        username = ?
+        AND is_active = 1
+      `,
+    )
+    .get(username.trim()) as UserRow | undefined
 }
 
 export function upgradeUserPasswordHash(
@@ -359,7 +491,7 @@ export function upgradeUserPasswordHash(
   const db = getDb()
 
   db.prepare(`UPDATE users SET password = ? WHERE id = ?`).run(
-    hashPassword(password.trim()),
+    hashPassword(String(password ?? '')),
     userId,
   )
 }

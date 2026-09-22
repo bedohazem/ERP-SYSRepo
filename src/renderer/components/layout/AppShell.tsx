@@ -6,6 +6,10 @@ import ShiftHeaderControl from '../shifts/ShiftHeaderControl'
 
 type AppTheme = 'dark' | 'light'
 
+const UI_IDLE_TIMEOUT_MS = 15 * 60 * 1000
+
+const SESSION_TOUCH_INTERVAL_MS = 60 * 1000
+
 function applyAppTheme(theme?: AppTheme) {
   document.documentElement.setAttribute(
     'data-theme',
@@ -264,6 +268,7 @@ export default function AppShell({
 }) {
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
+  const lockSession = useAuthStore((s) => s.lock)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -280,6 +285,93 @@ export default function AppShell({
       localStorage.getItem(`erp_page_sticky:${location.pathname}`) !== 'false',
     )
   }, [location.pathname])
+
+  useEffect(() => {
+    if (!user?.id) {
+      return
+    }
+
+    let idleTimer: number | undefined
+
+    let lastServerTouchAt = 0
+
+    let locking = false
+
+    async function lockNow() {
+      if (locking) {
+        return
+      }
+
+      locking = true
+
+      try {
+        await lockSession()
+      } finally {
+        navigate('/?locked=1', {
+          replace: true,
+        })
+      }
+    }
+
+    function scheduleIdleLock() {
+      if (idleTimer) {
+        window.clearTimeout(idleTimer)
+      }
+
+      idleTimer = window.setTimeout(() => {
+        void lockNow()
+      }, UI_IDLE_TIMEOUT_MS)
+    }
+
+    function touchServer() {
+      const now = Date.now()
+
+      if (now - lastServerTouchAt < SESSION_TOUCH_INTERVAL_MS) {
+        return
+      }
+
+      lastServerTouchAt = now
+
+      void window.api
+        .touchAuthSession()
+        .then((result) => {
+          if (!result.success) {
+            void lockNow()
+          }
+        })
+        .catch(() => {
+          void lockNow()
+        })
+    }
+
+    function handleActivity() {
+      scheduleIdleLock()
+      touchServer()
+    }
+
+    const events = ['pointerdown', 'keydown', 'touchstart', 'wheel'] as const
+
+    events.forEach((eventName) => {
+      window.addEventListener(eventName, handleActivity)
+    })
+
+    window.addEventListener('focus', handleActivity)
+
+    scheduleIdleLock()
+    touchServer()
+
+    return () => {
+      if (idleTimer) {
+        window.clearTimeout(idleTimer)
+      }
+
+      events.forEach((eventName) => {
+        window.removeEventListener(eventName, handleActivity)
+      })
+
+      window.removeEventListener('focus', handleActivity)
+    }
+  }, [user?.id, lockSession, navigate])
 
   function togglePageSticky() {
     setPageStickyEnabled((current) => {

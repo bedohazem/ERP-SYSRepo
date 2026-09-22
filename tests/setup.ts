@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { vi } from 'vitest'
 
+process.env.ERP_TEST_ADMIN_PASSWORD = 'Admin1234'
 const testUserDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-test-'))
 
 vi.mock('electron', () => {

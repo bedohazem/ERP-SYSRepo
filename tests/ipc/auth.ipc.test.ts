@@ -57,7 +57,7 @@ async function invoke(
 async function login(
   event: IpcMainInvokeEvent,
   username = 'admin',
-  password = '1234',
+  password = 'Admin1234',
 ) {
   const result = await invoke(event, 'auth:login', {
     username,
@@ -149,10 +149,15 @@ describe('auth IPC authorization', () => {
     async (kind) => {
       const { event } = makeClient()
       const admin = findUserByUsername('admin')!
-      const cashier = createUser('Cashier', 'cashier_test', '5678', 'cashier')
+      const cashier = createUser(
+        'Cashier',
+        'cashier_test',
+        'Cashier5678',
+        'cashier',
+      )
 
       if (kind === 'cashier') {
-        await login(event, cashier.username, '5678')
+        await login(event, cashier.username, 'Cashier5678')
       }
 
       // تجاهل Log تسجيل الدخول هنا؛
@@ -214,7 +219,7 @@ describe('auth IPC authorization', () => {
     const created = await invoke(event, 'users:create', {
       name: 'Managed',
       username: 'managed',
-      password: '5678',
+      password: 'Managed123',
       role: 'admin',
       actor_id: 999999,
     })
@@ -244,7 +249,8 @@ describe('auth IPC authorization', () => {
     ).toBe(true)
 
     expect(
-      (await invoke(event, 'users:reset-password', id, '9012', 999999)).success,
+      (await invoke(event, 'users:reset-password', id, 'Reset9012', 999999))
+        .success,
     ).toBe(true)
 
     const listed = await invoke(event, 'users:list')
@@ -264,7 +270,7 @@ describe('auth IPC authorization', () => {
     }
 
     expect(
-      verifyPassword('9012', findUserByUsername('managed')!.password),
+      verifyPassword('Reset9012', findUserByUsername('managed')!.password),
     ).toBe(true)
 
     const logs = getDb()
@@ -349,10 +355,15 @@ describe('auth IPC authorization', () => {
   it.each(['role', 'active', 'password'])(
     'rechecks the admin after a %s change',
     async (change) => {
-      const user = createUser('Second Admin', 'second_admin', '5678', 'admin')
+      const user = createUser(
+        'Second Admin',
+        'second_admin',
+        'Second5678',
+        'admin',
+      )
 
       const { event } = makeClient()
-      await login(event, user.username, '5678')
+      await login(event, user.username, 'Second5678')
 
       if (change === 'role') {
         updateUser({ ...user, role: 'cashier' })
@@ -416,14 +427,200 @@ describe('auth IPC authorization', () => {
 
   it('preserves legacy password migration and creates a valid session', async () => {
     getDb()
-      .prepare("UPDATE users SET password = '1234' WHERE username = 'admin'")
+      .prepare(
+        "UPDATE users SET password = 'Legacy1234' WHERE username = 'admin'",
+      )
       .run()
 
     const { event } = makeClient()
-    await login(event)
+    await login(event, 'admin', 'Legacy1234')
 
     expect(isPasswordHashed(findUserByUsername('admin')!.password)).toBe(true)
 
     expect((await invoke(event, 'users:list')).success).toBe(true)
+  })
+
+  it('bootstraps the first admin only when the database has no users', async () => {
+    const db = getDb()
+
+    db.prepare('DELETE FROM activity_logs').run()
+
+    db.prepare('DELETE FROM users').run()
+
+    const client = makeClient()
+
+    const before = await invoke(client.event, 'auth:bootstrap-status')
+
+    expect(before.needs_setup).toBe(true)
+
+    const weak = await invoke(client.event, 'auth:bootstrap-admin', {
+      name: 'Owner',
+
+      username: 'owner',
+
+      password: '1234',
+    })
+
+    expect(weak.success).toBe(false)
+
+    const created = await invoke(client.event, 'auth:bootstrap-admin', {
+      name: 'Owner',
+
+      username: 'owner',
+
+      password: 'Owner1234',
+    })
+
+    expect(created.success).toBe(true)
+
+    expect(created.user.role).toBe('admin')
+
+    const after = await invoke(client.event, 'auth:bootstrap-status')
+
+    expect(after.needs_setup).toBe(false)
+
+    const second = await invoke(client.event, 'auth:bootstrap-admin', {
+      name: 'Second',
+
+      username: 'second',
+
+      password: 'Second1234',
+    })
+
+    expect(second.success).toBe(false)
+  })
+
+  it('forces users with weak legacy passwords to choose a strong password', async () => {
+    const db = getDb()
+
+    db.prepare(
+      `
+    UPDATE users
+
+    SET
+      password = '1234',
+      must_change_password = 0
+
+    WHERE username = 'admin'
+    `,
+    ).run()
+
+    const client = makeClient()
+
+    const result = await invoke(client.event, 'auth:login', {
+      username: 'admin',
+
+      password: '1234',
+    })
+
+    expect(result.success).toBe(true)
+
+    expect(result.requires_password_change).toBe(true)
+
+    const blocked = await invoke(client.event, 'users:list')
+
+    expect(blocked.success).toBe(false)
+
+    expect(blocked.message).toContain('تغيير كلمة المرور')
+
+    const weak = await invoke(client.event, 'auth:change-password', {
+      password: 'abcdefgh',
+    })
+
+    expect(weak.success).toBe(false)
+
+    const changed = await invoke(client.event, 'auth:change-password', {
+      password: 'Admin5678',
+    })
+
+    expect(changed.success).toBe(true)
+
+    expect((await invoke(client.event, 'users:list')).success).toBe(true)
+  })
+
+  it('rate limits repeated failed login attempts', async () => {
+    vi.useFakeTimers()
+
+    try {
+      vi.setSystemTime(new Date('2026-09-22T10:00:00Z'))
+
+      const client = makeClient()
+
+      let lastResult: any = null
+
+      for (let index = 0; index < 5; index += 1) {
+        lastResult = await invoke(client.event, 'auth:login', {
+          username: 'admin',
+
+          password: 'Wrong123',
+        })
+      }
+
+      expect(lastResult.success).toBe(false)
+
+      expect(Number(lastResult.retry_after_seconds)).toBeGreaterThan(0)
+
+      const blockedCorrect = await invoke(client.event, 'auth:login', {
+        username: 'admin',
+
+        password: 'Admin1234',
+      })
+
+      expect(blockedCorrect.success).toBe(false)
+
+      vi.advanceTimersByTime(31_000)
+
+      const allowed = await invoke(client.event, 'auth:login', {
+        username: 'admin',
+
+        password: 'Admin1234',
+      })
+
+      expect(allowed.success).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('expires idle sessions and lets real activity extend them', async () => {
+    vi.useFakeTimers()
+
+    try {
+      vi.setSystemTime(new Date('2026-09-22T10:00:00Z'))
+
+      const client = makeClient()
+
+      await login(client.event)
+
+      vi.advanceTimersByTime(14 * 60 * 1000)
+
+      const touch = await invoke(client.event, 'auth:touch')
+
+      expect(touch.success).toBe(true)
+
+      /*
+       * عدت 28 دقيقة من بداية
+       * الجلسة، لكن فيه نشاط
+       * في النص، إذًا Session
+       * ما زالت سليمة.
+       */
+      vi.advanceTimersByTime(14 * 60 * 1000)
+
+      expect((await invoke(client.event, 'users:list')).success).toBe(true)
+
+      /*
+       * بعدها 16 دقيقة بدون
+       * أي نشاط.
+       */
+      vi.advanceTimersByTime(16 * 60 * 1000)
+
+      const expired = await invoke(client.event, 'users:list')
+
+      expect(expired.success).toBe(false)
+
+      expect(expired.message).toContain('عدم الاستخدام')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

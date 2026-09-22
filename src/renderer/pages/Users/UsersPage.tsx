@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 import type { CSSProperties } from 'react'
 import { useAuthStore } from '../../store/auth.store'
+import { getPasswordPolicyError } from '../../../shared/password-policy'
 
 type Role = 'admin' | 'cashier'
 
@@ -101,9 +102,14 @@ export default function UsersPage() {
       return
     }
 
-    if (!editing && form.password.trim().length < 4) {
-      showMessage('error', 'كلمة المرور يجب ألا تقل عن 4 أحرف')
-      return
+    if (!editing) {
+      const passwordError = getPasswordPolicyError(form.password)
+
+      if (passwordError) {
+        showMessage('error', passwordError)
+
+        return
+      }
     }
 
     setSaving(true)
@@ -212,14 +218,17 @@ export default function UsersPage() {
     if (!passwordUser) return
     if (savingPassword) return
 
-    const password = newPassword.trim()
+    const password = newPassword
 
-    if (password.length < 4) {
-      showMessage('error', 'كلمة المرور يجب ألا تقل عن 4 أحرف')
+    const passwordError = getPasswordPolicyError(password)
+
+    if (passwordError) {
+      showMessage('error', passwordError)
+
       return
     }
 
-    if (password !== confirmPassword.trim()) {
+    if (password !== confirmPassword) {
       showMessage('error', 'كلمة المرور وتأكيدها غير متطابقين')
       return
     }
@@ -372,7 +381,7 @@ export default function UsersPage() {
                   onChange={(e) =>
                     setForm((prev) => ({ ...prev, password: e.target.value }))
                   }
-                  placeholder="4 أحرف على الأقل"
+                  placeholder="8 أحرف على الأقل، تتضمن حرفًا ورقمًا"
                   style={inputStyle}
                 />
               </Field>
@@ -573,7 +582,7 @@ export default function UsersPage() {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="4 أحرف على الأقل"
+                  placeholder="8 أحرف على الأقل، تتضمن حرفًا ورقمًا"
                   style={inputStyle}
                   autoFocus
                 />

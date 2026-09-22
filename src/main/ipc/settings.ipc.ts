@@ -5,6 +5,7 @@ import type {
   SaveDialogOptions,
 } from 'electron'
 import {
+  clearAuthSession,
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
 } from '../auth-session'
@@ -317,6 +318,26 @@ export function registerSettingsIpc(): void {
     async (event, input?: { actor_id?: number }) => {
       try {
         const actorId = requireAuthenticatedAdmin(event)
+        const actorSnapshot = getDb()
+          .prepare(
+            `
+            SELECT
+              name,
+              username
+
+            FROM users
+
+            WHERE id = ?
+
+            LIMIT 1
+            `,
+          )
+          .get(actorId) as
+          | {
+              name: string
+              username: string
+            }
+          | undefined
         const parentWindow = BrowserWindow.fromWebContents(event.sender)
         const saveResult = parentWindow
           ? await dialog.showSaveDialog(parentWindow, {
@@ -396,17 +417,35 @@ export function registerSettingsIpc(): void {
         resetDatabaseData()
 
         logAction({
-          actor_id: actorId,
+          /*
+           * الحساب القديم تم مسحه
+           * أثناء Factory Reset،
+           * لذلك الـFK لازم يكون NULL.
+           */
+          actor_id: null,
+
           action: 'database_reset',
+
           entity: 'settings',
+
           entity_id: null,
+
           details: {
             safety_backup: safetyBackupPath,
+
+            previous_actor_id: actorId,
+
+            previous_actor_name: actorSnapshot?.name || null,
+
+            previous_actor_username: actorSnapshot?.username || null,
           },
         })
 
+        clearAuthSession(event)
+
         return {
           success: true,
+          requires_setup: true,
           safetyBackupPath,
           message: 'تم تصفير البرنامج بنجاح',
         }

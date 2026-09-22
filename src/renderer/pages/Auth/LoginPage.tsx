@@ -1,4 +1,7 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+
+import FirstRunSetup from './FirstRunSetup'
+import ForcedPasswordChange from './ForcedPasswordChange'
 import { useAuthStore } from '../../store/auth.store'
 import { useEffect, useRef, useState } from 'react'
 
@@ -7,8 +10,29 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const loginStore = useAuthStore((s) => s.login)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(
+    searchParams.get('locked') === '1'
+      ? 'تم قفل الجلسة تلقائيًا بسبب عدم الاستخدام. سجل الدخول مرة أخرى.'
+      : '',
+  )
+
+  const [bootstrapLoading, setBootstrapLoading] = useState(true)
+
+  const [bootstrapStatus, setBootstrapStatus] = useState<{
+    needs_setup: boolean
+    blocked: boolean
+    message?: string
+  } | null>(null)
+
+  const [passwordChangeUser, setPasswordChangeUser] = useState<{
+    id: number
+    name: string
+    username: string
+    role: string
+  } | null>(null)
+
   const [loading, setLoading] = useState(false)
   const [appLogoUrl, setAppLogoUrl] = useState('')
   const [appName, setAppName] = useState('ERP Store')
@@ -29,7 +53,8 @@ export default function LoginPage() {
       if (
         api &&
         typeof api.getLicenseStatus === 'function' &&
-        typeof api.login === 'function'
+        typeof api.login === 'function' &&
+        typeof api.getAuthBootstrapStatus === 'function'
       ) {
         return api as Window['api']
       }
@@ -93,6 +118,44 @@ export default function LoginPage() {
     void loadLoginAppInfo()
   }, [])
 
+  useEffect(() => {
+    let active = true
+
+    async function loadBootstrapStatus() {
+      try {
+        const api = await waitForApi()
+
+        if (!api) {
+          return
+        }
+
+        const status = await api.getAuthBootstrapStatus()
+
+        if (!active) {
+          return
+        }
+
+        setBootstrapStatus(status)
+
+        if (status.blocked && status.message) {
+          setError(status.message)
+        }
+      } catch (error) {
+        console.error('Failed to load auth bootstrap status:', error)
+      } finally {
+        if (active) {
+          setBootstrapLoading(false)
+        }
+      }
+    }
+
+    void loadBootstrapStatus()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
   async function handleLogin() {
     setError('')
     setLoading(true)
@@ -112,6 +175,14 @@ export default function LoginPage() {
 
       if (!res.success) {
         setError(res.message || 'فشل تسجيل الدخول')
+        return
+      }
+
+      if (res.requires_password_change && res.user) {
+        setPasswordChangeUser(res.user)
+
+        setPassword('')
+
         return
       }
 
@@ -164,6 +235,44 @@ export default function LoginPage() {
     outline: 'none',
     fontSize: '15px',
     boxShadow: isLight ? '0 8px 20px rgba(15,23,42,0.06)' : 'none',
+  }
+
+  if (bootstrapLoading) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+
+          display: 'grid',
+
+          placeItems: 'center',
+
+          background: isLight ? '#eef2ff' : '#08152f',
+
+          color: titleColor,
+
+          fontWeight: 800,
+        }}
+      >
+        جاري تجهيز النظام...
+      </div>
+    )
+  }
+
+  if (bootstrapStatus?.needs_setup) {
+    return (
+      <FirstRunSetup
+        appName={appName}
+        appLogoUrl={appLogoUrl}
+        appTheme={appTheme}
+      />
+    )
+  }
+
+  if (passwordChangeUser) {
+    return (
+      <ForcedPasswordChange user={passwordChangeUser} appTheme={appTheme} />
+    )
   }
 
   return (

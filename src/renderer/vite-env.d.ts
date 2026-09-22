@@ -85,9 +85,59 @@ declare global {
       // =========================
       // Auth
       // =========================
+
+      getAuthBootstrapStatus: () => Promise<{
+        success: boolean
+        total_users: number
+        active_admins: number
+        needs_setup: boolean
+        blocked: boolean
+        message?: string
+      }>
+
+      bootstrapInitialAdmin: (data: {
+        name: string
+        username: string
+        password: string
+      }) => Promise<{
+        success: boolean
+        message?: string
+        user?: {
+          id: number
+          name: string
+          username: string
+          role: string
+        }
+      }>
+
+      changeOwnPassword: (input: { password: string }) => Promise<{
+        success: boolean
+        message?: string
+        user?: {
+          id: number
+          name: string
+          username: string
+          role: string
+        }
+      }>
+
+      touchAuthSession: () => Promise<{
+        success: boolean
+        message?: string
+        user_id?: number
+        idle_timeout_seconds?: number
+      }>
+
+      lockAuthSession: () => Promise<{
+        success: boolean
+        message?: string
+      }>
+
       login: (data: { username: string; password: string }) => Promise<{
         success: boolean
         message?: string
+        requires_password_change?: boolean
+        retry_after_seconds?: number
         user?: {
           id: number
           name: string
@@ -1012,6 +1062,7 @@ declare global {
         canceled?: boolean
         message?: string
         safetyBackupPath?: string
+        requires_setup?: boolean
       }>
 
       getAutoBackupInfo: () => Promise<{
@@ -2394,6 +2445,7 @@ declare global {
     role: 'admin' | 'cashier' | string
     is_active: number
     created_at: string
+    must_change_password?: number
   }
 
   type MutationResult<T = any> = {

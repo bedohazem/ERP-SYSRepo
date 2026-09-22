@@ -939,6 +939,13 @@ export function getDb(): Database.Database {
 
     `)
 
+    safeAddColumn(
+      db,
+      'users',
+      'must_change_password',
+      'INTEGER NOT NULL DEFAULT 0',
+    )
+
     safeAddColumn(db, 'product_variants', 'discount_price', 'REAL')
     safeAddColumn(db, 'promotions', 'type', `TEXT DEFAULT 'percent'`)
 
@@ -1454,7 +1461,7 @@ export function getDb(): Database.Database {
     normalizePurchaseMoney(db)
     normalizeStockMovementTypes(db)
 
-    seedAdminUser(db)
+    seedTestAdminUser(db)
 
     seedDefaultCategories(db)
     seedDefaultAppSettings(db)
@@ -1711,7 +1718,7 @@ export function resetDatabaseData(): void {
 
     `)
 
-    seedAdminUser(database)
+    seedTestAdminUser(database)
     seedDefaultCategories(database)
     seedDefaultAppSettings(database)
   })()
@@ -1871,9 +1878,31 @@ function normalizeStockMovementTypes(database: Database.Database): void {
     .run()
 }
 
-function seedAdminUser(database: Database.Database): void {
+function seedTestAdminUser(database: Database.Database): void {
+  /*
+   * هذا المستخدم للاختبارات فقط.
+   *
+   * Production لا يحتوي
+   * على أي Default Admin.
+   */
+  const testPassword = String(process.env.ERP_TEST_ADMIN_PASSWORD || '')
+
+  if (!testPassword) {
+    return
+  }
+
   const existingAdmin = database
-    .prepare(`SELECT id FROM users WHERE username = ? LIMIT 1`)
+    .prepare(
+      `
+        SELECT id
+
+        FROM users
+
+        WHERE username = ?
+
+        LIMIT 1
+        `,
+    )
     .get('admin')
 
   if (existingAdmin) {
@@ -1883,13 +1912,21 @@ function seedAdminUser(database: Database.Database): void {
   database
     .prepare(
       `
-      INSERT INTO users (name, username, password, role, is_active)
-      VALUES (?, ?, ?, ?, ?)
-    `,
-    )
-    .run('Administrator', 'admin', hashPassword('1234'), 'admin', 1)
+      INSERT INTO users (
+        name,
+        username,
+        password,
+        role,
+        is_active,
+        must_change_password
+      )
 
-  console.log('Seeded default admin user: admin / 1234')
+      VALUES (
+        ?, ?, ?, ?, 1, 0
+      )
+      `,
+    )
+    .run('Test Administrator', 'admin', hashPassword(testPassword), 'admin')
 }
 
 function seedDefaultCategories(database: Database.Database): void {

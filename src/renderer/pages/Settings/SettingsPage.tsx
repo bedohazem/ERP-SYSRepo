@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth.store'
 
 type BarcodeItemPosition =
@@ -182,6 +184,10 @@ export default function SettingsPage() {
   const [savingStoreQr, setSavingStoreQr] = useState(false)
   const [savingStoreContact, setSavingStoreContact] = useState(false)
   const currentUser = useAuthStore((s) => s.user)
+
+  const clearLocalSession = useAuthStore((s) => s.clearLocalSession)
+
+  const navigate = useNavigate()
 
   const [autoBackupInfo, setAutoBackupInfo] = useState<{
     dir: string
@@ -674,10 +680,13 @@ export default function SettingsPage() {
         return
       }
 
-      showMessage(
-        'success',
-        'تم تصفير البرنامج بنجاح. تم إنشاء نسخة أمان قبل المسح. يفضل إعادة تشغيل البرنامج.',
-      )
+      clearLocalSession()
+
+      navigate('/', {
+        replace: true,
+      })
+
+      return
     } catch (error) {
       console.error('Failed to reset database:', error)
       showMessage('error', 'حدث خطأ أثناء تصفير البرنامج')
