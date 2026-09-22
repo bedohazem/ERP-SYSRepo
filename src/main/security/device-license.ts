@@ -8,7 +8,6 @@ import { validateAppActivationForDevice } from './app-activation-token'
 
 const TRIAL_DAYS = 7
 
-// غير السر ده قبل التسليم وخليه طويل وعشوائي جدًا
 /*
  * هذا المفتاح لحماية/كشف تلف Local Store فقط.
  *
@@ -164,16 +163,6 @@ function addDays(date: Date, days: number) {
   const next = new Date(date)
   next.setDate(next.getDate() + days)
   return next
-}
-
-function normalizeCode(value: string) {
-  return String(value || '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
-}
-
-function formatCode(value: string) {
-  return value.match(/.{1,4}/g)?.join('-') || value
 }
 
 function signLicense(data: Omit<LicenseRecord, 'signature'>) {
@@ -753,7 +742,7 @@ export function deactivateDevice() {
     license_state_changed_at: stateChangedAt,
     activated: false,
     activated_at: null,
-    activation_token:null,
+    activation_token: null,
     invalidated: false,
   })
 
