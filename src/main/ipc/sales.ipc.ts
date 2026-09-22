@@ -33,11 +33,69 @@ import { requireAdmin, requireAnyAdminPassword } from './permission-helper'
 
 import { getSaleCurrentState } from '../database/repositories/sales-current-state.repo'
 
+const SALES_COST_FIELDS = new Set([
+  'buy_price',
+  'unit_cost',
+  'old_unit_cost',
+  'new_unit_cost',
+  'original_unit_cost',
+  'current_unit_cost',
+])
+
+const SALES_COST_JSON_FIELDS = new Set([
+  'before_state_json',
+  'after_state_json',
+])
+
+function redactSalesCostData<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSalesCostData(item)) as T
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return value
+  }
+
+  const source = value as Record<string, unknown>
+
+  const result: Record<string, unknown> = {}
+
+  for (const [key, child] of Object.entries(source)) {
+    if (SALES_COST_FIELDS.has(key)) {
+      result[key] = 0
+
+      continue
+    }
+
+    /*
+     * Exchange audit snapshots contain
+     * cost values encoded inside JSON strings.
+     */
+    if (SALES_COST_JSON_FIELDS.has(key)) {
+      result[key] = '[]'
+
+      continue
+    }
+
+    result[key] = redactSalesCostData(child)
+  }
+
+  return result as T
+}
+
+function protectSalesCostData<T>(role: string, value: T): T {
+  if (role === 'admin') {
+    return value
+  }
+
+  return redactSalesCostData(value)
+}
+
 export function registerSalesIpc(): void {
   ipcMain.handle(
     'sales:search-variants',
     (
-      _,
+      event,
       payload:
         | string
         | {
@@ -46,16 +104,24 @@ export function registerSalesIpc(): void {
             limit?: number
           },
     ) => {
-      return searchSaleVariants(
+      const actor = requireAuthenticatedUser(event)
+
+      const result = searchSaleVariants(
         typeof payload === 'string'
           ? (payload ?? '')
           : (payload ?? { query: '' }),
       )
+
+      return protectSalesCostData(actor.role, result)
     },
   )
 
-  ipcMain.handle('sales:get-variant-by-barcode', (_, barcode: string) => {
-    return getVariantByBarcode(barcode ?? '')
+  ipcMain.handle('sales:get-variant-by-barcode', (event, barcode: string) => {
+    const actor = requireAuthenticatedUser(event)
+
+    const result = getVariantByBarcode(barcode ?? '')
+
+    return protectSalesCostData(actor.role, result)
   })
 
   ipcMain.handle('sales:create', (event, input) => {
@@ -154,20 +220,34 @@ export function registerSalesIpc(): void {
     }
   })
 
-  ipcMain.handle('sales:get-receipt', (_, saleId: number) => {
-    return getSaleReceipt(Number(saleId))
+  ipcMain.handle('sales:get-receipt', (event, saleId: number) => {
+    const actor = requireAuthenticatedUser(event)
+
+    const result = getSaleReceipt(Number(saleId))
+
+    return protectSalesCostData(actor.role, result)
   })
 
-  ipcMain.handle('sales:current-state', (_, saleId: number) => {
-    return getSaleCurrentState(Number(saleId))
+  ipcMain.handle('sales:current-state', (event, saleId: number) => {
+    const actor = requireAuthenticatedUser(event)
+
+    const result = getSaleCurrentState(Number(saleId))
+
+    return protectSalesCostData(actor.role, result)
   })
 
-  ipcMain.handle('sales:return-history', (_, saleId: number) => {
+  ipcMain.handle('sales:return-history', (event, saleId: number) => {
+    requireAuthenticatedUser(event)
+
     return getSaleReturnHistory(Number(saleId))
   })
 
-  ipcMain.handle('sales:exchange-state', (_, saleId: number) => {
-    return getSaleExchangeState(Number(saleId))
+  ipcMain.handle('sales:exchange-state', (event, saleId: number) => {
+    const actor = requireAuthenticatedUser(event)
+
+    const result = getSaleExchangeState(Number(saleId))
+
+    return protectSalesCostData(actor.role, result)
   })
 
   ipcMain.handle('sales:exchange', (event, input) => {
@@ -201,8 +281,12 @@ export function registerSalesIpc(): void {
     return result
   })
 
-  ipcMain.handle('sales:list-exchanges', (_, input) => {
-    return listSaleExchanges(input)
+  ipcMain.handle('sales:list-exchanges', (event, input) => {
+    const actor = requireAuthenticatedUser(event)
+
+    const result = listSaleExchanges(input)
+
+    return protectSalesCostData(actor.role, result)
   })
 
   ipcMain.handle('sales:cancel-exchange', (event, input) => {
@@ -271,11 +355,15 @@ export function registerSalesIpc(): void {
     }
   })
 
-  ipcMain.handle('sales:list', (_, input) => {
+  ipcMain.handle('sales:list', (event, input) => {
+    requireAuthenticatedUser(event)
+
     return listSales(input)
   })
 
-  ipcMain.handle('sales:list-returns', (_, input) => {
+  ipcMain.handle('sales:list-returns', (event, input) => {
+    requireAuthenticatedUser(event)
+
     return listSaleReturns(input)
   })
 

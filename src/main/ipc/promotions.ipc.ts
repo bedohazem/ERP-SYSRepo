@@ -10,22 +10,35 @@ import {
 } from '../database/repositories/promotions.repo'
 
 import { logAction } from './activity-helper'
-import { requireAuthenticatedAdmin } from '../auth-session'
+import {
+  requireAuthenticatedAdmin,
+  requireAuthenticatedUser,
+} from '../auth-session'
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'حدث خطأ غير متوقع'
 }
 
 export function registerPromotionsIpc(): void {
-  ipcMain.handle('promotions:list', () => {
+  ipcMain.handle('promotions:list', (event) => {
+    requireAuthenticatedAdmin(event)
+
     return listPromotions()
   })
 
-  ipcMain.handle('promotions:get', (_, promotionId: number) => {
+  ipcMain.handle('promotions:get', (event, promotionId: number) => {
+    requireAuthenticatedAdmin(event)
+
     return getPromotion(promotionId)
   })
 
-  ipcMain.handle('promotions:get-active', () => {
+  ipcMain.handle('promotions:get-active', (event) => {
+    /*
+     * شاشة البيع تحتاج معرفة العرض النشط،
+     * لذلك Admin + Cashier.
+     */
+    requireAuthenticatedUser(event)
+
     return getActivePromotion()
   })
 

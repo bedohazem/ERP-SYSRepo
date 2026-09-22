@@ -1,6 +1,9 @@
 import { ipcMain } from 'electron'
 import { logAction } from './activity-helper'
-import { requireAuthenticatedAdmin } from '../auth-session'
+import {
+  requireAuthenticatedAdmin,
+  requireAuthenticatedUser,
+} from '../auth-session'
 import {
   createProduct,
   getCategories,
@@ -24,8 +27,17 @@ function getErrorMessage(error: unknown) {
 export function registerProductsIpc(): void {
   ipcMain.handle(
     'products:get-categories',
-    (_, input?: { includeInactive?: boolean }) => {
-      return getCategories(Boolean(input?.includeInactive))
+    (event, input?: { includeInactive?: boolean }) => {
+      const actor = requireAuthenticatedUser(event)
+
+      /*
+       * الكاشير يحتاج التصنيفات في شاشة البيع والجرد،
+       * لكن لا يحتاج رؤية التصنيفات المعطلة.
+       */
+      const includeInactive =
+        actor.role === 'admin' ? Boolean(input?.includeInactive) : false
+
+      return getCategories(includeInactive)
     },
   )
 
@@ -101,13 +113,15 @@ export function registerProductsIpc(): void {
   ipcMain.handle(
     'products:list',
     (
-      _,
+      event,
       payload?: {
         search?: string
         includeInactive?: boolean
         categoryId?: number | string | null
       },
     ) => {
+      requireAuthenticatedAdmin(event)
+
       return getProducts(
         payload?.search ?? '',
         payload?.includeInactive ?? false,
@@ -116,13 +130,23 @@ export function registerProductsIpc(): void {
     },
   )
 
-  ipcMain.handle('products:list-page', (_, input) => {
+  ipcMain.handle('products:list-page', (event, input) => {
+    requireAuthenticatedAdmin(event)
+
     return listProductsPage(input)
   })
 
   ipcMain.handle(
     'products:get-variants',
-    (_, payload: { productId: number; includeInactive?: boolean }) => {
+    (
+      event,
+      payload: {
+        productId: number
+        includeInactive?: boolean
+      },
+    ) => {
+      requireAuthenticatedAdmin(event)
+
       return getProductVariants(
         payload.productId,
         payload.includeInactive ?? true,

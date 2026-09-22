@@ -2,6 +2,10 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import {
+  requireAuthenticatedAdmin,
+  requireAuthenticatedUser,
+} from '../auth-session'
 
 type SavePdfInput = {
   html: string
@@ -29,7 +33,13 @@ function cleanFileName(value: string) {
 }
 
 export function registerPrintIpc(): void {
-  ipcMain.handle('print:save-pdf', async (_event, input: SavePdfInput) => {
+  ipcMain.handle('print:save-pdf', async (event, input: SavePdfInput) => {
+    /*
+     * Export PDF مستخدم حاليًا في
+     * المخزون وكشف الموردين فقط.
+     */
+    requireAuthenticatedAdmin(event)
+
     const html = String(input?.html || '').trim()
 
     if (!html) {
@@ -97,7 +107,9 @@ export function registerPrintIpc(): void {
 
   ipcMain.handle(
     'print:silent-html',
-    async (_event, input: SilentPrintInput) => {
+    async (event, input: SilentPrintInput) => {
+      requireAuthenticatedUser(event)
+
       const html = String(input?.html || '').trim()
 
       if (!html) {
@@ -169,6 +181,7 @@ export function registerPrintIpc(): void {
   ipcMain.handle(
     'print:dialog-html',
     async (event, input: DialogPrintInput) => {
+      requireAuthenticatedUser(event)
       const html = String(input?.html || '').trim()
 
       if (!html) {

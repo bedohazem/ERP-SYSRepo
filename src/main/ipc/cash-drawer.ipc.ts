@@ -242,8 +242,25 @@ async function sendCashDrawerPulse(printerName: string) {
 }
 
 export function registerCashDrawerIpc(): void {
-  ipcMain.handle('cash-drawer:get-settings', () => {
-    return getCashDrawerSettings()
+  ipcMain.handle('cash-drawer:get-settings', (event) => {
+    const actor = requireAuthenticatedUser(event)
+
+    const settings = getCashDrawerSettings()
+
+    if (actor.role === 'admin') {
+      return settings
+    }
+
+    /*
+     * الكاشير يحتاج فقط معرفة
+     * هل الفتح التلقائي شغال.
+     *
+     * اسم الطابعة إعداد إداري.
+     */
+    return {
+      ...settings,
+      printer_name: '',
+    }
   })
 
   ipcMain.handle(
@@ -270,6 +287,8 @@ export function registerCashDrawerIpc(): void {
   )
 
   ipcMain.handle('cash-drawer:list-printers', async (event) => {
+    requireAuthenticatedAdmin(event)
+
     const parentWindow = BrowserWindow.fromWebContents(event.sender)
 
     if (!parentWindow) {

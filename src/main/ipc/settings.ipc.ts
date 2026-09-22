@@ -98,7 +98,9 @@ function getOptionalActorId(event: IpcMainInvokeEvent): number | null {
 }
 
 export function registerSettingsIpc(): void {
-  ipcMain.handle('settings:get-barcode-print', () => {
+  ipcMain.handle('settings:get-barcode-print', (event) => {
+    requireAuthenticatedAdmin(event)
+
     return getBarcodePrintSettings()
   })
 
@@ -120,7 +122,12 @@ export function registerSettingsIpc(): void {
     return result
   })
 
-  ipcMain.handle('settings:get-receipt-print', () => {
+  ipcMain.handle('settings:get-receipt-print', (event) => {
+    /*
+     * الكاشير يحتاج إعدادات مقاس وطباعة الإيصال.
+     */
+    requireAuthenticatedUser(event)
+
     return getReceiptPrintSettings()
   })
 
@@ -142,7 +149,12 @@ export function registerSettingsIpc(): void {
     return result
   })
 
-  ipcMain.handle('settings:get-loyalty', () => {
+  ipcMain.handle('settings:get-loyalty', (event) => {
+    /*
+     * شاشة البيع تحتاج قواعد النقاط.
+     */
+    requireAuthenticatedUser(event)
+
     return getLoyaltySettings()
   })
 
@@ -517,7 +529,7 @@ export function registerSettingsIpc(): void {
   })
 
   ipcMain.handle('settings:deactivate-app', (event) => {
-    const actorId = getOptionalActorId(event)
+    const actorId = requireAuthenticatedAdmin(event)
 
     const result = deactivateApp()
 

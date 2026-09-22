@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { logAction } from './activity-helper'
-import { requireAuthenticatedUser } from '../auth-session'
+import { requireAuthenticatedAdmin } from '../auth-session'
 import {
   adjustVariantStock,
   getInventoryList,
@@ -9,16 +9,20 @@ import {
 } from '../database/repositories/inventory.repo'
 
 export function registerInventoryIpc(): void {
-  ipcMain.handle('inventory:list', (_, input) => {
+  ipcMain.handle('inventory:list', (event, input) => {
+    requireAuthenticatedAdmin(event)
+
     return getInventoryList(input)
   })
 
-  ipcMain.handle('inventory:list-page', (_, input) => {
+  ipcMain.handle('inventory:list-page', (event, input) => {
+    requireAuthenticatedAdmin(event)
+
     return listInventoryPage(input)
   })
 
   ipcMain.handle('inventory:adjust-stock', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actorId = requireAuthenticatedAdmin(event)
 
     const result = adjustVariantStock(input)
 
@@ -45,7 +49,9 @@ export function registerInventoryIpc(): void {
     return result
   })
 
-  ipcMain.handle('inventory:movements', (_, input) => {
+  ipcMain.handle('inventory:movements', (event, input) => {
+    requireAuthenticatedAdmin(event)
+
     return getStockMovements(input)
   })
 }
