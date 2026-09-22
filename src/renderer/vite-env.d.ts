@@ -1071,6 +1071,11 @@ declare global {
         canceled?: boolean
         path?: string
         message?: string
+        validation?: {
+          path: string
+          size: number
+          tables: string[]
+        }
       }>
 
       restoreDatabase: (input?: { actor_id?: number }) => Promise<{
@@ -1079,6 +1084,13 @@ declare global {
         path?: string
         safetyBackupPath?: string
         message?: string
+        requires_relogin?: boolean
+
+        validation?: {
+          path: string
+          size: number
+          tables: string[]
+        }
       }>
 
       resetDatabase: (input?: { actor_id?: number }) => Promise<{
@@ -1091,12 +1103,23 @@ declare global {
 
       getAutoBackupInfo: () => Promise<{
         dir: string
+
         maxBackups: number
+
+        retention: {
+          recent: number
+          daily: number
+          weekly: number
+          manual: number
+        }
+
         files: Array<{
           file: string
           fullPath: string
           size: number
           createdAt: string
+
+          reason: 'startup' | 'hourly' | 'shutdown' | 'manual' | 'unknown'
         }>
       }>
 
@@ -1107,11 +1130,18 @@ declare global {
         info?: {
           dir: string
           maxBackups: number
+          retention: {
+            recent: number
+            daily: number
+            weekly: number
+            manual: number
+          }
           files: Array<{
             file: string
             fullPath: string
             size: number
             createdAt: string
+            reason: 'startup' | 'hourly' | 'shutdown' | 'manual' | 'unknown'
           }>
         }
       }>
@@ -1125,11 +1155,18 @@ declare global {
         info?: {
           dir: string
           maxBackups: number
+          retention: {
+            recent: number
+            daily: number
+            weekly: number
+            manual: number
+          }
           files: Array<{
             file: string
             fullPath: string
             size: number
             createdAt: string
+            reason: 'startup' | 'hourly' | 'shutdown' | 'manual' | 'unknown'
           }>
         }
       }>

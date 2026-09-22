@@ -191,12 +191,23 @@ export default function SettingsPage() {
 
   const [autoBackupInfo, setAutoBackupInfo] = useState<{
     dir: string
+
     maxBackups: number
+
+    retention: {
+      recent: number
+      daily: number
+      weekly: number
+      manual: number
+    }
+
     files: Array<{
       file: string
       fullPath: string
       size: number
       createdAt: string
+
+      reason: 'startup' | 'hourly' | 'shutdown' | 'manual' | 'unknown'
     }>
   } | null>(null)
 
@@ -625,14 +636,6 @@ export default function SettingsPage() {
   async function restoreDatabase() {
     if (restoreLoading) return
 
-    const confirmed = confirm(
-      'تحذير: استرجاع نسخة احتياطية سيستبدل بيانات البرنامج الحالية. هل أنت متأكد؟',
-    )
-
-    if (!confirmed) {
-      return
-    }
-
     setRestoreLoading(true)
 
     try {
@@ -649,10 +652,13 @@ export default function SettingsPage() {
         return
       }
 
-      showMessage(
-        'success',
-        'تم استرجاع النسخة الاحتياطية بنجاح. يفضل إعادة تشغيل البرنامج.',
-      )
+      clearLocalSession()
+
+      navigate('/', {
+        replace: true,
+      })
+
+      return
     } catch (error) {
       console.error('Failed to restore database:', error)
       showMessage('error', 'حدث خطأ أثناء استرجاع النسخة الاحتياطية')
@@ -1099,8 +1105,9 @@ export default function SettingsPage() {
               <div>
                 <h3 style={{ margin: '0 0 6px' }}>النسخ التلقائي</h3>
                 <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.7 }}>
-                  البرنامج ينشئ نسخة عند الفتح، وكل ساعة، وعند القفل، ويمكن
-                  إنشاء نسخة يدويًا، ويحتفظ بآخر 7 نسخ فقط.
+                  البرنامج ينشئ نسخة عند الفتح، وكل ساعة، وعند الإغلاق، ويمكن
+                  إنشاء نسخة يدويًا. نظام الاحتفاظ يحافظ على نسخ حديثة + يومية +
+                  أسبوعية بدل حذف كل التاريخ بعد عدة ساعات.
                 </p>
               </div>
 
@@ -1158,10 +1165,30 @@ export default function SettingsPage() {
                   gap: '8px',
                 }}
               >
-                <strong style={{ color: '#cbd5e1' }}>
-                  آخر النسخ: {autoBackupInfo?.files?.length || 0} /{' '}
-                  {autoBackupInfo?.maxBackups || 7}
+                <strong
+                  style={{
+                    color: '#cbd5e1',
+                  }}
+                >
+                  النسخ المحفوظة: {autoBackupInfo?.files?.length || 0}
                 </strong>
+
+                {autoBackupInfo?.retention && (
+                  <span
+                    style={{
+                      color: '#94a3b8',
+
+                      fontSize: '13px',
+
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    الاحتفاظ: آخر {autoBackupInfo.retention.recent} نسخة حديثة،{' '}
+                    {autoBackupInfo.retention.daily} يومية،{' '}
+                    {autoBackupInfo.retention.weekly} أسبوعية، وآخر{' '}
+                    {autoBackupInfo.retention.manual} نسخ يدوية.
+                  </span>
+                )}
 
                 {(autoBackupInfo?.files || []).length === 0 ? (
                   <span style={{ color: '#94a3b8' }}>
@@ -1181,6 +1208,19 @@ export default function SettingsPage() {
                       }}
                     >
                       <strong>{file.file}</strong>
+                      <span
+                        style={{
+                          color: '#64748b',
+
+                          fontSize: '12px',
+                        }}
+                      >
+                        {file.reason}
+                        {' • '}
+                        {(file.size / 1024 / 1024).toFixed(2)}
+                        {' MB • '}
+                        {new Date(file.createdAt).toLocaleString('ar-EG')}
+                      </span>
                       <span
                         dir="ltr"
                         style={{ color: '#94a3b8', fontSize: '12px' }}

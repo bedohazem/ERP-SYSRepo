@@ -28,12 +28,19 @@ import {
   saveReceiptPrintSettings,
   saveAppTheme,
 } from '../database/repositories/settings.repo'
-import { closeDb, getDb, getDbPath, resetDatabaseData } from '../database/db'
+import { getDb, resetDatabaseData } from '../database/db'
 import {
   createAutoBackup,
   getAutoBackupInfo,
   setAutoBackupDir,
 } from '../database/auto-backup'
+
+import {
+  createVerifiedDatabaseBackup,
+  restoreVerifiedDatabase,
+} from '../database/database-backup'
+
+import { validateErpDatabaseFile } from '../database/backup-integrity'
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -210,9 +217,7 @@ export function registerSettingsIpc(): void {
 
         recheckAdmin(event, actorId)
 
-        const db = getDb()
-
-        await db.backup(result.filePath)
+        const validation = await createVerifiedDatabaseBackup(result.filePath)
 
         logAction({
           actor_id: actorId,
@@ -221,12 +226,17 @@ export function registerSettingsIpc(): void {
           entity_id: null,
           details: {
             path: result.filePath,
+
+            size: validation.size,
+
+            integrity: 'ok',
           },
         })
 
         return {
           success: true,
           path: result.filePath,
+          validation,
           message: 'تم حفظ النسخة الاحتياطية بنجاح',
         }
       } catch (error) {
@@ -240,17 +250,55 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle(
     'settings:restore-database',
-    async (event, input?: { actor_id?: number }) => {
+    async (
+      event,
+      _input?: {
+        actor_id?: number
+      },
+    ) => {
       try {
         const actorId = requireAuthenticatedAdmin(event)
+
+        const actorSnapshot = getDb()
+          .prepare(
+            `
+            SELECT
+              name,
+              username
+
+            FROM users
+
+            WHERE id = ?
+
+            LIMIT 1
+            `,
+          )
+          .get(actorId) as
+          | {
+              name: string
+              username: string
+            }
+          | undefined
+
         const parentWindow = BrowserWindow.fromWebContents(event.sender)
 
         const options: OpenDialogOptions = {
           title: 'اختيار نسخة احتياطية للاسترجاع',
+
           properties: ['openFile'],
+
           filters: [
-            { name: 'SQLite Database', extensions: ['db'] },
-            { name: 'All Files', extensions: ['*'] },
+            {
+              name: 'SQLite Database / Backup',
+
+              extensions: ['db', 'bak'],
+            },
+
+            {
+              name: 'All Files',
+
+              extensions: ['*'],
+            },
           ],
         }
 
@@ -262,51 +310,107 @@ export function registerSettingsIpc(): void {
           return {
             success: false,
             canceled: true,
+
             message: 'تم إلغاء استرجاع النسخة الاحتياطية',
           }
         }
 
         const selectedFile = result.filePaths[0]
-        const targetDbPath = getDbPath()
-        const backupBeforeRestorePath = `${targetDbPath}.before-restore-${Date.now()}.bak`
+
+        /*
+         * Validation قبل حتى
+         * إظهار Confirm النهائي.
+         */
+        const validation = validateErpDatabaseFile(selectedFile)
 
         recheckAdmin(event, actorId)
-        closeDb()
 
-        if (fs.existsSync(targetDbPath)) {
-          fs.copyFileSync(targetDbPath, backupBeforeRestorePath)
+        const confirmOptions = {
+          type: 'warning' as const,
+
+          buttons: ['إلغاء', 'استرجاع النسخة'],
+
+          defaultId: 0,
+          cancelId: 0,
+
+          title: 'تأكيد استرجاع قاعدة البيانات',
+
+          message: 'هل أنت متأكد من استرجاع هذه النسخة؟',
+
+          detail: `سيتم استبدال بيانات البرنامج الحالية بالكامل.\n\nحجم النسخة: ${(validation.size / 1024 / 1024).toFixed(2)} MB\n\nسيتم إنشاء نسخة أمان تلقائية من البيانات الحالية قبل الاسترجاع، وسيتم الرجوع إليها تلقائيًا إذا فشل الاسترجاع.`,
         }
 
-        fs.copyFileSync(selectedFile, targetDbPath)
+        const confirmation = parentWindow
+          ? await dialog.showMessageBox(parentWindow, confirmOptions)
+          : await dialog.showMessageBox(confirmOptions)
 
-        getDb()
+        if (confirmation.response !== 1) {
+          return {
+            success: false,
+            canceled: true,
 
+            message: 'تم إلغاء استرجاع النسخة الاحتياطية',
+          }
+        }
+
+        recheckAdmin(event, actorId)
+
+        const restored = await restoreVerifiedDatabase(selectedFile)
+
+        /*
+         * القاعدة نفسها اتغيرت.
+         * لا نستخدم actor_id القديم
+         * داخل القاعدة المسترجعة.
+         */
         logAction({
-          actor_id: actorId,
+          actor_id: null,
+
           action: 'database_restored',
+
           entity: 'settings',
+
           entity_id: null,
+
           details: {
             restored_from: selectedFile,
-            safety_backup: backupBeforeRestorePath,
+
+            safety_backup: restored.safetyBackupPath,
+
+            previous_actor_id: actorId,
+
+            previous_actor_name: actorSnapshot?.name || null,
+
+            previous_actor_username: actorSnapshot?.username || null,
+
+            source_size: validation.size,
+
+            integrity: 'ok',
           },
         })
 
-        return {
-          success: true,
-          path: selectedFile,
-          safetyBackupPath: backupBeforeRestorePath,
-          message: 'تم استرجاع النسخة الاحتياطية بنجاح',
-        }
-      } catch (error) {
-        try {
-          getDb()
-        } catch {
-          // Ignore reopen errors here; the original error is more useful.
-        }
+        /*
+         * User table قد تكون تغيرت.
+         * Session القديمة غير صالحة.
+         */
+        clearAuthSession(event)
 
         return {
+          success: true,
+
+          path: selectedFile,
+
+          safetyBackupPath: restored.safetyBackupPath ?? undefined,
+
+          requires_relogin: true,
+
+          validation,
+
+          message: 'تم استرجاع النسخة الاحتياطية والتحقق من سلامتها بنجاح',
+        }
+      } catch (error) {
+        return {
           success: false,
+
           message: getErrorMessage(error),
         }
       }
@@ -408,9 +512,8 @@ export function registerSettingsIpc(): void {
 
         recheckAdmin(event, actorId)
 
-        const db = getDb()
-
-        await db.backup(safetyBackupPath)
+        const safetyValidation =
+          await createVerifiedDatabaseBackup(safetyBackupPath)
 
         recheckAdmin(event, actorId)
 
@@ -436,6 +539,9 @@ export function registerSettingsIpc(): void {
             previous_actor_id: actorId,
 
             previous_actor_name: actorSnapshot?.name || null,
+            safety_backup_size: safetyValidation.size,
+
+            safety_backup_integrity: 'ok',
 
             previous_actor_username: actorSnapshot?.username || null,
           },
