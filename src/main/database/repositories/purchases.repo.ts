@@ -65,103 +65,6 @@ export type CreatePurchaseReturnInput = {
   }>
 }
 
-function ensurePurchaseReturnSchema() {
-  const db = getDb()
-
-  function safeRun(sql: string) {
-    try {
-      db.prepare(sql).run()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-
-      if (!message.includes('duplicate column name')) {
-        throw error
-      }
-    }
-  }
-
-  safeRun(
-    `ALTER TABLE purchase_invoices ADD COLUMN status TEXT DEFAULT 'active'`,
-  )
-  safeRun(`ALTER TABLE purchase_invoices ADD COLUMN cancelled_at TEXT`)
-  safeRun(`ALTER TABLE purchase_invoices ADD COLUMN cancelled_by INTEGER`)
-  safeRun(`ALTER TABLE purchase_invoices ADD COLUMN cancel_reason TEXT`)
-
-  db.prepare(
-    `
-    CREATE TABLE IF NOT EXISTS purchase_returns (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      purchase_id INTEGER NOT NULL,
-      supplier_id INTEGER NOT NULL,
-      total_amount REAL NOT NULL DEFAULT 0,
-      notes TEXT,
-      created_by INTEGER,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `,
-  ).run()
-
-  safeRun(`ALTER TABLE purchase_returns ADD COLUMN shift_id INTEGER`)
-
-  db.prepare(
-    `
-  CREATE INDEX IF NOT EXISTS
-    idx_purchase_returns_shift_id
-  ON purchase_returns(shift_id)
-  `,
-  ).run()
-
-  safeRun(
-    `ALTER TABLE purchase_returns ADD COLUMN debt_reduction_amount REAL DEFAULT 0`,
-  )
-  safeRun(
-    `ALTER TABLE purchase_returns ADD COLUMN cash_refund_amount REAL DEFAULT 0`,
-  )
-  safeRun(`ALTER TABLE purchase_returns ADD COLUMN refund_payment_method TEXT`)
-  safeRun(
-    `ALTER TABLE purchase_returns ADD COLUMN refund_mode TEXT DEFAULT 'cash'`,
-  )
-
-  db.prepare(
-    `
-    CREATE TABLE IF NOT EXISTS purchase_return_items (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      return_id INTEGER NOT NULL,
-      purchase_item_id INTEGER NOT NULL,
-      variant_id INTEGER NOT NULL,
-      product_name TEXT NOT NULL,
-      barcode TEXT,
-      size TEXT,
-      color TEXT,
-      quantity REAL NOT NULL,
-      unit_cost REAL NOT NULL,
-      line_total REAL NOT NULL
-    )
-  `,
-  ).run()
-
-  db.prepare(
-    `
-    CREATE INDEX IF NOT EXISTS idx_purchase_returns_purchase_id
-    ON purchase_returns (purchase_id)
-  `,
-  ).run()
-
-  db.prepare(
-    `
-    CREATE INDEX IF NOT EXISTS idx_purchase_return_items_return_id
-    ON purchase_return_items (return_id)
-  `,
-  ).run()
-
-  db.prepare(
-    `
-    CREATE INDEX IF NOT EXISTS idx_purchase_return_items_purchase_item_id
-    ON purchase_return_items (purchase_item_id)
-  `,
-  ).run()
-}
-
 function getCurrentVariantStock(
   db: ReturnType<typeof getDb>,
   variantId: number,
@@ -215,8 +118,6 @@ function normalizePaymentStatus(
 }
 
 export function createPurchaseInvoice(input: CreatePurchaseInput) {
-  ensurePurchaseReturnSchema()
-
   const db = getDb()
 
   const supplierId = Number(input.supplier_id)
@@ -595,8 +496,6 @@ function recalculateVariantBuyPriceAfterPurchaseCancellation(
 }
 
 export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
-  ensurePurchaseReturnSchema()
-
   const db = getDb()
   const purchaseId = Number(input.purchase_id)
 
@@ -819,8 +718,6 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
 }
 
 export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
-  ensurePurchaseReturnSchema()
-
   const db = getDb()
   const purchaseId = Number(input.purchase_id)
 
@@ -1136,8 +1033,6 @@ export function listPurchaseInvoices(input?: {
   limit?: number
   offset?: number
 }) {
-  ensurePurchaseReturnSchema()
-
   const db = getDb()
 
   const search = input?.search?.trim() || ''
@@ -1241,8 +1136,6 @@ export function listPurchaseReturns(input?: {
   limit?: number
   offset?: number
 }) {
-  ensurePurchaseReturnSchema()
-
   const db = getDb()
 
   const search = input?.search?.trim() || ''
@@ -1308,8 +1201,6 @@ export function listPurchaseReturns(input?: {
 }
 
 export function getPurchaseInvoice(purchaseId: number) {
-  ensurePurchaseReturnSchema()
-
   const db = getDb()
 
   const purchase = db
@@ -1395,8 +1286,6 @@ export function getPurchaseInvoice(purchaseId: number) {
 }
 
 export function getPurchaseReturn(returnId: number) {
-  ensurePurchaseReturnSchema()
-
   const db = getDb()
 
   const purchaseReturn = db
@@ -1446,8 +1335,6 @@ export function recordSupplierPayment(input: {
   notes?: string | null
   actor_id?: number | null
 }) {
-  ensurePurchaseReturnSchema()
-
   const db = getDb()
 
   const supplierId = Number(input.supplier_id)
@@ -1997,8 +1884,6 @@ export function cancelSupplierPaymentBatch(input: {
   reason?: string | null
   actor_id?: number | null
 }) {
-  ensurePurchaseReturnSchema()
-
   const batchId = Number(input.batch_id || 0)
 
   const context = getSupplierPaymentBatchMutationContext(batchId)
@@ -2137,8 +2022,6 @@ export function updateSupplierPaymentBatch(input: {
   notes?: string | null
   actor_id?: number | null
 }) {
-  ensurePurchaseReturnSchema()
-
   const batchId = Number(input.batch_id || 0)
 
   const amountInput = roundMoney(Number(input.amount || 0))
@@ -2660,8 +2543,6 @@ export function getSupplierStatement(
   supplierId: number,
   actorId?: number | null,
 ) {
-  ensurePurchaseReturnSchema()
-
   const db = getDb()
   const id = Number(supplierId)
 

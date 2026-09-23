@@ -2,7 +2,7 @@ import Database from 'better-sqlite3'
 import path from 'node:path'
 import { app } from 'electron'
 import { hashPassword } from '../security/password'
-
+import { runDatabaseMigrations } from './migrations/migrations'
 let db: Database.Database
 
 export function getDbPath(): string {
@@ -959,111 +959,171 @@ export function getDb(): Database.Database {
 
     `)
 
-    safeAddColumn(
-      db,
-      'users',
-      'must_change_password',
-      'INTEGER NOT NULL DEFAULT 0',
-    )
+    runDatabaseMigrations(db, [
+      {
+        version: 1,
+        name: 'legacy-current-schema',
+        up: () => {
+          safeAddColumn(
+            db,
+            'users',
+            'must_change_password',
+            'INTEGER NOT NULL DEFAULT 0',
+          )
 
-    safeAddColumn(db, 'activity_logs', 'approved_by', 'INTEGER')
+          safeAddColumn(db, 'activity_logs', 'approved_by', 'INTEGER')
 
-    safeAddColumn(db, 'product_variants', 'discount_price', 'REAL')
-    safeAddColumn(db, 'promotions', 'type', `TEXT DEFAULT 'percent'`)
+          safeAddColumn(db, 'product_variants', 'discount_price', 'REAL')
+          safeAddColumn(db, 'promotions', 'type', `TEXT DEFAULT 'percent'`)
 
-    safeAddColumn(db, 'promotions', 'value', 'REAL DEFAULT 0')
+          safeAddColumn(db, 'promotions', 'value', 'REAL DEFAULT 0')
 
-    safeAddColumn(db, 'promotions', 'scope_type', `TEXT DEFAULT 'all'`)
+          safeAddColumn(db, 'promotions', 'scope_type', `TEXT DEFAULT 'all'`)
 
-    safeAddColumn(db, 'promotions', 'category_id', 'INTEGER')
+          safeAddColumn(db, 'promotions', 'category_id', 'INTEGER')
 
-    safeAddColumn(db, 'promotions', 'is_active', 'INTEGER DEFAULT 0')
+          safeAddColumn(db, 'promotions', 'is_active', 'INTEGER DEFAULT 0')
 
-    safeAddColumn(db, 'promotions', 'created_by', 'INTEGER')
+          safeAddColumn(db, 'promotions', 'created_by', 'INTEGER')
 
-    safeAddColumn(db, 'promotions', 'buy_qty', 'INTEGER')
-    safeAddColumn(db, 'promotions', 'free_qty', 'INTEGER')
-    safeAddColumn(db, 'promotions', 'duration_hours', 'REAL')
-    safeAddColumn(db, 'promotions', 'ends_at', 'INTEGER')
-    safeAddColumn(db, 'stock_count_sessions', 'category_id', 'INTEGER')
-    safeAddColumn(db, 'sales', 'loyalty_points_earned', 'INTEGER DEFAULT 0')
-    safeAddColumn(db, 'sales', 'loyalty_points_redeemed', 'INTEGER DEFAULT 0')
-    safeAddColumn(db, 'sales', 'loyalty_discount_value', 'REAL DEFAULT 0')
-    safeAddColumn(db, 'sales', 'promotion_id', 'INTEGER')
+          safeAddColumn(db, 'promotions', 'buy_qty', 'INTEGER')
+          safeAddColumn(db, 'promotions', 'free_qty', 'INTEGER')
+          safeAddColumn(db, 'promotions', 'duration_hours', 'REAL')
+          safeAddColumn(db, 'promotions', 'ends_at', 'INTEGER')
+          safeAddColumn(db, 'stock_count_sessions', 'category_id', 'INTEGER')
+          safeAddColumn(
+            db,
+            'sales',
+            'loyalty_points_earned',
+            'INTEGER DEFAULT 0',
+          )
+          safeAddColumn(
+            db,
+            'sales',
+            'loyalty_points_redeemed',
+            'INTEGER DEFAULT 0',
+          )
+          safeAddColumn(db, 'sales', 'loyalty_discount_value', 'REAL DEFAULT 0')
+          safeAddColumn(db, 'sales', 'promotion_id', 'INTEGER')
 
-    safeAddColumn(db, 'sales', 'promotion_name', 'TEXT')
+          safeAddColumn(db, 'sales', 'promotion_name', 'TEXT')
 
-    safeAddColumn(db, 'sales', 'promotion_discount_value', 'REAL DEFAULT 0')
+          safeAddColumn(
+            db,
+            'sales',
+            'promotion_discount_value',
+            'REAL DEFAULT 0',
+          )
 
-    safeAddColumn(
-      db,
-      'sale_items',
-      'promotion_discount_value',
-      'REAL DEFAULT 0',
-    )
+          safeAddColumn(
+            db,
+            'sale_items',
+            'promotion_discount_value',
+            'REAL DEFAULT 0',
+          )
 
-    safeAddColumn(db, 'sale_items', 'is_gift', 'INTEGER NOT NULL DEFAULT 0')
+          safeAddColumn(
+            db,
+            'sale_items',
+            'is_gift',
+            'INTEGER NOT NULL DEFAULT 0',
+          )
 
-    safeAddColumn(db, 'sale_items', 'promotion_group_id', 'TEXT')
+          safeAddColumn(db, 'sale_items', 'promotion_group_id', 'TEXT')
 
-    safeAddColumn(db, 'sale_returns', 'normal_discount_value', 'REAL')
+          safeAddColumn(db, 'sale_returns', 'normal_discount_value', 'REAL')
 
-    safeAddColumn(db, 'sale_return_items', 'promotion_unit_id', 'INTEGER')
+          safeAddColumn(db, 'sale_return_items', 'promotion_unit_id', 'INTEGER')
 
-    safeAddColumn(
-      db,
-      'sale_exchanges',
-      'cash_collection_amount',
-      'REAL NOT NULL DEFAULT 0',
-    )
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'cash_collection_amount',
+            'REAL NOT NULL DEFAULT 0',
+          )
 
-    safeAddColumn(
-      db,
-      'sale_exchanges',
-      'debt_reduction_amount',
-      'REAL NOT NULL DEFAULT 0',
-    )
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'debt_reduction_amount',
+            'REAL NOT NULL DEFAULT 0',
+          )
 
-    safeAddColumn(
-      db,
-      'sale_exchanges',
-      'cash_refund_amount',
-      'REAL NOT NULL DEFAULT 0',
-    )
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'cash_refund_amount',
+            'REAL NOT NULL DEFAULT 0',
+          )
 
-    safeAddColumn(db, 'sale_promotion_units', 'original_unit_cost', 'REAL')
+          safeAddColumn(
+            db,
+            'sale_promotion_units',
+            'original_unit_cost',
+            'REAL',
+          )
 
-    safeAddColumn(db, 'sale_promotion_units', 'current_unit_cost', 'REAL')
+          safeAddColumn(db, 'sale_promotion_units', 'current_unit_cost', 'REAL')
 
-    safeAddColumn(db, 'sale_exchange_items', 'old_unit_cost', 'REAL')
+          safeAddColumn(db, 'sale_exchange_items', 'old_unit_cost', 'REAL')
 
-    safeAddColumn(db, 'sale_exchange_items', 'new_unit_cost', 'REAL')
+          safeAddColumn(db, 'sale_exchange_items', 'new_unit_cost', 'REAL')
 
-    safeAddColumn(db, 'sale_exchanges', 'old_invoice_sub_total', 'REAL')
+          safeAddColumn(db, 'sale_exchanges', 'old_invoice_sub_total', 'REAL')
 
-    safeAddColumn(db, 'sale_exchanges', 'new_invoice_sub_total', 'REAL')
+          safeAddColumn(db, 'sale_exchanges', 'new_invoice_sub_total', 'REAL')
 
-    safeAddColumn(db, 'sale_exchanges', 'old_promotion_discount_value', 'REAL')
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'old_promotion_discount_value',
+            'REAL',
+          )
 
-    safeAddColumn(db, 'sale_exchanges', 'new_promotion_discount_value', 'REAL')
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'new_promotion_discount_value',
+            'REAL',
+          )
 
-    safeAddColumn(db, 'sale_exchanges', 'old_normal_discount_value', 'REAL')
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'old_normal_discount_value',
+            'REAL',
+          )
 
-    safeAddColumn(db, 'sale_exchanges', 'new_normal_discount_value', 'REAL')
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'new_normal_discount_value',
+            'REAL',
+          )
 
-    safeAddColumn(db, 'sale_exchanges', 'old_loyalty_discount_value', 'REAL')
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'old_loyalty_discount_value',
+            'REAL',
+          )
 
-    safeAddColumn(db, 'sale_exchanges', 'new_loyalty_discount_value', 'REAL')
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'new_loyalty_discount_value',
+            'REAL',
+          )
 
-    safeAddColumn(db, 'sale_exchanges', 'old_invoice_grand_total', 'REAL')
+          safeAddColumn(db, 'sale_exchanges', 'old_invoice_grand_total', 'REAL')
 
-    safeAddColumn(db, 'sale_exchanges', 'new_invoice_grand_total', 'REAL')
+          safeAddColumn(db, 'sale_exchanges', 'new_invoice_grand_total', 'REAL')
 
-    safeAddColumn(db, 'sale_exchanges', 'old_net_total', 'REAL')
+          safeAddColumn(db, 'sale_exchanges', 'old_net_total', 'REAL')
 
-    safeAddColumn(db, 'sale_exchanges', 'new_net_total', 'REAL')
+          safeAddColumn(db, 'sale_exchanges', 'new_net_total', 'REAL')
 
-    db.exec(`
+          db.exec(`
       UPDATE sale_promotion_units
       SET original_unit_cost = (
         SELECT si.unit_cost
@@ -1117,110 +1177,125 @@ export function getDb(): Database.Database {
       WHERE new_unit_cost IS NULL;
     `)
 
-    safeAddColumn(
-      db,
-      'sale_returns',
-      'promotion_discount_value',
-      'REAL DEFAULT 0',
-    )
+          safeAddColumn(
+            db,
+            'sale_returns',
+            'promotion_discount_value',
+            'REAL DEFAULT 0',
+          )
 
-    safeAddColumn(
-      db,
-      'sale_return_items',
-      'promotion_discount_value',
-      'REAL DEFAULT 0',
-    )
+          safeAddColumn(
+            db,
+            'sale_return_items',
+            'promotion_discount_value',
+            'REAL DEFAULT 0',
+          )
 
-    safeAddColumn(
-      db,
-      'sale_exchanges',
-      'loyalty_earned_points_adjustment',
-      'INTEGER NOT NULL DEFAULT 0',
-    )
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'loyalty_earned_points_adjustment',
+            'INTEGER NOT NULL DEFAULT 0',
+          )
 
-    safeAddColumn(
-      db,
-      'sale_exchanges',
-      'loyalty_redeemed_points_adjustment',
-      'INTEGER NOT NULL DEFAULT 0',
-    )
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'loyalty_redeemed_points_adjustment',
+            'INTEGER NOT NULL DEFAULT 0',
+          )
 
-    safeAddColumn(db, 'sale_exchanges', 'cancelled_at', 'TEXT')
+          safeAddColumn(db, 'sale_exchanges', 'cancelled_at', 'TEXT')
 
-    safeAddColumn(db, 'sale_exchanges', 'cancelled_by', 'INTEGER')
+          safeAddColumn(db, 'sale_exchanges', 'cancelled_by', 'INTEGER')
 
-    safeAddColumn(db, 'sale_exchanges', 'cancel_reason', 'TEXT')
-    safeAddColumn(db, 'sale_exchanges', 'shift_id', 'INTEGER')
-    safeAddColumn(db, 'sale_exchanges', 'cancelled_shift_id', 'INTEGER')
+          safeAddColumn(db, 'sale_exchanges', 'cancel_reason', 'TEXT')
+          safeAddColumn(db, 'sale_exchanges', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'sale_exchanges', 'cancelled_shift_id', 'INTEGER')
 
-    db.exec(`
+          db.exec(`
       CREATE INDEX IF NOT EXISTS
         idx_sale_exchanges_cancelled_shift_id
       ON sale_exchanges(cancelled_shift_id);
     `)
 
-    db.exec(`
+          db.exec(`
       CREATE INDEX IF NOT EXISTS
         idx_sale_exchanges_shift_id
       ON sale_exchanges(shift_id);
     `)
-    safeAddColumn(
-      db,
-      'sale_loyalty_snapshots',
-      'source',
-      `TEXT NOT NULL DEFAULT 'exact'`,
-    )
-    safeAddColumn(db, 'sales', 'parent_sale_id', 'INTEGER')
-    safeAddColumn(db, 'sales', 'return_reason', 'TEXT')
-    safeAddColumn(db, 'sales', 'type', `TEXT DEFAULT 'sale'`)
-    safeAddColumn(db, 'suppliers', 'email', 'TEXT')
-    safeAddColumn(db, 'suppliers', 'address', 'TEXT')
-    safeAddColumn(db, 'suppliers', 'notes', 'TEXT')
-    safeAddColumn(db, 'suppliers', 'total_purchased', 'REAL DEFAULT 0')
-    safeAddColumn(db, 'suppliers', 'balance', 'REAL DEFAULT 0')
-    safeAddColumn(db, 'suppliers', 'is_active', 'INTEGER DEFAULT 1')
-    safeAddColumn(db, 'suppliers', 'updated_at', 'TEXT')
-    safeAddColumn(
-      db,
-      'purchase_invoices',
-      'payment_method',
-      `TEXT DEFAULT 'cash'`,
-    )
-    safeAddColumn(db, 'purchase_invoices', 'notes', 'TEXT')
-    safeAddColumn(db, 'purchase_invoices', 'sub_total', 'REAL DEFAULT 0')
-    safeAddColumn(
-      db,
-      'purchase_invoices',
-      'discount_type',
-      `TEXT DEFAULT 'amount'`,
-    )
+          safeAddColumn(
+            db,
+            'sale_loyalty_snapshots',
+            'source',
+            `TEXT NOT NULL DEFAULT 'exact'`,
+          )
+          safeAddColumn(db, 'sales', 'parent_sale_id', 'INTEGER')
+          safeAddColumn(db, 'sales', 'return_reason', 'TEXT')
+          safeAddColumn(db, 'sales', 'type', `TEXT DEFAULT 'sale'`)
+          safeAddColumn(db, 'suppliers', 'email', 'TEXT')
+          safeAddColumn(db, 'suppliers', 'address', 'TEXT')
+          safeAddColumn(db, 'suppliers', 'notes', 'TEXT')
+          safeAddColumn(db, 'suppliers', 'total_purchased', 'REAL DEFAULT 0')
+          safeAddColumn(db, 'suppliers', 'balance', 'REAL DEFAULT 0')
+          safeAddColumn(db, 'suppliers', 'is_active', 'INTEGER DEFAULT 1')
+          safeAddColumn(db, 'suppliers', 'updated_at', 'TEXT')
+          safeAddColumn(
+            db,
+            'purchase_invoices',
+            'payment_method',
+            `TEXT DEFAULT 'cash'`,
+          )
+          safeAddColumn(db, 'purchase_invoices', 'notes', 'TEXT')
+          safeAddColumn(db, 'purchase_invoices', 'sub_total', 'REAL DEFAULT 0')
+          safeAddColumn(
+            db,
+            'purchase_invoices',
+            'discount_type',
+            `TEXT DEFAULT 'amount'`,
+          )
 
-    safeAddColumn(db, 'purchase_invoices', 'discount_input', 'REAL DEFAULT 0')
-    safeAddColumn(db, 'purchase_invoices', 'discount_value', 'REAL DEFAULT 0')
-    safeAddColumn(db, 'purchase_invoices', 'status', `TEXT DEFAULT 'active'`)
-    safeAddColumn(db, 'purchase_invoices', 'cancelled_at', 'TEXT')
-    safeAddColumn(db, 'purchase_invoices', 'cancelled_by', 'INTEGER')
-    safeAddColumn(db, 'purchase_invoices', 'cancel_reason', 'TEXT')
-    safeAddColumn(db, 'supplier_payments', 'purchase_id', 'INTEGER')
-    safeAddColumn(db, 'supplier_payments', 'batch_id', 'INTEGER')
-    safeAddColumn(
-      db,
-      'supplier_payments',
-      'payment_method',
-      `TEXT DEFAULT 'cash'`,
-    )
-    safeAddColumn(db, 'supplier_payments', 'notes', 'TEXT')
+          safeAddColumn(
+            db,
+            'purchase_invoices',
+            'discount_input',
+            'REAL DEFAULT 0',
+          )
+          safeAddColumn(
+            db,
+            'purchase_invoices',
+            'discount_value',
+            'REAL DEFAULT 0',
+          )
+          safeAddColumn(
+            db,
+            'purchase_invoices',
+            'status',
+            `TEXT DEFAULT 'active'`,
+          )
+          safeAddColumn(db, 'purchase_invoices', 'cancelled_at', 'TEXT')
+          safeAddColumn(db, 'purchase_invoices', 'cancelled_by', 'INTEGER')
+          safeAddColumn(db, 'purchase_invoices', 'cancel_reason', 'TEXT')
+          safeAddColumn(db, 'supplier_payments', 'purchase_id', 'INTEGER')
+          safeAddColumn(db, 'supplier_payments', 'batch_id', 'INTEGER')
+          safeAddColumn(
+            db,
+            'supplier_payments',
+            'payment_method',
+            `TEXT DEFAULT 'cash'`,
+          )
+          safeAddColumn(db, 'supplier_payments', 'notes', 'TEXT')
 
-    safeAddColumn(db, 'customers', 'balance', 'REAL DEFAULT 0')
+          safeAddColumn(db, 'customers', 'balance', 'REAL DEFAULT 0')
 
-    safeAddColumn(db, 'sales', 'remaining_amount', 'REAL DEFAULT 0')
-    safeAddColumn(db, 'sales', 'payment_status', `TEXT DEFAULT 'paid'`)
+          safeAddColumn(db, 'sales', 'remaining_amount', 'REAL DEFAULT 0')
+          safeAddColumn(db, 'sales', 'payment_status', `TEXT DEFAULT 'paid'`)
 
-    safeAddColumn(db, 'sales', 'business_date', 'TEXT')
-    safeAddColumn(db, 'sales', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'sales', 'business_date', 'TEXT')
+          safeAddColumn(db, 'sales', 'shift_id', 'INTEGER')
 
-    db.prepare(
-      `
+          db.prepare(
+            `
       INSERT OR IGNORE INTO sale_payments (
         sale_id,
         payment_method,
@@ -1263,80 +1338,80 @@ export function getDb(): Database.Database {
         AND IFNULL(s.paid, 0) > 0
         AND IFNULL(s.payment_method, '') <> 'split'
       `,
-    ).run()
+          ).run()
 
-    db.prepare(
-      `
+          db.prepare(
+            `
       DELETE FROM sale_payments
       WHERE payment_method = 'split'
       `,
-    ).run()
+          ).run()
 
-    db.exec(`
+          db.exec(`
       CREATE INDEX IF NOT EXISTS
         idx_sales_shift_id
       ON sales(shift_id);
     `)
-    safeAddColumn(db, 'sales', 'cancelled_at', 'TEXT')
-    safeAddColumn(db, 'sales', 'cancelled_by', 'INTEGER')
-    safeAddColumn(db, 'sales', 'cancel_reason', 'TEXT')
-    safeAddColumn(db, 'sales', 'cancelled_shift_id', 'INTEGER')
+          safeAddColumn(db, 'sales', 'cancelled_at', 'TEXT')
+          safeAddColumn(db, 'sales', 'cancelled_by', 'INTEGER')
+          safeAddColumn(db, 'sales', 'cancel_reason', 'TEXT')
+          safeAddColumn(db, 'sales', 'cancelled_shift_id', 'INTEGER')
 
-    db.exec(`
+          db.exec(`
       CREATE INDEX IF NOT EXISTS
         idx_sales_cancelled_shift_id
       ON sales(cancelled_shift_id);
     `)
-    safeAddColumn(db, 'sale_returns', 'cancelled_at', 'TEXT')
-    safeAddColumn(db, 'sale_returns', 'cancelled_by', 'INTEGER')
-    safeAddColumn(db, 'sale_returns', 'cancel_reason', 'TEXT')
-    safeAddColumn(db, 'sale_returns', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'sale_returns', 'cancelled_at', 'TEXT')
+          safeAddColumn(db, 'sale_returns', 'cancelled_by', 'INTEGER')
+          safeAddColumn(db, 'sale_returns', 'cancel_reason', 'TEXT')
+          safeAddColumn(db, 'sale_returns', 'shift_id', 'INTEGER')
 
-    safeAddColumn(db, 'sale_returns', 'cancelled_shift_id', 'INTEGER')
+          safeAddColumn(db, 'sale_returns', 'cancelled_shift_id', 'INTEGER')
 
-    db.exec(`
+          db.exec(`
       CREATE INDEX IF NOT EXISTS
         idx_sale_returns_cancelled_shift_id
       ON sale_returns(cancelled_shift_id);
     `)
 
-    db.exec(`
+          db.exec(`
       CREATE INDEX IF NOT EXISTS
         idx_sale_returns_shift_id
       ON sale_returns(shift_id);
     `)
-    safeAddColumn(db, 'sale_returns', 'debt_reduction_amount', 'REAL')
+          safeAddColumn(db, 'sale_returns', 'debt_reduction_amount', 'REAL')
 
-    safeAddColumn(db, 'sale_returns', 'cash_refund_amount', 'REAL')
+          safeAddColumn(db, 'sale_returns', 'cash_refund_amount', 'REAL')
 
-    db.prepare(
-      `
+          db.prepare(
+            `
       UPDATE sales
       SET business_date = date(created_at, 'localtime')
       WHERE business_date IS NULL
          OR TRIM(business_date) = ''
       `,
-    ).run()
+          ).run()
 
-    safeAddColumn(db, 'customer_payments', 'sale_id', 'INTEGER')
-    safeAddColumn(db, 'customer_payments', 'batch_id', 'INTEGER')
-    safeAddColumn(
-      db,
-      'customer_payments',
-      'payment_method',
-      `TEXT DEFAULT 'cash'`,
-    )
-    safeAddColumn(db, 'customer_payments', 'notes', 'TEXT')
-    safeAddColumn(db, 'customer_payment_batches', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'customer_payments', 'sale_id', 'INTEGER')
+          safeAddColumn(db, 'customer_payments', 'batch_id', 'INTEGER')
+          safeAddColumn(
+            db,
+            'customer_payments',
+            'payment_method',
+            `TEXT DEFAULT 'cash'`,
+          )
+          safeAddColumn(db, 'customer_payments', 'notes', 'TEXT')
+          safeAddColumn(db, 'customer_payment_batches', 'shift_id', 'INTEGER')
 
-    safeAddColumn(
-      db,
-      'customer_payment_batches',
-      'cancelled_shift_id',
-      'INTEGER',
-    )
+          safeAddColumn(
+            db,
+            'customer_payment_batches',
+            'cancelled_shift_id',
+            'INTEGER',
+          )
 
-    db.exec(`
+          db.exec(`
       CREATE INDEX IF NOT EXISTS
         idx_customer_payment_batches_shift_id
       ON customer_payment_batches(shift_id);
@@ -1345,44 +1420,64 @@ export function getDb(): Database.Database {
         idx_customer_payment_batches_cancelled_shift_id
       ON customer_payment_batches(cancelled_shift_id);
     `)
-    safeAddColumn(db, 'store_liabilities', 'category', 'TEXT')
-    safeAddColumn(db, 'store_liabilities', 'paid_amount', 'REAL DEFAULT 0')
-    safeAddColumn(db, 'store_liabilities', 'remaining_amount', 'REAL DEFAULT 0')
-    safeAddColumn(db, 'store_liabilities', 'status', `TEXT DEFAULT 'open'`)
-    safeAddColumn(db, 'store_liabilities', 'due_date', 'TEXT')
-    safeAddColumn(db, 'store_liabilities', 'updated_at', 'TEXT')
-    safeAddColumn(
-      db,
-      'store_liability_payments',
-      'payment_method',
-      `TEXT DEFAULT 'cash'`,
-    )
-    safeAddColumn(db, 'store_liability_payments', 'notes', 'TEXT')
+          safeAddColumn(db, 'store_liabilities', 'category', 'TEXT')
+          safeAddColumn(
+            db,
+            'store_liabilities',
+            'paid_amount',
+            'REAL DEFAULT 0',
+          )
+          safeAddColumn(
+            db,
+            'store_liabilities',
+            'remaining_amount',
+            'REAL DEFAULT 0',
+          )
+          safeAddColumn(
+            db,
+            'store_liabilities',
+            'status',
+            `TEXT DEFAULT 'open'`,
+          )
+          safeAddColumn(db, 'store_liabilities', 'due_date', 'TEXT')
+          safeAddColumn(db, 'store_liabilities', 'updated_at', 'TEXT')
+          safeAddColumn(
+            db,
+            'store_liability_payments',
+            'payment_method',
+            `TEXT DEFAULT 'cash'`,
+          )
+          safeAddColumn(db, 'store_liability_payments', 'notes', 'TEXT')
 
-    safeAddColumn(db, 'cash_movements', 'business_date', 'TEXT')
-    safeAddColumn(db, 'cash_movements', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'cash_movements', 'business_date', 'TEXT')
+          safeAddColumn(db, 'cash_movements', 'shift_id', 'INTEGER')
 
-    db.exec(`
+          db.exec(`
       CREATE INDEX IF NOT EXISTS
         idx_cash_movements_shift_id
       ON cash_movements(shift_id);
     `)
-    safeAddColumn(db, 'cash_movements', 'cancelled_at', 'TEXT')
-    safeAddColumn(db, 'cash_movements', 'cancelled_by', 'INTEGER')
-    safeAddColumn(db, 'cash_movements', 'cancel_reason', 'TEXT')
-    safeAddColumn(db, 'cash_movements', 'replacement_movement_id', 'INTEGER')
-    repairLegacyFirstShiftOpeningTransfer(db)
-    safeAddColumn(db, 'expenses', 'cancelled_at', 'TEXT')
-    safeAddColumn(db, 'expenses', 'cancelled_by', 'INTEGER')
-    safeAddColumn(db, 'expenses', 'cancel_reason', 'TEXT')
+          safeAddColumn(db, 'cash_movements', 'cancelled_at', 'TEXT')
+          safeAddColumn(db, 'cash_movements', 'cancelled_by', 'INTEGER')
+          safeAddColumn(db, 'cash_movements', 'cancel_reason', 'TEXT')
+          safeAddColumn(
+            db,
+            'cash_movements',
+            'replacement_movement_id',
+            'INTEGER',
+          )
+          repairLegacyFirstShiftOpeningTransfer(db)
+          safeAddColumn(db, 'expenses', 'cancelled_at', 'TEXT')
+          safeAddColumn(db, 'expenses', 'cancelled_by', 'INTEGER')
+          safeAddColumn(db, 'expenses', 'cancel_reason', 'TEXT')
 
-    safeAddColumn(db, 'expenses', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'expenses', 'shift_id', 'INTEGER')
 
-    safeAddColumn(db, 'expenses', 'updated_shift_id', 'INTEGER')
+          safeAddColumn(db, 'expenses', 'updated_shift_id', 'INTEGER')
 
-    safeAddColumn(db, 'expenses', 'cancelled_shift_id', 'INTEGER')
+          safeAddColumn(db, 'expenses', 'cancelled_shift_id', 'INTEGER')
 
-    db.exec(`
+          db.exec(`
       CREATE INDEX IF NOT EXISTS
         idx_expenses_shift_id
       ON expenses(shift_id);
@@ -1396,20 +1491,25 @@ export function getDb(): Database.Database {
       ON expenses(cancelled_shift_id);
     `)
 
-    safeAddColumn(db, 'store_liability_payments', 'cancelled_at', 'TEXT')
-    safeAddColumn(db, 'store_liability_payments', 'cancelled_by', 'INTEGER')
-    safeAddColumn(db, 'store_liability_payments', 'cancel_reason', 'TEXT')
+          safeAddColumn(db, 'store_liability_payments', 'cancelled_at', 'TEXT')
+          safeAddColumn(
+            db,
+            'store_liability_payments',
+            'cancelled_by',
+            'INTEGER',
+          )
+          safeAddColumn(db, 'store_liability_payments', 'cancel_reason', 'TEXT')
 
-    safeAddColumn(db, 'store_liability_payments', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'store_liability_payments', 'shift_id', 'INTEGER')
 
-    safeAddColumn(
-      db,
-      'store_liability_payments',
-      'cancelled_shift_id',
-      'INTEGER',
-    )
+          safeAddColumn(
+            db,
+            'store_liability_payments',
+            'cancelled_shift_id',
+            'INTEGER',
+          )
 
-    db.exec(`
+          db.exec(`
       CREATE INDEX IF NOT EXISTS
         idx_store_liability_payments_shift_id
       ON store_liability_payments(shift_id);
@@ -1419,22 +1519,27 @@ export function getDb(): Database.Database {
       ON store_liability_payments(cancelled_shift_id);
     `)
 
-    safeAddColumn(db, 'purchase_items', 'previous_buy_price', 'REAL')
+          safeAddColumn(db, 'purchase_items', 'previous_buy_price', 'REAL')
 
-    safeAddColumn(db, 'purchase_invoices', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'purchase_invoices', 'shift_id', 'INTEGER')
 
-    safeAddColumn(db, 'purchase_invoices', 'cancelled_shift_id', 'INTEGER')
+          safeAddColumn(
+            db,
+            'purchase_invoices',
+            'cancelled_shift_id',
+            'INTEGER',
+          )
 
-    safeAddColumn(db, 'supplier_payment_batches', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'supplier_payment_batches', 'shift_id', 'INTEGER')
 
-    safeAddColumn(
-      db,
-      'supplier_payment_batches',
-      'cancelled_shift_id',
-      'INTEGER',
-    )
+          safeAddColumn(
+            db,
+            'supplier_payment_batches',
+            'cancelled_shift_id',
+            'INTEGER',
+          )
 
-    db.exec(`
+          db.exec(`
       CREATE INDEX IF NOT EXISTS
         idx_purchase_invoices_shift_id
       ON purchase_invoices(shift_id);
@@ -1452,19 +1557,19 @@ export function getDb(): Database.Database {
       ON supplier_payment_batches(cancelled_shift_id);
     `)
 
-    safeAddColumn(
-      db,
-      'store_liability_payments',
-      'replacement_payment_id',
-      'INTEGER',
-    )
+          safeAddColumn(
+            db,
+            'store_liability_payments',
+            'replacement_payment_id',
+            'INTEGER',
+          )
 
-    safeAddColumn(db, 'store_liabilities', 'cancelled_at', 'TEXT')
-    safeAddColumn(db, 'store_liabilities', 'cancelled_by', 'INTEGER')
-    safeAddColumn(db, 'store_liabilities', 'cancel_reason', 'TEXT')
+          safeAddColumn(db, 'store_liabilities', 'cancelled_at', 'TEXT')
+          safeAddColumn(db, 'store_liabilities', 'cancelled_by', 'INTEGER')
+          safeAddColumn(db, 'store_liabilities', 'cancel_reason', 'TEXT')
 
-    db.prepare(
-      `
+          db.prepare(
+            `
       UPDATE cash_movements
       SET business_date = (
         SELECT c.business_date
@@ -1478,18 +1583,13 @@ export function getDb(): Database.Database {
           OR TRIM(business_date) = ''
         )
       `,
-    ).run()
+          ).run()
 
-    normalizePurchaseMoney(db)
-    normalizeStockMovementTypes(db)
+          normalizePurchaseMoney(db)
+          normalizeStockMovementTypes(db)
 
-    seedTestAdminUser(db)
-
-    seedDefaultCategories(db)
-    seedDefaultAppSettings(db)
-
-    db.prepare(
-      `
+          db.prepare(
+            `
       INSERT OR IGNORE INTO sale_loyalty_snapshots (
         sale_id,
         enabled,
@@ -1590,10 +1690,10 @@ export function getDb(): Database.Database {
           'sale'
         ) = 'sale'
       `,
-    ).run()
+          ).run()
 
-    db.prepare(
-      `
+          db.prepare(
+            `
       UPDATE sale_loyalty_snapshots
       SET source = 'legacy_estimated'
 
@@ -1621,10 +1721,10 @@ export function getDb(): Database.Database {
             ) > 2
         )
       `,
-    ).run()
+          ).run()
 
-    db.prepare(
-      `
+          db.prepare(
+            `
         UPDATE sales
         SET
           remaining_amount = MAX(
@@ -1673,7 +1773,109 @@ export function getDb(): Database.Database {
         WHERE IFNULL(type, 'sale') = 'sale'
           AND cancelled_at IS NULL
         `,
-    ).run()
+          ).run()
+        },
+      },
+
+      {
+        version: 2,
+        name: 'purchase-return-schema',
+
+        up: () => {
+          db.exec(`
+            CREATE TABLE IF NOT EXISTS purchase_returns (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+              purchase_id INTEGER NOT NULL,
+              supplier_id INTEGER NOT NULL,
+
+              total_amount REAL NOT NULL DEFAULT 0,
+
+              debt_reduction_amount REAL DEFAULT 0,
+              cash_refund_amount REAL DEFAULT 0,
+
+              refund_payment_method TEXT,
+              refund_mode TEXT DEFAULT 'cash',
+
+              notes TEXT,
+
+              created_by INTEGER,
+              shift_id INTEGER,
+
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS purchase_return_items (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+              return_id INTEGER NOT NULL,
+              purchase_item_id INTEGER NOT NULL,
+              variant_id INTEGER NOT NULL,
+
+              product_name TEXT NOT NULL,
+              barcode TEXT,
+              size TEXT,
+              color TEXT,
+
+              quantity REAL NOT NULL,
+              unit_cost REAL NOT NULL,
+              line_total REAL NOT NULL
+            );
+          `)
+
+          /*
+           * توافق مع قواعد البيانات التي أنشأت
+           * purchase_returns سابقًا من Repository layer.
+           */
+          safeAddColumn(db, 'purchase_returns', 'shift_id', 'INTEGER')
+
+          safeAddColumn(
+            db,
+            'purchase_returns',
+            'debt_reduction_amount',
+            'REAL DEFAULT 0',
+          )
+
+          safeAddColumn(
+            db,
+            'purchase_returns',
+            'cash_refund_amount',
+            'REAL DEFAULT 0',
+          )
+
+          safeAddColumn(db, 'purchase_returns', 'refund_payment_method', 'TEXT')
+
+          safeAddColumn(
+            db,
+            'purchase_returns',
+            'refund_mode',
+            `TEXT DEFAULT 'cash'`,
+          )
+
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_returns_shift_id
+            ON purchase_returns(shift_id);
+
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_returns_purchase_id
+            ON purchase_returns(purchase_id);
+
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_return_items_return_id
+            ON purchase_return_items(return_id);
+
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_return_items_purchase_item_id
+            ON purchase_return_items(purchase_item_id);
+          `)
+        },
+      },
+    ])
+
+    seedTestAdminUser(db)
+    seedDefaultCategories(db)
+    seedDefaultAppSettings(db)
   }
 
   return db
@@ -1700,6 +1902,10 @@ export function resetDatabaseData(): void {
 
       DELETE FROM supplier_payments;
       DELETE FROM supplier_payment_batches;
+
+      DELETE FROM purchase_return_items;
+      DELETE FROM purchase_returns;
+
       DELETE FROM purchase_items;
       DELETE FROM purchase_invoices;
       DELETE FROM suppliers;
