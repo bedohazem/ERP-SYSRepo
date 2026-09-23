@@ -157,6 +157,8 @@ export async function openReceiptPrintWindow(html: string): Promise<boolean> {
   try {
     const result = await window.api.printHtmlWithDialog({
       html,
+      previewHeight: 700,
+      previewWidth: 420,
     })
 
     /*

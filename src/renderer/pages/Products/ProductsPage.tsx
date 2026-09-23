@@ -1083,7 +1083,7 @@ export default function ProductsPage() {
     try {
       const result = await window.api.printHtmlWithDialog({
         html: content,
-        previewWidth: 420,
+        previewWidth: 500,
         previewHeight: 700,
       })
 

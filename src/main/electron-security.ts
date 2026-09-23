@@ -20,6 +20,21 @@ export function getSecureWebPreferences(isPackaged: boolean): WebPreferences {
   }
 }
 
+export function clampWindowDimension(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const numericValue = Number(value)
+
+  if (!Number.isFinite(numericValue)) {
+    return fallback
+  }
+
+  return Math.min(max, Math.max(min, Math.round(numericValue)))
+}
+
 function getProductionRendererUrl(appRoot: string) {
   return pathToFileURL(
     path.join(appRoot, 'dist', 'renderer', 'index.html'),

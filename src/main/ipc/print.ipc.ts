@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import {
+  clampWindowDimension,
   getSecureWebPreferences,
   hardenAuxiliaryWindow,
 } from '../electron-security'
@@ -209,14 +210,18 @@ export function registerPrintIpc(): void {
       requireAuthenticatedUser(event)
       const html = String(input?.html || '').trim()
 
-      const previewWidth = Math.min(
+      const previewWidth = clampWindowDimension(
+        input?.previewWidth,
+        1000,
+        420,
         1400,
-        Math.max(420, Math.round(Number(input?.previewWidth || 1000))),
       )
 
-      const previewHeight = Math.min(
+      const previewHeight = clampWindowDimension(
+        input?.previewHeight,
+        800,
+        600,
         1000,
-        Math.max(600, Math.round(Number(input?.previewHeight || 800))),
       )
 
       if (!html) {
@@ -238,29 +243,33 @@ export function registerPrintIpc(): void {
 
       const parentWindow = BrowserWindow.fromWebContents(event.sender)
 
-      const printWindow = new BrowserWindow({
-        show: false,
-
-        parent: parentWindow ?? undefined,
-
-        modal: Boolean(parentWindow),
-
-        skipTaskbar: true,
-
-        width: previewWidth,
-        height: previewHeight,
-
-        backgroundColor: '#ffffff',
-
-        title: 'معاينة الطباعة',
-
-        webPreferences: getSecureWebPreferences(app.isPackaged),
-      })
-
-      hardenAuxiliaryWindow(printWindow)
+      let printWindow: BrowserWindow | null = null
       let tempHtmlPath = ''
 
       try {
+        const activePrintWindow = new BrowserWindow({
+          show: false,
+
+          parent: parentWindow ?? undefined,
+
+          modal: Boolean(parentWindow),
+
+          skipTaskbar: true,
+
+          width: previewWidth,
+          height: previewHeight,
+
+          backgroundColor: '#ffffff',
+
+          title: 'معاينة الطباعة',
+
+          webPreferences: getSecureWebPreferences(app.isPackaged),
+        })
+
+        printWindow = activePrintWindow
+
+        hardenAuxiliaryWindow(activePrintWindow)
+
         tempHtmlPath = path.join(
           os.tmpdir(),
           `erp-dialog-print-${Date.now()}.html`,
@@ -268,14 +277,14 @@ export function registerPrintIpc(): void {
 
         await fs.writeFile(tempHtmlPath, hardenPrintHtml(html), 'utf8')
 
-        await printWindow.loadFile(tempHtmlPath)
+        await activePrintWindow.loadFile(tempHtmlPath)
 
         /*
          * نعرض معاينة آمنة أنشأها الـMain Process
          * قبل فتح Print Dialog.
          */
-        printWindow.show()
-        printWindow.focus()
+        activePrintWindow.show()
+        activePrintWindow.focus()
 
         await new Promise<void>((resolve) => {
           setTimeout(resolve, 200)
@@ -286,7 +295,7 @@ export function registerPrintIpc(): void {
           canceled?: boolean
           message?: string
         }>((resolve) => {
-          printWindow.webContents.print(
+          activePrintWindow.webContents.print(
             {
               silent: false,
               printBackground: true,
@@ -329,7 +338,7 @@ export function registerPrintIpc(): void {
             error instanceof Error ? error.message : 'تعذر فتح نافذة الطباعة',
         }
       } finally {
-        if (!printWindow.isDestroyed()) {
+        if (printWindow && !printWindow.isDestroyed()) {
           printWindow.destroy()
         }
 

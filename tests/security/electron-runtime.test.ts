@@ -8,6 +8,7 @@ import {
   isAllowedPermission,
   isTrustedRendererUrl,
   configureMainWindowSecurity,
+  clampWindowDimension,
   type RuntimeSecurityOptions,
 } from '../../src/main/electron-security'
 
@@ -159,6 +160,18 @@ describe('Electron runtime security policy', () => {
     })
 
     expect(openedExternalUrls).toEqual(['https://wa.me/201155559287'])
+  })
+
+  it('normalizes preview window dimensions safely', () => {
+    expect(clampWindowDimension(undefined, 1000, 420, 1400)).toBe(1000)
+
+    expect(clampWindowDimension(Number.NaN, 1000, 420, 1400)).toBe(1000)
+
+    expect(clampWindowDimension(200, 1000, 420, 1400)).toBe(420)
+
+    expect(clampWindowDimension(5000, 1000, 420, 1400)).toBe(1400)
+
+    expect(clampWindowDimension(999.6, 1000, 420, 1400)).toBe(1000)
   })
 
   it('enforces hardened BrowserWindow defaults', () => {
