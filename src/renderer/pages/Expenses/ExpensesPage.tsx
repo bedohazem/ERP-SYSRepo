@@ -527,12 +527,6 @@ export default function ExpensesPage() {
             <div>صفحة المصروفات</div>
           </div>
 
-          <script>
-            window.onload = function () {
-              window.focus();
-              window.print();
-            };
-          </script>
         </body>
       </html>
     `
@@ -540,6 +534,13 @@ export default function ExpensesPage() {
     printWindow.document.open()
     printWindow.document.write(html)
     printWindow.document.close()
+    printWindow.focus()
+
+    window.setTimeout(() => {
+      if (!printWindow.closed) {
+        printWindow.print()
+      }
+    }, 250)
   }
 
   return (

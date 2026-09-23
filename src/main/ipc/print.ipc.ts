@@ -3,6 +3,10 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import {
+  getSecureWebPreferences,
+  hardenAuxiliaryWindow,
+} from '../electron-security'
+import {
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
 } from '../auth-session'
@@ -22,6 +26,29 @@ type DialogPrintInput = {
 }
 
 let dialogPrintInProgress = false
+
+const PRINT_CSP = [
+  "default-src 'none'",
+  "style-src 'unsafe-inline'",
+  "img-src 'self' data: blob: file: https:",
+  "font-src 'self' data: file:",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "frame-src 'none'",
+  "form-action 'none'",
+].join('; ')
+
+function hardenPrintHtml(html: string) {
+  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${PRINT_CSP}">`
+
+  const headPattern = /<head(\s[^>]*)?>/i
+
+  if (headPattern.test(html)) {
+    return html.replace(headPattern, (headTag) => `${headTag}\n${cspMeta}`)
+  }
+
+  return `<head>${cspMeta}</head>${html}`
+}
 
 function cleanFileName(value: string) {
   const safeName = String(value || 'report.pdf')
@@ -67,11 +94,10 @@ export function registerPrintIpc(): void {
 
     const pdfWindow = new BrowserWindow({
       show: false,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-      },
+      webPreferences: getSecureWebPreferences(app.isPackaged),
     })
+
+    hardenAuxiliaryWindow(pdfWindow)
 
     let tempHtmlPath = ''
 
@@ -81,7 +107,7 @@ export function registerPrintIpc(): void {
         `erp-inventory-pdf-${Date.now()}.html`,
       )
 
-      await fs.writeFile(tempHtmlPath, html, 'utf8')
+      await fs.writeFile(tempHtmlPath, hardenPrintHtml(html), 'utf8')
       await pdfWindow.loadFile(tempHtmlPath)
 
       const pdfBuffer = await pdfWindow.webContents.printToPDF({
@@ -118,12 +144,9 @@ export function registerPrintIpc(): void {
 
       const printWindow = new BrowserWindow({
         show: false,
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-        },
+        webPreferences: getSecureWebPreferences(app.isPackaged),
       })
-
+      hardenAuxiliaryWindow(printWindow)
       let tempHtmlPath = ''
 
       try {
@@ -132,7 +155,7 @@ export function registerPrintIpc(): void {
           `erp-silent-print-${Date.now()}.html`,
         )
 
-        await fs.writeFile(tempHtmlPath, html, 'utf8')
+        await fs.writeFile(tempHtmlPath, hardenPrintHtml(html), 'utf8')
 
         await printWindow.loadFile(tempHtmlPath)
 
@@ -217,12 +240,9 @@ export function registerPrintIpc(): void {
 
         opacity: 0,
 
-        webPreferences: {
-          nodeIntegration: false,
-          contextIsolation: true,
-        },
+        webPreferences: getSecureWebPreferences(app.isPackaged),
       })
-
+      hardenAuxiliaryWindow(printWindow)
       let tempHtmlPath = ''
 
       try {
@@ -231,7 +251,7 @@ export function registerPrintIpc(): void {
           `erp-dialog-print-${Date.now()}.html`,
         )
 
-        await fs.writeFile(tempHtmlPath, html, 'utf8')
+        await fs.writeFile(tempHtmlPath, hardenPrintHtml(html), 'utf8')
 
         await printWindow.loadFile(tempHtmlPath)
 

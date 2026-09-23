@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeImage, Menu } from 'electron'
+import { app, BrowserWindow, nativeImage, Menu, session, shell } from 'electron'
 import path from 'node:path'
 import { getDb } from './database/db'
 import { registerAuthIpc } from './ipc/auth.ipc'
@@ -20,6 +20,11 @@ import { registerLiabilitiesIpc } from './ipc/liabilities.ipc'
 import { registerPrintIpc } from './ipc/print.ipc'
 import { registerCashDrawerIpc } from './ipc/cash-drawer.ipc'
 import { registerPromotionsIpc } from './ipc/promotions.ipc'
+import {
+  configureMainWindowSecurity,
+  configureSessionPermissions,
+  getSecureWebPreferences,
+} from './electron-security'
 
 let mainWindow: BrowserWindow | null = null
 let hourlyBackupTimer: NodeJS.Timeout | null = null
@@ -40,6 +45,11 @@ function startAutoBackupScheduler() {
 
 const appRoot = app.isPackaged ? app.getAppPath() : process.cwd()
 const appIconPath = path.join(appRoot, 'build', 'icon.ico')
+const runtimeSecurityOptions = {
+  appRoot,
+  isPackaged: app.isPackaged,
+  openExternal: (url: string) => shell.openExternal(url),
+}
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('ERP.SYS.Desktop')
@@ -63,11 +73,12 @@ function createWindow(): void {
     autoHideMenuBar: true,
     icon: appIcon.isEmpty() ? undefined : appIcon,
     webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
+      ...getSecureWebPreferences(app.isPackaged),
       preload: preloadPath,
     },
   })
+
+  configureMainWindowSecurity(mainWindow, runtimeSecurityOptions)
 
   mainWindow.setMenu(null)
   mainWindow.setMenuBarVisibility(false)
@@ -97,61 +108,91 @@ function createWindow(): void {
   })
 }
 
-app.whenReady().then(() => {
-  getDb()
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
 
-  registerAuthIpc()
-  registerProductsIpc()
-  registerSettingsIpc()
-  registerSalesIpc()
-  registerCustomersIpc()
-  registerReportsIpc()
-  registerInventoryIpc()
-  registerStockCountIpc()
-  registerSuppliersIpc()
-  registerPurchasesIpc()
-  registerCashIpc()
-  registerExpenseIpc()
-  registerActivityIpc()
-  registerLiabilitiesIpc()
-  registerPrintIpc()
-  registerCashDrawerIpc()
-  registerPromotionsIpc()
+if (!hasSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return
+    }
 
-  createWindow()
-  startAutoBackupScheduler()
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
+    if (!mainWindow.isVisible()) {
+      mainWindow.show()
+    }
+
+    mainWindow.focus()
+  })
+
+  app.on('web-contents-created', (_event, contents) => {
+    contents.on('will-attach-webview', (event) => {
+      event.preventDefault()
+    })
+  })
+
+  app.whenReady().then(() => {
+    configureSessionPermissions(session.defaultSession, runtimeSecurityOptions)
+
+    getDb()
+
+    registerAuthIpc()
+    registerProductsIpc()
+    registerSettingsIpc()
+    registerSalesIpc()
+    registerCustomersIpc()
+    registerReportsIpc()
+    registerInventoryIpc()
+    registerStockCountIpc()
+    registerSuppliersIpc()
+    registerPurchasesIpc()
+    registerCashIpc()
+    registerExpenseIpc()
+    registerActivityIpc()
+    registerLiabilitiesIpc()
+    registerPrintIpc()
+    registerCashDrawerIpc()
+    registerPromotionsIpc()
+
+    createWindow()
+    startAutoBackupScheduler()
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow()
+      }
+    })
+  })
+
+  app.on('before-quit', async (event) => {
+    if (shutdownBackupDone) {
+      return
+    }
+
+    event.preventDefault()
+    shutdownBackupDone = true
+
+    if (hourlyBackupTimer) {
+      clearInterval(hourlyBackupTimer)
+      hourlyBackupTimer = null
+    }
+
+    try {
+      await createAutoBackup('shutdown')
+    } catch (error) {
+      console.error('Shutdown backup failed:', error)
+    }
+
+    app.quit()
+  })
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit()
     }
   })
-})
-
-app.on('before-quit', async (event) => {
-  if (shutdownBackupDone) {
-    return
-  }
-
-  event.preventDefault()
-  shutdownBackupDone = true
-
-  if (hourlyBackupTimer) {
-    clearInterval(hourlyBackupTimer)
-    hourlyBackupTimer = null
-  }
-
-  try {
-    await createAutoBackup('shutdown')
-  } catch (error) {
-    console.error('Shutdown backup failed:', error)
-  }
-
-  app.quit()
-})
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})
+}

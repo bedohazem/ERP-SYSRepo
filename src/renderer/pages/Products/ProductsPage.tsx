@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import BarcodePreview from '../../components/products/BarcodePreview'
 import { useAuthStore } from '../../store/auth.store'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
+import JsBarcode from 'jsbarcode'
 
 type Category = {
   id: number
@@ -111,12 +112,6 @@ function escapeHtml(value: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
-}
-
-function escapeJs(value: string) {
-  return String(value ?? '')
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
 }
 
 function money(value: unknown) {
@@ -699,6 +694,27 @@ export default function ProductsPage() {
       10,
       Number(printSettings.barcode_svg_height || 22),
     )
+    let barcodeSvg = ''
+
+    try {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+
+      svg.setAttribute('class', 'barcode')
+
+      JsBarcode(svg, input.barcode, {
+        format: 'CODE128',
+        displayValue: false,
+        width: 1.05,
+        height: svgHeight,
+        margin: 0,
+      })
+
+      barcodeSvg = svg.outerHTML
+    } catch (error) {
+      console.error('Barcode print render failed:', error)
+      showMessage('error', 'تعذر إنشاء الباركود للطباعة')
+      return
+    }
     const contentOffsetX = Number(
       printSettings.barcode_content_offset_x_mm || 0,
     )
@@ -878,7 +894,7 @@ export default function ProductsPage() {
               ${renderSingleZone('above_barcode')}
 
               <div class="barcode-zone">
-                <svg class="barcode"></svg>
+                ${barcodeSvg}
               </div>
 
               ${renderSingleZone('below_barcode')}
@@ -1060,28 +1076,6 @@ export default function ProductsPage() {
 
         <body>
           ${labelsHtml}
-
-          <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-          <script>
-            const nodes = document.querySelectorAll('.barcode');
-
-            nodes.forEach((node) => {
-              JsBarcode(node, "${escapeJs(input.barcode)}", {
-                format: "CODE128",
-                displayValue: false,
-                width: 1.05,
-                height: ${svgHeight},
-                margin: 0
-              });
-            });
-
-            window.onload = function () {
-              setTimeout(function () {
-                window.print();
-                window.close();
-              }, 250);
-            };
-          </script>
         </body>
       </html>
     `
@@ -1096,6 +1090,16 @@ export default function ProductsPage() {
     printWindow.document.open()
     printWindow.document.write(content)
     printWindow.document.close()
+    printWindow.focus()
+
+    window.setTimeout(() => {
+      if (printWindow.closed) {
+        return
+      }
+
+      printWindow.print()
+      printWindow.close()
+    }, 250)
   }
 
   async function openEditProduct(

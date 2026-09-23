@@ -1,12 +1,65 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, session } = require('electron')
 
 const fs = require('node:fs')
 
 const path = require('node:path')
-
+const { pathToFileURL } = require('node:url')
 const crypto = require('node:crypto')
 
 let mainWindow = null
+const supportIndexPath = path.join(__dirname, 'index.html')
+
+function isTrustedSupportUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl)
+
+    if (url.search) {
+      return false
+    }
+
+    url.hash = ''
+
+    return url.toString() === pathToFileURL(supportIndexPath).toString()
+  } catch {
+    return false
+  }
+}
+
+function configureSupportPermissions() {
+  session.defaultSession.setPermissionRequestHandler(
+    (_webContents, permission, callback, details) => {
+      callback(
+        permission === 'clipboard-sanitized-write' &&
+          isTrustedSupportUrl(details?.requestingUrl || ''),
+      )
+    },
+  )
+
+  session.defaultSession.setPermissionCheckHandler(
+    (_webContents, permission, requestingOrigin, details) => {
+      const requestingUrl = details?.requestingUrl || requestingOrigin || ''
+
+      return (
+        permission === 'clipboard-sanitized-write' &&
+        isTrustedSupportUrl(requestingUrl)
+      )
+    },
+  )
+}
+
+function hardenSupportWindow(window) {
+  window.webContents.setWindowOpenHandler(() => ({
+    action: 'deny',
+  }))
+
+  window.webContents.on('will-frame-navigate', (event) => {
+    event.preventDefault()
+  })
+
+  window.webContents.on('will-redirect', (event) => {
+    event.preventDefault()
+  })
+}
 
 function normalizeCode(value) {
   return String(value || '')
@@ -66,8 +119,20 @@ function createWindow() {
       contextIsolation: true,
 
       nodeIntegration: false,
+
+      sandbox: true,
+
+      webviewTag: false,
+
+      webSecurity: true,
+
+      allowRunningInsecureContent: false,
+
+      devTools: !app.isPackaged,
     },
   })
+
+  hardenSupportWindow(mainWindow)
 
   mainWindow.removeMenu()
 
@@ -228,10 +293,33 @@ ipcMain.handle('support:generate-recovery', (_event, input) => {
   }
 })
 
-app.whenReady().then(() => {
-  createWindow()
-})
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
 
-app.on('window-all-closed', () => {
+if (!hasSingleInstanceLock) {
   app.quit()
-})
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return
+    }
+
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
+
+    if (!mainWindow.isVisible()) {
+      mainWindow.show()
+    }
+
+    mainWindow.focus()
+  })
+
+  app.whenReady().then(() => {
+    configureSupportPermissions()
+    createWindow()
+  })
+
+  app.on('window-all-closed', () => {
+    app.quit()
+  })
+}
