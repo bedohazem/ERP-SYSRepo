@@ -1468,7 +1468,11 @@ declare global {
         message?: string
       }>
 
-      printHtmlWithDialog: (input: { html: string }) => Promise<{
+      printHtmlWithDialog: (input: {
+        html: string
+        previewWidth?: number
+        previewHeight?: number
+      }) => Promise<{
         ok: boolean
         canceled?: boolean
         busy?: boolean

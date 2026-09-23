@@ -23,6 +23,8 @@ type SilentPrintInput = {
 
 type DialogPrintInput = {
   html: string
+  previewWidth?: number
+  previewHeight?: number
 }
 
 let dialogPrintInProgress = false
@@ -207,6 +209,16 @@ export function registerPrintIpc(): void {
       requireAuthenticatedUser(event)
       const html = String(input?.html || '').trim()
 
+      const previewWidth = Math.min(
+        1400,
+        Math.max(420, Math.round(Number(input?.previewWidth || 1000))),
+      )
+
+      const previewHeight = Math.min(
+        1000,
+        Math.max(600, Math.round(Number(input?.previewHeight || 800))),
+      )
+
       if (!html) {
         return {
           ok: false,
@@ -235,13 +247,16 @@ export function registerPrintIpc(): void {
 
         skipTaskbar: true,
 
-        width: 420,
-        height: 700,
+        width: previewWidth,
+        height: previewHeight,
 
-        opacity: 0,
+        backgroundColor: '#ffffff',
+
+        title: 'معاينة الطباعة',
 
         webPreferences: getSecureWebPreferences(app.isPackaged),
       })
+
       hardenAuxiliaryWindow(printWindow)
       let tempHtmlPath = ''
 
@@ -256,12 +271,15 @@ export function registerPrintIpc(): void {
         await printWindow.loadFile(tempHtmlPath)
 
         /*
-         * لازم الـmodal window تبقى ظاهرة
-         * لكي تظل نافذة الطباعة مرتبطة
-         * بنافذة البرنامج.
-         * opacity = 0 يمنع ظهورها للمستخدم.
+         * نعرض معاينة آمنة أنشأها الـMain Process
+         * قبل فتح Print Dialog.
          */
         printWindow.show()
+        printWindow.focus()
+
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 200)
+        })
 
         const result = await new Promise<{
           ok: boolean

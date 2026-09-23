@@ -166,16 +166,6 @@ export function configureMainWindowSecurity(
   })
 
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (url === 'about:blank') {
-      return {
-        action: 'allow',
-        overrideBrowserWindowOptions: {
-          autoHideMenuBar: true,
-          webPreferences: getSecureWebPreferences(options.isPackaged),
-        },
-      }
-    }
-
     if (isAllowedExternalUrl(url)) {
       void options.openExternal(url).catch((error) => {
         console.error('Failed to open external URL:', error)
@@ -185,9 +175,5 @@ export function configureMainWindowSecurity(
     return {
       action: 'deny',
     }
-  })
-
-  window.webContents.on('did-create-window', (childWindow) => {
-    hardenAuxiliaryWindow(childWindow)
   })
 }

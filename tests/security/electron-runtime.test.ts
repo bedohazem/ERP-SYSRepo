@@ -7,6 +7,7 @@ import {
   isAllowedExternalUrl,
   isAllowedPermission,
   isTrustedRendererUrl,
+  configureMainWindowSecurity,
   type RuntimeSecurityOptions,
 } from '../../src/main/electron-security'
 
@@ -106,6 +107,58 @@ describe('Electron runtime security policy', () => {
         devOptions,
       ),
     ).toBe(false)
+  })
+
+  it('denies renderer popups and only forwards allowed external URLs', () => {
+    let windowOpenHandler: any = null
+
+    const openedExternalUrls: string[] = []
+
+    const fakeWindow = {
+      webContents: {
+        on: () => undefined,
+
+        setWindowOpenHandler: (handler: any) => {
+          windowOpenHandler = handler
+        },
+      },
+    } as any
+
+    configureMainWindowSecurity(fakeWindow, {
+      ...devOptions,
+
+      openExternal: async (url) => {
+        openedExternalUrls.push(url)
+      },
+    })
+
+    expect(windowOpenHandler).not.toBeNull()
+
+    expect(
+      windowOpenHandler({
+        url: 'about:blank',
+      }),
+    ).toEqual({
+      action: 'deny',
+    })
+
+    expect(
+      windowOpenHandler({
+        url: 'https://example.com',
+      }),
+    ).toEqual({
+      action: 'deny',
+    })
+
+    expect(
+      windowOpenHandler({
+        url: 'https://wa.me/201155559287',
+      }),
+    ).toEqual({
+      action: 'deny',
+    })
+
+    expect(openedExternalUrls).toEqual(['https://wa.me/201155559287'])
   })
 
   it('enforces hardened BrowserWindow defaults', () => {

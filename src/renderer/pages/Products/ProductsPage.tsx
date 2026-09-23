@@ -668,7 +668,7 @@ export default function ProductsPage() {
     }
   }
 
-  function printBarcodeLabel(input: {
+  async function printBarcodeLabel(input: {
     productName: string
     barcode: string
     size: string
@@ -1080,26 +1080,20 @@ export default function ProductsPage() {
       </html>
     `
 
-    const printWindow = window.open('', '_blank', 'width=500,height=700')
+    try {
+      const result = await window.api.printHtmlWithDialog({
+        html: content,
+        previewWidth: 420,
+        previewHeight: 700,
+      })
 
-    if (!printWindow) {
-      showMessage('error', 'تعذر فتح نافذة الطباعة')
-      return
-    }
-
-    printWindow.document.open()
-    printWindow.document.write(content)
-    printWindow.document.close()
-    printWindow.focus()
-
-    window.setTimeout(() => {
-      if (printWindow.closed) {
-        return
+      if (!result.ok && !result.canceled) {
+        showMessage('error', result.message || 'تعذر فتح نافذة طباعة الباركود')
       }
-
-      printWindow.print()
-      printWindow.close()
-    }, 250)
+    } catch (error) {
+      console.error('Failed to print barcode:', error)
+      showMessage('error', 'تعذر فتح نافذة طباعة الباركود')
+    }
   }
 
   async function openEditProduct(
@@ -2127,7 +2121,7 @@ export default function ProductsPage() {
                                         type="button"
                                         disabled={!printSettings}
                                         onClick={() =>
-                                          printBarcodeLabel({
+                                          void printBarcodeLabel({
                                             productName: product.name,
                                             barcode: variant.barcode,
                                             size: variant.size,

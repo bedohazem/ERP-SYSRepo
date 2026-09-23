@@ -655,13 +655,7 @@ function ShiftDetailsModal({
 }) {
   const shift = details.shift
 
-  function printReport() {
-    const printWindow = window.open('', '_blank', 'width=1000,height=800')
-
-    if (!printWindow) {
-      return
-    }
-
+  async function printReport() {
     const movementsHtml = details.movements
       .map(
         (movement) => `
@@ -684,9 +678,7 @@ function ShiftDetailsModal({
       )
       .join('')
 
-    printWindow.document.open()
-
-    printWindow.document.write(`
+    const html = `
       <!doctype html>
 
       <html lang="ar" dir="rtl">
@@ -812,16 +804,21 @@ function ShiftDetailsModal({
       </body>
 
       </html>
-    `)
+    `
 
-    printWindow.document.close()
-    printWindow.focus()
+    try {
+      const result = await window.api.printHtmlWithDialog({
+        html,
+        previewWidth: 1000,
+        previewHeight: 800,
+      })
 
-    window.setTimeout(() => {
-      if (!printWindow.closed) {
-        printWindow.print()
+      if (!result.ok && !result.canceled) {
+        console.error('Failed to print shift report:', result.message)
       }
-    }, 250)
+    } catch (error) {
+      console.error('Failed to print shift report:', error)
+    }
   }
 
   return (
@@ -874,7 +871,7 @@ function ShiftDetailsModal({
           >
             <button
               type="button"
-              onClick={printReport}
+              onClick={() => void printReport()}
               style={primaryButtonStyle}
             >
               طباعة التقرير

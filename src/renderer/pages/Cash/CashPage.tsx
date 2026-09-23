@@ -691,13 +691,6 @@ export default function CashPage() {
       return
     }
 
-    const printWindow = window.open('', '_blank', 'width=1100,height=800')
-
-    if (!printWindow) {
-      showMessage('error', 'تعذر فتح نافذة الطباعة')
-      return
-    }
-
     const filtersText = [
       dateFrom ? `من تاريخ: ${dateFrom}` : null,
       dateTo ? `إلى تاريخ: ${dateTo}` : null,
@@ -978,16 +971,20 @@ export default function CashPage() {
       </html>
     `
 
-    printWindow.document.open()
-    printWindow.document.write(html)
-    printWindow.document.close()
-    printWindow.focus()
+    try {
+      const result = await window.api.printHtmlWithDialog({
+        html,
+        previewWidth: 1100,
+        previewHeight: 800,
+      })
 
-    window.setTimeout(() => {
-      if (!printWindow.closed) {
-        printWindow.print()
+      if (!result.ok && !result.canceled) {
+        showMessage('error', result.message || 'تعذر فتح نافذة الطباعة')
       }
-    }, 250)
+    } catch (error) {
+      console.error('Failed to print cash report:', error)
+      showMessage('error', 'تعذر فتح نافذة الطباعة')
+    }
   }
 
   return (
