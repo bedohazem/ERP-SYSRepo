@@ -319,15 +319,17 @@ export function registerSalesIpc(): void {
         requireAdmin(actorId)
       }
 
-      const approval = requireAdminApprovalForActor(
-        actor,
+      if (access.requires_admin_password) {
+        const approval = requireAdminApprovalForActor(
+          actor,
 
-        input?.admin_username,
+          input?.admin_username,
 
-        input?.admin_password,
-      )
+          input?.admin_password,
+        )
 
-      approvedBy = approval.id
+        approvedBy = approval.id
+      }
 
       const result = cancelSaleExchange({
         exchange_id: Number(input?.exchange_id),
@@ -428,15 +430,17 @@ export function registerSalesIpc(): void {
         requireAdmin(actorId)
       }
 
-      const approval = requireAdminApprovalForActor(
-        actor,
+      if (access.requires_admin_password) {
+        const approval = requireAdminApprovalForActor(
+          actor,
 
-        input?.admin_username,
+          input?.admin_username,
 
-        input?.admin_password,
-      )
+          input?.admin_password,
+        )
 
-      approvedBy = approval.id
+        approvedBy = approval.id
+      }
 
       const result = cancelSaleInvoice({
         sale_id: Number(input?.sale_id),
@@ -488,15 +492,17 @@ export function registerSalesIpc(): void {
         requireAdmin(actorId)
       }
 
-      const approval = requireAdminApprovalForActor(
-        actor,
+      if (access.requires_admin_password) {
+        const approval = requireAdminApprovalForActor(
+          actor,
 
-        input?.admin_username,
+          input?.admin_username,
 
-        input?.admin_password,
-      )
+          input?.admin_password,
+        )
 
-      approvedBy = approval.id
+        approvedBy = approval.id
+      }
 
       const result = cancelSaleReturn({
         return_id: Number(input?.return_id),
