@@ -1716,6 +1716,8 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
       createActivityLog({
         user_id: resolvedBy,
 
+        approved_by: input.approved_by ?? null,
+
         action: 'cash_shift_opening_count_corrected',
 
         entity: 'cash_shift_variances',

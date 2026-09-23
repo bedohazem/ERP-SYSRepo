@@ -1828,6 +1828,8 @@ export function updateCashMovement(input: {
     createActivityLog({
       user_id: actorId,
 
+      approved_by: input.approved_by ?? null,
+
       action: 'cash_transfer_updated',
 
       entity: 'cash_movements',
@@ -2098,6 +2100,8 @@ export function cancelCashMovement(input: {
 
     createActivityLog({
       user_id: actorId,
+
+      approved_by: input.approved_by ?? null,
 
       action: 'cash_transfer_cancelled',
 
