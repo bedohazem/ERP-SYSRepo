@@ -16,11 +16,7 @@ import {
   getPurchaseReturn,
 } from '../database/repositories/purchases.repo'
 
-import {
-  requireAdmin,
-  requireAdminPassword,
-  requireAnyAdminPassword,
-} from './permission-helper'
+import { requireAdminPassword } from './permission-helper'
 
 export function registerPurchasesIpc(): void {
   ipcMain.handle('purchases:create', (event, input) => {
@@ -64,6 +60,13 @@ export function registerPurchasesIpc(): void {
 
   ipcMain.handle('purchases:cancel', (event, input) => {
     const actorId = requireAuthenticatedAdmin(event)
+
+    const approval = requireAdminPassword(
+      actorId,
+
+      input?.admin_password,
+    )
+
     const result = cancelPurchaseInvoice({
       purchase_id: Number(input.purchase_id),
       reason: input.reason || '',
@@ -72,6 +75,7 @@ export function registerPurchasesIpc(): void {
 
     logAction({
       actor_id: actorId,
+      approved_by: approval.id,
       action: 'purchase_cancelled',
       entity: 'purchase_invoices',
       entity_id: Number(input.purchase_id),
@@ -167,12 +171,14 @@ export function registerPurchasesIpc(): void {
         actorId,
       )
 
-      if (Number(access.created_by || 0) !== Number(actorId || 0)) {
-        requireAdmin(actorId)
-      }
+      let approvedBy: number | null = null
 
       if (access.requires_admin_password) {
-        requireAnyAdminPassword(input?.admin_password)
+        approvedBy = requireAdminPassword(
+          actorId,
+
+          input?.admin_password,
+        ).id
       }
 
       const result = cancelSupplierPaymentBatch({
@@ -185,7 +191,7 @@ export function registerPurchasesIpc(): void {
 
       logAction({
         actor_id: actorId,
-
+        approved_by: approvedBy,
         action: 'supplier_payment_cancelled',
 
         entity: 'supplier_payment_batches',
@@ -222,12 +228,14 @@ export function registerPurchasesIpc(): void {
         actorId,
       )
 
-      if (Number(access.created_by || 0) !== Number(actorId || 0)) {
-        requireAdmin(actorId)
-      }
+      let approvedBy: number | null = null
 
       if (access.requires_admin_password) {
-        requireAnyAdminPassword(input?.admin_password)
+        approvedBy = requireAdminPassword(
+          actorId,
+
+          input?.admin_password,
+        ).id
       }
 
       const result = updateSupplierPaymentBatch({
@@ -244,7 +252,7 @@ export function registerPurchasesIpc(): void {
 
       logAction({
         actor_id: actorId,
-
+        approved_by: approvedBy,
         action: 'supplier_payment_updated',
 
         entity: 'supplier_payment_batches',

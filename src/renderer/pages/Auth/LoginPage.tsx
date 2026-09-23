@@ -481,6 +481,7 @@ export default function LoginPage() {
 
                   <input
                     ref={usernameRef}
+                    autoFocus
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="أدخل اسم المستخدم"

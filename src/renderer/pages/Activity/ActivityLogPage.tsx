@@ -186,6 +186,7 @@ export default function ActivityLogPage() {
             <td>${item.entity_id || '—'}</td>
             <td>${escapeHtml(formatDetails(item.details))}</td>
             <td>${escapeHtml(formatLogUser(item))}</td>
+            <td>${escapeHtml(formatApprovalUser(item))}</td>
             <td>${escapeHtml(formatDate(item.created_at))}</td>
           </tr>
         `,
@@ -373,6 +374,7 @@ export default function ActivityLogPage() {
                       <th>رقم المرجع</th>
                       <th>التفاصيل</th>
                       <th>المستخدم</th>
+                      <th>الموافق</th>
                       <th>التاريخ</th>
                     </tr>
                   </thead>
@@ -647,6 +649,7 @@ export default function ActivityLogPage() {
                 <th style={thStyle}>رقم المرجع</th>
                 <th style={thStyle}>التفاصيل</th>
                 <th style={thStyle}>المستخدم</th>
+                <th style={thStyle}>الموافق</th>
                 <th style={thStyle}>التاريخ</th>
               </tr>
             </thead>
@@ -654,7 +657,7 @@ export default function ActivityLogPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={8} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
@@ -717,7 +720,14 @@ export default function ActivityLogPage() {
 
                       <td style={tdStyle}>{formatLogUser(item)}</td>
 
-                      <td style={{ ...tdStyle, color: '#94a3b8' }}>
+                      <td style={tdStyle}>{formatApprovalUser(item)}</td>
+
+                      <td
+                        style={{
+                          ...tdStyle,
+                          color: '#94a3b8',
+                        }}
+                      >
                         {formatDate(item.created_at)}
                       </td>
                     </tr>
@@ -727,7 +737,7 @@ export default function ActivityLogPage() {
               {!loading && logs.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     style={{
                       ...tdStyle,
                       padding: '30px',
@@ -753,6 +763,14 @@ function formatLogUser(item: ActivityLog) {
   }
 
   return 'غير محدد'
+}
+
+function formatApprovalUser(item: ActivityLog) {
+  if (item.approved_by_name || item.approved_by_username) {
+    return item.approved_by_name || item.approved_by_username || '—'
+  }
+
+  return '—'
 }
 
 function escapeHtml(value: unknown) {

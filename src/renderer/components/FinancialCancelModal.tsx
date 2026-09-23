@@ -1,14 +1,30 @@
 type FinancialCancelModalProps = {
   open: boolean
+
   title: string
+
   description?: string
+
   reason: string
+
+  username?: string
+
   password?: string
+
+  requireUsername?: boolean
+
   requirePassword?: boolean
+
   loading?: boolean
+
   onReasonChange: (value: string) => void
+
+  onUsernameChange?: (value: string) => void
+
   onPasswordChange?: (value: string) => void
+
   onClose: () => void
+
   onConfirm: () => void
 }
 
@@ -17,18 +33,34 @@ export default function FinancialCancelModal({
   title,
   description,
   reason,
+
+  username = '',
+
   password = '',
+
+  requireUsername = false,
+
   requirePassword = true,
+
   loading = false,
+
   onReasonChange,
+
+  onUsernameChange,
+
   onPasswordChange,
+
   onClose,
+
   onConfirm,
 }: FinancialCancelModalProps) {
   if (!open) return null
 
   const disabled =
-    loading || !reason.trim() || (requirePassword && !password.trim())
+    loading ||
+    !reason.trim() ||
+    (requireUsername && !username.trim()) ||
+    (requirePassword && !password.trim())
 
   return (
     <div
@@ -116,6 +148,39 @@ export default function FinancialCancelModal({
             }}
           />
         </div>
+
+        {requireUsername && (
+          <div>
+            <label
+              style={{
+                display: 'block',
+                marginBottom: '7px',
+                fontWeight: 800,
+              }}
+            >
+              اسم مستخدم المدير
+            </label>
+
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => onUsernameChange?.(e.target.value)}
+              placeholder="اسم دخول المدير"
+              autoComplete="username"
+              style={{
+                width: '100%',
+                height: '44px',
+                borderRadius: '10px',
+                border: '1px solid rgba(148,163,184,0.25)',
+                background: 'rgba(255,255,255,0.05)',
+                color: 'inherit',
+                padding: '0 12px',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+        )}
 
         {requirePassword && (
           <div>

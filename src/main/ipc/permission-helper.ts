@@ -32,13 +32,21 @@ export function requireAdmin(actorId?: number | null): void {
   }
 }
 
+export type AdminApprovalIdentity = {
+  id: number
+  name: string
+  username: string
+}
+
 export function requireAdminPassword(
   actorId?: number | null,
+
   password?: string | null,
-): void {
+): AdminApprovalIdentity {
   requireAdmin(actorId)
 
   const cleanActorId = Number(actorId || 0)
+
   const cleanPassword = String(password || '')
 
   if (!cleanPassword) {
@@ -50,17 +58,27 @@ export function requireAdminPassword(
   const user = db
     .prepare(
       `
-      SELECT id, password
+      SELECT
+        id,
+        name,
+        username,
+        password
+
       FROM users
-      WHERE id = ?
+
+      WHERE
+        id = ?
         AND role = 'admin'
         AND is_active = 1
+
       LIMIT 1
       `,
     )
     .get(cleanActorId) as
     | {
         id: number
+        name: string
+        username: string
         password: string
       }
     | undefined
@@ -68,10 +86,28 @@ export function requireAdminPassword(
   if (!user || !verifyPassword(cleanPassword, user.password)) {
     throw new Error('كلمة مرور المدير غير صحيحة')
   }
+
+  return {
+    id: Number(user.id),
+
+    name: user.name,
+
+    username: user.username,
+  }
 }
 
-export function requireAnyAdminPassword(password?: string | null): void {
+export function requireAdminApproval(
+  username?: string | null,
+
+  password?: string | null,
+): AdminApprovalIdentity {
+  const cleanUsername = String(username || '').trim()
+
   const cleanPassword = String(password || '')
+
+  if (!cleanUsername) {
+    throw new Error('اكتب اسم مستخدم المدير')
+  }
 
   if (!cleanPassword) {
     throw new Error('اكتب كلمة مرور المدير')
@@ -79,22 +115,72 @@ export function requireAnyAdminPassword(password?: string | null): void {
 
   const db = getDb()
 
-  const admins = db
+  const admin = db
     .prepare(
       `
-      SELECT password
+      SELECT
+        id,
+        name,
+        username,
+        password
+
       FROM users
-      WHERE role = 'admin'
+
+      WHERE
+        username = ?
+        AND role = 'admin'
         AND is_active = 1
+
+      LIMIT 1
       `,
     )
-    .all() as Array<{ password: string }>
+    .get(cleanUsername) as
+    | {
+        id: number
+        name: string
+        username: string
+        password: string
+      }
+    | undefined
 
-  const valid = admins.some((admin) =>
-    verifyPassword(cleanPassword, admin.password),
-  )
-
-  if (!valid) {
-    throw new Error('كلمة مرور المدير غير صحيحة')
+  /*
+   * رسالة موحدة عشان ما نكشفش
+   * هل Username المدير موجود.
+   */
+  if (!admin || !verifyPassword(cleanPassword, admin.password)) {
+    throw new Error('بيانات اعتماد المدير غير صحيحة')
   }
+
+  return {
+    id: Number(admin.id),
+
+    name: admin.name,
+
+    username: admin.username,
+  }
+}
+
+export function requireAdminApprovalForActor(
+  actor: {
+    id: number
+    role: string
+  },
+
+  adminUsername?: string | null,
+
+  adminPassword?: string | null,
+): AdminApprovalIdentity {
+  /*
+   * لو المستخدم الحالي Admin:
+   * لازم يؤكد بباسورده هو.
+   */
+  if (actor.role === 'admin') {
+    return requireAdminPassword(actor.id, adminPassword)
+  }
+
+  /*
+   * Cashier يحتاج هوية مدير
+   * مستقلة: Username + Password.
+   */
+  return requireAdminApproval(adminUsername, adminPassword)
 }

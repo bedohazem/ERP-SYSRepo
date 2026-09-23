@@ -1463,7 +1463,7 @@ export function updateCashMovement(input: {
   id: number
 
   type?: 'deposit' | 'withdraw'
-
+  approved_by?: number | null
   amount: number
 
   payment_method?: string
@@ -1599,7 +1599,7 @@ export function updateCashMovement(input: {
 
       createActivityLog({
         user_id: actorId,
-
+        approved_by: input.approved_by ?? null,
         action: 'cash_movement_updated',
 
         entity: 'cash_movements',
@@ -1898,6 +1898,7 @@ export function updateCashMovement(input: {
 export function cancelCashMovement(input: {
   id: number
   reason?: string | null
+  approved_by?: number | null
   actor_id?: number | null
   shift_id?: number | null
 }) {
@@ -1967,7 +1968,7 @@ export function cancelCashMovement(input: {
 
       createActivityLog({
         user_id: actorId,
-
+        approved_by: input.approved_by ?? null,
         action: 'cash_movement_cancelled',
 
         entity: 'cash_movements',

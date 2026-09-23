@@ -31,6 +31,7 @@ export type UpdateLiabilityInput = {
   total_amount: number
   due_date?: string | null
   notes?: string | null
+  approved_by?: number | null
   actor_id?: number | null
 }
 
@@ -39,6 +40,7 @@ export type UpdateLiabilityPaymentInput = {
   amount: number
   payment_method?: string
   notes?: string | null
+  approved_by?: number | null
   actor_id?: number | null
 }
 
@@ -595,7 +597,7 @@ export function updateLiability(input: UpdateLiabilityInput) {
 
     createActivityLog({
       user_id: input.actor_id ?? null,
-
+      approved_by: input.approved_by ?? null,
       action: 'liability_updated',
 
       entity: 'store_liabilities',
@@ -1116,7 +1118,7 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
 
     createActivityLog({
       user_id: actorId,
-
+      approved_by: input.approved_by ?? null,
       action: 'liability_payment_updated',
 
       entity: 'store_liability_payments',
@@ -1190,6 +1192,7 @@ export function cancelLiabilityPayment(input: {
   payment_id: number
   reason?: string | null
   actor_id?: number | null
+  approved_by?: number | null
 }) {
   const { db, paymentId, payment, cashMovement } =
     getLiabilityPaymentMutationContext(Number(input.payment_id))
@@ -1299,7 +1302,7 @@ export function cancelLiabilityPayment(input: {
 
     createActivityLog({
       user_id: actorId,
-
+      approved_by: input.approved_by ?? null,
       action: 'liability_payment_cancelled',
 
       entity: 'store_liability_payments',

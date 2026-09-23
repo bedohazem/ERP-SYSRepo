@@ -122,7 +122,11 @@ export function registerCashIpc(): void {
     try {
       const actorId = requireAuthenticatedUser(event).id
 
-      requireAdminPassword(actorId, input?.admin_password)
+      const approval = requireAdminPassword(
+        actorId,
+
+        input?.admin_password,
+      )
 
       const movementId = Number(input?.id)
 
@@ -154,7 +158,7 @@ export function registerCashIpc(): void {
         id: movementId,
 
         type: input?.type,
-
+        approved_by: approval.id,
         amount: Number(input?.amount),
 
         payment_method: input?.payment_method,
@@ -183,7 +187,11 @@ export function registerCashIpc(): void {
     try {
       const actorId = requireAuthenticatedUser(event).id
 
-      requireAdminPassword(actorId, input?.admin_password)
+      const approval = requireAdminPassword(
+        actorId,
+
+        input?.admin_password,
+      )
 
       const movementId = Number(input?.id)
 
@@ -199,7 +207,7 @@ export function registerCashIpc(): void {
         id: movementId,
 
         reason: input?.reason,
-
+        approved_by: approval.id,
         actor_id: actorId,
 
         shift_id: openShift?.id ?? null,
@@ -276,13 +284,17 @@ export function registerCashIpc(): void {
     try {
       const actor = requireAuthenticatedUser(event)
 
-      requireAdminPassword(actor.id, input?.admin_password)
+      const approval = requireAdminPassword(
+        actor.id,
+
+        input?.admin_password,
+      )
 
       const variance = resolveCashShiftVariance({
         variance_id: Number(input?.variance_id),
 
         resolution_type: input?.resolution_type,
-
+        approved_by: approval.id,
         resolution_notes: String(input?.resolution_notes || ''),
         reversal_account: input?.reversal_account
           ? String(input.reversal_account)
@@ -391,13 +403,19 @@ export function registerCashIpc(): void {
     const isAdminClosingOtherShift =
       actor.role === 'admin' && Number(shift.opened_by) !== actor.id
 
+    let approvedBy: number | null = null
+
     if (isAdminClosingOtherShift) {
-      requireAdminPassword(actor.id, input?.admin_password)
+      approvedBy = requireAdminPassword(
+        actor.id,
+
+        input?.admin_password,
+      ).id
     }
 
     const closedShift = closeCashShift({
       shift_id: shiftId,
-
+      approved_by: approvedBy,
       closing_counted_amount: Number(input?.closing_counted_amount),
 
       left_for_next_shift: Number(input?.left_for_next_shift),

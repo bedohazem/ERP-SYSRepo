@@ -523,6 +523,9 @@ export default function InvoicesPage() {
 
   const [cancelExchangePassword, setCancelExchangePassword] = useState('')
 
+  const [cancelExchangeAdminUsername, setCancelExchangeAdminUsername] =
+    useState('')
+
   const [cancellingExchange, setCancellingExchange] = useState(false)
 
   const [search, setSearch] = useState('')
@@ -553,6 +556,8 @@ export default function InvoicesPage() {
 
   const [cancelSalePassword, setCancelSalePassword] = useState('')
 
+  const [cancelSaleAdminUsername, setCancelSaleAdminUsername] = useState('')
+
   const [cancellingSale, setCancellingSale] = useState(false)
 
   const [cancelReturnTarget, setCancelReturnTarget] =
@@ -561,6 +566,8 @@ export default function InvoicesPage() {
   const [cancelReturnReason, setCancelReturnReason] = useState('')
 
   const [cancelReturnPassword, setCancelReturnPassword] = useState('')
+
+  const [cancelReturnAdminUsername, setCancelReturnAdminUsername] = useState('')
 
   const [cancellingReturn, setCancellingReturn] = useState(false)
   const [returnReceipt, setReturnReceipt] = useState<ReceiptData | null>(null)
@@ -974,6 +981,9 @@ export default function InvoicesPage() {
         reason:
           cancelSaleReason.trim() || `إلغاء فاتورة بيع #${cancelSaleTarget.id}`,
         actor_id: user?.id ?? null,
+
+        admin_username: cancelSaleAdminUsername || undefined,
+
         admin_password: cancelSalePassword,
       })
 
@@ -995,6 +1005,7 @@ export default function InvoicesPage() {
       setCancelSaleTarget(null)
       setCancelSaleReason('')
       setCancelSalePassword('')
+      setCancelSaleAdminUsername('')
       setSelectedReceipt(null)
 
       setMessage(`تم إلغاء فاتورة #${cancelSaleTarget.id}`)
@@ -1021,6 +1032,9 @@ export default function InvoicesPage() {
           cancelReturnReason.trim() ||
           `إلغاء المرتجع ${cancelReturnTarget.code}`,
         actor_id: user?.id ?? null,
+
+        admin_username: cancelReturnAdminUsername || undefined,
+
         admin_password: cancelReturnPassword,
       })
 
@@ -1042,6 +1056,7 @@ export default function InvoicesPage() {
       setCancelReturnTarget(null)
       setCancelReturnReason('')
       setCancelReturnPassword('')
+      setCancelReturnAdminUsername('')
       setSelectedReceipt(null)
 
       setMessage(`تم إلغاء المرتجع ${cancelReturnTarget.code}`)
@@ -1073,6 +1088,8 @@ export default function InvoicesPage() {
 
         actor_id: user?.id ?? null,
 
+        admin_username: cancelExchangeAdminUsername || undefined,
+
         admin_password: cancelExchangePassword,
       })
 
@@ -1101,6 +1118,8 @@ export default function InvoicesPage() {
       setCancelExchangeReason('')
 
       setCancelExchangePassword('')
+
+      setCancelExchangeAdminUsername('')
 
       setSelectedExchange(null)
 
@@ -2016,6 +2035,7 @@ export default function InvoicesPage() {
                                 `إلغاء فاتورة بيع #${sale.id}`,
                               )
                               setCancelSalePassword('')
+                              setCancelSaleAdminUsername('')
                             }}
                             style={{
                               ...smallButtonStyle,
@@ -4307,11 +4327,16 @@ export default function InvoicesPage() {
             ? `فاتورة #${cancelSaleTarget.id} — ${money(cancelSaleTarget.grand_total)}`
             : ''
         }
+        requireUsername={
+          !isAdmin && Boolean(cancelSaleTarget?.requires_admin_password)
+        }
         requirePassword={Boolean(cancelSaleTarget?.requires_admin_password)}
         reason={cancelSaleReason}
+        username={cancelSaleAdminUsername}
         password={cancelSalePassword}
         loading={cancellingSale}
         onReasonChange={setCancelSaleReason}
+        onUsernameChange={setCancelSaleAdminUsername}
         onPasswordChange={setCancelSalePassword}
         onClose={() => {
           if (cancellingSale) return
@@ -4319,6 +4344,7 @@ export default function InvoicesPage() {
           setCancelSaleTarget(null)
           setCancelSaleReason('')
           setCancelSalePassword('')
+          setCancelSaleAdminUsername('')
         }}
         onConfirm={() => void confirmCancelSale()}
       />
@@ -4331,11 +4357,16 @@ export default function InvoicesPage() {
             ? `${cancelReturnTarget.code} — ${money(cancelReturnTarget.refund_amount)}`
             : ''
         }
+        requireUsername={
+          !isAdmin && Boolean(cancelReturnTarget?.requires_admin_password)
+        }
         requirePassword={Boolean(cancelReturnTarget?.requires_admin_password)}
         reason={cancelReturnReason}
+        username={cancelReturnAdminUsername}
         password={cancelReturnPassword}
         loading={cancellingReturn}
         onReasonChange={setCancelReturnReason}
+        onUsernameChange={setCancelReturnAdminUsername}
         onPasswordChange={setCancelReturnPassword}
         onClose={() => {
           if (cancellingReturn) return
@@ -4343,6 +4374,7 @@ export default function InvoicesPage() {
           setCancelReturnTarget(null)
           setCancelReturnReason('')
           setCancelReturnPassword('')
+          setCancelReturnAdminUsername('')
         }}
         onConfirm={() => void confirmCancelReturn()}
       />
@@ -4355,11 +4387,16 @@ export default function InvoicesPage() {
             ? `${cancelExchangeTarget.code} — فاتورة #${cancelExchangeTarget.original_sale_id} — فرق ${money(cancelExchangeTarget.difference_amount)}`
             : ''
         }
+        requireUsername={
+          !isAdmin && Boolean(cancelExchangeTarget?.requires_admin_password)
+        }
         requirePassword={Boolean(cancelExchangeTarget?.requires_admin_password)}
         reason={cancelExchangeReason}
+        username={cancelExchangeAdminUsername}
         password={cancelExchangePassword}
         loading={cancellingExchange}
         onReasonChange={setCancelExchangeReason}
+        onUsernameChange={setCancelExchangeAdminUsername}
         onPasswordChange={setCancelExchangePassword}
         onClose={() => {
           if (cancellingExchange) {
@@ -4371,6 +4408,8 @@ export default function InvoicesPage() {
           setCancelExchangeReason('')
 
           setCancelExchangePassword('')
+
+          setCancelExchangeAdminUsername('')
         }}
         onConfirm={() => void confirmCancelExchange()}
       />

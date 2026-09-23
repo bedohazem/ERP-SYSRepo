@@ -46,6 +46,7 @@ export type CloseCashShiftInput = {
   left_for_next_shift: number
   closed_by: number
   close_reason?: string | null
+  approved_by?: number | null
 }
 
 export type CashShiftDaySummaryInput = {
@@ -132,7 +133,7 @@ export type ResolveCashShiftVarianceInput = {
   resolution_type: CashShiftVarianceResolutionType
 
   resolution_notes: string
-
+  approved_by?: number | null
   resolved_by: number
   reversal_account?: string | null
   corrected_opening_amount?: number | null
@@ -1814,7 +1815,7 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
 
     createActivityLog({
       user_id: resolvedBy,
-
+      approved_by: input.approved_by ?? null,
       action: 'cash_shift_variance_resolved',
 
       entity: 'cash_shift_variances',
@@ -2084,7 +2085,7 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
 
     createActivityLog({
       user_id: closedBy,
-
+      approved_by: input.approved_by ?? null,
       action: 'cash_shift_closed',
 
       entity: 'cash_shifts',

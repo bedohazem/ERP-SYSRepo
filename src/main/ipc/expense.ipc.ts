@@ -46,13 +46,17 @@ export function registerExpenseIpc(): void {
       const user = requireAuthenticatedUser(event)
       const isAdmin = user.role === 'admin'
 
-      if (isAdmin) {
-        requireAdminPassword(user.id, input?.admin_password)
-      }
+      const approval = isAdmin
+        ? requireAdminPassword(
+            user.id,
+
+            input?.admin_password,
+          )
+        : null
 
       return updateExpense({
         id: Number(input?.id),
-
+        approved_by: approval?.id ?? null,
         title: input?.title,
 
         category: input?.category,
@@ -81,13 +85,18 @@ export function registerExpenseIpc(): void {
       const user = requireAuthenticatedUser(event)
       const isAdmin = user.role === 'admin'
 
-      if (isAdmin) {
-        requireAdminPassword(user.id, input?.admin_password)
-      }
+      const approval = isAdmin
+        ? requireAdminPassword(
+            user.id,
+
+            input?.admin_password,
+          )
+        : null
 
       return cancelExpense({
         id: Number(input?.id),
         reason: input?.reason,
+        approved_by: approval?.id ?? null,
         actor_id: user.id,
         can_manage_all: isAdmin,
       })

@@ -625,6 +625,7 @@ declare global {
         sale_id: number
         reason: string
         actor_id?: number | null
+        admin_username?: string
         admin_password?: string
       }) => Promise<{
         success: boolean
@@ -639,6 +640,7 @@ declare global {
         return_id: number
         reason: string
         actor_id?: number | null
+        admin_username?: string
         admin_password?: string
       }) => Promise<{
         success: boolean
@@ -880,11 +882,9 @@ declare global {
 
       cancelSaleExchange: (input: {
         exchange_id: number
-
         reason: string
-
         actor_id?: number | null
-
+        admin_username?: string
         admin_password?: string
       }) => Promise<{
         success: boolean
@@ -977,6 +977,7 @@ declare global {
         batch_id: number
         reason: string
         actor_id?: number | null
+        admin_username?: string
         admin_password?: string
       }) => Promise<{
         success: boolean
@@ -999,6 +1000,7 @@ declare global {
         payment_method?: string
         notes?: string | null
         actor_id?: number | null
+        admin_username?: string
         admin_password?: string
       }) => Promise<{
         success: boolean
@@ -2518,6 +2520,7 @@ declare global {
   type ActivityLog = {
     id: number
     user_id?: number | null
+    approved_by?: number | null
     action: string
     entity?: string | null
     entity_id?: number | null
@@ -2525,5 +2528,7 @@ declare global {
     created_at: string
     user_name?: string | null
     username?: string | null
+    approved_by_name?: string | null
+    approved_by_username?: string | null
   }
 }

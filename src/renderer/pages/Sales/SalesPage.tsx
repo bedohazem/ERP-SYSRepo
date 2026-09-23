@@ -544,12 +544,14 @@ export default function SalesPage() {
   const [editReason, setEditReason] = useState('')
 
   const [editAdminPassword, setEditAdminPassword] = useState('')
-
+  const [editAdminUsername, setEditAdminUsername] = useState('')
   const [receiptWasEdit, setReceiptWasEdit] = useState(false)
+
   function clearInvoiceEditState() {
     setEditingSaleId(null)
     setEditReason('')
     setEditAdminPassword('')
+    setEditAdminUsername('')
     setReceiptWasEdit(false)
 
     setSearchParams({}, { replace: true })
@@ -1688,7 +1690,7 @@ export default function SalesPage() {
             actor_id: user.id,
 
             reason: editReason.trim(),
-
+            admin_username: editAdminUsername || undefined,
             admin_password: editAdminPassword || undefined,
           })
         : await window.api.createSale({
@@ -4259,6 +4261,24 @@ export default function SalesPage() {
                         }}
                       />
                     </label>
+
+                    {user?.role !== 'admin' && (
+                      <label style={paymentLabelStyle}>
+                        اسم مستخدم المدير
+                        <input
+                          value={editAdminUsername}
+                          onChange={(e) => setEditAdminUsername(e.target.value)}
+                          placeholder="عند الحاجة فقط"
+                          style={{
+                            ...paymentInputStyle,
+
+                            height: '42px',
+
+                            fontSize: '15px',
+                          }}
+                        />
+                      </label>
+                    )}
 
                     <label style={paymentLabelStyle}>
                       كلمة مرور المدير

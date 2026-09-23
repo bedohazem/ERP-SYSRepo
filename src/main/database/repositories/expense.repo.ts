@@ -18,6 +18,7 @@ export type CancelExpenseInput = {
   reason?: string | null
   actor_id?: number | null
   can_manage_all?: boolean
+  approved_by?: number | null
 }
 
 export type UpdateExpenseInput = {
@@ -29,6 +30,7 @@ export type UpdateExpenseInput = {
   notes?: string | null
   actor_id?: number | null
   can_manage_all?: boolean
+  approved_by?: number | null
 }
 
 function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
@@ -512,7 +514,7 @@ export function updateExpense(input: UpdateExpenseInput) {
 
     createActivityLog({
       user_id: actorId,
-
+      approved_by: input.approved_by ?? null,
       action: 'expense_updated',
 
       entity: 'expenses',
@@ -702,7 +704,7 @@ export function cancelExpense(input: CancelExpenseInput) {
 
     createActivityLog({
       user_id: actorId,
-
+      approved_by: input.approved_by ?? null,
       action: 'expense_cancelled',
 
       entity: 'expenses',

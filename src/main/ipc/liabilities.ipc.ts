@@ -50,7 +50,11 @@ export function registerLiabilitiesIpc(): void {
   ipcMain.handle('liabilities:update', (event, input) => {
     try {
       const actorId = requireAuthenticatedAdmin(event)
-      requireAdminPassword(actorId, input?.admin_password)
+      const approval = requireAdminPassword(
+        actorId,
+
+        input?.admin_password,
+      )
 
       return updateLiability({
         id: Number(input?.id),
@@ -66,7 +70,7 @@ export function registerLiabilitiesIpc(): void {
         due_date: input?.due_date,
 
         notes: input?.notes,
-
+        approved_by: approval.id,
         actor_id: actorId,
       })
     } catch (error) {
@@ -124,10 +128,15 @@ export function registerLiabilitiesIpc(): void {
   ipcMain.handle('liabilities:cancel-payment', (event, input) => {
     try {
       const actorId = requireAuthenticatedAdmin(event)
-      requireAdminPassword(actorId, input?.admin_password)
+      const approval = requireAdminPassword(
+        actorId,
+
+        input?.admin_password,
+      )
 
       return cancelLiabilityPayment({
         payment_id: Number(input?.payment_id),
+        approved_by: approval.id,
         reason: input?.reason,
         actor_id: actorId,
       })
@@ -142,11 +151,15 @@ export function registerLiabilitiesIpc(): void {
   ipcMain.handle('liabilities:update-payment', (event, input) => {
     try {
       const actorId = requireAuthenticatedAdmin(event)
-      requireAdminPassword(actorId, input?.admin_password)
+      const approval = requireAdminPassword(
+        actorId,
+
+        input?.admin_password,
+      )
 
       return updateLiabilityPayment({
         payment_id: Number(input?.payment_id),
-
+        approved_by: approval.id,
         amount: Number(input?.amount),
 
         payment_method: input?.payment_method,

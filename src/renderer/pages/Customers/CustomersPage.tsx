@@ -94,6 +94,10 @@ export default function CustomersPage() {
   const [paymentActionNotes, setPaymentActionNotes] = useState('')
   const [paymentActionReason, setPaymentActionReason] = useState('')
   const [paymentActionPassword, setPaymentActionPassword] = useState('')
+
+  const [paymentActionAdminUsername, setPaymentActionAdminUsername] =
+    useState('')
+
   const [paymentActionRequirePassword, setPaymentActionRequirePassword] =
     useState(false)
   const [savingPaymentAction, setSavingPaymentAction] = useState(false)
@@ -458,6 +462,7 @@ export default function CustomersPage() {
 
     setPaymentActionReason('')
     setPaymentActionPassword('')
+    setPaymentActionAdminUsername('')
 
     setPaymentActionRequirePassword(Boolean(entry.requires_admin_password))
   }
@@ -477,6 +482,7 @@ export default function CustomersPage() {
     setPaymentActionNotes('')
     setPaymentActionReason('')
     setPaymentActionPassword('')
+    setPaymentActionAdminUsername('')
 
     setPaymentActionRequirePassword(Boolean(entry.requires_admin_password))
   }
@@ -492,6 +498,7 @@ export default function CustomersPage() {
     setPaymentActionNotes('')
     setPaymentActionReason('')
     setPaymentActionPassword('')
+    setPaymentActionAdminUsername('')
     setPaymentActionRequirePassword(false)
   }
 
@@ -519,8 +526,19 @@ export default function CustomersPage() {
       return
     }
 
+    if (
+      paymentActionRequirePassword &&
+      !isAdmin &&
+      !paymentActionAdminUsername.trim()
+    ) {
+      setMessage('اسم مستخدم المدير مطلوب')
+
+      return
+    }
+
     if (paymentActionRequirePassword && !paymentActionPassword.trim()) {
       setMessage('كلمة مرور المدير مطلوبة')
+
       return
     }
 
@@ -540,6 +558,11 @@ export default function CustomersPage() {
 
               actor_id: currentUser?.id,
 
+              admin_username:
+                paymentActionRequirePassword && !isAdmin
+                  ? paymentActionAdminUsername
+                  : undefined,
+
               admin_password: paymentActionRequirePassword
                 ? paymentActionPassword
                 : undefined,
@@ -550,6 +573,11 @@ export default function CustomersPage() {
               reason: paymentActionReason.trim(),
 
               actor_id: currentUser?.id,
+
+              admin_username:
+                paymentActionRequirePassword && !isAdmin
+                  ? paymentActionAdminUsername
+                  : undefined,
 
               admin_password: paymentActionRequirePassword
                 ? paymentActionPassword
@@ -563,7 +591,7 @@ export default function CustomersPage() {
             ? 'تعذر تعديل دفعة العميل'
             : 'تعذر إلغاء دفعة العميل')
 
-        if (errorMessage.includes('كلمة مرور المدير')) {
+        if (errorMessage.includes('المدير')) {
           setPaymentActionRequirePassword(true)
         }
 
@@ -578,6 +606,7 @@ export default function CustomersPage() {
       setPaymentActionNotes('')
       setPaymentActionReason('')
       setPaymentActionPassword('')
+      setPaymentActionAdminUsername('')
       setPaymentActionRequirePassword(false)
 
       await loadCustomers(customerPage)
@@ -1608,22 +1637,47 @@ export default function CustomersPage() {
             )}
 
             {paymentActionRequirePassword && (
-              <div
-                style={{
-                  ...fieldStyle,
-                  marginTop: '14px',
-                }}
-              >
-                <label style={labelStyle}>كلمة مرور المدير</label>
+              <>
+                {!isAdmin && (
+                  <div
+                    style={{
+                      ...fieldStyle,
+                      marginTop: '14px',
+                    }}
+                  >
+                    <label style={labelStyle}>اسم مستخدم المدير</label>
 
-                <input
-                  type="password"
-                  value={paymentActionPassword}
-                  onChange={(e) => setPaymentActionPassword(e.target.value)}
-                  placeholder="كلمة مرور المدير"
-                  style={inputStyle}
-                />
-              </div>
+                    <input
+                      type="text"
+                      value={paymentActionAdminUsername}
+                      onChange={(e) =>
+                        setPaymentActionAdminUsername(e.target.value)
+                      }
+                      placeholder="اسم دخول المدير"
+                      autoComplete="username"
+                      style={inputStyle}
+                    />
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    ...fieldStyle,
+                    marginTop: '14px',
+                  }}
+                >
+                  <label style={labelStyle}>كلمة مرور المدير</label>
+
+                  <input
+                    type="password"
+                    value={paymentActionPassword}
+                    onChange={(e) => setPaymentActionPassword(e.target.value)}
+                    placeholder="كلمة مرور المدير"
+                    autoComplete="current-password"
+                    style={inputStyle}
+                  />
+                </div>
+              </>
             )}
 
             {paymentAction.mode === 'cancel' && (

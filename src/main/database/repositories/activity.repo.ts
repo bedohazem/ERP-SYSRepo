@@ -2,9 +2,15 @@ import { getDb } from '../db'
 
 export type ActivityLogInput = {
   user_id?: number | null
+
+  approved_by?: number | null
+
   action: string
+
   entity?: string | null
+
   entity_id?: number | null
+
   details?: string | null
 }
 
@@ -29,19 +35,27 @@ export function createActivityLog(input: ActivityLogInput) {
       `
       INSERT INTO activity_logs (
         user_id,
+        approved_by,
         action,
         entity,
         entity_id,
         details
       )
-      VALUES (?, ?, ?, ?, ?)
+
+      VALUES (?, ?, ?, ?, ?, ?)
       `,
     )
     .run(
       input.user_id ?? null,
+
+      input.approved_by ?? null,
+
       input.action,
+
       input.entity ?? null,
+
       input.entity_id ?? null,
+
       input.details ?? null,
     )
 }
@@ -132,10 +146,12 @@ export function listActivityLogs(input?: ActivityLogFilter) {
         OR al.details LIKE ?
         OR u.name LIKE ?
         OR u.username LIKE ?
+        OR approver.name LIKE ?
+        OR approver.username LIKE ?
       )
     `)
 
-    params.push(q, q, q, q, q)
+    params.push(q, q, q, q, q, q, q)
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
@@ -145,10 +161,25 @@ export function listActivityLogs(input?: ActivityLogFilter) {
       `
     SELECT
       al.*,
+
       u.name AS user_name,
-      u.username AS username
+      u.username AS username,
+
+      approver.name
+        AS approved_by_name,
+
+      approver.username
+        AS approved_by_username
+
     FROM activity_logs al
-    LEFT JOIN users u ON u.id = al.user_id
+
+    LEFT JOIN users u
+      ON u.id = al.user_id
+
+    LEFT JOIN users approver
+      ON approver.id =
+        al.approved_by
+
     ${whereSql}
     ORDER BY al.id DESC
     LIMIT ?
@@ -163,6 +194,11 @@ export function listActivityLogs(input?: ActivityLogFilter) {
     SELECT COUNT(*) AS total
     FROM activity_logs al
     LEFT JOIN users u ON u.id = al.user_id
+
+    LEFT JOIN users approver
+      ON approver.id =
+        al.approved_by
+
     ${whereSql}
     `,
     )

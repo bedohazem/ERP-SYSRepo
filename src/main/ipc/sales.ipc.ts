@@ -29,7 +29,7 @@ import {
   listSaleExchanges,
 } from '../database/repositories/sales-exchange.repo'
 
-import { requireAdmin, requireAnyAdminPassword } from './permission-helper'
+import { requireAdmin, requireAdminApprovalForActor } from './permission-helper'
 
 import { getSaleCurrentState } from '../database/repositories/sales-current-state.repo'
 
@@ -152,7 +152,11 @@ export function registerSalesIpc(): void {
   })
 
   ipcMain.handle('sales:update', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actor = requireAuthenticatedUser(event)
+
+    const actorId = actor.id
+
+    let approvedBy: number | null = null
 
     try {
       const saleId = Number(input?.sale_id || 0)
@@ -164,7 +168,15 @@ export function registerSalesIpc(): void {
       }
 
       if (access.requires_admin_password) {
-        requireAnyAdminPassword(input?.admin_password)
+        const approval = requireAdminApprovalForActor(
+          actor,
+
+          input?.admin_username,
+
+          input?.admin_password,
+        )
+
+        approvedBy = approval.id
       }
 
       const before = getSaleReceipt(saleId)
@@ -181,7 +193,7 @@ export function registerSalesIpc(): void {
 
       logAction({
         actor_id: actorId,
-
+        approved_by: approvedBy,
         action: 'sale_updated',
 
         entity: 'sales',
@@ -290,7 +302,11 @@ export function registerSalesIpc(): void {
   })
 
   ipcMain.handle('sales:cancel-exchange', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actor = requireAuthenticatedUser(event)
+
+    const actorId = actor.id
+
+    let approvedBy: number | null = null
 
     try {
       const access = getSaleExchangeCancellationAccess(
@@ -303,9 +319,15 @@ export function registerSalesIpc(): void {
         requireAdmin(actorId)
       }
 
-      if (access.requires_admin_password) {
-        requireAnyAdminPassword(input?.admin_password)
-      }
+      const approval = requireAdminApprovalForActor(
+        actor,
+
+        input?.admin_username,
+
+        input?.admin_password,
+      )
+
+      approvedBy = approval.id
 
       const result = cancelSaleExchange({
         exchange_id: Number(input?.exchange_id),
@@ -317,7 +339,7 @@ export function registerSalesIpc(): void {
 
       logAction({
         actor_id: actorId,
-
+        approved_by: approvedBy,
         action: 'sale_exchange_cancelled',
 
         entity: 'sale_exchanges',
@@ -393,7 +415,11 @@ export function registerSalesIpc(): void {
   })
 
   ipcMain.handle('sales:cancel', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actor = requireAuthenticatedUser(event)
+
+    const actorId = actor.id
+
+    let approvedBy: number | null = null
 
     try {
       const access = getSaleCancellationAccess(Number(input?.sale_id), actorId)
@@ -402,9 +428,15 @@ export function registerSalesIpc(): void {
         requireAdmin(actorId)
       }
 
-      if (access.requires_admin_password) {
-        requireAnyAdminPassword(input?.admin_password)
-      }
+      const approval = requireAdminApprovalForActor(
+        actor,
+
+        input?.admin_username,
+
+        input?.admin_password,
+      )
+
+      approvedBy = approval.id
 
       const result = cancelSaleInvoice({
         sale_id: Number(input?.sale_id),
@@ -414,6 +446,7 @@ export function registerSalesIpc(): void {
 
       logAction({
         actor_id: actorId,
+        approved_by: approvedBy,
         action: 'sale_cancelled',
         entity: 'sales',
         entity_id: Number(input?.sale_id),
@@ -439,7 +472,11 @@ export function registerSalesIpc(): void {
   })
 
   ipcMain.handle('sales:cancel-return', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actor = requireAuthenticatedUser(event)
+
+    const actorId = actor.id
+
+    let approvedBy: number | null = null
 
     try {
       const access = getSaleReturnCancellationAccess(
@@ -451,9 +488,15 @@ export function registerSalesIpc(): void {
         requireAdmin(actorId)
       }
 
-      if (access.requires_admin_password) {
-        requireAnyAdminPassword(input?.admin_password)
-      }
+      const approval = requireAdminApprovalForActor(
+        actor,
+
+        input?.admin_username,
+
+        input?.admin_password,
+      )
+
+      approvedBy = approval.id
 
       const result = cancelSaleReturn({
         return_id: Number(input?.return_id),
@@ -463,6 +506,7 @@ export function registerSalesIpc(): void {
 
       logAction({
         actor_id: actorId,
+        approved_by: approvedBy,
         action: 'sale_return_cancelled',
         entity: 'sale_returns',
         entity_id: Number(input?.return_id),

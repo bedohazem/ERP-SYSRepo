@@ -907,12 +907,14 @@ export function getDb(): Database.Database {
       CREATE TABLE IF NOT EXISTS activity_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
+        approved_by INTEGER,
         action TEXT NOT NULL,
         entity TEXT,
         entity_id INTEGER,
         details TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id)
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (approved_by) REFERENCES users(id)
       );
 
       CREATE TABLE IF NOT EXISTS sale_returns (
@@ -963,6 +965,8 @@ export function getDb(): Database.Database {
       'must_change_password',
       'INTEGER NOT NULL DEFAULT 0',
     )
+
+    safeAddColumn(db, 'activity_logs', 'approved_by', 'INTEGER')
 
     safeAddColumn(db, 'product_variants', 'discount_price', 'REAL')
     safeAddColumn(db, 'promotions', 'type', `TEXT DEFAULT 'percent'`)

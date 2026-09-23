@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { requireAdmin, requireAnyAdminPassword } from './permission-helper'
+import { requireAdmin, requireAdminApprovalForActor } from './permission-helper'
 import { logAction } from './activity-helper'
 import {
   adjustCustomerPoints,
@@ -160,7 +160,11 @@ export function registerCustomersIpc(): void {
 
   ipcMain.handle('customers:cancel-payment', (event, input) => {
     try {
-      const actorId = requireAuthenticatedUser(event).id
+      const actor = requireAuthenticatedUser(event)
+
+      const actorId = actor.id
+
+      let approvedBy: number | null = null
 
       const access = getCustomerPaymentBatchAccess(
         Number(input?.batch_id),
@@ -172,7 +176,15 @@ export function registerCustomersIpc(): void {
       }
 
       if (access.requires_admin_password) {
-        requireAnyAdminPassword(input?.admin_password)
+        const approval = requireAdminApprovalForActor(
+          actor,
+
+          input?.admin_username,
+
+          input?.admin_password,
+        )
+
+        approvedBy = approval.id
       }
 
       const result = cancelCustomerPaymentBatch({
@@ -185,7 +197,7 @@ export function registerCustomersIpc(): void {
 
       logAction({
         actor_id: actorId,
-
+        approved_by: approvedBy,
         action: 'customer_payment_cancelled',
 
         entity: 'customer_payment_batches',
@@ -215,7 +227,11 @@ export function registerCustomersIpc(): void {
 
   ipcMain.handle('customers:update-payment', (event, input) => {
     try {
-      const actorId = requireAuthenticatedUser(event).id
+      const actor = requireAuthenticatedUser(event)
+
+      const actorId = actor.id
+
+      let approvedBy: number | null = null
 
       const access = getCustomerPaymentBatchAccess(
         Number(input?.batch_id),
@@ -227,7 +243,15 @@ export function registerCustomersIpc(): void {
       }
 
       if (access.requires_admin_password) {
-        requireAnyAdminPassword(input?.admin_password)
+        const approval = requireAdminApprovalForActor(
+          actor,
+
+          input?.admin_username,
+
+          input?.admin_password,
+        )
+
+        approvedBy = approval.id
       }
 
       const result = updateCustomerPaymentBatch({
@@ -244,7 +268,7 @@ export function registerCustomersIpc(): void {
 
       logAction({
         actor_id: actorId,
-
+        approved_by: approvedBy,
         action: 'customer_payment_updated',
 
         entity: 'customer_payment_batches',
