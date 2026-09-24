@@ -1,7 +1,12 @@
 import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
 
-import { resolveFinancialOperationShift } from './cash-shifts.repo'
+import {
+  getOpenCashShift,
+  resolveFinancialOperationShift,
+} from './cash-shifts.repo'
+
+import { getShiftBusinessDate } from '../shift-business-date'
 
 function roundMoney(value: number) {
   const amount = Number(value || 0)
@@ -65,6 +70,53 @@ export type CreatePurchaseReturnInput = {
   }>
 }
 
+export type UpdatePurchaseInput = {
+  purchase_id: number
+  actor_id: number
+  reason?: string | null
+
+  supplier_id: number
+
+  paid_amount?: number
+  sub_total?: number
+
+  discount_type?: 'amount' | 'percent' | string
+  discount_input?: number
+  discount_value?: number
+
+  payment_method?: string
+  notes?: string | null
+
+  items: Array<{
+    variant_id: number
+    quantity: number
+    unit_cost: number
+  }>
+}
+
+export type CancelPurchaseReturnInput = {
+  return_id: number
+  reason?: string | null
+  actor_id?: number | null
+}
+
+export type UpdatePurchaseReturnInput = {
+  return_id: number
+  reason?: string | null
+  actor_id?: number | null
+
+  notes?: string | null
+
+  refund_payment_method?: string | null
+  refund_mode?: 'cash' | 'credit' | string
+
+  items: Array<{
+    purchase_item_id?: number
+    variant_id?: number
+    quantity: number
+  }>
+}
+
 function getCurrentVariantStock(
   db: ReturnType<typeof getDb>,
   variantId: number,
@@ -100,6 +152,7 @@ function getReturnedQuantityForPurchaseItem(
       FROM purchase_return_items pri
       JOIN purchase_returns pr ON pr.id = pri.return_id
       WHERE pri.purchase_item_id = ?
+        AND pr.cancelled_at IS NULL
     `,
     )
     .get(Number(purchaseItemId)) as { quantity: number } | undefined
@@ -135,6 +188,10 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
           'لا يمكن دفع فاتورة شراء من درج المحل بدون شفت مفتوح',
         )
       : null
+
+  const businessDate = openShift
+    ? getShiftBusinessDate(openShift.id)
+    : getCurrentBusinessDate(db)
 
   if (!supplierId) {
     throw new Error('اختار المورد')
@@ -244,9 +301,10 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
           payment_method,
           notes,
           status,
+          business_date,
           shift_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
       `,
       )
       .run(
@@ -261,6 +319,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         paymentStatus,
         paymentMethod,
         input.notes?.trim() || null,
+        businessDate,
         openShift?.id ?? null,
       )
 
@@ -387,9 +446,131 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
   return tx()
 }
 
-function recalculateVariantBuyPriceAfterPurchaseCancellation(
+function getPreviousBuyPriceForPurchaseEdit(
   db: ReturnType<typeof getDb>,
   variantIdInput: number,
+  purchaseIdInput: number,
+  oldPreviousBuyPrice?: number | null,
+) {
+  const variantId = Number(variantIdInput)
+  const purchaseId = Number(purchaseIdInput)
+
+  if (oldPreviousBuyPrice !== null && oldPreviousBuyPrice !== undefined) {
+    const oldValue = Number(oldPreviousBuyPrice)
+
+    if (Number.isFinite(oldValue) && oldValue >= 0) {
+      return roundMoney(oldValue)
+    }
+  }
+
+  const previousActivePurchase = db
+    .prepare(
+      `
+      SELECT
+        pii.unit_cost
+
+      FROM purchase_items pii
+
+      JOIN purchase_invoices pi
+        ON pi.id = pii.purchase_id
+
+      WHERE
+        pii.variant_id = ?
+        AND pii.purchase_id < ?
+
+        AND IFNULL(
+          pi.status,
+          'active'
+        ) <> 'cancelled'
+
+      ORDER BY
+        pii.purchase_id DESC,
+        pii.id DESC
+
+      LIMIT 1
+      `,
+    )
+    .get(variantId, purchaseId) as
+    | {
+        unit_cost: number
+      }
+    | undefined
+
+  if (previousActivePurchase) {
+    return roundMoney(Number(previousActivePurchase.unit_cost))
+  }
+
+  /*
+   * لو الصنف بيتضاف لفاتورة قديمة
+   * ويوجد شراء أحدث منه، Snapshot
+   * أول فاتورة أحدث يعبر عن السعر
+   * الذي كان موجودًا قبلها.
+   */
+  const nextPurchaseSnapshot = db
+    .prepare(
+      `
+      SELECT
+        pii.previous_buy_price
+
+      FROM purchase_items pii
+
+      WHERE
+        pii.variant_id = ?
+        AND pii.purchase_id > ?
+        AND pii.previous_buy_price IS NOT NULL
+
+      ORDER BY
+        pii.purchase_id ASC,
+        pii.id ASC
+
+      LIMIT 1
+      `,
+    )
+    .get(variantId, purchaseId) as
+    | {
+        previous_buy_price: number
+      }
+    | undefined
+
+  if (nextPurchaseSnapshot) {
+    const value = Number(nextPurchaseSnapshot.previous_buy_price)
+
+    if (Number.isFinite(value) && value >= 0) {
+      return roundMoney(value)
+    }
+  }
+
+  const variant = db
+    .prepare(
+      `
+      SELECT buy_price
+
+      FROM product_variants
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(variantId) as
+    | {
+        buy_price: number
+      }
+    | undefined
+
+  const value = Number(variant?.buy_price)
+
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error('تعذر تحديد سعر الشراء السابق للصنف')
+  }
+
+  return roundMoney(value)
+}
+
+function recalculateVariantBuyPrice(
+  db: ReturnType<typeof getDb>,
+  variantIdInput: number,
+  fallbackPreviousBuyPrice?: number | null,
 ) {
   const variantId = Number(variantIdInput)
 
@@ -397,10 +578,6 @@ function recalculateVariantBuyPriceAfterPurchaseCancellation(
     throw new Error('رقم الصنف غير صحيح')
   }
 
-  /*
-   * لو فيه فاتورة شراء سليمة أخرى للصنف،
-   * نستخدم تكلفة أحدث فاتورة سليمة.
-   */
   const latestActivePurchase = db
     .prepare(
       `
@@ -436,11 +613,13 @@ function recalculateVariantBuyPriceAfterPurchaseCancellation(
 
   if (latestActivePurchase) {
     nextBuyPrice = Number(latestActivePurchase.unit_cost)
+  } else if (
+    fallbackPreviousBuyPrice !== null &&
+    fallbackPreviousBuyPrice !== undefined &&
+    Number.isFinite(Number(fallbackPreviousBuyPrice))
+  ) {
+    nextBuyPrice = Number(fallbackPreviousBuyPrice)
   } else {
-    /*
-     * لو كل فواتير شراء الصنف اتلغت،
-     * نرجع للسعر الموجود قبل أول فاتورة.
-     */
     const firstPurchase = db
       .prepare(
         `
@@ -468,10 +647,6 @@ function recalculateVariantBuyPriceAfterPurchaseCancellation(
       firstPurchase?.previous_buy_price === null ||
       firstPurchase?.previous_buy_price === undefined
     ) {
-      /*
-       * فاتورة قديمة من قبل إضافة Snapshot.
-       * ممنوع نخمن تكلفة ونشوّه الأرباح.
-       */
       throw new Error(
         'تعذر استرجاع سعر الشراء السابق لهذا الصنف لأن الفاتورة قديمة ولا تحتوي على سجل للتكلفة السابقة',
       )
@@ -480,7 +655,7 @@ function recalculateVariantBuyPriceAfterPurchaseCancellation(
     nextBuyPrice = Number(firstPurchase.previous_buy_price)
   }
 
-  if (!Number.isFinite(nextBuyPrice) || nextBuyPrice < 0) {
+  if (!Number.isFinite(nextBuyPrice) || Number(nextBuyPrice) < 0) {
     throw new Error('سعر الشراء السابق للصنف غير صحيح')
   }
 
@@ -492,7 +667,819 @@ function recalculateVariantBuyPriceAfterPurchaseCancellation(
 
     WHERE id = ?
     `,
-  ).run(roundMoney(nextBuyPrice), variantId)
+  ).run(roundMoney(Number(nextBuyPrice)), variantId)
+}
+
+export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
+  const db = getDb()
+
+  const purchaseId = Number(input.purchase_id || 0)
+
+  const actorId = Number(input.actor_id || 0)
+
+  const reason = String(input.reason || '').trim()
+
+  if (!purchaseId) {
+    throw new Error('رقم فاتورة الشراء غير صحيح')
+  }
+
+  if (!actorId) {
+    throw new Error('المستخدم غير صحيح')
+  }
+
+  if (!reason) {
+    throw new Error('اكتب سبب تعديل فاتورة الشراء')
+  }
+
+  if (!input.items?.length) {
+    throw new Error('لا توجد أصناف في فاتورة الشراء')
+  }
+
+  const tx = db.transaction(() => {
+    const purchase = db
+      .prepare(
+        `
+        SELECT
+          pi.*,
+
+          IFNULL(
+            pi.status,
+            'active'
+          ) AS safe_status
+
+        FROM purchase_invoices pi
+
+        WHERE pi.id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(purchaseId) as any
+
+    if (!purchase) {
+      throw new Error('فاتورة الشراء غير موجودة')
+    }
+
+    if (purchase.safe_status === 'cancelled') {
+      throw new Error('لا يمكن تعديل فاتورة شراء ملغاة')
+    }
+
+    /*
+     * أي تاريخ مرتجعات يمنع تعديل
+     * أصل الفاتورة، حتى لو المرتجع
+     * تم إلغاؤه لاحقًا.
+     */
+    const returnHistory = db
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+
+        FROM purchase_returns
+
+        WHERE purchase_id = ?
+        `,
+      )
+      .get(purchaseId) as {
+      count: number
+    }
+
+    if (Number(returnHistory?.count || 0) > 0) {
+      throw new Error('لا يمكن تعديل فاتورة لها سجل مرتجعات شراء سابق')
+    }
+
+    /*
+     * دفعة وقت إنشاء الفاتورة نفسها
+     * مسموح بتعديلها مع الفاتورة.
+     *
+     * أي دفعة لاحقة أو Batch تاريخي
+     * يمنع تعديل أصل الفاتورة.
+     */
+    const laterPayments = db
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+
+        FROM supplier_payments sp
+
+        WHERE
+          sp.purchase_id = ?
+
+          AND NOT (
+            sp.batch_id IS NULL
+
+            AND IFNULL(
+              sp.notes,
+              ''
+            ) LIKE ?
+          )
+        `,
+      )
+      .get(purchaseId, `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}%`) as {
+      count: number
+    }
+
+    if (Number(laterPayments?.count || 0) > 0) {
+      throw new Error(
+        'لا يمكن تعديل فاتورة الشراء لأنها تحتوي على سجل دفعات مورد لاحقة',
+      )
+    }
+
+    const businessDateRow = db
+      .prepare(
+        `
+        SELECT
+          COALESCE(
+            NULLIF(?, ''),
+            date(?, 'localtime'),
+            date('now', 'localtime')
+          ) AS business_date
+        `,
+      )
+      .get(purchase.business_date, purchase.created_at) as {
+      business_date: string
+    }
+
+    const businessDate = String(
+      businessDateRow?.business_date || getCurrentBusinessDate(db),
+    )
+
+    const closedDay = db
+      .prepare(
+        `
+        SELECT id
+
+        FROM cash_day_closings
+
+        WHERE business_date = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(businessDate)
+
+    if (closedDay) {
+      throw new Error(
+        `لا يمكن تعديل الفاتورة لأن يوم ${businessDate} تم تقفيله`,
+      )
+    }
+
+    const originalShiftId = Number(purchase.shift_id || 0)
+
+    if (originalShiftId > 0) {
+      const currentShift = getOpenCashShift()
+
+      if (!currentShift || Number(currentShift.id) !== originalShiftId) {
+        throw new Error('لا يمكن تعديل فاتورة شراء من شفت تم إغلاقه')
+      }
+    }
+
+    const oldSupplierId = Number(purchase.supplier_id)
+
+    const nextSupplierId = Number(input.supplier_id)
+
+    if (!nextSupplierId) {
+      throw new Error('اختار المورد')
+    }
+
+    const nextSupplier = db
+      .prepare(
+        `
+        SELECT *
+
+        FROM suppliers
+
+        WHERE id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(nextSupplierId) as any
+
+    if (!nextSupplier) {
+      throw new Error('المورد غير موجود')
+    }
+
+    if (
+      nextSupplierId !== oldSupplierId &&
+      Number(nextSupplier.is_active) !== 1
+    ) {
+      throw new Error('لا يمكن نقل الفاتورة إلى مورد غير مفعل')
+    }
+
+    const oldItems = db
+      .prepare(
+        `
+        SELECT *
+
+        FROM purchase_items
+
+        WHERE purchase_id = ?
+
+        ORDER BY id ASC
+        `,
+      )
+      .all(purchaseId) as any[]
+
+    if (oldItems.length === 0) {
+      throw new Error('لا توجد أصناف داخل فاتورة الشراء')
+    }
+
+    const oldItemByVariant = new Map<number, any>()
+
+    for (const item of oldItems) {
+      const variantId = Number(item.variant_id)
+
+      if (!oldItemByVariant.has(variantId)) {
+        oldItemByVariant.set(variantId, item)
+      }
+    }
+
+    const seenVariants = new Set<number>()
+
+    const getVariant = db.prepare(
+      `
+      SELECT
+        v.id,
+        v.barcode,
+        v.size,
+        v.color,
+        v.buy_price,
+
+        p.name
+          AS product_name
+
+      FROM product_variants v
+
+      JOIN products p
+        ON p.id = v.product_id
+
+      WHERE v.id = ?
+
+      LIMIT 1
+      `,
+    )
+
+    const preparedItems = input.items.map((rawItem) => {
+      const variantId = Number(rawItem.variant_id)
+
+      if (!variantId || seenVariants.has(variantId)) {
+        throw new Error('يوجد صنف مكرر أو غير صحيح داخل الفاتورة')
+      }
+
+      seenVariants.add(variantId)
+
+      const variant = getVariant.get(variantId) as any
+
+      if (!variant) {
+        throw new Error('الصنف غير موجود')
+      }
+
+      const quantity = Number(rawItem.quantity || 0)
+
+      const unitCost = Number(rawItem.unit_cost || 0)
+
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new Error(`كمية غير صحيحة للصنف ${variant.product_name}`)
+      }
+
+      if (!Number.isFinite(unitCost) || unitCost <= 0) {
+        throw new Error(`سعر شراء غير صحيح للصنف ${variant.product_name}`)
+      }
+
+      const oldItem = oldItemByVariant.get(variantId)
+
+      return {
+        variant,
+        quantity,
+        unitCost,
+
+        lineTotal: roundMoney(quantity * unitCost),
+
+        previousBuyPrice: getPreviousBuyPriceForPurchaseEdit(
+          db,
+          variantId,
+          purchaseId,
+          oldItem?.previous_buy_price,
+        ),
+      }
+    })
+
+    const itemsTotal = roundMoney(
+      preparedItems.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0),
+    )
+
+    const discountValueInput = Number(input.discount_value || 0)
+
+    const rawDiscountValue = Number.isFinite(discountValueInput)
+      ? Math.max(0, discountValueInput)
+      : 0
+
+    const subTotalInput = Number(input.sub_total || 0)
+
+    const subTotal =
+      Number.isFinite(subTotalInput) && subTotalInput > 0
+        ? roundMoney(subTotalInput)
+        : roundMoney(itemsTotal + rawDiscountValue)
+
+    const discountValue = roundMoney(Math.min(subTotal, rawDiscountValue))
+
+    const totalAmount = roundMoney(Math.max(0, subTotal - discountValue))
+
+    const rawPaidAmount = Number(input.paid_amount || 0)
+
+    if (!Number.isFinite(rawPaidAmount) || rawPaidAmount < 0) {
+      throw new Error('المبلغ المدفوع غير صحيح')
+    }
+
+    const paidAmount = roundMoney(Math.min(rawPaidAmount, totalAmount))
+
+    const remainingAmount = roundMoney(Math.max(0, totalAmount - paidAmount))
+
+    const paymentStatus = normalizePaymentStatus(
+      totalAmount,
+      paidAmount,
+      remainingAmount,
+    )
+
+    const discountInputRaw = Number(input.discount_input || 0)
+
+    const discountInput = Number.isFinite(discountInputRaw)
+      ? Math.max(0, discountInputRaw)
+      : 0
+
+    const discountType =
+      input.discount_type === 'percent' ? 'percent' : 'amount'
+
+    const oldPaidAmount = roundMoney(Number(purchase.paid_amount || 0))
+
+    const oldRemainingAmount = roundMoney(
+      Number(purchase.remaining_amount || 0),
+    )
+
+    const oldTotalAmount = roundMoney(Number(purchase.total_amount || 0))
+
+    const oldPaymentMethod = resolveCashAccount(
+      purchase.payment_method || 'cash',
+    )
+
+    const newPaymentMethod = resolveCashAccount(
+      input.payment_method || purchase.payment_method || 'cash',
+    )
+
+    const oldFinancialShift =
+      oldPaidAmount > 0
+        ? resolveFinancialOperationShift(
+            actorId,
+            [oldPaymentMethod],
+            'لا يمكن تعديل فاتورة شراء تمس درج المحل بدون شفت مفتوح',
+          )
+        : null
+
+    const newFinancialShift =
+      paidAmount > 0
+        ? resolveFinancialOperationShift(
+            actorId,
+            [newPaymentMethod],
+            'لا يمكن تعديل فاتورة شراء تمس درج المحل بدون شفت مفتوح',
+          )
+        : null
+
+    const nextShiftId =
+      originalShiftId > 0 ? originalShiftId : (newFinancialShift?.id ?? null)
+
+    const oldInitialPayment = db
+      .prepare(
+        `
+        SELECT
+          id,
+          created_at
+
+        FROM supplier_payments
+
+        WHERE
+          purchase_id = ?
+          AND batch_id IS NULL
+
+          AND IFNULL(
+            notes,
+            ''
+          ) LIKE ?
+
+        ORDER BY id ASC
+
+        LIMIT 1
+        `,
+      )
+      .get(purchaseId, `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}%`) as
+      | {
+          id: number
+          created_at: string
+        }
+      | undefined
+
+    const oldQuantityByVariant = new Map<number, number>()
+
+    const oldFallbackByVariant = new Map<number, number | null>()
+
+    for (const item of oldItems) {
+      const variantId = Number(item.variant_id)
+
+      oldQuantityByVariant.set(
+        variantId,
+
+        Number(oldQuantityByVariant.get(variantId) || 0) +
+          Number(item.quantity || 0),
+      )
+
+      if (!oldFallbackByVariant.has(variantId)) {
+        oldFallbackByVariant.set(variantId, item.previous_buy_price ?? null)
+      }
+    }
+
+    const newQuantityByVariant = new Map<number, number>()
+
+    for (const item of preparedItems) {
+      newQuantityByVariant.set(Number(item.variant.id), Number(item.quantity))
+    }
+
+    const affectedVariantIds = Array.from(
+      new Set([...oldQuantityByVariant.keys(), ...newQuantityByVariant.keys()]),
+    )
+
+    /*
+     * أي تخفيض في كمية فاتورة شراء
+     * يسحب الفرق فقط من المخزون.
+     */
+    for (const variantId of affectedVariantIds) {
+      const oldQuantity = Number(oldQuantityByVariant.get(variantId) || 0)
+
+      const newQuantity = Number(newQuantityByVariant.get(variantId) || 0)
+
+      const delta = roundMoney(newQuantity - oldQuantity)
+
+      if (delta < 0) {
+        const currentStock = getCurrentVariantStock(db, variantId)
+
+        if (currentStock < Math.abs(delta)) {
+          throw new Error(
+            'لا يمكن تقليل كمية فاتورة الشراء لأن المخزون الحالي لا يكفي لعكس الفرق',
+          )
+        }
+      }
+    }
+
+    /*
+     * عكس دفعة إنشاء الفاتورة القديمة.
+     * الحركة الأصلية تظل محفوظة.
+     */
+    if (oldPaidAmount > 0) {
+      createCashMovement({
+        type: 'supplier_payment',
+
+        direction: 'in',
+
+        amount: oldPaidAmount,
+
+        payment_method: oldPaymentMethod,
+
+        reference_id: purchaseId,
+
+        reference_type: 'purchase_edit_reversal',
+
+        notes: `عكس دفعة فاتورة شراء #${purchaseId} قبل التعديل`,
+
+        created_by: actorId,
+
+        business_date: businessDate,
+
+        shift_id: oldFinancialShift?.id ?? null,
+      })
+    }
+
+    const insertStockDelta = db.prepare(
+      `
+        INSERT INTO stock_movements (
+          variant_id,
+          type,
+          quantity,
+          reference_id,
+          reference_type,
+          notes
+        )
+
+        VALUES (
+          ?, ?, ?, ?,
+          'purchase_edit',
+          ?
+        )
+        `,
+    )
+
+    for (const variantId of affectedVariantIds) {
+      const oldQuantity = Number(oldQuantityByVariant.get(variantId) || 0)
+
+      const newQuantity = Number(newQuantityByVariant.get(variantId) || 0)
+
+      const delta = roundMoney(newQuantity - oldQuantity)
+
+      if (Math.abs(delta) <= 0.0001) {
+        continue
+      }
+
+      const direction = delta > 0 ? 'in' : 'out'
+
+      insertStockDelta.run(
+        variantId,
+        direction,
+        Math.abs(delta),
+        purchaseId,
+
+        delta > 0
+          ? `زيادة مخزون بسبب تعديل فاتورة شراء #${purchaseId}`
+          : `عكس مخزون بسبب تعديل فاتورة شراء #${purchaseId}`,
+      )
+    }
+
+    /*
+     * نشيل الأثر المالي القديم
+     * من المورد القديم.
+     */
+    db.prepare(
+      `
+      UPDATE suppliers
+
+      SET
+        total_purchased =
+          MAX(
+            ROUND(
+              IFNULL(
+                total_purchased,
+                0
+              ) - ?,
+              2
+            ),
+            0
+          ),
+
+        balance =
+          ROUND(
+            IFNULL(balance, 0)
+            - ?,
+            2
+          ),
+
+        updated_at =
+          CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+    ).run(oldTotalAmount, oldRemainingAmount, oldSupplierId)
+
+    db.prepare(
+      `
+      DELETE FROM supplier_payments
+
+      WHERE
+        purchase_id = ?
+        AND batch_id IS NULL
+
+        AND IFNULL(
+          notes,
+          ''
+        ) LIKE ?
+      `,
+    ).run(purchaseId, `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}%`)
+
+    db.prepare(
+      `
+      DELETE FROM purchase_items
+
+      WHERE purchase_id = ?
+      `,
+    ).run(purchaseId)
+
+    db.prepare(
+      `
+      UPDATE purchase_invoices
+
+      SET
+        supplier_id = ?,
+
+        total_amount = ?,
+        sub_total = ?,
+
+        discount_type = ?,
+        discount_input = ?,
+        discount_value = ?,
+
+        paid_amount = ?,
+        remaining_amount = ?,
+        payment_status = ?,
+
+        payment_method = ?,
+        notes = ?,
+
+        business_date = ?,
+        shift_id = ?
+
+      WHERE id = ?
+      `,
+    ).run(
+      nextSupplierId,
+
+      totalAmount,
+      subTotal,
+
+      discountType,
+      discountInput,
+      discountValue,
+
+      paidAmount,
+      remainingAmount,
+      paymentStatus,
+
+      newPaymentMethod,
+      input.notes?.trim() || null,
+
+      businessDate,
+      nextShiftId,
+
+      purchaseId,
+    )
+
+    const insertItem = db.prepare(
+      `
+        INSERT INTO purchase_items (
+          purchase_id,
+          variant_id,
+
+          product_name,
+          barcode,
+          size,
+          color,
+
+          quantity,
+          unit_cost,
+
+          previous_buy_price,
+
+          line_total
+        )
+
+        VALUES (
+          ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?
+        )
+        `,
+    )
+
+    for (const item of preparedItems) {
+      insertItem.run(
+        purchaseId,
+
+        Number(item.variant.id),
+
+        item.variant.product_name,
+        item.variant.barcode ?? null,
+        item.variant.size ?? null,
+        item.variant.color ?? null,
+
+        item.quantity,
+        item.unitCost,
+
+        item.previousBuyPrice,
+
+        item.lineTotal,
+      )
+    }
+
+    /*
+     * تطبيق الفاتورة الجديدة
+     * على المورد المختار.
+     */
+    db.prepare(
+      `
+      UPDATE suppliers
+
+      SET
+        total_purchased =
+          ROUND(
+            IFNULL(
+              total_purchased,
+              0
+            ) + ?,
+            2
+          ),
+
+        balance =
+          ROUND(
+            IFNULL(balance, 0)
+            + ?,
+            2
+          ),
+
+        updated_at =
+          CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+    ).run(totalAmount, remainingAmount, nextSupplierId)
+
+    if (paidAmount > 0) {
+      db.prepare(
+        `
+        INSERT INTO supplier_payments (
+          supplier_id,
+          purchase_id,
+          amount,
+          payment_method,
+          notes,
+          created_at
+        )
+
+        VALUES (
+          ?, ?, ?, ?, ?,
+          COALESCE(
+            ?,
+            CURRENT_TIMESTAMP
+          )
+        )
+        `,
+      ).run(
+        nextSupplierId,
+        purchaseId,
+        paidAmount,
+        newPaymentMethod,
+
+        `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}`,
+
+        oldInitialPayment?.created_at ?? purchase.created_at ?? null,
+      )
+
+      createCashMovement({
+        type: 'supplier_payment',
+
+        direction: 'out',
+
+        amount: paidAmount,
+
+        payment_method: newPaymentMethod,
+
+        reference_id: purchaseId,
+
+        reference_type: 'purchase_invoice',
+
+        notes: `دفع فاتورة شراء رقم ${purchaseId} بعد التعديل`,
+
+        created_by: actorId,
+
+        business_date: businessDate,
+
+        shift_id: newFinancialShift?.id ?? null,
+      })
+    }
+
+    /*
+     * Last Purchase Cost
+     * يتحدد بعد الصورة الجديدة
+     * للفواتير.
+     */
+    for (const variantId of affectedVariantIds) {
+      recalculateVariantBuyPrice(
+        db,
+
+        variantId,
+
+        oldFallbackByVariant.get(variantId),
+      )
+    }
+
+    return {
+      ok: true,
+
+      purchase_id: purchaseId,
+
+      supplier_id: nextSupplierId,
+
+      previous_supplier_id: oldSupplierId,
+
+      total_amount: totalAmount,
+
+      paid_amount: paidAmount,
+
+      remaining_amount: remainingAmount,
+
+      payment_status: paymentStatus,
+
+      items_count: preparedItems.length,
+
+      shift_id: nextShiftId,
+
+      edited: true,
+    }
+  })
+
+  return tx()
 }
 
 export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
@@ -531,6 +1518,7 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
         SELECT COUNT(*) AS count
         FROM purchase_returns
         WHERE purchase_id = ?
+          AND cancelled_at IS NULL
       `,
       )
       .get(purchaseId) as { count: number }
@@ -665,9 +1653,8 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
     )
 
     for (const variantId of affectedVariantIds) {
-      recalculateVariantBuyPriceAfterPurchaseCancellation(db, variantId)
+      recalculateVariantBuyPrice(db, variantId)
     }
-
     db.prepare(
       `
       UPDATE suppliers
@@ -1027,6 +2014,457 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
   return tx()
 }
 
+function getPurchaseReturnMutationContext(returnIdInput: number) {
+  const db = getDb()
+
+  const returnId = Number(returnIdInput || 0)
+
+  if (!returnId) {
+    throw new Error('رقم مرتجع الشراء غير صحيح')
+  }
+
+  const purchaseReturn = db
+    .prepare(
+      `
+      SELECT
+        pr.*,
+
+        pi.total_amount
+          AS purchase_total_amount,
+
+        pi.paid_amount
+          AS purchase_paid_amount,
+
+        pi.remaining_amount
+          AS purchase_remaining_amount,
+
+        IFNULL(
+          pi.status,
+          'active'
+        ) AS purchase_status,
+
+        pi.payment_method
+          AS purchase_payment_method
+
+      FROM purchase_returns pr
+
+      JOIN purchase_invoices pi
+        ON pi.id =
+           pr.purchase_id
+
+      WHERE pr.id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(returnId) as any
+
+  if (!purchaseReturn) {
+    throw new Error('مرتجع الشراء غير موجود')
+  }
+
+  if (purchaseReturn.cancelled_at) {
+    throw new Error('مرتجع الشراء ملغي بالفعل')
+  }
+
+  if (purchaseReturn.purchase_status === 'cancelled') {
+    throw new Error(
+      'لا يمكن تعديل أو إلغاء المرتجع لأن فاتورة الشراء الأصلية ملغاة',
+    )
+  }
+
+  const latestActiveReturn = db
+    .prepare(
+      `
+      SELECT id
+
+      FROM purchase_returns
+
+      WHERE
+        purchase_id = ?
+        AND cancelled_at IS NULL
+
+      ORDER BY id DESC
+
+      LIMIT 1
+      `,
+    )
+    .get(Number(purchaseReturn.purchase_id)) as
+    | {
+        id: number
+      }
+    | undefined
+
+  if (Number(latestActiveReturn?.id || 0) !== returnId) {
+    throw new Error('يجب تعديل أو إلغاء آخر مرتجع شراء فعال على الفاتورة أولًا')
+  }
+
+  const items = db
+    .prepare(
+      `
+      SELECT *
+
+      FROM purchase_return_items
+
+      WHERE return_id = ?
+
+      ORDER BY id ASC
+      `,
+    )
+    .all(returnId) as any[]
+
+  if (items.length === 0) {
+    throw new Error('لا توجد أصناف داخل مرتجع الشراء')
+  }
+
+  return {
+    db,
+    purchaseReturn,
+    items,
+  }
+}
+
+export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
+  const returnId = Number(input.return_id || 0)
+
+  const actorId = Number(input.actor_id || 0)
+
+  if (!actorId) {
+    throw new Error('المستخدم غير صحيح')
+  }
+
+  const { db, purchaseReturn, items } =
+    getPurchaseReturnMutationContext(returnId)
+
+  const totalAmount = roundMoney(Number(purchaseReturn.total_amount || 0))
+
+  const debtReductionAmount = roundMoney(
+    Number(purchaseReturn.debt_reduction_amount || 0),
+  )
+
+  const refundMode = purchaseReturn.refund_mode === 'credit' ? 'credit' : 'cash'
+
+  const derivedCashRefund = roundMoney(
+    Math.max(0, totalAmount - debtReductionAmount),
+  )
+
+  const cashRefundAmount =
+    refundMode === 'cash'
+      ? roundMoney(
+          Math.max(
+            Number(purchaseReturn.cash_refund_amount || 0),
+            derivedCashRefund,
+          ),
+        )
+      : 0
+
+  const refundAccount = resolveCashAccount(
+    purchaseReturn.refund_payment_method ||
+      purchaseReturn.purchase_payment_method ||
+      'store_cash',
+  )
+
+  const openShift =
+    cashRefundAmount > 0
+      ? resolveFinancialOperationShift(
+          actorId,
+          [refundAccount],
+
+          'لا يمكن إلغاء مرتجع شراء يؤثر على درج المحل بدون شفت مفتوح',
+        )
+      : null
+
+  const cancellationBusinessDate = getCurrentBusinessDate(db)
+
+  const reason = String(input.reason || '').trim() || 'إلغاء مرتجع شراء'
+
+  const tx = db.transaction(() => {
+    /*
+     * المرتجع كان خرج مخزون.
+     * الإلغاء يرجعه للمخزون.
+     */
+    const restoreStock = db.prepare(
+      `
+        INSERT INTO stock_movements (
+          variant_id,
+          type,
+          quantity,
+          reference_id,
+          reference_type,
+          notes
+        )
+
+        VALUES (
+          ?,
+          'in',
+          ?,
+          ?,
+          'purchase_return_cancel',
+          ?
+        )
+        `,
+    )
+
+    for (const item of items) {
+      restoreStock.run(
+        Number(item.variant_id),
+
+        Number(item.quantity || 0),
+
+        returnId,
+
+        `عكس مخزون مرتجع شراء ملغي #${returnId}`,
+      )
+    }
+
+    /*
+     * لو المورد كان رجع فلوس،
+     * إلغاء المرتجع يعيد المبلغ
+     * لنفس الحساب.
+     */
+    if (cashRefundAmount > 0) {
+      createCashMovement({
+        type: 'purchase_return',
+
+        direction: 'out',
+
+        amount: cashRefundAmount,
+
+        payment_method: refundAccount,
+
+        reference_id: returnId,
+
+        reference_type: 'purchase_return_cancel',
+
+        notes: `عكس مرتجع شراء ملغي #${returnId}`,
+
+        created_by: actorId,
+
+        business_date: cancellationBusinessDate,
+
+        shift_id: openShift?.id ?? null,
+      })
+    }
+
+    const purchaseTotal = roundMoney(
+      Number(purchaseReturn.purchase_total_amount || 0),
+    )
+
+    const purchasePaid = roundMoney(
+      Number(purchaseReturn.purchase_paid_amount || 0),
+    )
+
+    const currentRemaining = roundMoney(
+      Number(purchaseReturn.purchase_remaining_amount || 0),
+    )
+
+    const maxRemaining = roundMoney(Math.max(0, purchaseTotal - purchasePaid))
+
+    const newRemaining = roundMoney(
+      Math.min(
+        maxRemaining,
+
+        currentRemaining + debtReductionAmount,
+      ),
+    )
+
+    const newPaymentStatus = normalizePaymentStatus(
+      purchaseTotal,
+      purchasePaid,
+      newRemaining,
+    )
+
+    db.prepare(
+      `
+      UPDATE purchase_invoices
+
+      SET
+        remaining_amount = ?,
+        payment_status = ?
+
+      WHERE id = ?
+      `,
+    ).run(
+      newRemaining,
+      newPaymentStatus,
+
+      Number(purchaseReturn.purchase_id),
+    )
+
+    /*
+     * Cash mode:
+     * رجوع المديونية فقط.
+     *
+     * Credit mode:
+     * المرتجع كله كان خصمًا
+     * من حساب المورد.
+     */
+    const balanceRestore =
+      refundMode === 'credit' ? totalAmount : debtReductionAmount
+
+    db.prepare(
+      `
+      UPDATE suppliers
+
+      SET
+        total_purchased =
+          ROUND(
+            IFNULL(
+              total_purchased,
+              0
+            ) + ?,
+            2
+          ),
+
+        balance =
+          ROUND(
+            IFNULL(balance, 0)
+            + ?,
+            2
+          ),
+
+        updated_at =
+          CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+    ).run(
+      totalAmount,
+      balanceRestore,
+
+      Number(purchaseReturn.supplier_id),
+    )
+
+    db.prepare(
+      `
+      UPDATE purchase_returns
+
+      SET
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
+        cancelled_by = ?,
+
+        cancelled_shift_id = ?,
+
+        cancel_reason = ?
+
+      WHERE id = ?
+      `,
+    ).run(
+      actorId,
+
+      openShift?.id ?? null,
+
+      reason,
+
+      returnId,
+    )
+
+    return {
+      ok: true,
+
+      return_id: returnId,
+
+      purchase_id: Number(purchaseReturn.purchase_id),
+
+      supplier_id: Number(purchaseReturn.supplier_id),
+
+      restored_total: totalAmount,
+
+      restored_debt: debtReductionAmount,
+
+      reversed_cash: cashRefundAmount,
+
+      items_count: items.length,
+
+      cancelled_shift_id: openShift?.id ?? null,
+    }
+  })
+
+  return tx()
+}
+
+export function updatePurchaseReturn(input: UpdatePurchaseReturnInput) {
+  const db = getDb()
+
+  const returnId = Number(input.return_id || 0)
+
+  const actorId = Number(input.actor_id || 0)
+
+  const reason = String(input.reason || '').trim()
+
+  if (!returnId) {
+    throw new Error('رقم مرتجع الشراء غير صحيح')
+  }
+
+  if (!actorId) {
+    throw new Error('المستخدم غير صحيح')
+  }
+
+  if (!reason) {
+    throw new Error('اكتب سبب تعديل مرتجع الشراء')
+  }
+
+  if (!input.items?.length) {
+    throw new Error('لا توجد أصناف في المرتجع المعدل')
+  }
+
+  const existing = getPurchaseReturn(returnId) as any
+
+  if (existing.return?.cancelled_at) {
+    throw new Error('مرتجع الشراء ملغي بالفعل')
+  }
+
+  const purchaseId = Number(existing.return?.purchase_id || 0)
+
+  const tx = db.transaction(() => {
+    const cancelled = cancelPurchaseReturn({
+      return_id: returnId,
+
+      reason: `تم تعديل مرتجع الشراء: ${reason}`,
+
+      actor_id: actorId,
+    })
+
+    const created = createPurchaseReturn({
+      purchase_id: purchaseId,
+
+      notes: input.notes ?? null,
+
+      refund_payment_method: input.refund_payment_method,
+
+      refund_mode: input.refund_mode,
+
+      actor_id: actorId,
+
+      items: input.items,
+    })
+
+    db.prepare(
+      `
+      UPDATE purchase_returns
+
+      SET replacement_return_id = ?
+
+      WHERE id = ?
+      `,
+    ).run(created.return_id, returnId)
+
+    return {
+      ...created,
+
+      replaced_return_id: returnId,
+
+      cancellation_shift_id: cancelled.cancelled_shift_id ?? null,
+
+      edited: true,
+    }
+  })
+
+  return tx()
+}
+
 export function listPurchaseInvoices(input?: {
   search?: string
   payment_filter?: 'all' | 'paid' | 'unpaid'
@@ -1099,6 +2537,7 @@ export function listPurchaseInvoices(input?: {
           SELECT SUM(pr.total_amount)
           FROM purchase_returns pr
           WHERE pr.purchase_id = pi.id
+            AND pr.cancelled_at IS NULL
         ), 0) AS returned_amount
       FROM purchase_invoices pi
       JOIN suppliers s ON s.id = pi.supplier_id
@@ -1215,6 +2654,7 @@ export function getPurchaseInvoice(purchaseId: number) {
           SELECT SUM(pr.total_amount)
           FROM purchase_returns pr
           WHERE pr.purchase_id = pi.id
+            AND pr.cancelled_at IS NULL
         ), 0) AS returned_amount
       FROM purchase_invoices pi
       JOIN suppliers s ON s.id = pi.supplier_id
@@ -1238,6 +2678,7 @@ export function getPurchaseInvoice(purchaseId: number) {
           FROM purchase_return_items pri
           JOIN purchase_returns pr ON pr.id = pri.return_id
           WHERE pri.purchase_item_id = pii.id
+            AND pr.cancelled_at IS NULL
         ), 0) AS returned_quantity,
         MAX(
           pii.quantity - IFNULL((
@@ -1245,6 +2686,7 @@ export function getPurchaseInvoice(purchaseId: number) {
             FROM purchase_return_items pri
             JOIN purchase_returns pr ON pr.id = pri.return_id
             WHERE pri.purchase_item_id = pii.id
+              AND pr.cancelled_at IS NULL
           ), 0),
           0
         ) AS returnable_quantity
@@ -2905,25 +4347,43 @@ export function getSupplierStatement(
       created_at: purchase.created_at,
     })),
 
-    ...returns.map((purchaseReturn) => ({
-      id: `purchase-return-${purchaseReturn.id}`,
+    ...returns.map((purchaseReturn) => {
+      const cancelled = Boolean(purchaseReturn.cancelled_at)
 
-      type: 'purchase_return',
+      const replaced = Boolean(purchaseReturn.replacement_return_id)
 
-      title: `مرتجع شراء #${purchaseReturn.id} على فاتورة #${purchaseReturn.purchase_id}`,
+      return {
+        id: `purchase-return-${purchaseReturn.id}`,
 
-      debit: 0,
+        type: 'purchase_return',
 
-      credit: Number(purchaseReturn.total_amount || 0),
+        title: replaced
+          ? `مرتجع شراء #${purchaseReturn.id} - تم تعديله`
+          : cancelled
+            ? `مرتجع شراء #${purchaseReturn.id} - ملغي`
+            : `مرتجع شراء #${purchaseReturn.id} على فاتورة #${purchaseReturn.purchase_id}`,
 
-      purchase_id: purchaseReturn.purchase_id,
+        debit: 0,
 
-      return_id: purchaseReturn.id,
+        credit: cancelled ? 0 : Number(purchaseReturn.total_amount || 0),
 
-      notes: purchaseReturn.notes,
+        purchase_id: purchaseReturn.purchase_id,
 
-      created_at: purchaseReturn.created_at,
-    })),
+        return_id: purchaseReturn.id,
+
+        replacement_return_id: purchaseReturn.replacement_return_id ?? null,
+
+        cancelled_at: purchaseReturn.cancelled_at ?? null,
+
+        notes: cancelled
+          ? purchaseReturn.cancel_reason ||
+            purchaseReturn.notes ||
+            'مرتجع شراء ملغي'
+          : purchaseReturn.notes,
+
+        created_at: purchaseReturn.created_at,
+      }
+    }),
 
     ...paymentEntries,
   ].sort((a, b) => {
@@ -2952,9 +4412,14 @@ export function getSupplierStatement(
 
       total_paid: totalPaid,
 
-      total_returns: returns.reduce(
-        (sum, purchaseReturn) => sum + Number(purchaseReturn.total_amount || 0),
-        0,
+      total_returns: roundMoney(
+        returns.reduce(
+          (sum, purchaseReturn) =>
+            purchaseReturn.cancelled_at
+              ? sum
+              : sum + Number(purchaseReturn.total_amount || 0),
+          0,
+        ),
       ),
 
       balance: Number(supplier.balance || 0),

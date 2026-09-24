@@ -1124,58 +1124,58 @@ export function getDb(): Database.Database {
           safeAddColumn(db, 'sale_exchanges', 'new_net_total', 'REAL')
 
           db.exec(`
-      UPDATE sale_promotion_units
-      SET original_unit_cost = (
-        SELECT si.unit_cost
-        FROM sale_items si
-        WHERE
-          si.id =
-            sale_promotion_units.original_sale_item_id
-        LIMIT 1
-      )
-      WHERE original_unit_cost IS NULL;
+            UPDATE sale_promotion_units
+            SET original_unit_cost = (
+              SELECT si.unit_cost
+              FROM sale_items si
+              WHERE
+                si.id =
+                  sale_promotion_units.original_sale_item_id
+              LIMIT 1
+            )
+            WHERE original_unit_cost IS NULL;
 
-      UPDATE sale_promotion_units
-      SET current_unit_cost =
-        CASE
-          WHEN
-            current_variant_id =
-            original_variant_id
-          THEN original_unit_cost
+            UPDATE sale_promotion_units
+            SET current_unit_cost =
+              CASE
+                WHEN
+                  current_variant_id =
+                  original_variant_id
+                THEN original_unit_cost
 
-          ELSE (
-            SELECT pv.buy_price
-            FROM product_variants pv
-            WHERE
-              pv.id =
-                sale_promotion_units.current_variant_id
-            LIMIT 1
-          )
-        END
-      WHERE current_unit_cost IS NULL;
+                ELSE (
+                  SELECT pv.buy_price
+                  FROM product_variants pv
+                  WHERE
+                    pv.id =
+                      sale_promotion_units.current_variant_id
+                  LIMIT 1
+                )
+              END
+            WHERE current_unit_cost IS NULL;
 
-      UPDATE sale_exchange_items
-      SET old_unit_cost = (
-        SELECT pv.buy_price
-        FROM product_variants pv
-        WHERE
-          pv.id =
-            sale_exchange_items.old_variant_id
-        LIMIT 1
-      )
-      WHERE old_unit_cost IS NULL;
+            UPDATE sale_exchange_items
+            SET old_unit_cost = (
+              SELECT pv.buy_price
+              FROM product_variants pv
+              WHERE
+                pv.id =
+                  sale_exchange_items.old_variant_id
+              LIMIT 1
+            )
+            WHERE old_unit_cost IS NULL;
 
-      UPDATE sale_exchange_items
-      SET new_unit_cost = (
-        SELECT pv.buy_price
-        FROM product_variants pv
-        WHERE
-          pv.id =
-            sale_exchange_items.new_variant_id
-        LIMIT 1
-      )
-      WHERE new_unit_cost IS NULL;
-    `)
+            UPDATE sale_exchange_items
+            SET new_unit_cost = (
+              SELECT pv.buy_price
+              FROM product_variants pv
+              WHERE
+                pv.id =
+                  sale_exchange_items.new_variant_id
+              LIMIT 1
+            )
+            WHERE new_unit_cost IS NULL;
+          `)
 
           safeAddColumn(
             db,
@@ -1214,16 +1214,16 @@ export function getDb(): Database.Database {
           safeAddColumn(db, 'sale_exchanges', 'cancelled_shift_id', 'INTEGER')
 
           db.exec(`
-      CREATE INDEX IF NOT EXISTS
-        idx_sale_exchanges_cancelled_shift_id
-      ON sale_exchanges(cancelled_shift_id);
-    `)
+            CREATE INDEX IF NOT EXISTS
+              idx_sale_exchanges_cancelled_shift_id
+            ON sale_exchanges(cancelled_shift_id);
+          `)
 
           db.exec(`
-      CREATE INDEX IF NOT EXISTS
-        idx_sale_exchanges_shift_id
-      ON sale_exchanges(shift_id);
-    `)
+            CREATE INDEX IF NOT EXISTS
+              idx_sale_exchanges_shift_id
+            ON sale_exchanges(shift_id);
+          `)
           safeAddColumn(
             db,
             'sale_loyalty_snapshots',
@@ -1296,72 +1296,72 @@ export function getDb(): Database.Database {
 
           db.prepare(
             `
-      INSERT OR IGNORE INTO sale_payments (
-        sale_id,
-        payment_method,
-        amount,
-        created_at
-      )
+            INSERT OR IGNORE INTO sale_payments (
+              sale_id,
+              payment_method,
+              amount,
+              created_at
+            )
 
-      SELECT
-        s.id,
+            SELECT
+              s.id,
 
-        CASE
-          WHEN s.payment_method IN ('cash', 'store_cash')
-            THEN 'store_cash'
+              CASE
+                WHEN s.payment_method IN ('cash', 'store_cash')
+                  THEN 'store_cash'
 
-          WHEN s.payment_method IN ('card', 'fawry_machine')
-            THEN 'fawry_machine'
+                WHEN s.payment_method IN ('card', 'fawry_machine')
+                  THEN 'fawry_machine'
 
-          WHEN s.payment_method IN ('wallet', 'owner_vodafone')
-            THEN 'owner_vodafone'
+                WHEN s.payment_method IN ('wallet', 'owner_vodafone')
+                  THEN 'owner_vodafone'
 
-          WHEN s.payment_method IN ('bank', 'bank_transfer', 'owner_bank')
-            THEN 'owner_bank'
+                WHEN s.payment_method IN ('bank', 'bank_transfer', 'owner_bank')
+                  THEN 'owner_bank'
 
-          WHEN s.payment_method = 'store_safe'
-            THEN 'store_safe'
+                WHEN s.payment_method = 'store_safe'
+                  THEN 'store_safe'
 
-          ELSE IFNULL(s.payment_method, 'store_cash')
-        END,
+                ELSE IFNULL(s.payment_method, 'store_cash')
+              END,
 
-        MIN(
-          MAX(IFNULL(s.paid, 0), 0),
-          MAX(IFNULL(s.grand_total, 0), 0)
-        ),
+              MIN(
+                MAX(IFNULL(s.paid, 0), 0),
+                MAX(IFNULL(s.grand_total, 0), 0)
+              ),
 
-        s.created_at
+              s.created_at
 
-      FROM sales s
+            FROM sales s
 
-      WHERE IFNULL(s.type, 'sale') = 'sale'
-        AND IFNULL(s.paid, 0) > 0
-        AND IFNULL(s.payment_method, '') <> 'split'
-      `,
+            WHERE IFNULL(s.type, 'sale') = 'sale'
+              AND IFNULL(s.paid, 0) > 0
+              AND IFNULL(s.payment_method, '') <> 'split'
+            `,
           ).run()
 
           db.prepare(
             `
-      DELETE FROM sale_payments
-      WHERE payment_method = 'split'
-      `,
+            DELETE FROM sale_payments
+            WHERE payment_method = 'split'
+            `,
           ).run()
 
           db.exec(`
-      CREATE INDEX IF NOT EXISTS
-        idx_sales_shift_id
-      ON sales(shift_id);
-    `)
+            CREATE INDEX IF NOT EXISTS
+              idx_sales_shift_id
+            ON sales(shift_id);
+          `)
           safeAddColumn(db, 'sales', 'cancelled_at', 'TEXT')
           safeAddColumn(db, 'sales', 'cancelled_by', 'INTEGER')
           safeAddColumn(db, 'sales', 'cancel_reason', 'TEXT')
           safeAddColumn(db, 'sales', 'cancelled_shift_id', 'INTEGER')
 
           db.exec(`
-      CREATE INDEX IF NOT EXISTS
-        idx_sales_cancelled_shift_id
-      ON sales(cancelled_shift_id);
-    `)
+            CREATE INDEX IF NOT EXISTS
+              idx_sales_cancelled_shift_id
+            ON sales(cancelled_shift_id);
+          `)
           safeAddColumn(db, 'sale_returns', 'cancelled_at', 'TEXT')
           safeAddColumn(db, 'sale_returns', 'cancelled_by', 'INTEGER')
           safeAddColumn(db, 'sale_returns', 'cancel_reason', 'TEXT')
@@ -1370,27 +1370,27 @@ export function getDb(): Database.Database {
           safeAddColumn(db, 'sale_returns', 'cancelled_shift_id', 'INTEGER')
 
           db.exec(`
-      CREATE INDEX IF NOT EXISTS
-        idx_sale_returns_cancelled_shift_id
-      ON sale_returns(cancelled_shift_id);
-    `)
+            CREATE INDEX IF NOT EXISTS
+              idx_sale_returns_cancelled_shift_id
+            ON sale_returns(cancelled_shift_id);
+          `)
 
           db.exec(`
-      CREATE INDEX IF NOT EXISTS
-        idx_sale_returns_shift_id
-      ON sale_returns(shift_id);
-    `)
+            CREATE INDEX IF NOT EXISTS
+              idx_sale_returns_shift_id
+            ON sale_returns(shift_id);
+          `)
           safeAddColumn(db, 'sale_returns', 'debt_reduction_amount', 'REAL')
 
           safeAddColumn(db, 'sale_returns', 'cash_refund_amount', 'REAL')
 
           db.prepare(
             `
-      UPDATE sales
-      SET business_date = date(created_at, 'localtime')
-      WHERE business_date IS NULL
-         OR TRIM(business_date) = ''
-      `,
+            UPDATE sales
+            SET business_date = date(created_at, 'localtime')
+            WHERE business_date IS NULL
+              OR TRIM(business_date) = ''
+            `,
           ).run()
 
           safeAddColumn(db, 'customer_payments', 'sale_id', 'INTEGER')
@@ -1412,14 +1412,14 @@ export function getDb(): Database.Database {
           )
 
           db.exec(`
-      CREATE INDEX IF NOT EXISTS
-        idx_customer_payment_batches_shift_id
-      ON customer_payment_batches(shift_id);
+            CREATE INDEX IF NOT EXISTS
+              idx_customer_payment_batches_shift_id
+            ON customer_payment_batches(shift_id);
 
-      CREATE INDEX IF NOT EXISTS
-        idx_customer_payment_batches_cancelled_shift_id
-      ON customer_payment_batches(cancelled_shift_id);
-    `)
+            CREATE INDEX IF NOT EXISTS
+              idx_customer_payment_batches_cancelled_shift_id
+            ON customer_payment_batches(cancelled_shift_id);
+          `)
           safeAddColumn(db, 'store_liabilities', 'category', 'TEXT')
           safeAddColumn(
             db,
@@ -1453,10 +1453,10 @@ export function getDb(): Database.Database {
           safeAddColumn(db, 'cash_movements', 'shift_id', 'INTEGER')
 
           db.exec(`
-      CREATE INDEX IF NOT EXISTS
-        idx_cash_movements_shift_id
-      ON cash_movements(shift_id);
-    `)
+            CREATE INDEX IF NOT EXISTS
+              idx_cash_movements_shift_id
+            ON cash_movements(shift_id);
+          `)
           safeAddColumn(db, 'cash_movements', 'cancelled_at', 'TEXT')
           safeAddColumn(db, 'cash_movements', 'cancelled_by', 'INTEGER')
           safeAddColumn(db, 'cash_movements', 'cancel_reason', 'TEXT')
@@ -1478,18 +1478,18 @@ export function getDb(): Database.Database {
           safeAddColumn(db, 'expenses', 'cancelled_shift_id', 'INTEGER')
 
           db.exec(`
-      CREATE INDEX IF NOT EXISTS
-        idx_expenses_shift_id
-      ON expenses(shift_id);
+            CREATE INDEX IF NOT EXISTS
+              idx_expenses_shift_id
+            ON expenses(shift_id);
 
-      CREATE INDEX IF NOT EXISTS
-        idx_expenses_updated_shift_id
-      ON expenses(updated_shift_id);
+            CREATE INDEX IF NOT EXISTS
+              idx_expenses_updated_shift_id
+            ON expenses(updated_shift_id);
 
-      CREATE INDEX IF NOT EXISTS
-        idx_expenses_cancelled_shift_id
-      ON expenses(cancelled_shift_id);
-    `)
+            CREATE INDEX IF NOT EXISTS
+              idx_expenses_cancelled_shift_id
+            ON expenses(cancelled_shift_id);
+          `)
 
           safeAddColumn(db, 'store_liability_payments', 'cancelled_at', 'TEXT')
           safeAddColumn(
@@ -1510,14 +1510,14 @@ export function getDb(): Database.Database {
           )
 
           db.exec(`
-      CREATE INDEX IF NOT EXISTS
-        idx_store_liability_payments_shift_id
-      ON store_liability_payments(shift_id);
+            CREATE INDEX IF NOT EXISTS
+              idx_store_liability_payments_shift_id
+            ON store_liability_payments(shift_id);
 
-      CREATE INDEX IF NOT EXISTS
-        idx_store_liability_payments_cancelled_shift_id
-      ON store_liability_payments(cancelled_shift_id);
-    `)
+            CREATE INDEX IF NOT EXISTS
+              idx_store_liability_payments_cancelled_shift_id
+            ON store_liability_payments(cancelled_shift_id);
+          `)
 
           safeAddColumn(db, 'purchase_items', 'previous_buy_price', 'REAL')
 
@@ -1540,22 +1540,22 @@ export function getDb(): Database.Database {
           )
 
           db.exec(`
-      CREATE INDEX IF NOT EXISTS
-        idx_purchase_invoices_shift_id
-      ON purchase_invoices(shift_id);
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_invoices_shift_id
+            ON purchase_invoices(shift_id);
 
-      CREATE INDEX IF NOT EXISTS
-        idx_purchase_invoices_cancelled_shift_id
-      ON purchase_invoices(cancelled_shift_id);
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_invoices_cancelled_shift_id
+            ON purchase_invoices(cancelled_shift_id);
 
-      CREATE INDEX IF NOT EXISTS
-        idx_supplier_payment_batches_shift_id
-      ON supplier_payment_batches(shift_id);
+            CREATE INDEX IF NOT EXISTS
+              idx_supplier_payment_batches_shift_id
+            ON supplier_payment_batches(shift_id);
 
-      CREATE INDEX IF NOT EXISTS
-        idx_supplier_payment_batches_cancelled_shift_id
-      ON supplier_payment_batches(cancelled_shift_id);
-    `)
+            CREATE INDEX IF NOT EXISTS
+              idx_supplier_payment_batches_cancelled_shift_id
+            ON supplier_payment_batches(cancelled_shift_id);
+          `)
 
           safeAddColumn(
             db,
@@ -1570,19 +1570,19 @@ export function getDb(): Database.Database {
 
           db.prepare(
             `
-      UPDATE cash_movements
-      SET business_date = (
-        SELECT c.business_date
-        FROM cash_day_closings c
-        WHERE c.id = cash_movements.reference_id
-        LIMIT 1
-      )
-      WHERE reference_type = 'day_close'
-        AND (
-          business_date IS NULL
-          OR TRIM(business_date) = ''
-        )
-      `,
+            UPDATE cash_movements
+            SET business_date = (
+              SELECT c.business_date
+              FROM cash_day_closings c
+              WHERE c.id = cash_movements.reference_id
+              LIMIT 1
+            )
+            WHERE reference_type = 'day_close'
+              AND (
+                business_date IS NULL
+                OR TRIM(business_date) = ''
+              )
+            `,
           ).run()
 
           normalizePurchaseMoney(db)
@@ -1590,189 +1590,189 @@ export function getDb(): Database.Database {
 
           db.prepare(
             `
-      INSERT OR IGNORE INTO sale_loyalty_snapshots (
-        sale_id,
-        enabled,
-        earn_amount,
-        earn_points,
-        point_value,
-        min_redeem_points,
-        source
-      )
-
-      SELECT
-        s.id,
-
-        CASE
-          WHEN LOWER(
-            COALESCE(
-              (
-                SELECT value
-                FROM app_settings
-                WHERE key = 'loyalty_enabled'
-                LIMIT 1
-              ),
-              'true'
+            INSERT OR IGNORE INTO sale_loyalty_snapshots (
+              sale_id,
+              enabled,
+              earn_amount,
+              earn_points,
+              point_value,
+              min_redeem_points,
+              source
             )
-          ) = 'true'
-          THEN 1
-          ELSE 0
-        END,
 
-        COALESCE(
-          NULLIF(
-            CAST(
-              (
-                SELECT value
-                FROM app_settings
-                WHERE key = 'loyalty_earn_amount'
-                LIMIT 1
-              ) AS REAL
-            ),
-            0
-          ),
-          100
-        ),
+            SELECT
+              s.id,
 
-        COALESCE(
-          NULLIF(
-            CAST(
-              (
-                SELECT value
-                FROM app_settings
-                WHERE key = 'loyalty_earn_points'
-                LIMIT 1
-              ) AS REAL
-            ),
-            0
-          ),
-          1
-        ),
-
-        COALESCE(
-          NULLIF(
-            CAST(
-              (
-                SELECT value
-                FROM app_settings
-                WHERE key = 'loyalty_point_value'
-                LIMIT 1
-              ) AS REAL
-            ),
-            0
-          ),
-          1
-        ),
-
-        COALESCE(
-          NULLIF(
-            CAST(
-              (
-                SELECT value
-                FROM app_settings
-                WHERE key = 'loyalty_min_redeem_points'
-                LIMIT 1
-              ) AS REAL
-            ),
-            0
-          ),
-          1
-        ),
-
-        'legacy_estimated'
-          AS source
-
-      FROM sales s
-
-      WHERE
-        IFNULL(
-          s.type,
-          'sale'
-        ) = 'sale'
-      `,
-          ).run()
-
-          db.prepare(
-            `
-      UPDATE sale_loyalty_snapshots
-      SET source = 'legacy_estimated'
-
-      WHERE source = 'exact'
-
-        AND EXISTS (
-          SELECT 1
-
-          FROM sales s
-
-          WHERE
-            s.id =
-              sale_loyalty_snapshots.sale_id
-
-            AND ABS(
-              strftime(
-                '%s',
-                sale_loyalty_snapshots.created_at
-              )
-              -
-              strftime(
-                '%s',
-                s.created_at
-              )
-            ) > 2
-        )
-      `,
-          ).run()
-
-          db.prepare(
-            `
-        UPDATE sales
-        SET
-          remaining_amount = MAX(
-            IFNULL(grand_total, 0)
-            - IFNULL(paid, 0)
-            - IFNULL(
-                (
-                  SELECT SUM(cp.amount)
-                  FROM customer_payments cp
-                  WHERE cp.sale_id = sales.id
-                    AND (
-                    cp.notes LIKE 'تسوية مديونية بسبب مرتجع RET-%'
-                    OR cp.notes LIKE 'تسوية مديونية بسبب استبدال EXC-%'
+              CASE
+                WHEN LOWER(
+                  COALESCE(
+                    (
+                      SELECT value
+                      FROM app_settings
+                      WHERE key = 'loyalty_enabled'
+                      LIMIT 1
+                    ),
+                    'true'
                   )
-                ),
-                0
-              ),
-            0
-          ),
+                ) = 'true'
+                THEN 1
+                ELSE 0
+              END,
 
-          payment_status = CASE
-            WHEN (
-              IFNULL(grand_total, 0)
-              - IFNULL(paid, 0)
-              - IFNULL(
-                  (
-                    SELECT SUM(cp.amount)
-                    FROM customer_payments cp
-                    WHERE cp.sale_id = sales.id
-                      AND (
+              COALESCE(
+                NULLIF(
+                  CAST(
+                    (
+                      SELECT value
+                      FROM app_settings
+                      WHERE key = 'loyalty_earn_amount'
+                      LIMIT 1
+                    ) AS REAL
+                  ),
+                  0
+                ),
+                100
+              ),
+
+              COALESCE(
+                NULLIF(
+                  CAST(
+                    (
+                      SELECT value
+                      FROM app_settings
+                      WHERE key = 'loyalty_earn_points'
+                      LIMIT 1
+                    ) AS REAL
+                  ),
+                  0
+                ),
+                1
+              ),
+
+              COALESCE(
+                NULLIF(
+                  CAST(
+                    (
+                      SELECT value
+                      FROM app_settings
+                      WHERE key = 'loyalty_point_value'
+                      LIMIT 1
+                    ) AS REAL
+                  ),
+                  0
+                ),
+                1
+              ),
+
+              COALESCE(
+                NULLIF(
+                  CAST(
+                    (
+                      SELECT value
+                      FROM app_settings
+                      WHERE key = 'loyalty_min_redeem_points'
+                      LIMIT 1
+                    ) AS REAL
+                  ),
+                  0
+                ),
+                1
+              ),
+
+              'legacy_estimated'
+                AS source
+
+            FROM sales s
+
+            WHERE
+              IFNULL(
+                s.type,
+                'sale'
+              ) = 'sale'
+            `,
+          ).run()
+
+          db.prepare(
+            `
+            UPDATE sale_loyalty_snapshots
+            SET source = 'legacy_estimated'
+
+            WHERE source = 'exact'
+
+              AND EXISTS (
+                SELECT 1
+
+                FROM sales s
+
+                WHERE
+                  s.id =
+                    sale_loyalty_snapshots.sale_id
+
+                  AND ABS(
+                    strftime(
+                      '%s',
+                      sale_loyalty_snapshots.created_at
+                    )
+                    -
+                    strftime(
+                      '%s',
+                      s.created_at
+                    )
+                  ) > 2
+              )
+            `,
+          ).run()
+
+          db.prepare(
+            `
+            UPDATE sales
+            SET
+              remaining_amount = MAX(
+                IFNULL(grand_total, 0)
+                - IFNULL(paid, 0)
+                - IFNULL(
+                    (
+                      SELECT SUM(cp.amount)
+                      FROM customer_payments cp
+                      WHERE cp.sale_id = sales.id
+                        AND (
                         cp.notes LIKE 'تسوية مديونية بسبب مرتجع RET-%'
                         OR cp.notes LIKE 'تسوية مديونية بسبب استبدال EXC-%'
                       )
+                    ),
+                    0
                   ),
-                  0
-                )
-            ) <= 0
-            THEN 'paid'
+                0
+              ),
 
-            WHEN IFNULL(paid, 0) > 0
-            THEN 'partial'
+              payment_status = CASE
+                WHEN (
+                  IFNULL(grand_total, 0)
+                  - IFNULL(paid, 0)
+                  - IFNULL(
+                      (
+                        SELECT SUM(cp.amount)
+                        FROM customer_payments cp
+                        WHERE cp.sale_id = sales.id
+                          AND (
+                            cp.notes LIKE 'تسوية مديونية بسبب مرتجع RET-%'
+                            OR cp.notes LIKE 'تسوية مديونية بسبب استبدال EXC-%'
+                          )
+                      ),
+                      0
+                    )
+                ) <= 0
+                THEN 'paid'
 
-            ELSE 'unpaid'
-          END
+                WHEN IFNULL(paid, 0) > 0
+                THEN 'partial'
 
-        WHERE IFNULL(type, 'sale') = 'sale'
-          AND cancelled_at IS NULL
-        `,
+                ELSE 'unpaid'
+              END
+
+            WHERE IFNULL(type, 'sale') = 'sale'
+              AND cancelled_at IS NULL
+            `,
           ).run()
         },
       },
@@ -1868,6 +1868,60 @@ export function getDb(): Database.Database {
             CREATE INDEX IF NOT EXISTS
               idx_purchase_return_items_purchase_item_id
             ON purchase_return_items(purchase_item_id);
+          `)
+        },
+      },
+
+      {
+        version: 3,
+        name: 'purchase-corrections',
+
+        up: () => {
+          safeAddColumn(db, 'purchase_invoices', 'business_date', 'TEXT')
+
+          db.prepare(
+            `
+            UPDATE purchase_invoices
+
+            SET business_date =
+              date(created_at, 'localtime')
+
+            WHERE
+              business_date IS NULL
+              OR TRIM(business_date) = ''
+            `,
+          ).run()
+
+          safeAddColumn(db, 'purchase_returns', 'cancelled_at', 'TEXT')
+
+          safeAddColumn(db, 'purchase_returns', 'cancelled_by', 'INTEGER')
+
+          safeAddColumn(db, 'purchase_returns', 'cancel_reason', 'TEXT')
+
+          safeAddColumn(db, 'purchase_returns', 'cancelled_shift_id', 'INTEGER')
+
+          safeAddColumn(
+            db,
+            'purchase_returns',
+            'replacement_return_id',
+            'INTEGER',
+          )
+
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_invoices_business_date
+            ON purchase_invoices(business_date);
+
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_returns_purchase_active
+            ON purchase_returns(
+              purchase_id,
+              cancelled_at
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_returns_replacement_return_id
+            ON purchase_returns(replacement_return_id);
           `)
         },
       },

@@ -247,6 +247,10 @@ describe('database migrations', () => {
         version: 2,
         name: 'purchase-return-schema',
       },
+      {
+        version: 3,
+        name: 'purchase-corrections',
+      },
     ])
 
     const purchaseReturnColumns = database
@@ -261,6 +265,22 @@ describe('database migrations', () => {
       name: string
     }>
 
+    const purchaseInvoiceColumns = database
+      .prepare(
+        `
+          PRAGMA table_info(
+            purchase_invoices
+          )
+          `,
+      )
+      .all() as Array<{
+      name: string
+    }>
+
+    expect(purchaseInvoiceColumns.map((column) => column.name)).toContain(
+      'business_date',
+    )
+
     const columnNames = purchaseReturnColumns.map((column) => column.name)
 
     expect(columnNames).toEqual(
@@ -273,6 +293,11 @@ describe('database migrations', () => {
         'refund_payment_method',
         'refund_mode',
         'shift_id',
+        'cancelled_at',
+        'cancelled_by',
+        'cancel_reason',
+        'cancelled_shift_id',
+        'replacement_return_id',
       ]),
     )
   })

@@ -14,6 +14,9 @@ import {
   getSupplierPaymentBatchAccess,
   updateSupplierPaymentBatch,
   getPurchaseReturn,
+  updatePurchaseInvoice,
+  cancelPurchaseReturn,
+  updatePurchaseReturn,
 } from '../database/repositories/purchases.repo'
 
 import { requireAdminPassword } from './permission-helper'
@@ -40,6 +43,60 @@ export function registerPurchasesIpc(): void {
         payment_status: result.payment_status,
         items_count: input.items?.length || 0,
         shift_id: result.shift_id,
+      },
+    })
+
+    return result
+  })
+
+  ipcMain.handle('purchases:update', (event, input) => {
+    const actorId = requireAuthenticatedAdmin(event)
+
+    const approval = requireAdminPassword(actorId, input?.admin_password)
+
+    const purchaseId = Number(input?.purchase_id || 0)
+
+    const before = getPurchaseInvoice(purchaseId)
+
+    const result = updatePurchaseInvoice({
+      ...input,
+
+      purchase_id: purchaseId,
+
+      actor_id: actorId,
+    })
+
+    const after = getPurchaseInvoice(purchaseId)
+
+    logAction({
+      actor_id: actorId,
+
+      approved_by: approval.id,
+
+      action: 'purchase_updated',
+
+      entity: 'purchase_invoices',
+
+      entity_id: purchaseId,
+
+      details: {
+        reason: input?.reason || null,
+
+        before: {
+          purchase: before.purchase,
+
+          items: before.items,
+
+          payments: before.payments,
+        },
+
+        after: {
+          purchase: after.purchase,
+
+          items: after.items,
+
+          payments: after.payments,
+        },
       },
     })
 
@@ -114,6 +171,99 @@ export function registerPurchasesIpc(): void {
         items_count: input.items?.length || 0,
         notes: input.notes || '',
         shift_id: result.shift_id,
+      },
+    })
+
+    return result
+  })
+
+  ipcMain.handle('purchases:returns:cancel', (event, input) => {
+    const actorId = requireAuthenticatedAdmin(event)
+
+    const approval = requireAdminPassword(actorId, input?.admin_password)
+
+    const returnId = Number(input?.return_id || 0)
+
+    const before = getPurchaseReturn(returnId)
+
+    const result = cancelPurchaseReturn({
+      return_id: returnId,
+
+      reason: input?.reason,
+
+      actor_id: actorId,
+    })
+
+    logAction({
+      actor_id: actorId,
+
+      approved_by: approval.id,
+
+      action: 'purchase_return_cancelled',
+
+      entity: 'purchase_returns',
+
+      entity_id: returnId,
+
+      details: {
+        reason: input?.reason || null,
+
+        purchase_id: result.purchase_id,
+
+        restored_total: result.restored_total,
+
+        restored_debt: result.restored_debt,
+
+        reversed_cash: result.reversed_cash,
+
+        items_count: result.items_count,
+
+        cancelled_shift_id: result.cancelled_shift_id,
+
+        before,
+      },
+    })
+
+    return result
+  })
+
+  ipcMain.handle('purchases:returns:update', (event, input) => {
+    const actorId = requireAuthenticatedAdmin(event)
+
+    const approval = requireAdminPassword(actorId, input?.admin_password)
+
+    const returnId = Number(input?.return_id || 0)
+
+    const before = getPurchaseReturn(returnId)
+
+    const result = updatePurchaseReturn({
+      ...input,
+
+      return_id: returnId,
+
+      actor_id: actorId,
+    })
+
+    const after = getPurchaseReturn(result.return_id)
+
+    logAction({
+      actor_id: actorId,
+
+      approved_by: approval.id,
+
+      action: 'purchase_return_updated',
+
+      entity: 'purchase_returns',
+
+      entity_id: returnId,
+
+      details: {
+        reason: input?.reason || null,
+
+        replacement_return_id: result.return_id,
+
+        before,
+        after,
       },
     })
 

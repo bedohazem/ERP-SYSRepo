@@ -19,8 +19,12 @@ export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   sale_exchange_cancelled: 'إلغاء استبدال بيع',
   inventory_stock_adjusted: 'تسوية مخزون',
   purchase_created: 'إنشاء فاتورة شراء',
+  purchase_updated: 'تعديل فاتورة شراء',
   purchase_cancelled: 'إلغاء فاتورة شراء',
+
   purchase_return_created: 'إنشاء مرتجع شراء',
+  purchase_return_updated: 'تعديل مرتجع شراء',
+  purchase_return_cancelled: 'إلغاء مرتجع شراء',
 
   supplier_payment_recorded: 'تسجيل دفعة مورد',
   supplier_payment_created: 'تسجيل دفعة مورد',

@@ -1596,6 +1596,45 @@ declare global {
         shift_id?: number | null
       }>
 
+      updatePurchaseInvoice: (input: {
+        purchase_id: number
+        supplier_id: number
+
+        sub_total?: number
+        discount_type?: 'amount' | 'percent' | string
+        discount_input?: number
+        discount_value?: number
+
+        paid_amount?: number
+        payment_method?: string
+
+        notes?: string | null
+        reason: string
+
+        admin_password: string
+
+        items: Array<{
+          variant_id: number
+          quantity: number
+          unit_cost: number
+        }>
+      }) => Promise<{
+        ok: boolean
+        edited: boolean
+
+        purchase_id: number
+        supplier_id: number
+        previous_supplier_id: number
+
+        total_amount: number
+        paid_amount: number
+        remaining_amount: number
+        payment_status: string
+
+        items_count: number
+        shift_id?: number | null
+      }>
+
       listPurchaseInvoices: (input?: {
         search?: string
 
@@ -1668,7 +1707,61 @@ declare global {
         cash_refund_amount?: number
         refund_mode?: string
         refund_payment_method?: string | null
-        createPurchaseReturn
+      }>
+
+      updatePurchaseReturn: (input: {
+        return_id: number
+
+        reason: string
+        admin_password: string
+
+        notes?: string | null
+
+        refund_payment_method?: string | null
+        refund_mode?: 'cash' | 'credit' | string
+
+        items: Array<{
+          purchase_item_id?: number
+          variant_id?: number
+          quantity: number
+        }>
+      }) => Promise<{
+        ok: boolean
+        edited: boolean
+
+        return_id: number
+        replaced_return_id: number
+
+        purchase_id: number
+        supplier_id: number
+
+        total_amount: number
+        debt_reduction_amount?: number
+        cash_refund_amount?: number
+
+        items_count: number
+        shift_id?: number | null
+      }>
+
+      cancelPurchaseReturn: (input: {
+        return_id: number
+
+        reason?: string
+        admin_password: string
+      }) => Promise<{
+        ok: boolean
+
+        return_id: number
+        purchase_id: number
+        supplier_id: number
+
+        restored_total: number
+        restored_debt: number
+        reversed_cash: number
+
+        items_count: number
+
+        cancelled_shift_id?: number | null
       }>
 
       listPurchaseReturns: (input?: {

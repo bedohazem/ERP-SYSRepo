@@ -228,6 +228,24 @@ describe('domain IPC session scope', () => {
         items: [],
       }),
     ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+
+    await expect(
+      invoke(event, 'purchases:update', {
+        purchase_id: 1,
+      }),
+    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+
+    await expect(
+      invoke(event, 'purchases:returns:update', {
+        return_id: 1,
+      }),
+    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+
+    await expect(
+      invoke(event, 'purchases:returns:cancel', {
+        return_id: 1,
+      }),
+    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
   })
 
   it('requires login for sales reads', async () => {

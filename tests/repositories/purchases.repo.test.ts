@@ -14,6 +14,11 @@ import {
   updateSupplierPaymentBatch,
   listPurchaseInvoices,
   getSupplierStatement,
+  createPurchaseReturn,
+  cancelPurchaseReturn,
+  updatePurchaseReturn,
+  updatePurchaseInvoice,
+  getPurchaseReturn,
 } from '../../src/main/database/repositories/purchases.repo'
 
 import {
@@ -1361,5 +1366,489 @@ describe('purchases repository', () => {
     expect(Number(reverse.amount)).toBe(200)
 
     expect(Number(reverse.shift_id)).toBe(shift2.id)
+  })
+
+  it('updates purchase invoice in place and preserves its creation identity', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      paid_amount: 0,
+
+      actor_id: 1,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 2,
+
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const before = getPurchaseInvoice(purchase.purchaseId) as any
+
+    const result = updatePurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      reason: 'Correct purchase invoice',
+
+      supplier_id: supplierId,
+
+      sub_total: 360,
+
+      discount_type: 'amount',
+
+      discount_input: 0,
+
+      discount_value: 0,
+
+      paid_amount: 60,
+
+      payment_method: 'store_cash',
+
+      notes: 'Corrected purchase',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 3,
+
+          unit_cost: 120,
+        },
+      ],
+    })
+
+    expect(result.ok).toBe(true)
+
+    expect(result.purchase_id).toBe(purchase.purchaseId)
+
+    const after = getPurchaseInvoice(purchase.purchaseId) as any
+
+    expect(after.purchase.id).toBe(before.purchase.id)
+
+    expect(after.purchase.created_at).toBe(before.purchase.created_at)
+
+    expect(Number(after.purchase.total_amount)).toBe(360)
+
+    expect(Number(after.purchase.paid_amount)).toBe(60)
+
+    expect(Number(after.purchase.remaining_amount)).toBe(300)
+
+    expect(after.purchase.payment_status).toBe('partial')
+
+    expect(after.items).toHaveLength(1)
+
+    expect(Number(after.items[0].quantity)).toBe(3)
+
+    expect(Number(after.items[0].unit_cost)).toBe(120)
+
+    expect(getStockByBarcode('PURCHASE001')).toBe(3)
+
+    expect(getSupplierTotalPurchased(supplierId)).toBe(360)
+
+    expect(getSupplierBalance(supplierId)).toBe(300)
+
+    expect(
+      (getVariantByBarcode('PURCHASE001') as PurchaseVariantTestRow).buy_price,
+    ).toBe(120)
+  })
+
+  it('blocks purchase edit after supplier payment history exists', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      paid_amount: 0,
+
+      actor_id: 1,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 5,
+
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    recordSupplierPayment({
+      supplier_id: supplierId,
+
+      purchase_id: purchase.purchaseId,
+
+      amount: 100,
+
+      payment_method: 'store_cash',
+
+      actor_id: 1,
+    })
+
+    expect(() =>
+      updatePurchaseInvoice({
+        purchase_id: purchase.purchaseId,
+
+        actor_id: 1,
+
+        reason: 'Should fail',
+
+        supplier_id: supplierId,
+
+        sub_total: 500,
+
+        discount_type: 'amount',
+
+        discount_input: 0,
+
+        discount_value: 0,
+
+        paid_amount: 0,
+
+        payment_method: 'store_cash',
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            quantity: 5,
+
+            unit_cost: 100,
+          },
+        ],
+      }),
+    ).toThrow('سجل دفعات مورد لاحقة')
+  })
+
+  it('cancels purchase return and restores stock supplier debt and invoice state', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      paid_amount: 0,
+
+      actor_id: 1,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 5,
+
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const purchaseReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(
+            (getPurchaseInvoice(purchase.purchaseId) as any).items[0].id,
+          ),
+
+          quantity: 2,
+        },
+      ],
+    })
+
+    expect(getStockByBarcode('PURCHASE001')).toBe(3)
+
+    expect(getSupplierBalance(supplierId)).toBe(300)
+
+    const cancelled = cancelPurchaseReturn({
+      return_id: purchaseReturn.return_id,
+
+      reason: 'Wrong purchase return',
+
+      actor_id: 1,
+    })
+
+    expect(cancelled.ok).toBe(true)
+
+    expect(getStockByBarcode('PURCHASE001')).toBe(5)
+
+    expect(getSupplierBalance(supplierId)).toBe(500)
+
+    expect(getSupplierTotalPurchased(supplierId)).toBe(500)
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+
+    expect(Number(invoice.purchase.remaining_amount)).toBe(500)
+
+    expect(invoice.purchase.payment_status).toBe('unpaid')
+
+    expect(Number(invoice.items[0].returned_quantity)).toBe(0)
+
+    expect(Number(invoice.items[0].returnable_quantity)).toBe(5)
+
+    const oldReturn = getPurchaseReturn(purchaseReturn.return_id) as any
+
+    expect(oldReturn.return.cancelled_at).toBeTruthy()
+  })
+
+  it('requires LIFO cancellation for purchase returns', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      paid_amount: 0,
+
+      actor_id: 1,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 5,
+
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+
+    const purchaseItemId = Number(invoice.items[0].id)
+
+    const firstReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+
+          quantity: 1,
+        },
+      ],
+    })
+
+    const secondReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+
+          quantity: 1,
+        },
+      ],
+    })
+
+    expect(() =>
+      cancelPurchaseReturn({
+        return_id: firstReturn.return_id,
+
+        actor_id: 1,
+      }),
+    ).toThrow('آخر مرتجع شراء فعال')
+
+    expect(() =>
+      cancelPurchaseReturn({
+        return_id: secondReturn.return_id,
+
+        actor_id: 1,
+      }),
+    ).not.toThrow()
+  })
+
+  it('updates latest purchase return by cancelling it and creating a replacement', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      paid_amount: 0,
+
+      actor_id: 1,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 5,
+
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+
+    const purchaseItemId = Number(invoice.items[0].id)
+
+    const firstReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+
+          quantity: 1,
+        },
+      ],
+    })
+
+    const updated = updatePurchaseReturn({
+      return_id: firstReturn.return_id,
+
+      actor_id: 1,
+
+      reason: 'Correct quantity',
+
+      refund_mode: 'credit',
+
+      notes: 'Corrected return',
+
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+
+          quantity: 2,
+        },
+      ],
+    })
+
+    expect(updated.edited).toBe(true)
+
+    expect(updated.return_id).not.toBe(firstReturn.return_id)
+
+    const oldReturn = getPurchaseReturn(firstReturn.return_id) as any
+
+    expect(oldReturn.return.cancelled_at).toBeTruthy()
+
+    expect(Number(oldReturn.return.replacement_return_id)).toBe(
+      updated.return_id,
+    )
+
+    const currentInvoice = getPurchaseInvoice(purchase.purchaseId) as any
+
+    expect(Number(currentInvoice.items[0].returned_quantity)).toBe(2)
+
+    expect(Number(currentInvoice.items[0].returnable_quantity)).toBe(3)
+
+    expect(getStockByBarcode('PURCHASE001')).toBe(3)
+
+    expect(getSupplierBalance(supplierId)).toBe(300)
+  })
+
+  it('blocks purchase edit even when its return history was cancelled', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      paid_amount: 0,
+
+      actor_id: 1,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 2,
+
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+
+    const purchaseReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(invoice.items[0].id),
+
+          quantity: 1,
+        },
+      ],
+    })
+
+    cancelPurchaseReturn({
+      return_id: purchaseReturn.return_id,
+
+      actor_id: 1,
+    })
+
+    expect(() =>
+      updatePurchaseInvoice({
+        purchase_id: purchase.purchaseId,
+
+        actor_id: 1,
+
+        reason: 'Should remain blocked',
+
+        supplier_id: supplierId,
+
+        sub_total: 200,
+
+        discount_type: 'amount',
+
+        discount_input: 0,
+
+        discount_value: 0,
+
+        paid_amount: 0,
+
+        payment_method: 'store_cash',
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            quantity: 2,
+
+            unit_cost: 100,
+          },
+        ],
+      }),
+    ).toThrow('سجل مرتجعات شراء سابق')
   })
 })
