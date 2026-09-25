@@ -160,7 +160,50 @@ export function listStockCountSessions() {
         SUM(
           CASE
             WHEN sci.actual_stock IS NOT NULL
-            THEN (sci.actual_stock - sci.system_stock) * IFNULL(v.average_cost, 0)
+            THEN COALESCE(
+              (
+                SELECT
+                  CASE
+                    WHEN sm.type = 'in'
+                      THEN sm.cost_value
+
+                    WHEN sm.type = 'out'
+                      THEN -sm.cost_value
+
+                    ELSE 0
+                  END
+
+                FROM stock_movements sm
+
+                WHERE
+                  sm.reference_type =
+                    'stock_count'
+
+                  AND sm.reference_id =
+                    scs.id
+
+                  AND sm.variant_id =
+                    sci.variant_id
+
+                  AND sm.cost_value
+                      IS NOT NULL
+
+                ORDER BY sm.id DESC
+
+                LIMIT 1
+              ),
+
+              (
+                sci.actual_stock -
+                sci.system_stock
+              )
+              *
+              IFNULL(
+                v.average_cost,
+                0
+              )
+            )
+
             ELSE 0
           END
         ) AS buy_difference_value,
@@ -262,7 +305,52 @@ export function getStockCountSession(sessionId: number) {
         v.average_cost,
         v.sell_price,
         (IFNULL(sci.actual_stock, 0) - sci.system_stock) AS difference,
-        ((IFNULL(sci.actual_stock, 0) - sci.system_stock) * IFNULL(v.average_cost, 0)) AS buy_difference_value,
+        COALESCE(
+          (
+            SELECT
+              CASE
+                WHEN sm.type = 'in'
+                  THEN sm.cost_value
+
+                WHEN sm.type = 'out'
+                  THEN -sm.cost_value
+
+                ELSE 0
+              END
+
+            FROM stock_movements sm
+
+            WHERE
+              sm.reference_type =
+                'stock_count'
+
+              AND sm.reference_id =
+                sci.session_id
+
+              AND sm.variant_id =
+                sci.variant_id
+
+              AND sm.cost_value
+                  IS NOT NULL
+
+            ORDER BY sm.id DESC
+
+            LIMIT 1
+          ),
+
+          (
+            IFNULL(
+              sci.actual_stock,
+              0
+            ) -
+            sci.system_stock
+          )
+          *
+          IFNULL(
+            v.average_cost,
+            0
+          )
+        ) AS buy_difference_value,
         ((IFNULL(sci.actual_stock, 0) - sci.system_stock) * IFNULL(v.sell_price, 0)) AS sell_difference_value
       FROM stock_count_items sci
       JOIN product_variants v ON v.id = sci.variant_id

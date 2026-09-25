@@ -892,12 +892,20 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
     const oldItemByVariant = new Map<number, any>()
 
+    const oldItemsByVariant = new Map<number, any[]>()
+
     for (const item of oldItems) {
       const variantId = Number(item.variant_id)
 
       if (!oldItemByVariant.has(variantId)) {
         oldItemByVariant.set(variantId, item)
       }
+
+      const variantItems = oldItemsByVariant.get(variantId) ?? []
+
+      variantItems.push(item)
+
+      oldItemsByVariant.set(variantId, variantItems)
     }
 
     const seenVariants = new Set<number>()
@@ -1156,36 +1164,47 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
      * بـ Cost Snapshot الخاص بها.
      */
     for (const variantId of affectedVariantIds) {
-      const oldItem = oldItemByVariant.get(variantId)
+      const oldVariantItems = oldItemsByVariant.get(variantId) ?? []
 
       const newItem = preparedItemByVariant.get(variantId)
 
-      const oldQuantity = Number(oldItem?.quantity || 0)
+      const oldQuantity = oldVariantItems.reduce(
+        (sum, item) => sum + Number(item.quantity || 0),
+        0,
+      )
 
-      const oldUnitCost = Number(oldItem?.unit_cost || 0)
+      const oldCostValue = oldVariantItems.reduce(
+        (sum, item) =>
+          sum + Number(item.quantity || 0) * Number(item.unit_cost || 0),
+        0,
+      )
 
       const newQuantity = Number(newItem?.quantity || 0)
 
       const newUnitCost = Number(newItem?.unitCost || 0)
 
+      const newCostValue = newQuantity * newUnitCost
+
       const sameQuantity = Math.abs(oldQuantity - newQuantity) <= 0.0001
 
-      const sameCost = Math.abs(oldUnitCost - newUnitCost) <= 0.0001
+      const sameCostValue = Math.abs(oldCostValue - newCostValue) <= 0.0001
 
-      if (oldItem && newItem && sameQuantity && sameCost) {
+      if (
+        oldVariantItems.length > 0 &&
+        newItem &&
+        sameQuantity &&
+        sameCostValue
+      ) {
         continue
       }
 
       /*
-       * مهم:
-       * لو السطر نفسه بيتصحح،
-       * نطبق الصورة الجديدة أولًا
-       * ثم نعكس القديمة.
+       * ندخل الصورة الجديدة الأول
+       * ثم نعكس كل السطور القديمة.
        *
-       * ده يسمح بتصحيح فاتورة
-       * حتى لو جزء من البضاعة
-       * اتباع بالفعل، طالما الحالة
-       * النهائية لقيمة المخزون صالحة.
+       * مهم للفواتير القديمة التي
+       * كان ممكن تحتوي نفس الصنف
+       * في أكثر من سطر.
        */
       if (newItem) {
         receiveStockAtCost(db, {
@@ -1203,13 +1222,13 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         })
       }
 
-      if (oldItem) {
+      for (const oldItem of oldVariantItems) {
         issueStockAtCost(db, {
           variant_id: variantId,
 
-          quantity: oldQuantity,
+          quantity: Number(oldItem.quantity || 0),
 
-          unit_cost: oldUnitCost,
+          unit_cost: Number(oldItem.unit_cost || 0),
 
           reference_id: purchaseId,
 
@@ -1219,7 +1238,6 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         })
       }
     }
-
     /*
      * نشيل الأثر المالي القديم
      * من المورد القديم.

@@ -14,6 +14,7 @@ import {
   scanStockCountBarcode,
   updateStockCountItem,
 } from '../../src/main/database/repositories/stock-count.repo'
+import { receiveStockAtCost } from '../../src/main/database/inventory-cost'
 
 type StockCountVariantTestRow = {
   variant_id: number
@@ -601,5 +602,79 @@ describe('stock count repository', () => {
     expect(addedItem.system_stock).toBe(7)
 
     expect(addedItem.actual_stock).toBeNull()
+  })
+
+  it('keeps approved stock count cost valuation unchanged after average cost changes', () => {
+    const variant = seedStockCountProduct({
+      barcode: 'COUNT-COST-SNAPSHOT',
+
+      openingQty: 10,
+
+      buyPrice: 100,
+    })
+
+    const session = createStockCountSession({
+      title: 'Cost Snapshot Count',
+
+      actor_id: 1,
+    })
+
+    const details = getStockCountSession(session.id) as any
+
+    const item = details.items[0] as StockCountItemTestRow
+
+    updateStockCountItem({
+      session_id: session.id,
+
+      item_id: item.id,
+
+      actual_stock: 8,
+    })
+
+    approveStockCountSession({
+      session_id: session.id,
+
+      actor_id: 1,
+    })
+
+    let approved = getStockCountSession(session.id) as any
+
+    expect(Number(approved.items[0].buy_difference_value)).toBe(-200)
+
+    const db = getDb()
+
+    receiveStockAtCost(db, {
+      variant_id: variant.variant_id,
+
+      quantity: 2,
+
+      unit_cost: 300,
+
+      reference_id: null,
+
+      reference_type: 'test_restock',
+
+      notes: 'Change average after count',
+    })
+
+    /*
+     * المتوسط الحالي أصبح:
+     *
+     * 8×100 + 2×300
+     * = 1400 / 10
+     * = 140
+     *
+     * لكن الجرد التاريخي
+     * لازم يفضل -200.
+     */
+    approved = getStockCountSession(session.id) as any
+
+    expect(Number(approved.items[0].buy_difference_value)).toBe(-200)
+
+    const row = (listStockCountSessions() as StockCountSessionListRow[]).find(
+      (entry) => Number(entry.id) === session.id,
+    )
+
+    expect(Number(row?.buy_difference_value)).toBe(-200)
   })
 })
