@@ -18,6 +18,7 @@ import {
 import {
   createSaleExchange,
   getSaleExchangeState,
+  cancelSaleExchange,
   listSaleExchanges,
 } from '../../src/main/database/repositories/sales-exchange.repo'
 import {
@@ -26,6 +27,7 @@ import {
   openCashShift,
 } from '../../src/main/database/repositories/cash-shifts.repo'
 import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo'
+import { getInventoryCostState } from '../../src/main/database/inventory-cost'
 
 type TestVariant = {
   variant_id: number
@@ -499,6 +501,111 @@ describe('sale promotion exchanges', () => {
     expect(cashMovement.direction).toBe('in')
 
     expect(Number(cashMovement.amount)).toBe(50)
+  })
+
+  it('preserves inventory values through a regular exchange and its cancellation', () => {
+    const result = createRegularExchangeSale()
+
+    const state = getSaleExchangeState(result.sale.saleId)
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    )
+
+    if (!regularGroup) {
+      throw new Error('Regular exchange group was not created')
+    }
+
+    const unit = regularGroup.units[0]
+
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+
+      user_id: 1,
+
+      payment_method: 'store_cash',
+
+      reason: 'Cost snapshot test',
+
+      items: [
+        {
+          promotion_unit_id: Number(unit.id),
+
+          new_variant_id: result.newVariant.variant_id,
+        },
+      ],
+    })
+
+    const db = getDb()
+
+    const exchangeItem = db
+      .prepare(
+        `
+      SELECT *
+
+      FROM sale_exchange_items
+
+      WHERE exchange_id = ?
+
+      LIMIT 1
+      `,
+      )
+      .get(exchange.exchangeId) as any
+
+    expect(Number(exchangeItem.old_unit_cost)).toBe(50)
+
+    expect(Number(exchangeItem.new_unit_cost)).toBe(70)
+
+    let oldState = getInventoryCostState(db, result.oldVariant.variant_id)
+
+    let newState = getInventoryCostState(db, result.newVariant.variant_id)
+
+    /*
+     * REG100:
+     * بدأ 20×50
+     * البيع خرج 1
+     * الاستبدال رجعه
+     */
+    expect(oldState.stock).toBe(20)
+
+    expect(oldState.inventory_value).toBe(1000)
+
+    /*
+     * REG150:
+     * بدأ 20×70
+     * الاستبدال خرج 1
+     */
+    expect(newState.stock).toBe(19)
+
+    expect(newState.inventory_value).toBe(1330)
+
+    cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+
+      actor_id: 1,
+
+      reason: 'Undo cost test',
+    })
+
+    oldState = getInventoryCostState(db, result.oldVariant.variant_id)
+
+    newState = getInventoryCostState(db, result.newVariant.variant_id)
+
+    /*
+     * رجعنا بالضبط للحالة
+     * التي كانت بعد البيع وقبل الاستبدال.
+     */
+    expect(oldState.stock).toBe(19)
+
+    expect(oldState.inventory_value).toBe(950)
+
+    expect(oldState.average_cost).toBe(50)
+
+    expect(newState.stock).toBe(20)
+
+    expect(newState.inventory_value).toBe(1400)
+
+    expect(newState.average_cost).toBe(70)
   })
 
   it('returns the current replacement item after a regular exchange', () => {

@@ -1,4 +1,5 @@
 import { getDb } from '../db'
+import { issueStockAtAverageCost, receiveStockAtCost } from '../inventory-cost'
 
 export type CategoryRow = {
   id: number
@@ -141,26 +142,68 @@ function zeroVariantStock(
 ) {
   const currentStock = getCurrentVariantStock(db, variantId)
 
-  if (currentStock === 0) return
+  if (currentStock === 0) {
+    return
+  }
 
+  if (currentStock > 0) {
+    issueStockAtAverageCost(db, {
+      variant_id: variantId,
+
+      quantity: currentStock,
+
+      reference_id: null,
+
+      reference_type: 'deactivate_zero_stock',
+
+      notes,
+    })
+
+    return
+  }
+
+  /*
+   * Legacy negative stock only.
+   * بنصفر الكمية بدون خلق قيمة
+   * مخزون وهمية.
+   */
   db.prepare(
     `
     INSERT INTO stock_movements (
       variant_id,
       type,
       quantity,
+      unit_cost,
+      cost_value,
       reference_id,
       reference_type,
       notes
     )
-    VALUES (?, ?, ?, NULL, 'deactivate_zero_stock', ?)
-  `,
-  ).run(
-    variantId,
-    currentStock > 0 ? 'out' : 'in',
-    Math.abs(currentStock),
-    notes,
-  )
+
+    VALUES (
+      ?,
+      'in',
+      ?,
+      0,
+      0,
+      NULL,
+      'deactivate_zero_stock',
+      ?
+    )
+    `,
+  ).run(variantId, Math.abs(currentStock), notes)
+
+  db.prepare(
+    `
+    UPDATE product_variants
+
+    SET
+      average_cost = 0,
+      inventory_value = 0
+
+    WHERE id = ?
+    `,
+  ).run(variantId)
 }
 
 function zeroProductVariantsStock(
@@ -716,14 +759,6 @@ export function createProduct(input: CreateProductInput) {
       `,
     )
 
-    const insertMovement = db.prepare(
-      `
-      INSERT INTO stock_movements
-      (variant_id, type, quantity, reference_id, reference_type, notes)
-      VALUES (?, 'in', ?, ?, 'opening_stock', ?)
-      `,
-    )
-
     for (const variant of input.variants) {
       const variantResult = insertVariant.run(
         productId,
@@ -744,12 +779,19 @@ export function createProduct(input: CreateProductInput) {
       }
 
       if (openingQty > 0) {
-        insertMovement.run(
-          variantId,
-          openingQty,
-          productId,
-          'رصيد افتتاحي عند إنشاء المنتج',
-        )
+        receiveStockAtCost(db, {
+          variant_id: variantId,
+
+          quantity: openingQty,
+
+          unit_cost: Number(variant.buy_price || 0),
+
+          reference_id: productId,
+
+          reference_type: 'opening_stock',
+
+          notes: 'رصيد افتتاحي عند إنشاء المنتج',
+        })
       }
       addVariantToOpenStockCountSessions(db, variantId, productId)
     }
@@ -827,18 +869,19 @@ export function addProductVariant(input: AddProductVariantInput) {
     }
 
     if (openingQty > 0) {
-      db.prepare(
-        `
-        INSERT INTO stock_movements
-        (variant_id, type, quantity, reference_id, reference_type, notes)
-        VALUES (?, 'in', ?, ?, 'opening_stock', ?)
-        `,
-      ).run(
-        variantId,
-        openingQty,
-        input.product_id,
-        'رصيد افتتاحي عند إضافة صنف جديد',
-      )
+      receiveStockAtCost(db, {
+        variant_id: variantId,
+
+        quantity: openingQty,
+
+        unit_cost: Number(input.buy_price || 0),
+
+        reference_id: input.product_id,
+
+        reference_type: 'opening_stock',
+
+        notes: 'رصيد افتتاحي عند إضافة صنف جديد',
+      })
     }
 
     addVariantToOpenStockCountSessions(db, variantId, input.product_id)

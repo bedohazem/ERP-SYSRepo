@@ -7,6 +7,7 @@ import {
 } from './cash-shifts.repo'
 
 import { getShiftBusinessDate } from '../shift-business-date'
+import { issueStockAtCost, receiveStockAtCost } from '../inventory-cost'
 
 function roundMoney(value: number) {
   const amount = Number(value || 0)
@@ -351,18 +352,6 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
-    const insertStockMovement = db.prepare(`
-      INSERT INTO stock_movements (
-        variant_id,
-        type,
-        quantity,
-        reference_id,
-        reference_type,
-        notes
-      )
-      VALUES (?, 'in', ?, ?, 'purchase', ?)
-    `)
-
     const updateVariantCost = db.prepare(`
       UPDATE product_variants
       SET buy_price = ?
@@ -383,12 +372,19 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         item.lineTotal,
       )
 
-      insertStockMovement.run(
-        item.variant.id,
-        item.quantity,
-        purchaseId,
-        `دخول مخزون من فاتورة شراء رقم ${purchaseId}`,
-      )
+      receiveStockAtCost(db, {
+        variant_id: Number(item.variant.id),
+
+        quantity: item.quantity,
+
+        unit_cost: item.unitCost,
+
+        reference_id: purchaseId,
+
+        reference_type: 'purchase',
+
+        notes: `دخول مخزون من فاتورة شراء رقم ${purchaseId}`,
+      })
 
       updateVariantCost.run(item.unitCost, item.variant.id)
     }
@@ -1116,26 +1112,13 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       new Set([...oldQuantityByVariant.keys(), ...newQuantityByVariant.keys()]),
     )
 
-    /*
-     * أي تخفيض في كمية فاتورة شراء
-     * يسحب الفرق فقط من المخزون.
-     */
-    for (const variantId of affectedVariantIds) {
-      const oldQuantity = Number(oldQuantityByVariant.get(variantId) || 0)
+    const preparedItemByVariant = new Map<
+      number,
+      (typeof preparedItems)[number]
+    >()
 
-      const newQuantity = Number(newQuantityByVariant.get(variantId) || 0)
-
-      const delta = roundMoney(newQuantity - oldQuantity)
-
-      if (delta < 0) {
-        const currentStock = getCurrentVariantStock(db, variantId)
-
-        if (currentStock < Math.abs(delta)) {
-          throw new Error(
-            'لا يمكن تقليل كمية فاتورة الشراء لأن المخزون الحالي لا يكفي لعكس الفرق',
-          )
-        }
-      }
+    for (const item of preparedItems) {
+      preparedItemByVariant.set(Number(item.variant.id), item)
     }
 
     /*
@@ -1166,48 +1149,75 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       })
     }
 
-    const insertStockDelta = db.prepare(
-      `
-        INSERT INTO stock_movements (
-          variant_id,
-          type,
-          quantity,
-          reference_id,
-          reference_type,
-          notes
-        )
-
-        VALUES (
-          ?, ?, ?, ?,
-          'purchase_edit',
-          ?
-        )
-        `,
-    )
-
+    /*
+     * نصحح أثر المخزون كعملية عكس + تطبيق.
+     *
+     * المبيعات السابقة تظل محتفظة
+     * بـ Cost Snapshot الخاص بها.
+     */
     for (const variantId of affectedVariantIds) {
-      const oldQuantity = Number(oldQuantityByVariant.get(variantId) || 0)
+      const oldItem = oldItemByVariant.get(variantId)
 
-      const newQuantity = Number(newQuantityByVariant.get(variantId) || 0)
+      const newItem = preparedItemByVariant.get(variantId)
 
-      const delta = roundMoney(newQuantity - oldQuantity)
+      const oldQuantity = Number(oldItem?.quantity || 0)
 
-      if (Math.abs(delta) <= 0.0001) {
+      const oldUnitCost = Number(oldItem?.unit_cost || 0)
+
+      const newQuantity = Number(newItem?.quantity || 0)
+
+      const newUnitCost = Number(newItem?.unitCost || 0)
+
+      const sameQuantity = Math.abs(oldQuantity - newQuantity) <= 0.0001
+
+      const sameCost = Math.abs(oldUnitCost - newUnitCost) <= 0.0001
+
+      if (oldItem && newItem && sameQuantity && sameCost) {
         continue
       }
 
-      const direction = delta > 0 ? 'in' : 'out'
+      /*
+       * مهم:
+       * لو السطر نفسه بيتصحح،
+       * نطبق الصورة الجديدة أولًا
+       * ثم نعكس القديمة.
+       *
+       * ده يسمح بتصحيح فاتورة
+       * حتى لو جزء من البضاعة
+       * اتباع بالفعل، طالما الحالة
+       * النهائية لقيمة المخزون صالحة.
+       */
+      if (newItem) {
+        receiveStockAtCost(db, {
+          variant_id: variantId,
 
-      insertStockDelta.run(
-        variantId,
-        direction,
-        Math.abs(delta),
-        purchaseId,
+          quantity: newQuantity,
 
-        delta > 0
-          ? `زيادة مخزون بسبب تعديل فاتورة شراء #${purchaseId}`
-          : `عكس مخزون بسبب تعديل فاتورة شراء #${purchaseId}`,
-      )
+          unit_cost: newUnitCost,
+
+          reference_id: purchaseId,
+
+          reference_type: 'purchase_edit',
+
+          notes: `تطبيق تكلفة الصنف بعد تعديل فاتورة شراء #${purchaseId}`,
+        })
+      }
+
+      if (oldItem) {
+        issueStockAtCost(db, {
+          variant_id: variantId,
+
+          quantity: oldQuantity,
+
+          unit_cost: oldUnitCost,
+
+          reference_id: purchaseId,
+
+          reference_type: 'purchase_edit_reversal',
+
+          notes: `عكس تكلفة الصنف قبل تعديل فاتورة شراء #${purchaseId}`,
+        })
+      }
     }
 
     /*
@@ -1599,25 +1609,24 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       }
     }
 
-    const insertStockMovement = db.prepare(`
-      INSERT INTO stock_movements (
-        variant_id,
-        type,
-        quantity,
-        reference_id,
-        reference_type,
-        notes
-      )
-      VALUES (?, 'out', ?, ?, 'purchase_cancel', ?)
-    `)
-
     for (const item of items) {
-      insertStockMovement.run(
-        Number(item.variant_id),
-        Number(item.quantity || 0),
-        purchaseId,
-        `خروج مخزون بسبب إلغاء فاتورة شراء رقم ${purchaseId}`,
-      )
+      issueStockAtCost(db, {
+        variant_id: Number(item.variant_id),
+
+        quantity: Number(item.quantity || 0),
+
+        /*
+         * إلغاء الشراء يعكس
+         * تكلفة الفاتورة نفسها.
+         */
+        unit_cost: Number(item.unit_cost || 0),
+
+        reference_id: purchaseId,
+
+        reference_type: 'purchase_cancel',
+
+        notes: `خروج مخزون بسبب إلغاء فاتورة شراء رقم ${purchaseId}`,
+      })
     }
 
     const totalAmount = Number(purchase.total_amount || 0)
@@ -1920,18 +1929,6 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 
-    const insertStockMovement = db.prepare(`
-      INSERT INTO stock_movements (
-        variant_id,
-        type,
-        quantity,
-        reference_id,
-        reference_type,
-        notes
-      )
-      VALUES (?, 'out', ?, ?, 'purchase_return', ?)
-    `)
-
     for (const item of preparedItems) {
       insertReturnItem.run(
         returnId,
@@ -1946,12 +1943,23 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         item.lineTotal,
       )
 
-      insertStockMovement.run(
-        Number(item.purchaseItem.variant_id),
-        item.quantity,
-        returnId,
-        `خروج مخزون بسبب مرتجع شراء رقم ${returnId} من فاتورة ${purchaseId}`,
-      )
+      issueStockAtCost(db, {
+        variant_id: Number(item.purchaseItem.variant_id),
+
+        quantity: item.quantity,
+
+        /*
+         * المرتجع للمورد يرجع
+         * بسعر فاتورة الشراء الأصلية.
+         */
+        unit_cost: item.unitCost,
+
+        reference_id: returnId,
+
+        reference_type: 'purchase_return',
+
+        notes: `خروج مخزون بسبب مرتجع شراء رقم ${returnId} من فاتورة ${purchaseId}`,
+      })
     }
 
     const oldPaid = roundMoney(Number(purchase.paid_amount || 0))
@@ -2204,38 +2212,25 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
      * المرتجع كان خرج مخزون.
      * الإلغاء يرجعه للمخزون.
      */
-    const restoreStock = db.prepare(
-      `
-        INSERT INTO stock_movements (
-          variant_id,
-          type,
-          quantity,
-          reference_id,
-          reference_type,
-          notes
-        )
-
-        VALUES (
-          ?,
-          'in',
-          ?,
-          ?,
-          'purchase_return_cancel',
-          ?
-        )
-        `,
-    )
 
     for (const item of items) {
-      restoreStock.run(
-        Number(item.variant_id),
+      receiveStockAtCost(db, {
+        variant_id: Number(item.variant_id),
 
-        Number(item.quantity || 0),
+        quantity: Number(item.quantity || 0),
 
-        returnId,
+        /*
+         * إلغاء المرتجع يرجع
+         * نفس قيمة التكلفة التي خرجت.
+         */
+        unit_cost: Number(item.unit_cost || 0),
 
-        `عكس مخزون مرتجع شراء ملغي #${returnId}`,
-      )
+        reference_id: returnId,
+
+        reference_type: 'purchase_return_cancel',
+
+        notes: `عكس مخزون مرتجع شراء ملغي #${returnId}`,
+      })
     }
 
     /*

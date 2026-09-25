@@ -1,5 +1,11 @@
 import { getDb } from '../db'
 
+import {
+  getInventoryCostState,
+  issueStockAtAverageCost,
+  receiveStockAtCost,
+} from '../inventory-cost'
+
 const STOCK_SUM_SQL = `
   IFNULL(SUM(
     CASE
@@ -75,6 +81,8 @@ export function getInventoryList(input?: {
         v.size,
         v.color,
         v.buy_price,
+        v.average_cost,
+        v.inventory_value,
         v.sell_price,
         v.min_stock,
         v.is_active,
@@ -179,6 +187,8 @@ export function listInventoryPage(input?: InventoryPageInput) {
       v.size,
       v.color,
       v.buy_price,
+      v.average_cost,
+      v.inventory_value,
       v.sell_price,
       v.min_stock,
       v.is_active,
@@ -260,7 +270,7 @@ export function listInventoryPage(input?: InventoryPageInput) {
           SUM(
             CASE
               WHEN stock > 0
-              THEN stock * buy_price
+              THEN inventory_value
               ELSE 0
             END
           ),
@@ -350,6 +360,7 @@ export function adjustVariantStock(input: {
       `
       SELECT
         v.id,
+        v.buy_price,
         p.name AS product_name,
         v.size,
         v.color
@@ -379,24 +390,42 @@ export function adjustVariantStock(input: {
       }
     }
 
-    db.prepare(
-      `
-      INSERT INTO stock_movements (
-        variant_id,
-        type,
-        quantity,
-        reference_id,
-        reference_type,
-        notes
-      )
-      VALUES (?, ?, ?, NULL, 'manual_adjust', ?)
-    `,
-    ).run(
-      variantId,
-      diff > 0 ? 'in' : 'out',
-      Math.abs(diff),
-      input.notes?.trim() || `تسوية مخزون: من ${oldStock} إلى ${targetStock}`,
-    )
+    if (diff > 0) {
+      const costState = getInventoryCostState(db, variantId)
+
+      const inboundUnitCost =
+        oldStock > 0 ? costState.average_cost : Number(variant.buy_price || 0)
+
+      receiveStockAtCost(db, {
+        variant_id: variantId,
+
+        quantity: diff,
+
+        unit_cost: inboundUnitCost,
+
+        reference_id: null,
+
+        reference_type: 'manual_adjust',
+
+        notes:
+          input.notes?.trim() ||
+          `تسوية مخزون: من ${oldStock} إلى ${targetStock}`,
+      })
+    } else {
+      issueStockAtAverageCost(db, {
+        variant_id: variantId,
+
+        quantity: Math.abs(diff),
+
+        reference_id: null,
+
+        reference_type: 'manual_adjust',
+
+        notes:
+          input.notes?.trim() ||
+          `تسوية مخزون: من ${oldStock} إلى ${targetStock}`,
+      })
+    }
 
     return {
       success: true,
@@ -463,6 +492,8 @@ export function getStockMovements(
         sm.variant_id,
         sm.type,
         sm.quantity,
+        sm.unit_cost,
+        sm.cost_value,
 
         CASE
           WHEN sm.type = 'in' THEN sm.quantity

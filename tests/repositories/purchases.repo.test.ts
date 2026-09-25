@@ -147,6 +147,53 @@ function getSupplierTotalPurchased(supplierId: number) {
   return Number(row.total_purchased || 0)
 }
 
+function getVariantCostState(barcode: string) {
+  const db = getDb()
+
+  return db
+    .prepare(
+      `
+      SELECT
+        pv.buy_price,
+        pv.average_cost,
+        pv.inventory_value,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN sm.type = 'in'
+                THEN sm.quantity
+
+              WHEN sm.type = 'out'
+                THEN -sm.quantity
+
+              ELSE 0
+            END
+          ),
+          0
+        ) AS stock
+
+      FROM product_variants pv
+
+      LEFT JOIN stock_movements sm
+        ON sm.variant_id =
+           pv.id
+
+      WHERE pv.barcode = ?
+
+      GROUP BY pv.id
+
+      LIMIT 1
+      `,
+    )
+    .get(barcode) as {
+    buy_price: number
+    average_cost: number
+    inventory_value: number
+    stock: number
+  }
+}
+
 function getCashMovementTotal(direction: 'in' | 'out') {
   const db = getDb()
 
@@ -413,27 +460,51 @@ describe('purchases repository', () => {
     expect(getCashMovementTotal('out')).toBe(500)
   })
 
-  it('updates variant buy price to last purchase unit cost', () => {
+  it('keeps last purchase price separately and calculates moving weighted average cost', () => {
     const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+
+    const variant = seedPurchaseProduct(10)
+
+    expect(getVariantCostState('PURCHASE001')).toMatchObject({
+      buy_price: 100,
+      average_cost: 100,
+      inventory_value: 1000,
+    })
 
     createPurchaseInvoice({
       supplier_id: supplierId,
+
       paid_amount: 0,
+
+      actor_id: 1,
+
       items: [
         {
           variant_id: variant.variant_id,
-          quantity: 2,
-          unit_cost: 130,
+
+          quantity: 10,
+
+          unit_cost: 200,
         },
       ],
     })
 
-    const updatedVariant = getVariantByBarcode(
-      'PURCHASE001',
-    ) as PurchaseVariantTestRow
+    const costState = getVariantCostState('PURCHASE001')
 
-    expect(updatedVariant.buy_price).toBe(130)
+    /*
+     * 10 × 100
+     * +
+     * 10 × 200
+     * =
+     * 3000 / 20
+     * =
+     * 150
+     */
+    expect(Number(costState.buy_price)).toBe(200)
+
+    expect(Number(costState.average_cost)).toBe(150)
+
+    expect(Number(costState.inventory_value)).toBe(3000)
   })
 
   it('restores variant buy price after cancelling the latest purchase', () => {
@@ -1460,6 +1531,274 @@ describe('purchases repository', () => {
     expect(
       (getVariantByBarcode('PURCHASE001') as PurchaseVariantTestRow).buy_price,
     ).toBe(120)
+
+    const editedCostState = getVariantCostState('PURCHASE001')
+
+    expect(Number(editedCostState.average_cost)).toBe(120)
+
+    expect(Number(editedCostState.inventory_value)).toBe(360)
+  })
+
+  it('recalculates weighted average when correcting a purchase cost', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct(10)
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 10,
+
+          unit_cost: 200,
+        },
+      ],
+    })
+
+    expect(getVariantCostState('PURCHASE001')).toMatchObject({
+      buy_price: 200,
+      average_cost: 150,
+      inventory_value: 3000,
+    })
+
+    updatePurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      reason: 'Correct purchase cost',
+
+      supplier_id: supplierId,
+
+      sub_total: 2200,
+
+      discount_type: 'amount',
+
+      discount_input: 0,
+
+      discount_value: 0,
+
+      paid_amount: 0,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 10,
+
+          unit_cost: 220,
+        },
+      ],
+    })
+
+    const costState = getVariantCostState('PURCHASE001')
+
+    expect(Number(costState.buy_price)).toBe(220)
+
+    expect(Number(costState.average_cost)).toBe(160)
+
+    expect(Number(costState.inventory_value)).toBe(3200)
+  })
+
+  it('removes purchase returns at their purchase cost and restores the same value on cancellation', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct(10)
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 10,
+
+          unit_cost: 200,
+        },
+      ],
+    })
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+
+    const purchaseReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(invoice.items[0].id),
+
+          quantity: 2,
+        },
+      ],
+    })
+
+    let state = getVariantCostState('PURCHASE001')
+
+    /*
+     * قبل المرتجع:
+     * 10×100 + 10×200 = 3000
+     *
+     * رجعنا للمورد:
+     * 2×200 = 400
+     */
+    expect(Number(state.stock)).toBe(18)
+
+    expect(Number(state.inventory_value)).toBe(2600)
+
+    expect(Number(state.average_cost)).toBeCloseTo(144.4444, 4)
+
+    cancelPurchaseReturn({
+      return_id: purchaseReturn.return_id,
+
+      reason: 'Undo return',
+
+      actor_id: 1,
+    })
+
+    state = getVariantCostState('PURCHASE001')
+
+    expect(Number(state.stock)).toBe(20)
+
+    expect(Number(state.inventory_value)).toBe(3000)
+
+    expect(Number(state.average_cost)).toBe(150)
+  })
+
+  it('corrects a purchase after part of its stock was sold without changing historical sale cost', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 10,
+
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    /*
+     * نحاكي إن 5 قطع خرجت
+     * بالفعل بتكلفتها التاريخية.
+     */
+    const db = getDb()
+
+    db.prepare(
+      `
+    INSERT INTO stock_movements (
+      variant_id,
+      type,
+      quantity,
+      unit_cost,
+      cost_value,
+      reference_id,
+      reference_type,
+      notes
+    )
+
+    VALUES (
+      ?,
+      'out',
+      5,
+      100,
+      500,
+      NULL,
+      'test_sale_snapshot',
+      'Test historical sale'
+    )
+    `,
+    ).run(variant.variant_id)
+
+    db.prepare(
+      `
+    UPDATE product_variants
+
+    SET
+      average_cost = 100,
+      inventory_value = 500
+
+    WHERE id = ?
+    `,
+    ).run(variant.variant_id)
+
+    updatePurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      reason: 'Correct historical purchase price',
+
+      supplier_id: supplierId,
+
+      sub_total: 1200,
+
+      discount_type: 'amount',
+
+      discount_input: 0,
+
+      discount_value: 0,
+
+      paid_amount: 0,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 10,
+
+          unit_cost: 120,
+        },
+      ],
+    })
+
+    const state = getVariantCostState('PURCHASE001')
+
+    /*
+     * إجمالي تكلفة الشراء الصحيحة = 1200
+     * COGS التاريخي المثبت = 500
+     *
+     * إذن قيمة المخزون الباقي = 700
+     * وعدده = 5
+     *
+     * المتوسط الحالي = 140
+     */
+    expect(Number(state.stock)).toBe(5)
+
+    expect(Number(state.inventory_value)).toBe(700)
+
+    expect(Number(state.average_cost)).toBe(140)
+
+    expect(Number(state.buy_price)).toBe(120)
   })
 
   it('blocks purchase edit after supplier payment history exists', () => {

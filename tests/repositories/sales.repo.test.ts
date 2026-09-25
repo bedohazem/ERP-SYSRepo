@@ -31,6 +31,11 @@ import {
   cancelCustomerPaymentBatch,
 } from '../../src/main/database/repositories/customers.repo'
 
+import {
+  getInventoryCostState,
+  receiveStockAtCost,
+} from '../../src/main/database/inventory-cost'
+
 type SaleVariantTestRow = {
   variant_id: number
   product_id: number
@@ -219,6 +224,82 @@ describe('sales repository', () => {
       opening_counted_amount: 0,
       opened_by: 1,
     })
+  })
+
+  it('snapshots moving weighted average cost into the sale and keeps remaining inventory value', () => {
+    const variant = seedProduct()
+
+    const db = getDb()
+
+    receiveStockAtCost(db, {
+      variant_id: variant.variant_id,
+
+      quantity: 10,
+
+      unit_cost: 200,
+
+      reference_id: null,
+
+      reference_type: 'test_purchase',
+
+      notes: 'Weighted average test',
+    })
+
+    const beforeSale = getInventoryCostState(db, variant.variant_id)
+
+    expect(beforeSale.stock).toBe(20)
+
+    expect(beforeSale.average_cost).toBe(150)
+
+    expect(beforeSale.inventory_value).toBe(3000)
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 1000,
+
+      discount_value: 0,
+
+      grand_total: 1000,
+
+      change_amount: 0,
+
+      payment_method: 'store_cash',
+
+      paid: 1000,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 4,
+
+          unit_price: 250,
+        },
+      ],
+    })
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    expect(Number(receipt.items[0].unit_cost)).toBe(150)
+
+    const afterSale = getInventoryCostState(db, variant.variant_id)
+
+    expect(afterSale.stock).toBe(16)
+
+    expect(afterSale.average_cost).toBe(150)
+
+    expect(afterSale.inventory_value).toBe(2400)
   })
 
   it('rejects missing user_id', () => {

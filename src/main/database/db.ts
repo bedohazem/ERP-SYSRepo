@@ -1925,6 +1925,149 @@ export function getDb(): Database.Database {
           `)
         },
       },
+
+      {
+        version: 4,
+        name: 'moving-weighted-average-cost',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'product_variants',
+            'average_cost',
+            'REAL NOT NULL DEFAULT 0',
+          )
+
+          safeAddColumn(
+            db,
+            'product_variants',
+            'inventory_value',
+            'REAL NOT NULL DEFAULT 0',
+          )
+
+          safeAddColumn(db, 'stock_movements', 'unit_cost', 'REAL')
+
+          safeAddColumn(db, 'stock_movements', 'cost_value', 'REAL')
+
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_stock_movements_variant_id
+            ON stock_movements(variant_id);
+          `)
+
+          /*
+           * دي نقطة بداية للنسخ القديمة.
+           *
+           * مش هنزوّر تكلفة الحركات التاريخية القديمة؛
+           * هنعتبر قيمة المخزون الحالية وقت الترقية
+           * = الكمية الحالية × آخر سعر شراء محفوظ.
+           *
+           * من بعد Migration V4 كل حركة جديدة
+           * هتتحفظ بتكلفتها الحقيقية.
+           */
+          db.prepare(
+            `
+            UPDATE product_variants
+
+            SET
+              average_cost =
+                CASE
+                  WHEN (
+                    SELECT IFNULL(
+                      SUM(
+                        CASE
+                          WHEN sm.type = 'in'
+                            THEN sm.quantity
+
+                          WHEN sm.type = 'out'
+                            THEN -sm.quantity
+
+                          ELSE 0
+                        END
+                      ),
+                      0
+                    )
+
+                    FROM stock_movements sm
+
+                    WHERE
+                      sm.variant_id =
+                        product_variants.id
+                  ) > 0
+
+                  THEN ROUND(
+                    IFNULL(
+                      buy_price,
+                      0
+                    ),
+                    4
+                  )
+
+                  ELSE 0
+                END,
+
+              inventory_value =
+                CASE
+                  WHEN (
+                    SELECT IFNULL(
+                      SUM(
+                        CASE
+                          WHEN sm.type = 'in'
+                            THEN sm.quantity
+
+                          WHEN sm.type = 'out'
+                            THEN -sm.quantity
+
+                          ELSE 0
+                        END
+                      ),
+                      0
+                    )
+
+                    FROM stock_movements sm
+
+                    WHERE
+                      sm.variant_id =
+                        product_variants.id
+                  ) > 0
+
+                  THEN ROUND(
+                    (
+                      SELECT IFNULL(
+                        SUM(
+                          CASE
+                            WHEN sm.type = 'in'
+                              THEN sm.quantity
+
+                            WHEN sm.type = 'out'
+                              THEN -sm.quantity
+
+                            ELSE 0
+                          END
+                        ),
+                        0
+                      )
+
+                      FROM stock_movements sm
+
+                      WHERE
+                        sm.variant_id =
+                          product_variants.id
+                    )
+                    *
+                    IFNULL(
+                      buy_price,
+                      0
+                    ),
+                    4
+                  )
+
+                  ELSE 0
+                END
+            `,
+          ).run()
+        },
+      },
     ])
 
     seedTestAdminUser(db)

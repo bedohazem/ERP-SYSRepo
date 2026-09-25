@@ -12,6 +12,11 @@ import {
 } from './cash-shifts.repo'
 
 import { getShiftBusinessDate } from '../shift-business-date'
+import {
+  issueStockAtAverageCost,
+  issueStockAtCost,
+  receiveStockAtCost,
+} from '../inventory-cost'
 
 export type CreateSaleLineInput = {
   variant_id: number
@@ -674,24 +679,17 @@ function createSaleInternal(
       )
     `)
 
-    const updateStock = db.prepare(`
-      INSERT INTO stock_movements (
-        variant_id,
-        type,
-        quantity,
-        reference_id,
-        reference_type,
-        notes
-      )
-      VALUES (?, 'out', ?, ?, 'sale', ?)
-    `)
-
     const getVariantCost = db.prepare(`
-      SELECT buy_price
-      FROM product_variants
-      WHERE id = ?
-      LIMIT 1
-    `)
+  SELECT
+    average_cost,
+    buy_price
+
+  FROM product_variants
+
+  WHERE id = ?
+
+  LIMIT 1
+`)
 
     const getCurrentStock = db.prepare(`
       SELECT IFNULL(SUM(
@@ -902,8 +900,15 @@ function createSaleInternal(
       const lineTotal = qty * price
 
       const variant = getVariantCost.get(item.variant_id) as
-        | { buy_price: number }
+        | {
+            average_cost: number
+            buy_price: number
+          }
         | undefined
+
+      const saleUnitCost = Number(
+        variant?.average_cost ?? variant?.buy_price ?? 0,
+      )
 
       const stockRow = getCurrentStock.get(item.variant_id) as { stock: number }
       const availableStock = Number(stockRow?.stock || 0)
@@ -935,7 +940,7 @@ function createSaleInternal(
             item.size ?? null,
             item.color ?? null,
             fragment.quantity,
-            Number(variant?.buy_price || 0),
+            saleUnitCost,
             price,
             fragment.is_gift ? fragmentLineTotal : 0,
             fragmentLineTotal,
@@ -960,9 +965,9 @@ function createSaleInternal(
                 price,
                 price,
 
-                Number(variant?.buy_price || 0),
+                saleUnitCost,
 
-                Number(variant?.buy_price || 0),
+                saleUnitCost,
 
                 fragment.is_gift ? 1 : 0,
 
@@ -980,7 +985,7 @@ function createSaleInternal(
           item.size ?? null,
           item.color ?? null,
           qty,
-          Number(variant?.buy_price || 0),
+          saleUnitCost,
           price,
           itemPromotionDiscount,
           lineTotal,
@@ -989,7 +994,17 @@ function createSaleInternal(
         )
       }
 
-      updateStock.run(item.variant_id, qty, saleId, `بيع فاتورة رقم ${saleId}`)
+      issueStockAtAverageCost(db, {
+        variant_id: Number(item.variant_id),
+
+        quantity: qty,
+
+        reference_id: saleId,
+
+        reference_type: 'sale',
+
+        notes: `بيع فاتورة رقم ${saleId}`,
+      })
     }
 
     if (customerId) {
@@ -2608,18 +2623,6 @@ export function createSaleReturn(input: {
           AND sale_id = ?
       `)
 
-    const insertStockMovement = db.prepare(`
-      INSERT INTO stock_movements (
-        variant_id,
-        type,
-        quantity,
-        reference_id,
-        reference_type,
-        notes
-      )
-      VALUES (?, 'in', ?, ?, 'sale_return', ?)
-    `)
-
     for (const item of preparedItems) {
       insertReturnItem.run(
         returnId,
@@ -2637,12 +2640,24 @@ export function createSaleReturn(input: {
         item.lineTotal,
       )
 
-      insertStockMovement.run(
-        item.variantId,
-        item.quantity,
-        returnId,
-        `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
-      )
+      receiveStockAtCost(db, {
+        variant_id: Number(item.variantId),
+
+        quantity: Number(item.quantity),
+
+        /*
+         * أهم نقطة:
+         * المرتجع يرجع بنفس Cost Snapshot
+         * اللي خرج وقت البيع.
+         */
+        unit_cost: Number(item.unitCost || 0),
+
+        reference_id: returnId,
+
+        reference_type: 'sale_return',
+
+        notes: `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
+      })
 
       if (item.promotionUnitId) {
         markPromotionUnitReturned.run(item.promotionUnitId, originalSaleId)
@@ -3081,7 +3096,8 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         `
         SELECT
           variant_id,
-          quantity
+          quantity,
+          unit_cost
 
         FROM sale_items
 
@@ -3091,6 +3107,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       .all(saleId) as Array<{
       variant_id: number
       quantity: number
+      unit_cost: number
     }>
 
     const storedPayments = db
@@ -3171,35 +3188,21 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
     /*
      * 2) رجّع المخزون القديم.
      */
-    const restoreStock = db.prepare(
-      `
-      INSERT INTO stock_movements (
-        variant_id,
-        type,
-        quantity,
-        reference_id,
-        reference_type,
-        notes
-      )
-
-      VALUES (
-        ?,
-        'in',
-        ?,
-        ?,
-        'sale_edit_reversal',
-        ?
-      )
-      `,
-    )
 
     for (const item of oldItems) {
-      restoreStock.run(
-        Number(item.variant_id),
-        Number(item.quantity || 0),
-        saleId,
-        `إرجاع مخزون الفاتورة #${saleId} قبل التعديل`,
-      )
+      receiveStockAtCost(db, {
+        variant_id: Number(item.variant_id),
+
+        quantity: Number(item.quantity || 0),
+
+        unit_cost: Number(item.unit_cost || 0),
+
+        reference_id: saleId,
+
+        reference_type: 'sale_edit_reversal',
+
+        notes: `إرجاع مخزون الفاتورة #${saleId} قبل التعديل`,
+      })
     }
 
     /*
@@ -3555,25 +3558,24 @@ export function cancelSaleInvoice(input: {
       })
     }
 
-    const restoreStock = db.prepare(`
-      INSERT INTO stock_movements (
-        variant_id,
-        type,
-        quantity,
-        reference_id,
-        reference_type,
-        notes
-      )
-      VALUES (?, 'in', ?, ?, 'sale_cancel', ?)
-    `)
-
     for (const item of items) {
-      restoreStock.run(
-        Number(item.variant_id),
-        Number(item.quantity || 0),
-        saleId,
-        `إرجاع مخزون بسبب إلغاء فاتورة بيع رقم ${saleId}`,
-      )
+      receiveStockAtCost(db, {
+        variant_id: Number(item.variant_id),
+
+        quantity: Number(item.quantity || 0),
+
+        /*
+         * نرجع السلعة بنفس التكلفة
+         * التي خرجت بها أصلًا.
+         */
+        unit_cost: Number(item.unit_cost || 0),
+
+        reference_id: saleId,
+
+        reference_type: 'sale_cancel',
+
+        notes: `إرجاع مخزون بسبب إلغاء فاتورة بيع رقم ${saleId}`,
+      })
     }
 
     if (customerId) {
@@ -3868,32 +3870,24 @@ export function cancelSaleReturn(input: {
       })
     }
 
-    const removeReturnedStock = db.prepare(`
-      INSERT INTO stock_movements (
-        variant_id,
-        type,
-        quantity,
-        reference_id,
-        reference_type,
-        notes
-      )
-      VALUES (
-        ?,
-        'out',
-        ?,
-        ?,
-        'sale_return_cancel',
-        ?
-      )
-    `)
-
     for (const item of items) {
-      removeReturnedStock.run(
-        Number(item.variant_id),
-        Number(item.quantity || 0),
-        returnId,
-        `عكس مخزون مرتجع بيع ملغي ${returnCode}`,
-      )
+      issueStockAtCost(db, {
+        variant_id: Number(item.variant_id),
+
+        quantity: Number(item.quantity || 0),
+
+        /*
+         * إلغاء المرتجع يعكس نفس
+         * القيمة التي دخل بها المرتجع.
+         */
+        unit_cost: Number(item.unit_cost || 0),
+
+        reference_id: returnId,
+
+        reference_type: 'sale_return_cancel',
+
+        notes: `عكس مخزون مرتجع بيع ملغي ${returnCode}`,
+      })
     }
 
     const saleId = Number(saleReturn.original_sale_id)

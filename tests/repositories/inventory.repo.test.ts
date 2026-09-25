@@ -19,6 +19,8 @@ type InventoryVariantTestRow = {
   barcode: string
   size: string
   color: string
+  average_cost: number
+  inventory_value: number
   sell_price: number
   buy_price: number
   stock: number
@@ -40,6 +42,8 @@ type StockMovementTestRow = {
   barcode: string
   size: string
   color: string
+  unit_cost: number | null
+  cost_value: number | null
 }
 
 function getStockMovementRows(input?: Parameters<typeof getStockMovements>[0]) {
@@ -124,6 +128,9 @@ describe('inventory repository', () => {
     const second = rows.find((row) => row.barcode === 'INVB001')
 
     expect(first?.stock).toBe(10)
+    expect(first?.average_cost).toBe(100)
+
+    expect(first?.inventory_value).toBe(1000)
     expect(first?.min_stock).toBe(5)
 
     expect(second?.stock).toBe(0)
@@ -228,6 +235,9 @@ describe('inventory repository', () => {
     expect(movements[0].quantity).toBe(5)
     expect(movements[0].signed_quantity).toBe(5)
     expect(movements[0].reference_type).toBe('manual_adjust')
+    expect(movements[0].unit_cost).toBe(100)
+
+    expect(movements[0].cost_value).toBe(500)
     expect(movements[0].notes).toBe('Manual increase')
   })
 
@@ -258,6 +268,9 @@ describe('inventory repository', () => {
     expect(movements[0].quantity).toBe(6)
     expect(movements[0].signed_quantity).toBe(-6)
     expect(movements[0].reference_type).toBe('manual_adjust')
+    expect(movements[0].unit_cost).toBe(100)
+
+    expect(movements[0].cost_value).toBe(600)
     expect(movements[0].notes).toBe('Manual decrease')
   })
 

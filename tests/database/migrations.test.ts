@@ -251,6 +251,10 @@ describe('database migrations', () => {
         version: 3,
         name: 'purchase-corrections',
       },
+      {
+        version: 4,
+        name: 'moving-weighted-average-cost',
+      },
     ])
 
     const purchaseReturnColumns = database
@@ -299,6 +303,38 @@ describe('database migrations', () => {
         'cancelled_shift_id',
         'replacement_return_id',
       ]),
+    )
+
+    const variantColumns = database
+      .prepare(
+        `
+      PRAGMA table_info(
+        product_variants
+      )
+      `,
+      )
+      .all() as Array<{
+      name: string
+    }>
+
+    expect(variantColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(['average_cost', 'inventory_value']),
+    )
+
+    const stockMovementColumns = database
+      .prepare(
+        `
+      PRAGMA table_info(
+        stock_movements
+      )
+      `,
+      )
+      .all() as Array<{
+      name: string
+    }>
+
+    expect(stockMovementColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(['unit_cost', 'cost_value']),
     )
   })
 })

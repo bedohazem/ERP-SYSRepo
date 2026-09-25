@@ -1,4 +1,9 @@
 import { getDb } from '../db'
+import {
+  getInventoryCostState,
+  issueStockAtAverageCost,
+  receiveStockAtCost,
+} from '../inventory-cost'
 
 const STOCK_SUM_SQL = `
   IFNULL(SUM(
@@ -155,7 +160,7 @@ export function listStockCountSessions() {
         SUM(
           CASE
             WHEN sci.actual_stock IS NOT NULL
-            THEN (sci.actual_stock - sci.system_stock) * IFNULL(v.buy_price, 0)
+            THEN (sci.actual_stock - sci.system_stock) * IFNULL(v.average_cost, 0)
             ELSE 0
           END
         ) AS buy_difference_value,
@@ -254,9 +259,10 @@ export function getStockCountSession(sessionId: number) {
         v.size,
         v.color,
         v.buy_price,
+        v.average_cost,
         v.sell_price,
         (IFNULL(sci.actual_stock, 0) - sci.system_stock) AS difference,
-        ((IFNULL(sci.actual_stock, 0) - sci.system_stock) * IFNULL(v.buy_price, 0)) AS buy_difference_value,
+        ((IFNULL(sci.actual_stock, 0) - sci.system_stock) * IFNULL(v.average_cost, 0)) AS buy_difference_value,
         ((IFNULL(sci.actual_stock, 0) - sci.system_stock) * IFNULL(v.sell_price, 0)) AS sell_difference_value
       FROM stock_count_items sci
       JOIN product_variants v ON v.id = sci.variant_id
@@ -452,15 +458,15 @@ export function approveStockCountSession(input: {
     const changedStock = db
       .prepare(
         `
-    SELECT COUNT(*) AS count
-    FROM stock_count_items sci
-    WHERE sci.session_id = ?
-      AND sci.system_stock <> (
-        SELECT ${STOCK_SUM_SQL}
-        FROM stock_movements sm
-        WHERE sm.variant_id = sci.variant_id
-      )
-    `,
+        SELECT COUNT(*) AS count
+        FROM stock_count_items sci
+        WHERE sci.session_id = ?
+          AND sci.system_stock <> (
+            SELECT ${STOCK_SUM_SQL}
+            FROM stock_movements sm
+            WHERE sm.variant_id = sci.variant_id
+          )
+        `,
       )
       .get(sessionId) as { count: number }
 
@@ -505,20 +511,6 @@ export function approveStockCountSession(input: {
       )
       .all(sessionId) as any[]
 
-    const insertMovement = db.prepare(
-      `
-      INSERT INTO stock_movements (
-        variant_id,
-        type,
-        quantity,
-        reference_id,
-        reference_type,
-        notes
-      )
-      VALUES (?, ?, ?, ?, 'stock_count', ?)
-      `,
-    )
-
     let changedItems = 0
     let shortageItems = 0
     let surplusItems = 0
@@ -540,24 +532,39 @@ export function approveStockCountSession(input: {
         surplusItems += 1
         totalSurplusQty += diff
 
-        insertMovement.run(
-          Number(item.variant_id),
-          'in',
-          Math.abs(diff),
-          sessionId,
-          `تسوية جرد #${sessionId}: زيادة ${diff}`,
-        )
+        const costState = getInventoryCostState(db, Number(item.variant_id))
+
+        const inboundUnitCost =
+          systemStock > 0 ? costState.average_cost : costState.buy_price
+
+        receiveStockAtCost(db, {
+          variant_id: Number(item.variant_id),
+
+          quantity: Math.abs(diff),
+
+          unit_cost: inboundUnitCost,
+
+          reference_id: sessionId,
+
+          reference_type: 'stock_count',
+
+          notes: `تسوية جرد #${sessionId}: زيادة ${diff}`,
+        })
       } else {
         shortageItems += 1
         totalShortageQty += Math.abs(diff)
 
-        insertMovement.run(
-          Number(item.variant_id),
-          'out',
-          Math.abs(diff),
-          sessionId,
-          `تسوية جرد #${sessionId}: عجز ${Math.abs(diff)}`,
-        )
+        issueStockAtAverageCost(db, {
+          variant_id: Number(item.variant_id),
+
+          quantity: Math.abs(diff),
+
+          reference_id: sessionId,
+
+          reference_type: 'stock_count',
+
+          notes: `تسوية جرد #${sessionId}: عجز ${Math.abs(diff)}`,
+        })
       }
     }
 

@@ -7,6 +7,12 @@ import {
 import { syncCustomerTotalSpent } from './sales.repo'
 import { requireOperationalCashShift } from './cash-shifts.repo'
 import { getShiftBusinessDate } from '../shift-business-date'
+import {
+  getInventoryCostState,
+  issueStockAtAverageCost,
+  issueStockAtCost,
+  receiveStockAtCost,
+} from '../inventory-cost'
 
 export type CreateSaleExchangeInput = {
   original_sale_id: number
@@ -97,6 +103,7 @@ type ExchangeVariantRow = {
   color: string | null
 
   buy_price: number
+  average_cost: number
   sell_price: number
 }
 
@@ -216,6 +223,7 @@ function getExchangeVariant(db: ReturnType<typeof getDb>, variantId: number) {
         v.size,
         v.color,
         v.buy_price,
+        v.average_cost,
 
         CASE
           WHEN v.discount_price IS NOT NULL
@@ -826,7 +834,9 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
         current_unit_price: Number(replacement.sell_price),
 
-        current_unit_cost: Number(replacement.buy_price || 0),
+        current_unit_cost: Number(
+          replacement.average_cost ?? replacement.buy_price ?? 0,
+        ),
       }
     })
 
@@ -1308,47 +1318,63 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       )
     }
 
-    const insertStockIn = db.prepare(
-      `
-      INSERT INTO stock_movements (
-        variant_id,
-        type,
-        quantity,
-        reference_id,
-        reference_type,
-        notes
-      )
-      VALUES (
-        ?,
-        'in',
-        1,
-        ?,
-        'sale_exchange',
-        ?
-      )
-      `,
-    )
+    /*
+     * أولًا نرجع كل القطع القديمة
+     * للمخزون بنفس Cost Snapshot
+     * الذي خرجت به من البيع.
+     */
+    for (const oldUnit of selectedUnits) {
+      const rawOldUnitCost = oldUnit.current_unit_cost
 
-    const insertStockOut = db.prepare(
-      `
-      INSERT INTO stock_movements (
-        variant_id,
-        type,
-        quantity,
-        reference_id,
-        reference_type,
-        notes
-      )
-      VALUES (
-        ?,
-        'out',
-        1,
-        ?,
-        'sale_exchange',
-        ?
-      )
-      `,
-    )
+      const oldUnitCost =
+        rawOldUnitCost === null || rawOldUnitCost === undefined
+          ? getInventoryCostState(db, Number(oldUnit.current_variant_id))
+              .average_cost
+          : Number(rawOldUnitCost)
+
+      receiveStockAtCost(db, {
+        variant_id: Number(oldUnit.current_variant_id),
+
+        quantity: 1,
+
+        unit_cost: oldUnitCost,
+
+        reference_id: exchangeId,
+
+        reference_type: 'sale_exchange',
+
+        notes: `إرجاع صنف قديم بسبب استبدال ${exchangeCode}`,
+      })
+    }
+
+    /*
+     * بعد رد القديم نحسب تكلفة
+     * البديل من متوسطه الحالي لحظة
+     * خروجه فعلًا.
+     */
+    const replacementCostByUnitId = new Map<number, number>()
+
+    for (const oldUnit of selectedUnits) {
+      const replacement = replacementMap.get(oldUnit.id)
+
+      if (!replacement) {
+        throw new Error('تعذر تجهيز الصنف البديل')
+      }
+
+      const issued = issueStockAtAverageCost(db, {
+        variant_id: replacement.variant_id,
+
+        quantity: 1,
+
+        reference_id: exchangeId,
+
+        reference_type: 'sale_exchange',
+
+        notes: `صرف صنف بديل بسبب استبدال ${exchangeCode}`,
+      })
+
+      replacementCostByUnitId.set(oldUnit.id, Number(issued.unit_cost || 0))
+    }
 
     const insertExchangeItem = db.prepare(
       `
@@ -1414,17 +1440,11 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         throw new Error('تعذر إعادة حساب العرض')
       }
 
-      insertStockIn.run(
-        oldUnit.current_variant_id,
-        exchangeId,
-        `إرجاع صنف قديم بسبب استبدال ${exchangeCode}`,
+      const replacementUnitCost = Number(
+        replacementCostByUnitId.get(oldUnit.id) || 0,
       )
 
-      insertStockOut.run(
-        replacement.variant_id,
-        exchangeId,
-        `صرف صنف بديل بسبب استبدال ${exchangeCode}`,
-      )
+      newUnit.current_unit_cost = replacementUnitCost
 
       insertExchangeItem.run(
         exchangeId,
@@ -1438,7 +1458,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
         Number(oldUnit.current_unit_cost || 0),
 
-        Number(replacement.buy_price || 0),
+        replacementUnitCost,
 
         oldUnit.current_is_gift,
         newUnit.current_is_gift,
@@ -1449,12 +1469,29 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
         replacement.sell_price,
 
-        Number(replacement.buy_price || 0),
+        replacementUnitCost,
 
         oldUnit.id,
         saleId,
       )
     }
+
+    /*
+     * الـafter_state الأولي اتكتب قبل
+     * تنفيذ حركة المخزون.
+     *
+     * نحفظ الآن Cost Snapshot الفعلي
+     * للبدائل بعد حساب المتوسط.
+     */
+    db.prepare(
+      `
+      UPDATE sale_exchanges
+
+      SET after_state_json = ?
+
+      WHERE id = ?
+      `,
+    ).run(JSON.stringify(afterState), exchangeId)
 
     const updateGiftState = db.prepare(
       `
@@ -2359,72 +2396,61 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
       })
     }
 
-    const stockIn = db.prepare(
-      `
-          INSERT INTO stock_movements (
-            variant_id,
-            type,
-            quantity,
-            reference_id,
-            reference_type,
-            notes
-          )
-
-          VALUES (
-            ?,
-            'in',
-            ?,
-            ?,
-            'sale_exchange_cancel',
-            ?
-          )
-          `,
-    )
-
-    const stockOut = db.prepare(
-      `
-          INSERT INTO stock_movements (
-            variant_id,
-            type,
-            quantity,
-            reference_id,
-            reference_type,
-            notes
-          )
-
-          VALUES (
-            ?,
-            'out',
-            ?,
-            ?,
-            'sale_exchange_cancel',
-            ?
-          )
-          `,
-    )
+    /*
+     * الإلغاء يعكس الاستبدال حرفيًا:
+     *
+     * 1) البديل يرجع بنفس التكلفة
+     *    التي خرج بها.
+     *
+     * 2) الصنف القديم يخرج بنفس
+     *    التكلفة التي دخل بها أثناء
+     *    الاستبدال.
+     */
 
     for (const item of items) {
-      const qty = Math.max(0, Number(item.quantity || 0))
+      const rawNewCost = item.new_unit_cost
 
-      stockIn.run(
-        Number(item.new_variant_id),
+      const newUnitCost =
+        rawNewCost === null || rawNewCost === undefined
+          ? getInventoryCostState(db, Number(item.new_variant_id)).average_cost
+          : Number(rawNewCost)
 
-        qty,
+      receiveStockAtCost(db, {
+        variant_id: Number(item.new_variant_id),
 
-        exchangeId,
+        quantity: Number(item.quantity || 0),
 
-        `إرجاع الصنف البديل بسبب إلغاء ${exchangeCode}`,
-      )
+        unit_cost: newUnitCost,
 
-      stockOut.run(
-        Number(item.old_variant_id),
+        reference_id: exchangeId,
 
-        qty,
+        reference_type: 'sale_exchange_cancel',
 
-        exchangeId,
+        notes: `إرجاع الصنف البديل بسبب إلغاء ${exchangeCode}`,
+      })
+    }
 
-        `إعادة صرف الصنف السابق بسبب إلغاء ${exchangeCode}`,
-      )
+    for (const item of items) {
+      const rawOldCost = item.old_unit_cost
+
+      const oldUnitCost =
+        rawOldCost === null || rawOldCost === undefined
+          ? getInventoryCostState(db, Number(item.old_variant_id)).average_cost
+          : Number(rawOldCost)
+
+      issueStockAtCost(db, {
+        variant_id: Number(item.old_variant_id),
+
+        quantity: Number(item.quantity || 0),
+
+        unit_cost: oldUnitCost,
+
+        reference_id: exchangeId,
+
+        reference_type: 'sale_exchange_cancel',
+
+        notes: `إعادة صرف الصنف السابق بسبب إلغاء ${exchangeCode}`,
+      })
     }
 
     const itemByUnit = new Map<number, any>(

@@ -645,13 +645,11 @@ export function getReportsSummary(input?: ReportFilter) {
               (
                 COALESCE(
                   sei.new_unit_cost,
-                  new_variant.buy_price,
                   0
                 )
                 -
                 COALESCE(
                   sei.old_unit_cost,
-                  old_variant.buy_price,
                   0
                 )
               )
@@ -662,19 +660,7 @@ export function getReportsSummary(input?: ReportFilter) {
           ) AS cost_delta
 
         FROM sale_exchange_items sei
-
-        LEFT JOIN product_variants
-          old_variant
-          ON
-            old_variant.id =
-              sei.old_variant_id
-
-        LEFT JOIN product_variants
-          new_variant
-          ON
-            new_variant.id =
-              sei.new_variant_id
-
+        
         GROUP BY
           sei.exchange_id
       ) x

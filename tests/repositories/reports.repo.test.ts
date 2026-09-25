@@ -1688,4 +1688,113 @@ describe('reports repository', () => {
     expect(Number(bank!.count)).toBe(1)
     expect(Number(bank!.total)).toBe(100)
   })
+
+  it('keeps historical sale profit unchanged after a later purchase changes the product cost', () => {
+    const variant = seedReportProduct({
+      name: 'Historical Profit Product',
+
+      barcode: 'HISTORICAL-PROFIT',
+
+      openingQty: 10,
+
+      buyPrice: 100,
+
+      sellPrice: 150,
+    })
+
+    createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 150,
+
+      discount_value: 0,
+
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 150,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const beforePurchase = getReportsSummary() as ReportsSummaryTestResult
+
+    expect(beforePurchase.summary.gross_profit_before_discounts).toBe(50)
+
+    expect(beforePurchase.summary.net_profit_after_discounts).toBe(50)
+
+    const supplier = createSupplier({
+      name: 'Historical Profit Supplier',
+    }) as any
+
+    createPurchaseInvoice({
+      supplier_id: supplier.id,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 10,
+
+          unit_cost: 300,
+        },
+      ],
+    })
+
+    const afterPurchase = getReportsSummary() as ReportsSummaryTestResult
+
+    /*
+     * سعر الشراء الحالي ومتوسط
+     * المخزون اتغيروا.
+     *
+     * لكن البيع القديم خرج وقتها
+     * بتكلفة 100، فربحه يظل 50.
+     */
+    expect(afterPurchase.summary.gross_profit_before_discounts).toBe(50)
+
+    expect(afterPurchase.summary.net_profit_after_discounts).toBe(50)
+
+    const saleItem = getDb()
+      .prepare(
+        `
+        SELECT unit_cost
+
+        FROM sale_items
+
+        ORDER BY id ASC
+
+        LIMIT 1
+        `,
+      )
+      .get() as {
+      unit_cost: number
+    }
+
+    expect(Number(saleItem.unit_cost)).toBe(100)
+  })
 })
