@@ -1450,9 +1450,13 @@ export default function PurchasesPage() {
               }
               style={{
                 ...primaryButtonStyle,
-                opacity: saving || lines.length === 0 || !supplierId ? 0.6 : 1,
+                opacity:
+                  saving || lines.length === 0 || !supplierId || editLoading
+                    ? 0.6
+                    : 1,
+
                 cursor:
-                  saving || lines.length === 0 || !supplierId
+                  saving || lines.length === 0 || !supplierId || editLoading
                     ? 'not-allowed'
                     : 'pointer',
               }}

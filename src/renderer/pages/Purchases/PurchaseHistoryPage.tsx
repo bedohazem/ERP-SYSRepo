@@ -587,24 +587,17 @@ export default function PurchaseHistoryPage() {
 
         setSelectedPurchase(data)
       }
-
-      showMessage(`تم إنشاء مرتجع شراء بقيمة ${money(result.total_amount)}`)
-
-      await loadPurchases(purchasePage)
-
-      if (activeTab === 'returns') {
-        await loadReturns(returnPage)
-      }
-
-      if (selectedPurchase?.purchase?.id === returnPurchase.purchase.id) {
-        const data = await window.api.getPurchaseInvoice(
-          returnPurchase.purchase.id,
-        )
-        setSelectedPurchase(data)
-      }
     } catch (error) {
-      console.error('Failed to create purchase return:', error)
-      showMessage(getErrorMessage(error, 'حدث خطأ أثناء إنشاء مرتجع الشراء'))
+      console.error('Failed to save purchase return:', error)
+
+      showMessage(
+        getErrorMessage(
+          error,
+          editingReturnId
+            ? 'حدث خطأ أثناء تعديل مرتجع الشراء'
+            : 'حدث خطأ أثناء إنشاء مرتجع الشراء',
+        ),
+      )
     } finally {
       setSavingReturn(false)
     }
@@ -1210,6 +1203,7 @@ export default function PurchaseHistoryPage() {
                           display: 'flex',
                           gap: '6px',
                           flexWrap: 'wrap',
+                          alignItems: 'center',
                         }}
                       >
                         <button
@@ -1227,41 +1221,40 @@ export default function PurchaseHistoryPage() {
                         >
                           الفاتورة
                         </button>
+
+                        {!row.cancelled_at &&
+                          Number(row.is_latest_active_return || 0) === 1 && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => void openEditReturnModal(row)}
+                                style={{
+                                  ...smallButtonStyle,
+                                  color: '#bfdbfe',
+                                  borderColor: 'rgba(59,130,246,0.45)',
+                                }}
+                              >
+                                تعديل
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCancelReturnTarget(row)
+                                  setCancelReturnReason('إلغاء مرتجع شراء')
+                                  setCancelReturnAdminPassword('')
+                                }}
+                                style={{
+                                  ...smallButtonStyle,
+                                  color: '#fca5a5',
+                                  borderColor: 'rgba(239,68,68,0.45)',
+                                }}
+                              >
+                                إلغاء
+                              </button>
+                            </>
+                          )}
                       </div>
-                      {!row.cancelled_at &&
-                        Number(row.is_latest_active_return || 0) === 1 && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => void openEditReturnModal(row)}
-                              style={{
-                                ...smallButtonStyle,
-                                color: '#bfdbfe',
-                                borderColor: 'rgba(59,130,246,0.45)',
-                              }}
-                            >
-                              تعديل
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCancelReturnTarget(row)
-
-                                setCancelReturnReason('إلغاء مرتجع شراء')
-
-                                setCancelReturnAdminPassword('')
-                              }}
-                              style={{
-                                ...smallButtonStyle,
-                                color: '#fca5a5',
-                                borderColor: 'rgba(239,68,68,0.45)',
-                              }}
-                            >
-                              إلغاء
-                            </button>
-                          </>
-                        )}
                     </td>
                   </tr>
                 ))}
