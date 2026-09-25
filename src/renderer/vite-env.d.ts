@@ -1662,6 +1662,9 @@ declare global {
           quantity: number
           unit_cost: number
           line_total: number
+          current_buy_price?: number
+          sell_price?: number
+          stock?: number
           returned_quantity?: number
           returnable_quantity?: number
         }>

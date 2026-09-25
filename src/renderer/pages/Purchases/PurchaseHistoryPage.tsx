@@ -4,7 +4,7 @@ import {
   CASH_ACCOUNT_OPTIONS,
   getPaymentMethodLabel,
 } from '../../utils/payment-method'
-
+import { useNavigate } from 'react-router-dom'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 
 function roundMoney(value: number) {
@@ -52,13 +52,18 @@ type PurchaseReturnRow = {
   notes?: string | null
   created_at: string
   items_count: number
+  cancelled_at?: string | null
+  replacement_return_id?: number | null
+  refund_mode?: string | null
+  refund_payment_method?: string | null
+  is_latest_active_return?: number
 }
 
 type ActiveTab = 'purchases' | 'returns'
 
 export default function PurchaseHistoryPage() {
   const currentUser = useAuthStore((s) => s.user)
-
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<ActiveTab>('purchases')
 
   const [rows, setRows] = useState<PurchaseRow[]>([])
@@ -99,6 +104,30 @@ export default function PurchaseHistoryPage() {
     'cash',
   )
   const [savingReturn, setSavingReturn] = useState(false)
+
+  const [editingReturnId, setEditingReturnId] = useState<number | null>(null)
+
+  const [editingReturnOriginalQuantities, setEditingReturnOriginalQuantities] =
+    useState<Record<number, number>>({})
+
+  const [
+    editingReturnOriginalDebtReduction,
+    setEditingReturnOriginalDebtReduction,
+  ] = useState(0)
+
+  const [returnEditReason, setReturnEditReason] = useState('')
+
+  const [returnAdminPassword, setReturnAdminPassword] = useState('')
+
+  const [cancelReturnTarget, setCancelReturnTarget] =
+    useState<PurchaseReturnRow | null>(null)
+
+  const [cancelReturnReason, setCancelReturnReason] =
+    useState('إلغاء مرتجع شراء')
+
+  const [cancelReturnAdminPassword, setCancelReturnAdminPassword] = useState('')
+
+  const [cancellingReturn, setCancellingReturn] = useState(false)
 
   const [cancelPurchaseTarget, setCancelPurchaseTarget] =
     useState<PurchaseRow | null>(null)
@@ -213,6 +242,71 @@ export default function PurchaseHistoryPage() {
     } catch (error) {
       console.error('Failed to open purchase return:', error)
       showMessage('حدث خطأ أثناء فتح تفاصيل المرتجع')
+    }
+  }
+
+  async function openEditReturnModal(row: PurchaseReturnRow) {
+    if (row.cancelled_at) {
+      showMessage('مرتجع الشراء ملغي بالفعل')
+      return
+    }
+
+    if (!Number(row.is_latest_active_return || 0)) {
+      showMessage('يجب تعديل آخر مرتجع فعال على الفاتورة أولًا')
+      return
+    }
+
+    try {
+      const [purchaseData, returnData] = await Promise.all([
+        window.api.getPurchaseInvoice(row.purchase_id),
+
+        window.api.getPurchaseReturn(row.id),
+      ])
+
+      const quantities: Record<number, string> = {}
+
+      const originalQuantities: Record<number, number> = {}
+
+      for (const item of returnData.items ?? []) {
+        const purchaseItemId = Number(item.purchase_item_id)
+
+        const quantity = Number(item.quantity || 0)
+
+        quantities[purchaseItemId] = String(quantity)
+
+        originalQuantities[purchaseItemId] = quantity
+      }
+
+      setReturnPurchase(purchaseData)
+
+      setReturnQuantities(quantities)
+
+      setEditingReturnOriginalQuantities(originalQuantities)
+
+      setEditingReturnOriginalDebtReduction(
+        Number(returnData.return?.debt_reduction_amount || 0),
+      )
+
+      setReturnNotes(returnData.return?.notes || '')
+
+      setReturnRefundMode(
+        returnData.return?.refund_mode === 'credit' ? 'credit' : 'cash',
+      )
+
+      setReturnRefundAccount(
+        returnData.return?.refund_payment_method ||
+          purchaseData.purchase?.payment_method ||
+          'store_cash',
+      )
+
+      setEditingReturnId(row.id)
+
+      setReturnEditReason('')
+      setReturnAdminPassword('')
+    } catch (error) {
+      console.error('Failed to open purchase return for editing:', error)
+
+      showMessage(getErrorMessage(error, 'تعذر فتح المرتجع للتعديل'))
     }
   }
 
@@ -332,6 +426,11 @@ export default function PurchaseHistoryPage() {
   }
 
   async function openReturnModal(row: PurchaseRow) {
+    setEditingReturnId(null)
+    setEditingReturnOriginalQuantities({})
+    setEditingReturnOriginalDebtReduction(0)
+    setReturnEditReason('')
+    setReturnAdminPassword('')
     if (row.status === 'cancelled' || row.payment_status === 'cancelled') {
       showMessage('لا يمكن عمل مرتجع على فاتورة ملغاة')
       return
@@ -357,8 +456,40 @@ export default function PurchaseHistoryPage() {
     }))
   }
 
+  function resetReturnEditor() {
+    setReturnPurchase(null)
+
+    setReturnQuantities({})
+
+    setReturnNotes('')
+
+    setReturnRefundAccount('store_cash')
+
+    setReturnRefundMode('cash')
+
+    setEditingReturnId(null)
+
+    setEditingReturnOriginalQuantities({})
+
+    setEditingReturnOriginalDebtReduction(0)
+
+    setReturnEditReason('')
+
+    setReturnAdminPassword('')
+  }
+
   async function savePurchaseReturn() {
     if (!returnPurchase || savingReturn) return
+
+    if (editingReturnId && !returnEditReason.trim()) {
+      showMessage('اكتب سبب تعديل المرتجع')
+      return
+    }
+
+    if (editingReturnId && !returnAdminPassword.trim()) {
+      showMessage('اكتب كلمة مرور المدير')
+      return
+    }
 
     const items = (returnPurchase.items ?? [])
       .map((item: any) => {
@@ -382,7 +513,9 @@ export default function PurchaseHistoryPage() {
 
     const invalidItem = (returnPurchase.items ?? []).find((item: any) => {
       const quantity = Number(returnQuantities[item.id] || 0)
-      const maxQuantity = Number(item.returnable_quantity ?? item.quantity ?? 0)
+      const maxQuantity =
+        Number(item.returnable_quantity ?? item.quantity ?? 0) +
+        Number(editingReturnOriginalQuantities[Number(item.id)] || 0)
 
       return quantity > maxQuantity
     })
@@ -397,22 +530,65 @@ export default function PurchaseHistoryPage() {
     setSavingReturn(true)
 
     try {
-      const result = await window.api.createPurchaseReturn({
-        purchase_id: Number(returnPurchase.purchase.id),
+      const purchaseId = Number(returnPurchase.purchase.id)
+
+      const returnInput = {
+        purchase_id: purchaseId,
+
         notes: returnNotes.trim() || null,
+
         refund_payment_method: returnRefundAccount,
+
         refund_mode: returnRefundMode,
-        actor_id: currentUser?.id,
+
         items,
-      })
+      }
+
+      const result = editingReturnId
+        ? await window.api.updatePurchaseReturn({
+            return_id: editingReturnId,
+
+            reason: returnEditReason.trim(),
+
+            admin_password: returnAdminPassword,
+
+            notes: returnInput.notes,
+
+            refund_payment_method: returnInput.refund_payment_method,
+
+            refund_mode: returnInput.refund_mode,
+
+            items: returnInput.items,
+          })
+        : await window.api.createPurchaseReturn({
+            ...returnInput,
+
+            actor_id: currentUser?.id,
+          })
+
+      showMessage(
+        editingReturnId
+          ? `تم تعديل مرتجع الشراء وإنشاء المرتجع #${result.return_id}`
+          : `تم إنشاء مرتجع شراء بقيمة ${money(result.total_amount)}`,
+      )
+
+      resetReturnEditor()
+
+      setSelectedReturn(null)
+
+      await loadPurchases(purchasePage)
+
+      if (activeTab === 'returns') {
+        await loadReturns(returnPage)
+      }
+
+      if (selectedPurchase?.purchase?.id === purchaseId) {
+        const data = await window.api.getPurchaseInvoice(purchaseId)
+
+        setSelectedPurchase(data)
+      }
 
       showMessage(`تم إنشاء مرتجع شراء بقيمة ${money(result.total_amount)}`)
-
-      setReturnPurchase(null)
-      setReturnQuantities({})
-      setReturnNotes('')
-      setReturnRefundAccount('store_cash')
-      setReturnRefundMode('cash')
 
       await loadPurchases(purchasePage)
 
@@ -444,13 +620,24 @@ export default function PurchaseHistoryPage() {
       )
     : 0
 
-  const purchaseReturnDebtReduction = returnPurchase
+  const purchaseReturnDebtBase = returnPurchase
     ? roundMoney(
         Math.min(
-          purchaseReturnTotal,
-          roundMoney(Number(returnPurchase.purchase?.remaining_amount || 0)),
+          Math.max(
+            0,
+
+            Number(returnPurchase.purchase?.total_amount || 0) -
+              Number(returnPurchase.purchase?.paid_amount || 0),
+          ),
+
+          Number(returnPurchase.purchase?.remaining_amount || 0) +
+            (editingReturnId ? editingReturnOriginalDebtReduction : 0),
         ),
       )
+    : 0
+
+  const purchaseReturnDebtReduction = returnPurchase
+    ? roundMoney(Math.min(purchaseReturnTotal, purchaseReturnDebtBase))
     : 0
 
   const purchaseReturnCashRefund = roundMoney(
@@ -815,6 +1002,23 @@ export default function PurchaseHistoryPage() {
                             عرض
                           </button>
 
+                          {!isCancelled && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                navigate(`/purchases?edit=${row.id}`)
+                              }
+                              style={{
+                                ...smallButtonStyle,
+                                borderColor: 'rgba(59,130,246,0.45)',
+                                color: '#bfdbfe',
+                                background: 'rgba(59,130,246,0.10)',
+                              }}
+                            >
+                              تعديل
+                            </button>
+                          )}
+
                           {!isCancelled &&
                             hasRemainingAmount(row.remaining_amount) && (
                               <button
@@ -943,7 +1147,36 @@ export default function PurchaseHistoryPage() {
                     key={row.id}
                     style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                   >
-                    <td style={tdStyle}>#{row.id}</td>
+                    <td style={tdStyle}>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gap: '3px',
+                        }}
+                      >
+                        <strong>#{row.id}</strong>
+
+                        {row.replacement_return_id ? (
+                          <span
+                            style={{
+                              color: '#fbbf24',
+                              fontSize: '11px',
+                            }}
+                          >
+                            تم تعديله → #{row.replacement_return_id}
+                          </span>
+                        ) : row.cancelled_at ? (
+                          <span
+                            style={{
+                              color: '#94a3b8',
+                              fontSize: '11px',
+                            }}
+                          >
+                            ملغي
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
                     <td style={tdStyle}>#{row.purchase_id}</td>
 
                     <td style={tdStyle}>
@@ -995,6 +1228,40 @@ export default function PurchaseHistoryPage() {
                           الفاتورة
                         </button>
                       </div>
+                      {!row.cancelled_at &&
+                        Number(row.is_latest_active_return || 0) === 1 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void openEditReturnModal(row)}
+                              style={{
+                                ...smallButtonStyle,
+                                color: '#bfdbfe',
+                                borderColor: 'rgba(59,130,246,0.45)',
+                              }}
+                            >
+                              تعديل
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCancelReturnTarget(row)
+
+                                setCancelReturnReason('إلغاء مرتجع شراء')
+
+                                setCancelReturnAdminPassword('')
+                              }}
+                              style={{
+                                ...smallButtonStyle,
+                                color: '#fca5a5',
+                                borderColor: 'rgba(239,68,68,0.45)',
+                              }}
+                            >
+                              إلغاء
+                            </button>
+                          </>
+                        )}
                     </td>
                   </tr>
                 ))}
@@ -1577,7 +1844,9 @@ export default function PurchaseHistoryPage() {
             >
               <div>
                 <h3 style={{ margin: '0 0 6px' }}>
-                  إنشاء مرتجع شراء من فاتورة #{returnPurchase.purchase.id}
+                  {editingReturnId
+                    ? `تعديل مرتجع شراء #${editingReturnId}`
+                    : `إنشاء مرتجع شراء من فاتورة #${returnPurchase.purchase.id}`}
                 </h3>
                 <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700 }}>
                   المورد: {returnPurchase.purchase.supplier_name}
@@ -1586,7 +1855,7 @@ export default function PurchaseHistoryPage() {
 
               <button
                 type="button"
-                onClick={() => setReturnPurchase(null)}
+                onClick={() => resetReturnEditor()}
                 style={closeButtonStyle}
               >
                 ×
@@ -1603,6 +1872,37 @@ export default function PurchaseHistoryPage() {
                   style={inputStyle}
                 />
               </div>
+
+              {editingReturnId && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                    gap: '12px',
+                  }}
+                >
+                  <div style={fieldStyle}>
+                    <label style={labelStyle}>سبب التعديل</label>
+
+                    <input
+                      value={returnEditReason}
+                      onChange={(e) => setReturnEditReason(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div style={fieldStyle}>
+                    <label style={labelStyle}>كلمة مرور المدير</label>
+
+                    <input
+                      type="password"
+                      value={returnAdminPassword}
+                      onChange={(e) => setReturnAdminPassword(e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+              )}
 
               <div
                 style={{
@@ -1688,9 +1988,11 @@ export default function PurchaseHistoryPage() {
 
                   <tbody>
                     {(returnPurchase.items ?? []).map((item: any) => {
-                      const maxQuantity = Number(
-                        item.returnable_quantity ?? item.quantity ?? 0,
-                      )
+                      const maxQuantity =
+                        Number(item.returnable_quantity ?? item.quantity ?? 0) +
+                        Number(
+                          editingReturnOriginalQuantities[Number(item.id)] || 0,
+                        )
 
                       return (
                         <tr
@@ -1766,17 +2068,139 @@ export default function PurchaseHistoryPage() {
                     cursor: savingReturn ? 'not-allowed' : 'pointer',
                   }}
                 >
-                  {savingReturn ? 'جاري الحفظ...' : 'حفظ المرتجع'}
+                  {savingReturn
+                    ? 'جاري الحفظ...'
+                    : editingReturnId
+                      ? 'حفظ تعديل المرتجع'
+                      : 'حفظ المرتجع'}
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setReturnPurchase(null)}
+                  onClick={() => resetReturnEditor()}
                   style={secondaryButtonStyle}
                 >
                   إلغاء
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelReturnTarget && (
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div className="theme-modal-card" style={modalStyle}>
+            <h3>إلغاء مرتجع شراء #{cancelReturnTarget.id}</h3>
+
+            <div
+              style={{
+                display: 'grid',
+                gap: '12px',
+              }}
+            >
+              <InfoCard
+                title="الفاتورة"
+                value={`#${cancelReturnTarget.purchase_id}`}
+              />
+
+              <InfoCard
+                title="قيمة المرتجع"
+                value={money(cancelReturnTarget.total_amount)}
+              />
+
+              <div style={fieldStyle}>
+                <label style={labelStyle}>سبب الإلغاء</label>
+
+                <input
+                  value={cancelReturnReason}
+                  onChange={(e) => setCancelReturnReason(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={fieldStyle}>
+                <label style={labelStyle}>كلمة مرور المدير</label>
+
+                <input
+                  type="password"
+                  value={cancelReturnAdminPassword}
+                  onChange={(e) => setCancelReturnAdminPassword(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+                marginTop: '20px',
+              }}
+            >
+              <button
+                type="button"
+                disabled={cancellingReturn}
+                onClick={async () => {
+                  if (cancellingReturn) {
+                    return
+                  }
+
+                  if (!cancelReturnAdminPassword.trim()) {
+                    showMessage('اكتب كلمة مرور المدير')
+                    return
+                  }
+
+                  setCancellingReturn(true)
+
+                  try {
+                    const target = cancelReturnTarget
+
+                    await window.api.cancelPurchaseReturn({
+                      return_id: target.id,
+
+                      reason: cancelReturnReason.trim() || 'إلغاء مرتجع شراء',
+
+                      admin_password: cancelReturnAdminPassword,
+                    })
+
+                    showMessage('تم إلغاء مرتجع الشراء')
+
+                    setCancelReturnTarget(null)
+
+                    setSelectedReturn(null)
+
+                    await loadReturns(returnPage)
+
+                    await loadPurchases(purchasePage)
+
+                    if (selectedPurchase?.purchase?.id === target.purchase_id) {
+                      const data = await window.api.getPurchaseInvoice(
+                        target.purchase_id,
+                      )
+
+                      setSelectedPurchase(data)
+                    }
+                  } catch (error) {
+                    showMessage(
+                      getErrorMessage(error, 'تعذر إلغاء مرتجع الشراء'),
+                    )
+                  } finally {
+                    setCancellingReturn(false)
+                  }
+                }}
+                style={dangerSolidButtonStyle}
+              >
+                {cancellingReturn ? 'جاري الإلغاء...' : 'تأكيد الإلغاء'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCancelReturnTarget(null)}
+                style={secondaryButtonStyle}
+              >
+                رجوع
+              </button>
             </div>
           </div>
         </div>

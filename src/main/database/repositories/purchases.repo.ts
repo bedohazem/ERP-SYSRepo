@@ -224,8 +224,18 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       LIMIT 1
     `)
 
+    const seenVariantIds = new Set<number>()
+
     const preparedItems = input.items.map((item) => {
-      const variant = getVariant.get(Number(item.variant_id)) as any
+      const variantId = Number(item.variant_id)
+
+      if (!variantId || seenVariantIds.has(variantId)) {
+        throw new Error('يوجد صنف مكرر أو غير صحيح داخل فاتورة الشراء')
+      }
+
+      seenVariantIds.add(variantId)
+
+      const variant = getVariant.get(variantId) as any
 
       if (!variant) {
         throw new Error('الصنف غير موجود')
@@ -1738,6 +1748,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       throw new Error('لا يمكن عمل مرتجع على فاتورة ملغاة')
     }
 
+    const seenPurchaseItemIds = new Set<number>()
     const preparedItems = input.items.map((rawItem) => {
       const quantity = Number(rawItem.quantity || 0)
 
@@ -1776,6 +1787,16 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       if (!purchaseItem) {
         throw new Error('الصنف غير موجود داخل فاتورة الشراء')
       }
+
+      const purchaseItemId = Number(purchaseItem.id)
+
+      if (seenPurchaseItemIds.has(purchaseItemId)) {
+        throw new Error(
+          `الصنف "${purchaseItem.product_name}" مكرر داخل المرتجع`,
+        )
+      }
+
+      seenPurchaseItemIds.add(purchaseItemId)
 
       const alreadyReturned = getReturnedQuantityForPurchaseItem(
         db,
@@ -2607,7 +2628,29 @@ export function listPurchaseReturns(input?: {
         pr.*,
         s.name AS supplier_name,
         s.phone AS supplier_phone,
-        COUNT(pri.id) AS items_count
+        COUNT(pri.id) AS items_count,
+
+        CASE
+          WHEN
+            pr.cancelled_at IS NULL
+
+            AND pr.id = (
+              SELECT latest_return.id
+
+              FROM purchase_returns latest_return
+
+              WHERE
+                latest_return.purchase_id = pr.purchase_id
+                AND latest_return.cancelled_at IS NULL
+
+              ORDER BY latest_return.id DESC
+
+              LIMIT 1
+            )
+
+          THEN 1
+          ELSE 0
+        END AS is_latest_active_return
       FROM purchase_returns pr
       JOIN suppliers s ON s.id = pr.supplier_id
       LEFT JOIN purchase_return_items pri ON pri.return_id = pr.id
@@ -2673,6 +2716,26 @@ export function getPurchaseInvoice(purchaseId: number) {
       `
       SELECT
         pii.*,
+        pv.buy_price AS current_buy_price,
+        pv.sell_price AS sell_price,
+
+        IFNULL((
+          SELECT SUM(
+            CASE
+              WHEN sm.type = 'in'
+              THEN sm.quantity
+
+              WHEN sm.type = 'out'
+              THEN -sm.quantity
+
+              ELSE 0
+            END
+          )
+
+          FROM stock_movements sm
+
+          WHERE sm.variant_id = pii.variant_id
+        ), 0) AS stock,
         IFNULL((
           SELECT SUM(pri.quantity)
           FROM purchase_return_items pri
@@ -2691,6 +2754,8 @@ export function getPurchaseInvoice(purchaseId: number) {
           0
         ) AS returnable_quantity
       FROM purchase_items pii
+      LEFT JOIN product_variants pv
+        ON pv.id = pii.variant_id
       WHERE pii.purchase_id = ?
       ORDER BY pii.id ASC
     `,

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent } from 'react'
 import { useAuthStore } from '../../store/auth.store'
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 function roundMoney(value: number) {
   const amount = Number(value || 0)
@@ -66,6 +67,19 @@ function generateBarcodeValue() {
 
 export default function PurchasesPage() {
   const currentUser = useAuthStore((s) => s.user)
+  const navigate = useNavigate()
+
+  const [searchParams] = useSearchParams()
+
+  const editPurchaseId = Number(searchParams.get('edit') || 0)
+
+  const isEditing = Number.isInteger(editPurchaseId) && editPurchaseId > 0
+
+  const [editLoading, setEditLoading] = useState(false)
+
+  const [editReason, setEditReason] = useState('')
+
+  const [editAdminPassword, setEditAdminPassword] = useState('')
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [categoryFilter, setCategoryFilter] = useState('all')
@@ -169,6 +183,11 @@ export default function PurchasesPage() {
   }
 
   useEffect(() => {
+    if (isEditing) {
+      setDraftHydrated(true)
+      return
+    }
+
     const rawDraft = localStorage.getItem(PURCHASE_DRAFT_KEY)
 
     if (!rawDraft) {
@@ -230,10 +249,11 @@ export default function PurchasesPage() {
     } finally {
       setDraftHydrated(true)
     }
-  }, [])
+  }, [isEditing])
 
   useEffect(() => {
     if (!draftHydrated) return
+    if (isEditing) return
 
     const hasDraftData = Boolean(
       supplierId ||
@@ -277,7 +297,123 @@ export default function PurchasesPage() {
     notes,
     discountType,
     discountDraft,
+    isEditing,
   ])
+
+  useEffect(() => {
+    if (!isEditing) {
+      setEditLoading(false)
+      return
+    }
+
+    let mounted = true
+
+    setEditLoading(true)
+
+    window.api
+      .getPurchaseInvoice(editPurchaseId)
+      .then((data) => {
+        if (!mounted) return
+
+        const purchase = data.purchase
+
+        if (
+          purchase.status === 'cancelled' ||
+          purchase.payment_status === 'cancelled'
+        ) {
+          throw new Error('لا يمكن تعديل فاتورة شراء ملغاة')
+        }
+
+        const storedSubTotal = Number(
+          purchase.sub_total ||
+            Number(purchase.total_amount || 0) +
+              Number(purchase.discount_value || 0),
+        )
+
+        const storedTotal = Number(purchase.total_amount || 0)
+
+        const discountFactor =
+          storedSubTotal > 0 && storedTotal > 0
+            ? storedTotal / storedSubTotal
+            : 1
+
+        const nextLines: PurchaseLine[] = (data.items ?? []).map((item) => {
+          const storedUnitCost = Number(item.unit_cost || 0)
+
+          const originalUnitCost =
+            discountFactor > 0
+              ? Number((storedUnitCost / discountFactor).toFixed(4))
+              : storedUnitCost
+
+          return {
+            variant_id: Number(item.variant_id),
+
+            product_name: item.product_name,
+
+            barcode: item.barcode ?? null,
+
+            size: item.size ?? null,
+
+            color: item.color ?? null,
+
+            buy_price: Number(item.current_buy_price ?? storedUnitCost),
+
+            sell_price: Number(item.sell_price || 0),
+
+            stock: Number(item.stock || 0),
+
+            quantity: Number(item.quantity || 0),
+
+            unit_cost: originalUnitCost,
+          }
+        })
+
+        const nextDiscountType =
+          purchase.discount_type === 'percent' ? 'percent' : 'amount'
+
+        const nextDiscountInput = Number(purchase.discount_input || 0)
+
+        setSupplierId(Number(purchase.supplier_id))
+
+        setSupplierSearch(purchase.supplier_name || '')
+
+        setLines(nextLines)
+
+        setPaidAmount(String(Number(purchase.paid_amount || 0)))
+
+        setPaymentMethod(purchase.payment_method || 'store_cash')
+
+        setNotes(purchase.notes || '')
+
+        setDiscountType(nextDiscountType)
+
+        setDiscountDraft(
+          nextDiscountInput > 0
+            ? String(nextDiscountInput)
+            : nextDiscountType === 'amount' &&
+                Number(purchase.discount_value || 0) > 0
+              ? String(Number(purchase.discount_value))
+              : '',
+        )
+
+        setEditReason('')
+        setEditAdminPassword('')
+      })
+      .catch((error) => {
+        console.error('Failed to load purchase for editing:', error)
+
+        showMessage(getErrorMessage(error, 'تعذر فتح فاتورة الشراء للتعديل'))
+      })
+      .finally(() => {
+        if (mounted) {
+          setEditLoading(false)
+        }
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [editPurchaseId, isEditing])
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -656,25 +792,68 @@ export default function PurchasesPage() {
       return
     }
 
+    if (isEditing && !editReason.trim()) {
+      showMessage('اكتب سبب تعديل الفاتورة')
+      return
+    }
+
+    if (isEditing && !editAdminPassword.trim()) {
+      showMessage('اكتب كلمة مرور المدير')
+      return
+    }
+
     setSaving(true)
 
     try {
-      const result = await window.api.createPurchaseInvoice({
+      const purchaseInput = {
         supplier_id: Number(supplierId),
+
         sub_total: subTotal,
+
         discount_type: discountType,
+
         discount_input: Number(discountDraft || 0),
+
         discount_value: discountValue,
+
         paid_amount: roundMoney(Number(paidAmount || 0)),
+
         payment_method: paymentMethod,
+
         notes: notes.trim() || null,
-        actor_id: currentUser?.id,
+
         items: lines.map((line) => ({
           variant_id: line.variant_id,
+
           quantity: Number(line.quantity || 0),
+
           unit_cost: Number(getDiscountedUnitCost(line).toFixed(4)),
         })),
-      })
+      }
+
+      const result = isEditing
+        ? await window.api.updatePurchaseInvoice({
+            ...purchaseInput,
+
+            purchase_id: editPurchaseId,
+
+            reason: editReason.trim(),
+
+            admin_password: editAdminPassword,
+          })
+        : await window.api.createPurchaseInvoice({
+            ...purchaseInput,
+
+            actor_id: currentUser?.id,
+          })
+
+      if (isEditing) {
+        showMessage(`تم تعديل فاتورة الشراء #${editPurchaseId}`)
+
+        navigate('/purchase-history')
+
+        return
+      }
 
       showMessage(
         result.remaining_amount > 0
@@ -773,7 +952,23 @@ export default function PurchasesPage() {
         )}
 
         <div className="glass-card" style={cardStyle}>
-          <h2 style={{ margin: 0, textAlign: 'right' }}>فاتورة شراء</h2>
+          <h2 style={{ margin: 0, textAlign: 'right' }}>
+            {isEditing ? `تعديل فاتورة شراء #${editPurchaseId}` : 'فاتورة شراء'}
+          </h2>
+
+          {isEditing && (
+            <div
+              style={{
+                color: '#fbbf24',
+                fontWeight: 800,
+                fontSize: '13px',
+                textAlign: 'right',
+              }}
+            >
+              سيتم الاحتفاظ برقم الفاتورة وتاريخ إنشائها، وسيتم تسجيل التعديل في
+              سجل العمليات.
+            </div>
+          )}
 
           <div
             style={{
@@ -874,13 +1069,15 @@ export default function PurchasesPage() {
                 </select>
               </div>
 
-              <button
-                type="button"
-                onClick={() => openQuickProductModal(productSearch)}
-                style={quickAddSmallButtonStyle}
-              >
-                + إضافة سريع
-              </button>
+              {!isEditing && (
+                <button
+                  type="button"
+                  onClick={() => openQuickProductModal(productSearch)}
+                  style={quickAddSmallButtonStyle}
+                >
+                  + إضافة سريع
+                </button>
+              )}
             </div>
 
             <div
@@ -1205,11 +1402,52 @@ export default function PurchasesPage() {
             />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+          {isEditing && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                gap: '12px',
+              }}
+            >
+              <div style={fieldStyle}>
+                <label style={labelStyle}>سبب التعديل</label>
+
+                <input
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  placeholder="مثال: تصحيح كمية أو سعر شراء"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={fieldStyle}>
+                <label style={labelStyle}>كلمة مرور المدير</label>
+
+                <input
+                  type="password"
+                  value={editAdminPassword}
+                  onChange={(e) => setEditAdminPassword(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+          )}
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-start',
+              gap: '10px',
+              flexWrap: 'wrap',
+            }}
+          >
             <button
               type="button"
               onClick={savePurchase}
-              disabled={saving || lines.length === 0 || !supplierId}
+              disabled={
+                saving || lines.length === 0 || !supplierId || editLoading
+              }
               style={{
                 ...primaryButtonStyle,
                 opacity: saving || lines.length === 0 || !supplierId ? 0.6 : 1,
@@ -1219,8 +1457,23 @@ export default function PurchasesPage() {
                     : 'pointer',
               }}
             >
-              {saving ? 'جاري الحفظ...' : 'حفظ فاتورة الشراء'}
+              {saving
+                ? 'جاري الحفظ...'
+                : isEditing
+                  ? 'حفظ تعديل الفاتورة'
+                  : 'حفظ فاتورة الشراء'}
             </button>
+
+            {isEditing && (
+              <button
+                type="button"
+                onClick={() => navigate('/purchase-history')}
+                disabled={saving}
+                style={dangerButtonStyle}
+              >
+                إلغاء التعديل
+              </button>
+            )}
           </div>
         </div>
       </div>

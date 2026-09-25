@@ -1851,4 +1851,90 @@ describe('purchases repository', () => {
       }),
     ).toThrow('سجل مرتجعات شراء سابق')
   })
+
+  it('rejects duplicate variants in a purchase invoice', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    expect(() =>
+      createPurchaseInvoice({
+        supplier_id: supplierId,
+
+        paid_amount: 0,
+
+        actor_id: 1,
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            quantity: 1,
+
+            unit_cost: 100,
+          },
+          {
+            variant_id: variant.variant_id,
+
+            quantity: 1,
+
+            unit_cost: 100,
+          },
+        ],
+      }),
+    ).toThrow('صنف مكرر')
+  })
+
+  it('rejects duplicate lines in the same purchase return', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      paid_amount: 0,
+
+      actor_id: 1,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 5,
+
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+
+    const itemId = Number(invoice.items[0].id)
+
+    expect(() =>
+      createPurchaseReturn({
+        purchase_id: purchase.purchaseId,
+
+        actor_id: 1,
+
+        refund_mode: 'credit',
+
+        items: [
+          {
+            purchase_item_id: itemId,
+
+            quantity: 4,
+          },
+          {
+            purchase_item_id: itemId,
+
+            quantity: 4,
+          },
+        ],
+      }),
+    ).toThrow('مكرر')
+
+    expect(getStockByBarcode('PURCHASE001')).toBe(5)
+  })
 })
