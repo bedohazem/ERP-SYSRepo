@@ -490,6 +490,42 @@ describe('auth IPC authorization', () => {
     expect(second.success).toBe(false)
   })
 
+  it('lets newly created users login with their assigned password without forcing another change', async () => {
+    const adminClient = makeClient()
+
+    await login(adminClient.event)
+
+    const created = await invoke(adminClient.event, 'users:create', {
+      name: 'New Cashier',
+
+      username: 'new_cashier',
+
+      password: 'Cashier1234',
+
+      role: 'cashier',
+    })
+
+    expect(created.success).toBe(true)
+
+    const user = findUserByUsername('new_cashier')!
+
+    expect(Number(user.must_change_password)).toBe(0)
+
+    const cashierClient = makeClient()
+
+    const result = await invoke(cashierClient.event, 'auth:login', {
+      username: 'new_cashier',
+
+      password: 'Cashier1234',
+    })
+
+    expect(result.success).toBe(true)
+
+    expect(result.requires_password_change).toBe(false)
+
+    expect(result.user.username).toBe('new_cashier')
+  })
+
   it('forces users with weak legacy passwords to choose a strong password', async () => {
     const db = getDb()
 

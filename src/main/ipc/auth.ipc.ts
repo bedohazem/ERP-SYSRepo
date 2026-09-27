@@ -774,10 +774,11 @@ export function registerAuthIpc(): void {
           data.role ?? 'cashier',
           {
             /*
-             * الباسورد الذي يضعه
-             * المدير Temporary.
+             * المستخدم تم إنشاء كلمة
+             * مروره النهائية بالفعل
+             * من شاشة إدارة المستخدمين.
              */
-            mustChangePassword: true,
+            mustChangePassword: false,
           },
         )
 
@@ -797,7 +798,7 @@ export function registerAuthIpc(): void {
 
             role: user.role,
 
-            must_change_password: true,
+            must_change_password: false,
           },
         })
 
