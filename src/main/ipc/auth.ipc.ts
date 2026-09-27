@@ -19,6 +19,9 @@ import {
   setUserActive,
   setUserPasswordChangeRequired,
   updateUser,
+  getEffectiveUserPermissions,
+  getUserPermissionSettings,
+  setUserPermissions,
   upgradeUserPasswordHash,
 } from '../database/repositories/user.repo'
 
@@ -221,7 +224,11 @@ export function registerAuthIpc(): void {
 
       return {
         success: true,
-        user,
+        user: {
+          ...user,
+
+          permissions: getEffectiveUserPermissions(user.id),
+        },
       }
     } catch (error) {
       return {
@@ -439,6 +446,7 @@ export function registerAuthIpc(): void {
           username: user.username,
 
           role: user.role,
+          permissions: getEffectiveUserPermissions(user.id),
         },
       }
     } catch (error) {
@@ -486,7 +494,12 @@ export function registerAuthIpc(): void {
 
         return {
           success: true,
-          user,
+
+          user: {
+            ...user,
+
+            permissions: getEffectiveUserPermissions(user.id),
+          },
         }
       } catch (error) {
         return {
@@ -506,6 +519,8 @@ export function registerAuthIpc(): void {
         success: true,
 
         user_id: user.id,
+
+        permissions: getEffectiveUserPermissions(user.id),
 
         idle_timeout_seconds: Math.floor(AUTH_IDLE_TIMEOUT_MS / 1000),
       }
@@ -663,6 +678,77 @@ export function registerAuthIpc(): void {
           total: 0,
           limit: 50,
           offset: 0,
+        }
+      }
+    },
+  )
+
+  ipcMain.handle('users:get-permissions', (event, userId: number) => {
+    try {
+      requireAuthenticatedAdmin(event)
+
+      return {
+        success: true,
+
+        settings: getUserPermissionSettings(Number(userId)),
+      }
+    } catch (error) {
+      return {
+        success: false,
+
+        message: getErrorMessage(error),
+      }
+    }
+  })
+
+  ipcMain.handle(
+    'users:set-permissions',
+    (
+      event,
+      input: {
+        user_id?: number
+        permissions?: string[]
+      },
+    ) => {
+      try {
+        const actorId = requireAuthenticatedAdmin(event)
+
+        const userId = Number(input?.user_id || 0)
+
+        const before = getUserPermissionSettings(userId)
+
+        const after = setUserPermissions(
+          userId,
+
+          Array.isArray(input?.permissions) ? input.permissions : [],
+        )
+
+        logAction({
+          actor_id: actorId,
+
+          action: 'user_permissions_updated',
+
+          entity: 'users',
+
+          entity_id: userId,
+
+          details: {
+            before: before.effective_permissions,
+
+            after: after.effective_permissions,
+          },
+        })
+
+        return {
+          success: true,
+
+          settings: after,
+        }
+      } catch (error) {
+        return {
+          success: false,
+
+          message: getErrorMessage(error),
         }
       }
     },

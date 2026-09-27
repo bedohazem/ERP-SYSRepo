@@ -17,38 +17,35 @@ import {
   getCustomerPaymentBatchAccess,
   updateCustomerPaymentBatch,
 } from '../database/repositories/customers.repo'
-import {
-  requireAuthenticatedAdmin,
-  requireAuthenticatedUser,
-} from '../auth-session'
+import { requireAuthenticatedAdmin, requirePermission } from '../auth-session'
 
 export function registerCustomersIpc(): void {
   ipcMain.handle('customers:list', (event) => {
-    requireAuthenticatedUser(event)
+    requirePermission(event, 'customers.view')
 
     return getCustomers()
   })
 
   ipcMain.handle('customers:list-page', (event, input) => {
-    requireAuthenticatedUser(event)
+    requirePermission(event, 'customers.view')
 
     return listCustomers(input)
   })
 
   ipcMain.handle('customers:search', (event, query: string) => {
-    requireAuthenticatedUser(event)
+    requirePermission(event, 'customers.view')
 
     return searchCustomers(query ?? '')
   })
 
   ipcMain.handle('customers:get-by-id', (event, id: number) => {
-    requireAuthenticatedUser(event)
+    requirePermission(event, 'customers.view')
 
     return getCustomerById(Number(id))
   })
 
   ipcMain.handle('customers:create', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actorId = requirePermission(event, 'customers.manage').id
 
     const customer = createCustomer(input) as any
 
@@ -67,7 +64,7 @@ export function registerCustomersIpc(): void {
   })
 
   ipcMain.handle('customers:update', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actorId = requirePermission(event, 'customers.manage').id
 
     const customer = updateCustomer(input) as any
 
@@ -108,7 +105,7 @@ export function registerCustomersIpc(): void {
   })
 
   ipcMain.handle('customers:history', (event, customerId: number) => {
-    requireAuthenticatedUser(event)
+    requirePermission(event, 'customers.view')
 
     return getCustomerHistory(Number(customerId))
   })
@@ -134,7 +131,7 @@ export function registerCustomersIpc(): void {
   })
 
   ipcMain.handle('customers:record-payment', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actorId = requirePermission(event, 'customers.payments').id
 
     const result = recordCustomerPayment({
       ...input,
@@ -160,7 +157,7 @@ export function registerCustomersIpc(): void {
 
   ipcMain.handle('customers:cancel-payment', (event, input) => {
     try {
-      const actor = requireAuthenticatedUser(event)
+      const actor = requirePermission(event, 'customers.payments')
 
       const actorId = actor.id
 
@@ -227,7 +224,7 @@ export function registerCustomersIpc(): void {
 
   ipcMain.handle('customers:update-payment', (event, input) => {
     try {
-      const actor = requireAuthenticatedUser(event)
+      const actor = requirePermission(event, 'customers.payments')
 
       const actorId = actor.id
 
@@ -301,7 +298,7 @@ export function registerCustomersIpc(): void {
   })
 
   ipcMain.handle('customers:statement', (event, customerId: number) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actorId = requirePermission(event, 'customers.payments').id
 
     return getCustomerStatement(Number(customerId), actorId)
   })

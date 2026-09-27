@@ -7,6 +7,7 @@ export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
 
   user_created: 'إضافة مستخدم',
   user_updated: 'تعديل مستخدم',
+  user_permissions_updated: 'تعديل صلاحيات مستخدم',
   user_activated: 'تفعيل مستخدم',
   user_deactivated: 'تعطيل مستخدم',
   user_password_reset: 'تغيير كلمة مرور',

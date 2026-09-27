@@ -5,20 +5,17 @@ import {
   getReportsSummary,
 } from '../database/repositories/reports.repo'
 
-import {
-  requireAuthenticatedAdmin,
-  requireAuthenticatedUser,
-} from '../auth-session'
+import { requirePermission } from '../auth-session'
 
 export function registerReportsIpc(): void {
   ipcMain.handle('reports:summary', (event, input) => {
-    requireAuthenticatedAdmin(event)
+    requirePermission(event, 'reports.view')
 
     return getReportsSummary(input || {})
   })
 
   ipcMain.handle('reports:cashier-dashboard', (event) => {
-    const user = requireAuthenticatedUser(event)
+    const user = requirePermission(event, 'dashboard.view')
 
     return getCashierDashboardSummary({
       user_id: user.id,

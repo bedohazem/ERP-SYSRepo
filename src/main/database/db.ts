@@ -2068,6 +2068,42 @@ export function getDb(): Database.Database {
           ).run()
         },
       },
+      {
+        version: 5,
+        name: 'user-custom-permissions',
+
+        up: () => {
+          db.exec(`
+            CREATE TABLE IF NOT EXISTS
+              user_permissions (
+                user_id INTEGER NOT NULL,
+
+                permission TEXT NOT NULL,
+
+                allowed INTEGER NOT NULL
+                  CHECK (
+                    allowed IN (0, 1)
+                  ),
+
+                updated_at TEXT NOT NULL
+                  DEFAULT CURRENT_TIMESTAMP,
+
+                PRIMARY KEY (
+                  user_id,
+                  permission
+                ),
+
+                FOREIGN KEY (user_id)
+                  REFERENCES users(id)
+                  ON DELETE CASCADE
+              );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_user_permissions_user_id
+            ON user_permissions(user_id);
+          `)
+        },
+      },
     ])
 
     seedTestAdminUser(db)
@@ -2136,7 +2172,7 @@ export function resetDatabaseData(): void {
       DELETE FROM product_variants;
       DELETE FROM products;
       DELETE FROM categories;
-
+      DELETE FROM user_permissions;
       DELETE FROM users;
 
       DELETE FROM sqlite_sequence;

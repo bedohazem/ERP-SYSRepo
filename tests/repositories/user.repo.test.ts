@@ -8,6 +8,9 @@ import {
   resetUserPassword,
   setUserActive,
   updateUser,
+  getEffectiveUserPermissions,
+  getUserPermissionSettings,
+  setUserPermissions,
   upgradeUserPasswordHash,
 } from '../../src/main/database/repositories/user.repo'
 
@@ -366,5 +369,124 @@ describe('user repository', () => {
     expect((secondPage.rows[0] as any).id).toBe(third.id)
     expect((secondPage.rows[0] as any).password).toBeUndefined()
     expect(secondPage.offset).toBe(2)
+  })
+
+  it('gives cashiers the legacy default permissions', () => {
+    const user = createUser(
+      'Permission Cashier',
+      'permission_cashier',
+      '1234',
+      'cashier',
+    )
+
+    const permissions = getEffectiveUserPermissions(user.id)
+
+    expect(permissions).toContain('sales.use')
+
+    expect(permissions).toContain('sales.history')
+
+    expect(permissions).toContain('customers.manage')
+
+    expect(permissions).toContain('stock_count.count')
+
+    expect(permissions).not.toContain('purchases.manage')
+
+    expect(permissions).not.toContain('reports.view')
+  })
+
+  it('applies per-user permission overrides', () => {
+    const user = createUser(
+      'Custom Cashier',
+      'custom_cashier',
+      '1234',
+      'cashier',
+    )
+
+    const current = getEffectiveUserPermissions(user.id)
+
+    const next = current.filter(
+      (permission) => permission !== 'expenses.manage',
+    )
+
+    next.push('reports.view')
+
+    const settings = setUserPermissions(user.id, next)
+
+    expect(settings.effective_permissions).toContain('reports.view')
+
+    expect(settings.effective_permissions).not.toContain('expenses.manage')
+  })
+
+  it('keeps admins on full immutable permissions', () => {
+    const admin = findUserByUsername('admin')!
+
+    const permissions = getEffectiveUserPermissions(admin.id)
+
+    expect(permissions).toContain('purchases.manage')
+
+    expect(permissions).toContain('reports.view')
+
+    expect(() => setUserPermissions(admin.id, [])).toThrow(
+      'صلاحيات مدير النظام كاملة وثابتة',
+    )
+  })
+
+  it('clears custom overrides when role changes', () => {
+    createUser('Second Admin', 'permission_admin_2', '1234', 'admin')
+
+    const user = createUser(
+      'Role Change Cashier',
+      'role_change_cashier',
+      '1234',
+      'cashier',
+    )
+
+    setUserPermissions(user.id, [
+      ...getEffectiveUserPermissions(user.id),
+      'reports.view',
+    ])
+
+    expect(getUserPermissionSettings(user.id).overrides.length).toBeGreaterThan(
+      0,
+    )
+
+    updateUser({
+      id: user.id,
+
+      name: 'Role Change Cashier',
+
+      username: 'role_change_cashier',
+
+      role: 'admin',
+
+      is_active: 1,
+    })
+
+    expect(getUserPermissionSettings(user.id).overrides).toHaveLength(0)
+  })
+
+  it('adds permission dependencies and always preserves dashboard access', () => {
+    const user = createUser(
+      'Permission Dependency User',
+      'permission_dependency',
+      '1234',
+      'cashier',
+    )
+
+    let settings = setUserPermissions(user.id, ['products.manage'])
+
+    expect(settings.effective_permissions).toContain('products.manage')
+
+    expect(settings.effective_permissions).toContain('costs.view')
+
+    expect(settings.effective_permissions).toContain('dashboard.view')
+
+    settings = setUserPermissions(user.id, ['activity.view'])
+
+    expect(settings.effective_permissions).toContain('activity.view')
+
+    expect(settings.effective_permissions).toContain('costs.view')
+
+    expect(settings.effective_permissions).toContain('dashboard.view')
   })
 })

@@ -3,6 +3,9 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth.store'
 import { useAppStore } from '../../store/app.store'
 import ShiftHeaderControl from '../shifts/ShiftHeaderControl'
+import type { PermissionKey } from '../../../shared/permissions'
+
+import { hasUserPermission } from '../../utils/permissions'
 
 type AppTheme = 'dark' | 'light'
 
@@ -24,7 +27,10 @@ type MenuItem = {
   label: string
   icon: string
   title: string
+
   roles?: Role[]
+
+  permission?: PermissionKey
 }
 
 const menuItems: MenuItem[] = [
@@ -33,78 +39,82 @@ const menuItems: MenuItem[] = [
     label: 'الرئيسية',
     icon: '🏠',
     title: 'الرئيسية',
-    roles: ['admin', 'cashier'],
+    permission: 'dashboard.view',
   },
   {
     to: '/sales',
     label: 'المبيعات',
     icon: '🧾',
     title: 'المبيعات',
-    roles: ['admin', 'cashier'],
+    permission: 'sales.use',
   },
   {
     to: '/invoices',
     label: 'سجل الفواتير',
     icon: '📄',
     title: 'سجل الفواتير',
-    roles: ['admin', 'cashier'],
+    permission: 'sales.history',
   },
   {
     to: '/products',
     label: 'المنتجات',
     icon: '👕',
     title: 'المنتجات',
-    roles: ['admin'],
+    permission: 'products.manage',
   },
   {
     to: '/promotions',
     label: 'العروض',
     icon: '🎁',
     title: 'العروض والخصومات',
-    roles: ['admin'],
+    permission: 'promotions.manage',
   },
   {
     to: '/inventory',
     label: 'المخزون',
     icon: '📦',
     title: 'المخزون',
-    roles: ['admin'],
+    permission: 'inventory.view',
   },
   {
     to: '/stock-count',
     label: 'الجرد',
     icon: '🧮',
     title: 'الجرد',
-    roles: ['admin', 'cashier'],
+    permission: 'stock_count.view',
   },
   {
     to: '/customers',
     label: 'العملاء',
     icon: '👤',
     title: 'العملاء',
-    roles: ['admin', 'cashier'],
+    permission: 'customers.view',
   },
   {
     to: '/suppliers',
     label: 'الموردين',
     icon: '🚚',
     title: 'الموردين',
-    roles: ['admin'],
+    permission: 'suppliers.manage',
   },
   {
     to: '/purchases',
     label: 'فواتير الشراء',
     icon: '🛒',
     title: 'فواتير الشراء',
-    roles: ['admin'],
+    permission: 'purchases.manage',
   },
   {
     to: '/purchase-history',
     label: 'سجل الشراء',
     icon: '📑',
     title: 'سجل الشراء',
-    roles: ['admin'],
+    permission: 'purchases.manage',
   },
+
+  /*
+   * Users تفضل True Admin Only.
+   */
   {
     to: '/users',
     label: 'المستخدمين',
@@ -112,48 +122,53 @@ const menuItems: MenuItem[] = [
     title: 'المستخدمين',
     roles: ['admin'],
   },
+
   {
     to: '/reports',
     label: 'التقارير',
     icon: '📊',
     title: 'التقارير',
-    roles: ['admin'],
+    permission: 'reports.view',
   },
   {
     to: '/liabilities',
     label: 'الالتزامات',
     icon: '📌',
     title: 'التزامات المحل',
-    roles: ['admin'],
+    permission: 'liabilities.manage',
   },
   {
     to: '/expenses',
     label: 'المصروفات',
     icon: '💳',
     title: 'المصروفات',
-    roles: ['admin', 'cashier'],
+    permission: 'expenses.view',
   },
   {
     to: '/cash',
     label: 'الخزنة',
     icon: '💵',
     title: 'الخزنة',
-    roles: ['admin'],
+    permission: 'cash.manage',
   },
   {
     to: '/shifts',
     label: 'إدارة الشفتات',
     icon: '🕒',
     title: 'إدارة الشفتات',
-    roles: ['admin'],
+    permission: 'shifts.manage',
   },
   {
     to: '/activity',
     label: 'سجل العمليات',
     icon: '🕘',
     title: 'سجل العمليات',
-    roles: ['admin'],
+    permission: 'activity.view',
   },
+
+  /*
+   * Settings True Admin Only.
+   */
   {
     to: '/settings',
     label: 'الإعدادات',
@@ -161,12 +176,13 @@ const menuItems: MenuItem[] = [
     title: 'الإعدادات',
     roles: ['admin'],
   },
+
   {
     to: '/about',
     label: 'الدعم',
     icon: 'ℹ️',
     title: 'عن البرنامج والدعم',
-    roles: ['admin', 'cashier'],
+    permission: 'about.view',
   },
 ]
 
@@ -269,6 +285,7 @@ export default function AppShell({
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
   const lockSession = useAuthStore((s) => s.lock)
+  const setPermissions = useAuthStore((s) => s.setPermissions)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -338,6 +355,9 @@ export default function AppShell({
           if (!result.success) {
             void lockNow()
           }
+          if (Array.isArray(result.permissions)) {
+            setPermissions(result.permissions)
+          }
         })
         .catch(() => {
           void lockNow()
@@ -371,7 +391,7 @@ export default function AppShell({
 
       window.removeEventListener('focus', handleActivity)
     }
-  }, [user?.id, lockSession, navigate])
+  }, [user?.id, lockSession, navigate, setPermissions])
 
   function togglePageSticky() {
     setPageStickyEnabled((current) => {
@@ -428,9 +448,14 @@ export default function AppShell({
 
   const userRole: Role = user?.role === 'admin' ? 'admin' : 'cashier'
 
-  const visibleMenuItems = menuItems.filter((item) =>
-    item.roles ? item.roles.includes(userRole) : true,
-  )
+  const visibleMenuItems = menuItems.filter((item) => {
+    const roleAllowed = !item.roles || item.roles.includes(userRole)
+
+    const permissionAllowed =
+      !item.permission || hasUserPermission(user, item.permission)
+
+    return roleAllowed && permissionAllowed
+  })
 
   const effectiveSidebarOpen = isMobile ? true : sidebarOpen
 
@@ -630,11 +655,14 @@ export default function AppShell({
               gap: '10px',
             }}
           >
-            <ShiftHeaderControl
-              user={user}
-              isLight={isLight}
-              isMobile={isMobile}
-            />
+            {(hasUserPermission(user, 'shifts.operate_own') ||
+              hasUserPermission(user, 'shifts.manage')) && (
+              <ShiftHeaderControl
+                user={user}
+                isLight={isLight}
+                isMobile={isMobile}
+              />
+            )}
             <button
               type="button"
               onClick={togglePageSticky}

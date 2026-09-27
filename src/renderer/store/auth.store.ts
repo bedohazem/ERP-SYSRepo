@@ -1,10 +1,12 @@
 import { create } from 'zustand'
+import type { PermissionKey } from '../../shared/permissions'
 
 type User = {
   id: number
   name: string
   username: string
   role: string
+  permissions?: PermissionKey[]
 }
 
 type AuthState = {
@@ -19,6 +21,7 @@ type AuthState = {
   lock: () => Promise<void>
 
   clearLocalSession: () => void
+  setPermissions: (permissions: PermissionKey[]) => void
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -32,6 +35,17 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       isAuthenticated: true,
     }),
+
+  setPermissions: (permissions) =>
+    set((state) => ({
+      user: state.user
+        ? {
+            ...state.user,
+
+            permissions: [...permissions],
+          }
+        : null,
+    })),
 
   logout: async () => {
     const result = await window.api.logout()

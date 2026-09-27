@@ -5,6 +5,7 @@ import ForcedPasswordChange from './ForcedPasswordChange'
 import { useAuthStore } from '../../store/auth.store'
 import { useEffect, useRef, useState } from 'react'
 import AdminPasswordRecovery from './AdminPasswordRecovery'
+import type { PermissionKey } from '../../../shared/permissions'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
@@ -32,6 +33,7 @@ export default function LoginPage() {
     name: string
     username: string
     role: string
+    permissions?: PermissionKey[]
   } | null>(null)
 
   const [showAdminRecovery, setShowAdminRecovery] = useState(false)

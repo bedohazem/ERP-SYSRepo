@@ -23,16 +23,26 @@ import ActivityLogPage from './pages/Activity/ActivityLogPage'
 import StockCountPage from './pages/StockCount/StockCountPage'
 import LiabilitiesPage from './pages/Liabilities/LiabilitiesPage'
 import AboutPage from './pages/About/AboutPage'
+import type { PermissionKey } from '../shared/permissions'
 
 type Role = 'admin' | 'cashier'
 
 function withShell(
   title: string,
+
   element: React.ReactNode,
-  allowedRoles?: Role[],
+
+  options?: {
+    allowedRoles?: Role[]
+
+    permission?: PermissionKey
+  },
 ) {
   return (
-    <RouterGuard allowedRoles={allowedRoles}>
+    <RouterGuard
+      allowedRoles={options?.allowedRoles}
+      requiredPermission={options?.permission}
+    >
       <AppShell title={title}>{element}</AppShell>
     </RouterGuard>
   )
@@ -45,86 +55,122 @@ export const router = createHashRouter([
   },
   {
     path: '/dashboard',
-    element: withShell('الرئيسية', <DashboardPage />, ['admin', 'cashier']),
+    element: withShell('الرئيسية', <DashboardPage />, {
+      permission: 'dashboard.view',
+    }),
   },
   {
     path: '/products',
-    element: withShell('المنتجات', <ProductsPage />, ['admin']),
+    element: withShell('المنتجات', <ProductsPage />, {
+      permission: 'products.manage',
+    }),
   },
   {
     path: '/promotions',
-
-    element: withShell('العروض', <PromotionsPage />, ['admin']),
+    element: withShell('العروض', <PromotionsPage />, {
+      permission: 'promotions.manage',
+    }),
   },
   {
     path: '/inventory',
-    element: withShell('المخزون', <InventoryPage />, ['admin']),
+    element: withShell('المخزون', <InventoryPage />, {
+      permission: 'inventory.view',
+    }),
   },
   {
     path: '/stock-count',
-    element: withShell('الجرد', <StockCountPage />, ['admin', 'cashier']),
+    element: withShell('الجرد', <StockCountPage />, {
+      permission: 'stock_count.view',
+    }),
   },
   {
     path: '/sales',
-    element: withShell('المبيعات', <SalesPage />, ['admin', 'cashier']),
+    element: withShell('المبيعات', <SalesPage />, {
+      permission: 'sales.use',
+    }),
   },
   {
     path: '/invoices',
-    element: withShell('سجل الفواتير', <InvoicesPage />, ['admin', 'cashier']),
+    element: withShell('سجل الفواتير', <InvoicesPage />, {
+      permission: 'sales.history',
+    }),
   },
   {
     path: '/customers',
-    element: withShell('العملاء', <CustomersPage />, ['admin', 'cashier']),
+    element: withShell('العملاء', <CustomersPage />, {
+      permission: 'customers.view',
+    }),
   },
   {
     path: '/suppliers',
-    element: withShell('الموردين', <SuppliersPage />, ['admin']),
+    element: withShell('الموردين', <SuppliersPage />, {
+      permission: 'suppliers.manage',
+    }),
   },
   {
     path: '/purchases',
-    element: withShell('فواتير الشراء', <PurchasesPage />, ['admin']),
+    element: withShell('فواتير الشراء', <PurchasesPage />, {
+      permission: 'purchases.manage',
+    }),
   },
   {
     path: '/purchase-history',
-    element: withShell('سجل الشراء', <PurchaseHistoryPage />, ['admin']),
+    element: withShell('سجل الشراء', <PurchaseHistoryPage />, {
+      permission: 'purchases.manage',
+    }),
   },
   {
     path: '/reports',
-    element: withShell('التقارير', <ReportsPage />, ['admin']),
-  },
-  {
-    path: '/settings',
-    element: withShell('الإعدادات', <SettingsPage />, ['admin']),
+    element: withShell('التقارير', <ReportsPage />, {
+      permission: 'reports.view',
+    }),
   },
   {
     path: '/cash',
-    element: withShell('الخزنة', <CashPage />, ['admin']),
+    element: withShell('الخزنة', <CashPage />, {
+      permission: 'cash.manage',
+    }),
   },
   {
     path: '/shifts',
-    element: withShell('إدارة الشفتات', <ShiftManagementPage />, ['admin']),
+    element: withShell('إدارة الشفتات', <ShiftManagementPage />, {
+      permission: 'shifts.manage',
+    }),
   },
   {
     path: '/expenses',
-    element: withShell('المصروفات', <ExpensesPage />, ['admin', 'cashier']),
+    element: withShell('المصروفات', <ExpensesPage />, {
+      permission: 'expenses.view',
+    }),
   },
   {
     path: '/users',
-    element: withShell('المستخدمين', <UsersPage />, ['admin']),
+    element: withShell('المستخدمين', <UsersPage />, {
+      allowedRoles: ['admin'],
+    }),
   },
   {
     path: '/activity',
-    element: withShell('سجل العمليات', <ActivityLogPage />, ['admin']),
+    element: withShell('سجل العمليات', <ActivityLogPage />, {
+      permission: 'activity.view',
+    }),
   },
   {
     path: '/liabilities',
-    element: withShell('التزامات المحل', <LiabilitiesPage />, ['admin']),
+    element: withShell('التزامات المحل', <LiabilitiesPage />, {
+      permission: 'liabilities.manage',
+    }),
+  },
+  {
+    path: '/settings',
+    element: withShell('الإعدادات', <SettingsPage />, {
+      allowedRoles: ['admin'],
+    }),
   },
   {
     path: '/about',
-    element: withShell('عن البرنامج والدعم', <AboutPage />, [
-      'admin',
-      'cashier',
-    ]),
+    element: withShell('عن البرنامج والدعم', <AboutPage />, {
+      permission: 'about.view',
+    }),
   },
 ])

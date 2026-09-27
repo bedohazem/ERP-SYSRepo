@@ -13,6 +13,7 @@ import { logAction } from './activity-helper'
 import {
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
+  requirePermission,
 } from '../auth-session'
 
 function getErrorMessage(error: unknown) {
@@ -37,7 +38,7 @@ export function registerPromotionsIpc(): void {
      * شاشة البيع تحتاج معرفة العرض النشط،
      * لذلك Admin + Cashier.
      */
-    requireAuthenticatedUser(event)
+    requirePermission(event, 'sales.use')
 
     return getActivePromotion()
   })

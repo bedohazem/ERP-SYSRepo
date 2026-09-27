@@ -11,7 +11,7 @@ import {
   updateLiability,
   updateLiabilityPayment,
 } from '../database/repositories/liabilities.repo'
-import { requireAuthenticatedAdmin } from '../auth-session'
+import { requireAuthenticatedAdmin, requirePermission } from '../auth-session'
 import { requireAdminPassword } from './permission-helper'
 
 function getErrorMessage(error: unknown) {
@@ -20,20 +20,20 @@ function getErrorMessage(error: unknown) {
 
 export function registerLiabilitiesIpc(): void {
   ipcMain.handle('liabilities:list', (event, input) => {
-    requireAuthenticatedAdmin(event)
+    requirePermission(event, 'liabilities.manage')
 
     return listLiabilities(input)
   })
 
   ipcMain.handle('liabilities:list-page', (event, input) => {
-    requireAuthenticatedAdmin(event)
+    requirePermission(event, 'liabilities.manage')
 
     return listLiabilitiesPage(input)
   })
 
   ipcMain.handle('liabilities:create', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requirePermission(event, 'liabilities.manage').id
 
       return createLiability({
         ...input,
@@ -84,7 +84,7 @@ export function registerLiabilitiesIpc(): void {
 
   ipcMain.handle('liabilities:record-payment', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requirePermission(event, 'liabilities.manage').id
 
       return recordLiabilityPayment({
         ...input,
@@ -99,7 +99,7 @@ export function registerLiabilitiesIpc(): void {
   })
 
   ipcMain.handle('liabilities:statement', (event, liabilityId: number) => {
-    requireAuthenticatedAdmin(event)
+    requirePermission(event, 'liabilities.manage')
 
     return getLiabilityStatement(liabilityId)
   })
@@ -120,7 +120,7 @@ export function registerLiabilitiesIpc(): void {
   })
 
   ipcMain.handle('liabilities:summary', (event, input) => {
-    requireAuthenticatedAdmin(event)
+    requirePermission(event, 'liabilities.manage')
 
     return getLiabilitiesSummary(input)
   })

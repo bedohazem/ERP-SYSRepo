@@ -1,9 +1,6 @@
 import { ipcMain } from 'electron'
 import { logAction } from './activity-helper'
-import {
-  requireAuthenticatedAdmin,
-  requireAuthenticatedUser,
-} from '../auth-session'
+import { requireAuthenticatedAdmin, requirePermission } from '../auth-session'
 import {
   approveStockCountSession,
   cancelStockCountSession,
@@ -69,7 +66,7 @@ function getCashierSessionDetailsView(details: any) {
 
 export function registerStockCountIpc(): void {
   ipcMain.handle('stock-count:list', (event) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'stock_count.view')
 
     const sessions = listStockCountSessions()
 
@@ -81,7 +78,7 @@ export function registerStockCountIpc(): void {
   })
 
   ipcMain.handle('stock-count:get', (event, sessionId: number) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'stock_count.view')
 
     const details = getStockCountSession(Number(sessionId))
 
@@ -126,7 +123,7 @@ export function registerStockCountIpc(): void {
 
   ipcMain.handle('stock-count:update-item', (event, input) => {
     try {
-      const actorId = requireAuthenticatedUser(event).id
+      const actorId = requirePermission(event, 'stock_count.count').id
 
       const result = updateStockCountItem(input)
 
@@ -153,7 +150,7 @@ export function registerStockCountIpc(): void {
 
   ipcMain.handle('stock-count:scan', (event, input) => {
     try {
-      const actorId = requireAuthenticatedUser(event).id
+      const actorId = requirePermission(event, 'stock_count.count').id
 
       const result = scanStockCountBarcode(input)
 

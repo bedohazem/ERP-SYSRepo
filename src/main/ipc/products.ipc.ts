@@ -3,6 +3,7 @@ import { logAction } from './activity-helper'
 import {
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
+  requirePermission,
 } from '../auth-session'
 import {
   createProduct,
@@ -19,6 +20,7 @@ import {
   listProductsPage,
   toggleCategoryActive,
 } from '../database/repositories/product.repo'
+import { userHasPermission } from '../database/repositories/user.repo'
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'حدث خطأ غير متوقع'
@@ -35,7 +37,9 @@ export function registerProductsIpc(): void {
        * لكن لا يحتاج رؤية التصنيفات المعطلة.
        */
       const includeInactive =
-        actor.role === 'admin' ? Boolean(input?.includeInactive) : false
+        actor.role === 'admin' || userHasPermission(actor.id, 'products.manage')
+          ? Boolean(input?.includeInactive)
+          : false
 
       return getCategories(includeInactive)
     },
@@ -43,7 +47,7 @@ export function registerProductsIpc(): void {
 
   ipcMain.handle('products:create-category', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requirePermission(event, 'products.manage').id
       const result = createCategory(input)
 
       logAction({
@@ -65,7 +69,7 @@ export function registerProductsIpc(): void {
 
   ipcMain.handle('products:update-category', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requirePermission(event, 'products.manage').id
       const result = updateCategory(input)
 
       logAction({
@@ -89,7 +93,7 @@ export function registerProductsIpc(): void {
     'products:toggle-category',
     (event, categoryId: number, isActive: number, actorId?: number) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requirePermission(event, 'products.manage').id
         const result = toggleCategoryActive(categoryId, isActive)
 
         logAction({
@@ -120,7 +124,7 @@ export function registerProductsIpc(): void {
         categoryId?: number | string | null
       },
     ) => {
-      requireAuthenticatedAdmin(event)
+      requirePermission(event, 'products.manage')
 
       return getProducts(
         payload?.search ?? '',
@@ -131,7 +135,7 @@ export function registerProductsIpc(): void {
   )
 
   ipcMain.handle('products:list-page', (event, input) => {
-    requireAuthenticatedAdmin(event)
+    requirePermission(event, 'products.manage')
 
     return listProductsPage(input)
   })
@@ -145,7 +149,7 @@ export function registerProductsIpc(): void {
         includeInactive?: boolean
       },
     ) => {
-      requireAuthenticatedAdmin(event)
+      requirePermission(event, 'products.manage')
 
       return getProductVariants(
         payload.productId,
@@ -156,7 +160,7 @@ export function registerProductsIpc(): void {
 
   ipcMain.handle('products:create', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requirePermission(event, 'products.manage').id
 
       const result = createProduct(input)
 
@@ -182,7 +186,7 @@ export function registerProductsIpc(): void {
 
   ipcMain.handle('products:add-variant', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requirePermission(event, 'products.manage').id
 
       const result = addProductVariant(input)
 
@@ -215,7 +219,7 @@ export function registerProductsIpc(): void {
 
   ipcMain.handle('products:update', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requirePermission(event, 'products.manage').id
 
       const result = updateProduct(input)
 
@@ -241,8 +245,7 @@ export function registerProductsIpc(): void {
 
   ipcMain.handle('products:update-variant', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
-
+      const actorId = requirePermission(event, 'products.manage').id
       const result = updateVariant(input)
 
       logAction({
@@ -274,7 +277,7 @@ export function registerProductsIpc(): void {
     'products:toggle-active',
     (event, productId: number, isActive: number, actorId?: number) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requirePermission(event, 'products.manage').id
 
         const result = toggleProductActive(productId, isActive)
 
@@ -300,7 +303,7 @@ export function registerProductsIpc(): void {
     'products:toggle-variant-active',
     (event, variantId: number, isActive: number, actorId?: number) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requirePermission(event, 'products.manage').id
 
         const result = toggleVariantActive(variantId, isActive)
 

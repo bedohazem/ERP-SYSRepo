@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/auth.store'
 
 import { getPasswordPolicyError } from '../../../shared/password-policy'
+import type { PermissionKey } from '../../../shared/permissions'
 
 type Props = {
   user: {
@@ -12,6 +13,7 @@ type Props = {
     name: string
     username: string
     role: string
+    permissions?: PermissionKey[]
   }
 
   appTheme: 'dark' | 'light'

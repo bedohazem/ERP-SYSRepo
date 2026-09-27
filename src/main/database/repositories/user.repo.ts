@@ -1,5 +1,12 @@
 import { getDb } from '../db'
 import { hashPassword } from '../../security/password'
+import {
+  getRoleDefaultPermissions,
+  isPermissionKey,
+  PERMISSION_KEYS,
+  normalizePermissions,
+  type PermissionKey,
+} from '../../../shared/permissions'
 
 export type UserRow = {
   id: number
@@ -29,6 +36,185 @@ function toPublicUser(user: UserRow): PublicUserRow {
 
 function normalizeRole(role?: string) {
   return role === 'admin' ? 'admin' : 'cashier'
+}
+
+type UserPermissionOverrideRow = {
+  permission: string
+  allowed: number
+}
+
+export function getEffectiveUserPermissions(
+  userIdInput: number,
+): PermissionKey[] {
+  const userId = Number(userIdInput)
+
+  const user = getUserByIdInternal(userId)
+
+  if (!user || Number(user.is_active) !== 1) {
+    return []
+  }
+
+  if (user.role === 'admin') {
+    return [...PERMISSION_KEYS]
+  }
+
+  const effective = new Set<PermissionKey>(getRoleDefaultPermissions(user.role))
+
+  const overrides = getDb()
+    .prepare(
+      `
+      SELECT
+        permission,
+        allowed
+
+      FROM user_permissions
+
+      WHERE user_id = ?
+      `,
+    )
+    .all(userId) as UserPermissionOverrideRow[]
+
+  for (const row of overrides) {
+    if (!isPermissionKey(row.permission)) {
+      continue
+    }
+
+    if (Number(row.allowed) === 1) {
+      effective.add(row.permission)
+    } else {
+      effective.delete(row.permission)
+    }
+  }
+
+  return [...effective]
+}
+
+export function userHasPermission(userId: number, permission: PermissionKey) {
+  return getEffectiveUserPermissions(userId).includes(permission)
+}
+
+export function getUserPermissionSettings(userIdInput: number) {
+  const userId = Number(userIdInput)
+
+  const user = getUserByIdInternal(userId)
+
+  if (!user) {
+    throw new Error('المستخدم غير موجود')
+  }
+
+  const overrides = getDb()
+    .prepare(
+      `
+      SELECT
+        permission,
+        allowed
+
+      FROM user_permissions
+
+      WHERE user_id = ?
+
+      ORDER BY permission ASC
+      `,
+    )
+    .all(userId) as UserPermissionOverrideRow[]
+
+  return {
+    user_id: user.id,
+
+    role: user.role,
+
+    is_active: Number(user.is_active),
+
+    customizable: user.role !== 'admin',
+
+    default_permissions: getRoleDefaultPermissions(user.role),
+
+    overrides: overrides.filter((row) => isPermissionKey(row.permission)),
+
+    effective_permissions: getEffectiveUserPermissions(user.id),
+  }
+}
+
+export function setUserPermissions(
+  userIdInput: number,
+  permissionsInput: readonly string[],
+) {
+  const db = getDb()
+
+  const userId = Number(userIdInput)
+
+  const user = getUserByIdInternal(userId)
+
+  if (!user) {
+    throw new Error('المستخدم غير موجود')
+  }
+
+  if (user.role === 'admin') {
+    throw new Error('صلاحيات مدير النظام كاملة وثابتة')
+  }
+
+  const rawPermissions = Array.isArray(permissionsInput) ? permissionsInput : []
+
+  const invalidPermission = rawPermissions.find(
+    (permission) => !isPermissionKey(String(permission)),
+  )
+
+  if (invalidPermission) {
+    throw new Error(`صلاحية غير معروفة: ${invalidPermission}`)
+  }
+
+  const desired = new Set<PermissionKey>(normalizePermissions(rawPermissions))
+
+  const defaults = new Set<PermissionKey>(getRoleDefaultPermissions(user.role))
+
+  const tx = db.transaction(() => {
+    db.prepare(
+      `
+      DELETE FROM user_permissions
+
+      WHERE user_id = ?
+      `,
+    ).run(userId)
+
+    const insert = db.prepare(
+      `
+        INSERT INTO user_permissions (
+          user_id,
+          permission,
+          allowed
+        )
+
+        VALUES (?, ?, ?)
+        `,
+    )
+
+    for (const permission of PERMISSION_KEYS) {
+      const desiredAllowed = desired.has(permission)
+
+      const defaultAllowed = defaults.has(permission)
+
+      /*
+       * نخزن Overrides فقط.
+       * لو القيمة زي Default Role
+       * مش محتاجين Row.
+       */
+      if (desiredAllowed === defaultAllowed) {
+        continue
+      }
+
+      insert.run(
+        userId,
+
+        permission,
+
+        desiredAllowed ? 1 : 0,
+      )
+    }
+  })
+
+  tx()
+
+  return getUserPermissionSettings(userId)
 }
 
 function getUserByIdInternal(id: number): UserRow | undefined {
@@ -308,6 +494,16 @@ export function updateUser(input: UpdateUserInput): PublicUserRow {
     WHERE id = ?
     `,
   ).run(cleanName, cleanUsername, cleanRole, nextActive, input.id)
+
+  if (cleanRole !== current.role) {
+    db.prepare(
+      `
+      DELETE FROM user_permissions
+
+      WHERE user_id = ?
+      `,
+    ).run(input.id)
+  }
 
   const updated = getUserByIdInternal(input.id)
 

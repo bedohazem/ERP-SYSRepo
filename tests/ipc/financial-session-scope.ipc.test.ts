@@ -17,6 +17,8 @@ import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
 import {
   createUser,
   findUserByUsername,
+  getEffectiveUserPermissions,
+  setUserPermissions,
 } from '../../src/main/database/repositories/user.repo'
 
 import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
@@ -233,7 +235,7 @@ describe('financial IPC session scope', () => {
     startAuthSession(event, cashier.id)
 
     await expect(invoke(event, 'reports:summary', {})).rejects.toThrow(
-      'هذه العملية متاحة لمدير النظام فقط',
+      'غير مصرح لك بتنفيذ هذه العملية',
     )
 
     /*
@@ -258,7 +260,7 @@ describe('financial IPC session scope', () => {
     expect('cashTotalCapital' in result).toBe(false)
   })
 
-  it('blocks cashiers from admin cash operations', async () => {
+  it('blocks cashiers from cash management without permission', async () => {
     const cashier = createUser(
       'Blocked Cashier',
       'blocked_cashier',
@@ -271,7 +273,7 @@ describe('financial IPC session scope', () => {
     startAuthSession(event, cashier.id)
 
     await expect(invoke(event, 'cash:list', {})).rejects.toThrow(
-      'هذه العملية متاحة لمدير النظام فقط',
+      'غير مصرح لك بتنفيذ هذه العملية',
     )
 
     await expect(
@@ -282,7 +284,7 @@ describe('financial IPC session scope', () => {
 
         payment_method: 'store_cash',
       }),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
 
     await expect(
       invoke(event, 'cash:transfer', {
@@ -292,10 +294,10 @@ describe('financial IPC session scope', () => {
 
         amount: 50,
       }),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
   })
 
-  it('blocks cashiers from seeing expected shift balances', async () => {
+  it('blocks cashiers from shift management details without permission', async () => {
     const cashier = createUser(
       'Blind Cashier',
       'blind_cashier',
@@ -314,14 +316,26 @@ describe('financial IPC session scope', () => {
     startAuthSession(cashierClient.event, cashier.id)
 
     await expect(
-      invoke(cashierClient.event, 'cash-shifts:preview', shift.id),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+      invoke(
+        cashierClient.event,
+
+        'cash-shifts:preview',
+
+        shift.id,
+      ),
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
 
     await expect(
-      invoke(cashierClient.event, 'cash-shifts:day-summary', {
-        business_date: '2026-09-16',
-      }),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+      invoke(
+        cashierClient.event,
+
+        'cash-shifts:day-summary',
+
+        {
+          business_date: '2026-09-16',
+        },
+      ),
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
   })
 
   it('redacts reconciliation targets from cashier shift responses', async () => {
@@ -415,5 +429,72 @@ describe('financial IPC session scope', () => {
     expect(preview.shift_id).toBe(shift.id)
 
     expect(preview.expected_closing_amount).toBe(250)
+  })
+
+  it('keeps store_safe hidden from non-admin users even with cash management permission', async () => {
+    const admin = findUserByUsername('admin')!
+
+    createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 500,
+      payment_method: 'store_safe',
+      created_by: admin.id,
+    })
+
+    createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 100,
+      payment_method: 'owner_cash',
+      created_by: admin.id,
+    })
+
+    const cashier = createUser(
+      'Cash Manager',
+      'cash_manager',
+      '5678',
+      'cashier',
+    )
+
+    setUserPermissions(cashier.id, [
+      ...getEffectiveUserPermissions(cashier.id),
+
+      'cash.manage',
+    ])
+
+    const { event } = makeClient()
+
+    startAuthSession(event, cashier.id)
+
+    const movements = await invoke(event, 'cash:list', {})
+
+    expect(
+      movements.rows.some((row: any) => row.payment_method === 'store_safe'),
+    ).toBe(false)
+
+    expect(
+      movements.rows.some((row: any) => row.payment_method === 'owner_cash'),
+    ).toBe(true)
+
+    const summary = await invoke(event, 'cash:summary', {})
+
+    expect(Number(summary.balance)).toBe(100)
+
+    const safeSummary = await invoke(event, 'cash:summary', {
+      payment_method: 'store_safe',
+    })
+
+    expect(Number(safeSummary.balance)).toBe(0)
+
+    await expect(
+      invoke(event, 'cash:create-movement', {
+        type: 'deposit',
+
+        amount: 50,
+
+        payment_method: 'store_safe',
+      }),
+    ).rejects.toThrow('الخزنة الآمنة متاحة لمدير النظام فقط')
   })
 })

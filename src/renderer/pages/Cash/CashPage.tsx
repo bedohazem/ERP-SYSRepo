@@ -95,6 +95,9 @@ const CASH_SUMMARY_ACCOUNT_OPTIONS = [
 export default function CashPage() {
   const currentUser = useAuthStore((s) => s.user)
   const isAdmin = currentUser?.role === 'admin'
+  const cashSummaryAccountOptions = isAdmin
+    ? CASH_SUMMARY_ACCOUNT_OPTIONS
+    : CASH_ACCOUNT_OPTIONS
   const [summary, setSummary] = useState<CashSummary | null>(null)
   const [movements, setMovements] = useState<CashMovement[]>([])
   const [movementsTotal, setMovementsTotal] = useState(0)
@@ -172,6 +175,10 @@ export default function CashPage() {
   const [transferring, setTransferring] = useState(false)
 
   function canManageCashMovement(item: CashMovement) {
+    if (!isAdmin) {
+      return false
+    }
+
     if (item.cancelled_at || Number(item.replacement_movement_id || 0) > 0) {
       return false
     }
@@ -223,7 +230,7 @@ export default function CashPage() {
       })
 
       const accountSummaryRows = await Promise.all(
-        CASH_SUMMARY_ACCOUNT_OPTIONS.map(async (option) => {
+        cashSummaryAccountOptions.map(async (option) => {
           const accountSummary = await window.api.getCashSummary({
             payment_method: option.value,
           })

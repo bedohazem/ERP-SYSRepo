@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { logAction } from './activity-helper'
-import { requireAuthenticatedAdmin } from '../auth-session'
+import { requireAuthenticatedAdmin, requirePermission } from '../auth-session'
 import {
   createPurchaseInvoice,
   getPurchaseInvoice,
@@ -23,7 +23,7 @@ import { requireAdminPassword } from './permission-helper'
 
 export function registerPurchasesIpc(): void {
   ipcMain.handle('purchases:create', (event, input) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requirePermission(event, 'purchases.manage').id
 
     const result = createPurchaseInvoice({
       ...input,
@@ -104,13 +104,13 @@ export function registerPurchasesIpc(): void {
   })
 
   ipcMain.handle('purchases:list', (event, input) => {
-    requireAuthenticatedAdmin(event)
+    requirePermission(event, 'purchases.manage')
 
     return listPurchaseInvoices(input)
   })
 
   ipcMain.handle('purchases:get-by-id', (event, purchaseId: number) => {
-    requireAuthenticatedAdmin(event)
+    requirePermission(event, 'purchases.manage')
 
     return getPurchaseInvoice(Number(purchaseId))
   })
@@ -151,7 +151,7 @@ export function registerPurchasesIpc(): void {
   })
 
   ipcMain.handle('purchases:returns:create', (event, input) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requirePermission(event, 'purchases.manage').id
 
     const result = createPurchaseReturn({
       ...input,
@@ -271,19 +271,19 @@ export function registerPurchasesIpc(): void {
   })
 
   ipcMain.handle('purchases:returns:list', (event, input) => {
-    requireAuthenticatedAdmin(event)
+    requirePermission(event, 'purchases.manage')
 
     return listPurchaseReturns(input)
   })
 
   ipcMain.handle('purchases:returns:get-by-id', (event, returnId: number) => {
-    requireAuthenticatedAdmin(event)
+    requirePermission(event, 'purchases.manage')
 
     return getPurchaseReturn(Number(returnId))
   })
 
   ipcMain.handle('suppliers:record-payment', (event, input) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requirePermission(event, 'purchases.manage').id
 
     const result = recordSupplierPayment({
       ...input,
@@ -435,7 +435,7 @@ export function registerPurchasesIpc(): void {
   })
 
   ipcMain.handle('suppliers:statement', (event, supplierId: number) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requirePermission(event, 'purchases.manage').id
 
     return getSupplierStatement(Number(supplierId), actorId)
   })

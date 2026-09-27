@@ -20,6 +20,8 @@ import {
 import {
   createUser,
   findUserByUsername,
+  getEffectiveUserPermissions,
+  setUserPermissions,
 } from '../../src/main/database/repositories/user.repo'
 import { registerActivityIpc } from '../../src/main/ipc/activity.ipc'
 import { startAuthSession } from '../../src/main/auth-session'
@@ -127,7 +129,7 @@ describe('domain IPC session scope', () => {
     expect(Array.isArray(result.rows)).toBe(true)
   })
 
-  it('blocks cashiers from admin-only domains', async () => {
+  it('blocks cashiers from domains without the required permissions', async () => {
     const cashier = createUser(
       'Blocked Domain Cashier',
       'blocked_domain_cashier',
@@ -140,22 +142,23 @@ describe('domain IPC session scope', () => {
     startAuthSession(event, cashier.id)
 
     await expect(invoke(event, 'suppliers:list', '')).rejects.toThrow(
-      'هذه العملية متاحة لمدير النظام فقط',
+      'غير مصرح لك بتنفيذ هذه العملية',
     )
 
     await expect(invoke(event, 'purchases:list', {})).rejects.toThrow(
-      'هذه العملية متاحة لمدير النظام فقط',
+      'غير مصرح لك بتنفيذ هذه العملية',
     )
 
     await expect(invoke(event, 'liabilities:list', {})).rejects.toThrow(
-      'هذه العملية متاحة لمدير النظام فقط',
+      'غير مصرح لك بتنفيذ هذه العملية',
     )
+
     await expect(invoke(event, 'inventory:list-page', {})).rejects.toThrow(
-      'هذه العملية متاحة لمدير النظام فقط',
+      'غير مصرح لك بتنفيذ هذه العملية',
     )
 
     await expect(invoke(event, 'inventory:movements', {})).rejects.toThrow(
-      'هذه العملية متاحة لمدير النظام فقط',
+      'غير مصرح لك بتنفيذ هذه العملية',
     )
 
     await expect(
@@ -163,10 +166,10 @@ describe('domain IPC session scope', () => {
         variant_id: 1,
         target_stock: 10,
       }),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
 
     await expect(invoke(event, 'activity:list', {})).rejects.toThrow(
-      'هذه العملية متاحة لمدير النظام فقط',
+      'غير مصرح لك بتنفيذ هذه العملية',
     )
   })
 
@@ -204,7 +207,7 @@ describe('domain IPC session scope', () => {
     expect(Number.isFinite(Number(activity.total))).toBe(true)
   })
 
-  it('blocks cashier writes to supplier and purchase domains', async () => {
+  it('blocks cashier writes without the required domain permissions', async () => {
     const cashier = createUser(
       'Write Blocked Cashier',
       'write_blocked_cashier',
@@ -220,15 +223,19 @@ describe('domain IPC session scope', () => {
       invoke(event, 'suppliers:create', {
         name: 'Unauthorized Supplier',
       }),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
 
     await expect(
       invoke(event, 'purchases:create', {
         supplier_id: 1,
         items: [],
       }),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
 
+    /*
+     * عمليات التصحيح الحساسة
+     * تظل True Admin Only.
+     */
     await expect(
       invoke(event, 'purchases:update', {
         purchase_id: 1,
@@ -415,6 +422,31 @@ describe('domain IPC session scope', () => {
 
     expect(Number(cashierReceipt.items[0].buy_price)).toBe(0)
 
+    const costCashier = createUser(
+      'Cost Permission Cashier',
+      'cost_permission_cashier',
+      '5678',
+      'cashier',
+    )
+
+    setUserPermissions(costCashier.id, [
+      ...getEffectiveUserPermissions(costCashier.id),
+
+      'costs.view',
+    ])
+
+    const costClient = makeClient()
+
+    startAuthSession(costClient.event, costCashier.id)
+
+    const allowedCostSearch = await invoke(
+      costClient.event,
+      'sales:search-variants',
+      'COST-SEC-001',
+    )
+
+    expect(Number(allowedCostSearch[0].buy_price)).toBe(120)
+
     /*
      * الـAdmin يظل يرى التكلفة الحقيقية.
      */
@@ -439,5 +471,70 @@ describe('domain IPC session scope', () => {
     )
 
     expect(Number(adminReceipt.items[0].unit_cost)).toBe(120)
+  })
+
+  it('grants admin-domain reads only when the cashier has the explicit custom permission', async () => {
+    const cashier = createUser(
+      'Custom Permission Cashier',
+      'custom_permission_cashier',
+      '5678',
+      'cashier',
+    )
+
+    const current = getEffectiveUserPermissions(cashier.id)
+
+    setUserPermissions(cashier.id, [
+      ...current,
+
+      'inventory.view',
+      'purchases.manage',
+    ])
+
+    const { event } = makeClient()
+
+    startAuthSession(event, cashier.id)
+
+    const inventory = await invoke(event, 'inventory:list-page', {})
+
+    expect(Array.isArray(inventory.rows)).toBe(true)
+
+    const purchases = await invoke(event, 'purchases:list', {})
+
+    expect(Array.isArray(purchases.rows)).toBe(true)
+
+    /*
+     * View لا تعني Adjust.
+     */
+    await expect(
+      invoke(event, 'inventory:adjust-stock', {
+        variant_id: 1,
+        target_stock: 10,
+      }),
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
+  })
+
+  it('revokes an operational permission from a cashier immediately', async () => {
+    const cashier = createUser(
+      'Restricted Sales Cashier',
+      'restricted_sales_cashier',
+      '5678',
+      'cashier',
+    )
+
+    const permissions = getEffectiveUserPermissions(cashier.id).filter(
+      (permission) => permission !== 'sales.use',
+    )
+
+    setUserPermissions(cashier.id, permissions)
+
+    const { event } = makeClient()
+
+    startAuthSession(event, cashier.id)
+
+    await expect(
+      invoke(event, 'sales:create', {
+        items: [],
+      }),
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
   })
 })

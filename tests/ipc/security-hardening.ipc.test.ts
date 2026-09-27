@@ -173,17 +173,17 @@ describe('IPC security hardening', () => {
      */
     await expect(
       invoke(client.event, 'products:list-page', {}),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
 
     await expect(invoke(client.event, 'products:list', {})).rejects.toThrow(
-      'هذه العملية متاحة لمدير النظام فقط',
+      'غير مصرح لك بتنفيذ هذه العملية',
     )
 
     await expect(
       invoke(client.event, 'products:get-variants', {
         productId: 1,
       }),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
 
     /*
      * الكاشير يعرف العرض النشط

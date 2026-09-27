@@ -44,7 +44,7 @@ export type CashFilterInput = {
 
   payment_method?: string
   payment_methods?: string[]
-
+  exclude_payment_methods?: string[]
   search?: string
   reference_type?: string
   created_by?: number | null
@@ -259,6 +259,25 @@ function buildCashWhere(
     where.push(`cm.payment_method = ?`)
 
     params.push(resolveCashAccount(input.payment_method))
+  }
+
+  const excludedPaymentMethods = Array.from(
+    new Set(
+      Array.isArray(input?.exclude_payment_methods)
+        ? input.exclude_payment_methods
+            .map((value) => String(value || '').trim())
+            .filter(Boolean)
+            .map((value) => resolveCashAccount(value))
+        : [],
+    ),
+  )
+
+  if (excludedPaymentMethods.length > 0) {
+    const placeholders = excludedPaymentMethods.map(() => '?').join(', ')
+
+    where.push(`cm.payment_method NOT IN (${placeholders})`)
+
+    params.push(...excludedPaymentMethods)
   }
 
   if (input?.reference_type && input.reference_type !== 'all') {

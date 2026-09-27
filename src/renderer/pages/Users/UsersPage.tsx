@@ -3,6 +3,11 @@ import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 import type { CSSProperties } from 'react'
 import { useAuthStore } from '../../store/auth.store'
 import { getPasswordPolicyError } from '../../../shared/password-policy'
+import {
+  PERMISSION_DEFINITIONS,
+  normalizePermissions,
+  type PermissionKey,
+} from '../../../shared/permissions'
 
 type Role = 'admin' | 'cashier'
 
@@ -44,6 +49,20 @@ export default function UsersPage() {
     type: 'success' | 'error'
     text: string
   } | null>(null)
+
+  const [permissionUser, setPermissionUser] = useState<SystemUser | null>(null)
+
+  const [permissionSelection, setPermissionSelection] = useState<
+    PermissionKey[]
+  >([])
+
+  const [permissionDefaults, setPermissionDefaults] = useState<PermissionKey[]>(
+    [],
+  )
+
+  const [permissionLoading, setPermissionLoading] = useState(false)
+
+  const [savingPermissions, setSavingPermissions] = useState(false)
 
   function showMessage(type: 'success' | 'error', text: string) {
     setPageMessage({ type, text })
@@ -270,6 +289,84 @@ export default function UsersPage() {
 
   function resetForm() {
     setForm(emptyForm)
+  }
+
+  async function openPermissions(user: SystemUser) {
+    if (user.role === 'admin') {
+      showMessage('error', 'مدير النظام لديه جميع الصلاحيات تلقائيًا')
+
+      return
+    }
+
+    setPermissionLoading(true)
+
+    try {
+      const result = await window.api.getUserPermissions(user.id)
+
+      if (!result.success || !result.settings) {
+        showMessage('error', result.message || 'تعذر تحميل الصلاحيات')
+
+        return
+      }
+
+      setPermissionUser(user)
+
+      setPermissionDefaults(result.settings.default_permissions)
+
+      setPermissionSelection(result.settings.effective_permissions)
+    } catch (error) {
+      console.error('Failed to load permissions:', error)
+
+      showMessage('error', 'تعذر تحميل الصلاحيات')
+    } finally {
+      setPermissionLoading(false)
+    }
+  }
+
+  function togglePermission(permission: PermissionKey) {
+    setPermissionSelection((current) => {
+      const exists = current.includes(permission)
+
+      const next = exists
+        ? current.filter((item) => item !== permission)
+        : [...current, permission]
+
+      return normalizePermissions(next)
+    })
+  }
+
+  async function savePermissions() {
+    if (!permissionUser || savingPermissions) {
+      return
+    }
+
+    setSavingPermissions(true)
+
+    try {
+      const result = await window.api.setUserPermissions({
+        user_id: permissionUser.id,
+
+        permissions: permissionSelection,
+      })
+
+      if (!result.success || !result.settings) {
+        showMessage('error', result.message || 'فشل حفظ الصلاحيات')
+
+        return
+      }
+
+      setPermissionSelection(result.settings.effective_permissions)
+
+      setPermissionUser(null)
+
+      showMessage('success', 'تم حفظ صلاحيات المستخدم')
+    } catch (error) {
+      console.error('Failed to save permissions:', error)
+
+      showMessage('error', 'حدث خطأ أثناء حفظ الصلاحيات')
+    } finally {
+      setSavingPermissions(false)
+    }
   }
 
   useEffect(() => {
@@ -532,6 +629,17 @@ export default function UsersPage() {
                             تعديل
                           </button>
 
+                          {user.role !== 'admin' && (
+                            <button
+                              type="button"
+                              disabled={permissionLoading}
+                              onClick={() => void openPermissions(user)}
+                              style={smallButtonStyle}
+                            >
+                              الصلاحيات
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => openPasswordModal(user)}
@@ -561,6 +669,178 @@ export default function UsersPage() {
           </div>
         </div>
       </section>
+
+      {permissionUser && (
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div
+            className="theme-modal-card"
+            style={{
+              ...modalStyle,
+
+              width: '760px',
+
+              maxHeight: '85vh',
+
+              overflowY: 'auto',
+            }}
+          >
+            <h3
+              style={{
+                margin: '0 0 6px',
+              }}
+            >
+              صلاحيات المستخدم
+            </h3>
+
+            <p
+              style={{
+                margin: '0 0 18px',
+
+                color: '#94a3b8',
+
+                fontWeight: 700,
+              }}
+            >
+              {permissionUser.name}
+              {' - '}
+              {permissionUser.username}
+            </p>
+
+            <div
+              style={{
+                padding: '12px',
+
+                borderRadius: '12px',
+
+                background: 'rgba(59,130,246,0.08)',
+
+                color: '#bfdbfe',
+
+                fontSize: '13px',
+
+                fontWeight: 700,
+
+                lineHeight: 1.7,
+
+                marginBottom: '16px',
+              }}
+            >
+              بعض عمليات التصحيح والإلغاء الحساسة تظل بحاجة لاعتماد مدير حتى لو
+              كان المستخدم لديه صلاحية الصفحة.
+            </div>
+
+            {Array.from(
+              new Set(PERMISSION_DEFINITIONS.map((item) => item.group)),
+            ).map((group) => (
+              <section
+                key={group}
+                style={{
+                  marginBottom: '18px',
+                }}
+              >
+                <h4
+                  style={{
+                    margin: '0 0 10px',
+                  }}
+                >
+                  {group}
+                </h4>
+
+                <div
+                  style={{
+                    display: 'grid',
+
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+
+                    gap: '10px',
+                  }}
+                >
+                  {PERMISSION_DEFINITIONS.filter(
+                    (item) => item.group === group,
+                  ).map((item) => (
+                    <label
+                      key={item.key}
+                      style={{
+                        display: 'flex',
+
+                        alignItems: 'center',
+
+                        gap: '9px',
+
+                        padding: '10px 12px',
+
+                        borderRadius: '12px',
+
+                        background: 'rgba(255,255,255,0.04)',
+
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={permissionSelection.includes(item.key)}
+                        disabled={item.key === 'dashboard.view'}
+                        onChange={() => togglePermission(item.key)}
+                      />
+
+                      <span
+                        style={{
+                          fontWeight: 800,
+                        }}
+                      >
+                        {item.label}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+            ))}
+
+            <div
+              style={{
+                display: 'flex',
+
+                gap: '10px',
+
+                flexWrap: 'wrap',
+
+                marginTop: '18px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => void savePermissions()}
+                disabled={savingPermissions}
+                style={primaryButtonStyle}
+              >
+                {savingPermissions ? 'جاري الحفظ...' : 'حفظ الصلاحيات'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setPermissionSelection(
+                    normalizePermissions(permissionDefaults),
+                  )
+                }
+                disabled={savingPermissions}
+                style={secondaryButtonStyle}
+              >
+                استرجاع الافتراضي
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPermissionUser(null)}
+                disabled={savingPermissions}
+                style={secondaryButtonStyle}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {passwordUser && (
         <div className="theme-modal-overlay" style={modalOverlayStyle}>

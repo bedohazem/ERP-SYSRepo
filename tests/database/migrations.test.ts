@@ -255,7 +255,32 @@ describe('database migrations', () => {
         version: 4,
         name: 'moving-weighted-average-cost',
       },
+      {
+        version: 5,
+        name: 'user-custom-permissions',
+      },
     ])
+
+    const userPermissionColumns = database
+      .prepare(
+        `
+      PRAGMA table_info(
+        user_permissions
+      )
+      `,
+      )
+      .all() as Array<{
+      name: string
+    }>
+
+    expect(userPermissionColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        'user_id',
+        'permission',
+        'allowed',
+        'updated_at',
+      ]),
+    )
 
     const purchaseReturnColumns = database
       .prepare(

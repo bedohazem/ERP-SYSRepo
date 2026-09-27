@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { logAction } from './activity-helper'
-import { requireAuthenticatedUser } from '../auth-session'
+import { requireAuthenticatedUser, requirePermission } from '../auth-session'
 import {
   createSale,
   getSaleReceipt,
@@ -15,6 +15,8 @@ import {
   getSaleEditAccess,
   updateSaleInvoice,
 } from '../database/repositories/sales.repo'
+
+import { userHasPermission } from '../database/repositories/user.repo'
 
 import {
   getVariantByBarcode,
@@ -83,8 +85,15 @@ function redactSalesCostData<T>(value: T): T {
   return result as T
 }
 
-function protectSalesCostData<T>(role: string, value: T): T {
-  if (role === 'admin') {
+function protectSalesCostData<T>(
+  actor: {
+    id: number
+    role: string
+  },
+
+  value: T,
+): T {
+  if (actor.role === 'admin' || userHasPermission(actor.id, 'costs.view')) {
     return value
   }
 
@@ -104,7 +113,7 @@ export function registerSalesIpc(): void {
             limit?: number
           },
     ) => {
-      const actor = requireAuthenticatedUser(event)
+      const actor = requirePermission(event, 'sales.use')
 
       const result = searchSaleVariants(
         typeof payload === 'string'
@@ -112,20 +121,20 @@ export function registerSalesIpc(): void {
           : (payload ?? { query: '' }),
       )
 
-      return protectSalesCostData(actor.role, result)
+      return protectSalesCostData(actor, result)
     },
   )
 
   ipcMain.handle('sales:get-variant-by-barcode', (event, barcode: string) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'sales.use')
 
     const result = getVariantByBarcode(barcode ?? '')
 
-    return protectSalesCostData(actor.role, result)
+    return protectSalesCostData(actor, result)
   })
 
   ipcMain.handle('sales:create', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actorId = requirePermission(event, 'sales.use').id
 
     const result = createSale({
       ...input,
@@ -152,7 +161,7 @@ export function registerSalesIpc(): void {
   })
 
   ipcMain.handle('sales:update', (event, input) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'sales.history')
 
     const actorId = actor.id
 
@@ -233,37 +242,37 @@ export function registerSalesIpc(): void {
   })
 
   ipcMain.handle('sales:get-receipt', (event, saleId: number) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'sales.history')
 
     const result = getSaleReceipt(Number(saleId))
 
-    return protectSalesCostData(actor.role, result)
+    return protectSalesCostData(actor, result)
   })
 
   ipcMain.handle('sales:current-state', (event, saleId: number) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'sales.history')
 
     const result = getSaleCurrentState(Number(saleId))
 
-    return protectSalesCostData(actor.role, result)
+    return protectSalesCostData(actor, result)
   })
 
   ipcMain.handle('sales:return-history', (event, saleId: number) => {
-    requireAuthenticatedUser(event)
+    requirePermission(event, 'sales.history')
 
     return getSaleReturnHistory(Number(saleId))
   })
 
   ipcMain.handle('sales:exchange-state', (event, saleId: number) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'sales.history')
 
     const result = getSaleExchangeState(Number(saleId))
 
-    return protectSalesCostData(actor.role, result)
+    return protectSalesCostData(actor, result)
   })
 
   ipcMain.handle('sales:exchange', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actorId = requirePermission(event, 'sales.exchanges').id
     const result = createSaleExchange({
       ...input,
       user_id: actorId,
@@ -294,15 +303,14 @@ export function registerSalesIpc(): void {
   })
 
   ipcMain.handle('sales:list-exchanges', (event, input) => {
-    const actor = requireAuthenticatedUser(event)
-
+    const actor = requirePermission(event, 'sales.history')
     const result = listSaleExchanges(input)
 
-    return protectSalesCostData(actor.role, result)
+    return protectSalesCostData(actor, result)
   })
 
   ipcMain.handle('sales:cancel-exchange', (event, input) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'sales.exchanges')
 
     const actorId = actor.id
 
@@ -380,19 +388,19 @@ export function registerSalesIpc(): void {
   })
 
   ipcMain.handle('sales:list', (event, input) => {
-    requireAuthenticatedUser(event)
+    requirePermission(event, 'sales.history')
 
     return listSales(input)
   })
 
   ipcMain.handle('sales:list-returns', (event, input) => {
-    requireAuthenticatedUser(event)
+    requirePermission(event, 'sales.history')
 
     return listSaleReturns(input)
   })
 
   ipcMain.handle('sales:return', (event, input) => {
-    const actorId = requireAuthenticatedUser(event).id
+    const actorId = requirePermission(event, 'sales.returns').id
     const result = createSaleReturn({
       ...input,
       user_id: actorId,
@@ -417,7 +425,7 @@ export function registerSalesIpc(): void {
   })
 
   ipcMain.handle('sales:cancel', (event, input) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'sales.history')
 
     const actorId = actor.id
 
@@ -476,7 +484,7 @@ export function registerSalesIpc(): void {
   })
 
   ipcMain.handle('sales:cancel-return', (event, input) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'sales.returns')
 
     const actorId = actor.id
 

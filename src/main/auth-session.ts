@@ -1,6 +1,9 @@
 import type { IpcMainInvokeEvent, WebContents } from 'electron'
 
 import { getDb } from './database/db'
+import type { PermissionKey } from '../shared/permissions'
+
+import { getEffectiveUserPermissions } from './database/repositories/user.repo'
 
 export const AUTH_IDLE_TIMEOUT_MS = 15 * 60 * 1000
 
@@ -156,6 +159,39 @@ export function requireAuthenticatedUser(event: IpcMainInvokeEvent): {
     id: user.id,
     role: user.role,
   }
+}
+
+export function requirePermission(
+  event: IpcMainInvokeEvent,
+  permission: PermissionKey,
+): {
+  id: number
+  role: string
+} {
+  const user = requireAuthenticatedUser(event)
+
+  /*
+   * Admin Full Access دائمًا.
+   */
+  if (user.role === 'admin') {
+    return user
+  }
+
+  const permissions = getEffectiveUserPermissions(user.id)
+
+  if (!permissions.includes(permission)) {
+    throw new Error('غير مصرح لك بتنفيذ هذه العملية')
+  }
+
+  return user
+}
+
+export function getAuthenticatedPermissions(
+  event: IpcMainInvokeEvent,
+): PermissionKey[] {
+  const user = requireAuthenticatedUser(event)
+
+  return getEffectiveUserPermissions(user.id)
 }
 
 export function requireAuthenticatedUserForPasswordChange(

@@ -23,6 +23,11 @@ contextBridge.exposeInMainWorld('api', {
 
   getUsers: (input) => ipcRenderer.invoke('users:list', input),
   getUsersPage: (input) => ipcRenderer.invoke('users:list-page', input),
+  getUserPermissions: (userId) =>
+    ipcRenderer.invoke('users:get-permissions', userId),
+
+  setUserPermissions: (input) =>
+    ipcRenderer.invoke('users:set-permissions', input),
   createSystemUser: (input) => ipcRenderer.invoke('users:create', input),
   updateSystemUser: (input) => ipcRenderer.invoke('users:update', input),
   setUserActive: (userId, isActive, actorId) =>

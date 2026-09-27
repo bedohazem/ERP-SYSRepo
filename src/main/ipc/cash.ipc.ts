@@ -23,11 +23,9 @@ import {
   getCashShiftDetails,
   resolveCashShiftVariance,
 } from '../database/repositories/cash-shifts.repo'
-import { requireAdmin, requireAdminPassword } from './permission-helper'
-import {
-  requireAuthenticatedAdmin,
-  requireAuthenticatedUser,
-} from '../auth-session'
+import { requireAdminPassword } from './permission-helper'
+import { requireAuthenticatedUser, requirePermission } from '../auth-session'
+import { userHasPermission } from '../database/repositories/user.repo'
 
 function getCashierShiftView(shift: any) {
   if (!shift) {
@@ -53,15 +51,25 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash:summary', (event, input) => {
     const user = requireAuthenticatedUser(event)
 
+    const canManageCash =
+      user.role === 'admin' || userHasPermission(user.id, 'cash.manage')
+
     return getCashSummary({
       ...(input || {}),
 
-      created_by: user.role === 'admin' ? input?.created_by : user.id,
+      /*
+       * store_safe تظل True Admin Only
+       * حتى لو المستخدم لديه cash.manage.
+       */
+      exclude_payment_methods:
+        user.role === 'admin' ? input?.exclude_payment_methods : ['store_safe'],
+
+      created_by: canManageCash ? input?.created_by : user.id,
     })
   })
 
   ipcMain.handle('cash:transfer', (event, input) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requirePermission(event, 'cash.manage').id
 
     const openShift = resolveFinancialOperationShift(
       actorId,
@@ -77,12 +85,20 @@ export function registerCashIpc(): void {
   })
 
   ipcMain.handle('cash:list', (event, input) => {
-    requireAuthenticatedAdmin(event)
+    const actor = requirePermission(event, 'cash.manage')
 
-    return listCashMovements(input)
+    return listCashMovements({
+      ...(input || {}),
+
+      exclude_payment_methods:
+        actor.role === 'admin'
+          ? input?.exclude_payment_methods
+          : ['store_safe'],
+    })
   })
+
   ipcMain.handle('cash:create-movement', (event, input) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requirePermission(event, 'cash.manage').id
 
     const type =
       input?.type === 'deposit'
@@ -223,7 +239,7 @@ export function registerCashIpc(): void {
   })
 
   ipcMain.handle('cash-shifts:day-summary', (event, input) => {
-    requireAuthenticatedAdmin(event)
+    requirePermission(event, 'shifts.manage')
 
     return getCashShiftDaySummary({
       business_date: String(input?.business_date || ''),
@@ -233,9 +249,7 @@ export function registerCashIpc(): void {
   })
 
   ipcMain.handle('cash-shifts:list', (event, input) => {
-    const actor = requireAuthenticatedUser(event)
-
-    requireAdmin(actor.id)
+    requirePermission(event, 'shifts.manage')
 
     return listCashShifts({
       status: input?.status || 'all',
@@ -253,17 +267,13 @@ export function registerCashIpc(): void {
   })
 
   ipcMain.handle('cash-shifts:details', (event, shiftId) => {
-    const actor = requireAuthenticatedUser(event)
-
-    requireAdmin(actor.id)
+    requirePermission(event, 'shifts.manage')
 
     return getCashShiftDetails(Number(shiftId))
   })
 
   ipcMain.handle('cash-shifts:list-variances', (event, input) => {
-    const actor = requireAuthenticatedUser(event)
-
-    requireAdmin(actor.id)
+    requirePermission(event, 'shifts.manage')
 
     return listCashShiftVariances({
       status: input?.status || 'pending',
@@ -323,11 +333,14 @@ export function registerCashIpc(): void {
   })
 
   ipcMain.handle('cash-shifts:get-open', (event) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'shifts.operate_own')
 
     const shift = getOpenCashShift()
 
-    if (actor.role === 'admin') {
+    const canManageShifts =
+      actor.role === 'admin' || userHasPermission(actor.id, 'shifts.manage')
+
+    if (canManageShifts) {
       return shift
     }
 
@@ -335,11 +348,14 @@ export function registerCashIpc(): void {
   })
 
   ipcMain.handle('cash-shifts:opening-preview', (event) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'shifts.operate_own')
 
     const preview = getCashShiftOpeningPreview()
 
-    if (actor.role === 'admin') {
+    const canManageShifts =
+      actor.role === 'admin' || userHasPermission(actor.id, 'shifts.manage')
+
+    if (canManageShifts) {
       return preview
     }
 
@@ -362,7 +378,7 @@ export function registerCashIpc(): void {
   })
 
   ipcMain.handle('cash-shifts:open', (event, input) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'shifts.operate_own')
 
     const shift = openCashShift({
       opening_counted_amount: Number(input?.opening_counted_amount),
@@ -370,7 +386,10 @@ export function registerCashIpc(): void {
       opened_by: actor.id,
     })
 
-    if (actor.role === 'admin') {
+    const canManageShifts =
+      actor.role === 'admin' || userHasPermission(actor.id, 'shifts.manage')
+
+    if (canManageShifts) {
       return shift
     }
 
@@ -378,7 +397,7 @@ export function registerCashIpc(): void {
   })
 
   ipcMain.handle('cash-shifts:preview', (event, shiftId) => {
-    requireAuthenticatedAdmin(event)
+    requirePermission(event, 'shifts.manage')
 
     const shift = getCashShiftById(Number(shiftId))
 
@@ -390,7 +409,7 @@ export function registerCashIpc(): void {
   })
 
   ipcMain.handle('cash-shifts:close', (event, input) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requirePermission(event, 'shifts.operate_own')
 
     const shiftId = Number(input?.shift_id)
 
@@ -398,6 +417,10 @@ export function registerCashIpc(): void {
 
     if (!shift) {
       throw new Error('الشفت غير موجود')
+    }
+
+    if (actor.role !== 'admin' && Number(shift.opened_by) !== actor.id) {
+      throw new Error('لا يمكنك إغلاق شفت مستخدم آخر')
     }
 
     const isAdminClosingOtherShift =
@@ -425,7 +448,10 @@ export function registerCashIpc(): void {
       closed_by: actor.id,
     })
 
-    if (actor.role === 'admin') {
+    const canManageShifts =
+      actor.role === 'admin' || userHasPermission(actor.id, 'shifts.manage')
+
+    if (canManageShifts) {
       return closedShift
     }
 

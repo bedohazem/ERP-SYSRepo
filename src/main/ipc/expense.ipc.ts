@@ -9,11 +9,11 @@ import {
 } from '../database/repositories/expense.repo'
 
 import { requireAdminPassword } from './permission-helper'
-import { requireAuthenticatedUser } from '../auth-session'
+import { requirePermission } from '../auth-session'
 
 export function registerExpenseIpc(): void {
   ipcMain.handle('expenses:create', (event, input) => {
-    const user = requireAuthenticatedUser(event)
+    const user = requirePermission(event, 'expenses.manage')
 
     return createExpense({
       ...input,
@@ -22,7 +22,7 @@ export function registerExpenseIpc(): void {
   })
 
   ipcMain.handle('expenses:list', (event, input) => {
-    const user = requireAuthenticatedUser(event)
+    const user = requirePermission(event, 'expenses.view')
 
     return listExpenses({
       ...input,
@@ -32,7 +32,7 @@ export function registerExpenseIpc(): void {
   })
 
   ipcMain.handle('expenses:list-page', (event, input) => {
-    const user = requireAuthenticatedUser(event)
+    const user = requirePermission(event, 'expenses.view')
 
     return listExpensesPage({
       ...input,
@@ -43,7 +43,7 @@ export function registerExpenseIpc(): void {
 
   ipcMain.handle('expenses:update', (event, input) => {
     try {
-      const user = requireAuthenticatedUser(event)
+      const user = requirePermission(event, 'expenses.manage')
       const isAdmin = user.role === 'admin'
 
       const approval = isAdmin
@@ -82,7 +82,7 @@ export function registerExpenseIpc(): void {
 
   ipcMain.handle('expenses:cancel', (event, input) => {
     try {
-      const user = requireAuthenticatedUser(event)
+      const user = requirePermission(event, 'expenses.manage')
       const isAdmin = user.role === 'admin'
 
       const approval = isAdmin

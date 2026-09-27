@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
+type PermissionKey = import('../shared/permissions').PermissionKey
+
 type BarcodeItemPosition =
   | 'top'
   | 'top-left'
@@ -149,6 +151,7 @@ declare global {
         success: boolean
         message?: string
         user_id?: number
+        permissions?: PermissionKey[]
         idle_timeout_seconds?: number
       }>
 
@@ -167,6 +170,7 @@ declare global {
           name: string
           username: string
           role: string
+          permissions?: PermissionKey[]
         }
       }>
 
@@ -193,6 +197,51 @@ declare global {
         total: number
         limit: number
         offset: number
+      }>
+
+      getUserPermissions: (userId: number) => Promise<{
+        success: boolean
+        message?: string
+
+        settings?: {
+          user_id: number
+          role: string
+          is_active: number
+          customizable: boolean
+
+          default_permissions: PermissionKey[]
+
+          overrides: Array<{
+            permission: string
+            allowed: number
+          }>
+
+          effective_permissions: PermissionKey[]
+        }
+      }>
+
+      setUserPermissions: (input: {
+        user_id: number
+        permissions: PermissionKey[]
+      }) => Promise<{
+        success: boolean
+        message?: string
+
+        settings?: {
+          user_id: number
+          role: string
+          is_active: number
+          customizable: boolean
+
+          default_permissions: PermissionKey[]
+
+          overrides: Array<{
+            permission: string
+            allowed: number
+          }>
+
+          effective_permissions: PermissionKey[]
+        }
       }>
 
       createSystemUser: (input: {
@@ -2605,6 +2654,7 @@ declare global {
     id: number
     name: string
     username: string
+    permissions?: PermissionKey[]
     role: 'admin' | 'cashier' | string
     is_active: number
     created_at: string
