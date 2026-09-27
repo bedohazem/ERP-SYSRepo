@@ -497,4 +497,33 @@ describe('financial IPC session scope', () => {
       }),
     ).rejects.toThrow('الخزنة الآمنة متاحة لمدير النظام فقط')
   })
+
+  it('lets shift managers load safe user options without granting user administration data', async () => {
+    const cashier = createUser(
+      'Shift Manager',
+      'shift_manager',
+      '5678',
+      'cashier',
+    )
+
+    setUserPermissions(cashier.id, [
+      ...getEffectiveUserPermissions(cashier.id),
+
+      'shifts.manage',
+    ])
+
+    const { event } = makeClient()
+
+    startAuthSession(event, cashier.id)
+
+    const users = await invoke(event, 'cash-shifts:users')
+
+    expect(Array.isArray(users)).toBe(true)
+
+    expect(users.length).toBeGreaterThan(0)
+
+    for (const user of users) {
+      expect(Object.keys(user).sort()).toEqual(['id', 'name', 'role'])
+    }
+  })
 })

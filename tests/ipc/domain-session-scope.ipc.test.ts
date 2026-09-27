@@ -537,4 +537,114 @@ describe('domain IPC session scope', () => {
       }),
     ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
   })
+
+  it('returns stock movements instead of inventory rows', async () => {
+    createProduct({
+      name: 'Movement Product',
+
+      category_id: null,
+      image_path: null,
+      description: null,
+
+      variants: [
+        {
+          barcode: 'MOVEMENT-001',
+
+          size: 'M',
+          color: 'Black',
+
+          buy_price: 50,
+          sell_price: 100,
+
+          min_stock: 1,
+
+          opening_qty: 3,
+        },
+      ],
+    })
+
+    const variant = getVariantByBarcode('MOVEMENT-001') as any
+
+    const cashier = createUser(
+      'Movement Viewer',
+      'movement_viewer',
+      '5678',
+      'cashier',
+    )
+
+    setUserPermissions(cashier.id, [
+      ...getEffectiveUserPermissions(cashier.id),
+
+      'inventory.view',
+    ])
+
+    const { event } = makeClient()
+
+    startAuthSession(event, cashier.id)
+
+    const result = await invoke(
+      event,
+
+      'inventory:movements',
+
+      {
+        variant_id: variant.variant_id,
+      },
+    )
+
+    expect(Array.isArray(result.rows)).toBe(true)
+
+    expect(result.rows.length).toBeGreaterThan(0)
+
+    expect(result.rows[0]).toHaveProperty('signed_quantity')
+
+    expect(
+      result.rows.some(
+        (row: any) =>
+          Number(row.variant_id) === Number(variant.variant_id) &&
+          row.reference_type === 'opening_stock',
+      ),
+    ).toBe(true)
+  })
+
+  it('lets purchase managers use supplier and inventory lookup without granting supplier or inventory management', async () => {
+    const cashier = createUser(
+      'Purchase Manager',
+      'purchase_manager',
+      '5678',
+      'cashier',
+    )
+
+    setUserPermissions(cashier.id, [
+      ...getEffectiveUserPermissions(cashier.id),
+
+      'purchases.manage',
+    ])
+
+    const { event } = makeClient()
+
+    startAuthSession(event, cashier.id)
+
+    const suppliers = await invoke(event, 'suppliers:list-page', {})
+
+    expect(Array.isArray(suppliers.rows)).toBe(true)
+
+    const inventory = await invoke(event, 'inventory:list-page', {})
+
+    expect(Array.isArray(inventory.rows)).toBe(true)
+
+    await expect(
+      invoke(event, 'suppliers:create', {
+        name: 'Forbidden Supplier',
+      }),
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
+
+    await expect(
+      invoke(event, 'inventory:adjust-stock', {
+        variant_id: 1,
+
+        target_stock: 1,
+      }),
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
+  })
 })

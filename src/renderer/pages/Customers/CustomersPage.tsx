@@ -5,7 +5,7 @@ import {
   getPaymentMethodLabel,
   ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS,
 } from '../../utils/payment-method'
-
+import { hasUserPermission } from '../../utils/permissions'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 
 type CustomerRow = {
@@ -36,6 +36,12 @@ const CUSTOMER_STATEMENT_PAGE_SIZE = 20
 export default function CustomersPage() {
   const currentUser = useAuthStore((s) => s.user)
   const isAdmin = currentUser?.role === 'admin'
+  const canManageCustomers = hasUserPermission(currentUser, 'customers.manage')
+
+  const canManageCustomerPayments = hasUserPermission(
+    currentUser,
+    'customers.payments',
+  )
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const [customersTotal, setCustomersTotal] = useState(0)
 
@@ -838,7 +844,7 @@ export default function CustomersPage() {
         style={{
           padding: '18px',
           borderRadius: '18px',
-          display: 'grid',
+          display: canManageCustomers ? 'grid' : 'none',
           gap: '12px',
           overflow: 'visible',
         }}
@@ -990,12 +996,14 @@ export default function CustomersPage() {
                   <div
                     style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}
                   >
-                    <button
-                      onClick={() => startEdit(customer)}
-                      style={smallButtonStyle}
-                    >
-                      تعديل
-                    </button>
+                    {canManageCustomers && (
+                      <button
+                        onClick={() => startEdit(customer)}
+                        style={smallButtonStyle}
+                      >
+                        تعديل
+                      </button>
+                    )}
                     <button
                       onClick={() => openHistory(customer.id)}
                       style={smallButtonStyle}
@@ -1003,28 +1011,31 @@ export default function CustomersPage() {
                       الهيستوري
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => openStatement(customer)}
-                      style={smallButtonStyle}
-                    >
-                      كشف حساب
-                    </button>
-
-                    {Number(customer.balance || 0) > 0 && (
+                    {canManageCustomerPayments && (
                       <button
                         type="button"
-                        onClick={() => openCustomerPayment(customer)}
-                        style={{
-                          ...smallButtonStyle,
-                          borderColor: '#22c55e',
-                          color: '#86efac',
-                          background: 'rgba(34,197,94,0.10)',
-                        }}
+                        onClick={() => openStatement(customer)}
+                        style={smallButtonStyle}
                       >
-                        تسجيل دفعة
+                        كشف حساب
                       </button>
                     )}
+
+                    {canManageCustomerPayments &&
+                      Number(customer.balance || 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => openCustomerPayment(customer)}
+                          style={{
+                            ...smallButtonStyle,
+                            borderColor: '#22c55e',
+                            color: '#86efac',
+                            background: 'rgba(34,197,94,0.10)',
+                          }}
+                        >
+                          تسجيل دفعة
+                        </button>
+                      )}
                     {isAdmin && (
                       <button
                         type="button"

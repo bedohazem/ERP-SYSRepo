@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuthStore } from '../../store/auth.store'
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
+import { hasUserPermission } from '../../utils/permissions'
 
 function roundMoney(value: number) {
   const amount = Number(value || 0)
@@ -44,7 +45,7 @@ export default function SuppliersPage() {
   const isAdmin = currentUser?.role === 'admin'
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [suppliersTotal, setSuppliersTotal] = useState(0)
-
+  const canManagePurchases = hasUserPermission(currentUser, 'purchases.manage')
   const [supplierPage, setSupplierPage] = useState(1)
 
   const [supplierStatementPage, setSupplierStatementPage] = useState(1)
@@ -592,10 +593,11 @@ export default function SuppliersPage() {
       return false
     }
 
-    return (
-      isAdmin ||
-      Number(entry.batch_created_by || 0) === Number(currentUser?.id || 0)
-    )
+    /*
+     * تعديل/إلغاء دفعة المورد
+     * True Admin Only.
+     */
+    return isAdmin
   }
 
   function paymentMethodLabel(value?: string | null) {
@@ -1065,42 +1067,44 @@ export default function SuppliersPage() {
                         تعديل
                       </button>
 
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={() => requestDeleteSupplier(supplier)}
-                          style={{
-                            ...smallButtonStyle,
-                            borderColor: '#ef4444',
-                            color: '#fca5a5',
-                            background: 'rgba(239,68,68,0.10)',
-                          }}
-                        >
-                          حذف
-                        </button>
-                      )}
                       <button
                         type="button"
-                        onClick={() => openStatement(supplier)}
-                        style={smallButtonStyle}
+                        onClick={() => requestDeleteSupplier(supplier)}
+                        style={{
+                          ...smallButtonStyle,
+                          borderColor: '#ef4444',
+                          color: '#fca5a5',
+                          background: 'rgba(239,68,68,0.10)',
+                        }}
                       >
-                        كشف حساب
+                        حذف
                       </button>
 
-                      {roundMoney(supplier.balance) > 0 && (
+                      {canManagePurchases && (
                         <button
                           type="button"
-                          onClick={() => openSupplierPayment(supplier)}
-                          style={{
-                            ...smallButtonStyle,
-                            borderColor: '#22c55e',
-                            color: '#86efac',
-                            background: 'rgba(34,197,94,0.10)',
-                          }}
+                          onClick={() => openStatement(supplier)}
+                          style={smallButtonStyle}
                         >
-                          تسجيل دفعة
+                          كشف حساب
                         </button>
                       )}
+
+                      {canManagePurchases &&
+                        roundMoney(supplier.balance) > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => openSupplierPayment(supplier)}
+                            style={{
+                              ...smallButtonStyle,
+                              borderColor: '#22c55e',
+                              color: '#86efac',
+                              background: 'rgba(34,197,94,0.10)',
+                            }}
+                          >
+                            تسجيل دفعة
+                          </button>
+                        )}
                     </div>
                   </td>
                 </tr>
@@ -1169,19 +1173,20 @@ export default function SuppliersPage() {
                   gap: '8px',
                 }}
               >
-                <button
-                  type="button"
-                  onClick={saveSupplierStatementPdf}
-                  disabled={statementLoading}
-                  style={{
-                    ...secondaryButtonStyle,
-                    opacity: statementLoading ? 0.6 : 1,
-                    cursor: statementLoading ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  حفظ PDF
-                </button>
-
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={saveSupplierStatementPdf}
+                    disabled={statementLoading}
+                    style={{
+                      ...secondaryButtonStyle,
+                      opacity: statementLoading ? 0.6 : 1,
+                      cursor: statementLoading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    حفظ PDF
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setStatementData(null)}

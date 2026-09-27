@@ -7,6 +7,7 @@ import {
   getPaymentMethodLabel,
 } from '../../utils/payment-method'
 import FinancialCancelModal from '../../components/FinancialCancelModal'
+import { hasUserPermission } from '../../utils/permissions'
 
 type Expense = {
   id: number
@@ -37,7 +38,7 @@ export default function ExpensesPage() {
   } | null>(null)
   const currentUser = useAuthStore((s) => s.user)
   const isAdmin = currentUser?.role === 'admin'
-
+  const canManageExpenses = hasUserPermission(currentUser, 'expenses.manage')
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState('')
   const [amount, setAmount] = useState('')
@@ -660,7 +661,7 @@ export default function ExpensesPage() {
         style={{
           padding: '14px',
           borderRadius: '16px',
-          display: 'grid',
+          display: canManageExpenses ? 'grid' : 'none',
           gap: '10px',
           minHeight: 0,
         }}
@@ -979,7 +980,8 @@ export default function ExpensesPage() {
                     </td>
 
                     <td style={tdStyle}>
-                      {!expense.cancelled_at &&
+                      {canManageExpenses &&
+                      !expense.cancelled_at &&
                       (isAdmin ||
                         Number(expense.created_by || 0) ===
                           Number(currentUser?.id || 0)) ? (

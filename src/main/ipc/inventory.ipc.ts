@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { logAction } from './activity-helper'
-import { requirePermission } from '../auth-session'
+import { requireAnyPermission, requirePermission } from '../auth-session'
 
 import { userHasPermission } from '../database/repositories/user.repo'
 
@@ -67,7 +67,10 @@ export function registerInventoryIpc(): void {
   })
 
   ipcMain.handle('inventory:list-page', (event, input) => {
-    const actor = requirePermission(event, 'inventory.view')
+    const actor = requireAnyPermission(event, [
+      'inventory.view',
+      'purchases.manage',
+    ])
 
     return protectInventoryCosts(actor, listInventoryPage(input))
   })
@@ -103,6 +106,6 @@ export function registerInventoryIpc(): void {
   ipcMain.handle('inventory:movements', (event, input) => {
     const actor = requirePermission(event, 'inventory.view')
 
-    return protectInventoryCosts(actor, listInventoryPage(input))
+    return protectInventoryCosts(actor, getStockMovements(input))
   })
 }

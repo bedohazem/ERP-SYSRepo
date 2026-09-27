@@ -2100,6 +2100,14 @@ declare global {
         offset: number
       }>
 
+      getCashShiftUsers: () => Promise<
+        Array<{
+          id: number
+          name: string
+          role: string
+        }>
+      >
+
       getCashShiftDetails: (shiftId: number) => Promise<{
         shift: any
 

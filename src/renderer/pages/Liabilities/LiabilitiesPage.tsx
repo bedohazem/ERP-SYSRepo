@@ -992,7 +992,8 @@ export default function LiabilitiesPage() {
                         </button>
                       )}
 
-                      {item.status === 'open' &&
+                      {isAdmin &&
+                        item.status === 'open' &&
                         Number(item.paid_amount || 0) <= 0 && (
                           <button
                             type="button"

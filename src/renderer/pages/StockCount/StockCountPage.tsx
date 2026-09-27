@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 import { useAuthStore } from '../../store/auth.store'
+import { hasUserPermission } from '../../utils/permissions'
 
 type StockCountSession = {
   id: number
@@ -58,7 +59,7 @@ type StockCountDetails = {
 export default function StockCountPage() {
   const currentUser = useAuthStore((s) => s.user)
   const isAdmin = currentUser?.role === 'admin'
-
+  const canCountStock = hasUserPermission(currentUser, 'stock_count.count')
   const [sessions, setSessions] = useState<StockCountSession[]>([])
   const [sessionPage, setSessionPage] = useState(1)
   const [selected, setSelected] = useState<StockCountDetails | null>(null)
@@ -829,7 +830,7 @@ export default function StockCountPage() {
             </div>
 
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              {isOpen && (
+              {isOpen && canCountStock && (
                 <button
                   type="button"
                   onClick={saveAllItems}
@@ -923,7 +924,7 @@ export default function StockCountPage() {
             )}
           </div>
 
-          {isOpen && (
+          {isOpen && canCountStock && (
             <div
               style={{
                 display: 'grid',
@@ -1158,7 +1159,7 @@ export default function StockCountPage() {
                         )}
 
                         <td style={tdStyle}>
-                          {isOpen ? (
+                          {isOpen && canCountStock ? (
                             <input
                               type="number"
                               min={0}
@@ -1174,8 +1175,11 @@ export default function StockCountPage() {
                                 padding: '8px 10px',
                               }}
                             />
+                          ) : item.actual_stock === null ||
+                            item.actual_stock === undefined ? (
+                            '—'
                           ) : (
-                            Number(item.actual_stock || 0)
+                            Number(item.actual_stock)
                           )}
                         </td>
 
@@ -1209,7 +1213,7 @@ export default function StockCountPage() {
                         )}
 
                         <td style={tdStyle}>
-                          {isOpen ? (
+                          {isOpen && canCountStock ? (
                             <input
                               value={item.notes || ''}
                               onChange={(e) => {
@@ -1240,7 +1244,7 @@ export default function StockCountPage() {
                         </td>
 
                         <td style={tdStyle}>
-                          {isOpen ? (
+                          {isOpen && canCountStock ? (
                             <button
                               type="button"
                               onClick={() => saveItem(item)}

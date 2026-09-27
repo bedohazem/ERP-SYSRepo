@@ -9,7 +9,7 @@ import {
   getPaymentMethodLabel,
   getPaymentMethodShortLabel,
 } from '../../utils/payment-method'
-
+import { hasUserPermission } from '../../utils/permissions'
 import { printSaleReceiptHtml } from '../../utils/receiptPrint'
 import { printSaleExchangeReceiptHtml } from '../../utils/exchangeReceiptPrint'
 import FinancialCancelModal from '../../components/FinancialCancelModal'
@@ -549,7 +549,9 @@ export default function InvoicesPage() {
   const [message, setMessage] = useState('')
   const user = useAuthStore((s) => s.user)
   const isAdmin = user?.role === 'admin'
+  const canReturnSales = hasUserPermission(user, 'sales.returns')
 
+  const canExchangeSales = hasUserPermission(user, 'sales.exchanges')
   const [cancelSaleTarget, setCancelSaleTarget] = useState<SaleRow | null>(null)
 
   const [cancelSaleReason, setCancelSaleReason] = useState('')
@@ -1990,7 +1992,7 @@ export default function InvoicesPage() {
                         طباعة
                       </button>
 
-                      {!sale.cancelled_at && (
+                      {canExchangeSales && !sale.cancelled_at && (
                         <button
                           type="button"
                           onClick={() => setExchangeSaleId(sale.id)}
@@ -2008,7 +2010,7 @@ export default function InvoicesPage() {
                         </button>
                       )}
 
-                      {!sale.cancelled_at && (
+                      {canReturnSales && !sale.cancelled_at && (
                         <button
                           type="button"
                           onClick={() => openReturnPopup(sale.id)}
@@ -2240,7 +2242,9 @@ export default function InvoicesPage() {
                       >
                         طباعة الفاتورة
                       </button>
-                      {!ret.cancelled_at &&
+
+                      {canReturnSales &&
+                        !ret.cancelled_at &&
                         (isAdmin ||
                           Number(ret.user_id || 0) ===
                             Number(user?.id || 0)) && (
@@ -2713,7 +2717,8 @@ export default function InvoicesPage() {
                         الفاتورة
                       </button>
 
-                      {!exchange.cancelled_at &&
+                      {canExchangeSales &&
+                        !exchange.cancelled_at &&
                         exchange.can_cancel &&
                         (isAdmin ||
                           Number(exchange.user_id || 0) ===

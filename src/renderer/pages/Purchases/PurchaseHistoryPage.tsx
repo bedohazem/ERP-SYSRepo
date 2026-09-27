@@ -65,7 +65,7 @@ export default function PurchaseHistoryPage() {
   const currentUser = useAuthStore((s) => s.user)
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<ActiveTab>('purchases')
-
+  const isAdmin = currentUser?.role === 'admin'
   const [rows, setRows] = useState<PurchaseRow[]>([])
   const [total, setTotal] = useState(0)
   const [purchasePage, setPurchasePage] = useState(1)
@@ -995,7 +995,7 @@ export default function PurchaseHistoryPage() {
                             عرض
                           </button>
 
-                          {!isCancelled && (
+                          {isAdmin && !isCancelled && (
                             <button
                               type="button"
                               onClick={() =>
@@ -1043,7 +1043,7 @@ export default function PurchaseHistoryPage() {
                             </button>
                           )}
 
-                          {!isCancelled && !hasReturns && (
+                          {isAdmin && !isCancelled && !hasReturns && (
                             <button
                               type="button"
                               onClick={() => openCancelPurchaseModal(row)}
@@ -1222,7 +1222,8 @@ export default function PurchaseHistoryPage() {
                           الفاتورة
                         </button>
 
-                        {!row.cancelled_at &&
+                        {isAdmin &&
+                          !row.cancelled_at &&
                           Number(row.is_latest_active_return || 0) === 1 && (
                             <>
                               <button

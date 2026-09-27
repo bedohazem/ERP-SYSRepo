@@ -25,7 +25,10 @@ import {
 } from '../database/repositories/cash-shifts.repo'
 import { requireAdminPassword } from './permission-helper'
 import { requireAuthenticatedUser, requirePermission } from '../auth-session'
-import { userHasPermission } from '../database/repositories/user.repo'
+import {
+  listUsers,
+  userHasPermission,
+} from '../database/repositories/user.repo'
 
 function getCashierShiftView(shift: any) {
   if (!shift) {
@@ -264,6 +267,18 @@ export function registerCashIpc(): void {
 
       offset: Number(input?.offset || 0),
     })
+  })
+
+  ipcMain.handle('cash-shifts:users', (event) => {
+    requirePermission(event, 'shifts.manage')
+
+    return listUsers('').map((user) => ({
+      id: Number(user.id),
+
+      name: String(user.name || ''),
+
+      role: String(user.role || ''),
+    }))
   })
 
   ipcMain.handle('cash-shifts:details', (event, shiftId) => {

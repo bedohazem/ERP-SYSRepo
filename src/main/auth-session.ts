@@ -186,6 +186,32 @@ export function requirePermission(
   return user
 }
 
+export function requireAnyPermission(
+  event: IpcMainInvokeEvent,
+  permissions: readonly PermissionKey[],
+): {
+  id: number
+  role: string
+} {
+  const user = requireAuthenticatedUser(event)
+
+  if (user.role === 'admin') {
+    return user
+  }
+
+  const effective = getEffectiveUserPermissions(user.id)
+
+  const allowed = permissions.some((permission) =>
+    effective.includes(permission),
+  )
+
+  if (!allowed) {
+    throw new Error('غير مصرح لك بتنفيذ هذه العملية')
+  }
+
+  return user
+}
+
 export function getAuthenticatedPermissions(
   event: IpcMainInvokeEvent,
 ): PermissionKey[] {

@@ -525,51 +525,6 @@ export default function CashPage() {
     }
   }
 
-  // function openWithdrawSelectedAccountBalance() {
-  //   if (filterPaymentMethods.length === 0) {
-  //     showMessage('error', 'اختار حساب مالي واحد عشان تسحب رصيده')
-
-  //     return
-  //   }
-
-  //   if (filterPaymentMethods.length > 1) {
-  //     showMessage('error', 'اختار حساب مالي واحد فقط عشان تسحب رصيده')
-
-  //     return
-  //   }
-
-  //   const selectedPaymentMethod = filterPaymentMethods[0]
-
-  //   const selectedAccount = accountBalances.find(
-  //     (account) => account.value === selectedPaymentMethod,
-  //   )
-
-  //   const balance = Number(selectedAccount?.balance || 0)
-
-  //   if (balance <= 0) {
-  //     showMessage(
-  //       'error',
-  //       `لا يوجد رصيد متاح في ${
-  //         selectedAccount?.label || getPaymentMethodLabel(selectedPaymentMethod)
-  //       }`,
-  //     )
-
-  //     return
-  //   }
-
-  //   setMovementType('withdraw')
-  //   setPaymentMethod(selectedPaymentMethod)
-  //   setAmount(balance.toFixed(2))
-
-  //   setNotes(
-  //     `سحب رصيد ${
-  //       selectedAccount?.label || getPaymentMethodLabel(selectedPaymentMethod)
-  //     }`,
-  //   )
-
-  //   setManualModalOpen(true)
-  // }
-
   function handleCreateMovement() {
     void saveCashMovement()
   }
@@ -1219,7 +1174,7 @@ export default function CashPage() {
         <MultiSelectFilter
           label="الحساب"
           allLabel="كل الحسابات"
-          options={CASH_SUMMARY_ACCOUNT_OPTIONS}
+          options={cashSummaryAccountOptions}
           selected={filterPaymentMethods}
           onChange={setFilterPaymentMethods}
           controlStyle={{

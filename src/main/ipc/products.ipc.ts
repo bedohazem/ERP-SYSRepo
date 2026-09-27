@@ -1,8 +1,8 @@
 import { ipcMain } from 'electron'
 import { logAction } from './activity-helper'
 import {
-  requireAuthenticatedAdmin,
   requireAuthenticatedUser,
+  requireAnyPermission,
   requirePermission,
 } from '../auth-session'
 import {
@@ -91,7 +91,7 @@ export function registerProductsIpc(): void {
 
   ipcMain.handle(
     'products:toggle-category',
-    (event, categoryId: number, isActive: number, actorId?: number) => {
+    (event, categoryId: number, isActive: number) => {
       try {
         const actorId = requirePermission(event, 'products.manage').id
         const result = toggleCategoryActive(categoryId, isActive)
@@ -124,11 +124,19 @@ export function registerProductsIpc(): void {
         categoryId?: number | string | null
       },
     ) => {
-      requirePermission(event, 'products.manage')
+      const actor = requireAnyPermission(event, [
+        'products.manage',
+        'promotions.manage',
+      ])
+
+      const canManageProducts =
+        actor.role === 'admin' || userHasPermission(actor.id, 'products.manage')
 
       return getProducts(
         payload?.search ?? '',
-        payload?.includeInactive ?? false,
+
+        canManageProducts ? (payload?.includeInactive ?? false) : false,
+
         payload?.categoryId ?? null,
       )
     },
@@ -275,7 +283,7 @@ export function registerProductsIpc(): void {
 
   ipcMain.handle(
     'products:toggle-active',
-    (event, productId: number, isActive: number, actorId?: number) => {
+    (event, productId: number, isActive: number) => {
       try {
         const actorId = requirePermission(event, 'products.manage').id
 
@@ -301,7 +309,7 @@ export function registerProductsIpc(): void {
 
   ipcMain.handle(
     'products:toggle-variant-active',
-    (event, variantId: number, isActive: number, actorId?: number) => {
+    (event, variantId: number, isActive: number) => {
       try {
         const actorId = requirePermission(event, 'products.manage').id
 

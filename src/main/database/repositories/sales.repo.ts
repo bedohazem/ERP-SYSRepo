@@ -1736,7 +1736,8 @@ export function createSaleReturn(input: {
           pv.color AS current_color,
           COALESCE(
             spu.current_unit_cost,
-            pv.buy_price
+            spu.original_unit_cost,
+            0
           ) AS current_unit_cost,
 
           p.name AS current_product_name
@@ -1773,9 +1774,9 @@ export function createSaleReturn(input: {
 
         COALESCE(
           spu.current_unit_cost,
-          pv.buy_price
-        )
-          AS current_unit_cost,
+          spu.original_unit_cost,
+          0
+        ) AS current_unit_cost,
 
         p.name
           AS current_product_name

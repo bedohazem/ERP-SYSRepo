@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
+import { useAuthStore } from '../../store/auth.store'
+import { hasUserPermission } from '../../utils/permissions'
 
 type InventoryRow = {
   variant_id: number
@@ -42,6 +43,10 @@ type Category = {
 }
 
 export default function InventoryPage() {
+  const currentUser = useAuthStore((s) => s.user)
+  const isAdmin = currentUser?.role === 'admin'
+  const canViewCosts = hasUserPermission(currentUser, 'costs.view')
+  const canAdjustInventory = hasUserPermission(currentUser, 'inventory.adjust')
   const [rows, setRows] = useState<InventoryRow[]>([])
   const [inventoryTotal, setInventoryTotal] = useState(0)
   const [inventoryPage, setInventoryPage] = useState(1)
@@ -169,6 +174,9 @@ export default function InventoryPage() {
   }
 
   function openAdjust(item: InventoryRow) {
+    if (!canAdjustInventory) {
+      return
+    }
     setAdjustItem(item)
     setTargetStock(String(Number(item.stock || 0)))
     setAdjustNotes('')
@@ -318,13 +326,15 @@ export default function InventoryPage() {
           </div>
 
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={downloadInventoryEmployeesPdf}
-              style={secondaryButtonStyle}
-            >
-              PDF المخزون
-            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={downloadInventoryEmployeesPdf}
+                style={secondaryButtonStyle}
+              >
+                PDF المخزون
+              </button>
+            )}
 
             <button
               type="button"
@@ -388,7 +398,9 @@ export default function InventoryPage() {
         <StatCard title="متاح" value={String(stats.available)} success />
         <StatCard title="منخفض" value={String(stats.low)} warning />
         <StatCard title="نافد" value={String(stats.out)} danger />
-        <StatCard title="إجمالي الشراء" value={money(stats.totalBuyValue)} />
+        {canViewCosts && (
+          <StatCard title="إجمالي الشراء" value={money(stats.totalBuyValue)} />
+        )}
         <StatCard
           title="إجمالي البيع"
           value={money(stats.totalSellValue)}
@@ -508,8 +520,15 @@ export default function InventoryPage() {
                     <div
                       style={{ display: 'grid', gap: '4px', minWidth: '120px' }}
                     >
-                      <span>شراء: {money(item.buy_price)}</span>
-                      <span style={{ color: '#6ee7b7' }}>
+                      {canViewCosts && (
+                        <span>شراء: {money(item.buy_price)}</span>
+                      )}
+
+                      <span
+                        style={{
+                          color: '#6ee7b7',
+                        }}
+                      >
                         بيع: {money(item.sell_price)}
                       </span>
                     </div>
@@ -524,13 +543,15 @@ export default function InventoryPage() {
                         alignItems: 'center',
                       }}
                     >
-                      <button
-                        type="button"
-                        onClick={() => openAdjust(item)}
-                        style={smallButtonStyle}
-                      >
-                        تسوية
-                      </button>
+                      {canAdjustInventory && (
+                        <button
+                          type="button"
+                          onClick={() => openAdjust(item)}
+                          style={smallButtonStyle}
+                        >
+                          تسوية
+                        </button>
+                      )}
 
                       <button
                         type="button"
@@ -563,7 +584,7 @@ export default function InventoryPage() {
         </table>
       </div>
 
-      {adjustItem && (
+      {adjustItem && canAdjustInventory && (
         <div className="theme-modal-overlay" style={modalOverlayStyle}>
           <div className="theme-modal-card" style={modalStyle}>
             <h3 style={{ margin: '0 0 8px' }}>تسوية مخزون</h3>

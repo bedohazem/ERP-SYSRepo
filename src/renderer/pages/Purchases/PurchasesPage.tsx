@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent } from 'react'
 import { useAuthStore } from '../../store/auth.store'
+import { hasUserPermission } from '../../utils/permissions'
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -68,7 +69,9 @@ function generateBarcodeValue() {
 export default function PurchasesPage() {
   const currentUser = useAuthStore((s) => s.user)
   const navigate = useNavigate()
+  const isAdmin = currentUser?.role === 'admin'
 
+  const canManageProducts = hasUserPermission(currentUser, 'products.manage')
   const [searchParams] = useSearchParams()
 
   const editPurchaseId = Number(searchParams.get('edit') || 0)
@@ -306,6 +309,24 @@ export default function PurchasesPage() {
       return
     }
 
+    if (!currentUser) {
+      return
+    }
+
+    /*
+     * تصحيح فاتورة شراء
+     * True Admin Only.
+     */
+    if (!isAdmin) {
+      setEditLoading(false)
+
+      navigate('/purchase-history', {
+        replace: true,
+      })
+
+      return
+    }
+
     let mounted = true
 
     setEditLoading(true)
@@ -413,7 +434,7 @@ export default function PurchasesPage() {
     return () => {
       mounted = false
     }
-  }, [editPurchaseId, isEditing])
+  }, [currentUser, editPurchaseId, isAdmin, isEditing, navigate])
 
   useEffect(() => {
     const handle = setTimeout(() => {
@@ -1069,7 +1090,7 @@ export default function PurchasesPage() {
                 </select>
               </div>
 
-              {!isEditing && (
+              {!isEditing && canManageProducts && (
                 <button
                   type="button"
                   onClick={() => openQuickProductModal(productSearch)}
@@ -1481,7 +1502,7 @@ export default function PurchasesPage() {
           </div>
         </div>
       </div>
-      {quickProductOpen && (
+      {quickProductOpen && canManageProducts && (
         <div
           className="theme-modal-overlay"
           style={{

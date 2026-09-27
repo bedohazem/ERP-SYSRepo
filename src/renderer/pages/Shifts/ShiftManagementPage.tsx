@@ -8,7 +8,7 @@ import {
   getCashShiftVarianceStatusLabel,
 } from '../../utils/cash-shifts'
 import ShiftHistorySection from './ShiftHistorySection'
-
+import { useAuthStore } from '../../store/auth.store'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 
 type CashShift = {
@@ -102,6 +102,9 @@ type ShiftUserOption = {
 }
 
 export default function ShiftManagementPage() {
+  const currentUser = useAuthStore((s) => s.user)
+
+  const isAdmin = currentUser?.role === 'admin'
   const [openShift, setOpenShift] = useState<CashShift | null>(null)
 
   const [variances, setVariances] = useState<CashShiftVariance[]>([])
@@ -206,25 +209,13 @@ export default function ShiftManagementPage() {
 
   async function loadShiftUsers() {
     try {
-      const result = await window.api.getUsers({
-        search: '',
-      })
+      const users = await window.api.getCashShiftUsers()
 
-      if (!result?.success) {
-        return
-      }
-
-      setShiftUsers(
-        Array.isArray(result.users)
-          ? result.users.map((user: any) => ({
-              id: Number(user.id),
-              name: String(user.name || ''),
-              role: String(user.role || ''),
-            }))
-          : [],
-      )
+      setShiftUsers(Array.isArray(users) ? users : [])
     } catch (error) {
       console.error('Failed to load shift users:', error)
+
+      setShiftUsers([])
     }
   }
 
@@ -234,6 +225,10 @@ export default function ShiftManagementPage() {
   }, [])
 
   function openVarianceReview(variance: CashShiftVariance) {
+    if (!isAdmin) {
+      return
+    }
+
     if (!canResolveCashShiftVariance(variance)) {
       return
     }
@@ -833,7 +828,7 @@ export default function ShiftManagementPage() {
                     </td>
 
                     <td style={tdStyle}>
-                      {canResolveCashShiftVariance(variance) ? (
+                      {isAdmin && canResolveCashShiftVariance(variance) ? (
                         <button
                           type="button"
                           onClick={() => openVarianceReview(variance)}
@@ -887,7 +882,7 @@ export default function ShiftManagementPage() {
         </div>
       </section>
 
-      {resolveTarget && (
+      {isAdmin && resolveTarget && (
         <div className="theme-modal-overlay" style={modalOverlayStyle}>
           <div className="theme-modal-card" style={modalCardStyle}>
             <div

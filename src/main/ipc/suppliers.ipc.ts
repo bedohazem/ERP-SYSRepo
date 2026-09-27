@@ -8,23 +8,23 @@ import {
   listSuppliers,
   updateSupplier,
 } from '../database/repositories/suppliers.repo'
-import { requirePermission } from '../auth-session'
+import { requireAnyPermission, requirePermission } from '../auth-session'
 
 export function registerSuppliersIpc(): void {
   ipcMain.handle('suppliers:list', (event, search?: string) => {
-    requirePermission(event, 'suppliers.manage')
+    requireAnyPermission(event, ['suppliers.manage', 'purchases.manage'])
 
     return getSuppliers(search ?? '')
   })
 
   ipcMain.handle('suppliers:list-page', (event, input) => {
-    requirePermission(event, 'suppliers.manage')
+    requireAnyPermission(event, ['suppliers.manage', 'purchases.manage'])
 
     return listSuppliers(input)
   })
 
   ipcMain.handle('suppliers:get-by-id', (event, id: number) => {
-    requirePermission(event, 'suppliers.manage')
+    requireAnyPermission(event, ['suppliers.manage', 'purchases.manage'])
 
     return getSupplierById(Number(id))
   })

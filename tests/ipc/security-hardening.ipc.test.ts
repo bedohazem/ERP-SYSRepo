@@ -17,6 +17,8 @@ import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
 import {
   createUser,
   findUserByUsername,
+  getEffectiveUserPermissions,
+  setUserPermissions,
 } from '../../src/main/database/repositories/user.repo'
 
 import {
@@ -196,11 +198,11 @@ describe('IPC security hardening', () => {
     ).toBe(true)
 
     await expect(invoke(client.event, 'promotions:list')).rejects.toThrow(
-      'هذه العملية متاحة لمدير النظام فقط',
+      'غير مصرح لك بتنفيذ هذه العملية',
     )
 
     await expect(invoke(client.event, 'promotions:get', 1)).rejects.toThrow(
-      'هذه العملية متاحة لمدير النظام فقط',
+      'غير مصرح لك بتنفيذ هذه العملية',
     )
 
     /*
@@ -337,5 +339,56 @@ describe('IPC security hardening', () => {
     const printers = await invoke(client.event, 'cash-drawer:list-printers')
 
     expect(Array.isArray(printers)).toBe(true)
+  })
+
+  it('allows promotion management without granting full product administration', async () => {
+    const cashier = createUser(
+      'Promotion Manager',
+      'promotion_manager',
+      '5678',
+      'cashier',
+    )
+
+    setUserPermissions(cashier.id, [
+      ...getEffectiveUserPermissions(cashier.id),
+
+      'promotions.manage',
+    ])
+
+    const { event } = makeClient()
+
+    startAuthSession(event, cashier.id)
+
+    const promotions = await invoke(event, 'promotions:list')
+
+    expect(Array.isArray(promotions)).toBe(true)
+
+    const products = await invoke(event, 'products:list', {
+      search: '',
+
+      includeInactive: true,
+    })
+
+    expect(Array.isArray(products)).toBe(true)
+
+    await expect(invoke(event, 'products:list-page', {})).rejects.toThrow(
+      'غير مصرح لك بتنفيذ هذه العملية',
+    )
+
+    const created = await invoke(event, 'promotions:create', {
+      name: 'Permission Promotion',
+
+      type: 'percent',
+
+      value: 10,
+
+      scope_type: 'all',
+
+      product_ids: [],
+
+      duration_hours: null,
+    })
+
+    expect(Number(created.promotionId)).toBeGreaterThan(0)
   })
 })
