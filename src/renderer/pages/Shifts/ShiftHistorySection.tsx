@@ -9,6 +9,10 @@ import {
 } from '../../utils/cash-shifts'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 import { getPaymentMethodLabel } from '../../utils/payment-method'
+import {
+  loadReceiptPrintSettings,
+  openReceiptPrintWindow,
+} from '../../utils/receiptPrint'
 
 type ShiftRow = {
   id: number
@@ -656,29 +660,42 @@ function ShiftDetailsModal({
   const shift = details.shift
 
   async function printReport() {
-    const movementsHtml = details.movements
-      .map(
-        (movement) => `
+    try {
+      const printSettings = await loadReceiptPrintSettings()
+
+      const movementsHtml = details.movements
+        .map(
+          (movement) => `
             <tr>
-              <td>${escapeHtml(getMovementTypeLabel(movement.type))}</td>
+              <td>
+                ${escapeHtml(getMovementTypeLabel(movement.type))}
+              </td>
 
-              <td>${movement.direction === 'in' ? 'داخل' : 'خارج'}</td>
+              <td>
+                ${movement.direction === 'in' ? 'داخل' : 'خارج'}
+              </td>
 
-              <td>${money(movement.amount)}</td>
+              <td>
+                ${money(movement.amount)}
+              </td>
 
-              <td>${escapeHtml(
-                getPaymentMethodLabel(movement.payment_method),
-              )}</td>
+              <td>
+                ${escapeHtml(getPaymentMethodLabel(movement.payment_method))}
+              </td>
 
-              <td>${escapeHtml(movement.notes || '—')}</td>
+              <td>
+                ${escapeHtml(movement.notes || '—')}
+              </td>
 
-              <td>${escapeHtml(movement.created_by_name || '—')}</td>
+              <td>
+                ${escapeHtml(movement.created_by_name || '—')}
+              </td>
             </tr>
           `,
-      )
-      .join('')
+        )
+        .join('')
 
-    const html = `
+      const html = `
       <!doctype html>
 
       <html lang="ar" dir="rtl">
@@ -691,130 +708,356 @@ function ShiftDetailsModal({
         </title>
 
         <style>
-          body {
-            font-family: Arial, sans-serif;
-            padding: 24px;
-            color: #111827;
+          * {
+            box-sizing: border-box;
           }
 
-          h1 {
-            margin-bottom: 20px;
+          body {
+            margin: 0;
+            padding: 10px;
+            background: #fff;
+            color: #111;
+            font-family:
+              Arial,
+              Tahoma,
+              sans-serif;
+
+            font-size:
+              ${printSettings.receipt_font_size_px}px;
+          }
+
+          .receipt {
+            width: 280px;
+            margin: 0 auto;
+          }
+
+          .title {
+            text-align: center;
+
+            font-size: 17px;
+            font-weight: 900;
+
+            padding: 7px 0;
+
+            border-bottom:
+              1px dashed #999;
+          }
+
+          .shift-number {
+            text-align: center;
+
+            margin-top: 6px;
+
+            font-size: 11px;
+            font-weight: 800;
           }
 
           .summary {
             display: grid;
+
             grid-template-columns:
-              repeat(3, 1fr);
-            gap: 10px;
-            margin-bottom: 24px;
+              repeat(2, 1fr);
+
+            gap: 6px;
+
+            margin:
+              10px 0 12px;
           }
 
           .card {
-            border: 1px solid #d1d5db;
-            padding: 10px;
-            border-radius: 8px;
+            border:
+              1px solid #aaa;
+
+            border-radius: 6px;
+
+            padding: 6px 4px;
+
+            text-align: center;
+
+            min-width: 0;
+          }
+
+          .card-label {
+            display: block;
+
+            color: #555;
+
+            font-size: 8.5px;
+
+            margin-bottom: 4px;
+          }
+
+          .card-value {
+            display: block;
+
+            font-size: 10px;
+            font-weight: 900;
+
+            overflow-wrap: anywhere;
+          }
+
+          .section-title {
+            margin:
+              10px 0 5px;
+
+            padding-top: 7px;
+
+            border-top:
+              1px dashed #999;
+
+            text-align: center;
+
+            font-size: 11px;
+            font-weight: 900;
           }
 
           table {
             width: 100%;
-            border-collapse: collapse;
+
+            border-collapse:
+              collapse;
+
+            table-layout:
+              fixed;
+
+            font-size: 7.5px;
           }
 
-          th, td {
-            border: 1px solid #d1d5db;
-            padding: 8px;
-            text-align: right;
+          th,
+          td {
+            border-bottom:
+              1px dotted #bbb;
+
+            padding: 4px 2px;
+
+            text-align: center;
+
+            vertical-align: middle;
+
+            overflow-wrap: anywhere;
           }
 
           th {
-            background: #f3f4f6;
+            border-top:
+              1px solid #555;
+
+            border-bottom:
+              1px solid #555;
+
+            font-size: 7.5px;
+            font-weight: 900;
+          }
+
+          th:nth-child(1),
+          td:nth-child(1) {
+            width: 18%;
+          }
+
+          th:nth-child(2),
+          td:nth-child(2) {
+            width: 11%;
+          }
+
+          th:nth-child(3),
+          td:nth-child(3) {
+            width: 17%;
+          }
+
+          th:nth-child(4),
+          td:nth-child(4) {
+            width: 17%;
+          }
+
+          th:nth-child(5),
+          td:nth-child(5) {
+            width: 20%;
+          }
+
+          th:nth-child(6),
+          td:nth-child(6) {
+            width: 17%;
+          }
+
+          @media print {
+            body {
+              margin: 0;
+
+              padding:
+                ${printSettings.receipt_padding_top_px}px
+                ${printSettings.receipt_padding_right_px}px
+                ${printSettings.receipt_padding_bottom_px}px
+                ${printSettings.receipt_padding_left_px}px;
+
+              background: #fff;
+            }
+
+            .receipt {
+              width:
+                ${printSettings.receipt_width_px}px;
+
+              margin: 0 auto;
+            }
           }
         </style>
       </head>
 
       <body>
-        <h1>
-          تقرير الشفت #${shift.id}
-        </h1>
 
-        <div class="summary">
-          <div class="card">
-            الكاشير:
-            ${escapeHtml(shift.opened_by_name || '—')}
+        <div class="receipt">
+
+          <div class="title">
+            تقرير الشفت
           </div>
 
-          <div class="card">
-            الافتتاح:
-            ${money(shift.opening_counted_amount)}
+          <div class="shift-number">
+            #${shift.id}
           </div>
 
-          <div class="card">
-            المتوقع:
-            ${money(details.preview.expected_closing_amount)}
+          <div class="summary">
+
+            <div class="card">
+              <span class="card-label">
+                الكاشير
+              </span>
+
+              <strong class="card-value">
+                ${escapeHtml(shift.opened_by_name || '—')}
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">
+                رصيد الافتتاح
+              </span>
+
+              <strong class="card-value">
+                ${money(shift.opening_counted_amount)}
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">
+                داخل الدرج
+              </span>
+
+              <strong class="card-value">
+                ${money(details.preview.cash_in)}
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">
+                خارج الدرج
+              </span>
+
+              <strong class="card-value">
+                ${money(details.preview.cash_out)}
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">
+                المتوقع
+              </span>
+
+              <strong class="card-value">
+                ${money(details.preview.expected_closing_amount)}
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">
+                الجرد الفعلي
+              </span>
+
+              <strong class="card-value">
+                ${
+                  shift.closing_counted_amount == null
+                    ? '—'
+                    : money(shift.closing_counted_amount)
+                }
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">
+                المتروك للشفت التالي
+              </span>
+
+              <strong class="card-value">
+                ${
+                  shift.left_for_next_shift == null
+                    ? '—'
+                    : money(shift.left_for_next_shift)
+                }
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">
+                توريد الخزنة الآمنة
+              </span>
+
+              <strong class="card-value">
+                ${
+                  shift.safe_transfer_amount == null
+                    ? '—'
+                    : money(shift.safe_transfer_amount)
+                }
+              </strong>
+            </div>
+
           </div>
 
-          <div class="card">
-            الجرد الفعلي:
-            ${
-              shift.closing_counted_amount == null
-                ? '—'
-                : money(shift.closing_counted_amount)
-            }
+          <div class="section-title">
+            حركات الشفت
           </div>
 
-          <div class="card">
-            المتروك:
-            ${
-              shift.left_for_next_shift == null
-                ? '—'
-                : money(shift.left_for_next_shift)
-            }
-          </div>
+          <table>
 
-          <div class="card">
-            توريد الخزنة الآمنة:
-            ${
-              shift.safe_transfer_amount == null
-                ? '—'
-                : money(shift.safe_transfer_amount)
-            }
-          </div>
+            <thead>
+              <tr>
+                <th>النوع</th>
+                <th>اتجاه</th>
+                <th>المبلغ</th>
+                <th>الحساب</th>
+                <th>ملاحظات</th>
+                <th>المستخدم</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${
+                movementsHtml ||
+                `
+                  <tr>
+                    <td
+                      colspan="6"
+                      style="
+                        text-align:center;
+                        padding:12px;
+                      "
+                    >
+                      لا توجد حركات
+                    </td>
+                  </tr>
+                `
+              }
+            </tbody>
+
+          </table>
+
         </div>
 
-        <h2>
-          حركات الشفت
-        </h2>
-
-        <table>
-          <thead>
-            <tr>
-              <th>النوع</th>
-              <th>الاتجاه</th>
-              <th>المبلغ</th>
-              <th>الحساب</th>
-              <th>ملاحظات</th>
-              <th>المستخدم</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            ${movementsHtml}
-          </tbody>
-        </table>
       </body>
 
       </html>
     `
 
-    try {
-      const result = await window.api.printHtmlWithDialog({
-        html,
-        previewWidth: 1000,
-        previewHeight: 800,
-      })
+      const printed = await openReceiptPrintWindow(html)
 
-      if (!result.ok && !result.canceled) {
-        console.error('Failed to print shift report:', result.message)
+      if (!printed) {
+        console.error('Failed to print shift report')
       }
     } catch (error) {
       console.error('Failed to print shift report:', error)

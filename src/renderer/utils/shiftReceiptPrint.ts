@@ -112,13 +112,10 @@ export function buildShiftCloseReceiptHtml(
         .logo {
           width: 48px;
           height: 48px;
-
           object-fit: cover;
-
-          border-radius:
-            50%;
-
+          border-radius: 50%;
           flex-shrink: 0;
+          display: block;
         }
 
         .store-name {
@@ -134,86 +131,57 @@ export function buildShiftCloseReceiptHtml(
 
         .contact-row {
           display: flex;
-
-          justify-content:
-            space-between;
-
-          gap: 8px;
-
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
           margin-top: 5px;
-
-          font-size: 9px;
-
+          direction: ltr;
+          font-size: 9.5px;
+          color: #222;
           font-weight: 700;
         }
 
         .title-row {
           display: grid;
-
-          grid-template-columns:
-            54px 1fr 105px;
-
+          grid-template-columns: 58px 1fr 125px;
           align-items: center;
-
-          gap: 6px;
-
-          padding: 8px 0;
-
+          gap: 7px;
+          padding: 7px 0;
           direction: ltr;
-
-          border-bottom:
-            1px dashed #999;
+          border-bottom: 1px dashed #999;
         }
 
         .shift-number {
-          border:
-            1px solid #222;
-
-          border-radius:
-            7px;
-
-          padding:
-            5px 6px;
-
-          font-size:
-            10px;
-
-          font-weight:
-            900;
-
-          text-align:
-            center;
+          justify-self: start;
+          min-width: 42px;
+          padding: 5px 7px;
+          border: 1.2px solid #222;
+          border-radius: 7px;
+          text-align: center;
+          direction: ltr;
+          font-size: 10px;
+          font-weight: 700;
+          line-height: 1;
         }
 
         .title {
-          text-align:
-            center;
-
-          direction:
-            rtl;
-
-          font-size:
-            16px;
-
-          font-weight:
-            900;
-
-          white-space:
-            nowrap;
+          justify-self: center;
+          direction: rtl;
+          text-align: center;
+          white-space: nowrap;
+          font-size: 17px;
+          font-weight: 900;
+          line-height: 1;
         }
 
         .date {
-          text-align:
-            left;
-
-          direction:
-            ltr;
-
-          font-size:
-            9px;
-
-          font-weight:
-            700;
+          justify-self: end;
+          text-align: right;
+          direction: ltr;
+          white-space: nowrap;
+          color: #222;
+          font-size: 10px;
+          font-weight: 700;
         }
 
         .cashier-box {
