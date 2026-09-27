@@ -2104,6 +2104,94 @@ export function getDb(): Database.Database {
           `)
         },
       },
+      {
+        version: 6,
+        name: 'multi-promotion-snapshots',
+
+        up: () => {
+        db.exec(`
+          CREATE TABLE
+            sale_promotion_snapshots_v6 (
+              sale_id INTEGER NOT NULL,
+
+              promotion_id INTEGER NOT NULL,
+
+              promotion_name TEXT NOT NULL,
+
+              promotion_type TEXT NOT NULL,
+
+              promotion_value REAL NOT NULL
+                DEFAULT 0,
+
+              buy_qty INTEGER,
+              free_qty INTEGER,
+
+              scope_type TEXT NOT NULL,
+
+              category_id INTEGER,
+
+              product_ids_json TEXT NOT NULL
+                DEFAULT '[]',
+
+              created_at TEXT
+                DEFAULT CURRENT_TIMESTAMP,
+
+              PRIMARY KEY (
+                sale_id,
+                promotion_id
+              ),
+
+              FOREIGN KEY (sale_id)
+                REFERENCES sales(id)
+                ON DELETE CASCADE
+            );
+
+          INSERT OR IGNORE INTO
+            sale_promotion_snapshots_v6 (
+              sale_id,
+              promotion_id,
+              promotion_name,
+              promotion_type,
+              promotion_value,
+              buy_qty,
+              free_qty,
+              scope_type,
+              category_id,
+              product_ids_json,
+              created_at
+            )
+
+          SELECT
+            sale_id,
+            promotion_id,
+            promotion_name,
+            promotion_type,
+            promotion_value,
+            buy_qty,
+            free_qty,
+            scope_type,
+            category_id,
+            product_ids_json,
+            created_at
+
+          FROM sale_promotion_snapshots;
+
+          DROP TABLE
+            sale_promotion_snapshots;
+
+          ALTER TABLE
+            sale_promotion_snapshots_v6
+          RENAME TO
+            sale_promotion_snapshots;
+
+          CREATE INDEX IF NOT EXISTS
+            idx_sale_promotion_snapshots_sale_id
+          ON sale_promotion_snapshots(
+            sale_id
+          );
+        `)
+        },
+      },
     ])
 
     seedTestAdminUser(db)

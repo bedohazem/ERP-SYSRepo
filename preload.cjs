@@ -86,7 +86,7 @@ contextBridge.exposeInMainWorld('api', {
   getPromotion: (promotionId) =>
     ipcRenderer.invoke('promotions:get', promotionId),
 
-  getActivePromotion: () => ipcRenderer.invoke('promotions:get-active'),
+  getActivePromotions: () => ipcRenderer.invoke('promotions:get-active'),
 
   createPromotion: (input) => ipcRenderer.invoke('promotions:create', input),
 

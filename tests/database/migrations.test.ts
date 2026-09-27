@@ -259,6 +259,11 @@ describe('database migrations', () => {
         version: 5,
         name: 'user-custom-permissions',
       },
+      {
+        version: 6,
+
+        name: 'multi-promotion-snapshots',
+      },
     ])
 
     const userPermissionColumns = database

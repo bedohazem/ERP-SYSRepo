@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
 
 import {
+  calculateActivePromotionsForSale,
   createPromotion,
-  getActivePromotion,
+  getActivePromotions,
   listPromotions,
   togglePromotion,
 } from '../../src/main/database/repositories/promotions.repo'
@@ -16,38 +17,231 @@ describe('promotions repository', () => {
     resetDatabaseData()
   })
 
-  it('keeps only one promotion active', () => {
+  it('allows multiple non-overlapping promotions and calculates both', () => {
+    const db = getDb()
+
+    const categoryA = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO categories (
+          name,
+          is_active
+        )
+        VALUES (
+          'Multi A',
+          1
+        )
+        `,
+        )
+        .run().lastInsertRowid,
+    )
+
+    const categoryB = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO categories (
+          name,
+          is_active
+        )
+        VALUES (
+          'Multi B',
+          1
+        )
+        `,
+        )
+        .run().lastInsertRowid,
+    )
+
+    const productA = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO products (
+          name,
+          category_id,
+          is_active
+        )
+        VALUES (
+          'Product A',
+          ?,
+          1
+        )
+        `,
+        )
+        .run(categoryA).lastInsertRowid,
+    )
+
+    const productB = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO products (
+          name,
+          category_id,
+          is_active
+        )
+        VALUES (
+          'Product B',
+          ?,
+          1
+        )
+        `,
+        )
+        .run(categoryB).lastInsertRowid,
+    )
+
+    const variantA = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO product_variants (
+          product_id,
+          buy_price,
+          sell_price,
+          is_active
+        )
+        VALUES (
+          ?,
+          50,
+          100,
+          1
+        )
+        `,
+        )
+        .run(productA).lastInsertRowid,
+    )
+
+    const variantB = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO product_variants (
+          product_id,
+          buy_price,
+          sell_price,
+          is_active
+        )
+        VALUES (
+          ?,
+          30,
+          50,
+          1
+        )
+        `,
+        )
+        .run(productB).lastInsertRowid,
+    )
+
     const first = createPromotion({
-      name: 'First Offer',
+      name: 'Offer A',
 
       type: 'percent',
 
-      value: 25,
+      value: 10,
 
-      scope_type: 'all',
+      scope_type: 'products',
+
+      product_ids: [productA],
 
       actor_id: 1,
     })
 
     const second = createPromotion({
-      name: 'Second Offer',
+      name: 'Offer B',
 
-      type: 'fixed_invoice',
+      type: 'fixed_per_item',
 
-      value: 100,
+      value: 5,
 
-      scope_type: 'all',
+      scope_type: 'products',
+
+      product_ids: [productB],
 
       actor_id: 1,
     })
 
     togglePromotion(first.promotionId, 1)
 
-    expect(getActivePromotion()?.id).toBe(first.promotionId)
-
     togglePromotion(second.promotionId, 1)
 
-    expect(getActivePromotion()?.id).toBe(second.promotionId)
+    expect(
+      getActivePromotions().map((promotion: any) => Number(promotion.id)),
+    ).toEqual([first.promotionId, second.promotionId])
+
+    const result = calculateActivePromotionsForSale([
+      {
+        variant_id: variantA,
+
+        quantity: 1,
+
+        unit_price: 100,
+      },
+
+      {
+        variant_id: variantB,
+
+        quantity: 2,
+
+        unit_price: 50,
+      },
+    ])
+
+    expect(result.promotion_discount_value).toBe(20)
+
+    expect(result.item_discounts).toEqual([10, 10])
+  })
+
+  it('rejects overlapping active promotions', () => {
+    const db = getDb()
+
+    const productId = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO products (
+          name,
+          is_active
+        )
+        VALUES (
+          'Overlap Product',
+          1
+        )
+        `,
+        )
+        .run().lastInsertRowid,
+    )
+
+    const first = createPromotion({
+      name: 'First Overlap',
+
+      type: 'percent',
+
+      value: 10,
+
+      scope_type: 'products',
+
+      product_ids: [productId],
+    })
+
+    const second = createPromotion({
+      name: 'Second Overlap',
+
+      type: 'percent',
+
+      value: 20,
+
+      scope_type: 'products',
+
+      product_ids: [productId],
+    })
+
+    togglePromotion(first.promotionId, 1)
+
+    expect(() => togglePromotion(second.promotionId, 1)).toThrow(
+      'يتداخل مع العرض',
+    )
 
     const rows = listPromotions() as any[]
 

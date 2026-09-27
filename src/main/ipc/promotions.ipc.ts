@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 
 import {
   createPromotion,
-  getActivePromotion,
+  getActivePromotions,
   getPromotion,
   listPromotions,
   togglePromotion,
@@ -30,13 +30,9 @@ export function registerPromotionsIpc(): void {
   })
 
   ipcMain.handle('promotions:get-active', (event) => {
-    /*
-     * شاشة البيع تحتاج معرفة العرض النشط،
-     * لذلك Admin + Cashier.
-     */
     requirePermission(event, 'sales.use')
 
-    return getActivePromotion()
+    return getActivePromotions()
   })
 
   ipcMain.handle('promotions:create', (event, input) => {

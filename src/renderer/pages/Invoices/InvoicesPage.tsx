@@ -213,6 +213,7 @@ type ReceiptData = {
 
   financials?: any
   promotion_snapshot?: any | null
+  promotion_snapshots?: any[]
   exchanges?: any[]
 }
 
@@ -285,7 +286,7 @@ async function loadCurrentReceiptData(saleId: number): Promise<ReceiptData> {
     ...state.current_receipt,
 
     promotion_snapshot: state.promotion_snapshot,
-
+    promotion_snapshots: state.promotion_snapshots,
     original_receipt: state.original_receipt,
 
     financials: state.financials,
@@ -333,24 +334,27 @@ function buildReturnDraftItems(
 ): ReturnDraftItem[] {
   const receiptItems = Array.isArray(receipt.items) ? receipt.items : []
 
-  if (
-    !exchangeState ||
-    exchangeState.snapshot?.promotion_type !== 'buy_x_get_y'
-  ) {
+  if (!exchangeState) {
     return receiptItems.map(mapReceiptItemToReturnDraft)
   }
 
   const groups = Array.isArray(exchangeState.groups) ? exchangeState.groups : []
 
-  if (groups.length === 0) {
-    throw new Error('بيانات العرض الحالية غير موجودة ولا يمكن تجهيز المرتجع')
+  const buyXGetYGroups = groups.filter(
+    (group: any) =>
+      group.group_kind === 'promotion' &&
+      group.promotion_snapshot?.promotion_type === 'buy_x_get_y',
+  )
+
+  if (buyXGetYGroups.length === 0) {
+    return receiptItems.map(mapReceiptItemToReturnDraft)
   }
 
   const handledGroupIds = new Set<string>()
 
   const bundleDrafts: ReturnDraftItem[] = []
 
-  groups.forEach((group: any, groupIndex: number) => {
+  buyXGetYGroups.forEach((group: any, groupIndex: number) => {
     const groupId = String(group.promotion_group_id || '')
 
     const units = Array.isArray(group.units) ? group.units : []
@@ -411,7 +415,9 @@ function buildReturnDraftItems(
 
       variant_id: 0,
 
-      product_name: `عرض ${groupIndex + 1}`,
+      product_name: group.promotion_snapshot?.promotion_name
+        ? `عرض ${group.promotion_snapshot.promotion_name}`
+        : `عرض ${groupIndex + 1}`,
 
       size: null,
       color: null,
@@ -796,24 +802,36 @@ export default function InvoicesPage() {
 
       let exchangeState: any | null = null
 
-      if (Number(receipt.sale?.promotion_id || 0) > 0) {
+      const promotionSnapshots = Array.isArray(currentState.promotion_snapshots)
+        ? currentState.promotion_snapshots
+        : []
+
+      const hasBuyXGetY = promotionSnapshots.some(
+        (snapshot: any) => snapshot?.promotion_type === 'buy_x_get_y',
+      )
+
+      if (hasBuyXGetY) {
         try {
           const state = await window.api.getSaleExchangeState(saleId)
 
-          if (state.snapshot?.promotion_type === 'buy_x_get_y') {
+          const hasBundleGroups =
+            Array.isArray(state.groups) &&
+            state.groups.some(
+              (group: any) =>
+                group.group_kind === 'promotion' &&
+                group.promotion_snapshot?.promotion_type === 'buy_x_get_y',
+            )
+
+          if (hasBundleGroups) {
             exchangeState = state
           }
         } catch (exchangeError) {
           const exchangeMessage = getErrorMessage(
             exchangeError,
+
             'تعذر قراءة حالة العرض',
           )
 
-          /*
-           * الفواتير القديمة قبل إضافة
-           * Promotion Snapshot تستمر
-           * بالـlegacy return UI.
-           */
           if (!exchangeMessage.includes('نسخة محفوظة')) {
             throw exchangeError
           }

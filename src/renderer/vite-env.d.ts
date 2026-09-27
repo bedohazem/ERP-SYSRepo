@@ -382,7 +382,7 @@ declare global {
 
       getPromotion: (promotionId: number) => Promise<any>
 
-      getActivePromotion: () => Promise<any | null>
+      getActivePromotions: () => Promise<any[]>
 
       createPromotion: (input: any) => Promise<any>
 
@@ -466,6 +466,32 @@ declare global {
 
           product_ids_json: string
         } | null
+
+        promotion_snapshots: Array<{
+          sale_id: number
+
+          promotion_id: number
+
+          promotion_name: string
+
+          promotion_type:
+            | 'percent'
+            | 'fixed_per_item'
+            | 'fixed_invoice'
+            | 'buy_x_get_y'
+
+          promotion_value: number
+
+          buy_qty: number | null
+
+          free_qty: number | null
+
+          scope_type: 'all' | 'category' | 'products'
+
+          category_id: number | null
+
+          product_ids_json: string
+        }>
 
         financials: {
           original_sub_total: number
@@ -721,9 +747,61 @@ declare global {
           product_ids: number[]
         } | null
 
+        snapshots: Array<{
+          sale_id: number
+
+          promotion_id: number
+
+          promotion_name: string
+
+          promotion_type: string
+
+          promotion_value: number
+
+          buy_qty: number | null
+
+          free_qty: number | null
+
+          scope_type: string
+
+          category_id: number | null
+
+          product_ids_json: string
+
+          product_ids: number[]
+        }>
+
         groups: Array<{
           promotion_group_id: string
+
           group_kind: 'promotion' | 'regular'
+
+          promotion_id: number | null
+
+          promotion_snapshot: {
+            sale_id: number
+
+            promotion_id: number
+
+            promotion_name: string
+
+            promotion_type: string
+
+            promotion_value: number
+
+            buy_qty: number | null
+
+            free_qty: number | null
+
+            scope_type: string
+
+            category_id: number | null
+
+            product_ids_json: string
+
+            product_ids: number[]
+          } | null
+
           units: Array<{
             id: number
             sale_id: number

@@ -82,29 +82,33 @@ export function getSaleCurrentState(saleIdInput: number) {
     created_at: string
   }>
 
-  const promotionSnapshot = db
+  const promotionSnapshots = db
     .prepare(
       `
-    SELECT
-      sale_id,
-      promotion_id,
-      promotion_name,
-      promotion_type,
-      promotion_value,
-      buy_qty,
-      free_qty,
-      scope_type,
-      category_id,
-      product_ids_json
+      SELECT
+        sale_id,
+        promotion_id,
+        promotion_name,
+        promotion_type,
+        promotion_value,
+        buy_qty,
+        free_qty,
+        scope_type,
+        category_id,
+        product_ids_json
 
-    FROM sale_promotion_snapshots
+      FROM sale_promotion_snapshots
 
-    WHERE sale_id = ?
+      WHERE sale_id = ?
 
-    LIMIT 1
-    `,
+      ORDER BY
+        promotion_id ASC
+      `,
     )
-    .get(saleId) as any
+    .all(saleId) as any[]
+
+  const promotionSnapshot =
+    promotionSnapshots.length === 1 ? promotionSnapshots[0] : null
 
   const loyaltySnapshot = db
     .prepare(
@@ -999,7 +1003,9 @@ export function getSaleCurrentState(saleIdInput: number) {
 
     financials,
 
-    promotion_snapshot: promotionSnapshot || null,
+    promotion_snapshot: promotionSnapshot,
+
+    promotion_snapshots: promotionSnapshots,
 
     loyalty_snapshot: effectiveLoyaltySnapshot,
 

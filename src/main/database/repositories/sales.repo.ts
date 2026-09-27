@@ -1,6 +1,6 @@
 import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
-import { calculateActivePromotionForSale } from './promotions.repo'
+import { calculateActivePromotionsForSale } from './promotions.repo'
 import {
   calculateSaleEarnedPoints,
   getSaleCurrentState,
@@ -35,6 +35,7 @@ type CreateSaleInput = {
   customer_id?: number | null
   business_date?: string | null
   promotion_id?: number | null
+  promotion_ids?: number[]
   sub_total: number
   discount_value: number
   grand_total: number
@@ -242,18 +243,29 @@ function createSaleInternal(
   const requestedRedeemPoints = Number(input.loyalty_points_redeemed || 0)
 
   const tx = db.transaction(() => {
-    const promotionResult = calculateActivePromotionForSale(input.items)
+    const promotionResult = calculateActivePromotionsForSale(input.items)
 
-    const expectedPromotionId = input.promotion_id
-      ? Number(input.promotion_id)
-      : null
+    const expectedPromotionIds = Array.isArray(input.promotion_ids)
+      ? Array.from(
+          new Set(
+            input.promotion_ids
+              .map(Number)
+              .filter((id) => Number.isFinite(id) && id > 0),
+          ),
+        ).sort((a, b) => a - b)
+      : input.promotion_id
+        ? [Number(input.promotion_id)]
+        : []
 
-    const activePromotionId = promotionResult.promotion?.id
-      ? Number(promotionResult.promotion.id)
-      : null
+    const activePromotionIds = promotionResult.active_promotions
+      .map((promotion: any) => Number(promotion.id))
+      .sort((a: number, b: number) => a - b)
 
-    if (expectedPromotionId !== activePromotionId) {
-      throw new Error('العرض الفعال اتغير، افتح شاشة الدفع مرة أخرى')
+    if (
+      JSON.stringify(expectedPromotionIds) !==
+      JSON.stringify(activePromotionIds)
+    ) {
+      throw new Error('العروض الفعالة اتغيرت، افتح شاشة الدفع مرة أخرى')
     }
 
     const subTotal = roundMoney(
@@ -270,6 +282,19 @@ function createSaleInternal(
       subTotal,
       Math.max(0, Number(promotionResult.promotion_discount_value || 0)),
     )
+
+    const appliedPromotions = promotionResult.applied_promotions
+
+    const headerPromotionId =
+      appliedPromotions.length === 1 ? Number(appliedPromotions[0].id) : null
+
+    const headerPromotionName =
+      appliedPromotions.length > 0
+        ? appliedPromotions
+            .map((promotion: any) => String(promotion.name || ''))
+            .filter(Boolean)
+            .join(' + ')
+        : null
 
     const totalAfterPromotion = Math.max(0, subTotal - promotionDiscount)
 
@@ -457,11 +482,9 @@ function createSaleInternal(
         subTotal,
         normalDiscount,
 
-        promotionDiscount > 0 ? activePromotionId : null,
+        promotionDiscount > 0 ? headerPromotionId : null,
 
-        promotionDiscount > 0
-          ? String(promotionResult.promotion?.name || '')
-          : null,
+        promotionDiscount > 0 ? headerPromotionName : null,
 
         promotionDiscount,
 
@@ -552,50 +575,64 @@ function createSaleInternal(
       loyalty.minRedeemPoints,
     )
 
-    if (activePromotionId && promotionResult.promotion) {
-      const promotionSnapshot = promotionResult.promotion as any
+    const insertPromotionSnapshot = db.prepare(
+      `
+    INSERT INTO
+      sale_promotion_snapshots (
+        sale_id,
+        promotion_id,
+        promotion_name,
+        promotion_type,
+        promotion_value,
+        buy_qty,
+        free_qty,
+        scope_type,
+        category_id,
+        product_ids_json
+      )
 
+    VALUES (
+      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?
+    )
+    `,
+    )
+
+    for (const promotionSnapshot of appliedPromotions) {
       const snapshotProductIds = Array.isArray(promotionSnapshot.product_ids)
         ? promotionSnapshot.product_ids
             .map(Number)
             .filter((id: number) => Number.isFinite(id) && id > 0)
         : []
 
-      db.prepare(
-        `
-        INSERT INTO sale_promotion_snapshots (
-          sale_id,
-          promotion_id,
-          promotion_name,
-          promotion_type,
-          promotion_value,
-          buy_qty,
-          free_qty,
-          scope_type,
-          category_id,
-          product_ids_json
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-      ).run(
+      insertPromotionSnapshot.run(
         saleId,
-        activePromotionId,
+
+        Number(promotionSnapshot.id),
+
         String(promotionSnapshot.name || ''),
+
         String(promotionSnapshot.type || ''),
+
         Number(promotionSnapshot.value || 0),
+
         promotionSnapshot.buy_qty !== null &&
           promotionSnapshot.buy_qty !== undefined
           ? Number(promotionSnapshot.buy_qty)
           : null,
+
         promotionSnapshot.free_qty !== null &&
           promotionSnapshot.free_qty !== undefined
           ? Number(promotionSnapshot.free_qty)
           : null,
+
         String(promotionSnapshot.scope_type || 'all'),
+
         promotionSnapshot.category_id !== null &&
           promotionSnapshot.category_id !== undefined
           ? Number(promotionSnapshot.category_id)
           : null,
+
         JSON.stringify(snapshotProductIds),
       )
     }
@@ -711,8 +748,7 @@ function createSaleInternal(
 
     const buyXGetYFragments = new Map<number, BuyXGetYFragment[]>()
 
-    const isBuyXGetYPromotion =
-      promotionResult.promotion?.type === 'buy_x_get_y'
+    const buyXItemIndexes = new Set<number>()
 
     const addBuyXGetYFragment = (
       itemIndex: number,
@@ -737,7 +773,9 @@ function createSaleInternal(
       } else {
         fragments.push({
           quantity,
+
           is_gift: isGift,
+
           promotion_group_id: promotionGroupId,
         })
       }
@@ -745,149 +783,121 @@ function createSaleInternal(
       buyXGetYFragments.set(itemIndex, fragments)
     }
 
-    if (isBuyXGetYPromotion) {
-      const buyQty = Math.floor(Number(promotionResult.promotion?.buy_qty || 0))
+    for (const promotionCalculation of promotionResult.promotion_results) {
+      const promotion = promotionCalculation.promotion
 
-      const freeQty = Math.floor(
-        Number(promotionResult.promotion?.free_qty || 0),
+      if (promotion?.type !== 'buy_x_get_y') {
+        continue
+      }
+
+      const promotionId = Number(promotion.id)
+
+      const buyQty = Math.floor(Number(promotion.buy_qty || 0))
+
+      const freeQty = Math.floor(Number(promotion.free_qty || 0))
+
+      if (buyQty <= 0 || freeQty <= 0) {
+        continue
+      }
+
+      const eligibleIndexes = new Set<number>(
+        promotionCalculation.eligible_item_indexes.map(Number),
       )
 
-      if (buyQty > 0 && freeQty > 0) {
-        const promotionProductIds = new Set<number>(
-          Array.isArray(promotionResult.promotion?.product_ids)
-            ? promotionResult.promotion.product_ids.map(Number)
-            : [],
-        )
+      const eligibleWholeQuantities = input.items.map((item, itemIndex) => {
+        if (!eligibleIndexes.has(itemIndex)) {
+          return 0
+        }
 
-        const getVariantPromotionScope = db.prepare(`
-          SELECT
-            pv.product_id,
-            p.category_id
-          FROM product_variants pv
-          JOIN products p
-            ON p.id = pv.product_id
-          WHERE pv.id = ?
-          LIMIT 1
-        `)
+        buyXItemIndexes.add(itemIndex)
 
-        const eligibleWholeQuantities = input.items.map((item) => {
-          const scope = getVariantPromotionScope.get(
-            Number(item.variant_id),
-          ) as
-            | {
-                product_id: number
-                category_id: number | null
-              }
-            | undefined
+        return Math.floor(Math.max(0, Number(item.quantity || 0)))
+      })
 
-          if (!scope) {
-            return 0
-          }
+      const giftUnits: number[] = []
 
-          const scopeType = String(
-            promotionResult.promotion?.scope_type || 'all',
-          )
+      const paidUnits: number[] = []
 
-          let eligible = false
+      input.items.forEach((_, itemIndex) => {
+        const eligibleQty = Number(eligibleWholeQuantities[itemIndex] || 0)
 
-          if (scopeType === 'all') {
-            eligible = true
-          }
+        const giftQty = Math.min(
+          eligibleQty,
 
-          if (scopeType === 'category') {
-            eligible =
-              Number(scope.category_id) ===
-              Number(promotionResult.promotion?.category_id)
-          }
+          Math.max(
+            0,
 
-          if (scopeType === 'products') {
-            eligible = promotionProductIds.has(Number(scope.product_id))
-          }
-
-          if (!eligible) {
-            return 0
-          }
-
-          return Math.floor(Math.max(0, Number(item.quantity || 0)))
-        })
-
-        const giftUnits: number[] = []
-        const paidUnits: number[] = []
-
-        input.items.forEach((_, itemIndex) => {
-          const eligibleQty = Number(eligibleWholeQuantities[itemIndex] || 0)
-
-          const giftQty = Math.min(
-            eligibleQty,
-            Math.max(
-              0,
-              Math.floor(
-                Number(promotionResult.item_free_quantities[itemIndex] || 0),
-              ),
+            Math.floor(
+              Number(promotionCalculation.item_free_quantities[itemIndex] || 0),
             ),
-          )
-
-          const paidQty = eligibleQty - giftQty
-
-          for (let unit = 0; unit < giftQty; unit += 1) {
-            giftUnits.push(itemIndex)
-          }
-
-          for (let unit = 0; unit < paidQty; unit += 1) {
-            paidUnits.push(itemIndex)
-          }
-        })
-
-        const bundleCount = Math.min(
-          Math.floor(paidUnits.length / buyQty),
-          Math.floor(giftUnits.length / freeQty),
+          ),
         )
 
-        let paidCursor = 0
-        let giftCursor = 0
+        const paidQty = eligibleQty - giftQty
 
-        for (let bundleIndex = 0; bundleIndex < bundleCount; bundleIndex += 1) {
-          const promotionGroupId = `sale_${saleId}_promotion_${activePromotionId}_bundle_${
-            bundleIndex + 1
-          }`
+        for (let unit = 0; unit < giftQty; unit += 1) {
+          giftUnits.push(itemIndex)
+        }
 
-          for (let unit = 0; unit < buyQty; unit += 1) {
-            const itemIndex = paidUnits[paidCursor]
+        for (let unit = 0; unit < paidQty; unit += 1) {
+          paidUnits.push(itemIndex)
+        }
+      })
 
-            paidCursor += 1
+      const bundleCount = Math.min(
+        Math.floor(paidUnits.length / buyQty),
 
-            addBuyXGetYFragment(itemIndex, 1, false, promotionGroupId)
-          }
+        Math.floor(giftUnits.length / freeQty),
+      )
 
-          for (let unit = 0; unit < freeQty; unit += 1) {
-            const itemIndex = giftUnits[giftCursor]
+      let paidCursor = 0
+      let giftCursor = 0
 
-            giftCursor += 1
+      for (let bundleIndex = 0; bundleIndex < bundleCount; bundleIndex += 1) {
+        const promotionGroupId = `sale_${saleId}_promotion_${promotionId}_bundle_${
+          bundleIndex + 1
+        }`
 
-            addBuyXGetYFragment(itemIndex, 1, true, promotionGroupId)
-          }
+        for (let unit = 0; unit < buyQty; unit += 1) {
+          const itemIndex = paidUnits[paidCursor]
+
+          paidCursor += 1
+
+          addBuyXGetYFragment(itemIndex, 1, false, promotionGroupId)
+        }
+
+        for (let unit = 0; unit < freeQty; unit += 1) {
+          const itemIndex = giftUnits[giftCursor]
+
+          giftCursor += 1
+
+          addBuyXGetYFragment(itemIndex, 1, true, promotionGroupId)
         }
       }
+    }
 
-      const assignedQuantities = input.items.map(() => 0)
+    const assignedQuantities = input.items.map(() => 0)
 
-      for (const [itemIndex, fragments] of buyXGetYFragments.entries()) {
-        assignedQuantities[itemIndex] = fragments.reduce(
-          (total, fragment) => total + Number(fragment.quantity || 0),
-          0,
-        )
-      }
+    for (const [itemIndex, fragments] of buyXGetYFragments.entries()) {
+      assignedQuantities[itemIndex] = fragments.reduce(
+        (total, fragment) => total + Number(fragment.quantity || 0),
 
-      input.items.forEach((item, itemIndex) => {
-        const originalQty = Math.max(0, Number(item.quantity || 0))
+        0,
+      )
+    }
 
-        const standaloneQty = Math.max(
-          0,
-          originalQty - Number(assignedQuantities[itemIndex] || 0),
-        )
+    for (const itemIndex of buyXItemIndexes) {
+      const item = input.items[itemIndex]
 
-        addBuyXGetYFragment(itemIndex, standaloneQty, false, null)
-      })
+      const originalQty = Math.max(0, Number(item.quantity || 0))
+
+      const standaloneQty = Math.max(
+        0,
+
+        originalQty - Number(assignedQuantities[itemIndex] || 0),
+      )
+
+      addBuyXGetYFragment(itemIndex, standaloneQty, false, null)
     }
 
     for (const [itemIndex, item] of input.items.entries()) {
@@ -924,7 +934,7 @@ function createSaleInternal(
         Number(promotionResult.item_discounts[itemIndex] || 0),
       )
 
-      if (isBuyXGetYPromotion) {
+      if (buyXItemIndexes.has(itemIndex)) {
         const fragments = buyXGetYFragments.get(itemIndex) || []
 
         for (const fragment of fragments) {
@@ -1083,12 +1093,13 @@ function createSaleInternal(
       loyalty_points_earned: earnedPoints,
       loyalty_points_redeemed: redeemPoints,
       loyalty_discount_value: loyaltyDiscountValue,
-      promotion_id: promotionDiscount > 0 ? activePromotionId : null,
+      promotion_id: promotionDiscount > 0 ? headerPromotionId : null,
 
-      promotion_name:
-        promotionDiscount > 0
-          ? (promotionResult.promotion?.name ?? null)
-          : null,
+      promotion_name: promotionDiscount > 0 ? headerPromotionName : null,
+
+      promotion_ids: appliedPromotions.map((promotion: any) =>
+        Number(promotion.id),
+      ),
 
       promotion_discount_value: promotionDiscount,
       grand_total: grandTotal,
@@ -2923,7 +2934,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       throw new Error('لا يمكن تعديل فاتورة تم إنشاؤها بعرض')
     }
 
-    const editPromotionResult = calculateActivePromotionForSale(input.items)
+    const editPromotionResult = calculateActivePromotionsForSale(input.items)
 
     const editPromotionDiscount = Math.max(
       0,
@@ -2936,9 +2947,9 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       )
     }
 
-    const neutralPromotionId = editPromotionResult.promotion?.id
-      ? Number(editPromotionResult.promotion.id)
-      : null
+    const neutralPromotionIds = editPromotionResult.active_promotions.map(
+      (promotion: any) => Number(promotion.id),
+    )
 
     /*
      * لا نعدل فاتورة دخل عليها مرتجع.
@@ -3270,7 +3281,9 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
 
       business_date: businessDate,
 
-      promotion_id: neutralPromotionId,
+      promotion_id: null,
+
+      promotion_ids: neutralPromotionIds,
 
       sub_total: input.sub_total,
 

@@ -237,6 +237,113 @@ function replacePromotionProducts(promotionId: number, productIds: number[]) {
   }
 }
 
+function hasProductInsideCategory(productIds: number[], categoryId: number) {
+  if (productIds.length === 0 || !categoryId) {
+    return false
+  }
+
+  const db = getDb()
+
+  const placeholders = productIds.map(() => '?').join(', ')
+
+  const row = db
+    .prepare(
+      `
+      SELECT id
+
+      FROM products
+
+      WHERE
+        id IN (
+          ${placeholders}
+        )
+
+        AND category_id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(...productIds, categoryId)
+
+  return Boolean(row)
+}
+
+function promotionScopesOverlap(first: any, second: any) {
+  if (first.scope_type === 'all' || second.scope_type === 'all') {
+    return true
+  }
+
+  if (first.scope_type === 'category' && second.scope_type === 'category') {
+    return Number(first.category_id) === Number(second.category_id)
+  }
+
+  if (first.scope_type === 'products' && second.scope_type === 'products') {
+    const secondIds = new Set((second.product_ids || []).map(Number))
+
+    return (first.product_ids || []).some((id: number) =>
+      secondIds.has(Number(id)),
+    )
+  }
+
+  if (first.scope_type === 'category' && second.scope_type === 'products') {
+    return hasProductInsideCategory(
+      (second.product_ids || []).map(Number),
+
+      Number(first.category_id),
+    )
+  }
+
+  if (first.scope_type === 'products' && second.scope_type === 'category') {
+    return hasProductInsideCategory(
+      (first.product_ids || []).map(Number),
+
+      Number(second.category_id),
+    )
+  }
+
+  return false
+}
+
+function assertNoActivePromotionConflict(
+  candidate: any,
+  excludePromotionId = 0,
+) {
+  expirePromotions()
+
+  const db = getDb()
+
+  const activeRows = db
+    .prepare(
+      `
+      SELECT id
+
+      FROM promotions
+
+      WHERE is_active = 1
+        AND id <> ?
+
+      ORDER BY id ASC
+      `,
+    )
+    .all(Number(excludePromotionId || 0)) as Array<{
+    id: number
+  }>
+
+  for (const row of activeRows) {
+    const activePromotion = getPromotion(row.id)
+
+    if (!activePromotion) {
+      continue
+    }
+
+    if (promotionScopesOverlap(candidate, activePromotion)) {
+      throw new Error(
+        `لا يمكن تفعيل العرض لأنه يتداخل مع العرض: ${activePromotion.name}`,
+      )
+    }
+  }
+}
+
 type PromotionSaleItem = {
   variant_id: number
   quantity: number
@@ -247,22 +354,11 @@ function roundMoney(value: number) {
   return Number(Number(value || 0).toFixed(2))
 }
 
-export function calculateActivePromotionForSale(items: PromotionSaleItem[]) {
+function calculatePromotionForSale(promotion: any, items: PromotionSaleItem[]) {
   const db = getDb()
-
-  const promotion = getActivePromotion() as any
 
   const itemDiscounts = items.map(() => 0)
   const itemFreeQuantities = items.map(() => 0)
-
-  if (!promotion) {
-    return {
-      promotion: null,
-      promotion_discount_value: 0,
-      item_discounts: itemDiscounts,
-      item_free_quantities: itemFreeQuantities,
-    }
-  }
 
   const productIds = new Set<number>(
     Array.isArray(promotion.product_ids)
@@ -337,10 +433,13 @@ export function calculateActivePromotionForSale(items: PromotionSaleItem[]) {
     lineTotal: number
   }>
 
+  const eligibleItemIndexes = eligibleItems.map((item) => item.index)
+
   if (eligibleItems.length === 0) {
     return {
       promotion,
       promotion_discount_value: 0,
+      eligible_item_indexes: eligibleItemIndexes,
       item_discounts: itemDiscounts,
       item_free_quantities: itemFreeQuantities,
     }
@@ -357,6 +456,7 @@ export function calculateActivePromotionForSale(items: PromotionSaleItem[]) {
       return {
         promotion,
         promotion_discount_value: 0,
+        eligible_item_indexes: eligibleItemIndexes,
         item_discounts: itemDiscounts,
         item_free_quantities: itemFreeQuantities,
       }
@@ -448,6 +548,71 @@ export function calculateActivePromotionForSale(items: PromotionSaleItem[]) {
     promotion_discount_value: totalDiscount,
     item_discounts: itemDiscounts,
     item_free_quantities: itemFreeQuantities,
+    eligible_item_indexes: eligibleItemIndexes,
+  }
+}
+
+export function calculateActivePromotionsForSale(items: PromotionSaleItem[]) {
+  const activePromotions = getActivePromotions()
+
+  const itemDiscounts = items.map(() => 0)
+
+  const itemFreeQuantities = items.map(() => 0)
+
+  const itemPromotionIds: Array<number | null> = items.map(() => null)
+
+  const promotionResults = activePromotions.map((promotion) =>
+    calculatePromotionForSale(promotion, items),
+  )
+
+  for (const result of promotionResults) {
+    const promotionId = Number(result.promotion.id)
+
+    for (const itemIndex of result.eligible_item_indexes) {
+      const previousPromotionId = itemPromotionIds[itemIndex]
+
+      if (previousPromotionId && previousPromotionId !== promotionId) {
+        throw new Error('يوجد تداخل بين العروض الفعالة على نفس الصنف')
+      }
+
+      itemPromotionIds[itemIndex] = promotionId
+
+      itemDiscounts[itemIndex] = roundMoney(
+        Number(result.item_discounts[itemIndex] || 0),
+      )
+
+      itemFreeQuantities[itemIndex] = Number(
+        result.item_free_quantities[itemIndex] || 0,
+      )
+    }
+  }
+
+  const totalDiscount = roundMoney(
+    itemDiscounts.reduce(
+      (total, discount) => total + Number(discount || 0),
+
+      0,
+    ),
+  )
+
+  const appliedResults = promotionResults.filter(
+    (result) => Number(result.promotion_discount_value || 0) > 0,
+  )
+
+  return {
+    active_promotions: activePromotions,
+
+    applied_promotions: appliedResults.map((result) => result.promotion),
+
+    promotion_results: promotionResults,
+
+    promotion_discount_value: totalDiscount,
+
+    item_discounts: itemDiscounts,
+
+    item_free_quantities: itemFreeQuantities,
+
+    item_promotion_ids: itemPromotionIds,
   }
 }
 
@@ -544,31 +709,28 @@ export function getPromotion(promotionId: number) {
   }
 }
 
-export function getActivePromotion() {
+export function getActivePromotions() {
   expirePromotions()
+
   const db = getDb()
 
-  const row = db
+  const rows = db
     .prepare(
       `
-        SELECT id
-        FROM promotions
-        WHERE is_active = 1
-        ORDER BY id DESC
-        LIMIT 1
-        `,
+      SELECT id
+
+      FROM promotions
+
+      WHERE is_active = 1
+
+      ORDER BY id ASC
+      `,
     )
-    .get() as
-    | {
-        id: number
-      }
-    | undefined
+    .all() as Array<{
+    id: number
+  }>
 
-  if (!row) {
-    return null
-  }
-
-  return getPromotion(Number(row.id))
+  return rows.map((row) => getPromotion(Number(row.id))).filter(Boolean)
 }
 
 export function createPromotion(input: PromotionInput) {
@@ -667,13 +829,23 @@ export function updatePromotion(
   const existing = db
     .prepare(
       `
-        SELECT id
-        FROM promotions
-        WHERE id = ?
-        LIMIT 1
-        `,
+      SELECT
+        id,
+        is_active
+
+      FROM promotions
+
+      WHERE id = ?
+
+      LIMIT 1
+    `,
     )
-    .get(id)
+    .get(id) as
+    | {
+        id: number
+        is_active: number
+      }
+    | undefined
 
   if (!existing) {
     throw new Error('العرض غير موجود')
@@ -686,6 +858,22 @@ export function updatePromotion(
 
   const categoryId =
     input.scope_type === 'category' ? Number(input.category_id) : null
+
+  if (Number(existing.is_active || 0) === 1) {
+    assertNoActivePromotionConflict(
+      {
+        ...input,
+
+        id,
+
+        category_id: categoryId,
+
+        product_ids: productIds,
+      },
+
+      id,
+    )
+  }
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -763,16 +951,13 @@ export function togglePromotion(promotionId: number, isActive: number) {
         : null
 
     if (nextActive) {
-      db.prepare(
-        `
-        UPDATE promotions
-        SET
-          is_active = 0,
-          ends_at = NULL,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE is_active = 1
-      `,
-      ).run()
+      const promotion = getPromotion(id)
+
+      if (!promotion) {
+        throw new Error('العرض غير موجود')
+      }
+
+      assertNoActivePromotionConflict(promotion, id)
     }
 
     db.prepare(

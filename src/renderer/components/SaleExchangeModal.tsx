@@ -30,11 +30,31 @@ type ExchangeUnit = {
   current_color?: string | null
 }
 
+type PromotionSnapshot = {
+  promotion_id: number
+
+  promotion_type: string
+  promotion_name: string
+  promotion_value: number
+
+  buy_qty: number | null
+
+  free_qty: number | null
+
+  scope_type: string
+
+  category_id: number | null
+
+  product_ids: number[]
+}
+
 type ExchangeGroup = {
   promotion_group_id: string
 
   group_kind: 'promotion' | 'regular'
+  promotion_id?: number | null
 
+  promotion_snapshot?: PromotionSnapshot | null
   units: ExchangeUnit[]
 }
 
@@ -44,19 +64,9 @@ type ExchangeState = {
     payment_method: string
     amount: number
   }>
-  snapshot: {
-    promotion_type: string
-    promotion_name: string
-    promotion_value: number
-    buy_qty: number | null
-    free_qty: number | null
+  snapshot: PromotionSnapshot | null
 
-    scope_type: string
-
-    category_id: number | null
-
-    product_ids: number[]
-  } | null
+  snapshots: PromotionSnapshot[]
 
   groups: ExchangeGroup[]
   financials: {
@@ -220,6 +230,7 @@ export default function SaleExchangeModal({
           sale: result.sale,
           payments: result.payments || [],
           snapshot: result.snapshot || null,
+          snapshots: Array.isArray(result.snapshots) ? result.snapshots : [],
 
           groups: activeGroups,
 
@@ -271,9 +282,11 @@ export default function SaleExchangeModal({
     )
   }, [state, groupId])
 
+  const selectedPromotionSnapshot = selectedGroup?.promotion_snapshot || null
+
   const selectedIsPromotion = Boolean(
     selectedGroup?.group_kind === 'promotion' &&
-    state?.snapshot?.promotion_type === 'buy_x_get_y',
+    selectedPromotionSnapshot?.promotion_type === 'buy_x_get_y',
   )
 
   const recordedPromotionDiscount = Number(
@@ -287,16 +300,16 @@ export default function SaleExchangeModal({
   const promotionName = String(state?.sale?.promotion_name || 'عرض')
 
   const historicalPromotionName = String(
-    state?.snapshot?.promotion_name || promotionName,
+    selectedPromotionSnapshot?.promotion_name || promotionName,
   )
 
   const promotionTypeLabel = getPromotionTypeLabel(
-    state?.snapshot?.promotion_type,
+    selectedPromotionSnapshot?.promotion_type,
   )
 
-  const promotionRulesText = getPromotionRulesText(state?.snapshot)
+  const promotionRulesText = getPromotionRulesText(selectedPromotionSnapshot)
 
-  const promotionScopeLabel = getPromotionScopeLabel(state?.snapshot)
+  const promotionScopeLabel = getPromotionScopeLabel(selectedPromotionSnapshot)
 
   const preview = useMemo(() => {
     if (!state || !selectedGroup) {
@@ -354,7 +367,10 @@ export default function SaleExchangeModal({
     })
 
     const freeQty = selectedIsPromotion
-      ? Math.max(0, Math.floor(Number(state.snapshot?.free_qty || 0)))
+      ? Math.max(
+          0,
+          Math.floor(Number(selectedPromotionSnapshot?.free_qty || 0)),
+        )
       : 0
 
     const giftIds = selectedIsPromotion
@@ -488,7 +504,7 @@ export default function SaleExchangeModal({
       return true
     }
 
-    const snapshot = state.snapshot
+    const snapshot = selectedGroup.promotion_snapshot
 
     if (!snapshot) {
       return false
@@ -570,8 +586,8 @@ export default function SaleExchangeModal({
 
         categoryId:
           selectedGroup?.group_kind === 'promotion' &&
-          state.snapshot?.scope_type === 'category'
-            ? state.snapshot.category_id
+          selectedGroup?.promotion_snapshot?.scope_type === 'category'
+            ? selectedGroup.promotion_snapshot?.category_id
             : null,
 
         limit: 30,
@@ -937,7 +953,7 @@ export default function SaleExchangeModal({
                 {state.groups.map((group, groupIndex) => {
                   const isPromotionGroup =
                     group.group_kind === 'promotion' &&
-                    state.snapshot?.promotion_type === 'buy_x_get_y'
+                    group.promotion_snapshot?.promotion_type === 'buy_x_get_y'
 
                   const isSelected =
                     String(groupId) === String(group.promotion_group_id) &&
@@ -984,7 +1000,8 @@ export default function SaleExchangeModal({
                                 color: '#86efac',
                               }}
                             >
-                              {promotionName}
+                              {group.promotion_snapshot?.promotion_name ||
+                                promotionName}
                             </strong>
 
                             <span

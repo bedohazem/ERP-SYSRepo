@@ -320,6 +320,20 @@ function getPromotionDiscountForCart(
   return roundMoney(Math.min(eligibleSubtotal, value))
 }
 
+function getPromotionsDiscountForCart(
+  promotions: ActivePromotion[],
+  cart: CartItem[],
+) {
+  return roundMoney(
+    promotions.reduce(
+      (total, promotion) =>
+        total + getPromotionDiscountForCart(promotion, cart),
+
+      0,
+    ),
+  )
+}
+
 type DropdownRect = {
   top: number
   left: number
@@ -577,8 +591,9 @@ export default function SalesPage() {
   const [splitPaymentDrafts, setSplitPaymentDrafts] = useState<
     Record<string, string>
   >({})
-  const [activePromotion, setActivePromotion] =
-    useState<ActivePromotion | null>(null)
+  const [activePromotions, setActivePromotions] = useState<ActivePromotion[]>(
+    [],
+  )
   const [customers, setCustomers] = useState<CustomerOption[]>([])
   const [loadingCustomers, setLoadingCustomers] = useState(false)
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false)
@@ -885,7 +900,7 @@ export default function SalesPage() {
   const activeInvoice =
     invoices.find((x) => x.id === activeInvoiceId) ?? invoices[0]
 
-  const effectivePromotion = editingSaleId ? null : activePromotion
+  const effectivePromotions = editingSaleId ? [] : activePromotions
 
   const subTotal = useMemo(
     () =>
@@ -897,8 +912,9 @@ export default function SalesPage() {
   )
 
   const promotionDiscountValue = useMemo(
-    () => getPromotionDiscountForCart(effectivePromotion, activeInvoice.cart),
-    [effectivePromotion, activeInvoice.cart],
+    () => getPromotionsDiscountForCart(effectivePromotions, activeInvoice.cart),
+
+    [effectivePromotions, activeInvoice.cart],
   )
 
   const totalAfterPromotion = Math.max(0, subTotal - promotionDiscountValue)
@@ -1006,20 +1022,24 @@ export default function SalesPage() {
       return
     }
 
-    let latestPromotion = editingSaleId ? null : activePromotion
+    let latestPromotions: ActivePromotion[] = editingSaleId
+      ? []
+      : activePromotions
 
     if (!editingSaleId) {
       try {
-        latestPromotion = await window.api.getActivePromotion()
+        latestPromotions = await window.api.getActivePromotions()
 
-        setActivePromotion(latestPromotion || null)
+        setActivePromotions(
+          Array.isArray(latestPromotions) ? latestPromotions : [],
+        )
       } catch (error) {
         console.error('Failed to refresh promotion:', error)
       }
     }
 
-    const nextPromotionDiscount = getPromotionDiscountForCart(
-      latestPromotion || null,
+    const nextPromotionDiscount = getPromotionsDiscountForCart(
+      latestPromotions,
       activeInvoice.cart,
     )
 
@@ -1632,7 +1652,11 @@ export default function SalesPage() {
       const salePayload = {
         customer_id: activeInvoice.customer?.id ?? null,
 
-        promotion_id: editingSaleId ? null : (activePromotion?.id ?? null),
+        promotion_id: null,
+
+        promotion_ids: editingSaleId
+          ? []
+          : activePromotions.map((promotion) => Number(promotion.id)),
 
         sub_total: subTotal,
 
@@ -2098,32 +2122,53 @@ export default function SalesPage() {
   ])
 
   useEffect(() => {
-    if (activePromotion?.ends_at == null) return
+    const timedPromotions = activePromotions.filter(
+      (promotion) => promotion.ends_at != null,
+    )
 
-    const endsAt = Number(activePromotion.ends_at)
+    if (timedPromotions.length === 0) {
+      return
+    }
 
-    const checkExpiry = () => {
-      if (Date.now() < endsAt) return
+    const checkExpiry = async () => {
+      const expired = timedPromotions.some(
+        (promotion) => Number(promotion.ends_at) <= Date.now(),
+      )
 
-      setActivePromotion(null)
+      if (!expired) {
+        return
+      }
+
+      try {
+        const fresh = await window.api.getActivePromotions()
+
+        setActivePromotions(Array.isArray(fresh) ? fresh : [])
+      } catch {
+        setActivePromotions([])
+      }
+
       setShowPaymentModal(false)
 
       showMessage(
         'error',
-        'انتهت مدة العرض. راجع الإجمالي وافتح الدفع مرة أخرى',
+        'انتهت مدة أحد العروض. راجع الإجمالي وافتح الدفع مرة أخرى',
       )
     }
 
-    checkExpiry()
+    void checkExpiry()
 
-    const timer = window.setInterval(checkExpiry, 1000)
+    const timer = window.setInterval(() => {
+      void checkExpiry()
+    }, 1000)
+
     window.addEventListener('focus', checkExpiry)
 
     return () => {
       window.clearInterval(timer)
+
       window.removeEventListener('focus', checkExpiry)
     }
-  }, [activePromotion])
+  }, [activePromotions])
 
   useEffect(() => {
     window.focus()
@@ -2131,14 +2176,14 @@ export default function SalesPage() {
     void loadLoyaltySettings()
 
     void window.api
-      .getActivePromotion()
-      .then((promotion) => {
-        setActivePromotion(promotion || null)
+      .getActivePromotions()
+      .then((promotions) => {
+        setActivePromotions(Array.isArray(promotions) ? promotions : [])
       })
       .catch((error) => {
-        console.error('Failed to load active promotion:', error)
+        console.error('Failed to load active promotions:', error)
 
-        setActivePromotion(null)
+        setActivePromotions([])
       })
 
     void window.api
@@ -2553,18 +2598,23 @@ export default function SalesPage() {
       >
         <h2 style={{ margin: '0 0 24px', textAlign: 'right' }}>فاتورة بيع</h2>
 
-        {effectivePromotion && (
+        {effectivePromotions.length > 0 && (
           <div
             style={{
               marginBottom: '16px',
+
               padding: '12px 14px',
+
               borderRadius: '12px',
+
               background: 'rgba(34,197,94,0.10)',
+
               border: '1px solid rgba(34,197,94,0.30)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: '10px',
-              flexWrap: 'wrap',
+
+              display: 'grid',
+
+              gap: '6px',
+
               direction: 'rtl',
             }}
           >
@@ -2573,13 +2623,19 @@ export default function SalesPage() {
                 color: '#86efac',
               }}
             >
-              🎁 عرض فعال: {effectivePromotion.name}
+              🎁 العروض الفعالة
             </strong>
 
             <span>
+              {effectivePromotions
+                .map((promotion) => promotion.name)
+                .join(' • ')}
+            </span>
+
+            <span>
               {promotionDiscountValue > 0
-                ? `خصم العرض: ${money(promotionDiscountValue)} ج.م`
-                : 'العرض لا ينطبق على أصناف الفاتورة الحالية'}
+                ? `إجمالي خصومات العروض: ${money(promotionDiscountValue)} ج.م`
+                : 'العروض الحالية لا تنطبق على أصناف الفاتورة'}
             </span>
           </div>
         )}
@@ -4099,10 +4155,7 @@ export default function SalesPage() {
                     ...(promotionDiscountValue > 0
                       ? [
                           {
-                            label: effectivePromotion?.name
-                              ? `خصم العرض (${effectivePromotion.name})`
-                              : 'خصم العرض',
-
+                            label: 'خصم العروض',
                             value: money(promotionDiscountValue),
 
                             color: '#86efac',

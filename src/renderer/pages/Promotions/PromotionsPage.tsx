@@ -438,7 +438,7 @@ export default function PromotionsPage() {
                 margin: '6px 0 0',
               }}
             >
-              عرض واحد فقط يمكن أن يكون فعالًا في نفس الوقت
+              يمكن تشغيل أكثر من عرض معًا طالما لا توجد أصناف أو تصنيفات متداخلة
             </p>
           </div>
 
@@ -593,10 +593,6 @@ export default function PromotionsPage() {
               <option value="hours">ساعات</option>
               <option value="days">أيام</option>
             </select>
-
-            <small style={{ color: '#94a3b8', fontWeight: 400 }}>
-              المدة تبدأ من التفعيل. تغيير مدة عرض فعال يبدأها من الحفظ.
-            </small>
           </label>
 
           <label style={fieldStyle}>

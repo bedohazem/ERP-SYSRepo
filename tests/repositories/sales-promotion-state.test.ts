@@ -16,6 +16,7 @@ import {
 } from '../../src/main/database/repositories/sales.repo'
 import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
 import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo'
+import { getSaleExchangeState } from '../../src/main/database/repositories/sales-exchange.repo'
 
 type TestVariant = {
   variant_id: number
@@ -315,5 +316,222 @@ describe('sale promotion exchange state', () => {
     expect(Number(state.promotion_snapshot.category_id)).toBe(
       result.promoCategoryId,
     )
+  })
+
+  it('keeps multiple buy-x-get-y groups linked to their own promotion snapshots', () => {
+    const categoryA = createCategory({
+      name: 'Multi Promo A',
+    })
+
+    const categoryB = createCategory({
+      name: 'Multi Promo B',
+    })
+
+    createProduct({
+      name: 'Multi Product A',
+
+      category_id: categoryA.id,
+
+      image_path: null,
+      description: null,
+
+      variants: [
+        {
+          barcode: 'MULTI-A',
+
+          size: 'A',
+          color: 'Black',
+
+          buy_price: 50,
+          sell_price: 100,
+
+          min_stock: 1,
+
+          opening_qty: 10,
+        },
+      ],
+    })
+
+    createProduct({
+      name: 'Multi Product B',
+
+      category_id: categoryB.id,
+
+      image_path: null,
+      description: null,
+
+      variants: [
+        {
+          barcode: 'MULTI-B',
+
+          size: 'B',
+          color: 'Black',
+
+          buy_price: 100,
+          sell_price: 200,
+
+          min_stock: 1,
+
+          opening_qty: 10,
+        },
+      ],
+    })
+
+    const variantA = getVariantByBarcode('MULTI-A') as TestVariant
+
+    const variantB = getVariantByBarcode('MULTI-B') as TestVariant
+
+    const promotionA = createPromotion({
+      name: 'Multi Offer A',
+
+      type: 'buy_x_get_y',
+
+      value: 0,
+
+      buy_qty: 1,
+      free_qty: 1,
+
+      scope_type: 'category',
+
+      category_id: Number(categoryA.id),
+
+      product_ids: [],
+
+      actor_id: 1,
+    })
+
+    const promotionB = createPromotion({
+      name: 'Multi Offer B',
+
+      type: 'buy_x_get_y',
+
+      value: 0,
+
+      buy_qty: 1,
+      free_qty: 1,
+
+      scope_type: 'category',
+
+      category_id: Number(categoryB.id),
+
+      product_ids: [],
+
+      actor_id: 1,
+    })
+
+    togglePromotion(promotionA.promotionId, 1)
+
+    togglePromotion(promotionB.promotionId, 1)
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      promotion_id: null,
+
+      promotion_ids: [promotionA.promotionId, promotionB.promotionId],
+
+      sub_total: 600,
+
+      discount_value: 0,
+
+      grand_total: 300,
+
+      paid: 300,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variantA.variant_id,
+
+          product_name: variantA.product_name,
+
+          barcode: variantA.barcode,
+
+          size: variantA.size,
+
+          color: variantA.color,
+
+          quantity: 2,
+
+          unit_price: 100,
+        },
+
+        {
+          variant_id: variantB.variant_id,
+
+          product_name: variantB.product_name,
+
+          barcode: variantB.barcode,
+
+          size: variantB.size,
+
+          color: variantB.color,
+
+          quantity: 2,
+
+          unit_price: 200,
+        },
+      ],
+    })
+
+    const db = getDb()
+
+    const snapshots = db
+      .prepare(
+        `
+      SELECT
+        promotion_id
+
+      FROM
+        sale_promotion_snapshots
+
+      WHERE sale_id = ?
+
+      ORDER BY
+        promotion_id ASC
+      `,
+      )
+      .all(sale.saleId) as Array<{
+      promotion_id: number
+    }>
+
+    expect(snapshots.map((snapshot) => Number(snapshot.promotion_id))).toEqual(
+      [promotionA.promotionId, promotionB.promotionId].sort((a, b) => a - b),
+    )
+
+    const currentState = getSaleCurrentState(sale.saleId)
+
+    expect(currentState.promotion_snapshot).toBeNull()
+
+    expect(currentState.promotion_snapshots).toHaveLength(2)
+
+    const exchangeState = getSaleExchangeState(sale.saleId)
+
+    const promotionGroups = exchangeState.groups.filter(
+      (group) => group.group_kind === 'promotion',
+    )
+
+    expect(promotionGroups).toHaveLength(2)
+
+    const linkedPromotionIds = promotionGroups
+      .map((group) => Number(group.promotion_snapshot?.promotion_id))
+      .sort((a, b) => a - b)
+
+    expect(linkedPromotionIds).toEqual(
+      [promotionA.promotionId, promotionB.promotionId].sort((a, b) => a - b),
+    )
+
+    for (const group of promotionGroups) {
+      expect(group.promotion_snapshot?.promotion_type).toBe('buy_x_get_y')
+
+      expect(String(group.promotion_group_id)).toContain(
+        `_promotion_${group.promotion_snapshot?.promotion_id}_bundle_`,
+      )
+    }
   })
 })

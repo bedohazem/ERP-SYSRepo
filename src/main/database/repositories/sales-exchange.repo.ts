@@ -125,6 +125,28 @@ function parseProductIds(value: string) {
   }
 }
 
+function getPromotionIdFromGroupId(value?: string | null) {
+  const match = String(value || '').match(/_promotion_(\d+)_bundle_/)
+
+  const promotionId = Number(match?.[1] || 0)
+
+  return promotionId > 0 ? promotionId : null
+}
+
+function normalizePromotionSnapshot(
+  snapshot: PromotionSnapshotRow | null | undefined,
+) {
+  if (!snapshot) {
+    return null
+  }
+
+  return {
+    ...snapshot,
+
+    product_ids: parseProductIds(snapshot.product_ids_json),
+  }
+}
+
 function parseExchangeStateJson(
   value: unknown,
   label: string,
@@ -472,16 +494,28 @@ export function getSaleExchangeState(saleIdInput: number) {
 
   ensureRegularSaleUnits(db, saleId)
 
-  const snapshot = db
+  const snapshotRows = db
     .prepare(
       `
-      SELECT *
-      FROM sale_promotion_snapshots
-      WHERE sale_id = ?
-      LIMIT 1
-      `,
+    SELECT *
+
+    FROM sale_promotion_snapshots
+
+    WHERE sale_id = ?
+
+    ORDER BY
+      promotion_id ASC
+    `,
     )
-    .get(saleId) as PromotionSnapshotRow | undefined
+    .all(saleId) as PromotionSnapshotRow[]
+
+  const normalizedSnapshots = snapshotRows
+    .map(normalizePromotionSnapshot)
+    .filter(Boolean)
+
+  const snapshotByPromotionId = new Map<number, PromotionSnapshotRow>(
+    snapshotRows.map((snapshot) => [Number(snapshot.promotion_id), snapshot]),
+  )
 
   const units = db
     .prepare(
@@ -521,6 +555,10 @@ export function getSaleExchangeState(saleIdInput: number) {
 
       group_kind: 'promotion' | 'regular'
 
+      promotion_id: number | null
+
+      promotion_snapshot: ReturnType<typeof normalizePromotionSnapshot>
+
       units: any[]
     }
   >()
@@ -532,28 +570,38 @@ export function getSaleExchangeState(saleIdInput: number) {
 
     if (current) {
       current.units.push(unit)
-    } else {
-      groupMap.set(groupId, {
-        promotion_group_id: groupId,
 
-        group_kind: isRegularExchangeGroup(groupId) ? 'regular' : 'promotion',
-
-        units: [unit],
-      })
+      continue
     }
+
+    const isRegular = isRegularExchangeGroup(groupId)
+
+    const promotionId = isRegular ? null : getPromotionIdFromGroupId(groupId)
+
+    const promotionSnapshot = promotionId
+      ? normalizePromotionSnapshot(snapshotByPromotionId.get(promotionId))
+      : null
+
+    groupMap.set(groupId, {
+      promotion_group_id: groupId,
+
+      group_kind: isRegular ? 'regular' : 'promotion',
+
+      promotion_id: promotionId,
+
+      promotion_snapshot: promotionSnapshot,
+
+      units: [unit],
+    })
   }
 
   const currentState = getSaleCurrentState(saleId)
 
   return {
     sale,
-    snapshot: snapshot
-      ? {
-          ...snapshot,
+    snapshot: normalizedSnapshots.length === 1 ? normalizedSnapshots[0] : null,
 
-          product_ids: parseProductIds(snapshot.product_ids_json),
-        }
-      : null,
+    snapshots: normalizedSnapshots,
     groups: Array.from(groupMap.values()),
     payments: currentState.current_receipt.payments || [],
     financials: currentState.financials,
@@ -629,17 +677,6 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
     ensureRegularSaleUnits(db, saleId)
 
-    const snapshot = db
-      .prepare(
-        `
-        SELECT *
-        FROM sale_promotion_snapshots
-        WHERE sale_id = ?
-        LIMIT 1
-        `,
-      )
-      .get(saleId) as PromotionSnapshotRow | undefined
-
     const getUnit = db.prepare(
       `
       SELECT *
@@ -679,6 +716,32 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
     }
 
     const isRegularExchange = isRegularExchangeGroup(promotionGroupId)
+
+    const groupPromotionId = isRegularExchange
+      ? null
+      : getPromotionIdFromGroupId(promotionGroupId)
+
+    const snapshot =
+      !isRegularExchange && groupPromotionId
+        ? (db
+            .prepare(
+              `
+          SELECT *
+
+          FROM
+            sale_promotion_snapshots
+
+          WHERE
+            sale_id = ?
+
+            AND
+              promotion_id = ?
+
+          LIMIT 1
+          `,
+            )
+            .get(saleId, groupPromotionId) as PromotionSnapshotRow | undefined)
+        : undefined
 
     const groupUnits = db
       .prepare(
