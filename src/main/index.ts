@@ -51,8 +51,6 @@ const runtimeSecurityOptions = {
   openExternal: (url: string) => shell.openExternal(url),
 }
 
-app.setName('ERP Store')
-
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.abdelrahmanhazem.erpstore')
 }
