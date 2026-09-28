@@ -180,6 +180,38 @@ type InvoiceTab = {
   notesDraft: string
 }
 
+type HeldSaleListRow = {
+  id: number
+
+  user_id: number
+
+  cashier_name: string
+
+  customer_id: number | null
+
+  customer_name?: string | null
+
+  customer_phone?: string | null
+
+  title: string
+
+  discount_type: 'amount' | 'percent'
+
+  discount_value: number
+
+  notes?: string | null
+
+  created_at: string
+
+  updated_at: string
+
+  items_count: number
+
+  total_quantity: number
+
+  estimated_sub_total: number
+}
+
 function roundMoney(value: number) {
   return Number(Number(value || 0).toFixed(2))
 }
@@ -440,8 +472,9 @@ function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
     paidDraft: '',
     paymentMethod: 'cash',
     businessDateDraft: '',
-    discountType: 'amount',
-    discountDraft: '',
+    discountType: raw?.discountType === 'percent' ? 'percent' : 'amount',
+
+    discountDraft: String(raw?.discountDraft || ''),
     notesDraft: String(raw?.notesDraft || ''),
   }
 }
@@ -453,8 +486,9 @@ function serializeInvoiceDraft(invoice: InvoiceTab): InvoiceTab {
     paidDraft: '',
     paymentMethod: 'cash',
     businessDateDraft: '',
-    discountType: 'amount',
-    discountDraft: '',
+    discountType: invoice.discountType,
+
+    discountDraft: invoice.discountDraft,
     notesDraft: invoice.notesDraft,
   }
 }
@@ -624,6 +658,30 @@ export default function SalesPage() {
   const [receiptData, setReceiptData] = useState<SaleReceipt | null>(null)
   const [printingReceipt, setPrintingReceipt] = useState(false)
   const [salesDraftHydrated, setSalesDraftHydrated] = useState(false)
+  const [heldSales, setHeldSales] = useState<HeldSaleListRow[]>([])
+
+  const [loadingHeldSales, setLoadingHeldSales] = useState(false)
+
+  const [showHeldSalesModal, setShowHeldSalesModal] = useState(false)
+
+  const [showHoldSaleModal, setShowHoldSaleModal] = useState(false)
+
+  const [holdTitleDraft, setHoldTitleDraft] = useState('')
+
+  const [holdingSale, setHoldingSale] = useState(false)
+
+  const [resumingHeldSaleId, setResumingHeldSaleId] = useState<number | null>(
+    null,
+  )
+
+  const [deletingHeldSaleId, setDeletingHeldSaleId] = useState<number | null>(
+    null,
+  )
+
+  const [pendingDeleteHeldSaleId, setPendingDeleteHeldSaleId] = useState<
+    number | null
+  >(null)
+
   const [dropdownRect, setDropdownRect] = useState<DropdownRect | null>(null)
 
   const barcodeInputRef = useRef<HTMLInputElement | null>(null)
@@ -631,6 +689,12 @@ export default function SalesPage() {
   const firstQtyInputRef = useRef<HTMLInputElement | null>(null)
   const customerWrapperRef = useRef<HTMLDivElement | null>(null)
   const pageRef = useRef<HTMLDivElement | null>(null)
+
+  const pendingDeleteHeldSale = pendingDeleteHeldSaleId
+    ? (heldSales.find(
+        (row) => Number(row.id) === Number(pendingDeleteHeldSaleId),
+      ) ?? null)
+    : null
 
   useEffect(() => {
     if (!requestedEditSaleId || !user?.id) {
@@ -1160,7 +1224,15 @@ export default function SalesPage() {
 
   function focusMainInput() {
     requestAnimationFrame(() => {
-      if (showAddCustomerModal || showPaymentModal || receiptData) return
+      if (
+        showAddCustomerModal ||
+        showPaymentModal ||
+        showHoldSaleModal ||
+        showHeldSalesModal ||
+        receiptData
+      ) {
+        return
+      }
 
       if (barcodeMode) {
         barcodeInputRef.current?.focus()
@@ -1197,7 +1269,13 @@ export default function SalesPage() {
 
   useEffect(() => {
     function handleSalesFocusBarcode() {
-      if (showAddCustomerModal || showPaymentModal || receiptData) {
+      if (
+        showAddCustomerModal ||
+        showPaymentModal ||
+        showHoldSaleModal ||
+        showHeldSalesModal ||
+        receiptData
+      ) {
         return
       }
 
@@ -1209,10 +1287,24 @@ export default function SalesPage() {
     return () => {
       window.removeEventListener('sales-focus-barcode', handleSalesFocusBarcode)
     }
-  }, [showAddCustomerModal, showPaymentModal, receiptData])
+  }, [
+    showAddCustomerModal,
+    showPaymentModal,
+    showHoldSaleModal,
+    showHeldSalesModal,
+    receiptData,
+  ])
 
   function handlePageMouseDown(e: ReactMouseEvent<HTMLDivElement>) {
-    if (showAddCustomerModal || showPaymentModal || receiptData) return
+    if (
+      showAddCustomerModal ||
+      showPaymentModal ||
+      showHoldSaleModal ||
+      showHeldSalesModal ||
+      receiptData
+    ) {
+      return
+    }
 
     const target = e.target as HTMLElement | null
 
@@ -1232,7 +1324,15 @@ export default function SalesPage() {
 
   useEffect(() => {
     function handleGlobalPointerDown(e: PointerEvent) {
-      if (showAddCustomerModal || showPaymentModal || receiptData) return
+      if (
+        showAddCustomerModal ||
+        showPaymentModal ||
+        showHoldSaleModal ||
+        showHeldSalesModal ||
+        receiptData
+      ) {
+        return
+      }
 
       const target = e.target as HTMLElement | null
 
@@ -1255,7 +1355,14 @@ export default function SalesPage() {
     return () => {
       document.removeEventListener('pointerdown', handleGlobalPointerDown, true)
     }
-  }, [showAddCustomerModal, showPaymentModal, receiptData, barcodeMode])
+  }, [
+    showAddCustomerModal,
+    showPaymentModal,
+    showHoldSaleModal,
+    showHeldSalesModal,
+    receiptData,
+    barcodeMode,
+  ])
 
   function showMessage(
     type: 'error' | 'success',
@@ -1313,6 +1420,377 @@ export default function SalesPage() {
     } catch (error) {
       console.error('Failed to load loyalty settings:', error)
       setLoyaltySettings(defaultLoyaltySettings)
+    }
+  }
+
+  async function loadHeldSales(showError = false) {
+    setLoadingHeldSales(true)
+
+    try {
+      const rows = await window.api.listHeldSales()
+
+      setHeldSales(Array.isArray(rows) ? rows : [])
+    } catch (error) {
+      console.error('Failed to load held sales:', error)
+
+      setHeldSales([])
+
+      if (showError) {
+        showMessage('error', 'تعذر تحميل الفواتير المعلقة', false)
+      }
+    } finally {
+      setLoadingHeldSales(false)
+    }
+  }
+
+  function openHoldSaleModal() {
+    if (editingSaleId) {
+      showMessage('error', 'لا يمكن تعليق فاتورة أثناء تعديل فاتورة محفوظة')
+
+      return
+    }
+
+    if (activeInvoice.cart.length === 0) {
+      showMessage('error', 'لا يمكن تعليق فاتورة فارغة')
+
+      return
+    }
+
+    const customerName = String(activeInvoice.customer?.name || '').trim()
+
+    setHoldTitleDraft(customerName || activeInvoice.title || 'فاتورة معلقة')
+
+    setShowHoldSaleModal(true)
+
+    setCustomerDropdownOpen(false)
+
+    setProductResults([])
+
+    setDropdownRect(null)
+  }
+
+  async function holdActiveInvoice() {
+    if (holdingSale || editingSaleId) {
+      return
+    }
+
+    if (activeInvoice.cart.length === 0) {
+      showMessage('error', 'لا يمكن تعليق فاتورة فارغة', false)
+
+      return
+    }
+
+    const rawDiscount = Number(activeInvoice.discountDraft || 0)
+
+    const safeDiscount = Number.isFinite(rawDiscount)
+      ? Math.max(0, rawDiscount)
+      : 0
+
+    const heldDiscount =
+      activeInvoice.discountType === 'percent'
+        ? Math.min(safeDiscount, 100)
+        : safeDiscount
+
+    setHoldingSale(true)
+
+    try {
+      await window.api.holdSale({
+        customer_id: activeInvoice.customer?.id ?? null,
+
+        title: holdTitleDraft.trim() || activeInvoice.title || 'فاتورة معلقة',
+
+        discount_type: activeInvoice.discountType,
+
+        discount_value: heldDiscount,
+
+        notes: activeInvoice.notesDraft.trim() || null,
+
+        items: activeInvoice.cart.map((item) => ({
+          variant_id: item.variant_id,
+
+          quantity: item.quantity,
+        })),
+      })
+
+      if (invoices.length === 1) {
+        const freshInvoice = createInvoice(activeInvoiceId)
+
+        setInvoices([freshInvoice])
+
+        setActiveInvoiceId(freshInvoice.id)
+      } else {
+        const currentIndex = invoices.findIndex(
+          (invoice) => invoice.id === activeInvoiceId,
+        )
+
+        const remaining = invoices.filter(
+          (invoice) => invoice.id !== activeInvoiceId,
+        )
+
+        const nextIndex = Math.min(
+          Math.max(currentIndex, 0),
+
+          remaining.length - 1,
+        )
+
+        setInvoices(remaining)
+
+        setActiveInvoiceId(remaining[nextIndex]?.id ?? remaining[0].id)
+      }
+
+      setSplitPaymentEnabled(false)
+
+      setSplitPaymentDrafts({})
+
+      setProductResults([])
+
+      setDropdownRect(null)
+
+      setCustomerSearch('')
+
+      setCustomerDropdownOpen(false)
+
+      setShowPaymentModal(false)
+
+      setShowHoldSaleModal(false)
+
+      setHoldTitleDraft('')
+
+      await loadHeldSales()
+
+      showMessage('success', 'تم تعليق الفاتورة بنجاح', false)
+
+      setTimeout(forceBarcodeFocus, 0)
+    } catch (error) {
+      console.error('Failed to hold sale:', error)
+
+      showMessage(
+        'error',
+        error instanceof Error ? error.message : 'تعذر تعليق الفاتورة',
+        false,
+      )
+    } finally {
+      setHoldingSale(false)
+    }
+  }
+
+  async function openHeldSalesModal() {
+    if (editingSaleId) {
+      showMessage('error', 'أنهِ تعديل الفاتورة الحالية أولًا')
+
+      return
+    }
+
+    setShowHeldSalesModal(true)
+
+    setCustomerDropdownOpen(false)
+
+    setProductResults([])
+
+    setDropdownRect(null)
+
+    await loadHeldSales(true)
+  }
+
+  async function resumeHeldSale(heldSaleId: number) {
+    if (resumingHeldSaleId || editingSaleId) {
+      return
+    }
+
+    setResumingHeldSaleId(heldSaleId)
+
+    try {
+      const held = await window.api.getHeldSale(heldSaleId)
+
+      if (!Array.isArray(held.items) || held.items.length === 0) {
+        throw new Error('الفاتورة المعلقة لا تحتوي على أصناف')
+      }
+
+      const unavailable = held.items.find(
+        (item) => Number(item.is_active) !== 1 || Number(item.stock || 0) <= 0,
+      )
+
+      if (unavailable) {
+        throw new Error(
+          `الصنف "${unavailable.product_name}" غير متاح حاليًا ولا يمكن استكمال الفاتورة`,
+        )
+      }
+
+      let quantityAdjusted = false
+
+      const cart: CartItem[] = held.items.map((item) => {
+        const stock = Math.max(0, Number(item.stock || 0))
+
+        const savedQty = Math.max(1, Number(item.quantity || 1))
+
+        const quantity = Math.min(savedQty, stock)
+
+        if (quantity < savedQty) {
+          quantityAdjusted = true
+        }
+
+        return {
+          variant_id: Number(item.variant_id),
+
+          product_id: Number(item.product_id),
+
+          product_name: String(item.product_name || ''),
+
+          category_id:
+            item.category_id == null ? null : Number(item.category_id),
+
+          category_name: item.category_name ?? null,
+
+          barcode: String(item.barcode || ''),
+
+          size: String(item.size || ''),
+
+          color: String(item.color || ''),
+
+          sell_price: Number(item.sell_price || 0),
+
+          buy_price: Number(item.buy_price || 0),
+
+          stock,
+
+          min_stock: Number(item.min_stock || 0),
+
+          is_active: Number(item.is_active ?? 1),
+
+          quantity,
+        }
+      })
+
+      const customer: CustomerOption | null = held.customer_id
+        ? {
+            id: Number(held.customer_id),
+
+            name: String(held.customer_name || ''),
+
+            phone: held.customer_phone ?? null,
+
+            email: held.customer_email ?? null,
+
+            address: held.customer_address ?? null,
+
+            notes: held.customer_notes ?? null,
+
+            points_balance: Number(held.customer_points_balance || 0),
+
+            total_spent: Number(held.customer_total_spent || 0),
+
+            sales_count: 0,
+
+            last_sale_at: null,
+          }
+        : null
+
+      const invoiceId = nextInvoiceId
+
+      const resumedInvoice: InvoiceTab = {
+        ...createInvoice(invoiceId),
+
+        id: invoiceId,
+
+        title: String(held.title || `فاتورة ${invoiceId}`),
+
+        cart,
+
+        customer,
+
+        discountType: held.discount_type === 'percent' ? 'percent' : 'amount',
+
+        discountDraft:
+          Number(held.discount_value || 0) > 0
+            ? String(held.discount_value)
+            : '',
+
+        notesDraft: String(held.notes || ''),
+      }
+
+      await window.api.deleteHeldSale({
+        held_sale_id: heldSaleId,
+
+        mode: 'resumed',
+      })
+
+      setInvoices((prev) => [...prev, resumedInvoice])
+
+      setActiveInvoiceId(invoiceId)
+
+      setNextInvoiceId((prev) => Math.max(prev + 1, invoiceId + 1))
+
+      setSplitPaymentEnabled(false)
+
+      setSplitPaymentDrafts({})
+
+      setCustomerSearch('')
+
+      setCustomerDropdownOpen(false)
+
+      setProductResults([])
+
+      setDropdownRect(null)
+
+      setShowHeldSalesModal(false)
+
+      await loadHeldSales()
+
+      showMessage(
+        'success',
+        quantityAdjusted
+          ? 'تم استكمال الفاتورة، وتم تخفيض بعض الكميات حسب المخزون الحالي'
+          : 'تم استكمال الفاتورة المعلقة',
+        false,
+      )
+
+      setTimeout(forceBarcodeFocus, 0)
+    } catch (error) {
+      console.error('Failed to resume held sale:', error)
+
+      showMessage(
+        'error',
+        error instanceof Error
+          ? error.message
+          : 'تعذر استكمال الفاتورة المعلقة',
+        false,
+      )
+    } finally {
+      setResumingHeldSaleId(null)
+    }
+  }
+
+  async function discardHeldSale(heldSaleId: number) {
+    if (deletingHeldSaleId) {
+      return
+    }
+
+    setDeletingHeldSaleId(heldSaleId)
+
+    try {
+      await window.api.deleteHeldSale({
+        held_sale_id: heldSaleId,
+
+        mode: 'discarded',
+      })
+
+      setHeldSales((prev) =>
+        prev.filter((row) => Number(row.id) !== Number(heldSaleId)),
+      )
+
+      setPendingDeleteHeldSaleId(null)
+
+      showMessage('success', 'تم حذف الفاتورة المعلقة', false)
+    } catch (error) {
+      console.error('Failed to discard held sale:', error)
+
+      showMessage(
+        'error',
+        error instanceof Error ? error.message : 'تعذر حذف الفاتورة المعلقة',
+        false,
+      )
+    } finally {
+      setDeletingHeldSaleId(null)
     }
   }
 
@@ -1896,7 +2374,13 @@ export default function SalesPage() {
       if (event.key !== 'Escape') return
 
       // الـModals لها أولوية.
-      if (showAddCustomerModal || showPaymentModal || receiptData) {
+      if (
+        showAddCustomerModal ||
+        showPaymentModal ||
+        showHoldSaleModal ||
+        showHeldSalesModal ||
+        receiptData
+      ) {
         return
       }
 
@@ -1921,6 +2405,8 @@ export default function SalesPage() {
     productResults.length,
     showAddCustomerModal,
     showPaymentModal,
+    showHoldSaleModal,
+    showHeldSalesModal,
     receiptData,
   ])
 
@@ -1936,6 +2422,39 @@ export default function SalesPage() {
 
         return
       }
+
+      if (showHoldSaleModal) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+
+          setShowHoldSaleModal(false)
+
+          setHoldTitleDraft('')
+
+          setTimeout(focusMainInput, 0)
+        }
+
+        return
+      }
+
+      if (showHeldSalesModal) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+
+          if (pendingDeleteHeldSaleId !== null) {
+            setPendingDeleteHeldSaleId(null)
+
+            return
+          }
+
+          setShowHeldSalesModal(false)
+
+          setTimeout(focusMainInput, 0)
+        }
+
+        return
+      }
+
       if (showAddCustomerModal || receiptData) return
 
       if (e.key === 'F8') {
@@ -2025,6 +2544,9 @@ export default function SalesPage() {
     maxRedeemPoints,
     openingCashDrawer,
     editingSaleId,
+    showHoldSaleModal,
+    showHeldSalesModal,
+    pendingDeleteHeldSaleId,
   ])
 
   useEffect(() => {
@@ -2174,6 +2696,7 @@ export default function SalesPage() {
     window.focus()
     void loadCustomers('')
     void loadLoyaltySettings()
+    void loadHeldSales()
 
     void window.api
       .getActivePromotions()
@@ -2337,6 +2860,119 @@ export default function SalesPage() {
         </div>
       )}
 
+      {pendingDeleteHeldSale && (
+        <div
+          role="alertdialog"
+          aria-live="assertive"
+          style={{
+            position: 'fixed',
+
+            top: '82px',
+
+            left: '50%',
+
+            transform: 'translateX(-50%)',
+
+            zIndex: 100005,
+
+            width: '430px',
+
+            maxWidth: 'calc(100vw - 24px)',
+
+            padding: '14px 16px',
+
+            borderRadius: '14px',
+
+            border: '1px solid rgba(239,68,68,0.45)',
+
+            background: 'rgba(30,41,59,0.98)',
+
+            boxShadow: '0 18px 50px rgba(0,0,0,0.50)',
+
+            color: '#fff',
+
+            direction: 'rtl',
+
+            display: 'grid',
+
+            gap: '12px',
+          }}
+        >
+          <div
+            style={{
+              display: 'grid',
+              gap: '4px',
+            }}
+          >
+            <strong
+              style={{
+                color: '#fca5a5',
+                fontSize: '14px',
+              }}
+            >
+              تأكيد حذف الفاتورة المعلقة
+            </strong>
+
+            <span
+              style={{
+                color: '#cbd5e1',
+                fontSize: '12px',
+              }}
+            >
+              هل تريد حذف
+              {' "'}
+              {pendingDeleteHeldSale.title}
+              {'" '}
+              نهائيًا؟
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+
+              gap: '8px',
+
+              justifyContent: 'flex-start',
+            }}
+          >
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => void discardHeldSale(pendingDeleteHeldSale.id)}
+              disabled={deletingHeldSaleId !== null}
+              style={{
+                ...secondaryOutlineButtonStyle,
+
+                minWidth: '105px',
+
+                borderColor: 'rgba(239,68,68,0.55)',
+
+                background: 'rgba(239,68,68,0.14)',
+
+                color: '#fecaca',
+
+                opacity: deletingHeldSaleId !== null ? 0.6 : 1,
+              }}
+            >
+              {deletingHeldSaleId === pendingDeleteHeldSale.id
+                ? 'جاري الحذف...'
+                : 'تأكيد الحذف'}
+            </button>
+
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setPendingDeleteHeldSaleId(null)}
+              disabled={deletingHeldSaleId !== null}
+              style={secondaryOutlineButtonStyle}
+            >
+              إلغاء
+            </button>
+          </div>
+        </div>
+      )}
+
       {editingSaleId && (
         <div
           style={{
@@ -2485,6 +3121,34 @@ export default function SalesPage() {
             }}
           >
             {editingSaleId ? 'التعديل جارٍ...' : '+ فاتورة جديدة F9'}
+          </button>
+
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => void openHeldSalesModal()}
+            disabled={Boolean(editingSaleId) || saving}
+            style={{
+              ...secondaryOutlineButtonStyle,
+
+              minWidth: isCompact ? '100%' : '165px',
+
+              width: isCompact ? '100%' : undefined,
+
+              borderColor: 'rgba(245,158,11,0.45)',
+
+              color: '#fcd34d',
+
+              opacity: editingSaleId || saving ? 0.45 : 1,
+
+              cursor: editingSaleId || saving ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {loadingHeldSales
+              ? 'جاري التحميل...'
+              : `الفواتير المعلقة${
+                  heldSales.length > 0 ? ` (${heldSales.length})` : ''
+                }`}
           </button>
 
           <button
@@ -3196,10 +3860,18 @@ export default function SalesPage() {
         <div
           style={{
             marginTop: '24px',
+
             display: 'flex',
+
             justifyContent: 'flex-start',
+
             direction: 'rtl',
+
             maxWidth: '100%',
+
+            gap: '10px',
+
+            flexWrap: 'wrap',
           }}
         >
           <button
@@ -3209,9 +3881,13 @@ export default function SalesPage() {
             disabled={saving || activeInvoice.cart.length === 0}
             style={{
               ...secondaryOutlineButtonStyle,
+
               minWidth: isCompact ? '100%' : '180px',
+
               width: isCompact ? '100%' : undefined,
+
               opacity: saving || activeInvoice.cart.length === 0 ? 0.6 : 1,
+
               cursor:
                 saving || activeInvoice.cart.length === 0
                   ? 'not-allowed'
@@ -3226,8 +3902,553 @@ export default function SalesPage() {
                 ? 'F12 / حفظ التعديل'
                 : 'F12 / دفع'}
           </button>
+
+          {!editingSaleId && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={openHoldSaleModal}
+              disabled={
+                saving || holdingSale || activeInvoice.cart.length === 0
+              }
+              style={{
+                ...secondaryOutlineButtonStyle,
+
+                minWidth: isCompact ? '100%' : '180px',
+
+                width: isCompact ? '100%' : undefined,
+
+                borderColor: 'rgba(245,158,11,0.45)',
+
+                color: '#fcd34d',
+
+                opacity:
+                  saving || holdingSale || activeInvoice.cart.length === 0
+                    ? 0.6
+                    : 1,
+
+                cursor:
+                  saving || holdingSale || activeInvoice.cart.length === 0
+                    ? 'not-allowed'
+                    : 'pointer',
+              }}
+            >
+              تعليق الفاتورة
+            </button>
+          )}
         </div>
       </div>
+
+      {showHoldSaleModal && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            position: 'fixed',
+
+            inset: 0,
+
+            background: 'rgba(0,0,0,0.68)',
+
+            zIndex: 100000,
+
+            display: 'flex',
+
+            alignItems: 'center',
+
+            justifyContent: 'center',
+
+            padding: '20px',
+          }}
+        >
+          <div
+            className="theme-modal-card"
+            style={{
+              width: '460px',
+
+              maxWidth: '100%',
+
+              borderRadius: '18px',
+
+              border: '1px solid rgba(245,158,11,0.28)',
+
+              background: '#111827',
+
+              boxShadow: '0 28px 80px rgba(0,0,0,0.58)',
+
+              padding: '22px',
+
+              direction: 'rtl',
+
+              color: '#fff',
+
+              display: 'grid',
+
+              gap: '16px',
+            }}
+          >
+            <div
+              style={{
+                display: 'grid',
+
+                gap: '5px',
+              }}
+            >
+              <h3
+                style={{
+                  margin: 0,
+
+                  color: '#fcd34d',
+                }}
+              >
+                تعليق الفاتورة
+              </h3>
+
+              <span
+                style={{
+                  color: '#94a3b8',
+
+                  fontSize: '12px',
+                }}
+              >
+                لن يتم خصم مخزون أو تسجيل حركة مالية حتى يتم استكمال البيع.
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+
+                gap: '7px',
+              }}
+            >
+              <span
+                style={{
+                  color: '#cbd5e1',
+
+                  fontSize: '12px',
+
+                  fontWeight: 800,
+                }}
+              >
+                اسم الفاتورة المعلقة
+              </span>
+
+              <input
+                autoFocus
+                value={holdTitleDraft}
+                onChange={(e) => setHoldTitleDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+
+                    void holdActiveInvoice()
+                  }
+                }}
+                placeholder="مثال: أحمد - راجع بعد قليل"
+                style={{
+                  ...tableInputStyle,
+
+                  textAlign: 'right',
+
+                  direction: 'rtl',
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+
+                gap: '8px',
+              }}
+            >
+              <div style={receiptInfoCardStyle}>
+                <span>عدد الأصناف</span>
+
+                <strong>{activeInvoice.cart.length}</strong>
+              </div>
+
+              <div style={receiptInfoCardStyle}>
+                <span>الإجمالي الحالي</span>
+
+                <strong>{money(grandTotal)} ج.م</strong>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+
+                gap: '10px',
+
+                justifyContent: 'flex-start',
+
+                flexWrap: 'wrap',
+              }}
+            >
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void holdActiveInvoice()}
+                disabled={holdingSale}
+                style={{
+                  ...primaryButtonStyle,
+
+                  opacity: holdingSale ? 0.6 : 1,
+                }}
+              >
+                {holdingSale ? 'جاري التعليق...' : 'تأكيد التعليق'}
+              </button>
+
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setShowHoldSaleModal(false)
+
+                  setHoldTitleDraft('')
+
+                  setTimeout(focusMainInput, 0)
+                }}
+                disabled={holdingSale}
+                style={secondaryOutlineButtonStyle}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showHeldSalesModal && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            position: 'fixed',
+
+            inset: 0,
+
+            background: 'rgba(0,0,0,0.68)',
+
+            zIndex: 100000,
+
+            display: 'flex',
+
+            alignItems: 'center',
+
+            justifyContent: 'center',
+
+            padding: '16px',
+          }}
+        >
+          <div
+            className="theme-modal-card"
+            style={{
+              width: '820px',
+
+              maxWidth: 'calc(100vw - 24px)',
+
+              maxHeight: 'calc(100vh - 24px)',
+
+              overflowY: 'auto',
+
+              borderRadius: '20px',
+
+              border: '1px solid rgba(255,255,255,0.10)',
+
+              background: '#111827',
+
+              boxShadow: '0 30px 90px rgba(0,0,0,0.62)',
+
+              padding: '20px',
+
+              direction: 'rtl',
+
+              color: '#fff',
+
+              display: 'grid',
+
+              gap: '16px',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+
+                alignItems: 'center',
+
+                justifyContent: 'space-between',
+
+                gap: '12px',
+
+                flexWrap: 'wrap',
+              }}
+            >
+              <div
+                style={{
+                  display: 'grid',
+
+                  gap: '4px',
+                }}
+              >
+                <h3
+                  style={{
+                    margin: 0,
+
+                    color: '#fcd34d',
+                  }}
+                >
+                  الفواتير المعلقة
+                </h3>
+
+                <span
+                  style={{
+                    color: '#94a3b8',
+
+                    fontSize: '12px',
+                  }}
+                >
+                  {user?.role === 'admin'
+                    ? 'يمكنك مشاهدة واستكمال جميع الفواتير المعلقة.'
+                    : 'يتم عرض الفواتير التي قمت بتعليقها فقط.'}
+                </span>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+
+                  gap: '8px',
+                }}
+              >
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => void loadHeldSales(true)}
+                  disabled={loadingHeldSales}
+                  style={secondaryOutlineButtonStyle}
+                >
+                  تحديث
+                </button>
+
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setPendingDeleteHeldSaleId(null)
+
+                    setShowHeldSalesModal(false)
+
+                    setTimeout(focusMainInput, 0)
+                  }}
+                  style={miniCloseButtonStyle}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            {loadingHeldSales ? (
+              <div
+                style={{
+                  padding: '28px',
+
+                  textAlign: 'center',
+
+                  color: '#94a3b8',
+                }}
+              >
+                جاري تحميل الفواتير المعلقة...
+              </div>
+            ) : heldSales.length === 0 ? (
+              <div
+                style={{
+                  padding: '32px',
+
+                  textAlign: 'center',
+
+                  border: '1px dashed rgba(255,255,255,0.12)',
+
+                  borderRadius: '14px',
+
+                  color: '#94a3b8',
+                }}
+              >
+                لا توجد فواتير معلقة
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'grid',
+
+                  gap: '10px',
+                }}
+              >
+                {heldSales.map((held) => (
+                  <div
+                    key={held.id}
+                    style={{
+                      display: 'grid',
+
+                      gridTemplateColumns: isCompact
+                        ? '1fr'
+                        : 'minmax(0, 1fr) auto',
+
+                      gap: '12px',
+
+                      alignItems: 'center',
+
+                      padding: '14px',
+
+                      borderRadius: '14px',
+
+                      border: '1px solid rgba(255,255,255,0.08)',
+
+                      background: 'rgba(255,255,255,0.035)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'grid',
+
+                        gap: '6px',
+
+                        minWidth: 0,
+                      }}
+                    >
+                      <strong
+                        style={{
+                          fontSize: '15px',
+
+                          color: '#f8fafc',
+                        }}
+                      >
+                        {held.title}
+                      </strong>
+
+                      <div
+                        style={{
+                          display: 'flex',
+
+                          gap: '10px',
+
+                          flexWrap: 'wrap',
+
+                          color: '#94a3b8',
+
+                          fontSize: '12px',
+                        }}
+                      >
+                        <span>العميل: {held.customer_name || 'عميل نقدي'}</span>
+
+                        <span>الأصناف: {held.items_count}</span>
+
+                        <span>الكمية: {Number(held.total_quantity || 0)}</span>
+
+                        <span>
+                          الإجمالي التقريبي: {money(held.estimated_sub_total)}{' '}
+                          ج.م
+                        </span>
+
+                        {user?.role === 'admin' && (
+                          <span>الكاشير: {held.cashier_name}</span>
+                        )}
+                      </div>
+
+                      {held.notes?.trim() && (
+                        <span
+                          style={{
+                            color: '#cbd5e1',
+
+                            fontSize: '12px',
+                          }}
+                        >
+                          ملاحظات: {held.notes}
+                        </span>
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+
+                        gap: '8px',
+
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => void resumeHeldSale(held.id)}
+                        disabled={
+                          resumingHeldSaleId !== null ||
+                          deletingHeldSaleId !== null
+                        }
+                        style={{
+                          ...primaryButtonStyle,
+
+                          minWidth: '110px',
+
+                          opacity:
+                            resumingHeldSaleId !== null ||
+                            deletingHeldSaleId !== null
+                              ? 0.6
+                              : 1,
+                        }}
+                      >
+                        {resumingHeldSaleId === held.id
+                          ? 'جاري الاستكمال...'
+                          : 'استكمال'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          if (
+                            deletingHeldSaleId !== null ||
+                            resumingHeldSaleId !== null
+                          ) {
+                            return
+                          }
+
+                          setPendingDeleteHeldSaleId(held.id)
+                        }}
+                        disabled={
+                          resumingHeldSaleId !== null ||
+                          deletingHeldSaleId !== null
+                        }
+                        style={{
+                          ...secondaryOutlineButtonStyle,
+
+                          minWidth: '90px',
+
+                          borderColor: 'rgba(239,68,68,0.40)',
+
+                          color: '#fca5a5',
+
+                          opacity:
+                            resumingHeldSaleId !== null ||
+                            deletingHeldSaleId !== null
+                              ? 0.6
+                              : 1,
+                        }}
+                      >
+                        {deletingHeldSaleId === held.id
+                          ? 'جاري الحذف...'
+                          : 'حذف'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {productResults.length > 0 && dropdownRect && (
         <div

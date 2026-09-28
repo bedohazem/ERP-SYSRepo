@@ -94,6 +94,13 @@ contextBridge.exposeInMainWorld('api', {
 
   togglePromotion: (input) => ipcRenderer.invoke('promotions:toggle', input),
   createSale: (input) => ipcRenderer.invoke('sales:create', input),
+  holdSale: (input) => ipcRenderer.invoke('sales:hold', input),
+
+  listHeldSales: () => ipcRenderer.invoke('sales:list-held'),
+
+  getHeldSale: (heldSaleId) => ipcRenderer.invoke('sales:get-held', heldSaleId),
+
+  deleteHeldSale: (input) => ipcRenderer.invoke('sales:delete-held', input),
   updateSaleInvoice: (input) => ipcRenderer.invoke('sales:update', input),
   cancelSaleInvoice: (input) => ipcRenderer.invoke('sales:cancel', input),
   getSaleReceipt: (saleId) => ipcRenderer.invoke('sales:get-receipt', saleId),

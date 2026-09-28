@@ -15,14 +15,11 @@ import {
   getSaleEditAccess,
   updateSaleInvoice,
 } from '../database/repositories/sales.repo'
-
 import { userHasPermission } from '../database/repositories/user.repo'
-
 import {
   getVariantByBarcode,
   searchSaleVariants,
 } from '../database/repositories/product.repo'
-
 import {
   cancelSaleExchange,
   createSaleExchange,
@@ -30,10 +27,14 @@ import {
   getSaleExchangeState,
   listSaleExchanges,
 } from '../database/repositories/sales-exchange.repo'
-
 import { requireAdmin, requireAdminApprovalForActor } from './permission-helper'
-
 import { getSaleCurrentState } from '../database/repositories/sales-current-state.repo'
+import {
+  createHeldSale,
+  deleteHeldSale,
+  getHeldSale,
+  listHeldSales,
+} from '../database/repositories/held-sales.repo'
 
 const SALES_COST_FIELDS = new Set([
   'buy_price',
@@ -154,6 +155,92 @@ export function registerSalesIpc(): void {
         items_count: input.items?.length || 0,
         shift_id: result.shift_id,
         payments: input.payments ?? null,
+      },
+    })
+
+    return result
+  })
+
+  ipcMain.handle('sales:hold', (event, input) => {
+    const actor = requirePermission(event, 'sales.use')
+
+    const result = createHeldSale({
+      ...input,
+
+      user_id: actor.id,
+    })
+
+    logAction({
+      actor_id: actor.id,
+
+      action: 'sale_held',
+
+      entity: 'held_sales',
+
+      entity_id: result.heldSaleId,
+
+      details: {
+        customer_id: input?.customer_id ?? null,
+
+        title: input?.title || null,
+
+        items_count: input?.items?.length || 0,
+      },
+    })
+
+    return result
+  })
+
+  ipcMain.handle('sales:list-held', (event) => {
+    const actor = requirePermission(event, 'sales.use')
+
+    return listHeldSales({
+      actor_id: actor.id,
+
+      is_admin: actor.role === 'admin',
+    })
+  })
+
+  ipcMain.handle('sales:get-held', (event, heldSaleId: number) => {
+    const actor = requirePermission(event, 'sales.use')
+
+    const result = getHeldSale({
+      held_sale_id: Number(heldSaleId),
+
+      actor_id: actor.id,
+
+      is_admin: actor.role === 'admin',
+    })
+
+    return protectSalesCostData(actor, result)
+  })
+
+  ipcMain.handle('sales:delete-held', (event, input) => {
+    const actor = requirePermission(event, 'sales.use')
+
+    const mode = input?.mode === 'resumed' ? 'resumed' : 'discarded'
+
+    const result = deleteHeldSale({
+      held_sale_id: Number(input?.held_sale_id),
+
+      actor_id: actor.id,
+
+      is_admin: actor.role === 'admin',
+    })
+
+    logAction({
+      actor_id: actor.id,
+
+      action: mode === 'resumed' ? 'sale_hold_resumed' : 'sale_hold_discarded',
+
+      entity: 'held_sales',
+
+      entity_id: result.held_sale_id,
+
+      details: {
+        title: result.title,
+
+        customer_id: result.customer_id ?? null,
       },
     })
 

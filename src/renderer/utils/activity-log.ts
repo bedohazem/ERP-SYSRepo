@@ -13,6 +13,11 @@ export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   user_password_reset: 'تغيير كلمة مرور',
 
   sale_created: 'إنشاء فاتورة بيع',
+  sale_held: 'تعليق فاتورة بيع',
+
+  sale_hold_resumed: 'استكمال فاتورة معلقة',
+
+  sale_hold_discarded: 'حذف فاتورة معلقة',
   sale_return_created: 'إنشاء مرتجع بيع',
   sale_cancelled: 'إلغاء فاتورة بيع',
   sale_return_cancelled: 'إلغاء مرتجع بيع',
@@ -148,7 +153,7 @@ export const ACTIVITY_ENTITY_LABELS: Record<string, string> = {
   users: 'المستخدمون',
 
   sales: 'المبيعات',
-
+  held_sales: 'الفواتير المعلقة',
   // Logs قديمة
   sale: 'المبيعات',
 

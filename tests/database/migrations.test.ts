@@ -264,6 +264,11 @@ describe('database migrations', () => {
 
         name: 'multi-promotion-snapshots',
       },
+      {
+        version: 7,
+
+        name: 'held-sales',
+      },
     ])
 
     const userPermissionColumns = database
@@ -365,6 +370,54 @@ describe('database migrations', () => {
 
     expect(stockMovementColumns.map((column) => column.name)).toEqual(
       expect.arrayContaining(['unit_cost', 'cost_value']),
+    )
+
+    const heldSaleColumns = database
+      .prepare(
+        `
+      PRAGMA table_info(
+        held_sales
+      )
+      `,
+      )
+      .all() as Array<{
+      name: string
+    }>
+
+    expect(heldSaleColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        'id',
+        'user_id',
+        'customer_id',
+        'title',
+        'discount_type',
+        'discount_value',
+        'notes',
+        'created_at',
+        'updated_at',
+      ]),
+    )
+
+    const heldSaleItemColumns = database
+      .prepare(
+        `
+      PRAGMA table_info(
+        held_sale_items
+      )
+      `,
+      )
+      .all() as Array<{
+      name: string
+    }>
+
+    expect(heldSaleItemColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        'id',
+        'held_sale_id',
+        'variant_id',
+        'quantity',
+        'position',
+      ]),
     )
   })
 })

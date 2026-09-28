@@ -295,6 +295,36 @@ describe('domain IPC session scope', () => {
     )
   })
 
+  it('requires login for held sales operations', async () => {
+    const { event } = makeClient()
+
+    await expect(
+      invoke(event, 'sales:hold', {
+        items: [
+          {
+            variant_id: 1,
+            quantity: 1,
+          },
+        ],
+      }),
+    ).rejects.toThrow('سجل الدخول أولًا')
+
+    await expect(invoke(event, 'sales:list-held')).rejects.toThrow(
+      'سجل الدخول أولًا',
+    )
+
+    await expect(invoke(event, 'sales:get-held', 1)).rejects.toThrow(
+      'سجل الدخول أولًا',
+    )
+
+    await expect(
+      invoke(event, 'sales:delete-held', {
+        held_sale_id: 1,
+        mode: 'discarded',
+      }),
+    ).rejects.toThrow('سجل الدخول أولًا')
+  })
+
   it('hides product cost from cashier sales reads but keeps it for admins', async () => {
     createProduct({
       name: 'Cost Protected Product',

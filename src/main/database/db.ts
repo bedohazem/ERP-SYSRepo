@@ -2109,7 +2109,7 @@ export function getDb(): Database.Database {
         name: 'multi-promotion-snapshots',
 
         up: () => {
-        db.exec(`
+          db.exec(`
           CREATE TABLE
             sale_promotion_snapshots_v6 (
               sale_id INTEGER NOT NULL,
@@ -2192,6 +2192,94 @@ export function getDb(): Database.Database {
         `)
         },
       },
+      {
+        version: 7,
+        name: 'held-sales',
+
+        up: () => {
+          db.exec(`
+            CREATE TABLE held_sales (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+              user_id INTEGER NOT NULL,
+
+              customer_id INTEGER,
+
+              title TEXT NOT NULL
+                DEFAULT 'فاتورة معلقة',
+
+              discount_type TEXT NOT NULL
+                DEFAULT 'amount',
+
+              discount_value REAL NOT NULL
+                DEFAULT 0,
+
+              notes TEXT,
+
+              created_at TEXT NOT NULL
+                DEFAULT CURRENT_TIMESTAMP,
+
+              updated_at TEXT NOT NULL
+                DEFAULT CURRENT_TIMESTAMP,
+
+              FOREIGN KEY (user_id)
+                REFERENCES users(id),
+
+              FOREIGN KEY (customer_id)
+                REFERENCES customers(id)
+                ON DELETE SET NULL,
+
+              CHECK (
+                discount_type IN (
+                  'amount',
+                  'percent'
+                )
+              )
+            );
+
+            CREATE TABLE held_sale_items (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+              held_sale_id INTEGER NOT NULL,
+
+              variant_id INTEGER NOT NULL,
+
+              quantity REAL NOT NULL,
+
+              position INTEGER NOT NULL
+                DEFAULT 0,
+
+              FOREIGN KEY (held_sale_id)
+                REFERENCES held_sales(id)
+                ON DELETE CASCADE,
+
+              FOREIGN KEY (variant_id)
+                REFERENCES product_variants(id),
+
+              UNIQUE (
+                held_sale_id,
+                variant_id
+              ),
+
+              CHECK (quantity > 0)
+            );
+
+            CREATE INDEX
+              idx_held_sales_user_updated
+            ON held_sales (
+              user_id,
+              updated_at
+            );
+
+            CREATE INDEX
+              idx_held_sale_items_sale
+            ON held_sale_items (
+              held_sale_id,
+              position
+            );
+          `)
+        },
+      },
     ])
 
     seedTestAdminUser(db)
@@ -2240,6 +2328,9 @@ export function resetDatabaseData(): void {
 
       DELETE FROM sale_exchange_items;
       DELETE FROM sale_exchanges;
+
+      DELETE FROM held_sale_items;
+      DELETE FROM held_sales;
 
       DELETE FROM sale_promotion_units;
 

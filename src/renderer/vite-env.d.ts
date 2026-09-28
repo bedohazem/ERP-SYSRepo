@@ -406,6 +406,143 @@ declare global {
         shift_id?: number | null
       }>
 
+      holdSale: (input: {
+        customer_id?: number | null
+
+        title?: string | null
+
+        discount_type?: 'amount' | 'percent'
+
+        discount_value?: number
+
+        notes?: string | null
+
+        items: Array<{
+          variant_id: number
+          quantity: number
+        }>
+      }) => Promise<{
+        success: boolean
+
+        heldSaleId: number
+      }>
+
+      listHeldSales: () => Promise<
+        Array<{
+          id: number
+
+          user_id: number
+
+          cashier_name: string
+
+          customer_id: number | null
+
+          customer_name?: string | null
+
+          customer_phone?: string | null
+
+          title: string
+
+          discount_type: 'amount' | 'percent'
+
+          discount_value: number
+
+          notes?: string | null
+
+          created_at: string
+
+          updated_at: string
+
+          items_count: number
+
+          total_quantity: number
+
+          estimated_sub_total: number
+        }>
+      >
+
+      getHeldSale: (heldSaleId: number) => Promise<{
+        id: number
+
+        user_id: number
+
+        cashier_name: string
+
+        customer_id: number | null
+
+        customer_name?: string | null
+
+        customer_phone?: string | null
+        customer_email?: string | null
+
+        customer_address?: string | null
+
+        customer_notes?: string | null
+
+        customer_points_balance?: number | null
+
+        customer_total_spent?: number | null
+        title: string
+
+        discount_type: 'amount' | 'percent'
+
+        discount_value: number
+
+        notes?: string | null
+
+        created_at: string
+
+        updated_at: string
+
+        items: Array<{
+          id: number
+
+          variant_id: number
+
+          quantity: number
+
+          position: number
+
+          product_id: number
+
+          product_name: string
+
+          category_id: number | null
+
+          category_name?: string | null
+
+          barcode: string
+
+          size: string
+
+          color: string
+
+          sell_price: number
+
+          buy_price: number
+
+          min_stock: number
+
+          is_active: number
+
+          stock: number
+        }>
+      }>
+
+      deleteHeldSale: (input: {
+        held_sale_id: number
+
+        mode: 'resumed' | 'discarded'
+      }) => Promise<{
+        success: boolean
+
+        held_sale_id: number
+
+        title: string
+
+        customer_id: number | null
+      }>
+
       updateSaleInvoice: (input: any) => Promise<{
         success: boolean
         message?: string
