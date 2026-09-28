@@ -269,6 +269,11 @@ describe('database migrations', () => {
 
         name: 'held-sales',
       },
+      {
+        version: 8,
+
+        name: 'customer-credit-aging',
+      },
     ])
 
     const userPermissionColumns = database
@@ -417,6 +422,42 @@ describe('database migrations', () => {
         'variant_id',
         'quantity',
         'position',
+      ]),
+    )
+
+    const customerColumns = database
+      .prepare(
+        `
+      PRAGMA table_info(
+        customers
+      )
+      `,
+      )
+      .all() as Array<{
+      name: string
+    }>
+
+    expect(customerColumns.map((column) => column.name)).toContain(
+      'credit_limit',
+    )
+
+    const saleColumns = database
+      .prepare(
+        `
+      PRAGMA table_info(
+        sales
+      )
+      `,
+      )
+      .all() as Array<{
+      name: string
+    }>
+
+    expect(saleColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        'credit_limit_at_sale',
+        'customer_balance_before',
+        'credit_limit_override_approved_by',
       ]),
     )
   })

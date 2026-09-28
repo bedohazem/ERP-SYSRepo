@@ -14,6 +14,7 @@ import {
   getSaleReturnCancellationAccess,
   getSaleEditAccess,
   updateSaleInvoice,
+  CreditLimitExceededError,
 } from '../database/repositories/sales.repo'
 import { userHasPermission } from '../database/repositories/user.repo'
 import {
@@ -135,30 +136,137 @@ export function registerSalesIpc(): void {
   })
 
   ipcMain.handle('sales:create', (event, input) => {
-    const actorId = requirePermission(event, 'sales.use').id
+    const actor = requirePermission(event, 'sales.use')
 
-    const result = createSale({
-      ...input,
-      user_id: actorId,
-    })
+    const runCreate = (approvedBy: number | null) =>
+      createSale({
+        ...input,
+
+        user_id: actor.id,
+
+        /*
+         * لا نثق أبدًا في ID
+         * جاي من الـRenderer.
+         */
+        credit_limit_override_approved_by: approvedBy,
+      })
+
+    let result: ReturnType<typeof createSale>
+
+    try {
+      /*
+       * أول محاولة دائمًا
+       * بدون Override.
+       */
+      result = runCreate(null)
+    } catch (error) {
+      if (!(error instanceof CreditLimitExceededError)) {
+        throw error
+      }
+
+      /*
+       * أول Request يرجع للواجهة
+       * بيانات التجاوز فقط.
+       */
+      if (!input?.credit_limit_override_requested) {
+        return {
+          success: false,
+
+          code: error.code,
+
+          message: error.message,
+
+          credit: error.details,
+        }
+      }
+
+      /*
+       * Cashier:
+       * Username + Password للمدير.
+       *
+       * Admin:
+       * يؤكد بباسورده هو.
+       */
+      const approval = requireAdminApprovalForActor(
+        actor,
+
+        input?.admin_username,
+
+        input?.admin_password,
+      )
+
+      /*
+       * المحاولة الأولى Rollback
+       * بالكامل، فنقدر نعيد
+       * الإنشاء بأمان.
+       */
+      result = runCreate(approval.id)
+    }
+
+    if (result.credit_limit_override_approved_by) {
+      logAction({
+        actor_id: actor.id,
+
+        approved_by: result.credit_limit_override_approved_by,
+
+        action: 'sale_credit_limit_overridden',
+
+        entity: 'sales',
+
+        entity_id: result.saleId,
+
+        details: {
+          customer_id: input?.customer_id ?? null,
+
+          credit_limit: result.credit_limit_at_sale,
+
+          customer_balance_before: result.customer_balance_before,
+
+          additional_debt: result.remaining_amount,
+
+          projected_debt:
+            Number(result.customer_balance_before || 0) +
+            Number(result.remaining_amount || 0),
+
+          approved_by: result.credit_limit_override_approved_by,
+        },
+      })
+    }
 
     logAction({
-      actor_id: actorId,
+      actor_id: actor.id,
+
       action: 'sale_created',
+
       entity: 'sales',
+
       entity_id: result.saleId,
+
       details: {
-        customer_id: input.customer_id ?? null,
-        grand_total: result.grand_total ?? input.grand_total,
-        paid: input.paid,
-        payment_method: input.payment_method,
-        items_count: input.items?.length || 0,
+        customer_id: input?.customer_id ?? null,
+
+        grand_total: result.grand_total ?? input?.grand_total,
+
+        paid: input?.paid,
+
+        payment_method: input?.payment_method,
+
+        items_count: input?.items?.length || 0,
+
         shift_id: result.shift_id,
-        payments: input.payments ?? null,
+
+        payments: input?.payments ?? null,
+
+        credit_limit_override_approved_by:
+          result.credit_limit_override_approved_by ?? null,
       },
     })
 
-    return result
+    return {
+      success: true,
+
+      ...result,
+    }
   })
 
   ipcMain.handle('sales:hold', (event, input) => {
@@ -263,6 +371,10 @@ export function registerSalesIpc(): void {
         requireAdmin(actorId)
       }
 
+      /*
+       * Approval الخاص
+       * بتعديل الفاتورة نفسه.
+       */
       if (access.requires_admin_password) {
         const approval = requireAdminApprovalForActor(
           actor,
@@ -275,6 +387,31 @@ export function registerSalesIpc(): void {
         approvedBy = approval.id
       }
 
+      let creditOverrideApprovedBy: number | null = null
+
+      /*
+       * لو الواجهة رجعت بعد
+       * CREDIT_LIMIT_EXCEEDED
+       * وتطلب Override.
+       */
+      if (input?.credit_limit_override_requested) {
+        if (approvedBy) {
+          creditOverrideApprovedBy = approvedBy
+        } else {
+          const approval = requireAdminApprovalForActor(
+            actor,
+
+            input?.admin_username,
+
+            input?.admin_password,
+          )
+
+          approvedBy = approval.id
+
+          creditOverrideApprovedBy = approval.id
+        }
+      }
+
       const before = getSaleReceipt(saleId)
 
       const result = updateSaleInvoice({
@@ -283,13 +420,49 @@ export function registerSalesIpc(): void {
         sale_id: saleId,
 
         actor_id: actorId,
+
+        /*
+         * Renderer لا يحدد
+         * Approved ID بنفسه.
+         */
+        credit_limit_override_approved_by: creditOverrideApprovedBy,
       })
 
       const after = getSaleReceipt(saleId)
 
+      if (result.credit_limit_override_approved_by) {
+        logAction({
+          actor_id: actorId,
+
+          approved_by: result.credit_limit_override_approved_by,
+
+          action: 'sale_credit_limit_overridden',
+
+          entity: 'sales',
+
+          entity_id: saleId,
+
+          details: {
+            edited: true,
+
+            customer_id: input?.customer_id ?? null,
+
+            credit_limit: result.credit_limit_at_sale,
+
+            customer_balance_before: result.customer_balance_before,
+
+            additional_debt: result.remaining_amount,
+
+            approved_by: result.credit_limit_override_approved_by,
+          },
+        })
+      }
+
       logAction({
         actor_id: actorId,
+
         approved_by: approvedBy,
+
         action: 'sale_updated',
 
         entity: 'sales',
@@ -301,13 +474,17 @@ export function registerSalesIpc(): void {
 
           before: {
             sale: before.sale,
+
             items: before.items,
+
             payments: before.payments,
           },
 
           after: {
             sale: after.sale,
+
             items: after.items,
+
             payments: after.payments,
           },
         },
@@ -319,6 +496,18 @@ export function registerSalesIpc(): void {
         ...result,
       }
     } catch (error) {
+      if (error instanceof CreditLimitExceededError) {
+        return {
+          success: false,
+
+          code: error.code,
+
+          message: error.message,
+
+          credit: error.details,
+        }
+      }
+
       return {
         success: false,
 

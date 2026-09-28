@@ -53,6 +53,7 @@ type CustomerTestRow = {
   points_balance: number
   total_spent: number
   balance: number
+  credit_limit: number | null
   is_active: number
   sales_count: number
   last_sale_at: string | null
@@ -198,6 +199,126 @@ describe('customers repository', () => {
     expect(customer.address).toBe('Cairo')
     expect(customer.notes).toBe('VIP')
     expect(customer.is_active).toBe(1)
+  })
+
+  it('stores and updates customer credit limit', () => {
+    const customer = createCustomer({
+      name: 'Credit Customer',
+
+      phone: '01077770001',
+
+      credit_limit: 5000,
+    }) as CustomerTestRow
+
+    expect(customer.credit_limit).toBe(5000)
+
+    const updated = updateCustomer({
+      id: customer.id,
+
+      name: customer.name,
+
+      phone: customer.phone,
+
+      credit_limit: 2500,
+    }) as CustomerTestRow
+
+    expect(updated.credit_limit).toBe(2500)
+
+    expect(() =>
+      updateCustomer({
+        id: customer.id,
+
+        name: customer.name,
+
+        phone: customer.phone,
+
+        credit_limit: -1,
+      }),
+    ).toThrow('الحد الائتماني')
+  })
+
+  it('splits open customer debt into aging buckets', () => {
+    const db = getDb()
+
+    const customer = createCustomer({
+      name: 'Aging Customer',
+
+      phone: '01077770002',
+    }) as CustomerTestRow
+
+    const insertSale = db.prepare(
+      `
+        INSERT INTO sales (
+          type,
+          customer_id,
+          user_id,
+          business_date,
+          sub_total,
+          grand_total,
+          paid,
+          remaining_amount,
+          payment_status,
+          payment_method
+        )
+
+        VALUES (
+          'sale',
+          ?,
+          1,
+          date(
+            'now',
+            'localtime',
+            ?
+          ),
+          ?,
+          ?,
+          0,
+          ?,
+          'unpaid',
+          'store_cash'
+        )
+        `,
+    )
+
+    insertSale.run(customer.id, '-10 days', 100, 100, 100)
+
+    insertSale.run(customer.id, '-40 days', 200, 200, 200)
+
+    insertSale.run(customer.id, '-70 days', 300, 300, 300)
+
+    insertSale.run(customer.id, '-100 days', 400, 400, 400)
+
+    db.prepare(
+      `
+      UPDATE customers
+
+      SET balance = 1000
+
+      WHERE id = ?
+      `,
+    ).run(customer.id)
+
+    const list = listCustomers({
+      debtors_only: true,
+    })
+
+    expect(list.summary.aging).toEqual({
+      days_0_30: 100,
+      days_31_60: 200,
+      days_61_90: 300,
+      days_90_plus: 400,
+      total: 1000,
+    })
+
+    const statement = getCustomerStatement(customer.id, 1) as any
+
+    expect(statement.summary.aging).toEqual({
+      days_0_30: 100,
+      days_31_60: 200,
+      days_61_90: 300,
+      days_90_plus: 400,
+      total: 1000,
+    })
   })
 
   it('rejects empty customer name', () => {

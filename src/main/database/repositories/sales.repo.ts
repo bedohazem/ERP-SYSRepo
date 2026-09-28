@@ -52,7 +52,7 @@ type CreateSaleInput = {
   paid?: number
   remaining_amount?: number
   payment_status?: string
-
+  credit_limit_override_approved_by?: number | null
   items: Array<{
     variant_id: number
     product_name: string
@@ -101,6 +101,40 @@ function getLoyaltySettingsForSale() {
 
 function roundMoney(value: number) {
   return Number(Number(value || 0).toFixed(2))
+}
+
+export type CreditLimitExceededDetails = {
+  customer_id: number
+
+  credit_limit: number
+
+  current_debt: number
+
+  additional_debt: number
+
+  projected_debt: number
+
+  excess_amount: number
+}
+
+export class CreditLimitExceededError extends Error {
+  readonly code = 'CREDIT_LIMIT_EXCEEDED'
+
+  readonly details: CreditLimitExceededDetails
+
+  constructor(details: CreditLimitExceededDetails) {
+    super(
+      `المديونية الجديدة ${details.projected_debt.toFixed(
+        2,
+      )} ج.م ستتجاوز الحد الائتماني للعميل وهو ${details.credit_limit.toFixed(
+        2,
+      )} ج.م`,
+    )
+
+    this.name = 'CreditLimitExceededError'
+
+    this.details = details
+  }
 }
 
 function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
@@ -434,6 +468,128 @@ function createSaleInternal(
       throw new Error('لا يمكن البيع آجل بدون اختيار عميل')
     }
 
+    let customerBalanceBefore: number | null = null
+
+    let customerCreditLimit: number | null = null
+
+    let creditLimitOverrideApprovedBy: number | null = null
+
+    if (customerId) {
+      const customerCredit = db
+        .prepare(
+          `
+      SELECT
+        id,
+
+        IFNULL(
+          balance,
+          0
+        ) AS balance,
+
+        credit_limit
+
+      FROM customers
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+        )
+        .get(customerId) as
+        | {
+            id: number
+
+            balance: number
+
+            credit_limit: number | null
+          }
+        | undefined
+
+      if (!customerCredit) {
+        throw new Error('العميل غير موجود')
+      }
+
+      customerBalanceBefore = roundMoney(
+        Math.max(
+          0,
+
+          Number(customerCredit.balance || 0),
+        ),
+      )
+
+      customerCreditLimit =
+        customerCredit.credit_limit == null
+          ? null
+          : roundMoney(
+              Math.max(
+                0,
+
+                Number(customerCredit.credit_limit),
+              ),
+            )
+
+      const projectedDebt = roundMoney(customerBalanceBefore + remainingAmount)
+
+      const creditExceeded =
+        remainingAmount > 0 &&
+        customerCreditLimit !== null &&
+        projectedDebt > customerCreditLimit + 0.0001
+
+      if (creditExceeded) {
+        /*
+         * creditExceeded لا يمكن يكون true
+         * إلا لو فيه Credit Limit فعلي.
+         * نحوله هنا لـ number صريح عشان
+         * TypeScript ما يفضلش شايفه nullable.
+         */
+        const exceededCreditLimit = Number(customerCreditLimit)
+
+        const approvedBy = Number(input.credit_limit_override_approved_by || 0)
+
+        if (!approvedBy) {
+          throw new CreditLimitExceededError({
+            customer_id: customerId,
+
+            credit_limit: exceededCreditLimit,
+
+            current_debt: customerBalanceBefore,
+
+            additional_debt: remainingAmount,
+
+            projected_debt: projectedDebt,
+
+            excess_amount: roundMoney(projectedDebt - exceededCreditLimit),
+          })
+        }
+
+        const approvingAdmin = db
+          .prepare(
+            `
+        SELECT id
+
+        FROM users
+
+        WHERE
+          id = ?
+
+          AND role =
+            'admin'
+
+          AND is_active = 1
+
+        LIMIT 1
+        `,
+          )
+          .get(approvedBy)
+
+        if (!approvingAdmin) {
+          throw new Error('موافقة تجاوز الحد الائتماني غير صالحة')
+        }
+
+        creditLimitOverrideApprovedBy = approvedBy
+      }
+    }
+
     const earnedPoints =
       loyalty.enabled && customerId
         ? Math.floor(grandTotal / loyalty.earnAmount) * loyalty.earnPoints
@@ -444,10 +600,13 @@ function createSaleInternal(
         `
         INSERT INTO sales (
           type,
+
           customer_id,
           user_id,
+
           business_date,
           shift_id,
+
           sub_total,
           discount_value,
 
@@ -456,30 +615,73 @@ function createSaleInternal(
           promotion_discount_value,
 
           grand_total,
+
           paid,
           remaining_amount,
-          payment_status, 
+          payment_status,
+
           change_amount,
           payment_method,
+
           notes,
+
+          credit_limit_at_sale,
+
+          customer_balance_before,
+
+          credit_limit_override_approved_by,
+
           loyalty_points_earned,
+
           loyalty_points_redeemed,
+
           loyalty_discount_value
         )
+
         VALUES (
           'sale',
-          ?, ?, ?, ?, ?,
-          ?, ?, ?,?,
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+
+          ?, ?,
+
+          ?, ?,
+
+          ?, ?,
+
+          ?, ?, ?,
+
+          ?,
+
+          ?, ?, ?,
+
+          ?, ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?,
+
+          ?
         )
-      `,
+        `,
       )
       .run(
         customerId,
+
         input.user_id,
+
         businessDate,
+
         openShift?.id ?? null,
+
         subTotal,
+
         normalDiscount,
 
         promotionDiscount > 0 ? headerPromotionId : null,
@@ -489,14 +691,29 @@ function createSaleInternal(
         promotionDiscount,
 
         grandTotal,
+
         paidAmount,
+
         remainingAmount,
+
         paymentStatus,
+
         requestedPayments.length > 0 ? 0 : Number(input.change_amount || 0),
+
         invoicePaymentMethod,
+
         input.notes ?? null,
+
+        customerCreditLimit,
+
+        customerBalanceBefore,
+
+        creditLimitOverrideApprovedBy,
+
         earnedPoints,
+
         redeemPoints,
+
         loyaltyDiscountValue,
       )
 
@@ -1107,6 +1324,11 @@ function createSaleInternal(
       payments: effectivePayments,
       remaining_amount: remainingAmount,
       payment_status: paymentStatus,
+      credit_limit_at_sale: customerCreditLimit,
+
+      customer_balance_before: customerBalanceBefore,
+
+      credit_limit_override_approved_by: creditLimitOverrideApprovedBy,
       shift_id: openShift?.id ?? null,
     }
   })
@@ -3308,6 +3530,9 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       remaining_amount: input.remaining_amount,
 
       payment_status: input.payment_status,
+
+      credit_limit_override_approved_by:
+        input.credit_limit_override_approved_by ?? null,
 
       items: input.items,
     }

@@ -15,10 +15,17 @@ type CustomerRow = {
   email?: string | null
   address?: string | null
   notes?: string | null
+
   points_balance: number
+
   total_spent: number
+
   balance: number
+
+  credit_limit: number | null
+
   sales_count?: number
+
   last_sale_at?: string | null
 }
 
@@ -28,6 +35,8 @@ const emptyForm = {
   email: '',
   address: '',
   notes: '',
+
+  credit_limit: '',
 }
 
 const CUSTOMER_HISTORY_PAGE_SIZE = 10
@@ -49,16 +58,44 @@ export default function CustomersPage() {
 
   const [debtSummary, setDebtSummary] = useState<{
     totalDebt: number
+
     debtorsCount: number
+
     topDebtor: {
       id: number
       name: string
       balance: number
     } | null
+
+    aging: {
+      days_0_30: number
+
+      days_31_60: number
+
+      days_61_90: number
+
+      days_90_plus: number
+
+      total: number
+    }
   }>({
     totalDebt: 0,
+
     debtorsCount: 0,
+
     topDebtor: null,
+
+    aging: {
+      days_0_30: 0,
+
+      days_31_60: 0,
+
+      days_61_90: 0,
+
+      days_90_plus: 0,
+
+      total: 0,
+    },
   })
   const [query, setQuery] = useState('')
   const [showDebtorsOnly, setShowDebtorsOnly] = useState(false)
@@ -162,7 +199,10 @@ export default function CustomersPage() {
             total_spent: Number(customer.total_spent || 0),
 
             balance: Number(customer.balance || 0),
-
+            credit_limit:
+              customer.credit_limit == null
+                ? null
+                : Number(customer.credit_limit),
             sales_count: Number(customer.sales_count || 0),
 
             last_sale_at: customer.last_sale_at || null,
@@ -179,6 +219,18 @@ export default function CustomersPage() {
         debtorsCount: Number(result.summary?.debtors_count || 0),
 
         topDebtor: result.summary?.top_debtor || null,
+
+        aging: {
+          days_0_30: Number(result.summary?.aging?.days_0_30 || 0),
+
+          days_31_60: Number(result.summary?.aging?.days_31_60 || 0),
+
+          days_61_90: Number(result.summary?.aging?.days_61_90 || 0),
+
+          days_90_plus: Number(result.summary?.aging?.days_90_plus || 0),
+
+          total: Number(result.summary?.aging?.total || 0),
+        },
       })
     } catch (error) {
       console.error('Failed to load customers:', error)
@@ -190,8 +242,22 @@ export default function CustomersPage() {
 
       setDebtSummary({
         totalDebt: 0,
+
         debtorsCount: 0,
+
         topDebtor: null,
+
+        aging: {
+          days_0_30: 0,
+
+          days_31_60: 0,
+
+          days_61_90: 0,
+
+          days_90_plus: 0,
+
+          total: 0,
+        },
       })
     } finally {
       setLoadingCustomers(false)
@@ -227,10 +293,17 @@ export default function CustomersPage() {
     setEditingId(customer.id)
     setForm({
       name: customer.name || '',
+
       phone: customer.phone || '',
+
       email: customer.email || '',
+
       address: customer.address || '',
+
       notes: customer.notes || '',
+
+      credit_limit:
+        customer.credit_limit == null ? '' : String(customer.credit_limit),
     })
   }
 
@@ -242,17 +315,52 @@ export default function CustomersPage() {
       return
     }
 
+    const creditLimit =
+      form.credit_limit.trim() === '' ? null : Number(form.credit_limit)
+
+    if (
+      creditLimit !== null &&
+      (!Number.isFinite(creditLimit) || creditLimit < 0)
+    ) {
+      setMessage('الحد الائتماني يجب أن يكون صفر أو رقمًا موجبًا')
+
+      return
+    }
+
     setSavingCustomer(true)
 
     try {
       if (editingId) {
         await window.api.updateCustomer({
           id: editingId,
-          ...form,
+
+          name: form.name,
+
+          phone: form.phone,
+
+          email: form.email,
+
+          address: form.address,
+
+          notes: form.notes,
+
+          credit_limit: creditLimit,
         })
         setMessage('تم تعديل العميل')
       } else {
-        await window.api.createCustomer(form)
+        await window.api.createCustomer({
+          name: form.name,
+
+          phone: form.phone,
+
+          email: form.email,
+
+          address: form.address,
+
+          notes: form.notes,
+
+          credit_limit: creditLimit,
+        })
         setMessage('تم إضافة العميل')
       }
 
@@ -813,7 +921,7 @@ export default function CustomersPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(3, minmax(150px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))',
               gap: '8px',
             }}
           >
@@ -834,6 +942,26 @@ export default function CustomersPage() {
                   ? `${debtSummary.topDebtor.name} - ${money(debtSummary.topDebtor.balance)}`
                   : 'لا يوجد'
               }
+            />
+
+            <MiniDebtCard
+              title="حديثة 0 - 30 يوم"
+              value={money(debtSummary.aging.days_0_30)}
+            />
+
+            <MiniDebtCard
+              title="31 - 60 يوم"
+              value={money(debtSummary.aging.days_31_60)}
+            />
+
+            <MiniDebtCard
+              title="61 - 90 يوم"
+              value={money(debtSummary.aging.days_61_90)}
+            />
+
+            <MiniDebtCard
+              title="أكثر من 90 يوم"
+              value={money(debtSummary.aging.days_90_plus)}
             />
           </div>
         </div>
@@ -886,6 +1014,22 @@ export default function CustomersPage() {
             value={form.address}
             onChange={(e) =>
               setForm((p) => ({ ...p, address: e.target.value }))
+            }
+            style={inputStyle}
+          />
+
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            placeholder="الحد الائتماني - فارغ = بدون حد"
+            value={form.credit_limit}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+
+                credit_limit: e.target.value,
+              }))
             }
             style={inputStyle}
           />
@@ -962,6 +1106,7 @@ export default function CustomersPage() {
               <th style={thStyle}>النقاط</th>
               <th style={thStyle}>إجمالي المشتريات</th>
               <th style={thStyle}>الرصيد</th>
+              <th style={thStyle}>الحد الائتماني</th>
               <th style={thStyle}>عدد الفواتير</th>
               <th style={thStyle}>آخر شراء</th>
               <th style={thStyle}>إجراءات</th>
@@ -989,6 +1134,11 @@ export default function CustomersPage() {
                   }}
                 >
                   {money(customer.balance || 0)}
+                </td>
+                <td style={tdStyle}>
+                  {customer.credit_limit == null
+                    ? 'بدون حد'
+                    : `${money(customer.credit_limit)} ج.م`}
                 </td>
                 <td style={tdStyle}>{customer.sales_count || 0}</td>
                 <td style={tdStyle}>{customer.last_sale_at || '—'}</td>
@@ -1057,7 +1207,7 @@ export default function CustomersPage() {
             {customers.length === 0 && (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   style={{ ...tdStyle, textAlign: 'center', color: '#94a3b8' }}
                 >
                   لا يوجد عملاء
@@ -1300,6 +1450,58 @@ export default function CustomersPage() {
               />
             </div>
 
+            <div
+              style={{
+                marginBottom: '18px',
+
+                display: 'grid',
+
+                gap: '10px',
+              }}
+            >
+              <strong
+                style={{
+                  color: '#cbd5e1',
+
+                  fontSize: '13px',
+
+                  textAlign: 'right',
+                }}
+              >
+                أعمار المديونية
+              </strong>
+
+              <div
+                style={{
+                  display: 'grid',
+
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+
+                  gap: '10px',
+                }}
+              >
+                <InfoCard
+                  title="0 - 30 يوم"
+                  value={money(statementData.summary?.aging?.days_0_30 || 0)}
+                />
+
+                <InfoCard
+                  title="31 - 60 يوم"
+                  value={money(statementData.summary?.aging?.days_31_60 || 0)}
+                />
+
+                <InfoCard
+                  title="61 - 90 يوم"
+                  value={money(statementData.summary?.aging?.days_61_90 || 0)}
+                />
+
+                <InfoCard
+                  title="أكثر من 90 يوم"
+                  value={money(statementData.summary?.aging?.days_90_plus || 0)}
+                />
+              </div>
+            </div>
+
             {Number(statementData.summary.balance || 0) > 0 && (
               <div
                 style={{
@@ -1313,15 +1515,30 @@ export default function CustomersPage() {
                   onClick={() =>
                     openCustomerPayment({
                       id: statementData.customer.id,
+
                       name: statementData.customer.name,
+
                       phone: statementData.customer.phone,
+
                       email: statementData.customer.email,
+
                       address: statementData.customer.address,
+
                       notes: statementData.customer.notes,
+
                       points_balance: statementData.customer.points_balance,
+
                       total_spent: statementData.customer.total_spent,
+
                       balance: statementData.customer.balance,
+
+                      credit_limit:
+                        statementData.customer.credit_limit == null
+                          ? null
+                          : Number(statementData.customer.credit_limit),
+
                       sales_count: statementData.customer.sales_count,
+
                       last_sale_at: statementData.customer.last_sale_at,
                     })
                   }

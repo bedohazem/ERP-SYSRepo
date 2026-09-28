@@ -7,6 +7,7 @@ import {
   getSuppliers,
   listSuppliers,
   updateSupplier,
+  getSupplierAgingSummary,
 } from '../../src/main/database/repositories/suppliers.repo'
 
 type SupplierTestRow = {
@@ -247,5 +248,125 @@ describe('suppliers repository', () => {
     expect(firstPage.total).toBe(5)
     expect(firstPage.rows).toHaveLength(2)
     expect(secondPage.rows).toHaveLength(2)
+  })
+
+  it('summarizes supplier debt into aging buckets', () => {
+    const db = getDb()
+
+    const supplier = createSupplier({
+      name: 'Aging Supplier',
+
+      phone: '01055550001',
+    }) as SupplierTestRow
+
+    const insertPurchase = db.prepare(
+      `
+        INSERT INTO purchase_invoices (
+          supplier_id,
+
+          total_amount,
+
+          remaining_amount,
+
+          payment_status,
+
+          business_date
+        )
+
+        VALUES (
+          ?,
+          ?,
+          ?,
+          'unpaid',
+          date(
+            'now',
+            'localtime',
+            ?
+          )
+        )
+        `,
+    )
+
+    insertPurchase.run(supplier.id, 100, 100, '-10 days')
+
+    insertPurchase.run(supplier.id, 200, 200, '-40 days')
+
+    insertPurchase.run(supplier.id, 300, 300, '-70 days')
+
+    insertPurchase.run(supplier.id, 400, 400, '-100 days')
+
+    expect(getSupplierAgingSummary(supplier.id)).toEqual({
+      days_0_30: 100,
+
+      days_31_60: 200,
+
+      days_61_90: 300,
+
+      days_90_plus: 400,
+
+      total: 1000,
+    })
+
+    const page = listSuppliers({
+      include_summary: true,
+
+      limit: 20,
+
+      offset: 0,
+    })
+
+    expect(page.summary?.aging).toEqual({
+      days_0_30: 100,
+
+      days_31_60: 200,
+
+      days_61_90: 300,
+
+      days_90_plus: 400,
+
+      total: 1000,
+    })
+
+    const otherSupplier = createSupplier({
+      name: 'Other Supplier',
+
+      phone: '01055550002',
+    }) as SupplierTestRow
+
+    insertPurchase.run(otherSupplier.id, 900, 900, '-10 days')
+
+    const filteredPage = listSuppliers({
+      search: 'Aging Supplier',
+
+      include_summary: true,
+
+      limit: 20,
+
+      offset: 0,
+    })
+
+    expect(filteredPage.rows).toHaveLength(1)
+
+    expect(filteredPage.summary?.aging).toEqual({
+      days_0_30: 100,
+
+      days_31_60: 200,
+
+      days_61_90: 300,
+
+      days_90_plus: 400,
+
+      total: 1000,
+    })
+
+    const allSuppliersPage = listSuppliers({
+      include_summary: true,
+
+      limit: 20,
+
+      offset: 0,
+    })
+
+    expect(allSuppliersPage.summary?.aging?.total).toBe(1900)
   })
 })

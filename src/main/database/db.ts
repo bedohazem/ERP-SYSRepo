@@ -2280,6 +2280,48 @@ export function getDb(): Database.Database {
           `)
         },
       },
+      {
+        version: 8,
+        name: 'customer-credit-aging',
+
+        up: () => {
+          safeAddColumn(db, 'customers', 'credit_limit', 'REAL')
+
+          /*
+           * Snapshot وقت البيع عشان نعرف
+           * لاحقًا هل الفاتورة تجاوزت الحد
+           * الائتماني وبموافقة مين.
+           */
+          safeAddColumn(db, 'sales', 'credit_limit_at_sale', 'REAL')
+
+          safeAddColumn(db, 'sales', 'customer_balance_before', 'REAL')
+
+          safeAddColumn(
+            db,
+            'sales',
+            'credit_limit_override_approved_by',
+            'INTEGER',
+          )
+
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_sales_customer_open_debt
+            ON sales (
+              customer_id,
+              remaining_amount,
+              cancelled_at
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_invoices_supplier_open_debt
+            ON purchase_invoices (
+              supplier_id,
+              remaining_amount,
+              cancelled_at
+            );
+          `)
+        },
+      },
     ])
 
     seedTestAdminUser(db)

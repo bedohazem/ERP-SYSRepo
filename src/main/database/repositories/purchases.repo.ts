@@ -1,4 +1,5 @@
 import { getDb } from '../db'
+import { getSupplierAgingSummary } from './suppliers.repo'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
 
 import {
@@ -4478,6 +4479,8 @@ export function getSupplierStatement(
     }, 0),
   )
 
+  const aging = getSupplierAgingSummary(id)
+
   return {
     supplier,
     purchases,
@@ -4505,6 +4508,8 @@ export function getSupplierStatement(
       open_purchases: purchases.filter(
         (purchase) => Number(purchase.remaining_amount || 0) > 0,
       ).length,
+
+      aging,
     },
   }
 }

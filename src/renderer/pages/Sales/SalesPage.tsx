@@ -70,6 +70,23 @@ type CustomerOption = {
   total_spent?: number
   sales_count?: number
   last_sale_at?: string | null
+  balance?: number
+
+  credit_limit?: number | null
+}
+
+type CreditLimitExceededDetails = {
+  customer_id: number
+
+  credit_limit: number
+
+  current_debt: number
+
+  additional_debt: number
+
+  projected_debt: number
+
+  excess_amount: number
 }
 
 type LoyaltySettings = {
@@ -133,7 +150,9 @@ type SaleReceipt = {
 type SaveSaleResult = {
   success?: boolean
   message?: string
+  code?: 'CREDIT_LIMIT_EXCEEDED'
 
+  credit?: CreditLimitExceededDetails
   saleId?: number
 
   loyalty_points_earned?: number
@@ -407,6 +426,10 @@ function normalizeCustomer(customer: any): CustomerOption {
     address: customer.address ?? null,
     notes: customer.notes ?? null,
     points_balance: Number(customer.points_balance ?? 0),
+    balance: Number(customer.balance ?? 0),
+
+    credit_limit:
+      customer.credit_limit == null ? null : Number(customer.credit_limit),
     total_spent: Number(customer.total_spent ?? 0),
     sales_count: Number(customer.sales_count ?? 0),
     last_sale_at: customer.last_sale_at ?? null,
@@ -605,6 +628,18 @@ export default function SalesPage() {
     setSearchParams({}, { replace: true })
   }
 
+  function closeCreditOverride() {
+    if (saving) {
+      return
+    }
+
+    setCreditOverride(null)
+
+    setCreditOverrideAdminUsername('')
+
+    setCreditOverrideAdminPassword('')
+  }
+
   const [isCompact, setIsCompact] = useState(false)
 
   const [invoices, setInvoices] = useState<InvoiceTab[]>([createInvoice(1)])
@@ -619,7 +654,14 @@ export default function SalesPage() {
   const [cashDrawerAutoOpen, setCashDrawerAutoOpen] = useState(true)
   const [barcodeMode, setBarcodeMode] = useState(true)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [creditOverride, setCreditOverride] =
+    useState<CreditLimitExceededDetails | null>(null)
 
+  const [creditOverrideAdminUsername, setCreditOverrideAdminUsername] =
+    useState('')
+
+  const [creditOverrideAdminPassword, setCreditOverrideAdminPassword] =
+    useState('')
   const [splitPaymentEnabled, setSplitPaymentEnabled] = useState(false)
 
   const [splitPaymentDrafts, setSplitPaymentDrafts] = useState<
@@ -1229,6 +1271,7 @@ export default function SalesPage() {
         showPaymentModal ||
         showHoldSaleModal ||
         showHeldSalesModal ||
+        creditOverride ||
         receiptData
       ) {
         return
@@ -1274,6 +1317,7 @@ export default function SalesPage() {
         showPaymentModal ||
         showHoldSaleModal ||
         showHeldSalesModal ||
+        creditOverride ||
         receiptData
       ) {
         return
@@ -1292,6 +1336,7 @@ export default function SalesPage() {
     showPaymentModal,
     showHoldSaleModal,
     showHeldSalesModal,
+    creditOverride,
     receiptData,
   ])
 
@@ -1301,6 +1346,7 @@ export default function SalesPage() {
       showPaymentModal ||
       showHoldSaleModal ||
       showHeldSalesModal ||
+      creditOverride ||
       receiptData
     ) {
       return
@@ -1329,6 +1375,7 @@ export default function SalesPage() {
         showPaymentModal ||
         showHoldSaleModal ||
         showHeldSalesModal ||
+        creditOverride ||
         receiptData
       ) {
         return
@@ -1360,6 +1407,7 @@ export default function SalesPage() {
     showPaymentModal,
     showHoldSaleModal,
     showHeldSalesModal,
+    creditOverride,
     receiptData,
     barcodeMode,
   ])
@@ -2078,7 +2126,7 @@ export default function SalesPage() {
     }
   }
 
-  async function saveSale() {
+  async function saveSale(creditOverrideRequested = false) {
     if (saving) return
 
     if (!user?.id) {
@@ -2122,6 +2170,20 @@ export default function SalesPage() {
       showMessage('error', 'اكتب سبب تعديل الفاتورة')
 
       return
+    }
+
+    if (creditOverrideRequested) {
+      if (user.role !== 'admin' && !creditOverrideAdminUsername.trim()) {
+        showMessage('error', 'اكتب اسم مستخدم المدير', false)
+
+        return
+      }
+
+      if (!creditOverrideAdminPassword) {
+        showMessage('error', 'اكتب كلمة مرور المدير', false)
+
+        return
+      }
     }
 
     setSaving(true)
@@ -2192,18 +2254,58 @@ export default function SalesPage() {
             actor_id: user.id,
 
             reason: editReason.trim(),
-            admin_username: editAdminUsername || undefined,
-            admin_password: editAdminPassword || undefined,
+            credit_limit_override_requested: creditOverrideRequested
+              ? true
+              : undefined,
+
+            admin_username: creditOverrideRequested
+              ? creditOverrideAdminUsername.trim() || undefined
+              : editAdminUsername || undefined,
+
+            admin_password: creditOverrideRequested
+              ? creditOverrideAdminPassword || undefined
+              : editAdminPassword || undefined,
           })
         : await window.api.createSale({
             ...salePayload,
 
             user_id: user.id,
+
+            credit_limit_override_requested: creditOverrideRequested
+              ? true
+              : undefined,
+
+            admin_username: creditOverrideRequested
+              ? creditOverrideAdminUsername.trim() || undefined
+              : undefined,
+
+            admin_password: creditOverrideRequested
+              ? creditOverrideAdminPassword || undefined
+              : undefined,
           })
 
-      if (wasEditing && !result.success) {
-        throw new Error(result.message || 'تعذر تعديل الفاتورة')
+      if (!result.success) {
+        if (result.code === 'CREDIT_LIMIT_EXCEEDED' && result.credit) {
+          setCreditOverride(result.credit)
+
+          setCreditOverrideAdminUsername('')
+
+          setCreditOverrideAdminPassword('')
+
+          return
+        }
+
+        throw new Error(
+          result.message ||
+            (wasEditing ? 'تعذر تعديل الفاتورة' : 'تعذر حفظ الفاتورة'),
+        )
       }
+
+      setCreditOverride(null)
+
+      setCreditOverrideAdminUsername('')
+
+      setCreditOverrideAdminPassword('')
 
       if (wasEditing) {
         clearInvoiceEditState()
@@ -2379,6 +2481,7 @@ export default function SalesPage() {
         showPaymentModal ||
         showHoldSaleModal ||
         showHeldSalesModal ||
+        creditOverride ||
         receiptData
       ) {
         return
@@ -2407,6 +2510,7 @@ export default function SalesPage() {
     showPaymentModal,
     showHoldSaleModal,
     showHeldSalesModal,
+    creditOverride,
     receiptData,
   ])
 
@@ -2418,6 +2522,16 @@ export default function SalesPage() {
 
         if (!printingReceipt) {
           void printReceipt()
+        }
+
+        return
+      }
+
+      if (creditOverride) {
+        if (e.key === 'Escape') {
+          e.preventDefault()
+
+          closeCreditOverride()
         }
 
         return
@@ -2547,6 +2661,7 @@ export default function SalesPage() {
     showHoldSaleModal,
     showHeldSalesModal,
     pendingDeleteHeldSaleId,
+    creditOverride,
   ])
 
   useEffect(() => {
@@ -4866,6 +4981,223 @@ export default function SalesPage() {
                 style={secondaryOutlineButtonStyle}
               >
                 إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {creditOverride && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            position: 'fixed',
+
+            inset: 0,
+
+            zIndex: 100010,
+
+            background: 'rgba(0,0,0,0.72)',
+
+            display: 'flex',
+
+            alignItems: 'center',
+
+            justifyContent: 'center',
+
+            padding: '20px',
+          }}
+        >
+          <div
+            className="theme-modal-card"
+            style={{
+              width: '520px',
+
+              maxWidth: '100%',
+
+              borderRadius: '18px',
+
+              border: '1px solid rgba(245,158,11,0.38)',
+
+              background: '#111827',
+
+              boxShadow: '0 28px 80px rgba(0,0,0,0.60)',
+
+              padding: '22px',
+
+              direction: 'rtl',
+
+              color: '#fff',
+
+              display: 'grid',
+
+              gap: '16px',
+            }}
+          >
+            <div
+              style={{
+                display: 'grid',
+
+                gap: '5px',
+              }}
+            >
+              <h3
+                style={{
+                  margin: 0,
+
+                  color: '#fbbf24',
+                }}
+              >
+                تجاوز الحد الائتماني
+              </h3>
+
+              <span
+                style={{
+                  color: '#cbd5e1',
+
+                  fontSize: '13px',
+                }}
+              >
+                الفاتورة ستزيد مديونية العميل عن الحد المسموح، وتحتاج موافقة
+                مدير.
+              </span>
+            </div>
+
+            <div
+              style={{
+                display: 'grid',
+
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+
+                gap: '8px',
+              }}
+            >
+              <div style={receiptInfoCardStyle}>
+                <span>الحد الائتماني</span>
+
+                <strong>{money(creditOverride.credit_limit)} ج.م</strong>
+              </div>
+
+              <div style={receiptInfoCardStyle}>
+                <span>المديونية الحالية</span>
+
+                <strong>{money(creditOverride.current_debt)} ج.م</strong>
+              </div>
+
+              <div style={receiptInfoCardStyle}>
+                <span>مديونية الفاتورة</span>
+
+                <strong>{money(creditOverride.additional_debt)} ج.م</strong>
+              </div>
+
+              <div
+                style={{
+                  ...receiptInfoCardStyle,
+
+                  borderColor: 'rgba(239,68,68,0.45)',
+                }}
+              >
+                <span>بعد البيع</span>
+
+                <strong
+                  style={{
+                    color: '#fca5a5',
+                  }}
+                >
+                  {money(creditOverride.projected_debt)} ج.م
+                </strong>
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '10px 12px',
+
+                borderRadius: '11px',
+
+                background: 'rgba(239,68,68,0.10)',
+
+                border: '1px solid rgba(239,68,68,0.28)',
+
+                color: '#fca5a5',
+
+                fontWeight: 900,
+
+                textAlign: 'center',
+              }}
+            >
+              قيمة التجاوز: {money(creditOverride.excess_amount)} ج.م
+            </div>
+
+            {user?.role !== 'admin' && (
+              <label style={paymentLabelStyle}>
+                اسم مستخدم المدير
+                <input
+                  autoFocus
+                  value={creditOverrideAdminUsername}
+                  onChange={(e) =>
+                    setCreditOverrideAdminUsername(e.target.value)
+                  }
+                  style={paymentInputStyle}
+                  placeholder="اسم مستخدم المدير"
+                />
+              </label>
+            )}
+
+            <label style={paymentLabelStyle}>
+              كلمة مرور المدير
+              <input
+                autoFocus={user?.role === 'admin'}
+                type="password"
+                value={creditOverrideAdminPassword}
+                onChange={(e) => setCreditOverrideAdminPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+
+                    void saveSale(true)
+                  }
+
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+
+                    closeCreditOverride()
+                  }
+                }}
+                style={paymentInputStyle}
+                placeholder="كلمة مرور المدير"
+              />
+            </label>
+
+            <div
+              style={{
+                display: 'grid',
+
+                gridTemplateColumns: '1fr 1fr',
+
+                gap: '10px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeCreditOverride}
+                disabled={saving}
+                style={secondaryOutlineButtonStyle}
+              >
+                إلغاء
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void saveSale(true)}
+                disabled={saving}
+                style={{
+                  ...primaryButtonStyle,
+
+                  opacity: saving ? 0.6 : 1,
+                }}
+              >
+                {saving ? 'جاري التحقق...' : 'موافقة وتسجيل الفاتورة'}
               </button>
             </div>
           </div>

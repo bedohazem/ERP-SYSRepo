@@ -21,12 +21,232 @@ function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
   return String(row?.business_date || '')
 }
 
+function normalizeCreditLimit(value: unknown): number | null {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return null
+  }
+
+  const amount = Number(value)
+
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new Error('الحد الائتماني يجب أن يكون صفر أو رقمًا موجبًا')
+  }
+
+  return Number(amount.toFixed(2))
+}
+
+function getAgingSummaryForCustomer(
+  customerId?: number | null,
+  search?: string,
+) {
+  const db = getDb()
+
+  const id = Number(customerId || 0)
+
+  const searchValue = String(search || '').trim()
+
+  const where: string[] = [
+    `
+    IFNULL(
+      s.type,
+      'sale'
+    ) = 'sale'
+    `,
+
+    `
+    s.cancelled_at
+      IS NULL
+    `,
+
+    `
+    ROUND(
+      IFNULL(
+        s.remaining_amount,
+        0
+      ),
+      2
+    ) > 0
+    `,
+  ]
+
+  const params: any[] = []
+
+  if (id > 0) {
+    where.push('s.customer_id = ?')
+
+    params.push(id)
+  } else {
+    /*
+     * نفس Scope الخاص بقائمة العملاء:
+     * العملاء النشطون فقط.
+     */
+    where.push('c.is_active = 1')
+
+    if (searchValue) {
+      where.push(`
+        (
+          c.name LIKE ?
+
+          OR
+          IFNULL(
+            c.phone,
+            ''
+          ) LIKE ?
+
+          OR
+          IFNULL(
+            c.email,
+            ''
+          ) LIKE ?
+
+          OR
+          IFNULL(
+            c.address,
+            ''
+          ) LIKE ?
+        )
+      `)
+
+      const q = `%${searchValue}%`
+
+      params.push(q, q, q, q)
+    }
+  }
+
+  const row = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(
+            CASE
+              WHEN age_days <= 30
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS days_0_30,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN age_days
+                BETWEEN 31 AND 60
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS days_31_60,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN age_days
+                BETWEEN 61 AND 90
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS days_61_90,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN age_days > 90
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS days_90_plus,
+
+        IFNULL(
+          SUM(
+            remaining_amount
+          ),
+          0
+        ) AS total
+
+      FROM (
+        SELECT
+          ROUND(
+            IFNULL(
+              s.remaining_amount,
+              0
+            ),
+            2
+          ) AS remaining_amount,
+
+          MAX(
+            0,
+
+            CAST(
+              julianday(
+                date(
+                  'now',
+                  'localtime'
+                )
+              )
+              -
+              julianday(
+                COALESCE(
+                  NULLIF(
+                    s.business_date,
+                    ''
+                  ),
+
+                  date(
+                    s.created_at,
+                    'localtime'
+                  )
+                )
+              )
+
+              AS INTEGER
+            )
+          ) AS age_days
+
+        FROM sales s
+
+        JOIN customers c
+          ON c.id =
+             s.customer_id
+
+        WHERE
+          ${where.join('\nAND ')}
+      ) open_sales
+      `,
+    )
+    .get(...params) as any
+
+  return {
+    days_0_30: Number(Number(row?.days_0_30 || 0).toFixed(2)),
+
+    days_31_60: Number(Number(row?.days_31_60 || 0).toFixed(2)),
+
+    days_61_90: Number(Number(row?.days_61_90 || 0).toFixed(2)),
+
+    days_90_plus: Number(Number(row?.days_90_plus || 0).toFixed(2)),
+
+    total: Number(Number(row?.total || 0).toFixed(2)),
+  }
+}
+
 export type CustomerInput = {
   name: string
   phone?: string | null
   email?: string | null
   address?: string | null
   notes?: string | null
+
+  /*
+   * null = بدون حد ائتماني.
+   * 0 = ممنوع مديونية.
+   */
+  credit_limit?: number | null
 }
 
 export type CustomerUpdateInput = CustomerInput & {
@@ -205,6 +425,8 @@ export function listCustomers(input?: {
     )
     .get(...baseParams) as any
 
+  const aging = getAgingSummaryForCustomer(null, search)
+
   return {
     rows,
     total: Number(totalRow?.total || 0),
@@ -223,6 +445,8 @@ export function listCustomers(input?: {
             balance: Number(topDebtor.balance || 0),
           }
         : null,
+
+      aging,
     },
   }
 }
@@ -235,6 +459,7 @@ export function createCustomer(input: CustomerInput) {
   const email = input.email?.trim() || null
   const address = input.address?.trim() || null
   const notes = input.notes?.trim() || null
+  const creditLimit = normalizeCreditLimit(input.credit_limit)
 
   if (!name) {
     throw new Error('اسم العميل مطلوب')
@@ -248,12 +473,13 @@ export function createCustomer(input: CustomerInput) {
         phone,
         email,
         address,
-        notes
+        notes,
+        credit_limit
       )
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?)
     `,
     )
-    .run(name, phone, email, address, notes)
+    .run(name, phone, email, address, notes, creditLimit)
 
   return getCustomerById(Number(result.lastInsertRowid))
 }
@@ -275,6 +501,34 @@ export function updateCustomer(input: CustomerUpdateInput) {
     throw new Error('اسم العميل مطلوب')
   }
 
+  const current = db
+    .prepare(
+      `
+      SELECT
+        credit_limit
+
+      FROM customers
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(input.id) as
+    | {
+        credit_limit: number | null
+      }
+    | undefined
+
+  if (!current) {
+    throw new Error('العميل غير موجود')
+  }
+
+  const creditLimit =
+    input.credit_limit === undefined
+      ? current.credit_limit
+      : normalizeCreditLimit(input.credit_limit)
+
   db.prepare(
     `
     UPDATE customers
@@ -284,10 +538,11 @@ export function updateCustomer(input: CustomerUpdateInput) {
       email = ?,
       address = ?,
       notes = ?,
+      credit_limit = ?,
       updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
+      WHERE id = ?
   `,
-  ).run(name, phone, email, address, notes, input.id)
+  ).run(name, phone, email, address, notes, creditLimit, input.id)
 
   return getCustomerById(input.id)
 }
@@ -2053,6 +2308,32 @@ export function getCustomerStatement(
     (sale) => !sale.cancelled_at && Number(sale.remaining_amount || 0) > 0,
   )
 
+  const aging = getAgingSummaryForCustomer(id)
+
+  const balance = Number(customer.balance || 0)
+
+  const creditLimit =
+    customer.credit_limit == null ? null : Number(customer.credit_limit)
+
+  const credit = {
+    credit_limit: creditLimit,
+
+    unlimited: creditLimit === null,
+
+    current_debt: balance,
+
+    available_credit:
+      creditLimit === null
+        ? null
+        : Math.max(
+            0,
+
+            Number((creditLimit - balance).toFixed(2)),
+          ),
+
+    over_limit: creditLimit !== null && balance > creditLimit + 0.0001,
+  }
+
   return {
     customer,
     sales,
@@ -2063,6 +2344,8 @@ export function getCustomerStatement(
       total_paid: Number(totalPaid.toFixed(2)),
       balance: Number(customer.balance || 0),
       open_sales: openSales.length,
+      aging,
+      credit,
     },
   }
 }

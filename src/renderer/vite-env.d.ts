@@ -395,14 +395,54 @@ declare global {
       }) => Promise<any>
 
       createSale: (input: any) => Promise<{
-        saleId: number
+        success: boolean
+
+        code?: 'CREDIT_LIMIT_EXCEEDED'
+
+        message?: string
+
+        credit?: {
+          customer_id: number
+
+          credit_limit: number
+
+          current_debt: number
+
+          additional_debt: number
+
+          projected_debt: number
+
+          excess_amount: number
+        }
+
+        saleId?: number
+
         loyalty_points_earned?: number
+
         loyalty_points_redeemed?: number
+
         loyalty_discount_value?: number
+
         promotion_id?: number | null
+
         promotion_name?: string | null
+
         promotion_discount_value?: number
+
         grand_total?: number
+
+        paid_amount?: number
+
+        remaining_amount?: number
+
+        payment_status?: string
+
+        credit_limit_at_sale?: number | null
+
+        customer_balance_before?: number | null
+
+        credit_limit_override_approved_by?: number | null
+
         shift_id?: number | null
       }>
 
@@ -546,7 +586,21 @@ declare global {
       updateSaleInvoice: (input: any) => Promise<{
         success: boolean
         message?: string
+        code?: 'CREDIT_LIMIT_EXCEEDED'
 
+        credit?: {
+          customer_id: number
+
+          credit_limit: number
+
+          current_debt: number
+
+          additional_debt: number
+
+          projected_debt: number
+
+          excess_amount: number
+        }
         saleId?: number
 
         grand_total?: number
@@ -558,7 +612,11 @@ declare global {
         payment_status?: string
 
         shift_id?: number | null
+        credit_limit_at_sale?: number | null
 
+        customer_balance_before?: number | null
+
+        credit_limit_override_approved_by?: number | null
         edited?: boolean
       }>
 
@@ -1196,6 +1254,18 @@ declare global {
             name: string
             balance: number
           } | null
+
+          aging: {
+            days_0_30: number
+
+            days_31_60: number
+
+            days_61_90: number
+
+            days_90_plus: number
+
+            total: number
+          }
         }
       }>
 
@@ -1319,6 +1389,29 @@ declare global {
           total_paid: number
           balance: number
           open_sales: number
+          aging: {
+            days_0_30: number
+
+            days_31_60: number
+
+            days_61_90: number
+
+            days_90_plus: number
+
+            total: number
+          }
+
+          credit: {
+            credit_limit: number | null
+
+            unlimited: boolean
+
+            current_debt: number
+
+            available_credit: number | null
+
+            over_limit: boolean
+          }
         }
       }>
 
@@ -1801,13 +1894,32 @@ declare global {
 
       listSuppliers: (input?: {
         search?: string
+
         limit?: number
         offset?: number
+
+        include_summary?: boolean
       }) => Promise<{
         rows: any[]
+
         total: number
+
         limit: number
         offset: number
+
+        summary?: {
+          aging: {
+            days_0_30: number
+
+            days_31_60: number
+
+            days_61_90: number
+
+            days_90_plus: number
+
+            total: number
+          } | null
+        }
       }>
 
       getSupplierById: (id: number) => Promise<any>
@@ -2151,10 +2263,26 @@ declare global {
         }>
         summary: {
           total_purchased: number
+
           total_paid: number
+
           total_returns?: number
+
           balance: number
+
           open_purchases: number
+
+          aging: {
+            days_0_30: number
+
+            days_31_60: number
+
+            days_61_90: number
+
+            days_90_plus: number
+
+            total: number
+          }
         }
       }>
 
@@ -2823,6 +2951,7 @@ declare global {
     last_sale_at?: string | null
     created_at?: string
     updated_at?: string
+    credit_limit?: number | null
   }
 
   type CustomerInput = {
@@ -2831,11 +2960,13 @@ declare global {
     email?: string | null
     address?: string | null
     notes?: string | null
+    credit_limit?: number | null
   }
 
   type CustomerUpdateInput = CustomerInput & {
     id: number
     is_active?: number
+    credit_limit?: number | null
   }
 
   type LoyaltySettings = {

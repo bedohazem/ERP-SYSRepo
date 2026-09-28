@@ -45,6 +45,17 @@ export default function SuppliersPage() {
   const isAdmin = currentUser?.role === 'admin'
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [suppliersTotal, setSuppliersTotal] = useState(0)
+  const [supplierAging, setSupplierAging] = useState({
+    days_0_30: 0,
+
+    days_31_60: 0,
+
+    days_61_90: 0,
+
+    days_90_plus: 0,
+
+    total: 0,
+  })
   const canManagePurchases = hasUserPermission(currentUser, 'purchases.manage')
   const [supplierPage, setSupplierPage] = useState(1)
 
@@ -108,6 +119,7 @@ export default function SuppliersPage() {
         limit: SYSTEM_PAGE_SIZE,
 
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
+        include_summary: true,
       })
 
       const total = Number(result.total || 0)
@@ -126,6 +138,17 @@ export default function SuppliersPage() {
 
       setSuppliersTotal(total)
       setSupplierPage(safePage)
+      setSupplierAging({
+        days_0_30: Number(result.summary?.aging?.days_0_30 || 0),
+
+        days_31_60: Number(result.summary?.aging?.days_31_60 || 0),
+
+        days_61_90: Number(result.summary?.aging?.days_61_90 || 0),
+
+        days_90_plus: Number(result.summary?.aging?.days_90_plus || 0),
+
+        total: Number(result.summary?.aging?.total || 0),
+      })
     } catch (error) {
       console.error('Failed to load suppliers:', error)
 
@@ -133,6 +156,17 @@ export default function SuppliersPage() {
 
       setSuppliers([])
       setSuppliersTotal(0)
+      setSupplierAging({
+        days_0_30: 0,
+
+        days_31_60: 0,
+
+        days_61_90: 0,
+
+        days_90_plus: 0,
+
+        total: 0,
+      })
     } finally {
       setLoading(false)
     }
@@ -485,6 +519,40 @@ export default function SuppliersPage() {
             <div class="summary-card">
               <span>الفواتير المفتوحة</span>
               <strong>${safeText(summary?.open_purchases || 0)}</strong>
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="summary-card">
+              <span>0 - 30 يوم</span>
+
+              <strong>
+                ${safeText(money(summary?.aging?.days_0_30 || 0))}
+              </strong>
+            </div>
+
+            <div class="summary-card">
+              <span>31 - 60 يوم</span>
+
+              <strong>
+                ${safeText(money(summary?.aging?.days_31_60 || 0))}
+              </strong>
+            </div>
+
+            <div class="summary-card">
+              <span>61 - 90 يوم</span>
+
+              <strong>
+                ${safeText(money(summary?.aging?.days_61_90 || 0))}
+              </strong>
+            </div>
+
+            <div class="summary-card">
+              <span>أكثر من 90 يوم</span>
+
+              <strong>
+                ${safeText(money(summary?.aging?.days_90_plus || 0))}
+              </strong>
             </div>
           </div>
 
@@ -888,6 +956,38 @@ export default function SuppliersPage() {
           onChange={(e) => setSearch(e.target.value)}
           style={inputStyle}
         />
+
+        <div
+          style={{
+            display: 'grid',
+
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+
+            gap: '8px',
+          }}
+        >
+          <InfoCard
+            title="إجمالي مستحقات الموردين"
+            value={money(supplierAging.total)}
+          />
+
+          <InfoCard title="0 - 30 يوم" value={money(supplierAging.days_0_30)} />
+
+          <InfoCard
+            title="31 - 60 يوم"
+            value={money(supplierAging.days_31_60)}
+          />
+
+          <InfoCard
+            title="61 - 90 يوم"
+            value={money(supplierAging.days_61_90)}
+          />
+
+          <InfoCard
+            title="أكثر من 90 يوم"
+            value={money(supplierAging.days_90_plus)}
+          />
+        </div>
       </div>
 
       <div className="glass-card" style={cardStyle}>
@@ -1221,6 +1321,58 @@ export default function SuppliersPage() {
                 title="فواتير مفتوحة"
                 value={String(statementData.summary.open_purchases)}
               />
+            </div>
+
+            <div
+              style={{
+                marginBottom: '18px',
+
+                display: 'grid',
+
+                gap: '10px',
+              }}
+            >
+              <strong
+                style={{
+                  color: '#cbd5e1',
+
+                  fontSize: '13px',
+
+                  textAlign: 'right',
+                }}
+              >
+                أعمار مستحقات المورد
+              </strong>
+
+              <div
+                style={{
+                  display: 'grid',
+
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+
+                  gap: '10px',
+                }}
+              >
+                <InfoCard
+                  title="0 - 30 يوم"
+                  value={money(statementData.summary?.aging?.days_0_30 || 0)}
+                />
+
+                <InfoCard
+                  title="31 - 60 يوم"
+                  value={money(statementData.summary?.aging?.days_31_60 || 0)}
+                />
+
+                <InfoCard
+                  title="61 - 90 يوم"
+                  value={money(statementData.summary?.aging?.days_61_90 || 0)}
+                />
+
+                <InfoCard
+                  title="أكثر من 90 يوم"
+                  value={money(statementData.summary?.aging?.days_90_plus || 0)}
+                />
+              </div>
             </div>
 
             {roundMoney(statementData.summary.balance) > 0 && (

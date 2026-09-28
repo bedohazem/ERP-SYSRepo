@@ -17,6 +17,207 @@ function cleanText(value?: string | null) {
   return text ? text : null
 }
 
+export function getSupplierAgingSummary(
+  supplierId?: number | null,
+
+  search?: string,
+) {
+  const db = getDb()
+
+  const id = Number(supplierId || 0)
+
+  const searchValue = String(search || '').trim()
+
+  const where: string[] = [
+    `
+    IFNULL(
+      pi.status,
+      'active'
+    ) != 'cancelled'
+    `,
+
+    `
+    pi.cancelled_at
+      IS NULL
+    `,
+
+    `
+    ROUND(
+      IFNULL(
+        pi.remaining_amount,
+        0
+      ),
+      2
+    ) > 0
+    `,
+  ]
+
+  const params: any[] = []
+
+  if (id > 0) {
+    where.push('pi.supplier_id = ?')
+
+    params.push(id)
+  } else {
+    /*
+     * نفس Scope الخاص بقائمة الموردين:
+     * الموردون النشطون فقط.
+     */
+    where.push('s.is_active = 1')
+
+    if (searchValue) {
+      where.push(`
+        (
+          s.name LIKE ?
+
+          OR
+          IFNULL(
+            s.phone,
+            ''
+          ) LIKE ?
+
+          OR
+          IFNULL(
+            s.email,
+            ''
+          ) LIKE ?
+
+          OR
+          IFNULL(
+            s.address,
+            ''
+          ) LIKE ?
+        )
+      `)
+
+      const q = `%${searchValue}%`
+
+      params.push(q, q, q, q)
+    }
+  }
+
+  const row = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(
+            CASE
+              WHEN age_days <= 30
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS days_0_30,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN age_days
+                BETWEEN 31 AND 60
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS days_31_60,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN age_days
+                BETWEEN 61 AND 90
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS days_61_90,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN age_days > 90
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS days_90_plus,
+
+        IFNULL(
+          SUM(
+            remaining_amount
+          ),
+          0
+        ) AS total
+
+      FROM (
+        SELECT
+          ROUND(
+            IFNULL(
+              pi.remaining_amount,
+              0
+            ),
+            2
+          ) AS remaining_amount,
+
+          MAX(
+            0,
+
+            CAST(
+              julianday(
+                date(
+                  'now',
+                  'localtime'
+                )
+              )
+              -
+              julianday(
+                COALESCE(
+                  NULLIF(
+                    pi.business_date,
+                    ''
+                  ),
+
+                  date(
+                    pi.created_at,
+                    'localtime'
+                  )
+                )
+              )
+
+              AS INTEGER
+            )
+          ) AS age_days
+
+        FROM purchase_invoices pi
+
+        JOIN suppliers s
+          ON s.id =
+             pi.supplier_id
+
+        WHERE
+          ${where.join('\nAND ')}
+      ) open_purchases
+      `,
+    )
+    .get(...params) as any
+
+  return {
+    days_0_30: Number(Number(row?.days_0_30 || 0).toFixed(2)),
+
+    days_31_60: Number(Number(row?.days_31_60 || 0).toFixed(2)),
+
+    days_61_90: Number(Number(row?.days_61_90 || 0).toFixed(2)),
+
+    days_90_plus: Number(Number(row?.days_90_plus || 0).toFixed(2)),
+
+    total: Number(Number(row?.total || 0).toFixed(2)),
+  }
+}
+
 export function getSuppliers(search = '') {
   const db = getDb()
   const q = `%${search.trim()}%`
@@ -66,8 +267,11 @@ export function getSuppliers(search = '') {
 
 export function listSuppliers(input?: {
   search?: string
+
   limit?: number
   offset?: number
+
+  include_summary?: boolean
 }) {
   const db = getDb()
 
@@ -133,11 +337,23 @@ export function listSuppliers(input?: {
     total: number
   }
 
+  const aging = input?.include_summary
+    ? getSupplierAgingSummary(null, search)
+    : null
+
   return {
     rows,
+
     total: Number(totalRow?.total || 0),
+
     limit,
     offset,
+
+    summary: input?.include_summary
+      ? {
+          aging,
+        }
+      : undefined,
   }
 }
 

@@ -12,6 +12,8 @@ import {
   vi,
 } from 'vitest'
 
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
+
 import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
 import {
   createProduct,
@@ -566,6 +568,238 @@ describe('domain IPC session scope', () => {
         items: [],
       }),
     ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
+  })
+
+  it('requires real admin approval to override a customer credit limit', async () => {
+    const db = getDb()
+
+    const cashier = createUser(
+      'Credit Cashier',
+      'credit_cashier',
+      '5678',
+      'cashier',
+    )
+
+    const approver = createUser(
+      'Credit Approver',
+      'credit_approver',
+      'Admin1234',
+      'admin',
+    )
+
+    openCashShift({
+      opening_counted_amount: 0,
+
+      opened_by: cashier.id,
+    })
+
+    createProduct({
+      name: 'Credit Product',
+
+      category_id: null,
+
+      image_path: null,
+
+      description: null,
+
+      variants: [
+        {
+          barcode: 'CREDIT-LIMIT-001',
+
+          size: 'M',
+
+          color: 'Black',
+
+          buy_price: 50,
+
+          sell_price: 150,
+
+          min_stock: 1,
+
+          opening_qty: 5,
+        },
+      ],
+    })
+
+    const variant = getVariantByBarcode('CREDIT-LIMIT-001') as any
+
+    const customerResult = db
+      .prepare(
+        `
+        INSERT INTO customers (
+          name,
+
+          phone,
+
+          credit_limit,
+
+          balance
+        )
+
+        VALUES (
+          'Credit IPC Customer',
+
+          '01088881111',
+
+          100,
+
+          0
+        )
+        `,
+      )
+      .run()
+
+    const customerId = Number(customerResult.lastInsertRowid)
+
+    const payload = {
+      customer_id: customerId,
+
+      promotion_ids: [],
+
+      sub_total: 150,
+
+      discount_value: 0,
+
+      grand_total: 150,
+
+      paid: 0,
+
+      remaining_amount: 150,
+
+      payment_status: 'unpaid',
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    }
+
+    const { event } = makeClient()
+
+    startAuthSession(event, cashier.id)
+
+    const blocked = await invoke(
+      event,
+
+      'sales:create',
+
+      payload,
+    )
+
+    expect(blocked.success).toBe(false)
+
+    expect(blocked.code).toBe('CREDIT_LIMIT_EXCEEDED')
+
+    expect(blocked.credit).toEqual({
+      customer_id: customerId,
+
+      credit_limit: 100,
+
+      current_debt: 0,
+
+      additional_debt: 150,
+
+      projected_debt: 150,
+
+      excess_amount: 50,
+    })
+
+    expect(
+      (
+        db
+          .prepare(
+            `
+          SELECT COUNT(*)
+            AS count
+
+          FROM sales
+          `,
+          )
+          .get() as {
+          count: number
+        }
+      ).count,
+    ).toBe(0)
+
+    await expect(
+      invoke(
+        event,
+
+        'sales:create',
+
+        {
+          ...payload,
+
+          credit_limit_override_requested: true,
+
+          admin_username: 'credit_approver',
+
+          admin_password: 'wrong-password',
+        },
+      ),
+    ).rejects.toThrow('بيانات اعتماد المدير غير صحيحة')
+
+    const approved = await invoke(
+      event,
+
+      'sales:create',
+
+      {
+        ...payload,
+
+        credit_limit_override_requested: true,
+
+        admin_username: 'credit_approver',
+
+        admin_password: 'Admin1234',
+      },
+    )
+
+    expect(approved.success).toBe(true)
+
+    expect(Number(approved.credit_limit_override_approved_by)).toBe(approver.id)
+
+    const savedSale = db
+      .prepare(
+        `
+        SELECT
+          credit_limit_at_sale,
+
+          customer_balance_before,
+
+          credit_limit_override_approved_by
+
+        FROM sales
+
+        WHERE id = ?
+        `,
+      )
+      .get(approved.saleId) as any
+
+    expect(Number(savedSale.credit_limit_at_sale)).toBe(100)
+
+    expect(Number(savedSale.customer_balance_before)).toBe(0)
+
+    expect(Number(savedSale.credit_limit_override_approved_by)).toBe(
+      approver.id,
+    )
   })
 
   it('returns stock movements instead of inventory rows', async () => {

@@ -2276,4 +2276,72 @@ describe('purchases repository', () => {
 
     expect(getStockByBarcode('PURCHASE001')).toBe(5)
   })
+
+  it('includes supplier aging in the statement', () => {
+    const db = getDb()
+
+    const supplierId = createTestSupplier()
+
+    const insertPurchase = db.prepare(
+      `
+        INSERT INTO purchase_invoices (
+          supplier_id,
+
+          total_amount,
+
+          remaining_amount,
+
+          payment_status,
+
+          business_date
+        )
+
+        VALUES (
+          ?,
+          ?,
+          ?,
+          'unpaid',
+          date(
+            'now',
+            'localtime',
+            ?
+          )
+        )
+        `,
+    )
+
+    insertPurchase.run(supplierId, 150, 150, '-5 days')
+
+    insertPurchase.run(supplierId, 250, 250, '-45 days')
+
+    insertPurchase.run(supplierId, 350, 350, '-75 days')
+
+    insertPurchase.run(supplierId, 450, 450, '-120 days')
+
+    db.prepare(
+      `
+      UPDATE suppliers
+
+      SET balance = 1200
+
+      WHERE id = ?
+      `,
+    ).run(supplierId)
+
+    const statement = getSupplierStatement(supplierId, 1) as any
+
+    expect(statement.summary.aging).toEqual({
+      days_0_30: 150,
+
+      days_31_60: 250,
+
+      days_61_90: 350,
+
+      days_90_plus: 450,
+
+      total: 1200,
+    })
+
+    expect(statement.summary.balance).toBe(1200)
+  })
 })

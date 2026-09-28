@@ -13,6 +13,7 @@ export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   user_password_reset: 'تغيير كلمة مرور',
 
   sale_created: 'إنشاء فاتورة بيع',
+  sale_credit_limit_overridden: 'تجاوز الحد الائتماني للعميل بموافقة المدير',
   sale_held: 'تعليق فاتورة بيع',
 
   sale_hold_resumed: 'استكمال فاتورة معلقة',

@@ -4250,4 +4250,136 @@ describe('sales repository', () => {
 
     expect(Number(receipt.sale.loyalty_points_earned)).toBe(1)
   })
+
+  it('blocks credit limit exceed and allows only a valid admin override', () => {
+    const db = getDb()
+
+    const variant = seedProduct()
+
+    const customerId = createTestCustomer()
+
+    db.prepare(
+      `
+      UPDATE customers
+
+      SET
+        credit_limit = 100,
+
+        balance = 0
+
+      WHERE id = ?
+      `,
+    ).run(customerId)
+
+    const input = {
+      user_id: 1,
+
+      customer_id: customerId,
+
+      promotion_ids: [],
+
+      sub_total: 150,
+
+      discount_value: 0,
+
+      grand_total: 150,
+
+      paid: 0,
+
+      remaining_amount: 150,
+
+      payment_status: 'unpaid',
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    }
+
+    expect(() => createSale(input)).toThrow('ستتجاوز الحد الائتماني')
+
+    expect(getCustomerBalance(customerId)).toBe(0)
+
+    const saleCount = db
+      .prepare(
+        `
+        SELECT COUNT(*)
+          AS count
+
+        FROM sales
+        `,
+      )
+      .get() as {
+      count: number
+    }
+
+    expect(saleCount.count).toBe(0)
+
+    expect(() =>
+      createSale({
+        ...input,
+
+        credit_limit_override_approved_by: 999999,
+      }),
+    ).toThrow('موافقة تجاوز الحد الائتماني غير صالحة')
+
+    const result = createSale({
+      ...input,
+
+      /*
+       * Seeded admin.
+       */
+      credit_limit_override_approved_by: 1,
+    })
+
+    expect(result.saleId).toBeGreaterThan(0)
+
+    expect(result.credit_limit_at_sale).toBe(100)
+
+    expect(result.customer_balance_before).toBe(0)
+
+    expect(result.credit_limit_override_approved_by).toBe(1)
+
+    expect(getCustomerBalance(customerId)).toBe(150)
+
+    const sale = db
+      .prepare(
+        `
+        SELECT
+          credit_limit_at_sale,
+
+          customer_balance_before,
+
+          credit_limit_override_approved_by
+
+        FROM sales
+
+        WHERE id = ?
+        `,
+      )
+      .get(result.saleId) as any
+
+    expect(Number(sale.credit_limit_at_sale)).toBe(100)
+
+    expect(Number(sale.customer_balance_before)).toBe(0)
+
+    expect(Number(sale.credit_limit_override_approved_by)).toBe(1)
+  })
 })
