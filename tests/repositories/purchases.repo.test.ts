@@ -2224,6 +2224,113 @@ describe('purchases repository', () => {
     ).toThrow('صنف مكرر')
   })
 
+  it('rejects duplicate variants when editing a purchase invoice and keeps original state', () => {
+    const supplierId = createTestSupplier()
+
+    const variant = seedPurchaseProduct()
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      paid_amount: 0,
+
+      actor_id: 1,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 2,
+
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const before = getPurchaseInvoice(purchase.purchaseId) as any
+
+    expect(getStockByBarcode('PURCHASE001')).toBe(2)
+
+    expect(getSupplierBalance(supplierId)).toBe(200)
+
+    expect(() =>
+      updatePurchaseInvoice({
+        purchase_id: purchase.purchaseId,
+
+        actor_id: 1,
+
+        reason: 'Reject duplicate purchase lines',
+
+        supplier_id: supplierId,
+
+        sub_total: 300,
+
+        discount_type: 'amount',
+
+        discount_input: 0,
+
+        discount_value: 0,
+
+        paid_amount: 0,
+
+        payment_method: 'store_cash',
+
+        notes: 'Should not be saved',
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            quantity: 1,
+
+            unit_cost: 150,
+          },
+          {
+            variant_id: variant.variant_id,
+
+            quantity: 1,
+
+            unit_cost: 150,
+          },
+        ],
+      }),
+    ).toThrow('يوجد صنف مكرر أو غير صحيح داخل الفاتورة')
+
+    const after = getPurchaseInvoice(purchase.purchaseId) as any
+
+    expect(after.purchase.id).toBe(before.purchase.id)
+
+    expect(after.purchase.created_at).toBe(before.purchase.created_at)
+
+    expect(Number(after.purchase.total_amount)).toBe(200)
+
+    expect(Number(after.purchase.paid_amount)).toBe(0)
+
+    expect(Number(after.purchase.remaining_amount)).toBe(200)
+
+    expect(after.purchase.payment_status).toBe('unpaid')
+
+    expect(after.items).toHaveLength(1)
+
+    expect(Number(after.items[0].quantity)).toBe(2)
+
+    expect(Number(after.items[0].unit_cost)).toBe(100)
+
+    expect(getStockByBarcode('PURCHASE001')).toBe(2)
+
+    expect(getSupplierBalance(supplierId)).toBe(200)
+
+    expect(getSupplierTotalPurchased(supplierId)).toBe(200)
+
+    const costState = getVariantCostState('PURCHASE001')
+
+    expect(Number(costState.buy_price)).toBe(100)
+
+    expect(Number(costState.average_cost)).toBe(100)
+
+    expect(Number(costState.inventory_value)).toBe(200)
+  })
+
   it('rejects duplicate lines in the same purchase return', () => {
     const supplierId = createTestSupplier()
 
