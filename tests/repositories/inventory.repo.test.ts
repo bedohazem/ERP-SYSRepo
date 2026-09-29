@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
 import {
   createProduct,
+  toggleProductActive,
+  toggleVariantActive,
   getVariantByBarcode,
 } from '../../src/main/database/repositories/product.repo'
 import {
@@ -26,6 +28,7 @@ type InventoryVariantTestRow = {
   stock: number
   min_stock: number
   is_active: number
+  product_is_active: number
 }
 
 type StockMovementTestRow = {
@@ -135,6 +138,117 @@ describe('inventory repository', () => {
 
     expect(second?.stock).toBe(0)
     expect(second?.min_stock).toBe(5)
+  })
+
+  it('keeps disabled products and variants visible in inventory', () => {
+    const variantDisabled = seedInventoryProduct({
+      name: 'Disabled Variant Inventory',
+      barcode: 'INV-DISABLED-VARIANT',
+      openingQty: 6,
+      minStock: 2,
+    })
+
+    const productDisabled = seedInventoryProduct({
+      name: 'Disabled Product Inventory',
+      barcode: 'INV-DISABLED-PRODUCT',
+      openingQty: 4,
+      minStock: 2,
+    })
+
+    toggleVariantActive(variantDisabled.variant_id, 0)
+
+    toggleProductActive(productDisabled.product_id, 0)
+
+    const rows = getInventoryList({
+      status: 'inactive',
+    }) as InventoryVariantTestRow[]
+
+    const disabledVariantRow = rows.find(
+      (row) => row.barcode === 'INV-DISABLED-VARIANT',
+    )
+
+    const disabledProductRow = rows.find(
+      (row) => row.barcode === 'INV-DISABLED-PRODUCT',
+    )
+
+    expect(disabledVariantRow).toBeDefined()
+    expect(disabledVariantRow?.stock).toBe(6)
+    expect(disabledVariantRow?.is_active).toBe(0)
+    expect(disabledVariantRow?.product_is_active).toBe(1)
+
+    expect(disabledProductRow).toBeDefined()
+    expect(disabledProductRow?.stock).toBe(4)
+    expect(disabledProductRow?.product_is_active).toBe(0)
+
+    const activeRows = getInventoryList({
+      status: 'available',
+    }) as InventoryVariantTestRow[]
+
+    expect(
+      activeRows.some((row) => row.barcode === 'INV-DISABLED-VARIANT'),
+    ).toBe(false)
+
+    expect(
+      activeRows.some((row) => row.barcode === 'INV-DISABLED-PRODUCT'),
+    ).toBe(false)
+
+    const page = listInventoryPage({
+      status: 'all',
+      limit: 50,
+      offset: 0,
+    })
+
+    expect(page.summary.inactive).toBe(2)
+
+    expect(page.summary.totalBuyValue).toBe(1000)
+  })
+
+  it('filters inventory by multiple selected statuses', () => {
+    seedInventoryProduct({
+      name: 'Multi Available',
+      barcode: 'MULTI-AVAILABLE',
+      openingQty: 10,
+      minStock: 5,
+    })
+
+    seedInventoryProduct({
+      name: 'Multi Low',
+      barcode: 'MULTI-LOW',
+      openingQty: 3,
+      minStock: 5,
+    })
+
+    seedInventoryProduct({
+      name: 'Multi Out',
+      barcode: 'MULTI-OUT',
+      openingQty: 0,
+      minStock: 5,
+    })
+
+    const disabled = seedInventoryProduct({
+      name: 'Multi Disabled',
+      barcode: 'MULTI-DISABLED',
+      openingQty: 4,
+      minStock: 5,
+    })
+
+    toggleVariantActive(disabled.variant_id, 0)
+
+    const result = listInventoryPage({
+      statuses: ['low', 'out', 'inactive'],
+      limit: 50,
+      offset: 0,
+    })
+
+    const barcodes = result.rows.map((row: any) => row.barcode)
+
+    expect(barcodes).toContain('MULTI-LOW')
+    expect(barcodes).toContain('MULTI-OUT')
+    expect(barcodes).toContain('MULTI-DISABLED')
+
+    expect(barcodes).not.toContain('MULTI-AVAILABLE')
+
+    expect(result.total).toBe(3)
   })
 
   it('searches inventory by product name barcode size and color', () => {

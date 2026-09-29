@@ -18,7 +18,7 @@ const STOCK_SUM_SQL = `
 
 export function getInventoryList(input?: {
   search?: string
-  status?: 'all' | 'available' | 'low' | 'out'
+  status?: 'all' | 'available' | 'low' | 'out' | 'inactive'
   categoryId?: number | string | null
 }) {
   const db = getDb()
@@ -57,15 +57,35 @@ export function getInventoryList(input?: {
   let havingSql = ''
 
   if (status === 'available') {
-    havingSql = `HAVING stock > v.min_stock`
+    havingSql = `
+      HAVING p.is_active = 1
+        AND v.is_active = 1
+        AND stock > v.min_stock
+    `
   }
 
   if (status === 'low') {
-    havingSql = `HAVING stock > 0 AND stock <= v.min_stock`
+    havingSql = `
+      HAVING p.is_active = 1
+        AND v.is_active = 1
+        AND stock > 0
+        AND stock <= v.min_stock
+    `
   }
 
   if (status === 'out') {
-    havingSql = `HAVING stock = 0`
+    havingSql = `
+      HAVING p.is_active = 1
+        AND v.is_active = 1
+        AND stock = 0
+    `
+  }
+
+  if (status === 'inactive') {
+    havingSql = `
+      HAVING p.is_active != 1
+        OR v.is_active != 1
+    `
   }
 
   return db
@@ -92,8 +112,7 @@ export function getInventoryList(input?: {
       JOIN products p ON p.id = v.product_id
       LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN stock_movements sm ON sm.variant_id = v.id
-      WHERE p.is_active = 1
-        AND v.is_active = 1
+      WHERE 1 = 1
         ${categorySql}
         ${searchSql}
       GROUP BY v.id
@@ -111,9 +130,15 @@ export function getInventoryList(input?: {
     .all(...params)
 }
 
+export type InventoryPageStatus = 'available' | 'low' | 'out' | 'inactive'
+
 export type InventoryPageInput = {
   search?: string
-  status?: 'all' | 'available' | 'low' | 'out'
+
+  status?: 'all' | InventoryPageStatus
+
+  statuses?: InventoryPageStatus[]
+
   categoryId?: number | string | null
   limit?: number
   offset?: number
@@ -123,7 +148,11 @@ export function listInventoryPage(input?: InventoryPageInput) {
   const db = getDb()
 
   const search = input?.search?.trim() || ''
-  const status = input?.status || 'all'
+  const selectedStatuses: InventoryPageStatus[] = Array.isArray(input?.statuses)
+    ? Array.from(new Set(input.statuses))
+    : input?.status && input.status !== 'all'
+      ? [input.status]
+      : []
 
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
 
@@ -159,22 +188,50 @@ export function listInventoryPage(input?: InventoryPageInput) {
     params.push(q, q, q, q)
   }
 
-  let havingSql = ''
+  const havingConditions: string[] = []
 
-  if (status === 'available') {
-    havingSql = `HAVING stock > v.min_stock`
+  if (selectedStatuses.includes('available')) {
+    havingConditions.push(`
+      (
+        p.is_active = 1
+        AND v.is_active = 1
+        AND stock > v.min_stock
+      )
+    `)
   }
 
-  if (status === 'low') {
-    havingSql = `
-      HAVING stock > 0
+  if (selectedStatuses.includes('low')) {
+    havingConditions.push(`
+      (
+        p.is_active = 1
+        AND v.is_active = 1
+        AND stock > 0
         AND stock <= v.min_stock
-    `
+      )
+    `)
   }
 
-  if (status === 'out') {
-    havingSql = `HAVING stock = 0`
+  if (selectedStatuses.includes('out')) {
+    havingConditions.push(`
+      (
+        p.is_active = 1
+        AND v.is_active = 1
+        AND stock = 0
+      )
+    `)
   }
+
+  if (selectedStatuses.includes('inactive')) {
+    havingConditions.push(`
+      (
+        p.is_active != 1
+        OR v.is_active != 1
+      )
+    `)
+  }
+
+  const havingSql =
+    havingConditions.length > 0 ? `HAVING ${havingConditions.join(' OR ')}` : ''
 
   const baseSql = `
     SELECT
@@ -198,8 +255,7 @@ export function listInventoryPage(input?: InventoryPageInput) {
     JOIN products p ON p.id = v.product_id
     LEFT JOIN categories c ON c.id = p.category_id
     LEFT JOIN stock_movements sm ON sm.variant_id = v.id
-    WHERE p.is_active = 1
-      AND v.is_active = 1
+    WHERE 1 = 1
       ${categorySql}
       ${searchSql}
     GROUP BY v.id
@@ -237,7 +293,10 @@ export function listInventoryPage(input?: InventoryPageInput) {
         IFNULL(
           SUM(
             CASE
-              WHEN stock > min_stock THEN 1
+              WHEN product_is_active = 1
+               AND is_active = 1
+               AND stock > min_stock
+              THEN 1
               ELSE 0
             END
           ),
@@ -247,7 +306,9 @@ export function listInventoryPage(input?: InventoryPageInput) {
         IFNULL(
           SUM(
             CASE
-              WHEN stock > 0
+              WHEN product_is_active = 1
+               AND is_active = 1
+               AND stock > 0
                AND stock <= min_stock
               THEN 1
               ELSE 0
@@ -259,12 +320,27 @@ export function listInventoryPage(input?: InventoryPageInput) {
         IFNULL(
           SUM(
             CASE
-              WHEN stock = 0 THEN 1
+              WHEN product_is_active = 1
+               AND is_active = 1
+               AND stock = 0
+              THEN 1
               ELSE 0
             END
           ),
           0
         ) AS out,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN product_is_active != 1
+                OR is_active != 1
+              THEN 1
+              ELSE 0
+            END
+          ),
+          0
+        ) AS inactive,
 
         IFNULL(
           SUM(
@@ -310,6 +386,7 @@ export function listInventoryPage(input?: InventoryPageInput) {
       out: Number(summaryRow?.out || 0),
       totalBuyValue: Number(summaryRow?.total_buy_value || 0),
       totalSellValue: Number(summaryRow?.total_sell_value || 0),
+      inactive: Number(summaryRow?.inactive || 0),
     },
   }
 }

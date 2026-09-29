@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 import { useAuthStore } from '../../store/auth.store'
 import { hasUserPermission } from '../../utils/permissions'
@@ -42,6 +42,8 @@ type Category = {
   description?: string | null
 }
 
+type InventoryStatusFilter = 'available' | 'low' | 'out' | 'inactive'
+
 export default function InventoryPage() {
   const currentUser = useAuthStore((s) => s.user)
   const isAdmin = currentUser?.role === 'admin'
@@ -56,9 +58,13 @@ export default function InventoryPage() {
   const [search, setSearch] = useState('')
   const [categories, setCategories] = useState<Category[]>([])
   const [categoryFilter, setCategoryFilter] = useState('all')
-  const [status, setStatus] = useState<'all' | 'available' | 'low' | 'out'>(
-    'all',
+  const [statusFilters, setStatusFilters] = useState<InventoryStatusFilter[]>(
+    [],
   )
+
+  const [statusFilterOpen, setStatusFilterOpen] = useState(false)
+
+  const statusFilterRef = useRef<HTMLDivElement | null>(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -77,6 +83,7 @@ export default function InventoryPage() {
     out: 0,
     totalBuyValue: 0,
     totalSellValue: 0,
+    inactive: 0,
   })
 
   useEffect(() => {
@@ -106,7 +113,7 @@ export default function InventoryPage() {
 
       const result = await window.api.getInventoryPage({
         search,
-        status,
+        statuses: statusFilters,
         categoryId: categoryFilter,
         limit: SYSTEM_PAGE_SIZE,
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
@@ -134,6 +141,7 @@ export default function InventoryPage() {
         out: Number(result.summary?.out || 0),
         totalBuyValue: Number(result.summary?.totalBuyValue || 0),
         totalSellValue: Number(result.summary?.totalSellValue || 0),
+        inactive: Number(result.summary?.inactive || 0),
       })
     } catch (error) {
       console.error('Failed to load inventory:', error)
@@ -150,6 +158,7 @@ export default function InventoryPage() {
         out: 0,
         totalBuyValue: 0,
         totalSellValue: 0,
+        inactive: 0,
       })
     } finally {
       setLoading(false)
@@ -163,7 +172,34 @@ export default function InventoryPage() {
     }, 250)
 
     return () => clearTimeout(handle)
-  }, [search, status, categoryFilter])
+  }, [search, statusFilters, categoryFilter])
+
+  function toggleStatusFilter(filter: InventoryStatusFilter) {
+    setStatusFilters((current) =>
+      current.includes(filter)
+        ? current.filter((item) => item !== filter)
+        : [...current, filter],
+    )
+  }
+
+  function getStatusFilterLabel() {
+    if (statusFilters.length === 0) {
+      return 'كل الحالات'
+    }
+
+    const labels: Record<InventoryStatusFilter, string> = {
+      available: 'متاح',
+      low: 'منخفض',
+      out: 'نافد',
+      inactive: 'متعطل',
+    }
+
+    if (statusFilters.length === 1) {
+      return labels[statusFilters[0]]
+    }
+
+    return statusFilters.map((status) => labels[status]).join(' + ')
+  }
 
   function showMessage(text: string) {
     setMessage(text)
@@ -307,7 +343,14 @@ export default function InventoryPage() {
         </div>
       )}
 
-      <div className="glass-card" style={cardStyle}>
+      <div
+        className="glass-card"
+        style={{
+          ...cardStyle,
+          position: 'relative',
+          zIndex: 100,
+        }}
+      >
         <div
           style={{
             display: 'flex',
@@ -361,16 +404,161 @@ export default function InventoryPage() {
             style={inputStyle}
           />
 
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as any)}
-            style={inputStyle}
+          <div
+            ref={statusFilterRef}
+            style={{
+              position: 'relative',
+              width: '100%',
+              zIndex: 50,
+            }}
           >
-            <option value="all">كل الحالات</option>
-            <option value="available">متاح</option>
-            <option value="low">مخزون منخفض</option>
-            <option value="out">نافد</option>
-          </select>
+            <button
+              type="button"
+              onClick={() => setStatusFilterOpen((current) => !current)}
+              style={{
+                ...inputStyle,
+                width: '100%',
+                padding: '0 12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                fontWeight: 800,
+              }}
+            >
+              <span>{getStatusFilterLabel()}</span>
+
+              <span
+                style={{
+                  fontSize: '12px',
+                  color: '#94a3b8',
+                  transform: statusFilterOpen
+                    ? 'rotate(180deg)'
+                    : 'rotate(0deg)',
+                  transition: '0.2s',
+                }}
+              >
+                ▼
+              </span>
+            </button>
+
+            {statusFilterOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 7px)',
+                  right: 0,
+                  width: '100%',
+                  minWidth: '190px',
+                  padding: '10px',
+                  borderRadius: '14px',
+                  background: '#10192c',
+                  border: '1px solid rgba(148,163,184,0.22)',
+                  boxShadow: '0 18px 45px rgba(0,0,0,0.45)',
+                  display: 'grid',
+                  gap: '5px',
+                  zIndex: 9999,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setStatusFilters([])}
+                  style={{
+                    width: '100%',
+                    minHeight: '40px',
+                    borderRadius: '9px',
+                    border:
+                      statusFilters.length === 0
+                        ? '1px solid rgba(148,163,184,0.28)'
+                        : '1px solid transparent',
+                    background:
+                      statusFilters.length === 0
+                        ? 'rgba(255,255,255,0.06)'
+                        : 'transparent',
+                    color: '#f8fafc',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '0 10px',
+                    fontWeight: 900,
+                    cursor: 'pointer',
+                    direction: 'rtl',
+                  }}
+                >
+                  <span>كل الحالات</span>
+
+                  <span
+                    style={{
+                      width: '20px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    {statusFilters.length === 0 ? '✓' : ''}
+                  </span>
+                </button>
+
+                {(
+                  [
+                    ['available', 'متاح'],
+                    ['low', 'منخفض'],
+                    ['out', 'نافد'],
+                    ['inactive', 'متعطل'],
+                  ] as Array<[InventoryStatusFilter, string]>
+                ).map(([value, label]) => (
+                  <label
+                    key={value}
+                    style={{
+                      minHeight: '38px',
+                      padding: '0 10px',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      color: '#e2e8f0',
+                      fontWeight: 800,
+                      direction: 'rtl',
+                    }}
+                  >
+                    <span>{label}</span>
+
+                    <input
+                      type="checkbox"
+                      checked={statusFilters.includes(value)}
+                      onChange={() => toggleStatusFilter(value)}
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        cursor: 'pointer',
+                        accentColor: '#6366f1',
+                      }}
+                    />
+                  </label>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => setStatusFilterOpen(false)}
+                  style={{
+                    marginTop: '6px',
+                    width: '100%',
+                    minHeight: '40px',
+                    border: 0,
+                    borderRadius: '9px',
+                    background:
+                      'linear-gradient(90deg, #315cf5 0%, #7c3aed 100%)',
+                    color: '#fff',
+                    fontWeight: 900,
+                    fontSize: '15px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  تم
+                </button>
+              </div>
+            )}
+          </div>
 
           <select
             value={categoryFilter}
@@ -392,12 +580,15 @@ export default function InventoryPage() {
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
           gap: '14px',
+          position: 'relative',
+          zIndex: 1,
         }}
       >
         <StatCard title="كل الأصناف" value={String(stats.total)} />
         <StatCard title="متاح" value={String(stats.available)} success />
         <StatCard title="منخفض" value={String(stats.low)} warning />
         <StatCard title="نافد" value={String(stats.out)} danger />
+        <StatCard title="متعطل" value={String(stats.inactive)} />
         {canViewCosts && (
           <StatCard title="إجمالي الشراء" value={money(stats.totalBuyValue)} />
         )}
@@ -831,17 +1022,24 @@ export default function InventoryPage() {
 }
 
 function buildInventoryEmployeesPdfHtml(printRows: InventoryRow[]) {
-  const availableCount = printRows.filter(
+  const activeRows = printRows.filter(
+    (item) =>
+      Number(item.product_is_active) === 1 && Number(item.is_active) === 1,
+  )
+
+  const inactiveCount = printRows.length - activeRows.length
+
+  const availableCount = activeRows.filter(
     (item) => Number(item.stock || 0) > Number(item.min_stock || 0),
   ).length
 
-  const lowCount = printRows.filter(
+  const lowCount = activeRows.filter(
     (item) =>
       Number(item.stock || 0) > 0 &&
       Number(item.stock || 0) <= Number(item.min_stock || 0),
   ).length
 
-  const outCount = printRows.filter(
+  const outCount = activeRows.filter(
     (item) => Number(item.stock || 0) === 0,
   ).length
 
@@ -918,7 +1116,7 @@ function buildInventoryEmployeesPdfHtml(printRows: InventoryRow[]) {
 
           .summary {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(5, 1fr);
             gap: 8px;
             margin: 10px 0;
           }
@@ -1026,6 +1224,12 @@ function buildInventoryEmployeesPdfHtml(printRows: InventoryRow[]) {
             <div class="card-title">نافد</div>
             <div class="card-value">${outCount}</div>
           </div>
+
+          <div class="card">
+            <div class="card-title">متعطل</div>
+            <div class="card-value">${inactiveCount}</div>
+          </div>
+
         </div>
 
         <table>
@@ -1094,6 +1298,27 @@ function StatusBadge({ item }: { item: InventoryRow }) {
   const stock = Number(item.stock || 0)
   const minStock = Number(item.min_stock || 0)
 
+  const isInactive =
+    Number(item.product_is_active) !== 1 || Number(item.is_active) !== 1
+
+  if (isInactive) {
+    return (
+      <span
+        style={{
+          display: 'inline-flex',
+          padding: '6px 10px',
+          borderRadius: '999px',
+          color: '#cbd5e1',
+          background: 'rgba(148,163,184,0.10)',
+          border: '1px solid rgba(148,163,184,0.25)',
+          fontWeight: 900,
+        }}
+      >
+        متعطل
+      </span>
+    )
+  }
+
   let text = 'متاح'
   let color = '#6ee7b7'
   let background = 'rgba(16,185,129,0.10)'
@@ -1137,6 +1362,10 @@ function stockColor(item: InventoryRow) {
   const stock = Number(item.stock || 0)
   const minStock = Number(item.min_stock || 0)
 
+  if (Number(item.product_is_active) !== 1 || Number(item.is_active) !== 1) {
+    return '#94a3b8'
+  }
+
   if (stock < 0) return '#fca5a5'
   if (stock === 0) return '#fca5a5'
   if (stock <= minStock) return '#fdba74'
@@ -1146,6 +1375,10 @@ function stockColor(item: InventoryRow) {
 function getInventoryStatusText(item: InventoryRow) {
   const stock = Number(item.stock || 0)
   const minStock = Number(item.min_stock || 0)
+
+  if (Number(item.product_is_active) !== 1 || Number(item.is_active) !== 1) {
+    return 'متعطل'
+  }
 
   if (stock < 0) return 'سالب'
   if (stock === 0) return 'نافد'

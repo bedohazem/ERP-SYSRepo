@@ -10,6 +10,9 @@ import {
   searchSaleVariants,
   updateProduct,
   createCategory,
+  toggleProductActive,
+  toggleVariantActive,
+  updateVariant,
 } from '../../src/main/database/repositories/product.repo'
 
 type ProductVariantTestRow = {
@@ -409,6 +412,220 @@ describe('product repository', () => {
         image_path: null,
       }),
     ).toThrow()
+  })
+
+  it('keeps stock and inventory value when disabling a variant', () => {
+    const product = createProduct({
+      name: 'Disable Variant Product',
+      category_id: null,
+      variants: [
+        {
+          barcode: 'DISABLE-VARIANT-001',
+          size: 'M',
+          color: 'Black',
+          buy_price: 100,
+          sell_price: 150,
+          min_stock: 5,
+          opening_qty: 5,
+        },
+      ],
+    })
+
+    const before = getProductVariants(
+      product.productId,
+    ) as ProductVariantTestRow[]
+
+    const variantId = before[0].id
+
+    const beforeCost = getDb()
+      .prepare(
+        `
+        SELECT
+          average_cost,
+          inventory_value
+        FROM product_variants
+        WHERE id = ?
+        `,
+      )
+      .get(variantId) as {
+      average_cost: number
+      inventory_value: number
+    }
+
+    toggleVariantActive(variantId, 0)
+
+    const disabled = getProductVariants(
+      product.productId,
+    ) as ProductVariantTestRow[]
+
+    expect(disabled[0].is_active).toBe(0)
+    expect(disabled[0].stock).toBe(5)
+
+    const afterCost = getDb()
+      .prepare(
+        `
+        SELECT
+          average_cost,
+          inventory_value
+        FROM product_variants
+        WHERE id = ?
+        `,
+      )
+      .get(variantId) as {
+      average_cost: number
+      inventory_value: number
+    }
+
+    expect(afterCost.average_cost).toBe(beforeCost.average_cost)
+    expect(afterCost.inventory_value).toBe(beforeCost.inventory_value)
+
+    const zeroMovements = getDb()
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+        FROM stock_movements
+        WHERE variant_id = ?
+          AND reference_type = 'deactivate_zero_stock'
+        `,
+      )
+      .get(variantId) as { count: number }
+
+    expect(zeroMovements.count).toBe(0)
+
+    expect(searchSaleVariants('Disable Variant Product')).toHaveLength(0)
+
+    toggleVariantActive(variantId, 1)
+
+    const reactivated = getProductVariants(
+      product.productId,
+    ) as ProductVariantTestRow[]
+
+    expect(reactivated[0].stock).toBe(5)
+    expect(searchSaleVariants('Disable Variant Product')).toHaveLength(1)
+  })
+
+  it('keeps all variant stock when disabling a product', () => {
+    const product = createProduct({
+      name: 'Disable Whole Product',
+      category_id: null,
+      variants: [
+        {
+          barcode: 'DISABLE-PRODUCT-001',
+          size: 'M',
+          color: 'Black',
+          buy_price: 50,
+          sell_price: 100,
+          min_stock: 2,
+          opening_qty: 3,
+        },
+        {
+          barcode: 'DISABLE-PRODUCT-002',
+          size: 'L',
+          color: 'White',
+          buy_price: 80,
+          sell_price: 140,
+          min_stock: 2,
+          opening_qty: 2,
+        },
+      ],
+    })
+
+    const before = getProductVariants(
+      product.productId,
+    ) as ProductVariantTestRow[]
+
+    toggleProductActive(product.productId, 0)
+
+    const after = getProductVariants(
+      product.productId,
+    ) as ProductVariantTestRow[]
+
+    expect(after).toHaveLength(2)
+
+    expect(after.map((variant) => variant.stock)).toEqual(
+      before.map((variant) => variant.stock),
+    )
+
+    expect(searchSaleVariants('Disable Whole Product')).toHaveLength(0)
+
+    const zeroMovements = getDb()
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+        FROM stock_movements
+        WHERE variant_id IN (?, ?)
+          AND reference_type = 'deactivate_zero_stock'
+        `,
+      )
+      .get(before[0].id, before[1].id) as { count: number }
+
+    expect(zeroMovements.count).toBe(0)
+
+    toggleProductActive(product.productId, 1)
+
+    const reactivated = getProductVariants(
+      product.productId,
+    ) as ProductVariantTestRow[]
+
+    expect(reactivated.map((variant) => variant.stock)).toEqual([3, 2])
+
+    expect(searchSaleVariants('Disable Whole Product')).toHaveLength(2)
+  })
+
+  it('keeps stock when variant is disabled through updateVariant', () => {
+    const product = createProduct({
+      name: 'Update Disable Variant',
+      category_id: null,
+      variants: [
+        {
+          barcode: 'UPDATE-DISABLE-001',
+          size: 'M',
+          color: 'Blue',
+          buy_price: 120,
+          sell_price: 180,
+          min_stock: 3,
+          opening_qty: 4,
+        },
+      ],
+    })
+
+    const before = getProductVariants(
+      product.productId,
+    ) as ProductVariantTestRow[]
+
+    const variant = before[0]
+
+    updateVariant({
+      id: variant.id,
+      barcode: variant.barcode,
+      size: variant.size,
+      color: variant.color,
+      buy_price: variant.buy_price,
+      sell_price: variant.sell_price,
+      discount_price: variant.discount_price,
+      min_stock: variant.min_stock,
+      is_active: 0,
+    })
+
+    const after = getProductVariants(
+      product.productId,
+    ) as ProductVariantTestRow[]
+
+    expect(after[0].is_active).toBe(0)
+    expect(after[0].stock).toBe(4)
+
+    const zeroMovements = getDb()
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+        FROM stock_movements
+        WHERE variant_id = ?
+          AND reference_type = 'deactivate_zero_stock'
+        `,
+      )
+      .get(variant.id) as { count: number }
+
+    expect(zeroMovements.count).toBe(0)
   })
 
   it('paginates products and returns the filtered total', () => {

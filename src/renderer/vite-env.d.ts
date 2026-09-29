@@ -1744,7 +1744,7 @@ declare global {
       // =========================
       getInventoryList: (input?: {
         search?: string
-        status?: 'all' | 'available' | 'low' | 'out' | 'negative'
+        status?: 'all' | 'available' | 'low' | 'out' | 'negative' | 'inactive'
         categoryId?: number | string | null
       }) => Promise<
         Array<{
@@ -1765,7 +1765,11 @@ declare global {
 
       getInventoryPage: (input?: {
         search?: string
-        status?: 'all' | 'available' | 'low' | 'out'
+
+        status?: 'all' | 'available' | 'low' | 'out' | 'inactive'
+
+        statuses?: Array<'available' | 'low' | 'out' | 'inactive'>
+
         categoryId?: number | string | null
         limit?: number
         offset?: number
@@ -1779,6 +1783,7 @@ declare global {
           available: number
           low: number
           out: number
+          inactive: number
           totalBuyValue: number
           totalSellValue: number
         }

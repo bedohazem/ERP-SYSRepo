@@ -1,5 +1,5 @@
 import { getDb } from '../db'
-import { issueStockAtAverageCost, receiveStockAtCost } from '../inventory-cost'
+import { receiveStockAtCost } from '../inventory-cost'
 
 export type CategoryRow = {
   id: number
@@ -135,87 +135,110 @@ function addVariantToOpenStockCountSessions(
   ).run(variantId, systemStock, product.category_id)
 }
 
-function zeroVariantStock(
+function removeVariantFromOpenStockCountSessions(
   db: ReturnType<typeof getDb>,
   variantId: number,
-  notes: string,
 ) {
-  const currentStock = getCurrentVariantStock(db, variantId)
-
-  if (currentStock === 0) {
-    return
-  }
-
-  if (currentStock > 0) {
-    issueStockAtAverageCost(db, {
-      variant_id: variantId,
-
-      quantity: currentStock,
-
-      reference_id: null,
-
-      reference_type: 'deactivate_zero_stock',
-
-      notes,
-    })
-
-    return
-  }
-
-  /*
-   * Legacy negative stock only.
-   * بنصفر الكمية بدون خلق قيمة
-   * مخزون وهمية.
-   */
   db.prepare(
     `
-    INSERT INTO stock_movements (
-      variant_id,
-      type,
-      quantity,
-      unit_cost,
-      cost_value,
-      reference_id,
-      reference_type,
-      notes
-    )
-
-    VALUES (
-      ?,
-      'in',
-      ?,
-      0,
-      0,
-      NULL,
-      'deactivate_zero_stock',
-      ?
-    )
-    `,
-  ).run(variantId, Math.abs(currentStock), notes)
-
-  db.prepare(
-    `
-    UPDATE product_variants
-
-    SET
-      average_cost = 0,
-      inventory_value = 0
-
-    WHERE id = ?
+    DELETE FROM stock_count_items
+    WHERE variant_id = ?
+      AND session_id IN (
+        SELECT id
+        FROM stock_count_sessions
+        WHERE status = 'open'
+      )
     `,
   ).run(variantId)
 }
 
-function zeroProductVariantsStock(
+function syncVariantOpenStockCountMembership(
+  db: ReturnType<typeof getDb>,
+  variantId: number,
+) {
+  const variant = db
+    .prepare(
+      `
+      SELECT
+        id,
+        product_id,
+        is_active
+      FROM product_variants
+      WHERE id = ?
+      LIMIT 1
+      `,
+    )
+    .get(variantId) as
+    | {
+        id: number
+        product_id: number
+        is_active: number
+      }
+    | undefined
+
+  if (!variant) {
+    return
+  }
+
+  if (Number(variant.is_active) !== 1) {
+    removeVariantFromOpenStockCountSessions(db, variantId)
+    return
+  }
+
+  addVariantToOpenStockCountSessions(
+    db,
+    Number(variant.id),
+    Number(variant.product_id),
+  )
+}
+
+function syncProductOpenStockCountMembership(
   db: ReturnType<typeof getDb>,
   productId: number,
 ) {
+  const product = db
+    .prepare(
+      `
+      SELECT
+        id,
+        is_active
+      FROM products
+      WHERE id = ?
+      LIMIT 1
+      `,
+    )
+    .get(productId) as
+    | {
+        id: number
+        is_active: number
+      }
+    | undefined
+
+  if (!product) {
+    return
+  }
+
   const variants = db
-    .prepare(`SELECT id FROM product_variants WHERE product_id = ?`)
-    .all(productId) as Array<{ id: number }>
+    .prepare(
+      `
+      SELECT
+        id,
+        is_active
+      FROM product_variants
+      WHERE product_id = ?
+      `,
+    )
+    .all(productId) as Array<{
+    id: number
+    is_active: number
+  }>
 
   for (const variant of variants) {
-    zeroVariantStock(db, Number(variant.id), 'تصفير مخزون بسبب تعطيل المنتج')
+    if (Number(product.is_active) === 1 && Number(variant.is_active) === 1) {
+      addVariantToOpenStockCountSessions(db, Number(variant.id), productId)
+    } else {
+      removeVariantFromOpenStockCountSessions(db, Number(variant.id))
+    }
   }
 }
 
@@ -698,9 +721,7 @@ export function toggleVariantActive(variantId: number, isActive: number) {
       `,
     ).run(nextActive, variantId)
 
-    if (!nextActive) {
-      zeroVariantStock(db, Number(variantId), 'تصفير مخزون بسبب تعطيل الصنف')
-    }
+    syncVariantOpenStockCountMembership(db, Number(variantId))
   })
 
   tx()
@@ -982,9 +1003,7 @@ export function updateVariant(input: UpdateVariantInput) {
       input.id,
     )
 
-    if (!Number(nextActive)) {
-      zeroVariantStock(db, Number(input.id), 'تصفير مخزون بسبب تعطيل الصنف')
-    }
+    syncVariantOpenStockCountMembership(db, Number(input.id))
   })
 
   tx()
@@ -1005,9 +1024,7 @@ export function toggleProductActive(productId: number, isActive: number) {
       `,
     ).run(nextActive, productId)
 
-    if (!nextActive) {
-      zeroProductVariantsStock(db, Number(productId))
-    }
+    syncProductOpenStockCountMembership(db, Number(productId))
   })
 
   tx()

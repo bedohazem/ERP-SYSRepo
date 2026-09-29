@@ -3,6 +3,8 @@ import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
 import {
   createProduct,
   getVariantByBarcode,
+  toggleProductActive,
+  toggleVariantActive,
 } from '../../src/main/database/repositories/product.repo'
 import { getVariantStock } from '../../src/main/database/repositories/inventory.repo'
 import {
@@ -575,6 +577,74 @@ describe('stock count repository', () => {
         session_id: session.id,
       }),
     ).toThrow('لا يمكن إلغاء جلسة الجرد')
+  })
+
+  it('removes disabled items from open stock count and restores them when reactivated', () => {
+    const variantItem = seedStockCountProduct({
+      name: 'Variant Disable During Count',
+      barcode: 'COUNT-DISABLE-VARIANT',
+      openingQty: 8,
+    })
+
+    const productItem = seedStockCountProduct({
+      name: 'Product Disable During Count',
+      barcode: 'COUNT-DISABLE-PRODUCT',
+      openingQty: 5,
+    })
+
+    const session = createStockCountSession({
+      title: 'Disable During Open Count',
+      actor_id: 1,
+    })
+
+    let details = getStockCountSession(session.id) as any
+
+    expect(details.items).toHaveLength(2)
+
+    toggleVariantActive(variantItem.variant_id, 0)
+
+    details = getStockCountSession(session.id) as any
+
+    expect(
+      details.items.some(
+        (item: StockCountItemTestRow) =>
+          item.barcode === 'COUNT-DISABLE-VARIANT',
+      ),
+    ).toBe(false)
+
+    expect(
+      details.items.some(
+        (item: StockCountItemTestRow) =>
+          item.barcode === 'COUNT-DISABLE-PRODUCT',
+      ),
+    ).toBe(true)
+
+    toggleProductActive(productItem.product_id, 0)
+
+    details = getStockCountSession(session.id) as any
+
+    expect(details.items).toHaveLength(0)
+
+    toggleVariantActive(variantItem.variant_id, 1)
+    toggleProductActive(productItem.product_id, 1)
+
+    details = getStockCountSession(session.id) as any
+
+    expect(details.items).toHaveLength(2)
+
+    const restoredVariant = details.items.find(
+      (item: StockCountItemTestRow) => item.barcode === 'COUNT-DISABLE-VARIANT',
+    )
+
+    const restoredProduct = details.items.find(
+      (item: StockCountItemTestRow) => item.barcode === 'COUNT-DISABLE-PRODUCT',
+    )
+
+    expect(restoredVariant.system_stock).toBe(8)
+    expect(restoredVariant.actual_stock).toBeNull()
+
+    expect(restoredProduct.system_stock).toBe(5)
+    expect(restoredProduct.actual_stock).toBeNull()
   })
 
   it('adds products created during an open stock count session', () => {
