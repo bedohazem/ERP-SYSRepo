@@ -273,6 +273,32 @@ describe('suppliers repository', () => {
     expect(afterDelete.is_active).toBe(1)
   })
 
+  it('rejects deleting a supplier with negative balance', () => {
+    const supplier = createSupplier({
+      name: 'Supplier With Negative Balance',
+      phone: '01033335555',
+    }) as SupplierTestRow
+
+    getDb()
+      .prepare(
+        `
+      UPDATE suppliers
+      SET balance = ?
+      WHERE id = ?
+      `,
+      )
+      .run(-500, supplier.id)
+
+    expect(() => deleteSupplier(supplier.id)).toThrow(
+      'لا يمكن حذف المورد لأن له رصيدًا ماليًا غير مسوّى',
+    )
+
+    const afterDelete = getSupplierById(supplier.id) as SupplierTestRow
+
+    expect(afterDelete.is_active).toBe(1)
+    expect(afterDelete.balance).toBe(-500)
+  })
+
   it('does not return inactive suppliers in search', () => {
     const supplier = createSupplier({
       name: 'Inactive Search Supplier',

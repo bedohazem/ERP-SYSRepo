@@ -742,8 +742,16 @@ export function deleteSupplier(id: number) {
       }
     | undefined
 
+  const supplierBalance = Number(Number(supplier.balance || 0).toFixed(2))
+
+  if (supplierBalance < 0) {
+    throw new Error(
+      `لا يمكن حذف المورد لأن له رصيدًا ماليًا غير مسوّى بقيمة ${Math.abs(supplierBalance).toFixed(2)} ج.م`,
+    )
+  }
+
   const outstandingAmount = Math.max(
-    Number(supplier.balance || 0),
+    supplierBalance,
     Number(openDebtRow?.open_debt || 0),
   )
 
