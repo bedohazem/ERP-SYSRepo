@@ -436,6 +436,7 @@ declare global {
         remaining_amount?: number
 
         payment_status?: string
+        due_date?: string | null
 
         credit_limit_at_sale?: number | null
 
@@ -610,7 +611,7 @@ declare global {
         remaining_amount?: number
 
         payment_status?: string
-
+        due_date?: string | null
         shift_id?: number | null
         credit_limit_at_sale?: number | null
 
@@ -1424,7 +1425,17 @@ declare global {
 
             over_limit: boolean
           }
-          due_date?: string | null
+          due: {
+            overdue: number
+
+            due_today: number
+
+            due_soon: number
+
+            without_due_date: number
+
+            total_open: number
+          }
         }
       }>
 
@@ -2313,7 +2324,17 @@ declare global {
 
             total: number
           }
-          due_date?: string | null
+          due: {
+            overdue: number
+
+            due_today: number
+
+            due_soon: number
+
+            without_due_date: number
+
+            total_open: number
+          }
         }
       }>
 
