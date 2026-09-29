@@ -22,6 +22,7 @@ type SupplierTestRow = {
   is_active: number
   created_at: string
   updated_at: string | null
+  credit_days: number | null
 }
 
 describe('suppliers repository', () => {
@@ -145,6 +146,64 @@ describe('suppliers repository', () => {
     expect(updated.email).toBe('updated@test.com')
     expect(updated.address).toBe('Updated Address')
     expect(updated.notes).toBe('Updated notes')
+  })
+
+  it('stores and updates supplier credit terms', () => {
+    const supplier = createSupplier({
+      name: 'Terms Supplier',
+
+      phone: '01066660001',
+
+      credit_days: 45,
+    }) as SupplierTestRow
+
+    expect(supplier.credit_days).toBe(45)
+
+    const updated = updateSupplier({
+      id: supplier.id,
+
+      name: supplier.name,
+
+      phone: supplier.phone,
+
+      credit_days: 15,
+    }) as SupplierTestRow
+
+    expect(updated.credit_days).toBe(15)
+
+    const preserved = updateSupplier({
+      id: supplier.id,
+
+      name: supplier.name,
+
+      phone: supplier.phone,
+    }) as SupplierTestRow
+
+    expect(preserved.credit_days).toBe(15)
+
+    expect(() =>
+      updateSupplier({
+        id: supplier.id,
+
+        name: supplier.name,
+
+        phone: supplier.phone,
+
+        credit_days: -1,
+      }),
+    ).toThrow('مدة الائتمان')
+
+    expect(() =>
+      updateSupplier({
+        id: supplier.id,
+
+        name: supplier.name,
+
+        phone: supplier.phone,
+
+        credit_days: 1.5,
+      }),
+    ).toThrow('مدة الائتمان')
   })
 
   it('rejects updating supplier without id', () => {
@@ -368,5 +427,95 @@ describe('suppliers repository', () => {
     })
 
     expect(allSuppliersPage.summary?.aging?.total).toBe(1900)
+  })
+
+  it('summarizes supplier debt by due date', () => {
+    const db = getDb()
+
+    const supplier = createSupplier({
+      name: 'Due Supplier',
+
+      phone: '01066660002',
+    }) as SupplierTestRow
+
+    const insertPurchase = db.prepare(
+      `
+        INSERT INTO purchase_invoices (
+          supplier_id,
+          total_amount,
+          remaining_amount,
+          payment_status,
+          business_date,
+          due_date
+        )
+
+        VALUES (
+          ?,
+          ?,
+          ?,
+          'unpaid',
+          date(
+            'now',
+            'localtime'
+          ),
+          ?
+        )
+        `,
+    )
+
+    const dueDate = (modifier: string | null) => {
+      if (!modifier) {
+        return null
+      }
+
+      const row = db
+        .prepare(
+          `
+          SELECT
+            date(
+              'now',
+              'localtime',
+              ?
+            ) AS value
+          `,
+        )
+        .get(modifier) as {
+        value: string
+      }
+
+      return row.value
+    }
+
+    insertPurchase.run(supplier.id, 100, 100, dueDate('-1 day'))
+
+    insertPurchase.run(supplier.id, 200, 200, dueDate('+0 days'))
+
+    insertPurchase.run(supplier.id, 300, 300, dueDate('+5 days'))
+
+    insertPurchase.run(supplier.id, 400, 400, dueDate('+15 days'))
+
+    insertPurchase.run(supplier.id, 500, 500, null)
+
+    const page = listSuppliers({
+      search: 'Due Supplier',
+
+      include_summary: true,
+
+      limit: 20,
+
+      offset: 0,
+    })
+
+    expect(page.summary?.due).toEqual({
+      overdue: 100,
+
+      due_today: 200,
+
+      due_soon: 300,
+
+      without_due_date: 500,
+
+      total_open: 1500,
+    })
   })
 })

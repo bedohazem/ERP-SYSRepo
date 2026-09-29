@@ -23,7 +23,7 @@ type CustomerRow = {
   balance: number
 
   credit_limit: number | null
-
+  credit_days: number | null
   sales_count?: number
 
   last_sale_at?: string | null
@@ -35,8 +35,8 @@ const emptyForm = {
   email: '',
   address: '',
   notes: '',
-
   credit_limit: '',
+  credit_days: '',
 }
 
 const CUSTOMER_HISTORY_PAGE_SIZE = 10
@@ -96,6 +96,18 @@ export default function CustomersPage() {
 
       total: 0,
     },
+  })
+
+  const [dueSummary, setDueSummary] = useState({
+    overdue: 0,
+
+    due_today: 0,
+
+    due_soon: 0,
+
+    without_due_date: 0,
+
+    total_open: 0,
   })
   const [query, setQuery] = useState('')
   const [showDebtorsOnly, setShowDebtorsOnly] = useState(false)
@@ -203,6 +215,10 @@ export default function CustomersPage() {
               customer.credit_limit == null
                 ? null
                 : Number(customer.credit_limit),
+            credit_days:
+              customer.credit_days == null
+                ? null
+                : Number(customer.credit_days),
             sales_count: Number(customer.sales_count || 0),
 
             last_sale_at: customer.last_sale_at || null,
@@ -232,6 +248,18 @@ export default function CustomersPage() {
           total: Number(result.summary?.aging?.total || 0),
         },
       })
+
+      setDueSummary({
+        overdue: Number(result.summary?.due?.overdue || 0),
+
+        due_today: Number(result.summary?.due?.due_today || 0),
+
+        due_soon: Number(result.summary?.due?.due_soon || 0),
+
+        without_due_date: Number(result.summary?.due?.without_due_date || 0),
+
+        total_open: Number(result.summary?.due?.total_open || 0),
+      })
     } catch (error) {
       console.error('Failed to load customers:', error)
 
@@ -258,6 +286,17 @@ export default function CustomersPage() {
 
           total: 0,
         },
+      })
+      setDueSummary({
+        overdue: 0,
+
+        due_today: 0,
+
+        due_soon: 0,
+
+        without_due_date: 0,
+
+        total_open: 0,
       })
     } finally {
       setLoadingCustomers(false)
@@ -304,6 +343,8 @@ export default function CustomersPage() {
 
       credit_limit:
         customer.credit_limit == null ? '' : String(customer.credit_limit),
+      credit_days:
+        customer.credit_days == null ? '' : String(customer.credit_days),
     })
   }
 
@@ -327,6 +368,18 @@ export default function CustomersPage() {
       return
     }
 
+    const creditDays =
+      form.credit_days.trim() === '' ? null : Number(form.credit_days)
+
+    if (
+      creditDays !== null &&
+      (!Number.isInteger(creditDays) || creditDays < 0)
+    ) {
+      setMessage('مدة الائتمان يجب أن تكون صفر أو عدد أيام صحيح موجب')
+
+      return
+    }
+
     setSavingCustomer(true)
 
     try {
@@ -345,6 +398,7 @@ export default function CustomersPage() {
           notes: form.notes,
 
           credit_limit: creditLimit,
+          credit_days: creditDays,
         })
         setMessage('تم تعديل العميل')
       } else {
@@ -360,6 +414,7 @@ export default function CustomersPage() {
           notes: form.notes,
 
           credit_limit: creditLimit,
+          credit_days: creditDays,
         })
         setMessage('تم إضافة العميل')
       }
@@ -824,6 +879,22 @@ export default function CustomersPage() {
     }
   }
 
+  function formatDateOnly(value?: string | null) {
+    const raw = String(value || '').trim()
+
+    if (!raw) {
+      return '—'
+    }
+
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+
+    if (!match) {
+      return raw
+    }
+
+    return `${match[3]}/${match[2]}/${match[1]}`
+  }
+
   return (
     <div
       style={{
@@ -963,6 +1034,23 @@ export default function CustomersPage() {
               title="أكثر من 90 يوم"
               value={money(debtSummary.aging.days_90_plus)}
             />
+
+            <MiniDebtCard title="متأخر" value={money(dueSummary.overdue)} />
+
+            <MiniDebtCard
+              title="مستحق اليوم"
+              value={money(dueSummary.due_today)}
+            />
+
+            <MiniDebtCard
+              title="خلال 7 أيام"
+              value={money(dueSummary.due_soon)}
+            />
+
+            <MiniDebtCard
+              title="بدون موعد استحقاق"
+              value={money(dueSummary.without_due_date)}
+            />
           </div>
         </div>
       </div>
@@ -1035,6 +1123,22 @@ export default function CustomersPage() {
           />
 
           <input
+            type="number"
+            min={0}
+            step={1}
+            placeholder="مدة الائتمان بالأيام - فارغ = بدون موعد"
+            value={form.credit_days}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+
+                credit_days: e.target.value,
+              }))
+            }
+            style={inputStyle}
+          />
+
+          <input
             placeholder="ملاحظات"
             value={form.notes}
             onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
@@ -1094,7 +1198,7 @@ export default function CustomersPage() {
         <table
           style={{
             width: '100%',
-            minWidth: '980px',
+            minWidth: '1100px',
             borderCollapse: 'collapse',
             direction: 'rtl',
           }}
@@ -1107,6 +1211,7 @@ export default function CustomersPage() {
               <th style={thStyle}>إجمالي المشتريات</th>
               <th style={thStyle}>الرصيد</th>
               <th style={thStyle}>الحد الائتماني</th>
+              <th style={thStyle}>مدة الائتمان</th>
               <th style={thStyle}>عدد الفواتير</th>
               <th style={thStyle}>آخر شراء</th>
               <th style={thStyle}>إجراءات</th>
@@ -1139,6 +1244,13 @@ export default function CustomersPage() {
                   {customer.credit_limit == null
                     ? 'بدون حد'
                     : `${money(customer.credit_limit)} ج.م`}
+                </td>
+                <td style={tdStyle}>
+                  {customer.credit_days == null
+                    ? 'بدون موعد'
+                    : customer.credit_days === 0
+                      ? 'نفس اليوم'
+                      : `${customer.credit_days} يوم`}
                 </td>
                 <td style={tdStyle}>{customer.sales_count || 0}</td>
                 <td style={tdStyle}>{customer.last_sale_at || '—'}</td>
@@ -1207,7 +1319,7 @@ export default function CustomersPage() {
             {customers.length === 0 && (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   style={{ ...tdStyle, textAlign: 'center', color: '#94a3b8' }}
                 >
                   لا يوجد عملاء
@@ -1500,6 +1612,60 @@ export default function CustomersPage() {
                   value={money(statementData.summary?.aging?.days_90_plus || 0)}
                 />
               </div>
+
+              <div
+                style={{
+                  marginBottom: '18px',
+
+                  display: 'grid',
+
+                  gap: '10px',
+                }}
+              >
+                <strong
+                  style={{
+                    color: '#cbd5e1',
+
+                    fontSize: '13px',
+
+                    textAlign: 'right',
+                  }}
+                >
+                  مواعيد الاستحقاق
+                </strong>
+
+                <div
+                  style={{
+                    display: 'grid',
+
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+
+                    gap: '10px',
+                  }}
+                >
+                  <InfoCard
+                    title="متأخر"
+                    value={money(statementData.summary?.due?.overdue || 0)}
+                  />
+
+                  <InfoCard
+                    title="مستحق اليوم"
+                    value={money(statementData.summary?.due?.due_today || 0)}
+                  />
+
+                  <InfoCard
+                    title="خلال 7 أيام"
+                    value={money(statementData.summary?.due?.due_soon || 0)}
+                  />
+
+                  <InfoCard
+                    title="بدون موعد"
+                    value={money(
+                      statementData.summary?.due?.without_due_date || 0,
+                    )}
+                  />
+                </div>
+              </div>
             </div>
 
             {Number(statementData.summary.balance || 0) > 0 && (
@@ -1536,6 +1702,11 @@ export default function CustomersPage() {
                         statementData.customer.credit_limit == null
                           ? null
                           : Number(statementData.customer.credit_limit),
+
+                      credit_days:
+                        statementData.customer.credit_days == null
+                          ? null
+                          : Number(statementData.customer.credit_days),
 
                       sales_count: statementData.customer.sales_count,
 
@@ -1574,6 +1745,7 @@ export default function CustomersPage() {
                 <thead>
                   <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                     <th style={statementThStyle}>التاريخ</th>
+                    <th style={statementThStyle}>الاستحقاق</th>
                     <th style={statementThStyle}>البيان</th>
                     <th style={statementThStyle}>مدين</th>
                     <th style={statementThStyle}>دائن</th>
@@ -1587,7 +1759,7 @@ export default function CustomersPage() {
                   {statementLoading && (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={8}
                         style={{ ...statementTdStyle, textAlign: 'center' }}
                       >
                         جاري التحميل...
@@ -1611,6 +1783,15 @@ export default function CustomersPage() {
                         >
                           <td style={statementTdStyle}>
                             {formatDate(entry.created_at)}
+                          </td>
+                          <td
+                            style={{
+                              ...statementTdStyle,
+
+                              color: entry.due_date ? '#fde68a' : '#94a3b8',
+                            }}
+                          >
+                            {formatDateOnly(entry.due_date)}
                           </td>
                           <td style={statementTdStyle}>
                             <strong>{entry.title}</strong>
@@ -1696,7 +1877,7 @@ export default function CustomersPage() {
                   {!statementLoading && statementData.entries.length === 0 && (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={8}
                         style={{
                           ...tdStyle,
                           textAlign: 'center',

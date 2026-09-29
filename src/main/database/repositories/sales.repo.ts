@@ -66,8 +66,19 @@ type CreateSaleInput = {
 
 type CreateSaleInternalOptions = {
   forced_sale_id?: number | null
+
   created_at?: string | null
+
   invoice_user_id?: number | null
+
+  /*
+   * يستخدم فقط أثناء تعديل
+   * نفس الفاتورة حتى لا تتغير
+   * Credit Terms التاريخية.
+   */
+  preserve_due_date?: boolean
+
+  due_date_override?: string | null
 }
 
 export type UpdateSaleInvoiceInput = Omit<
@@ -101,6 +112,49 @@ function getLoyaltySettingsForSale() {
 
 function roundMoney(value: number) {
   return Number(Number(value || 0).toFixed(2))
+}
+
+function calculateSaleDueDate(
+  db: ReturnType<typeof getDb>,
+  businessDate: string,
+  creditDays: number | null,
+) {
+  if (creditDays === null) {
+    return null
+  }
+
+  const days = Number(creditDays)
+
+  if (!Number.isInteger(days) || days < 0) {
+    throw new Error('مدة ائتمان العميل غير صحيحة')
+  }
+
+  const row = db
+    .prepare(
+      `
+      SELECT
+        date(
+          ?,
+          printf(
+            '+%d days',
+            ?
+          )
+        ) AS due_date
+      `,
+    )
+    .get(businessDate, days) as
+    | {
+        due_date: string | null
+      }
+    | undefined
+
+  const dueDate = String(row?.due_date || '').trim()
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    throw new Error('تعذر حساب تاريخ استحقاق فاتورة البيع')
+  }
+
+  return dueDate
 }
 
 export type CreditLimitExceededDetails = {
@@ -472,28 +526,33 @@ function createSaleInternal(
 
     let customerCreditLimit: number | null = null
 
+    let customerCreditDays: number | null = null
+
+    let dueDate: string | null = null
+
     let creditLimitOverrideApprovedBy: number | null = null
 
     if (customerId) {
       const customerCredit = db
         .prepare(
           `
-      SELECT
-        id,
+          SELECT
+            id,
 
-        IFNULL(
-          balance,
-          0
-        ) AS balance,
+            IFNULL(
+              balance,
+              0
+            ) AS balance,
 
-        credit_limit
+          credit_limit,
+          credit_days
 
-      FROM customers
+          FROM customers
 
-      WHERE id = ?
+          WHERE id = ?
 
-      LIMIT 1
-      `,
+          LIMIT 1
+          `,
         )
         .get(customerId) as
         | {
@@ -502,6 +561,8 @@ function createSaleInternal(
             balance: number
 
             credit_limit: number | null
+
+            credit_days: number | null
           }
         | undefined
 
@@ -527,6 +588,18 @@ function createSaleInternal(
                 Number(customerCredit.credit_limit),
               ),
             )
+
+      customerCreditDays =
+        customerCredit.credit_days == null
+          ? null
+          : Number(customerCredit.credit_days)
+
+      if (
+        customerCreditDays !== null &&
+        (!Number.isInteger(customerCreditDays) || customerCreditDays < 0)
+      ) {
+        throw new Error('مدة ائتمان العميل غير صحيحة')
+      }
 
       const projectedDebt = roundMoney(customerBalanceBefore + remainingAmount)
 
@@ -588,6 +661,18 @@ function createSaleInternal(
 
         creditLimitOverrideApprovedBy = approvedBy
       }
+    }
+
+    if (customerId && options.preserve_due_date) {
+      const preservedDueDate = String(options.due_date_override || '').trim()
+
+      if (preservedDueDate && !/^\d{4}-\d{2}-\d{2}$/.test(preservedDueDate)) {
+        throw new Error('تاريخ الاستحقاق المحفوظ غير صحيح')
+      }
+
+      dueDate = preservedDueDate || null
+    } else if (customerId && remainingAmount > 0) {
+      dueDate = calculateSaleDueDate(db, businessDate, customerCreditDays)
     }
 
     const earnedPoints =
@@ -732,6 +817,16 @@ function createSaleInternal(
 
       saleId = forcedSaleId
     }
+
+    db.prepare(
+      `
+      UPDATE sales
+
+      SET due_date = ?
+
+      WHERE id = ?
+      `,
+    ).run(dueDate, saleId)
 
     db.prepare(
       `
@@ -1324,6 +1419,7 @@ function createSaleInternal(
       payments: effectivePayments,
       remaining_amount: remainingAmount,
       payment_status: paymentStatus,
+      due_date: dueDate,
       credit_limit_at_sale: customerCreditLimit,
 
       customer_balance_before: customerBalanceBefore,
@@ -3496,6 +3592,11 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       `,
     ).run(saleId)
 
+    const nextCustomerId = Number(input.customer_id || 0)
+
+    const preserveDueDate =
+      oldRemainingAmount > 0 && oldCustomerId === nextCustomerId
+
     const nextSaleInput: CreateSaleInput = {
       user_id: actorId,
 
@@ -3540,23 +3641,14 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
     const result = createSaleInternal(nextSaleInput, {
       forced_sale_id: saleId,
 
-      /*
-       * الفاتورة تظل باسم
-       * الكاشير الأصلي.
-       */
       invoice_user_id: Number(sale.user_id || 0) || actorId,
 
-      /*
-       * ونفس تاريخ إنشائها.
-       */
       created_at: sale.created_at ?? null,
-    })
 
-    /*
-     * لو تم تغيير العميل،
-     * حدث إجمالي مشتريات العميل القديم.
-     */
-    const nextCustomerId = Number(input.customer_id || 0)
+      preserve_due_date: preserveDueDate,
+
+      due_date_override: sale.due_date ?? null,
+    })
 
     if (oldCustomerId && oldCustomerId !== nextCustomerId) {
       syncCustomerTotalSpent(oldCustomerId)

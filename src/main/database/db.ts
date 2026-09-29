@@ -2322,6 +2322,40 @@ export function getDb(): Database.Database {
           `)
         },
       },
+      {
+        version: 9,
+        name: 'credit-terms-due-dates',
+
+        up: () => {
+          safeAddColumn(db, 'customers', 'credit_days', 'INTEGER')
+
+          safeAddColumn(db, 'suppliers', 'credit_days', 'INTEGER')
+
+          safeAddColumn(db, 'sales', 'due_date', 'TEXT')
+
+          safeAddColumn(db, 'purchase_invoices', 'due_date', 'TEXT')
+
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_sales_customer_due_date
+            ON sales (
+              customer_id,
+              due_date,
+              remaining_amount,
+              cancelled_at
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_invoices_supplier_due_date
+            ON purchase_invoices (
+              supplier_id,
+              due_date,
+              remaining_amount,
+              cancelled_at
+            );
+          `)
+        },
+      },
     ])
 
     seedTestAdminUser(db)

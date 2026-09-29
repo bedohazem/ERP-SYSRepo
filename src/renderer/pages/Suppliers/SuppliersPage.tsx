@@ -27,6 +27,7 @@ type Supplier = {
   notes?: string | null
   total_purchased: number
   balance: number
+  credit_days: number | null
   created_at: string
 }
 
@@ -36,6 +37,7 @@ const emptyForm = {
   email: '',
   address: '',
   notes: '',
+  credit_days: '',
 }
 
 const SUPPLIER_STATEMENT_PAGE_SIZE = 20
@@ -55,6 +57,18 @@ export default function SuppliersPage() {
     days_90_plus: 0,
 
     total: 0,
+  })
+
+  const [supplierDue, setSupplierDue] = useState({
+    overdue: 0,
+
+    due_today: 0,
+
+    due_soon: 0,
+
+    without_due_date: 0,
+
+    total_open: 0,
   })
   const canManagePurchases = hasUserPermission(currentUser, 'purchases.manage')
   const [supplierPage, setSupplierPage] = useState(1)
@@ -149,6 +163,18 @@ export default function SuppliersPage() {
 
         total: Number(result.summary?.aging?.total || 0),
       })
+
+      setSupplierDue({
+        overdue: Number(result.summary?.due?.overdue || 0),
+
+        due_today: Number(result.summary?.due?.due_today || 0),
+
+        due_soon: Number(result.summary?.due?.due_soon || 0),
+
+        without_due_date: Number(result.summary?.due?.without_due_date || 0),
+
+        total_open: Number(result.summary?.due?.total_open || 0),
+      })
     } catch (error) {
       console.error('Failed to load suppliers:', error)
 
@@ -166,6 +192,18 @@ export default function SuppliersPage() {
         days_90_plus: 0,
 
         total: 0,
+      })
+
+      setSupplierDue({
+        overdue: 0,
+
+        due_today: 0,
+
+        due_soon: 0,
+
+        without_due_date: 0,
+
+        total_open: 0,
       })
     } finally {
       setLoading(false)
@@ -195,6 +233,8 @@ export default function SuppliersPage() {
       email: supplier.email || '',
       address: supplier.address || '',
       notes: supplier.notes || '',
+      credit_days:
+        supplier.credit_days == null ? '' : String(supplier.credit_days),
     })
   }
 
@@ -206,20 +246,55 @@ export default function SuppliersPage() {
       return
     }
 
+    const creditDays =
+      form.credit_days.trim() === '' ? null : Number(form.credit_days)
+
+    if (
+      creditDays !== null &&
+      (!Number.isInteger(creditDays) || creditDays < 0)
+    ) {
+      showMessage('مدة الائتمان يجب أن تكون صفر أو عدد أيام صحيح موجب')
+
+      return
+    }
+
     setSaving(true)
 
     try {
       if (editingId) {
         await window.api.updateSupplier({
           id: editingId,
-          ...form,
+
+          name: form.name,
+
+          phone: form.phone,
+
+          email: form.email,
+
+          address: form.address,
+
+          notes: form.notes,
+
+          credit_days: creditDays,
+
           actor_id: currentUser?.id,
         })
 
         showMessage('تم تعديل المورد')
       } else {
         await window.api.createSupplier({
-          ...form,
+          name: form.name,
+
+          phone: form.phone,
+
+          email: form.email,
+
+          address: form.address,
+
+          notes: form.notes,
+
+          credit_days: creditDays,
+
           actor_id: currentUser?.id,
         })
         showMessage('تم إضافة المورد')
@@ -321,6 +396,9 @@ export default function SuppliersPage() {
               (entry: any) => `
               <tr>
                 <td>${safeText(formatDate(entry.created_at))}</td>
+                <td>
+                  ${safeText(entry.due_date ? formatDateOnly(entry.due_date) : '—')}
+                </td>
                 <td>${safeText(entry.title)}</td>
                 <td>${entry.debit > 0 ? safeText(money(entry.debit)) : '—'}</td>
                 <td>${entry.credit > 0 ? safeText(money(entry.credit)) : '—'}</td>
@@ -331,7 +409,7 @@ export default function SuppliersPage() {
             .join('')
         : `
         <tr>
-          <td colspan="5" style="text-align:center;padding:20px;">
+          <td colspan="6" style="text-align:center;padding:20px;">
             لا توجد حركات
           </td>
         </tr>
@@ -556,10 +634,45 @@ export default function SuppliersPage() {
             </div>
           </div>
 
+          <div class="summary">
+            <div class="summary-card">
+              <span>متأخر السداد</span>
+
+              <strong>
+                ${safeText(money(summary?.due?.overdue || 0))}
+              </strong>
+            </div>
+
+            <div class="summary-card">
+              <span>واجب السداد اليوم</span>
+
+              <strong>
+                ${safeText(money(summary?.due?.due_today || 0))}
+              </strong>
+            </div>
+
+            <div class="summary-card">
+              <span>واجب السداد خلال 7 أيام</span>
+
+              <strong>
+                ${safeText(money(summary?.due?.due_soon || 0))}
+              </strong>
+            </div>
+
+            <div class="summary-card">
+              <span>بدون موعد سداد</span>
+
+              <strong>
+                ${safeText(money(summary?.due?.without_due_date || 0))}
+              </strong>
+            </div>
+          </div>
+
           <table>
             <thead>
               <tr>
                 <th>التاريخ</th>
+                <th>الاستحقاق</th>
                 <th>البيان</th>
                 <th>مدين</th>
                 <th>دائن</th>
@@ -899,6 +1012,22 @@ export default function SuppliersPage() {
     return match?.[1] || raw || fallback
   }
 
+  function formatDateOnly(value?: string | null) {
+    const raw = String(value || '').trim()
+
+    if (!raw) {
+      return '—'
+    }
+
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+
+    if (!match) {
+      return raw
+    }
+
+    return `${match[3]}/${match[2]}/${match[1]}`
+  }
+
   return (
     <div
       style={{
@@ -987,6 +1116,23 @@ export default function SuppliersPage() {
             title="أكثر من 90 يوم"
             value={money(supplierAging.days_90_plus)}
           />
+
+          <InfoCard title="متأخر السداد" value={money(supplierDue.overdue)} />
+
+          <InfoCard
+            title="واجب السداد اليوم"
+            value={money(supplierDue.due_today)}
+          />
+
+          <InfoCard
+            title="واجب السداد خلال 7 أيام"
+            value={money(supplierDue.due_soon)}
+          />
+
+          <InfoCard
+            title="بدون موعد سداد"
+            value={money(supplierDue.without_due_date)}
+          />
         </div>
       </div>
 
@@ -1024,6 +1170,22 @@ export default function SuppliersPage() {
             placeholder="العنوان"
             value={form.address}
             onChange={(value) => setForm((p) => ({ ...p, address: value }))}
+          />
+
+          <input
+            type="number"
+            min={0}
+            step={1}
+            placeholder="مدة الائتمان بالأيام - فارغ = بدون موعد سداد"
+            value={form.credit_days}
+            onChange={(e) =>
+              setForm((p) => ({
+                ...p,
+
+                credit_days: e.target.value,
+              }))
+            }
+            style={inputStyle}
           />
 
           <input
@@ -1093,7 +1255,7 @@ export default function SuppliersPage() {
         <table
           style={{
             width: '100%',
-            minWidth: '980px',
+            minWidth: '1080px',
             borderCollapse: 'collapse',
             direction: 'rtl',
           }}
@@ -1106,6 +1268,7 @@ export default function SuppliersPage() {
               <th style={thStyle}>العنوان</th>
               <th style={thStyle}>إجمالي المشتريات</th>
               <th style={thStyle}>الرصيد</th>
+              <th style={thStyle}>مدة الائتمان</th>
               <th style={thStyle}>إجراءات</th>
             </tr>
           </thead>
@@ -1113,7 +1276,7 @@ export default function SuppliersPage() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={7} style={{ ...tdStyle, textAlign: 'center' }}>
+                <td colSpan={8} style={{ ...tdStyle, textAlign: 'center' }}>
                   جاري التحميل...
                 </td>
               </tr>
@@ -1154,6 +1317,13 @@ export default function SuppliersPage() {
                     }}
                   >
                     {money(supplier.balance)}
+                  </td>
+                  <td style={tdStyle}>
+                    {supplier.credit_days == null
+                      ? 'بدون موعد سداد'
+                      : supplier.credit_days === 0
+                        ? 'نفس اليوم'
+                        : `${supplier.credit_days} يوم`}
                   </td>
                   <td style={tdStyle}>
                     <div
@@ -1213,7 +1383,7 @@ export default function SuppliersPage() {
             {!loading && suppliers.length === 0 && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   style={{
                     ...tdStyle,
                     textAlign: 'center',
@@ -1375,6 +1545,60 @@ export default function SuppliersPage() {
               </div>
             </div>
 
+            <div
+              style={{
+                marginBottom: '18px',
+
+                display: 'grid',
+
+                gap: '10px',
+              }}
+            >
+              <strong
+                style={{
+                  color: '#cbd5e1',
+
+                  fontSize: '13px',
+
+                  textAlign: 'right',
+                }}
+              >
+                مواعيد سداد الموردين
+              </strong>
+
+              <div
+                style={{
+                  display: 'grid',
+
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+
+                  gap: '10px',
+                }}
+              >
+                <InfoCard
+                  title="متأخر السداد"
+                  value={money(statementData.summary?.due?.overdue || 0)}
+                />
+
+                <InfoCard
+                  title="واجب السداد اليوم"
+                  value={money(statementData.summary?.due?.due_today || 0)}
+                />
+
+                <InfoCard
+                  title="واجب السداد خلال 7 أيام"
+                  value={money(statementData.summary?.due?.due_soon || 0)}
+                />
+
+                <InfoCard
+                  title="بدون موعد سداد"
+                  value={money(
+                    statementData.summary?.due?.without_due_date || 0,
+                  )}
+                />
+              </div>
+            </div>
+
             {roundMoney(statementData.summary.balance) > 0 && (
               <div
                 style={{
@@ -1395,6 +1619,10 @@ export default function SuppliersPage() {
                       notes: statementData.supplier.notes,
                       total_purchased: statementData.supplier.total_purchased,
                       balance: statementData.supplier.balance,
+                      credit_days:
+                        statementData.supplier.credit_days == null
+                          ? null
+                          : Number(statementData.supplier.credit_days),
                       created_at: statementData.supplier.created_at,
                     })
                   }
@@ -1430,6 +1658,7 @@ export default function SuppliersPage() {
                 <thead>
                   <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                     <th style={statementThStyle}>التاريخ</th>
+                    <th style={statementThStyle}>الاستحقاق</th>
                     <th style={statementThStyle}>البيان</th>
                     <th style={statementThStyle}>مدين</th>
                     <th style={statementThStyle}>دائن</th>
@@ -1443,7 +1672,7 @@ export default function SuppliersPage() {
                   {statementLoading && (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={8}
                         style={{ ...statementTdStyle, textAlign: 'center' }}
                       >
                         جاري التحميل...
@@ -1468,6 +1697,15 @@ export default function SuppliersPage() {
                         >
                           <td style={statementTdStyle}>
                             {formatDate(entry.created_at)}
+                          </td>
+                          <td
+                            style={{
+                              ...statementTdStyle,
+
+                              color: entry.due_date ? '#fde68a' : '#94a3b8',
+                            }}
+                          >
+                            {formatDateOnly(entry.due_date)}
                           </td>
                           <td style={statementTdStyle}>
                             <strong>{entry.title}</strong>
@@ -1553,7 +1791,7 @@ export default function SuppliersPage() {
                   {!statementLoading && statementData.entries.length === 0 && (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={8}
                         style={{
                           ...tdStyle,
                           textAlign: 'center',

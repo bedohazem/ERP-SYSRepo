@@ -6,6 +6,7 @@ export type SupplierInput = {
   email?: string | null
   address?: string | null
   notes?: string | null
+  credit_days?: number | null
 }
 
 export type SupplierUpdateInput = SupplierInput & {
@@ -15,6 +16,20 @@ export type SupplierUpdateInput = SupplierInput & {
 function cleanText(value?: string | null) {
   const text = value?.trim()
   return text ? text : null
+}
+
+function normalizeCreditDays(value: unknown): number | null {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return null
+  }
+
+  const days = Number(value)
+
+  if (!Number.isInteger(days) || days < 0) {
+    throw new Error('مدة الائتمان يجب أن تكون صفر أو عدد أيام صحيح موجب')
+  }
+
+  return days
 }
 
 export function getSupplierAgingSummary(
@@ -218,6 +233,197 @@ export function getSupplierAgingSummary(
   }
 }
 
+export function getSupplierDueSummary(
+  supplierId?: number | null,
+  search?: string,
+) {
+  const db = getDb()
+
+  const id = Number(supplierId || 0)
+
+  const searchValue = String(search || '').trim()
+
+  const where: string[] = [
+    `
+    IFNULL(
+      pi.status,
+      'active'
+    ) != 'cancelled'
+    `,
+
+    `
+    pi.cancelled_at
+      IS NULL
+    `,
+
+    `
+    ROUND(
+      IFNULL(
+        pi.remaining_amount,
+        0
+      ),
+      2
+    ) > 0
+    `,
+  ]
+
+  const params: any[] = []
+
+  if (id > 0) {
+    where.push('pi.supplier_id = ?')
+
+    params.push(id)
+  } else {
+    where.push('s.is_active = 1')
+
+    if (searchValue) {
+      where.push(`
+        (
+          s.name LIKE ?
+
+          OR
+          IFNULL(
+            s.phone,
+            ''
+          ) LIKE ?
+
+          OR
+          IFNULL(
+            s.email,
+            ''
+          ) LIKE ?
+
+          OR
+          IFNULL(
+            s.address,
+            ''
+          ) LIKE ?
+        )
+      `)
+
+      const q = `%${searchValue}%`
+
+      params.push(q, q, q, q)
+    }
+  }
+
+  const row = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                due_date IS NOT NULL
+                AND due_date <
+                  today_date
+
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS overdue,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN due_date =
+                   today_date
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS due_today,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                due_date >
+                  today_date
+
+                AND due_date <=
+                  date(
+                    today_date,
+                    '+7 days'
+                  )
+
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS due_soon,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN due_date IS NULL
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS without_due_date,
+
+        IFNULL(
+          SUM(
+            remaining_amount
+          ),
+          0
+        ) AS total_open
+
+      FROM (
+        SELECT
+          ROUND(
+            IFNULL(
+              pi.remaining_amount,
+              0
+            ),
+            2
+          ) AS remaining_amount,
+
+          date(
+            NULLIF(
+              pi.due_date,
+              ''
+            )
+          ) AS due_date,
+
+          date(
+            'now',
+            'localtime'
+          ) AS today_date
+
+        FROM purchase_invoices pi
+
+        JOIN suppliers s
+          ON s.id =
+             pi.supplier_id
+
+        WHERE
+          ${where.join('\nAND ')}
+      ) open_purchases
+      `,
+    )
+    .get(...params) as any
+
+  return {
+    overdue: Number(Number(row?.overdue || 0).toFixed(2)),
+
+    due_today: Number(Number(row?.due_today || 0).toFixed(2)),
+
+    due_soon: Number(Number(row?.due_soon || 0).toFixed(2)),
+
+    without_due_date: Number(Number(row?.without_due_date || 0).toFixed(2)),
+
+    total_open: Number(Number(row?.total_open || 0).toFixed(2)),
+  }
+}
+
 export function getSuppliers(search = '') {
   const db = getDb()
   const q = `%${search.trim()}%`
@@ -341,6 +547,10 @@ export function listSuppliers(input?: {
     ? getSupplierAgingSummary(null, search)
     : null
 
+  const due = input?.include_summary
+    ? getSupplierDueSummary(null, search)
+    : null
+
   return {
     rows,
 
@@ -352,6 +562,7 @@ export function listSuppliers(input?: {
     summary: input?.include_summary
       ? {
           aging,
+          due,
         }
       : undefined,
   }
@@ -381,6 +592,8 @@ export function createSupplier(input: SupplierInput) {
     throw new Error('اسم المورد مطلوب')
   }
 
+  const creditDays = normalizeCreditDays(input.credit_days)
+
   const result = db
     .prepare(
       `
@@ -389,9 +602,10 @@ export function createSupplier(input: SupplierInput) {
         phone,
         email,
         address,
-        notes
+        notes,
+        credit_days
       )
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?)
     `,
     )
     .run(
@@ -400,6 +614,7 @@ export function createSupplier(input: SupplierInput) {
       cleanText(input.email),
       cleanText(input.address),
       cleanText(input.notes),
+      creditDays,
     )
 
   return getSupplierById(Number(result.lastInsertRowid))
@@ -419,6 +634,34 @@ export function updateSupplier(input: SupplierUpdateInput) {
     throw new Error('اسم المورد مطلوب')
   }
 
+  const current = db
+    .prepare(
+      `
+    SELECT
+      credit_days
+
+    FROM suppliers
+
+    WHERE id = ?
+
+    LIMIT 1
+    `,
+    )
+    .get(id) as
+    | {
+        credit_days: number | null
+      }
+    | undefined
+
+  if (!current) {
+    throw new Error('المورد غير موجود')
+  }
+
+  const creditDays =
+    input.credit_days === undefined
+      ? current.credit_days
+      : normalizeCreditDays(input.credit_days)
+
   db.prepare(
     `
     UPDATE suppliers
@@ -428,6 +671,7 @@ export function updateSupplier(input: SupplierUpdateInput) {
       email = ?,
       address = ?,
       notes = ?,
+      credit_days = ?,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `,
@@ -437,6 +681,7 @@ export function updateSupplier(input: SupplierUpdateInput) {
     cleanText(input.email),
     cleanText(input.address),
     cleanText(input.notes),
+    creditDays,
     id,
   )
 

@@ -2344,4 +2344,190 @@ describe('purchases repository', () => {
 
     expect(statement.summary.balance).toBe(1200)
   })
+
+  it('snapshots supplier credit terms into purchase due date', () => {
+    const db = getDb()
+
+    const variant = seedPurchaseProduct()
+
+    const supplierId = createTestSupplier()
+
+    db.prepare(
+      `
+      UPDATE suppliers
+
+      SET credit_days = 45
+
+      WHERE id = ?
+      `,
+    ).run(supplierId)
+
+    const purchase = createPurchaseInvoice({
+      actor_id: 1,
+
+      supplier_id: supplierId,
+
+      paid_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    const saved = db
+      .prepare(
+        `
+        SELECT
+          business_date,
+          due_date
+
+        FROM purchase_invoices
+
+        WHERE id = ?
+        `,
+      )
+      .get(purchase.purchaseId) as {
+      business_date: string
+      due_date: string | null
+    }
+
+    const expected = db
+      .prepare(
+        `
+        SELECT
+          date(
+            ?,
+            '+45 days'
+          ) AS due_date
+        `,
+      )
+      .get(saved.business_date) as {
+      due_date: string
+    }
+
+    expect(purchase.due_date).toBe(expected.due_date)
+
+    expect(saved.due_date).toBe(expected.due_date)
+
+    db.prepare(
+      `
+      UPDATE suppliers
+
+      SET credit_days = 10
+
+      WHERE id = ?
+      `,
+    ).run(supplierId)
+
+    const edited = updatePurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      reason: 'Verify due date snapshot',
+
+      supplier_id: supplierId,
+
+      paid_amount: 0,
+
+      sub_total: 100,
+
+      discount_type: 'amount',
+
+      discount_input: 0,
+
+      discount_value: 0,
+
+      payment_method: 'cash',
+
+      notes: null,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 100,
+        },
+      ],
+    })
+
+    expect(edited.due_date).toBe(expected.due_date)
+
+    const afterEdit = db
+      .prepare(
+        `
+        SELECT due_date
+
+        FROM purchase_invoices
+
+        WHERE id = ?
+        `,
+      )
+      .get(purchase.purchaseId) as {
+      due_date: string | null
+    }
+
+    expect(afterEdit.due_date).toBe(expected.due_date)
+  })
+
+  it('includes supplier due summary in statement', () => {
+    const db = getDb()
+
+    const supplierId = createTestSupplier()
+
+    db.prepare(
+      `
+      INSERT INTO purchase_invoices (
+        supplier_id,
+        total_amount,
+        remaining_amount,
+        payment_status,
+        business_date,
+        due_date
+      )
+
+      VALUES (
+        ?,
+        250,
+        250,
+        'unpaid',
+        date(
+          'now',
+          'localtime'
+        ),
+        date(
+          'now',
+          'localtime',
+          '-2 days'
+        )
+      )
+      `,
+    ).run(supplierId)
+
+    db.prepare(
+      `
+      UPDATE suppliers
+
+      SET balance = 250
+
+      WHERE id = ?
+      `,
+    ).run(supplierId)
+
+    const statement = getSupplierStatement(supplierId, 1) as any
+
+    expect(statement.summary.due.overdue).toBe(250)
+
+    expect(statement.summary.due.total_open).toBe(250)
+  })
 })

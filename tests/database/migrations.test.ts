@@ -274,6 +274,11 @@ describe('database migrations', () => {
 
         name: 'customer-credit-aging',
       },
+      {
+        version: 9,
+
+        name: 'credit-terms-due-dates',
+      },
     ])
 
     const userPermissionColumns = database
@@ -323,6 +328,10 @@ describe('database migrations', () => {
 
     expect(purchaseInvoiceColumns.map((column) => column.name)).toContain(
       'business_date',
+    )
+
+    expect(purchaseInvoiceColumns.map((column) => column.name)).toContain(
+      'due_date',
     )
 
     const columnNames = purchaseReturnColumns.map((column) => column.name)
@@ -437,8 +446,24 @@ describe('database migrations', () => {
       name: string
     }>
 
-    expect(customerColumns.map((column) => column.name)).toContain(
-      'credit_limit',
+    expect(customerColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(['credit_limit', 'credit_days']),
+    )
+
+    const supplierColumns = database
+      .prepare(
+        `
+      PRAGMA table_info(
+        suppliers
+      )
+      `,
+      )
+      .all() as Array<{
+      name: string
+    }>
+
+    expect(supplierColumns.map((column) => column.name)).toContain(
+      'credit_days',
     )
 
     const saleColumns = database
@@ -458,6 +483,7 @@ describe('database migrations', () => {
         'credit_limit_at_sale',
         'customer_balance_before',
         'credit_limit_override_approved_by',
+        'due_date',
       ]),
     )
   })

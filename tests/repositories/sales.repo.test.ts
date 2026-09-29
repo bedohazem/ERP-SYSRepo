@@ -4382,4 +4382,170 @@ describe('sales repository', () => {
 
     expect(Number(sale.credit_limit_override_approved_by)).toBe(1)
   })
+
+  it('snapshots customer credit terms into sale due date', () => {
+    const db = getDb()
+
+    const variant = seedProduct()
+
+    const customerId = createTestCustomer()
+
+    db.prepare(
+      `
+      UPDATE customers
+
+      SET credit_days = 30
+
+      WHERE id = ?
+      `,
+    ).run(customerId)
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: customerId,
+
+      sub_total: 150,
+
+      discount_value: 0,
+
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const saved = db
+      .prepare(
+        `
+        SELECT
+          business_date,
+          due_date
+
+        FROM sales
+
+        WHERE id = ?
+        `,
+      )
+      .get(sale.saleId) as {
+      business_date: string
+      due_date: string | null
+    }
+
+    const expected = db
+      .prepare(
+        `
+        SELECT
+          date(
+            ?,
+            '+30 days'
+          ) AS due_date
+        `,
+      )
+      .get(saved.business_date) as {
+      due_date: string
+    }
+
+    expect(saved.due_date).toBe(expected.due_date)
+
+    expect(sale.due_date).toBe(expected.due_date)
+
+    /*
+     * تغيير Terms العميل بعد
+     * إنشاء الفاتورة لا يغير
+     * الفاتورة القديمة.
+     */
+    db.prepare(
+      `
+      UPDATE customers
+
+      SET credit_days = 5
+
+      WHERE id = ?
+      `,
+    ).run(customerId)
+
+    const edited = updateSaleInvoice({
+      sale_id: sale.saleId,
+
+      actor_id: 1,
+
+      reason: 'Verify due date snapshot',
+
+      customer_id: customerId,
+
+      sub_total: 150,
+
+      discount_value: 0,
+
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 0,
+
+      remaining_amount: 150,
+
+      payment_status: 'unpaid',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    })
+
+    expect(edited.due_date).toBe(expected.due_date)
+
+    const afterEdit = db
+      .prepare(
+        `
+        SELECT due_date
+
+        FROM sales
+
+        WHERE id = ?
+        `,
+      )
+      .get(sale.saleId) as {
+      due_date: string | null
+    }
+
+    expect(afterEdit.due_date).toBe(expected.due_date)
+  })
 })

@@ -1266,6 +1266,17 @@ declare global {
 
             total: number
           }
+          due: {
+            overdue: number
+
+            due_today: number
+
+            due_soon: number
+
+            without_due_date: number
+
+            total_open: number
+          }
         }
       }>
 
@@ -1365,6 +1376,7 @@ declare global {
           title: string
           debit: number
           credit: number
+          due_date?: string | null
           sale_id?: number | null
           batch_id?: number | null
           batch_created_by?: number | null
@@ -1412,6 +1424,7 @@ declare global {
 
             over_limit: boolean
           }
+          due_date?: string | null
         }
       }>
 
@@ -1889,6 +1902,7 @@ declare global {
           is_active: number
           created_at: string
           updated_at?: string | null
+          credit_days?: number | null
         }>
       >
 
@@ -1919,6 +1933,18 @@ declare global {
 
             total: number
           } | null
+
+          due: {
+            overdue: number
+
+            due_today: number
+
+            due_soon: number
+
+            without_due_date: number
+
+            total_open: number
+          } | null
         }
       }>
 
@@ -1931,6 +1957,7 @@ declare global {
         address?: string | null
         notes?: string | null
         actor_id?: number
+        credit_days?: number | null
       }) => Promise<any>
 
       updateSupplier: (input: {
@@ -1941,6 +1968,7 @@ declare global {
         address?: string | null
         notes?: string | null
         actor_id?: number
+        credit_days?: number | null
       }) => Promise<any>
 
       deleteSupplier: (id: number, actorId?: number) => Promise<{ ok: boolean }>
@@ -1970,6 +1998,7 @@ declare global {
         remaining_amount: number
         payment_status: string
         shift_id?: number | null
+        due_date?: string | null
       }>
 
       updatePurchaseInvoice: (input: {
@@ -2009,6 +2038,7 @@ declare global {
 
         items_count: number
         shift_id?: number | null
+        due_date?: string | null
       }>
 
       listPurchaseInvoices: (input?: {
@@ -2238,7 +2268,7 @@ declare global {
           credit: number
           purchase_id?: number | null
           batch_id?: number | null
-
+          due_date?: string | null
           batch_created_by?: number | null
 
           requires_admin_password?: boolean
@@ -2283,6 +2313,7 @@ declare global {
 
             total: number
           }
+          due_date?: string | null
         }
       }>
 
@@ -2952,6 +2983,7 @@ declare global {
     created_at?: string
     updated_at?: string
     credit_limit?: number | null
+    credit_days?: number | null
   }
 
   type CustomerInput = {
@@ -2961,6 +2993,7 @@ declare global {
     address?: string | null
     notes?: string | null
     credit_limit?: number | null
+    credit_days?: number | null
   }
 
   type CustomerUpdateInput = CustomerInput & {

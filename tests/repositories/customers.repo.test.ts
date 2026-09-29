@@ -54,6 +54,7 @@ type CustomerTestRow = {
   total_spent: number
   balance: number
   credit_limit: number | null
+  credit_days: number | null
   is_active: number
   sales_count: number
   last_sale_at: string | null
@@ -235,6 +236,64 @@ describe('customers repository', () => {
         credit_limit: -1,
       }),
     ).toThrow('الحد الائتماني')
+  })
+
+  it('stores and updates customer credit terms', () => {
+    const customer = createCustomer({
+      name: 'Terms Customer',
+
+      phone: '01077770003',
+
+      credit_days: 30,
+    }) as CustomerTestRow
+
+    expect(customer.credit_days).toBe(30)
+
+    const updated = updateCustomer({
+      id: customer.id,
+
+      name: customer.name,
+
+      phone: customer.phone,
+
+      credit_days: 0,
+    }) as CustomerTestRow
+
+    expect(updated.credit_days).toBe(0)
+
+    const preserved = updateCustomer({
+      id: customer.id,
+
+      name: customer.name,
+
+      phone: customer.phone,
+    }) as CustomerTestRow
+
+    expect(preserved.credit_days).toBe(0)
+
+    expect(() =>
+      updateCustomer({
+        id: customer.id,
+
+        name: customer.name,
+
+        phone: customer.phone,
+
+        credit_days: -1,
+      }),
+    ).toThrow('مدة الائتمان')
+
+    expect(() =>
+      updateCustomer({
+        id: customer.id,
+
+        name: customer.name,
+
+        phone: customer.phone,
+
+        credit_days: 2.5,
+      }),
+    ).toThrow('مدة الائتمان')
   })
 
   it('splits open customer debt into aging buckets', () => {
@@ -1522,5 +1581,123 @@ describe('customers repository', () => {
     expect(movement.payment_method).toBe('store_safe')
     expect(movement.direction).toBe('in')
     expect(Number(movement.amount)).toBe(50)
+  })
+
+  it('summarizes customer debt by due date', () => {
+    const db = getDb()
+
+    const customer = createCustomer({
+      name: 'Due Customer',
+
+      phone: '01077770004',
+    }) as CustomerTestRow
+
+    const insertSale = db.prepare(
+      `
+        INSERT INTO sales (
+          type,
+          customer_id,
+          user_id,
+          business_date,
+          due_date,
+          sub_total,
+          grand_total,
+          paid,
+          remaining_amount,
+          payment_status,
+          payment_method
+        )
+
+        VALUES (
+          'sale',
+          ?,
+          1,
+          date(
+            'now',
+            'localtime'
+          ),
+          ?,
+          ?,
+          ?,
+          0,
+          ?,
+          'unpaid',
+          'store_cash'
+        )
+        `,
+    )
+
+    const dueDate = (modifier: string | null) => {
+      if (!modifier) {
+        return null
+      }
+
+      const row = db
+        .prepare(
+          `
+          SELECT
+            date(
+              'now',
+              'localtime',
+              ?
+            ) AS value
+          `,
+        )
+        .get(modifier) as {
+        value: string
+      }
+
+      return row.value
+    }
+
+    insertSale.run(customer.id, dueDate('-1 day'), 100, 100, 100)
+
+    insertSale.run(customer.id, dueDate('+0 days'), 200, 200, 200)
+
+    insertSale.run(customer.id, dueDate('+3 days'), 300, 300, 300)
+
+    insertSale.run(customer.id, dueDate('+10 days'), 400, 400, 400)
+
+    insertSale.run(customer.id, null, 500, 500, 500)
+
+    db.prepare(
+      `
+      UPDATE customers
+
+      SET balance = 1500
+
+      WHERE id = ?
+      `,
+    ).run(customer.id)
+
+    const page = listCustomers({
+      search: 'Due Customer',
+    })
+
+    expect(page.summary.due).toEqual({
+      overdue: 100,
+
+      due_today: 200,
+
+      due_soon: 300,
+
+      without_due_date: 500,
+
+      total_open: 1500,
+    })
+
+    const statement = getCustomerStatement(customer.id, 1) as any
+
+    expect(statement.summary.due).toEqual({
+      overdue: 100,
+
+      due_today: 200,
+
+      due_soon: 300,
+
+      without_due_date: 500,
+
+      total_open: 1500,
+    })
   })
 })

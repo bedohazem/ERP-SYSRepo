@@ -35,6 +35,20 @@ function normalizeCreditLimit(value: unknown): number | null {
   return Number(amount.toFixed(2))
 }
 
+function normalizeCreditDays(value: unknown): number | null {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return null
+  }
+
+  const days = Number(value)
+
+  if (!Number.isInteger(days) || days < 0) {
+    throw new Error('مدة الائتمان يجب أن تكون صفر أو عدد أيام صحيح موجب')
+  }
+
+  return days
+}
+
 function getAgingSummaryForCustomer(
   customerId?: number | null,
   search?: string,
@@ -235,6 +249,196 @@ function getAgingSummaryForCustomer(
   }
 }
 
+function getDueSummaryForCustomer(customerId?: number | null, search?: string) {
+  const db = getDb()
+
+  const id = Number(customerId || 0)
+
+  const searchValue = String(search || '').trim()
+
+  const where: string[] = [
+    `
+    IFNULL(
+      s.type,
+      'sale'
+    ) = 'sale'
+    `,
+
+    `
+    s.cancelled_at
+      IS NULL
+    `,
+
+    `
+    ROUND(
+      IFNULL(
+        s.remaining_amount,
+        0
+      ),
+      2
+    ) > 0
+    `,
+  ]
+
+  const params: any[] = []
+
+  if (id > 0) {
+    where.push('s.customer_id = ?')
+
+    params.push(id)
+  } else {
+    where.push('c.is_active = 1')
+
+    if (searchValue) {
+      where.push(`
+        (
+          c.name LIKE ?
+
+          OR
+          IFNULL(
+            c.phone,
+            ''
+          ) LIKE ?
+
+          OR
+          IFNULL(
+            c.email,
+            ''
+          ) LIKE ?
+
+          OR
+          IFNULL(
+            c.address,
+            ''
+          ) LIKE ?
+        )
+      `)
+
+      const q = `%${searchValue}%`
+
+      params.push(q, q, q, q)
+    }
+  }
+
+  const row = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                due_date IS NOT NULL
+                AND due_date <
+                  today_date
+
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS overdue,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                due_date =
+                  today_date
+
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS due_today,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                due_date >
+                  today_date
+
+                AND due_date <=
+                  date(
+                    today_date,
+                    '+7 days'
+                  )
+
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS due_soon,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN due_date IS NULL
+              THEN remaining_amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS without_due_date,
+
+        IFNULL(
+          SUM(
+            remaining_amount
+          ),
+          0
+        ) AS total_open
+
+      FROM (
+        SELECT
+          ROUND(
+            IFNULL(
+              s.remaining_amount,
+              0
+            ),
+            2
+          ) AS remaining_amount,
+
+          date(
+            NULLIF(
+              s.due_date,
+              ''
+            )
+          ) AS due_date,
+
+          date(
+            'now',
+            'localtime'
+          ) AS today_date
+
+        FROM sales s
+
+        JOIN customers c
+          ON c.id =
+             s.customer_id
+
+        WHERE
+          ${where.join('\nAND ')}
+      ) open_sales
+      `,
+    )
+    .get(...params) as any
+
+  return {
+    overdue: Number(Number(row?.overdue || 0).toFixed(2)),
+
+    due_today: Number(Number(row?.due_today || 0).toFixed(2)),
+
+    due_soon: Number(Number(row?.due_soon || 0).toFixed(2)),
+
+    without_due_date: Number(Number(row?.without_due_date || 0).toFixed(2)),
+
+    total_open: Number(Number(row?.total_open || 0).toFixed(2)),
+  }
+}
+
 export type CustomerInput = {
   name: string
   phone?: string | null
@@ -247,6 +451,11 @@ export type CustomerInput = {
    * 0 = ممنوع مديونية.
    */
   credit_limit?: number | null
+  /*
+   * null = بدون تاريخ استحقاق تلقائي.
+   * 0 = نفس يوم الفاتورة.
+   */
+  credit_days?: number | null
 }
 
 export type CustomerUpdateInput = CustomerInput & {
@@ -427,6 +636,8 @@ export function listCustomers(input?: {
 
   const aging = getAgingSummaryForCustomer(null, search)
 
+  const due = getDueSummaryForCustomer(null, search)
+
   return {
     rows,
     total: Number(totalRow?.total || 0),
@@ -447,6 +658,7 @@ export function listCustomers(input?: {
         : null,
 
       aging,
+      due,
     },
   }
 }
@@ -460,6 +672,7 @@ export function createCustomer(input: CustomerInput) {
   const address = input.address?.trim() || null
   const notes = input.notes?.trim() || null
   const creditLimit = normalizeCreditLimit(input.credit_limit)
+  const creditDays = normalizeCreditDays(input.credit_days)
 
   if (!name) {
     throw new Error('اسم العميل مطلوب')
@@ -474,12 +687,13 @@ export function createCustomer(input: CustomerInput) {
         email,
         address,
         notes,
-        credit_limit
+        credit_limit,
+        credit_days
       )
-      VALUES (?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
     )
-    .run(name, phone, email, address, notes, creditLimit)
+    .run(name, phone, email, address, notes, creditLimit, creditDays)
 
   return getCustomerById(Number(result.lastInsertRowid))
 }
@@ -505,7 +719,8 @@ export function updateCustomer(input: CustomerUpdateInput) {
     .prepare(
       `
       SELECT
-        credit_limit
+        credit_limit,
+        credit_days
 
       FROM customers
 
@@ -517,6 +732,8 @@ export function updateCustomer(input: CustomerUpdateInput) {
     .get(input.id) as
     | {
         credit_limit: number | null
+
+        credit_days: number | null
       }
     | undefined
 
@@ -529,6 +746,11 @@ export function updateCustomer(input: CustomerUpdateInput) {
       ? current.credit_limit
       : normalizeCreditLimit(input.credit_limit)
 
+  const creditDays =
+    input.credit_days === undefined
+      ? current.credit_days
+      : normalizeCreditDays(input.credit_days)
+
   db.prepare(
     `
     UPDATE customers
@@ -539,10 +761,11 @@ export function updateCustomer(input: CustomerUpdateInput) {
       address = ?,
       notes = ?,
       credit_limit = ?,
+      credit_days = ?,
       updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
   `,
-  ).run(name, phone, email, address, notes, creditLimit, input.id)
+  ).run(name, phone, email, address, notes, creditLimit, creditDays, input.id)
 
   return getCustomerById(input.id)
 }
@@ -2040,6 +2263,7 @@ export function getCustomerStatement(
     credit: 0,
     sale_id: sale.id,
     payment_status: sale.payment_status,
+    due_date: sale.due_date ?? null,
     notes: sale.cancelled_at
       ? sale.cancel_reason || 'فاتورة ملغاة'
       : sale.notes,
@@ -2310,6 +2534,8 @@ export function getCustomerStatement(
 
   const aging = getAgingSummaryForCustomer(id)
 
+  const due = getDueSummaryForCustomer(id)
+
   const balance = Number(customer.balance || 0)
 
   const creditLimit =
@@ -2345,6 +2571,7 @@ export function getCustomerStatement(
       balance: Number(customer.balance || 0),
       open_sales: openSales.length,
       aging,
+      due,
       credit,
     },
   }

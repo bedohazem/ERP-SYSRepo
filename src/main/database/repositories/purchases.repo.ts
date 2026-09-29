@@ -1,5 +1,8 @@
 import { getDb } from '../db'
-import { getSupplierAgingSummary } from './suppliers.repo'
+import {
+  getSupplierAgingSummary,
+  getSupplierDueSummary,
+} from './suppliers.repo'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
 
 import {
@@ -34,6 +37,49 @@ function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
   }
 
   return String(row?.business_date || '')
+}
+
+function calculatePurchaseDueDate(
+  db: ReturnType<typeof getDb>,
+  businessDate: string,
+  creditDays: number | null,
+) {
+  if (creditDays === null) {
+    return null
+  }
+
+  const days = Number(creditDays)
+
+  if (!Number.isInteger(days) || days < 0) {
+    throw new Error('مدة ائتمان المورد غير صحيحة')
+  }
+
+  const row = db
+    .prepare(
+      `
+      SELECT
+        date(
+          ?,
+          printf(
+            '+%d days',
+            ?
+          )
+        ) AS due_date
+      `,
+    )
+    .get(businessDate, days) as
+    | {
+        due_date: string | null
+      }
+    | undefined
+
+  const dueDate = String(row?.due_date || '').trim()
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    throw new Error('تعذر حساب تاريخ استحقاق فاتورة الشراء')
+  }
+
+  return dueDate
 }
 
 export type CreatePurchaseInput = {
@@ -297,6 +343,15 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
     const paymentStatus =
       remainingAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid'
 
+    const dueDate =
+      remainingAmount > 0
+        ? calculatePurchaseDueDate(
+            db,
+            businessDate,
+            supplier.credit_days == null ? null : Number(supplier.credit_days),
+          )
+        : null
+
     const purchaseResult = db
       .prepare(
         `
@@ -336,6 +391,16 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       )
 
     const purchaseId = Number(purchaseResult.lastInsertRowid)
+
+    db.prepare(
+      `
+      UPDATE purchase_invoices
+
+      SET due_date = ?
+
+      WHERE id = ?
+      `,
+    ).run(dueDate, purchaseId)
 
     const insertItem = db.prepare(`
       INSERT INTO purchase_items (
@@ -446,6 +511,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       paid_amount: paidAmount,
       remaining_amount: remainingAmount,
       payment_status: paymentStatus,
+      due_date: dueDate,
       shift_id: openShift?.id ?? null,
     }
   })
@@ -1031,6 +1097,29 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       Number(purchase.remaining_amount || 0),
     )
 
+    const preserveDueDate =
+      oldRemainingAmount > 0 && oldSupplierId === nextSupplierId
+
+    let dueDate: string | null = null
+
+    if (preserveDueDate) {
+      const storedDueDate = String(purchase.due_date || '').trim()
+
+      if (storedDueDate && !/^\d{4}-\d{2}-\d{2}$/.test(storedDueDate)) {
+        throw new Error('تاريخ استحقاق فاتورة الشراء المحفوظ غير صحيح')
+      }
+
+      dueDate = storedDueDate || null
+    } else if (remainingAmount > 0) {
+      dueDate = calculatePurchaseDueDate(
+        db,
+        businessDate,
+        nextSupplier.credit_days == null
+          ? null
+          : Number(nextSupplier.credit_days),
+      )
+    }
+
     const oldTotalAmount = roundMoney(Number(purchase.total_amount || 0))
 
     const oldPaymentMethod = resolveCashAccount(
@@ -1346,6 +1435,16 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       purchaseId,
     )
 
+    db.prepare(
+      `
+      UPDATE purchase_invoices
+
+      SET due_date = ?
+
+      WHERE id = ?
+      `,
+    ).run(dueDate, purchaseId)
+
     const insertItem = db.prepare(
       `
         INSERT INTO purchase_items (
@@ -1509,7 +1608,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       remaining_amount: remainingAmount,
 
       payment_status: paymentStatus,
-
+      due_date: dueDate,
       items_count: preparedItems.length,
 
       shift_id: nextShiftId,
@@ -4420,7 +4519,7 @@ export function getSupplierStatement(
       purchase_id: purchase.id,
 
       payment_status: purchase.payment_status,
-
+      due_date: purchase.due_date ?? null,
       notes: purchase.notes,
 
       created_at: purchase.created_at,
@@ -4481,6 +4580,8 @@ export function getSupplierStatement(
 
   const aging = getSupplierAgingSummary(id)
 
+  const due = getSupplierDueSummary(id)
+
   return {
     supplier,
     purchases,
@@ -4510,6 +4611,7 @@ export function getSupplierStatement(
       ).length,
 
       aging,
+      due,
     },
   }
 }
