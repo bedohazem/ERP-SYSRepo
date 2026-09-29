@@ -49,6 +49,26 @@ type DashboardState = {
   overview: ReportsData
 }
 
+type DashboardDueSummary = {
+  overdue: number
+  due_today: number
+  due_soon: number
+  without_due_date: number
+  total_open: number
+}
+
+type AdminCashFlowAlerts = {
+  customers: DashboardDueSummary
+
+  suppliers: DashboardDueSummary
+
+  near_term: {
+    customer_receivables: number
+    supplier_payables: number
+    net: number
+  }
+}
+
 type CashierDashboardSummary = {
   date: string
 
@@ -194,11 +214,39 @@ const emptyDashboard: DashboardState = {
   overview: emptyReports,
 }
 
+const emptyDueSummary: DashboardDueSummary = {
+  overdue: 0,
+  due_today: 0,
+  due_soon: 0,
+  without_due_date: 0,
+  total_open: 0,
+}
+
+const emptyAdminCashFlowAlerts: AdminCashFlowAlerts = {
+  customers: {
+    ...emptyDueSummary,
+  },
+
+  suppliers: {
+    ...emptyDueSummary,
+  },
+
+  near_term: {
+    customer_receivables: 0,
+    supplier_payables: 0,
+    net: 0,
+  },
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
   const isCashier = user?.role !== 'admin'
   const [data, setData] = useState<DashboardState>(emptyDashboard)
+
+  const [cashFlowAlerts, setCashFlowAlerts] = useState<AdminCashFlowAlerts>(
+    emptyAdminCashFlowAlerts,
+  )
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [lastUpdated, setLastUpdated] = useState('')
@@ -225,7 +273,7 @@ export default function DashboardPage() {
 
         setCashierSummary(result)
       } else {
-        const [today, month, overview] = await Promise.all([
+        const [today, month, overview, alerts] = await Promise.all([
           window.api.getReportsSummary({
             date_from: todayKey,
 
@@ -239,6 +287,8 @@ export default function DashboardPage() {
           }),
 
           window.api.getReportsSummary(),
+
+          window.api.getAdminCashFlowAlerts(),
         ])
 
         setData({
@@ -246,6 +296,8 @@ export default function DashboardPage() {
           month,
           overview,
         })
+
+        setCashFlowAlerts(alerts)
       }
 
       setLastUpdated(
@@ -262,6 +314,8 @@ export default function DashboardPage() {
         setCashierSummary(emptyCashierDashboard)
       } else {
         setData(emptyDashboard)
+
+        setCashFlowAlerts(emptyAdminCashFlowAlerts)
       }
 
       setMessage('حدث خطأ أثناء تحميل لوحة التحكم')
@@ -468,6 +522,90 @@ export default function DashboardPage() {
         />
       </section>
 
+      <section className="glass-card" style={cardStyle}>
+        <SectionHeader
+          title="تنبيهات التدفق النقدي"
+          subtitle="المتأخر منفصل عن توقعات التدفق؛ صافي التدفق القريب يحسب اليوم + الـ7 أيام القادمة"
+        />
+
+        <div
+          style={{
+            ...statsGridStyle,
+            marginTop: '16px',
+          }}
+        >
+          <StatCard
+            icon="📥"
+            title="مستحق لنا من العملاء اليوم"
+            value={money(cashFlowAlerts.customers.due_today)}
+            subtitle="اضغط لفتح صفحة العملاء"
+            tone={cashFlowAlerts.customers.due_today > 0 ? 'blue' : 'green'}
+            onClick={() => navigate('/customers')}
+          />
+
+          <StatCard
+            icon="⏰"
+            title="متأخر عند العملاء"
+            value={money(cashFlowAlerts.customers.overdue)}
+            subtitle="مبالغ تجاوزت موعد الاستحقاق"
+            tone={cashFlowAlerts.customers.overdue > 0 ? 'red' : 'green'}
+            onClick={() => navigate('/customers')}
+          />
+
+          <StatCard
+            icon="📆"
+            title="مستحق لنا من العملاء خلال 7 أيام"
+            value={money(cashFlowAlerts.customers.due_soon)}
+            subtitle="تحصيلات متوقعة بعد اليوم وحتى 7 أيام"
+            tone={cashFlowAlerts.customers.due_soon > 0 ? 'violet' : 'green'}
+            onClick={() => navigate('/customers')}
+          />
+
+          <StatCard
+            icon="📤"
+            title="علينا للموردين اليوم"
+            value={money(cashFlowAlerts.suppliers.due_today)}
+            subtitle="اضغط لفتح صفحة الموردين"
+            tone={cashFlowAlerts.suppliers.due_today > 0 ? 'amber' : 'green'}
+            onClick={() => navigate('/suppliers')}
+          />
+
+          <StatCard
+            icon="🚨"
+            title="متأخر سداد للموردين"
+            value={money(cashFlowAlerts.suppliers.overdue)}
+            subtitle="مبالغ تجاوزت موعد السداد"
+            tone={cashFlowAlerts.suppliers.overdue > 0 ? 'red' : 'green'}
+            onClick={() => navigate('/suppliers')}
+          />
+
+          <StatCard
+            icon="🗓️"
+            title="علينا للموردين خلال 7 أيام"
+            value={money(cashFlowAlerts.suppliers.due_soon)}
+            subtitle="مدفوعات متوقعة بعد اليوم وحتى 7 أيام"
+            tone={cashFlowAlerts.suppliers.due_soon > 0 ? 'amber' : 'green'}
+            onClick={() => navigate('/suppliers')}
+          />
+
+          <StatCard
+            icon="⚖️"
+            title="صافي التدفق القريب"
+            value={money(cashFlowAlerts.near_term.net)}
+            subtitle={`تحصيلات: ${money(
+              cashFlowAlerts.near_term.customer_receivables,
+            )} • مدفوعات: ${money(cashFlowAlerts.near_term.supplier_payables)}`}
+            tone={
+              cashFlowAlerts.near_term.net > 0
+                ? 'green'
+                : cashFlowAlerts.near_term.net < 0
+                  ? 'red'
+                  : 'slate'
+            }
+          />
+        </div>
+      </section>
+
       <section style={mainGridStyle}>
         <div className="glass-card" style={cardStyle}>
           <SectionHeader
@@ -610,17 +748,39 @@ function StatCard({
   value,
   subtitle,
   tone,
+  onClick,
 }: {
   icon: string
   title: string
   value: string
   subtitle: string
   tone: 'blue' | 'violet' | 'green' | 'red' | 'amber' | 'slate'
+  onClick?: () => void
 }) {
   const toneStyle = toneStyles[tone]
 
   return (
-    <div className="glass-card hover-lift" style={statCardStyle}>
+    <div
+      className="glass-card hover-lift"
+      style={{
+        ...statCardStyle,
+        cursor: onClick ? 'pointer' : undefined,
+      }}
+      onClick={onClick}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+
+                onClick()
+              }
+            }
+          : undefined
+      }
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
       <div
         style={{
           ...iconBoxStyle,

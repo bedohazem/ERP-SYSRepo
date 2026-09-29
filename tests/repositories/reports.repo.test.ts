@@ -15,6 +15,7 @@ import {
   recordLiabilityPayment,
 } from '../../src/main/database/repositories/liabilities.repo'
 import {
+  getAdminCashFlowAlerts,
   getCashierDashboardSummary,
   getReportsSummary,
 } from '../../src/main/database/repositories/reports.repo'
@@ -208,6 +209,144 @@ describe('reports repository', () => {
     openCashShift({
       opening_counted_amount: 0,
       opened_by: 1,
+    })
+  })
+
+  it('builds admin cash-flow alerts from customer and supplier due dates', () => {
+    const db = getDb()
+
+    const customer = createTestCustomer('Cash Flow Customer', '01055559991')
+
+    const supplier = createSupplier({
+      name: 'Cash Flow Supplier',
+      phone: '01155559991',
+    }) as any
+
+    const dueDate = (modifier: string | null) => {
+      if (modifier === null) {
+        return null
+      }
+
+      const row = db
+        .prepare(
+          `
+          SELECT
+            date(
+              'now',
+              'localtime',
+              ?
+            ) AS value
+          `,
+        )
+        .get(modifier) as {
+        value: string
+      }
+
+      return row.value
+    }
+
+    const insertSale = db.prepare(
+      `
+      INSERT INTO sales (
+        type,
+        customer_id,
+        user_id,
+        business_date,
+        due_date,
+        sub_total,
+        grand_total,
+        paid,
+        remaining_amount,
+        payment_status,
+        payment_method
+      )
+
+      VALUES (
+        'sale',
+        ?,
+        1,
+        date(
+          'now',
+          'localtime'
+        ),
+        ?,
+        ?,
+        ?,
+        0,
+        ?,
+        'unpaid',
+        'store_cash'
+      )
+      `,
+    )
+
+    insertSale.run(customer.id, dueDate('-1 day'), 100, 100, 100)
+
+    insertSale.run(customer.id, dueDate('+0 days'), 200, 200, 200)
+
+    insertSale.run(customer.id, dueDate('+5 days'), 300, 300, 300)
+
+    insertSale.run(customer.id, dueDate('+15 days'), 400, 400, 400)
+
+    insertSale.run(customer.id, null, 500, 500, 500)
+
+    const insertPurchase = db.prepare(
+      `
+      INSERT INTO purchase_invoices (
+        supplier_id,
+        total_amount,
+        remaining_amount,
+        payment_status,
+        business_date,
+        due_date
+      )
+
+      VALUES (
+        ?,
+        ?,
+        ?,
+        'unpaid',
+        date(
+          'now',
+          'localtime'
+        ),
+        ?
+      )
+      `,
+    )
+
+    insertPurchase.run(supplier.id, 80, 80, dueDate('-1 day'))
+
+    insertPurchase.run(supplier.id, 90, 90, dueDate('+0 days'))
+
+    insertPurchase.run(supplier.id, 110, 110, dueDate('+5 days'))
+
+    insertPurchase.run(supplier.id, 130, 130, dueDate('+15 days'))
+
+    insertPurchase.run(supplier.id, 120, 120, null)
+
+    const alerts = getAdminCashFlowAlerts()
+
+    expect(alerts.customers).toEqual({
+      overdue: 100,
+      due_today: 200,
+      due_soon: 300,
+      without_due_date: 500,
+      total_open: 1500,
+    })
+
+    expect(alerts.suppliers).toEqual({
+      overdue: 80,
+      due_today: 90,
+      due_soon: 110,
+      without_due_date: 120,
+      total_open: 530,
+    })
+
+    expect(alerts.near_term).toEqual({
+      customer_receivables: 500,
+      supplier_payables: 200,
+      net: 300,
     })
   })
 

@@ -162,6 +162,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('settings:run-auto-backup-now', input),
 
   getReportsSummary: (input) => ipcRenderer.invoke('reports:summary', input),
+
+  getAdminCashFlowAlerts: () =>
+    ipcRenderer.invoke('reports:admin-cash-flow-alerts'),
+
   getCashierDashboardSummary: () =>
     ipcRenderer.invoke('reports:cashier-dashboard'),
   getInventoryList: (input) => ipcRenderer.invoke('inventory:list', input),

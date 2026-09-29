@@ -60,6 +60,18 @@ type ReceiptPrintSettings = {
   receipt_font_size_px: number
 }
 
+type AdminCashFlowDueSummary = {
+  overdue: number
+
+  due_today: number
+
+  due_soon: number
+
+  without_due_date: number
+
+  total_open: number
+}
+
 export {}
 declare global {
   interface Window {
@@ -1578,6 +1590,20 @@ declare global {
       // =========================
       // Reports
       // =========================
+
+      getAdminCashFlowAlerts: () => Promise<{
+        customers: AdminCashFlowDueSummary
+
+        suppliers: AdminCashFlowDueSummary
+
+        near_term: {
+          customer_receivables: number
+
+          supplier_payables: number
+
+          net: number
+        }
+      }>
 
       getCashierDashboardSummary: () => Promise<{
         date: string

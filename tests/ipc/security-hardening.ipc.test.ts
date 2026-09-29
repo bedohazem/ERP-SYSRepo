@@ -37,6 +37,7 @@ import { registerSettingsIpc } from '../../src/main/ipc/settings.ipc'
 import { registerCashDrawerIpc } from '../../src/main/ipc/cash-drawer.ipc'
 
 import { registerPrintIpc } from '../../src/main/ipc/print.ipc'
+import { registerReportsIpc } from '../../src/main/ipc/reports.ipc'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: any[]) => any
 
@@ -84,6 +85,7 @@ describe('IPC security hardening', () => {
     registerSettingsIpc()
     registerCashDrawerIpc()
     registerPrintIpc()
+    registerReportsIpc()
   })
 
   beforeEach(() => {
@@ -282,6 +284,46 @@ describe('IPC security hardening', () => {
         html: '<html></html>',
       }),
     ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+  })
+
+  it('keeps admin cash-flow alerts true admin only', async () => {
+    const cashier = createUser(
+      'Cash Flow Cashier',
+      'cash_flow_cashier',
+      '5678',
+      'cashier',
+    )
+
+    const cashierPermissions = new Set(getEffectiveUserPermissions(cashier.id))
+
+    cashierPermissions.add('reports.view')
+
+    setUserPermissions(cashier.id, [...cashierPermissions])
+
+    const cashierClient = makeClient()
+
+    startAuthSession(cashierClient.event, cashier.id)
+
+    await expect(
+      invoke(cashierClient.event, 'reports:admin-cash-flow-alerts'),
+    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+
+    const admin = findUserByUsername('admin')!
+
+    const adminClient = makeClient()
+
+    startAuthSession(adminClient.event, admin.id)
+
+    const result = await invoke(
+      adminClient.event,
+      'reports:admin-cash-flow-alerts',
+    )
+
+    expect(result.customers.due_today).toBe(0)
+
+    expect(result.suppliers.due_today).toBe(0)
+
+    expect(result.near_term.net).toBe(0)
   })
 
   it('keeps full administration reads available to admins', async () => {

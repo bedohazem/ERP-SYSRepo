@@ -249,7 +249,10 @@ function getAgingSummaryForCustomer(
   }
 }
 
-function getDueSummaryForCustomer(customerId?: number | null, search?: string) {
+export function getCustomerDueSummary(
+  customerId?: number | null,
+  search?: string,
+) {
   const db = getDb()
 
   const id = Number(customerId || 0)
@@ -636,7 +639,7 @@ export function listCustomers(input?: {
 
   const aging = getAgingSummaryForCustomer(null, search)
 
-  const due = getDueSummaryForCustomer(null, search)
+  const due = getCustomerDueSummary(null, search)
 
   return {
     rows,
@@ -2534,7 +2537,7 @@ export function getCustomerStatement(
 
   const aging = getAgingSummaryForCustomer(id)
 
-  const due = getDueSummaryForCustomer(id)
+  const due = getCustomerDueSummary(id)
 
   const balance = Number(customer.balance || 0)
 

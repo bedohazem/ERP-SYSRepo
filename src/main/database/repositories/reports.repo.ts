@@ -1,4 +1,6 @@
 import { getDb } from '../db'
+import { getCustomerDueSummary } from './customers.repo'
+import { getSupplierDueSummary } from './suppliers.repo'
 
 type ReportFilter = {
   date_from?: string
@@ -72,6 +74,32 @@ function getCashAccountLabel(account: string) {
       return 'ماكينة فوري'
     default:
       return account || 'غير محدد'
+  }
+}
+
+export function getAdminCashFlowAlerts() {
+  const customers = getCustomerDueSummary()
+
+  const suppliers = getSupplierDueSummary()
+
+  const customerReceivables = reportMoney(
+    customers.due_today + customers.due_soon,
+  )
+
+  const supplierPayables = reportMoney(suppliers.due_today + suppliers.due_soon)
+
+  return {
+    customers,
+
+    suppliers,
+
+    near_term: {
+      customer_receivables: customerReceivables,
+
+      supplier_payables: supplierPayables,
+
+      net: reportMoney(customerReceivables - supplierPayables),
+    },
   }
 }
 
