@@ -279,6 +279,11 @@ describe('database migrations', () => {
 
         name: 'credit-terms-due-dates',
       },
+      {
+        version: 10,
+
+        name: 'stock-movement-actors',
+      },
     ])
 
     const userPermissionColumns = database
@@ -383,7 +388,23 @@ describe('database migrations', () => {
     }>
 
     expect(stockMovementColumns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(['unit_cost', 'cost_value']),
+      expect.arrayContaining(['unit_cost', 'cost_value', 'created_by']),
+    )
+
+    const stockMovementIndexes = database
+      .prepare(
+        `
+        PRAGMA index_list(
+          stock_movements
+        )
+      `,
+      )
+      .all() as Array<{
+      name: string
+    }>
+
+    expect(stockMovementIndexes.map((index) => index.name)).toContain(
+      'idx_stock_movements_created_by',
     )
 
     const heldSaleColumns = database

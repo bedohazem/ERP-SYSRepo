@@ -301,6 +301,7 @@ export function getDb(): Database.Database {
         reference_id INTEGER,
         reference_type TEXT,
         notes TEXT,
+        created_by INTEGER REFERENCES users(id),
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -2068,6 +2069,7 @@ export function getDb(): Database.Database {
           ).run()
         },
       },
+
       {
         version: 5,
         name: 'user-custom-permissions',
@@ -2104,6 +2106,7 @@ export function getDb(): Database.Database {
           `)
         },
       },
+
       {
         version: 6,
         name: 'multi-promotion-snapshots',
@@ -2192,6 +2195,7 @@ export function getDb(): Database.Database {
         `)
         },
       },
+
       {
         version: 7,
         name: 'held-sales',
@@ -2280,6 +2284,7 @@ export function getDb(): Database.Database {
           `)
         },
       },
+
       {
         version: 8,
         name: 'customer-credit-aging',
@@ -2322,6 +2327,7 @@ export function getDb(): Database.Database {
           `)
         },
       },
+
       {
         version: 9,
         name: 'credit-terms-due-dates',
@@ -2353,6 +2359,26 @@ export function getDb(): Database.Database {
               remaining_amount,
               cancelled_at
             );
+          `)
+        },
+      },
+
+      {
+        version: 10,
+        name: 'stock-movement-actors',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'stock_movements',
+            'created_by',
+            'INTEGER REFERENCES users(id)',
+          )
+
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_stock_movements_created_by
+            ON stock_movements(created_by);
           `)
         },
       },

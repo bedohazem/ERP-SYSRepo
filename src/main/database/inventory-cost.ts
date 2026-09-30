@@ -44,6 +44,8 @@ type StockMovementInput = {
   reference_id?: number | null
   reference_type: string
 
+  created_by: number | null
+
   notes?: string | null
 }
 
@@ -184,7 +186,7 @@ function insertCostedMovement(
 
     reference_id?: number | null
     reference_type: string
-
+    created_by: number | null
     notes?: string | null
   },
 ) {
@@ -203,6 +205,8 @@ function insertCostedMovement(
         reference_id,
         reference_type,
 
+        created_by,
+
         notes
       )
 
@@ -210,6 +214,7 @@ function insertCostedMovement(
         ?, ?, ?,
         ?, ?,
         ?, ?,
+        ?,
         ?
       )
       `,
@@ -227,7 +232,7 @@ function insertCostedMovement(
       input.reference_id ?? null,
 
       input.reference_type,
-
+      input.created_by ? Number(input.created_by) : null,
       input.notes?.trim() || null,
     )
 }
@@ -281,7 +286,7 @@ export function receiveStockAtCost(
     reference_id: input.reference_id,
 
     reference_type: input.reference_type,
-
+    created_by: input.created_by,
     notes: input.notes,
   })
 
@@ -351,7 +356,7 @@ export function issueStockAtAverageCost(
     reference_id: input.reference_id,
 
     reference_type: input.reference_type,
-
+    created_by: input.created_by,
     notes: input.notes,
   })
 
@@ -439,7 +444,7 @@ export function issueStockAtCost(
     reference_id: input.reference_id,
 
     reference_type: input.reference_type,
-
+    created_by: input.created_by,
     notes: input.notes,
   })
 

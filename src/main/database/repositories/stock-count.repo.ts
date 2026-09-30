@@ -618,7 +618,7 @@ export function approveStockCountSession(input: {
           reference_id: sessionId,
 
           reference_type: 'stock_count',
-
+          created_by: input.actor_id ?? null,
           notes: `تسوية جرد #${sessionId}: زيادة ${diff}`,
         })
       } else {
@@ -633,7 +633,7 @@ export function approveStockCountSession(input: {
           reference_id: sessionId,
 
           reference_type: 'stock_count',
-
+          created_by: input.actor_id ?? null,
           notes: `تسوية جرد #${sessionId}: عجز ${Math.abs(diff)}`,
         })
       }

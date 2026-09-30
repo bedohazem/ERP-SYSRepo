@@ -418,6 +418,7 @@ export function adjustVariantStock(input: {
   variant_id: number
   target_stock: number
   notes?: string | null
+  actor_id?: number | null
 }) {
   const db = getDb()
 
@@ -479,7 +480,7 @@ export function adjustVariantStock(input: {
         quantity: diff,
 
         unit_cost: inboundUnitCost,
-
+        created_by: input.actor_id ?? null,
         reference_id: null,
 
         reference_type: 'manual_adjust',
@@ -493,7 +494,7 @@ export function adjustVariantStock(input: {
         variant_id: variantId,
 
         quantity: Math.abs(diff),
-
+        created_by: input.actor_id ?? null,
         reference_id: null,
 
         reference_type: 'manual_adjust',
@@ -581,7 +582,10 @@ export function getStockMovements(
         sm.reference_id,
         sm.reference_type,
         sm.notes,
+        sm.created_by,
         sm.created_at,
+
+        creator.name AS created_by_name,
 
         p.name AS product_name,
         v.barcode,
@@ -595,6 +599,9 @@ export function getStockMovements(
 
       JOIN products p
         ON p.id = v.product_id
+
+      LEFT JOIN users creator
+        ON creator.id = sm.created_by
 
       ${whereSql}
 

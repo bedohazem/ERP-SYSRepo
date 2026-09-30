@@ -36,6 +36,7 @@ export type ProductVariantInput = {
 }
 
 export type CreateProductInput = {
+  actor_id?: number | null
   name: string
   category_id: number | null
   image_path?: string | null
@@ -806,7 +807,7 @@ export function createProduct(input: CreateProductInput) {
           quantity: openingQty,
 
           unit_cost: Number(variant.buy_price || 0),
-
+          created_by: input.actor_id ?? null,
           reference_id: productId,
 
           reference_type: 'opening_stock',
@@ -825,6 +826,7 @@ export function createProduct(input: CreateProductInput) {
 }
 
 export type AddProductVariantInput = {
+  actor_id?: number | null
   product_id: number
   barcode: string
   size: string
@@ -896,7 +898,7 @@ export function addProductVariant(input: AddProductVariantInput) {
         quantity: openingQty,
 
         unit_cost: Number(input.buy_price || 0),
-
+        created_by: input.actor_id ?? null,
         reference_id: input.product_id,
 
         reference_type: 'opening_stock',

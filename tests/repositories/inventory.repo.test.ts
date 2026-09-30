@@ -40,6 +40,8 @@ type StockMovementTestRow = {
   reference_id: number | null
   reference_type: string | null
   notes: string | null
+  created_by: number | null
+  created_by_name: string | null
   created_at: string
   product_name: string
   barcode: string
@@ -386,6 +388,47 @@ describe('inventory repository', () => {
 
     expect(movements[0].cost_value).toBe(600)
     expect(movements[0].notes).toBe('Manual decrease')
+  })
+
+  it('stores the actor who created a manual stock movement', () => {
+    const db = getDb()
+
+    db.prepare(
+      `
+    INSERT INTO users (
+      id,
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+
+    VALUES (?, ?, ?, ?, 'admin', 1)
+    `,
+    ).run(77, 'Inventory Actor', 'inventory_actor', 'test-password')
+
+    const variant = seedInventoryProduct({
+      barcode: 'ACTOR-ADJUST-001',
+      openingQty: 10,
+    })
+
+    adjustVariantStock({
+      variant_id: variant.variant_id,
+      target_stock: 13,
+      notes: 'Actor tracking test',
+      actor_id: 77,
+    })
+
+    const movements = getStockMovementRows({
+      variant_id: variant.variant_id,
+    })
+
+    expect(movements[0].reference_type).toBe('manual_adjust')
+
+    expect(movements[0].created_by).toBe(77)
+
+    expect(movements[0].created_by_name).toBe('Inventory Actor')
   })
 
   it('does not create stock movement when target stock equals current stock', () => {

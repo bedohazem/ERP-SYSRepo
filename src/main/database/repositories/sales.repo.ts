@@ -1324,7 +1324,7 @@ function createSaleInternal(
         reference_id: saleId,
 
         reference_type: 'sale',
-
+        created_by: input.user_id,
         notes: `بيع فاتورة رقم ${saleId}`,
       })
     }
@@ -2985,7 +2985,7 @@ export function createSaleReturn(input: {
         reference_id: returnId,
 
         reference_type: 'sale_return',
-
+        created_by: userId,
         notes: `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
       })
 
@@ -3530,7 +3530,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         reference_id: saleId,
 
         reference_type: 'sale_edit_reversal',
-
+        created_by: actorId,
         notes: `إرجاع مخزون الفاتورة #${saleId} قبل التعديل`,
       })
     }
@@ -3904,7 +3904,7 @@ export function cancelSaleInvoice(input: {
         reference_id: saleId,
 
         reference_type: 'sale_cancel',
-
+        created_by: input.actor_id ?? null,
         notes: `إرجاع مخزون بسبب إلغاء فاتورة بيع رقم ${saleId}`,
       })
     }
@@ -4216,7 +4216,7 @@ export function cancelSaleReturn(input: {
         reference_id: returnId,
 
         reference_type: 'sale_return_cancel',
-
+        created_by: input.actor_id ?? null,
         notes: `عكس مخزون مرتجع بيع ملغي ${returnCode}`,
       })
     }

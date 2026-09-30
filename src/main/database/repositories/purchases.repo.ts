@@ -444,7 +444,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         quantity: item.quantity,
 
         unit_cost: item.unitCost,
-
+        created_by: actorId || null,
         reference_id: purchaseId,
 
         reference_type: 'purchase',
@@ -1303,7 +1303,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
           quantity: newQuantity,
 
           unit_cost: newUnitCost,
-
+          created_by: actorId || null,
           reference_id: purchaseId,
 
           reference_type: 'purchase_edit',
@@ -1319,7 +1319,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
           quantity: Number(oldItem.quantity || 0),
 
           unit_cost: Number(oldItem.unit_cost || 0),
-
+          created_by: actorId || null,
           reference_id: purchaseId,
 
           reference_type: 'purchase_edit_reversal',
@@ -1623,7 +1623,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
   const db = getDb()
   const purchaseId = Number(input.purchase_id)
-
+  const actorId = Number(input.actor_id || 0)
   if (!purchaseId) {
     throw new Error('رقم فاتورة الشراء غير صحيح')
   }
@@ -1738,7 +1738,7 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
          * تكلفة الفاتورة نفسها.
          */
         unit_cost: Number(item.unit_cost || 0),
-
+        created_by: actorId || null,
         reference_id: purchaseId,
 
         reference_type: 'purchase_cancel',
@@ -1749,8 +1749,6 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
 
     const totalAmount = Number(purchase.total_amount || 0)
     const paidAmount = Number(purchase.paid_amount || 0)
-
-    const actorId = Number(input.actor_id || 0)
 
     const paymentMethod = resolveCashAccount(purchase.payment_method || 'cash')
 
@@ -2071,7 +2069,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
          * بسعر فاتورة الشراء الأصلية.
          */
         unit_cost: item.unitCost,
-
+        created_by: actorId || null,
         reference_id: returnId,
 
         reference_type: 'purchase_return',
@@ -2342,7 +2340,7 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
          * نفس قيمة التكلفة التي خرجت.
          */
         unit_cost: Number(item.unit_cost || 0),
-
+        created_by: actorId || null,
         reference_id: returnId,
 
         reference_type: 'purchase_return_cancel',

@@ -521,6 +521,26 @@ describe('stock count repository', () => {
     expect(getVariantStock(matchedVariant.variant_id)).toBe(7)
     expect(getStockMovementCountForSession(session.id)).toBe(2)
 
+    const countMovements = getDb()
+      .prepare(
+        `
+        SELECT created_by
+        FROM stock_movements
+        WHERE reference_type = 'stock_count'
+          AND reference_id = ?
+        ORDER BY id ASC
+        `,
+      )
+      .all(session.id) as Array<{
+      created_by: number | null
+    }>
+
+    expect(countMovements).toHaveLength(2)
+
+    expect(
+      countMovements.every((movement) => Number(movement.created_by) === 1),
+    ).toBe(true)
+
     const approved = getStockCountSession(session.id) as any
 
     expect(approved.session.status).toBe('approved')
@@ -767,7 +787,7 @@ describe('stock count repository', () => {
       reference_id: null,
 
       reference_type: 'test_restock',
-
+      created_by: null,
       notes: 'Change average after count',
     })
 

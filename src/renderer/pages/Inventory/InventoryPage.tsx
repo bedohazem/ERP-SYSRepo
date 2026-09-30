@@ -29,6 +29,8 @@ type MovementRow = {
   reference_id?: number | null
   reference_type?: string | null
   notes?: string | null
+  created_by?: number | null
+  created_by_name?: string | null
   created_at: string
   product_name: string
   barcode?: string | null
@@ -876,7 +878,7 @@ export default function InventoryPage() {
             className="theme-modal-card"
             style={{
               ...modalStyle,
-              width: '900px',
+              width: '1000px',
             }}
           >
             <div
@@ -930,7 +932,7 @@ export default function InventoryPage() {
                     <th style={thStyle}>التاريخ</th>
                     <th style={thStyle}>النوع</th>
                     <th style={thStyle}>الكمية</th>
-                    {/* <th style={thStyle}>المرجع</th> */}
+                    <th style={thStyle}>بواسطة</th>
                     <th style={thStyle}>ملاحظات</th>
                   </tr>
                 </thead>
@@ -972,10 +974,12 @@ export default function InventoryPage() {
                           {Number(movement.signed_quantity || 0) > 0 ? '+' : ''}
                           {Number(movement.signed_quantity || 0)}
                         </td>
-                        {/* <td style={tdStyle}>
-                          {movement.reference_type || '—'}
-                          {movement.reference_id ? ` #${movement.reference_id}` : ''}
-                        </td> */}
+                        <td style={tdStyle}>
+                          {movement.created_by_name ||
+                            (movement.created_by
+                              ? `مستخدم #${movement.created_by}`
+                              : '—')}
+                        </td>
                         <td style={tdStyle}>{movement.notes || '—'}</td>
                       </tr>
                     ))}

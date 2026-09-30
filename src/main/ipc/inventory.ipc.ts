@@ -78,7 +78,10 @@ export function registerInventoryIpc(): void {
   ipcMain.handle('inventory:adjust-stock', (event, input) => {
     const actorId = requirePermission(event, 'inventory.adjust').id
 
-    const result = adjustVariantStock(input)
+    const result = adjustVariantStock({
+      ...input,
+      actor_id: actorId,
+    })
 
     if (Number(result.diff || 0) !== 0) {
       logAction({

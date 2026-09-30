@@ -170,7 +170,10 @@ export function registerProductsIpc(): void {
     try {
       const actorId = requirePermission(event, 'products.manage').id
 
-      const result = createProduct(input)
+      const result = createProduct({
+        ...input,
+        actor_id: actorId,
+      })
 
       logAction({
         actor_id: actorId,
@@ -196,7 +199,10 @@ export function registerProductsIpc(): void {
     try {
       const actorId = requirePermission(event, 'products.manage').id
 
-      const result = addProductVariant(input)
+      const result = addProductVariant({
+        ...input,
+        actor_id: actorId,
+      })
 
       logAction({
         actor_id: actorId,

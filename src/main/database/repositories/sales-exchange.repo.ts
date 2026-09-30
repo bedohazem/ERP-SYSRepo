@@ -1405,7 +1405,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         reference_id: exchangeId,
 
         reference_type: 'sale_exchange',
-
+        created_by: userId,
         notes: `إرجاع صنف قديم بسبب استبدال ${exchangeCode}`,
       })
     }
@@ -1432,7 +1432,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         reference_id: exchangeId,
 
         reference_type: 'sale_exchange',
-
+        created_by: userId,
         notes: `صرف صنف بديل بسبب استبدال ${exchangeCode}`,
       })
 
@@ -2488,7 +2488,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         reference_id: exchangeId,
 
         reference_type: 'sale_exchange_cancel',
-
+        created_by: input.actor_id ?? null,
         notes: `إرجاع الصنف البديل بسبب إلغاء ${exchangeCode}`,
       })
     }
@@ -2511,7 +2511,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         reference_id: exchangeId,
 
         reference_type: 'sale_exchange_cancel',
-
+        created_by: input.actor_id ?? null,
         notes: `إعادة صرف الصنف السابق بسبب إلغاء ${exchangeCode}`,
       })
     }
