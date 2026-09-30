@@ -918,14 +918,6 @@ export function addProductVariant(input: AddProductVariantInput) {
   }
 }
 
-export type UpdateProductInput = {
-  id: number
-  name: string
-  category_id: number | null
-  description?: string | null
-  image_path?: string | null
-}
-
 export type UpdateVariantInput = {
   id: number
   barcode: string
@@ -940,70 +932,160 @@ export type UpdateVariantInput = {
   is_active?: number
 }
 
-export function updateProduct(input: UpdateProductInput) {
-  const db = getDb()
-  const cleanName = input.name?.trim()
-  if (!cleanName) {
-    throw new Error('اسم المنتج مطلوب')
+export type UpdateProductInput = {
+  id: number
+  name: string
+  category_id: number | null
+  description?: string | null
+  image_path?: string | null
+  variants?: UpdateVariantInput[]
+}
+
+function updateVariantInsideTransaction(
+  db: ReturnType<typeof getDb>,
+  input: UpdateVariantInput,
+  expectedProductId?: number,
+) {
+  const variantId = Number(input.id)
+
+  if (!variantId) {
+    throw new Error('الصنف غير صحيح')
   }
+
+  const existingVariant = db
+    .prepare(
+      `
+      SELECT
+        id,
+        product_id
+      FROM product_variants
+      WHERE id = ?
+      LIMIT 1
+      `,
+    )
+    .get(variantId) as
+    | {
+        id: number
+        product_id: number
+      }
+    | undefined
+
+  if (!existingVariant) {
+    throw new Error('الصنف غير موجود')
+  }
+
+  if (
+    expectedProductId &&
+    Number(existingVariant.product_id) !== Number(expectedProductId)
+  ) {
+    throw new Error('أحد الأصناف لا يتبع المنتج المحدد')
+  }
+
+  const cleanBarcode = String(input.barcode || '').trim()
+
+  ensureBarcodeAvailable(cleanBarcode, variantId)
+  validateVariantNumbers(input)
+
+  const nextActive = input.is_active ?? 1
+
   db.prepare(
     `
-    UPDATE products
+    UPDATE product_variants
     SET
-      name = ?,
-      category_id = ?,
-      description = ?,
-      image_path = ?
+      barcode = ?,
+      size = ?,
+      color = ?,
+      buy_price = ?,
+      sell_price = ?,
+      discount_price = ?,
+      min_stock = ?,
+      is_active = ?
     WHERE id = ?
     `,
   ).run(
-    cleanName,
-    input.category_id,
-    input.description ?? null,
-    input.image_path ?? null,
-    input.id,
+    cleanBarcode,
+    input.size.trim(),
+    input.color.trim(),
+    input.buy_price,
+    input.sell_price,
+    input.discount_price ?? null,
+    input.min_stock,
+    nextActive,
+    variantId,
   )
 
-  return { success: true }
+  syncVariantOpenStockCountMembership(db, variantId)
+}
+
+export function updateProduct(input: UpdateProductInput) {
+  const db = getDb()
+
+  const productId = Number(input.id)
+  const cleanName = input.name?.trim()
+
+  if (!productId) {
+    throw new Error('المنتج غير صحيح')
+  }
+
+  if (!cleanName) {
+    throw new Error('اسم المنتج مطلوب')
+  }
+
+  const variants = Array.isArray(input.variants) ? input.variants : []
+
+  const tx = db.transaction(() => {
+    const product = db
+      .prepare(
+        `
+        SELECT id
+        FROM products
+        WHERE id = ?
+        LIMIT 1
+        `,
+      )
+      .get(productId)
+
+    if (!product) {
+      throw new Error('المنتج غير موجود')
+    }
+
+    db.prepare(
+      `
+      UPDATE products
+      SET
+        name = ?,
+        category_id = ?,
+        description = ?,
+        image_path = ?
+      WHERE id = ?
+      `,
+    ).run(
+      cleanName,
+      input.category_id,
+      input.description ?? null,
+      input.image_path ?? null,
+      productId,
+    )
+
+    for (const variant of variants) {
+      updateVariantInsideTransaction(db, variant, productId)
+    }
+  })
+
+  tx()
+
+  return {
+    success: true,
+    productId,
+    variants_count: variants.length,
+  }
 }
 
 export function updateVariant(input: UpdateVariantInput) {
   const db = getDb()
 
-  const cleanBarcode = String(input.barcode || '').trim()
-  ensureBarcodeAvailable(cleanBarcode, input.id)
-  validateVariantNumbers(input)
-
-  const nextActive = input.is_active ?? 1
-
   const tx = db.transaction(() => {
-    db.prepare(
-      `
-      UPDATE product_variants
-      SET
-        barcode = ?,
-        size = ?,
-        color = ?,
-        buy_price = ?,
-        sell_price = ?,
-        discount_price = ?,
-        min_stock = ?,
-        is_active = ?
-      WHERE id = ?
-      `,
-    ).run(
-      cleanBarcode,
-      input.size.trim(),
-      input.color.trim(),
-      input.buy_price,
-      input.sell_price,
-      input.discount_price ?? null,
-      input.min_stock,
-      nextActive,
-      input.id,
-    )
-
-    syncVariantOpenStockCountMembership(db, Number(input.id))
+    updateVariantInsideTransaction(db, input)
   })
 
   tx()

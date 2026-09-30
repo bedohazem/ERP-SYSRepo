@@ -414,6 +414,112 @@ describe('product repository', () => {
     ).toThrow()
   })
 
+  it('rolls back product and variant edits when one variant update fails', () => {
+    const product = createProduct({
+      name: 'Atomic Original Product',
+      category_id: null,
+      variants: [
+        {
+          barcode: 'ATOMIC-001',
+          size: 'M',
+          color: 'Black',
+          buy_price: 100,
+          sell_price: 150,
+          min_stock: 5,
+          opening_qty: 2,
+        },
+        {
+          barcode: 'ATOMIC-002',
+          size: 'L',
+          color: 'White',
+          buy_price: 120,
+          sell_price: 180,
+          min_stock: 5,
+          opening_qty: 3,
+        },
+      ],
+    })
+
+    createProduct({
+      name: 'Atomic Other Product',
+      category_id: null,
+      variants: [
+        {
+          barcode: 'ATOMIC-DUPLICATE',
+          size: 'XL',
+          color: 'Blue',
+          buy_price: 200,
+          sell_price: 300,
+          min_stock: 5,
+          opening_qty: 1,
+        },
+      ],
+    })
+
+    const before = getProductVariants(
+      product.productId,
+    ) as ProductVariantTestRow[]
+
+    expect(() =>
+      updateProduct({
+        id: product.productId,
+        name: 'Atomic Changed Product',
+        category_id: null,
+        description: null,
+        image_path: null,
+
+        variants: [
+          {
+            id: before[0].id,
+            barcode: 'ATOMIC-001-CHANGED',
+            size: 'XXL',
+            color: 'Green',
+            buy_price: 999,
+            sell_price: 1200,
+            discount_price: null,
+            min_stock: 9,
+            is_active: 1,
+          },
+          {
+            id: before[1].id,
+            barcode: 'ATOMIC-DUPLICATE',
+            size: before[1].size,
+            color: before[1].color,
+            buy_price: before[1].buy_price,
+            sell_price: before[1].sell_price,
+            discount_price: before[1].discount_price,
+            min_stock: before[1].min_stock,
+            is_active: 1,
+          },
+        ],
+      }),
+    ).toThrow('مستخدم بالفعل')
+
+    expect(getProducts('Atomic Changed Product', true)).toHaveLength(0)
+
+    const originalProduct = getProducts('Atomic Original Product', true)
+
+    expect(originalProduct).toHaveLength(1)
+    expect(originalProduct[0].name).toBe('Atomic Original Product')
+
+    const after = getProductVariants(
+      product.productId,
+    ) as ProductVariantTestRow[]
+
+    expect(after).toHaveLength(2)
+
+    expect(after[0].barcode).toBe('ATOMIC-001')
+    expect(after[0].size).toBe('M')
+    expect(after[0].color).toBe('Black')
+    expect(after[0].buy_price).toBe(100)
+    expect(after[0].sell_price).toBe(150)
+    expect(after[0].min_stock).toBe(5)
+    expect(after[0].stock).toBe(2)
+
+    expect(after[1].barcode).toBe('ATOMIC-002')
+    expect(after[1].stock).toBe(3)
+  })
+
   it('keeps stock and inventory value when disabling a variant', () => {
     const product = createProduct({
       name: 'Disable Variant Product',

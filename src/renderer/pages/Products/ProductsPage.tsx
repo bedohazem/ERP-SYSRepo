@@ -1188,19 +1188,13 @@ export default function ProductsPage() {
         description: null,
         image_path: null,
         actor_id: currentUser?.id,
-      })
 
-      if (!productResult.success) {
-        showMessage('error', productResult.message || 'فشل تعديل المنتج')
-        return
-      }
-
-      for (const variant of editVariants) {
-        const variantResult = await window.api.updateVariant({
+        variants: editVariants.map((variant) => ({
           id: variant.id,
           barcode: variant.barcode.trim(),
           size: variant.size.trim(),
           color: variant.color.trim(),
+
           buy_price: Number(variant.buy_price),
           sell_price: Number(variant.sell_price),
 
@@ -1210,13 +1204,12 @@ export default function ProductsPage() {
 
           min_stock: Number(variant.min_stock || 5),
           is_active: variant.is_active,
-          actor_id: currentUser?.id,
-        })
+        })),
+      })
 
-        if (!variantResult.success) {
-          showMessage('error', variantResult.message || 'فشل تعديل أحد الأصناف')
-          return
-        }
+      if (!productResult.success) {
+        showMessage('error', productResult.message || 'فشل تعديل المنتج')
+        return
       }
 
       await loadData(productPage)

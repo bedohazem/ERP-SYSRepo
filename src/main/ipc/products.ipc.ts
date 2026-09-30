@@ -239,8 +239,32 @@ export function registerProductsIpc(): void {
         details: {
           name: input.name,
           category_id: input.category_id,
+          variants_count: Array.isArray(input.variants)
+            ? input.variants.length
+            : 0,
         },
       })
+
+      for (const variant of Array.isArray(input.variants)
+        ? input.variants
+        : []) {
+        logAction({
+          actor_id: actorId,
+          action: 'variant_updated',
+          entity: 'product_variants',
+          entity_id: variant.id,
+          details: {
+            product_id: input.id,
+            barcode: variant.barcode,
+            size: variant.size,
+            color: variant.color,
+            buy_price: variant.buy_price,
+            sell_price: variant.sell_price,
+            discount_price: variant.discount_price ?? null,
+            min_stock: variant.min_stock,
+          },
+        })
+      }
 
       return result
     } catch (error) {
