@@ -468,31 +468,14 @@ export function scanStockCountBarcode(input: {
       JOIN product_variants v ON v.id = sci.variant_id
       JOIN products p ON p.id = v.product_id
       WHERE sci.session_id = ?
-        AND (
-          IFNULL(v.barcode, '') = ?
-          OR p.name LIKE ?
-          OR IFNULL(v.size, '') LIKE ?
-          OR IFNULL(v.color, '') LIKE ?
-        )
-      ORDER BY
-        CASE WHEN IFNULL(v.barcode, '') = ? THEN 0 ELSE 1 END,
-        p.name ASC
+        AND IFNULL(v.barcode, '') = ?
       LIMIT 1
       `,
     )
-    .get(
-      sessionId,
-      barcode,
-      `%${barcode}%`,
-      `%${barcode}%`,
-      `%${barcode}%`,
-      barcode,
-    ) as any
+    .get(sessionId, barcode) as any
 
   if (!item) {
-    throw new Error(
-      'لم يتم العثور على صنف بهذا الباركود أو الاسم داخل جلسة الجرد',
-    )
+    throw new Error('لم يتم العثور على صنف بهذا الباركود داخل جلسة الجرد')
   }
 
   const nextActual = Number(item.actual_stock || 0) + quantity

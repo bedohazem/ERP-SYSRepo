@@ -394,7 +394,51 @@ describe('stock count repository', () => {
         session_id: session.id,
         barcode: 'NOTFOUND',
       }),
-    ).toThrow('لم يتم العثور على صنف بهذا الباركود أو الاسم داخل جلسة الجرد')
+    ).toThrow('لم يتم العثور على صنف بهذا الباركود داخل جلسة الجرد')
+  })
+
+  it('scans by exact barcode only and never falls back to name size or color', () => {
+    seedStockCountProduct({
+      name: 'FAKE-SCAN-NAME',
+      barcode: 'REAL-BARCODE-001',
+      openingQty: 10,
+      size: 'FAKE-SCAN-SIZE',
+      color: 'FAKE-SCAN-COLOR',
+    })
+
+    const session = createStockCountSession({
+      title: 'Exact Barcode Only',
+    })
+
+    expect(() =>
+      scanStockCountBarcode({
+        session_id: session.id,
+        barcode: 'FAKE-SCAN-NAME',
+      }),
+    ).toThrow('لم يتم العثور على صنف بهذا الباركود داخل جلسة الجرد')
+
+    expect(() =>
+      scanStockCountBarcode({
+        session_id: session.id,
+        barcode: 'FAKE-SCAN-SIZE',
+      }),
+    ).toThrow('لم يتم العثور على صنف بهذا الباركود داخل جلسة الجرد')
+
+    expect(() =>
+      scanStockCountBarcode({
+        session_id: session.id,
+        barcode: 'FAKE-SCAN-COLOR',
+      }),
+    ).toThrow('لم يتم العثور على صنف بهذا الباركود داخل جلسة الجرد')
+
+    const exactScan = scanStockCountBarcode({
+      session_id: session.id,
+      barcode: 'REAL-BARCODE-001',
+    })
+
+    expect(exactScan.success).toBe(true)
+    expect(exactScan.barcode).toBe('REAL-BARCODE-001')
+    expect(exactScan.actual_stock).toBe(1)
   })
 
   it('rejects approving session with uncounted items', () => {

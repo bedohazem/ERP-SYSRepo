@@ -933,7 +933,7 @@ export default function StockCountPage() {
                 alignItems: 'end',
               }}
             >
-              <Field label="باركود أو اسم المنتج">
+              <Field label="باركود الصنف">
                 <input
                   value={barcode}
                   onChange={(e) => setBarcode(e.target.value)}
@@ -942,7 +942,7 @@ export default function StockCountPage() {
                       void scanBarcode()
                     }
                   }}
-                  placeholder="امسح الباركود أو اكتب اسم المنتج"
+                  placeholder="امسح أو اكتب الباركود"
                   style={{
                     ...inputStyle,
                     direction: 'ltr',
