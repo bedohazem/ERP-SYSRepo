@@ -201,29 +201,6 @@ contextBridge.exposeInMainWorld('api', {
 
   createPurchaseInvoice: (input) =>
     ipcRenderer.invoke('purchases:create', input),
-  getPurchaseReorderSuggestions: (input) =>
-    ipcRenderer.invoke('purchases:reorder-suggestions', input),
-
-  listPurchaseOrders: (input) =>
-    ipcRenderer.invoke('purchases:orders:list', input),
-
-  getPurchaseOrder: (purchaseOrderId) =>
-    ipcRenderer.invoke('purchases:orders:get', purchaseOrderId),
-
-  createPurchaseOrder: (input) =>
-    ipcRenderer.invoke('purchases:orders:create', input),
-
-  updatePurchaseOrder: (input) =>
-    ipcRenderer.invoke('purchases:orders:update', input),
-
-  markPurchaseOrderOrdered: (input) =>
-    ipcRenderer.invoke('purchases:orders:mark-ordered', input),
-
-  cancelPurchaseOrder: (input) =>
-    ipcRenderer.invoke('purchases:orders:cancel', input),
-
-  receivePurchaseOrder: (input) =>
-    ipcRenderer.invoke('purchases:orders:receive', input),
 
   updatePurchaseInvoice: (input) =>
     ipcRenderer.invoke('purchases:update', input),
