@@ -1714,7 +1714,7 @@ declare global {
           balance: number
         }>
 
-        cashTotalCapital: number
+        cashAccountsTotalBalance: number
         topProducts: Array<any>
         dailySales: Array<any>
         paymentMethods: Array<any>

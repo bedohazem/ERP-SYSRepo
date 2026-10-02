@@ -118,6 +118,15 @@ type ReportsSummaryTestResult = {
     approved_opening_surplus: number
     approved_opening_shortage: number
   }
+  cashAccounts: Array<{
+    payment_method: string
+    label: string
+    total_in: number
+    total_out: number
+    balance: number
+  }>
+
+  cashAccountsTotalBalance: number
   cashierSales: Array<{
     user_id: number | null
 
@@ -373,6 +382,82 @@ describe('reports repository', () => {
     expect(report.dailySales).toHaveLength(0)
     expect(report.paymentMethods).toHaveLength(0)
     expect(report.topCustomers).toHaveLength(0)
+  })
+
+  it('separates store safe balance and reports total financial account balances', () => {
+    createCashMovement({
+      type: 'deposit',
+
+      direction: 'in',
+
+      amount: 100,
+
+      payment_method: 'store_cash',
+
+      reference_type: 'manual',
+
+      created_by: 1,
+    })
+
+    createCashMovement({
+      type: 'deposit',
+
+      direction: 'in',
+
+      amount: 250,
+
+      payment_method: 'store_safe',
+
+      reference_type: 'manual',
+
+      created_by: 1,
+    })
+
+    createCashMovement({
+      type: 'deposit',
+
+      direction: 'in',
+
+      amount: 300,
+
+      payment_method: 'owner_bank',
+
+      reference_type: 'manual',
+
+      created_by: 1,
+    })
+
+    const report = getReportsSummary() as ReportsSummaryTestResult
+
+    const storeCash = report.cashAccounts.find(
+      (row) => row.payment_method === 'store_cash',
+    )
+
+    const storeSafe = report.cashAccounts.find(
+      (row) => row.payment_method === 'store_safe',
+    )
+
+    const ownerBank = report.cashAccounts.find(
+      (row) => row.payment_method === 'owner_bank',
+    )
+
+    expect(storeCash).toBeTruthy()
+
+    expect(Number(storeCash?.balance)).toBe(100)
+
+    expect(storeSafe).toBeTruthy()
+
+    expect(storeSafe?.label).toBe('الخزنة الآمنة')
+
+    expect(Number(storeSafe?.balance)).toBe(250)
+
+    expect(ownerBank).toBeTruthy()
+
+    expect(Number(ownerBank?.balance)).toBe(300)
+
+    expect(report.cashAccountsTotalBalance).toBe(650)
+
+    expect('cashTotalCapital' in report).toBe(false)
   })
 
   it('calculates sales profit discounts expenses and liability payments', () => {

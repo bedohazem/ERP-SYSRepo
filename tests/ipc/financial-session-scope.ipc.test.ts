@@ -257,7 +257,7 @@ describe('financial IPC session scope', () => {
 
     expect('cashAccounts' in result).toBe(false)
 
-    expect('cashTotalCapital' in result).toBe(false)
+    expect('cashAccountsTotalBalance' in result).toBe(false)
   })
 
   it('blocks cashiers from cash management without permission', async () => {

@@ -38,7 +38,7 @@ type ReportsData = {
     total_out: number
     balance: number
   }>
-  cashTotalCapital: number
+  cashAccountsTotalBalance: number
   topProducts: any[]
   dailySales: any[]
   paymentMethods: any[]
@@ -94,7 +94,7 @@ const emptyReports: ReportsData = {
     approved_opening_shortage: 0,
   },
   cashAccounts: [],
-  cashTotalCapital: 0,
+  cashAccountsTotalBalance: 0,
   topProducts: [],
   dailySales: [],
   paymentMethods: [],
@@ -300,8 +300,8 @@ export default function ReportsPage() {
         }}
       >
         <StatCard
-          title="رأس المال الحالي"
-          value={money(data.cashTotalCapital)}
+          title="إجمالي أرصدة الحسابات المالية"
+          value={money(data.cashAccountsTotalBalance)}
           highlight
         />
 

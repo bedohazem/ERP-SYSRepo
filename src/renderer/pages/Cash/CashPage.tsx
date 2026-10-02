@@ -158,7 +158,7 @@ export default function CashPage() {
   const [accountBalances, setAccountBalances] = useState<CashAccountBalance[]>(
     [],
   )
-  const [totalCapital, setTotalCapital] = useState(0)
+  const [totalAccountBalance, setTotalAccountBalance] = useState(0)
   const [notes, setNotes] = useState('')
 
   const [dateFrom, setDateFrom] = useState('')
@@ -247,14 +247,17 @@ export default function CashPage() {
         }),
       )
 
-      const capital = accountSummaryRows.reduce(
+      const totalBalance = accountSummaryRows.reduce(
         (sum, account) => sum + Number(account.balance || 0),
+
         0,
       )
 
       setDrawerBalance(Number(drawerSummary?.balance || 0))
+
       setAccountBalances(accountSummaryRows)
-      setTotalCapital(capital)
+
+      setTotalAccountBalance(totalBalance)
 
       setSummary(summaryData)
       setMovements(Array.isArray(movementsData.rows) ? movementsData.rows : [])
@@ -904,8 +907,8 @@ export default function CashPage() {
 
           <div class="summary">
             <div class="card">
-              <div class="card-title">رأس المال الإجمالي</div>
-              <div class="card-value">${money(totalCapital)}</div>
+              <div class="card-title">إجمالي أرصدة الحسابات</div>
+              <div class="card-value">${money(totalAccountBalance)}</div>
             </div>
 
             ${accountCardsHtml}
@@ -1045,8 +1048,8 @@ export default function CashPage() {
         }}
       >
         <SummaryCard
-          title="رأس المال الإجمالي"
-          value={money(totalCapital)}
+          title="إجمالي أرصدة الحسابات"
+          value={money(totalAccountBalance)}
           color="#facc15"
           border="rgba(250,204,21,0.35)"
         />

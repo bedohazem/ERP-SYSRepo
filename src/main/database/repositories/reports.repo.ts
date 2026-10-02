@@ -52,10 +52,11 @@ function buildWhere(
 const CASH_ACCOUNT_ORDER = `
   CASE account
     WHEN 'store_cash' THEN 1
-    WHEN 'owner_cash' THEN 2
-    WHEN 'owner_bank' THEN 3
-    WHEN 'owner_vodafone' THEN 4
-    WHEN 'fawry_machine' THEN 5
+    WHEN 'store_safe' THEN 2
+    WHEN 'owner_cash' THEN 3
+    WHEN 'owner_bank' THEN 4
+    WHEN 'owner_vodafone' THEN 5
+    WHEN 'fawry_machine' THEN 6
     ELSE 99
   END
 `
@@ -64,6 +65,8 @@ function getCashAccountLabel(account: string) {
   switch (account) {
     case 'store_cash':
       return 'كاش درج المحل'
+    case 'store_safe':
+      return 'الخزنة الآمنة'
     case 'owner_cash':
       return 'كاش مع المالك'
     case 'owner_bank':
@@ -1940,6 +1943,7 @@ export function getReportsSummary(input?: ReportFilter) {
             WHEN payment_method IN ('bank', 'bank_transfer') THEN 'owner_bank'
             WHEN payment_method IN (
               'store_cash',
+              'store_safe',
               'owner_cash',
               'owner_bank',
               'owner_vodafone',
@@ -1965,8 +1969,9 @@ export function getReportsSummary(input?: ReportFilter) {
       balance: Number(row.balance || 0),
     }))
 
-  const cashTotalCapital = cashAccounts.reduce(
+  const cashAccountsTotalBalance = cashAccounts.reduce(
     (sum: number, account: any) => sum + Number(account.balance || 0),
+
     0,
   )
 
@@ -2014,7 +2019,7 @@ export function getReportsSummary(input?: ReportFilter) {
       approved_opening_shortage: approvedOpeningShortage,
     },
     cashAccounts,
-    cashTotalCapital,
+    cashAccountsTotalBalance,
     topProducts,
     dailySales,
     paymentMethods,

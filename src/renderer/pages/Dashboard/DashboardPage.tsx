@@ -35,7 +35,7 @@ type ReportsData = {
     total_out: number
     balance: number
   }>
-  cashTotalCapital: number
+  cashAccountsTotalBalance: number
   topProducts: any[]
   dailySales: any[]
   paymentMethods: any[]
@@ -200,7 +200,7 @@ const emptyReports: ReportsData = {
     exchange_discount_adjustment: 0,
   },
   cashAccounts: [],
-  cashTotalCapital: 0,
+  cashAccountsTotalBalance: 0,
   topProducts: [],
   dailySales: [],
   paymentMethods: [],
@@ -442,9 +442,9 @@ export default function DashboardPage() {
       <section style={statsGridStyle}>
         <StatCard
           icon="🏦"
-          title="رأس المال الحالي"
-          value={money(data.overview.cashTotalCapital)}
-          subtitle="إجمالي أرصدة الحسابات المالية"
+          title="إجمالي الأرصدة المالية"
+          value={money(data.overview.cashAccountsTotalBalance)}
+          subtitle="مجموع أرصدة الحسابات المالية الحالية"
           tone="amber"
         />
         <StatCard
