@@ -391,6 +391,587 @@ export function listInventoryPage(input?: InventoryPageInput) {
   }
 }
 
+export type InventoryAnalyticsInput = {
+  categoryId?: number | string | null
+}
+
+export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
+  const db = getDb()
+
+  const rawCategoryId = input?.categoryId
+
+  const categoryId =
+    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null
+
+  const params: any[] = []
+
+  let categorySql = ''
+
+  if (categoryId && Number.isFinite(categoryId) && categoryId > 0) {
+    categorySql = 'AND p.category_id = ?'
+
+    params.push(categoryId)
+  }
+
+  const inventorySql = `
+    SELECT
+      v.id AS variant_id,
+
+      p.name AS product_name,
+
+      v.barcode,
+      v.size,
+      v.color,
+
+      v.sell_price,
+      v.inventory_value,
+
+      v.is_active,
+
+      p.is_active
+        AS product_is_active,
+
+      ${STOCK_SUM_SQL}
+        AS stock
+
+    FROM product_variants v
+
+    JOIN products p
+      ON p.id = v.product_id
+
+    LEFT JOIN stock_movements sm
+      ON sm.variant_id = v.id
+
+    WHERE 1 = 1
+      ${categorySql}
+
+    GROUP BY v.id
+  `
+
+  /*
+   * صافي حركة البيع:
+   *
+   * بيع          +
+   * مرتجع        -
+   * صنف خرج باستبدال -
+   * صنف دخل مكانه +
+   */
+  const activitySql = `
+    SELECT
+      si.variant_id,
+
+      si.quantity
+        AS quantity_delta,
+
+      date(
+        s.created_at,
+        'localtime'
+      ) AS activity_date
+
+    FROM sale_items si
+
+    JOIN sales s
+      ON s.id = si.sale_id
+
+    WHERE
+      IFNULL(
+        s.type,
+        'sale'
+      ) = 'sale'
+
+      AND s.cancelled_at
+        IS NULL
+
+    UNION ALL
+
+    SELECT
+      sri.variant_id,
+
+      -sri.quantity
+        AS quantity_delta,
+
+      date(
+        sr.created_at,
+        'localtime'
+      ) AS activity_date
+
+    FROM sale_return_items sri
+
+    JOIN sale_returns sr
+      ON sr.id = sri.return_id
+
+    JOIN sales os
+      ON os.id =
+        sr.original_sale_id
+
+    WHERE
+      sr.cancelled_at IS NULL
+
+      AND os.cancelled_at
+        IS NULL
+
+      AND IFNULL(
+        os.type,
+        'sale'
+      ) = 'sale'
+
+    UNION ALL
+
+    SELECT
+      sei.old_variant_id
+        AS variant_id,
+
+      -sei.quantity
+        AS quantity_delta,
+
+      date(
+        se.created_at,
+        'localtime'
+      ) AS activity_date
+
+    FROM sale_exchange_items sei
+
+    JOIN sale_exchanges se
+      ON se.id =
+        sei.exchange_id
+
+    JOIN sales os
+      ON os.id =
+        se.original_sale_id
+
+    WHERE
+      se.cancelled_at IS NULL
+
+      AND os.cancelled_at
+        IS NULL
+
+      AND IFNULL(
+        os.type,
+        'sale'
+      ) = 'sale'
+
+    UNION ALL
+
+    SELECT
+      sei.new_variant_id
+        AS variant_id,
+
+      sei.quantity
+        AS quantity_delta,
+
+      date(
+        se.created_at,
+        'localtime'
+      ) AS activity_date
+
+    FROM sale_exchange_items sei
+
+    JOIN sale_exchanges se
+      ON se.id =
+        sei.exchange_id
+
+    JOIN sales os
+      ON os.id =
+        se.original_sale_id
+
+    WHERE
+      se.cancelled_at IS NULL
+
+      AND os.cancelled_at
+        IS NULL
+
+      AND IFNULL(
+        os.type,
+        'sale'
+      ) = 'sale'
+  `
+
+  /*
+   * آخر مرة خرج فيها الصنف
+   * كبيع فعلي للعميل.
+   *
+   * المرتجع لا يعتبر بيعًا جديدًا.
+   */
+  const lastOutboundSql = `
+    SELECT
+      variant_id,
+
+      MAX(activity_date)
+        AS last_sale_date
+
+    FROM (
+      SELECT
+        si.variant_id,
+
+        date(
+          s.created_at,
+          'localtime'
+        ) AS activity_date
+
+      FROM sale_items si
+
+      JOIN sales s
+        ON s.id =
+          si.sale_id
+
+      WHERE
+        IFNULL(
+          s.type,
+          'sale'
+        ) = 'sale'
+
+        AND s.cancelled_at
+          IS NULL
+
+      UNION ALL
+
+      SELECT
+        sei.new_variant_id
+          AS variant_id,
+
+        date(
+          se.created_at,
+          'localtime'
+        ) AS activity_date
+
+      FROM sale_exchange_items sei
+
+      JOIN sale_exchanges se
+        ON se.id =
+          sei.exchange_id
+
+      JOIN sales os
+        ON os.id =
+          se.original_sale_id
+
+      WHERE
+        se.cancelled_at IS NULL
+
+        AND os.cancelled_at
+          IS NULL
+
+        AND IFNULL(
+          os.type,
+          'sale'
+        ) = 'sale'
+    ) outbound
+
+    GROUP BY variant_id
+  `
+
+  const summaryRow = db
+    .prepare(
+      `
+      WITH
+      inventory AS (
+        ${inventorySql}
+      ),
+
+      activity AS (
+        ${activitySql}
+      ),
+
+      recent_activity AS (
+        SELECT
+          variant_id,
+
+          IFNULL(
+            SUM(
+              CASE
+                WHEN activity_date >=
+                  date(
+                    'now',
+                    'localtime',
+                    '-29 days'
+                  )
+                THEN quantity_delta
+                ELSE 0
+              END
+            ),
+            0
+          ) AS net_sold_units_30d
+
+        FROM activity
+
+        GROUP BY variant_id
+      ),
+
+      last_outbound AS (
+        ${lastOutboundSql}
+      )
+
+      SELECT
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                i.product_is_active = 1
+
+                AND i.is_active = 1
+
+                AND i.stock > 0
+
+              THEN i.stock
+
+              ELSE 0
+            END
+          ),
+          0
+        ) AS stock_units,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                i.product_is_active = 1
+
+                AND i.is_active = 1
+
+              THEN IFNULL(
+                r.net_sold_units_30d,
+                0
+              )
+
+              ELSE 0
+            END
+          ),
+          0
+        ) AS sold_units_30d,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                i.product_is_active = 1
+
+                AND i.is_active = 1
+
+                AND i.stock > 0
+
+                AND (
+                  l.last_sale_date IS NULL
+
+                  OR l.last_sale_date <
+                    date(
+                      'now',
+                      'localtime',
+                      '-90 days'
+                    )
+                )
+
+              THEN 1
+
+              ELSE 0
+            END
+          ),
+          0
+        ) AS dead_stock_variants_90d,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                i.product_is_active = 1
+
+                AND i.is_active = 1
+
+                AND i.stock > 0
+
+                AND (
+                  l.last_sale_date IS NULL
+
+                  OR l.last_sale_date <
+                    date(
+                      'now',
+                      'localtime',
+                      '-90 days'
+                    )
+                )
+
+              THEN i.stock
+
+              ELSE 0
+            END
+          ),
+          0
+        ) AS dead_stock_units_90d,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                i.product_is_active = 1
+
+                AND i.is_active = 1
+
+                AND i.stock > 0
+
+                AND (
+                  l.last_sale_date IS NULL
+
+                  OR l.last_sale_date <
+                    date(
+                      'now',
+                      'localtime',
+                      '-90 days'
+                    )
+                )
+
+              THEN i.inventory_value
+
+              ELSE 0
+            END
+          ),
+          0
+        ) AS dead_stock_value_90d,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                i.product_is_active = 1
+
+                AND i.is_active = 1
+
+                AND i.stock > 0
+
+              THEN
+                (
+                  i.stock *
+                  i.sell_price
+                )
+                -
+                i.inventory_value
+
+              ELSE 0
+            END
+          ),
+          0
+        ) AS potential_gross_profit
+
+      FROM inventory i
+
+      LEFT JOIN recent_activity r
+        ON r.variant_id =
+          i.variant_id
+
+      LEFT JOIN last_outbound l
+        ON l.variant_id =
+          i.variant_id
+      `,
+    )
+    .get(...params) as any
+
+  const topMover = db
+    .prepare(
+      `
+      WITH
+      inventory AS (
+        ${inventorySql}
+      ),
+
+      activity AS (
+        ${activitySql}
+      ),
+
+      recent_activity AS (
+        SELECT
+          variant_id,
+
+          IFNULL(
+            SUM(
+              CASE
+                WHEN activity_date >=
+                  date(
+                    'now',
+                    'localtime',
+                    '-29 days'
+                  )
+
+                THEN quantity_delta
+
+                ELSE 0
+              END
+            ),
+            0
+          ) AS net_sold_units_30d
+
+        FROM activity
+
+        GROUP BY variant_id
+      )
+
+      SELECT
+        i.variant_id,
+
+        i.product_name,
+
+        i.barcode,
+        i.size,
+        i.color,
+
+        i.stock
+          AS current_stock,
+
+        r.net_sold_units_30d
+          AS sold_units_30d
+
+      FROM inventory i
+
+      JOIN recent_activity r
+        ON r.variant_id =
+          i.variant_id
+
+      WHERE
+        i.product_is_active = 1
+
+        AND i.is_active = 1
+
+        AND r.net_sold_units_30d > 0
+
+      ORDER BY
+        r.net_sold_units_30d DESC,
+
+        i.product_name ASC
+
+      LIMIT 1
+      `,
+    )
+    .get(...params) as any
+
+  return {
+    stock_units: Number(summaryRow?.stock_units || 0),
+
+    sold_units_30d: Number(summaryRow?.sold_units_30d || 0),
+
+    dead_stock_variants_90d: Number(summaryRow?.dead_stock_variants_90d || 0),
+
+    dead_stock_units_90d: Number(summaryRow?.dead_stock_units_90d || 0),
+
+    dead_stock_value_90d: Number(summaryRow?.dead_stock_value_90d || 0),
+
+    potential_gross_profit: Number(summaryRow?.potential_gross_profit || 0),
+
+    top_mover: topMover
+      ? {
+          variant_id: Number(topMover.variant_id),
+
+          product_name: String(topMover.product_name || ''),
+
+          barcode: topMover.barcode ?? null,
+
+          size: topMover.size ?? null,
+
+          color: topMover.color ?? null,
+
+          current_stock: Number(topMover.current_stock || 0),
+
+          sold_units_30d: Number(topMover.sold_units_30d || 0),
+        }
+      : null,
+  }
+}
+
 export function getVariantStock(variantId: number) {
   const db = getDb()
 

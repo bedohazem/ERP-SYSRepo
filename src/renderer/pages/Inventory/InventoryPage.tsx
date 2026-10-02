@@ -46,6 +46,52 @@ type Category = {
 
 type InventoryStatusFilter = 'available' | 'low' | 'out' | 'inactive'
 
+type InventoryAnalytics = {
+  stock_units: number
+
+  sold_units_30d: number
+
+  dead_stock_variants_90d: number
+
+  dead_stock_units_90d: number
+
+  dead_stock_value_90d: number
+
+  potential_gross_profit: number
+
+  top_mover: {
+    variant_id: number
+
+    product_name: string
+
+    barcode?: string | null
+
+    size?: string | null
+
+    color?: string | null
+
+    current_stock: number
+
+    sold_units_30d: number
+  } | null
+}
+
+const emptyInventoryAnalytics: InventoryAnalytics = {
+  stock_units: 0,
+
+  sold_units_30d: 0,
+
+  dead_stock_variants_90d: 0,
+
+  dead_stock_units_90d: 0,
+
+  dead_stock_value_90d: 0,
+
+  potential_gross_profit: 0,
+
+  top_mover: null,
+}
+
 export default function InventoryPage() {
   const currentUser = useAuthStore((s) => s.user)
   const isAdmin = currentUser?.role === 'admin'
@@ -88,6 +134,10 @@ export default function InventoryPage() {
     inactive: 0,
   })
 
+  const [analytics, setAnalytics] = useState<InventoryAnalytics>(
+    emptyInventoryAnalytics,
+  )
+
   useEffect(() => {
     let mounted = true
 
@@ -106,6 +156,34 @@ export default function InventoryPage() {
       mounted = false
     }
   }, [])
+
+  async function loadAnalytics() {
+    try {
+      const result = await window.api.getInventoryAnalytics({
+        categoryId: categoryFilter,
+      })
+
+      setAnalytics({
+        stock_units: Number(result?.stock_units || 0),
+
+        sold_units_30d: Number(result?.sold_units_30d || 0),
+
+        dead_stock_variants_90d: Number(result?.dead_stock_variants_90d || 0),
+
+        dead_stock_units_90d: Number(result?.dead_stock_units_90d || 0),
+
+        dead_stock_value_90d: Number(result?.dead_stock_value_90d || 0),
+
+        potential_gross_profit: Number(result?.potential_gross_profit || 0),
+
+        top_mover: result?.top_mover || null,
+      })
+    } catch (error) {
+      console.error('Failed to load inventory analytics:', error)
+
+      setAnalytics(emptyInventoryAnalytics)
+    }
+  }
 
   async function loadInventory(page = inventoryPage) {
     setLoading(true)
@@ -175,6 +253,10 @@ export default function InventoryPage() {
 
     return () => clearTimeout(handle)
   }, [search, statusFilters, categoryFilter])
+
+  useEffect(() => {
+    void loadAnalytics()
+  }, [categoryFilter])
 
   function toggleStatusFilter(filter: InventoryStatusFilter) {
     setStatusFilters((current) =>
@@ -247,7 +329,7 @@ export default function InventoryPage() {
       )
 
       setAdjustItem(null)
-      await loadInventory(inventoryPage)
+      await Promise.all([loadInventory(inventoryPage), loadAnalytics()])
     } catch (error) {
       console.error('Failed to adjust stock:', error)
 
@@ -322,7 +404,7 @@ export default function InventoryPage() {
         height: '100%',
         minHeight: 0,
         overflow: 'hidden',
-        gridTemplateRows: 'auto auto minmax(0, 1fr)',
+        gridTemplateRows: 'auto auto auto minmax(0, 1fr)',
       }}
     >
       {message && (
@@ -384,7 +466,13 @@ export default function InventoryPage() {
 
             <button
               type="button"
-              onClick={() => void loadInventory(inventoryPage)}
+              onClick={() => {
+                void Promise.all([
+                  loadInventory(inventoryPage),
+
+                  loadAnalytics(),
+                ])
+              }}
               style={primaryButtonStyle}
             >
               {loading ? 'جاري التحميل...' : 'تحديث'}
@@ -600,6 +688,106 @@ export default function InventoryPage() {
           value={money(stats.totalSellValue)}
           success
         />
+      </div>
+
+      <div
+        className="glass-card"
+        style={{
+          padding: '14px',
+
+          borderRadius: '18px',
+
+          display: 'grid',
+
+          gap: '12px',
+        }}
+      >
+        <div>
+          <strong
+            style={{
+              fontSize: '15px',
+            }}
+          >
+            تحليلات حركة المخزون
+          </strong>
+
+          <div
+            style={{
+              color: '#94a3b8',
+
+              fontSize: '12px',
+
+              fontWeight: 700,
+
+              marginTop: '4px',
+            }}
+          >
+            حركة 30 يوم ومخزون راكد لأكثر من 90 يوم
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+
+            gap: '10px',
+          }}
+        >
+          <StatCard
+            title="إجمالي وحدات المخزون"
+            value={String(analytics.stock_units)}
+          />
+
+          <StatCard
+            title="صافي المباع 30 يوم"
+            value={String(analytics.sold_units_30d)}
+            success={analytics.sold_units_30d > 0}
+          />
+
+          <StatCard
+            title="أصناف راكدة +90 يوم"
+            value={String(analytics.dead_stock_variants_90d)}
+            warning={analytics.dead_stock_variants_90d > 0}
+          />
+
+          <StatCard
+            title="وحدات راكدة +90 يوم"
+            value={String(analytics.dead_stock_units_90d)}
+            warning={analytics.dead_stock_units_90d > 0}
+          />
+
+          <StatCard
+            title={
+              analytics.top_mover
+                ? `الأسرع: ${analytics.top_mover.product_name}`
+                : 'أسرع صنف 30 يوم'
+            }
+            value={
+              analytics.top_mover
+                ? `${analytics.top_mover.sold_units_30d} وحدة`
+                : '—'
+            }
+            success={Boolean(analytics.top_mover)}
+          />
+
+          {canViewCosts && (
+            <StatCard
+              title="قيمة المخزون الراكد"
+              value={money(analytics.dead_stock_value_90d)}
+              warning={analytics.dead_stock_value_90d > 0}
+            />
+          )}
+
+          {canViewCosts && (
+            <StatCard
+              title="هامش الربح المتوقع للمخزون"
+              value={money(analytics.potential_gross_profit)}
+              success
+            />
+          )}
+        </div>
       </div>
 
       <div

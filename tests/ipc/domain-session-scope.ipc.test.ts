@@ -515,24 +515,69 @@ describe('domain IPC session scope', () => {
 
     const current = getEffectiveUserPermissions(cashier.id)
 
-    setUserPermissions(cashier.id, [
-      ...current,
+    /*
+     * نمنحه عرض المخزون فقط.
+     * بدون costs.view.
+     */
+    setUserPermissions(cashier.id, [...current, 'inventory.view'])
 
-      'inventory.view',
-      'purchases.manage',
-    ])
+    createProduct({
+      name: 'Protected Inventory Cost',
+
+      category_id: null,
+
+      image_path: null,
+
+      description: null,
+
+      variants: [
+        {
+          barcode: 'INVENTORY-COST-HIDDEN',
+
+          size: 'M',
+
+          color: 'Black',
+
+          buy_price: 120,
+
+          sell_price: 200,
+
+          min_stock: 1,
+
+          opening_qty: 5,
+        },
+      ],
+    })
 
     const { event } = makeClient()
 
     startAuthSession(event, cashier.id)
 
+    /*
+     * يقدر يشوف المخزون،
+     * لكن لا يرى التكلفة.
+     */
     const inventory = await invoke(event, 'inventory:list-page', {})
 
     expect(Array.isArray(inventory.rows)).toBe(true)
 
-    const purchases = await invoke(event, 'purchases:list', {})
+    const protectedRow = inventory.rows.find(
+      (row: any) => row.barcode === 'INVENTORY-COST-HIDDEN',
+    )
 
-    expect(Array.isArray(purchases.rows)).toBe(true)
+    expect(protectedRow).toBeTruthy()
+
+    expect(Number(protectedRow.buy_price)).toBe(0)
+
+    expect(Number(protectedRow.average_cost)).toBe(0)
+
+    expect(Number(inventory.summary.totalBuyValue)).toBe(0)
+
+    const analytics = await invoke(event, 'inventory:analytics', {})
+
+    expect(Number(analytics.dead_stock_value_90d)).toBe(0)
+
+    expect(Number(analytics.potential_gross_profit)).toBe(0)
 
     /*
      * View لا تعني Adjust.
@@ -543,6 +588,38 @@ describe('domain IPC session scope', () => {
         target_stock: 10,
       }),
     ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
+
+    /*
+     * بعدها نمنحه إدارة المشتريات.
+     *
+     * purchases.manage تعتمد
+     * تلقائيًا على costs.view.
+     */
+    setUserPermissions(cashier.id, [
+      ...getEffectiveUserPermissions(cashier.id),
+
+      'purchases.manage',
+    ])
+
+    expect(getEffectiveUserPermissions(cashier.id)).toContain('costs.view')
+
+    const purchases = await invoke(event, 'purchases:list', {})
+
+    expect(Array.isArray(purchases.rows)).toBe(true)
+
+    /*
+     * وبعد منح costs.view
+     * يرى تكلفة المخزون الحقيقية.
+     */
+    const inventoryWithCosts = await invoke(event, 'inventory:list-page', {})
+
+    const visibleCostRow = inventoryWithCosts.rows.find(
+      (row: any) => row.barcode === 'INVENTORY-COST-HIDDEN',
+    )
+
+    expect(Number(visibleCostRow.buy_price)).toBe(120)
+
+    expect(Number(visibleCostRow.average_cost)).toBe(120)
   })
 
   it('revokes an operational permission from a cashier immediately', async () => {

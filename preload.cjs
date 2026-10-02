@@ -170,6 +170,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('reports:cashier-dashboard'),
   getInventoryList: (input) => ipcRenderer.invoke('inventory:list', input),
   getInventoryPage: (input) => ipcRenderer.invoke('inventory:list-page', input),
+  getInventoryAnalytics: (input) =>
+    ipcRenderer.invoke('inventory:analytics', input),
   adjustVariantStock: (input) =>
     ipcRenderer.invoke('inventory:adjust-stock', input),
   getStockMovements: (input) =>

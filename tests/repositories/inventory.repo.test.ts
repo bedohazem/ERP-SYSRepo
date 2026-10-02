@@ -12,7 +12,9 @@ import {
   getStockMovements,
   listInventoryPage,
   getVariantStock,
+  getInventoryAnalytics,
 } from '../../src/main/database/repositories/inventory.repo'
+import { createSale } from '../../src/main/database/repositories/sales.repo'
 
 type InventoryVariantTestRow = {
   variant_id: number
@@ -140,6 +142,141 @@ describe('inventory repository', () => {
 
     expect(second?.stock).toBe(0)
     expect(second?.min_stock).toBe(5)
+  })
+
+  it('builds 30-day movement and 90-day dead-stock analytics', () => {
+    const oldMover = seedInventoryProduct({
+      name: 'Old Inventory Mover',
+
+      barcode: 'ANALYTICS-OLD',
+
+      openingQty: 10,
+
+      minStock: 2,
+    })
+
+    const recentMover = seedInventoryProduct({
+      name: 'Recent Inventory Mover',
+
+      barcode: 'ANALYTICS-RECENT',
+
+      openingQty: 10,
+
+      minStock: 2,
+    })
+
+    seedInventoryProduct({
+      name: 'Never Sold Inventory',
+
+      barcode: 'ANALYTICS-NEVER',
+
+      openingQty: 5,
+
+      minStock: 2,
+    })
+
+    const oldSale = createSale({
+      user_id: 1,
+
+      sub_total: 150,
+
+      discount_value: 0,
+
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'owner_bank',
+
+      paid: 150,
+
+      items: [
+        {
+          variant_id: oldMover.variant_id,
+
+          product_name: oldMover.product_name,
+
+          barcode: oldMover.barcode,
+
+          size: oldMover.size,
+
+          color: oldMover.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    })
+
+    createSale({
+      user_id: 1,
+
+      sub_total: 300,
+
+      discount_value: 0,
+
+      grand_total: 300,
+
+      change_amount: 0,
+
+      payment_method: 'owner_bank',
+
+      paid: 300,
+
+      items: [
+        {
+          variant_id: recentMover.variant_id,
+
+          product_name: recentMover.product_name,
+
+          barcode: recentMover.barcode,
+
+          size: recentMover.size,
+
+          color: recentMover.color,
+
+          quantity: 2,
+
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const db = getDb()
+
+    db.prepare(
+      `
+    UPDATE sales
+
+    SET created_at =
+      datetime(
+        'now',
+        'localtime',
+        '-120 days'
+      )
+
+    WHERE id = ?
+    `,
+    ).run(oldSale.saleId)
+
+    const analytics = getInventoryAnalytics()
+
+    expect(analytics.stock_units).toBe(22)
+
+    expect(analytics.sold_units_30d).toBe(2)
+
+    expect(analytics.dead_stock_variants_90d).toBe(2)
+
+    expect(analytics.dead_stock_units_90d).toBe(14)
+
+    expect(analytics.dead_stock_value_90d).toBe(1400)
+
+    expect(analytics.potential_gross_profit).toBe(1100)
+
+    expect(analytics.top_mover?.variant_id).toBe(recentMover.variant_id)
+
+    expect(analytics.top_mover?.sold_units_30d).toBe(2)
   })
 
   it('keeps disabled products and variants visible in inventory', () => {

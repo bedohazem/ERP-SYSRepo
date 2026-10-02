@@ -6,6 +6,7 @@ import { userHasPermission } from '../database/repositories/user.repo'
 
 import {
   adjustVariantStock,
+  getInventoryAnalytics,
   getInventoryList,
   getStockMovements,
   listInventoryPage,
@@ -17,7 +18,12 @@ const INVENTORY_COST_FIELDS = new Set([
   'inventory_value',
   'unit_cost',
   'cost_value',
+
   'total_buy_value',
+  'totalBuyValue',
+
+  'dead_stock_value_90d',
+  'potential_gross_profit',
 ])
 
 function redactInventoryCosts<T>(value: T): T {
@@ -73,6 +79,12 @@ export function registerInventoryIpc(): void {
     ])
 
     return protectInventoryCosts(actor, listInventoryPage(input))
+  })
+
+  ipcMain.handle('inventory:analytics', (event, input) => {
+    const actor = requirePermission(event, 'inventory.view')
+
+    return protectInventoryCosts(actor, getInventoryAnalytics(input))
   })
 
   ipcMain.handle('inventory:adjust-stock', (event, input) => {

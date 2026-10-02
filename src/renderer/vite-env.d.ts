@@ -1789,6 +1789,38 @@ declare global {
         }
       }>
 
+      getInventoryAnalytics: (input?: {
+        categoryId?: number | string | null
+      }) => Promise<{
+        stock_units: number
+
+        sold_units_30d: number
+
+        dead_stock_variants_90d: number
+
+        dead_stock_units_90d: number
+
+        dead_stock_value_90d: number
+
+        potential_gross_profit: number
+
+        top_mover: {
+          variant_id: number
+
+          product_name: string
+
+          barcode?: string | null
+
+          size?: string | null
+
+          color?: string | null
+
+          current_stock: number
+
+          sold_units_30d: number
+        } | null
+      }>
+
       adjustVariantStock: (input: {
         variant_id: number
         target_stock: number
