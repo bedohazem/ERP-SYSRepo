@@ -284,6 +284,11 @@ describe('database migrations', () => {
 
         name: 'stock-movement-actors',
       },
+      {
+        version: 11,
+
+        name: 'purchase-orders',
+      },
     ])
 
     const userPermissionColumns = database

@@ -21,6 +21,17 @@ import {
 
 import { requireAdminPassword } from './permission-helper'
 
+import {
+  cancelPurchaseOrder,
+  createPurchaseOrder,
+  getPurchaseOrder,
+  getSmartReorderSuggestions,
+  listPurchaseOrders,
+  markPurchaseOrderOrdered,
+  receivePurchaseOrder,
+  updatePurchaseOrder,
+} from '../database/repositories/purchase-orders.repo'
+
 export function registerPurchasesIpc(): void {
   ipcMain.handle('purchases:create', (event, input) => {
     const actorId = requirePermission(event, 'purchases.manage').id
@@ -528,5 +539,201 @@ export function registerPurchasesIpc(): void {
     const actorId = requirePermission(event, 'purchases.manage').id
 
     return getSupplierStatement(Number(supplierId), actorId)
+  })
+
+  ipcMain.handle('purchases:reorder-suggestions', (event, input) => {
+    requirePermission(event, 'purchases.manage')
+
+    return getSmartReorderSuggestions(input)
+  })
+
+  ipcMain.handle('purchases:orders:list', (event, input) => {
+    requirePermission(event, 'purchases.manage')
+
+    return listPurchaseOrders(input)
+  })
+
+  ipcMain.handle('purchases:orders:get', (event, purchaseOrderId: number) => {
+    requirePermission(event, 'purchases.manage')
+
+    return getPurchaseOrder(Number(purchaseOrderId))
+  })
+
+  ipcMain.handle('purchases:orders:create', (event, input) => {
+    const actorId = requirePermission(event, 'purchases.manage').id
+
+    return runCriticalActionWithAudit(
+      () =>
+        createPurchaseOrder({
+          ...input,
+
+          actor_id: actorId,
+        }),
+
+      (result) => ({
+        actor_id: actorId,
+
+        action: 'purchase_order_created',
+
+        entity: 'purchase_orders',
+
+        entity_id: result.purchase_order_id,
+
+        details: {
+          supplier_id: input.supplier_id,
+
+          items_count: result.items_count,
+
+          total_amount: result.total_amount,
+        },
+      }),
+    )
+  })
+
+  ipcMain.handle('purchases:orders:update', (event, input) => {
+    const actorId = requirePermission(event, 'purchases.manage').id
+
+    const orderId = Number(input?.purchase_order_id)
+
+    return runCriticalActionWithAudit(
+      () => updatePurchaseOrder(input),
+
+      (result) => ({
+        actor_id: actorId,
+
+        action: 'purchase_order_updated',
+
+        entity: 'purchase_orders',
+
+        entity_id: orderId,
+
+        details: {
+          supplier_id: result.order.supplier_id,
+
+          items_count: result.order.items_count,
+
+          total_amount: result.order.total_amount,
+        },
+      }),
+    )
+  })
+
+  ipcMain.handle('purchases:orders:mark-ordered', (event, input) => {
+    const actorId = requirePermission(event, 'purchases.manage').id
+
+    const orderId = Number(input?.purchase_order_id)
+
+    return runCriticalActionWithAudit(
+      () =>
+        markPurchaseOrderOrdered({
+          purchase_order_id: orderId,
+
+          actor_id: actorId,
+        }),
+
+      () => ({
+        actor_id: actorId,
+
+        action: 'purchase_order_ordered',
+
+        entity: 'purchase_orders',
+
+        entity_id: orderId,
+
+        details: {},
+      }),
+    )
+  })
+
+  ipcMain.handle('purchases:orders:cancel', (event, input) => {
+    const actorId = requirePermission(event, 'purchases.manage').id
+
+    const orderId = Number(input?.purchase_order_id)
+
+    return runCriticalActionWithAudit(
+      () =>
+        cancelPurchaseOrder({
+          purchase_order_id: orderId,
+
+          reason: input?.reason,
+
+          actor_id: actorId,
+        }),
+
+      (result) => ({
+        actor_id: actorId,
+
+        action: 'purchase_order_cancelled',
+
+        entity: 'purchase_orders',
+
+        entity_id: orderId,
+
+        details: {
+          reason: result.reason,
+        },
+      }),
+    )
+  })
+
+  ipcMain.handle('purchases:orders:receive', (event, input) => {
+    const actorId = requirePermission(event, 'purchases.manage').id
+
+    const orderId = Number(input?.purchase_order_id)
+
+    return runCriticalActionWithAudit(
+      () =>
+        receivePurchaseOrder({
+          ...input,
+
+          purchase_order_id: orderId,
+
+          actor_id: actorId,
+        }),
+
+      (result) => [
+        {
+          actor_id: actorId,
+
+          action: 'purchase_created',
+
+          entity: 'purchase_invoices',
+
+          entity_id: result.purchaseId,
+
+          details: {
+            source: 'purchase_order',
+
+            purchase_order_id: orderId,
+
+            total_amount: result.total_amount,
+
+            paid_amount: result.paid_amount,
+
+            remaining_amount: result.remaining_amount,
+
+            payment_status: result.payment_status,
+
+            shift_id: result.shift_id,
+          },
+        },
+
+        {
+          actor_id: actorId,
+
+          action: 'purchase_order_received',
+
+          entity: 'purchase_orders',
+
+          entity_id: orderId,
+
+          details: {
+            purchase_id: result.purchaseId,
+
+            total_amount: result.total_amount,
+          },
+        },
+      ],
+    )
   })
 }

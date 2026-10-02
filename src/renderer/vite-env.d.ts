@@ -2075,6 +2075,117 @@ declare global {
         due_date?: string | null
       }>
 
+      getPurchaseReorderSuggestions: (input?: {
+        categoryId?: number | string | null
+
+        targetDays?: number
+      }) => Promise<
+        Array<{
+          variant_id: number
+
+          product_id: number
+
+          product_name: string
+
+          category_id: number | null
+
+          barcode?: string | null
+
+          size?: string | null
+
+          color?: string | null
+
+          current_stock: number
+
+          min_stock: number
+
+          sold_units_30d: number
+
+          average_daily_sales: number
+
+          target_days: number
+
+          target_stock: number
+
+          suggested_quantity: number
+
+          coverage_days: number | null
+
+          unit_cost: number
+
+          estimated_cost: number
+
+          reason: 'out' | 'low' | 'demand'
+        }>
+      >
+
+      listPurchaseOrders: (input?: {
+        status?: string
+
+        supplier_id?: number
+      }) => Promise<any[]>
+
+      getPurchaseOrder: (purchaseOrderId: number) => Promise<{
+        order: any
+        items: any[]
+      }>
+
+      createPurchaseOrder: (input: {
+        supplier_id: number
+
+        notes?: string | null
+
+        items: Array<{
+          variant_id: number
+
+          quantity: number
+
+          unit_cost?: number
+        }>
+      }) => Promise<any>
+
+      updatePurchaseOrder: (input: {
+        purchase_order_id: number
+
+        supplier_id: number
+
+        notes?: string | null
+
+        items: Array<{
+          variant_id: number
+
+          quantity: number
+
+          unit_cost?: number
+        }>
+      }) => Promise<any>
+
+      markPurchaseOrderOrdered: (input: {
+        purchase_order_id: number
+      }) => Promise<any>
+
+      cancelPurchaseOrder: (input: {
+        purchase_order_id: number
+
+        reason?: string | null
+      }) => Promise<any>
+
+      receivePurchaseOrder: (input: {
+        purchase_order_id: number
+
+        paid_amount?: number
+
+        payment_method?: string
+
+        discount_type?: 'amount' | 'percent'
+
+        discount_input?: number
+
+        discount_value?: number
+
+        notes?: string | null
+      }) => Promise<any>
+
       updatePurchaseInvoice: (input: {
         purchase_id: number
         supplier_id: number
