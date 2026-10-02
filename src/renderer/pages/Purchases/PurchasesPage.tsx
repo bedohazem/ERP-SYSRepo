@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/auth.store'
 import { hasUserPermission } from '../../utils/permissions'
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import PurchaseOrdersPanel from './PurchaseOrdersPanel'
 
 function roundMoney(value: number) {
   const amount = Number(value || 0)
@@ -105,6 +106,7 @@ export default function PurchasesPage() {
 
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
+  const [purchaseOrdersOpen, setPurchaseOrdersOpen] = useState(false)
   const [draftHydrated, setDraftHydrated] = useState(false)
 
   const [quickProductOpen, setQuickProductOpen] = useState(false)
@@ -973,9 +975,41 @@ export default function PurchasesPage() {
         )}
 
         <div className="glass-card" style={cardStyle}>
-          <h2 style={{ margin: 0, textAlign: 'right' }}>
-            {isEditing ? `تعديل فاتورة شراء #${editPurchaseId}` : 'فاتورة شراء'}
-          </h2>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '10px',
+              flexWrap: 'wrap',
+              direction: 'rtl',
+            }}
+          >
+            <h2
+              style={{
+                margin: 0,
+                textAlign: 'right',
+              }}
+            >
+              {isEditing
+                ? `تعديل فاتورة شراء #${editPurchaseId}`
+                : 'فاتورة شراء'}
+            </h2>
+
+            {!isEditing && (
+              <button
+                type="button"
+                onClick={() => setPurchaseOrdersOpen(true)}
+                style={{
+                  ...primaryButtonStyle,
+
+                  background: 'linear-gradient(135deg, #0f766e, #2563eb)',
+                }}
+              >
+                إعادة الطلب وأوامر الشراء
+              </button>
+            )}
+          </div>
 
           {isEditing && (
             <div
@@ -1502,6 +1536,15 @@ export default function PurchasesPage() {
           </div>
         </div>
       </div>
+
+      <PurchaseOrdersPanel
+        open={purchaseOrdersOpen}
+        onClose={() => setPurchaseOrdersOpen(false)}
+        onPurchaseReceived={() => {
+          void loadSuppliers(supplierSearch)
+        }}
+      />
+
       {quickProductOpen && canManageProducts && (
         <div
           className="theme-modal-overlay"
