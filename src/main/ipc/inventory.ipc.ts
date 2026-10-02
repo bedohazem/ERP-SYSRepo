@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { logAction } from './activity-helper'
+import { runCriticalActionWithAudit } from './activity-helper'
 import { requireAnyPermission, requirePermission } from '../auth-session'
 
 import { userHasPermission } from '../database/repositories/user.repo'
@@ -78,17 +78,23 @@ export function registerInventoryIpc(): void {
   ipcMain.handle('inventory:adjust-stock', (event, input) => {
     const actorId = requirePermission(event, 'inventory.adjust').id
 
-    const result = adjustVariantStock({
-      ...input,
-      actor_id: actorId,
-    })
+    const result = runCriticalActionWithAudit(
+      () =>
+        adjustVariantStock({
+          ...input,
 
-    if (Number(result.diff || 0) !== 0) {
-      logAction({
+          actor_id: actorId,
+        }),
+
+      (result) => ({
         actor_id: actorId,
+
         action: 'inventory_stock_adjusted',
+
         entity: 'inventory',
+
         entity_id: Number(result.variant_id),
+
         details: {
           variant_id: Number(result.variant_id),
 
@@ -100,8 +106,8 @@ export function registerInventoryIpc(): void {
 
           notes: input?.notes || '',
         },
-      })
-    }
+      }),
+    )
 
     return result
   })

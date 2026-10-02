@@ -1,6 +1,6 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 
-import { logAction } from './activity-helper'
+import { logAction, runCriticalActionWithAudit } from './activity-helper'
 import {
   createAdminPasswordRecoveryRequest,
   recoverAdminPassword,
@@ -200,27 +200,29 @@ export function registerAuthIpc(): void {
         throw new Error('اسم الدخول مطلوب')
       }
 
-      const user = createInitialAdmin(name, username, password)
+      const user = runCriticalActionWithAudit(
+        () => createInitialAdmin(name, username, password),
+
+        (user) => ({
+          actor_id: user.id,
+
+          action: 'auth_initial_admin_created',
+
+          entity: 'auth',
+
+          entity_id: user.id,
+
+          details: {
+            name: user.name,
+
+            username: user.username,
+          },
+        }),
+      )
 
       startAuthSession(event, user.id)
 
       clearLoginFailures(event)
-
-      logAction({
-        actor_id: user.id,
-
-        action: 'auth_initial_admin_created',
-
-        entity: 'auth',
-
-        entity_id: user.id,
-
-        details: {
-          name: user.name,
-
-          username: user.username,
-        },
-      })
 
       return {
         success: true,
@@ -294,39 +296,30 @@ export function registerAuthIpc(): void {
           throw new Error('خاصية استرجاع كلمة المرور غير مفعلة في هذه النسخة')
         }
 
-        const result = recoverAdminPassword(input)
+        const result = runCriticalActionWithAudit(
+          () => recoverAdminPassword(input),
 
-        /*
-         * أي Session قديمة لنفس
-         * الـRenderer تنتهي.
-         */
+          (result) => ({
+            actor_id: null,
+
+            action: 'admin_password_recovered',
+
+            entity: 'users',
+
+            entity_id: result.user.id,
+
+            details: {
+              username: result.user.username,
+
+              request_id: result.request_id,
+
+              method: 'support_signed_recovery',
+            },
+          }),
+        )
+
         clearAuthSession(event)
-
-        /*
-         * لو العميل وصل للـRecovery
-         * بعد 5 محاولات Login خاطئة،
-         * نفك الـLogin lock بعد نجاح
-         * الاسترجاع.
-         */
         clearLoginFailures(event)
-
-        logAction({
-          actor_id: null,
-
-          action: 'admin_password_recovered',
-
-          entity: 'users',
-
-          entity_id: result.user.id,
-
-          details: {
-            username: result.user.username,
-
-            request_id: result.request_id,
-
-            method: 'support_signed_recovery',
-          },
-        })
 
         return {
           success: true,
@@ -471,26 +464,23 @@ export function registerAuthIpc(): void {
 
         const password = assertPasswordPolicy(input?.password)
 
-        const user = changeOwnPassword(actor.id, password)
+        const user = runCriticalActionWithAudit(
+          () => changeOwnPassword(actor.id, password),
 
-        /*
-         * الباسورد Hash اتغير،
-         * لذلك نجدد Session
-         * بالـHash الجديد فورًا.
-         */
+          () => ({
+            actor_id: actor.id,
+
+            action: 'auth_password_changed',
+
+            entity: 'users',
+
+            entity_id: actor.id,
+
+            details: {},
+          }),
+        )
+
         startAuthSession(event, actor.id)
-
-        logAction({
-          actor_id: actor.id,
-
-          action: 'auth_password_changed',
-
-          entity: 'users',
-
-          entity_id: actor.id,
-
-          details: {},
-        })
 
         return {
           success: true,
@@ -717,28 +707,30 @@ export function registerAuthIpc(): void {
 
         const before = getUserPermissionSettings(userId)
 
-        const after = setUserPermissions(
-          userId,
+        const after = runCriticalActionWithAudit(
+          () =>
+            setUserPermissions(
+              userId,
 
-          Array.isArray(input?.permissions) ? input.permissions : [],
+              Array.isArray(input?.permissions) ? input.permissions : [],
+            ),
+
+          (after) => ({
+            actor_id: actorId,
+
+            action: 'user_permissions_updated',
+
+            entity: 'users',
+
+            entity_id: userId,
+
+            details: {
+              before: before.effective_permissions,
+
+              after: after.effective_permissions,
+            },
+          }),
         )
-
-        logAction({
-          actor_id: actorId,
-
-          action: 'user_permissions_updated',
-
-          entity: 'users',
-
-          entity_id: userId,
-
-          details: {
-            before: before.effective_permissions,
-
-            after: after.effective_permissions,
-          },
-        })
-
         return {
           success: true,
 
@@ -767,40 +759,38 @@ export function registerAuthIpc(): void {
 
         const password = assertPasswordPolicy(data.password)
 
-        const user = createUser(
-          data.name ?? '',
-          data.username,
-          password,
-          data.role ?? 'cashier',
-          {
-            /*
-             * المستخدم تم إنشاء كلمة
-             * مروره النهائية بالفعل
-             * من شاشة إدارة المستخدمين.
-             */
-            mustChangePassword: false,
-          },
+        const user = runCriticalActionWithAudit(
+          () =>
+            createUser(
+              data.name ?? '',
+              data.username,
+              password,
+              data.role ?? 'cashier',
+              {
+                mustChangePassword: false,
+              },
+            ),
+
+          (user) => ({
+            actor_id: actorId,
+
+            action: 'user_created',
+
+            entity: 'users',
+
+            entity_id: user.id,
+
+            details: {
+              name: user.name,
+
+              username: user.username,
+
+              role: user.role,
+
+              must_change_password: false,
+            },
+          }),
         )
-
-        logAction({
-          actor_id: actorId,
-
-          action: 'user_created',
-
-          entity: 'users',
-
-          entity_id: user.id,
-
-          details: {
-            name: user.name,
-
-            username: user.username,
-
-            role: user.role,
-
-            must_change_password: false,
-          },
-        })
 
         return {
           success: true,
@@ -820,27 +810,29 @@ export function registerAuthIpc(): void {
     try {
       const actorId = requireAuthenticatedAdmin(event)
 
-      const user = updateUser(input)
+      const user = runCriticalActionWithAudit(
+        () => updateUser(input),
 
-      logAction({
-        actor_id: actorId,
+        (user) => ({
+          actor_id: actorId,
 
-        action: 'user_updated',
+          action: 'user_updated',
 
-        entity: 'users',
+          entity: 'users',
 
-        entity_id: user.id,
+          entity_id: user.id,
 
-        details: {
-          name: user.name,
+          details: {
+            name: user.name,
 
-          username: user.username,
+            username: user.username,
 
-          role: user.role,
+            role: user.role,
 
-          is_active: user.is_active,
-        },
-      })
+            is_active: user.is_active,
+          },
+        }),
+      )
 
       return {
         success: true,
@@ -861,23 +853,25 @@ export function registerAuthIpc(): void {
       try {
         const actorId = requireAuthenticatedAdmin(event)
 
-        const user = setUserActive(userId, isActive)
+        const user = runCriticalActionWithAudit(
+          () => setUserActive(userId, isActive),
 
-        logAction({
-          actor_id: actorId,
+          (user) => ({
+            actor_id: actorId,
 
-          action: isActive ? 'user_activated' : 'user_deactivated',
+            action: isActive ? 'user_activated' : 'user_deactivated',
 
-          entity: 'users',
+            entity: 'users',
 
-          entity_id: userId,
+            entity_id: userId,
 
-          details: {
-            username: user.username,
+            details: {
+              username: user.username,
 
-            is_active: user.is_active,
-          },
-        })
+              is_active: user.is_active,
+            },
+          }),
+        )
 
         return {
           success: true,
@@ -903,40 +897,36 @@ export function registerAuthIpc(): void {
 
         const isSelf = Number(userId) === Number(actorId)
 
-        const user = resetUserPassword(
-          userId,
-          strongPassword,
+        const user = runCriticalActionWithAudit(
+          () =>
+            resetUserPassword(
+              userId,
 
-          /*
-           * لو المدير غير باسورده
-           * بنفسه لا نجبره على
-           * تغييره مرة ثانية.
-           *
-           * باقي المستخدمين:
-           * Temporary password.
-           */
-          !isSelf,
+              strongPassword,
+
+              !isSelf,
+            ),
+
+          (user) => ({
+            actor_id: actorId,
+
+            action: 'user_password_reset',
+
+            entity: 'users',
+
+            entity_id: userId,
+
+            details: {
+              username: user.username,
+
+              requires_change: !isSelf,
+            },
+          }),
         )
 
         if (isSelf) {
           startAuthSession(event, actorId)
         }
-
-        logAction({
-          actor_id: actorId,
-
-          action: 'user_password_reset',
-
-          entity: 'users',
-
-          entity_id: userId,
-
-          details: {
-            username: user.username,
-
-            requires_change: !isSelf,
-          },
-        })
 
         return {
           success: true,

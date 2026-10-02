@@ -159,9 +159,19 @@ export default function LiabilitiesPage() {
   const isLight =
     document.documentElement.getAttribute('data-theme') === 'light'
 
-  function showMessage(type: 'success' | 'error', text: string) {
-    setMessage({ type, text })
-    setTimeout(() => setMessage(null), 1800)
+  function showMessage(
+    type: 'success' | 'error',
+
+    text: string,
+
+    duration = type === 'error' ? 4500 : 1800,
+  ) {
+    setMessage({
+      type,
+      text,
+    })
+
+    setTimeout(() => setMessage(null), duration)
   }
 
   async function loadData(page = liabilityPage) {

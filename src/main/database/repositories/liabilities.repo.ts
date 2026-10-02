@@ -1,6 +1,6 @@
 import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
-import { createActivityLog } from './activity.repo'
+import { createCriticalActivityLog } from './activity.repo'
 import { resolveFinancialOperationShift } from './cash-shifts.repo'
 
 export type CreateLiabilityInput = {
@@ -150,7 +150,7 @@ export function createLiability(input: CreateLiabilityInput) {
 
     const liabilityId = Number(result.lastInsertRowid)
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: input.actor_id ?? null,
       action: 'liability_created',
       entity: 'store_liabilities',
@@ -292,7 +292,7 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
       shift_id: openShift?.id ?? null,
     })
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: actorId,
 
       action: 'liability_payment_created',
@@ -595,7 +595,7 @@ export function updateLiability(input: UpdateLiabilityInput) {
       liabilityId,
     )
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: input.actor_id ?? null,
       approved_by: input.approved_by ?? null,
       action: 'liability_updated',
@@ -671,44 +671,69 @@ export function cancelLiability(input: {
   actor_id?: number | null
 }) {
   const db = getDb()
+
   const liability = getLiabilityByIdOrThrow(Number(input.id))
 
   if (Number(liability.paid_amount || 0) > 0) {
     throw new Error('لا يمكن إلغاء التزام عليه دفعات')
   }
 
-  db.prepare(
-    `
-  UPDATE store_liabilities
-  SET
-    status = 'cancelled',
-    cancelled_at = CURRENT_TIMESTAMP,
-    cancelled_by = ?,
-    cancel_reason = ?,
-    updated_at = CURRENT_TIMESTAMP
-  WHERE id = ?
-  `,
-  ).run(
-    input.actor_id ?? null,
-    String(input.reason || '').trim() || 'إلغاء الالتزام',
-    liability.id,
-  )
+  const reason = String(input.reason || '').trim() || 'إلغاء الالتزام'
 
-  createActivityLog({
-    user_id: input.actor_id ?? null,
-    action: 'liability_cancelled',
-    entity: 'store_liabilities',
-    entity_id: liability.id,
-    details: JSON.stringify({
-      title: liability.title,
-      party_name: liability.party_name,
-      total_amount: liability.total_amount,
-    }),
+  const tx = db.transaction(() => {
+    db.prepare(
+      `
+      UPDATE store_liabilities
+
+      SET
+        status = 'cancelled',
+
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
+        cancelled_by = ?,
+
+        cancel_reason = ?,
+
+        updated_at =
+          CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+    ).run(
+      input.actor_id ?? null,
+
+      reason,
+
+      liability.id,
+    )
+
+    createCriticalActivityLog({
+      user_id: input.actor_id ?? null,
+
+      action: 'liability_cancelled',
+
+      entity: 'store_liabilities',
+
+      entity_id: liability.id,
+
+      details: JSON.stringify({
+        title: liability.title,
+
+        party_name: liability.party_name,
+
+        total_amount: liability.total_amount,
+
+        reason,
+      }),
+    })
+
+    return {
+      success: true,
+    }
   })
 
-  return {
-    success: true,
-  }
+  return tx()
 }
 
 export function getLiabilitiesSummary(input?: {
@@ -1116,7 +1141,7 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
       `,
     ).run(nextPaid, nextRemaining, nextStatus, payment.liability_id)
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: actorId,
       approved_by: input.approved_by ?? null,
       action: 'liability_payment_updated',
@@ -1300,7 +1325,7 @@ export function cancelLiabilityPayment(input: {
       `,
     ).run(nextPaid, nextRemaining, nextStatus, payment.liability_id)
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: actorId,
       approved_by: input.approved_by ?? null,
       action: 'liability_payment_cancelled',

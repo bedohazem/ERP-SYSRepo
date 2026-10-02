@@ -106,7 +106,13 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
     message: string
   } | null>(null)
 
-  function showToast(type: 'success' | 'error', message: string) {
+  function showToast(
+    type: 'success' | 'error',
+
+    message: string,
+
+    duration = 2600,
+  ) {
     const nextToast = {
       id: Date.now() + Math.random(),
 
@@ -118,7 +124,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
 
     window.setTimeout(() => {
       setToast((current) => (current?.id === nextToast.id ? null : current))
-    }, 2600)
+    }, duration)
   }
 
   async function refreshShift() {
@@ -261,7 +267,15 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
 
       showToast('success', 'تم فتح الشفت وتسجيل جرد الافتتاح')
     } catch (err) {
-      showToast('error', 'تعذر فتح الشفت')
+      showToast(
+        'error',
+
+        err instanceof Error && err.message
+          ? err.message
+          : 'تعذر فتح الشفت. لم يتم تطبيق أي تغييرات.',
+
+        4500,
+      )
     } finally {
       setBusy(false)
     }
@@ -364,7 +378,15 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
         showToast('success', 'تم إغلاق الشفت وتسجيل نتيجة الجرد')
       }
     } catch (err) {
-      showToast('error', 'تعذر إغلاق الشفت')
+      showToast(
+        'error',
+
+        err instanceof Error && err.message
+          ? err.message
+          : 'تعذر إغلاق الشفت. لم يتم تطبيق أي تغييرات.',
+
+        4500,
+      )
     } finally {
       setBusy(false)
     }

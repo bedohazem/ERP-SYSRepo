@@ -142,10 +142,18 @@ export default function PromotionsPage() {
     }
   }
 
+  function isErrorMessage(text: string) {
+    return /خطأ|تعذر|فشل|لا يمكن|غير صحيح|غير موجود|مطلوب/.test(text)
+  }
+
   function showMessage(text: string) {
     setMessage(text)
 
-    window.setTimeout(() => setMessage(''), 2200)
+    window.setTimeout(
+      () => setMessage(''),
+
+      isErrorMessage(text) ? 4500 : 2200,
+    )
   }
 
   function resetForm() {
@@ -404,8 +412,13 @@ export default function PromotionsPage() {
           style={{
             padding: '12px 14px',
             borderRadius: '12px',
-            background: 'rgba(124,58,237,0.15)',
-            border: '1px solid rgba(124,58,237,0.35)',
+            background: isErrorMessage(message)
+              ? 'rgba(239,68,68,0.15)'
+              : 'rgba(16,185,129,0.15)',
+
+            border: isErrorMessage(message)
+              ? '1px solid rgba(239,68,68,0.40)'
+              : '1px solid rgba(16,185,129,0.35)',
             fontWeight: 800,
           }}
         >

@@ -9,7 +9,7 @@ import {
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
 } from '../auth-session'
-import { logAction } from './activity-helper'
+import { logAction, runCriticalActionWithAudit } from './activity-helper'
 import fs from 'node:fs'
 import path from 'node:path'
 import {
@@ -169,19 +169,23 @@ export function registerSettingsIpc(): void {
   ipcMain.handle('settings:save-loyalty', (event, input) => {
     const actorId = requireAuthenticatedAdmin(event)
 
-    const result = saveLoyaltySettings(input)
+    return runCriticalActionWithAudit(
+      () => saveLoyaltySettings(input),
 
-    logAction({
-      actor_id: actorId,
-      action: 'loyalty_settings_saved',
-      entity: 'settings',
-      entity_id: null,
-      details: {
-        description: 'تم تحديث إعدادات نقاط الولاء',
-      },
-    })
+      () => ({
+        actor_id: actorId,
 
-    return result
+        action: 'loyalty_settings_saved',
+
+        entity: 'settings',
+
+        entity_id: null,
+
+        details: {
+          description: 'تم تحديث إعدادات نقاط الولاء',
+        },
+      }),
+    )
   })
 
   ipcMain.handle(

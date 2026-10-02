@@ -42,6 +42,23 @@ const emptyForm = {
 const CUSTOMER_HISTORY_PAGE_SIZE = 10
 const CUSTOMER_STATEMENT_PAGE_SIZE = 20
 
+function getErrorMessage(error: unknown, fallback: string) {
+  const raw =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : ''
+
+  const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/)
+
+  return match?.[1] || raw || fallback
+}
+
+function isErrorMessage(text: string) {
+  return /خطأ|تعذر|فشل|لم يتم|لا يمكن|غير صحيح|مطلوب/.test(text)
+}
+
 export default function CustomersPage() {
   const currentUser = useAuthStore((s) => s.user)
   const isAdmin = currentUser?.role === 'admin'
@@ -316,9 +333,13 @@ export default function CustomersPage() {
   useEffect(() => {
     if (!message) return
 
-    const timer = window.setTimeout(() => {
-      setMessage('')
-    }, 1800)
+    const timer = window.setTimeout(
+      () => {
+        setMessage('')
+      },
+
+      isErrorMessage(message) ? 4500 : 1800,
+    )
 
     return () => window.clearTimeout(timer)
   }, [message])
@@ -424,7 +445,8 @@ export default function CustomersPage() {
       await loadCustomers(customerPage)
     } catch (error) {
       console.error('Failed to save customer:', error)
-      setMessage('حدث خطأ أثناء حفظ العميل، تأكد أن رقم الهاتف غير مكرر')
+
+      setMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ العميل'))
     } finally {
       setSavingCustomer(false)
     }
@@ -529,7 +551,8 @@ export default function CustomersPage() {
       setMessage('تم تعديل النقاط')
     } catch (error) {
       console.error('Failed to adjust points:', error)
-      setMessage('حدث خطأ أثناء تعديل النقاط')
+
+      setMessage(getErrorMessage(error, 'حدث خطأ أثناء تعديل النقاط'))
     }
   }
 
@@ -592,7 +615,13 @@ export default function CustomersPage() {
       }
     } catch (error) {
       console.error('Failed to save customer payment:', error)
-      setMessage('حدث خطأ أثناء تسجيل الدفعة')
+
+      setMessage(
+        getErrorMessage(
+          error,
+          'حدث خطأ أثناء تسجيل الدفعة. لم يتم تطبيق أي تغييرات.',
+        ),
+      )
     } finally {
       setSavingPayment(false)
     }
@@ -795,9 +824,13 @@ export default function CustomersPage() {
       console.error('Failed to process customer payment:', error)
 
       setMessage(
-        paymentAction.mode === 'edit'
-          ? 'حدث خطأ أثناء تعديل الدفعة'
-          : 'حدث خطأ أثناء إلغاء الدفعة',
+        getErrorMessage(
+          error,
+
+          paymentAction.mode === 'edit'
+            ? 'حدث خطأ أثناء تعديل الدفعة. لم يتم تطبيق أي تغييرات.'
+            : 'حدث خطأ أثناء إلغاء الدفعة. لم يتم تطبيق أي تغييرات.',
+        ),
       )
     } finally {
       setSavingPaymentAction(false)
@@ -916,10 +949,9 @@ export default function CustomersPage() {
             zIndex: 1000001,
             padding: '12px 18px',
             borderRadius: '14px',
-            background:
-              message.includes('خطأ') || message.includes('مطلوب')
-                ? 'rgba(239,68,68,0.95)'
-                : 'rgba(16,185,129,0.95)',
+            background: isErrorMessage(message)
+              ? 'rgba(239,68,68,0.95)'
+              : 'rgba(16,185,129,0.95)',
             color: '#fff',
             fontWeight: 900,
             boxShadow: '0 18px 40px rgba(0,0,0,0.35)',

@@ -1,6 +1,6 @@
 import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
-import { createActivityLog } from './activity.repo'
+import { createCriticalActivityLog } from './activity.repo'
 import { resolveFinancialOperationShift } from './cash-shifts.repo'
 import { getShiftBusinessDate } from '../shift-business-date'
 
@@ -127,7 +127,7 @@ export function createExpense(input: CreateExpenseInput) {
 
     const expenseId = Number(result.lastInsertRowid)
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: actorId,
 
       action: 'expense_created',
@@ -512,7 +512,7 @@ export function updateExpense(input: UpdateExpenseInput) {
 
     const newCashMovementId = Number(replacement.lastInsertRowid || 0)
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: actorId,
       approved_by: input.approved_by ?? null,
       action: 'expense_updated',
@@ -702,7 +702,7 @@ export function cancelExpense(input: CancelExpenseInput) {
 
     const reverseCashMovementId = Number(reverse.lastInsertRowid || 0)
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: actorId,
       approved_by: input.approved_by ?? null,
       action: 'expense_cancelled',

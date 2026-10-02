@@ -137,12 +137,16 @@ export default function CashPage() {
     text: string
   } | null>(null)
 
-  function showMessage(type: 'success' | 'error', text: string) {
+  function showMessage(
+    type: 'success' | 'error',
+    text: string,
+    duration = 1800,
+  ) {
     setMessage({ type, text })
 
     setTimeout(() => {
       setMessage(null)
-    }, 1800)
+    }, duration)
   }
 
   const [movementType, setMovementType] = useState<'deposit' | 'withdraw'>(
@@ -291,7 +295,6 @@ export default function CashPage() {
     }
 
     setSaving(true)
-    setManualModalOpen(false)
 
     try {
       await window.api.createCashMovement({
@@ -307,6 +310,7 @@ export default function CashPage() {
         created_by: currentUser?.id ?? null,
       })
 
+      setManualModalOpen(false)
       setMovementType('deposit')
       setAmount('')
       setPaymentMethod('store_cash')
@@ -316,7 +320,14 @@ export default function CashPage() {
       await loadData(movementsPage)
     } catch (error) {
       console.error(error)
-      showMessage('error', 'حدث خطأ أثناء حفظ حركة الخزنة')
+
+      showMessage(
+        'error',
+        error instanceof Error && error.message
+          ? error.message
+          : 'حدث خطأ أثناء حفظ حركة الخزنة. لم يتم تطبيق أي تغييرات.',
+        4500,
+      )
     } finally {
       setSaving(false)
     }
@@ -349,7 +360,6 @@ export default function CashPage() {
     }
 
     setTransferring(true)
-    setTransferModalOpen(false)
 
     try {
       await window.api.createCashTransfer({
@@ -361,7 +371,7 @@ export default function CashPage() {
           `تحويل من ${getPaymentMethodLabel(transferFromAccount)} إلى ${getPaymentMethodLabel(transferToAccount)}`,
         created_by: currentUser?.id ?? null,
       })
-
+      setTransferModalOpen(false)
       setTransferFromAccount('store_cash')
       setTransferToAccount('owner_cash')
       setTransferAmount('')
@@ -373,9 +383,12 @@ export default function CashPage() {
       console.error(error)
       showMessage(
         'error',
+
         error instanceof Error && error.message
           ? error.message
-          : 'حدث خطأ أثناء تحويل المبلغ',
+          : 'حدث خطأ أثناء تحويل المبلغ. لم يتم تطبيق أي تغييرات.',
+
+        4500,
       )
     } finally {
       setTransferring(false)
@@ -396,7 +409,13 @@ export default function CashPage() {
       })
 
       if (!result?.success) {
-        showMessage('error', result?.message || 'تعذر إلغاء حركة الخزنة')
+        showMessage(
+          'error',
+
+          result?.message || 'تعذر إلغاء حركة الخزنة. لم يتم تطبيق أي تغييرات.',
+
+          4500,
+        )
         return
       }
 
@@ -408,7 +427,14 @@ export default function CashPage() {
 
       await loadData(movementsPage)
     } catch (error: any) {
-      showMessage('error', error?.message || 'حدث خطأ أثناء إلغاء حركة الخزنة')
+      showMessage(
+        'error',
+
+        error?.message ||
+          'حدث خطأ أثناء إلغاء حركة الخزنة. لم يتم تطبيق أي تغييرات.',
+
+        4500,
+      )
     } finally {
       setCancellingMovement(false)
     }
@@ -502,7 +528,13 @@ export default function CashPage() {
       })
 
       if (!result.success) {
-        showMessage('error', result.message || 'تعذر تعديل حركة الخزنة')
+        showMessage(
+          'error',
+
+          result.message || 'تعذر تعديل حركة الخزنة. لم يتم تطبيق أي تغييرات.',
+
+          4500,
+        )
 
         return
       }
@@ -518,7 +550,12 @@ export default function CashPage() {
     } catch (error) {
       showMessage(
         'error',
-        error instanceof Error ? error.message : 'تعذر تعديل حركة الخزنة',
+
+        error instanceof Error
+          ? error.message
+          : 'تعذر تعديل حركة الخزنة. لم يتم تطبيق أي تغييرات.',
+
+        4500,
       )
     } finally {
       setUpdatingMovement(false)

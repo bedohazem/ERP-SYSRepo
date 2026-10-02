@@ -1,5 +1,5 @@
 import { getDb } from '../db'
-import { createActivityLog } from './activity.repo'
+import { createCriticalActivityLog } from './activity.repo'
 import { getShiftBusinessDate } from '../shift-business-date'
 export type CashMovementInput = {
   type:
@@ -353,9 +353,10 @@ export function createCashMovement(input: CashMovementInput) {
     }
   }
 
-  const result = db
-    .prepare(
-      `
+  const tx = db.transaction(() => {
+    const result = db
+      .prepare(
+        `
       INSERT INTO cash_movements (
         type,
         amount,
@@ -370,39 +371,50 @@ export function createCashMovement(input: CashMovementInput) {
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-    )
-    .run(
-      type,
-      amount,
-      direction,
-      account,
-      input.reference_id ?? null,
-      input.reference_type ?? null,
-      input.notes ?? null,
-      input.created_by ?? null,
-      businessDate,
-      input.shift_id ?? null,
-    )
+      )
+      .run(
+        type,
+        amount,
+        direction,
+        account,
+        input.reference_id ?? null,
+        input.reference_type ?? null,
+        input.notes ?? null,
+        input.created_by ?? null,
+        businessDate,
+        input.shift_id ?? null,
+      )
 
-  const movementId = Number(result.lastInsertRowid)
+    const movementId = Number(result.lastInsertRowid)
 
-  createActivityLog({
-    user_id: input.created_by ?? null,
-    action: direction === 'in' ? 'cash_in' : 'cash_out',
-    entity: 'cash_movements',
-    entity_id: movementId,
-    details: JSON.stringify({
-      type,
-      amount,
-      direction,
-      payment_method: account,
-      notes: input.notes ?? null,
-      business_date: businessDate,
-      shift_id: input.shift_id ?? null,
-    }),
+    createCriticalActivityLog({
+      user_id: input.created_by ?? null,
+
+      action: direction === 'in' ? 'cash_in' : 'cash_out',
+
+      entity: 'cash_movements',
+
+      entity_id: movementId,
+
+      details: JSON.stringify({
+        type,
+        amount,
+        direction,
+
+        payment_method: account,
+
+        notes: input.notes ?? null,
+
+        business_date: businessDate,
+
+        shift_id: input.shift_id ?? null,
+      }),
+    })
+
+    return result
   })
 
-  return result
+  return tx()
 }
 
 export function getCashSummary(input?: CashFilterInput) {
@@ -924,7 +936,7 @@ export function closeCashDay(input: CashDayCloseInput) {
       })
     }
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: input.closed_by ?? null,
       action: 'cash_day_closed',
       entity: 'cash_day_closings',
@@ -1142,7 +1154,7 @@ export function cancelCashDayClosing(input: {
       `,
     ).run(closingId)
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: input.actor_id ?? null,
 
       action: 'cash_day_close_cancelled',
@@ -1305,7 +1317,7 @@ export function updateCashDayClosing(input: {
       })
     }
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: input.actor_id ?? null,
 
       action: 'cash_day_close_updated',
@@ -1616,7 +1628,7 @@ export function updateCashMovement(input: {
         `,
       ).run(newMovementId, movement.id)
 
-      createActivityLog({
+      createCriticalActivityLog({
         user_id: actorId,
         approved_by: input.approved_by ?? null,
         action: 'cash_movement_updated',
@@ -1844,7 +1856,7 @@ export function updateCashMovement(input: {
       inMovement.id,
     )
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: actorId,
 
       approved_by: input.approved_by ?? null,
@@ -1987,7 +1999,7 @@ export function cancelCashMovement(input: {
         `,
       ).run(reverseMovementId, movement.id)
 
-      createActivityLog({
+      createCriticalActivityLog({
         user_id: actorId,
         approved_by: input.approved_by ?? null,
         action: 'cash_movement_cancelled',
@@ -2117,7 +2129,7 @@ export function cancelCashMovement(input: {
       inMovement.id,
     )
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: actorId,
 
       approved_by: input.approved_by ?? null,

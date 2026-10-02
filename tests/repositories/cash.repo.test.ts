@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { CRITICAL_AUDIT_ERROR_MESSAGE } from '../../src/main/database/repositories/activity.repo'
 import {
   cancelCashDayClosing,
   closeCashDay,
@@ -92,6 +93,61 @@ describe('cash repository', () => {
     expect(summary.total_out).toBe(0)
     expect(summary.balance).toBe(500)
     expect(summary.movements_count).toBe(1)
+  })
+
+  it('rolls back cash movement when critical audit fails', () => {
+    const db = getDb()
+
+    db.exec(`
+    DROP TRIGGER IF EXISTS
+      fail_cash_movement_audit;
+
+    CREATE TRIGGER
+      fail_cash_movement_audit
+    BEFORE INSERT ON activity_logs
+    BEGIN
+      SELECT RAISE(
+        ABORT,
+        'forced cash audit failure'
+      );
+    END;
+  `)
+
+    try {
+      expect(() =>
+        createCashMovement({
+          type: 'deposit',
+
+          direction: 'in',
+
+          amount: 500,
+
+          payment_method: 'store_cash',
+
+          notes: 'Must rollback',
+
+          created_by: 1,
+        }),
+      ).toThrow(CRITICAL_AUDIT_ERROR_MESSAGE)
+
+      const movementCount = db
+        .prepare(
+          `
+        SELECT COUNT(*) AS count
+        FROM cash_movements
+        `,
+        )
+        .get() as {
+        count: number
+      }
+
+      expect(Number(movementCount.count)).toBe(0)
+    } finally {
+      db.exec(`
+      DROP TRIGGER IF EXISTS
+        fail_cash_movement_audit;
+    `)
+    }
   })
 
   it('creates cash out movement and updates summary balance', () => {

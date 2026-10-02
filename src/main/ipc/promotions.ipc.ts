@@ -9,7 +9,7 @@ import {
   updatePromotion,
 } from '../database/repositories/promotions.repo'
 
-import { logAction } from './activity-helper'
+import { runCriticalActionWithAudit } from './activity-helper'
 import { requirePermission } from '../auth-session'
 
 function getErrorMessage(error: unknown) {
@@ -39,29 +39,38 @@ export function registerPromotionsIpc(): void {
     try {
       const actorId = requirePermission(event, 'promotions.manage').id
 
-      const result = createPromotion({
-        ...input,
-        actor_id: actorId,
-      })
+      const result = runCriticalActionWithAudit(
+        () =>
+          createPromotion({
+            ...input,
 
-      logAction({
-        actor_id: actorId,
-        action: 'promotion_created',
-        entity: 'promotions',
-        entity_id: result.promotionId,
+            actor_id: actorId,
+          }),
 
-        details: {
-          name: input.name,
-          type: input.type,
-          value: input.value,
+        (result) => ({
+          actor_id: actorId,
 
-          buy_qty: input.buy_qty ?? null,
+          action: 'promotion_created',
 
-          free_qty: input.free_qty ?? null,
+          entity: 'promotions',
 
-          scope_type: input.scope_type,
-        },
-      })
+          entity_id: result.promotionId,
+
+          details: {
+            name: input.name,
+
+            type: input.type,
+
+            value: input.value,
+
+            buy_qty: input.buy_qty ?? null,
+
+            free_qty: input.free_qty ?? null,
+
+            scope_type: input.scope_type,
+          },
+        }),
+      )
 
       return result
     } catch (error) {
@@ -76,29 +85,38 @@ export function registerPromotionsIpc(): void {
     try {
       const actorId = requirePermission(event, 'promotions.manage').id
 
-      const result = updatePromotion({
-        ...input,
-        actor_id: actorId,
-      })
+      const result = runCriticalActionWithAudit(
+        () =>
+          updatePromotion({
+            ...input,
 
-      logAction({
-        actor_id: actorId,
-        action: 'promotion_updated',
-        entity: 'promotions',
-        entity_id: Number(input.id),
+            actor_id: actorId,
+          }),
 
-        details: {
-          name: input.name,
-          type: input.type,
-          value: input.value,
+        () => ({
+          actor_id: actorId,
 
-          buy_qty: input.buy_qty ?? null,
+          action: 'promotion_updated',
 
-          free_qty: input.free_qty ?? null,
+          entity: 'promotions',
 
-          scope_type: input.scope_type,
-        },
-      })
+          entity_id: Number(input.id),
+
+          details: {
+            name: input.name,
+
+            type: input.type,
+
+            value: input.value,
+
+            buy_qty: input.buy_qty ?? null,
+
+            free_qty: input.free_qty ?? null,
+
+            scope_type: input.scope_type,
+          },
+        }),
+      )
 
       return result
     } catch (error) {
@@ -113,23 +131,30 @@ export function registerPromotionsIpc(): void {
     try {
       const actorId = requirePermission(event, 'promotions.manage').id
 
-      const result = togglePromotion(Number(input.id), Number(input.is_active))
+      const result = runCriticalActionWithAudit(
+        () =>
+          togglePromotion(
+            Number(input.id),
 
-      logAction({
-        actor_id: actorId,
+            Number(input.is_active),
+          ),
 
-        action: Number(input.is_active)
-          ? 'promotion_activated'
-          : 'promotion_deactivated',
+        () => ({
+          actor_id: actorId,
 
-        entity: 'promotions',
+          action: Number(input.is_active)
+            ? 'promotion_activated'
+            : 'promotion_deactivated',
 
-        entity_id: Number(input.id),
+          entity: 'promotions',
 
-        details: {
-          is_active: Number(input.is_active) ? 1 : 0,
-        },
-      })
+          entity_id: Number(input.id),
+
+          details: {
+            is_active: Number(input.is_active) ? 1 : 0,
+          },
+        }),
+      )
 
       return result
     } catch (error) {

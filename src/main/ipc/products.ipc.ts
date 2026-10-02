@@ -1,5 +1,8 @@
 import { ipcMain } from 'electron'
-import { logAction } from './activity-helper'
+import {
+  runCriticalActionWithAudit,
+  type ActionLogInput,
+} from './activity-helper'
 import {
   requireAuthenticatedUser,
   requireAnyPermission,
@@ -48,20 +51,28 @@ export function registerProductsIpc(): void {
   ipcMain.handle('products:create-category', (event, input) => {
     try {
       const actorId = requirePermission(event, 'products.manage').id
-      const result = createCategory(input)
 
-      logAction({
-        actor_id: actorId,
-        action: 'category_created',
-        entity: 'categories',
-        entity_id: result.id,
-        details: { name: input.name },
-      })
+      return runCriticalActionWithAudit(
+        () => createCategory(input),
 
-      return result
+        (result) => ({
+          actor_id: actorId,
+
+          action: 'category_created',
+
+          entity: 'categories',
+
+          entity_id: result.id,
+
+          details: {
+            name: input.name,
+          },
+        }),
+      )
     } catch (error) {
       return {
         success: false,
+
         message: getErrorMessage(error),
       }
     }
@@ -70,20 +81,28 @@ export function registerProductsIpc(): void {
   ipcMain.handle('products:update-category', (event, input) => {
     try {
       const actorId = requirePermission(event, 'products.manage').id
-      const result = updateCategory(input)
 
-      logAction({
-        actor_id: actorId,
-        action: 'category_updated',
-        entity: 'categories',
-        entity_id: input.id,
-        details: { name: input.name },
-      })
+      return runCriticalActionWithAudit(
+        () => updateCategory(input),
 
-      return result
+        () => ({
+          actor_id: actorId,
+
+          action: 'category_updated',
+
+          entity: 'categories',
+
+          entity_id: input.id,
+
+          details: {
+            name: input.name,
+          },
+        }),
+      )
     } catch (error) {
       return {
         success: false,
+
         message: getErrorMessage(error),
       }
     }
@@ -94,20 +113,28 @@ export function registerProductsIpc(): void {
     (event, categoryId: number, isActive: number) => {
       try {
         const actorId = requirePermission(event, 'products.manage').id
-        const result = toggleCategoryActive(categoryId, isActive)
 
-        logAction({
-          actor_id: actorId,
-          action: isActive ? 'category_activated' : 'category_deactivated',
-          entity: 'categories',
-          entity_id: categoryId,
-          details: { is_active: isActive },
-        })
+        return runCriticalActionWithAudit(
+          () => toggleCategoryActive(categoryId, isActive),
 
-        return result
+          () => ({
+            actor_id: actorId,
+
+            action: isActive ? 'category_activated' : 'category_deactivated',
+
+            entity: 'categories',
+
+            entity_id: categoryId,
+
+            details: {
+              is_active: isActive,
+            },
+          }),
+        )
       } catch (error) {
         return {
           success: false,
+
           message: getErrorMessage(error),
         }
       }
@@ -170,26 +197,34 @@ export function registerProductsIpc(): void {
     try {
       const actorId = requirePermission(event, 'products.manage').id
 
-      const result = createProduct({
-        ...input,
-        actor_id: actorId,
-      })
+      return runCriticalActionWithAudit(
+        () =>
+          createProduct({
+            ...input,
 
-      logAction({
-        actor_id: actorId,
-        action: 'product_created',
-        entity: 'products',
-        entity_id: result.productId,
-        details: {
-          name: input.name,
-          variants_count: input.variants?.length || 0,
-        },
-      })
+            actor_id: actorId,
+          }),
 
-      return result
+        (result) => ({
+          actor_id: actorId,
+
+          action: 'product_created',
+
+          entity: 'products',
+
+          entity_id: result.productId,
+
+          details: {
+            name: input.name,
+
+            variants_count: input.variants?.length || 0,
+          },
+        }),
+      )
     } catch (error) {
       return {
         success: false,
+
         message: getErrorMessage(error),
       }
     }
@@ -199,33 +234,43 @@ export function registerProductsIpc(): void {
     try {
       const actorId = requirePermission(event, 'products.manage').id
 
-      const result = addProductVariant({
-        ...input,
-        actor_id: actorId,
-      })
+      return runCriticalActionWithAudit(
+        () =>
+          addProductVariant({
+            ...input,
 
-      logAction({
-        actor_id: actorId,
-        action: 'variant_created',
-        entity: 'product_variants',
-        entity_id: result.variantId,
-        details: {
-          product_id: input.product_id,
-          barcode: input.barcode,
-          size: input.size,
-          color: input.color,
-          buy_price: input.buy_price,
-          sell_price: input.sell_price,
-          discount_price: input.discount_price ?? null,
-          min_stock: input.min_stock,
-          opening_qty: input.opening_qty ?? 0,
-        },
-      })
+            actor_id: actorId,
+          }),
 
-      return result
+        (result) => ({
+          actor_id: actorId,
+
+          action: 'variant_created',
+
+          entity: 'product_variants',
+
+          entity_id: result.variantId,
+
+          details: {
+            product_id: input.product_id,
+            barcode: input.barcode,
+            size: input.size,
+            color: input.color,
+            buy_price: input.buy_price,
+            sell_price: input.sell_price,
+
+            discount_price: input.discount_price ?? null,
+
+            min_stock: input.min_stock,
+
+            opening_qty: input.opening_qty ?? 0,
+          },
+        }),
+      )
     } catch (error) {
       return {
         success: false,
+
         message: getErrorMessage(error),
       }
     }
@@ -235,47 +280,69 @@ export function registerProductsIpc(): void {
     try {
       const actorId = requirePermission(event, 'products.manage').id
 
-      const result = updateProduct(input)
+      return runCriticalActionWithAudit(
+        () => updateProduct(input),
 
-      logAction({
-        actor_id: actorId,
-        action: 'product_updated',
-        entity: 'products',
-        entity_id: input.id,
-        details: {
-          name: input.name,
-          category_id: input.category_id,
-          variants_count: Array.isArray(input.variants)
-            ? input.variants.length
-            : 0,
+        () => {
+          const logs: ActionLogInput[] = [
+            {
+              actor_id: actorId,
+
+              action: 'product_updated',
+
+              entity: 'products',
+
+              entity_id: input.id,
+
+              details: {
+                name: input.name,
+
+                category_id: input.category_id,
+
+                variants_count: Array.isArray(input.variants)
+                  ? input.variants.length
+                  : 0,
+              },
+            },
+          ]
+
+          for (const variant of Array.isArray(input.variants)
+            ? input.variants
+            : []) {
+            logs.push({
+              actor_id: actorId,
+
+              action: 'variant_updated',
+
+              entity: 'product_variants',
+
+              entity_id: variant.id,
+
+              details: {
+                product_id: input.id,
+
+                barcode: variant.barcode,
+                size: variant.size,
+                color: variant.color,
+
+                buy_price: variant.buy_price,
+
+                sell_price: variant.sell_price,
+
+                discount_price: variant.discount_price ?? null,
+
+                min_stock: variant.min_stock,
+              },
+            })
+          }
+
+          return logs
         },
-      })
-
-      for (const variant of Array.isArray(input.variants)
-        ? input.variants
-        : []) {
-        logAction({
-          actor_id: actorId,
-          action: 'variant_updated',
-          entity: 'product_variants',
-          entity_id: variant.id,
-          details: {
-            product_id: input.id,
-            barcode: variant.barcode,
-            size: variant.size,
-            color: variant.color,
-            buy_price: variant.buy_price,
-            sell_price: variant.sell_price,
-            discount_price: variant.discount_price ?? null,
-            min_stock: variant.min_stock,
-          },
-        })
-      }
-
-      return result
+      )
     } catch (error) {
       return {
         success: false,
+
         message: getErrorMessage(error),
       }
     }
@@ -284,28 +351,38 @@ export function registerProductsIpc(): void {
   ipcMain.handle('products:update-variant', (event, input) => {
     try {
       const actorId = requirePermission(event, 'products.manage').id
-      const result = updateVariant(input)
 
-      logAction({
-        actor_id: actorId,
-        action: 'variant_updated',
-        entity: 'product_variants',
-        entity_id: input.id,
-        details: {
-          barcode: input.barcode,
-          size: input.size,
-          color: input.color,
-          buy_price: input.buy_price,
-          sell_price: input.sell_price,
-          discount_price: input.discount_price ?? null,
-          min_stock: input.min_stock,
-        },
-      })
+      return runCriticalActionWithAudit(
+        () => updateVariant(input),
 
-      return result
+        () => ({
+          actor_id: actorId,
+
+          action: 'variant_updated',
+
+          entity: 'product_variants',
+
+          entity_id: input.id,
+
+          details: {
+            barcode: input.barcode,
+            size: input.size,
+            color: input.color,
+
+            buy_price: input.buy_price,
+
+            sell_price: input.sell_price,
+
+            discount_price: input.discount_price ?? null,
+
+            min_stock: input.min_stock,
+          },
+        }),
+      )
     } catch (error) {
       return {
         success: false,
+
         message: getErrorMessage(error),
       }
     }
@@ -317,20 +394,27 @@ export function registerProductsIpc(): void {
       try {
         const actorId = requirePermission(event, 'products.manage').id
 
-        const result = toggleProductActive(productId, isActive)
+        return runCriticalActionWithAudit(
+          () => toggleProductActive(productId, isActive),
 
-        logAction({
-          actor_id: actorId,
-          action: isActive ? 'product_activated' : 'product_deactivated',
-          entity: 'products',
-          entity_id: productId,
-          details: { is_active: isActive },
-        })
+          () => ({
+            actor_id: actorId,
 
-        return result
+            action: isActive ? 'product_activated' : 'product_deactivated',
+
+            entity: 'products',
+
+            entity_id: productId,
+
+            details: {
+              is_active: isActive,
+            },
+          }),
+        )
       } catch (error) {
         return {
           success: false,
+
           message: getErrorMessage(error),
         }
       }
@@ -343,20 +427,27 @@ export function registerProductsIpc(): void {
       try {
         const actorId = requirePermission(event, 'products.manage').id
 
-        const result = toggleVariantActive(variantId, isActive)
+        return runCriticalActionWithAudit(
+          () => toggleVariantActive(variantId, isActive),
 
-        logAction({
-          actor_id: actorId,
-          action: isActive ? 'variant_activated' : 'variant_deactivated',
-          entity: 'product_variants',
-          entity_id: variantId,
-          details: { is_active: isActive },
-        })
+          () => ({
+            actor_id: actorId,
 
-        return result
+            action: isActive ? 'variant_activated' : 'variant_deactivated',
+
+            entity: 'product_variants',
+
+            entity_id: variantId,
+
+            details: {
+              is_active: isActive,
+            },
+          }),
+        )
       } catch (error) {
         return {
           success: false,
+
           message: getErrorMessage(error),
         }
       }

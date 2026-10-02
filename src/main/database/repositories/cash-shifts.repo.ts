@@ -1,5 +1,5 @@
 import { getDb } from '../db'
-import { createActivityLog } from './activity.repo'
+import { createCriticalActivityLog } from './activity.repo'
 import {
   createCashMovement,
   getCashSummary,
@@ -716,7 +716,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
       }
     }
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: openedBy,
 
       action: 'cash_shift_opened',
@@ -1713,7 +1713,7 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
         )
       }
 
-      createActivityLog({
+      createCriticalActivityLog({
         user_id: resolvedBy,
 
         approved_by: input.approved_by ?? null,
@@ -1815,7 +1815,7 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
       throw new Error('تعذر مراجعة فرق الشفت')
     }
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: resolvedBy,
       approved_by: input.approved_by ?? null,
       action: 'cash_shift_variance_resolved',
@@ -2085,7 +2085,7 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
       shift.id,
     )
 
-    createActivityLog({
+    createCriticalActivityLog({
       user_id: closedBy,
       approved_by: input.approved_by ?? null,
       action: 'cash_shift_closed',

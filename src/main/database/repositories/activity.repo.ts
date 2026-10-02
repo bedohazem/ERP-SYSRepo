@@ -1,5 +1,8 @@
 import { getDb } from '../db'
 
+export const CRITICAL_AUDIT_ERROR_MESSAGE =
+  'تعذر تسجيل سجل المراجعة. لم يتم تطبيق أي تغييرات.'
+
 export type ActivityLogInput = {
   user_id?: number | null
 
@@ -58,6 +61,16 @@ export function createActivityLog(input: ActivityLogInput) {
 
       input.details ?? null,
     )
+}
+
+export function createCriticalActivityLog(input: ActivityLogInput) {
+  try {
+    return createActivityLog(input)
+  } catch (error) {
+    console.error('Failed to create critical activity log:', error)
+
+    throw new Error(CRITICAL_AUDIT_ERROR_MESSAGE)
+  }
 }
 
 export function safeCreateActivityLog(input: ActivityLogInput) {

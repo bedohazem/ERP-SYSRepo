@@ -232,12 +232,21 @@ export default function SettingsPage() {
     void loadSettings()
   }, [])
 
-  function showMessage(type: 'success' | 'error', text: string) {
-    setPageMessage({ type, text })
+  function showMessage(
+    type: 'success' | 'error',
+
+    text: string,
+
+    duration = type === 'error' ? 4500 : 1800,
+  ) {
+    setPageMessage({
+      type,
+      text,
+    })
 
     setTimeout(() => {
       setPageMessage(null)
-    }, 1800)
+    }, duration)
   }
 
   async function loadSettings() {

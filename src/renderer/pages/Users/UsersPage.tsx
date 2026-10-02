@@ -64,12 +64,21 @@ export default function UsersPage() {
 
   const [savingPermissions, setSavingPermissions] = useState(false)
 
-  function showMessage(type: 'success' | 'error', text: string) {
-    setPageMessage({ type, text })
+  function showMessage(
+    type: 'success' | 'error',
+
+    text: string,
+
+    duration = type === 'error' ? 4500 : 1800,
+  ) {
+    setPageMessage({
+      type,
+      text,
+    })
 
     setTimeout(() => {
       setPageMessage(null)
-    }, 1800)
+    }, duration)
   }
 
   const isAdmin = currentUser?.role === 'admin'

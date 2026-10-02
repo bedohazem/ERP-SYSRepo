@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { requireAdmin, requireAdminApprovalForActor } from './permission-helper'
-import { logAction } from './activity-helper'
+import { runCriticalActionWithAudit } from './activity-helper'
 import {
   adjustCustomerPoints,
   createCustomer,
@@ -47,39 +47,49 @@ export function registerCustomersIpc(): void {
   ipcMain.handle('customers:create', (event, input) => {
     const actorId = requirePermission(event, 'customers.manage').id
 
-    const customer = createCustomer(input) as any
+    return runCriticalActionWithAudit(
+      () => createCustomer(input) as any,
 
-    logAction({
-      actor_id: actorId,
-      action: 'customer_created',
-      entity: 'customers',
-      entity_id: Number(customer?.id || 0) || null,
-      details: {
-        name: customer?.name || input?.name,
-        phone: customer?.phone || input?.phone,
-      },
-    })
+      (customer) => ({
+        actor_id: actorId,
 
-    return customer
+        action: 'customer_created',
+
+        entity: 'customers',
+
+        entity_id: Number(customer?.id || 0) || null,
+
+        details: {
+          name: customer?.name || input?.name,
+
+          phone: customer?.phone || input?.phone,
+        },
+      }),
+    )
   })
 
   ipcMain.handle('customers:update', (event, input) => {
     const actorId = requirePermission(event, 'customers.manage').id
 
-    const customer = updateCustomer(input) as any
+    return runCriticalActionWithAudit(
+      () => updateCustomer(input) as any,
 
-    logAction({
-      actor_id: actorId,
-      action: 'customer_updated',
-      entity: 'customers',
-      entity_id: Number(input?.id),
-      details: {
-        name: customer?.name || input?.name,
-        phone: customer?.phone || input?.phone,
-      },
-    })
+      (customer) => ({
+        actor_id: actorId,
 
-    return customer
+        action: 'customer_updated',
+
+        entity: 'customers',
+
+        entity_id: Number(input?.id),
+
+        details: {
+          name: customer?.name || input?.name,
+
+          phone: customer?.phone || input?.phone,
+        },
+      }),
+    )
   })
 
   ipcMain.handle('customers:delete', (event, id: number) => {
@@ -87,21 +97,27 @@ export function registerCustomersIpc(): void {
 
     const customer = getCustomerById(Number(id)) as any
 
-    const result = deleteCustomer(Number(id))
+    return runCriticalActionWithAudit(
+      () => deleteCustomer(Number(id)),
 
-    logAction({
-      actor_id: actorId,
-      action: 'customer_deactivated',
-      entity: 'customers',
-      entity_id: Number(id),
-      details: {
-        name: customer?.name || '',
-        phone: customer?.phone || '',
-        balance: Number(customer?.balance || 0),
-      },
-    })
+      () => ({
+        actor_id: actorId,
 
-    return result
+        action: 'customer_deactivated',
+
+        entity: 'customers',
+
+        entity_id: Number(id),
+
+        details: {
+          name: customer?.name || '',
+
+          phone: customer?.phone || '',
+
+          balance: Number(customer?.balance || 0),
+        },
+      }),
+    )
   })
 
   ipcMain.handle('customers:history', (event, customerId: number) => {
@@ -113,46 +129,62 @@ export function registerCustomersIpc(): void {
   ipcMain.handle('customers:adjust-points', (event, input) => {
     const actorId = requireAuthenticatedAdmin(event)
 
-    const result = adjustCustomerPoints(input)
+    return runCriticalActionWithAudit(
+      () => adjustCustomerPoints(input),
 
-    logAction({
-      actor_id: actorId,
-      action: 'customer_points_adjusted',
-      entity: 'customers',
-      entity_id: Number(input?.customer_id),
-      details: {
-        customer_id: Number(input?.customer_id),
-        points: Number(input?.points || 0),
-        notes: input?.notes || '',
-      },
-    })
+      () => ({
+        actor_id: actorId,
 
-    return result
+        action: 'customer_points_adjusted',
+
+        entity: 'customers',
+
+        entity_id: Number(input?.customer_id),
+
+        details: {
+          customer_id: Number(input?.customer_id),
+
+          points: Number(input?.points || 0),
+
+          notes: input?.notes || '',
+        },
+      }),
+    )
   })
 
   ipcMain.handle('customers:record-payment', (event, input) => {
     const actorId = requirePermission(event, 'customers.payments').id
 
-    const result = recordCustomerPayment({
-      ...input,
-      actor_id: actorId,
-    })
+    return runCriticalActionWithAudit(
+      () =>
+        recordCustomerPayment({
+          ...input,
 
-    logAction({
-      actor_id: actorId,
-      action: 'customer_payment_created',
-      entity: 'customer_payment_batches',
-      entity_id: result.payment_batch_id,
-      details: {
-        customer_id: result.customer_id,
-        amount: result.paid_amount,
-        payment_method: input?.payment_method || 'cash',
-        allocations: result.allocations,
-        shift_id: result.shift_id,
-      },
-    })
+          actor_id: actorId,
+        }),
 
-    return result
+      (result) => ({
+        actor_id: actorId,
+
+        action: 'customer_payment_created',
+
+        entity: 'customer_payment_batches',
+
+        entity_id: result.payment_batch_id,
+
+        details: {
+          customer_id: result.customer_id,
+
+          amount: result.paid_amount,
+
+          payment_method: input?.payment_method || 'cash',
+
+          allocations: result.allocations,
+
+          shift_id: result.shift_id,
+        },
+      }),
+    )
   })
 
   ipcMain.handle('customers:cancel-payment', (event, input) => {
@@ -184,32 +216,40 @@ export function registerCustomersIpc(): void {
         approvedBy = approval.id
       }
 
-      const result = cancelCustomerPaymentBatch({
-        batch_id: Number(input?.batch_id),
+      const batchId = Number(input?.batch_id)
 
-        reason: input?.reason,
+      const result = runCriticalActionWithAudit(
+        () =>
+          cancelCustomerPaymentBatch({
+            batch_id: batchId,
 
-        actor_id: actorId,
-      })
+            reason: input?.reason,
 
-      logAction({
-        actor_id: actorId,
-        approved_by: approvedBy,
-        action: 'customer_payment_cancelled',
+            actor_id: actorId,
+          }),
 
-        entity: 'customer_payment_batches',
+        (result) => ({
+          actor_id: actorId,
 
-        entity_id: Number(input?.batch_id),
+          approved_by: approvedBy,
 
-        details: {
-          customer_id: result.customer_id,
+          action: 'customer_payment_cancelled',
 
-          amount: result.cancelled_amount,
+          entity: 'customer_payment_batches',
 
-          reason: input?.reason,
-          shift_id: result.cancelled_shift_id,
-        },
-      })
+          entity_id: batchId,
+
+          details: {
+            customer_id: result.customer_id,
+
+            amount: result.cancelled_amount,
+
+            reason: input?.reason,
+
+            shift_id: result.cancelled_shift_id,
+          },
+        }),
+      )
 
       return result
     } catch (error) {
@@ -251,40 +291,48 @@ export function registerCustomersIpc(): void {
         approvedBy = approval.id
       }
 
-      const result = updateCustomerPaymentBatch({
-        batch_id: Number(input?.batch_id),
+      const batchId = Number(input?.batch_id)
 
-        amount: Number(input?.amount),
+      const result = runCriticalActionWithAudit(
+        () =>
+          updateCustomerPaymentBatch({
+            batch_id: batchId,
 
-        payment_method: input?.payment_method,
+            amount: Number(input?.amount),
 
-        notes: input?.notes,
+            payment_method: input?.payment_method,
 
-        actor_id: actorId,
-      })
+            notes: input?.notes,
 
-      logAction({
-        actor_id: actorId,
-        approved_by: approvedBy,
-        action: 'customer_payment_updated',
+            actor_id: actorId,
+          }),
 
-        entity: 'customer_payment_batches',
+        (result) => ({
+          actor_id: actorId,
 
-        entity_id: Number(input?.batch_id),
+          approved_by: approvedBy,
 
-        details: {
-          customer_id: result.customer_id,
+          action: 'customer_payment_updated',
 
-          replacement_batch_id: result.batch_id,
+          entity: 'customer_payment_batches',
 
-          old_amount: result.old_amount,
+          entity_id: batchId,
 
-          new_amount: result.new_amount,
+          details: {
+            customer_id: result.customer_id,
 
-          payment_method: result.payment_method,
-          shift_id: result.shift_id,
-        },
-      })
+            replacement_batch_id: result.batch_id,
+
+            old_amount: result.old_amount,
+
+            new_amount: result.new_amount,
+
+            payment_method: result.payment_method,
+
+            shift_id: result.shift_id,
+          },
+        }),
+      )
 
       return result
     } catch (error) {

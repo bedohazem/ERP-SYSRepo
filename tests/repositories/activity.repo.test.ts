@@ -5,6 +5,10 @@ import {
   listActivityLogs,
   safeCreateActivityLog,
 } from '../../src/main/database/repositories/activity.repo'
+import {
+  CRITICAL_AUDIT_ERROR_MESSAGE,
+  runCriticalActionWithAudit,
+} from '../../src/main/ipc/activity-helper'
 
 type ActivityLogTestRow = {
   id: number
@@ -66,6 +70,149 @@ describe('activity repository', () => {
 
     expect(logs).toHaveLength(1)
     expect(logs[0].action).toBe('safe_action')
+  })
+
+  it('commits critical operation and audit together', () => {
+    const db = getDb()
+
+    db.exec(`
+      CREATE TABLE critical_audit_probe (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        value TEXT NOT NULL
+      );
+    `)
+
+    const result = runCriticalActionWithAudit(
+      () => {
+        const insert = db
+          .prepare(
+            `
+            INSERT INTO critical_audit_probe (
+              value
+            )
+            VALUES (?)
+            `,
+          )
+          .run('committed')
+
+        return {
+          id: Number(insert.lastInsertRowid),
+        }
+      },
+
+      (operation) => ({
+        actor_id: 1,
+
+        action: 'critical_probe_created',
+
+        entity: 'critical_audit_probe',
+
+        entity_id: operation.id,
+
+        details: {
+          value: 'committed',
+        },
+      }),
+    )
+
+    expect(result.id).toBeGreaterThan(0)
+
+    const probe = db
+      .prepare(
+        `
+        SELECT value
+        FROM critical_audit_probe
+        WHERE id = ?
+        `,
+      )
+      .get(result.id) as
+      | {
+          value: string
+        }
+      | undefined
+
+    expect(probe?.value).toBe('committed')
+
+    const logs = getActivityRows({
+      action: 'critical_probe_created',
+    })
+
+    expect(logs).toHaveLength(1)
+    expect(logs[0].entity_id).toBe(result.id)
+  })
+
+  it('rolls back critical operation when audit insert fails', () => {
+    const db = getDb()
+
+    db.exec(`
+    DROP TRIGGER IF EXISTS fail_critical_activity_log;
+    DROP TABLE IF EXISTS critical_audit_rollback_probe;
+
+    CREATE TABLE critical_audit_rollback_probe (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      value TEXT NOT NULL
+    );
+
+    CREATE TRIGGER fail_critical_activity_log
+    BEFORE INSERT ON activity_logs
+    BEGIN
+      SELECT RAISE(
+        ABORT,
+        'forced critical audit failure'
+      );
+    END;
+  `)
+
+    try {
+      expect(() =>
+        runCriticalActionWithAudit(
+          () => {
+            db.prepare(
+              `
+            INSERT INTO critical_audit_rollback_probe (
+              value
+            )
+            VALUES (?)
+            `,
+            ).run('must rollback')
+
+            return {
+              success: true,
+            }
+          },
+
+          () => ({
+            actor_id: 1,
+
+            action: 'critical_probe_should_fail',
+
+            entity: 'critical_audit_rollback_probe',
+
+            details: {
+              value: 'must rollback',
+            },
+          }),
+        ),
+      ).toThrow(CRITICAL_AUDIT_ERROR_MESSAGE)
+
+      const probeCount = db
+        .prepare(
+          `
+        SELECT COUNT(*) AS count
+        FROM critical_audit_rollback_probe
+        `,
+        )
+        .get() as {
+        count: number
+      }
+
+      expect(Number(probeCount.count)).toBe(0)
+    } finally {
+      db.exec(`
+      DROP TRIGGER IF EXISTS fail_critical_activity_log;
+      DROP TABLE IF EXISTS critical_audit_rollback_probe;
+    `)
+    }
   })
 
   it('lists activity logs ordered by newest first', () => {

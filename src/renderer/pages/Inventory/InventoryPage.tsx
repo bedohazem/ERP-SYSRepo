@@ -203,12 +203,12 @@ export default function InventoryPage() {
     return statusFilters.map((status) => labels[status]).join(' + ')
   }
 
-  function showMessage(text: string) {
+  function showMessage(text: string, duration = 1800) {
     setMessage(text)
 
     setTimeout(() => {
       setMessage('')
-    }, 1800)
+    }, duration)
   }
 
   function openAdjust(item: InventoryRow) {
@@ -250,7 +250,8 @@ export default function InventoryPage() {
       await loadInventory(inventoryPage)
     } catch (error) {
       console.error('Failed to adjust stock:', error)
-      showMessage('حدث خطأ أثناء تسوية المخزون')
+
+      showMessage('حدث خطأ أثناء تسوية المخزون. لم يتم تطبيق أي تغييرات.', 4500)
     } finally {
       setSavingAdjust(false)
     }

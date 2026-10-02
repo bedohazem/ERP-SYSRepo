@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { logAction } from './activity-helper'
+import { runCriticalActionWithAudit } from './activity-helper'
 import { requireAuthenticatedAdmin, requirePermission } from '../auth-session'
 import {
   createPurchaseInvoice,
@@ -25,26 +25,39 @@ export function registerPurchasesIpc(): void {
   ipcMain.handle('purchases:create', (event, input) => {
     const actorId = requirePermission(event, 'purchases.manage').id
 
-    const result = createPurchaseInvoice({
-      ...input,
-      actor_id: actorId,
-    })
+    const result = runCriticalActionWithAudit(
+      () =>
+        createPurchaseInvoice({
+          ...input,
+          actor_id: actorId,
+        }),
 
-    logAction({
-      actor_id: actorId,
-      action: 'purchase_created',
-      entity: 'purchase_invoices',
-      entity_id: result.purchaseId,
-      details: {
-        supplier_id: input.supplier_id,
-        total_amount: result.total_amount,
-        paid_amount: result.paid_amount,
-        remaining_amount: result.remaining_amount,
-        payment_status: result.payment_status,
-        items_count: input.items?.length || 0,
-        shift_id: result.shift_id,
-      },
-    })
+      (result) => ({
+        actor_id: actorId,
+
+        action: 'purchase_created',
+
+        entity: 'purchase_invoices',
+
+        entity_id: result.purchaseId,
+
+        details: {
+          supplier_id: input.supplier_id,
+
+          total_amount: result.total_amount,
+
+          paid_amount: result.paid_amount,
+
+          remaining_amount: result.remaining_amount,
+
+          payment_status: result.payment_status,
+
+          items_count: input.items?.length || 0,
+
+          shift_id: result.shift_id,
+        },
+      }),
+    )
 
     return result
   })
@@ -58,49 +71,58 @@ export function registerPurchasesIpc(): void {
 
     const before = getPurchaseInvoice(purchaseId)
 
-    const result = updatePurchaseInvoice({
-      ...input,
+    const criticalResult = runCriticalActionWithAudit(
+      () => {
+        const result = updatePurchaseInvoice({
+          ...input,
 
-      purchase_id: purchaseId,
+          purchase_id: purchaseId,
 
-      actor_id: actorId,
-    })
+          actor_id: actorId,
+        })
 
-    const after = getPurchaseInvoice(purchaseId)
+        const after = getPurchaseInvoice(purchaseId)
 
-    logAction({
-      actor_id: actorId,
-
-      approved_by: approval.id,
-
-      action: 'purchase_updated',
-
-      entity: 'purchase_invoices',
-
-      entity_id: purchaseId,
-
-      details: {
-        reason: input?.reason || null,
-
-        before: {
-          purchase: before.purchase,
-
-          items: before.items,
-
-          payments: before.payments,
-        },
-
-        after: {
-          purchase: after.purchase,
-
-          items: after.items,
-
-          payments: after.payments,
-        },
+        return {
+          result,
+          after,
+        }
       },
-    })
 
-    return result
+      ({ after }) => ({
+        actor_id: actorId,
+
+        approved_by: approval.id,
+
+        action: 'purchase_updated',
+
+        entity: 'purchase_invoices',
+
+        entity_id: purchaseId,
+
+        details: {
+          reason: input?.reason || null,
+
+          before: {
+            purchase: before.purchase,
+
+            items: before.items,
+
+            payments: before.payments,
+          },
+
+          after: {
+            purchase: after.purchase,
+
+            items: after.items,
+
+            payments: after.payments,
+          },
+        },
+      }),
+    )
+
+    return criticalResult.result
   })
 
   ipcMain.handle('purchases:list', (event, input) => {
@@ -124,28 +146,46 @@ export function registerPurchasesIpc(): void {
       input?.admin_password,
     )
 
-    const result = cancelPurchaseInvoice({
-      purchase_id: Number(input.purchase_id),
-      reason: input.reason || '',
-      actor_id: actorId,
-    })
+    const purchaseId = Number(input?.purchase_id)
 
-    logAction({
-      actor_id: actorId,
-      approved_by: approval.id,
-      action: 'purchase_cancelled',
-      entity: 'purchase_invoices',
-      entity_id: Number(input.purchase_id),
-      details: {
-        purchase_id: Number(input.purchase_id),
-        reason: input.reason || '',
-        reversed_total: result.reversed_total,
-        reversed_paid: result.reversed_paid,
-        reversed_remaining: result.reversed_remaining,
-        items_count: result.items_count,
-        shift_id: result.cancelled_shift_id,
-      },
-    })
+    const result = runCriticalActionWithAudit(
+      () =>
+        cancelPurchaseInvoice({
+          purchase_id: purchaseId,
+
+          reason: input?.reason || '',
+
+          actor_id: actorId,
+        }),
+
+      (result) => ({
+        actor_id: actorId,
+
+        approved_by: approval.id,
+
+        action: 'purchase_cancelled',
+
+        entity: 'purchase_invoices',
+
+        entity_id: purchaseId,
+
+        details: {
+          purchase_id: purchaseId,
+
+          reason: input?.reason || '',
+
+          reversed_total: result.reversed_total,
+
+          reversed_paid: result.reversed_paid,
+
+          reversed_remaining: result.reversed_remaining,
+
+          items_count: result.items_count,
+
+          shift_id: result.cancelled_shift_id,
+        },
+      }),
+    )
 
     return result
   })
@@ -153,26 +193,42 @@ export function registerPurchasesIpc(): void {
   ipcMain.handle('purchases:returns:create', (event, input) => {
     const actorId = requirePermission(event, 'purchases.manage').id
 
-    const result = createPurchaseReturn({
-      ...input,
-      purchase_id: Number(input.purchase_id),
-      actor_id: actorId,
-    })
+    const purchaseId = Number(input?.purchase_id)
 
-    logAction({
-      actor_id: actorId,
-      action: 'purchase_return_created',
-      entity: 'purchase_returns',
-      entity_id: result.return_id,
-      details: {
-        purchase_id: Number(input.purchase_id),
-        supplier_id: result.supplier_id,
-        total_amount: result.total_amount,
-        items_count: input.items?.length || 0,
-        notes: input.notes || '',
-        shift_id: result.shift_id,
-      },
-    })
+    const result = runCriticalActionWithAudit(
+      () =>
+        createPurchaseReturn({
+          ...input,
+
+          purchase_id: purchaseId,
+
+          actor_id: actorId,
+        }),
+
+      (result) => ({
+        actor_id: actorId,
+
+        action: 'purchase_return_created',
+
+        entity: 'purchase_returns',
+
+        entity_id: result.return_id,
+
+        details: {
+          purchase_id: purchaseId,
+
+          supplier_id: result.supplier_id,
+
+          total_amount: result.total_amount,
+
+          items_count: input?.items?.length || 0,
+
+          notes: input?.notes || '',
+
+          shift_id: result.shift_id,
+        },
+      }),
+    )
 
     return result
   })
@@ -186,43 +242,46 @@ export function registerPurchasesIpc(): void {
 
     const before = getPurchaseReturn(returnId)
 
-    const result = cancelPurchaseReturn({
-      return_id: returnId,
+    const result = runCriticalActionWithAudit(
+      () =>
+        cancelPurchaseReturn({
+          return_id: returnId,
 
-      reason: input?.reason,
+          reason: input?.reason,
 
-      actor_id: actorId,
-    })
+          actor_id: actorId,
+        }),
 
-    logAction({
-      actor_id: actorId,
+      (result) => ({
+        actor_id: actorId,
 
-      approved_by: approval.id,
+        approved_by: approval.id,
 
-      action: 'purchase_return_cancelled',
+        action: 'purchase_return_cancelled',
 
-      entity: 'purchase_returns',
+        entity: 'purchase_returns',
 
-      entity_id: returnId,
+        entity_id: returnId,
 
-      details: {
-        reason: input?.reason || null,
+        details: {
+          reason: input?.reason || null,
 
-        purchase_id: result.purchase_id,
+          purchase_id: result.purchase_id,
 
-        restored_total: result.restored_total,
+          restored_total: result.restored_total,
 
-        restored_debt: result.restored_debt,
+          restored_debt: result.restored_debt,
 
-        reversed_cash: result.reversed_cash,
+          reversed_cash: result.reversed_cash,
 
-        items_count: result.items_count,
+          items_count: result.items_count,
 
-        cancelled_shift_id: result.cancelled_shift_id,
+          cancelled_shift_id: result.cancelled_shift_id,
 
-        before,
-      },
-    })
+          before,
+        },
+      }),
+    )
 
     return result
   })
@@ -236,38 +295,48 @@ export function registerPurchasesIpc(): void {
 
     const before = getPurchaseReturn(returnId)
 
-    const result = updatePurchaseReturn({
-      ...input,
+    const criticalResult = runCriticalActionWithAudit(
+      () => {
+        const result = updatePurchaseReturn({
+          ...input,
 
-      return_id: returnId,
+          return_id: returnId,
 
-      actor_id: actorId,
-    })
+          actor_id: actorId,
+        })
 
-    const after = getPurchaseReturn(result.return_id)
+        const after = getPurchaseReturn(result.return_id)
 
-    logAction({
-      actor_id: actorId,
-
-      approved_by: approval.id,
-
-      action: 'purchase_return_updated',
-
-      entity: 'purchase_returns',
-
-      entity_id: returnId,
-
-      details: {
-        reason: input?.reason || null,
-
-        replacement_return_id: result.return_id,
-
-        before,
-        after,
+        return {
+          result,
+          after,
+        }
       },
-    })
 
-    return result
+      ({ result, after }) => ({
+        actor_id: actorId,
+
+        approved_by: approval.id,
+
+        action: 'purchase_return_updated',
+
+        entity: 'purchase_returns',
+
+        entity_id: returnId,
+
+        details: {
+          reason: input?.reason || null,
+
+          replacement_return_id: result.return_id,
+
+          before,
+
+          after,
+        },
+      }),
+    )
+
+    return criticalResult.result
   })
 
   ipcMain.handle('purchases:returns:list', (event, input) => {
@@ -285,29 +354,34 @@ export function registerPurchasesIpc(): void {
   ipcMain.handle('suppliers:record-payment', (event, input) => {
     const actorId = requirePermission(event, 'purchases.manage').id
 
-    const result = recordSupplierPayment({
-      ...input,
-      actor_id: actorId,
-    })
+    const result = runCriticalActionWithAudit(
+      () =>
+        recordSupplierPayment({
+          ...input,
 
-    logAction({
-      actor_id: actorId,
+          actor_id: actorId,
+        }),
 
-      action: 'supplier_payment_recorded',
+      (result) => ({
+        actor_id: actorId,
 
-      entity: 'supplier_payment_batches',
+        action: 'supplier_payment_recorded',
 
-      entity_id: result.payment_batch_id,
+        entity: 'supplier_payment_batches',
 
-      details: {
-        supplier_id: result.supplier_id,
+        entity_id: result.payment_batch_id,
 
-        amount: result.paid_amount,
+        details: {
+          supplier_id: result.supplier_id,
 
-        allocations: result.allocations,
-        shift_id: result.shift_id,
-      },
-    })
+          amount: result.paid_amount,
+
+          allocations: result.allocations,
+
+          shift_id: result.shift_id,
+        },
+      }),
+    )
 
     return result
   })
@@ -331,32 +405,40 @@ export function registerPurchasesIpc(): void {
         ).id
       }
 
-      const result = cancelSupplierPaymentBatch({
-        batch_id: Number(input?.batch_id),
+      const batchId = Number(input?.batch_id)
 
-        reason: input?.reason,
+      const result = runCriticalActionWithAudit(
+        () =>
+          cancelSupplierPaymentBatch({
+            batch_id: batchId,
 
-        actor_id: actorId,
-      })
+            reason: input?.reason,
 
-      logAction({
-        actor_id: actorId,
-        approved_by: approvedBy,
-        action: 'supplier_payment_cancelled',
+            actor_id: actorId,
+          }),
 
-        entity: 'supplier_payment_batches',
+        (result) => ({
+          actor_id: actorId,
 
-        entity_id: Number(input?.batch_id),
+          approved_by: approvedBy,
 
-        details: {
-          supplier_id: result.supplier_id,
+          action: 'supplier_payment_cancelled',
 
-          amount: result.cancelled_amount,
+          entity: 'supplier_payment_batches',
 
-          reason: input?.reason || '',
-          shift_id: result.cancelled_shift_id,
-        },
-      })
+          entity_id: batchId,
+
+          details: {
+            supplier_id: result.supplier_id,
+
+            amount: result.cancelled_amount,
+
+            reason: input?.reason || '',
+
+            shift_id: result.cancelled_shift_id,
+          },
+        }),
+      )
 
       return result
     } catch (error) {
@@ -388,40 +470,48 @@ export function registerPurchasesIpc(): void {
         ).id
       }
 
-      const result = updateSupplierPaymentBatch({
-        batch_id: Number(input?.batch_id),
+      const batchId = Number(input?.batch_id)
 
-        amount: Number(input?.amount),
+      const result = runCriticalActionWithAudit(
+        () =>
+          updateSupplierPaymentBatch({
+            batch_id: batchId,
 
-        payment_method: input?.payment_method,
+            amount: Number(input?.amount),
 
-        notes: input?.notes,
+            payment_method: input?.payment_method,
 
-        actor_id: actorId,
-      })
+            notes: input?.notes,
 
-      logAction({
-        actor_id: actorId,
-        approved_by: approvedBy,
-        action: 'supplier_payment_updated',
+            actor_id: actorId,
+          }),
 
-        entity: 'supplier_payment_batches',
+        (result) => ({
+          actor_id: actorId,
 
-        entity_id: Number(input?.batch_id),
+          approved_by: approvedBy,
 
-        details: {
-          supplier_id: result.supplier_id,
+          action: 'supplier_payment_updated',
 
-          replacement_batch_id: result.batch_id,
+          entity: 'supplier_payment_batches',
 
-          old_amount: result.old_amount,
+          entity_id: batchId,
 
-          new_amount: result.new_amount,
+          details: {
+            supplier_id: result.supplier_id,
 
-          payment_method: result.payment_method,
-          shift_id: result.shift_id,
-        },
-      })
+            replacement_batch_id: result.batch_id,
+
+            old_amount: result.old_amount,
+
+            new_amount: result.new_amount,
+
+            payment_method: result.payment_method,
+
+            shift_id: result.shift_id,
+          },
+        }),
+      )
 
       return result
     } catch (error) {

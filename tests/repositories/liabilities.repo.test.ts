@@ -17,6 +17,7 @@ import {
   getOpenCashShift,
   openCashShift,
 } from '../../src/main/database/repositories/cash-shifts.repo'
+import { CRITICAL_AUDIT_ERROR_MESSAGE } from '../../src/main/database/repositories/activity.repo'
 
 type LiabilityTestRow = {
   id: number
@@ -435,6 +436,81 @@ describe('liabilities repository', () => {
 
     const summary = getLiabilitiesSummary()
     expect(summary.count).toBe(0)
+  })
+
+  it('rolls back liability cancellation when critical audit fails', () => {
+    const db = getDb()
+
+    const result = createLiability({
+      party_name: 'Audit Party',
+
+      title: 'Audit Liability',
+
+      total_amount: 1000,
+
+      paid_amount: 0,
+
+      actor_id: 1,
+    })
+
+    db.exec(`
+    DROP TRIGGER IF EXISTS
+      fail_liability_cancel_audit;
+
+    CREATE TRIGGER
+      fail_liability_cancel_audit
+
+    BEFORE INSERT
+    ON activity_logs
+
+    WHEN NEW.action =
+      'liability_cancelled'
+
+    BEGIN
+      SELECT RAISE(
+        ABORT,
+        'forced liability audit failure'
+      );
+    END;
+  `)
+
+    try {
+      expect(() =>
+        cancelLiability({
+          id: result.liability_id,
+
+          actor_id: 1,
+
+          reason: 'Must rollback',
+        }),
+      ).toThrow(CRITICAL_AUDIT_ERROR_MESSAGE)
+
+      const row = db
+        .prepare(
+          `
+        SELECT
+          status,
+          cancelled_at
+
+        FROM store_liabilities
+
+        WHERE id = ?
+        `,
+        )
+        .get(result.liability_id) as {
+        status: string
+        cancelled_at: string | null
+      }
+
+      expect(row.status).toBe('open')
+
+      expect(row.cancelled_at).toBeNull()
+    } finally {
+      db.exec(`
+      DROP TRIGGER IF EXISTS
+        fail_liability_cancel_audit;
+    `)
+    }
   })
 
   it('rejects cancelling liability with payments', () => {

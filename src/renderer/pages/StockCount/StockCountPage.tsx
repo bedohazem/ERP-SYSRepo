@@ -268,9 +268,10 @@ export default function StockCountPage() {
     }
   }, [])
 
-  function showMessage(text: string) {
+  function showMessage(text: string, duration = 1800) {
     setMessage(text)
-    setTimeout(() => setMessage(''), 1800)
+
+    setTimeout(() => setMessage(''), duration)
   }
 
   async function loadSessions() {
@@ -574,7 +575,11 @@ export default function StockCountPage() {
       })
 
       if (result?.success === false) {
-        showMessage(result.message || 'فشل اعتماد الجرد')
+        showMessage(
+          result.message || 'فشل اعتماد الجرد. لم يتم تطبيق أي تغييرات.',
+          4500,
+        )
+
         return
       }
 
@@ -584,7 +589,8 @@ export default function StockCountPage() {
       await openSession(selected.session.id)
     } catch (error) {
       console.error('Failed to approve stock count session:', error)
-      showMessage('حدث خطأ أثناء اعتماد الجرد')
+
+      showMessage('حدث خطأ أثناء اعتماد الجرد. لم يتم تطبيق أي تغييرات.', 4500)
     } finally {
       setActionLoading(false)
     }
@@ -602,7 +608,11 @@ export default function StockCountPage() {
       })
 
       if (result?.success === false) {
-        showMessage(result.message || 'فشل إلغاء الجرد')
+        showMessage(
+          result.message || 'فشل إلغاء الجرد. لم يتم تطبيق أي تغييرات.',
+          4500,
+        )
+
         return
       }
 
@@ -612,7 +622,8 @@ export default function StockCountPage() {
       await loadSessions()
     } catch (error) {
       console.error('Failed to cancel stock count session:', error)
-      showMessage('حدث خطأ أثناء إلغاء الجرد')
+
+      showMessage('حدث خطأ أثناء إلغاء الجرد. لم يتم تطبيق أي تغييرات.', 4500)
     } finally {
       setActionLoading(false)
     }

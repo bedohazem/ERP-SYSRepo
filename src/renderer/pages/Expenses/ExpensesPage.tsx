@@ -71,9 +71,14 @@ export default function ExpensesPage() {
 
   const [updatingExpense, setUpdatingExpense] = useState(false)
 
-  function showMessage(type: 'success' | 'error', text: string) {
+  function showMessage(
+    type: 'success' | 'error',
+    text: string,
+    duration = 1800,
+  ) {
     setMessage({ type, text })
-    setTimeout(() => setMessage(null), 1800)
+
+    setTimeout(() => setMessage(null), duration)
   }
 
   async function loadExpenses(page = expensesPage) {
@@ -146,7 +151,13 @@ export default function ExpensesPage() {
       showMessage('success', 'تم حفظ المصروف')
       await loadExpenses(expensesPage)
     } catch (error: any) {
-      showMessage('error', error.message || 'حدث خطأ')
+      showMessage(
+        'error',
+
+        error?.message || 'حدث خطأ أثناء حفظ المصروف. لم يتم تطبيق أي تغييرات.',
+
+        4500,
+      )
     } finally {
       setSaving(false)
     }
@@ -168,7 +179,13 @@ export default function ExpensesPage() {
       })
 
       if (!result?.success) {
-        showMessage('error', result?.message || 'تعذر إلغاء المصروف')
+        showMessage(
+          'error',
+
+          result?.message || 'تعذر إلغاء المصروف. لم يتم تطبيق أي تغييرات.',
+
+          4500,
+        )
         return
       }
 
@@ -180,7 +197,14 @@ export default function ExpensesPage() {
 
       await loadExpenses(expensesPage)
     } catch (error: any) {
-      showMessage('error', error?.message || 'حدث خطأ أثناء إلغاء المصروف')
+      showMessage(
+        'error',
+
+        error?.message ||
+          'حدث خطأ أثناء إلغاء المصروف. لم يتم تطبيق أي تغييرات.',
+
+        4500,
+      )
     } finally {
       setCancellingExpense(false)
     }
@@ -260,8 +284,13 @@ export default function ExpensesPage() {
       })
 
       if (!result.success) {
-        showMessage('error', result.message || 'تعذر تعديل المصروف')
+        showMessage(
+          'error',
 
+          result?.message || 'تعذر تعديل المصروف. لم يتم تطبيق أي تغييرات.',
+
+          4500,
+        )
         return
       }
 
@@ -271,7 +300,14 @@ export default function ExpensesPage() {
 
       await loadExpenses(expensesPage)
     } catch (error: any) {
-      showMessage('error', error?.message || 'حدث خطأ أثناء تعديل المصروف')
+      showMessage(
+        'error',
+
+        error?.message ||
+          'حدث خطأ أثناء تعديل المصروف. لم يتم تطبيق أي تغييرات.',
+
+        4500,
+      )
     } finally {
       setUpdatingExpense(false)
     }

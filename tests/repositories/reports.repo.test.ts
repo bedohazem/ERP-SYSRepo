@@ -704,6 +704,7 @@ describe('reports repository', () => {
 
     expect(report.summary.total_manual_withdrawals).toBe(120)
   })
+
   it('groups monthly sales by cashier', () => {
     const variant = seedReportProduct({
       name: 'Cashier Monthly Product',
@@ -804,19 +805,17 @@ describe('reports repository', () => {
 
     db.prepare(
       `
-      UPDATE sales
-      SET business_date = ?
-      WHERE id = ?
-      `,
-    ).run('2026-09-05', firstSale.saleId)
+      UPDATE cash_shifts
 
-    db.prepare(
-      `
-      UPDATE sales
-      SET business_date = ?
-      WHERE id = ?
+      SET opened_at = ?
+
+      WHERE id IN (
+        SELECT shift_id
+        FROM sales
+        WHERE id IN (?, ?)
+      )
       `,
-    ).run('2026-09-06', secondSale.saleId)
+    ).run('2026-09-05 09:00:00', firstSale.saleId, secondSale.saleId)
 
     const report = getReportsSummary({
       date_from: '2026-09-01',

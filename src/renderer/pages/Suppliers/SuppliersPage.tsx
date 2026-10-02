@@ -116,9 +116,18 @@ export default function SuppliersPage() {
     [suppliers, editingId],
   )
 
+  function isErrorMessage(text: string) {
+    return /خطأ|تعذر|فشل|لم يتم|لا يمكن|غير صحيح|مطلوب/.test(text)
+  }
+
   function showMessage(text: string) {
     setMessage(text)
-    setTimeout(() => setMessage(''), 1800)
+
+    setTimeout(
+      () => setMessage(''),
+
+      isErrorMessage(text) ? 4500 : 1800,
+    )
   }
 
   async function loadSuppliers(page = supplierPage, searchValue = search) {
@@ -305,7 +314,8 @@ export default function SuppliersPage() {
       await loadSuppliers(supplierPage)
     } catch (error) {
       console.error('Failed to save supplier:', error)
-      showMessage('حدث خطأ أثناء حفظ المورد، تأكد أن رقم الهاتف غير مكرر')
+
+      showMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ المورد'))
     } finally {
       setSaving(false)
     }
@@ -1054,7 +1064,9 @@ export default function SuppliersPage() {
             zIndex: 1000001,
             padding: '12px 18px',
             borderRadius: '14px',
-            background: 'rgba(37,99,235,0.96)',
+            background: isErrorMessage(message)
+              ? 'rgba(239,68,68,0.95)'
+              : 'rgba(16,185,129,0.95)',
             color: '#fff',
             fontWeight: 800,
             boxShadow: '0 18px 40px rgba(0,0,0,0.35)',

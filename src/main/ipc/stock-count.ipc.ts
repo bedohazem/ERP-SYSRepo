@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { logAction } from './activity-helper'
+import { logAction, runCriticalActionWithAudit } from './activity-helper'
 import { requireAuthenticatedAdmin, requirePermission } from '../auth-session'
 import {
   approveStockCountSession,
@@ -181,18 +181,26 @@ export function registerStockCountIpc(): void {
     try {
       const actorId = requireAuthenticatedAdmin(event)
 
-      const result = approveStockCountSession({
-        session_id: input.session_id,
-        actor_id: actorId,
-      })
+      const result = runCriticalActionWithAudit(
+        () =>
+          approveStockCountSession({
+            session_id: input.session_id,
 
-      logAction({
-        actor_id: actorId,
-        action: 'stock_count_approved',
-        entity: 'stock_counts',
-        entity_id: input.session_id,
-        details: result,
-      })
+            actor_id: actorId,
+          }),
+
+        (result) => ({
+          actor_id: actorId,
+
+          action: 'stock_count_approved',
+
+          entity: 'stock_counts',
+
+          entity_id: input.session_id,
+
+          details: result,
+        }),
+      )
 
       return result
     } catch (error) {
@@ -207,20 +215,28 @@ export function registerStockCountIpc(): void {
     try {
       const actorId = requireAuthenticatedAdmin(event)
 
-      const result = cancelStockCountSession({
-        session_id: input.session_id,
-        actor_id: actorId,
-      })
+      const result = runCriticalActionWithAudit(
+        () =>
+          cancelStockCountSession({
+            session_id: input.session_id,
 
-      logAction({
-        actor_id: actorId,
-        action: 'stock_count_canceled',
-        entity: 'stock_counts',
-        entity_id: input.session_id,
-        details: {
-          session_id: input.session_id,
-        },
-      })
+            actor_id: actorId,
+          }),
+
+        () => ({
+          actor_id: actorId,
+
+          action: 'stock_count_canceled',
+
+          entity: 'stock_counts',
+
+          entity_id: input.session_id,
+
+          details: {
+            session_id: input.session_id,
+          },
+        }),
+      )
 
       return result
     } catch (error) {

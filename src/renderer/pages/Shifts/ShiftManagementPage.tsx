@@ -147,7 +147,13 @@ export default function ShiftManagementPage() {
 
   const [resolving, setResolving] = useState(false)
 
-  function showMessage(type: 'success' | 'error', text: string) {
+  function showMessage(
+    type: 'success' | 'error',
+
+    text: string,
+
+    duration = 2200,
+  ) {
     setMessage({
       type,
       text,
@@ -155,7 +161,7 @@ export default function ShiftManagementPage() {
 
     window.setTimeout(() => {
       setMessage(null)
-    }, 2200)
+    }, duration)
   }
 
   async function loadData(filter = statusFilter, page = variancePage) {
@@ -314,7 +320,13 @@ export default function ShiftManagementPage() {
       })
 
       if (!result?.success) {
-        showMessage('error', result?.message || 'تعذر مراجعة فرق الشفت')
+        showMessage(
+          'error',
+
+          result?.message || 'تعذر مراجعة فرق الشفت. لم يتم تطبيق أي تغييرات.',
+
+          4500,
+        )
 
         return
       }
@@ -336,7 +348,12 @@ export default function ShiftManagementPage() {
     } catch (error) {
       showMessage(
         'error',
-        error instanceof Error ? error.message : 'تعذر مراجعة فرق الشفت',
+
+        error instanceof Error && error.message
+          ? error.message
+          : 'تعذر مراجعة فرق الشفت. لم يتم تطبيق أي تغييرات.',
+
+        4500,
       )
     } finally {
       setResolving(false)

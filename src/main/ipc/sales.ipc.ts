@@ -1,5 +1,9 @@
 import { ipcMain } from 'electron'
-import { logAction } from './activity-helper'
+import {
+  logAction,
+  runCriticalActionWithAudit,
+  type ActionLogInput,
+} from './activity-helper'
 import { requireAuthenticatedUser, requirePermission } from '../auth-session'
 import {
   createSale,
@@ -151,23 +155,85 @@ export function registerSalesIpc(): void {
         credit_limit_override_approved_by: approvedBy,
       })
 
+    const buildAudit = (
+      result: ReturnType<typeof createSale>,
+    ): ActionLogInput[] => {
+      const logs: ActionLogInput[] = []
+
+      if (result.credit_limit_override_approved_by) {
+        logs.push({
+          actor_id: actor.id,
+
+          approved_by: result.credit_limit_override_approved_by,
+
+          action: 'sale_credit_limit_overridden',
+
+          entity: 'sales',
+
+          entity_id: result.saleId,
+
+          details: {
+            customer_id: input?.customer_id ?? null,
+
+            credit_limit: result.credit_limit_at_sale,
+
+            customer_balance_before: result.customer_balance_before,
+
+            additional_debt: result.remaining_amount,
+
+            projected_debt:
+              Number(result.customer_balance_before || 0) +
+              Number(result.remaining_amount || 0),
+
+            approved_by: result.credit_limit_override_approved_by,
+          },
+        })
+      }
+
+      logs.push({
+        actor_id: actor.id,
+
+        action: 'sale_created',
+
+        entity: 'sales',
+
+        entity_id: result.saleId,
+
+        details: {
+          customer_id: input?.customer_id ?? null,
+
+          grand_total: result.grand_total ?? input?.grand_total,
+
+          paid: input?.paid,
+
+          payment_method: input?.payment_method,
+
+          items_count: input?.items?.length || 0,
+
+          shift_id: result.shift_id,
+
+          payments: input?.payments ?? null,
+
+          credit_limit_override_approved_by:
+            result.credit_limit_override_approved_by ?? null,
+        },
+      })
+
+      return logs
+    }
+
+    const runCreateWithAudit = (approvedBy: number | null) =>
+      runCriticalActionWithAudit(() => runCreate(approvedBy), buildAudit)
+
     let result: ReturnType<typeof createSale>
 
     try {
-      /*
-       * أول محاولة دائمًا
-       * بدون Override.
-       */
-      result = runCreate(null)
+      result = runCreateWithAudit(null)
     } catch (error) {
       if (!(error instanceof CreditLimitExceededError)) {
         throw error
       }
 
-      /*
-       * أول Request يرجع للواجهة
-       * بيانات التجاوز فقط.
-       */
       if (!input?.credit_limit_override_requested) {
         return {
           success: false,
@@ -180,13 +246,6 @@ export function registerSalesIpc(): void {
         }
       }
 
-      /*
-       * Cashier:
-       * Username + Password للمدير.
-       *
-       * Admin:
-       * يؤكد بباسورده هو.
-       */
       const approval = requireAdminApprovalForActor(
         actor,
 
@@ -195,72 +254,8 @@ export function registerSalesIpc(): void {
         input?.admin_password,
       )
 
-      /*
-       * المحاولة الأولى Rollback
-       * بالكامل، فنقدر نعيد
-       * الإنشاء بأمان.
-       */
-      result = runCreate(approval.id)
+      result = runCreateWithAudit(approval.id)
     }
-
-    if (result.credit_limit_override_approved_by) {
-      logAction({
-        actor_id: actor.id,
-
-        approved_by: result.credit_limit_override_approved_by,
-
-        action: 'sale_credit_limit_overridden',
-
-        entity: 'sales',
-
-        entity_id: result.saleId,
-
-        details: {
-          customer_id: input?.customer_id ?? null,
-
-          credit_limit: result.credit_limit_at_sale,
-
-          customer_balance_before: result.customer_balance_before,
-
-          additional_debt: result.remaining_amount,
-
-          projected_debt:
-            Number(result.customer_balance_before || 0) +
-            Number(result.remaining_amount || 0),
-
-          approved_by: result.credit_limit_override_approved_by,
-        },
-      })
-    }
-
-    logAction({
-      actor_id: actor.id,
-
-      action: 'sale_created',
-
-      entity: 'sales',
-
-      entity_id: result.saleId,
-
-      details: {
-        customer_id: input?.customer_id ?? null,
-
-        grand_total: result.grand_total ?? input?.grand_total,
-
-        paid: input?.paid,
-
-        payment_method: input?.payment_method,
-
-        items_count: input?.items?.length || 0,
-
-        shift_id: result.shift_id,
-
-        payments: input?.payments ?? null,
-
-        credit_limit_override_approved_by:
-          result.credit_limit_override_approved_by ?? null,
-      },
-    })
 
     return {
       success: true,
@@ -414,86 +409,101 @@ export function registerSalesIpc(): void {
 
       const before = getSaleReceipt(saleId)
 
-      const result = updateSaleInvoice({
-        ...input,
+      const criticalResult = runCriticalActionWithAudit(
+        () => {
+          const result = updateSaleInvoice({
+            ...input,
 
-        sale_id: saleId,
+            sale_id: saleId,
 
-        actor_id: actorId,
+            actor_id: actorId,
 
-        /*
-         * Renderer لا يحدد
-         * Approved ID بنفسه.
-         */
-        credit_limit_override_approved_by: creditOverrideApprovedBy,
-      })
+            /*
+             * Renderer لا يحدد
+             * Approved ID بنفسه.
+             */
+            credit_limit_override_approved_by: creditOverrideApprovedBy,
+          })
 
-      const after = getSaleReceipt(saleId)
+          const after = getSaleReceipt(saleId)
 
-      if (result.credit_limit_override_approved_by) {
-        logAction({
-          actor_id: actorId,
-
-          approved_by: result.credit_limit_override_approved_by,
-
-          action: 'sale_credit_limit_overridden',
-
-          entity: 'sales',
-
-          entity_id: saleId,
-
-          details: {
-            edited: true,
-
-            customer_id: input?.customer_id ?? null,
-
-            credit_limit: result.credit_limit_at_sale,
-
-            customer_balance_before: result.customer_balance_before,
-
-            additional_debt: result.remaining_amount,
-
-            approved_by: result.credit_limit_override_approved_by,
-          },
-        })
-      }
-
-      logAction({
-        actor_id: actorId,
-
-        approved_by: approvedBy,
-
-        action: 'sale_updated',
-
-        entity: 'sales',
-
-        entity_id: saleId,
-
-        details: {
-          reason: input?.reason || null,
-
-          before: {
-            sale: before.sale,
-
-            items: before.items,
-
-            payments: before.payments,
-          },
-
-          after: {
-            sale: after.sale,
-
-            items: after.items,
-
-            payments: after.payments,
-          },
+          return {
+            result,
+            after,
+          }
         },
-      })
+
+        ({ result, after }) => {
+          const logs: ActionLogInput[] = []
+
+          if (result.credit_limit_override_approved_by) {
+            logs.push({
+              actor_id: actorId,
+
+              approved_by: result.credit_limit_override_approved_by,
+
+              action: 'sale_credit_limit_overridden',
+
+              entity: 'sales',
+
+              entity_id: saleId,
+
+              details: {
+                edited: true,
+
+                customer_id: input?.customer_id ?? null,
+
+                credit_limit: result.credit_limit_at_sale,
+
+                customer_balance_before: result.customer_balance_before,
+
+                additional_debt: result.remaining_amount,
+
+                approved_by: result.credit_limit_override_approved_by,
+              },
+            })
+          }
+
+          logs.push({
+            actor_id: actorId,
+
+            approved_by: approvedBy,
+
+            action: 'sale_updated',
+
+            entity: 'sales',
+
+            entity_id: saleId,
+
+            details: {
+              reason: input?.reason || null,
+
+              before: {
+                sale: before.sale,
+
+                items: before.items,
+
+                payments: before.payments,
+              },
+
+              after: {
+                sale: after.sale,
+
+                items: after.items,
+
+                payments: after.payments,
+              },
+            },
+          })
+
+          return logs
+        },
+      )
 
       return {
         success: true,
 
-        ...result,
+        ...criticalResult.result,
       }
     } catch (error) {
       if (error instanceof CreditLimitExceededError) {
@@ -549,31 +559,51 @@ export function registerSalesIpc(): void {
 
   ipcMain.handle('sales:exchange', (event, input) => {
     const actorId = requirePermission(event, 'sales.exchanges').id
-    const result = createSaleExchange({
-      ...input,
-      user_id: actorId,
-    })
 
-    logAction({
-      actor_id: actorId,
-      action: 'sale_exchange_created',
-      entity: 'sale_exchanges',
-      entity_id: result.exchangeId,
-      details: {
-        exchange_code: result.exchangeCode,
-        original_sale_id: result.original_sale_id,
-        promotion_group_id: result.promotion_group_id,
-        old_group_total: result.old_group_total,
-        new_group_total: result.new_group_total,
-        difference_amount: result.difference_amount,
-        amount_to_collect: result.amount_to_collect,
-        amount_to_refund: result.amount_to_refund,
-        debt_reduction_amount: result.debt_reduction_amount,
-        payment_method: result.payment_method,
-        shift_id: result.shift_id,
-        items_count: input.items?.length || 0,
-      },
-    })
+    const result = runCriticalActionWithAudit(
+      () =>
+        createSaleExchange({
+          ...input,
+
+          user_id: actorId,
+        }),
+
+      (result) => ({
+        actor_id: actorId,
+
+        action: 'sale_exchange_created',
+
+        entity: 'sale_exchanges',
+
+        entity_id: result.exchangeId,
+
+        details: {
+          exchange_code: result.exchangeCode,
+
+          original_sale_id: result.original_sale_id,
+
+          promotion_group_id: result.promotion_group_id,
+
+          old_group_total: result.old_group_total,
+
+          new_group_total: result.new_group_total,
+
+          difference_amount: result.difference_amount,
+
+          amount_to_collect: result.amount_to_collect,
+
+          amount_to_refund: result.amount_to_refund,
+
+          debt_reduction_amount: result.debt_reduction_amount,
+
+          payment_method: result.payment_method,
+
+          shift_id: result.shift_id,
+
+          items_count: input.items?.length || 0,
+        },
+      }),
+    )
 
     return result
   })
@@ -615,38 +645,44 @@ export function registerSalesIpc(): void {
         approvedBy = approval.id
       }
 
-      const result = cancelSaleExchange({
-        exchange_id: Number(input?.exchange_id),
+      const result = runCriticalActionWithAudit(
+        () =>
+          cancelSaleExchange({
+            exchange_id: Number(input?.exchange_id),
 
-        reason: input?.reason,
+            reason: input?.reason,
 
-        actor_id: actorId,
-      })
+            actor_id: actorId,
+          }),
 
-      logAction({
-        actor_id: actorId,
-        approved_by: approvedBy,
-        action: 'sale_exchange_cancelled',
+        (result) => ({
+          actor_id: actorId,
 
-        entity: 'sale_exchanges',
+          approved_by: approvedBy,
 
-        entity_id: Number(input?.exchange_id),
+          action: 'sale_exchange_cancelled',
 
-        details: {
-          reason: input?.reason,
+          entity: 'sale_exchanges',
 
-          sale_id: result.sale_id,
+          entity_id: Number(input?.exchange_id),
 
-          cash_refunded: result.cash_refunded,
+          details: {
+            reason: input?.reason,
 
-          cash_collected: result.cash_collected,
+            sale_id: result.sale_id,
 
-          debt_restored: result.debt_restored,
+            cash_refunded: result.cash_refunded,
 
-          loyalty_balance_reversed: result.loyalty_balance_reversed,
-          shift_id: result.cancelled_shift_id,
-        },
-      })
+            cash_collected: result.cash_collected,
+
+            debt_restored: result.debt_restored,
+
+            loyalty_balance_reversed: result.loyalty_balance_reversed,
+
+            shift_id: result.cancelled_shift_id,
+          },
+        }),
+      )
 
       return {
         success: true,
@@ -677,25 +713,39 @@ export function registerSalesIpc(): void {
 
   ipcMain.handle('sales:return', (event, input) => {
     const actorId = requirePermission(event, 'sales.returns').id
-    const result = createSaleReturn({
-      ...input,
-      user_id: actorId,
-    }) as any
 
-    logAction({
-      actor_id: actorId,
-      action: 'sale_return_created',
-      entity: 'sale_returns',
-      entity_id: result.returnId ?? result.returnSaleId,
-      details: {
-        return_code: result.returnCode,
-        original_sale_id: result.originalSaleId,
-        refund_amount: result.refundAmount,
-        reason: input.reason,
-        items_count: input.items?.length || 0,
-        shift_id: result.shift_id,
-      },
-    })
+    const result = runCriticalActionWithAudit(
+      () =>
+        createSaleReturn({
+          ...input,
+
+          user_id: actorId,
+        }) as any,
+
+      (result) => ({
+        actor_id: actorId,
+
+        action: 'sale_return_created',
+
+        entity: 'sale_returns',
+
+        entity_id: result.returnId ?? result.returnSaleId,
+
+        details: {
+          return_code: result.returnCode,
+
+          original_sale_id: result.originalSaleId,
+
+          refund_amount: result.refundAmount,
+
+          reason: input.reason,
+
+          items_count: input.items?.length || 0,
+
+          shift_id: result.shift_id,
+        },
+      }),
+    )
 
     return result
   })
@@ -726,28 +776,42 @@ export function registerSalesIpc(): void {
         approvedBy = approval.id
       }
 
-      const result = cancelSaleInvoice({
-        sale_id: Number(input?.sale_id),
-        reason: input?.reason,
-        actor_id: actorId,
-      })
+      const result = runCriticalActionWithAudit(
+        () =>
+          cancelSaleInvoice({
+            sale_id: Number(input?.sale_id),
 
-      logAction({
-        actor_id: actorId,
-        approved_by: approvedBy,
-        action: 'sale_cancelled',
-        entity: 'sales',
-        entity_id: Number(input?.sale_id),
-        details: {
-          reason: input?.reason,
-          refunded_amount: result.refunded_amount,
-          removed_debt: result.removed_debt,
-          shift_id: result.cancelled_shift_id,
-        },
-      })
+            reason: input?.reason,
+
+            actor_id: actorId,
+          }),
+
+        (result) => ({
+          actor_id: actorId,
+
+          approved_by: approvedBy,
+
+          action: 'sale_cancelled',
+
+          entity: 'sales',
+
+          entity_id: Number(input?.sale_id),
+
+          details: {
+            reason: input?.reason,
+
+            refunded_amount: result.refunded_amount,
+
+            removed_debt: result.removed_debt,
+
+            shift_id: result.cancelled_shift_id,
+          },
+        }),
+      )
 
       return {
         success: true,
+
         ...result,
       }
     } catch (error) {
@@ -788,29 +852,44 @@ export function registerSalesIpc(): void {
         approvedBy = approval.id
       }
 
-      const result = cancelSaleReturn({
-        return_id: Number(input?.return_id),
-        reason: input?.reason,
-        actor_id: actorId,
-      })
+      const result = runCriticalActionWithAudit(
+        () =>
+          cancelSaleReturn({
+            return_id: Number(input?.return_id),
 
-      logAction({
-        actor_id: actorId,
-        approved_by: approvedBy,
-        action: 'sale_return_cancelled',
-        entity: 'sale_returns',
-        entity_id: Number(input?.return_id),
-        details: {
-          reason: input?.reason,
-          sale_id: result.sale_id,
-          cash_restored: result.cash_restored,
-          debt_restored: result.debt_restored,
-          shift_id: result.cancelled_shift_id,
-        },
-      })
+            reason: input?.reason,
+
+            actor_id: actorId,
+          }),
+
+        (result) => ({
+          actor_id: actorId,
+
+          approved_by: approvedBy,
+
+          action: 'sale_return_cancelled',
+
+          entity: 'sale_returns',
+
+          entity_id: Number(input?.return_id),
+
+          details: {
+            reason: input?.reason,
+
+            sale_id: result.sale_id,
+
+            cash_restored: result.cash_restored,
+
+            debt_restored: result.debt_restored,
+
+            shift_id: result.cancelled_shift_id,
+          },
+        }),
+      )
 
       return {
         success: true,
+
         ...result,
       }
     } catch (error) {
