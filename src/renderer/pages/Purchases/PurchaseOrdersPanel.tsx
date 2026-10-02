@@ -586,9 +586,9 @@ export default function PurchaseOrdersPanel({
     )
   }
 
-  async function saveDraftOrder() {
+  async function saveDraftOrder(): Promise<boolean> {
     if (!detail) {
-      return
+      return false
     }
 
     const items = detailItems.map((item) => ({
@@ -599,10 +599,24 @@ export default function PurchaseOrdersPanel({
       unit_cost: Number(item.unit_cost || 0),
     }))
 
-    if (items.some((item) => item.quantity <= 0)) {
+    if (
+      items.some(
+        (item) => !Number.isFinite(item.quantity) || item.quantity <= 0,
+      )
+    ) {
       showMessage('راجع كميات أمر الشراء')
 
-      return
+      return false
+    }
+
+    if (
+      items.some(
+        (item) => !Number.isFinite(item.unit_cost) || item.unit_cost < 0,
+      )
+    ) {
+      showMessage('راجع أسعار الشراء')
+
+      return false
     }
 
     setActionLoading(true)
@@ -627,6 +641,8 @@ export default function PurchaseOrdersPanel({
       showMessage('تم حفظ تعديل أمر الشراء')
 
       await loadOrders()
+
+      return true
     } catch (error) {
       console.error(error)
 
@@ -637,6 +653,8 @@ export default function PurchaseOrdersPanel({
           'تعذر تعديل أمر الشراء',
         ),
       )
+
+      return false
     } finally {
       setActionLoading(false)
     }
@@ -735,7 +753,11 @@ export default function PurchaseOrdersPanel({
      * الكميات والأسعار أولًا.
      */
     if (detail.order.status === 'draft') {
-      await saveDraftOrder()
+      const saved = await saveDraftOrder()
+
+      if (!saved) {
+        return
+      }
     }
 
     setActionLoading(true)
