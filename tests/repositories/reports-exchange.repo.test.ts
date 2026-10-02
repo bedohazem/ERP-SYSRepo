@@ -287,7 +287,7 @@ describe('reports with sale exchanges', () => {
 
     expect(payment).toBeTruthy()
 
-    expect(Number(payment.count)).toBe(1)
+    expect(Number(payment.count)).toBe(2)
 
     expect(Number(payment.total)).toBe(550)
 

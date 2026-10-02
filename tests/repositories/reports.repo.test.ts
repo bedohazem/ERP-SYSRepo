@@ -469,6 +469,88 @@ describe('reports repository', () => {
     expect(report.dailySales[0].total).toBe(280)
   })
 
+  it('reports actual collections including later customer payments', () => {
+    const variant = seedReportProduct({
+      name: 'Collections Product',
+
+      barcode: 'REPORT-COLLECTIONS',
+
+      openingQty: 20,
+
+      buyPrice: 100,
+
+      sellPrice: 150,
+    })
+
+    const customer = createTestCustomer('Collections Customer', '01077779991')
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: customer.id,
+
+      sub_total: 300,
+
+      discount_value: 0,
+
+      grand_total: 300,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 100,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 2,
+
+          unit_price: 150,
+        },
+      ],
+    })
+
+    recordCustomerPayment({
+      customer_id: customer.id,
+
+      sale_id: sale.saleId,
+
+      amount: 200,
+
+      payment_method: 'card',
+
+      actor_id: 1,
+    })
+
+    const report = getReportsSummary() as ReportsSummaryTestResult
+
+    const cash = report.paymentMethods.find(
+      (row) => row.payment_method === 'cash',
+    )
+
+    const card = report.paymentMethods.find(
+      (row) => row.payment_method === 'card',
+    )
+
+    expect(cash).toBeTruthy()
+    expect(cash?.count).toBe(1)
+    expect(cash?.total).toBe(100)
+
+    expect(card).toBeTruthy()
+    expect(card?.count).toBe(1)
+    expect(card?.total).toBe(200)
+  })
+
   it('subtracts returns from sales totals top products and customers', () => {
     const variant = seedReportProduct({
       name: 'Return Report Product',

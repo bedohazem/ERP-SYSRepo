@@ -204,6 +204,33 @@ export function getReportsSummary(input?: ReportFilter) {
     )
   `
 
+  const cashMovementBusinessDate: string = `
+  COALESCE(
+    (
+      SELECT
+        date(
+          cs.opened_at,
+          'localtime'
+        )
+
+      FROM cash_shifts cs
+
+      WHERE
+        cs.id = cm.shift_id
+    ),
+
+    NULLIF(
+      cm.business_date,
+      ''
+    ),
+
+    date(
+      cm.created_at,
+      'localtime'
+    )
+  )
+`
+
   const cancelledSaleBusinessDate: string = `
     COALESCE(
       (
@@ -1355,218 +1382,137 @@ export function getReportsSummary(input?: ReportFilter) {
     )
     .all(...combinedWhere.params)
 
+  const actualCollectionsWhere = buildWhere(
+    'cm',
+
+    input,
+
+    [
+      `cm.cancelled_at IS NULL`,
+
+      `
+    cm.type IN (
+      'sale',
+      'sale_return',
+      'sale_exchange',
+      'customer_payment'
+    )
+    `,
+
+      `
+    cm.direction IN (
+      'in',
+      'out'
+    )
+    `,
+
+      `cm.amount > 0`,
+    ],
+
+    'cm.created_by',
+
+    cashMovementBusinessDate,
+  )
+
   const paymentMethods = db
     .prepare(
       `
       SELECT
-        x.payment_method,
+        CASE
+          WHEN
+            cm.payment_method IN (
+              'cash',
+              'store_cash'
+            )
+          THEN 'cash'
+
+          WHEN
+            cm.payment_method IN (
+              'card',
+              'fawry_machine'
+            )
+          THEN 'card'
+
+          WHEN
+            cm.payment_method IN (
+              'wallet',
+              'owner_vodafone'
+            )
+          THEN 'wallet'
+
+          WHEN
+            cm.payment_method IN (
+              'bank',
+              'bank_transfer',
+              'owner_bank'
+            )
+          THEN 'bank_transfer'
+
+          ELSE
+            cm.payment_method
+        END AS payment_method,
+
+        COUNT(*) AS count,
 
         IFNULL(
-          SUM(x.invoice_count),
-          0
-        ) AS count,
+          SUM(
+            CASE
+              WHEN cm.direction = 'in'
+                THEN cm.amount
 
-        IFNULL(
-          SUM(x.amount),
+              WHEN cm.direction = 'out'
+                THEN -cm.amount
+
+              ELSE 0
+            END
+          ),
           0
         ) AS total
 
-      FROM (
-        /*
-         * فواتير البيع.
-         */
-        SELECT
-          CASE
-            WHEN sp.payment_method IN ('cash', 'store_cash')
-              THEN 'cash'
+      FROM cash_movements cm
 
-            WHEN sp.payment_method IN ('card', 'fawry_machine')
-              THEN 'card'
-
-            WHEN sp.payment_method IN ('wallet', 'owner_vodafone')
-              THEN 'wallet'
-
-            WHEN sp.payment_method IN ('bank', 'bank_transfer', 'owner_bank')
-              THEN 'bank_transfer'
-
-            ELSE sp.payment_method
-          END AS payment_method,
-
-          1 AS invoice_count,
-
-          sp.amount AS amount,
-
-          ${saleBusinessDate} AS business_date,
-
-          s.user_id
-
-        FROM sale_payments sp
-
-        JOIN sales s
-          ON s.id = sp.sale_id
-
-        WHERE
-          IFNULL(
-            s.type,
-            'sale'
-          ) = 'sale'
-
-          AND s.cancelled_at IS NULL
-          AND sp.payment_method <> 'split'
-          AND sp.amount > 0
-
-        UNION ALL
-
-        /*
-         * فرق الاستبدال.
-         */
-        SELECT
-          CASE
-            WHEN COALESCE(
-              se.payment_method,
-              os.payment_method,
-              'cash'
-            ) IN ('cash', 'store_cash')
-              THEN 'cash'
-
-            WHEN COALESCE(
-              se.payment_method,
-              os.payment_method,
-              'cash'
-            ) IN ('card', 'fawry_machine')
-              THEN 'card'
-
-            WHEN COALESCE(
-              se.payment_method,
-              os.payment_method,
-              'cash'
-            ) IN ('wallet', 'owner_vodafone')
-              THEN 'wallet'
-
-            WHEN COALESCE(
-              se.payment_method,
-              os.payment_method,
-              'cash'
-            ) IN ('bank', 'bank_transfer', 'owner_bank')
-              THEN 'bank_transfer'
-
-            ELSE COALESCE(
-              se.payment_method,
-              os.payment_method,
-              'cash'
-            )
-          END AS payment_method,
-
-          0 AS invoice_count,
-
-          se.difference_amount
-            AS amount,
-
-          ${exchangeBusinessDate}
-            AS business_date,
-
-          se.user_id
-
-        FROM sale_exchanges se
-
-        JOIN sales os
-          ON
-            os.id =
-              se.original_sale_id
-
-        WHERE
-          se.cancelled_at
-            IS NULL
-
-          AND
-            os.cancelled_at
-            IS NULL
-
-          AND
-            IFNULL(
-              os.type,
-              'sale'
-            ) = 'sale'
-
-        UNION ALL
-
-        /*
-         * المرتجعات تخصم من
-         * وسيلة دفع الفاتورة الأصلية.
-         */
-        SELECT
-          CASE
-            WHEN COALESCE(
-              sr.payment_method,
-              os.payment_method,
-              'cash'
-            ) IN ('cash', 'store_cash')
-              THEN 'cash'
-
-            WHEN COALESCE(
-              sr.payment_method,
-              os.payment_method,
-              'cash'
-            ) IN ('card', 'fawry_machine')
-              THEN 'card'
-
-            WHEN COALESCE(
-              sr.payment_method,
-              os.payment_method,
-              'cash'
-            ) IN ('wallet', 'owner_vodafone')
-              THEN 'wallet'
-
-            WHEN COALESCE(
-              sr.payment_method,
-              os.payment_method,
-              'cash'
-            ) IN ('bank', 'bank_transfer', 'owner_bank')
-              THEN 'bank_transfer'
-
-            ELSE COALESCE(
-              sr.payment_method,
-              os.payment_method,
-              'cash'
-            )
-          END AS payment_method,
-
-          0 AS invoice_count,
-
-          -sr.refund_amount
-            AS amount,
-
-          ${returnBusinessDate}
-            AS business_date,
-
-          sr.user_id
-
-        FROM sale_returns sr
-
-        JOIN sales os
-          ON
-            os.id =
-              sr.original_sale_id
-
-        WHERE
-          sr.cancelled_at
-            IS NULL
-
-          AND
-            os.cancelled_at
-            IS NULL
-      ) x
-
-      ${combinedWhere.whereSql}
+      ${actualCollectionsWhere.whereSql}
 
       GROUP BY
-        x.payment_method
+        CASE
+          WHEN
+            cm.payment_method IN (
+              'cash',
+              'store_cash'
+            )
+          THEN 'cash'
+
+          WHEN
+            cm.payment_method IN (
+              'card',
+              'fawry_machine'
+            )
+          THEN 'card'
+
+          WHEN
+            cm.payment_method IN (
+              'wallet',
+              'owner_vodafone'
+            )
+          THEN 'wallet'
+
+          WHEN
+            cm.payment_method IN (
+              'bank',
+              'bank_transfer',
+              'owner_bank'
+            )
+          THEN 'bank_transfer'
+
+          ELSE
+            cm.payment_method
+        END
 
       ORDER BY
         total DESC
       `,
     )
-    .all(...combinedWhere.params)
+    .all(...actualCollectionsWhere.params)
 
   const cashierSales = db
     .prepare(

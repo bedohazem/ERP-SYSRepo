@@ -490,12 +490,12 @@ export default function ReportsPage() {
           />
 
           <ReportTable
-            title="صافي المبيعات حسب طريقة دفع الفاتورة"
+            title="صافي التحصيل الفعلي حسب طريقة الدفع"
             emptyText="لا توجد بيانات"
             columns={[
               'طريقة الدفع',
-              'عدد فواتير البيع الأصلية',
-              'صافي المبيعات',
+              'عدد الحركات المالية',
+              'صافي التحصيل الفعلي',
             ]}
             rows={data.paymentMethods.map((x) => [
               getPaymentMethodLabel(x.payment_method),
