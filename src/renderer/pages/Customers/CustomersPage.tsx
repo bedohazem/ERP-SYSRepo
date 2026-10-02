@@ -1417,8 +1417,10 @@ export default function CustomersPage() {
                 </strong>
               </div>
               <div style={statCardStyle}>
-                عدد الفواتير
-                <strong>{selectedCustomer.sales?.length || 0}</strong>
+                عدد الفواتير الفعالة
+                <strong>
+                  {Number(selectedCustomer.customer?.sales_count || 0)}
+                </strong>
               </div>
             </div>
 
@@ -1468,12 +1470,49 @@ export default function CustomersPage() {
                   <div
                     key={sale.id}
                     className="customer-history-row"
-                    style={historyRowStyle}
+                    title={
+                      sale.cancelled_at
+                        ? `فاتورة ملغاة${
+                            sale.cancel_reason ? ` - ${sale.cancel_reason}` : ''
+                          }`
+                        : undefined
+                    }
+                    style={{
+                      ...historyRowStyle,
+
+                      ...(sale.cancelled_at
+                        ? {
+                            background: 'rgba(239,68,68,0.08)',
+
+                            border: '1px solid rgba(239,68,68,0.35)',
+
+                            opacity: 0.78,
+                          }
+                        : {}),
+                    }}
                   >
-                    <strong>فاتورة #{sale.id}</strong>
+                    <strong>
+                      فاتورة #{sale.id}
+                      {sale.cancelled_at && (
+                        <span
+                          style={{
+                            marginRight: '7px',
+                            color: '#fca5a5',
+                            fontSize: '11px',
+                            fontWeight: 900,
+                          }}
+                        >
+                          (ملغاة)
+                        </span>
+                      )}
+                    </strong>
+
                     <span>{Number(sale.grand_total || 0).toFixed(2)} ج.م</span>
+
                     <span>+{sale.loyalty_points_earned || 0} نقطة</span>
+
                     <span>-{sale.loyalty_points_redeemed || 0} نقطة</span>
+
                     <span>{sale.created_at}</span>
                   </div>
                 ))}

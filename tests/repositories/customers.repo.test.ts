@@ -9,6 +9,7 @@ import {
   getSaleReceipt,
   createSaleReturn,
   cancelSaleReturn,
+  cancelSaleInvoice,
 } from '../../src/main/database/repositories/sales.repo'
 import {
   createPromotion,
@@ -436,6 +437,166 @@ describe('customers repository', () => {
     expect(searchCustomers('Mohamed') as CustomerTestRow[]).toHaveLength(1)
     expect(searchCustomers('010555') as CustomerTestRow[]).toHaveLength(1)
     expect(searchCustomers('search@test') as CustomerTestRow[]).toHaveLength(1)
+  })
+
+  it('keeps cancelled sales in customer history but excludes them from active invoice counts', () => {
+    const customer = createTestCustomer('01088889991')
+
+    const variant = seedProduct()
+
+    const activeSale = createSale({
+      user_id: 1,
+
+      customer_id: customer.id,
+
+      sub_total: 150,
+
+      discount_value: 0,
+
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 150,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const cancelledSale = createSale({
+      user_id: 1,
+
+      customer_id: customer.id,
+
+      sub_total: 300,
+
+      discount_value: 0,
+
+      grand_total: 300,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 300,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 2,
+
+          unit_price: 150,
+        },
+      ],
+    })
+
+    const db = getDb()
+
+    db.prepare(
+      `
+    UPDATE sales
+    SET created_at = ?
+    WHERE id = ?
+    `,
+    ).run('2026-09-01 10:00:00', activeSale.saleId)
+
+    db.prepare(
+      `
+    UPDATE sales
+    SET created_at = ?
+    WHERE id = ?
+    `,
+    ).run('2026-09-02 10:00:00', cancelledSale.saleId)
+
+    cancelSaleInvoice({
+      sale_id: cancelledSale.saleId,
+
+      reason: 'Cancelled for customer history test',
+
+      actor_id: 1,
+    })
+
+    const byId = getCustomerById(customer.id) as CustomerTestRow
+
+    expect(byId.sales_count).toBe(1)
+
+    expect(String(byId.last_sale_at)).toContain('2026-09-01')
+
+    const allCustomers = getCustomers() as CustomerTestRow[]
+
+    const allRow = allCustomers.find((row) => row.id === customer.id)
+
+    expect(allRow?.sales_count).toBe(1)
+
+    const searchRows = searchCustomers('01088889991') as CustomerTestRow[]
+
+    expect(searchRows[0]?.sales_count).toBe(1)
+
+    const page = listCustomers({
+      search: '01088889991',
+    })
+
+    const pageRow = page.rows.find(
+      (row: any) => Number(row.id) === customer.id,
+    ) as CustomerTestRow | undefined
+
+    expect(pageRow?.sales_count).toBe(1)
+
+    const history = getCustomerHistory(customer.id) as any
+
+    /*
+     * History يحتفظ بالسجلين:
+     * الفعال + الملغي.
+     */
+    expect(history.sales).toHaveLength(2)
+
+    /*
+     * لكن Summary الخاص بالعميل
+     * يحسب الفعالة فقط.
+     */
+    expect(history.customer.sales_count).toBe(1)
+
+    const activeHistorySale = history.sales.find(
+      (sale: any) => Number(sale.id) === Number(activeSale.saleId),
+    )
+
+    const cancelledHistorySale = history.sales.find(
+      (sale: any) => Number(sale.id) === Number(cancelledSale.saleId),
+    )
+
+    expect(activeHistorySale?.cancelled_at).toBeNull()
+
+    expect(cancelledHistorySale?.cancelled_at).toBeTruthy()
+
+    expect(cancelledHistorySale?.cancel_reason).toBe(
+      'Cancelled for customer history test',
+    )
   })
 
   it('updates a customer', () => {

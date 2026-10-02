@@ -477,7 +477,13 @@ export function getCustomers() {
         COUNT(s.id) AS sales_count,
         MAX(s.created_at) AS last_sale_at
       FROM customers c
-      LEFT JOIN sales s ON s.customer_id = c.id
+      LEFT JOIN sales s
+        ON s.customer_id = c.id
+        AND IFNULL(
+          s.type,
+          'sale'
+        ) = 'sale'
+        AND s.cancelled_at IS NULL
       WHERE c.is_active = 1
       GROUP BY c.id
       ORDER BY c.id DESC
@@ -498,7 +504,13 @@ export function searchCustomers(query: string) {
         COUNT(s.id) AS sales_count,
         MAX(s.created_at) AS last_sale_at
       FROM customers c
-      LEFT JOIN sales s ON s.customer_id = c.id
+      LEFT JOIN sales s
+        ON s.customer_id = c.id
+        AND IFNULL(
+          s.type,
+          'sale'
+        ) = 'sale'
+        AND s.cancelled_at IS NULL
       WHERE c.is_active = 1
         AND (
           c.name LIKE ?
@@ -566,6 +578,11 @@ export function listCustomers(input?: {
 
       LEFT JOIN sales s
         ON s.customer_id = c.id
+        AND IFNULL(
+          s.type,
+          'sale'
+        ) = 'sale'
+        AND s.cancelled_at IS NULL
 
       ${rowsWhereSql}
 
@@ -863,7 +880,13 @@ export function getCustomerById(id: number) {
         COUNT(s.id) AS sales_count,
         MAX(s.created_at) AS last_sale_at
       FROM customers c
-      LEFT JOIN sales s ON s.customer_id = c.id
+      LEFT JOIN sales s
+        ON s.customer_id = c.id
+        AND IFNULL(
+          s.type,
+          'sale'
+        ) = 'sale'
+        AND s.cancelled_at IS NULL
       WHERE c.id = ?
       GROUP BY c.id
       LIMIT 1
@@ -886,14 +909,26 @@ export function getCustomerHistory(customerId: number) {
         discount_value,
         grand_total,
         paid,
+        remaining_amount,
+        payment_status,
         change_amount,
         payment_method,
         loyalty_points_earned,
         loyalty_points_redeemed,
         loyalty_discount_value,
+        cancelled_at,
+        cancel_reason,
         created_at
+
       FROM sales
+
       WHERE customer_id = ?
+
+        AND IFNULL(
+          type,
+          'sale'
+        ) = 'sale'
+
       ORDER BY id DESC
     `,
     )
