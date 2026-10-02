@@ -1907,6 +1907,32 @@ declare global {
         filePath?: string
       }>
 
+      saveReportPdfFromHtml: (input: {
+        html: string
+
+        defaultFileName?: string
+
+        landscape?: boolean
+      }) => Promise<{
+        ok: boolean
+
+        canceled?: boolean
+
+        filePath?: string
+      }>
+
+      saveReportCsvText: (input: {
+        text: string
+
+        defaultFileName?: string
+      }) => Promise<{
+        ok: boolean
+
+        canceled?: boolean
+
+        filePath?: string
+      }>
+
       printHtmlSilent: (input: { html: string }) => Promise<{
         ok: boolean
         message?: string

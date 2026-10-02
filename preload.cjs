@@ -339,6 +339,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('liabilities:summary', input),
 
   savePdfFromHtml: (input) => ipcRenderer.invoke('print:save-pdf', input),
+  saveReportPdfFromHtml: (input) =>
+    ipcRenderer.invoke('print:save-report-pdf', input),
+
+  saveReportCsvText: (input) =>
+    ipcRenderer.invoke('print:save-report-csv', input),
   printHtmlSilent: (input) => ipcRenderer.invoke('print:silent-html', input),
 
   printHtmlWithDialog: (input) =>

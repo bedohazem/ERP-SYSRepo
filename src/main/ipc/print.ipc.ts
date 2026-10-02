@@ -10,12 +10,19 @@ import {
 import {
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
+  requirePermission,
 } from '../auth-session'
 
 type SavePdfInput = {
   html: string
   defaultFileName?: string
   landscape?: boolean
+}
+
+type SaveReportCsvInput = {
+  text: string
+
+  defaultFileName?: string
 }
 
 type SilentPrintInput = {
@@ -60,6 +67,15 @@ function cleanFileName(value: string) {
     .trim()
 
   return safeName.toLowerCase().endsWith('.pdf') ? safeName : `${safeName}.pdf`
+}
+
+function cleanCsvFileName(value: string) {
+  const safeName = String(value || 'report.csv')
+    .replace(/[<>:"/\\|?*]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return safeName.toLowerCase().endsWith('.csv') ? safeName : `${safeName}.csv`
 }
 
 export function registerPrintIpc(): void {
@@ -133,6 +149,166 @@ export function registerPrintIpc(): void {
       }
     }
   })
+
+  ipcMain.handle(
+    'print:save-report-pdf',
+    async (event, input: SavePdfInput) => {
+      requirePermission(event, 'reports.view')
+
+      const html = String(input?.html || '').trim()
+
+      if (!html) {
+        throw new Error('لا يوجد محتوى لإنشاء PDF')
+      }
+
+      const defaultFileName = cleanFileName(
+        input.defaultFileName ||
+          `report-${new Date().toISOString().slice(0, 10)}.pdf`,
+      )
+
+      const saveResult = await dialog.showSaveDialog({
+        title: 'حفظ تقرير PDF',
+
+        defaultPath: path.join(
+          app.getPath('documents'),
+
+          defaultFileName,
+        ),
+
+        filters: [
+          {
+            name: 'PDF Files',
+
+            extensions: ['pdf'],
+          },
+        ],
+      })
+
+      if (saveResult.canceled || !saveResult.filePath) {
+        return {
+          ok: false,
+          canceled: true,
+        }
+      }
+
+      const filePath = saveResult.filePath.toLowerCase().endsWith('.pdf')
+        ? saveResult.filePath
+        : `${saveResult.filePath}.pdf`
+
+      const pdfWindow = new BrowserWindow({
+        show: false,
+
+        webPreferences: getSecureWebPreferences(app.isPackaged),
+      })
+
+      hardenAuxiliaryWindow(pdfWindow)
+
+      let tempHtmlPath = ''
+
+      try {
+        tempHtmlPath = path.join(
+          os.tmpdir(),
+
+          `erp-report-pdf-${Date.now()}.html`,
+        )
+
+        await fs.writeFile(
+          tempHtmlPath,
+
+          hardenPrintHtml(html),
+
+          'utf8',
+        )
+
+        await pdfWindow.loadFile(tempHtmlPath)
+
+        const pdfBuffer = await pdfWindow.webContents.printToPDF({
+          printBackground: true,
+
+          landscape: input.landscape !== false,
+
+          pageSize: 'A4',
+        })
+
+        await fs.writeFile(filePath, pdfBuffer)
+
+        return {
+          ok: true,
+          filePath,
+        }
+      } finally {
+        pdfWindow.destroy()
+
+        if (tempHtmlPath) {
+          await fs.unlink(tempHtmlPath).catch(() => {})
+        }
+      }
+    },
+  )
+
+  ipcMain.handle(
+    'print:save-report-csv',
+    async (event, input: SaveReportCsvInput) => {
+      requirePermission(event, 'reports.view')
+
+      const text = String(input?.text || '').trim()
+
+      if (!text) {
+        throw new Error('لا توجد بيانات لتصدير CSV')
+      }
+
+      const defaultFileName = cleanCsvFileName(
+        input.defaultFileName ||
+          `report-${new Date().toISOString().slice(0, 10)}.csv`,
+      )
+
+      const saveResult = await dialog.showSaveDialog({
+        title: 'حفظ تقرير CSV',
+
+        defaultPath: path.join(
+          app.getPath('documents'),
+
+          defaultFileName,
+        ),
+
+        filters: [
+          {
+            name: 'CSV Files',
+
+            extensions: ['csv'],
+          },
+        ],
+      })
+
+      if (saveResult.canceled || !saveResult.filePath) {
+        return {
+          ok: false,
+          canceled: true,
+        }
+      }
+
+      const filePath = saveResult.filePath.toLowerCase().endsWith('.csv')
+        ? saveResult.filePath
+        : `${saveResult.filePath}.csv`
+
+      /*
+       * BOM مهم علشان Excel
+       * يقرأ العربي UTF-8 صح.
+       */
+      await fs.writeFile(
+        filePath,
+
+        `\uFEFF${text}`,
+
+        'utf8',
+      )
+
+      return {
+        ok: true,
+        filePath,
+      }
+    },
+  )
 
   ipcMain.handle(
     'print:silent-html',

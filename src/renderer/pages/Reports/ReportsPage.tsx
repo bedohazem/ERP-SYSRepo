@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getPaymentMethodLabel } from '../../utils/payment-method'
+import { buildReportsCsv, buildReportsPdfHtml } from './report-export'
 
 type ReportsData = {
   summary: {
@@ -149,6 +150,155 @@ export default function ReportsPage() {
   const [data, setData] = useState<ReportsData>(emptyReports)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const [exporting, setExporting] = useState<'pdf' | 'csv' | null>(null)
+
+  const [messageType, setMessageType] = useState<'success' | 'error'>('error')
+
+  function showMessage(
+    type: 'success' | 'error',
+
+    text: string,
+
+    duration = 3200,
+  ) {
+    setMessageType(type)
+
+    setMessage(text)
+
+    window.setTimeout(
+      () => {
+        setMessage('')
+      },
+
+      duration,
+    )
+  }
+
+  function getPeriodLabel() {
+    if (monthFilter) {
+      return formatMonthLabel(monthFilter)
+    }
+
+    if (dateFrom && dateTo) {
+      return `${dateFrom} إلى ${dateTo}`
+    }
+
+    if (dateFrom) {
+      return `من ${dateFrom}`
+    }
+
+    if (dateTo) {
+      return `حتى ${dateTo}`
+    }
+
+    return 'كل الفترات'
+  }
+
+  function getExportFileSuffix() {
+    if (monthFilter) {
+      return monthFilter
+    }
+
+    if (dateFrom || dateTo) {
+      return `${dateFrom || 'start'}_${dateTo || 'end'}`
+    }
+
+    return new Date().toISOString().slice(0, 10)
+  }
+
+  async function exportPdf() {
+    if (exporting) {
+      return
+    }
+
+    setExporting('pdf')
+
+    try {
+      const html = buildReportsPdfHtml(
+        data,
+
+        getPeriodLabel(),
+      )
+
+      const result = await window.api.saveReportPdfFromHtml({
+        html,
+
+        defaultFileName: `erp-report-${getExportFileSuffix()}.pdf`,
+
+        landscape: true,
+      })
+
+      if (result?.canceled) {
+        return
+      }
+
+      showMessage(
+        'success',
+
+        'تم حفظ تقرير PDF بنجاح',
+      )
+    } catch (error) {
+      console.error('Failed to export report PDF:', error)
+
+      showMessage(
+        'error',
+
+        error instanceof Error && error.message
+          ? error.message
+          : 'تعذر تصدير تقرير PDF',
+
+        4500,
+      )
+    } finally {
+      setExporting(null)
+    }
+  }
+
+  async function exportCsv() {
+    if (exporting) {
+      return
+    }
+
+    setExporting('csv')
+
+    try {
+      const text = buildReportsCsv(
+        data,
+
+        getPeriodLabel(),
+      )
+
+      const result = await window.api.saveReportCsvText({
+        text,
+
+        defaultFileName: `erp-report-${getExportFileSuffix()}.csv`,
+      })
+
+      if (result?.canceled) {
+        return
+      }
+
+      showMessage(
+        'success',
+
+        'تم حفظ تقرير CSV بنجاح',
+      )
+    } catch (error) {
+      console.error('Failed to export report CSV:', error)
+
+      showMessage(
+        'error',
+
+        error instanceof Error && error.message
+          ? error.message
+          : 'تعذر تصدير تقرير CSV',
+
+        4500,
+      )
+    } finally {
+      setExporting(null)
+    }
+  }
 
   async function loadReports() {
     setLoading(true)
@@ -162,7 +312,13 @@ export default function ReportsPage() {
       setData(result)
     } catch (error) {
       console.error('Failed to load reports:', error)
-      setMessage('حدث خطأ أثناء تحميل التقارير')
+      showMessage(
+        'error',
+
+        'حدث خطأ أثناء تحميل التقارير',
+
+        4500,
+      )
       setData(emptyReports)
     } finally {
       setLoading(false)
@@ -209,7 +365,10 @@ export default function ReportsPage() {
             zIndex: 99999,
             padding: '12px 18px',
             borderRadius: '14px',
-            background: 'rgba(239,68,68,0.95)',
+            background:
+              messageType === 'success'
+                ? 'rgba(16,185,129,0.96)'
+                : 'rgba(239,68,68,0.95)',
             color: '#fff',
             fontWeight: 800,
             boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
@@ -265,6 +424,58 @@ export default function ReportsPage() {
               title="اختيار شهر كامل"
               style={inputStyle}
             />
+
+            <button
+              type="button"
+              onClick={() => void exportPdf()}
+              disabled={loading || exporting !== null}
+              style={{
+                border: 'none',
+
+                borderRadius: '10px',
+
+                padding: '9px 14px',
+
+                background: 'linear-gradient(135deg, #dc2626, #b91c1c)',
+
+                color: '#fff',
+
+                fontWeight: 900,
+
+                cursor:
+                  loading || exporting !== null ? 'not-allowed' : 'pointer',
+
+                opacity: loading || exporting !== null ? 0.55 : 1,
+              }}
+            >
+              {exporting === 'pdf' ? 'جاري إنشاء PDF...' : 'تصدير PDF'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void exportCsv()}
+              disabled={loading || exporting !== null}
+              style={{
+                border: 'none',
+
+                borderRadius: '10px',
+
+                padding: '9px 14px',
+
+                background: 'linear-gradient(135deg, #059669, #047857)',
+
+                color: '#fff',
+
+                fontWeight: 900,
+
+                cursor:
+                  loading || exporting !== null ? 'not-allowed' : 'pointer',
+
+                opacity: loading || exporting !== null ? 0.55 : 1,
+              }}
+            >
+              {exporting === 'csv' ? 'جاري إنشاء CSV...' : 'تصدير CSV'}
+            </button>
 
             <input
               type="date"
