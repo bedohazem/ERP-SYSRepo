@@ -15,6 +15,7 @@ import {
   getCashShiftDetails,
   listCashShifts,
   resolveCashShiftVariance,
+  forceCloseCashShift,
 } from '../../src/main/database/repositories/cash-shifts.repo'
 
 import {
@@ -325,6 +326,125 @@ describe('cash shifts repository', () => {
       .get(shift.id)
 
     expect(variance).toBeUndefined()
+  })
+
+  it('force closes an abandoned shift without creating a fake physical count', () => {
+    const shift = openCashShift({
+      opening_counted_amount: 500,
+
+      opened_by: 1,
+    })
+
+    createCashMovement({
+      type: 'sale',
+
+      direction: 'in',
+
+      amount: 1000,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+
+      shift_id: shift.id,
+    })
+
+    const closed = forceCloseCashShift({
+      shift_id: shift.id,
+
+      closed_by: 1,
+
+      approved_by: 1,
+
+      reason: 'الكاشير غير متاح ولا يمكن تنفيذ جرد فعلي',
+    })
+
+    expect(closed.status).toBe('closed')
+
+    expect(closed.expected_closing_amount).toBe(1500)
+
+    expect(closed.closing_counted_amount).toBeNull()
+
+    expect(closed.closing_difference).toBeNull()
+
+    expect(closed.left_for_next_shift).toBe(1500)
+
+    expect(Number(closed.safe_transfer_amount || 0)).toBe(0)
+
+    /*
+     * لا يتم تحريك الأموال
+     * أثناء Force Close.
+     */
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(1500)
+
+    expect(
+      getCashSummary({
+        payment_method: 'store_safe',
+      }).balance,
+    ).toBe(0)
+
+    const closingVariance = getDb()
+      .prepare(
+        `
+        SELECT id
+
+        FROM cash_shift_variances
+
+        WHERE
+          shift_id = ?
+
+          AND stage =
+            'closing'
+        `,
+      )
+      .get(shift.id)
+
+    expect(closingVariance).toBeUndefined()
+
+    const preview = getCashShiftOpeningPreview()
+
+    expect(preview.expected_opening_amount).toBe(1500)
+
+    /*
+     * أول عد فعلي بعد الطوارئ
+     * هو اللي يكشف الفرق.
+     */
+    const nextShift = openCashShift({
+      opening_counted_amount: 1400,
+
+      opened_by: 1,
+    })
+
+    expect(nextShift.opening_difference).toBe(-100)
+
+    const openingVariance = getDb()
+      .prepare(
+        `
+        SELECT
+          kind,
+          amount,
+          status
+
+        FROM cash_shift_variances
+
+        WHERE
+          shift_id = ?
+
+          AND stage =
+            'opening'
+        `,
+      )
+      .get(nextShift.id) as any
+
+    expect(openingVariance.kind).toBe('shortage')
+
+    expect(Number(openingVariance.amount)).toBe(100)
+
+    expect(openingVariance.status).toBe('pending')
   })
 
   it('records closing shortage without corrupting drawer balance', () => {

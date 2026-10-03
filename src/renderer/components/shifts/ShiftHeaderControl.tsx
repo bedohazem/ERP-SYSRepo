@@ -392,6 +392,64 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
     }
   }
 
+  async function submitEmergencyForceClose() {
+    if (!openShift || !adminClosingOtherShift) {
+      return
+    }
+
+    if (!closeReason.trim()) {
+      showToast('error', 'اكتب سبب الإغلاق الطارئ')
+
+      return
+    }
+
+    if (!adminPassword.trim()) {
+      showToast('error', 'اكتب كلمة مرور المدير')
+
+      return
+    }
+
+    setBusy(true)
+
+    try {
+      await window.api.forceCloseCashShift({
+        shift_id: openShift.id,
+
+        reason: closeReason.trim(),
+
+        admin_password: adminPassword,
+      })
+
+      setOpenShift(null)
+
+      setModal(null)
+
+      window.dispatchEvent(
+        new CustomEvent('cash-shift-changed', {
+          detail: null,
+        }),
+      )
+
+      showToast(
+        'success',
+        'تم الإغلاق الطارئ بدون تسجيل جرد وهمي. أي فرق فعلي سيظهر عند افتتاح الشفت التالي.',
+        4500,
+      )
+    } catch (err) {
+      showToast(
+        'error',
+
+        err instanceof Error && err.message
+          ? err.message
+          : 'تعذر تنفيذ الإغلاق الطارئ. لم يتم تطبيق أي تغييرات.',
+
+        4500,
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const panelBackground = isLight ? '#ffffff' : '#111827'
 
   const textColor = isLight ? '#0f172a' : '#f8fafc'
@@ -997,6 +1055,63 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                     marginTop: '8px',
                   }}
                 />
+
+                <div
+                  style={{
+                    marginTop: '16px',
+
+                    padding: '14px',
+
+                    borderRadius: '14px',
+
+                    border: '1px solid rgba(239,68,68,0.40)',
+
+                    background: isLight ? '#fef2f2' : 'rgba(127,29,29,0.20)',
+
+                    display: 'grid',
+
+                    gap: '10px',
+                  }}
+                >
+                  <strong
+                    style={{
+                      color: '#f87171',
+                    }}
+                  >
+                    إغلاق طارئ بدون جرد
+                  </strong>
+
+                  <div
+                    style={{
+                      fontSize: '12px',
+
+                      lineHeight: 1.7,
+
+                      color: mutedColor,
+                    }}
+                  >
+                    استخدمه فقط لو صاحب الشفت غير متاح ولا يمكن عد الدرج الآن.
+                    لن يتم تسجيل مبلغ جرد وهمي، وسيتم كشف الفرق عند افتتاح الشفت
+                    التالي.
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void submitEmergencyForceClose()}
+                    style={{
+                      ...secondaryButtonStyle,
+
+                      color: '#fca5a5',
+
+                      border: '1px solid rgba(239,68,68,0.50)',
+
+                      background: 'rgba(239,68,68,0.10)',
+                    }}
+                  >
+                    {busy ? 'جاري الإغلاق...' : 'إغلاق الشفت طارئًا بدون جرد'}
+                  </button>
+                </div>
               </>
             )}
 

@@ -88,6 +88,7 @@ export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   cash_day_close_cancelled: 'إلغاء تقفيل يوم',
   cash_shift_opened: 'فتح شفت',
   cash_shift_closed: 'إغلاق شفت',
+  cash_shift_force_closed: 'إغلاق طارئ لشفت بدون جرد',
   cash_shift_variance_resolved: 'معالجة فرق شفت',
   cash_movement_updated: 'تعديل حركة خزنة',
   cash_movement_cancelled: 'إلغاء حركة خزنة',

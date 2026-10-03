@@ -290,7 +290,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('cash-shifts:preview', shiftId),
 
   closeCashShift: (input) => ipcRenderer.invoke('cash-shifts:close', input),
-
+  forceCloseCashShift: (input) =>
+    ipcRenderer.invoke('cash-shifts:force-close', input),
   createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
   updateExpense: (input) => ipcRenderer.invoke('expenses:update', input),
   cancelExpense: (input) => ipcRenderer.invoke('expenses:cancel', input),

@@ -22,9 +22,14 @@ import {
   listCashShifts,
   getCashShiftDetails,
   resolveCashShiftVariance,
+  forceCloseCashShift,
 } from '../database/repositories/cash-shifts.repo'
 import { requireAdminPassword } from './permission-helper'
-import { requireAuthenticatedUser, requirePermission } from '../auth-session'
+import {
+  requireAuthenticatedAdmin,
+  requireAuthenticatedUser,
+  requirePermission,
+} from '../auth-session'
 import {
   listUsers,
   userHasPermission,
@@ -471,5 +476,25 @@ export function registerCashIpc(): void {
     }
 
     return getCashierShiftView(closedShift)
+  })
+
+  ipcMain.handle('cash-shifts:force-close', (event, input) => {
+    const actorId = requireAuthenticatedAdmin(event)
+
+    const approval = requireAdminPassword(
+      actorId,
+
+      input?.admin_password,
+    )
+
+    return forceCloseCashShift({
+      shift_id: Number(input?.shift_id),
+
+      closed_by: actorId,
+
+      approved_by: approval.id,
+
+      reason: String(input?.reason || ''),
+    })
   })
 }

@@ -49,6 +49,16 @@ export type CloseCashShiftInput = {
   approved_by?: number | null
 }
 
+export type ForceCloseCashShiftInput = {
+  shift_id: number
+
+  closed_by: number
+
+  reason: string
+
+  approved_by?: number | null
+}
+
 export type CashShiftDaySummaryInput = {
   business_date: string
   user_id?: number | null
@@ -2113,6 +2123,164 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
 
     if (!closedShift) {
       throw new Error('تعذر تحميل الشفت بعد إغلاقه')
+    }
+
+    return closedShift
+  })
+
+  return tx()
+}
+
+export function forceCloseCashShift(
+  input: ForceCloseCashShiftInput,
+): CashShiftRow {
+  const db = getDb()
+
+  const shiftId = Number(input.shift_id || 0)
+
+  const closedBy = Number(input.closed_by || 0)
+
+  const reason = String(input.reason || '').trim()
+
+  if (!Number.isInteger(shiftId) || shiftId <= 0) {
+    throw new Error('رقم الشفت غير صحيح')
+  }
+
+  if (!Number.isInteger(closedBy) || closedBy <= 0) {
+    throw new Error('المستخدم غير صحيح')
+  }
+
+  if (!reason) {
+    throw new Error('سبب الإغلاق الطارئ مطلوب')
+  }
+
+  const tx = db.transaction(() => {
+    const shift = getCashShiftById(shiftId)
+
+    if (!shift) {
+      throw new Error('الشفت غير موجود')
+    }
+
+    if (shift.status !== 'open') {
+      throw new Error('هذا الشفت مغلق بالفعل')
+    }
+
+    const actor = db
+      .prepare(
+        `
+        SELECT
+          id,
+          role,
+          is_active
+
+        FROM users
+
+        WHERE id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(closedBy) as
+      | {
+          id: number
+          role: string
+          is_active: number
+        }
+      | undefined
+
+    if (!actor || Number(actor.is_active) !== 1 || actor.role !== 'admin') {
+      throw new Error('الإغلاق الطارئ متاح لمدير النظام فقط')
+    }
+
+    const preview = getCashShiftExpectedBalance(shift.id)
+
+    const expectedClosingAmount = roundMoney(
+      Number(preview.expected_closing_amount || 0),
+    )
+
+    /*
+     * لا نسجل جردًا وهميًا.
+     *
+     * الرصيد الدفتري ينتقل
+     * للشفت التالي، وأول عد
+     * فعلي للشفت الجديد يكشف
+     * أي عجز أو زيادة.
+     */
+    const result = db
+      .prepare(
+        `
+        UPDATE cash_shifts
+
+        SET
+          status = 'closed',
+
+          expected_closing_amount = ?,
+
+          closing_counted_amount = NULL,
+
+          closing_difference = NULL,
+
+          left_for_next_shift = ?,
+
+          safe_transfer_amount = 0,
+
+          closed_by = ?,
+
+          closed_at =
+            CURRENT_TIMESTAMP,
+
+          close_reason = ?
+
+        WHERE id = ?
+          AND status = 'open'
+        `,
+      )
+      .run(
+        expectedClosingAmount,
+
+        expectedClosingAmount,
+
+        closedBy,
+
+        `إغلاق طارئ بدون جرد: ${reason}`,
+
+        shift.id,
+      )
+
+    if (Number(result.changes || 0) !== 1) {
+      throw new Error('تعذر تنفيذ الإغلاق الطارئ للشفت')
+    }
+
+    createCriticalActivityLog({
+      user_id: closedBy,
+
+      approved_by: input.approved_by ?? null,
+
+      action: 'cash_shift_force_closed',
+
+      entity: 'cash_shifts',
+
+      entity_id: shift.id,
+
+      details: JSON.stringify({
+        opened_by: shift.opened_by,
+
+        expected_closing_amount: expectedClosingAmount,
+
+        closing_counted_amount: null,
+
+        left_for_next_shift: expectedClosingAmount,
+
+        physical_count_performed: false,
+
+        reason,
+      }),
+    })
+
+    const closedShift = getCashShiftById(shift.id)
+
+    if (!closedShift) {
+      throw new Error('تعذر تحميل الشفت بعد الإغلاق الطارئ')
     }
 
     return closedShift

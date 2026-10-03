@@ -2812,6 +2812,14 @@ declare global {
         admin_password?: string
       }) => Promise<any>
 
+      forceCloseCashShift: (input: {
+        shift_id: number
+
+        reason: string
+
+        admin_password: string
+      }) => Promise<any>
+
       updateCashMovement: (input: {
         id: number
 
