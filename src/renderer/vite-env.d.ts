@@ -1977,6 +1977,60 @@ declare global {
         }>
       >
 
+      getCashDrawerNoSaleEvents: (input?: {
+        shift_id?: number | null
+
+        user_id?: number | null
+
+        status?: 'all' | 'success' | 'failed'
+
+        date_from?: string | null
+
+        date_to?: string | null
+
+        limit?: number
+
+        offset?: number
+      }) => Promise<{
+        rows: Array<{
+          id: number
+
+          action: 'cash_drawer_opened' | 'cash_drawer_open_failed'
+
+          status: 'success' | 'failed'
+
+          shift_id: number
+
+          shift_opened_by: number | null
+
+          shift_opened_by_name: string | null
+
+          user_id: number | null
+
+          user_name: string | null
+
+          username: string | null
+
+          reason: string
+
+          printer_name: string
+
+          error: string | null
+
+          created_at: string
+        }>
+
+        total: number
+
+        success_count: number
+
+        failed_count: number
+
+        limit: number
+
+        offset: number
+      }>
+
       openCashDrawer: (input?: {
         actor_id?: number
         reason?: 'manual' | 'sale' | 'test' | string

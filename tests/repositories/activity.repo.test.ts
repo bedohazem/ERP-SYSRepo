@@ -3,8 +3,10 @@ import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
 import {
   createActivityLog,
   listActivityLogs,
+  listCashDrawerNoSaleEvents,
   safeCreateActivityLog,
 } from '../../src/main/database/repositories/activity.repo'
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
 import {
   CRITICAL_AUDIT_ERROR_MESSAGE,
   runCriticalActionWithAudit,
@@ -461,5 +463,121 @@ describe('activity repository', () => {
     expect((secondPage.rows[0] as ActivityLogTestRow).action).toBe(
       'page_action_3',
     )
+  })
+
+  it('reports no-sale drawer events with shift actor and result', () => {
+    const shift = openCashShift({
+      opening_counted_amount: 100,
+
+      opened_by: 1,
+    })
+
+    createActivityLog({
+      user_id: 1,
+
+      action: 'cash_drawer_opened',
+
+      entity: 'cash_shifts',
+
+      entity_id: shift.id,
+
+      details: JSON.stringify({
+        reason: 'manual',
+
+        shift_id: shift.id,
+
+        printer_name: 'POS Printer',
+      }),
+    })
+
+    createActivityLog({
+      user_id: 1,
+
+      action: 'cash_drawer_open_failed',
+
+      entity: 'cash_shifts',
+
+      entity_id: shift.id,
+
+      details: JSON.stringify({
+        reason: 'manual',
+
+        shift_id: shift.id,
+
+        printer_name: 'POS Printer',
+
+        error: 'printer failed',
+      }),
+    })
+
+    /*
+     * فتح مرتبط ببيع:
+     * لا يدخل No-Sale report.
+     */
+    createActivityLog({
+      user_id: 1,
+
+      action: 'cash_drawer_opened',
+
+      entity: 'sales',
+
+      entity_id: 999,
+
+      details: JSON.stringify({
+        reason: 'sale',
+      }),
+    })
+
+    /*
+     * اختبار إداري:
+     * لا يدخل التقرير التشغيلي.
+     */
+    createActivityLog({
+      user_id: 1,
+
+      action: 'cash_drawer_opened',
+
+      entity: 'cash_drawer',
+
+      entity_id: null,
+
+      details: JSON.stringify({
+        reason: 'test',
+      }),
+    })
+
+    const report = listCashDrawerNoSaleEvents()
+
+    expect(report.total).toBe(2)
+
+    expect(report.success_count).toBe(1)
+
+    expect(report.failed_count).toBe(1)
+
+    expect(report.rows).toHaveLength(2)
+
+    expect(report.rows[0].shift_id).toBe(shift.id)
+
+    expect(report.rows[0].status).toBe('failed')
+
+    expect(report.rows[0].error).toBe('printer failed')
+
+    expect(report.rows[0].user_id).toBe(1)
+
+    expect(report.rows[0].shift_opened_by).toBe(1)
+
+    const successOnly = listCashDrawerNoSaleEvents({
+      status: 'success',
+    })
+
+    expect(successOnly.total).toBe(1)
+
+    expect(successOnly.rows[0].status).toBe('success')
+
+    const shiftOnly = listCashDrawerNoSaleEvents({
+      shift_id: shift.id,
+    })
+
+    expect(shiftOnly.total).toBe(2)
   })
 })

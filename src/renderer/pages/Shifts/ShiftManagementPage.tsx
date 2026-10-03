@@ -8,6 +8,7 @@ import {
   getCashShiftVarianceStatusLabel,
 } from '../../utils/cash-shifts'
 import ShiftHistorySection from './ShiftHistorySection'
+import CashDrawerHistorySection from './CashDrawerHistorySection'
 import { useAuthStore } from '../../store/auth.store'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 
@@ -539,6 +540,8 @@ export default function ShiftManagementPage() {
       )}
 
       <ShiftHistorySection users={shiftUsers} />
+
+      <CashDrawerHistorySection users={shiftUsers} />
 
       <section
         className="glass-card"

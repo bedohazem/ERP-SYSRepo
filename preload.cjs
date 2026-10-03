@@ -354,5 +354,9 @@ contextBridge.exposeInMainWorld('api', {
   saveCashDrawerSettings: (input) =>
     ipcRenderer.invoke('cash-drawer:save-settings', input),
   getCashDrawerPrinters: () => ipcRenderer.invoke('cash-drawer:list-printers'),
+
+  getCashDrawerNoSaleEvents: (input) =>
+    ipcRenderer.invoke('cash-drawer:list-no-sale-events', input),
+
   openCashDrawer: (input) => ipcRenderer.invoke('cash-drawer:open', input),
 })

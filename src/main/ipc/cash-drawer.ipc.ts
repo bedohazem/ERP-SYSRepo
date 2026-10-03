@@ -5,10 +5,13 @@ import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { getDb } from '../database/db'
+import { listCashDrawerNoSaleEvents } from '../database/repositories/activity.repo'
+import { requireOperationalCashShift } from '../database/repositories/cash-shifts.repo'
 import { logAction } from './activity-helper'
 import {
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
+  requirePermission,
 } from '../auth-session'
 
 const execFileAsync = promisify(execFile)
@@ -306,28 +309,97 @@ export function registerCashDrawerIpc(): void {
     }))
   })
 
+  ipcMain.handle('cash-drawer:list-no-sale-events', (event, input) => {
+    requirePermission(event, 'shifts.manage')
+
+    return listCashDrawerNoSaleEvents({
+      shift_id: input?.shift_id ?? null,
+
+      user_id: input?.user_id ?? null,
+
+      status: input?.status || 'all',
+
+      date_from: input?.date_from || null,
+
+      date_to: input?.date_to || null,
+
+      limit: Number(input?.limit || 50),
+
+      offset: Number(input?.offset || 0),
+    })
+  })
+
   ipcMain.handle(
     'cash-drawer:open',
     async (event, input?: OpenCashDrawerInput) => {
-      const actorId = requireAuthenticatedUser(event).id
+      const actor = requireAuthenticatedUser(event)
+
+      const actorId = actor.id
+
       const settings = getCashDrawerSettings()
 
+      const rawSaleId = Number(input?.sale_id || 0)
+
+      const saleId =
+        Number.isInteger(rawSaleId) && rawSaleId > 0 ? rawSaleId : null
+
+      const reason: 'manual' | 'sale' | 'test' = saleId
+        ? 'sale'
+        : input?.reason === 'test'
+          ? 'test'
+          : 'manual'
+
+      let shiftId: number | null = null
+
       try {
+        /*
+         * الفتح اليدوي للدرج
+         * حركة تشغيلية على درج المحل،
+         * لذلك لازم يكون مرتبط
+         * بشفت مفتوح.
+         */
+        if (reason === 'manual') {
+          const shift = requireOperationalCashShift(
+            actorId,
+            'لا يمكن فتح درج الكاشير بدون شفت مفتوح',
+          )
+
+          shiftId = Number(shift.id)
+        }
+
+        /*
+         * اختبار الدرج من الإعدادات
+         * إجراء إداري وليس No-Sale
+         * تشغيلي، لذلك لا يدخل
+         * تقرير الشفتات.
+         */
+        if (reason === 'test' && actor.role !== 'admin') {
+          throw new Error('اختبار درج الكاشير متاح لمدير النظام فقط')
+        }
+
         await sendCashDrawerPulse(settings.printer_name)
 
         logAction({
           actor_id: actorId,
+
           action: 'cash_drawer_opened',
-          entity: input?.sale_id ? 'sales' : 'cash_drawer',
-          entity_id: input?.sale_id ?? null,
+
+          entity: saleId ? 'sales' : shiftId ? 'cash_shifts' : 'cash_drawer',
+
+          entity_id: saleId ?? shiftId ?? null,
+
           details: {
-            reason: input?.reason || 'manual',
+            reason,
+
+            shift_id: shiftId,
+
             printer_name: settings.printer_name,
           },
         })
 
         return {
           success: true,
+
           message: 'تم إرسال أمر فتح درج الكاشير',
         }
       } catch (error) {
@@ -336,18 +408,27 @@ export function registerCashDrawerIpc(): void {
 
         logAction({
           actor_id: actorId,
+
           action: 'cash_drawer_open_failed',
-          entity: input?.sale_id ? 'sales' : 'cash_drawer',
-          entity_id: input?.sale_id ?? null,
+
+          entity: saleId ? 'sales' : shiftId ? 'cash_shifts' : 'cash_drawer',
+
+          entity_id: saleId ?? shiftId ?? null,
+
           details: {
-            reason: input?.reason || 'manual',
+            reason,
+
+            shift_id: shiftId,
+
             printer_name: settings.printer_name,
+
             error: message,
           },
         })
 
         return {
           success: false,
+
           message,
         }
       }
