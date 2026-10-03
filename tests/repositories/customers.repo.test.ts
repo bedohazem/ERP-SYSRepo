@@ -1443,9 +1443,13 @@ describe('customers repository', () => {
     VALUES (?, NULL, 'adjust', 1, 0, ?)
   `)
 
-    for (let index = 1; index <= 105; index += 1) {
-      insert.run(customer.id, `history ${index}`)
-    }
+    const insertHistory = db.transaction(() => {
+      for (let index = 1; index <= 105; index += 1) {
+        insert.run(customer.id, `history ${index}`)
+      }
+    })
+
+    insertHistory()
 
     const history = getCustomerHistory(customer.id) as any
 
