@@ -15,6 +15,7 @@
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "test:prepare": "npm rebuild better-sqlite3 --runtime=node --target=22.22.0 --dist-url=https://nodejs.org/download/release",
     "test:ready": "npm run test:prepare && vitest --run",
+    "test:e2e": "node scripts/e2e-smoke.mjs",
     "electron:prepare": "electron-rebuild -f -w better-sqlite3",
     "dev:ready": "npm run electron:prepare && npm run dev",
     "dist:dir": "npm run typecheck && npm run build:renderer && npm run build:main && npm run electron:prepare && electron-builder --win dir --x64",

@@ -30,6 +30,18 @@ let mainWindow: BrowserWindow | null = null
 let hourlyBackupTimer: NodeJS.Timeout | null = null
 let shutdownBackupDone = false
 
+const e2eSmokeEnabled = process.env.ERP_E2E_SMOKE === '1'
+
+const e2eUserDataDir = String(process.env.ERP_E2E_USER_DATA_DIR || '').trim()
+
+if (e2eSmokeEnabled && e2eUserDataDir) {
+  /*
+   * الـE2E ممنوع يلمس
+   * قاعدة بيانات المستخدم الحقيقية.
+   */
+  app.setPath('userData', e2eUserDataDir)
+}
+
 function startAutoBackupScheduler() {
   setTimeout(() => {
     void createAutoBackup('startup')
@@ -89,7 +101,7 @@ function createWindow(): void {
 
   mainWindow.maximize()
 
-  const isDev = !app.isPackaged
+  const isDev = !app.isPackaged && !e2eSmokeEnabled
 
   if (isDev) {
     void mainWindow.loadURL('http://localhost:3000')
@@ -101,6 +113,95 @@ function createWindow(): void {
 
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow?.setTitle(appName)
+
+    if (!e2eSmokeEnabled || !mainWindow) {
+      return
+    }
+
+    /*
+     * Smoke حقيقي:
+     *
+     * Renderer اتحمل
+     * Preload اتحمل
+     * window.api موجود
+     * IPC شغال
+     * DB اشتغلت
+     */
+    void mainWindow.webContents
+      .executeJavaScript(
+        `
+        (async () => {
+          await new Promise(
+            (resolve) =>
+              setTimeout(resolve, 300)
+          )
+
+          const rootExists =
+            Boolean(
+              document.getElementById(
+                'root'
+              )
+            )
+
+          const apiExists =
+            typeof window.api
+              ?.getLicenseStatus ===
+            'function'
+
+          let ipcReady = false
+
+          if (apiExists) {
+            const status =
+              await window.api
+                .getLicenseStatus()
+
+            ipcReady =
+              Boolean(
+                status &&
+                typeof status ===
+                  'object'
+              )
+          }
+
+          const bodyHasText =
+            document.body
+              .innerText
+              .trim()
+              .length > 0
+
+          return {
+            rootExists,
+            apiExists,
+            ipcReady,
+            bodyHasText,
+          }
+        })()
+      `,
+      )
+      .then((result) => {
+        const ok =
+          Boolean(result?.rootExists) &&
+          Boolean(result?.apiExists) &&
+          Boolean(result?.ipcReady) &&
+          Boolean(result?.bodyHasText)
+
+        if (!ok) {
+          console.error('ERP_E2E_SMOKE_FAILED', JSON.stringify(result))
+
+          setTimeout(() => app.exit(1), 100)
+
+          return
+        }
+
+        console.log('ERP_E2E_SMOKE_READY', JSON.stringify(result))
+
+        setTimeout(() => app.exit(0), 100)
+      })
+      .catch((error) => {
+        console.error('ERP_E2E_SMOKE_FAILED', error)
+
+        setTimeout(() => app.exit(1), 100)
+      })
   })
 
   mainWindow.on('closed', () => {
