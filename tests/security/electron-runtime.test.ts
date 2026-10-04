@@ -1,6 +1,6 @@
-import path from 'node:path'
-import { pathToFileURL } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { describe, expect, it } from 'vitest';
 
 import {
   getSecureWebPreferences,
@@ -10,71 +10,71 @@ import {
   configureMainWindowSecurity,
   clampWindowDimension,
   type RuntimeSecurityOptions,
-} from '../../src/main/electron-security'
+} from '../../src/main/electron-security';
 
 const devOptions: RuntimeSecurityOptions = {
   appRoot: process.cwd(),
   isPackaged: false,
   openExternal: async () => {},
-}
+};
 
-const productionAppRoot = path.join(process.cwd(), 'electron-runtime-test-app')
+const productionAppRoot = path.join(process.cwd(), 'electron-runtime-test-app');
 
 const productionOptions: RuntimeSecurityOptions = {
   appRoot: productionAppRoot,
   isPackaged: true,
   openExternal: async () => {},
-}
+};
 
 describe('Electron runtime security policy', () => {
   it('only trusts the expected renderer document', () => {
     expect(
       isTrustedRendererUrl('http://localhost:3000/#/dashboard', devOptions),
-    ).toBe(true)
+    ).toBe(true);
 
     expect(
       isTrustedRendererUrl('http://127.0.0.1:3000/#/dashboard', devOptions),
-    ).toBe(false)
+    ).toBe(false);
 
-    expect(isTrustedRendererUrl('https://example.com', devOptions)).toBe(false)
+    expect(isTrustedRendererUrl('https://example.com', devOptions)).toBe(false);
 
     const productionUrl = pathToFileURL(
       path.join(productionAppRoot, 'dist', 'renderer', 'index.html'),
-    ).toString()
+    ).toString();
 
     expect(
       isTrustedRendererUrl(`${productionUrl}#/settings`, productionOptions),
-    ).toBe(true)
+    ).toBe(true);
 
     expect(
       isTrustedRendererUrl(`${productionUrl}?unexpected=1`, productionOptions),
-    ).toBe(false)
+    ).toBe(false);
 
     expect(
       isTrustedRendererUrl(
         pathToFileURL(path.join(productionAppRoot, 'other.html')).toString(),
         productionOptions,
       ),
-    ).toBe(false)
-  })
+    ).toBe(false);
+  });
 
   it('only allows explicitly approved external support URLs', () => {
-    expect(isAllowedExternalUrl('tel:01155559287')).toBe(true)
+    expect(isAllowedExternalUrl('tel:01155559287')).toBe(true);
 
-    expect(isAllowedExternalUrl('https://wa.me/201155559287')).toBe(true)
+    expect(isAllowedExternalUrl('https://wa.me/201155559287')).toBe(true);
 
     expect(
       isAllowedExternalUrl('https://wa.me/201155559287?text=unexpected'),
-    ).toBe(false)
+    ).toBe(false);
 
-    expect(isAllowedExternalUrl('https://example.com')).toBe(false)
+    expect(isAllowedExternalUrl('https://example.com')).toBe(false);
 
-    expect(isAllowedExternalUrl('javascript:alert(1)')).toBe(false)
+    expect(isAllowedExternalUrl('javascript:alert(1)')).toBe(false);
 
     expect(isAllowedExternalUrl('file:///C:/Windows/System32/calc.exe')).toBe(
       false,
-    )
-  })
+    );
+  });
 
   it('only grants clipboard write to the trusted renderer', () => {
     expect(
@@ -83,7 +83,7 @@ describe('Electron runtime security policy', () => {
         'http://localhost:3000/#/settings',
         devOptions,
       ),
-    ).toBe(true)
+    ).toBe(true);
 
     expect(
       isAllowedPermission(
@@ -91,7 +91,7 @@ describe('Electron runtime security policy', () => {
         'http://localhost:3000/#/settings',
         devOptions,
       ),
-    ).toBe(false)
+    ).toBe(false);
 
     expect(
       isAllowedPermission(
@@ -99,7 +99,7 @@ describe('Electron runtime security policy', () => {
         'http://localhost:3000/#/settings',
         devOptions,
       ),
-    ).toBe(false)
+    ).toBe(false);
 
     expect(
       isAllowedPermission(
@@ -107,33 +107,33 @@ describe('Electron runtime security policy', () => {
         'https://example.com',
         devOptions,
       ),
-    ).toBe(false)
-  })
+    ).toBe(false);
+  });
 
   it('denies renderer popups and only forwards allowed external URLs', () => {
-    let windowOpenHandler: any = null
+    let windowOpenHandler: any = null;
 
-    const openedExternalUrls: string[] = []
+    const openedExternalUrls: string[] = [];
 
     const fakeWindow = {
       webContents: {
         on: () => undefined,
 
         setWindowOpenHandler: (handler: any) => {
-          windowOpenHandler = handler
+          windowOpenHandler = handler;
         },
       },
-    } as any
+    } as any;
 
     configureMainWindowSecurity(fakeWindow, {
       ...devOptions,
 
       openExternal: async (url) => {
-        openedExternalUrls.push(url)
+        openedExternalUrls.push(url);
       },
-    })
+    });
 
-    expect(windowOpenHandler).not.toBeNull()
+    expect(windowOpenHandler).not.toBeNull();
 
     expect(
       windowOpenHandler({
@@ -141,7 +141,7 @@ describe('Electron runtime security policy', () => {
       }),
     ).toEqual({
       action: 'deny',
-    })
+    });
 
     expect(
       windowOpenHandler({
@@ -149,7 +149,7 @@ describe('Electron runtime security policy', () => {
       }),
     ).toEqual({
       action: 'deny',
-    })
+    });
 
     expect(
       windowOpenHandler({
@@ -157,22 +157,22 @@ describe('Electron runtime security policy', () => {
       }),
     ).toEqual({
       action: 'deny',
-    })
+    });
 
-    expect(openedExternalUrls).toEqual(['https://wa.me/201155559287'])
-  })
+    expect(openedExternalUrls).toEqual(['https://wa.me/201155559287']);
+  });
 
   it('normalizes preview window dimensions safely', () => {
-    expect(clampWindowDimension(undefined, 1000, 420, 1400)).toBe(1000)
+    expect(clampWindowDimension(undefined, 1000, 420, 1400)).toBe(1000);
 
-    expect(clampWindowDimension(Number.NaN, 1000, 420, 1400)).toBe(1000)
+    expect(clampWindowDimension(Number.NaN, 1000, 420, 1400)).toBe(1000);
 
-    expect(clampWindowDimension(200, 1000, 420, 1400)).toBe(420)
+    expect(clampWindowDimension(200, 1000, 420, 1400)).toBe(420);
 
-    expect(clampWindowDimension(5000, 1000, 420, 1400)).toBe(1400)
+    expect(clampWindowDimension(5000, 1000, 420, 1400)).toBe(1400);
 
-    expect(clampWindowDimension(999.6, 1000, 420, 1400)).toBe(1000)
-  })
+    expect(clampWindowDimension(999.6, 1000, 420, 1400)).toBe(1000);
+  });
 
   it('enforces hardened BrowserWindow defaults', () => {
     expect(getSecureWebPreferences(true)).toMatchObject({
@@ -183,8 +183,8 @@ describe('Electron runtime security policy', () => {
       webSecurity: true,
       allowRunningInsecureContent: false,
       devTools: false,
-    })
+    });
 
-    expect(getSecureWebPreferences(false).devTools).toBe(true)
-  })
-})
+    expect(getSecureWebPreferences(false).devTools).toBe(true);
+  });
+});

@@ -1,6 +1,6 @@
-import { EventEmitter } from 'node:events'
+import { EventEmitter } from 'node:events';
 
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent } from 'electron';
 
 import {
   afterAll,
@@ -10,54 +10,54 @@ import {
   expect,
   it,
   vi,
-} from 'vitest'
+} from 'vitest';
 
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 
 import {
   createUser,
   findUserByUsername,
   getEffectiveUserPermissions,
   setUserPermissions,
-} from '../../src/main/database/repositories/user.repo'
+} from '../../src/main/database/repositories/user.repo';
 
 import {
   createCategory,
   toggleCategoryActive,
-} from '../../src/main/database/repositories/product.repo'
+} from '../../src/main/database/repositories/product.repo';
 
-import { startAuthSession } from '../../src/main/auth-session'
+import { startAuthSession } from '../../src/main/auth-session';
 
-import { registerProductsIpc } from '../../src/main/ipc/products.ipc'
+import { registerProductsIpc } from '../../src/main/ipc/products.ipc';
 
-import { registerPromotionsIpc } from '../../src/main/ipc/promotions.ipc'
+import { registerPromotionsIpc } from '../../src/main/ipc/promotions.ipc';
 
-import { registerSettingsIpc } from '../../src/main/ipc/settings.ipc'
+import { registerSettingsIpc } from '../../src/main/ipc/settings.ipc';
 
-import { registerCashDrawerIpc } from '../../src/main/ipc/cash-drawer.ipc'
+import { registerCashDrawerIpc } from '../../src/main/ipc/cash-drawer.ipc';
 
-import { registerPrintIpc } from '../../src/main/ipc/print.ipc'
-import { registerReportsIpc } from '../../src/main/ipc/reports.ipc'
+import { registerPrintIpc } from '../../src/main/ipc/print.ipc';
+import { registerReportsIpc } from '../../src/main/ipc/reports.ipc';
 
-type Handler = (event: IpcMainInvokeEvent, ...args: any[]) => any
+type Handler = (event: IpcMainInvokeEvent, ...args: any[]) => any;
 
-const handlers = new Map<string, Handler>()
+const handlers = new Map<string, Handler>();
 
 function makeClient() {
   const sender = Object.assign(new EventEmitter(), {
     mainFrame: {},
     isDestroyed: () => false,
-  })
+  });
 
   const event = {
     sender,
     senderFrame: sender.mainFrame,
-  } as unknown as IpcMainInvokeEvent
+  } as unknown as IpcMainInvokeEvent;
 
   return {
     sender,
     event,
-  }
+  };
 }
 
 async function invoke(
@@ -65,96 +65,96 @@ async function invoke(
   channel: string,
   ...args: any[]
 ) {
-  const handler = handlers.get(channel)
+  const handler = handlers.get(channel);
 
   if (!handler) {
-    throw new Error(`Missing handler: ${channel}`)
+    throw new Error(`Missing handler: ${channel}`);
   }
 
-  return handler(event, ...args)
+  return handler(event, ...args);
 }
 
 describe('IPC security hardening', () => {
   beforeAll(() => {
     vi.mocked(ipcMain.handle).mockImplementation((channel, handler) => {
-      handlers.set(channel, handler)
-    })
+      handlers.set(channel, handler);
+    });
 
-    registerProductsIpc()
-    registerPromotionsIpc()
-    registerSettingsIpc()
-    registerCashDrawerIpc()
-    registerPrintIpc()
-    registerReportsIpc()
-  })
+    registerProductsIpc();
+    registerPromotionsIpc();
+    registerSettingsIpc();
+    registerCashDrawerIpc();
+    registerPrintIpc();
+    registerReportsIpc();
+  });
 
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
-  })
+    closeDb();
+    getDb();
+    resetDatabaseData();
+  });
 
   afterAll(() => {
-    vi.mocked(ipcMain.handle).mockReset()
+    vi.mocked(ipcMain.handle).mockReset();
 
-    closeDb()
-  })
+    closeDb();
+  });
 
   it('requires login for operational reads and receipt printing', async () => {
-    const { event } = makeClient()
+    const { event } = makeClient();
 
     await expect(invoke(event, 'products:get-categories', {})).rejects.toThrow(
       'سجل الدخول أولًا',
-    )
+    );
 
     await expect(invoke(event, 'promotions:get-active')).rejects.toThrow(
       'سجل الدخول أولًا',
-    )
+    );
 
     await expect(invoke(event, 'settings:get-receipt-print')).rejects.toThrow(
       'سجل الدخول أولًا',
-    )
+    );
 
     await expect(invoke(event, 'settings:get-loyalty')).rejects.toThrow(
       'سجل الدخول أولًا',
-    )
+    );
 
     await expect(invoke(event, 'cash-drawer:get-settings')).rejects.toThrow(
       'سجل الدخول أولًا',
-    )
+    );
 
     await expect(
       invoke(event, 'print:silent-html', {
         html: '',
       }),
-    ).rejects.toThrow('سجل الدخول أولًا')
+    ).rejects.toThrow('سجل الدخول أولًا');
 
     await expect(
       invoke(event, 'print:dialog-html', {
         html: '',
       }),
-    ).rejects.toThrow('سجل الدخول أولًا')
-  })
+    ).rejects.toThrow('سجل الدخول أولًا');
+  });
 
   it('allows cashier operational reads but hides admin configuration', async () => {
     const hiddenCategory = createCategory({
       name: 'Security Hidden Category',
 
       description: 'Security test',
-    })
+    });
 
-    toggleCategoryActive(hiddenCategory.id, 0)
+    toggleCategoryActive(hiddenCategory.id, 0);
 
     const cashier = createUser(
       'Security Cashier',
       'security_cashier',
       '5678',
       'cashier',
-    )
+    );
 
-    const client = makeClient()
+    const client = makeClient();
 
-    startAuthSession(client.event, cashier.id)
+    startAuthSession(client.event, cashier.id);
 
     /*
      * حتى لو الكاشير طلب
@@ -163,13 +163,13 @@ describe('IPC security hardening', () => {
      */
     const categories = await invoke(client.event, 'products:get-categories', {
       includeInactive: true,
-    })
+    });
 
     expect(
       categories.some(
         (category: any) => Number(category.id) === Number(hiddenCategory.id),
       ),
-    ).toBe(false)
+    ).toBe(false);
 
     /*
      * عمليات إدارة المنتجات
@@ -177,35 +177,35 @@ describe('IPC security hardening', () => {
      */
     await expect(
       invoke(client.event, 'products:list-page', {}),
-    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية');
 
     await expect(invoke(client.event, 'products:list', {})).rejects.toThrow(
       'غير مصرح لك بتنفيذ هذه العملية',
-    )
+    );
 
     await expect(
       invoke(client.event, 'products:get-variants', {
         productId: 1,
       }),
-    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية');
 
     /*
      * الكاشير يعرف العرض النشط
      * لأنه مطلوب في البيع.
      */
-    const activePromotion = await invoke(client.event, 'promotions:get-active')
+    const activePromotion = await invoke(client.event, 'promotions:get-active');
 
     expect(
       activePromotion === null || typeof activePromotion === 'object',
-    ).toBe(true)
+    ).toBe(true);
 
     await expect(invoke(client.event, 'promotions:list')).rejects.toThrow(
       'غير مصرح لك بتنفيذ هذه العملية',
-    )
+    );
 
     await expect(invoke(client.event, 'promotions:get', 1)).rejects.toThrow(
       'غير مصرح لك بتنفيذ هذه العملية',
-    )
+    );
 
     /*
      * إعدادات تشغيل البيع
@@ -214,13 +214,13 @@ describe('IPC security hardening', () => {
     const receiptSettings = await invoke(
       client.event,
       'settings:get-receipt-print',
-    )
+    );
 
-    expect(typeof receiptSettings.receipt_silent_print).toBe('boolean')
+    expect(typeof receiptSettings.receipt_silent_print).toBe('boolean');
 
-    const loyaltySettings = await invoke(client.event, 'settings:get-loyalty')
+    const loyaltySettings = await invoke(client.event, 'settings:get-loyalty');
 
-    expect(typeof loyaltySettings.loyalty_enabled).toBe('boolean')
+    expect(typeof loyaltySettings.loyalty_enabled).toBe('boolean');
 
     /*
      * Barcode configuration
@@ -228,7 +228,7 @@ describe('IPC security hardening', () => {
      */
     await expect(
       invoke(client.event, 'settings:get-barcode-print'),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط');
 
     /*
      * إلغاء تفعيل البرنامج
@@ -236,7 +236,7 @@ describe('IPC security hardening', () => {
      */
     await expect(
       invoke(client.event, 'settings:deactivate-app'),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط');
 
     /*
      * شاشة البيع تحتاج فقط
@@ -246,15 +246,15 @@ describe('IPC security hardening', () => {
     const drawerSettings = await invoke(
       client.event,
       'cash-drawer:get-settings',
-    )
+    );
 
-    expect(drawerSettings.printer_name).toBe('')
+    expect(drawerSettings.printer_name).toBe('');
 
-    expect(typeof drawerSettings.auto_open_cash_sale).toBe('boolean')
+    expect(typeof drawerSettings.auto_open_cash_sale).toBe('boolean');
 
     await expect(
       invoke(client.event, 'cash-drawer:list-printers'),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط');
 
     /*
      * الكاشير مسموح له بطباعة
@@ -265,15 +265,15 @@ describe('IPC security hardening', () => {
       invoke(client.event, 'print:silent-html', {
         html: '',
       }),
-    ).rejects.toThrow('لا يوجد محتوى للطباعة')
+    ).rejects.toThrow('لا يوجد محتوى للطباعة');
 
     const dialogResult = await invoke(client.event, 'print:dialog-html', {
       html: '',
-    })
+    });
 
-    expect(dialogResult.ok).toBe(false)
+    expect(dialogResult.ok).toBe(false);
 
-    expect(dialogResult.message).toContain('لا يوجد محتوى للطباعة')
+    expect(dialogResult.message).toContain('لا يوجد محتوى للطباعة');
 
     /*
      * PDF export حاليًا خاص
@@ -283,8 +283,8 @@ describe('IPC security hardening', () => {
       invoke(client.event, 'print:save-pdf', {
         html: '<html></html>',
       }),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
-  })
+    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط');
+  });
 
   it('keeps admin cash-flow alerts true admin only', async () => {
     const cashier = createUser(
@@ -292,96 +292,96 @@ describe('IPC security hardening', () => {
       'cash_flow_cashier',
       '5678',
       'cashier',
-    )
+    );
 
-    const cashierPermissions = new Set(getEffectiveUserPermissions(cashier.id))
+    const cashierPermissions = new Set(getEffectiveUserPermissions(cashier.id));
 
-    cashierPermissions.add('reports.view')
+    cashierPermissions.add('reports.view');
 
-    setUserPermissions(cashier.id, [...cashierPermissions])
+    setUserPermissions(cashier.id, [...cashierPermissions]);
 
-    const cashierClient = makeClient()
+    const cashierClient = makeClient();
 
-    startAuthSession(cashierClient.event, cashier.id)
+    startAuthSession(cashierClient.event, cashier.id);
 
     await expect(
       invoke(cashierClient.event, 'reports:admin-cash-flow-alerts'),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط')
+    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط');
 
-    const admin = findUserByUsername('admin')!
+    const admin = findUserByUsername('admin')!;
 
-    const adminClient = makeClient()
+    const adminClient = makeClient();
 
-    startAuthSession(adminClient.event, admin.id)
+    startAuthSession(adminClient.event, admin.id);
 
     const result = await invoke(
       adminClient.event,
       'reports:admin-cash-flow-alerts',
-    )
+    );
 
-    expect(result.customers.due_today).toBe(0)
+    expect(result.customers.due_today).toBe(0);
 
-    expect(result.suppliers.due_today).toBe(0)
+    expect(result.suppliers.due_today).toBe(0);
 
-    expect(result.near_term.net).toBe(0)
-  })
+    expect(result.near_term.net).toBe(0);
+  });
 
   it('keeps full administration reads available to admins', async () => {
     const hiddenCategory = createCategory({
       name: 'Admin Hidden Category',
 
       description: 'Security test',
-    })
+    });
 
-    toggleCategoryActive(hiddenCategory.id, 0)
+    toggleCategoryActive(hiddenCategory.id, 0);
 
-    const admin = findUserByUsername('admin')!
+    const admin = findUserByUsername('admin')!;
 
-    const client = makeClient()
+    const client = makeClient();
 
-    startAuthSession(client.event, admin.id)
+    startAuthSession(client.event, admin.id);
 
     const categories = await invoke(client.event, 'products:get-categories', {
       includeInactive: true,
-    })
+    });
 
     expect(
       categories.some(
         (category: any) => Number(category.id) === Number(hiddenCategory.id),
       ),
-    ).toBe(true)
+    ).toBe(true);
 
-    const products = await invoke(client.event, 'products:list-page', {})
+    const products = await invoke(client.event, 'products:list-page', {});
 
-    expect(Array.isArray(products.rows)).toBe(true)
+    expect(Array.isArray(products.rows)).toBe(true);
 
-    const promotions = await invoke(client.event, 'promotions:list')
+    const promotions = await invoke(client.event, 'promotions:list');
 
-    expect(Array.isArray(promotions)).toBe(true)
+    expect(Array.isArray(promotions)).toBe(true);
 
     const barcodeSettings = await invoke(
       client.event,
       'settings:get-barcode-print',
-    )
+    );
 
-    expect(barcodeSettings).toBeTruthy()
+    expect(barcodeSettings).toBeTruthy();
 
     const drawerSettings = await invoke(
       client.event,
       'cash-drawer:get-settings',
-    )
+    );
 
-    expect('printer_name' in drawerSettings).toBe(true)
+    expect('printer_name' in drawerSettings).toBe(true);
 
     /*
      * Electron mock يرجع null
      * كنافذة؛ المهم أن الـAdmin
      * عدى الصلاحية.
      */
-    const printers = await invoke(client.event, 'cash-drawer:list-printers')
+    const printers = await invoke(client.event, 'cash-drawer:list-printers');
 
-    expect(Array.isArray(printers)).toBe(true)
-  })
+    expect(Array.isArray(printers)).toBe(true);
+  });
 
   it('allows promotion management without granting full product administration', async () => {
     const cashier = createUser(
@@ -389,33 +389,33 @@ describe('IPC security hardening', () => {
       'promotion_manager',
       '5678',
       'cashier',
-    )
+    );
 
     setUserPermissions(cashier.id, [
       ...getEffectiveUserPermissions(cashier.id),
 
       'promotions.manage',
-    ])
+    ]);
 
-    const { event } = makeClient()
+    const { event } = makeClient();
 
-    startAuthSession(event, cashier.id)
+    startAuthSession(event, cashier.id);
 
-    const promotions = await invoke(event, 'promotions:list')
+    const promotions = await invoke(event, 'promotions:list');
 
-    expect(Array.isArray(promotions)).toBe(true)
+    expect(Array.isArray(promotions)).toBe(true);
 
     const products = await invoke(event, 'products:list', {
       search: '',
 
       includeInactive: true,
-    })
+    });
 
-    expect(Array.isArray(products)).toBe(true)
+    expect(Array.isArray(products)).toBe(true);
 
     await expect(invoke(event, 'products:list-page', {})).rejects.toThrow(
       'غير مصرح لك بتنفيذ هذه العملية',
-    )
+    );
 
     const created = await invoke(event, 'promotions:create', {
       name: 'Permission Promotion',
@@ -429,8 +429,8 @@ describe('IPC security hardening', () => {
       product_ids: [],
 
       duration_hours: null,
-    })
+    });
 
-    expect(Number(created.promotionId)).toBeGreaterThan(0)
-  })
-})
+    expect(Number(created.promotionId)).toBeGreaterThan(0);
+  });
+});

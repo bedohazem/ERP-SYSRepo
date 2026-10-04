@@ -1,17 +1,17 @@
-import { BrowserWindow, app, dialog, ipcMain, nativeImage } from 'electron'
+import { BrowserWindow, app, dialog, ipcMain, nativeImage } from 'electron';
 import type {
   IpcMainInvokeEvent,
   OpenDialogOptions,
   SaveDialogOptions,
-} from 'electron'
+} from 'electron';
 import {
   clearAuthSession,
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
-} from '../auth-session'
-import { logAction, runCriticalActionWithAudit } from './activity-helper'
-import fs from 'node:fs'
-import path from 'node:path'
+} from '../auth-session';
+import { logAction, runCriticalActionWithAudit } from './activity-helper';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   getBarcodePrintSettings,
   getLoyaltySettings,
@@ -27,95 +27,95 @@ import {
   getReceiptPrintSettings,
   saveReceiptPrintSettings,
   saveAppTheme,
-} from '../database/repositories/settings.repo'
-import { getDb, resetDatabaseData } from '../database/db'
+} from '../database/repositories/settings.repo';
+import { getDb, resetDatabaseData } from '../database/db';
 import {
   createAutoBackup,
   getAutoBackupInfo,
   setAutoBackupDir,
-} from '../database/auto-backup'
+} from '../database/auto-backup';
 
 import {
   createVerifiedDatabaseBackup,
   restoreVerifiedDatabase,
-} from '../database/database-backup'
+} from '../database/database-backup';
 
-import { validateErpDatabaseFile } from '../database/backup-integrity'
+import { validateErpDatabaseFile } from '../database/backup-integrity';
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
-    return error.message
+    return error.message;
   }
 
-  return 'حدث خطأ غير متوقع'
+  return 'حدث خطأ غير متوقع';
 }
 
 function getDefaultBackupName() {
-  const now = new Date()
+  const now = new Date();
   const stamp = [
     now.getFullYear(),
     String(now.getMonth() + 1).padStart(2, '0'),
     String(now.getDate()).padStart(2, '0'),
     String(now.getHours()).padStart(2, '0'),
     String(now.getMinutes()).padStart(2, '0'),
-  ].join('-')
+  ].join('-');
 
-  return `erp-backup-${stamp}.db`
+  return `erp-backup-${stamp}.db`;
 }
 
 function getImageMimeType(filePath: string) {
-  const ext = path.extname(filePath).toLowerCase()
+  const ext = path.extname(filePath).toLowerCase();
 
-  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg'
-  if (ext === '.webp') return 'image/webp'
-  if (ext === '.png') return 'image/png'
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.webp') return 'image/webp';
+  if (ext === '.png') return 'image/png';
 
-  return 'image/png'
+  return 'image/png';
 }
 
 function updateOpenWindowsIcon(logoUrl: string) {
-  if (!logoUrl.startsWith('data:image')) return
+  if (!logoUrl.startsWith('data:image')) return;
 
-  const image = nativeImage.createFromDataURL(logoUrl)
+  const image = nativeImage.createFromDataURL(logoUrl);
 
-  if (image.isEmpty()) return
+  if (image.isEmpty()) return;
 
   const appIcon = image.resize({
     width: 256,
     height: 256,
     quality: 'best',
-  })
+  });
 
   BrowserWindow.getAllWindows().forEach((window) => {
-    window.setIcon(appIcon)
-  })
+    window.setIcon(appIcon);
+  });
 }
 
 function recheckAdmin(event: IpcMainInvokeEvent, actorId: number) {
   if (requireAuthenticatedAdmin(event) !== actorId) {
-    throw new Error('تغيّر المستخدم أثناء العملية، ابدأ العملية من جديد')
+    throw new Error('تغيّر المستخدم أثناء العملية، ابدأ العملية من جديد');
   }
 }
 
 function getOptionalActorId(event: IpcMainInvokeEvent): number | null {
   try {
-    return requireAuthenticatedUser(event).id
+    return requireAuthenticatedUser(event).id;
   } catch {
-    return null
+    return null;
   }
 }
 
 export function registerSettingsIpc(): void {
   ipcMain.handle('settings:get-barcode-print', (event) => {
-    requireAuthenticatedAdmin(event)
+    requireAuthenticatedAdmin(event);
 
-    return getBarcodePrintSettings()
-  })
+    return getBarcodePrintSettings();
+  });
 
   ipcMain.handle('settings:save-barcode-print', (event, input) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requireAuthenticatedAdmin(event);
 
-    const result = saveBarcodePrintSettings(input)
+    const result = saveBarcodePrintSettings(input);
 
     logAction({
       actor_id: actorId,
@@ -125,24 +125,24 @@ export function registerSettingsIpc(): void {
       details: {
         description: 'تم تحديث إعدادات طباعة الباركود',
       },
-    })
+    });
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle('settings:get-receipt-print', (event) => {
     /*
      * الكاشير يحتاج إعدادات مقاس وطباعة الإيصال.
      */
-    requireAuthenticatedUser(event)
+    requireAuthenticatedUser(event);
 
-    return getReceiptPrintSettings()
-  })
+    return getReceiptPrintSettings();
+  });
 
   ipcMain.handle('settings:save-receipt-print', (event, input) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requireAuthenticatedAdmin(event);
 
-    const result = saveReceiptPrintSettings(input)
+    const result = saveReceiptPrintSettings(input);
 
     logAction({
       actor_id: actorId,
@@ -152,22 +152,22 @@ export function registerSettingsIpc(): void {
       details: {
         description: 'تم تحديث إعدادات طباعة الفاتورة',
       },
-    })
+    });
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle('settings:get-loyalty', (event) => {
     /*
      * شاشة البيع تحتاج قواعد النقاط.
      */
-    requireAuthenticatedUser(event)
+    requireAuthenticatedUser(event);
 
-    return getLoyaltySettings()
-  })
+    return getLoyaltySettings();
+  });
 
   ipcMain.handle('settings:save-loyalty', (event, input) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requireAuthenticatedAdmin(event);
 
     return runCriticalActionWithAudit(
       () => saveLoyaltySettings(input),
@@ -185,15 +185,15 @@ export function registerSettingsIpc(): void {
           description: 'تم تحديث إعدادات نقاط الولاء',
         },
       }),
-    )
-  })
+    );
+  });
 
   ipcMain.handle(
     'settings:backup-database',
     async (event, input?: { actor_id?: number }) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
-        const parentWindow = BrowserWindow.fromWebContents(event.sender)
+        const actorId = requireAuthenticatedAdmin(event);
+        const parentWindow = BrowserWindow.fromWebContents(event.sender);
 
         const options: SaveDialogOptions = {
           title: 'حفظ نسخة احتياطية',
@@ -205,23 +205,23 @@ export function registerSettingsIpc(): void {
             { name: 'SQLite Database', extensions: ['db'] },
             { name: 'All Files', extensions: ['*'] },
           ],
-        }
+        };
 
         const result = parentWindow
           ? await dialog.showSaveDialog(parentWindow, options)
-          : await dialog.showSaveDialog(options)
+          : await dialog.showSaveDialog(options);
 
         if (result.canceled || !result.filePath) {
           return {
             success: false,
             canceled: true,
             message: 'تم إلغاء حفظ النسخة الاحتياطية',
-          }
+          };
         }
 
-        recheckAdmin(event, actorId)
+        recheckAdmin(event, actorId);
 
-        const validation = await createVerifiedDatabaseBackup(result.filePath)
+        const validation = await createVerifiedDatabaseBackup(result.filePath);
 
         logAction({
           actor_id: actorId,
@@ -235,33 +235,33 @@ export function registerSettingsIpc(): void {
 
             integrity: 'ok',
           },
-        })
+        });
 
         return {
           success: true,
           path: result.filePath,
           validation,
           message: 'تم حفظ النسخة الاحتياطية بنجاح',
-        }
+        };
       } catch (error) {
         return {
           success: false,
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle(
     'settings:restore-database',
     async (
       event,
       _input?: {
-        actor_id?: number
+        actor_id?: number;
       },
     ) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requireAuthenticatedAdmin(event);
 
         const actorSnapshot = getDb()
           .prepare(
@@ -279,12 +279,12 @@ export function registerSettingsIpc(): void {
           )
           .get(actorId) as
           | {
-              name: string
-              username: string
+              name: string;
+              username: string;
             }
-          | undefined
+          | undefined;
 
-        const parentWindow = BrowserWindow.fromWebContents(event.sender)
+        const parentWindow = BrowserWindow.fromWebContents(event.sender);
 
         const options: OpenDialogOptions = {
           title: 'اختيار نسخة احتياطية للاسترجاع',
@@ -304,11 +304,11 @@ export function registerSettingsIpc(): void {
               extensions: ['*'],
             },
           ],
-        }
+        };
 
         const result = parentWindow
           ? await dialog.showOpenDialog(parentWindow, options)
-          : await dialog.showOpenDialog(options)
+          : await dialog.showOpenDialog(options);
 
         if (result.canceled || !result.filePaths[0]) {
           return {
@@ -316,18 +316,18 @@ export function registerSettingsIpc(): void {
             canceled: true,
 
             message: 'تم إلغاء استرجاع النسخة الاحتياطية',
-          }
+          };
         }
 
-        const selectedFile = result.filePaths[0]
+        const selectedFile = result.filePaths[0];
 
         /*
          * Validation قبل حتى
          * إظهار Confirm النهائي.
          */
-        const validation = validateErpDatabaseFile(selectedFile)
+        const validation = validateErpDatabaseFile(selectedFile);
 
-        recheckAdmin(event, actorId)
+        recheckAdmin(event, actorId);
 
         const confirmOptions = {
           type: 'warning' as const,
@@ -342,11 +342,11 @@ export function registerSettingsIpc(): void {
           message: 'هل أنت متأكد من استرجاع هذه النسخة؟',
 
           detail: `سيتم استبدال بيانات البرنامج الحالية بالكامل.\n\nحجم النسخة: ${(validation.size / 1024 / 1024).toFixed(2)} MB\n\nسيتم إنشاء نسخة أمان تلقائية من البيانات الحالية قبل الاسترجاع، وسيتم الرجوع إليها تلقائيًا إذا فشل الاسترجاع.`,
-        }
+        };
 
         const confirmation = parentWindow
           ? await dialog.showMessageBox(parentWindow, confirmOptions)
-          : await dialog.showMessageBox(confirmOptions)
+          : await dialog.showMessageBox(confirmOptions);
 
         if (confirmation.response !== 1) {
           return {
@@ -354,12 +354,12 @@ export function registerSettingsIpc(): void {
             canceled: true,
 
             message: 'تم إلغاء استرجاع النسخة الاحتياطية',
-          }
+          };
         }
 
-        recheckAdmin(event, actorId)
+        recheckAdmin(event, actorId);
 
-        const restored = await restoreVerifiedDatabase(selectedFile)
+        const restored = await restoreVerifiedDatabase(selectedFile);
 
         /*
          * القاعدة نفسها اتغيرت.
@@ -390,13 +390,13 @@ export function registerSettingsIpc(): void {
 
             integrity: 'ok',
           },
-        })
+        });
 
         /*
          * User table قد تكون تغيرت.
          * Session القديمة غير صالحة.
          */
-        clearAuthSession(event)
+        clearAuthSession(event);
 
         return {
           success: true,
@@ -410,22 +410,22 @@ export function registerSettingsIpc(): void {
           validation,
 
           message: 'تم استرجاع النسخة الاحتياطية والتحقق من سلامتها بنجاح',
-        }
+        };
       } catch (error) {
         return {
           success: false,
 
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle(
     'settings:reset-database',
     async (event, input?: { actor_id?: number }) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requireAuthenticatedAdmin(event);
         const actorSnapshot = getDb()
           .prepare(
             `
@@ -442,11 +442,11 @@ export function registerSettingsIpc(): void {
           )
           .get(actorId) as
           | {
-              name: string
-              username: string
+              name: string;
+              username: string;
             }
-          | undefined
-        const parentWindow = BrowserWindow.fromWebContents(event.sender)
+          | undefined;
+        const parentWindow = BrowserWindow.fromWebContents(event.sender);
         const saveResult = parentWindow
           ? await dialog.showSaveDialog(parentWindow, {
               title: 'اختيار مكان حفظ نسخة الأمان قبل التصفير',
@@ -471,19 +471,19 @@ export function registerSettingsIpc(): void {
                 { name: 'Backup Files', extensions: ['bak'] },
                 { name: 'All Files', extensions: ['*'] },
               ],
-            })
+            });
 
         if (saveResult.canceled || !saveResult.filePath) {
           return {
             success: false,
             canceled: true,
             message: 'تم إلغاء التصفير لأنك لم تختر مكان حفظ نسخة الأمان',
-          }
+          };
         }
 
-        recheckAdmin(event, actorId)
+        recheckAdmin(event, actorId);
 
-        const safetyBackupPath = saveResult.filePath
+        const safetyBackupPath = saveResult.filePath;
         const confirmResult = parentWindow
           ? await dialog.showMessageBox(parentWindow, {
               type: 'warning',
@@ -504,24 +504,24 @@ export function registerSettingsIpc(): void {
               message: 'هل أنت متأكد من تصفير البرنامج؟',
               detail:
                 'سيتم مسح كل المنتجات والمبيعات والفواتير والعملاء والموردين وحركات المخزون. سيتم إنشاء نسخة أمان قبل المسح.',
-            })
+            });
 
         if (confirmResult.response !== 1) {
           return {
             success: false,
             canceled: true,
             message: 'تم إلغاء تصفير البرنامج',
-          }
+          };
         }
 
-        recheckAdmin(event, actorId)
+        recheckAdmin(event, actorId);
 
         const safetyValidation =
-          await createVerifiedDatabaseBackup(safetyBackupPath)
+          await createVerifiedDatabaseBackup(safetyBackupPath);
 
-        recheckAdmin(event, actorId)
+        recheckAdmin(event, actorId);
 
-        resetDatabaseData()
+        resetDatabaseData();
 
         logAction({
           /*
@@ -549,37 +549,37 @@ export function registerSettingsIpc(): void {
 
             previous_actor_username: actorSnapshot?.username || null,
           },
-        })
+        });
 
-        clearAuthSession(event)
+        clearAuthSession(event);
 
         return {
           success: true,
           requires_setup: true,
           safetyBackupPath,
           message: 'تم تصفير البرنامج بنجاح',
-        }
+        };
       } catch (error) {
         return {
           success: false,
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle('settings:get-auto-backup-info', (event) => {
-    requireAuthenticatedAdmin(event)
-    return getAutoBackupInfo()
-  })
+    requireAuthenticatedAdmin(event);
+    return getAutoBackupInfo();
+  });
 
   ipcMain.handle(
     'settings:choose-auto-backup-dir',
     async (event, input?: { actor_id?: number }) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requireAuthenticatedAdmin(event);
 
-        const parentWindow = BrowserWindow.fromWebContents(event.sender)
+        const parentWindow = BrowserWindow.fromWebContents(event.sender);
 
         const result = parentWindow
           ? await dialog.showOpenDialog(parentWindow, {
@@ -589,19 +589,19 @@ export function registerSettingsIpc(): void {
           : await dialog.showOpenDialog({
               title: 'اختيار مكان النسخ التلقائي',
               properties: ['openDirectory', 'createDirectory'],
-            })
+            });
 
         if (result.canceled || !result.filePaths[0]) {
           return {
             success: false,
             canceled: true,
-          }
+          };
         }
 
-        recheckAdmin(event, actorId)
-        setAutoBackupDir(result.filePaths[0])
-        const backup = await createAutoBackup('manual')
-        const info = backup.info || getAutoBackupInfo()
+        recheckAdmin(event, actorId);
+        setAutoBackupDir(result.filePaths[0]);
+        const backup = await createAutoBackup('manual');
+        const info = backup.info || getAutoBackupInfo();
 
         logAction({
           actor_id: actorId,
@@ -612,30 +612,30 @@ export function registerSettingsIpc(): void {
             path: result.filePaths[0],
             backup,
           },
-        })
+        });
 
         return {
           success: true,
           info,
           backup,
           message: 'تم اختيار مكان النسخ التلقائي بنجاح',
-        }
+        };
       } catch (error) {
         return {
           success: false,
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle(
     'settings:run-auto-backup-now',
     async (event, input?: { actor_id?: number }) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requireAuthenticatedAdmin(event);
 
-        const result = await createAutoBackup('manual')
+        const result = await createAutoBackup('manual');
 
         logAction({
           actor_id: actorId,
@@ -643,24 +643,24 @@ export function registerSettingsIpc(): void {
           entity: 'settings',
           entity_id: null,
           details: result,
-        })
+        });
 
-        return result
+        return result;
       } catch (error) {
         return {
           success: false,
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle('settings:get-license-status', () => {
-    return getAppLicenseStatus()
-  })
+    return getAppLicenseStatus();
+  });
 
   ipcMain.handle('settings:activate-app', (event, code: string) => {
-    const result = activateApp(code)
+    const result = activateApp(code);
 
     if (result?.success !== false) {
       logAction({
@@ -671,16 +671,16 @@ export function registerSettingsIpc(): void {
         details: {
           description: 'تم تفعيل البرنامج',
         },
-      })
+      });
     }
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle('settings:deactivate-app', (event) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requireAuthenticatedAdmin(event);
 
-    const result = deactivateApp()
+    const result = deactivateApp();
 
     if (result?.success !== false) {
       logAction({
@@ -691,22 +691,22 @@ export function registerSettingsIpc(): void {
         details: {
           description: 'تم إلغاء تفعيل البرنامج',
         },
-      })
+      });
     }
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle(
     'settings:save-app-logo-url',
     (event, url: string, input?: { actor_id?: number }) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requireAuthenticatedAdmin(event);
 
-        const saved = saveAppLogoUrl(url)
+        const saved = saveAppLogoUrl(url);
 
         if (String(url || '').startsWith('data:image')) {
-          updateOpenWindowsIcon(url)
+          updateOpenWindowsIcon(url);
         }
 
         logAction({
@@ -717,21 +717,21 @@ export function registerSettingsIpc(): void {
           details: {
             has_logo: Boolean(String(url || '').trim()),
           },
-        })
-        return saved
+        });
+        return saved;
       } catch (error) {
         return {
           success: false,
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle('settings:choose-app-logo', async (event) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
-      const parentWindow = BrowserWindow.fromWebContents(event.sender)
+      const actorId = requireAuthenticatedAdmin(event);
+      const parentWindow = BrowserWindow.fromWebContents(event.sender);
 
       const result = parentWindow
         ? await dialog.showOpenDialog(parentWindow, {
@@ -747,23 +747,23 @@ export function registerSettingsIpc(): void {
             filters: [
               { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] },
             ],
-          })
+          });
 
       if (result.canceled || !result.filePaths[0]) {
         return {
           success: false,
           canceled: true,
-        }
+        };
       }
 
-      const selectedPath = result.filePaths[0]
-      const mimeType = getImageMimeType(selectedPath)
-      const buffer = fs.readFileSync(selectedPath)
+      const selectedPath = result.filePaths[0];
+      const mimeType = getImageMimeType(selectedPath);
+      const buffer = fs.readFileSync(selectedPath);
 
-      const logoUrl = `data:${mimeType};base64,${buffer.toString('base64')}`
+      const logoUrl = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
-      const saved = saveAppLogoUrl(logoUrl)
-      updateOpenWindowsIcon(logoUrl)
+      const saved = saveAppLogoUrl(logoUrl);
+      updateOpenWindowsIcon(logoUrl);
       logAction({
         actor_id: actorId,
         action: 'app_logo_saved',
@@ -773,32 +773,32 @@ export function registerSettingsIpc(): void {
           file_name: path.basename(selectedPath),
           has_logo: true,
         },
-      })
+      });
 
       return {
         success: true,
         logoUrl,
         status: saved.status,
-      }
+      };
     } catch (error) {
       return {
         success: false,
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle(
     'settings:save-app-name',
     (event, name: string, input?: { actor_id?: number }) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requireAuthenticatedAdmin(event);
 
-        const saved = saveAppName(name)
+        const saved = saveAppName(name);
 
         BrowserWindow.getAllWindows().forEach((window) => {
-          window.setTitle(saved.status.app_name || 'ERP Store')
-        })
+          window.setTitle(saved.status.app_name || 'ERP Store');
+        });
         logAction({
           actor_id: actorId,
           action: 'app_name_saved',
@@ -807,24 +807,24 @@ export function registerSettingsIpc(): void {
           details: {
             name: saved.status.app_name,
           },
-        })
-        return saved
+        });
+        return saved;
       } catch (error) {
         return {
           success: false,
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle(
     'settings:save-store-contact-info',
     (event, phone: string, address: string, input?: { actor_id?: number }) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requireAuthenticatedAdmin(event);
 
-        const saved = saveStoreContactInfo(phone, address)
+        const saved = saveStoreContactInfo(phone, address);
 
         logAction({
           actor_id: actorId,
@@ -835,21 +835,21 @@ export function registerSettingsIpc(): void {
             phone,
             address,
           },
-        })
+        });
 
-        return saved
+        return saved;
       } catch (error) {
         return {
           success: false,
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle('settings:save-store-qr-settings', (event, input?: any) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requireAuthenticatedAdmin(event);
 
       const payload = {
         store_qr_enabled: Boolean(input?.store_qr_enabled),
@@ -857,9 +857,9 @@ export function registerSettingsIpc(): void {
         store_qr_title: String(input?.store_qr_title || '').trim(),
 
         store_qr_primary_url: String(input?.store_qr_primary_url || '').trim(),
-      }
+      };
 
-      const saved = saveStoreQrSettings(payload)
+      const saved = saveStoreQrSettings(payload);
 
       logAction({
         actor_id: actorId,
@@ -867,24 +867,24 @@ export function registerSettingsIpc(): void {
         entity: 'settings',
         entity_id: null,
         details: payload,
-      })
+      });
 
-      return saved
+      return saved;
     } catch (error) {
       return {
         success: false,
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle(
     'settings:save-app-theme',
     (event, theme: 'dark' | 'light', input?: { actor_id?: number }) => {
       try {
-        const actorId = requireAuthenticatedUser(event).id
+        const actorId = requireAuthenticatedUser(event).id;
 
-        const saved = saveAppTheme(theme)
+        const saved = saveAppTheme(theme);
 
         logAction({
           actor_id: actorId,
@@ -894,15 +894,15 @@ export function registerSettingsIpc(): void {
           details: {
             theme,
           },
-        })
+        });
 
-        return saved
+        return saved;
       } catch (error) {
         return {
           success: false,
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 }

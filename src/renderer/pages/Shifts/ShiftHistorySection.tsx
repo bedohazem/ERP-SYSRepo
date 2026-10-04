@@ -1,146 +1,148 @@
-import { useEffect, useState } from 'react'
-import { formatMoney, roundMoney } from '../../../shared/money'
+import { useEffect, useState } from 'react';
+import { formatMoney, roundMoney } from '../../../shared/money';
 import {
   formatCashShiftDuration,
   getCashShiftStatusLabel,
   getCashShiftVarianceKindLabel,
   getCashShiftVarianceStageLabel,
   getCashShiftVarianceStatusLabel,
-} from '../../utils/cash-shifts'
-import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
-import { getPaymentMethodLabel } from '../../utils/payment-method'
+} from '../../utils/cash-shifts';
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
+import { getPaymentMethodLabel } from '../../utils/payment-method';
 import {
   loadReceiptPrintSettings,
   openReceiptPrintWindow,
-} from '../../utils/receiptPrint'
+} from '../../utils/receiptPrint';
 
 type ShiftRow = {
-  id: number
+  id: number;
 
-  status: 'open' | 'closed'
+  status: 'open' | 'closed';
 
-  opened_by_name?: string | null
-  opened_at: string
+  opened_by_name?: string | null;
+  opened_at: string;
 
-  opening_counted_amount: number
+  opening_counted_amount: number;
 
-  opening_difference: number
+  opening_difference: number;
 
-  expected_closing_amount?: number | null
+  expected_closing_amount?: number | null;
 
-  closing_counted_amount?: number | null
+  closing_counted_amount?: number | null;
 
-  closing_difference?: number | null
+  closing_difference?: number | null;
 
-  left_for_next_shift?: number | null
+  left_for_next_shift?: number | null;
 
-  safe_transfer_amount?: number | null
+  safe_transfer_amount?: number | null;
 
-  closed_by_name?: string | null
+  closed_by_name?: string | null;
 
-  closed_at?: string | null
+  closed_at?: string | null;
 
-  duration_minutes: number
+  duration_minutes: number;
 
-  cash_in: number
-  cash_out: number
+  cash_in: number;
+  cash_out: number;
 
-  variance_count: number
+  variance_count: number;
 
-  pending_variance_count: number
-}
+  pending_variance_count: number;
+};
 
 type ShiftDetails = {
   shift: ShiftRow & {
-    close_reason?: string | null
-  }
+    close_reason?: string | null;
+  };
 
   preview: {
-    cash_in: number
-    cash_out: number
+    cash_in: number;
+    cash_out: number;
 
-    expected_closing_amount: number
+    expected_closing_amount: number;
 
     breakdown: Array<{
-      type: string
-      direction: 'in' | 'out'
-      total: number
-    }>
-  }
+      type: string;
+      direction: 'in' | 'out';
+      total: number;
+    }>;
+  };
 
   movements: Array<{
-    id: number
+    id: number;
 
-    type: string
+    type: string;
 
-    amount: number
+    amount: number;
 
-    direction: 'in' | 'out'
+    direction: 'in' | 'out';
 
-    payment_method: string
+    payment_method: string;
 
-    notes?: string | null
+    notes?: string | null;
 
-    created_by_name?: string | null
+    created_by_name?: string | null;
 
-    created_at: string
+    created_at: string;
 
-    reference_type?: string | null
-  }>
+    reference_type?: string | null;
+  }>;
 
   variances: Array<{
-    id: number
+    id: number;
 
-    stage: 'opening' | 'closing'
+    stage: 'opening' | 'closing';
 
-    kind: 'shortage' | 'surplus'
+    kind: 'shortage' | 'surplus';
 
-    amount: number
+    amount: number;
 
-    status: 'pending' | 'resolved'
+    status: 'pending' | 'resolved';
 
-    resolution_notes?: string | null
-  }>
-}
+    resolution_notes?: string | null;
+  }>;
+};
 
 type ShiftUserOption = {
-  id: number
-  name: string
-  role: string
-}
+  id: number;
+  name: string;
+  role: string;
+};
 
 type Props = {
-  users: ShiftUserOption[]
-}
+  users: ShiftUserOption[];
+};
 
 export default function ShiftHistorySection({ users }: Props) {
-  const [rows, setRows] = useState<ShiftRow[]>([])
+  const [rows, setRows] = useState<ShiftRow[]>([]);
 
-  const [total, setTotal] = useState(0)
+  const [total, setTotal] = useState(0);
 
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useState(1);
 
-  const [userId, setUserId] = useState('')
+  const [userId, setUserId] = useState('');
 
-  const [status, setStatus] = useState<'all' | 'open' | 'closed'>('all')
+  const [status, setStatus] = useState<'all' | 'open' | 'closed'>('all');
 
-  const [dateFrom, setDateFrom] = useState('')
+  const [dateFrom, setDateFrom] = useState('');
 
-  const [dateTo, setDateTo] = useState('')
+  const [dateTo, setDateTo] = useState('');
 
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false);
 
-  const [details, setDetails] = useState<ShiftDetails | null>(null)
+  const [details, setDetails] = useState<ShiftDetails | null>(null);
 
-  const [detailsLoading, setDetailsLoading] = useState(false)
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
-  const [error, setError] = useState('')
+  const [error, setError] = useState('');
 
   async function loadHistory(targetPage = page) {
-    setLoading(true)
-    setError('')
+    setLoading(true);
+    setError('');
 
-    const safePage = Math.max(1, Number(targetPage || 1))
+    const safePage = Math.max(1, Number(targetPage || 1));
 
     try {
       const result = await window.api.getCashShifts({
@@ -155,38 +157,38 @@ export default function ShiftHistorySection({ users }: Props) {
         limit: SYSTEM_PAGE_SIZE,
 
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
-      })
+      });
 
-      setRows(Array.isArray(result.rows) ? result.rows : [])
+      setRows(Array.isArray(result.rows) ? result.rows : []);
 
-      setTotal(Number(result.total || 0))
+      setTotal(Number(result.total || 0));
 
-      setPage(safePage)
+      setPage(safePage);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'تعذر تحميل سجل الشفتات')
+      setError(err instanceof Error ? err.message : 'تعذر تحميل سجل الشفتات');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function openDetails(shiftId: number) {
-    setDetailsLoading(true)
-    setError('')
+    setDetailsLoading(true);
+    setError('');
 
     try {
-      const result = await window.api.getCashShiftDetails(shiftId)
+      const result = await window.api.getCashShiftDetails(shiftId);
 
-      setDetails(result)
+      setDetails(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'تعذر تحميل تفاصيل الشفت')
+      setError(err instanceof Error ? err.message : 'تعذر تحميل تفاصيل الشفت');
     } finally {
-      setDetailsLoading(false)
+      setDetailsLoading(false);
     }
   }
 
   useEffect(() => {
-    void loadHistory(1)
-  }, [])
+    void loadHistory(1);
+  }, []);
 
   return (
     <>
@@ -291,8 +293,8 @@ export default function ShiftHistorySection({ users }: Props) {
             <button
               type="button"
               onClick={() => {
-                setPage(1)
-                void loadHistory(1)
+                setPage(1);
+                void loadHistory(1);
               }}
               disabled={loading}
               style={primaryButtonStyle}
@@ -318,7 +320,7 @@ export default function ShiftHistorySection({ users }: Props) {
           totalItems={total}
           loading={loading}
           onPageChange={(nextPage) => {
-            void loadHistory(nextPage)
+            void loadHistory(nextPage);
           }}
         />
 
@@ -647,21 +649,21 @@ export default function ShiftHistorySection({ users }: Props) {
         <ShiftDetailsModal details={details} onClose={() => setDetails(null)} />
       )}
     </>
-  )
+  );
 }
 
 function ShiftDetailsModal({
   details,
   onClose,
 }: {
-  details: ShiftDetails
-  onClose: () => void
+  details: ShiftDetails;
+  onClose: () => void;
 }) {
-  const shift = details.shift
+  const shift = details.shift;
 
   async function printReport() {
     try {
-      const printSettings = await loadReceiptPrintSettings()
+      const printSettings = await loadReceiptPrintSettings();
 
       const movementsHtml = details.movements
         .map(
@@ -693,7 +695,7 @@ function ShiftDetailsModal({
             </tr>
           `,
         )
-        .join('')
+        .join('');
 
       const html = `
       <!doctype html>
@@ -1052,15 +1054,15 @@ function ShiftDetailsModal({
       </body>
 
       </html>
-    `
+    `;
 
-      const printed = await openReceiptPrintWindow(html)
+      const printed = await openReceiptPrintWindow(html);
 
       if (!printed) {
-        console.error('Failed to print shift report')
+        console.error('Failed to print shift report');
       }
     } catch (error) {
-      console.error('Failed to print shift report:', error)
+      console.error('Failed to print shift report:', error);
     }
   }
 
@@ -1293,73 +1295,73 @@ function ShiftDetailsModal({
         ) : null}
       </div>
     </div>
-  )
+  );
 }
 
 function getMovementTypeLabel(type: string) {
   switch (type) {
     case 'sale':
-      return 'بيع'
+      return 'بيع';
 
     case 'sale_return':
-      return 'مرتجع بيع'
+      return 'مرتجع بيع';
 
     case 'sale_exchange':
-      return 'استبدال بيع'
+      return 'استبدال بيع';
 
     case 'customer_payment':
-      return 'دفعة عميل'
+      return 'دفعة عميل';
 
     case 'supplier_payment':
-      return 'دفعة مورد'
+      return 'دفعة مورد';
 
     case 'purchase_return':
-      return 'مرتجع شراء'
+      return 'مرتجع شراء';
 
     case 'expense':
-      return 'مصروف'
+      return 'مصروف';
 
     case 'liability_payment':
-      return 'دفعة التزام'
+      return 'دفعة التزام';
 
     case 'deposit':
-      return 'إيداع'
+      return 'إيداع';
 
     case 'withdraw':
-      return 'سحب'
+      return 'سحب';
 
     case 'transfer':
-      return 'تحويل'
+      return 'تحويل';
 
     case 'shift_adjustment':
-      return 'تسوية شفت'
+      return 'تسوية شفت';
 
     default:
-      return type
+      return type;
   }
 }
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 function tableMoney(value?: number | null) {
-  return String(roundMoney(value))
+  return String(roundMoney(value));
 }
 
 function formatDate(value?: string | null) {
   if (!value) {
-    return '—'
+    return '—';
   }
 
-  const raw = String(value)
+  const raw = String(value);
 
-  const normalized = raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`
+  const normalized = raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`;
 
-  const date = new Date(normalized)
+  const date = new Date(normalized);
 
   if (Number.isNaN(date.getTime())) {
-    return raw
+    return raw;
   }
 
   return date.toLocaleString('ar-EG', {
@@ -1368,7 +1370,7 @@ function formatDate(value?: string | null) {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-  })
+  });
 }
 
 function escapeHtml(value: string) {
@@ -1377,15 +1379,15 @@ function escapeHtml(value: string) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+    .replace(/'/g, '&#039;');
 }
 
 function Field({
   label,
   children,
 }: {
-  label: string
-  children: React.ReactNode
+  label: string;
+  children: React.ReactNode;
 }) {
   return (
     <label
@@ -1406,7 +1408,7 @@ function Field({
 
       {children}
     </label>
-  )
+  );
 }
 
 function InfoCard({ title, value }: { title: string; value: string }) {
@@ -1432,7 +1434,7 @@ function InfoCard({ title, value }: { title: string; value: string }) {
 
       <strong>{value}</strong>
     </div>
-  )
+  );
 }
 
 const inputStyle: React.CSSProperties = {
@@ -1443,7 +1445,7 @@ const inputStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.05)',
   color: '#fff',
   padding: '0 10px',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   minHeight: '38px',
@@ -1454,7 +1456,7 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 900,
   padding: '0 14px',
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   minHeight: '38px',
@@ -1465,14 +1467,14 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontWeight: 900,
   padding: '0 14px',
   cursor: 'pointer',
-}
+};
 
 const smallButtonStyle: React.CSSProperties = {
   ...primaryButtonStyle,
   minHeight: '28px',
   padding: '0 7px',
   fontSize: '10px',
-}
+};
 
 const thStyle: React.CSSProperties = {
   padding: '9px 5px',
@@ -1482,7 +1484,7 @@ const thStyle: React.CSSProperties = {
   lineHeight: 1.2,
   textAlign: 'center',
   verticalAlign: 'middle',
-}
+};
 
 const tdStyle: React.CSSProperties = {
   padding: '9px 5px',
@@ -1492,26 +1494,26 @@ const tdStyle: React.CSSProperties = {
   textAlign: 'center',
   verticalAlign: 'middle',
   overflow: 'hidden',
-}
+};
 
 const stackStyle: React.CSSProperties = {
   display: 'grid',
   gap: '3px',
   alignItems: 'center',
   justifyItems: 'center',
-}
+};
 
 const labelStyle: React.CSSProperties = {
   color: '#94a3b8',
   fontSize: '9px',
   fontWeight: 700,
-}
+};
 
 const secondaryTextStyle: React.CSSProperties = {
   color: '#94a3b8',
   fontSize: '9px',
   fontWeight: 700,
-}
+};
 
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
@@ -1522,7 +1524,7 @@ const modalOverlayStyle: React.CSSProperties = {
   alignItems: 'center',
   padding: '20px',
   background: 'rgba(2,6,23,0.84)',
-}
+};
 
 const modalCardStyle: React.CSSProperties = {
   maxWidth: '100%',
@@ -1533,4 +1535,4 @@ const modalCardStyle: React.CSSProperties = {
   color: 'var(--text)',
   direction: 'rtl',
   boxShadow: '0 30px 100px rgba(0,0,0,0.75)',
-}
+};

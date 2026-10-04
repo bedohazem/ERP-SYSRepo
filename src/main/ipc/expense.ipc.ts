@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain } from 'electron';
 
 import {
   cancelExpense,
@@ -6,45 +6,45 @@ import {
   listExpensesPage,
   listExpenses,
   updateExpense,
-} from '../database/repositories/expense.repo'
+} from '../database/repositories/expense.repo';
 
-import { requireAdminPassword } from './permission-helper'
-import { requirePermission } from '../auth-session'
+import { requireAdminPassword } from './permission-helper';
+import { requirePermission } from '../auth-session';
 
 export function registerExpenseIpc(): void {
   ipcMain.handle('expenses:create', (event, input) => {
-    const user = requirePermission(event, 'expenses.manage')
+    const user = requirePermission(event, 'expenses.manage');
 
     return createExpense({
       ...input,
       created_by: user.id,
-    })
-  })
+    });
+  });
 
   ipcMain.handle('expenses:list', (event, input) => {
-    const user = requirePermission(event, 'expenses.view')
+    const user = requirePermission(event, 'expenses.view');
 
     return listExpenses({
       ...input,
 
       created_by: user.role === 'admin' ? undefined : user.id,
-    })
-  })
+    });
+  });
 
   ipcMain.handle('expenses:list-page', (event, input) => {
-    const user = requirePermission(event, 'expenses.view')
+    const user = requirePermission(event, 'expenses.view');
 
     return listExpensesPage({
       ...input,
 
       created_by: user.role === 'admin' ? undefined : user.id,
-    })
-  })
+    });
+  });
 
   ipcMain.handle('expenses:update', (event, input) => {
     try {
-      const user = requirePermission(event, 'expenses.manage')
-      const isAdmin = user.role === 'admin'
+      const user = requirePermission(event, 'expenses.manage');
+      const isAdmin = user.role === 'admin';
 
       const approval = isAdmin
         ? requireAdminPassword(
@@ -52,7 +52,7 @@ export function registerExpenseIpc(): void {
 
             input?.admin_password,
           )
-        : null
+        : null;
 
       return updateExpense({
         id: Number(input?.id),
@@ -70,20 +70,20 @@ export function registerExpenseIpc(): void {
         actor_id: user.id,
 
         can_manage_all: isAdmin,
-      })
+      });
     } catch (error) {
       return {
         success: false,
 
         message: error instanceof Error ? error.message : 'تعذر تعديل المصروف',
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('expenses:cancel', (event, input) => {
     try {
-      const user = requirePermission(event, 'expenses.manage')
-      const isAdmin = user.role === 'admin'
+      const user = requirePermission(event, 'expenses.manage');
+      const isAdmin = user.role === 'admin';
 
       const approval = isAdmin
         ? requireAdminPassword(
@@ -91,7 +91,7 @@ export function registerExpenseIpc(): void {
 
             input?.admin_password,
           )
-        : null
+        : null;
 
       return cancelExpense({
         id: Number(input?.id),
@@ -99,13 +99,13 @@ export function registerExpenseIpc(): void {
         approved_by: approval?.id ?? null,
         actor_id: user.id,
         can_manage_all: isAdmin,
-      })
+      });
     } catch (error) {
       return {
         success: false,
 
         message: error instanceof Error ? error.message : 'تعذر إلغاء المصروف',
-      }
+      };
     }
-  })
+  });
 }

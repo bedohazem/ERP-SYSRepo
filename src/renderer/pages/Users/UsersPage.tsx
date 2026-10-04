@@ -1,24 +1,26 @@
-import { useEffect, useState } from 'react'
-import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
-import type { CSSProperties } from 'react'
-import { useAuthStore } from '../../store/auth.store'
-import { getPasswordPolicyError } from '../../../shared/password-policy'
+import { useEffect, useState } from 'react';
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
+import type { CSSProperties } from 'react';
+import { useAuthStore } from '../../store/auth.store';
+import { getPasswordPolicyError } from '../../../shared/password-policy';
 import {
   PERMISSION_DEFINITIONS,
   normalizePermissions,
   type PermissionKey,
-} from '../../../shared/permissions'
+} from '../../../shared/permissions';
 
-type Role = 'admin' | 'cashier'
+type Role = 'admin' | 'cashier';
 
 type UserForm = {
-  id?: number
-  name: string
-  username: string
-  password: string
-  role: Role
-  is_active: number
-}
+  id?: number;
+  name: string;
+  username: string;
+  password: string;
+  role: Role;
+  is_active: number;
+};
 
 const emptyForm: UserForm = {
   name: '',
@@ -26,43 +28,43 @@ const emptyForm: UserForm = {
   password: '',
   role: 'cashier',
   is_active: 1,
-}
+};
 
 export default function UsersPage() {
-  const currentUser = useAuthStore((s) => s.user)
-  const [users, setUsers] = useState<SystemUser[]>([])
-  const [usersTotal, setUsersTotal] = useState(0)
-  const [usersPage, setUsersPage] = useState(1)
-  const [form, setForm] = useState<UserForm>(emptyForm)
-  const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [passwordUser, setPasswordUser] = useState<SystemUser | null>(null)
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [savingPassword, setSavingPassword] = useState(false)
+  const currentUser = useAuthStore((s) => s.user);
+  const [users, setUsers] = useState<SystemUser[]>([]);
+  const [usersTotal, setUsersTotal] = useState(0);
+  const [usersPage, setUsersPage] = useState(1);
+  const [form, setForm] = useState<UserForm>(emptyForm);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [passwordUser, setPasswordUser] = useState<SystemUser | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
   const [activeConfirmUser, setActiveConfirmUser] = useState<SystemUser | null>(
     null,
-  )
-  const [savingActive, setSavingActive] = useState(false)
+  );
+  const [savingActive, setSavingActive] = useState(false);
   const [pageMessage, setPageMessage] = useState<{
-    type: 'success' | 'error'
-    text: string
-  } | null>(null)
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
-  const [permissionUser, setPermissionUser] = useState<SystemUser | null>(null)
+  const [permissionUser, setPermissionUser] = useState<SystemUser | null>(null);
 
   const [permissionSelection, setPermissionSelection] = useState<
     PermissionKey[]
-  >([])
+  >([]);
 
   const [permissionDefaults, setPermissionDefaults] = useState<PermissionKey[]>(
     [],
-  )
+  );
 
-  const [permissionLoading, setPermissionLoading] = useState(false)
+  const [permissionLoading, setPermissionLoading] = useState(false);
 
-  const [savingPermissions, setSavingPermissions] = useState(false)
+  const [savingPermissions, setSavingPermissions] = useState(false);
 
   function showMessage(
     type: 'success' | 'error',
@@ -74,73 +76,73 @@ export default function UsersPage() {
     setPageMessage({
       type,
       text,
-    })
+    });
 
     setTimeout(() => {
-      setPageMessage(null)
-    }, duration)
+      setPageMessage(null);
+    }, duration);
   }
 
-  const isAdmin = currentUser?.role === 'admin'
-  const editing = Boolean(form.id)
+  const isAdmin = currentUser?.role === 'admin';
+  const editing = Boolean(form.id);
 
   async function loadUsers(page = usersPage) {
-    setLoading(true)
+    setLoading(true);
 
     try {
-      const safePage = Math.max(1, Number(page || 1))
+      const safePage = Math.max(1, Number(page || 1));
 
       const result = await window.api.getUsersPage({
         search,
         actor_id: currentUser?.id,
         limit: SYSTEM_PAGE_SIZE,
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
-      })
+      });
 
       if (!result.success) {
-        showMessage('error', result.message || 'غير مصرح بتحميل المستخدمين')
+        showMessage('error', result.message || 'غير مصرح بتحميل المستخدمين');
 
-        setUsers([])
-        setUsersTotal(0)
-        return
+        setUsers([]);
+        setUsersTotal(0);
+        return;
       }
 
-      setUsers(Array.isArray(result.users) ? result.users : [])
+      setUsers(Array.isArray(result.users) ? result.users : []);
 
-      setUsersTotal(Number(result.total || 0))
+      setUsersTotal(Number(result.total || 0));
 
-      setUsersPage(safePage)
+      setUsersPage(safePage);
     } catch (error) {
-      console.error('Failed to load users:', error)
+      console.error('Failed to load users:', error);
 
-      showMessage('error', 'حدث خطأ أثناء تحميل المستخدمين')
+      showMessage('error', 'حدث خطأ أثناء تحميل المستخدمين');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function handleSave() {
     if (!form.name.trim()) {
-      showMessage('error', 'اكتب اسم المستخدم')
-      return
+      showMessage('error', 'اكتب اسم المستخدم');
+      return;
     }
 
     if (!form.username.trim()) {
-      showMessage('error', 'اكتب اسم الدخول')
-      return
+      showMessage('error', 'اكتب اسم الدخول');
+      return;
     }
 
     if (!editing) {
-      const passwordError = getPasswordPolicyError(form.password)
+      const passwordError = getPasswordPolicyError(form.password);
 
       if (passwordError) {
-        showMessage('error', passwordError)
+        showMessage('error', passwordError);
 
-        return
+        return;
       }
     }
 
-    setSaving(true)
+    setSaving(true);
 
     try {
       const result = editing
@@ -158,130 +160,130 @@ export default function UsersPage() {
             password: form.password,
             role: form.role,
             actor_id: currentUser?.id,
-          })
+          });
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل حفظ المستخدم')
-        return
+        showMessage('error', result.message || 'فشل حفظ المستخدم');
+        return;
       }
 
       showMessage(
         'success',
         editing ? 'تم حفظ تعديل المستخدم بنجاح' : 'تم إضافة المستخدم بنجاح',
-      )
-      setForm(emptyForm)
-      await loadUsers(usersPage)
+      );
+      setForm(emptyForm);
+      await loadUsers(usersPage);
     } catch (error) {
-      console.error('Failed to save user:', error)
-      showMessage('error', 'حدث خطأ أثناء حفظ المستخدم')
+      console.error('Failed to save user:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ المستخدم');
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
   function openActiveConfirm(user: SystemUser) {
-    const nextActive = user.is_active ? 0 : 1
+    const nextActive = user.is_active ? 0 : 1;
 
     if (user.id === currentUser?.id && nextActive === 0) {
-      showMessage('error', 'لا يمكنك تعطيل حسابك الحالي')
-      return
+      showMessage('error', 'لا يمكنك تعطيل حسابك الحالي');
+      return;
     }
 
-    setActiveConfirmUser(user)
+    setActiveConfirmUser(user);
   }
 
   function closeActiveConfirm() {
-    if (savingActive) return
-    setActiveConfirmUser(null)
+    if (savingActive) return;
+    setActiveConfirmUser(null);
   }
 
   async function confirmToggleActive() {
-    if (!activeConfirmUser) return
-    if (savingActive) return
+    if (!activeConfirmUser) return;
+    if (savingActive) return;
 
-    const nextActive = activeConfirmUser.is_active ? 0 : 1
+    const nextActive = activeConfirmUser.is_active ? 0 : 1;
 
-    setSavingActive(true)
+    setSavingActive(true);
 
     try {
       const result = await window.api.setUserActive(
         activeConfirmUser.id,
         nextActive,
         currentUser?.id,
-      )
+      );
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل تحديث حالة المستخدم')
-        return
+        showMessage('error', result.message || 'فشل تحديث حالة المستخدم');
+        return;
       }
 
       showMessage(
         'success',
         nextActive ? 'تم تفعيل المستخدم بنجاح' : 'تم تعطيل المستخدم بنجاح',
-      )
+      );
 
-      setActiveConfirmUser(null)
-      await loadUsers(usersPage)
+      setActiveConfirmUser(null);
+      await loadUsers(usersPage);
     } catch (error) {
-      console.error('Failed to update user active state:', error)
-      showMessage('error', 'حدث خطأ أثناء تحديث حالة المستخدم')
+      console.error('Failed to update user active state:', error);
+      showMessage('error', 'حدث خطأ أثناء تحديث حالة المستخدم');
     } finally {
-      setSavingActive(false)
+      setSavingActive(false);
     }
   }
 
   function openPasswordModal(user: SystemUser) {
-    setPasswordUser(user)
-    setNewPassword('')
-    setConfirmPassword('')
+    setPasswordUser(user);
+    setNewPassword('');
+    setConfirmPassword('');
   }
 
   function closePasswordModal() {
-    setPasswordUser(null)
-    setNewPassword('')
-    setConfirmPassword('')
+    setPasswordUser(null);
+    setNewPassword('');
+    setConfirmPassword('');
   }
 
   async function saveNewPassword() {
-    if (!passwordUser) return
-    if (savingPassword) return
+    if (!passwordUser) return;
+    if (savingPassword) return;
 
-    const password = newPassword
+    const password = newPassword;
 
-    const passwordError = getPasswordPolicyError(password)
+    const passwordError = getPasswordPolicyError(password);
 
     if (passwordError) {
-      showMessage('error', passwordError)
+      showMessage('error', passwordError);
 
-      return
+      return;
     }
 
     if (password !== confirmPassword) {
-      showMessage('error', 'كلمة المرور وتأكيدها غير متطابقين')
-      return
+      showMessage('error', 'كلمة المرور وتأكيدها غير متطابقين');
+      return;
     }
 
-    setSavingPassword(true)
+    setSavingPassword(true);
 
     try {
       const result = await window.api.resetUserPassword(
         passwordUser.id,
         password,
         currentUser?.id,
-      )
+      );
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل تغيير كلمة المرور')
-        return
+        showMessage('error', result.message || 'فشل تغيير كلمة المرور');
+        return;
       }
 
-      closePasswordModal()
-      showMessage('success', 'تم تغيير كلمة المرور بنجاح')
+      closePasswordModal();
+      showMessage('success', 'تم تغيير كلمة المرور بنجاح');
     } catch (error) {
-      console.error('Failed to reset password:', error)
-      showMessage('error', 'حدث خطأ أثناء تغيير كلمة المرور')
+      console.error('Failed to reset password:', error);
+      showMessage('error', 'حدث خطأ أثناء تغيير كلمة المرور');
     } finally {
-      setSavingPassword(false)
+      setSavingPassword(false);
     }
   }
 
@@ -293,96 +295,96 @@ export default function UsersPage() {
       password: '',
       role: user.role === 'admin' ? 'admin' : 'cashier',
       is_active: user.is_active ? 1 : 0,
-    })
+    });
   }
 
   function resetForm() {
-    setForm(emptyForm)
+    setForm(emptyForm);
   }
 
   async function openPermissions(user: SystemUser) {
     if (user.role === 'admin') {
-      showMessage('error', 'مدير النظام لديه جميع الصلاحيات تلقائيًا')
+      showMessage('error', 'مدير النظام لديه جميع الصلاحيات تلقائيًا');
 
-      return
+      return;
     }
 
-    setPermissionLoading(true)
+    setPermissionLoading(true);
 
     try {
-      const result = await window.api.getUserPermissions(user.id)
+      const result = await window.api.getUserPermissions(user.id);
 
       if (!result.success || !result.settings) {
-        showMessage('error', result.message || 'تعذر تحميل الصلاحيات')
+        showMessage('error', result.message || 'تعذر تحميل الصلاحيات');
 
-        return
+        return;
       }
 
-      setPermissionUser(user)
+      setPermissionUser(user);
 
-      setPermissionDefaults(result.settings.default_permissions)
+      setPermissionDefaults(result.settings.default_permissions);
 
-      setPermissionSelection(result.settings.effective_permissions)
+      setPermissionSelection(result.settings.effective_permissions);
     } catch (error) {
-      console.error('Failed to load permissions:', error)
+      console.error('Failed to load permissions:', error);
 
-      showMessage('error', 'تعذر تحميل الصلاحيات')
+      showMessage('error', 'تعذر تحميل الصلاحيات');
     } finally {
-      setPermissionLoading(false)
+      setPermissionLoading(false);
     }
   }
 
   function togglePermission(permission: PermissionKey) {
     setPermissionSelection((current) => {
-      const exists = current.includes(permission)
+      const exists = current.includes(permission);
 
       const next = exists
         ? current.filter((item) => item !== permission)
-        : [...current, permission]
+        : [...current, permission];
 
-      return normalizePermissions(next)
-    })
+      return normalizePermissions(next);
+    });
   }
 
   async function savePermissions() {
     if (!permissionUser || savingPermissions) {
-      return
+      return;
     }
 
-    setSavingPermissions(true)
+    setSavingPermissions(true);
 
     try {
       const result = await window.api.setUserPermissions({
         user_id: permissionUser.id,
 
         permissions: permissionSelection,
-      })
+      });
 
       if (!result.success || !result.settings) {
-        showMessage('error', result.message || 'فشل حفظ الصلاحيات')
+        showMessage('error', result.message || 'فشل حفظ الصلاحيات');
 
-        return
+        return;
       }
 
-      setPermissionSelection(result.settings.effective_permissions)
+      setPermissionSelection(result.settings.effective_permissions);
 
-      setPermissionUser(null)
+      setPermissionUser(null);
 
-      showMessage('success', 'تم حفظ صلاحيات المستخدم')
+      showMessage('success', 'تم حفظ صلاحيات المستخدم');
     } catch (error) {
-      console.error('Failed to save permissions:', error)
+      console.error('Failed to save permissions:', error);
 
-      showMessage('error', 'حدث خطأ أثناء حفظ الصلاحيات')
+      showMessage('error', 'حدث خطأ أثناء حفظ الصلاحيات');
     } finally {
-      setSavingPermissions(false)
+      setSavingPermissions(false);
     }
   }
 
   useEffect(() => {
     if (isAdmin) {
-      void loadUsers(1)
+      void loadUsers(1);
     }
-  }, [isAdmin])
+  }, [isAdmin]);
 
   if (!isAdmin) {
     return (
@@ -393,7 +395,7 @@ export default function UsersPage() {
           هذه الصفحة متاحة لمدير النظام فقط.
         </p>
       </div>
-    )
+    );
   }
 
   return (
@@ -440,8 +442,8 @@ export default function UsersPage() {
           <button
             type="button"
             onClick={() => {
-              setUsersPage(1)
-              void loadUsers(1)
+              setUsersPage(1);
+              void loadUsers(1);
             }}
             style={secondaryButtonStyle}
           >
@@ -559,7 +561,7 @@ export default function UsersPage() {
             totalItems={usersTotal}
             loading={loading}
             onPageChange={(page) => {
-              void loadUsers(page)
+              void loadUsers(page);
             }}
           />
 
@@ -886,7 +888,7 @@ export default function UsersPage() {
                   style={inputStyle}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      void saveNewPassword()
+                      void saveNewPassword();
                     }
                   }}
                 />
@@ -999,22 +1001,22 @@ export default function UsersPage() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function Field({
   label,
   children,
 }: {
-  label: string
-  children: React.ReactNode
+  label: string;
+  children: React.ReactNode;
 }) {
   return (
     <label style={{ display: 'grid', gap: '8px' }}>
       <span style={{ color: '#cbd5e1', fontWeight: 800 }}>{label}</span>
       {children}
     </label>
-  )
+  );
 }
 
 const accessDeniedStyle: CSSProperties = {
@@ -1025,7 +1027,7 @@ const accessDeniedStyle: CSSProperties = {
   placeItems: 'center',
   textAlign: 'center',
   gap: '12px',
-}
+};
 
 const headerStyle: CSSProperties = {
   padding: '20px',
@@ -1035,26 +1037,26 @@ const headerStyle: CSSProperties = {
   gap: '16px',
   alignItems: 'center',
   flexWrap: 'wrap',
-}
+};
 
 const layoutStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'minmax(300px, 420px) minmax(420px, 1fr)',
   gap: '18px',
   alignItems: 'start',
-}
+};
 
 const cardStyle: CSSProperties = {
   padding: '18px',
   borderRadius: '20px',
   display: 'grid',
   gap: '16px',
-}
+};
 
 const formGridStyle: CSSProperties = {
   display: 'grid',
   gap: '14px',
-}
+};
 
 const inputStyle: CSSProperties = {
   height: '44px',
@@ -1068,7 +1070,7 @@ const inputStyle: CSSProperties = {
   direction: 'rtl',
   boxSizing: 'border-box',
   minWidth: '220px',
-}
+};
 
 const primaryButtonStyle: CSSProperties = {
   border: 'none',
@@ -1079,7 +1081,7 @@ const primaryButtonStyle: CSSProperties = {
   fontWeight: 900,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: CSSProperties = {
   border: '1px solid rgba(255,255,255,0.12)',
@@ -1090,7 +1092,7 @@ const secondaryButtonStyle: CSSProperties = {
   fontWeight: 900,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const smallButtonStyle: CSSProperties = {
   border: '1px solid rgba(96,165,250,0.28)',
@@ -1101,33 +1103,33 @@ const smallButtonStyle: CSSProperties = {
   fontWeight: 900,
   padding: '0 10px',
   cursor: 'pointer',
-}
+};
 
 const dangerButtonStyle: CSSProperties = {
   ...smallButtonStyle,
   border: '1px solid rgba(239,68,68,0.32)',
   background: 'rgba(239,68,68,0.12)',
   color: '#fca5a5',
-}
+};
 
 const successButtonStyle: CSSProperties = {
   ...smallButtonStyle,
   border: '1px solid rgba(16,185,129,0.32)',
   background: 'rgba(16,185,129,0.12)',
   color: '#6ee7b7',
-}
+};
 
 const thStyle: CSSProperties = {
   padding: '12px',
   fontWeight: 900,
   whiteSpace: 'nowrap',
-}
+};
 
 const tdStyle: CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
-}
+};
 
 const adminBadgeStyle: CSSProperties = {
   padding: '5px 10px',
@@ -1135,7 +1137,7 @@ const adminBadgeStyle: CSSProperties = {
   background: 'rgba(139,92,246,0.16)',
   color: '#c4b5fd',
   fontWeight: 900,
-}
+};
 
 const cashierBadgeStyle: CSSProperties = {
   padding: '5px 10px',
@@ -1143,7 +1145,7 @@ const cashierBadgeStyle: CSSProperties = {
   background: 'rgba(59,130,246,0.16)',
   color: '#93c5fd',
   fontWeight: 900,
-}
+};
 
 const activeBadgeStyle: CSSProperties = {
   padding: '5px 10px',
@@ -1151,7 +1153,7 @@ const activeBadgeStyle: CSSProperties = {
   background: 'rgba(16,185,129,0.16)',
   color: '#6ee7b7',
   fontWeight: 900,
-}
+};
 
 const inactiveBadgeStyle: CSSProperties = {
   padding: '5px 10px',
@@ -1159,7 +1161,7 @@ const inactiveBadgeStyle: CSSProperties = {
   background: 'rgba(239,68,68,0.16)',
   color: '#fca5a5',
   fontWeight: 900,
-}
+};
 
 const modalOverlayStyle: CSSProperties = {
   position: 'fixed',
@@ -1170,7 +1172,7 @@ const modalOverlayStyle: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   padding: '20px',
-}
+};
 
 const modalStyle: CSSProperties = {
   width: '460px',
@@ -1181,4 +1183,4 @@ const modalStyle: CSSProperties = {
   padding: '22px',
   direction: 'rtl',
   boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
-}
+};

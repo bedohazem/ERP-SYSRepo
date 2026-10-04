@@ -1,15 +1,15 @@
-import fs from 'node:fs'
-import path from 'node:path'
+import fs from 'node:fs';
+import path from 'node:path';
 
-import { app } from 'electron'
+import { app } from 'electron';
 
-import { getDb } from './db'
+import { getDb } from './db';
 
-import { safeCreateActivityLog } from './repositories/activity.repo'
+import { safeCreateActivityLog } from './repositories/activity.repo';
 
-import { createVerifiedDatabaseBackup } from './database-backup'
+import { createVerifiedDatabaseBackup } from './database-backup';
 
-const BACKUP_SETTING_KEY = 'auto_backup_dir'
+const BACKUP_SETTING_KEY = 'auto_backup_dir';
 
 /*
  * Retention:
@@ -28,26 +28,26 @@ const RETENTION = {
   daily: 14,
   weekly: 8,
   manual: 10,
-} as const
+} as const;
 
-export type AutoBackupReason = 'startup' | 'hourly' | 'shutdown' | 'manual'
+export type AutoBackupReason = 'startup' | 'hourly' | 'shutdown' | 'manual';
 
 type BackupFile = {
-  file: string
-  fullPath: string
-  size: number
-  createdAt: string
-  time: number
-  reason: AutoBackupReason | 'unknown'
-}
+  file: string;
+  fullPath: string;
+  size: number;
+  createdAt: string;
+  time: number;
+  reason: AutoBackupReason | 'unknown';
+};
 
 function getDefaultBackupDir() {
-  return path.join(app.getPath('documents'), 'ERP-Store-Backups')
+  return path.join(app.getPath('documents'), 'ERP-Store-Backups');
 }
 
 function readConfiguredBackupDir() {
   try {
-    const db = getDb()
+    const db = getDb();
 
     const row = db
       .prepare(
@@ -63,20 +63,20 @@ function readConfiguredBackupDir() {
       )
       .get(BACKUP_SETTING_KEY) as
       | {
-          value?: string
+          value?: string;
         }
-      | undefined
+      | undefined;
 
-    const savedPath = String(row?.value || '').trim()
+    const savedPath = String(row?.value || '').trim();
 
-    return savedPath || getDefaultBackupDir()
+    return savedPath || getDefaultBackupDir();
   } catch {
-    return getDefaultBackupDir()
+    return getDefaultBackupDir();
   }
 }
 
 function saveConfiguredBackupDir(dirPath: string) {
-  const db = getDb()
+  const db = getDb();
 
   db.prepare(
     `
@@ -93,30 +93,30 @@ function saveConfiguredBackupDir(dirPath: string) {
       value =
         excluded.value
     `,
-  ).run(BACKUP_SETTING_KEY, dirPath)
+  ).run(BACKUP_SETTING_KEY, dirPath);
 }
 
 export function getAutoBackupDir() {
-  return readConfiguredBackupDir()
+  return readConfiguredBackupDir();
 }
 
 export function setAutoBackupDir(dirPath: string) {
-  const cleanPath = String(dirPath || '').trim()
+  const cleanPath = String(dirPath || '').trim();
 
   if (!cleanPath) {
-    throw new Error('اختار مكان صحيح للنسخ التلقائي')
+    throw new Error('اختار مكان صحيح للنسخ التلقائي');
   }
 
   if (!fs.existsSync(cleanPath)) {
     fs.mkdirSync(cleanPath, {
       recursive: true,
-    })
+    });
   }
 
-  const stat = fs.statSync(cleanPath)
+  const stat = fs.statSync(cleanPath);
 
   if (!stat.isDirectory()) {
-    throw new Error('المسار المختار ليس فولدر')
+    throw new Error('المسار المختار ليس فولدر');
   }
 
   /*
@@ -125,25 +125,25 @@ export function setAutoBackupDir(dirPath: string) {
   const probePath = path.join(
     cleanPath,
     `.erp-write-test-${process.pid}-${Date.now()}`,
-  )
+  );
 
   try {
-    fs.writeFileSync(probePath, 'ok', 'utf8')
+    fs.writeFileSync(probePath, 'ok', 'utf8');
 
     fs.rmSync(probePath, {
       force: true,
-    })
+    });
   } catch {
-    throw new Error('لا يمكن الكتابة داخل مكان النسخ المختار')
+    throw new Error('لا يمكن الكتابة داخل مكان النسخ المختار');
   }
 
-  saveConfiguredBackupDir(cleanPath)
+  saveConfiguredBackupDir(cleanPath);
 
-  return getAutoBackupInfo()
+  return getAutoBackupInfo();
 }
 
 function getBackupName(reason: AutoBackupReason) {
-  const now = new Date()
+  const now = new Date();
 
   const stamp = [
     now.getFullYear(),
@@ -157,55 +157,55 @@ function getBackupName(reason: AutoBackupReason) {
     String(now.getMinutes()).padStart(2, '0'),
 
     String(now.getSeconds()).padStart(2, '0'),
-  ].join('-')
+  ].join('-');
 
-  return `erp-auto-${reason}-${stamp}.db`
+  return `erp-auto-${reason}-${stamp}.db`;
 }
 
 function makeUniqueBackupPath(backupDir: string, reason: AutoBackupReason) {
-  const baseName = getBackupName(reason)
+  const baseName = getBackupName(reason);
 
-  const parsed = path.parse(baseName)
+  const parsed = path.parse(baseName);
 
-  let backupPath = path.join(backupDir, baseName)
+  let backupPath = path.join(backupDir, baseName);
 
-  let counter = 1
+  let counter = 1;
 
   while (fs.existsSync(backupPath)) {
-    backupPath = path.join(backupDir, `${parsed.name}-${counter}${parsed.ext}`)
+    backupPath = path.join(backupDir, `${parsed.name}-${counter}${parsed.ext}`);
 
-    counter += 1
+    counter += 1;
   }
 
-  return backupPath
+  return backupPath;
 }
 
 function getReasonFromFileName(file: string): BackupFile['reason'] {
-  const match = /^erp-auto-(startup|hourly|shutdown|manual)-/i.exec(file)
+  const match = /^erp-auto-(startup|hourly|shutdown|manual)-/i.exec(file);
 
   if (!match) {
-    return 'unknown'
+    return 'unknown';
   }
 
-  return match[1].toLowerCase() as AutoBackupReason
+  return match[1].toLowerCase() as AutoBackupReason;
 }
 
 function listAutoBackupFiles(backupDir: string): BackupFile[] {
   if (!fs.existsSync(backupDir)) {
-    return []
+    return [];
   }
 
   return fs
     .readdirSync(backupDir)
     .filter((file) => file.startsWith('erp-auto-') && file.endsWith('.db'))
     .flatMap((file) => {
-      const fullPath = path.join(backupDir, file)
+      const fullPath = path.join(backupDir, file);
 
       try {
-        const stat = fs.statSync(fullPath)
+        const stat = fs.statSync(fullPath);
 
         if (!stat.isFile()) {
-          return []
+          return [];
         }
 
         return [
@@ -221,16 +221,16 @@ function listAutoBackupFiles(backupDir: string): BackupFile[] {
 
             reason: getReasonFromFileName(file),
           },
-        ]
+        ];
       } catch {
-        return []
+        return [];
       }
     })
-    .sort((a, b) => b.time - a.time)
+    .sort((a, b) => b.time - a.time);
 }
 
 function getDayKey(time: number) {
-  const date = new Date(time)
+  const date = new Date(time);
 
   return [
     date.getFullYear(),
@@ -238,7 +238,7 @@ function getDayKey(time: number) {
     String(date.getMonth() + 1).padStart(2, '0'),
 
     String(date.getDate()).padStart(2, '0'),
-  ].join('-')
+  ].join('-');
 }
 
 /*
@@ -246,23 +246,23 @@ function getDayKey(time: number) {
  * للـretention هنا.
  */
 function getWeekKey(time: number) {
-  const date = new Date(time)
+  const date = new Date(time);
 
   const utc = new Date(
     Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
-  )
+  );
 
-  const day = utc.getUTCDay() || 7
+  const day = utc.getUTCDay() || 7;
 
-  utc.setUTCDate(utc.getUTCDate() + 4 - day)
+  utc.setUTCDate(utc.getUTCDate() + 4 - day);
 
-  const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1))
+  const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
 
   const week = Math.ceil(
     ((utc.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
-  )
+  );
 
-  return `${utc.getUTCFullYear()}-W${String(week).padStart(2, '0')}`
+  return `${utc.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
 
 function keepFirstPerGroup(
@@ -271,29 +271,29 @@ function keepFirstPerGroup(
   maxGroups: number,
   keep: Set<string>,
 ) {
-  const groups = new Set<string>()
+  const groups = new Set<string>();
 
   for (const file of files) {
-    const key = keyFn(file.time)
+    const key = keyFn(file.time);
 
     if (groups.has(key)) {
-      continue
+      continue;
     }
 
     if (groups.size >= maxGroups) {
-      break
+      break;
     }
 
-    groups.add(key)
+    groups.add(key);
 
-    keep.add(file.fullPath)
+    keep.add(file.fullPath);
   }
 }
 
 export function cleanupAutoBackups(backupDir: string) {
-  const files = listAutoBackupFiles(backupDir)
+  const files = listAutoBackupFiles(backupDir);
 
-  const keep = new Set<string>()
+  const keep = new Set<string>();
 
   /*
    * النسخ اليدوية لها Retention
@@ -304,9 +304,9 @@ export function cleanupAutoBackups(backupDir: string) {
    * daily / weekly ممكن يتخطى
    * عددها الحد المحدد.
    */
-  const manualFiles = files.filter((file) => file.reason === 'manual')
+  const manualFiles = files.filter((file) => file.reason === 'manual');
 
-  const automaticFiles = files.filter((file) => file.reason !== 'manual')
+  const automaticFiles = files.filter((file) => file.reason !== 'manual');
 
   /*
    * Rolling recent automatic
@@ -314,19 +314,19 @@ export function cleanupAutoBackups(backupDir: string) {
    */
   automaticFiles
     .slice(0, RETENTION.recent)
-    .forEach((file) => keep.add(file.fullPath))
+    .forEach((file) => keep.add(file.fullPath));
 
   /*
    * آخر 14 يوم من النسخ
    * التلقائية.
    */
-  keepFirstPerGroup(automaticFiles, getDayKey, RETENTION.daily, keep)
+  keepFirstPerGroup(automaticFiles, getDayKey, RETENTION.daily, keep);
 
   /*
    * آخر 8 أسابيع من النسخ
    * التلقائية.
    */
-  keepFirstPerGroup(automaticFiles, getWeekKey, RETENTION.weekly, keep)
+  keepFirstPerGroup(automaticFiles, getWeekKey, RETENTION.weekly, keep);
 
   /*
    * آخر 10 Manual backups
@@ -334,21 +334,21 @@ export function cleanupAutoBackups(backupDir: string) {
    */
   manualFiles
     .slice(0, RETENTION.manual)
-    .forEach((file) => keep.add(file.fullPath))
+    .forEach((file) => keep.add(file.fullPath));
 
-  const deleted: string[] = []
+  const deleted: string[] = [];
 
   for (const file of files) {
     if (keep.has(file.fullPath)) {
-      continue
+      continue;
     }
 
     try {
-      fs.unlinkSync(file.fullPath)
+      fs.unlinkSync(file.fullPath);
 
-      deleted.push(file.fullPath)
+      deleted.push(file.fullPath);
     } catch (error) {
-      console.error('Failed to remove old auto backup:', file.fullPath, error)
+      console.error('Failed to remove old auto backup:', file.fullPath, error);
     }
   }
 
@@ -356,19 +356,19 @@ export function cleanupAutoBackups(backupDir: string) {
     kept: files.length - deleted.length,
 
     deleted: deleted.length,
-  }
+  };
 }
 
 export function getAutoBackupInfo() {
-  const backupDir = getAutoBackupDir()
+  const backupDir = getAutoBackupDir();
 
   if (!fs.existsSync(backupDir)) {
     fs.mkdirSync(backupDir, {
       recursive: true,
-    })
+    });
   }
 
-  const files = listAutoBackupFiles(backupDir)
+  const files = listAutoBackupFiles(backupDir);
 
   return {
     dir: backupDir,
@@ -381,24 +381,24 @@ export function getAutoBackupInfo() {
       RETENTION.recent + RETENTION.daily + RETENTION.weekly + RETENTION.manual,
 
     files: files.map(({ time, ...file }) => file),
-  }
+  };
 }
 
 export async function createAutoBackup(reason: AutoBackupReason = 'manual') {
   try {
-    const backupDir = getAutoBackupDir()
+    const backupDir = getAutoBackupDir();
 
     if (!fs.existsSync(backupDir)) {
       fs.mkdirSync(backupDir, {
         recursive: true,
-      })
+      });
     }
 
-    const backupPath = makeUniqueBackupPath(backupDir, reason)
+    const backupPath = makeUniqueBackupPath(backupDir, reason);
 
-    const validation = await createVerifiedDatabaseBackup(backupPath)
+    const validation = await createVerifiedDatabaseBackup(backupPath);
 
-    const cleanup = cleanupAutoBackups(backupDir)
+    const cleanup = cleanupAutoBackups(backupDir);
 
     if (reason !== 'manual') {
       safeCreateActivityLog({
@@ -419,7 +419,7 @@ export async function createAutoBackup(reason: AutoBackupReason = 'manual') {
 
           cleanup,
         }),
-      })
+      });
     }
 
     return {
@@ -435,10 +435,10 @@ export async function createAutoBackup(reason: AutoBackupReason = 'manual') {
       cleanup,
 
       info: getAutoBackupInfo(),
-    }
+    };
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : 'فشل إنشاء النسخة الاحتياطية'
+      error instanceof Error ? error.message : 'فشل إنشاء النسخة الاحتياطية';
 
     if (reason !== 'manual') {
       safeCreateActivityLog({
@@ -454,10 +454,10 @@ export async function createAutoBackup(reason: AutoBackupReason = 'manual') {
           reason,
           error: message,
         }),
-      })
+      });
     }
 
-    console.error('Auto backup failed:', error)
+    console.error('Auto backup failed:', error);
 
     return {
       success: false,
@@ -466,6 +466,6 @@ export async function createAutoBackup(reason: AutoBackupReason = 'manual') {
       reason,
 
       message,
-    }
+    };
   }
 }

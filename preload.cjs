@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   login: (data) => ipcRenderer.invoke('auth:login', data),
@@ -359,4 +359,4 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('cash-drawer:list-no-sale-events', input),
 
   openCashDrawer: (input) => ipcRenderer.invoke('cash-drawer:open', input),
-})
+});

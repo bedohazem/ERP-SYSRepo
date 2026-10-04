@@ -1,91 +1,91 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 
 import {
   createCategory,
   createProduct,
   getVariantByBarcode,
-} from '../../src/main/database/repositories/product.repo'
+} from '../../src/main/database/repositories/product.repo';
 
 import {
   createPromotion,
   togglePromotion,
-} from '../../src/main/database/repositories/promotions.repo'
+} from '../../src/main/database/repositories/promotions.repo';
 
 import {
   createSale,
   createSaleReturn,
   getSaleReceipt,
-} from '../../src/main/database/repositories/sales.repo'
+} from '../../src/main/database/repositories/sales.repo';
 
-import { createSaleExchange } from '../../src/main/database/repositories/sales-exchange.repo'
+import { createSaleExchange } from '../../src/main/database/repositories/sales-exchange.repo';
 
-import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo'
+import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo';
 
 import {
   closeCashDay,
   getCashDayClosePreview,
   getCashSummary,
-} from '../../src/main/database/repositories/cash.repo'
-import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
+} from '../../src/main/database/repositories/cash.repo';
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo';
 
 type VariantRow = {
-  variant_id: number
-  product_id: number
-  product_name: string
-  barcode: string
-  size: string
-  color: string
-  buy_price: number
-  sell_price: number
-  stock: number
-}
+  variant_id: number;
+  product_id: number;
+  product_name: string;
+  barcode: string;
+  size: string;
+  color: string;
+  buy_price: number;
+  sell_price: number;
+  stock: number;
+};
 
 function setLoyaltySettings(input: {
-  enabled?: boolean
-  earnAmount: number
-  earnPoints: number
-  pointValue: number
-  minRedeemPoints?: number
+  enabled?: boolean;
+  earnAmount: number;
+  earnPoints: number;
+  pointValue: number;
+  minRedeemPoints?: number;
 }) {
-  const db = getDb()
+  const db = getDb();
 
   const update = db.prepare(`
     UPDATE app_settings
     SET value = ?
     WHERE key = ?
-  `)
+  `);
 
-  update.run(input.enabled === false ? 'false' : 'true', 'loyalty_enabled')
+  update.run(input.enabled === false ? 'false' : 'true', 'loyalty_enabled');
 
-  update.run(String(input.earnAmount), 'loyalty_earn_amount')
+  update.run(String(input.earnAmount), 'loyalty_earn_amount');
 
-  update.run(String(input.earnPoints), 'loyalty_earn_points')
+  update.run(String(input.earnPoints), 'loyalty_earn_points');
 
-  update.run(String(input.pointValue), 'loyalty_point_value')
+  update.run(String(input.pointValue), 'loyalty_point_value');
 
-  update.run(String(input.minRedeemPoints ?? 1), 'loyalty_min_redeem_points')
+  update.run(String(input.minRedeemPoints ?? 1), 'loyalty_min_redeem_points');
 }
 
 function localDateKey() {
-  const date = new Date()
+  const date = new Date();
 
-  const year = date.getFullYear()
+  const year = date.getFullYear();
 
-  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0');
 
-  const day = String(date.getDate()).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0');
 
-  return `${year}-${month}-${day}`
+  return `${year}-${month}-${day}`;
 }
 
 function seedSale(input?: { initialPoints?: number; redeemPoints?: number }) {
-  const db = getDb()
+  const db = getDb();
 
   const category = createCategory({
     name: 'Exchange Loyalty Category',
-  })
+  });
 
   createProduct({
     name: 'Exchange Loyalty Product',
@@ -142,7 +142,7 @@ function seedSale(input?: { initialPoints?: number; redeemPoints?: number }) {
         opening_qty: 20,
       },
     ],
-  })
+  });
 
   const variants = {
     v150: getVariantByBarcode('LOY150') as VariantRow,
@@ -154,7 +154,7 @@ function seedSale(input?: { initialPoints?: number; redeemPoints?: number }) {
     v300: getVariantByBarcode('LOY300') as VariantRow,
 
     v350: getVariantByBarcode('LOY350') as VariantRow,
-  }
+  };
 
   const customerResult = db
     .prepare(
@@ -171,9 +171,9 @@ function seedSale(input?: { initialPoints?: number; redeemPoints?: number }) {
       'Exchange Loyalty Customer',
       '01055554444',
       Number(input?.initialPoints || 0),
-    )
+    );
 
-  const customerId = Number(customerResult.lastInsertRowid)
+  const customerId = Number(customerResult.lastInsertRowid);
 
   const promotion = createPromotion({
     name: 'Loyalty Buy 2 Get 1',
@@ -192,9 +192,9 @@ function seedSale(input?: { initialPoints?: number; redeemPoints?: number }) {
     product_ids: [],
 
     actor_id: 1,
-  })
+  });
 
-  togglePromotion(promotion.promotionId, 1)
+  togglePromotion(promotion.promotionId, 1);
 
   const sale = createSale({
     user_id: 1,
@@ -262,14 +262,14 @@ function seedSale(input?: { initialPoints?: number; redeemPoints?: number }) {
         unit_price: 150,
       },
     ],
-  })
+  });
 
   return {
     db,
     sale,
     customerId,
     variants,
-  }
+  };
 }
 
 function getCustomerPoints(customerId: number) {
@@ -282,9 +282,9 @@ function getCustomerPoints(customerId: number) {
       LIMIT 1
       `,
     )
-    .get(customerId) as any
+    .get(customerId) as any;
 
-  return Number(row?.points_balance || 0)
+  return Number(row?.points_balance || 0);
 }
 
 function getUnitByPrice(saleId: number, price: number) {
@@ -299,33 +299,33 @@ function getUnitByPrice(saleId: number, price: number) {
       LIMIT 1
       `,
     )
-    .get(saleId, price) as any
+    .get(saleId, price) as any;
 }
 
 describe('sale exchange loyalty accounting', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
+    closeDb();
+    getDb();
+    resetDatabaseData();
 
     openCashShift({
       opening_counted_amount: 0,
       opened_by: 1,
-    })
-  })
+    });
+  });
 
   it('recalculates earned points using the loyalty rules saved at sale time', () => {
     setLoyaltySettings({
       earnAmount: 100,
       earnPoints: 1,
       pointValue: 1,
-    })
+    });
 
-    const result = seedSale()
+    const result = seedSale();
 
-    expect(result.sale.loyalty_points_earned).toBe(4)
+    expect(result.sale.loyalty_points_earned).toBe(4);
 
-    expect(getCustomerPoints(result.customerId)).toBe(4)
+    expect(getCustomerPoints(result.customerId)).toBe(4);
 
     /*
      * تغيير الإعدادات بعد البيع
@@ -336,9 +336,9 @@ describe('sale exchange loyalty accounting', () => {
       earnAmount: 1000,
       earnPoints: 1,
       pointValue: 1,
-    })
+    });
 
-    const giftUnit = getUnitByPrice(result.sale.saleId, 150)
+    const giftUnit = getUnitByPrice(result.sale.saleId, 150);
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -352,15 +352,15 @@ describe('sale exchange loyalty accounting', () => {
           new_variant_id: result.variants.v300.variant_id,
         },
       ],
-    })
+    });
 
-    expect(exchange.difference_amount).toBe(100)
+    expect(exchange.difference_amount).toBe(100);
 
-    expect(exchange.loyalty_earned_points_adjustment).toBe(1)
+    expect(exchange.loyalty_earned_points_adjustment).toBe(1);
 
-    expect(exchange.loyalty_redeemed_points_adjustment).toBe(0)
+    expect(exchange.loyalty_redeemed_points_adjustment).toBe(0);
 
-    expect(getCustomerPoints(result.customerId)).toBe(5)
+    expect(getCustomerPoints(result.customerId)).toBe(5);
 
     const snapshot = result.db
       .prepare(
@@ -371,36 +371,36 @@ describe('sale exchange loyalty accounting', () => {
             LIMIT 1
             `,
       )
-      .get(result.sale.saleId) as any
+      .get(result.sale.saleId) as any;
 
-    expect(Number(snapshot.earn_amount)).toBe(100)
+    expect(Number(snapshot.earn_amount)).toBe(100);
 
-    const state = getSaleCurrentState(result.sale.saleId)
+    const state = getSaleCurrentState(result.sale.saleId);
 
-    expect(state.financials.current_loyalty_points_earned).toBe(5)
-  })
+    expect(state.financials.current_loyalty_points_earned).toBe(5);
+  });
 
   it('returns unused redeemed points when the new invoice can no longer use them', () => {
     setLoyaltySettings({
       earnAmount: 1000,
       earnPoints: 1,
       pointValue: 50,
-    })
+    });
 
     const result = seedSale({
       initialPoints: 8,
       redeemPoints: 8,
-    })
+    });
 
-    expect(result.sale.loyalty_points_redeemed).toBe(8)
+    expect(result.sale.loyalty_points_redeemed).toBe(8);
 
-    expect(result.sale.loyalty_discount_value).toBe(400)
+    expect(result.sale.loyalty_discount_value).toBe(400);
 
-    expect(result.sale.grand_total).toBe(50)
+    expect(result.sale.grand_total).toBe(50);
 
-    expect(getCustomerPoints(result.customerId)).toBe(0)
+    expect(getCustomerPoints(result.customerId)).toBe(0);
 
-    const unit250 = getUnitByPrice(result.sale.saleId, 250)
+    const unit250 = getUnitByPrice(result.sale.saleId, 250);
 
     const cheaperExchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -414,19 +414,19 @@ describe('sale exchange loyalty accounting', () => {
           new_variant_id: result.variants.v150.variant_id,
         },
       ],
-    })
+    });
 
-    expect(cheaperExchange.loyalty_redeemed_points_adjustment).toBe(-1)
+    expect(cheaperExchange.loyalty_redeemed_points_adjustment).toBe(-1);
 
-    expect(cheaperExchange.loyalty_earned_points_adjustment).toBe(0)
+    expect(cheaperExchange.loyalty_earned_points_adjustment).toBe(0);
 
-    expect(getCustomerPoints(result.customerId)).toBe(1)
+    expect(getCustomerPoints(result.customerId)).toBe(1);
 
-    const state = getSaleCurrentState(result.sale.saleId)
+    const state = getSaleCurrentState(result.sale.saleId);
 
-    expect(state.financials.current_loyalty_points_redeemed).toBe(7)
+    expect(state.financials.current_loyalty_points_redeemed).toBe(7);
 
-    expect(state.financials.current_loyalty_discount_value).toBe(350)
+    expect(state.financials.current_loyalty_discount_value).toBe(350);
 
     /*
      * نحاكي إن العميل استخدم
@@ -441,7 +441,7 @@ describe('sale exchange loyalty accounting', () => {
           WHERE id = ?
           `,
       )
-      .run(result.customerId)
+      .run(result.customerId);
 
     expect(() =>
       createSaleExchange({
@@ -457,19 +457,19 @@ describe('sale exchange loyalty accounting', () => {
           },
         ],
       }),
-    ).toThrow('رصيد نقاط العميل غير كافٍ لإتمام الاستبدال')
-  })
+    ).toThrow('رصيد نقاط العميل غير كافٍ لإتمام الاستبدال');
+  });
 
   it('reverses the recalculated earned points when the exchanged invoice is later returned', () => {
     setLoyaltySettings({
       earnAmount: 100,
       earnPoints: 1,
       pointValue: 1,
-    })
+    });
 
-    const result = seedSale()
+    const result = seedSale();
 
-    const giftUnit = getUnitByPrice(result.sale.saleId, 150)
+    const giftUnit = getUnitByPrice(result.sale.saleId, 150);
 
     createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -483,11 +483,11 @@ describe('sale exchange loyalty accounting', () => {
           new_variant_id: result.variants.v300.variant_id,
         },
       ],
-    })
+    });
 
-    expect(getCustomerPoints(result.customerId)).toBe(5)
+    expect(getCustomerPoints(result.customerId)).toBe(5);
 
-    const receipt = getSaleReceipt(result.sale.saleId) as any
+    const receipt = getSaleReceipt(result.sale.saleId) as any;
 
     const saleReturn = createSaleReturn({
       original_sale_id: result.sale.saleId,
@@ -503,14 +503,14 @@ describe('sale exchange loyalty accounting', () => {
 
         quantity: Number(item.quantity),
       })),
-    })
+    });
 
-    expect(saleReturn.return_value).toBe(550)
+    expect(saleReturn.return_value).toBe(550);
 
-    expect(saleReturn.loyalty_points_reversed).toBe(5)
+    expect(saleReturn.loyalty_points_reversed).toBe(5);
 
-    expect(getCustomerPoints(result.customerId)).toBe(0)
-  })
+    expect(getCustomerPoints(result.customerId)).toBe(0);
+  });
 
   it('includes exchange cash in the cashier day and rejects exchanges after day close', () => {
     setLoyaltySettings({
@@ -519,11 +519,11 @@ describe('sale exchange loyalty accounting', () => {
       earnAmount: 100,
       earnPoints: 1,
       pointValue: 1,
-    })
+    });
 
-    const result = seedSale()
+    const result = seedSale();
 
-    const giftUnit = getUnitByPrice(result.sale.saleId, 150)
+    const giftUnit = getUnitByPrice(result.sale.saleId, 150);
 
     createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -539,25 +539,25 @@ describe('sale exchange loyalty accounting', () => {
           new_variant_id: result.variants.v300.variant_id,
         },
       ],
-    })
+    });
 
     const exchangeCash = getCashSummary({
       type: 'sale_exchange',
-    })
+    });
 
-    expect(exchangeCash.total_in).toBe(100)
+    expect(exchangeCash.total_in).toBe(100);
 
-    expect(exchangeCash.total_out).toBe(0)
+    expect(exchangeCash.total_out).toBe(0);
 
-    const today = localDateKey()
+    const today = localDateKey();
 
-    const preview = getCashDayClosePreview(today)
+    const preview = getCashDayClosePreview(today);
 
     /*
      * 450 البيع الأصلي
      * + 100 فرق الاستبدال.
      */
-    expect(preview.day_cash_in).toBe(550)
+    expect(preview.day_cash_in).toBe(550);
 
     closeCashDay({
       business_date: today,
@@ -567,9 +567,9 @@ describe('sale exchange loyalty accounting', () => {
       carry_over_amount: preview.system_closing_balance,
 
       closed_by: 1,
-    })
+    });
 
-    const unit250 = getUnitByPrice(result.sale.saleId, 250)
+    const unit250 = getUnitByPrice(result.sale.saleId, 250);
 
     expect(() =>
       createSaleExchange({
@@ -585,8 +585,8 @@ describe('sale exchange loyalty accounting', () => {
           },
         ],
       }),
-    ).toThrow('تم تقفيله')
-  })
+    ).toThrow('تم تقفيله');
+  });
 
   it('releases all redeemed points when an exchange drops below the saved minimum redemption', () => {
     setLoyaltySettings({
@@ -594,20 +594,20 @@ describe('sale exchange loyalty accounting', () => {
       earnPoints: 1,
       pointValue: 100,
       minRedeemPoints: 4,
-    })
+    });
 
     const result = seedSale({
       initialPoints: 4,
       redeemPoints: 4,
-    })
+    });
 
-    expect(result.sale.loyalty_points_redeemed).toBe(4)
+    expect(result.sale.loyalty_points_redeemed).toBe(4);
 
-    expect(result.sale.loyalty_discount_value).toBe(400)
+    expect(result.sale.loyalty_discount_value).toBe(400);
 
-    expect(result.sale.grand_total).toBe(50)
+    expect(result.sale.grand_total).toBe(50);
 
-    const unit250 = getUnitByPrice(result.sale.saleId, 250)
+    const unit250 = getUnitByPrice(result.sale.saleId, 250);
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -621,30 +621,30 @@ describe('sale exchange loyalty accounting', () => {
           new_variant_id: result.variants.v150.variant_id,
         },
       ],
-    })
+    });
 
-    expect(exchange.loyalty_redeemed_points_adjustment).toBe(-4)
+    expect(exchange.loyalty_redeemed_points_adjustment).toBe(-4);
 
-    expect(getCustomerPoints(result.customerId)).toBe(4)
+    expect(getCustomerPoints(result.customerId)).toBe(4);
 
-    const state = getSaleCurrentState(result.sale.saleId)
+    const state = getSaleCurrentState(result.sale.saleId);
 
-    expect(state.financials.current_loyalty_points_redeemed).toBe(0)
+    expect(state.financials.current_loyalty_points_redeemed).toBe(0);
 
-    expect(state.financials.current_loyalty_discount_value).toBe(0)
-  })
+    expect(state.financials.current_loyalty_discount_value).toBe(0);
+  });
 
   it('does not pretend current loyalty settings are exact rules for an old invoice', () => {
     setLoyaltySettings({
       earnAmount: 1000,
       earnPoints: 1,
       pointValue: 50,
-    })
+    });
 
     const result = seedSale({
       initialPoints: 8,
       redeemPoints: 8,
-    })
+    });
 
     result.db
       .prepare(
@@ -664,17 +664,17 @@ describe('sale exchange loyalty accounting', () => {
         WHERE sale_id = ?
         `,
       )
-      .run(result.sale.saleId)
+      .run(result.sale.saleId);
 
-    const state = getSaleCurrentState(result.sale.saleId)
+    const state = getSaleCurrentState(result.sale.saleId);
 
-    expect(state.loyalty_snapshot.is_exact).toBe(false)
+    expect(state.loyalty_snapshot.is_exact).toBe(false);
 
-    expect(state.financials.current_loyalty_points_redeemed).toBe(8)
+    expect(state.financials.current_loyalty_points_redeemed).toBe(8);
 
-    expect(state.financials.current_loyalty_discount_value).toBe(400)
+    expect(state.financials.current_loyalty_discount_value).toBe(400);
 
-    const unit250 = getUnitByPrice(result.sale.saleId, 250)
+    const unit250 = getUnitByPrice(result.sale.saleId, 250);
 
     expect(() =>
       createSaleExchange({
@@ -690,6 +690,6 @@ describe('sale exchange loyalty accounting', () => {
           },
         ],
       }),
-    ).toThrow('شروط النقاط الأصلية غير محفوظة')
-  })
-})
+    ).toThrow('شروط النقاط الأصلية غير محفوظة');
+  });
+});

@@ -1,59 +1,59 @@
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
-import FirstRunSetup from './FirstRunSetup'
-import ForcedPasswordChange from './ForcedPasswordChange'
-import { useAuthStore } from '../../store/auth.store'
-import { useEffect, useRef, useState } from 'react'
-import AdminPasswordRecovery from './AdminPasswordRecovery'
-import type { PermissionKey } from '../../../shared/permissions'
+import FirstRunSetup from './FirstRunSetup';
+import ForcedPasswordChange from './ForcedPasswordChange';
+import { useAuthStore } from '../../store/auth.store';
+import { useEffect, useRef, useState } from 'react';
+import AdminPasswordRecovery from './AdminPasswordRecovery';
+import type { PermissionKey } from '../../../shared/permissions';
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const loginStore = useAuthStore((s) => s.login)
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const loginStore = useAuthStore((s) => s.login);
   const [error, setError] = useState(
     searchParams.get('locked') === '1'
       ? 'تم قفل الجلسة تلقائيًا بسبب عدم الاستخدام. سجل الدخول مرة أخرى.'
       : '',
-  )
+  );
 
-  const [bootstrapLoading, setBootstrapLoading] = useState(true)
+  const [bootstrapLoading, setBootstrapLoading] = useState(true);
 
   const [bootstrapStatus, setBootstrapStatus] = useState<{
-    needs_setup: boolean
-    blocked: boolean
-    message?: string
-  } | null>(null)
+    needs_setup: boolean;
+    blocked: boolean;
+    message?: string;
+  } | null>(null);
 
   const [passwordChangeUser, setPasswordChangeUser] = useState<{
-    id: number
-    name: string
-    username: string
-    role: string
-    permissions?: PermissionKey[]
-  } | null>(null)
+    id: number;
+    name: string;
+    username: string;
+    role: string;
+    permissions?: PermissionKey[];
+  } | null>(null);
 
-  const [showAdminRecovery, setShowAdminRecovery] = useState(false)
+  const [showAdminRecovery, setShowAdminRecovery] = useState(false);
 
-  const [loading, setLoading] = useState(false)
-  const [appLogoUrl, setAppLogoUrl] = useState('')
-  const [appName, setAppName] = useState('ERP Store')
+  const [loading, setLoading] = useState(false);
+  const [appLogoUrl, setAppLogoUrl] = useState('');
+  const [appName, setAppName] = useState('ERP Store');
   const [appTheme, setAppTheme] = useState<'dark' | 'light'>(() =>
     document.documentElement.getAttribute('data-theme') === 'light'
       ? 'light'
       : 'dark',
-  )
+  );
 
-  const isLight = appTheme === 'light'
+  const isLight = appTheme === 'light';
 
-  const usernameRef = useRef<HTMLInputElement>(null)
+  const usernameRef = useRef<HTMLInputElement>(null);
 
   async function waitForApi(maxTries = 20) {
     for (let i = 0; i < maxTries; i += 1) {
-      const api = (window as any).api
+      const api = (window as any).api;
 
       if (
         api &&
@@ -61,171 +61,171 @@ export default function LoginPage() {
         typeof api.login === 'function' &&
         typeof api.getAuthBootstrapStatus === 'function'
       ) {
-        return api as Window['api']
+        return api as Window['api'];
       }
 
-      await new Promise((resolve) => window.setTimeout(resolve, 150))
+      await new Promise((resolve) => window.setTimeout(resolve, 150));
     }
 
-    return null
+    return null;
   }
 
   useEffect(() => {
-    usernameRef.current?.focus()
+    usernameRef.current?.focus();
 
-    const cachedStatus = window.__APP_LICENSE_STATUS__
+    const cachedStatus = window.__APP_LICENSE_STATUS__;
 
     if (cachedStatus) {
-      setAppLogoUrl(cachedStatus.app_logo_url || '')
+      setAppLogoUrl(cachedStatus.app_logo_url || '');
 
-      setAppName(cachedStatus.app_name || 'ERP Store')
+      setAppName(cachedStatus.app_name || 'ERP Store');
 
-      const nextTheme = cachedStatus.app_theme === 'light' ? 'light' : 'dark'
+      const nextTheme = cachedStatus.app_theme === 'light' ? 'light' : 'dark';
 
-      setAppTheme(nextTheme)
+      setAppTheme(nextTheme);
 
-      document.documentElement.setAttribute('data-theme', nextTheme)
+      document.documentElement.setAttribute('data-theme', nextTheme);
 
-      return
+      return;
     }
 
     async function loadLoginAppInfo() {
       try {
-        const api = await waitForApi()
+        const api = await waitForApi();
 
         if (!api) {
-          setAppLogoUrl('')
-          setAppName('ERP Store')
-          return
+          setAppLogoUrl('');
+          setAppName('ERP Store');
+          return;
         }
 
-        const status = await api.getLicenseStatus()
+        const status = await api.getLicenseStatus();
 
-        window.__APP_LICENSE_STATUS__ = status
+        window.__APP_LICENSE_STATUS__ = status;
 
-        setAppLogoUrl(status.app_logo_url || '')
+        setAppLogoUrl(status.app_logo_url || '');
 
-        setAppName(status.app_name || 'ERP Store')
+        setAppName(status.app_name || 'ERP Store');
 
-        const nextTheme = status.app_theme === 'light' ? 'light' : 'dark'
+        const nextTheme = status.app_theme === 'light' ? 'light' : 'dark';
 
-        setAppTheme(nextTheme)
+        setAppTheme(nextTheme);
 
-        document.documentElement.setAttribute('data-theme', nextTheme)
+        document.documentElement.setAttribute('data-theme', nextTheme);
       } catch (error) {
-        console.error('Failed to load login app info:', error)
+        console.error('Failed to load login app info:', error);
 
-        setAppLogoUrl('')
-        setAppName('ERP Store')
+        setAppLogoUrl('');
+        setAppName('ERP Store');
       }
     }
 
-    void loadLoginAppInfo()
-  }, [])
+    void loadLoginAppInfo();
+  }, []);
 
   useEffect(() => {
-    let active = true
+    let active = true;
 
     async function loadBootstrapStatus() {
       try {
-        const api = await waitForApi()
+        const api = await waitForApi();
 
         if (!api) {
-          return
+          return;
         }
 
-        const status = await api.getAuthBootstrapStatus()
+        const status = await api.getAuthBootstrapStatus();
 
         if (!active) {
-          return
+          return;
         }
 
-        setBootstrapStatus(status)
+        setBootstrapStatus(status);
 
         if (status.blocked && status.message) {
-          setError(status.message)
+          setError(status.message);
         }
       } catch (error) {
-        console.error('Failed to load auth bootstrap status:', error)
+        console.error('Failed to load auth bootstrap status:', error);
       } finally {
         if (active) {
-          setBootstrapLoading(false)
+          setBootstrapLoading(false);
         }
       }
     }
 
-    void loadBootstrapStatus()
+    void loadBootstrapStatus();
 
     return () => {
-      active = false
-    }
-  }, [])
+      active = false;
+    };
+  }, []);
 
   async function handleLogin() {
-    setError('')
-    setLoading(true)
+    setError('');
+    setLoading(true);
 
     try {
-      const api = await waitForApi()
+      const api = await waitForApi();
 
       if (!api) {
-        setError('تعذر الاتصال بواجهة البرنامج، حاول مرة أخرى')
-        return
+        setError('تعذر الاتصال بواجهة البرنامج، حاول مرة أخرى');
+        return;
       }
 
       const res = await api.login({
         username,
         password,
-      })
+      });
 
       if (!res.success) {
-        setError(res.message || 'فشل تسجيل الدخول')
-        return
+        setError(res.message || 'فشل تسجيل الدخول');
+        return;
       }
 
       if (res.requires_password_change && res.user) {
-        setPasswordChangeUser(res.user)
+        setPasswordChangeUser(res.user);
 
-        setPassword('')
+        setPassword('');
 
-        return
+        return;
       }
 
       if (res.user) {
-        loginStore(res.user)
-        navigate('/dashboard')
+        loginStore(res.user);
+        navigate('/dashboard');
       }
     } catch (error) {
-      console.error('Login error:', error)
-      setError('خطأ في الاتصال بالنظام')
+      console.error('Login error:', error);
+      setError('خطأ في الاتصال بالنظام');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   const pageBg = isLight
     ? 'radial-gradient(circle at top right, rgba(37,99,235,0.10), transparent 28%), radial-gradient(circle at bottom left, rgba(139,92,246,0.10), transparent 26%), linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)'
-    : 'radial-gradient(circle at top right, rgba(37,99,235,0.18), transparent 28%), radial-gradient(circle at bottom left, rgba(139,92,246,0.18), transparent 26%)'
+    : 'radial-gradient(circle at top right, rgba(37,99,235,0.18), transparent 28%), radial-gradient(circle at bottom left, rgba(139,92,246,0.18), transparent 26%)';
 
-  const shellBg = isLight ? 'rgba(255,255,255,0.96)' : 'rgba(17,24,39,0.85)'
+  const shellBg = isLight ? 'rgba(255,255,255,0.96)' : 'rgba(17,24,39,0.85)';
   const shellBorder = isLight
     ? '1px solid rgba(15,23,42,0.10)'
-    : '1px solid rgba(255,255,255,0.08)'
+    : '1px solid rgba(255,255,255,0.08)';
   const shellShadow = isLight
     ? '0 24px 70px rgba(15,23,42,0.14)'
-    : '0 20px 60px rgba(0,0,0,0.35)'
+    : '0 20px 60px rgba(0,0,0,0.35)';
 
   const infoPanelBg = isLight
     ? 'radial-gradient(circle at top right, rgba(37,99,235,0.12), transparent 30%), radial-gradient(circle at bottom left, rgba(139,92,246,0.10), transparent 28%), linear-gradient(180deg, rgba(239,246,255,0.98), rgba(255,255,255,0.98))'
-    : 'radial-gradient(circle at top right, rgba(37,99,235,0.30), transparent 30%), radial-gradient(circle at bottom left, rgba(139,92,246,0.24), transparent 28%), linear-gradient(180deg, rgba(15,23,42,0.96), rgba(17,24,39,0.96))'
+    : 'radial-gradient(circle at top right, rgba(37,99,235,0.30), transparent 30%), radial-gradient(circle at bottom left, rgba(139,92,246,0.24), transparent 28%), linear-gradient(180deg, rgba(15,23,42,0.96), rgba(17,24,39,0.96))';
 
   const formPanelBg = isLight
     ? 'linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.98))'
-    : 'rgba(17,24,39,0.55)'
+    : 'rgba(17,24,39,0.55)';
 
-  const titleColor = isLight ? '#0f172a' : '#f8fafc'
-  const textColor = isLight ? '#334155' : '#cbd5e1'
-  const mutedColor = isLight ? '#64748b' : '#94a3b8'
+  const titleColor = isLight ? '#0f172a' : '#f8fafc';
+  const textColor = isLight ? '#334155' : '#cbd5e1';
+  const mutedColor = isLight ? '#64748b' : '#94a3b8';
 
   const loginInputStyle: React.CSSProperties = {
     width: '100%',
@@ -240,7 +240,7 @@ export default function LoginPage() {
     outline: 'none',
     fontSize: '15px',
     boxShadow: isLight ? '0 8px 20px rgba(15,23,42,0.06)' : 'none',
-  }
+  };
 
   if (bootstrapLoading) {
     return (
@@ -261,7 +261,7 @@ export default function LoginPage() {
       >
         جاري تجهيز النظام...
       </div>
-    )
+    );
   }
 
   if (bootstrapStatus?.needs_setup) {
@@ -271,13 +271,13 @@ export default function LoginPage() {
         appLogoUrl={appLogoUrl}
         appTheme={appTheme}
       />
-    )
+    );
   }
 
   if (passwordChangeUser) {
     return (
       <ForcedPasswordChange user={passwordChangeUser} appTheme={appTheme} />
-    )
+    );
   }
 
   if (showAdminRecovery) {
@@ -285,16 +285,16 @@ export default function LoginPage() {
       <AdminPasswordRecovery
         appTheme={appTheme}
         onClose={(recoveredUsername) => {
-          setShowAdminRecovery(false)
+          setShowAdminRecovery(false);
 
           if (recoveredUsername) {
-            setUsername(recoveredUsername)
+            setUsername(recoveredUsername);
 
-            setPassword('')
+            setPassword('');
           }
         }}
       />
-    )
+    );
   }
 
   return (
@@ -354,7 +354,7 @@ export default function LoginPage() {
                   objectFit: 'cover',
                 }}
                 onError={(e) => {
-                  e.currentTarget.style.display = 'none'
+                  e.currentTarget.style.display = 'none';
                 }}
               />
             ) : (
@@ -463,8 +463,8 @@ export default function LoginPage() {
 
             <form
               onSubmit={(e) => {
-                e.preventDefault()
-                void handleLogin()
+                e.preventDefault();
+                void handleLogin();
               }}
             >
               <div style={{ display: 'grid', gap: '16px' }}>
@@ -561,9 +561,9 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setError('')
+                    setError('');
 
-                    setShowAdminRecovery(true)
+                    setShowAdminRecovery(true);
                   }}
                   style={{
                     border: 'none',
@@ -603,5 +603,5 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

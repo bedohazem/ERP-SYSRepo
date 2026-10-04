@@ -1,104 +1,104 @@
-import { getDb } from '../db'
-import { createCashMovement, resolveCashAccount } from './cash.repo'
-import { calculateActivePromotionsForSale } from './promotions.repo'
+import { getDb } from '../db';
+import { createCashMovement, resolveCashAccount } from './cash.repo';
+import { calculateActivePromotionsForSale } from './promotions.repo';
 import {
   calculateSaleEarnedPoints,
   getSaleCurrentState,
-} from './sales-current-state.repo'
+} from './sales-current-state.repo';
 import {
   getOpenCashShift,
   requireOperationalCashShift,
   resolveFinancialOperationShift,
-} from './cash-shifts.repo'
+} from './cash-shifts.repo';
 
-import { getShiftBusinessDate } from '../shift-business-date'
+import { getShiftBusinessDate } from '../shift-business-date';
 import {
   issueStockAtAverageCost,
   issueStockAtCost,
   receiveStockAtCost,
-} from '../inventory-cost'
-import { roundMoney } from '../../../shared/money'
+} from '../inventory-cost';
+import { roundMoney } from '../../../shared/money';
 
 export type CreateSaleLineInput = {
-  variant_id: number
-  product_name: string
-  barcode: string
-  size: string
-  color: string
-  quantity: number
-  unit_price: number
-  is_gift?: boolean
-  promotion_group_id?: string | null
-}
+  variant_id: number;
+  product_name: string;
+  barcode: string;
+  size: string;
+  color: string;
+  quantity: number;
+  unit_price: number;
+  is_gift?: boolean;
+  promotion_group_id?: string | null;
+};
 
 type CreateSaleInput = {
-  user_id: number
-  customer_id?: number | null
-  business_date?: string | null
-  promotion_id?: number | null
-  promotion_ids?: number[]
-  sub_total: number
-  discount_value: number
-  grand_total: number
-  change_amount: number
-  payment_method: string
+  user_id: number;
+  customer_id?: number | null;
+  business_date?: string | null;
+  promotion_id?: number | null;
+  promotion_ids?: number[];
+  sub_total: number;
+  discount_value: number;
+  grand_total: number;
+  change_amount: number;
+  payment_method: string;
   payments?: Array<{
-    payment_method: string
-    amount: number
-  }>
-  notes?: string | null
+    payment_method: string;
+    amount: number;
+  }>;
+  notes?: string | null;
 
-  loyalty_points_redeemed?: number
-  loyalty_discount_value?: number
-  paid?: number
-  remaining_amount?: number
-  payment_status?: string
-  credit_limit_override_approved_by?: number | null
+  loyalty_points_redeemed?: number;
+  loyalty_discount_value?: number;
+  paid?: number;
+  remaining_amount?: number;
+  payment_status?: string;
+  credit_limit_override_approved_by?: number | null;
   items: Array<{
-    variant_id: number
-    product_name: string
-    barcode?: string | null
-    size?: string | null
-    color?: string | null
-    quantity: number
-    unit_price: number
-  }>
-}
+    variant_id: number;
+    product_name: string;
+    barcode?: string | null;
+    size?: string | null;
+    color?: string | null;
+    quantity: number;
+    unit_price: number;
+  }>;
+};
 
 type CreateSaleInternalOptions = {
-  forced_sale_id?: number | null
+  forced_sale_id?: number | null;
 
-  created_at?: string | null
+  created_at?: string | null;
 
-  invoice_user_id?: number | null
+  invoice_user_id?: number | null;
 
   /*
    * يستخدم فقط أثناء تعديل
    * نفس الفاتورة حتى لا تتغير
    * Credit Terms التاريخية.
    */
-  preserve_due_date?: boolean
+  preserve_due_date?: boolean;
 
-  due_date_override?: string | null
-}
+  due_date_override?: string | null;
+};
 
 export type UpdateSaleInvoiceInput = Omit<
   CreateSaleInput,
   'user_id' | 'business_date'
 > & {
-  sale_id: number
-  actor_id: number
-  reason?: string | null
-}
+  sale_id: number;
+  actor_id: number;
+  reason?: string | null;
+};
 
 function getSetting(key: string, fallback: string) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(`SELECT value FROM app_settings WHERE key = ? LIMIT 1`)
-    .get(key) as { value: string } | undefined
+    .get(key) as { value: string } | undefined;
 
-  return row?.value ?? fallback
+  return row?.value ?? fallback;
 }
 
 function getLoyaltySettingsForSale() {
@@ -108,7 +108,7 @@ function getLoyaltySettingsForSale() {
     earnPoints: Number(getSetting('loyalty_earn_points', '1')),
     pointValue: Number(getSetting('loyalty_point_value', '1')),
     minRedeemPoints: Number(getSetting('loyalty_min_redeem_points', '1')),
-  }
+  };
 }
 
 function calculateSaleDueDate(
@@ -117,13 +117,13 @@ function calculateSaleDueDate(
   creditDays: number | null,
 ) {
   if (creditDays === null) {
-    return null
+    return null;
   }
 
-  const days = Number(creditDays)
+  const days = Number(creditDays);
 
   if (!Number.isInteger(days) || days < 0) {
-    throw new Error('مدة ائتمان العميل غير صحيحة')
+    throw new Error('مدة ائتمان العميل غير صحيحة');
   }
 
   const row = db
@@ -141,37 +141,37 @@ function calculateSaleDueDate(
     )
     .get(businessDate, days) as
     | {
-        due_date: string | null
+        due_date: string | null;
       }
-    | undefined
+    | undefined;
 
-  const dueDate = String(row?.due_date || '').trim()
+  const dueDate = String(row?.due_date || '').trim();
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
-    throw new Error('تعذر حساب تاريخ استحقاق فاتورة البيع')
+    throw new Error('تعذر حساب تاريخ استحقاق فاتورة البيع');
   }
 
-  return dueDate
+  return dueDate;
 }
 
 export type CreditLimitExceededDetails = {
-  customer_id: number
+  customer_id: number;
 
-  credit_limit: number
+  credit_limit: number;
 
-  current_debt: number
+  current_debt: number;
 
-  additional_debt: number
+  additional_debt: number;
 
-  projected_debt: number
+  projected_debt: number;
 
-  excess_amount: number
-}
+  excess_amount: number;
+};
 
 export class CreditLimitExceededError extends Error {
-  readonly code = 'CREDIT_LIMIT_EXCEEDED'
+  readonly code = 'CREDIT_LIMIT_EXCEEDED';
 
-  readonly details: CreditLimitExceededDetails
+  readonly details: CreditLimitExceededDetails;
 
   constructor(details: CreditLimitExceededDetails) {
     super(
@@ -180,11 +180,11 @@ export class CreditLimitExceededError extends Error {
       )} ج.م ستتجاوز الحد الائتماني للعميل وهو ${details.credit_limit.toFixed(
         2,
       )} ج.م`,
-    )
+    );
 
-    this.name = 'CreditLimitExceededError'
+    this.name = 'CreditLimitExceededError';
 
-    this.details = details
+    this.details = details;
   }
 }
 
@@ -196,20 +196,20 @@ function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
       `,
     )
     .get() as {
-    business_date: string
-  }
+    business_date: string;
+  };
 
-  return String(row?.business_date || '')
+  return String(row?.business_date || '');
 }
 
 export function syncCustomerTotalSpent(customerIdInput: number) {
-  const customerId = Number(customerIdInput || 0)
+  const customerId = Number(customerIdInput || 0);
 
   if (!customerId) {
-    return
+    return;
   }
 
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -257,11 +257,11 @@ export function syncCustomerTotalSpent(customerIdInput: number) {
     )
     .get(customerId, customerId, customerId) as
     | {
-        total_spent: number
+        total_spent: number;
       }
-    | undefined
+    | undefined;
 
-  const totalSpent = Math.max(0, roundMoney(Number(row?.total_spent || 0)))
+  const totalSpent = Math.max(0, roundMoney(Number(row?.total_spent || 0)));
 
   db.prepare(
     `
@@ -271,24 +271,24 @@ export function syncCustomerTotalSpent(customerIdInput: number) {
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
     `,
-  ).run(totalSpent, customerId)
+  ).run(totalSpent, customerId);
 }
 
 function createSaleInternal(
   input: CreateSaleInput,
   options: CreateSaleInternalOptions = {},
 ) {
-  const db = getDb()
+  const db = getDb();
 
   if (!input.user_id) {
-    throw new Error('User ID is required')
+    throw new Error('User ID is required');
   }
 
   if (!input.items?.length) {
-    throw new Error('Sale items are required')
+    throw new Error('Sale items are required');
   }
 
-  const paymentMethod = String(input.payment_method || 'cash').trim() || 'cash'
+  const paymentMethod = String(input.payment_method || 'cash').trim() || 'cash';
 
   const requestedPayments = Array.isArray(input.payments)
     ? input.payments
@@ -301,7 +301,7 @@ function createSaleInternal(
         .filter(
           (payment) => Number.isFinite(payment.amount) && payment.amount > 0,
         )
-    : []
+    : [];
 
   const openShift = resolveFinancialOperationShift(
     input.user_id,
@@ -311,24 +311,24 @@ function createSaleInternal(
       : [paymentMethod],
 
     'لا يمكن تسجيل فاتورة بيع من درج المحل بدون شفت مفتوح',
-  )
+  );
 
-  const loyalty = getLoyaltySettingsForSale()
+  const loyalty = getLoyaltySettingsForSale();
 
-  const requestedBusinessDate = String(input.business_date || '').trim()
+  const requestedBusinessDate = String(input.business_date || '').trim();
 
   const businessDate = openShift
     ? getShiftBusinessDate(openShift.id)
     : /^\d{4}-\d{2}-\d{2}$/.test(requestedBusinessDate)
       ? requestedBusinessDate
-      : getCurrentBusinessDate(db)
+      : getCurrentBusinessDate(db);
 
-  const customerId = input.customer_id ? Number(input.customer_id) : null
-  const invoiceUserId = Number(options.invoice_user_id || input.user_id)
-  const requestedRedeemPoints = Number(input.loyalty_points_redeemed || 0)
+  const customerId = input.customer_id ? Number(input.customer_id) : null;
+  const invoiceUserId = Number(options.invoice_user_id || input.user_id);
+  const requestedRedeemPoints = Number(input.loyalty_points_redeemed || 0);
 
   const tx = db.transaction(() => {
-    const promotionResult = calculateActivePromotionsForSale(input.items)
+    const promotionResult = calculateActivePromotionsForSale(input.items);
 
     const expectedPromotionIds = Array.isArray(input.promotion_ids)
       ? Array.from(
@@ -340,38 +340,38 @@ function createSaleInternal(
         ).sort((a, b) => a - b)
       : input.promotion_id
         ? [Number(input.promotion_id)]
-        : []
+        : [];
 
     const activePromotionIds = promotionResult.active_promotions
       .map((promotion: any) => Number(promotion.id))
-      .sort((a: number, b: number) => a - b)
+      .sort((a: number, b: number) => a - b);
 
     if (
       JSON.stringify(expectedPromotionIds) !==
       JSON.stringify(activePromotionIds)
     ) {
-      throw new Error('العروض الفعالة اتغيرت، افتح شاشة الدفع مرة أخرى')
+      throw new Error('العروض الفعالة اتغيرت، افتح شاشة الدفع مرة أخرى');
     }
 
     const subTotal = roundMoney(
       input.items.reduce((total, item) => {
-        const qty = Math.max(0, Number(item.quantity || 0))
+        const qty = Math.max(0, Number(item.quantity || 0));
 
-        const price = Math.max(0, Number(item.unit_price || 0))
+        const price = Math.max(0, Number(item.unit_price || 0));
 
-        return total + qty * price
+        return total + qty * price;
       }, 0),
-    )
+    );
 
     const promotionDiscount = Math.min(
       subTotal,
       Math.max(0, Number(promotionResult.promotion_discount_value || 0)),
-    )
+    );
 
-    const appliedPromotions = promotionResult.applied_promotions
+    const appliedPromotions = promotionResult.applied_promotions;
 
     const headerPromotionId =
-      appliedPromotions.length === 1 ? Number(appliedPromotions[0].id) : null
+      appliedPromotions.length === 1 ? Number(appliedPromotions[0].id) : null;
 
     const headerPromotionName =
       appliedPromotions.length > 0
@@ -379,23 +379,23 @@ function createSaleInternal(
             .map((promotion: any) => String(promotion.name || ''))
             .filter(Boolean)
             .join(' + ')
-        : null
+        : null;
 
-    const totalAfterPromotion = Math.max(0, subTotal - promotionDiscount)
+    const totalAfterPromotion = Math.max(0, subTotal - promotionDiscount);
 
     const normalDiscount = Math.min(
       totalAfterPromotion,
 
       Math.max(0, Number(input.discount_value || 0)),
-    )
+    );
 
     const totalAfterNormalDiscount = Math.max(
       0,
       totalAfterPromotion - normalDiscount,
-    )
+    );
 
-    let redeemPoints = 0
-    let loyaltyDiscountValue = 0
+    let redeemPoints = 0;
+    let loyaltyDiscountValue = 0;
 
     if (loyalty.enabled && customerId && requestedRedeemPoints > 0) {
       const customer = db
@@ -409,60 +409,60 @@ function createSaleInternal(
         )
         .get(customerId) as
         | {
-            points_balance: number
+            points_balance: number;
           }
-        | undefined
+        | undefined;
 
       if (!customer) {
-        throw new Error('العميل غير موجود')
+        throw new Error('العميل غير موجود');
       }
 
       if (requestedRedeemPoints < loyalty.minRedeemPoints) {
-        throw new Error(`أقل عدد نقاط للاستخدام هو ${loyalty.minRedeemPoints}`)
+        throw new Error(`أقل عدد نقاط للاستخدام هو ${loyalty.minRedeemPoints}`);
       }
 
       if (requestedRedeemPoints > Number(customer.points_balance || 0)) {
-        throw new Error('رصيد نقاط العميل غير كافي')
+        throw new Error('رصيد نقاط العميل غير كافي');
       }
 
       const maxRedeemByTotal =
         loyalty.pointValue > 0
           ? Math.floor(totalAfterNormalDiscount / loyalty.pointValue)
-          : 0
+          : 0;
 
       const cappedRedeemPoints = Math.min(
         requestedRedeemPoints,
         maxRedeemByTotal,
-      )
+      );
 
       if (
         cappedRedeemPoints > 0 &&
         cappedRedeemPoints < loyalty.minRedeemPoints
       ) {
-        throw new Error('قيمة الفاتورة لا تسمح باستخدام الحد الأدنى من النقاط')
+        throw new Error('قيمة الفاتورة لا تسمح باستخدام الحد الأدنى من النقاط');
       }
 
-      redeemPoints = cappedRedeemPoints
+      redeemPoints = cappedRedeemPoints;
 
-      loyaltyDiscountValue = redeemPoints * loyalty.pointValue
+      loyaltyDiscountValue = redeemPoints * loyalty.pointValue;
     }
 
     const grandTotal = Math.max(
       0,
       totalAfterNormalDiscount - loyaltyDiscountValue,
-    )
+    );
 
-    const paymentTotals = new Map<string, number>()
+    const paymentTotals = new Map<string, number>();
 
     for (const payment of requestedPayments) {
-      const account = resolveCashAccount(payment.payment_method)
+      const account = resolveCashAccount(payment.payment_method);
 
       paymentTotals.set(
         account,
         roundMoney(
           Number(paymentTotals.get(account) || 0) + Number(payment.amount || 0),
         ),
-      )
+      );
     }
 
     const salePayments =
@@ -473,23 +473,23 @@ function createSaleInternal(
               amount: roundMoney(amount),
             }),
           )
-        : []
+        : [];
 
     const splitPaidAmount = roundMoney(
       salePayments.reduce(
         (total, payment) => total + Number(payment.amount || 0),
         0,
       ),
-    )
+    );
 
     if (splitPaidAmount > grandTotal + 0.01) {
-      throw new Error('إجمالي مبالغ وسائل الدفع أكبر من إجمالي الفاتورة')
+      throw new Error('إجمالي مبالغ وسائل الدفع أكبر من إجمالي الفاتورة');
     }
 
     const paidAmount =
       requestedPayments.length > 0
         ? splitPaidAmount
-        : Math.min(Math.max(Number(input.paid ?? grandTotal), 0), grandTotal)
+        : Math.min(Math.max(Number(input.paid ?? grandTotal), 0), grandTotal);
 
     const effectivePayments =
       requestedPayments.length > 0
@@ -501,33 +501,33 @@ function createSaleInternal(
                 amount: paidAmount,
               },
             ]
-          : []
+          : [];
 
-    const remainingAmount = Math.max(0, roundMoney(grandTotal - paidAmount))
+    const remainingAmount = Math.max(0, roundMoney(grandTotal - paidAmount));
 
     const invoicePaymentMethod =
       requestedPayments.length > 0
         ? effectivePayments.length > 1
           ? 'split'
           : effectivePayments[0]?.payment_method || paymentMethod
-        : paymentMethod
+        : paymentMethod;
 
     const paymentStatus =
-      remainingAmount === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid'
+      remainingAmount === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
 
     if (remainingAmount > 0 && !customerId) {
-      throw new Error('لا يمكن البيع آجل بدون اختيار عميل')
+      throw new Error('لا يمكن البيع آجل بدون اختيار عميل');
     }
 
-    let customerBalanceBefore: number | null = null
+    let customerBalanceBefore: number | null = null;
 
-    let customerCreditLimit: number | null = null
+    let customerCreditLimit: number | null = null;
 
-    let customerCreditDays: number | null = null
+    let customerCreditDays: number | null = null;
 
-    let dueDate: string | null = null
+    let dueDate: string | null = null;
 
-    let creditLimitOverrideApprovedBy: number | null = null
+    let creditLimitOverrideApprovedBy: number | null = null;
 
     if (customerId) {
       const customerCredit = db
@@ -553,18 +553,18 @@ function createSaleInternal(
         )
         .get(customerId) as
         | {
-            id: number
+            id: number;
 
-            balance: number
+            balance: number;
 
-            credit_limit: number | null
+            credit_limit: number | null;
 
-            credit_days: number | null
+            credit_days: number | null;
           }
-        | undefined
+        | undefined;
 
       if (!customerCredit) {
-        throw new Error('العميل غير موجود')
+        throw new Error('العميل غير موجود');
       }
 
       customerBalanceBefore = roundMoney(
@@ -573,7 +573,7 @@ function createSaleInternal(
 
           Number(customerCredit.balance || 0),
         ),
-      )
+      );
 
       customerCreditLimit =
         customerCredit.credit_limit == null
@@ -584,26 +584,26 @@ function createSaleInternal(
 
                 Number(customerCredit.credit_limit),
               ),
-            )
+            );
 
       customerCreditDays =
         customerCredit.credit_days == null
           ? null
-          : Number(customerCredit.credit_days)
+          : Number(customerCredit.credit_days);
 
       if (
         customerCreditDays !== null &&
         (!Number.isInteger(customerCreditDays) || customerCreditDays < 0)
       ) {
-        throw new Error('مدة ائتمان العميل غير صحيحة')
+        throw new Error('مدة ائتمان العميل غير صحيحة');
       }
 
-      const projectedDebt = roundMoney(customerBalanceBefore + remainingAmount)
+      const projectedDebt = roundMoney(customerBalanceBefore + remainingAmount);
 
       const creditExceeded =
         remainingAmount > 0 &&
         customerCreditLimit !== null &&
-        projectedDebt > customerCreditLimit + 0.0001
+        projectedDebt > customerCreditLimit + 0.0001;
 
       if (creditExceeded) {
         /*
@@ -612,9 +612,9 @@ function createSaleInternal(
          * نحوله هنا لـ number صريح عشان
          * TypeScript ما يفضلش شايفه nullable.
          */
-        const exceededCreditLimit = Number(customerCreditLimit)
+        const exceededCreditLimit = Number(customerCreditLimit);
 
-        const approvedBy = Number(input.credit_limit_override_approved_by || 0)
+        const approvedBy = Number(input.credit_limit_override_approved_by || 0);
 
         if (!approvedBy) {
           throw new CreditLimitExceededError({
@@ -629,7 +629,7 @@ function createSaleInternal(
             projected_debt: projectedDebt,
 
             excess_amount: roundMoney(projectedDebt - exceededCreditLimit),
-          })
+          });
         }
 
         const approvingAdmin = db
@@ -650,32 +650,32 @@ function createSaleInternal(
         LIMIT 1
         `,
           )
-          .get(approvedBy)
+          .get(approvedBy);
 
         if (!approvingAdmin) {
-          throw new Error('موافقة تجاوز الحد الائتماني غير صالحة')
+          throw new Error('موافقة تجاوز الحد الائتماني غير صالحة');
         }
 
-        creditLimitOverrideApprovedBy = approvedBy
+        creditLimitOverrideApprovedBy = approvedBy;
       }
     }
 
     if (customerId && options.preserve_due_date) {
-      const preservedDueDate = String(options.due_date_override || '').trim()
+      const preservedDueDate = String(options.due_date_override || '').trim();
 
       if (preservedDueDate && !/^\d{4}-\d{2}-\d{2}$/.test(preservedDueDate)) {
-        throw new Error('تاريخ الاستحقاق المحفوظ غير صحيح')
+        throw new Error('تاريخ الاستحقاق المحفوظ غير صحيح');
       }
 
-      dueDate = preservedDueDate || null
+      dueDate = preservedDueDate || null;
     } else if (customerId && remainingAmount > 0) {
-      dueDate = calculateSaleDueDate(db, businessDate, customerCreditDays)
+      dueDate = calculateSaleDueDate(db, businessDate, customerCreditDays);
     }
 
     const earnedPoints =
       loyalty.enabled && customerId
         ? Math.floor(grandTotal / loyalty.earnAmount) * loyalty.earnPoints
-        : 0
+        : 0;
 
     const saleResult = db
       .prepare(
@@ -797,11 +797,11 @@ function createSaleInternal(
         redeemPoints,
 
         loyaltyDiscountValue,
-      )
+      );
 
-    let saleId = Number(saleResult.lastInsertRowid)
+    let saleId = Number(saleResult.lastInsertRowid);
 
-    const forcedSaleId = Number(options.forced_sale_id || 0)
+    const forcedSaleId = Number(options.forced_sale_id || 0);
 
     if (forcedSaleId > 0) {
       db.prepare(
@@ -810,9 +810,9 @@ function createSaleInternal(
         SET id = ?
         WHERE id = ?
         `,
-      ).run(forcedSaleId, saleId)
+      ).run(forcedSaleId, saleId);
 
-      saleId = forcedSaleId
+      saleId = forcedSaleId;
     }
 
     db.prepare(
@@ -823,7 +823,7 @@ function createSaleInternal(
 
       WHERE id = ?
       `,
-    ).run(dueDate, saleId)
+    ).run(dueDate, saleId);
 
     db.prepare(
       `
@@ -839,7 +839,7 @@ function createSaleInternal(
 
       WHERE id = ?
       `,
-    ).run(invoiceUserId, options.created_at ?? null, saleId)
+    ).run(invoiceUserId, options.created_at ?? null, saleId);
 
     const insertSalePayment = db.prepare(
       `
@@ -851,10 +851,10 @@ function createSaleInternal(
 
       VALUES (?, ?, ?)
       `,
-    )
+    );
 
     for (const payment of effectivePayments) {
-      insertSalePayment.run(saleId, payment.payment_method, payment.amount)
+      insertSalePayment.run(saleId, payment.payment_method, payment.amount);
     }
 
     db.prepare(
@@ -882,7 +882,7 @@ function createSaleInternal(
       loyalty.pointValue,
 
       loyalty.minRedeemPoints,
-    )
+    );
 
     const insertPromotionSnapshot = db.prepare(
       `
@@ -905,14 +905,14 @@ function createSaleInternal(
       ?, ?, ?, ?, ?
     )
     `,
-    )
+    );
 
     for (const promotionSnapshot of appliedPromotions) {
       const snapshotProductIds = Array.isArray(promotionSnapshot.product_ids)
         ? promotionSnapshot.product_ids
             .map(Number)
             .filter((id: number) => Number.isFinite(id) && id > 0)
-        : []
+        : [];
 
       insertPromotionSnapshot.run(
         saleId,
@@ -943,7 +943,7 @@ function createSaleInternal(
           : null,
 
         JSON.stringify(snapshotProductIds),
-      )
+      );
     }
 
     for (const payment of effectivePayments) {
@@ -951,7 +951,7 @@ function createSaleInternal(
         input.user_id,
         [payment.payment_method],
         'لا يمكن تسجيل فاتورة بيع من درج المحل بدون شفت مفتوح',
-      )
+      );
 
       createCashMovement({
         type: 'sale',
@@ -973,7 +973,7 @@ function createSaleInternal(
         business_date: businessDate,
 
         shift_id: paymentShift?.id ?? null,
-      })
+      });
     }
 
     const insertItem = db.prepare(`
@@ -993,7 +993,7 @@ function createSaleInternal(
         promotion_group_id
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
+    `);
 
     const insertPromotionUnit = db.prepare(`
       INSERT INTO sale_promotion_units (
@@ -1023,7 +1023,7 @@ function createSaleInternal(
         ?, ?,
         0
       )
-    `)
+    `);
 
     const getVariantCost = db.prepare(`
   SELECT
@@ -1035,7 +1035,7 @@ function createSaleInternal(
   WHERE id = ?
 
   LIMIT 1
-`)
+`);
 
     const getCurrentStock = db.prepare(`
       SELECT IFNULL(SUM(
@@ -1047,17 +1047,17 @@ function createSaleInternal(
       ), 0) AS stock
       FROM stock_movements
       WHERE variant_id = ?
-    `)
+    `);
 
     type BuyXGetYFragment = {
-      quantity: number
-      is_gift: boolean
-      promotion_group_id: string | null
-    }
+      quantity: number;
+      is_gift: boolean;
+      promotion_group_id: string | null;
+    };
 
-    const buyXGetYFragments = new Map<number, BuyXGetYFragment[]>()
+    const buyXGetYFragments = new Map<number, BuyXGetYFragment[]>();
 
-    const buyXItemIndexes = new Set<number>()
+    const buyXItemIndexes = new Set<number>();
 
     const addBuyXGetYFragment = (
       itemIndex: number,
@@ -1066,19 +1066,19 @@ function createSaleInternal(
       promotionGroupId: string | null,
     ) => {
       if (!Number.isFinite(quantity) || quantity <= 0) {
-        return
+        return;
       }
 
-      const fragments = buyXGetYFragments.get(itemIndex) || []
+      const fragments = buyXGetYFragments.get(itemIndex) || [];
 
       const existing = fragments.find(
         (fragment) =>
           fragment.is_gift === isGift &&
           fragment.promotion_group_id === promotionGroupId,
-      )
+      );
 
       if (existing) {
-        existing.quantity += quantity
+        existing.quantity += quantity;
       } else {
         fragments.push({
           quantity,
@@ -1086,49 +1086,49 @@ function createSaleInternal(
           is_gift: isGift,
 
           promotion_group_id: promotionGroupId,
-        })
+        });
       }
 
-      buyXGetYFragments.set(itemIndex, fragments)
-    }
+      buyXGetYFragments.set(itemIndex, fragments);
+    };
 
     for (const promotionCalculation of promotionResult.promotion_results) {
-      const promotion = promotionCalculation.promotion
+      const promotion = promotionCalculation.promotion;
 
       if (promotion?.type !== 'buy_x_get_y') {
-        continue
+        continue;
       }
 
-      const promotionId = Number(promotion.id)
+      const promotionId = Number(promotion.id);
 
-      const buyQty = Math.floor(Number(promotion.buy_qty || 0))
+      const buyQty = Math.floor(Number(promotion.buy_qty || 0));
 
-      const freeQty = Math.floor(Number(promotion.free_qty || 0))
+      const freeQty = Math.floor(Number(promotion.free_qty || 0));
 
       if (buyQty <= 0 || freeQty <= 0) {
-        continue
+        continue;
       }
 
       const eligibleIndexes = new Set<number>(
         promotionCalculation.eligible_item_indexes.map(Number),
-      )
+      );
 
       const eligibleWholeQuantities = input.items.map((item, itemIndex) => {
         if (!eligibleIndexes.has(itemIndex)) {
-          return 0
+          return 0;
         }
 
-        buyXItemIndexes.add(itemIndex)
+        buyXItemIndexes.add(itemIndex);
 
-        return Math.floor(Math.max(0, Number(item.quantity || 0)))
-      })
+        return Math.floor(Math.max(0, Number(item.quantity || 0)));
+      });
 
-      const giftUnits: number[] = []
+      const giftUnits: number[] = [];
 
-      const paidUnits: number[] = []
+      const paidUnits: number[] = [];
 
       input.items.forEach((_, itemIndex) => {
-        const eligibleQty = Number(eligibleWholeQuantities[itemIndex] || 0)
+        const eligibleQty = Number(eligibleWholeQuantities[itemIndex] || 0);
 
         const giftQty = Math.min(
           eligibleQty,
@@ -1140,116 +1140,118 @@ function createSaleInternal(
               Number(promotionCalculation.item_free_quantities[itemIndex] || 0),
             ),
           ),
-        )
+        );
 
-        const paidQty = eligibleQty - giftQty
+        const paidQty = eligibleQty - giftQty;
 
         for (let unit = 0; unit < giftQty; unit += 1) {
-          giftUnits.push(itemIndex)
+          giftUnits.push(itemIndex);
         }
 
         for (let unit = 0; unit < paidQty; unit += 1) {
-          paidUnits.push(itemIndex)
+          paidUnits.push(itemIndex);
         }
-      })
+      });
 
       const bundleCount = Math.min(
         Math.floor(paidUnits.length / buyQty),
 
         Math.floor(giftUnits.length / freeQty),
-      )
+      );
 
-      let paidCursor = 0
-      let giftCursor = 0
+      let paidCursor = 0;
+      let giftCursor = 0;
 
       for (let bundleIndex = 0; bundleIndex < bundleCount; bundleIndex += 1) {
         const promotionGroupId = `sale_${saleId}_promotion_${promotionId}_bundle_${
           bundleIndex + 1
-        }`
+        }`;
 
         for (let unit = 0; unit < buyQty; unit += 1) {
-          const itemIndex = paidUnits[paidCursor]
+          const itemIndex = paidUnits[paidCursor];
 
-          paidCursor += 1
+          paidCursor += 1;
 
-          addBuyXGetYFragment(itemIndex, 1, false, promotionGroupId)
+          addBuyXGetYFragment(itemIndex, 1, false, promotionGroupId);
         }
 
         for (let unit = 0; unit < freeQty; unit += 1) {
-          const itemIndex = giftUnits[giftCursor]
+          const itemIndex = giftUnits[giftCursor];
 
-          giftCursor += 1
+          giftCursor += 1;
 
-          addBuyXGetYFragment(itemIndex, 1, true, promotionGroupId)
+          addBuyXGetYFragment(itemIndex, 1, true, promotionGroupId);
         }
       }
     }
 
-    const assignedQuantities = input.items.map(() => 0)
+    const assignedQuantities = input.items.map(() => 0);
 
     for (const [itemIndex, fragments] of buyXGetYFragments.entries()) {
       assignedQuantities[itemIndex] = fragments.reduce(
         (total, fragment) => total + Number(fragment.quantity || 0),
 
         0,
-      )
+      );
     }
 
     for (const itemIndex of buyXItemIndexes) {
-      const item = input.items[itemIndex]
+      const item = input.items[itemIndex];
 
-      const originalQty = Math.max(0, Number(item.quantity || 0))
+      const originalQty = Math.max(0, Number(item.quantity || 0));
 
       const standaloneQty = Math.max(
         0,
 
         originalQty - Number(assignedQuantities[itemIndex] || 0),
-      )
+      );
 
-      addBuyXGetYFragment(itemIndex, standaloneQty, false, null)
+      addBuyXGetYFragment(itemIndex, standaloneQty, false, null);
     }
 
     for (const [itemIndex, item] of input.items.entries()) {
-      const qty = Number(item.quantity || 0)
+      const qty = Number(item.quantity || 0);
 
       if (!Number.isFinite(qty) || qty <= 0) {
-        throw new Error(`كمية غير صحيحة للصنف ${item.product_name}`)
+        throw new Error(`كمية غير صحيحة للصنف ${item.product_name}`);
       }
-      const price = Number(item.unit_price || 0)
-      const lineTotal = qty * price
+      const price = Number(item.unit_price || 0);
+      const lineTotal = qty * price;
 
       const variant = getVariantCost.get(item.variant_id) as
         | {
-            average_cost: number
-            buy_price: number
+            average_cost: number;
+            buy_price: number;
           }
-        | undefined
+        | undefined;
 
       const saleUnitCost = Number(
         variant?.average_cost ?? variant?.buy_price ?? 0,
-      )
+      );
 
-      const stockRow = getCurrentStock.get(item.variant_id) as { stock: number }
-      const availableStock = Number(stockRow?.stock || 0)
+      const stockRow = getCurrentStock.get(item.variant_id) as {
+        stock: number;
+      };
+      const availableStock = Number(stockRow?.stock || 0);
 
       if (qty > availableStock) {
         throw new Error(
           `المخزون غير كافي للصنف ${item.product_name}. المتاح: ${availableStock}`,
-        )
+        );
       }
 
       const itemPromotionDiscount = Math.max(
         0,
         Number(promotionResult.item_discounts[itemIndex] || 0),
-      )
+      );
 
       if (buyXItemIndexes.has(itemIndex)) {
-        const fragments = buyXGetYFragments.get(itemIndex) || []
+        const fragments = buyXGetYFragments.get(itemIndex) || [];
 
         for (const fragment of fragments) {
           const fragmentLineTotal = roundMoney(
             Number(fragment.quantity) * price,
-          )
+          );
 
           const itemResult = insertItem.run(
             saleId,
@@ -1265,12 +1267,12 @@ function createSaleInternal(
             fragmentLineTotal,
             fragment.is_gift ? 1 : 0,
             fragment.promotion_group_id,
-          )
+          );
 
-          const saleItemId = Number(itemResult.lastInsertRowid)
+          const saleItemId = Number(itemResult.lastInsertRowid);
 
           if (fragment.promotion_group_id) {
-            const unitCount = Math.floor(Number(fragment.quantity || 0))
+            const unitCount = Math.floor(Number(fragment.quantity || 0));
 
             for (let unitIndex = 0; unitIndex < unitCount; unitIndex += 1) {
               insertPromotionUnit.run(
@@ -1291,7 +1293,7 @@ function createSaleInternal(
                 fragment.is_gift ? 1 : 0,
 
                 fragment.is_gift ? 1 : 0,
-              )
+              );
             }
           }
         }
@@ -1310,7 +1312,7 @@ function createSaleInternal(
           lineTotal,
           0,
           null,
-        )
+        );
       }
 
       issueStockAtAverageCost(db, {
@@ -1323,7 +1325,7 @@ function createSaleInternal(
         reference_type: 'sale',
         created_by: input.user_id,
         notes: `بيع فاتورة رقم ${saleId}`,
-      })
+      });
     }
 
     if (customerId) {
@@ -1335,9 +1337,9 @@ function createSaleInternal(
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `,
-      ).run(remainingAmount, customerId)
+      ).run(remainingAmount, customerId);
 
-      syncCustomerTotalSpent(customerId)
+      syncCustomerTotalSpent(customerId);
     }
 
     if (customerId && loyalty.enabled) {
@@ -1350,7 +1352,7 @@ function createSaleInternal(
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
     `,
-      ).run(earnedPoints, redeemPoints, customerId)
+      ).run(earnedPoints, redeemPoints, customerId);
 
       if (earnedPoints > 0) {
         db.prepare(
@@ -1371,7 +1373,7 @@ function createSaleInternal(
           earnedPoints,
           grandTotal,
           `اكتساب نقاط من فاتورة رقم ${saleId}`,
-        )
+        );
       }
 
       if (redeemPoints > 0) {
@@ -1393,7 +1395,7 @@ function createSaleInternal(
           -redeemPoints,
           loyaltyDiscountValue,
           `استخدام نقاط في فاتورة رقم ${saleId}`,
-        )
+        );
       }
     }
 
@@ -1423,18 +1425,18 @@ function createSaleInternal(
 
       credit_limit_override_approved_by: creditLimitOverrideApprovedBy,
       shift_id: openShift?.id ?? null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function createSale(input: CreateSaleInput) {
-  return createSaleInternal(input)
+  return createSaleInternal(input);
 }
 
 export function getSaleReceipt(saleId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const sale = db
     .prepare(
@@ -1451,10 +1453,10 @@ export function getSaleReceipt(saleId: number) {
       LIMIT 1
     `,
     )
-    .get(saleId)
+    .get(saleId);
 
   if (!sale) {
-    throw new Error('الفاتورة غير موجودة')
+    throw new Error('الفاتورة غير موجودة');
   }
 
   const items = db
@@ -1568,7 +1570,7 @@ export function getSaleReceipt(saleId: number) {
       ORDER BY si.id ASC
       `,
     )
-    .all(saleId)
+    .all(saleId);
 
   const loyalty = db
     .prepare(
@@ -1587,7 +1589,7 @@ export function getSaleReceipt(saleId: number) {
       ORDER BY id ASC
     `,
     )
-    .all(saleId)
+    .all(saleId);
 
   const payments = db
     .prepare(
@@ -1608,48 +1610,48 @@ export function getSaleReceipt(saleId: number) {
       ORDER BY id ASC
       `,
     )
-    .all(saleId)
+    .all(saleId);
 
   return {
     sale,
     items,
     payments,
     loyalty,
-  }
+  };
 }
 
 export function listSales(input?: {
-  search?: string
+  search?: string;
 
-  payment_filter?: 'all' | 'paid' | 'unpaid'
+  payment_filter?: 'all' | 'paid' | 'unpaid';
 
-  payment_method?: string | null
+  payment_method?: string | null;
 
-  date_from?: string
-  date_to?: string
+  date_from?: string;
+  date_to?: string;
 
-  limit?: number
-  offset?: number
+  limit?: number;
+  offset?: number;
 
-  actor_id?: number | null
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const search = input?.search?.trim() || ''
-  const paymentFilter = input?.payment_filter ?? 'all'
-  const paymentMethod = String(input?.payment_method || '').trim()
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
-  const offset = Math.max(Number(input?.offset || 0), 0)
-  const actorId = Number(input?.actor_id || 0)
-  const where: string[] = [`s.type = 'sale'`]
-  const params: any[] = []
+  const search = input?.search?.trim() || '';
+  const paymentFilter = input?.payment_filter ?? 'all';
+  const paymentMethod = String(input?.payment_method || '').trim();
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
+  const offset = Math.max(Number(input?.offset || 0), 0);
+  const actorId = Number(input?.actor_id || 0);
+  const where: string[] = [`s.type = 'sale'`];
+  const params: any[] = [];
 
-  const invoiceNumberMatch = search.match(/^#\s*(\d+)$/)
+  const invoiceNumberMatch = search.match(/^#\s*(\d+)$/);
 
   if (invoiceNumberMatch) {
-    where.push(`s.id = ?`)
+    where.push(`s.id = ?`);
 
-    params.push(Number(invoiceNumberMatch[1]))
+    params.push(Number(invoiceNumberMatch[1]));
   } else if (search) {
     where.push(`
     (
@@ -1658,10 +1660,10 @@ export function listSales(input?: {
       OR c.phone LIKE ?
       OR u.name LIKE ?
     )
-  `)
+  `);
 
-    const q = `%${search}%`
-    params.push(q, q, q, q)
+    const q = `%${search}%`;
+    params.push(q, q, q, q);
   }
 
   if (paymentFilter === 'paid') {
@@ -1676,7 +1678,7 @@ export function listSales(input?: {
         2
       ) <= 0
     )
-  `)
+  `);
   } else if (paymentFilter === 'unpaid') {
     where.push(`
     (
@@ -1689,7 +1691,7 @@ export function listSales(input?: {
         2
       ) > 0
     )
-  `)
+  `);
   }
 
   if (paymentMethod === 'split') {
@@ -1703,9 +1705,9 @@ export function listSales(input?: {
         AND sp.payment_method <> 'split'
         AND sp.amount > 0
     ) > 1
-  `)
+  `);
   } else if (paymentMethod) {
-    const paymentAccount = resolveCashAccount(paymentMethod)
+    const paymentAccount = resolveCashAccount(paymentMethod);
 
     where.push(`
       EXISTS (
@@ -1717,9 +1719,9 @@ export function listSales(input?: {
           AND sp.payment_method = ?
           AND sp.amount > 0
       )
-    `)
+    `);
 
-    params.push(paymentAccount)
+    params.push(paymentAccount);
   }
 
   if (input?.date_from) {
@@ -1728,9 +1730,9 @@ export function listSales(input?: {
         NULLIF(s.business_date, ''),
         date(s.created_at, 'localtime')
       ) >= ?
-    `)
+    `);
 
-    params.push(input.date_from)
+    params.push(input.date_from);
   }
 
   if (input?.date_to) {
@@ -1739,12 +1741,12 @@ export function listSales(input?: {
         NULLIF(s.business_date, ''),
         date(s.created_at, 'localtime')
       ) <= ?
-    `)
+    `);
 
-    params.push(input.date_to)
+    params.push(input.date_to);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const rows = db
     .prepare(
@@ -1878,29 +1880,29 @@ export function listSales(input?: {
       OFFSET ?
     `,
     )
-    .all(actorId, ...params, limit, offset) as any[]
+    .all(actorId, ...params, limit, offset) as any[];
 
   const resolvedRows = rows.map((row: any) => {
-    const originalSubTotal = Number(row.sub_total || 0)
+    const originalSubTotal = Number(row.sub_total || 0);
 
-    const originalGrandTotal = Number(row.grand_total || 0)
+    const originalGrandTotal = Number(row.grand_total || 0);
 
     /*
      * Sales with no exchange do not need
      * the heavier current-state resolver.
      */
     if (Number(row.exchange_count || 0) <= 0) {
-      const totalReturnValue = Number(row.total_return_amount || 0)
+      const totalReturnValue = Number(row.total_return_amount || 0);
 
       const currentNetTotal = Math.max(
         0,
         roundMoney(originalGrandTotal - totalReturnValue),
-      )
+      );
 
       const currentPaidAmount = Math.max(
         0,
         roundMoney(currentNetTotal - Number(row.remaining_amount || 0)),
-      )
+      );
 
       return {
         ...row,
@@ -1920,12 +1922,12 @@ export function listSales(input?: {
         current_paid_amount: currentPaidAmount,
 
         exchange_difference_total: 0,
-      }
+      };
     }
 
-    const current = getSaleCurrentState(Number(row.id))
+    const current = getSaleCurrentState(Number(row.id));
 
-    const financials = current.financials
+    const financials = current.financials;
 
     return {
       ...row,
@@ -1955,8 +1957,8 @@ export function listSales(input?: {
       exchange_count: financials.exchange_count,
 
       exchange_difference_total: financials.exchange_difference_total,
-    }
-  })
+    };
+  });
 
   const totalRow = db
     .prepare(
@@ -1968,49 +1970,49 @@ export function listSales(input?: {
       ${whereSql}
     `,
     )
-    .get(...params) as { total: number }
+    .get(...params) as { total: number };
 
   return {
     rows: resolvedRows,
     total: totalRow.total,
     limit,
     offset,
-  }
+  };
 }
 
 export function createSaleReturn(input: {
-  original_sale_id: number
-  user_id: number
-  reason?: string | null
-  refund_payment_method?: string | null
+  original_sale_id: number;
+  user_id: number;
+  reason?: string | null;
+  refund_payment_method?: string | null;
   items: Array<{
-    sale_item_id: number
-    variant_id: number
-    quantity: number
-  }>
+    sale_item_id: number;
+    variant_id: number;
+    quantity: number;
+  }>;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const originalSaleId = Number(input.original_sale_id)
-  const userId = Number(input.user_id)
-  const reason = input.reason?.trim() || null
+  const originalSaleId = Number(input.original_sale_id);
+  const userId = Number(input.user_id);
+  const reason = input.reason?.trim() || null;
 
   if (!originalSaleId) {
-    throw new Error('رقم الفاتورة الأصلية مطلوب')
+    throw new Error('رقم الفاتورة الأصلية مطلوب');
   }
 
   if (!userId) {
-    throw new Error('المستخدم مطلوب')
+    throw new Error('المستخدم مطلوب');
   }
 
   if (!input.items?.length) {
-    throw new Error('لا توجد أصناف للمرتجع')
+    throw new Error('لا توجد أصناف للمرتجع');
   }
 
   const openShift = requireOperationalCashShift(
     input.user_id,
     'لا يمكن تسجيل مرتجع بيع بدون شفت مفتوح',
-  )
+  );
 
   const tx = db.transaction(() => {
     const originalSale = db
@@ -2023,20 +2025,20 @@ export function createSaleReturn(input: {
         LIMIT 1
       `,
       )
-      .get(originalSaleId) as any
+      .get(originalSaleId) as any;
 
     if (!originalSale) {
-      throw new Error('الفاتورة الأصلية غير موجودة')
+      throw new Error('الفاتورة الأصلية غير موجودة');
     }
     if (originalSale.cancelled_at) {
-      throw new Error('لا يمكن عمل مرتجع على فاتورة ملغاة')
+      throw new Error('لا يمكن عمل مرتجع على فاتورة ملغاة');
     }
 
     const rawRefundPaymentMethod =
       input.refund_payment_method?.trim() ||
       originalSale.payment_method ||
-      'store_cash'
-    const refundPaymentMethod = resolveCashAccount(rawRefundPaymentMethod)
+      'store_cash';
+    const refundPaymentMethod = resolveCashAccount(rawRefundPaymentMethod);
 
     const getOriginalItem = db.prepare(`
       SELECT *
@@ -2044,14 +2046,14 @@ export function createSaleReturn(input: {
       WHERE id = ?
         AND sale_id = ?
       LIMIT 1
-    `)
+    `);
 
     const getPromotionGroupItems = db.prepare(`
       SELECT *
       FROM sale_items
       WHERE sale_id = ?
         AND promotion_group_id = ?
-    `)
+    `);
 
     const getCurrentPromotionGroupUnits = db.prepare(`
         SELECT
@@ -2082,7 +2084,7 @@ export function createSaleReturn(input: {
           AND spu.promotion_group_id = ?
 
         ORDER BY spu.id ASC
-      `)
+      `);
 
     const getCurrentRegularItemUnits = db.prepare(
       `
@@ -2129,7 +2131,7 @@ export function createSaleReturn(input: {
 
       ORDER BY spu.id ASC
       `,
-    )
+    );
 
     const getAlreadyReturnedQty = db.prepare(`
       SELECT
@@ -2159,87 +2161,87 @@ export function createSaleReturn(input: {
         AND
           sri.original_sale_item_id
           = ?
-    `)
+    `);
 
     type PreparedReturnItem = {
-      originalItem: any
+      originalItem: any;
 
-      promotionUnitId: number | null
+      promotionUnitId: number | null;
 
-      variantId: number
-      productName: string
-      barcode: string | null
-      size: string | null
-      color: string | null
-      unitCost: number
+      variantId: number;
+      productName: string;
+      barcode: string | null;
+      size: string | null;
+      color: string | null;
+      unitCost: number;
 
-      quantity: number
-      unitPrice: number
-      lineTotal: number
-      promotionDiscount: number
-    }
+      quantity: number;
+      unitPrice: number;
+      lineTotal: number;
+      promotionDiscount: number;
+    };
 
-    let returnSubTotal = 0
-    let returnPromotionDiscount = 0
+    let returnSubTotal = 0;
+    let returnPromotionDiscount = 0;
 
-    const preparedItems: PreparedReturnItem[] = []
+    const preparedItems: PreparedReturnItem[] = [];
 
-    const processedPromotionGroups = new Set<string>()
+    const processedPromotionGroups = new Set<string>();
 
     const returnIds = new Set(
       input.items.map((item) => Number(item.sale_item_id)),
-    )
+    );
 
     for (const item of input.items) {
       const originalItem = getOriginalItem.get(
         item.sale_item_id,
         originalSaleId,
-      ) as any
+      ) as any;
 
       if (!originalItem) {
-        throw new Error('صنف المرتجع غير موجود في الفاتورة الأصلية')
+        throw new Error('صنف المرتجع غير موجود في الفاتورة الأصلية');
       }
 
-      const requestedQty = Number(item.quantity || 0)
+      const requestedQty = Number(item.quantity || 0);
 
       if (requestedQty <= 0) {
-        continue
+        continue;
       }
 
       const regularUnits = getCurrentRegularItemUnits.all(
         originalSaleId,
         Number(originalItem.id),
-      ) as any[]
+      ) as any[];
 
       if (regularUnits.length > 0) {
         if (!Number.isInteger(requestedQty)) {
           throw new Error(
             'كمية المرتجع للصنف المستبدل يجب أن تكون عددًا صحيحًا',
-          )
+          );
         }
 
-        const requestedVariantId = Number(item.variant_id || 0)
+        const requestedVariantId = Number(item.variant_id || 0);
 
         const availableUnits = regularUnits.filter(
           (unit) =>
             Number(unit.is_returned || 0) === 0 &&
             Number(unit.current_variant_id) === requestedVariantId,
-        )
+        );
 
         if (requestedQty > availableUnits.length) {
           throw new Error(
             `الكمية المطلوبة أكبر من المتاح للمرتجع للصنف: ${originalItem.product_name}`,
-          )
+          );
         }
 
-        const selectedUnits = availableUnits.slice(0, requestedQty)
+        const selectedUnits = availableUnits.slice(0, requestedQty);
 
         for (const unit of selectedUnits) {
-          const unitPrice = Number(unit.current_unit_price || 0)
+          const unitPrice = Number(unit.current_unit_price || 0);
 
-          const lineTotal = roundMoney(unitPrice)
+          const lineTotal = roundMoney(unitPrice);
 
-          returnSubTotal += lineTotal
+          returnSubTotal += lineTotal;
 
           preparedItems.push({
             originalItem,
@@ -2267,44 +2269,44 @@ export function createSaleReturn(input: {
             lineTotal,
 
             promotionDiscount: 0,
-          })
+          });
         }
 
-        continue
+        continue;
       }
 
       if (originalItem.promotion_group_id) {
-        const groupId = String(originalItem.promotion_group_id)
+        const groupId = String(originalItem.promotion_group_id);
 
         const promotionItems = getPromotionGroupItems.all(
           originalSaleId,
           groupId,
-        ) as any[]
+        ) as any[];
 
         const missingPromotionItem = promotionItems.some(
           (promotionItem) => !returnIds.has(Number(promotionItem.id)),
-        )
+        );
 
         if (missingPromotionItem) {
           throw new Error(
             'لا يمكن عمل مرتجع جزئي للعرض. يجب إرجاع العرض كاملًا أو استخدام الاستبدال.',
-          )
+          );
         }
 
         if (requestedQty !== Number(originalItem.quantity || 0)) {
           throw new Error(
             'لا يمكن إرجاع كمية جزئية من عرض. يجب إرجاع العرض كاملًا.',
-          )
+          );
         }
 
         if (processedPromotionGroups.has(groupId)) {
-          continue
+          continue;
         }
 
         const currentUnits = getCurrentPromotionGroupUnits.all(
           originalSaleId,
           groupId,
-        ) as any[]
+        ) as any[];
 
         /*
          * الفواتير الجديدة تستخدم Unit State.
@@ -2316,39 +2318,39 @@ export function createSaleReturn(input: {
             (total, promotionItem) =>
               total + Number(promotionItem.quantity || 0),
             0,
-          )
+          );
 
           if (currentUnits.length !== expectedUnitCount) {
             throw new Error(
               'بيانات العرض المحفوظة غير مكتملة ولا يمكن عمل المرتجع',
-            )
+            );
           }
 
           if (currentUnits.some((unit) => Number(unit.is_returned) === 1)) {
-            throw new Error('العرض تم إرجاعه بالفعل')
+            throw new Error('العرض تم إرجاعه بالفعل');
           }
 
-          processedPromotionGroups.add(groupId)
+          processedPromotionGroups.add(groupId);
 
           for (const unit of currentUnits) {
             const unitOriginalItem = getOriginalItem.get(
               unit.original_sale_item_id,
               originalSaleId,
-            ) as any
+            ) as any;
 
             if (!unitOriginalItem) {
-              throw new Error('تعذر ربط قطعة العرض بالفاتورة الأصلية')
+              throw new Error('تعذر ربط قطعة العرض بالفاتورة الأصلية');
             }
 
-            const unitPrice = Number(unit.current_unit_price || 0)
+            const unitPrice = Number(unit.current_unit_price || 0);
 
-            const lineTotal = roundMoney(unitPrice)
+            const lineTotal = roundMoney(unitPrice);
 
             const promotionDiscount =
-              Number(unit.current_is_gift || 0) === 1 ? lineTotal : 0
+              Number(unit.current_is_gift || 0) === 1 ? lineTotal : 0;
 
-            returnSubTotal += lineTotal
-            returnPromotionDiscount += promotionDiscount
+            returnSubTotal += lineTotal;
+            returnPromotionDiscount += promotionDiscount;
 
             preparedItems.push({
               originalItem: unitOriginalItem,
@@ -2373,10 +2375,10 @@ export function createSaleReturn(input: {
               unitPrice,
               lineTotal,
               promotionDiscount,
-            })
+            });
           }
 
-          continue
+          continue;
         }
       }
 
@@ -2388,35 +2390,35 @@ export function createSaleReturn(input: {
         originalSaleId,
         originalItem.id,
       ) as {
-        returned_qty: number
-        returned_promotion_discount: number
-      }
+        returned_qty: number;
+        returned_promotion_discount: number;
+      };
 
       const maxReturnable =
         Number(originalItem.quantity || 0) -
-        Number(alreadyReturned?.returned_qty || 0)
+        Number(alreadyReturned?.returned_qty || 0);
 
       if (requestedQty > maxReturnable) {
         throw new Error(
           `الكمية المطلوبة أكبر من المتاح للمرتجع للصنف: ${originalItem.product_name}`,
-        )
+        );
       }
 
-      const unitPrice = Number(originalItem.unit_price || 0)
+      const unitPrice = Number(originalItem.unit_price || 0);
 
-      const lineTotal = requestedQty * unitPrice
+      const lineTotal = requestedQty * unitPrice;
 
-      returnSubTotal += lineTotal
+      returnSubTotal += lineTotal;
 
-      const originalQty = Number(originalItem.quantity || 0)
+      const originalQty = Number(originalItem.quantity || 0);
 
       const originalItemPromotion = Math.max(
         0,
         Number(originalItem.promotion_discount_value || 0),
-      )
+      );
 
       const cumulativeReturnedQty =
-        Number(alreadyReturned?.returned_qty || 0) + requestedQty
+        Number(alreadyReturned?.returned_qty || 0) + requestedQty;
 
       const targetReturnedPromotion =
         originalQty > 0
@@ -2424,7 +2426,7 @@ export function createSaleReturn(input: {
               originalItemPromotion *
                 Math.min(cumulativeReturnedQty / originalQty, 1),
             )
-          : 0
+          : 0;
 
       const itemPromotionDiscount = Math.max(
         0,
@@ -2432,9 +2434,9 @@ export function createSaleReturn(input: {
           targetReturnedPromotion -
             Number(alreadyReturned?.returned_promotion_discount || 0),
         ),
-      )
+      );
 
-      returnPromotionDiscount += itemPromotionDiscount
+      returnPromotionDiscount += itemPromotionDiscount;
 
       preparedItems.push({
         originalItem,
@@ -2457,26 +2459,26 @@ export function createSaleReturn(input: {
         unitPrice,
         lineTotal,
         promotionDiscount: itemPromotionDiscount,
-      })
+      });
     }
 
-    returnSubTotal = roundMoney(returnSubTotal)
+    returnSubTotal = roundMoney(returnSubTotal);
 
-    returnPromotionDiscount = roundMoney(returnPromotionDiscount)
+    returnPromotionDiscount = roundMoney(returnPromotionDiscount);
 
     if (preparedItems.length === 0) {
-      throw new Error('لا توجد كميات صالحة للمرتجع')
+      throw new Error('لا توجد كميات صالحة للمرتجع');
     }
 
     /*
      * المرتجع يعتمد على الحالة الحالية
      * بعد كل الاستبدالات السابقة.
      */
-    const currentStateBeforeReturn = getSaleCurrentState(originalSaleId)
+    const currentStateBeforeReturn = getSaleCurrentState(originalSaleId);
 
     const currentInvoiceSubTotal = Number(
       currentStateBeforeReturn.financials.current_sub_total || 0,
-    )
+    );
 
     const currentPromotionDiscount = Math.max(
       0,
@@ -2484,19 +2486,19 @@ export function createSaleReturn(input: {
         currentStateBeforeReturn.financials.current_promotion_discount_value ||
           0,
       ),
-    )
+    );
 
     const currentInvoiceAfterPromotion = Math.max(
       0,
 
       currentInvoiceSubTotal - currentPromotionDiscount,
-    )
+    );
 
     const returnAfterPromotion = Math.max(
       0,
 
       returnSubTotal - returnPromotionDiscount,
-    )
+    );
 
     const previousReturns = db
       .prepare(
@@ -2577,18 +2579,18 @@ export function createSaleReturn(input: {
             IS NULL
         `,
       )
-      .get(originalSaleId) as any
+      .get(originalSaleId) as any;
 
     const currentNormalDiscount = Math.max(
       0,
       Number(
         currentStateBeforeReturn.financials.current_normal_discount_value || 0,
       ),
-    )
+    );
 
     const cumulativeAfterPromotion =
       Number(previousReturns?.returned_after_promotion || 0) +
-      returnAfterPromotion
+      returnAfterPromotion;
 
     const targetNormalDiscount =
       currentInvoiceAfterPromotion > 0
@@ -2600,7 +2602,7 @@ export function createSaleReturn(input: {
                 1,
               ),
           )
-        : 0
+        : 0;
 
     const saleDiscountPart = Math.max(
       0,
@@ -2609,19 +2611,19 @@ export function createSaleReturn(input: {
         targetNormalDiscount -
           Number(previousReturns?.returned_normal_discount || 0),
       ),
-    )
+    );
 
     const invoiceBeforeLoyalty = Math.max(
       0,
       roundMoney(currentInvoiceAfterPromotion - currentNormalDiscount),
-    )
+    );
 
     const currentLoyaltyDiscount = Math.max(
       0,
       Number(
         currentStateBeforeReturn.financials.current_loyalty_discount_value || 0,
       ),
-    )
+    );
 
     /*
      * نحسب الإجمالي التراكمي الدقيق قبل خصم النقاط
@@ -2631,7 +2633,7 @@ export function createSaleReturn(input: {
     const cumulativeBeforeLoyalty = Math.max(
       0,
       roundMoney(cumulativeAfterPromotion - targetNormalDiscount),
-    )
+    );
 
     const targetLoyaltyDiscount =
       invoiceBeforeLoyalty > 0
@@ -2639,7 +2641,7 @@ export function createSaleReturn(input: {
             currentLoyaltyDiscount *
               Math.min(cumulativeBeforeLoyalty / invoiceBeforeLoyalty, 1),
           )
-        : 0
+        : 0;
 
     const loyaltyDiscountPart = Math.max(
       0,
@@ -2647,7 +2649,7 @@ export function createSaleReturn(input: {
         targetLoyaltyDiscount -
           Number(previousReturns?.returned_loyalty_discount || 0),
       ),
-    )
+    );
 
     /*
      * القيمة الحقيقية التراكمية للمرتجعات قبل التقريب.
@@ -2655,7 +2657,7 @@ export function createSaleReturn(input: {
     const cumulativeExactReturnValue = Math.max(
       0,
       roundMoney(cumulativeBeforeLoyalty - targetLoyaltyDiscount),
-    )
+    );
 
     /*
      * المرتجعات التي تم دفعها بالفعل.
@@ -2664,7 +2666,7 @@ export function createSaleReturn(input: {
     const previousReturnedValue = Math.max(
       0,
       Number(previousReturns?.returned_value || 0),
-    )
+    );
 
     /*
      * نحسب ما يستحقه المرتجع الحالي بعد أخذ كل
@@ -2680,9 +2682,9 @@ export function createSaleReturn(input: {
      */
     const exactIncrementalReturnValue = roundMoney(
       cumulativeExactReturnValue - previousReturnedValue,
-    )
+    );
 
-    const returnValue = Math.max(0, Math.round(exactIncrementalReturnValue))
+    const returnValue = Math.max(0, Math.round(exactIncrementalReturnValue));
 
     /*
      * Exact snapshots can recalculate
@@ -2698,18 +2700,18 @@ export function createSaleReturn(input: {
       Number(
         currentStateBeforeReturn.financials.current_loyalty_points_earned || 0,
       ),
-    )
+    );
 
-    const loyaltySnapshot = currentStateBeforeReturn.loyalty_snapshot
+    const loyaltySnapshot = currentStateBeforeReturn.loyalty_snapshot;
 
-    const loyaltySnapshotIsExact = Boolean(loyaltySnapshot?.is_exact)
+    const loyaltySnapshotIsExact = Boolean(loyaltySnapshot?.is_exact);
 
-    let loyaltyPointsToReverse = 0
+    let loyaltyPointsToReverse = 0;
 
     if (loyaltySnapshotIsExact) {
-      const earnAmount = Math.max(0, Number(loyaltySnapshot?.earn_amount || 0))
+      const earnAmount = Math.max(0, Number(loyaltySnapshot?.earn_amount || 0));
 
-      const earnPoints = Math.max(0, Number(loyaltySnapshot?.earn_points || 0))
+      const earnPoints = Math.max(0, Number(loyaltySnapshot?.earn_points || 0));
 
       const nextNetGrandTotal = Math.max(
         0,
@@ -2717,7 +2719,7 @@ export function createSaleReturn(input: {
           Number(currentStateBeforeReturn.financials.net_grand_total || 0) -
             returnValue,
         ),
-      )
+      );
 
       const targetEarnedPointsAfterReturn =
         originalSale.customer_id &&
@@ -2725,41 +2727,41 @@ export function createSaleReturn(input: {
         earnAmount > 0 &&
         earnPoints > 0
           ? Math.floor(nextNetGrandTotal / earnAmount) * earnPoints
-          : 0
+          : 0;
 
       loyaltyPointsToReverse = Math.max(
         0,
         Math.round(currentEarnedPoints - targetEarnedPointsAfterReturn),
-      )
+      );
     } else {
       const originalEarnedPoints = Math.max(
         0,
         Number(originalSale.loyalty_points_earned || 0),
-      )
+      );
 
       const alreadyReversedPoints = Math.max(
         0,
         Number(previousReturns?.reversed_points || 0),
-      )
+      );
 
       const originalGrandTotal = Math.max(
         0,
         Number(originalSale.grand_total || 0),
-      )
+      );
 
       const cumulativeReturnedValue = Math.max(
         0,
         Number(previousReturns?.returned_value || 0) + returnValue,
-      )
+      );
 
       const cumulativeReturnRatio =
         originalGrandTotal > 0
           ? Math.min(cumulativeReturnedValue / originalGrandTotal, 1)
-          : 0
+          : 0;
 
       const targetTotalReversedPoints = Math.floor(
         originalEarnedPoints * cumulativeReturnRatio,
-      )
+      );
 
       loyaltyPointsToReverse = Math.max(
         0,
@@ -2768,7 +2770,7 @@ export function createSaleReturn(input: {
 
           targetTotalReversedPoints - alreadyReversedPoints,
         ),
-      )
+      );
     }
 
     /*
@@ -2786,30 +2788,30 @@ export function createSaleReturn(input: {
           LIMIT 1
           `,
         )
-        .get(originalSale.customer_id) as any
+        .get(originalSale.customer_id) as any;
 
       if (
         Number(customerPointsRow?.points_balance || 0) < loyaltyPointsToReverse
       ) {
         throw new Error(
           'لا يمكن عمل المرتجع لأن نقاط الفاتورة تم استخدامها بالفعل',
-        )
+        );
       }
     }
 
     const originalRemainingAmount = Math.max(
       0,
       roundMoney(Number(originalSale.remaining_amount || 0)),
-    )
+    );
 
     const debtReductionAmount = originalSale.customer_id
       ? roundMoney(Math.min(returnValue, originalRemainingAmount))
-      : 0
+      : 0;
 
     const cashRefundAmount = Math.max(
       0,
       roundMoney(returnValue - debtReductionAmount),
-    )
+    );
 
     const returnResult = db
       .prepare(
@@ -2850,9 +2852,9 @@ export function createSaleReturn(input: {
         reason,
         `مرتجع من فاتورة رقم ${originalSaleId}`,
         loyaltyPointsToReverse,
-      )
+      );
 
-    const returnId = Number(returnResult.lastInsertRowid)
+    const returnId = Number(returnResult.lastInsertRowid);
 
     if (cashRefundAmount > 0) {
       createCashMovement({
@@ -2865,21 +2867,21 @@ export function createSaleReturn(input: {
         notes: `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
         created_by: userId,
         shift_id: openShift.id,
-      })
+      });
     }
 
     if (originalSale.customer_id && debtReductionAmount > 0) {
       const newSaleRemainingAmount = Math.max(
         0,
         roundMoney(originalRemainingAmount - debtReductionAmount),
-      )
+      );
 
       const newSalePaymentStatus =
         newSaleRemainingAmount === 0
           ? 'paid'
           : Number(originalSale.paid || 0) > 0
             ? 'partial'
-            : 'unpaid'
+            : 'unpaid';
 
       db.prepare(
         `
@@ -2889,7 +2891,7 @@ export function createSaleReturn(input: {
           payment_status = ?
         WHERE id = ?
       `,
-      ).run(newSaleRemainingAmount, newSalePaymentStatus, originalSaleId)
+      ).run(newSaleRemainingAmount, newSalePaymentStatus, originalSaleId);
 
       db.prepare(
         `
@@ -2899,7 +2901,7 @@ export function createSaleReturn(input: {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `,
-      ).run(debtReductionAmount, originalSale.customer_id)
+      ).run(debtReductionAmount, originalSale.customer_id);
 
       db.prepare(
         `
@@ -2918,7 +2920,7 @@ export function createSaleReturn(input: {
         debtReductionAmount,
         refundPaymentMethod,
         `تسوية مديونية بسبب مرتجع RET-${String(returnId).padStart(5, '0')}`,
-      )
+      );
     }
 
     const insertReturnItem = db.prepare(`
@@ -2938,7 +2940,7 @@ export function createSaleReturn(input: {
         line_total
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
+    `);
 
     const markPromotionUnitReturned = db.prepare(`
         UPDATE sale_promotion_units
@@ -2948,7 +2950,7 @@ export function createSaleReturn(input: {
             CURRENT_TIMESTAMP
         WHERE id = ?
           AND sale_id = ?
-      `)
+      `);
 
     for (const item of preparedItems) {
       insertReturnItem.run(
@@ -2965,7 +2967,7 @@ export function createSaleReturn(input: {
         item.unitPrice,
         item.promotionDiscount,
         item.lineTotal,
-      )
+      );
 
       receiveStockAtCost(db, {
         variant_id: Number(item.variantId),
@@ -2984,15 +2986,15 @@ export function createSaleReturn(input: {
         reference_type: 'sale_return',
         created_by: userId,
         notes: `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
-      })
+      });
 
       if (item.promotionUnitId) {
-        markPromotionUnitReturned.run(item.promotionUnitId, originalSaleId)
+        markPromotionUnitReturned.run(item.promotionUnitId, originalSaleId);
       }
     }
 
     if (originalSale.customer_id) {
-      syncCustomerTotalSpent(Number(originalSale.customer_id))
+      syncCustomerTotalSpent(Number(originalSale.customer_id));
     }
 
     if (originalSale.customer_id && loyaltyPointsToReverse > 0) {
@@ -3007,7 +3009,7 @@ export function createSaleReturn(input: {
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
     `,
-      ).run(loyaltyPointsToReverse, originalSale.customer_id)
+      ).run(loyaltyPointsToReverse, originalSale.customer_id);
 
       db.prepare(
         `
@@ -3027,7 +3029,7 @@ export function createSaleReturn(input: {
         -loyaltyPointsToReverse,
         returnValue,
         `خصم نقاط بسبب مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
-      )
+      );
     }
 
     return {
@@ -3040,14 +3042,14 @@ export function createSaleReturn(input: {
       return_value: returnValue,
       loyalty_points_reversed: loyaltyPointsToReverse,
       shift_id: openShift.id,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function getSaleReturnHistory(originalSaleId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const returns = db
     .prepare(
@@ -3084,7 +3086,7 @@ export function getSaleReturnHistory(originalSaleId: number) {
       ORDER BY sr.id DESC
     `,
     )
-    .all(originalSaleId) as any[]
+    .all(originalSaleId) as any[];
 
   const getItems = db.prepare(`
     SELECT
@@ -3102,21 +3104,21 @@ export function getSaleReturnHistory(originalSaleId: number) {
     FROM sale_return_items
     WHERE return_id = ?
     ORDER BY id ASC
-  `)
+  `);
 
   return returns.map((item) => ({
     ...item,
     code: `RET-${String(item.id).padStart(5, '0')}`,
     grand_total: item.refund_amount,
     items: getItems.all(item.id),
-  }))
+  }));
 }
 
 export function getSaleCancellationAccess(
   saleId: number,
   actorId?: number | null,
 ) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -3140,32 +3142,32 @@ export function getSaleCancellationAccess(
     )
     .get(Number(actorId || 0), Number(saleId)) as
     | {
-        id: number
-        user_id: number
-        requires_admin_password: number
+        id: number;
+        user_id: number;
+        requires_admin_password: number;
       }
-    | undefined
+    | undefined;
 
   if (!row) {
-    throw new Error('فاتورة البيع غير موجودة')
+    throw new Error('فاتورة البيع غير موجودة');
   }
 
   return {
     sale_id: row.id,
     user_id: row.user_id,
     requires_admin_password: Number(row.requires_admin_password || 0) === 1,
-  }
+  };
 }
 
 export function getSaleEditAccess(saleId: number, actorId?: number | null) {
-  return getSaleCancellationAccess(saleId, actorId)
+  return getSaleCancellationAccess(saleId, actorId);
 }
 
 export function getSaleReturnCancellationAccess(
   returnId: number,
   actorId?: number | null,
 ) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -3188,35 +3190,35 @@ export function getSaleReturnCancellationAccess(
     )
     .get(Number(actorId || 0), Number(returnId)) as
     | {
-        id: number
-        user_id: number
-        requires_admin_password: number
+        id: number;
+        user_id: number;
+        requires_admin_password: number;
       }
-    | undefined
+    | undefined;
 
   if (!row) {
-    throw new Error('مرتجع البيع غير موجود')
+    throw new Error('مرتجع البيع غير موجود');
   }
 
   return {
     return_id: row.id,
     user_id: row.user_id,
     requires_admin_password: Number(row.requires_admin_password || 0) === 1,
-  }
+  };
 }
 
 export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const saleId = Number(input.sale_id || 0)
-  const actorId = Number(input.actor_id || 0)
+  const saleId = Number(input.sale_id || 0);
+  const actorId = Number(input.actor_id || 0);
 
   if (!saleId) {
-    throw new Error('رقم فاتورة البيع غير صحيح')
+    throw new Error('رقم فاتورة البيع غير صحيح');
   }
 
   if (!actorId) {
-    throw new Error('المستخدم غير صحيح')
+    throw new Error('المستخدم غير صحيح');
   }
 
   const tx = db.transaction(() => {
@@ -3232,39 +3234,39 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         LIMIT 1
         `,
       )
-      .get(saleId) as any
+      .get(saleId) as any;
 
     if (!sale) {
-      throw new Error('فاتورة البيع غير موجودة')
+      throw new Error('فاتورة البيع غير موجودة');
     }
 
     if (sale.cancelled_at) {
-      throw new Error('لا يمكن تعديل فاتورة ملغاة')
+      throw new Error('لا يمكن تعديل فاتورة ملغاة');
     }
 
     if (
       Number(sale.promotion_id || 0) > 0 ||
       Number(sale.promotion_discount_value || 0) > 0
     ) {
-      throw new Error('لا يمكن تعديل فاتورة تم إنشاؤها بعرض')
+      throw new Error('لا يمكن تعديل فاتورة تم إنشاؤها بعرض');
     }
 
-    const editPromotionResult = calculateActivePromotionsForSale(input.items)
+    const editPromotionResult = calculateActivePromotionsForSale(input.items);
 
     const editPromotionDiscount = Math.max(
       0,
       Number(editPromotionResult.promotion_discount_value || 0),
-    )
+    );
 
     if (editPromotionDiscount > 0) {
       throw new Error(
         'لا يمكن تعديل الفاتورة لأن هناك عرضًا نشطًا ينطبق على أصنافها',
-      )
+      );
     }
 
     const neutralPromotionIds = editPromotionResult.active_promotions.map(
       (promotion: any) => Number(promotion.id),
-    )
+    );
 
     /*
      * لا نعدل فاتورة دخل عليها مرتجع.
@@ -3279,12 +3281,12 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         WHERE original_sale_id = ?
         `,
       )
-      .get(saleId) as any
+      .get(saleId) as any;
 
     if (Number(returnsRow?.count || 0) > 0) {
       throw new Error(
         'لا يمكن تعديل فاتورة لها سجل مرتجعات سابق، حتى لو كان المرتجع ملغيًا',
-      )
+      );
     }
 
     /*
@@ -3300,12 +3302,12 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         WHERE original_sale_id = ?
         `,
       )
-      .get(saleId) as any
+      .get(saleId) as any;
 
     if (Number(exchangesRow?.count || 0) > 0) {
       throw new Error(
         'لا يمكن تعديل فاتورة لها سجل استبدالات سابق، حتى لو كان الاستبدال ملغيًا',
-      )
+      );
     }
 
     /*
@@ -3332,17 +3334,17 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
           ) AS count
         `,
       )
-      .get(saleId, saleId) as any
+      .get(saleId, saleId) as any;
 
     if (Number(paymentHistoryRow?.count || 0) > 0) {
       throw new Error(
         'لا يمكن تعديل فاتورة لها سجل دفعات عميل سابق، حتى لو كانت الدفعة ملغاة أو معدلة',
-      )
+      );
     }
 
     const businessDate = String(
       sale.business_date || getCurrentBusinessDate(db),
-    )
+    );
 
     /*
      * ممنوع تعديل يوم مالي تم تقفيله.
@@ -3359,38 +3361,41 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         LIMIT 1
         `,
       )
-      .get(businessDate)
+      .get(businessDate);
 
     if (closedDay) {
       throw new Error(
         `لا يمكن تعديل الفاتورة لأن يوم ${businessDate} تم تقفيله`,
-      )
+      );
     }
 
     /*
      * لو الفاتورة مرتبطة بشفت:
      * لازم نفس الشفت يكون ما زال مفتوحًا.
      */
-    const originalShiftId = Number(sale.shift_id || 0)
+    const originalShiftId = Number(sale.shift_id || 0);
 
     if (originalShiftId > 0) {
-      const currentShift = getOpenCashShift()
+      const currentShift = getOpenCashShift();
 
       if (!currentShift || Number(currentShift.id) !== originalShiftId) {
-        throw new Error('لا يمكن تعديل فاتورة من شفت تم إغلاقه')
+        throw new Error('لا يمكن تعديل فاتورة من شفت تم إغلاقه');
       }
     }
 
-    const oldCustomerId = Number(sale.customer_id || 0)
+    const oldCustomerId = Number(sale.customer_id || 0);
 
-    const oldRemainingAmount = Math.max(0, Number(sale.remaining_amount || 0))
+    const oldRemainingAmount = Math.max(0, Number(sale.remaining_amount || 0));
 
-    const oldEarnedPoints = Math.max(0, Number(sale.loyalty_points_earned || 0))
+    const oldEarnedPoints = Math.max(
+      0,
+      Number(sale.loyalty_points_earned || 0),
+    );
 
     const oldRedeemedPoints = Math.max(
       0,
       Number(sale.loyalty_points_redeemed || 0),
-    )
+    );
 
     /*
      * لو نقاط الفاتورة اتصرفت بالفعل،
@@ -3409,12 +3414,14 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
           LIMIT 1
           `,
         )
-        .get(oldCustomerId) as any
+        .get(oldCustomerId) as any;
 
-      const currentPoints = Number(customer?.points_balance || 0)
+      const currentPoints = Number(customer?.points_balance || 0);
 
       if (currentPoints + oldRedeemedPoints < oldEarnedPoints) {
-        throw new Error('لا يمكن تعديل الفاتورة لأن نقاطها تم استخدامها بالفعل')
+        throw new Error(
+          'لا يمكن تعديل الفاتورة لأن نقاطها تم استخدامها بالفعل',
+        );
       }
     }
 
@@ -3432,10 +3439,10 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         `,
       )
       .all(saleId) as Array<{
-      variant_id: number
-      quantity: number
-      unit_cost: number
-    }>
+      variant_id: number;
+      quantity: number;
+      unit_cost: number;
+    }>;
 
     const storedPayments = db
       .prepare(
@@ -3454,11 +3461,11 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         `,
       )
       .all(saleId) as Array<{
-      payment_method: string
-      amount: number
-    }>
+      payment_method: string;
+      amount: number;
+    }>;
 
-    const oldPaidAmount = Math.max(0, Number(sale.paid || 0))
+    const oldPaidAmount = Math.max(0, Number(sale.paid || 0));
 
     const oldPayments =
       storedPayments.length > 0
@@ -3473,21 +3480,21 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
                 amount: oldPaidAmount,
               },
             ]
-          : []
+          : [];
 
     /*
      * 1) عكس التحصيل القديم.
      */
     for (const payment of oldPayments) {
       if (Number(payment.amount || 0) <= 0) {
-        continue
+        continue;
       }
 
       const reversalShift = resolveFinancialOperationShift(
         actorId,
         [payment.payment_method],
         'لا يمكن تعديل فاتورة تمس درج المحل بدون شفت مفتوح',
-      )
+      );
 
       createCashMovement({
         type: 'sale',
@@ -3509,7 +3516,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         business_date: businessDate,
 
         shift_id: reversalShift?.id ?? null,
-      })
+      });
     }
 
     /*
@@ -3529,7 +3536,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         reference_type: 'sale_edit_reversal',
         created_by: actorId,
         notes: `إرجاع مخزون الفاتورة #${saleId} قبل التعديل`,
-      })
+      });
     }
 
     /*
@@ -3565,7 +3572,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         oldEarnedPoints,
         oldRedeemedPoints,
         oldCustomerId,
-      )
+      );
     }
 
     /*
@@ -3577,7 +3584,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       DELETE FROM loyalty_transactions
       WHERE sale_id = ?
       `,
-    ).run(saleId)
+    ).run(saleId);
 
     /*
      * باقي تفاصيل الفاتورة عليها Cascade.
@@ -3587,12 +3594,12 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       DELETE FROM sales
       WHERE id = ?
       `,
-    ).run(saleId)
+    ).run(saleId);
 
-    const nextCustomerId = Number(input.customer_id || 0)
+    const nextCustomerId = Number(input.customer_id || 0);
 
     const preserveDueDate =
-      oldRemainingAmount > 0 && oldCustomerId === nextCustomerId
+      oldRemainingAmount > 0 && oldCustomerId === nextCustomerId;
 
     const nextSaleInput: CreateSaleInput = {
       user_id: actorId,
@@ -3633,7 +3640,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         input.credit_limit_override_approved_by ?? null,
 
       items: input.items,
-    }
+    };
 
     const result = createSaleInternal(nextSaleInput, {
       forced_sale_id: saleId,
@@ -3645,10 +3652,10 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       preserve_due_date: preserveDueDate,
 
       due_date_override: sale.due_date ?? null,
-    })
+    });
 
     if (oldCustomerId && oldCustomerId !== nextCustomerId) {
-      syncCustomerTotalSpent(oldCustomerId)
+      syncCustomerTotalSpent(oldCustomerId);
     }
 
     return {
@@ -3659,33 +3666,33 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       previous_customer_id: oldCustomerId || null,
 
       edited: true,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function cancelSaleInvoice(input: {
-  sale_id: number
-  reason?: string | null
-  actor_id?: number | null
+  sale_id: number;
+  reason?: string | null;
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const saleId = Number(input.sale_id)
+  const saleId = Number(input.sale_id);
 
   if (!saleId) {
-    throw new Error('رقم فاتورة البيع غير صحيح')
+    throw new Error('رقم فاتورة البيع غير صحيح');
   }
 
   const openShift = requireOperationalCashShift(
     Number(input.actor_id || 0),
     'لا يمكن إلغاء فاتورة بيع بدون شفت مفتوح',
-  )
+  );
 
-  const cancellationBusinessDate = getShiftBusinessDate(openShift.id)
+  const cancellationBusinessDate = getShiftBusinessDate(openShift.id);
 
-  const reason = input.reason?.trim() || 'إلغاء فاتورة بيع'
+  const reason = input.reason?.trim() || 'إلغاء فاتورة بيع';
 
   const tx = db.transaction(() => {
     const sale = db
@@ -3698,14 +3705,14 @@ export function cancelSaleInvoice(input: {
         LIMIT 1
         `,
       )
-      .get(saleId) as any
+      .get(saleId) as any;
 
     if (!sale) {
-      throw new Error('فاتورة البيع غير موجودة')
+      throw new Error('فاتورة البيع غير موجودة');
     }
 
     if (sale.cancelled_at) {
-      throw new Error('فاتورة البيع ملغاة بالفعل')
+      throw new Error('فاتورة البيع ملغاة بالفعل');
     }
 
     const returnsRow = db
@@ -3717,10 +3724,10 @@ export function cancelSaleInvoice(input: {
           AND cancelled_at IS NULL
         `,
       )
-      .get(saleId) as any
+      .get(saleId) as any;
 
     if (Number(returnsRow?.count || 0) > 0) {
-      throw new Error('لا يمكن إلغاء الفاتورة قبل إلغاء المرتجعات الخاصة بها')
+      throw new Error('لا يمكن إلغاء الفاتورة قبل إلغاء المرتجعات الخاصة بها');
     }
 
     const exchangesRow = db
@@ -3740,11 +3747,11 @@ export function cancelSaleInvoice(input: {
         `,
       )
       .get(saleId) as {
-      count: number
-    }
+      count: number;
+    };
 
     if (Number(exchangesRow?.count || 0) > 0) {
-      throw new Error('لا يمكن إلغاء الفاتورة بعد وجود عمليات استبدال عليها')
+      throw new Error('لا يمكن إلغاء الفاتورة بعد وجود عمليات استبدال عليها');
     }
 
     const laterPayments = db
@@ -3765,10 +3772,12 @@ export function cancelSaleInvoice(input: {
           )
         `,
       )
-      .get(saleId) as any
+      .get(saleId) as any;
 
     if (Number(laterPayments?.count || 0) > 0) {
-      throw new Error('لا يمكن إلغاء الفاتورة لأنها تحتوي على دفعات عميل لاحقة')
+      throw new Error(
+        'لا يمكن إلغاء الفاتورة لأنها تحتوي على دفعات عميل لاحقة',
+      );
     }
 
     const items = db
@@ -3780,20 +3789,20 @@ export function cancelSaleInvoice(input: {
         ORDER BY id ASC
         `,
       )
-      .all(saleId) as any[]
+      .all(saleId) as any[];
 
     if (items.length === 0) {
-      throw new Error('لا توجد أصناف داخل الفاتورة')
+      throw new Error('لا توجد أصناف داخل الفاتورة');
     }
 
-    const customerId = Number(sale.customer_id || 0)
+    const customerId = Number(sale.customer_id || 0);
 
-    const earnedPoints = Math.max(0, Number(sale.loyalty_points_earned || 0))
+    const earnedPoints = Math.max(0, Number(sale.loyalty_points_earned || 0));
 
     const redeemedPoints = Math.max(
       0,
       Number(sale.loyalty_points_redeemed || 0),
-    )
+    );
 
     if (customerId && earnedPoints > 0) {
       const customer = db
@@ -3805,16 +3814,18 @@ export function cancelSaleInvoice(input: {
           LIMIT 1
           `,
         )
-        .get(customerId) as any
+        .get(customerId) as any;
 
-      const currentPoints = Number(customer?.points_balance || 0)
+      const currentPoints = Number(customer?.points_balance || 0);
 
       if (currentPoints + redeemedPoints < earnedPoints) {
-        throw new Error('لا يمكن إلغاء الفاتورة لأن نقاطها تم استخدامها بالفعل')
+        throw new Error(
+          'لا يمكن إلغاء الفاتورة لأن نقاطها تم استخدامها بالفعل',
+        );
       }
     }
 
-    const paidAmount = Math.max(0, Number(sale.paid || 0))
+    const paidAmount = Math.max(0, Number(sale.paid || 0));
 
     const storedPayments = db
       .prepare(
@@ -3833,9 +3844,9 @@ export function cancelSaleInvoice(input: {
         `,
       )
       .all(saleId) as Array<{
-      payment_method: string
-      amount: number
-    }>
+      payment_method: string;
+      amount: number;
+    }>;
 
     const refundPayments =
       storedPayments.length > 0
@@ -3848,11 +3859,11 @@ export function cancelSaleInvoice(input: {
                 amount: paidAmount,
               },
             ]
-          : []
+          : [];
 
-    const remainingAmount = Math.max(0, Number(sale.remaining_amount || 0))
+    const remainingAmount = Math.max(0, Number(sale.remaining_amount || 0));
 
-    const grandTotal = Math.max(0, Number(sale.grand_total || 0))
+    const grandTotal = Math.max(0, Number(sale.grand_total || 0));
 
     /*
      * رد المبلغ المدفوع للعميل الآن.
@@ -3860,7 +3871,7 @@ export function cancelSaleInvoice(input: {
      */
     for (const payment of refundPayments) {
       if (Number(payment.amount || 0) <= 0) {
-        continue
+        continue;
       }
 
       createCashMovement({
@@ -3883,7 +3894,7 @@ export function cancelSaleInvoice(input: {
         business_date: cancellationBusinessDate,
 
         shift_id: openShift.id,
-      })
+      });
     }
 
     for (const item of items) {
@@ -3903,7 +3914,7 @@ export function cancelSaleInvoice(input: {
         reference_type: 'sale_cancel',
         created_by: input.actor_id ?? null,
         notes: `إرجاع مخزون بسبب إلغاء فاتورة بيع رقم ${saleId}`,
-      })
+      });
     }
 
     if (customerId) {
@@ -3924,9 +3935,9 @@ export function cancelSaleInvoice(input: {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         `,
-      ).run(remainingAmount, earnedPoints, redeemedPoints, customerId)
+      ).run(remainingAmount, earnedPoints, redeemedPoints, customerId);
 
-      const pointsAdjustment = redeemedPoints - earnedPoints
+      const pointsAdjustment = redeemedPoints - earnedPoints;
 
       if (pointsAdjustment !== 0) {
         db.prepare(
@@ -3947,7 +3958,7 @@ export function cancelSaleInvoice(input: {
           pointsAdjustment,
           grandTotal,
           `عكس نقاط بسبب إلغاء فاتورة بيع رقم ${saleId}`,
-        )
+        );
       }
     }
 
@@ -3963,10 +3974,10 @@ export function cancelSaleInvoice(input: {
         remaining_amount = 0
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, openShift.id, reason, saleId)
+    ).run(input.actor_id ?? null, openShift.id, reason, saleId);
 
     if (customerId) {
-      syncCustomerTotalSpent(customerId)
+      syncCustomerTotalSpent(customerId);
     }
 
     return {
@@ -3976,35 +3987,35 @@ export function cancelSaleInvoice(input: {
       removed_debt: remainingAmount,
       restored_items: items.length,
       cancelled_shift_id: openShift.id,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function cancelSaleReturn(input: {
-  return_id: number
-  reason?: string | null
-  actor_id?: number | null
+  return_id: number;
+  reason?: string | null;
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const returnId = Number(input.return_id)
+  const returnId = Number(input.return_id);
 
   if (!returnId) {
-    throw new Error('رقم المرتجع غير صحيح')
+    throw new Error('رقم المرتجع غير صحيح');
   }
 
   const openShift = requireOperationalCashShift(
     Number(input.actor_id || 0),
     'لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح',
-  )
+  );
 
-  const cancellationBusinessDate = getShiftBusinessDate(openShift.id)
+  const cancellationBusinessDate = getShiftBusinessDate(openShift.id);
 
-  const reason = input.reason?.trim() || 'إلغاء مرتجع بيع'
+  const reason = input.reason?.trim() || 'إلغاء مرتجع بيع';
 
-  const returnCode = `RET-${String(returnId).padStart(5, '0')}`
+  const returnCode = `RET-${String(returnId).padStart(5, '0')}`;
 
   const tx = db.transaction(() => {
     const saleReturn = db
@@ -4023,18 +4034,18 @@ export function cancelSaleReturn(input: {
         LIMIT 1
         `,
       )
-      .get(returnId) as any
+      .get(returnId) as any;
 
     if (!saleReturn) {
-      throw new Error('مرتجع البيع غير موجود')
+      throw new Error('مرتجع البيع غير موجود');
     }
 
     if (saleReturn.cancelled_at) {
-      throw new Error('مرتجع البيع ملغي بالفعل')
+      throw new Error('مرتجع البيع ملغي بالفعل');
     }
 
     if (saleReturn.sale_cancelled_at) {
-      throw new Error('لا يمكن إلغاء المرتجع لأن الفاتورة الأصلية ملغاة')
+      throw new Error('لا يمكن إلغاء المرتجع لأن الفاتورة الأصلية ملغاة');
     }
 
     const laterReturn = db
@@ -4050,18 +4061,17 @@ export function cancelSaleReturn(input: {
         `,
       )
       .get(Number(saleReturn.original_sale_id), returnId) as
-      | { id: number }
-      | undefined
+      { id: number } | undefined;
 
     if (laterReturn) {
-      const laterCode = `RET-${String(laterReturn.id).padStart(5, '0')}`
+      const laterCode = `RET-${String(laterReturn.id).padStart(5, '0')}`;
 
-      throw new Error(`يجب إلغاء المرتجع الأحدث ${laterCode} أولًا`)
+      throw new Error(`يجب إلغاء المرتجع الأحدث ${laterCode} أولًا`);
     }
 
     const loyaltyBeforeCancellation = getSaleCurrentState(
       Number(saleReturn.original_sale_id),
-    )
+    );
 
     const items = db
       .prepare(
@@ -4072,10 +4082,10 @@ export function cancelSaleReturn(input: {
         ORDER BY id ASC
         `,
       )
-      .all(returnId) as any[]
+      .all(returnId) as any[];
 
     if (items.length === 0) {
-      throw new Error('لا توجد أصناف داخل المرتجع')
+      throw new Error('لا توجد أصناف داخل المرتجع');
     }
 
     const getCurrentStock = db.prepare(`
@@ -4093,34 +4103,33 @@ export function cancelSaleReturn(input: {
       ) AS stock
       FROM stock_movements
       WHERE variant_id = ?
-    `)
+    `);
 
     const requiredByVariant = new Map<
       number,
       { quantity: number; productName: string }
-    >()
+    >();
 
     for (const item of items) {
-      const variantId = Number(item.variant_id)
-      const previous = requiredByVariant.get(variantId)
+      const variantId = Number(item.variant_id);
+      const previous = requiredByVariant.get(variantId);
 
       requiredByVariant.set(variantId, {
         quantity: (previous?.quantity ?? 0) + Number(item.quantity || 0),
         productName: String(item.product_name || ''),
-      })
+      });
     }
 
     for (const [variantId, required] of requiredByVariant) {
       const stockRow = getCurrentStock.get(variantId) as
-        | { stock: number }
-        | undefined
+        { stock: number } | undefined;
 
-      const currentStock = Number(stockRow?.stock || 0)
+      const currentStock = Number(stockRow?.stock || 0);
 
       if (currentStock < required.quantity) {
         throw new Error(
           `لا يمكن إلغاء المرتجع لأن مخزون الصنف "${required.productName}" أقل من كمية المرتجع`,
-        )
+        );
       }
     }
 
@@ -4131,11 +4140,11 @@ export function cancelSaleReturn(input: {
           updated_at =
             CURRENT_TIMESTAMP
         WHERE id = ?
-      `)
+      `);
 
     for (const item of items) {
       if (Number(item.promotion_unit_id || 0) > 0) {
-        restorePromotionUnit.run(Number(item.promotion_unit_id))
+        restorePromotionUnit.run(Number(item.promotion_unit_id));
       }
     }
 
@@ -4151,13 +4160,13 @@ export function cancelSaleReturn(input: {
           AND cancelled_at IS NULL
         `,
       )
-      .get(returnId) as any
+      .get(returnId) as any;
 
     const cashRefundAmount =
       saleReturn.cash_refund_amount !== null &&
       saleReturn.cash_refund_amount !== undefined
         ? Number(saleReturn.cash_refund_amount || 0)
-        : Number(cashRow?.amount || 0)
+        : Number(cashRow?.amount || 0);
 
     const settlementRow = db
       .prepare(
@@ -4171,13 +4180,13 @@ export function cancelSaleReturn(input: {
       .get(
         Number(saleReturn.original_sale_id),
         `تسوية مديونية بسبب مرتجع ${returnCode}%`,
-      ) as any
+      ) as any;
 
     const debtReductionAmount =
       saleReturn.debt_reduction_amount !== null &&
       saleReturn.debt_reduction_amount !== undefined
         ? Number(saleReturn.debt_reduction_amount || 0)
-        : Number(settlementRow?.amount || 0)
+        : Number(settlementRow?.amount || 0);
 
     /*
      * عكس رد الكاش:
@@ -4195,7 +4204,7 @@ export function cancelSaleReturn(input: {
         created_by: input.actor_id ?? null,
         business_date: cancellationBusinessDate,
         shift_id: openShift.id,
-      })
+      });
     }
 
     for (const item of items) {
@@ -4215,17 +4224,17 @@ export function cancelSaleReturn(input: {
         reference_type: 'sale_return_cancel',
         created_by: input.actor_id ?? null,
         notes: `عكس مخزون مرتجع بيع ملغي ${returnCode}`,
-      })
+      });
     }
 
-    const saleId = Number(saleReturn.original_sale_id)
+    const saleId = Number(saleReturn.original_sale_id);
 
     if (saleReturn.customer_id && debtReductionAmount > 0) {
       const maxRemaining = Math.max(
         0,
         Number(saleReturn.sale_grand_total || 0) -
           Number(saleReturn.sale_paid || 0),
-      )
+      );
 
       const newRemaining = Math.min(
         maxRemaining,
@@ -4233,14 +4242,14 @@ export function cancelSaleReturn(input: {
           0,
           Number(saleReturn.sale_remaining || 0) + debtReductionAmount,
         ),
-      )
+      );
 
       const newStatus =
         newRemaining <= 0
           ? 'paid'
           : Number(saleReturn.sale_paid || 0) > 0
             ? 'partial'
-            : 'unpaid'
+            : 'unpaid';
 
       db.prepare(
         `
@@ -4250,7 +4259,7 @@ export function cancelSaleReturn(input: {
           payment_status = ?
         WHERE id = ?
         `,
-      ).run(newRemaining, newStatus, saleId)
+      ).run(newRemaining, newStatus, saleId);
 
       db.prepare(
         `
@@ -4261,7 +4270,7 @@ export function cancelSaleReturn(input: {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         `,
-      ).run(debtReductionAmount, Number(saleReturn.customer_id))
+      ).run(debtReductionAmount, Number(saleReturn.customer_id));
 
       /*
        * دي حركة داخلية أنشأها المرتجع نفسه،
@@ -4273,12 +4282,12 @@ export function cancelSaleReturn(input: {
         WHERE sale_id = ?
           AND notes LIKE ?
         `,
-      ).run(saleId, `تسوية مديونية بسبب مرتجع ${returnCode}%`)
+      ).run(saleId, `تسوية مديونية بسبب مرتجع ${returnCode}%`);
     }
 
     const beforeEarned = Number(
       loyaltyBeforeCancellation.financials.current_loyalty_points_earned || 0,
-    )
+    );
 
     const nextNetTotal = Math.max(
       0,
@@ -4287,27 +4296,26 @@ export function cancelSaleReturn(input: {
           loyaltyBeforeCancellation.financials.total_return_value +
           Number(saleReturn.refund_amount || 0),
       ),
-    )
+    );
 
     const targetEarned = calculateSaleEarnedPoints(
       loyaltyBeforeCancellation,
       nextNetTotal,
       beforeEarned +
         Math.max(0, Number(saleReturn.loyalty_points_reversed || 0)),
-    )
+    );
 
-    const reversedPoints = Math.round(targetEarned - beforeEarned)
+    const reversedPoints = Math.round(targetEarned - beforeEarned);
 
     if (saleReturn.customer_id && reversedPoints !== 0) {
       if (reversedPoints < 0) {
         const customer = db
           .prepare('SELECT points_balance FROM customers WHERE id = ? LIMIT 1')
           .get(Number(saleReturn.customer_id)) as
-          | { points_balance: number }
-          | undefined
+          { points_balance: number } | undefined;
 
         if (Number(customer?.points_balance || 0) + reversedPoints < 0) {
-          throw new Error('رصيد نقاط العميل غير كافٍ لتسوية إلغاء المرتجع')
+          throw new Error('رصيد نقاط العميل غير كافٍ لتسوية إلغاء المرتجع');
         }
       }
 
@@ -4319,7 +4327,7 @@ export function cancelSaleReturn(input: {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `,
-      ).run(reversedPoints, Number(saleReturn.customer_id))
+      ).run(reversedPoints, Number(saleReturn.customer_id));
 
       db.prepare(
         `
@@ -4339,7 +4347,7 @@ export function cancelSaleReturn(input: {
         reversedPoints,
         Number(saleReturn.refund_amount || 0),
         `تسوية نقاط بسبب إلغاء المرتجع ${returnCode}`,
-      )
+      );
     }
 
     db.prepare(
@@ -4352,10 +4360,10 @@ export function cancelSaleReturn(input: {
         cancel_reason = ?
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, openShift.id, reason, returnId)
+    ).run(input.actor_id ?? null, openShift.id, reason, returnId);
 
     if (saleReturn.customer_id) {
-      syncCustomerTotalSpent(Number(saleReturn.customer_id))
+      syncCustomerTotalSpent(Number(saleReturn.customer_id));
     }
 
     return {
@@ -4366,31 +4374,31 @@ export function cancelSaleReturn(input: {
       debt_restored: debtReductionAmount,
       items_count: items.length,
       cancelled_shift_id: openShift.id,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function listSaleReturns(input?: {
-  search?: string
-  payment_method?: string | null
-  date_from?: string
-  date_to?: string
-  limit?: number
-  offset?: number
-  actor_id?: number | null
+  search?: string;
+  payment_method?: string | null;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+  offset?: number;
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const search = input?.search?.trim() || ''
-  const paymentMethod = String(input?.payment_method || '').trim()
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
-  const offset = Math.max(Number(input?.offset || 0), 0)
-  const actorId = Number(input?.actor_id || 0)
+  const search = input?.search?.trim() || '';
+  const paymentMethod = String(input?.payment_method || '').trim();
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
+  const offset = Math.max(Number(input?.offset || 0), 0);
+  const actorId = Number(input?.actor_id || 0);
 
-  const where: string[] = []
-  const params: any[] = []
+  const where: string[] = [];
+  const params: any[] = [];
 
   if (search) {
     where.push(`
@@ -4402,34 +4410,34 @@ export function listSaleReturns(input?: {
         OR u.name LIKE ?
         OR IFNULL(sr.reason, '') LIKE ?
       )
-    `)
+    `);
 
-    const q = `%${search}%`
-    params.push(q, q, q, q, q, q)
+    const q = `%${search}%`;
+    params.push(q, q, q, q, q, q);
   }
 
   if (paymentMethod) {
-    const paymentAccount = resolveCashAccount(paymentMethod)
+    const paymentAccount = resolveCashAccount(paymentMethod);
 
     where.push(`
       IFNULL(sr.cash_refund_amount, 0) > 0
       AND sr.payment_method = ?
-    `)
+    `);
 
-    params.push(paymentAccount)
+    params.push(paymentAccount);
   }
 
   if (input?.date_from) {
-    where.push(`datetime(sr.created_at, 'localtime') >= datetime(?)`)
-    params.push(`${input.date_from} 00:00:00`)
+    where.push(`datetime(sr.created_at, 'localtime') >= datetime(?)`);
+    params.push(`${input.date_from} 00:00:00`);
   }
 
   if (input?.date_to) {
-    where.push(`datetime(sr.created_at, 'localtime') <= datetime(?)`)
-    params.push(`${input.date_to} 23:59:59`)
+    where.push(`datetime(sr.created_at, 'localtime') <= datetime(?)`);
+    params.push(`${input.date_to} 23:59:59`);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const rows = db
     .prepare(
@@ -4478,7 +4486,7 @@ export function listSaleReturns(input?: {
       OFFSET ?
     `,
     )
-    .all(actorId, ...params, limit, offset)
+    .all(actorId, ...params, limit, offset);
 
   const totalRow = db
     .prepare(
@@ -4490,7 +4498,7 @@ export function listSaleReturns(input?: {
       ${whereSql}
     `,
     )
-    .get(...params) as { total: number }
+    .get(...params) as { total: number };
 
   return {
     rows: (rows as any[]).map((row) => ({
@@ -4500,5 +4508,5 @@ export function listSaleReturns(input?: {
     total: totalRow.total,
     limit,
     offset,
-  }
+  };
 }

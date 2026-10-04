@@ -1,41 +1,41 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
-import fs from 'node:fs/promises'
-import os from 'node:os'
-import path from 'node:path'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import {
   clampWindowDimension,
   getSecureWebPreferences,
   hardenAuxiliaryWindow,
-} from '../electron-security'
+} from '../electron-security';
 import {
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
   requirePermission,
-} from '../auth-session'
+} from '../auth-session';
 
 type SavePdfInput = {
-  html: string
-  defaultFileName?: string
-  landscape?: boolean
-}
+  html: string;
+  defaultFileName?: string;
+  landscape?: boolean;
+};
 
 type SaveReportCsvInput = {
-  text: string
+  text: string;
 
-  defaultFileName?: string
-}
+  defaultFileName?: string;
+};
 
 type SilentPrintInput = {
-  html: string
-}
+  html: string;
+};
 
 type DialogPrintInput = {
-  html: string
-  previewWidth?: number
-  previewHeight?: number
-}
+  html: string;
+  previewWidth?: number;
+  previewHeight?: number;
+};
 
-let dialogPrintInProgress = false
+let dialogPrintInProgress = false;
 
 const PRINT_CSP = [
   "default-src 'none'",
@@ -46,36 +46,36 @@ const PRINT_CSP = [
   "base-uri 'none'",
   "frame-src 'none'",
   "form-action 'none'",
-].join('; ')
+].join('; ');
 
 function hardenPrintHtml(html: string) {
-  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${PRINT_CSP}">`
+  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${PRINT_CSP}">`;
 
-  const headPattern = /<head(\s[^>]*)?>/i
+  const headPattern = /<head(\s[^>]*)?>/i;
 
   if (headPattern.test(html)) {
-    return html.replace(headPattern, (headTag) => `${headTag}\n${cspMeta}`)
+    return html.replace(headPattern, (headTag) => `${headTag}\n${cspMeta}`);
   }
 
-  return `<head>${cspMeta}</head>${html}`
+  return `<head>${cspMeta}</head>${html}`;
 }
 
 function cleanFileName(value: string) {
   const safeName = String(value || 'report.pdf')
     .replace(/[<>:"/\\|?*]+/g, '-')
     .replace(/\s+/g, ' ')
-    .trim()
+    .trim();
 
-  return safeName.toLowerCase().endsWith('.pdf') ? safeName : `${safeName}.pdf`
+  return safeName.toLowerCase().endsWith('.pdf') ? safeName : `${safeName}.pdf`;
 }
 
 function cleanCsvFileName(value: string) {
   const safeName = String(value || 'report.csv')
     .replace(/[<>:"/\\|?*]+/g, '-')
     .replace(/\s+/g, ' ')
-    .trim()
+    .trim();
 
-  return safeName.toLowerCase().endsWith('.csv') ? safeName : `${safeName}.csv`
+  return safeName.toLowerCase().endsWith('.csv') ? safeName : `${safeName}.csv`;
 }
 
 export function registerPrintIpc(): void {
@@ -84,87 +84,87 @@ export function registerPrintIpc(): void {
      * Export PDF مستخدم حاليًا في
      * المخزون وكشف الموردين فقط.
      */
-    requireAuthenticatedAdmin(event)
+    requireAuthenticatedAdmin(event);
 
-    const html = String(input?.html || '').trim()
+    const html = String(input?.html || '').trim();
 
     if (!html) {
-      throw new Error('لا يوجد محتوى لإنشاء PDF')
+      throw new Error('لا يوجد محتوى لإنشاء PDF');
     }
 
     const defaultFileName = cleanFileName(
       input.defaultFileName ||
         `inventory-employees-${new Date().toISOString().slice(0, 10)}.pdf`,
-    )
+    );
 
     const saveResult = await dialog.showSaveDialog({
       title: 'حفظ ملف PDF',
       defaultPath: path.join(app.getPath('documents'), defaultFileName),
       filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
-    })
+    });
 
     if (saveResult.canceled || !saveResult.filePath) {
-      return { ok: false, canceled: true }
+      return { ok: false, canceled: true };
     }
 
     const filePath = saveResult.filePath.toLowerCase().endsWith('.pdf')
       ? saveResult.filePath
-      : `${saveResult.filePath}.pdf`
+      : `${saveResult.filePath}.pdf`;
 
     const pdfWindow = new BrowserWindow({
       show: false,
       webPreferences: getSecureWebPreferences(app.isPackaged),
-    })
+    });
 
-    hardenAuxiliaryWindow(pdfWindow)
+    hardenAuxiliaryWindow(pdfWindow);
 
-    let tempHtmlPath = ''
+    let tempHtmlPath = '';
 
     try {
       tempHtmlPath = path.join(
         os.tmpdir(),
         `erp-inventory-pdf-${Date.now()}.html`,
-      )
+      );
 
-      await fs.writeFile(tempHtmlPath, hardenPrintHtml(html), 'utf8')
-      await pdfWindow.loadFile(tempHtmlPath)
+      await fs.writeFile(tempHtmlPath, hardenPrintHtml(html), 'utf8');
+      await pdfWindow.loadFile(tempHtmlPath);
 
       const pdfBuffer = await pdfWindow.webContents.printToPDF({
         printBackground: true,
         landscape: input.landscape !== false,
         pageSize: 'A4',
-      })
+      });
 
-      await fs.writeFile(filePath, pdfBuffer)
+      await fs.writeFile(filePath, pdfBuffer);
 
       return {
         ok: true,
         filePath,
-      }
+      };
     } finally {
-      pdfWindow.destroy()
+      pdfWindow.destroy();
 
       if (tempHtmlPath) {
-        await fs.unlink(tempHtmlPath).catch(() => {})
+        await fs.unlink(tempHtmlPath).catch(() => {});
       }
     }
-  })
+  });
 
   ipcMain.handle(
     'print:save-report-pdf',
     async (event, input: SavePdfInput) => {
-      requirePermission(event, 'reports.view')
+      requirePermission(event, 'reports.view');
 
-      const html = String(input?.html || '').trim()
+      const html = String(input?.html || '').trim();
 
       if (!html) {
-        throw new Error('لا يوجد محتوى لإنشاء PDF')
+        throw new Error('لا يوجد محتوى لإنشاء PDF');
       }
 
       const defaultFileName = cleanFileName(
         input.defaultFileName ||
           `report-${new Date().toISOString().slice(0, 10)}.pdf`,
-      )
+      );
 
       const saveResult = await dialog.showSaveDialog({
         title: 'حفظ تقرير PDF',
@@ -182,35 +182,35 @@ export function registerPrintIpc(): void {
             extensions: ['pdf'],
           },
         ],
-      })
+      });
 
       if (saveResult.canceled || !saveResult.filePath) {
         return {
           ok: false,
           canceled: true,
-        }
+        };
       }
 
       const filePath = saveResult.filePath.toLowerCase().endsWith('.pdf')
         ? saveResult.filePath
-        : `${saveResult.filePath}.pdf`
+        : `${saveResult.filePath}.pdf`;
 
       const pdfWindow = new BrowserWindow({
         show: false,
 
         webPreferences: getSecureWebPreferences(app.isPackaged),
-      })
+      });
 
-      hardenAuxiliaryWindow(pdfWindow)
+      hardenAuxiliaryWindow(pdfWindow);
 
-      let tempHtmlPath = ''
+      let tempHtmlPath = '';
 
       try {
         tempHtmlPath = path.join(
           os.tmpdir(),
 
           `erp-report-pdf-${Date.now()}.html`,
-        )
+        );
 
         await fs.writeFile(
           tempHtmlPath,
@@ -218,9 +218,9 @@ export function registerPrintIpc(): void {
           hardenPrintHtml(html),
 
           'utf8',
-        )
+        );
 
-        await pdfWindow.loadFile(tempHtmlPath)
+        await pdfWindow.loadFile(tempHtmlPath);
 
         const pdfBuffer = await pdfWindow.webContents.printToPDF({
           printBackground: true,
@@ -228,39 +228,39 @@ export function registerPrintIpc(): void {
           landscape: input.landscape !== false,
 
           pageSize: 'A4',
-        })
+        });
 
-        await fs.writeFile(filePath, pdfBuffer)
+        await fs.writeFile(filePath, pdfBuffer);
 
         return {
           ok: true,
           filePath,
-        }
+        };
       } finally {
-        pdfWindow.destroy()
+        pdfWindow.destroy();
 
         if (tempHtmlPath) {
-          await fs.unlink(tempHtmlPath).catch(() => {})
+          await fs.unlink(tempHtmlPath).catch(() => {});
         }
       }
     },
-  )
+  );
 
   ipcMain.handle(
     'print:save-report-csv',
     async (event, input: SaveReportCsvInput) => {
-      requirePermission(event, 'reports.view')
+      requirePermission(event, 'reports.view');
 
-      const text = String(input?.text || '').trim()
+      const text = String(input?.text || '').trim();
 
       if (!text) {
-        throw new Error('لا توجد بيانات لتصدير CSV')
+        throw new Error('لا توجد بيانات لتصدير CSV');
       }
 
       const defaultFileName = cleanCsvFileName(
         input.defaultFileName ||
           `report-${new Date().toISOString().slice(0, 10)}.csv`,
-      )
+      );
 
       const saveResult = await dialog.showSaveDialog({
         title: 'حفظ تقرير CSV',
@@ -278,18 +278,18 @@ export function registerPrintIpc(): void {
             extensions: ['csv'],
           },
         ],
-      })
+      });
 
       if (saveResult.canceled || !saveResult.filePath) {
         return {
           ok: false,
           canceled: true,
-        }
+        };
       }
 
       const filePath = saveResult.filePath.toLowerCase().endsWith('.csv')
         ? saveResult.filePath
-        : `${saveResult.filePath}.csv`
+        : `${saveResult.filePath}.csv`;
 
       /*
        * BOM مهم علشان Excel
@@ -301,42 +301,42 @@ export function registerPrintIpc(): void {
         `\uFEFF${text}`,
 
         'utf8',
-      )
+      );
 
       return {
         ok: true,
         filePath,
-      }
+      };
     },
-  )
+  );
 
   ipcMain.handle(
     'print:silent-html',
     async (event, input: SilentPrintInput) => {
-      requireAuthenticatedUser(event)
+      requireAuthenticatedUser(event);
 
-      const html = String(input?.html || '').trim()
+      const html = String(input?.html || '').trim();
 
       if (!html) {
-        throw new Error('لا يوجد محتوى للطباعة')
+        throw new Error('لا يوجد محتوى للطباعة');
       }
 
       const printWindow = new BrowserWindow({
         show: false,
         webPreferences: getSecureWebPreferences(app.isPackaged),
-      })
-      hardenAuxiliaryWindow(printWindow)
-      let tempHtmlPath = ''
+      });
+      hardenAuxiliaryWindow(printWindow);
+      let tempHtmlPath = '';
 
       try {
         tempHtmlPath = path.join(
           os.tmpdir(),
           `erp-silent-print-${Date.now()}.html`,
-        )
+        );
 
-        await fs.writeFile(tempHtmlPath, hardenPrintHtml(html), 'utf8')
+        await fs.writeFile(tempHtmlPath, hardenPrintHtml(html), 'utf8');
 
-        await printWindow.loadFile(tempHtmlPath)
+        await printWindow.loadFile(tempHtmlPath);
 
         await new Promise<void>((resolve, reject) => {
           printWindow.webContents.print(
@@ -346,22 +346,22 @@ export function registerPrintIpc(): void {
             },
             (success, failureReason) => {
               if (success) {
-                resolve()
-                return
+                resolve();
+                return;
               }
 
               reject(
                 new Error(
                   failureReason || 'فشل إرسال الفاتورة للطابعة الافتراضية',
                 ),
-              )
+              );
             },
-          )
-        })
+          );
+        });
 
         return {
           ok: true,
-        }
+        };
       } catch (error) {
         return {
           ok: false,
@@ -369,42 +369,42 @@ export function registerPrintIpc(): void {
             error instanceof Error
               ? error.message
               : 'فشل تنفيذ الطباعة الصامتة',
-        }
+        };
       } finally {
-        printWindow.destroy()
+        printWindow.destroy();
 
         if (tempHtmlPath) {
-          await fs.unlink(tempHtmlPath).catch(() => {})
+          await fs.unlink(tempHtmlPath).catch(() => {});
         }
       }
     },
-  )
+  );
 
   ipcMain.handle(
     'print:dialog-html',
     async (event, input: DialogPrintInput) => {
-      requireAuthenticatedUser(event)
-      const html = String(input?.html || '').trim()
+      requireAuthenticatedUser(event);
+      const html = String(input?.html || '').trim();
 
       const previewWidth = clampWindowDimension(
         input?.previewWidth,
         1000,
         420,
         1400,
-      )
+      );
 
       const previewHeight = clampWindowDimension(
         input?.previewHeight,
         800,
         600,
         1000,
-      )
+      );
 
       if (!html) {
         return {
           ok: false,
           message: 'لا يوجد محتوى للطباعة',
-        }
+        };
       }
 
       if (dialogPrintInProgress) {
@@ -412,15 +412,15 @@ export function registerPrintIpc(): void {
           ok: false,
           busy: true,
           message: 'نافذة الطباعة مفتوحة بالفعل',
-        }
+        };
       }
 
-      dialogPrintInProgress = true
+      dialogPrintInProgress = true;
 
-      const parentWindow = BrowserWindow.fromWebContents(event.sender)
+      const parentWindow = BrowserWindow.fromWebContents(event.sender);
 
-      let printWindow: BrowserWindow | null = null
-      let tempHtmlPath = ''
+      let printWindow: BrowserWindow | null = null;
+      let tempHtmlPath = '';
 
       try {
         const activePrintWindow = new BrowserWindow({
@@ -440,36 +440,36 @@ export function registerPrintIpc(): void {
           title: 'معاينة الطباعة',
 
           webPreferences: getSecureWebPreferences(app.isPackaged),
-        })
+        });
 
-        printWindow = activePrintWindow
+        printWindow = activePrintWindow;
 
-        hardenAuxiliaryWindow(activePrintWindow)
+        hardenAuxiliaryWindow(activePrintWindow);
 
         tempHtmlPath = path.join(
           os.tmpdir(),
           `erp-dialog-print-${Date.now()}.html`,
-        )
+        );
 
-        await fs.writeFile(tempHtmlPath, hardenPrintHtml(html), 'utf8')
+        await fs.writeFile(tempHtmlPath, hardenPrintHtml(html), 'utf8');
 
-        await activePrintWindow.loadFile(tempHtmlPath)
+        await activePrintWindow.loadFile(tempHtmlPath);
 
         /*
          * نعرض معاينة آمنة أنشأها الـMain Process
          * قبل فتح Print Dialog.
          */
-        activePrintWindow.show()
-        activePrintWindow.focus()
+        activePrintWindow.show();
+        activePrintWindow.focus();
 
         await new Promise<void>((resolve) => {
-          setTimeout(resolve, 200)
-        })
+          setTimeout(resolve, 200);
+        });
 
         const result = await new Promise<{
-          ok: boolean
-          canceled?: boolean
-          message?: string
+          ok: boolean;
+          canceled?: boolean;
+          message?: string;
         }>((resolve) => {
           activePrintWindow.webContents.print(
             {
@@ -480,54 +480,54 @@ export function registerPrintIpc(): void {
               if (success) {
                 resolve({
                   ok: true,
-                })
+                });
 
-                return
+                return;
               }
 
-              const reason = String(failureReason || '').trim()
+              const reason = String(failureReason || '').trim();
 
               if (reason.toLowerCase().includes('cancel')) {
                 resolve({
                   ok: false,
                   canceled: true,
-                })
+                });
 
-                return
+                return;
               }
 
               resolve({
                 ok: false,
 
                 message: reason || 'تعذر فتح نافذة الطباعة',
-              })
+              });
             },
-          )
-        })
+          );
+        });
 
-        return result
+        return result;
       } catch (error) {
         return {
           ok: false,
 
           message:
             error instanceof Error ? error.message : 'تعذر فتح نافذة الطباعة',
-        }
+        };
       } finally {
         if (printWindow && !printWindow.isDestroyed()) {
-          printWindow.destroy()
+          printWindow.destroy();
         }
 
         if (tempHtmlPath) {
-          await fs.unlink(tempHtmlPath).catch(() => {})
+          await fs.unlink(tempHtmlPath).catch(() => {});
         }
 
-        dialogPrintInProgress = false
+        dialogPrintInProgress = false;
 
         if (parentWindow && !parentWindow.isDestroyed()) {
-          parentWindow.focus()
+          parentWindow.focus();
         }
       }
     },
-  )
+  );
 }

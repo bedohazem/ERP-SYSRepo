@@ -1,54 +1,56 @@
-import { useEffect, useState } from 'react'
-import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
+import { useEffect, useState } from 'react';
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
 import {
   ACTIVITY_ACTION_OPTIONS,
   ACTIVITY_ENTITY_OPTIONS,
   formatActivityDetails as formatDetails,
   getActivityActionLabel as getActionLabel,
   getActivityEntityLabel as getEntityLabel,
-} from '../../utils/activity-log'
-import MultiSelectFilter from '../../components/MultiSelectFilter'
+} from '../../utils/activity-log';
+import MultiSelectFilter from '../../components/MultiSelectFilter';
 type ActivityFilters = {
-  date_from?: string
-  date_to?: string
-  action?: string
-  actions?: string[]
-  entity?: string
-  entities?: string[]
-  search?: string
-  limit?: number
-  offset?: number
-}
+  date_from?: string;
+  date_to?: string;
+  action?: string;
+  actions?: string[];
+  entity?: string;
+  entities?: string[];
+  search?: string;
+  limit?: number;
+  offset?: number;
+};
 
 export default function ActivityLogPage() {
-  const [logs, setLogs] = useState<ActivityLog[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
+  const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [expandedDetails, setExpandedDetails] = useState<
     Record<number, boolean>
-  >({})
-  const [loading, setLoading] = useState(false)
+  >({});
+  const [loading, setLoading] = useState(false);
   const [pageMessage, setPageMessage] = useState<{
-    type: 'success' | 'error'
-    text: string
-  } | null>(null)
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   function showMessage(type: 'success' | 'error', text: string) {
-    setPageMessage({ type, text })
+    setPageMessage({ type, text });
 
     setTimeout(() => {
-      setPageMessage(null)
-    }, 1800)
+      setPageMessage(null);
+    }, 1800);
   }
 
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [actions, setActions] = useState<string[]>([])
-  const [entities, setEntities] = useState<string[]>([])
-  const [search, setSearch] = useState('')
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [actions, setActions] = useState<string[]>([]);
+  const [entities, setEntities] = useState<string[]>([]);
+  const [search, setSearch] = useState('');
 
   function getFilters(targetPage = page): ActivityFilters {
-    const safePage = Math.max(1, Number(targetPage || 1))
+    const safePage = Math.max(1, Number(targetPage || 1));
 
     return {
       date_from: dateFrom || undefined,
@@ -58,37 +60,37 @@ export default function ActivityLogPage() {
       search: search.trim() || undefined,
       limit: SYSTEM_PAGE_SIZE,
       offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
-    }
+    };
   }
 
   function toggleDetails(id: number) {
     setExpandedDetails((prev) => ({
       ...prev,
       [id]: !prev[id],
-    }))
+    }));
   }
 
   async function loadLogs(targetPage = page, customFilters?: ActivityFilters) {
-    setLoading(true)
+    setLoading(true);
 
     try {
-      const safePage = Math.max(1, Number(targetPage || 1))
+      const safePage = Math.max(1, Number(targetPage || 1));
 
       const result = await window.api.getActivityLogs(
         customFilters ?? getFilters(safePage),
-      )
+      );
 
-      setLogs(Array.isArray(result.rows) ? result.rows : [])
-      setTotal(Number(result.total || 0))
-      setPage(safePage)
-      setExpandedDetails({})
+      setLogs(Array.isArray(result.rows) ? result.rows : []);
+      setTotal(Number(result.total || 0));
+      setPage(safePage);
+      setExpandedDetails({});
     } catch (error) {
-      console.error(error)
-      showMessage('error', 'حدث خطأ أثناء تحميل سجل العمليات')
-      setLogs([])
-      setTotal(0)
+      console.error(error);
+      showMessage('error', 'حدث خطأ أثناء تحميل سجل العمليات');
+      setLogs([]);
+      setTotal(0);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -96,20 +98,20 @@ export default function ActivityLogPage() {
     const emptyFilters: ActivityFilters = {
       limit: SYSTEM_PAGE_SIZE,
       offset: 0,
-    }
+    };
 
-    setDateFrom('')
-    setDateTo('')
-    setActions([])
-    setEntities([])
-    setSearch('')
+    setDateFrom('');
+    setDateTo('');
+    setActions([]);
+    setEntities([]);
+    setSearch('');
 
-    setPage(1)
-    void loadLogs(1, emptyFilters)
+    setPage(1);
+    void loadLogs(1, emptyFilters);
   }
 
   async function getAllActivityLogsForPrint() {
-    const batchSize = 200
+    const batchSize = 200;
 
     const baseFilters = {
       date_from: dateFrom || undefined,
@@ -117,42 +119,44 @@ export default function ActivityLogPage() {
       actions: actions.length > 0 ? actions : undefined,
       entities: entities.length > 0 ? entities : undefined,
       search: search.trim() || undefined,
-    }
+    };
 
     const firstResult = await window.api.getActivityLogs({
       ...baseFilters,
       limit: batchSize,
       offset: 0,
-    })
+    });
 
-    const allLogs = Array.isArray(firstResult.rows) ? [...firstResult.rows] : []
+    const allLogs = Array.isArray(firstResult.rows)
+      ? [...firstResult.rows]
+      : [];
 
-    const total = Number(firstResult.total || 0)
+    const total = Number(firstResult.total || 0);
 
     for (let offset = batchSize; offset < total; offset += batchSize) {
       const result = await window.api.getActivityLogs({
         ...baseFilters,
         limit: batchSize,
         offset,
-      })
+      });
 
       if (Array.isArray(result.rows)) {
-        allLogs.push(...result.rows)
+        allLogs.push(...result.rows);
       }
     }
 
-    return allLogs
+    return allLogs;
   }
 
   async function printActivityReport() {
-    let printLogs: ActivityLog[] = []
+    let printLogs: ActivityLog[] = [];
 
     try {
-      printLogs = await getAllActivityLogsForPrint()
+      printLogs = await getAllActivityLogsForPrint();
     } catch (error) {
-      console.error('Failed to load activity logs for print:', error)
-      showMessage('error', 'حدث خطأ أثناء تجهيز سجل العمليات للطباعة')
-      return
+      console.error('Failed to load activity logs for print:', error);
+      showMessage('error', 'حدث خطأ أثناء تجهيز سجل العمليات للطباعة');
+      return;
     }
 
     const filtersText = [
@@ -167,7 +171,7 @@ export default function ActivityLogPage() {
         ? `القسم: ${entities.map((item) => getEntityLabel(item)).join('، ')}`
         : null,
       search.trim() ? `بحث: ${search.trim()}` : null,
-    ].filter(Boolean)
+    ].filter(Boolean);
 
     const rowsHtml = printLogs
       .map(
@@ -184,7 +188,7 @@ export default function ActivityLogPage() {
           </tr>
         `,
       )
-      .join('')
+      .join('');
 
     const html = `
       <!doctype html>
@@ -386,21 +390,21 @@ export default function ActivityLogPage() {
 
         </body>
       </html>
-    `
+    `;
 
     try {
       const result = await window.api.printHtmlWithDialog({
         html,
         previewWidth: 1100,
         previewHeight: 800,
-      })
+      });
 
       if (!result.ok && !result.canceled) {
-        showMessage('error', result.message || 'تعذر فتح نافذة الطباعة')
+        showMessage('error', result.message || 'تعذر فتح نافذة الطباعة');
       }
     } catch (error) {
-      console.error('Failed to print activity report:', error)
-      showMessage('error', 'تعذر فتح نافذة الطباعة')
+      console.error('Failed to print activity report:', error);
+      showMessage('error', 'تعذر فتح نافذة الطباعة');
     }
   }
 
@@ -408,8 +412,8 @@ export default function ActivityLogPage() {
     void loadLogs(1, {
       limit: SYSTEM_PAGE_SIZE,
       offset: 0,
-    })
-  }, [])
+    });
+  }, []);
 
   return (
     <div
@@ -566,8 +570,8 @@ export default function ActivityLogPage() {
           <button
             type="button"
             onClick={() => {
-              setPage(1)
-              void loadLogs(1)
+              setPage(1);
+              void loadLogs(1);
             }}
             style={primaryButtonStyle}
           >
@@ -618,7 +622,7 @@ export default function ActivityLogPage() {
           totalItems={total}
           loading={loading}
           onPageChange={(nextPage) => {
-            void loadLogs(nextPage)
+            void loadLogs(nextPage);
           }}
         />
 
@@ -663,9 +667,9 @@ export default function ActivityLogPage() {
 
               {!loading &&
                 logs.map((item) => {
-                  const detailsText = formatDetails(item.details)
-                  const isExpanded = Boolean(expandedDetails[item.id])
-                  const canExpand = detailsText.length > 90
+                  const detailsText = formatDetails(item.details);
+                  const isExpanded = Boolean(expandedDetails[item.id]);
+                  const canExpand = detailsText.length > 90;
 
                   return (
                     <tr
@@ -729,7 +733,7 @@ export default function ActivityLogPage() {
                         {formatDate(item.created_at)}
                       </td>
                     </tr>
-                  )
+                  );
                 })}
 
               {!loading && logs.length === 0 && (
@@ -752,23 +756,23 @@ export default function ActivityLogPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function formatLogUser(item: ActivityLog) {
   if (item.user_name || item.username) {
-    return item.user_name || item.username
+    return item.user_name || item.username;
   }
 
-  return 'غير محدد'
+  return 'غير محدد';
 }
 
 function formatApprovalUser(item: ActivityLog) {
   if (item.approved_by_name || item.approved_by_username) {
-    return item.approved_by_name || item.approved_by_username || '—'
+    return item.approved_by_name || item.approved_by_username || '—';
   }
 
-  return '—'
+  return '—';
 }
 
 function escapeHtml(value: unknown) {
@@ -777,30 +781,30 @@ function escapeHtml(value: unknown) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+    .replace(/'/g, '&#039;');
 }
 
 function Field({
   label,
   children,
 }: {
-  label: string
-  children: React.ReactNode
+  label: string;
+  children: React.ReactNode;
 }) {
   return (
     <label style={{ display: 'grid', gap: '8px' }}>
       <span style={{ color: '#cbd5e1', fontWeight: 800 }}>{label}</span>
       {children}
     </label>
-  )
+  );
 }
 
 function formatDate(value?: string) {
-  if (!value) return '—'
+  if (!value) return '—';
 
   try {
-    const raw = String(value)
-    const normalized = raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`
+    const raw = String(value);
+    const normalized = raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`;
 
     return new Date(normalized).toLocaleString('ar-EG', {
       year: 'numeric',
@@ -808,9 +812,9 @@ function formatDate(value?: string) {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-    })
+    });
   } catch {
-    return value
+    return value;
   }
 }
 
@@ -822,7 +826,7 @@ function getActionBadgeStyle(action: string): React.CSSProperties {
     action.includes('restored') ||
     action.includes('return') ||
     action.includes('out') ||
-    action.includes('withdraw')
+    action.includes('withdraw');
 
   const isSuccess =
     action.includes('created') ||
@@ -830,14 +834,14 @@ function getActionBadgeStyle(action: string): React.CSSProperties {
     action.includes('activated') ||
     action.includes('deposit') ||
     action.includes('in') ||
-    action.includes('backup')
+    action.includes('backup');
 
   if (isDanger) {
     return {
       ...badgeStyle,
       background: 'rgba(239,68,68,0.16)',
       color: '#fca5a5',
-    }
+    };
   }
 
   if (isSuccess) {
@@ -845,10 +849,10 @@ function getActionBadgeStyle(action: string): React.CSSProperties {
       ...badgeStyle,
       background: 'rgba(16,185,129,0.16)',
       color: '#6ee7b7',
-    }
+    };
   }
 
-  return badgeStyle
+  return badgeStyle;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -863,7 +867,7 @@ const inputStyle: React.CSSProperties = {
   direction: 'rtl',
   boxSizing: 'border-box',
   minWidth: '180px',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -874,7 +878,7 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 900,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.12)',
@@ -885,19 +889,19 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontWeight: 900,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   fontWeight: 900,
   whiteSpace: 'nowrap',
-}
+};
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
-}
+};
 
 const badgeStyle: React.CSSProperties = {
   padding: '5px 10px',
@@ -906,4 +910,4 @@ const badgeStyle: React.CSSProperties = {
   color: '#93c5fd',
   fontWeight: 900,
   whiteSpace: 'nowrap',
-}
+};

@@ -1,44 +1,46 @@
-import { useEffect, useState } from 'react'
-import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
-import type { CSSProperties } from 'react'
-import { useAuthStore } from '../../store/auth.store'
+import { useEffect, useState } from 'react';
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
+import type { CSSProperties } from 'react';
+import { useAuthStore } from '../../store/auth.store';
 import {
   CASH_ACCOUNT_OPTIONS,
   getPaymentMethodLabel,
-} from '../../utils/payment-method'
-import FinancialCancelModal from '../../components/FinancialCancelModal'
-import { formatMoney } from '../../../shared/money'
+} from '../../utils/payment-method';
+import FinancialCancelModal from '../../components/FinancialCancelModal';
+import { formatMoney } from '../../../shared/money';
 
 type Liability = {
-  id: number
-  party_name: string
-  title: string
-  category?: string | null
-  total_amount: number
-  paid_amount: number
-  remaining_amount: number
-  status: 'open' | 'paid' | 'cancelled' | string
-  due_date?: string | null
-  notes?: string | null
-  created_by_name?: string | null
-  payments_count?: number
-  created_at: string
-  updated_at?: string | null
-}
+  id: number;
+  party_name: string;
+  title: string;
+  category?: string | null;
+  total_amount: number;
+  paid_amount: number;
+  remaining_amount: number;
+  status: 'open' | 'paid' | 'cancelled' | string;
+  due_date?: string | null;
+  notes?: string | null;
+  created_by_name?: string | null;
+  payments_count?: number;
+  created_at: string;
+  updated_at?: string | null;
+};
 
 type LiabilityPayment = {
-  id: number
-  liability_id: number
-  amount: number
-  payment_method: string
-  notes?: string | null
-  created_by_name?: string | null
-  created_at: string
-  cancelled_at?: string | null
-  cancelled_by?: number | null
-  cancel_reason?: string | null
-  replacement_payment_id?: number | null
-}
+  id: number;
+  liability_id: number;
+  amount: number;
+  payment_method: string;
+  notes?: string | null;
+  created_by_name?: string | null;
+  created_at: string;
+  cancelled_at?: string | null;
+  cancelled_by?: number | null;
+  cancel_reason?: string | null;
+  replacement_payment_id?: number | null;
+};
 
 const emptyForm = {
   party_name: '',
@@ -49,20 +51,20 @@ const emptyForm = {
   payment_method: 'store_cash',
   due_date: '',
   notes: '',
-}
+};
 
-const LIABILITY_STATEMENT_PAGE_SIZE = 20
+const LIABILITY_STATEMENT_PAGE_SIZE = 20;
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return '—'
+  if (!value) return '—';
 
   try {
-    const raw = String(value)
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
+    const raw = String(value);
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
 
     return new Date(normalized).toLocaleString('ar-EG', {
       year: 'numeric',
@@ -70,25 +72,25 @@ function formatDate(value?: string | null) {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-    })
+    });
   } catch {
-    return value
+    return value;
   }
 }
 
 function getStatusLabel(status: string) {
-  if (status === 'paid') return 'مسدد'
-  if (status === 'cancelled') return 'ملغي'
-  return 'مفتوح'
+  if (status === 'paid') return 'مسدد';
+  if (status === 'cancelled') return 'ملغي';
+  return 'مفتوح';
 }
 
 export default function LiabilitiesPage() {
-  const currentUser = useAuthStore((s) => s.user)
-  const isAdmin = currentUser?.role === 'admin'
-  const [items, setItems] = useState<Liability[]>([])
-  const [itemsTotal, setItemsTotal] = useState(0)
-  const [liabilityPage, setLiabilityPage] = useState(1)
-  const [liabilityStatementPage, setLiabilityStatementPage] = useState(1)
+  const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role === 'admin';
+  const [items, setItems] = useState<Liability[]>([]);
+  const [itemsTotal, setItemsTotal] = useState(0);
+  const [liabilityPage, setLiabilityPage] = useState(1);
+  const [liabilityStatementPage, setLiabilityStatementPage] = useState(1);
   const [summary, setSummary] = useState({
     paid_in_period: 0,
     total_liabilities: 0,
@@ -97,15 +99,15 @@ export default function LiabilitiesPage() {
     count: 0,
     open_count: 0,
     paid_count: 0,
-  })
+  });
 
-  const [form, setForm] = useState(emptyForm)
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [form, setForm] = useState(emptyForm);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [editTarget, setEditTarget] = useState<Liability | null>(null)
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editTarget, setEditTarget] = useState<Liability | null>(null);
 
   const [editForm, setEditForm] = useState({
     party_name: '',
@@ -114,51 +116,51 @@ export default function LiabilitiesPage() {
     total_amount: '',
     due_date: '',
     notes: '',
-  })
+  });
 
-  const [editPassword, setEditPassword] = useState('')
+  const [editPassword, setEditPassword] = useState('');
 
-  const [updatingLiability, setUpdatingLiability] = useState(false)
+  const [updatingLiability, setUpdatingLiability] = useState(false);
 
-  const [paymentTarget, setPaymentTarget] = useState<Liability | null>(null)
-  const [paymentAmount, setPaymentAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('store_cash')
-  const [paymentNotes, setPaymentNotes] = useState('')
-  const [savingPayment, setSavingPayment] = useState(false)
+  const [paymentTarget, setPaymentTarget] = useState<Liability | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('store_cash');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [savingPayment, setSavingPayment] = useState(false);
 
   const [statementData, setStatementData] = useState<{
-    liability: Liability
-    payments: LiabilityPayment[]
-  } | null>(null)
+    liability: Liability;
+    payments: LiabilityPayment[];
+  } | null>(null);
 
-  const [cancelTarget, setCancelTarget] = useState<Liability | null>(null)
+  const [cancelTarget, setCancelTarget] = useState<Liability | null>(null);
   const [cancelPaymentTarget, setCancelPaymentTarget] =
-    useState<LiabilityPayment | null>(null)
+    useState<LiabilityPayment | null>(null);
 
-  const [cancelPaymentReason, setCancelPaymentReason] = useState('')
+  const [cancelPaymentReason, setCancelPaymentReason] = useState('');
 
-  const [cancelPaymentPassword, setCancelPaymentPassword] = useState('')
+  const [cancelPaymentPassword, setCancelPaymentPassword] = useState('');
 
-  const [cancellingPayment, setCancellingPayment] = useState(false)
+  const [cancellingPayment, setCancellingPayment] = useState(false);
   const [editPaymentTarget, setEditPaymentTarget] =
-    useState<LiabilityPayment | null>(null)
+    useState<LiabilityPayment | null>(null);
 
-  const [editPaymentAmount, setEditPaymentAmount] = useState('')
+  const [editPaymentAmount, setEditPaymentAmount] = useState('');
 
-  const [editPaymentMethod, setEditPaymentMethod] = useState('store_cash')
+  const [editPaymentMethod, setEditPaymentMethod] = useState('store_cash');
 
-  const [editPaymentNotes, setEditPaymentNotes] = useState('')
+  const [editPaymentNotes, setEditPaymentNotes] = useState('');
 
-  const [editPaymentPassword, setEditPaymentPassword] = useState('')
+  const [editPaymentPassword, setEditPaymentPassword] = useState('');
 
-  const [updatingPayment, setUpdatingPayment] = useState(false)
+  const [updatingPayment, setUpdatingPayment] = useState(false);
   const [message, setMessage] = useState<{
-    type: 'success' | 'error'
-    text: string
-  } | null>(null)
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const isLight =
-    document.documentElement.getAttribute('data-theme') === 'light'
+    document.documentElement.getAttribute('data-theme') === 'light';
 
   function showMessage(
     type: 'success' | 'error',
@@ -170,16 +172,16 @@ export default function LiabilitiesPage() {
     setMessage({
       type,
       text,
-    })
+    });
 
-    setTimeout(() => setMessage(null), duration)
+    setTimeout(() => setMessage(null), duration);
   }
 
   async function loadData(page = liabilityPage) {
-    setLoading(true)
+    setLoading(true);
 
     try {
-      const safePage = Math.max(1, Number(page || 1))
+      const safePage = Math.max(1, Number(page || 1));
 
       const [listResult, nextSummary] = await Promise.all([
         window.api.getLiabilitiesPage({
@@ -190,13 +192,13 @@ export default function LiabilitiesPage() {
         }),
 
         window.api.getLiabilitiesSummary(),
-      ])
+      ]);
 
-      setItems(Array.isArray(listResult.rows) ? listResult.rows : [])
+      setItems(Array.isArray(listResult.rows) ? listResult.rows : []);
 
-      setItemsTotal(Number(listResult.total || 0))
+      setItemsTotal(Number(listResult.total || 0));
 
-      setLiabilityPage(safePage)
+      setLiabilityPage(safePage);
 
       setSummary({
         paid_in_period: Number(nextSummary?.paid_in_period || 0),
@@ -206,50 +208,50 @@ export default function LiabilitiesPage() {
         count: Number(nextSummary?.count || 0),
         open_count: Number(nextSummary?.open_count || 0),
         paid_count: Number(nextSummary?.paid_count || 0),
-      })
+      });
     } catch (error) {
-      console.error(error)
+      console.error(error);
 
-      showMessage('error', 'حدث خطأ أثناء تحميل الالتزامات')
+      showMessage('error', 'حدث خطأ أثناء تحميل الالتزامات');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      setLiabilityPage(1)
-      void loadData(1)
-    }, 250)
+      setLiabilityPage(1);
+      void loadData(1);
+    }, 250);
 
-    return () => clearTimeout(handle)
-  }, [search, statusFilter])
+    return () => clearTimeout(handle);
+  }, [search, statusFilter]);
 
   async function handleCreate() {
-    const totalAmount = Number(form.total_amount || 0)
-    const paidAmount = Number(form.paid_amount || 0)
+    const totalAmount = Number(form.total_amount || 0);
+    const paidAmount = Number(form.paid_amount || 0);
 
     if (!form.party_name.trim()) {
-      showMessage('error', 'اسم الشخص أو الجهة مطلوب')
-      return
+      showMessage('error', 'اسم الشخص أو الجهة مطلوب');
+      return;
     }
 
     if (!form.title.trim()) {
-      showMessage('error', 'عنوان الالتزام مطلوب')
-      return
+      showMessage('error', 'عنوان الالتزام مطلوب');
+      return;
     }
 
     if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
-      showMessage('error', 'اكتب إجمالي مبلغ صحيح')
-      return
+      showMessage('error', 'اكتب إجمالي مبلغ صحيح');
+      return;
     }
 
     if (paidAmount < 0 || paidAmount > totalAmount) {
-      showMessage('error', 'المدفوع المبدئي غير صحيح')
-      return
+      showMessage('error', 'المدفوع المبدئي غير صحيح');
+      return;
     }
 
-    setSaving(true)
+    setSaving(true);
 
     try {
       const result = await window.api.createLiability({
@@ -262,25 +264,25 @@ export default function LiabilitiesPage() {
         due_date: form.due_date || null,
         notes: form.notes.trim() || null,
         actor_id: currentUser?.id ?? null,
-      })
+      });
 
       if (result?.success === false) {
-        showMessage('error', result.message || 'تعذر حفظ الالتزام')
-        return
+        showMessage('error', result.message || 'تعذر حفظ الالتزام');
+        return;
       }
 
-      setForm(emptyForm)
-      showMessage('success', 'تم حفظ الالتزام')
-      await loadData(liabilityPage)
+      setForm(emptyForm);
+      showMessage('success', 'تم حفظ الالتزام');
+      await loadData(liabilityPage);
     } catch (error: any) {
-      showMessage('error', error.message || 'حدث خطأ أثناء حفظ الالتزام')
+      showMessage('error', error.message || 'حدث خطأ أثناء حفظ الالتزام');
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
   function openEditLiability(item: Liability) {
-    setEditTarget(item)
+    setEditTarget(item);
 
     setEditForm({
       party_name: item.party_name || '',
@@ -294,15 +296,15 @@ export default function LiabilitiesPage() {
       due_date: item.due_date || '',
 
       notes: item.notes || '',
-    })
+    });
 
-    setEditPassword('')
+    setEditPassword('');
   }
 
   function closeEditLiability() {
-    if (updatingLiability) return
+    if (updatingLiability) return;
 
-    setEditTarget(null)
+    setEditTarget(null);
 
     setEditForm({
       party_name: '',
@@ -311,39 +313,39 @@ export default function LiabilitiesPage() {
       total_amount: '',
       due_date: '',
       notes: '',
-    })
+    });
 
-    setEditPassword('')
+    setEditPassword('');
   }
 
   async function confirmUpdateLiability() {
     if (!editTarget || updatingLiability) {
-      return
+      return;
     }
 
-    const totalAmount = Number(editForm.total_amount || 0)
+    const totalAmount = Number(editForm.total_amount || 0);
 
     if (!editForm.party_name.trim()) {
-      showMessage('error', 'اسم الشخص أو الجهة مطلوب')
-      return
+      showMessage('error', 'اسم الشخص أو الجهة مطلوب');
+      return;
     }
 
     if (!editForm.title.trim()) {
-      showMessage('error', 'عنوان الالتزام مطلوب')
-      return
+      showMessage('error', 'عنوان الالتزام مطلوب');
+      return;
     }
 
     if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
-      showMessage('error', 'قيمة الالتزام غير صحيحة')
-      return
+      showMessage('error', 'قيمة الالتزام غير صحيحة');
+      return;
     }
 
     if (!editPassword.trim()) {
-      showMessage('error', 'اكتب كلمة مرور المدير')
-      return
+      showMessage('error', 'اكتب كلمة مرور المدير');
+      return;
     }
 
-    setUpdatingLiability(true)
+    setUpdatingLiability(true);
 
     try {
       const result = await window.api.updateLiability({
@@ -364,43 +366,43 @@ export default function LiabilitiesPage() {
         actor_id: currentUser?.id ?? null,
 
         admin_password: editPassword,
-      })
+      });
 
       if (!result.success) {
-        showMessage('error', result.message || 'تعذر تعديل الالتزام')
+        showMessage('error', result.message || 'تعذر تعديل الالتزام');
 
-        return
+        return;
       }
 
-      setEditTarget(null)
-      setEditPassword('')
+      setEditTarget(null);
+      setEditPassword('');
 
-      showMessage('success', 'تم تعديل الالتزام')
+      showMessage('success', 'تم تعديل الالتزام');
 
-      await loadData(liabilityPage)
+      await loadData(liabilityPage);
     } catch (error: any) {
-      showMessage('error', error?.message || 'حدث خطأ أثناء تعديل الالتزام')
+      showMessage('error', error?.message || 'حدث خطأ أثناء تعديل الالتزام');
     } finally {
-      setUpdatingLiability(false)
+      setUpdatingLiability(false);
     }
   }
 
   async function handleRecordPayment() {
-    if (!paymentTarget) return
+    if (!paymentTarget) return;
 
-    const amount = Number(paymentAmount || 0)
+    const amount = Number(paymentAmount || 0);
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      showMessage('error', 'اكتب مبلغ دفعة صحيح')
-      return
+      showMessage('error', 'اكتب مبلغ دفعة صحيح');
+      return;
     }
 
     if (amount > Number(paymentTarget.remaining_amount || 0)) {
-      showMessage('error', 'مبلغ الدفعة أكبر من المتبقي')
-      return
+      showMessage('error', 'مبلغ الدفعة أكبر من المتبقي');
+      return;
     }
 
-    setSavingPayment(true)
+    setSavingPayment(true);
 
     try {
       const result = await window.api.recordLiabilityPayment({
@@ -409,66 +411,66 @@ export default function LiabilitiesPage() {
         payment_method: paymentMethod,
         notes: paymentNotes.trim() || null,
         actor_id: currentUser?.id ?? null,
-      })
+      });
 
       if (result?.success === false) {
-        showMessage('error', result.message || 'تعذر تسجيل الدفعة')
-        return
+        showMessage('error', result.message || 'تعذر تسجيل الدفعة');
+        return;
       }
 
-      setPaymentTarget(null)
-      setPaymentAmount('')
-      setPaymentMethod('store_cash')
-      setPaymentNotes('')
+      setPaymentTarget(null);
+      setPaymentAmount('');
+      setPaymentMethod('store_cash');
+      setPaymentNotes('');
 
-      showMessage('success', 'تم تسجيل الدفعة')
-      await loadData(liabilityPage)
+      showMessage('success', 'تم تسجيل الدفعة');
+      await loadData(liabilityPage);
     } catch (error: any) {
-      showMessage('error', error.message || 'حدث خطأ أثناء تسجيل الدفعة')
+      showMessage('error', error.message || 'حدث خطأ أثناء تسجيل الدفعة');
     } finally {
-      setSavingPayment(false)
+      setSavingPayment(false);
     }
   }
 
   async function openStatement(item: Liability) {
-    setLiabilityStatementPage(1)
+    setLiabilityStatementPage(1);
 
     try {
-      const data = await window.api.getLiabilityStatement(item.id)
-      setStatementData(data)
+      const data = await window.api.getLiabilityStatement(item.id);
+      setStatementData(data);
     } catch (error) {
-      console.error(error)
-      showMessage('error', 'تعذر فتح كشف الحساب')
+      console.error(error);
+      showMessage('error', 'تعذر فتح كشف الحساب');
     }
   }
 
   async function confirmCancel() {
-    if (!cancelTarget) return
+    if (!cancelTarget) return;
 
     try {
       const result = await window.api.cancelLiability({
         id: cancelTarget.id,
         reason: 'إلغاء الالتزام من شاشة الالتزامات',
         actor_id: currentUser?.id ?? null,
-      })
+      });
 
       if (result?.success === false) {
-        showMessage('error', result.message || 'تعذر إلغاء الالتزام')
-        return
+        showMessage('error', result.message || 'تعذر إلغاء الالتزام');
+        return;
       }
 
-      setCancelTarget(null)
-      showMessage('success', 'تم إلغاء الالتزام')
-      await loadData(liabilityPage)
+      setCancelTarget(null);
+      showMessage('success', 'تم إلغاء الالتزام');
+      await loadData(liabilityPage);
     } catch (error: any) {
-      showMessage('error', error.message || 'حدث خطأ أثناء إلغاء الالتزام')
+      showMessage('error', error.message || 'حدث خطأ أثناء إلغاء الالتزام');
     }
   }
 
   async function confirmCancelLiabilityPayment() {
-    if (!cancelPaymentTarget || cancellingPayment) return
+    if (!cancelPaymentTarget || cancellingPayment) return;
 
-    setCancellingPayment(true)
+    setCancellingPayment(true);
 
     try {
       const result = await window.api.cancelLiabilityPayment({
@@ -476,80 +478,80 @@ export default function LiabilitiesPage() {
         reason: cancelPaymentReason.trim() || 'إلغاء دفعة التزام',
         actor_id: currentUser?.id ?? null,
         admin_password: cancelPaymentPassword,
-      })
+      });
 
       if (!result?.success) {
-        showMessage('error', result?.message || 'تعذر إلغاء الدفعة')
-        return
+        showMessage('error', result?.message || 'تعذر إلغاء الدفعة');
+        return;
       }
 
-      const liabilityId = cancelPaymentTarget.liability_id
+      const liabilityId = cancelPaymentTarget.liability_id;
 
-      setCancelPaymentTarget(null)
-      setCancelPaymentReason('')
-      setCancelPaymentPassword('')
+      setCancelPaymentTarget(null);
+      setCancelPaymentReason('');
+      setCancelPaymentPassword('');
 
-      showMessage('success', 'تم إلغاء دفعة الالتزام')
+      showMessage('success', 'تم إلغاء دفعة الالتزام');
 
-      await loadData(liabilityPage)
+      await loadData(liabilityPage);
 
       if (statementData?.liability?.id === liabilityId) {
-        const next = await window.api.getLiabilityStatement(liabilityId)
+        const next = await window.api.getLiabilityStatement(liabilityId);
 
-        setStatementData(next)
+        setStatementData(next);
       }
     } catch (error: any) {
       showMessage(
         'error',
         error?.message || 'حدث خطأ أثناء إلغاء دفعة الالتزام',
-      )
+      );
     } finally {
-      setCancellingPayment(false)
+      setCancellingPayment(false);
     }
   }
 
   function openEditLiabilityPayment(payment: LiabilityPayment) {
-    setEditPaymentTarget(payment)
+    setEditPaymentTarget(payment);
 
-    setEditPaymentAmount(String(Number(payment.amount || 0)))
+    setEditPaymentAmount(String(Number(payment.amount || 0)));
 
-    setEditPaymentMethod(payment.payment_method || 'store_cash')
+    setEditPaymentMethod(payment.payment_method || 'store_cash');
 
-    setEditPaymentNotes(payment.notes || '')
+    setEditPaymentNotes(payment.notes || '');
 
-    setEditPaymentPassword('')
+    setEditPaymentPassword('');
   }
 
   function closeEditLiabilityPayment() {
-    if (updatingPayment) return
+    if (updatingPayment) return;
 
-    setEditPaymentTarget(null)
-    setEditPaymentAmount('')
-    setEditPaymentMethod('store_cash')
-    setEditPaymentNotes('')
-    setEditPaymentPassword('')
+    setEditPaymentTarget(null);
+    setEditPaymentAmount('');
+    setEditPaymentMethod('store_cash');
+    setEditPaymentNotes('');
+    setEditPaymentPassword('');
   }
 
   async function confirmUpdateLiabilityPayment() {
     if (!editPaymentTarget || updatingPayment) {
-      return
+      return;
     }
 
-    const amount = Number(editPaymentAmount || 0)
+    const amount = Number(editPaymentAmount || 0);
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      showMessage('error', 'اكتب مبلغ دفعة صحيح')
-      return
+      showMessage('error', 'اكتب مبلغ دفعة صحيح');
+      return;
     }
 
     if (!editPaymentPassword.trim()) {
-      showMessage('error', 'اكتب كلمة مرور المدير')
-      return
+      showMessage('error', 'اكتب كلمة مرور المدير');
+      return;
     }
 
-    const liabilityId = editPaymentTarget.liability_id
+    const liabilityId = editPaymentTarget.liability_id;
 
-    setUpdatingPayment(true)
+    setUpdatingPayment(true);
 
     try {
       const result = await window.api.updateLiabilityPayment({
@@ -564,52 +566,52 @@ export default function LiabilitiesPage() {
         actor_id: currentUser?.id ?? null,
 
         admin_password: editPaymentPassword,
-      })
+      });
 
       if (!result.success) {
-        showMessage('error', result.message || 'تعذر تعديل دفعة الالتزام')
+        showMessage('error', result.message || 'تعذر تعديل دفعة الالتزام');
 
-        return
+        return;
       }
 
-      setEditPaymentTarget(null)
-      setEditPaymentAmount('')
-      setEditPaymentNotes('')
-      setEditPaymentPassword('')
+      setEditPaymentTarget(null);
+      setEditPaymentAmount('');
+      setEditPaymentNotes('');
+      setEditPaymentPassword('');
 
-      showMessage('success', 'تم تعديل دفعة الالتزام')
+      showMessage('success', 'تم تعديل دفعة الالتزام');
 
-      await loadData(liabilityPage)
+      await loadData(liabilityPage);
 
       if (statementData?.liability?.id === liabilityId) {
-        const next = await window.api.getLiabilityStatement(liabilityId)
+        const next = await window.api.getLiabilityStatement(liabilityId);
 
-        setStatementData(next)
+        setStatementData(next);
       }
     } catch (error: any) {
       showMessage(
         'error',
         error?.message || 'حدث خطأ أثناء تعديل دفعة الالتزام',
-      )
+      );
     } finally {
-      setUpdatingPayment(false)
+      setUpdatingPayment(false);
     }
   }
 
-  const openCount = Number(summary.open_count || 0)
+  const openCount = Number(summary.open_count || 0);
 
-  const paidCount = Number(summary.paid_count || 0)
+  const paidCount = Number(summary.paid_count || 0);
 
   const statementPayments = Array.isArray(statementData?.payments)
     ? statementData.payments
-    : []
+    : [];
 
-  const statementPaymentsTotal = statementPayments.length
+  const statementPaymentsTotal = statementPayments.length;
 
   const statementPaymentsPageRows = statementPayments.slice(
     (liabilityStatementPage - 1) * LIABILITY_STATEMENT_PAGE_SIZE,
     liabilityStatementPage * LIABILITY_STATEMENT_PAGE_SIZE,
-  )
+  );
 
   return (
     <div
@@ -864,7 +866,7 @@ export default function LiabilitiesPage() {
           totalItems={itemsTotal}
           loading={loading}
           onPageChange={(page) => {
-            void loadData(page)
+            void loadData(page);
           }}
         />
 
@@ -992,11 +994,11 @@ export default function LiabilitiesPage() {
                           type="button"
                           style={successSmallButtonStyle}
                           onClick={() => {
-                            setPaymentTarget(item)
+                            setPaymentTarget(item);
                             setPaymentAmount(
                               String(item.remaining_amount || ''),
-                            )
-                            setPaymentMethod('store_cash')
+                            );
+                            setPaymentMethod('store_cash');
                           }}
                         >
                           دفعة
@@ -1394,11 +1396,11 @@ export default function LiabilitiesPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            setCancelPaymentTarget(payment)
+                            setCancelPaymentTarget(payment);
 
-                            setCancelPaymentReason('إلغاء دفعة التزام')
+                            setCancelPaymentReason('إلغاء دفعة التزام');
 
-                            setCancelPaymentPassword('')
+                            setCancelPaymentPassword('');
                           }}
                           style={{
                             border: '1px solid rgba(239,68,68,0.30)',
@@ -1603,16 +1605,16 @@ export default function LiabilitiesPage() {
         onReasonChange={setCancelPaymentReason}
         onPasswordChange={setCancelPaymentPassword}
         onClose={() => {
-          if (cancellingPayment) return
+          if (cancellingPayment) return;
 
-          setCancelPaymentTarget(null)
-          setCancelPaymentReason('')
-          setCancelPaymentPassword('')
+          setCancelPaymentTarget(null);
+          setCancelPaymentReason('');
+          setCancelPaymentPassword('');
         }}
         onConfirm={() => void confirmCancelLiabilityPayment()}
       />
     </div>
-  )
+  );
 }
 
 function SummaryCard({
@@ -1621,10 +1623,10 @@ function SummaryCard({
   danger,
   success,
 }: {
-  title: string
-  value: string
-  danger?: boolean
-  success?: boolean
+  title: string;
+  value: string;
+  danger?: boolean;
+  success?: boolean;
 }) {
   return (
     <div
@@ -1647,7 +1649,7 @@ function SummaryCard({
         {value}
       </strong>
     </div>
-  )
+  );
 }
 
 function Th({ children }: { children: React.ReactNode }) {
@@ -1662,7 +1664,7 @@ function Th({ children }: { children: React.ReactNode }) {
     >
       {children}
     </th>
-  )
+  );
 }
 
 function Td({ children }: { children: React.ReactNode }) {
@@ -1670,7 +1672,7 @@ function Td({ children }: { children: React.ReactNode }) {
     <td style={{ padding: '12px', verticalAlign: 'middle', fontWeight: 700 }}>
       {children}
     </td>
-  )
+  );
 }
 
 const inputStyle: React.CSSProperties = {
@@ -1682,7 +1684,7 @@ const inputStyle: React.CSSProperties = {
   padding: '0 12px',
   outline: 'none',
   fontWeight: 700,
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -1692,7 +1694,7 @@ const primaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontWeight: 900,
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(148,163,184,0.20)',
@@ -1702,26 +1704,26 @@ const secondaryButtonStyle: React.CSSProperties = {
   color: 'inherit',
   fontWeight: 900,
   cursor: 'pointer',
-}
+};
 
 const smallButtonStyle: React.CSSProperties = {
   ...secondaryButtonStyle,
   padding: '8px 12px',
-}
+};
 
 const successSmallButtonStyle: React.CSSProperties = {
   ...smallButtonStyle,
   background: 'rgba(16,185,129,0.12)',
   borderColor: 'rgba(16,185,129,0.30)',
   color: '#34d399',
-}
+};
 
 const dangerSmallButtonStyle: React.CSSProperties = {
   ...smallButtonStyle,
   background: 'rgba(239,68,68,0.12)',
   borderColor: 'rgba(239,68,68,0.30)',
   color: '#f87171',
-}
+};
 
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
@@ -1731,7 +1733,7 @@ const modalOverlayStyle: React.CSSProperties = {
   display: 'grid',
   placeItems: 'center',
   padding: '20px',
-}
+};
 
 const modalStyle: React.CSSProperties = {
   width: '460px',
@@ -1745,7 +1747,7 @@ const modalStyle: React.CSSProperties = {
   display: 'grid',
   gap: '14px',
   boxShadow: '0 28px 80px rgba(0,0,0,0.35)',
-}
+};
 
 const closeButtonStyle: React.CSSProperties = {
   width: '34px',
@@ -1756,9 +1758,9 @@ const closeButtonStyle: React.CSSProperties = {
   color: 'inherit',
   cursor: 'pointer',
   fontWeight: 900,
-}
+};
 
 const labelStyle: CSSProperties = {
   color: '#cbd5e1',
   fontWeight: 800,
-}
+};

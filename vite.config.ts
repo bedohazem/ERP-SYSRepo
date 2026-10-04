@@ -1,6 +1,6 @@
-import { defineConfig, type Plugin } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'node:path'
+import { defineConfig, type Plugin } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'node:path';
 
 function contentSecurityPolicyPlugin(isDev: boolean): Plugin {
   const content = isDev
@@ -27,7 +27,7 @@ function contentSecurityPolicyPlugin(isDev: boolean): Plugin {
         "base-uri 'none'",
         "frame-src 'none'",
         "form-action 'none'",
-      ].join('; ')
+      ].join('; ');
 
   return {
     name: 'erp-content-security-policy',
@@ -45,10 +45,10 @@ function contentSecurityPolicyPlugin(isDev: boolean): Plugin {
             },
             injectTo: 'head-prepend',
           },
-        ]
+        ];
       },
     },
-  }
+  };
 }
 
 export default defineConfig(({ command }) => ({
@@ -73,4 +73,4 @@ export default defineConfig(({ command }) => ({
     port: 3000,
     strictPort: true,
   },
-}))
+}));

@@ -1,12 +1,12 @@
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent } from 'electron';
 
-import { logAction, runCriticalActionWithAudit } from './activity-helper'
+import { logAction, runCriticalActionWithAudit } from './activity-helper';
 import {
   createAdminPasswordRecoveryRequest,
   recoverAdminPassword,
-} from '../security/admin-recovery'
+} from '../security/admin-recovery';
 
-import { isSupportRecoveryConfigured } from '../security/support-recovery-token'
+import { isSupportRecoveryConfigured } from '../security/support-recovery-token';
 import {
   changeOwnPassword,
   createInitialAdmin,
@@ -23,7 +23,7 @@ import {
   getUserPermissionSettings,
   setUserPermissions,
   upgradeUserPasswordHash,
-} from '../database/repositories/user.repo'
+} from '../database/repositories/user.repo';
 
 import {
   AUTH_IDLE_TIMEOUT_MS,
@@ -32,89 +32,89 @@ import {
   requireAuthenticatedUser,
   requireAuthenticatedUserForPasswordChange,
   startAuthSession,
-} from '../auth-session'
+} from '../auth-session';
 
-import { isPasswordHashed, verifyPassword } from '../security/password'
+import { isPasswordHashed, verifyPassword } from '../security/password';
 
 import {
   assertPasswordPolicy,
   getPasswordPolicyError,
-} from '../../shared/password-policy'
+} from '../../shared/password-policy';
 
 type AuthPayload = {
-  name?: string
-  username: string
-  password: string
-  role?: string
-}
+  name?: string;
+  username: string;
+  password: string;
+  role?: string;
+};
 
 type LoginAttemptState = {
-  failures: number
-  lockedUntil: number
-}
+  failures: number;
+  lockedUntil: number;
+};
 
-const MAX_LOGIN_FAILURES = 5
-const LOGIN_LOCK_MS = 30 * 1000
+const MAX_LOGIN_FAILURES = 5;
+const LOGIN_LOCK_MS = 30 * 1000;
 
-const loginAttempts = new WeakMap<object, LoginAttemptState>()
+const loginAttempts = new WeakMap<object, LoginAttemptState>();
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
-    return error.message
+    return error.message;
   }
 
-  return 'حدث خطأ غير متوقع'
+  return 'حدث خطأ غير متوقع';
 }
 
 function getLoginRetrySeconds(event: IpcMainInvokeEvent) {
-  const state = loginAttempts.get(event.sender)
+  const state = loginAttempts.get(event.sender);
 
   if (!state) {
-    return 0
+    return 0;
   }
 
-  const remaining = state.lockedUntil - Date.now()
+  const remaining = state.lockedUntil - Date.now();
 
   if (remaining <= 0) {
     if (state.lockedUntil > 0) {
-      loginAttempts.delete(event.sender)
+      loginAttempts.delete(event.sender);
     }
 
-    return 0
+    return 0;
   }
 
-  return Math.max(1, Math.ceil(remaining / 1000))
+  return Math.max(1, Math.ceil(remaining / 1000));
 }
 
 function registerLoginFailure(event: IpcMainInvokeEvent) {
-  const current = loginAttempts.get(event.sender)
+  const current = loginAttempts.get(event.sender);
 
-  const failures = Number(current?.failures || 0) + 1
+  const failures = Number(current?.failures || 0) + 1;
 
   if (failures >= MAX_LOGIN_FAILURES) {
     loginAttempts.set(event.sender, {
       failures: 0,
 
       lockedUntil: Date.now() + LOGIN_LOCK_MS,
-    })
+    });
 
-    return Math.ceil(LOGIN_LOCK_MS / 1000)
+    return Math.ceil(LOGIN_LOCK_MS / 1000);
   }
 
   loginAttempts.set(event.sender, {
     failures,
     lockedUntil: 0,
-  })
+  });
 
-  return 0
+  return 0;
 }
 
 function clearLoginFailures(event: IpcMainInvokeEvent) {
-  loginAttempts.delete(event.sender)
+  loginAttempts.delete(event.sender);
 }
 
 function getLockMessage(seconds: number) {
-  return `محاولات دخول كثيرة. حاول مرة أخرى بعد ${seconds} ثانية`
+  return `محاولات دخول كثيرة. حاول مرة أخرى بعد ${seconds} ثانية`;
 }
 
 function failedLoginResponse(
@@ -135,9 +135,9 @@ function failedLoginResponse(
       username,
       reason,
     },
-  })
+  });
 
-  const retryAfterSeconds = registerLoginFailure(event)
+  const retryAfterSeconds = registerLoginFailure(event);
 
   if (retryAfterSeconds > 0) {
     return {
@@ -146,7 +146,7 @@ function failedLoginResponse(
       message: getLockMessage(retryAfterSeconds),
 
       retry_after_seconds: retryAfterSeconds,
-    }
+    };
   }
 
   return {
@@ -158,12 +158,12 @@ function failedLoginResponse(
      * موجود أم لا.
      */
     message: 'اسم المستخدم أو كلمة المرور غير صحيحة',
-  }
+  };
 }
 
 export function registerAuthIpc(): void {
   ipcMain.handle('auth:bootstrap-status', () => {
-    const status = getAuthBootstrapStatus()
+    const status = getAuthBootstrapStatus();
 
     return {
       success: true,
@@ -173,31 +173,31 @@ export function registerAuthIpc(): void {
       message: status.blocked
         ? 'لا يوجد مدير نظام فعال. استرجع نسخة احتياطية سليمة أو تواصل مع الدعم.'
         : undefined,
-    }
-  })
+    };
+  });
 
   ipcMain.handle('auth:bootstrap-admin', (event, data: AuthPayload) => {
     try {
-      clearAuthSession(event)
+      clearAuthSession(event);
 
-      const status = getAuthBootstrapStatus()
+      const status = getAuthBootstrapStatus();
 
       if (!status.needs_setup) {
-        throw new Error('تم إعداد حساب مدير للنظام بالفعل')
+        throw new Error('تم إعداد حساب مدير للنظام بالفعل');
       }
 
-      const name = String(data?.name || '').trim()
+      const name = String(data?.name || '').trim();
 
-      const username = String(data?.username || '').trim()
+      const username = String(data?.username || '').trim();
 
-      const password = assertPasswordPolicy(data?.password)
+      const password = assertPasswordPolicy(data?.password);
 
       if (!name) {
-        throw new Error('اسم المدير مطلوب')
+        throw new Error('اسم المدير مطلوب');
       }
 
       if (!username) {
-        throw new Error('اسم الدخول مطلوب')
+        throw new Error('اسم الدخول مطلوب');
       }
 
       const user = runCriticalActionWithAudit(
@@ -218,11 +218,11 @@ export function registerAuthIpc(): void {
             username: user.username,
           },
         }),
-      )
+      );
 
-      startAuthSession(event, user.id)
+      startAuthSession(event, user.id);
 
-      clearLoginFailures(event)
+      clearLoginFailures(event);
 
       return {
         success: true,
@@ -231,23 +231,23 @@ export function registerAuthIpc(): void {
 
           permissions: getEffectiveUserPermissions(user.id),
         },
-      }
+      };
     } catch (error) {
       return {
         success: false,
 
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('auth:recovery-request', () => {
     try {
       if (!isSupportRecoveryConfigured()) {
-        throw new Error('خاصية استرجاع كلمة المرور غير مفعلة في هذه النسخة')
+        throw new Error('خاصية استرجاع كلمة المرور غير مفعلة في هذه النسخة');
       }
 
-      const request = createAdminPasswordRecoveryRequest()
+      const request = createAdminPasswordRecoveryRequest();
 
       logAction({
         actor_id: null,
@@ -265,35 +265,35 @@ export function registerAuthIpc(): void {
 
           expires_at: request.expires_at,
         },
-      })
+      });
 
       return {
         success: true,
         ...request,
-      }
+      };
     } catch (error) {
       return {
         success: false,
 
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle(
     'auth:recover-admin',
     (
       event,
       input: {
-        request_id?: string
-        username?: string
-        recovery_code?: string
-        new_password?: string
+        request_id?: string;
+        username?: string;
+        recovery_code?: string;
+        new_password?: string;
       },
     ) => {
       try {
         if (!isSupportRecoveryConfigured()) {
-          throw new Error('خاصية استرجاع كلمة المرور غير مفعلة في هذه النسخة')
+          throw new Error('خاصية استرجاع كلمة المرور غير مفعلة في هذه النسخة');
         }
 
         const result = runCriticalActionWithAudit(
@@ -316,25 +316,25 @@ export function registerAuthIpc(): void {
               method: 'support_signed_recovery',
             },
           }),
-        )
+        );
 
-        clearAuthSession(event)
-        clearLoginFailures(event)
+        clearAuthSession(event);
+        clearLoginFailures(event);
 
         return {
           success: true,
 
           message: 'تم تغيير كلمة مرور المدير بنجاح. يمكنك تسجيل الدخول الآن.',
-        }
+        };
       } catch (error) {
         return {
           success: false,
 
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle('auth:login', (event, data: AuthPayload) => {
     try {
@@ -342,9 +342,9 @@ export function registerAuthIpc(): void {
        * أي Login جديد
        * يلغي Session قديمة.
        */
-      clearAuthSession(event)
+      clearAuthSession(event);
 
-      const retry = getLoginRetrySeconds(event)
+      const retry = getLoginRetrySeconds(event);
 
       if (retry > 0) {
         return {
@@ -353,30 +353,30 @@ export function registerAuthIpc(): void {
           message: getLockMessage(retry),
 
           retry_after_seconds: retry,
-        }
+        };
       }
 
       const username =
-        typeof data?.username === 'string' ? data.username.trim() : ''
+        typeof data?.username === 'string' ? data.username.trim() : '';
 
-      const password = typeof data?.password === 'string' ? data.password : ''
+      const password = typeof data?.password === 'string' ? data.password : '';
 
       if (!username || !password) {
-        return failedLoginResponse(event, username, 'بيانات دخول غير مكتملة')
+        return failedLoginResponse(event, username, 'بيانات دخول غير مكتملة');
       }
 
-      const user = findUserByUsername(username)
+      const user = findUserByUsername(username);
 
       if (!user) {
         return failedLoginResponse(
           event,
           username,
           'المستخدم غير موجود أو غير مفعل',
-        )
+        );
       }
 
       if (!verifyPassword(password, user.password)) {
-        return failedLoginResponse(event, username, 'كلمة المرور غير صحيحة')
+        return failedLoginResponse(event, username, 'كلمة المرور غير صحيحة');
       }
 
       /*
@@ -384,7 +384,7 @@ export function registerAuthIpc(): void {
        * القديمة النصية إلى Scrypt.
        */
       if (!isPasswordHashed(user.password)) {
-        upgradeUserPasswordHash(user.id, password)
+        upgradeUserPasswordHash(user.id, password);
       }
 
       /*
@@ -393,17 +393,17 @@ export function registerAuthIpc(): void {
        * صاحبه من الدخول نهائيًا،
        * لكن نجبره على تغييره.
        */
-      const passwordPolicyError = getPasswordPolicyError(password)
+      const passwordPolicyError = getPasswordPolicyError(password);
 
       if (passwordPolicyError) {
-        setUserPasswordChangeRequired(user.id, true)
+        setUserPasswordChangeRequired(user.id, true);
 
-        user.must_change_password = 1
+        user.must_change_password = 1;
       }
 
-      clearLoginFailures(event)
+      clearLoginFailures(event);
 
-      startAuthSession(event, user.id)
+      startAuthSession(event, user.id);
 
       logAction({
         actor_id: user.id,
@@ -424,7 +424,7 @@ export function registerAuthIpc(): void {
           requires_password_change:
             Number(user.must_change_password || 0) === 1,
         },
-      })
+      });
 
       return {
         success: true,
@@ -441,28 +441,28 @@ export function registerAuthIpc(): void {
           role: user.role,
           permissions: getEffectiveUserPermissions(user.id),
         },
-      }
+      };
     } catch (error) {
       return {
         success: false,
 
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle(
     'auth:change-password',
     (
       event,
       input: {
-        password?: string
+        password?: string;
       },
     ) => {
       try {
-        const actor = requireAuthenticatedUserForPasswordChange(event)
+        const actor = requireAuthenticatedUserForPasswordChange(event);
 
-        const password = assertPasswordPolicy(input?.password)
+        const password = assertPasswordPolicy(input?.password);
 
         const user = runCriticalActionWithAudit(
           () => changeOwnPassword(actor.id, password),
@@ -478,9 +478,9 @@ export function registerAuthIpc(): void {
 
             details: {},
           }),
-        )
+        );
 
-        startAuthSession(event, actor.id)
+        startAuthSession(event, actor.id);
 
         return {
           success: true,
@@ -490,20 +490,20 @@ export function registerAuthIpc(): void {
 
             permissions: getEffectiveUserPermissions(user.id),
           },
-        }
+        };
       } catch (error) {
         return {
           success: false,
 
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle('auth:touch', (event) => {
     try {
-      const user = requireAuthenticatedUser(event)
+      const user = requireAuthenticatedUser(event);
 
       return {
         success: true,
@@ -513,23 +513,23 @@ export function registerAuthIpc(): void {
         permissions: getEffectiveUserPermissions(user.id),
 
         idle_timeout_seconds: Math.floor(AUTH_IDLE_TIMEOUT_MS / 1000),
-      }
+      };
     } catch (error) {
       return {
         success: false,
 
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('auth:lock', (event) => {
-    let actorId: number | null = null
+    let actorId: number | null = null;
 
     try {
-      actorId = requireAuthenticatedUserForPasswordChange(event).id
+      actorId = requireAuthenticatedUserForPasswordChange(event).id;
     } catch {
-      actorId = null
+      actorId = null;
     }
 
     try {
@@ -546,30 +546,30 @@ export function registerAuthIpc(): void {
           details: {
             reason: 'idle_timeout',
           },
-        })
+        });
       }
 
-      clearAuthSession(event)
+      clearAuthSession(event);
 
       return {
         success: true,
-      }
+      };
     } catch (error) {
       return {
         success: false,
 
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('auth:logout', (event) => {
-    let actorId: number | null = null
+    let actorId: number | null = null;
 
     try {
-      actorId = requireAuthenticatedUserForPasswordChange(event).id
+      actorId = requireAuthenticatedUserForPasswordChange(event).id;
     } catch {
-      actorId = null
+      actorId = null;
     }
 
     try {
@@ -584,40 +584,40 @@ export function registerAuthIpc(): void {
           entity_id: actorId,
 
           details: {},
-        })
+        });
       }
 
-      clearAuthSession(event)
+      clearAuthSession(event);
 
       return {
         success: true,
-      }
+      };
     } catch (error) {
       return {
         success: false,
 
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle(
     'users:list',
     (
       event,
       input?: {
-        search?: string
-        actor_id?: number
+        search?: string;
+        actor_id?: number;
       },
     ) => {
       try {
-        requireAuthenticatedAdmin(event)
+        requireAuthenticatedAdmin(event);
 
         return {
           success: true,
 
           users: listUsers(input?.search || ''),
-        }
+        };
       } catch (error) {
         return {
           success: false,
@@ -625,26 +625,26 @@ export function registerAuthIpc(): void {
           message: getErrorMessage(error),
 
           users: [],
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle(
     'users:list-page',
     (
       event,
       input?: {
-        search?: string
-        limit?: number
-        offset?: number
-        actor_id?: number
+        search?: string;
+        limit?: number;
+        offset?: number;
+        actor_id?: number;
       },
     ) => {
       try {
-        requireAuthenticatedAdmin(event)
+        requireAuthenticatedAdmin(event);
 
-        const result = listUsersPage(input)
+        const result = listUsersPage(input);
 
         return {
           success: true,
@@ -656,7 +656,7 @@ export function registerAuthIpc(): void {
           limit: result.limit,
 
           offset: result.offset,
-        }
+        };
       } catch (error) {
         return {
           success: false,
@@ -668,44 +668,44 @@ export function registerAuthIpc(): void {
           total: 0,
           limit: 50,
           offset: 0,
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle('users:get-permissions', (event, userId: number) => {
     try {
-      requireAuthenticatedAdmin(event)
+      requireAuthenticatedAdmin(event);
 
       return {
         success: true,
 
         settings: getUserPermissionSettings(Number(userId)),
-      }
+      };
     } catch (error) {
       return {
         success: false,
 
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle(
     'users:set-permissions',
     (
       event,
       input: {
-        user_id?: number
-        permissions?: string[]
+        user_id?: number;
+        permissions?: string[];
       },
     ) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requireAuthenticatedAdmin(event);
 
-        const userId = Number(input?.user_id || 0)
+        const userId = Number(input?.user_id || 0);
 
-        const before = getUserPermissionSettings(userId)
+        const before = getUserPermissionSettings(userId);
 
         const after = runCriticalActionWithAudit(
           () =>
@@ -730,34 +730,34 @@ export function registerAuthIpc(): void {
               after: after.effective_permissions,
             },
           }),
-        )
+        );
         return {
           success: true,
 
           settings: after,
-        }
+        };
       } catch (error) {
         return {
           success: false,
 
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle(
     'users:create',
     (
       event,
       data: AuthPayload & {
-        actor_id?: number
+        actor_id?: number;
       },
     ) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requireAuthenticatedAdmin(event);
 
-        const password = assertPasswordPolicy(data.password)
+        const password = assertPasswordPolicy(data.password);
 
         const user = runCriticalActionWithAudit(
           () =>
@@ -790,25 +790,25 @@ export function registerAuthIpc(): void {
               must_change_password: false,
             },
           }),
-        )
+        );
 
         return {
           success: true,
           user,
-        }
+        };
       } catch (error) {
         return {
           success: false,
 
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle('users:update', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requireAuthenticatedAdmin(event);
 
       const user = runCriticalActionWithAudit(
         () => updateUser(input),
@@ -832,26 +832,26 @@ export function registerAuthIpc(): void {
             is_active: user.is_active,
           },
         }),
-      )
+      );
 
       return {
         success: true,
         user,
-      }
+      };
     } catch (error) {
       return {
         success: false,
 
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle(
     'users:set-active',
     (event, userId: number, isActive: number) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requireAuthenticatedAdmin(event);
 
         const user = runCriticalActionWithAudit(
           () => setUserActive(userId, isActive),
@@ -871,31 +871,31 @@ export function registerAuthIpc(): void {
               is_active: user.is_active,
             },
           }),
-        )
+        );
 
         return {
           success: true,
           user,
-        }
+        };
       } catch (error) {
         return {
           success: false,
 
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 
   ipcMain.handle(
     'users:reset-password',
     (event, userId: number, password: string) => {
       try {
-        const actorId = requireAuthenticatedAdmin(event)
+        const actorId = requireAuthenticatedAdmin(event);
 
-        const strongPassword = assertPasswordPolicy(password)
+        const strongPassword = assertPasswordPolicy(password);
 
-        const isSelf = Number(userId) === Number(actorId)
+        const isSelf = Number(userId) === Number(actorId);
 
         const user = runCriticalActionWithAudit(
           () =>
@@ -922,23 +922,23 @@ export function registerAuthIpc(): void {
               requires_change: !isSelf,
             },
           }),
-        )
+        );
 
         if (isSelf) {
-          startAuthSession(event, actorId)
+          startAuthSession(event, actorId);
         }
 
         return {
           success: true,
           user,
-        }
+        };
       } catch (error) {
         return {
           success: false,
 
           message: getErrorMessage(error),
-        }
+        };
       }
     },
-  )
+  );
 }

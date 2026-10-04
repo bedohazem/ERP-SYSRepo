@@ -1,138 +1,140 @@
-import { useEffect, useState } from 'react'
-import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
-import { useAuthStore } from '../../store/auth.store'
+import { useEffect, useState } from 'react';
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
+import { useAuthStore } from '../../store/auth.store';
 import {
   CASH_ACCOUNT_OPTIONS,
   ADMIN_CASH_ACCOUNT_OPTIONS,
   getPaymentMethodLabel,
-} from '../../utils/payment-method'
-import FinancialCancelModal from '../../components/FinancialCancelModal'
-import { hasUserPermission } from '../../utils/permissions'
-import { formatMoney } from '../../../shared/money'
+} from '../../utils/payment-method';
+import FinancialCancelModal from '../../components/FinancialCancelModal';
+import { hasUserPermission } from '../../utils/permissions';
+import { formatMoney } from '../../../shared/money';
 
 type Expense = {
-  id: number
-  title: string
-  category?: string
-  amount: number
-  payment_method: string
-  notes?: string
-  created_by?: number | null
-  created_by_name?: string
-  created_at: string
-  cancelled_at?: string | null
-  cancelled_by?: number | null
-  cancel_reason?: string | null
-}
+  id: number;
+  title: string;
+  category?: string;
+  amount: number;
+  payment_method: string;
+  notes?: string;
+  created_by?: number | null;
+  created_by_name?: string;
+  created_at: string;
+  cancelled_at?: string | null;
+  cancelled_by?: number | null;
+  cancel_reason?: string | null;
+};
 
 export default function ExpensesPage() {
-  const [expenses, setExpenses] = useState<Expense[]>([])
-  const [expensesTotal, setExpensesTotal] = useState(0)
-  const [expensesPage, setExpensesPage] = useState(1)
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [expensesTotal, setExpensesTotal] = useState(0);
+  const [expensesPage, setExpensesPage] = useState(1);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
-    type: 'success' | 'error'
-    text: string
-  } | null>(null)
-  const currentUser = useAuthStore((s) => s.user)
-  const isAdmin = currentUser?.role === 'admin'
-  const canManageExpenses = hasUserPermission(currentUser, 'expenses.manage')
-  const [title, setTitle] = useState('')
-  const [category, setCategory] = useState('')
-  const [amount, setAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('store_cash')
-  const [notes, setNotes] = useState('')
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+  const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role === 'admin';
+  const canManageExpenses = hasUserPermission(currentUser, 'expenses.manage');
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('');
+  const [amount, setAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('store_cash');
+  const [notes, setNotes] = useState('');
   const [cancelExpenseTarget, setCancelExpenseTarget] =
-    useState<Expense | null>(null)
+    useState<Expense | null>(null);
 
-  const [cancelExpenseReason, setCancelExpenseReason] = useState('')
+  const [cancelExpenseReason, setCancelExpenseReason] = useState('');
 
-  const [cancelExpensePassword, setCancelExpensePassword] = useState('')
+  const [cancelExpensePassword, setCancelExpensePassword] = useState('');
 
-  const [cancellingExpense, setCancellingExpense] = useState(false)
+  const [cancellingExpense, setCancellingExpense] = useState(false);
   const [editExpenseTarget, setEditExpenseTarget] = useState<Expense | null>(
     null,
-  )
+  );
 
-  const [editExpenseTitle, setEditExpenseTitle] = useState('')
+  const [editExpenseTitle, setEditExpenseTitle] = useState('');
 
-  const [editExpenseCategory, setEditExpenseCategory] = useState('')
+  const [editExpenseCategory, setEditExpenseCategory] = useState('');
 
-  const [editExpenseAmount, setEditExpenseAmount] = useState('')
+  const [editExpenseAmount, setEditExpenseAmount] = useState('');
 
   const [editExpensePaymentMethod, setEditExpensePaymentMethod] =
-    useState('store_cash')
+    useState('store_cash');
 
-  const [editExpenseNotes, setEditExpenseNotes] = useState('')
+  const [editExpenseNotes, setEditExpenseNotes] = useState('');
 
-  const [editExpensePassword, setEditExpensePassword] = useState('')
+  const [editExpensePassword, setEditExpensePassword] = useState('');
 
-  const [updatingExpense, setUpdatingExpense] = useState(false)
+  const [updatingExpense, setUpdatingExpense] = useState(false);
 
   function showMessage(
     type: 'success' | 'error',
     text: string,
     duration = 1800,
   ) {
-    setMessage({ type, text })
+    setMessage({ type, text });
 
-    setTimeout(() => setMessage(null), duration)
+    setTimeout(() => setMessage(null), duration);
   }
 
   async function loadExpenses(page = expensesPage) {
-    setLoading(true)
+    setLoading(true);
 
     try {
-      const safePage = Math.max(1, Number(page || 1))
+      const safePage = Math.max(1, Number(page || 1));
 
       const result = await window.api.getExpensesPage({
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
         limit: SYSTEM_PAGE_SIZE,
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
-      })
+      });
 
-      setExpenses(Array.isArray(result.rows) ? result.rows : [])
+      setExpenses(Array.isArray(result.rows) ? result.rows : []);
 
-      setExpensesTotal(Number(result.total || 0))
+      setExpensesTotal(Number(result.total || 0));
 
-      setTotalExpenses(Number(result.total_amount || 0))
+      setTotalExpenses(Number(result.total_amount || 0));
 
-      setExpensesPage(safePage)
+      setExpensesPage(safePage);
     } catch (error) {
-      console.error(error)
+      console.error(error);
 
-      showMessage('error', 'حدث خطأ أثناء تحميل المصروفات')
+      showMessage('error', 'حدث خطأ أثناء تحميل المصروفات');
 
-      setExpenses([])
-      setExpensesTotal(0)
-      setTotalExpenses(0)
+      setExpenses([]);
+      setExpensesTotal(0);
+      setTotalExpenses(0);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    setExpensesPage(1)
-    void loadExpenses(1)
-  }, [dateFrom, dateTo])
+    setExpensesPage(1);
+    void loadExpenses(1);
+  }, [dateFrom, dateTo]);
 
   async function handleSubmit() {
     if (!title.trim()) {
-      showMessage('error', 'اسم المصروف مطلوب')
-      return
+      showMessage('error', 'اسم المصروف مطلوب');
+      return;
     }
 
-    const parsedAmount = Number(amount)
+    const parsedAmount = Number(amount);
     if (!parsedAmount || parsedAmount <= 0) {
-      showMessage('error', 'اكتب مبلغ صحيح')
-      return
+      showMessage('error', 'اكتب مبلغ صحيح');
+      return;
     }
 
-    setSaving(true)
+    setSaving(true);
     try {
       await window.api.createExpense({
         title: title.trim(),
@@ -141,16 +143,16 @@ export default function ExpensesPage() {
         payment_method: paymentMethod,
         notes: notes.trim() || null,
         created_by: currentUser?.id ?? null,
-      })
+      });
 
-      setTitle('')
-      setCategory('')
-      setAmount('')
-      setPaymentMethod('store_cash')
-      setNotes('')
+      setTitle('');
+      setCategory('');
+      setAmount('');
+      setPaymentMethod('store_cash');
+      setNotes('');
 
-      showMessage('success', 'تم حفظ المصروف')
-      await loadExpenses(expensesPage)
+      showMessage('success', 'تم حفظ المصروف');
+      await loadExpenses(expensesPage);
     } catch (error: any) {
       showMessage(
         'error',
@@ -158,16 +160,16 @@ export default function ExpensesPage() {
         error?.message || 'حدث خطأ أثناء حفظ المصروف. لم يتم تطبيق أي تغييرات.',
 
         4500,
-      )
+      );
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
   async function confirmCancelExpense() {
-    if (!cancelExpenseTarget || cancellingExpense) return
+    if (!cancelExpenseTarget || cancellingExpense) return;
 
-    setCancellingExpense(true)
+    setCancellingExpense(true);
 
     try {
       const result = await window.api.cancelExpense({
@@ -177,7 +179,7 @@ export default function ExpensesPage() {
           `إلغاء مصروف: ${cancelExpenseTarget.title}`,
         actor_id: currentUser?.id ?? null,
         admin_password: isAdmin ? cancelExpensePassword : undefined,
-      })
+      });
 
       if (!result?.success) {
         showMessage(
@@ -186,17 +188,17 @@ export default function ExpensesPage() {
           result?.message || 'تعذر إلغاء المصروف. لم يتم تطبيق أي تغييرات.',
 
           4500,
-        )
-        return
+        );
+        return;
       }
 
-      setCancelExpenseTarget(null)
-      setCancelExpenseReason('')
-      setCancelExpensePassword('')
+      setCancelExpenseTarget(null);
+      setCancelExpenseReason('');
+      setCancelExpensePassword('');
 
-      showMessage('success', 'تم إلغاء المصروف')
+      showMessage('success', 'تم إلغاء المصروف');
 
-      await loadExpenses(expensesPage)
+      await loadExpenses(expensesPage);
     } catch (error: any) {
       showMessage(
         'error',
@@ -205,65 +207,65 @@ export default function ExpensesPage() {
           'حدث خطأ أثناء إلغاء المصروف. لم يتم تطبيق أي تغييرات.',
 
         4500,
-      )
+      );
     } finally {
-      setCancellingExpense(false)
+      setCancellingExpense(false);
     }
   }
 
   function openEditExpense(expense: Expense) {
-    setEditExpenseTarget(expense)
+    setEditExpenseTarget(expense);
 
-    setEditExpenseTitle(expense.title || '')
+    setEditExpenseTitle(expense.title || '');
 
-    setEditExpenseCategory(expense.category || '')
+    setEditExpenseCategory(expense.category || '');
 
-    setEditExpenseAmount(String(Number(expense.amount || 0)))
+    setEditExpenseAmount(String(Number(expense.amount || 0)));
 
-    setEditExpensePaymentMethod(expense.payment_method || 'store_cash')
+    setEditExpensePaymentMethod(expense.payment_method || 'store_cash');
 
-    setEditExpenseNotes(expense.notes || '')
+    setEditExpenseNotes(expense.notes || '');
 
-    setEditExpensePassword('')
+    setEditExpensePassword('');
   }
 
   function closeEditExpense() {
-    if (updatingExpense) return
+    if (updatingExpense) return;
 
-    setEditExpenseTarget(null)
-    setEditExpenseTitle('')
-    setEditExpenseCategory('')
-    setEditExpenseAmount('')
-    setEditExpensePaymentMethod('store_cash')
-    setEditExpenseNotes('')
-    setEditExpensePassword('')
+    setEditExpenseTarget(null);
+    setEditExpenseTitle('');
+    setEditExpenseCategory('');
+    setEditExpenseAmount('');
+    setEditExpensePaymentMethod('store_cash');
+    setEditExpenseNotes('');
+    setEditExpensePassword('');
   }
 
   async function confirmUpdateExpense() {
     if (!editExpenseTarget || updatingExpense) {
-      return
+      return;
     }
 
-    const title = editExpenseTitle.trim()
+    const title = editExpenseTitle.trim();
 
     if (!title) {
-      showMessage('error', 'اسم المصروف مطلوب')
-      return
+      showMessage('error', 'اسم المصروف مطلوب');
+      return;
     }
 
-    const amount = Number(editExpenseAmount || 0)
+    const amount = Number(editExpenseAmount || 0);
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      showMessage('error', 'اكتب مبلغ صحيح')
-      return
+      showMessage('error', 'اكتب مبلغ صحيح');
+      return;
     }
 
     if (isAdmin && !editExpensePassword.trim()) {
-      showMessage('error', 'اكتب كلمة مرور المدير')
-      return
+      showMessage('error', 'اكتب كلمة مرور المدير');
+      return;
     }
 
-    setUpdatingExpense(true)
+    setUpdatingExpense(true);
 
     try {
       const result = await window.api.updateExpense({
@@ -282,7 +284,7 @@ export default function ExpensesPage() {
         actor_id: currentUser?.id ?? null,
 
         admin_password: isAdmin ? editExpensePassword : undefined,
-      })
+      });
 
       if (!result.success) {
         showMessage(
@@ -291,15 +293,15 @@ export default function ExpensesPage() {
           result?.message || 'تعذر تعديل المصروف. لم يتم تطبيق أي تغييرات.',
 
           4500,
-        )
-        return
+        );
+        return;
       }
 
-      closeEditExpense()
+      closeEditExpense();
 
-      showMessage('success', 'تم تعديل المصروف')
+      showMessage('success', 'تم تعديل المصروف');
 
-      await loadExpenses(expensesPage)
+      await loadExpenses(expensesPage);
     } catch (error: any) {
       showMessage(
         'error',
@@ -308,57 +310,57 @@ export default function ExpensesPage() {
           'حدث خطأ أثناء تعديل المصروف. لم يتم تطبيق أي تغييرات.',
 
         4500,
-      )
+      );
     } finally {
-      setUpdatingExpense(false)
+      setUpdatingExpense(false);
     }
   }
 
-  const [totalExpenses, setTotalExpenses] = useState(0)
+  const [totalExpenses, setTotalExpenses] = useState(0);
 
   function money(value: unknown) {
-    return formatMoney(value)
+    return formatMoney(value);
   }
 
   function formatDate(value?: string) {
-    if (!value) return '—'
+    if (!value) return '—';
     try {
-      const raw = String(value)
-      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
+      const raw = String(value);
+      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
       return new Date(normalized).toLocaleString('ar-EG', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
-      })
+      });
     } catch {
-      return value
+      return value;
     }
   }
 
   async function printExpensesReport() {
-    let printExpenses: Expense[] = []
+    let printExpenses: Expense[] = [];
 
     try {
       const data = await window.api.getExpenses({
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
-      })
+      });
 
-      printExpenses = Array.isArray(data) ? data : []
+      printExpenses = Array.isArray(data) ? data : [];
     } catch (error) {
-      console.error('Failed to load expenses for print:', error)
+      console.error('Failed to load expenses for print:', error);
 
-      showMessage('error', 'تعذر تجهيز المصروفات للطباعة')
+      showMessage('error', 'تعذر تجهيز المصروفات للطباعة');
 
-      return
+      return;
     }
 
     const printTotalExpenses = printExpenses.reduce(
       (sum, item) => sum + Number(item.amount || 0),
       0,
-    )
+    );
 
     const rowsHtml = printExpenses
       .map(
@@ -374,7 +376,7 @@ export default function ExpensesPage() {
           </tr>
         `,
       )
-      .join('')
+      .join('');
 
     const html = `
       <!doctype html>
@@ -560,21 +562,21 @@ export default function ExpensesPage() {
 
         </body>
       </html>
-    `
+    `;
 
     try {
       const result = await window.api.printHtmlWithDialog({
         html,
         previewWidth: 1100,
         previewHeight: 800,
-      })
+      });
 
       if (!result.ok && !result.canceled) {
-        showMessage('error', result.message || 'تعذر فتح نافذة الطباعة')
+        showMessage('error', result.message || 'تعذر فتح نافذة الطباعة');
       }
     } catch (error) {
-      console.error('Failed to print expenses report:', error)
-      showMessage('error', 'تعذر فتح نافذة الطباعة')
+      console.error('Failed to print expenses report:', error);
+      showMessage('error', 'تعذر فتح نافذة الطباعة');
     }
   }
 
@@ -894,8 +896,8 @@ export default function ExpensesPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setDateFrom('')
-                  setDateTo('')
+                  setDateFrom('');
+                  setDateTo('');
                 }}
                 style={{
                   ...primaryButtonStyle,
@@ -915,7 +917,7 @@ export default function ExpensesPage() {
           totalItems={expensesTotal}
           loading={loading}
           onPageChange={(page) => {
-            void loadExpenses(page)
+            void loadExpenses(page);
           }}
         />
 
@@ -1049,13 +1051,13 @@ export default function ExpensesPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setCancelExpenseTarget(expense)
+                              setCancelExpenseTarget(expense);
 
                               setCancelExpenseReason(
                                 `إلغاء مصروف: ${expense.title}`,
-                              )
+                              );
 
-                              setCancelExpensePassword('')
+                              setCancelExpensePassword('');
                             }}
                             style={{
                               height: '34px',
@@ -1289,16 +1291,16 @@ export default function ExpensesPage() {
         onReasonChange={setCancelExpenseReason}
         onPasswordChange={setCancelExpensePassword}
         onClose={() => {
-          if (cancellingExpense) return
+          if (cancellingExpense) return;
 
-          setCancelExpenseTarget(null)
-          setCancelExpenseReason('')
-          setCancelExpensePassword('')
+          setCancelExpenseTarget(null);
+          setCancelExpenseReason('');
+          setCancelExpensePassword('');
         }}
         onConfirm={() => void confirmCancelExpense()}
       />
     </div>
-  )
+  );
 }
 
 function escapeHtml(value: string) {
@@ -1307,7 +1309,7 @@ function escapeHtml(value: string) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+    .replace(/'/g, '&#039;');
 }
 
 const labelStyle: React.CSSProperties = {
@@ -1315,7 +1317,7 @@ const labelStyle: React.CSSProperties = {
   marginBottom: '8px',
   color: '#cbd5e1',
   fontSize: '14px',
-}
+};
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -1329,7 +1331,7 @@ const inputStyle: React.CSSProperties = {
   textAlign: 'right',
   direction: 'rtl',
   boxSizing: 'border-box',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -1340,16 +1342,16 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   fontWeight: 800,
   whiteSpace: 'nowrap',
-}
+};
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
-}
+};

@@ -1,39 +1,39 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { beforeEach, describe, expect, it } from 'vitest';
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 import {
   createActivityLog,
   listActivityLogs,
   listCashDrawerNoSaleEvents,
   safeCreateActivityLog,
-} from '../../src/main/database/repositories/activity.repo'
-import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
+} from '../../src/main/database/repositories/activity.repo';
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo';
 import {
   CRITICAL_AUDIT_ERROR_MESSAGE,
   runCriticalActionWithAudit,
-} from '../../src/main/ipc/activity-helper'
+} from '../../src/main/ipc/activity-helper';
 
 type ActivityLogTestRow = {
-  id: number
-  user_id: number | null
-  action: string
-  entity: string | null
-  entity_id: number | null
-  details: string | null
-  created_at: string
-  user_name?: string | null
-  username?: string | null
-}
+  id: number;
+  user_id: number | null;
+  action: string;
+  entity: string | null;
+  entity_id: number | null;
+  details: string | null;
+  created_at: string;
+  user_name?: string | null;
+  username?: string | null;
+};
 
 function getActivityRows(input?: Parameters<typeof listActivityLogs>[0]) {
-  return listActivityLogs(input).rows as ActivityLogTestRow[]
+  return listActivityLogs(input).rows as ActivityLogTestRow[];
 }
 
 describe('activity repository', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
-  })
+    closeDb();
+    getDb();
+    resetDatabaseData();
+  });
 
   it('creates an activity log', () => {
     const result = createActivityLog({
@@ -42,20 +42,20 @@ describe('activity repository', () => {
       entity: 'test_entity',
       entity_id: 123,
       details: JSON.stringify({ hello: 'world' }),
-    })
+    });
 
-    expect(Number(result.lastInsertRowid)).toBeGreaterThan(0)
+    expect(Number(result.lastInsertRowid)).toBeGreaterThan(0);
 
-    const logs = getActivityRows() as ActivityLogTestRow[]
+    const logs = getActivityRows() as ActivityLogTestRow[];
 
-    expect(logs).toHaveLength(1)
-    expect(logs[0].user_id).toBe(1)
-    expect(logs[0].action).toBe('test_action')
-    expect(logs[0].entity).toBe('test_entity')
-    expect(logs[0].entity_id).toBe(123)
-    expect(logs[0].details).toContain('world')
-    expect(logs[0].username).toBe('admin')
-  })
+    expect(logs).toHaveLength(1);
+    expect(logs[0].user_id).toBe(1);
+    expect(logs[0].action).toBe('test_action');
+    expect(logs[0].entity).toBe('test_entity');
+    expect(logs[0].entity_id).toBe(123);
+    expect(logs[0].details).toContain('world');
+    expect(logs[0].username).toBe('admin');
+  });
 
   it('safeCreateActivityLog creates a log and does not throw', () => {
     const result = safeCreateActivityLog({
@@ -64,25 +64,25 @@ describe('activity repository', () => {
       entity: 'safe_entity',
       entity_id: 1,
       details: 'safe details',
-    })
+    });
 
-    expect(result).not.toBeNull()
+    expect(result).not.toBeNull();
 
-    const logs = getActivityRows() as ActivityLogTestRow[]
+    const logs = getActivityRows() as ActivityLogTestRow[];
 
-    expect(logs).toHaveLength(1)
-    expect(logs[0].action).toBe('safe_action')
-  })
+    expect(logs).toHaveLength(1);
+    expect(logs[0].action).toBe('safe_action');
+  });
 
   it('commits critical operation and audit together', () => {
-    const db = getDb()
+    const db = getDb();
 
     db.exec(`
       CREATE TABLE critical_audit_probe (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         value TEXT NOT NULL
       );
-    `)
+    `);
 
     const result = runCriticalActionWithAudit(
       () => {
@@ -95,11 +95,11 @@ describe('activity repository', () => {
             VALUES (?)
             `,
           )
-          .run('committed')
+          .run('committed');
 
         return {
           id: Number(insert.lastInsertRowid),
-        }
+        };
       },
 
       (operation) => ({
@@ -115,9 +115,9 @@ describe('activity repository', () => {
           value: 'committed',
         },
       }),
-    )
+    );
 
-    expect(result.id).toBeGreaterThan(0)
+    expect(result.id).toBeGreaterThan(0);
 
     const probe = db
       .prepare(
@@ -129,22 +129,22 @@ describe('activity repository', () => {
       )
       .get(result.id) as
       | {
-          value: string
+          value: string;
         }
-      | undefined
+      | undefined;
 
-    expect(probe?.value).toBe('committed')
+    expect(probe?.value).toBe('committed');
 
     const logs = getActivityRows({
       action: 'critical_probe_created',
-    })
+    });
 
-    expect(logs).toHaveLength(1)
-    expect(logs[0].entity_id).toBe(result.id)
-  })
+    expect(logs).toHaveLength(1);
+    expect(logs[0].entity_id).toBe(result.id);
+  });
 
   it('rolls back critical operation when audit insert fails', () => {
-    const db = getDb()
+    const db = getDb();
 
     db.exec(`
     DROP TRIGGER IF EXISTS fail_critical_activity_log;
@@ -163,7 +163,7 @@ describe('activity repository', () => {
         'forced critical audit failure'
       );
     END;
-  `)
+  `);
 
     try {
       expect(() =>
@@ -176,11 +176,11 @@ describe('activity repository', () => {
             )
             VALUES (?)
             `,
-            ).run('must rollback')
+            ).run('must rollback');
 
             return {
               success: true,
-            }
+            };
           },
 
           () => ({
@@ -195,7 +195,7 @@ describe('activity repository', () => {
             },
           }),
         ),
-      ).toThrow(CRITICAL_AUDIT_ERROR_MESSAGE)
+      ).toThrow(CRITICAL_AUDIT_ERROR_MESSAGE);
 
       const probeCount = db
         .prepare(
@@ -205,17 +205,17 @@ describe('activity repository', () => {
         `,
         )
         .get() as {
-        count: number
-      }
+        count: number;
+      };
 
-      expect(Number(probeCount.count)).toBe(0)
+      expect(Number(probeCount.count)).toBe(0);
     } finally {
       db.exec(`
       DROP TRIGGER IF EXISTS fail_critical_activity_log;
       DROP TABLE IF EXISTS critical_audit_rollback_probe;
-    `)
+    `);
     }
-  })
+  });
 
   it('lists activity logs ordered by newest first', () => {
     createActivityLog({
@@ -224,7 +224,7 @@ describe('activity repository', () => {
       entity: 'first_entity',
       entity_id: 1,
       details: 'first details',
-    })
+    });
 
     createActivityLog({
       user_id: 1,
@@ -232,14 +232,14 @@ describe('activity repository', () => {
       entity: 'second_entity',
       entity_id: 2,
       details: 'second details',
-    })
+    });
 
-    const logs = getActivityRows() as ActivityLogTestRow[]
+    const logs = getActivityRows() as ActivityLogTestRow[];
 
-    expect(logs).toHaveLength(2)
-    expect(logs[0].action).toBe('second_action')
-    expect(logs[1].action).toBe('first_action')
-  })
+    expect(logs).toHaveLength(2);
+    expect(logs[0].action).toBe('second_action');
+    expect(logs[1].action).toBe('first_action');
+  });
 
   it('filters activity logs by action', () => {
     createActivityLog({
@@ -248,7 +248,7 @@ describe('activity repository', () => {
       entity: 'cash_movements',
       entity_id: 1,
       details: 'cash in details',
-    })
+    });
 
     createActivityLog({
       user_id: 1,
@@ -256,13 +256,13 @@ describe('activity repository', () => {
       entity: 'cash_movements',
       entity_id: 2,
       details: 'cash out details',
-    })
+    });
 
-    const logs = getActivityRows({ action: 'cash_in' }) as ActivityLogTestRow[]
+    const logs = getActivityRows({ action: 'cash_in' }) as ActivityLogTestRow[];
 
-    expect(logs).toHaveLength(1)
-    expect(logs[0].action).toBe('cash_in')
-  })
+    expect(logs).toHaveLength(1);
+    expect(logs[0].action).toBe('cash_in');
+  });
 
   it('filters activity logs by multiple actions', () => {
     createActivityLog({
@@ -271,7 +271,7 @@ describe('activity repository', () => {
       entity: 'cash_movements',
       entity_id: 1,
       details: 'cash in',
-    })
+    });
 
     createActivityLog({
       user_id: 1,
@@ -279,7 +279,7 @@ describe('activity repository', () => {
       entity: 'cash_movements',
       entity_id: 2,
       details: 'cash out',
-    })
+    });
 
     createActivityLog({
       user_id: 1,
@@ -287,21 +287,21 @@ describe('activity repository', () => {
       entity: 'expenses',
       entity_id: 3,
       details: 'expense',
-    })
+    });
 
     const result = listActivityLogs({
       actions: ['cash_in', 'expense_created'],
-    })
+    });
 
-    expect(result.total).toBe(2)
+    expect(result.total).toBe(2);
 
-    const rows = result.rows as ActivityLogTestRow[]
+    const rows = result.rows as ActivityLogTestRow[];
 
     expect(rows.map((row) => row.action)).toEqual([
       'expense_created',
       'cash_in',
-    ])
-  })
+    ]);
+  });
 
   it('filters activity logs by multiple entities', () => {
     createActivityLog({
@@ -310,7 +310,7 @@ describe('activity repository', () => {
       entity: 'cash_movements',
       entity_id: 1,
       details: 'cash',
-    })
+    });
 
     createActivityLog({
       user_id: 1,
@@ -318,7 +318,7 @@ describe('activity repository', () => {
       entity: 'expenses',
       entity_id: 2,
       details: 'expense',
-    })
+    });
 
     createActivityLog({
       user_id: 1,
@@ -326,21 +326,21 @@ describe('activity repository', () => {
       entity: 'customers',
       entity_id: 3,
       details: 'customer',
-    })
+    });
 
     const result = listActivityLogs({
       entities: ['cash_movements', 'expenses'],
-    })
+    });
 
-    expect(result.total).toBe(2)
+    expect(result.total).toBe(2);
 
-    const rows = result.rows as ActivityLogTestRow[]
+    const rows = result.rows as ActivityLogTestRow[];
 
     expect(rows.map((row) => row.entity)).toEqual([
       'expenses',
       'cash_movements',
-    ])
-  })
+    ]);
+  });
 
   it('filters activity logs by entity', () => {
     createActivityLog({
@@ -349,7 +349,7 @@ describe('activity repository', () => {
       entity: 'expenses',
       entity_id: 1,
       details: 'expense details',
-    })
+    });
 
     createActivityLog({
       user_id: 1,
@@ -357,15 +357,15 @@ describe('activity repository', () => {
       entity: 'cash_movements',
       entity_id: 2,
       details: 'cash details',
-    })
+    });
 
     const logs = getActivityRows({
       entity: 'expenses',
-    }) as ActivityLogTestRow[]
+    }) as ActivityLogTestRow[];
 
-    expect(logs).toHaveLength(1)
-    expect(logs[0].entity).toBe('expenses')
-  })
+    expect(logs).toHaveLength(1);
+    expect(logs[0].entity).toBe('expenses');
+  });
 
   it('filters activity logs by user id', () => {
     createActivityLog({
@@ -374,7 +374,7 @@ describe('activity repository', () => {
       entity: 'users',
       entity_id: 1,
       details: 'admin details',
-    })
+    });
 
     createActivityLog({
       user_id: null,
@@ -382,13 +382,13 @@ describe('activity repository', () => {
       entity: 'system',
       entity_id: null,
       details: 'system details',
-    })
+    });
 
-    const logs = getActivityRows({ user_id: 1 }) as ActivityLogTestRow[]
+    const logs = getActivityRows({ user_id: 1 }) as ActivityLogTestRow[];
 
-    expect(logs).toHaveLength(1)
-    expect(logs[0].user_id).toBe(1)
-  })
+    expect(logs).toHaveLength(1);
+    expect(logs[0].user_id).toBe(1);
+  });
 
   it('searches activity logs by action entity details and username', () => {
     createActivityLog({
@@ -397,21 +397,21 @@ describe('activity repository', () => {
       entity: 'unique_entity',
       entity_id: 1,
       details: 'unique details searchable',
-    })
+    });
 
     expect(
       getActivityRows({ search: 'unique_action' }) as ActivityLogTestRow[],
-    ).toHaveLength(1)
+    ).toHaveLength(1);
     expect(
       getActivityRows({ search: 'unique_entity' }) as ActivityLogTestRow[],
-    ).toHaveLength(1)
+    ).toHaveLength(1);
     expect(
       getActivityRows({ search: 'searchable' }) as ActivityLogTestRow[],
-    ).toHaveLength(1)
+    ).toHaveLength(1);
     expect(
       getActivityRows({ search: 'admin' }) as ActivityLogTestRow[],
-    ).toHaveLength(1)
-  })
+    ).toHaveLength(1);
+  });
 
   it('respects custom limit', () => {
     for (let index = 1; index <= 5; index += 1) {
@@ -421,15 +421,15 @@ describe('activity repository', () => {
         entity: 'test',
         entity_id: index,
         details: `details ${index}`,
-      })
+      });
     }
 
-    const logs = getActivityRows({ limit: 3 }) as ActivityLogTestRow[]
+    const logs = getActivityRows({ limit: 3 }) as ActivityLogTestRow[];
 
-    expect(logs).toHaveLength(3)
-    expect(logs[0].action).toBe('action_5')
-    expect(logs[2].action).toBe('action_3')
-  })
+    expect(logs).toHaveLength(3);
+    expect(logs[0].action).toBe('action_5');
+    expect(logs[2].action).toBe('action_3');
+  });
 
   it('paginates activity logs without losing older records', () => {
     for (let index = 1; index <= 5; index += 1) {
@@ -439,38 +439,38 @@ describe('activity repository', () => {
         entity: 'pagination',
         entity_id: index,
         details: `page ${index}`,
-      })
+      });
     }
 
     const firstPage = listActivityLogs({
       limit: 2,
       offset: 0,
-    })
+    });
 
     const secondPage = listActivityLogs({
       limit: 2,
       offset: 2,
-    })
+    });
 
-    expect(firstPage.total).toBe(5)
-    expect(firstPage.rows).toHaveLength(2)
-    expect(secondPage.rows).toHaveLength(2)
+    expect(firstPage.total).toBe(5);
+    expect(firstPage.rows).toHaveLength(2);
+    expect(secondPage.rows).toHaveLength(2);
 
     expect((firstPage.rows[0] as ActivityLogTestRow).action).toBe(
       'page_action_5',
-    )
+    );
 
     expect((secondPage.rows[0] as ActivityLogTestRow).action).toBe(
       'page_action_3',
-    )
-  })
+    );
+  });
 
   it('reports no-sale drawer events with shift actor and result', () => {
     const shift = openCashShift({
       opening_counted_amount: 100,
 
       opened_by: 1,
-    })
+    });
 
     createActivityLog({
       user_id: 1,
@@ -488,7 +488,7 @@ describe('activity repository', () => {
 
         printer_name: 'POS Printer',
       }),
-    })
+    });
 
     createActivityLog({
       user_id: 1,
@@ -508,7 +508,7 @@ describe('activity repository', () => {
 
         error: 'printer failed',
       }),
-    })
+    });
 
     /*
      * فتح مرتبط ببيع:
@@ -526,7 +526,7 @@ describe('activity repository', () => {
       details: JSON.stringify({
         reason: 'sale',
       }),
-    })
+    });
 
     /*
      * اختبار إداري:
@@ -544,40 +544,40 @@ describe('activity repository', () => {
       details: JSON.stringify({
         reason: 'test',
       }),
-    })
+    });
 
-    const report = listCashDrawerNoSaleEvents()
+    const report = listCashDrawerNoSaleEvents();
 
-    expect(report.total).toBe(2)
+    expect(report.total).toBe(2);
 
-    expect(report.success_count).toBe(1)
+    expect(report.success_count).toBe(1);
 
-    expect(report.failed_count).toBe(1)
+    expect(report.failed_count).toBe(1);
 
-    expect(report.rows).toHaveLength(2)
+    expect(report.rows).toHaveLength(2);
 
-    expect(report.rows[0].shift_id).toBe(shift.id)
+    expect(report.rows[0].shift_id).toBe(shift.id);
 
-    expect(report.rows[0].status).toBe('failed')
+    expect(report.rows[0].status).toBe('failed');
 
-    expect(report.rows[0].error).toBe('printer failed')
+    expect(report.rows[0].error).toBe('printer failed');
 
-    expect(report.rows[0].user_id).toBe(1)
+    expect(report.rows[0].user_id).toBe(1);
 
-    expect(report.rows[0].shift_opened_by).toBe(1)
+    expect(report.rows[0].shift_opened_by).toBe(1);
 
     const successOnly = listCashDrawerNoSaleEvents({
       status: 'success',
-    })
+    });
 
-    expect(successOnly.total).toBe(1)
+    expect(successOnly.total).toBe(1);
 
-    expect(successOnly.rows[0].status).toBe('success')
+    expect(successOnly.rows[0].status).toBe('success');
 
     const shiftOnly = listCashDrawerNoSaleEvents({
       shift_id: shift.id,
-    })
+    });
 
-    expect(shiftOnly.total).toBe(2)
-  })
-})
+    expect(shiftOnly.total).toBe(2);
+  });
+});

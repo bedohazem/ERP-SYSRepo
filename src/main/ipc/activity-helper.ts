@@ -1,26 +1,26 @@
-import { getDb } from '../database/db'
+import { getDb } from '../database/db';
 import {
   CRITICAL_AUDIT_ERROR_MESSAGE,
   createCriticalActivityLog,
   safeCreateActivityLog,
   type ActivityLogInput,
-} from '../database/repositories/activity.repo'
+} from '../database/repositories/activity.repo';
 
-export { CRITICAL_AUDIT_ERROR_MESSAGE }
+export { CRITICAL_AUDIT_ERROR_MESSAGE };
 
 export type ActionLogInput = {
-  actor_id?: number | null
+  actor_id?: number | null;
 
-  approved_by?: number | null
+  approved_by?: number | null;
 
-  action: string
+  action: string;
 
-  entity: string
+  entity: string;
 
-  entity_id?: number | null
+  entity_id?: number | null;
 
-  details?: any
-}
+  details?: any;
+};
 
 export function getActorId(input: any): number | null {
   return (
@@ -29,7 +29,7 @@ export function getActorId(input: any): number | null {
     input?.created_by ??
     input?.created_by_id ??
     null
-  )
+  );
 }
 
 function normalizeActionLog(input: ActionLogInput): ActivityLogInput {
@@ -48,7 +48,7 @@ function normalizeActionLog(input: ActionLogInput): ActivityLogInput {
       typeof input.details === 'string'
         ? input.details
         : JSON.stringify(input.details ?? {}),
-  }
+  };
 }
 
 /*
@@ -58,7 +58,7 @@ function normalizeActionLog(input: ActionLogInput): ActivityLogInput {
  * لأن فشل الـAudit هنا لا يفشل العملية.
  */
 export function logAction(input: ActionLogInput) {
-  safeCreateActivityLog(normalizeActionLog(input))
+  safeCreateActivityLog(normalizeActionLog(input));
 }
 
 /*
@@ -68,7 +68,7 @@ export function logAction(input: ActionLogInput) {
  * يتم رميه ولا يتم تجاهله.
  */
 export function logCriticalAction(input: ActionLogInput) {
-  return createCriticalActivityLog(normalizeActionLog(input))
+  return createCriticalActivityLog(normalizeActionLog(input));
 }
 
 /*
@@ -83,34 +83,33 @@ export function runCriticalActionWithAudit<T>(
   run: () => T,
 
   buildAudit:
-    | ((result: T) => ActionLogInput)
-    | ((result: T) => ActionLogInput[]),
+    ((result: T) => ActionLogInput) | ((result: T) => ActionLogInput[]),
 ): T {
-  const db = getDb()
+  const db = getDb();
 
   const tx = db.transaction(() => {
-    const result = run()
+    const result = run();
 
     try {
-      const auditResult = buildAudit(result)
+      const auditResult = buildAudit(result);
 
-      const logs = Array.isArray(auditResult) ? auditResult : [auditResult]
+      const logs = Array.isArray(auditResult) ? auditResult : [auditResult];
 
       if (logs.length === 0) {
-        throw new Error('Missing critical audit log')
+        throw new Error('Missing critical audit log');
       }
 
       for (const log of logs) {
-        logCriticalAction(log)
+        logCriticalAction(log);
       }
     } catch (error) {
-      console.error('Critical audit failed:', error)
+      console.error('Critical audit failed:', error);
 
-      throw new Error(CRITICAL_AUDIT_ERROR_MESSAGE)
+      throw new Error(CRITICAL_AUDIT_ERROR_MESSAGE);
     }
 
-    return result
-  })
+    return result;
+  });
 
-  return tx()
+  return tx();
 }

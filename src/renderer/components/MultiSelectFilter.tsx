@@ -1,18 +1,18 @@
-import { useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react';
 
 export type MultiSelectOption = {
-  value: string
-  label: string
-}
+  value: string;
+  label: string;
+};
 
 type Props = {
-  label: string
-  allLabel: string
-  options: MultiSelectOption[]
-  selected: string[]
-  onChange: (values: string[]) => void
-  controlStyle?: CSSProperties
-}
+  label: string;
+  allLabel: string;
+  options: MultiSelectOption[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+  controlStyle?: CSSProperties;
+};
 
 export default function MultiSelectFilter({
   label,
@@ -22,16 +22,16 @@ export default function MultiSelectFilter({
   onChange,
   controlStyle,
 }: Props) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(false);
 
   function toggleValue(value: string) {
     if (selected.includes(value)) {
-      onChange(selected.filter((item) => item !== value))
+      onChange(selected.filter((item) => item !== value));
 
-      return
+      return;
     }
 
-    onChange([...selected, value])
+    onChange([...selected, value]);
   }
 
   const selectedText =
@@ -40,7 +40,7 @@ export default function MultiSelectFilter({
       : selected.length === 1
         ? options.find((option) => option.value === selected[0])?.label ||
           selected[0]
-        : `${selected.length} اختيارات محددة`
+        : `${selected.length} اختيارات محددة`;
 
   return (
     <div
@@ -116,7 +116,7 @@ export default function MultiSelectFilter({
           </button>
 
           {options.map((option) => {
-            const checked = selected.includes(option.value)
+            const checked = selected.includes(option.value);
 
             return (
               <label
@@ -139,7 +139,7 @@ export default function MultiSelectFilter({
 
                 <span>{option.label}</span>
               </label>
-            )
+            );
           })}
 
           <button
@@ -161,5 +161,5 @@ export default function MultiSelectFilter({
         </div>
       )}
     </div>
-  )
+  );
 }

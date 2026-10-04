@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain } from 'electron';
 
 import {
   createPromotion,
@@ -7,37 +7,37 @@ import {
   listPromotions,
   togglePromotion,
   updatePromotion,
-} from '../database/repositories/promotions.repo'
+} from '../database/repositories/promotions.repo';
 
-import { runCriticalActionWithAudit } from './activity-helper'
-import { requirePermission } from '../auth-session'
+import { runCriticalActionWithAudit } from './activity-helper';
+import { requirePermission } from '../auth-session';
 
 function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'حدث خطأ غير متوقع'
+  return error instanceof Error ? error.message : 'حدث خطأ غير متوقع';
 }
 
 export function registerPromotionsIpc(): void {
   ipcMain.handle('promotions:list', (event) => {
-    requirePermission(event, 'promotions.manage')
+    requirePermission(event, 'promotions.manage');
 
-    return listPromotions()
-  })
+    return listPromotions();
+  });
 
   ipcMain.handle('promotions:get', (event, promotionId: number) => {
-    requirePermission(event, 'promotions.manage')
+    requirePermission(event, 'promotions.manage');
 
-    return getPromotion(promotionId)
-  })
+    return getPromotion(promotionId);
+  });
 
   ipcMain.handle('promotions:get-active', (event) => {
-    requirePermission(event, 'sales.use')
+    requirePermission(event, 'sales.use');
 
-    return getActivePromotions()
-  })
+    return getActivePromotions();
+  });
 
   ipcMain.handle('promotions:create', (event, input) => {
     try {
-      const actorId = requirePermission(event, 'promotions.manage').id
+      const actorId = requirePermission(event, 'promotions.manage').id;
 
       const result = runCriticalActionWithAudit(
         () =>
@@ -70,20 +70,20 @@ export function registerPromotionsIpc(): void {
             scope_type: input.scope_type,
           },
         }),
-      )
+      );
 
-      return result
+      return result;
     } catch (error) {
       return {
         success: false,
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('promotions:update', (event, input) => {
     try {
-      const actorId = requirePermission(event, 'promotions.manage').id
+      const actorId = requirePermission(event, 'promotions.manage').id;
 
       const result = runCriticalActionWithAudit(
         () =>
@@ -116,20 +116,20 @@ export function registerPromotionsIpc(): void {
             scope_type: input.scope_type,
           },
         }),
-      )
+      );
 
-      return result
+      return result;
     } catch (error) {
       return {
         success: false,
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('promotions:toggle', (event, input) => {
     try {
-      const actorId = requirePermission(event, 'promotions.manage').id
+      const actorId = requirePermission(event, 'promotions.manage').id;
 
       const result = runCriticalActionWithAudit(
         () =>
@@ -154,14 +154,14 @@ export function registerPromotionsIpc(): void {
             is_active: Number(input.is_active) ? 1 : 0,
           },
         }),
-      )
+      );
 
-      return result
+      return result;
     } catch (error) {
       return {
         success: false,
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 }

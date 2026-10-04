@@ -1,38 +1,38 @@
-import crypto from 'node:crypto'
+import crypto from 'node:crypto';
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 
-import { findUserByUsername } from '../../src/main/database/repositories/user.repo'
+import { findUserByUsername } from '../../src/main/database/repositories/user.repo';
 
-import { verifyPassword } from '../../src/main/security/password'
+import { verifyPassword } from '../../src/main/security/password';
 
 import {
   createAdminPasswordRecoveryRequest,
   recoverAdminPassword,
-} from '../../src/main/security/admin-recovery'
+} from '../../src/main/security/admin-recovery';
 
 function normalize(value: string) {
-  return value.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
 function createSignedToken(input: {
-  privateKey: crypto.KeyObject
+  privateKey: crypto.KeyObject;
 
-  deviceCode: string
+  deviceCode: string;
 
-  requestId: string
+  requestId: string;
 
-  username: string
+  username: string;
 
-  issuedAt?: number
+  issuedAt?: number;
 
-  expiresAt?: number
+  expiresAt?: number;
 }) {
-  const issuedAt = input.issuedAt ?? Math.floor(Date.now() / 1000)
+  const issuedAt = input.issuedAt ?? Math.floor(Date.now() / 1000);
 
-  const expiresAt = input.expiresAt ?? issuedAt + 15 * 60
+  const expiresAt = input.expiresAt ?? issuedAt + 15 * 60;
 
   const payload = {
     v: 1,
@@ -48,11 +48,11 @@ function createSignedToken(input: {
     issued_at: issuedAt,
 
     expires_at: expiresAt,
-  }
+  };
 
-  const payloadBuffer = Buffer.from(JSON.stringify(payload), 'utf8')
+  const payloadBuffer = Buffer.from(JSON.stringify(payload), 'utf8');
 
-  const signature = crypto.sign(null, payloadBuffer, input.privateKey)
+  const signature = crypto.sign(null, payloadBuffer, input.privateKey);
 
   return [
     'ERPR1',
@@ -60,27 +60,27 @@ function createSignedToken(input: {
     payloadBuffer.toString('base64url'),
 
     signature.toString('base64url'),
-  ].join('.')
+  ].join('.');
 }
 
 describe('admin password recovery', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
-  })
+    closeDb();
+    getDb();
+    resetDatabaseData();
+  });
 
   it('recovers an active admin with a valid signed one-time token', () => {
-    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519')
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
 
     const publicPem = publicKey
       .export({
         type: 'spki',
         format: 'pem',
       })
-      .toString()
+      .toString();
 
-    const request = createAdminPasswordRecoveryRequest()
+    const request = createAdminPasswordRecoveryRequest();
 
     const token = createSignedToken({
       privateKey,
@@ -90,7 +90,7 @@ describe('admin password recovery', () => {
       requestId: request.request_id,
 
       username: 'admin',
-    })
+    });
 
     const result = recoverAdminPassword(
       {
@@ -105,15 +105,15 @@ describe('admin password recovery', () => {
       {
         publicKeyPem: publicPem,
       },
-    )
+    );
 
-    expect(result.user.username).toBe('admin')
+    expect(result.user.username).toBe('admin');
 
-    const admin = findUserByUsername('admin')!
+    const admin = findUserByUsername('admin')!;
 
-    expect(verifyPassword('Recovered9876', admin.password)).toBe(true)
+    expect(verifyPassword('Recovered9876', admin.password)).toBe(true);
 
-    expect(Number(admin.must_change_password)).toBe(0)
+    expect(Number(admin.must_change_password)).toBe(0);
 
     expect(() =>
       recoverAdminPassword(
@@ -130,20 +130,20 @@ describe('admin password recovery', () => {
           publicKeyPem: publicPem,
         },
       ),
-    ).toThrow('بيانات الاسترجاع غير صحيحة أو منتهية')
-  })
+    ).toThrow('بيانات الاسترجاع غير صحيحة أو منتهية');
+  });
 
   it('rejects tokens for another device request or username', () => {
-    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519')
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
 
     const publicPem = publicKey
       .export({
         type: 'spki',
         format: 'pem',
       })
-      .toString()
+      .toString();
 
-    const request = createAdminPasswordRecoveryRequest()
+    const request = createAdminPasswordRecoveryRequest();
 
     const wrongDevice = createSignedToken({
       privateKey,
@@ -153,7 +153,7 @@ describe('admin password recovery', () => {
       requestId: request.request_id,
 
       username: 'admin',
-    })
+    });
 
     expect(() =>
       recoverAdminPassword(
@@ -170,7 +170,7 @@ describe('admin password recovery', () => {
           publicKeyPem: publicPem,
         },
       ),
-    ).toThrow('بيانات الاسترجاع غير صحيحة أو منتهية')
+    ).toThrow('بيانات الاسترجاع غير صحيحة أو منتهية');
 
     const wrongUsername = createSignedToken({
       privateKey,
@@ -180,7 +180,7 @@ describe('admin password recovery', () => {
       requestId: request.request_id,
 
       username: 'another-admin',
-    })
+    });
 
     expect(() =>
       recoverAdminPassword(
@@ -197,22 +197,22 @@ describe('admin password recovery', () => {
           publicKeyPem: publicPem,
         },
       ),
-    ).toThrow('بيانات الاسترجاع غير صحيحة أو منتهية')
-  })
+    ).toThrow('بيانات الاسترجاع غير صحيحة أو منتهية');
+  });
 
   it('rejects expired or forged recovery tokens', () => {
-    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519')
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
 
     const publicPem = publicKey
       .export({
         type: 'spki',
         format: 'pem',
       })
-      .toString()
+      .toString();
 
-    const request = createAdminPasswordRecoveryRequest()
+    const request = createAdminPasswordRecoveryRequest();
 
-    const nowSeconds = Math.floor(Date.now() / 1000)
+    const nowSeconds = Math.floor(Date.now() / 1000);
 
     const expired = createSignedToken({
       privateKey,
@@ -226,7 +226,7 @@ describe('admin password recovery', () => {
       issuedAt: nowSeconds - 1200,
 
       expiresAt: nowSeconds - 60,
-    })
+    });
 
     expect(() =>
       recoverAdminPassword(
@@ -243,7 +243,7 @@ describe('admin password recovery', () => {
           publicKeyPem: publicPem,
         },
       ),
-    ).toThrow('بيانات الاسترجاع غير صحيحة أو منتهية')
+    ).toThrow('بيانات الاسترجاع غير صحيحة أو منتهية');
 
     const valid = createSignedToken({
       privateKey,
@@ -253,11 +253,11 @@ describe('admin password recovery', () => {
       requestId: request.request_id,
 
       username: 'admin',
-    })
+    });
 
-    const [prefix, encodedPayload, encodedSignature] = valid.split('.')
+    const [prefix, encodedPayload, encodedSignature] = valid.split('.');
 
-    const forgedSignature = Buffer.from(encodedSignature, 'base64url')
+    const forgedSignature = Buffer.from(encodedSignature, 'base64url');
 
     /*
      * نغيّر byte حقيقي داخل
@@ -265,14 +265,14 @@ describe('admin password recovery', () => {
      * حرف Base64 قد لا يغير
      * الـdecoded bytes.
      */
-    forgedSignature[0] ^= 0xff
+    forgedSignature[0] ^= 0xff;
 
     const forged = [
       prefix,
       encodedPayload,
 
       forgedSignature.toString('base64url'),
-    ].join('.')
+    ].join('.');
 
     expect(() =>
       recoverAdminPassword(
@@ -289,20 +289,20 @@ describe('admin password recovery', () => {
           publicKeyPem: publicPem,
         },
       ),
-    ).toThrow('بيانات الاسترجاع غير صحيحة أو منتهية')
-  })
+    ).toThrow('بيانات الاسترجاع غير صحيحة أو منتهية');
+  });
 
   it('still enforces the strong password policy during recovery', () => {
-    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519')
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
 
     const publicPem = publicKey
       .export({
         type: 'spki',
         format: 'pem',
       })
-      .toString()
+      .toString();
 
-    const request = createAdminPasswordRecoveryRequest()
+    const request = createAdminPasswordRecoveryRequest();
 
     const token = createSignedToken({
       privateKey,
@@ -312,7 +312,7 @@ describe('admin password recovery', () => {
       requestId: request.request_id,
 
       username: 'admin',
-    })
+    });
 
     expect(() =>
       recoverAdminPassword(
@@ -329,6 +329,6 @@ describe('admin password recovery', () => {
           publicKeyPem: publicPem,
         },
       ),
-    ).toThrow('كلمة المرور يجب ألا تقل عن 8 أحرف')
-  })
-})
+    ).toThrow('كلمة المرور يجب ألا تقل عن 8 أحرف');
+  });
+});

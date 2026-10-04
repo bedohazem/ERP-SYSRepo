@@ -1,61 +1,61 @@
-import type Database from 'better-sqlite3'
-import { roundMoney } from '../../shared/money'
+import type Database from 'better-sqlite3';
+import { roundMoney } from '../../shared/money';
 
-type Db = Database.Database
+type Db = Database.Database;
 
-const STOCK_EPSILON = 0.000001
-const VALUE_EPSILON = 0.01
+const STOCK_EPSILON = 0.000001;
+const VALUE_EPSILON = 0.01;
 
 function roundAverageCost(value: unknown): number {
-  const amount = Number(value ?? 0)
+  const amount = Number(value ?? 0);
 
   if (!Number.isFinite(amount)) {
-    return 0
+    return 0;
   }
 
-  return Number(amount.toFixed(4))
+  return Number(amount.toFixed(4));
 }
 
 export type InventoryCostState = {
-  variant_id: number
+  variant_id: number;
 
-  stock: number
+  stock: number;
 
-  buy_price: number
+  buy_price: number;
 
-  average_cost: number
+  average_cost: number;
 
-  inventory_value: number
-}
+  inventory_value: number;
+};
 
 type StockMovementInput = {
-  variant_id: number
-  quantity: number
+  variant_id: number;
+  quantity: number;
 
-  reference_id?: number | null
-  reference_type: string
+  reference_id?: number | null;
+  reference_type: string;
 
-  created_by: number | null
+  created_by: number | null;
 
-  notes?: string | null
-}
+  notes?: string | null;
+};
 
 type InboundStockMovementInput = StockMovementInput & {
-  unit_cost: number
-}
+  unit_cost: number;
+};
 
 type SpecificCostOutboundInput = StockMovementInput & {
-  unit_cost: number
-}
+  unit_cost: number;
+};
 
 export function getInventoryCostState(
   database: Db,
   variantIdInput: number,
 ): InventoryCostState {
-  const variantId = Number(variantIdInput)
+  const variantId = Number(variantIdInput);
 
   if (!variantId) {
-    throw new Error('رقم الصنف غير صحيح')
+    throw new Error('رقم الصنف غير صحيح');
   }
 
   const row = database
@@ -111,16 +111,16 @@ export function getInventoryCostState(
     )
     .get(variantId) as
     | {
-        variant_id: number
-        stock: number
-        buy_price: number
-        average_cost: number
-        inventory_value: number
+        variant_id: number;
+        stock: number;
+        buy_price: number;
+        average_cost: number;
+        inventory_value: number;
       }
-    | undefined
+    | undefined;
 
   if (!row) {
-    throw new Error('الصنف غير موجود')
+    throw new Error('الصنف غير موجود');
   }
 
   return {
@@ -133,7 +133,7 @@ export function getInventoryCostState(
     average_cost: roundAverageCost(row.average_cost),
 
     inventory_value: roundMoney(Number(row.inventory_value || 0)),
-  }
+  };
 }
 
 function updateCostState(
@@ -160,25 +160,25 @@ function updateCostState(
       roundMoney(inventoryValue),
 
       variantId,
-    )
+    );
 }
 
 function insertCostedMovement(
   database: Db,
   input: {
-    variant_id: number
+    variant_id: number;
 
-    type: 'in' | 'out'
+    type: 'in' | 'out';
 
-    quantity: number
+    quantity: number;
 
-    unit_cost: number
-    cost_value: number
+    unit_cost: number;
+    cost_value: number;
 
-    reference_id?: number | null
-    reference_type: string
-    created_by: number | null
-    notes?: string | null
+    reference_id?: number | null;
+    reference_type: string;
+    created_by: number | null;
+    notes?: string | null;
   },
 ) {
   database
@@ -225,45 +225,45 @@ function insertCostedMovement(
       input.reference_type,
       input.created_by ? Number(input.created_by) : null,
       input.notes?.trim() || null,
-    )
+    );
 }
 
 export function receiveStockAtCost(
   database: Db,
   input: InboundStockMovementInput,
 ) {
-  const variantId = Number(input.variant_id)
+  const variantId = Number(input.variant_id);
 
-  const quantity = Number(input.quantity)
+  const quantity = Number(input.quantity);
 
-  const unitCost = Number(input.unit_cost)
+  const unitCost = Number(input.unit_cost);
 
   if (!variantId || !Number.isFinite(quantity) || quantity <= 0) {
-    throw new Error('كمية دخول المخزون غير صحيحة')
+    throw new Error('كمية دخول المخزون غير صحيحة');
   }
 
   if (!Number.isFinite(unitCost) || unitCost < 0) {
-    throw new Error('تكلفة دخول المخزون غير صحيحة')
+    throw new Error('تكلفة دخول المخزون غير صحيحة');
   }
 
-  const state = getInventoryCostState(database, variantId)
+  const state = getInventoryCostState(database, variantId);
 
   if (state.stock < -STOCK_EPSILON) {
     throw new Error(
       'لا يمكن حساب متوسط التكلفة لصنف مخزونه سالب. صحح المخزون أولًا',
-    )
+    );
   }
 
-  const movementValue = roundMoney(quantity * unitCost)
+  const movementValue = roundMoney(quantity * unitCost);
 
-  const nextStock = state.stock + quantity
+  const nextStock = state.stock + quantity;
 
-  const nextInventoryValue = roundMoney(state.inventory_value + movementValue)
+  const nextInventoryValue = roundMoney(state.inventory_value + movementValue);
 
   const nextAverageCost =
     nextStock > STOCK_EPSILON
       ? roundAverageCost(nextInventoryValue / nextStock)
-      : 0
+      : 0;
 
   insertCostedMovement(database, {
     variant_id: variantId,
@@ -281,9 +281,9 @@ export function receiveStockAtCost(
     reference_type: input.reference_type,
     created_by: input.created_by,
     notes: input.notes,
-  })
+  });
 
-  updateCostState(database, variantId, nextAverageCost, nextInventoryValue)
+  updateCostState(database, variantId, nextAverageCost, nextInventoryValue);
 
   return {
     unit_cost: roundMoney(unitCost),
@@ -295,47 +295,47 @@ export function receiveStockAtCost(
     average_cost: nextAverageCost,
 
     inventory_value: nextInventoryValue,
-  }
+  };
 }
 
 export function issueStockAtAverageCost(
   database: Db,
   input: StockMovementInput,
 ) {
-  const variantId = Number(input.variant_id)
+  const variantId = Number(input.variant_id);
 
-  const quantity = Number(input.quantity)
+  const quantity = Number(input.quantity);
 
   if (!variantId || !Number.isFinite(quantity) || quantity <= 0) {
-    throw new Error('كمية خروج المخزون غير صحيحة')
+    throw new Error('كمية خروج المخزون غير صحيحة');
   }
 
-  const state = getInventoryCostState(database, variantId)
+  const state = getInventoryCostState(database, variantId);
 
   if (state.stock + STOCK_EPSILON < quantity) {
-    throw new Error(`المخزون غير كافي. المتاح: ${state.stock}`)
+    throw new Error(`المخزون غير كافي. المتاح: ${state.stock}`);
   }
 
-  const unitCost = state.average_cost
+  const unitCost = state.average_cost;
 
-  const movementValue = roundMoney(quantity * unitCost)
+  const movementValue = roundMoney(quantity * unitCost);
 
-  const nextStock = state.stock - quantity
+  const nextStock = state.stock - quantity;
 
-  let nextInventoryValue = roundMoney(state.inventory_value - movementValue)
+  let nextInventoryValue = roundMoney(state.inventory_value - movementValue);
 
   if (Math.abs(nextInventoryValue) <= VALUE_EPSILON) {
-    nextInventoryValue = 0
+    nextInventoryValue = 0;
   }
 
   if (nextInventoryValue < -VALUE_EPSILON) {
-    throw new Error('قيمة المخزون أصبحت سالبة ولا يمكن تنفيذ الحركة')
+    throw new Error('قيمة المخزون أصبحت سالبة ولا يمكن تنفيذ الحركة');
   }
 
   const nextAverageCost =
     nextStock > STOCK_EPSILON
       ? roundAverageCost(nextInventoryValue / nextStock)
-      : 0
+      : 0;
 
   insertCostedMovement(database, {
     variant_id: variantId,
@@ -353,14 +353,14 @@ export function issueStockAtAverageCost(
     reference_type: input.reference_type,
     created_by: input.created_by,
     notes: input.notes,
-  })
+  });
 
   updateCostState(
     database,
     variantId,
     nextAverageCost,
     nextStock > STOCK_EPSILON ? nextInventoryValue : 0,
-  )
+  );
 
   return {
     unit_cost: unitCost,
@@ -372,60 +372,60 @@ export function issueStockAtAverageCost(
     average_cost: nextAverageCost,
 
     inventory_value: nextStock > STOCK_EPSILON ? nextInventoryValue : 0,
-  }
+  };
 }
 
 export function issueStockAtCost(
   database: Db,
   input: SpecificCostOutboundInput,
 ) {
-  const variantId = Number(input.variant_id)
+  const variantId = Number(input.variant_id);
 
-  const quantity = Number(input.quantity)
+  const quantity = Number(input.quantity);
 
-  const unitCost = Number(input.unit_cost)
+  const unitCost = Number(input.unit_cost);
 
   if (!variantId || !Number.isFinite(quantity) || quantity <= 0) {
-    throw new Error('كمية خروج المخزون غير صحيحة')
+    throw new Error('كمية خروج المخزون غير صحيحة');
   }
 
   if (!Number.isFinite(unitCost) || unitCost < 0) {
-    throw new Error('تكلفة خروج المخزون غير صحيحة')
+    throw new Error('تكلفة خروج المخزون غير صحيحة');
   }
 
-  const state = getInventoryCostState(database, variantId)
+  const state = getInventoryCostState(database, variantId);
 
   if (state.stock + STOCK_EPSILON < quantity) {
-    throw new Error(`المخزون غير كافي. المتاح: ${state.stock}`)
+    throw new Error(`المخزون غير كافي. المتاح: ${state.stock}`);
   }
 
-  const movementValue = roundMoney(quantity * unitCost)
+  const movementValue = roundMoney(quantity * unitCost);
 
-  const nextStock = state.stock - quantity
+  const nextStock = state.stock - quantity;
 
-  let nextInventoryValue = roundMoney(state.inventory_value - movementValue)
+  let nextInventoryValue = roundMoney(state.inventory_value - movementValue);
 
   if (Math.abs(nextInventoryValue) <= VALUE_EPSILON) {
-    nextInventoryValue = 0
+    nextInventoryValue = 0;
   }
 
   if (nextInventoryValue < -VALUE_EPSILON) {
     throw new Error(
       'لا يمكن تنفيذ الحركة لأن قيمتها أكبر من قيمة المخزون الحالية',
-    )
+    );
   }
 
   if (
     nextStock <= STOCK_EPSILON &&
     Math.abs(nextInventoryValue) > VALUE_EPSILON
   ) {
-    throw new Error('لا يمكن تصفير كمية المخزون مع بقاء قيمة محاسبية للمخزون')
+    throw new Error('لا يمكن تصفير كمية المخزون مع بقاء قيمة محاسبية للمخزون');
   }
 
   const nextAverageCost =
     nextStock > STOCK_EPSILON
       ? roundAverageCost(nextInventoryValue / nextStock)
-      : 0
+      : 0;
 
   insertCostedMovement(database, {
     variant_id: variantId,
@@ -443,14 +443,14 @@ export function issueStockAtCost(
     reference_type: input.reference_type,
     created_by: input.created_by,
     notes: input.notes,
-  })
+  });
 
   updateCostState(
     database,
     variantId,
     nextAverageCost,
     nextStock > STOCK_EPSILON ? nextInventoryValue : 0,
-  )
+  );
 
   return {
     unit_cost: roundMoney(unitCost),
@@ -462,5 +462,5 @@ export function issueStockAtCost(
     average_cost: nextAverageCost,
 
     inventory_value: nextStock > STOCK_EPSILON ? nextInventoryValue : 0,
-  }
+  };
 }

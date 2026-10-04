@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest';
 
 import {
   buildReportsCsv,
   buildReportsPdfHtml,
-} from '../../src/renderer/pages/Reports/report-export'
+} from '../../src/renderer/pages/Reports/report-export';
 
 const data = {
   summary: {
@@ -95,7 +95,7 @@ const data = {
       total: 90,
     },
   ],
-}
+};
 
 describe('report export builders', () => {
   it('builds UTF-8 friendly CSV content with escaped cells', () => {
@@ -103,26 +103,26 @@ describe('report export builders', () => {
       data,
 
       'أكتوبر 2026',
-    )
+    );
 
-    expect(csv).toContain('"تقرير ERP"')
+    expect(csv).toContain('"تقرير ERP"');
 
-    expect(csv).toContain('"منتج ""اختبار"", خاص"')
+    expect(csv).toContain('"منتج ""اختبار"", خاص"');
 
-    expect(csv).toContain('"الفترة: أكتوبر 2026"')
-  })
+    expect(csv).toContain('"الفترة: أكتوبر 2026"');
+  });
 
   it('escapes HTML values in PDF export', () => {
     const html = buildReportsPdfHtml(
       data,
 
       'أكتوبر 2026',
-    )
+    );
 
-    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
 
-    expect(html).not.toContain('<script>alert(1)</script>')
+    expect(html).not.toContain('<script>alert(1)</script>');
 
-    expect(html).toContain('منتج &quot;اختبار&quot;, خاص')
-  })
-})
+    expect(html).toContain('منتج &quot;اختبار&quot;, خاص');
+  });
+});

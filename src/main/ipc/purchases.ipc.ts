@@ -1,6 +1,6 @@
-import { ipcMain } from 'electron'
-import { runCriticalActionWithAudit } from './activity-helper'
-import { requireAuthenticatedAdmin, requirePermission } from '../auth-session'
+import { ipcMain } from 'electron';
+import { runCriticalActionWithAudit } from './activity-helper';
+import { requireAuthenticatedAdmin, requirePermission } from '../auth-session';
 import {
   createPurchaseInvoice,
   getPurchaseInvoice,
@@ -17,9 +17,22 @@ import {
   updatePurchaseInvoice,
   cancelPurchaseReturn,
   updatePurchaseReturn,
-} from '../database/repositories/purchases.repo'
-
-import { requireAdminPassword } from './permission-helper'
+} from '../database/repositories/purchases.repo';
+import {
+  optionalEnumValue,
+  optionalNonNegativeMoney,
+  optionalNonNegativeNumber,
+  optionalPositiveInteger,
+  optionalStringValue,
+  optionalTrimmedString,
+  requireArrayInput,
+  requireEnumValue,
+  requireObjectInput,
+  requirePositiveInteger,
+  requirePositiveMoney,
+  requirePositiveNumber,
+} from './input-validation';
+import { requireAdminPassword } from './permission-helper';
 
 import {
   cancelPurchaseOrder,
@@ -30,11 +43,214 @@ import {
   markPurchaseOrderOrdered,
   receivePurchaseOrder,
   updatePurchaseOrder,
-} from '../database/repositories/purchase-orders.repo'
+} from '../database/repositories/purchase-orders.repo';
+
+const PURCHASE_PAYMENT_METHODS = [
+  'cash',
+  'card',
+  'wallet',
+  'bank',
+  'bank_transfer',
+
+  'store_cash',
+  'store_safe',
+
+  'owner_cash',
+  'owner_bank',
+  'owner_vodafone',
+  'fawry_machine',
+] as const;
+
+const PURCHASE_DISCOUNT_TYPES = ['amount', 'percent'] as const;
+
+const PURCHASE_RETURN_MODES = ['cash', 'credit'] as const;
+
+const PURCHASE_ORDER_STATUSES = [
+  'all',
+  'draft',
+  'ordered',
+  'received',
+  'cancelled',
+] as const;
+
+function normalizePurchaseItems(value: unknown) {
+  const rawItems = requireArrayInput(value, 'أصناف فاتورة الشراء', 500);
+
+  if (rawItems.length === 0) {
+    throw new Error('لا توجد أصناف في فاتورة الشراء');
+  }
+
+  return rawItems.map((rawItem) => {
+    const item = requireObjectInput(rawItem, 'بيانات صنف الشراء');
+
+    return {
+      variant_id: requirePositiveInteger(item.variant_id, 'رقم صنف الشراء'),
+
+      quantity: requirePositiveNumber(item.quantity, 'كمية صنف الشراء'),
+
+      unit_cost: requirePositiveMoney(item.unit_cost, 'سعر شراء الصنف'),
+    };
+  });
+}
+
+function normalizePurchaseDiscount(payload: Record<string, unknown>) {
+  const discountType =
+    optionalEnumValue(
+      payload.discount_type,
+      PURCHASE_DISCOUNT_TYPES,
+      'نوع خصم فاتورة الشراء',
+    ) ?? 'amount';
+
+  const discountInput =
+    discountType === 'percent'
+      ? optionalNonNegativeNumber(
+          payload.discount_input,
+          'نسبة خصم فاتورة الشراء',
+        )
+      : optionalNonNegativeMoney(
+          payload.discount_input,
+          'قيمة خصم فاتورة الشراء',
+        );
+
+  if (discountType === 'percent' && Number(discountInput ?? 0) > 100) {
+    throw new Error('نسبة الخصم لا يمكن أن تتجاوز 100%');
+  }
+
+  return {
+    discount_type: discountType,
+
+    discount_input: discountInput,
+
+    discount_value: optionalNonNegativeMoney(
+      payload.discount_value,
+      'قيمة خصم فاتورة الشراء',
+    ),
+
+    sub_total: optionalNonNegativeMoney(
+      payload.sub_total,
+      'إجمالي فاتورة الشراء قبل الخصم',
+    ),
+  };
+}
+
+function normalizePurchaseWriteInput(input: unknown) {
+  const payload = requireObjectInput(input, 'بيانات فاتورة الشراء');
+
+  return {
+    supplier_id: requirePositiveInteger(payload.supplier_id, 'رقم المورد'),
+
+    paid_amount: optionalNonNegativeMoney(
+      payload.paid_amount,
+      'المبلغ المدفوع',
+    ),
+
+    payment_method: requireEnumValue(
+      payload.payment_method ?? 'cash',
+      PURCHASE_PAYMENT_METHODS,
+      'طريقة دفع فاتورة الشراء',
+    ),
+
+    notes: optionalTrimmedString(payload.notes, 'ملاحظات فاتورة الشراء', 2000),
+
+    items: normalizePurchaseItems(payload.items),
+
+    ...normalizePurchaseDiscount(payload),
+  };
+}
+
+function normalizePurchaseReturnInput(input: unknown) {
+  const payload = requireObjectInput(input, 'بيانات مرتجع الشراء');
+
+  const rawItems = requireArrayInput(payload.items, 'أصناف مرتجع الشراء', 500);
+
+  if (rawItems.length === 0) {
+    throw new Error('لا توجد أصناف في المرتجع');
+  }
+
+  const items = rawItems.map((rawItem) => {
+    const item = requireObjectInput(rawItem, 'بيانات صنف مرتجع الشراء');
+
+    const purchaseItemId = optionalPositiveInteger(
+      item.purchase_item_id,
+      'رقم بند فاتورة الشراء',
+    );
+
+    const variantId = optionalPositiveInteger(
+      item.variant_id,
+      'رقم صنف مرتجع الشراء',
+    );
+
+    if (!purchaseItemId && !variantId) {
+      throw new Error('صنف مرتجع الشراء غير صحيح');
+    }
+
+    return {
+      purchase_item_id: purchaseItemId,
+
+      variant_id: variantId,
+
+      quantity: requirePositiveNumber(item.quantity, 'كمية مرتجع الشراء'),
+    };
+  });
+
+  return {
+    purchase_id: requirePositiveInteger(
+      payload.purchase_id,
+      'رقم فاتورة الشراء',
+    ),
+
+    refund_mode:
+      optionalEnumValue(
+        payload.refund_mode,
+        PURCHASE_RETURN_MODES,
+        'طريقة تسوية مرتجع الشراء',
+      ) ?? 'cash',
+
+    refund_payment_method: optionalEnumValue(
+      payload.refund_payment_method,
+      PURCHASE_PAYMENT_METHODS,
+      'حساب رد مرتجع الشراء',
+    ),
+
+    notes: optionalTrimmedString(payload.notes, 'ملاحظات مرتجع الشراء', 2000),
+
+    items,
+  };
+}
+
+function normalizePurchaseOrderItems(value: unknown) {
+  const rawItems = requireArrayInput(value, 'أصناف أمر الشراء', 500);
+
+  if (rawItems.length === 0) {
+    throw new Error('أضف صنفًا واحدًا على الأقل لأمر الشراء');
+  }
+
+  return rawItems.map((rawItem) => {
+    const item = requireObjectInput(rawItem, 'بيانات صنف أمر الشراء');
+
+    return {
+      variant_id: requirePositiveInteger(item.variant_id, 'رقم صنف أمر الشراء'),
+
+      quantity: requirePositiveNumber(item.quantity, 'كمية أمر الشراء'),
+
+      unit_cost:
+        optionalNonNegativeMoney(item.unit_cost, 'تكلفة صنف أمر الشراء') ??
+        undefined,
+    };
+  });
+}
 
 export function registerPurchasesIpc(): void {
   ipcMain.handle('purchases:create', (event, input) => {
-    const actorId = requirePermission(event, 'purchases.manage').id
+    const actor = requirePermission(event, 'purchases.manage');
+
+    const actorId = actor.id;
+
+    input = normalizePurchaseWriteInput(input);
+
+    if (actor.role !== 'admin' && input.payment_method === 'store_safe') {
+      throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط');
+    }
 
     const result = runCriticalActionWithAudit(
       () =>
@@ -68,19 +284,42 @@ export function registerPurchasesIpc(): void {
           shift_id: result.shift_id,
         },
       }),
-    )
+    );
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle('purchases:update', (event, input) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requireAuthenticatedAdmin(event);
 
-    const approval = requireAdminPassword(actorId, input?.admin_password)
+    const payload = requireObjectInput(input, 'بيانات تعديل فاتورة الشراء');
 
-    const purchaseId = Number(input?.purchase_id || 0)
+    const adminPassword = optionalStringValue(
+      payload.admin_password,
+      'كلمة مرور المدير',
+      256,
+    );
 
-    const before = getPurchaseInvoice(purchaseId)
+    const approval = requireAdminPassword(actorId, adminPassword);
+
+    const purchaseId = requirePositiveInteger(
+      payload.purchase_id,
+      'رقم فاتورة الشراء',
+    );
+
+    input = {
+      ...normalizePurchaseWriteInput(payload),
+
+      purchase_id: purchaseId,
+
+      reason: optionalTrimmedString(
+        payload.reason,
+        'سبب تعديل فاتورة الشراء',
+        500,
+      ),
+    };
+
+    const before = getPurchaseInvoice(purchaseId);
 
     const criticalResult = runCriticalActionWithAudit(
       () => {
@@ -90,14 +329,14 @@ export function registerPurchasesIpc(): void {
           purchase_id: purchaseId,
 
           actor_id: actorId,
-        })
+        });
 
-        const after = getPurchaseInvoice(purchaseId)
+        const after = getPurchaseInvoice(purchaseId);
 
         return {
           result,
           after,
-        }
+        };
       },
 
       ({ after }) => ({
@@ -131,40 +370,58 @@ export function registerPurchasesIpc(): void {
           },
         },
       }),
-    )
+    );
 
-    return criticalResult.result
-  })
+    return criticalResult.result;
+  });
 
   ipcMain.handle('purchases:list', (event, input) => {
-    requirePermission(event, 'purchases.manage')
+    requirePermission(event, 'purchases.manage');
 
-    return listPurchaseInvoices(input)
-  })
+    return listPurchaseInvoices(input);
+  });
 
   ipcMain.handle('purchases:get-by-id', (event, purchaseId: number) => {
-    requirePermission(event, 'purchases.manage')
+    requirePermission(event, 'purchases.manage');
 
-    return getPurchaseInvoice(Number(purchaseId))
-  })
+    return getPurchaseInvoice(
+      requirePositiveInteger(purchaseId, 'رقم فاتورة الشراء'),
+    );
+  });
 
   ipcMain.handle('purchases:cancel', (event, input) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requireAuthenticatedAdmin(event);
 
+    const payload = requireObjectInput(input, 'بيانات إلغاء فاتورة الشراء');
+
+    const adminPassword = optionalStringValue(
+      payload.admin_password,
+      'كلمة مرور المدير',
+      256,
+    );
     const approval = requireAdminPassword(
       actorId,
 
-      input?.admin_password,
-    )
+      adminPassword,
+    );
 
-    const purchaseId = Number(input?.purchase_id)
+    const purchaseId = requirePositiveInteger(
+      payload.purchase_id,
+      'رقم فاتورة الشراء',
+    );
+
+    const reason = optionalTrimmedString(
+      payload.reason,
+      'سبب إلغاء فاتورة الشراء',
+      500,
+    );
 
     const result = runCriticalActionWithAudit(
       () =>
         cancelPurchaseInvoice({
           purchase_id: purchaseId,
 
-          reason: input?.reason || '',
+          reason: reason || '',
 
           actor_id: actorId,
         }),
@@ -183,7 +440,7 @@ export function registerPurchasesIpc(): void {
         details: {
           purchase_id: purchaseId,
 
-          reason: input?.reason || '',
+          reason: reason || '',
 
           reversed_total: result.reversed_total,
 
@@ -196,15 +453,26 @@ export function registerPurchasesIpc(): void {
           shift_id: result.cancelled_shift_id,
         },
       }),
-    )
+    );
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle('purchases:returns:create', (event, input) => {
-    const actorId = requirePermission(event, 'purchases.manage').id
+    const actor = requirePermission(event, 'purchases.manage');
 
-    const purchaseId = Number(input?.purchase_id)
+    const actorId = actor.id;
+
+    input = normalizePurchaseReturnInput(input);
+
+    if (
+      actor.role !== 'admin' &&
+      input.refund_payment_method === 'store_safe'
+    ) {
+      throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط');
+    }
+
+    const purchaseId = input.purchase_id;
 
     const result = runCriticalActionWithAudit(
       () =>
@@ -239,26 +507,41 @@ export function registerPurchasesIpc(): void {
           shift_id: result.shift_id,
         },
       }),
-    )
+    );
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle('purchases:returns:cancel', (event, input) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requireAuthenticatedAdmin(event);
+    const payload = requireObjectInput(input, 'بيانات إلغاء مرتجع الشراء');
 
-    const approval = requireAdminPassword(actorId, input?.admin_password)
+    const adminPassword = optionalStringValue(
+      payload.admin_password,
+      'كلمة مرور المدير',
+      256,
+    );
 
-    const returnId = Number(input?.return_id || 0)
+    const returnId = requirePositiveInteger(
+      payload.return_id,
+      'رقم مرتجع الشراء',
+    );
 
-    const before = getPurchaseReturn(returnId)
+    const reason = optionalTrimmedString(
+      payload.reason,
+      'سبب إلغاء مرتجع الشراء',
+      500,
+    );
+    const approval = requireAdminPassword(actorId, adminPassword);
+
+    const before = getPurchaseReturn(returnId);
 
     const result = runCriticalActionWithAudit(
       () =>
         cancelPurchaseReturn({
           return_id: returnId,
 
-          reason: input?.reason,
+          reason: reason,
 
           actor_id: actorId,
         }),
@@ -275,7 +558,7 @@ export function registerPurchasesIpc(): void {
         entity_id: returnId,
 
         details: {
-          reason: input?.reason || null,
+          reason: reason || null,
 
           purchase_id: result.purchase_id,
 
@@ -292,19 +575,52 @@ export function registerPurchasesIpc(): void {
           before,
         },
       }),
-    )
+    );
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle('purchases:returns:update', (event, input) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requireAuthenticatedAdmin(event);
 
-    const approval = requireAdminPassword(actorId, input?.admin_password)
+    const payload = requireObjectInput(input, 'بيانات تعديل مرتجع الشراء');
 
-    const returnId = Number(input?.return_id || 0)
+    const adminPassword = optionalStringValue(
+      payload.admin_password,
+      'كلمة مرور المدير',
+      256,
+    );
 
-    const before = getPurchaseReturn(returnId)
+    const returnId = requirePositiveInteger(
+      payload.return_id,
+      'رقم مرتجع الشراء',
+    );
+
+    input = {
+      ...normalizePurchaseReturnInput({
+        ...payload,
+
+        purchase_id: payload.purchase_id ?? 1,
+      }),
+
+      return_id: returnId,
+
+      reason: optionalTrimmedString(
+        payload.reason,
+        'سبب تعديل مرتجع الشراء',
+        500,
+      ),
+    };
+
+    delete (
+      input as {
+        purchase_id?: number;
+      }
+    ).purchase_id;
+
+    const approval = requireAdminPassword(actorId, adminPassword);
+
+    const before = getPurchaseReturn(returnId);
 
     const criticalResult = runCriticalActionWithAudit(
       () => {
@@ -314,14 +630,14 @@ export function registerPurchasesIpc(): void {
           return_id: returnId,
 
           actor_id: actorId,
-        })
+        });
 
-        const after = getPurchaseReturn(result.return_id)
+        const after = getPurchaseReturn(result.return_id);
 
         return {
           result,
           after,
-        }
+        };
       },
 
       ({ result, after }) => ({
@@ -345,25 +661,56 @@ export function registerPurchasesIpc(): void {
           after,
         },
       }),
-    )
+    );
 
-    return criticalResult.result
-  })
+    return criticalResult.result;
+  });
 
   ipcMain.handle('purchases:returns:list', (event, input) => {
-    requirePermission(event, 'purchases.manage')
+    requirePermission(event, 'purchases.manage');
 
-    return listPurchaseReturns(input)
-  })
+    return listPurchaseReturns(input);
+  });
 
   ipcMain.handle('purchases:returns:get-by-id', (event, returnId: number) => {
-    requirePermission(event, 'purchases.manage')
+    requirePermission(event, 'purchases.manage');
 
-    return getPurchaseReturn(Number(returnId))
-  })
+    return getPurchaseReturn(
+      requirePositiveInteger(returnId, 'رقم مرتجع الشراء'),
+    );
+  });
 
   ipcMain.handle('suppliers:record-payment', (event, input) => {
-    const actorId = requirePermission(event, 'purchases.manage').id
+    const actor = requirePermission(event, 'purchases.manage');
+
+    const actorId = actor.id;
+
+    const payload = requireObjectInput(input, 'بيانات دفعة المورد');
+
+    const paymentMethod = requireEnumValue(
+      payload.payment_method ?? 'cash',
+      PURCHASE_PAYMENT_METHODS,
+      'طريقة دفع المورد',
+    );
+
+    if (actor.role !== 'admin' && paymentMethod === 'store_safe') {
+      throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط');
+    }
+
+    input = {
+      supplier_id: requirePositiveInteger(payload.supplier_id, 'رقم المورد'),
+
+      purchase_id: optionalPositiveInteger(
+        payload.purchase_id,
+        'رقم فاتورة الشراء',
+      ),
+
+      amount: requirePositiveMoney(payload.amount, 'مبلغ دفعة المورد'),
+
+      payment_method: paymentMethod,
+
+      notes: optionalTrimmedString(payload.notes, 'ملاحظات دفعة المورد', 1000),
+    };
 
     const result = runCriticalActionWithAudit(
       () =>
@@ -392,31 +739,33 @@ export function registerPurchasesIpc(): void {
           shift_id: result.shift_id,
         },
       }),
-    )
+    );
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle('suppliers:cancel-payment', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requireAuthenticatedAdmin(event);
 
-      const access = getSupplierPaymentBatchAccess(
-        Number(input?.batch_id),
-        actorId,
-      )
+      const payload = requireObjectInput(input, 'بيانات دفعة المورد');
 
-      let approvedBy: number | null = null
+      const batchId = requirePositiveInteger(
+        payload.batch_id,
+        'رقم دفعة المورد',
+      );
+
+      const access = getSupplierPaymentBatchAccess(batchId, actorId);
+
+      let approvedBy: number | null = null;
 
       if (access.requires_admin_password) {
         approvedBy = requireAdminPassword(
           actorId,
 
           input?.admin_password,
-        ).id
+        ).id;
       }
-
-      const batchId = Number(input?.batch_id)
 
       const result = runCriticalActionWithAudit(
         () =>
@@ -444,55 +793,69 @@ export function registerPurchasesIpc(): void {
 
             amount: result.cancelled_amount,
 
-            reason: input?.reason || '',
+            reason: optionalTrimmedString(
+              payload.reason,
+              'سبب إلغاء دفعة المورد',
+              500,
+            ),
 
             shift_id: result.cancelled_shift_id,
           },
         }),
-      )
+      );
 
-      return result
+      return result;
     } catch (error) {
       return {
         success: false,
 
         message:
           error instanceof Error ? error.message : 'تعذر إلغاء دفعة المورد',
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('suppliers:update-payment', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requireAuthenticatedAdmin(event);
 
-      const access = getSupplierPaymentBatchAccess(
-        Number(input?.batch_id),
-        actorId,
-      )
+      const payload = requireObjectInput(input, 'بيانات دفعة المورد');
 
-      let approvedBy: number | null = null
+      const batchId = requirePositiveInteger(
+        payload.batch_id,
+        'رقم دفعة المورد',
+      );
+
+      const access = getSupplierPaymentBatchAccess(batchId, actorId);
+
+      let approvedBy: number | null = null;
 
       if (access.requires_admin_password) {
         approvedBy = requireAdminPassword(
           actorId,
 
           input?.admin_password,
-        ).id
+        ).id;
       }
-
-      const batchId = Number(input?.batch_id)
 
       const result = runCriticalActionWithAudit(
         () =>
           updateSupplierPaymentBatch({
             batch_id: batchId,
 
-            amount: Number(input?.amount),
+            amount: requirePositiveMoney(payload.amount, 'مبلغ دفعة المورد'),
 
-            payment_method: input?.payment_method,
+            payment_method: requireEnumValue(
+              payload.payment_method,
+              PURCHASE_PAYMENT_METHODS,
+              'طريقة دفع المورد',
+            ),
 
-            notes: input?.notes,
+            notes: optionalTrimmedString(
+              payload.notes,
+              'ملاحظات دفعة المورد',
+              1000,
+            ),
 
             actor_id: actorId,
           }),
@@ -522,45 +885,60 @@ export function registerPurchasesIpc(): void {
             shift_id: result.shift_id,
           },
         }),
-      )
+      );
 
-      return result
+      return result;
     } catch (error) {
       return {
         success: false,
 
         message:
           error instanceof Error ? error.message : 'تعذر تعديل دفعة المورد',
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('suppliers:statement', (event, supplierId: number) => {
-    const actorId = requirePermission(event, 'purchases.manage').id
+    const actorId = requirePermission(event, 'purchases.manage').id;
 
-    return getSupplierStatement(Number(supplierId), actorId)
-  })
+    return getSupplierStatement(
+      requirePositiveInteger(supplierId, 'رقم المورد'),
+      actorId,
+    );
+  });
 
   ipcMain.handle('purchases:reorder-suggestions', (event, input) => {
-    requirePermission(event, 'purchases.manage')
+    requirePermission(event, 'purchases.manage');
 
-    return getSmartReorderSuggestions(input)
-  })
+    return getSmartReorderSuggestions(input);
+  });
 
   ipcMain.handle('purchases:orders:list', (event, input) => {
-    requirePermission(event, 'purchases.manage')
+    requirePermission(event, 'purchases.manage');
 
-    return listPurchaseOrders(input)
-  })
+    return listPurchaseOrders(input);
+  });
 
   ipcMain.handle('purchases:orders:get', (event, purchaseOrderId: number) => {
-    requirePermission(event, 'purchases.manage')
+    requirePermission(event, 'purchases.manage');
 
-    return getPurchaseOrder(Number(purchaseOrderId))
-  })
+    return getPurchaseOrder(
+      requirePositiveInteger(purchaseOrderId, 'رقم أمر الشراء'),
+    );
+  });
 
   ipcMain.handle('purchases:orders:create', (event, input) => {
-    const actorId = requirePermission(event, 'purchases.manage').id
+    const actorId = requirePermission(event, 'purchases.manage').id;
+
+    const payload = requireObjectInput(input, 'بيانات أمر الشراء');
+
+    input = {
+      supplier_id: requirePositiveInteger(payload.supplier_id, 'رقم المورد'),
+
+      notes: optionalTrimmedString(payload.notes, 'ملاحظات أمر الشراء', 2000),
+
+      items: normalizePurchaseOrderItems(payload.items),
+    };
 
     return runCriticalActionWithAudit(
       () =>
@@ -587,13 +965,28 @@ export function registerPurchasesIpc(): void {
           total_amount: result.total_amount,
         },
       }),
-    )
-  })
+    );
+  });
 
   ipcMain.handle('purchases:orders:update', (event, input) => {
-    const actorId = requirePermission(event, 'purchases.manage').id
+    const actorId = requirePermission(event, 'purchases.manage').id;
 
-    const orderId = Number(input?.purchase_order_id)
+    const payload = requireObjectInput(input, 'بيانات تعديل أمر الشراء');
+
+    const orderId = requirePositiveInteger(
+      payload.purchase_order_id,
+      'رقم أمر الشراء',
+    );
+
+    input = {
+      purchase_order_id: orderId,
+
+      supplier_id: requirePositiveInteger(payload.supplier_id, 'رقم المورد'),
+
+      notes: optionalTrimmedString(payload.notes, 'ملاحظات أمر الشراء', 2000),
+
+      items: normalizePurchaseOrderItems(payload.items),
+    };
 
     return runCriticalActionWithAudit(
       () => updatePurchaseOrder(input),
@@ -615,13 +1008,18 @@ export function registerPurchasesIpc(): void {
           total_amount: result.order.total_amount,
         },
       }),
-    )
-  })
+    );
+  });
 
   ipcMain.handle('purchases:orders:mark-ordered', (event, input) => {
-    const actorId = requirePermission(event, 'purchases.manage').id
+    const actorId = requirePermission(event, 'purchases.manage').id;
 
-    const orderId = Number(input?.purchase_order_id)
+    const payload = requireObjectInput(input, 'بيانات اعتماد أمر الشراء');
+
+    const orderId = requirePositiveInteger(
+      payload.purchase_order_id,
+      'رقم أمر الشراء',
+    );
 
     return runCriticalActionWithAudit(
       () =>
@@ -642,20 +1040,31 @@ export function registerPurchasesIpc(): void {
 
         details: {},
       }),
-    )
-  })
+    );
+  });
 
   ipcMain.handle('purchases:orders:cancel', (event, input) => {
-    const actorId = requirePermission(event, 'purchases.manage').id
+    const actorId = requirePermission(event, 'purchases.manage').id;
 
-    const orderId = Number(input?.purchase_order_id)
+    const payload = requireObjectInput(input, 'بيانات اعتماد أمر الشراء');
+
+    const orderId = requirePositiveInteger(
+      payload.purchase_order_id,
+      'رقم أمر الشراء',
+    );
+
+    const reason = optionalTrimmedString(
+      payload.reason,
+      'سبب إلغاء أمر الشراء',
+      500,
+    );
 
     return runCriticalActionWithAudit(
       () =>
         cancelPurchaseOrder({
           purchase_order_id: orderId,
 
-          reason: input?.reason,
+          reason: reason,
 
           actor_id: actorId,
         }),
@@ -670,16 +1079,54 @@ export function registerPurchasesIpc(): void {
         entity_id: orderId,
 
         details: {
-          reason: result.reason,
+          reason: reason,
         },
       }),
-    )
-  })
+    );
+  });
 
   ipcMain.handle('purchases:orders:receive', (event, input) => {
-    const actorId = requirePermission(event, 'purchases.manage').id
+    const actor = requirePermission(event, 'purchases.manage');
 
-    const orderId = Number(input?.purchase_order_id)
+    const actorId = actor.id;
+
+    const payload = requireObjectInput(input, 'بيانات استلام أمر الشراء');
+
+    const orderId = requirePositiveInteger(
+      payload.purchase_order_id,
+      'رقم أمر الشراء',
+    );
+
+    const paymentMethod = requireEnumValue(
+      payload.payment_method ?? 'cash',
+      PURCHASE_PAYMENT_METHODS,
+      'طريقة دفع أمر الشراء',
+    );
+
+    if (actor.role !== 'admin' && paymentMethod === 'store_safe') {
+      throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط');
+    }
+
+    const discount = normalizePurchaseDiscount(payload);
+
+    input = {
+      purchase_order_id: orderId,
+
+      paid_amount: optionalNonNegativeMoney(
+        payload.paid_amount,
+        'المبلغ المدفوع',
+      ),
+
+      payment_method: paymentMethod,
+
+      notes: optionalTrimmedString(
+        payload.notes,
+        'ملاحظات استلام أمر الشراء',
+        2000,
+      ),
+
+      ...discount,
+    };
 
     return runCriticalActionWithAudit(
       () =>
@@ -734,6 +1181,6 @@ export function registerPurchasesIpc(): void {
           },
         },
       ],
-    )
-  })
+    );
+  });
 }

@@ -1,178 +1,178 @@
-import { getDb } from '../db'
-import { createCashMovement, resolveCashAccount } from './cash.repo'
+import { getDb } from '../db';
+import { createCashMovement, resolveCashAccount } from './cash.repo';
 import {
   calculateSaleEarnedPoints,
   getSaleCurrentState,
-} from './sales-current-state.repo'
-import { syncCustomerTotalSpent } from './sales.repo'
-import { requireOperationalCashShift } from './cash-shifts.repo'
-import { getShiftBusinessDate } from '../shift-business-date'
+} from './sales-current-state.repo';
+import { syncCustomerTotalSpent } from './sales.repo';
+import { requireOperationalCashShift } from './cash-shifts.repo';
+import { getShiftBusinessDate } from '../shift-business-date';
 import {
   getInventoryCostState,
   issueStockAtAverageCost,
   issueStockAtCost,
   receiveStockAtCost,
-} from '../inventory-cost'
-import { roundMoney } from '../../../shared/money'
+} from '../inventory-cost';
+import { roundMoney } from '../../../shared/money';
 
 export type CreateSaleExchangeInput = {
-  original_sale_id: number
-  user_id: number
-  payment_method?: string | null
-  reason?: string | null
+  original_sale_id: number;
+  user_id: number;
+  payment_method?: string | null;
+  reason?: string | null;
 
   items: Array<{
-    promotion_unit_id: number
-    new_variant_id: number
-  }>
-}
+    promotion_unit_id: number;
+    new_variant_id: number;
+  }>;
+};
 
 export type CancelSaleExchangeInput = {
-  exchange_id: number
+  exchange_id: number;
 
-  reason?: string | null
+  reason?: string | null;
 
-  actor_id?: number | null
-}
+  actor_id?: number | null;
+};
 
 export type ListSaleExchangesInput = {
-  search?: string
+  search?: string;
 
-  date_from?: string
-  date_to?: string
+  date_from?: string;
+  date_to?: string;
 
-  status?: 'all' | 'active' | 'cancelled'
-  payment_method?: string | null
-  actor_id?: number | null
+  status?: 'all' | 'active' | 'cancelled';
+  payment_method?: string | null;
+  actor_id?: number | null;
 
-  limit?: number
-  offset?: number
-}
+  limit?: number;
+  offset?: number;
+};
 
 type ExchangeUnitState = {
-  id: number
+  id: number;
 
-  current_variant_id: number
+  current_variant_id: number;
 
-  current_unit_price: number
+  current_unit_price: number;
 
-  current_unit_cost: number | null
+  current_unit_cost: number | null;
 
-  current_is_gift: number
-}
+  current_is_gift: number;
+};
 
 type PromotionSnapshotRow = {
-  sale_id: number
-  promotion_id: number
-  promotion_name: string
-  promotion_type: string
-  promotion_value: number
-  buy_qty: number | null
-  free_qty: number | null
-  scope_type: string
-  category_id: number | null
-  product_ids_json: string
-}
+  sale_id: number;
+  promotion_id: number;
+  promotion_name: string;
+  promotion_type: string;
+  promotion_value: number;
+  buy_qty: number | null;
+  free_qty: number | null;
+  scope_type: string;
+  category_id: number | null;
+  product_ids_json: string;
+};
 
 type PromotionUnitRow = {
-  id: number
-  sale_id: number
-  original_sale_item_id: number
-  promotion_group_id: string
+  id: number;
+  sale_id: number;
+  original_sale_item_id: number;
+  promotion_group_id: string;
 
-  original_variant_id: number
-  current_variant_id: number
+  original_variant_id: number;
+  current_variant_id: number;
 
-  original_unit_price: number
-  current_unit_price: number
-  original_unit_cost: number | null
-  current_unit_cost: number | null
-  original_is_gift: number
-  current_is_gift: number
+  original_unit_price: number;
+  current_unit_price: number;
+  original_unit_cost: number | null;
+  current_unit_cost: number | null;
+  original_is_gift: number;
+  current_is_gift: number;
 
-  is_returned: number
-}
+  is_returned: number;
+};
 
 type ExchangeVariantRow = {
-  variant_id: number
-  product_id: number
-  product_name: string
-  category_id: number | null
+  variant_id: number;
+  product_id: number;
+  product_name: string;
+  category_id: number | null;
 
-  barcode: string | null
-  size: string | null
-  color: string | null
+  barcode: string | null;
+  size: string | null;
+  color: string | null;
 
-  buy_price: number
-  average_cost: number
-  sell_price: number
-}
+  buy_price: number;
+  average_cost: number;
+  sell_price: number;
+};
 
 function parseProductIds(value: string) {
   try {
-    const parsed = JSON.parse(value || '[]')
+    const parsed = JSON.parse(value || '[]');
 
     if (!Array.isArray(parsed)) {
-      return []
+      return [];
     }
 
-    return parsed.map(Number).filter((id) => Number.isFinite(id) && id > 0)
+    return parsed.map(Number).filter((id) => Number.isFinite(id) && id > 0);
   } catch {
-    return []
+    return [];
   }
 }
 
 function getPromotionIdFromGroupId(value?: string | null) {
-  const match = String(value || '').match(/_promotion_(\d+)_bundle_/)
+  const match = String(value || '').match(/_promotion_(\d+)_bundle_/);
 
-  const promotionId = Number(match?.[1] || 0)
+  const promotionId = Number(match?.[1] || 0);
 
-  return promotionId > 0 ? promotionId : null
+  return promotionId > 0 ? promotionId : null;
 }
 
 function normalizePromotionSnapshot(
   snapshot: PromotionSnapshotRow | null | undefined,
 ) {
   if (!snapshot) {
-    return null
+    return null;
   }
 
   return {
     ...snapshot,
 
     product_ids: parseProductIds(snapshot.product_ids_json),
-  }
+  };
 }
 
 function parseExchangeStateJson(
   value: unknown,
   label: string,
 ): ExchangeUnitState[] {
-  let parsed: unknown
+  let parsed: unknown;
 
   try {
-    parsed = JSON.parse(String(value || '[]'))
+    parsed = JSON.parse(String(value || '[]'));
   } catch {
-    throw new Error(`بيانات ${label} غير صالحة`)
+    throw new Error(`بيانات ${label} غير صالحة`);
   }
 
   if (!Array.isArray(parsed) || parsed.length === 0) {
-    throw new Error(`بيانات ${label} غير مكتملة`)
+    throw new Error(`بيانات ${label} غير مكتملة`);
   }
 
   return parsed.map((raw: any) => {
-    const id = Number(raw?.id)
+    const id = Number(raw?.id);
 
-    const variantId = Number(raw?.current_variant_id)
+    const variantId = Number(raw?.current_variant_id);
 
-    const unitPrice = Number(raw?.current_unit_price)
+    const unitPrice = Number(raw?.current_unit_price);
 
-    const rawCost = raw?.current_unit_cost
+    const rawCost = raw?.current_unit_cost;
 
     const unitCost =
-      rawCost === null || rawCost === undefined ? null : Number(rawCost)
+      rawCost === null || rawCost === undefined ? null : Number(rawCost);
 
-    const isGift = Number(raw?.current_is_gift || 0) === 1 ? 1 : 0
+    const isGift = Number(raw?.current_is_gift || 0) === 1 ? 1 : 0;
 
     if (
       !id ||
@@ -180,7 +180,7 @@ function parseExchangeStateJson(
       !Number.isFinite(unitPrice) ||
       (unitCost !== null && !Number.isFinite(unitCost))
     ) {
-      throw new Error(`بيانات ${label} غير مكتملة`)
+      throw new Error(`بيانات ${label} غير مكتملة`);
     }
 
     return {
@@ -193,8 +193,8 @@ function parseExchangeStateJson(
       current_unit_cost: unitCost,
 
       current_is_gift: isGift,
-    }
-  })
+    };
+  });
 }
 
 function getCurrentStock(db: ReturnType<typeof getDb>, variantId: number) {
@@ -221,11 +221,11 @@ function getCurrentStock(db: ReturnType<typeof getDb>, variantId: number) {
     )
     .get(variantId) as
     | {
-        stock: number
+        stock: number;
       }
-    | undefined
+    | undefined;
 
-  return Number(row?.stock || 0)
+  return Number(row?.stock || 0);
 }
 
 function getExchangeVariant(db: ReturnType<typeof getDb>, variantId: number) {
@@ -264,17 +264,17 @@ function getExchangeVariant(db: ReturnType<typeof getDb>, variantId: number) {
       LIMIT 1
       `,
     )
-    .get(variantId) as ExchangeVariantRow | undefined
+    .get(variantId) as ExchangeVariantRow | undefined;
 }
 
-const REGULAR_EXCHANGE_GROUP_PREFIX = 'regular:'
+const REGULAR_EXCHANGE_GROUP_PREFIX = 'regular:';
 
 function isRegularExchangeGroup(value?: string | null) {
-  return String(value || '').startsWith(REGULAR_EXCHANGE_GROUP_PREFIX)
+  return String(value || '').startsWith(REGULAR_EXCHANGE_GROUP_PREFIX);
 }
 
 function buildRegularExchangeGroupId(saleItemId: number, unitIndex: number) {
-  return `${REGULAR_EXCHANGE_GROUP_PREFIX}${saleItemId}:${unitIndex}`
+  return `${REGULAR_EXCHANGE_GROUP_PREFIX}${saleItemId}:${unitIndex}`;
 }
 
 function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
@@ -322,7 +322,7 @@ function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
         ORDER BY si.id ASC
         `,
       )
-      .all(saleId) as any[]
+      .all(saleId) as any[];
 
     const getExistingCount = db.prepare(
       `
@@ -341,7 +341,7 @@ function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
             promotion_group_id
             LIKE 'regular:%'
         `,
-    )
+    );
 
     const insertUnit = db.prepare(
       `
@@ -374,10 +374,10 @@ function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
           ?
         )
         `,
-    )
+    );
 
     for (const item of items) {
-      const quantity = Number(item.quantity || 0)
+      const quantity = Number(item.quantity || 0);
 
       /*
        * الاستبدال هنا Piece-based.
@@ -385,27 +385,27 @@ function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
        * المرتجع التقليدي ولا ننشئ لها Units.
        */
       if (quantity <= 0 || !Number.isInteger(quantity)) {
-        continue
+        continue;
       }
 
       const existing = getExistingCount.get(saleId, Number(item.id)) as {
-        count: number
-      }
+        count: number;
+      };
 
-      const existingCount = Number(existing?.count || 0)
+      const existingCount = Number(existing?.count || 0);
 
       if (existingCount > 0) {
         if (existingCount !== quantity) {
-          throw new Error('بيانات وحدات الفاتورة غير مكتملة')
+          throw new Error('بيانات وحدات الفاتورة غير مكتملة');
         }
 
-        continue
+        continue;
       }
 
       const returnedQuantity = Math.min(
         quantity,
         Math.max(0, Math.floor(Number(item.returned_quantity || 0))),
-      )
+      );
 
       for (let index = 0; index < quantity; index += 1) {
         insertUnit.run(
@@ -427,17 +427,17 @@ function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
           Number(item.unit_cost || 0),
 
           index < returnedQuantity ? 1 : 0,
-        )
+        );
       }
     }
-  }
+  };
 
   if (db.inTransaction) {
-    apply()
-    return
+    apply();
+    return;
   }
 
-  db.transaction(apply)()
+  db.transaction(apply)();
 }
 
 function isVariantInsideSnapshot(
@@ -445,28 +445,28 @@ function isVariantInsideSnapshot(
   snapshot: PromotionSnapshotRow,
 ) {
   if (snapshot.scope_type === 'all') {
-    return true
+    return true;
   }
 
   if (snapshot.scope_type === 'category') {
-    return Number(variant.category_id) === Number(snapshot.category_id)
+    return Number(variant.category_id) === Number(snapshot.category_id);
   }
 
   if (snapshot.scope_type === 'products') {
-    const productIds = new Set(parseProductIds(snapshot.product_ids_json))
+    const productIds = new Set(parseProductIds(snapshot.product_ids_json));
 
-    return productIds.has(Number(variant.product_id))
+    return productIds.has(Number(variant.product_id));
   }
 
-  return false
+  return false;
 }
 
 export function getSaleExchangeState(saleIdInput: number) {
-  const db = getDb()
-  const saleId = Number(saleIdInput)
+  const db = getDb();
+  const saleId = Number(saleIdInput);
 
   if (!saleId) {
-    throw new Error('رقم الفاتورة غير صحيح')
+    throw new Error('رقم الفاتورة غير صحيح');
   }
 
   const sale = db
@@ -479,17 +479,17 @@ export function getSaleExchangeState(saleIdInput: number) {
       LIMIT 1
       `,
     )
-    .get(saleId) as any
+    .get(saleId) as any;
 
   if (!sale) {
-    throw new Error('الفاتورة الأصلية غير موجودة')
+    throw new Error('الفاتورة الأصلية غير موجودة');
   }
 
   if (sale.cancelled_at) {
-    throw new Error('لا يمكن عمل استبدال على فاتورة ملغاة')
+    throw new Error('لا يمكن عمل استبدال على فاتورة ملغاة');
   }
 
-  ensureRegularSaleUnits(db, saleId)
+  ensureRegularSaleUnits(db, saleId);
 
   const snapshotRows = db
     .prepare(
@@ -504,15 +504,15 @@ export function getSaleExchangeState(saleIdInput: number) {
       promotion_id ASC
     `,
     )
-    .all(saleId) as PromotionSnapshotRow[]
+    .all(saleId) as PromotionSnapshotRow[];
 
   const normalizedSnapshots = snapshotRows
     .map(normalizePromotionSnapshot)
-    .filter(Boolean)
+    .filter(Boolean);
 
   const snapshotByPromotionId = new Map<number, PromotionSnapshotRow>(
     snapshotRows.map((snapshot) => [Number(snapshot.promotion_id), snapshot]),
-  )
+  );
 
   const units = db
     .prepare(
@@ -543,41 +543,41 @@ export function getSaleExchangeState(saleIdInput: number) {
         spu.id ASC
       `,
     )
-    .all(saleId) as any[]
+    .all(saleId) as any[];
 
   const groupMap = new Map<
     string,
     {
-      promotion_group_id: string
+      promotion_group_id: string;
 
-      group_kind: 'promotion' | 'regular'
+      group_kind: 'promotion' | 'regular';
 
-      promotion_id: number | null
+      promotion_id: number | null;
 
-      promotion_snapshot: ReturnType<typeof normalizePromotionSnapshot>
+      promotion_snapshot: ReturnType<typeof normalizePromotionSnapshot>;
 
-      units: any[]
+      units: any[];
     }
-  >()
+  >();
 
   for (const unit of units) {
-    const groupId = String(unit.promotion_group_id)
+    const groupId = String(unit.promotion_group_id);
 
-    const current = groupMap.get(groupId)
+    const current = groupMap.get(groupId);
 
     if (current) {
-      current.units.push(unit)
+      current.units.push(unit);
 
-      continue
+      continue;
     }
 
-    const isRegular = isRegularExchangeGroup(groupId)
+    const isRegular = isRegularExchangeGroup(groupId);
 
-    const promotionId = isRegular ? null : getPromotionIdFromGroupId(groupId)
+    const promotionId = isRegular ? null : getPromotionIdFromGroupId(groupId);
 
     const promotionSnapshot = promotionId
       ? normalizePromotionSnapshot(snapshotByPromotionId.get(promotionId))
-      : null
+      : null;
 
     groupMap.set(groupId, {
       promotion_group_id: groupId,
@@ -589,10 +589,10 @@ export function getSaleExchangeState(saleIdInput: number) {
       promotion_snapshot: promotionSnapshot,
 
       units: [unit],
-    })
+    });
   }
 
-  const currentState = getSaleCurrentState(saleId)
+  const currentState = getSaleCurrentState(saleId);
 
   return {
     sale,
@@ -602,53 +602,53 @@ export function getSaleExchangeState(saleIdInput: number) {
     groups: Array.from(groupMap.values()),
     payments: currentState.current_receipt.payments || [],
     financials: currentState.financials,
-  }
+  };
 }
 
 export function createSaleExchange(input: CreateSaleExchangeInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const saleId = Number(input.original_sale_id)
-  const userId = Number(input.user_id)
+  const saleId = Number(input.original_sale_id);
+  const userId = Number(input.user_id);
 
   if (!saleId) {
-    throw new Error('رقم الفاتورة الأصلية مطلوب')
+    throw new Error('رقم الفاتورة الأصلية مطلوب');
   }
 
   if (!userId) {
-    throw new Error('المستخدم مطلوب')
+    throw new Error('المستخدم مطلوب');
   }
 
   if (!input.items?.length) {
-    throw new Error('لا توجد أصناف للاستبدال')
+    throw new Error('لا توجد أصناف للاستبدال');
   }
 
   const openShift = requireOperationalCashShift(
     input.user_id,
     'لا يمكن تسجيل استبدال بدون شفت مفتوح',
-  )
+  );
 
   const normalizedItems = input.items.map((item) => ({
     promotion_unit_id: Number(item.promotion_unit_id),
     new_variant_id: Number(item.new_variant_id),
-  }))
+  }));
 
   for (const item of normalizedItems) {
     if (!item.promotion_unit_id) {
-      throw new Error('وحدة العرض المطلوب استبدالها غير صحيحة')
+      throw new Error('وحدة العرض المطلوب استبدالها غير صحيحة');
     }
 
     if (!item.new_variant_id) {
-      throw new Error('الصنف البديل غير صحيح')
+      throw new Error('الصنف البديل غير صحيح');
     }
   }
 
   const uniqueUnitIds = new Set(
     normalizedItems.map((item) => item.promotion_unit_id),
-  )
+  );
 
   if (uniqueUnitIds.size !== normalizedItems.length) {
-    throw new Error('لا يمكن اختيار نفس قطعة العرض أكثر من مرة')
+    throw new Error('لا يمكن اختيار نفس قطعة العرض أكثر من مرة');
   }
 
   const tx = db.transaction(() => {
@@ -662,17 +662,17 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         LIMIT 1
         `,
       )
-      .get(saleId) as any
+      .get(saleId) as any;
 
     if (!sale) {
-      throw new Error('الفاتورة الأصلية غير موجودة')
+      throw new Error('الفاتورة الأصلية غير موجودة');
     }
 
     if (sale.cancelled_at) {
-      throw new Error('لا يمكن عمل استبدال على فاتورة ملغاة')
+      throw new Error('لا يمكن عمل استبدال على فاتورة ملغاة');
     }
 
-    ensureRegularSaleUnits(db, saleId)
+    ensureRegularSaleUnits(db, saleId);
 
     const getUnit = db.prepare(
       `
@@ -682,25 +682,24 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         AND sale_id = ?
       LIMIT 1
       `,
-    )
+    );
 
     const selectedUnits = normalizedItems.map((item) => {
       const unit = getUnit.get(item.promotion_unit_id, saleId) as
-        | PromotionUnitRow
-        | undefined
+        PromotionUnitRow | undefined;
 
       if (!unit) {
-        throw new Error('قطعة الاستبدال غير موجودة داخل الفاتورة')
+        throw new Error('قطعة الاستبدال غير موجودة داخل الفاتورة');
       }
 
       if (Number(unit.is_returned) === 1) {
-        throw new Error('لا يمكن استبدال قطعة تم إرجاعها بالفعل')
+        throw new Error('لا يمكن استبدال قطعة تم إرجاعها بالفعل');
       }
 
-      return unit
-    })
+      return unit;
+    });
 
-    const promotionGroupId = String(selectedUnits[0].promotion_group_id)
+    const promotionGroupId = String(selectedUnits[0].promotion_group_id);
 
     if (
       selectedUnits.some(
@@ -709,14 +708,14 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
     ) {
       throw new Error(
         'عملية الاستبدال الواحدة يجب أن تكون داخل مجموعة واحدة فقط',
-      )
+      );
     }
 
-    const isRegularExchange = isRegularExchangeGroup(promotionGroupId)
+    const isRegularExchange = isRegularExchangeGroup(promotionGroupId);
 
     const groupPromotionId = isRegularExchange
       ? null
-      : getPromotionIdFromGroupId(promotionGroupId)
+      : getPromotionIdFromGroupId(promotionGroupId);
 
     const snapshot =
       !isRegularExchange && groupPromotionId
@@ -738,7 +737,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           `,
             )
             .get(saleId, groupPromotionId) as PromotionSnapshotRow | undefined)
-        : undefined
+        : undefined;
 
     const groupUnits = db
       .prepare(
@@ -750,9 +749,9 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         ORDER BY id ASC
         `,
       )
-      .all(saleId, promotionGroupId) as PromotionUnitRow[]
+      .all(saleId, promotionGroupId) as PromotionUnitRow[];
 
-    let freeQty = 0
+    let freeQty = 0;
 
     if (isRegularExchange) {
       /*
@@ -760,39 +759,39 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
        * لذلك الاستبدال العادي = قطعة واحدة.
        */
       if (groupUnits.length !== 1 || selectedUnits.length !== 1) {
-        throw new Error('بيانات قطعة الاستبدال غير صحيحة')
+        throw new Error('بيانات قطعة الاستبدال غير صحيحة');
       }
 
       if (Number(groupUnits[0].is_returned || 0) === 1) {
-        throw new Error('القطعة تم إرجاعها بالفعل')
+        throw new Error('القطعة تم إرجاعها بالفعل');
       }
     } else {
       if (!snapshot) {
         throw new Error(
           'لا يمكن استبدال عرض قديم لا يحتوي على نسخة محفوظة من شروط العرض',
-        )
+        );
       }
 
       if (snapshot.promotion_type !== 'buy_x_get_y') {
-        throw new Error('الاستبدال الخاص بالعرض متاح لعروض اشتري وخد فقط')
+        throw new Error('الاستبدال الخاص بالعرض متاح لعروض اشتري وخد فقط');
       }
 
-      const buyQty = Math.floor(Number(snapshot.buy_qty || 0))
+      const buyQty = Math.floor(Number(snapshot.buy_qty || 0));
 
-      freeQty = Math.floor(Number(snapshot.free_qty || 0))
+      freeQty = Math.floor(Number(snapshot.free_qty || 0));
 
       if (buyQty <= 0 || freeQty <= 0) {
-        throw new Error('شروط العرض الأصلي غير صالحة للاستبدال')
+        throw new Error('شروط العرض الأصلي غير صالحة للاستبدال');
       }
 
-      const groupSize = buyQty + freeQty
+      const groupSize = buyQty + freeQty;
 
       if (groupUnits.length !== groupSize) {
-        throw new Error('بيانات العرض المحفوظة غير مكتملة')
+        throw new Error('بيانات العرض المحفوظة غير مكتملة');
       }
 
       if (groupUnits.some((unit) => Number(unit.is_returned) === 1)) {
-        throw new Error('لا يمكن استبدال عرض تم إرجاعه')
+        throw new Error('لا يمكن استبدال عرض تم إرجاعه');
       }
 
       if (
@@ -801,60 +800,60 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       ) {
         throw new Error(
           'الاستبدال داخل العرض مسموح لقطعة واحدة أو العرض كاملًا فقط',
-        )
+        );
       }
     }
-    const replacementMap = new Map<number, ExchangeVariantRow>()
+    const replacementMap = new Map<number, ExchangeVariantRow>();
 
-    const outgoingQuantities = new Map<number, number>()
+    const outgoingQuantities = new Map<number, number>();
 
-    const incomingQuantities = new Map<number, number>()
+    const incomingQuantities = new Map<number, number>();
 
     for (let index = 0; index < normalizedItems.length; index += 1) {
-      const request = normalizedItems[index]
+      const request = normalizedItems[index];
 
-      const unit = selectedUnits[index]
+      const unit = selectedUnits[index];
 
       if (request.new_variant_id === Number(unit.current_variant_id)) {
-        throw new Error('الصنف البديل هو نفس الصنف الحالي')
+        throw new Error('الصنف البديل هو نفس الصنف الحالي');
       }
 
-      const newVariant = getExchangeVariant(db, request.new_variant_id)
+      const newVariant = getExchangeVariant(db, request.new_variant_id);
 
       if (!newVariant) {
-        throw new Error('الصنف البديل غير موجود أو غير فعال')
+        throw new Error('الصنف البديل غير موجود أو غير فعال');
       }
 
       if (
         !isRegularExchange &&
         !isVariantInsideSnapshot(newVariant, snapshot!)
       ) {
-        throw new Error('الصنف البديل خارج نطاق العرض الأصلي')
+        throw new Error('الصنف البديل خارج نطاق العرض الأصلي');
       }
 
-      replacementMap.set(unit.id, newVariant)
+      replacementMap.set(unit.id, newVariant);
 
       outgoingQuantities.set(
         newVariant.variant_id,
         Number(outgoingQuantities.get(newVariant.variant_id) || 0) + 1,
-      )
+      );
 
       incomingQuantities.set(
         Number(unit.current_variant_id),
         Number(incomingQuantities.get(Number(unit.current_variant_id)) || 0) +
           1,
-      )
+      );
     }
 
     for (const [variantId, requiredQty] of outgoingQuantities.entries()) {
-      const availableStock = getCurrentStock(db, variantId)
+      const availableStock = getCurrentStock(db, variantId);
 
-      const incomingQty = Number(incomingQuantities.get(variantId) || 0)
+      const incomingQty = Number(incomingQuantities.get(variantId) || 0);
 
       if (availableStock + incomingQty < requiredQty) {
         throw new Error(
           `المخزون غير كافٍ للصنف البديل. المتاح: ${availableStock}`,
-        )
+        );
       }
     }
 
@@ -868,7 +867,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       current_unit_cost: Number(unit.current_unit_cost || 0),
 
       current_is_gift: Number(unit.current_is_gift),
-    }))
+    }));
 
     const oldGroupTotal = roundMoney(
       beforeState.reduce(
@@ -876,15 +875,15 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           total + (unit.current_is_gift === 1 ? 0 : unit.current_unit_price),
         0,
       ),
-    )
+    );
 
     const afterState = beforeState.map((unit) => {
-      const replacement = replacementMap.get(unit.id)
+      const replacement = replacementMap.get(unit.id);
 
       if (!replacement) {
         return {
           ...unit,
-        }
+        };
       }
 
       return {
@@ -897,12 +896,12 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         current_unit_cost: Number(
           replacement.average_cost ?? replacement.buy_price ?? 0,
         ),
-      }
-    })
+      };
+    });
 
     if (isRegularExchange) {
       for (const unit of afterState) {
-        unit.current_is_gift = 0
+        unit.current_is_gift = 0;
       }
     } else {
       const giftUnitIds = new Set(
@@ -913,10 +912,10 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           )
           .slice(0, freeQty)
           .map((unit) => unit.id),
-      )
+      );
 
       for (const unit of afterState) {
-        unit.current_is_gift = giftUnitIds.has(unit.id) ? 1 : 0
+        unit.current_is_gift = giftUnitIds.has(unit.id) ? 1 : 0;
       }
     }
 
@@ -926,7 +925,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           total + (unit.current_is_gift === 1 ? 0 : unit.current_unit_price),
         0,
       ),
-    )
+    );
 
     /*
      * The settlement must be based on the
@@ -937,41 +936,41 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
      * original sale also had a normal or
      * loyalty discount.
      */
-    const currentStateBefore = getSaleCurrentState(saleId)
-    const loyaltySnapshot = currentStateBefore.loyalty_snapshot
+    const currentStateBefore = getSaleCurrentState(saleId);
+    const loyaltySnapshot = currentStateBefore.loyalty_snapshot;
 
-    const loyaltySnapshotIsExact = Boolean(loyaltySnapshot?.is_exact)
+    const loyaltySnapshotIsExact = Boolean(loyaltySnapshot?.is_exact);
 
     const hasHistoricalLoyaltyActivity =
       Number(sale.loyalty_points_earned || 0) > 0 ||
       Number(sale.loyalty_points_redeemed || 0) > 0 ||
-      Number(sale.loyalty_discount_value || 0) > 0
+      Number(sale.loyalty_discount_value || 0) > 0;
 
     if (!loyaltySnapshotIsExact && hasHistoricalLoyaltyActivity) {
       throw new Error(
         'لا يمكن إعادة حساب نقاط هذه الفاتورة القديمة بأمان لأن شروط النقاط الأصلية غير محفوظة',
-      )
+      );
     }
 
     const loyaltyEnabled =
-      loyaltySnapshotIsExact && Boolean(loyaltySnapshot?.enabled)
+      loyaltySnapshotIsExact && Boolean(loyaltySnapshot?.enabled);
 
-    const earnAmount = Math.max(0, Number(loyaltySnapshot?.earn_amount || 0))
+    const earnAmount = Math.max(0, Number(loyaltySnapshot?.earn_amount || 0));
 
-    const earnPoints = Math.max(0, Number(loyaltySnapshot?.earn_points || 0))
+    const earnPoints = Math.max(0, Number(loyaltySnapshot?.earn_points || 0));
 
-    const pointValue = Math.max(0, Number(loyaltySnapshot?.point_value || 0))
+    const pointValue = Math.max(0, Number(loyaltySnapshot?.point_value || 0));
     const minRedeemPoints = Math.max(
       0,
       Math.floor(Number(loyaltySnapshot?.min_redeem_points || 0)),
-    )
+    );
 
     const beforeGroupGross = roundMoney(
       beforeState.reduce(
         (total, unit) => total + Number(unit.current_unit_price || 0),
         0,
       ),
-    )
+    );
 
     const beforeGroupPromotionDiscount = roundMoney(
       beforeState.reduce(
@@ -982,14 +981,14 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
             : 0),
         0,
       ),
-    )
+    );
 
     const afterGroupGross = roundMoney(
       afterState.reduce(
         (total, unit) => total + Number(unit.current_unit_price || 0),
         0,
       ),
-    )
+    );
 
     const afterGroupPromotionDiscount = roundMoney(
       afterState.reduce(
@@ -1000,13 +999,13 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
             : 0),
         0,
       ),
-    )
+    );
 
     const nextSubTotal = roundMoney(
       currentStateBefore.financials.current_sub_total -
         beforeGroupGross +
         afterGroupGross,
-    )
+    );
 
     const nextPromotionDiscount = Math.max(
       0,
@@ -1015,12 +1014,12 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           beforeGroupPromotionDiscount +
           afterGroupPromotionDiscount,
       ),
-    )
+    );
 
     const nextAfterPromotion = Math.max(
       0,
       roundMoney(nextSubTotal - nextPromotionDiscount),
-    )
+    );
 
     const nextNormalDiscount = roundMoney(
       Math.min(
@@ -1028,17 +1027,17 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
         nextAfterPromotion,
       ),
-    )
+    );
 
     const nextAfterNormal = Math.max(
       0,
       roundMoney(nextAfterPromotion - nextNormalDiscount),
-    )
+    );
 
     const originalRedeemedPoints = Math.max(
       0,
       Math.floor(Number(sale.loyalty_points_redeemed || 0)),
-    )
+    );
 
     const maxNextRedeemedPoints =
       loyaltyEnabled && pointValue > 0
@@ -1047,19 +1046,19 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
             Math.floor((nextAfterNormal + 0.0000001) / pointValue),
           )
-        : 0
+        : 0;
 
     const nextRedeemedPoints =
       maxNextRedeemedPoints > 0 && maxNextRedeemedPoints < minRedeemPoints
         ? 0
-        : maxNextRedeemedPoints
+        : maxNextRedeemedPoints;
 
-    const nextLoyaltyDiscount = roundMoney(nextRedeemedPoints * pointValue)
+    const nextLoyaltyDiscount = roundMoney(nextRedeemedPoints * pointValue);
 
     const nextGrandTotal = Math.max(
       0,
       roundMoney(nextAfterNormal - nextLoyaltyDiscount),
-    )
+    );
 
     /*
      * Existing returns remain historical
@@ -1071,26 +1070,26 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       roundMoney(
         nextGrandTotal - currentStateBefore.financials.total_return_value,
       ),
-    )
+    );
 
     const currentEarnedPoints = Math.max(
       0,
       Number(currentStateBefore.financials.current_loyalty_points_earned || 0),
-    )
+    );
 
     const currentRedeemedPoints = Math.max(
       0,
       Number(currentStateBefore.financials.ledger_loyalty_points_redeemed || 0),
-    )
+    );
 
     const nextEarnedPoints =
       sale.customer_id && loyaltyEnabled && earnAmount > 0 && earnPoints > 0
         ? Math.floor(nextNetGrandTotal / earnAmount) * earnPoints
-        : 0
+        : 0;
 
     const loyaltyEarnedPointsAdjustment = Math.round(
       nextEarnedPoints - currentEarnedPoints,
-    )
+    );
 
     /*
      * موجب = نقاط إضافية ستُستخدم.
@@ -1099,14 +1098,14 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
      */
     const loyaltyRedeemedPointsAdjustment = Math.round(
       nextRedeemedPoints - currentRedeemedPoints,
-    )
+    );
 
     /*
      * Earn +1 يزيد الرصيد.
      * Redeem +1 يخفض الرصيد.
      */
     const loyaltyBalanceAdjustment =
-      loyaltyEarnedPointsAdjustment - loyaltyRedeemedPointsAdjustment
+      loyaltyEarnedPointsAdjustment - loyaltyRedeemedPointsAdjustment;
 
     if (sale.customer_id && loyaltyBalanceAdjustment < 0) {
       const customerPointsRow = db
@@ -1118,24 +1117,24 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           LIMIT 1
           `,
         )
-        .get(sale.customer_id) as any
+        .get(sale.customer_id) as any;
 
-      const currentPoints = Number(customerPointsRow?.points_balance || 0)
+      const currentPoints = Number(customerPointsRow?.points_balance || 0);
 
       if (currentPoints + loyaltyBalanceAdjustment < 0) {
-        throw new Error('رصيد نقاط العميل غير كافٍ لإتمام الاستبدال')
+        throw new Error('رصيد نقاط العميل غير كافٍ لإتمام الاستبدال');
       }
     }
 
     const differenceAmount = roundMoney(
       nextNetGrandTotal - currentStateBefore.financials.net_grand_total,
-    )
+    );
 
     const paymentMethod = resolveCashAccount(
       input.payment_method?.trim() || sale.payment_method || 'store_cash',
-    )
+    );
 
-    const businessDate = getShiftBusinessDate(openShift.id)
+    const businessDate = getShiftBusinessDate(openShift.id);
 
     const closedDay = db
       .prepare(
@@ -1146,30 +1145,30 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         LIMIT 1
         `,
       )
-      .get(businessDate)
+      .get(businessDate);
 
     if (closedDay) {
-      throw new Error(`لا يمكن عمل استبدال لأن يوم ${businessDate} تم تقفيله`)
+      throw new Error(`لا يمكن عمل استبدال لأن يوم ${businessDate} تم تقفيله`);
     }
 
-    let cashCollectionAmount = 0
-    let debtReductionAmount = 0
-    let cashRefundAmount = 0
+    let cashCollectionAmount = 0;
+    let debtReductionAmount = 0;
+    let cashRefundAmount = 0;
 
     if (differenceAmount > 0) {
-      cashCollectionAmount = differenceAmount
+      cashCollectionAmount = differenceAmount;
     }
 
     if (differenceAmount < 0) {
-      const customerCredit = Math.abs(differenceAmount)
+      const customerCredit = Math.abs(differenceAmount);
 
-      const currentDebt = Math.max(0, Number(sale.remaining_amount || 0))
+      const currentDebt = Math.max(0, Number(sale.remaining_amount || 0));
 
       debtReductionAmount = sale.customer_id
         ? Math.min(customerCredit, currentDebt)
-        : 0
+        : 0;
 
-      cashRefundAmount = roundMoney(customerCredit - debtReductionAmount)
+      cashRefundAmount = roundMoney(customerCredit - debtReductionAmount);
     }
 
     const exchangeResult = db
@@ -1286,11 +1285,11 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         JSON.stringify(afterState),
 
         businessDate,
-      )
+      );
 
-    const exchangeId = Number(exchangeResult.lastInsertRowid)
+    const exchangeId = Number(exchangeResult.lastInsertRowid);
 
-    const exchangeCode = `EXC-${String(exchangeId).padStart(5, '0')}`
+    const exchangeCode = `EXC-${String(exchangeId).padStart(5, '0')}`;
 
     if (cashCollectionAmount > 0) {
       createCashMovement({
@@ -1304,7 +1303,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         created_by: userId,
         business_date: businessDate,
         shift_id: openShift.id,
-      })
+      });
     }
 
     if (cashRefundAmount > 0) {
@@ -1319,21 +1318,21 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         created_by: userId,
         business_date: businessDate,
         shift_id: openShift.id,
-      })
+      });
     }
 
     if (sale.customer_id && debtReductionAmount > 0) {
       const newRemainingAmount = Math.max(
         0,
         Number(sale.remaining_amount || 0) - debtReductionAmount,
-      )
+      );
 
       const newPaymentStatus =
         newRemainingAmount <= 0
           ? 'paid'
           : Number(sale.paid || 0) > 0
             ? 'partial'
-            : 'unpaid'
+            : 'unpaid';
 
       db.prepare(
         `
@@ -1343,7 +1342,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           payment_status = ?
         WHERE id = ?
         `,
-      ).run(newRemainingAmount, newPaymentStatus, saleId)
+      ).run(newRemainingAmount, newPaymentStatus, saleId);
 
       db.prepare(
         `
@@ -1356,7 +1355,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
         `,
-      ).run(debtReductionAmount, sale.customer_id)
+      ).run(debtReductionAmount, sale.customer_id);
 
       db.prepare(
         `
@@ -1375,7 +1374,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         debtReductionAmount,
         paymentMethod,
         `تسوية مديونية بسبب استبدال ${exchangeCode}`,
-      )
+      );
     }
 
     /*
@@ -1384,13 +1383,13 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
      * الذي خرجت به من البيع.
      */
     for (const oldUnit of selectedUnits) {
-      const rawOldUnitCost = oldUnit.current_unit_cost
+      const rawOldUnitCost = oldUnit.current_unit_cost;
 
       const oldUnitCost =
         rawOldUnitCost === null || rawOldUnitCost === undefined
           ? getInventoryCostState(db, Number(oldUnit.current_variant_id))
               .average_cost
-          : Number(rawOldUnitCost)
+          : Number(rawOldUnitCost);
 
       receiveStockAtCost(db, {
         variant_id: Number(oldUnit.current_variant_id),
@@ -1404,7 +1403,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         reference_type: 'sale_exchange',
         created_by: userId,
         notes: `إرجاع صنف قديم بسبب استبدال ${exchangeCode}`,
-      })
+      });
     }
 
     /*
@@ -1412,13 +1411,13 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
      * البديل من متوسطه الحالي لحظة
      * خروجه فعلًا.
      */
-    const replacementCostByUnitId = new Map<number, number>()
+    const replacementCostByUnitId = new Map<number, number>();
 
     for (const oldUnit of selectedUnits) {
-      const replacement = replacementMap.get(oldUnit.id)
+      const replacement = replacementMap.get(oldUnit.id);
 
       if (!replacement) {
-        throw new Error('تعذر تجهيز الصنف البديل')
+        throw new Error('تعذر تجهيز الصنف البديل');
       }
 
       const issued = issueStockAtAverageCost(db, {
@@ -1431,9 +1430,9 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         reference_type: 'sale_exchange',
         created_by: userId,
         notes: `صرف صنف بديل بسبب استبدال ${exchangeCode}`,
-      })
+      });
 
-      replacementCostByUnitId.set(oldUnit.id, Number(issued.unit_cost || 0))
+      replacementCostByUnitId.set(oldUnit.id, Number(issued.unit_cost || 0));
     }
 
     const insertExchangeItem = db.prepare(
@@ -1465,7 +1464,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           1
         )
         `,
-    )
+    );
 
     const updateCurrentUnit = db.prepare(
       `
@@ -1481,30 +1480,30 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         WHERE id = ?
           AND sale_id = ?
         `,
-    )
+    );
 
-    const afterById = new Map(afterState.map((unit) => [unit.id, unit]))
+    const afterById = new Map(afterState.map((unit) => [unit.id, unit]));
 
     for (let index = 0; index < selectedUnits.length; index += 1) {
-      const oldUnit = selectedUnits[index]
+      const oldUnit = selectedUnits[index];
 
-      const replacement = replacementMap.get(oldUnit.id)
+      const replacement = replacementMap.get(oldUnit.id);
 
       if (!replacement) {
-        throw new Error('تعذر تجهيز الصنف البديل')
+        throw new Error('تعذر تجهيز الصنف البديل');
       }
 
-      const newUnit = afterById.get(oldUnit.id)
+      const newUnit = afterById.get(oldUnit.id);
 
       if (!newUnit) {
-        throw new Error('تعذر إعادة حساب العرض')
+        throw new Error('تعذر إعادة حساب العرض');
       }
 
       const replacementUnitCost = Number(
         replacementCostByUnitId.get(oldUnit.id) || 0,
-      )
+      );
 
-      newUnit.current_unit_cost = replacementUnitCost
+      newUnit.current_unit_cost = replacementUnitCost;
 
       insertExchangeItem.run(
         exchangeId,
@@ -1522,7 +1521,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
         oldUnit.current_is_gift,
         newUnit.current_is_gift,
-      )
+      );
 
       updateCurrentUnit.run(
         replacement.variant_id,
@@ -1533,7 +1532,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
         oldUnit.id,
         saleId,
-      )
+      );
     }
 
     /*
@@ -1551,7 +1550,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
       WHERE id = ?
       `,
-    ).run(JSON.stringify(afterState), exchangeId)
+    ).run(JSON.stringify(afterState), exchangeId);
 
     const updateGiftState = db.prepare(
       `
@@ -1562,14 +1561,14 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       WHERE id = ?
         AND sale_id = ?
       `,
-    )
+    );
 
     for (const unit of afterState) {
-      updateGiftState.run(unit.current_is_gift, unit.id, saleId)
+      updateGiftState.run(unit.current_is_gift, unit.id, saleId);
     }
 
     if (sale.customer_id) {
-      syncCustomerTotalSpent(Number(sale.customer_id))
+      syncCustomerTotalSpent(Number(sale.customer_id));
     }
 
     if (sale.customer_id && loyaltyBalanceAdjustment !== 0) {
@@ -1588,7 +1587,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
         WHERE id = ?
         `,
-      ).run(loyaltyBalanceAdjustment, sale.customer_id)
+      ).run(loyaltyBalanceAdjustment, sale.customer_id);
     }
 
     if (sale.customer_id && loyaltyEarnedPointsAdjustment !== 0) {
@@ -1618,7 +1617,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         Math.abs(differenceAmount),
 
         `تعديل نقاط مكتسبة بسبب استبدال ${exchangeCode}`,
-      )
+      );
     }
 
     if (sale.customer_id && loyaltyRedeemedPointsAdjustment !== 0) {
@@ -1650,7 +1649,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         loyaltyRedeemedPointsAdjustment > 0
           ? `استخدام نقاط إضافية بسبب استبدال ${exchangeCode}`
           : `إرجاع نقاط مستخدمة بسبب استبدال ${exchangeCode}`,
-      )
+      );
     }
 
     return {
@@ -1681,22 +1680,22 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
       payment_method: paymentMethod,
       shift_id: openShift.id,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function getSaleExchangeCancellationAccess(
   exchangeIdInput: number,
   actorId?: number | null,
 ) {
-  const db = getDb()
+  const db = getDb();
 
-  const exchangeId = Number(exchangeIdInput)
+  const exchangeId = Number(exchangeIdInput);
 
   if (!exchangeId) {
-    throw new Error('رقم الاستبدال غير صحيح')
+    throw new Error('رقم الاستبدال غير صحيح');
   }
 
   const row = db
@@ -1734,14 +1733,14 @@ export function getSaleExchangeCancellationAccess(
     )
     .get(Number(actorId || 0), exchangeId) as
     | {
-        id: number
-        user_id: number | null
-        requires_admin_password: number
+        id: number;
+        user_id: number | null;
+        requires_admin_password: number;
       }
-    | undefined
+    | undefined;
 
   if (!row) {
-    throw new Error('عملية الاستبدال غير موجودة')
+    throw new Error('عملية الاستبدال غير موجودة');
   }
 
   return {
@@ -1750,28 +1749,28 @@ export function getSaleExchangeCancellationAccess(
     user_id: row.user_id == null ? null : Number(row.user_id),
 
     requires_admin_password: Number(row.requires_admin_password || 0) === 1,
-  }
+  };
 }
 
 export function listSaleExchanges(input?: ListSaleExchangesInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const search = input?.search?.trim() || ''
+  const search = input?.search?.trim() || '';
 
-  const status = input?.status || 'all'
-  const paymentMethod = String(input?.payment_method || '').trim()
-  const actorId = Number(input?.actor_id || 0)
+  const status = input?.status || 'all';
+  const paymentMethod = String(input?.payment_method || '').trim();
+  const actorId = Number(input?.actor_id || 0);
 
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
 
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
-  const where: string[] = []
+  const where: string[] = [];
 
-  const params: any[] = []
+  const params: any[] = [];
 
   if (search) {
-    const q = `%${search}%`
+    const q = `%${search}%`;
 
     where.push(`
       (
@@ -1804,9 +1803,9 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
           ''
         ) LIKE ?
       )
-    `)
+    `);
 
-    params.push(q, q, q, q, q, q)
+    params.push(q, q, q, q, q, q);
   }
 
   if (input?.date_from) {
@@ -1821,9 +1820,9 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
           'localtime'
         )
       ) >= ?
-    `)
+    `);
 
-    params.push(input.date_from)
+    params.push(input.date_from);
   }
 
   if (input?.date_to) {
@@ -1838,21 +1837,21 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
           'localtime'
         )
       ) <= ?
-    `)
+    `);
 
-    params.push(input.date_to)
+    params.push(input.date_to);
   }
 
   if (status === 'active') {
-    where.push(`se.cancelled_at IS NULL`)
+    where.push(`se.cancelled_at IS NULL`);
   }
 
   if (status === 'cancelled') {
-    where.push(`se.cancelled_at IS NOT NULL`)
+    where.push(`se.cancelled_at IS NOT NULL`);
   }
 
   if (paymentMethod) {
-    const paymentAccount = resolveCashAccount(paymentMethod)
+    const paymentAccount = resolveCashAccount(paymentMethod);
 
     where.push(`
       (
@@ -1861,12 +1860,12 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
       )
 
       AND se.payment_method = ?
-    `)
+    `);
 
-    params.push(paymentAccount)
+    params.push(paymentAccount);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const rows = db
     .prepare(
@@ -2021,7 +2020,7 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
       OFFSET ?
       `,
     )
-    .all(actorId, ...params, limit, offset) as any[]
+    .all(actorId, ...params, limit, offset) as any[];
 
   const getItems = db.prepare(
     `
@@ -2084,17 +2083,17 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
       ORDER BY
         sei.id ASC
       `,
-  )
+  );
 
   const mappedRows = rows.map((row: any) => {
-    let cancelBlockReason: string | null = null
+    let cancelBlockReason: string | null = null;
 
     if (row.cancelled_at) {
-      cancelBlockReason = 'عملية الاستبدال ملغاة بالفعل'
+      cancelBlockReason = 'عملية الاستبدال ملغاة بالفعل';
     } else if (Number(row.is_latest_active || 0) !== 1) {
-      cancelBlockReason = 'يجب إلغاء آخر عملية استبدال أولًا'
+      cancelBlockReason = 'يجب إلغاء آخر عملية استبدال أولًا';
     } else if (Number(row.has_later_active_return || 0) === 1) {
-      cancelBlockReason = 'يجب إلغاء المرتجع الأحدث أولًا'
+      cancelBlockReason = 'يجب إلغاء المرتجع الأحدث أولًا';
     }
 
     return {
@@ -2107,8 +2106,8 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
       cancel_block_reason: cancelBlockReason,
 
       items: getItems.all(row.id),
-    }
-  })
+    };
+  });
 
   const totalRow = db
     .prepare(
@@ -2137,8 +2136,8 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
       `,
     )
     .get(...params) as {
-    total: number
-  }
+    total: number;
+  };
 
   return {
     rows: mappedRows,
@@ -2148,26 +2147,26 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
     limit,
 
     offset,
-  }
+  };
 }
 
 export function cancelSaleExchange(input: CancelSaleExchangeInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const exchangeId = Number(input.exchange_id)
+  const exchangeId = Number(input.exchange_id);
 
   if (!exchangeId) {
-    throw new Error('رقم الاستبدال غير صحيح')
+    throw new Error('رقم الاستبدال غير صحيح');
   }
 
   const openShift = requireOperationalCashShift(
     Number(input.actor_id || 0),
     'لا يمكن إلغاء استبدال بدون شفت مفتوح',
-  )
+  );
 
-  const reason = input.reason?.trim() || 'إلغاء عملية استبدال'
+  const reason = input.reason?.trim() || 'إلغاء عملية استبدال';
 
-  const exchangeCode = `EXC-${String(exchangeId).padStart(5, '0')}`
+  const exchangeCode = `EXC-${String(exchangeId).padStart(5, '0')}`;
 
   const tx = db.transaction(() => {
     const exchange = db
@@ -2200,23 +2199,23 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
           LIMIT 1
           `,
       )
-      .get(exchangeId) as any
+      .get(exchangeId) as any;
 
     if (!exchange) {
-      throw new Error('عملية الاستبدال غير موجودة')
+      throw new Error('عملية الاستبدال غير موجودة');
     }
 
     if (exchange.cancelled_at) {
-      throw new Error('عملية الاستبدال ملغاة بالفعل')
+      throw new Error('عملية الاستبدال ملغاة بالفعل');
     }
 
     if (exchange.sale_cancelled_at) {
-      throw new Error('لا يمكن إلغاء الاستبدال لأن الفاتورة الأصلية ملغاة')
+      throw new Error('لا يمكن إلغاء الاستبدال لأن الفاتورة الأصلية ملغاة');
     }
 
-    const saleId = Number(exchange.original_sale_id)
+    const saleId = Number(exchange.original_sale_id);
 
-    const cancelBusinessDate = getShiftBusinessDate(openShift.id)
+    const cancelBusinessDate = getShiftBusinessDate(openShift.id);
 
     const latestActive = db
       .prepare(
@@ -2239,34 +2238,34 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
       )
       .get(saleId) as
       | {
-          id: number
+          id: number;
         }
-      | undefined
+      | undefined;
 
     if (Number(latestActive?.id || 0) !== exchangeId) {
-      throw new Error('يجب إلغاء آخر عملية استبدال أولًا')
+      throw new Error('يجب إلغاء آخر عملية استبدال أولًا');
     }
 
     const beforeState = parseExchangeStateJson(
       exchange.before_state_json,
 
       'الحالة قبل الاستبدال',
-    )
+    );
 
     const afterState = parseExchangeStateJson(
       exchange.after_state_json,
 
       'الحالة بعد الاستبدال',
-    )
+    );
 
     if (beforeState.length !== afterState.length) {
-      throw new Error('بيانات الاستبدال التاريخية غير متطابقة')
+      throw new Error('بيانات الاستبدال التاريخية غير متطابقة');
     }
 
-    const beforeIds = new Set(beforeState.map((unit) => unit.id))
+    const beforeIds = new Set(beforeState.map((unit) => unit.id));
 
     if (afterState.some((unit) => !beforeIds.has(unit.id))) {
-      throw new Error('بيانات الاستبدال التاريخية غير متطابقة')
+      throw new Error('بيانات الاستبدال التاريخية غير متطابقة');
     }
 
     const items = db
@@ -2283,10 +2282,10 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
           ORDER BY id ASC
           `,
       )
-      .all(exchangeId) as any[]
+      .all(exchangeId) as any[];
 
     if (items.length === 0) {
-      throw new Error('لا توجد أصناف داخل عملية الاستبدال')
+      throw new Error('لا توجد أصناف داخل عملية الاستبدال');
     }
 
     const getUnit = db.prepare(
@@ -2304,100 +2303,100 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
           LIMIT 1
           `,
-    )
+    );
 
-    const currentUnits = new Map<number, any>()
+    const currentUnits = new Map<number, any>();
 
     for (const expected of afterState) {
-      const current = getUnit.get(expected.id, saleId) as any
+      const current = getUnit.get(expected.id, saleId) as any;
 
       if (!current) {
-        throw new Error('تعذر العثور على حالة العرض الحالية')
+        throw new Error('تعذر العثور على حالة العرض الحالية');
       }
 
       if (Number(current.is_returned || 0) === 1) {
-        throw new Error('يجب إلغاء المرتجع الأحدث أولًا')
+        throw new Error('يجب إلغاء المرتجع الأحدث أولًا');
       }
 
       const sameVariant =
         Number(current.current_variant_id) ===
-        Number(expected.current_variant_id)
+        Number(expected.current_variant_id);
 
       const samePrice =
         Math.abs(
           Number(current.current_unit_price || 0) -
             Number(expected.current_unit_price || 0),
-        ) < 0.01
+        ) < 0.01;
 
       const sameGift =
         Number(current.current_is_gift || 0) ===
-        Number(expected.current_is_gift || 0)
+        Number(expected.current_is_gift || 0);
 
       if (!sameVariant || !samePrice || !sameGift) {
         throw new Error(
           'حالة العرض تغيرت بعد هذه العملية ولا يمكن إلغاؤها مباشرة',
-        )
+        );
       }
 
-      currentUnits.set(expected.id, current)
+      currentUnits.set(expected.id, current);
     }
 
-    const outgoingOld = new Map<number, number>()
+    const outgoingOld = new Map<number, number>();
 
-    const incomingNew = new Map<number, number>()
+    const incomingNew = new Map<number, number>();
 
     for (const item of items) {
-      const qty = Math.max(0, Number(item.quantity || 0))
+      const qty = Math.max(0, Number(item.quantity || 0));
 
-      const oldVariantId = Number(item.old_variant_id)
+      const oldVariantId = Number(item.old_variant_id);
 
-      const newVariantId = Number(item.new_variant_id)
+      const newVariantId = Number(item.new_variant_id);
 
       outgoingOld.set(
         oldVariantId,
 
         Number(outgoingOld.get(oldVariantId) || 0) + qty,
-      )
+      );
 
       incomingNew.set(
         newVariantId,
 
         Number(incomingNew.get(newVariantId) || 0) + qty,
-      )
+      );
     }
 
     for (const [variantId, requiredQty] of outgoingOld.entries()) {
-      const available = getCurrentStock(db, variantId)
+      const available = getCurrentStock(db, variantId);
 
-      const incoming = Number(incomingNew.get(variantId) || 0)
+      const incoming = Number(incomingNew.get(variantId) || 0);
 
       if (available + incoming < requiredQty) {
         throw new Error(
           `لا يمكن إلغاء الاستبدال لأن مخزون الصنف السابق غير كافٍ. المتاح: ${available}`,
-        )
+        );
       }
     }
 
-    const loyaltyBeforeCancellation = getSaleCurrentState(saleId)
+    const loyaltyBeforeCancellation = getSaleCurrentState(saleId);
 
     const paymentMethod = resolveCashAccount(
       exchange.payment_method || 'store_cash',
-    )
+    );
 
     const cashCollectionAmount = Math.max(
       0,
       Number(exchange.cash_collection_amount || 0),
-    )
+    );
 
     const cashRefundAmount = Math.max(
       0,
       Number(exchange.cash_refund_amount || 0),
-    )
+    );
 
     const debtReductionAmount = Math.max(
       0,
       Number(exchange.debt_reduction_amount || 0),
-    )
+    );
 
     /*
      * الاستبدال الأصلي حصل فيه
@@ -2424,7 +2423,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         created_by: input.actor_id ?? null,
 
         business_date: cancelBusinessDate,
-      })
+      });
     }
 
     /*
@@ -2453,7 +2452,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         created_by: input.actor_id ?? null,
 
         business_date: cancelBusinessDate,
-      })
+      });
     }
 
     /*
@@ -2468,12 +2467,12 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
      */
 
     for (const item of items) {
-      const rawNewCost = item.new_unit_cost
+      const rawNewCost = item.new_unit_cost;
 
       const newUnitCost =
         rawNewCost === null || rawNewCost === undefined
           ? getInventoryCostState(db, Number(item.new_variant_id)).average_cost
-          : Number(rawNewCost)
+          : Number(rawNewCost);
 
       receiveStockAtCost(db, {
         variant_id: Number(item.new_variant_id),
@@ -2487,16 +2486,16 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         reference_type: 'sale_exchange_cancel',
         created_by: input.actor_id ?? null,
         notes: `إرجاع الصنف البديل بسبب إلغاء ${exchangeCode}`,
-      })
+      });
     }
 
     for (const item of items) {
-      const rawOldCost = item.old_unit_cost
+      const rawOldCost = item.old_unit_cost;
 
       const oldUnitCost =
         rawOldCost === null || rawOldCost === undefined
           ? getInventoryCostState(db, Number(item.old_variant_id)).average_cost
-          : Number(rawOldCost)
+          : Number(rawOldCost);
 
       issueStockAtCost(db, {
         variant_id: Number(item.old_variant_id),
@@ -2510,12 +2509,12 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         reference_type: 'sale_exchange_cancel',
         created_by: input.actor_id ?? null,
         notes: `إعادة صرف الصنف السابق بسبب إلغاء ${exchangeCode}`,
-      })
+      });
     }
 
     const itemByUnit = new Map<number, any>(
       items.map((item) => [Number(item.promotion_unit_id), item]),
-    )
+    );
 
     const restoreUnit = db.prepare(
       `
@@ -2539,19 +2538,19 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
             AND sale_id = ?
           `,
-    )
+    );
 
     for (const before of beforeState) {
-      const current = currentUnits.get(before.id)
+      const current = currentUnits.get(before.id);
 
-      const exchangeItem = itemByUnit.get(before.id)
+      const exchangeItem = itemByUnit.get(before.id);
 
       const restoredCost =
         before.current_unit_cost !== null
           ? Number(before.current_unit_cost)
           : Number(
               exchangeItem?.old_unit_cost ?? current?.current_unit_cost ?? 0,
-            )
+            );
 
       restoreUnit.run(
         before.current_variant_id,
@@ -2565,43 +2564,44 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         before.id,
 
         saleId,
-      )
+      );
     }
 
-    const loyaltyAfterCancellation = getSaleCurrentState(saleId)
+    const loyaltyAfterCancellation = getSaleCurrentState(saleId);
 
     const beforeEarned = Number(
       loyaltyBeforeCancellation.financials.current_loyalty_points_earned || 0,
-    )
+    );
 
     const targetEarned = calculateSaleEarnedPoints(
       loyaltyAfterCancellation,
       loyaltyAfterCancellation.financials.net_grand_total,
       beforeEarned - Number(exchange.loyalty_earned_points_adjustment || 0),
-    )
+    );
 
-    const earnedAdjustment = Math.round(beforeEarned - targetEarned)
+    const earnedAdjustment = Math.round(beforeEarned - targetEarned);
 
     const redeemedAdjustment = Number(
       exchange.loyalty_redeemed_points_adjustment || 0,
-    )
+    );
 
     const reverseLoyaltyBalanceAdjustment =
-      -earnedAdjustment + redeemedAdjustment
+      -earnedAdjustment + redeemedAdjustment;
 
     if (exchange.customer_id && reverseLoyaltyBalanceAdjustment < 0) {
       const customer = db
         .prepare('SELECT points_balance FROM customers WHERE id = ? LIMIT 1')
         .get(Number(exchange.customer_id)) as
-        | { points_balance: number }
-        | undefined
+        { points_balance: number } | undefined;
 
       if (
         Number(customer?.points_balance || 0) +
           reverseLoyaltyBalanceAdjustment <
         0
       ) {
-        throw new Error('لا يمكن إلغاء الاستبدال لأن نقاطه تم استخدامها بالفعل')
+        throw new Error(
+          'لا يمكن إلغاء الاستبدال لأن نقاطه تم استخدامها بالفعل',
+        );
       }
     }
 
@@ -2611,12 +2611,12 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
           0,
           Number(exchange.remaining_amount || 0) + debtReductionAmount,
         ),
-      )
+      );
 
-      const paidAmount = Math.max(0, Number(exchange.paid || 0))
+      const paidAmount = Math.max(0, Number(exchange.paid || 0));
 
       const newStatus =
-        newRemaining <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid'
+        newRemaining <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
 
       db.prepare(
         `
@@ -2635,7 +2635,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         newStatus,
 
         saleId,
-      )
+      );
 
       db.prepare(
         `
@@ -2657,7 +2657,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         debtReductionAmount,
 
         Number(exchange.customer_id),
-      )
+      );
 
       /*
        * دي حركة داخلية أنشأها
@@ -2677,7 +2677,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         saleId,
 
         `تسوية مديونية بسبب استبدال ${exchangeCode}%`,
-      )
+      );
     }
 
     if (exchange.customer_id && reverseLoyaltyBalanceAdjustment !== 0) {
@@ -2701,7 +2701,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         reverseLoyaltyBalanceAdjustment,
 
         Number(exchange.customer_id),
-      )
+      );
     }
 
     if (exchange.customer_id && earnedAdjustment !== 0) {
@@ -2736,7 +2736,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         Math.abs(Number(exchange.difference_amount || 0)),
 
         `عكس تعديل النقاط المكتسبة بسبب إلغاء ${exchangeCode}`,
-      )
+      );
     }
 
     if (exchange.customer_id && redeemedAdjustment !== 0) {
@@ -2771,7 +2771,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         Math.abs(Number(exchange.difference_amount || 0)),
 
         `عكس تعديل النقاط المستخدمة بسبب إلغاء ${exchangeCode}`,
-      )
+      );
     }
 
     db.prepare(
@@ -2790,10 +2790,10 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
         WHERE id = ?
         `,
-    ).run(input.actor_id ?? null, openShift.id, reason, exchangeId)
+    ).run(input.actor_id ?? null, openShift.id, reason, exchangeId);
 
     if (exchange.customer_id) {
-      syncCustomerTotalSpent(Number(exchange.customer_id))
+      syncCustomerTotalSpent(Number(exchange.customer_id));
     }
 
     return {
@@ -2815,8 +2815,8 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
       restored_items: items.length,
       cancelled_shift_id: openShift.id,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }

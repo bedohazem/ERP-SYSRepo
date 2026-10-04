@@ -1,31 +1,31 @@
-import React from 'react'
-import RouterGuard from './router-guard'
-import { createHashRouter } from 'react-router-dom'
-import AppShell from './components/layout/AppShell'
-import LoginPage from './pages/Auth/LoginPage'
-import DashboardPage from './pages/Dashboard/DashboardPage'
-import ProductsPage from './pages/Products/ProductsPage'
-import PromotionsPage from './pages/Promotions/PromotionsPage'
-import SettingsPage from './pages/Settings/SettingsPage'
-import SalesPage from './pages/Sales/SalesPage'
-import CustomersPage from './pages/Customers/CustomersPage'
-import InvoicesPage from './pages/Invoices/InvoicesPage'
-import ReportsPage from './pages/Reports/ReportsPage'
-import InventoryPage from './pages/Inventory/InventoryPage'
-import SuppliersPage from './pages/Suppliers/SuppliersPage'
-import PurchasesPage from './pages/Purchases/PurchasesPage'
-import PurchaseHistoryPage from './pages/Purchases/PurchaseHistoryPage'
-import CashPage from './pages/Cash/CashPage'
-import ShiftManagementPage from './pages/Shifts/ShiftManagementPage'
-import ExpensesPage from './pages/Expenses/ExpensesPage'
-import UsersPage from './pages/Users/UsersPage'
-import ActivityLogPage from './pages/Activity/ActivityLogPage'
-import StockCountPage from './pages/StockCount/StockCountPage'
-import LiabilitiesPage from './pages/Liabilities/LiabilitiesPage'
-import AboutPage from './pages/About/AboutPage'
-import type { PermissionKey } from '../shared/permissions'
+import React from 'react';
+import RouterGuard from './router-guard';
+import { createHashRouter } from 'react-router-dom';
+import AppShell from './components/layout/AppShell';
+import LoginPage from './pages/Auth/LoginPage';
+import DashboardPage from './pages/Dashboard/DashboardPage';
+import ProductsPage from './pages/Products/ProductsPage';
+import PromotionsPage from './pages/Promotions/PromotionsPage';
+import SettingsPage from './pages/Settings/SettingsPage';
+import SalesPage from './pages/Sales/SalesPage';
+import CustomersPage from './pages/Customers/CustomersPage';
+import InvoicesPage from './pages/Invoices/InvoicesPage';
+import ReportsPage from './pages/Reports/ReportsPage';
+import InventoryPage from './pages/Inventory/InventoryPage';
+import SuppliersPage from './pages/Suppliers/SuppliersPage';
+import PurchasesPage from './pages/Purchases/PurchasesPage';
+import PurchaseHistoryPage from './pages/Purchases/PurchaseHistoryPage';
+import CashPage from './pages/Cash/CashPage';
+import ShiftManagementPage from './pages/Shifts/ShiftManagementPage';
+import ExpensesPage from './pages/Expenses/ExpensesPage';
+import UsersPage from './pages/Users/UsersPage';
+import ActivityLogPage from './pages/Activity/ActivityLogPage';
+import StockCountPage from './pages/StockCount/StockCountPage';
+import LiabilitiesPage from './pages/Liabilities/LiabilitiesPage';
+import AboutPage from './pages/About/AboutPage';
+import type { PermissionKey } from '../shared/permissions';
 
-type Role = 'admin' | 'cashier'
+type Role = 'admin' | 'cashier';
 
 function withShell(
   title: string,
@@ -33,9 +33,9 @@ function withShell(
   element: React.ReactNode,
 
   options?: {
-    allowedRoles?: Role[]
+    allowedRoles?: Role[];
 
-    permission?: PermissionKey
+    permission?: PermissionKey;
   },
 ) {
   return (
@@ -45,7 +45,7 @@ function withShell(
     >
       <AppShell title={title}>{element}</AppShell>
     </RouterGuard>
-  )
+  );
 }
 
 export const router = createHashRouter([
@@ -173,4 +173,4 @@ export const router = createHashRouter([
       permission: 'about.view',
     }),
   },
-])
+]);

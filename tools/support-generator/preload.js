@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('supportApi', {
   choosePrivateKey: () => ipcRenderer.invoke('support:choose-private-key'),
@@ -8,4 +8,4 @@ contextBridge.exposeInMainWorld('supportApi', {
 
   generateRecovery: (input) =>
     ipcRenderer.invoke('support:generate-recovery', input),
-})
+});

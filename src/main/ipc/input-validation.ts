@@ -1,16 +1,16 @@
-import { roundMoney } from '../../shared/money'
+import { roundMoney } from '../../shared/money';
 
-export type InputObject = Record<string, unknown>
+export type InputObject = Record<string, unknown>;
 
 export function requireObjectInput(
   value: unknown,
   label = 'البيانات',
 ): InputObject {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`${label} غير صحيحة`)
+    throw new Error(`${label} غير صحيحة`);
   }
 
-  return value as InputObject
+  return value as InputObject;
 }
 
 function requireFiniteNumber(value: unknown, label: string) {
@@ -20,30 +20,40 @@ function requireFiniteNumber(value: unknown, label: string) {
     typeof value === 'boolean' ||
     (typeof value !== 'number' && typeof value !== 'string')
   ) {
-    throw new Error(`${label} غير صحيح`)
+    throw new Error(`${label} غير صحيح`);
   }
 
   if (typeof value === 'string' && !value.trim()) {
-    throw new Error(`${label} غير صحيح`)
+    throw new Error(`${label} غير صحيح`);
   }
 
-  const number = Number(value)
+  const number = Number(value);
 
   if (!Number.isFinite(number)) {
-    throw new Error(`${label} غير صحيح`)
+    throw new Error(`${label} غير صحيح`);
   }
 
-  return number
+  return number;
 }
 
 export function requirePositiveInteger(value: unknown, label: string) {
-  const number = requireFiniteNumber(value, label)
+  const number = requireFiniteNumber(value, label);
 
   if (!Number.isInteger(number) || number <= 0) {
-    throw new Error(`${label} غير صحيح`)
+    throw new Error(`${label} غير صحيح`);
   }
 
-  return number
+  return number;
+}
+
+export function requireNonZeroInteger(value: unknown, label: string) {
+  const number = requireFiniteNumber(value, label);
+
+  if (!Number.isInteger(number) || number === 0) {
+    throw new Error(`${label} غير صحيح`);
+  }
+
+  return number;
 }
 
 export function optionalPositiveInteger(
@@ -51,14 +61,14 @@ export function optionalPositiveInteger(
   label: string,
 ): number | null | undefined {
   if (value === undefined) {
-    return undefined
+    return undefined;
   }
 
   if (value === null || value === '') {
-    return null
+    return null;
   }
 
-  return requirePositiveInteger(value, label)
+  return requirePositiveInteger(value, label);
 }
 
 export function optionalNonNegativeInteger(
@@ -66,20 +76,20 @@ export function optionalNonNegativeInteger(
   label: string,
 ): number | null | undefined {
   if (value === undefined) {
-    return undefined
+    return undefined;
   }
 
   if (value === null || value === '') {
-    return null
+    return null;
   }
 
-  const number = requireFiniteNumber(value, label)
+  const number = requireFiniteNumber(value, label);
 
   if (!Number.isInteger(number) || number < 0) {
-    throw new Error(`${label} غير صحيح`)
+    throw new Error(`${label} غير صحيح`);
   }
 
-  return number
+  return number;
 }
 
 export function optionalBooleanValue(
@@ -87,14 +97,14 @@ export function optionalBooleanValue(
   label: string,
 ): boolean | undefined {
   if (value === undefined || value === null) {
-    return undefined
+    return undefined;
   }
 
   if (typeof value !== 'boolean') {
-    throw new Error(`${label} غير صحيحة`)
+    throw new Error(`${label} غير صحيحة`);
   }
 
-  return value
+  return value;
 }
 
 export function requireArrayInput(
@@ -103,60 +113,85 @@ export function requireArrayInput(
   maxLength = 500,
 ): unknown[] {
   if (!Array.isArray(value)) {
-    throw new Error(`${label} غير صحيحة`)
+    throw new Error(`${label} غير صحيحة`);
   }
 
   if (value.length > maxLength) {
-    throw new Error(`${label} أكبر من المسموح`)
+    throw new Error(`${label} أكبر من المسموح`);
   }
 
-  return value
+  return value;
 }
 
 export function requirePositiveNumber(value: unknown, label: string) {
-  const number = requireFiniteNumber(value, label)
+  const number = requireFiniteNumber(value, label);
 
   if (number <= 0) {
-    throw new Error(`${label} غير صحيح`)
+    throw new Error(`${label} غير صحيح`);
   }
 
-  return number
+  return number;
 }
 
 export function requireNonNegativeNumber(value: unknown, label: string) {
-  const number = requireFiniteNumber(value, label)
+  const number = requireFiniteNumber(value, label);
 
   if (number < 0) {
-    throw new Error(`${label} غير صحيح`)
+    throw new Error(`${label} غير صحيح`);
   }
 
-  return number
+  return number;
 }
 
 export function requirePositiveMoney(value: unknown, label: string) {
-  const number = requireFiniteNumber(value, label)
+  const number = requireFiniteNumber(value, label);
 
   if (number <= 0) {
-    throw new Error(`${label} غير صحيح`)
+    throw new Error(`${label} غير صحيح`);
   }
 
-  const amount = roundMoney(number)
+  const amount = roundMoney(number);
 
   if (amount <= 0) {
-    throw new Error(`${label} غير صحيح`)
+    throw new Error(`${label} غير صحيح`);
   }
 
-  return amount
+  return amount;
+}
+
+export function optionalPositiveMoney(
+  value: unknown,
+  label: string,
+): number | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null || value === '') {
+    return null;
+  }
+
+  return requirePositiveMoney(value, label);
+}
+
+export function requireBinaryFlag(value: unknown, label: string): 0 | 1 {
+  const number = requireFiniteNumber(value, label);
+
+  if (number !== 0 && number !== 1) {
+    throw new Error(`${label} غير صحيح`);
+  }
+
+  return number as 0 | 1;
 }
 
 export function requireNonNegativeMoney(value: unknown, label: string) {
-  const number = requireFiniteNumber(value, label)
+  const number = requireFiniteNumber(value, label);
 
   if (number < 0) {
-    throw new Error(`${label} غير صحيح`)
+    throw new Error(`${label} غير صحيح`);
   }
 
-  return roundMoney(number)
+  return roundMoney(number);
 }
 
 export function optionalNonNegativeMoney(
@@ -164,14 +199,14 @@ export function optionalNonNegativeMoney(
   label: string,
 ): number | null | undefined {
   if (value === undefined) {
-    return undefined
+    return undefined;
   }
 
   if (value === null || value === '') {
-    return null
+    return null;
   }
 
-  return requireNonNegativeMoney(value, label)
+  return requireNonNegativeMoney(value, label);
 }
 
 export function optionalNonNegativeNumber(
@@ -179,14 +214,14 @@ export function optionalNonNegativeNumber(
   label: string,
 ): number | null | undefined {
   if (value === undefined) {
-    return undefined
+    return undefined;
   }
 
   if (value === null || value === '') {
-    return null
+    return null;
   }
 
-  return requireNonNegativeNumber(value, label)
+  return requireNonNegativeNumber(value, label);
 }
 
 export function requireEnumValue<const T extends readonly string[]>(
@@ -195,10 +230,10 @@ export function requireEnumValue<const T extends readonly string[]>(
   label: string,
 ): T[number] {
   if (typeof value !== 'string' || !allowed.includes(value)) {
-    throw new Error(`${label} غير صحيح`)
+    throw new Error(`${label} غير صحيح`);
   }
 
-  return value as T[number]
+  return value as T[number];
 }
 
 export function optionalEnumValue<const T extends readonly string[]>(
@@ -207,10 +242,53 @@ export function optionalEnumValue<const T extends readonly string[]>(
   label: string,
 ): T[number] | undefined {
   if (value === undefined || value === null || value === '') {
-    return undefined
+    return undefined;
   }
 
-  return requireEnumValue(value, allowed, label)
+  return requireEnumValue(value, allowed, label);
+}
+
+export function optionalDateOnly(
+  value: unknown,
+  label: string,
+): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null || value === '') {
+    return null;
+  }
+
+  if (typeof value !== 'string') {
+    throw new Error(`${label} غير صحيح`);
+  }
+
+  const date = value.trim();
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+
+  if (!match) {
+    throw new Error(`${label} غير صحيح`);
+  }
+
+  const year = Number(match[1]);
+
+  const month = Number(match[2]);
+
+  const day = Number(match[3]);
+
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    throw new Error(`${label} غير صحيح`);
+  }
+
+  return date;
 }
 
 export function optionalStringValue(
@@ -219,22 +297,22 @@ export function optionalStringValue(
   maxLength = 1000,
 ): string | null | undefined {
   if (value === undefined) {
-    return undefined
+    return undefined;
   }
 
   if (value === null) {
-    return null
+    return null;
   }
 
   if (typeof value !== 'string') {
-    throw new Error(`${label} غير صحيحة`)
+    throw new Error(`${label} غير صحيحة`);
   }
 
   if (value.length > maxLength) {
-    throw new Error(`${label} أطول من المسموح`)
+    throw new Error(`${label} أطول من المسموح`);
   }
 
-  return value
+  return value;
 }
 
 export function optionalTrimmedString(
@@ -242,13 +320,13 @@ export function optionalTrimmedString(
   label: string,
   maxLength = 1000,
 ): string | null | undefined {
-  const stringValue = optionalStringValue(value, label, maxLength)
+  const stringValue = optionalStringValue(value, label, maxLength);
 
   if (stringValue === undefined || stringValue === null) {
-    return stringValue
+    return stringValue;
   }
 
-  return stringValue.trim() || null
+  return stringValue.trim() || null;
 }
 
 export function requireTrimmedString(
@@ -256,11 +334,11 @@ export function requireTrimmedString(
   label: string,
   maxLength = 1000,
 ) {
-  const result = optionalTrimmedString(value, label, maxLength)
+  const result = optionalTrimmedString(value, label, maxLength);
 
   if (!result) {
-    throw new Error(`${label} مطلوب`)
+    throw new Error(`${label} مطلوب`);
   }
 
-  return result
+  return result;
 }

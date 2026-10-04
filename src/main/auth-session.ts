@@ -1,42 +1,42 @@
-import type { IpcMainInvokeEvent, WebContents } from 'electron'
+import type { IpcMainInvokeEvent, WebContents } from 'electron';
 
-import { getDb } from './database/db'
-import type { PermissionKey } from '../shared/permissions'
+import { getDb } from './database/db';
+import type { PermissionKey } from '../shared/permissions';
 
-import { getEffectiveUserPermissions } from './database/repositories/user.repo'
+import { getEffectiveUserPermissions } from './database/repositories/user.repo';
 
-export const AUTH_IDLE_TIMEOUT_MS = 15 * 60 * 1000
+export const AUTH_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 
 type Session = {
-  userId: number
-  passwordHash: string
-  lastActivityAt: number
-}
+  userId: number;
+  passwordHash: string;
+  lastActivityAt: number;
+};
 
 type AuthUser = {
-  id: number
-  role: string
-  is_active: number
-  password: string
-  must_change_password: number
-}
+  id: number;
+  role: string;
+  is_active: number;
+  password: string;
+  must_change_password: number;
+};
 
-const sessions = new WeakMap<WebContents, Session>()
+const sessions = new WeakMap<WebContents, Session>();
 
-const watchedSenders = new WeakSet<WebContents>()
+const watchedSenders = new WeakSet<WebContents>();
 
 function requireMainFrame(event: IpcMainInvokeEvent): WebContents {
-  const sender = event.sender
+  const sender = event.sender;
 
   if (
     sender.isDestroyed() ||
     !event.senderFrame ||
     event.senderFrame !== sender.mainFrame
   ) {
-    throw new Error('غير مصرح بتنفيذ هذه العملية')
+    throw new Error('غير مصرح بتنفيذ هذه العملية');
   }
 
-  return sender
+  return sender;
 }
 
 function getAuthUser(userId: number): AuthUser | undefined {
@@ -55,187 +55,187 @@ function getAuthUser(userId: number): AuthUser | undefined {
       WHERE id = ?
       `,
     )
-    .get(userId) as AuthUser | undefined
+    .get(userId) as AuthUser | undefined;
 }
 
 export function clearAuthSession(event: IpcMainInvokeEvent): void {
-  sessions.delete(requireMainFrame(event))
+  sessions.delete(requireMainFrame(event));
 }
 
 export function startAuthSession(
   event: IpcMainInvokeEvent,
   userId: number,
 ): void {
-  const sender = requireMainFrame(event)
+  const sender = requireMainFrame(event);
 
-  const user = getAuthUser(userId)
+  const user = getAuthUser(userId);
 
   if (!user || user.is_active !== 1) {
-    throw new Error('المستخدم غير موجود أو غير مفعل')
+    throw new Error('المستخدم غير موجود أو غير مفعل');
   }
 
   if (!watchedSenders.has(sender)) {
-    watchedSenders.add(sender)
+    watchedSenders.add(sender);
 
     const clear = () => {
-      sessions.delete(sender)
-    }
+      sessions.delete(sender);
+    };
 
     sender.on('did-start-navigation', (details) => {
       if (details.isMainFrame && !details.isSameDocument) {
-        clear()
+        clear();
       }
-    })
+    });
 
-    sender.on('render-process-gone', clear)
+    sender.on('render-process-gone', clear);
 
-    sender.once('destroyed', clear)
+    sender.once('destroyed', clear);
   }
 
   sessions.set(sender, {
     userId: user.id,
     passwordHash: user.password,
     lastActivityAt: Date.now(),
-  })
+  });
 }
 
 function validateSession(
   event: IpcMainInvokeEvent,
   allowPasswordChange: boolean,
 ): {
-  id: number
-  role: string
-  must_change_password: number
+  id: number;
+  role: string;
+  must_change_password: number;
 } {
-  const sender = requireMainFrame(event)
+  const sender = requireMainFrame(event);
 
-  const session = sessions.get(sender)
+  const session = sessions.get(sender);
 
   if (!session) {
-    throw new Error('سجل الدخول أولًا')
+    throw new Error('سجل الدخول أولًا');
   }
 
-  const now = Date.now()
+  const now = Date.now();
 
   if (now - session.lastActivityAt >= AUTH_IDLE_TIMEOUT_MS) {
-    sessions.delete(sender)
+    sessions.delete(sender);
 
-    throw new Error('انتهت الجلسة بسبب عدم الاستخدام، سجل الدخول مرة أخرى')
+    throw new Error('انتهت الجلسة بسبب عدم الاستخدام، سجل الدخول مرة أخرى');
   }
 
-  const user = getAuthUser(session.userId)
+  const user = getAuthUser(session.userId);
 
   if (!user || user.is_active !== 1 || user.password !== session.passwordHash) {
-    sessions.delete(sender)
+    sessions.delete(sender);
 
-    throw new Error('انتهت جلسة الدخول، سجل الدخول مرة أخرى')
+    throw new Error('انتهت جلسة الدخول، سجل الدخول مرة أخرى');
   }
 
   if (!allowPasswordChange && Number(user.must_change_password || 0) === 1) {
-    throw new Error('يجب تغيير كلمة المرور أولًا')
+    throw new Error('يجب تغيير كلمة المرور أولًا');
   }
 
   /*
    * أي IPC Authenticated حقيقية
    * تعتبر نشاطًا للمستخدم.
    */
-  session.lastActivityAt = now
+  session.lastActivityAt = now;
 
   return {
     id: user.id,
     role: user.role,
 
     must_change_password: Number(user.must_change_password || 0),
-  }
+  };
 }
 
 export function requireAuthenticatedUser(event: IpcMainInvokeEvent): {
-  id: number
-  role: string
+  id: number;
+  role: string;
 } {
-  const user = validateSession(event, false)
+  const user = validateSession(event, false);
 
   return {
     id: user.id,
     role: user.role,
-  }
+  };
 }
 
 export function requirePermission(
   event: IpcMainInvokeEvent,
   permission: PermissionKey,
 ): {
-  id: number
-  role: string
+  id: number;
+  role: string;
 } {
-  const user = requireAuthenticatedUser(event)
+  const user = requireAuthenticatedUser(event);
 
   /*
    * Admin Full Access دائمًا.
    */
   if (user.role === 'admin') {
-    return user
+    return user;
   }
 
-  const permissions = getEffectiveUserPermissions(user.id)
+  const permissions = getEffectiveUserPermissions(user.id);
 
   if (!permissions.includes(permission)) {
-    throw new Error('غير مصرح لك بتنفيذ هذه العملية')
+    throw new Error('غير مصرح لك بتنفيذ هذه العملية');
   }
 
-  return user
+  return user;
 }
 
 export function requireAnyPermission(
   event: IpcMainInvokeEvent,
   permissions: readonly PermissionKey[],
 ): {
-  id: number
-  role: string
+  id: number;
+  role: string;
 } {
-  const user = requireAuthenticatedUser(event)
+  const user = requireAuthenticatedUser(event);
 
   if (user.role === 'admin') {
-    return user
+    return user;
   }
 
-  const effective = getEffectiveUserPermissions(user.id)
+  const effective = getEffectiveUserPermissions(user.id);
 
   const allowed = permissions.some((permission) =>
     effective.includes(permission),
-  )
+  );
 
   if (!allowed) {
-    throw new Error('غير مصرح لك بتنفيذ هذه العملية')
+    throw new Error('غير مصرح لك بتنفيذ هذه العملية');
   }
 
-  return user
+  return user;
 }
 
 export function getAuthenticatedPermissions(
   event: IpcMainInvokeEvent,
 ): PermissionKey[] {
-  const user = requireAuthenticatedUser(event)
+  const user = requireAuthenticatedUser(event);
 
-  return getEffectiveUserPermissions(user.id)
+  return getEffectiveUserPermissions(user.id);
 }
 
 export function requireAuthenticatedUserForPasswordChange(
   event: IpcMainInvokeEvent,
 ): {
-  id: number
-  role: string
-  must_change_password: number
+  id: number;
+  role: string;
+  must_change_password: number;
 } {
-  return validateSession(event, true)
+  return validateSession(event, true);
 }
 
 export function requireAuthenticatedAdmin(event: IpcMainInvokeEvent): number {
-  const user = requireAuthenticatedUser(event)
+  const user = requireAuthenticatedUser(event);
 
   if (user.role !== 'admin') {
-    throw new Error('هذه العملية متاحة لمدير النظام فقط')
+    throw new Error('هذه العملية متاحة لمدير النظام فقط');
   }
 
-  return user.id
+  return user.id;
 }

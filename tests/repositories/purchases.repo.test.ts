@@ -1,9 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { beforeEach, describe, expect, it } from 'vitest';
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 import {
   createProduct,
   getVariantByBarcode,
-} from '../../src/main/database/repositories/product.repo'
+} from '../../src/main/database/repositories/product.repo';
 import {
   createPurchaseInvoice,
   getPurchaseInvoice,
@@ -19,30 +19,30 @@ import {
   updatePurchaseReturn,
   updatePurchaseInvoice,
   getPurchaseReturn,
-} from '../../src/main/database/repositories/purchases.repo'
+} from '../../src/main/database/repositories/purchases.repo';
 
 import {
   closeCashShift,
   getOpenCashShift,
   openCashShift,
-} from '../../src/main/database/repositories/cash-shifts.repo'
+} from '../../src/main/database/repositories/cash-shifts.repo';
 
 type PurchaseVariantTestRow = {
-  variant_id: number
-  product_id: number
-  product_name: string
-  barcode: string
-  size: string
-  color: string
-  sell_price: number
-  buy_price: number
-  stock: number
-  min_stock: number
-  is_active: number
-}
+  variant_id: number;
+  product_id: number;
+  product_name: string;
+  barcode: string;
+  size: string;
+  color: string;
+  sell_price: number;
+  buy_price: number;
+  stock: number;
+  min_stock: number;
+  is_active: number;
+};
 
 function seedStoreCashBalance() {
-  const db = getDb()
+  const db = getDb();
 
   db.prepare(
     `
@@ -65,7 +65,7 @@ function seedStoreCashBalance() {
     'store_cash',
     'test_seed',
     'Test opening cash balance',
-  )
+  );
 }
 
 function seedPurchaseProduct(openingQty = 0) {
@@ -85,21 +85,20 @@ function seedPurchaseProduct(openingQty = 0) {
         opening_qty: openingQty,
       },
     ],
-  })
+  });
 
   const variant = getVariantByBarcode('PURCHASE001') as
-    | PurchaseVariantTestRow
-    | undefined
+    PurchaseVariantTestRow | undefined;
 
   if (!variant) {
-    throw new Error('Failed to seed purchase test product variant')
+    throw new Error('Failed to seed purchase test product variant');
   }
 
-  return variant
+  return variant;
 }
 
 function createTestSupplier() {
-  const db = getDb()
+  const db = getDb();
 
   const result = db
     .prepare(
@@ -108,13 +107,13 @@ function createTestSupplier() {
       VALUES (?, ?, ?, ?, ?)
       `,
     )
-    .run('Test Supplier', '01111111111', null, null, null)
+    .run('Test Supplier', '01111111111', null, null, null);
 
-  return Number(result.lastInsertRowid)
+  return Number(result.lastInsertRowid);
 }
 
 function getSupplierBalance(supplierId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -125,13 +124,13 @@ function getSupplierBalance(supplierId: number) {
       LIMIT 1
       `,
     )
-    .get(supplierId) as { balance: number }
+    .get(supplierId) as { balance: number };
 
-  return Number(row.balance || 0)
+  return Number(row.balance || 0);
 }
 
 function getSupplierTotalPurchased(supplierId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -142,13 +141,13 @@ function getSupplierTotalPurchased(supplierId: number) {
       LIMIT 1
       `,
     )
-    .get(supplierId) as { total_purchased: number }
+    .get(supplierId) as { total_purchased: number };
 
-  return Number(row.total_purchased || 0)
+  return Number(row.total_purchased || 0);
 }
 
 function getVariantCostState(barcode: string) {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .prepare(
@@ -187,15 +186,15 @@ function getVariantCostState(barcode: string) {
       `,
     )
     .get(barcode) as {
-    buy_price: number
-    average_cost: number
-    inventory_value: number
-    stock: number
-  }
+    buy_price: number;
+    average_cost: number;
+    inventory_value: number;
+    stock: number;
+  };
 }
 
 function getCashMovementTotal(direction: 'in' | 'out') {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -205,25 +204,24 @@ function getCashMovementTotal(direction: 'in' | 'out') {
       WHERE direction = ?
       `,
     )
-    .get(direction) as { total: number }
+    .get(direction) as { total: number };
 
-  return Number(row.total || 0)
+  return Number(row.total || 0);
 }
 
 function getStockByBarcode(barcode: string) {
   const variant = getVariantByBarcode(barcode) as
-    | PurchaseVariantTestRow
-    | undefined
+    PurchaseVariantTestRow | undefined;
 
   if (!variant) {
-    throw new Error(`Variant not found for barcode: ${barcode}`)
+    throw new Error(`Variant not found for barcode: ${barcode}`);
   }
 
-  return Number(variant.stock || 0)
+  return Number(variant.stock || 0);
 }
 
 function getSupplierPaymentsCount(supplierId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -233,25 +231,25 @@ function getSupplierPaymentsCount(supplierId: number) {
       WHERE supplier_id = ?
       `,
     )
-    .get(supplierId) as { count: number }
+    .get(supplierId) as { count: number };
 
-  return Number(row.count || 0)
+  return Number(row.count || 0);
 }
 
 describe('purchases repository', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
+    closeDb();
+    getDb();
+    resetDatabaseData();
     openCashShift({
       opening_counted_amount: 0,
       opened_by: 1,
-    })
-    seedStoreCashBalance()
-  })
+    });
+    seedStoreCashBalance();
+  });
 
   it('rejects missing supplier_id', () => {
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     expect(() =>
       createPurchaseInvoice({
@@ -266,11 +264,11 @@ describe('purchases repository', () => {
           },
         ],
       }),
-    ).toThrow('اختار المورد')
-  })
+    ).toThrow('اختار المورد');
+  });
 
   it('rejects purchase without items', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
     expect(() =>
       createPurchaseInvoice({
@@ -278,11 +276,11 @@ describe('purchases repository', () => {
         paid_amount: 0,
         items: [],
       }),
-    ).toThrow('لا توجد أصناف في فاتورة الشراء')
-  })
+    ).toThrow('لا توجد أصناف في فاتورة الشراء');
+  });
 
   it('rejects missing supplier', () => {
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     expect(() =>
       createPurchaseInvoice({
@@ -296,12 +294,12 @@ describe('purchases repository', () => {
           },
         ],
       }),
-    ).toThrow('المورد غير موجود')
-  })
+    ).toThrow('المورد غير موجود');
+  });
 
   it('rejects invalid item quantity', () => {
-    const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
 
     expect(() =>
       createPurchaseInvoice({
@@ -315,12 +313,12 @@ describe('purchases repository', () => {
           },
         ],
       }),
-    ).toThrow('كمية غير صحيحة')
-  })
+    ).toThrow('كمية غير صحيحة');
+  });
 
   it('rejects invalid unit cost', () => {
-    const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
 
     expect(() =>
       createPurchaseInvoice({
@@ -334,14 +332,14 @@ describe('purchases repository', () => {
           },
         ],
       }),
-    ).toThrow('سعر شراء غير صحيح')
-  })
+    ).toThrow('سعر شراء غير صحيح');
+  });
 
   it('creates a fully paid purchase and increases stock', () => {
-    const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
 
-    expect(getStockByBarcode('PURCHASE001')).toBe(0)
+    expect(getStockByBarcode('PURCHASE001')).toBe(0);
 
     const result = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -355,33 +353,33 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    expect(result.purchaseId).toBeGreaterThan(0)
-    expect(result.total_amount).toBe(500)
-    expect(result.paid_amount).toBe(500)
-    expect(result.remaining_amount).toBe(0)
-    expect(result.payment_status).toBe('paid')
+    expect(result.purchaseId).toBeGreaterThan(0);
+    expect(result.total_amount).toBe(500);
+    expect(result.paid_amount).toBe(500);
+    expect(result.remaining_amount).toBe(0);
+    expect(result.payment_status).toBe('paid');
 
-    expect(getStockByBarcode('PURCHASE001')).toBe(5)
-    expect(getSupplierBalance(supplierId)).toBe(0)
-    expect(getSupplierTotalPurchased(supplierId)).toBe(500)
-    expect(getCashMovementTotal('out')).toBe(500)
+    expect(getStockByBarcode('PURCHASE001')).toBe(5);
+    expect(getSupplierBalance(supplierId)).toBe(0);
+    expect(getSupplierTotalPurchased(supplierId)).toBe(500);
+    expect(getCashMovementTotal('out')).toBe(500);
 
-    const invoice = getPurchaseInvoice(result.purchaseId) as any
+    const invoice = getPurchaseInvoice(result.purchaseId) as any;
 
-    expect(invoice.purchase.id).toBe(result.purchaseId)
-    expect(invoice.items).toHaveLength(1)
-    expect(invoice.items[0].quantity).toBe(5)
-    expect(invoice.items[0].unit_cost).toBe(100)
-    expect(invoice.items[0].line_total).toBe(500)
-    expect(invoice.payments).toHaveLength(1)
-    expect(invoice.payments[0].amount).toBe(500)
-  })
+    expect(invoice.purchase.id).toBe(result.purchaseId);
+    expect(invoice.items).toHaveLength(1);
+    expect(invoice.items[0].quantity).toBe(5);
+    expect(invoice.items[0].unit_cost).toBe(100);
+    expect(invoice.items[0].line_total).toBe(500);
+    expect(invoice.payments).toHaveLength(1);
+    expect(invoice.payments[0].amount).toBe(500);
+  });
 
   it('creates a partial purchase and increases supplier balance', () => {
-    const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
 
     const result = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -395,22 +393,22 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    expect(result.total_amount).toBe(500)
-    expect(result.paid_amount).toBe(200)
-    expect(result.remaining_amount).toBe(300)
-    expect(result.payment_status).toBe('partial')
+    expect(result.total_amount).toBe(500);
+    expect(result.paid_amount).toBe(200);
+    expect(result.remaining_amount).toBe(300);
+    expect(result.payment_status).toBe('partial');
 
-    expect(getStockByBarcode('PURCHASE001')).toBe(5)
-    expect(getSupplierBalance(supplierId)).toBe(300)
-    expect(getSupplierTotalPurchased(supplierId)).toBe(500)
-    expect(getCashMovementTotal('out')).toBe(200)
-  })
+    expect(getStockByBarcode('PURCHASE001')).toBe(5);
+    expect(getSupplierBalance(supplierId)).toBe(300);
+    expect(getSupplierTotalPurchased(supplierId)).toBe(500);
+    expect(getCashMovementTotal('out')).toBe(200);
+  });
 
   it('creates an unpaid purchase and does not create cash movement', () => {
-    const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
 
     const result = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -423,21 +421,21 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    expect(result.total_amount).toBe(500)
-    expect(result.paid_amount).toBe(0)
-    expect(result.remaining_amount).toBe(500)
-    expect(result.payment_status).toBe('unpaid')
+    expect(result.total_amount).toBe(500);
+    expect(result.paid_amount).toBe(0);
+    expect(result.remaining_amount).toBe(500);
+    expect(result.payment_status).toBe('unpaid');
 
-    expect(getStockByBarcode('PURCHASE001')).toBe(5)
-    expect(getSupplierBalance(supplierId)).toBe(500)
-    expect(getCashMovementTotal('out')).toBe(0)
-  })
+    expect(getStockByBarcode('PURCHASE001')).toBe(5);
+    expect(getSupplierBalance(supplierId)).toBe(500);
+    expect(getCashMovementTotal('out')).toBe(0);
+  });
 
   it('caps paid amount to total amount', () => {
-    const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
 
     const result = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -451,25 +449,25 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    expect(result.total_amount).toBe(500)
-    expect(result.paid_amount).toBe(500)
-    expect(result.remaining_amount).toBe(0)
-    expect(result.payment_status).toBe('paid')
-    expect(getCashMovementTotal('out')).toBe(500)
-  })
+    expect(result.total_amount).toBe(500);
+    expect(result.paid_amount).toBe(500);
+    expect(result.remaining_amount).toBe(0);
+    expect(result.payment_status).toBe('paid');
+    expect(getCashMovementTotal('out')).toBe(500);
+  });
 
   it('keeps last purchase price separately and calculates moving weighted average cost', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct(10)
+    const variant = seedPurchaseProduct(10);
 
     expect(getVariantCostState('PURCHASE001')).toMatchObject({
       buy_price: 100,
       average_cost: 100,
       inventory_value: 1000,
-    })
+    });
 
     createPurchaseInvoice({
       supplier_id: supplierId,
@@ -487,9 +485,9 @@ describe('purchases repository', () => {
           unit_cost: 200,
         },
       ],
-    })
+    });
 
-    const costState = getVariantCostState('PURCHASE001')
+    const costState = getVariantCostState('PURCHASE001');
 
     /*
      * 10 × 100
@@ -500,18 +498,18 @@ describe('purchases repository', () => {
      * =
      * 150
      */
-    expect(Number(costState.buy_price)).toBe(200)
+    expect(Number(costState.buy_price)).toBe(200);
 
-    expect(Number(costState.average_cost)).toBe(150)
+    expect(Number(costState.average_cost)).toBe(150);
 
-    expect(Number(costState.inventory_value)).toBe(3000)
-  })
+    expect(Number(costState.inventory_value)).toBe(3000);
+  });
 
   it('restores variant buy price after cancelling the latest purchase', () => {
-    const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
 
-    expect(variant.buy_price).toBe(100)
+    expect(variant.buy_price).toBe(100);
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -524,30 +522,30 @@ describe('purchases repository', () => {
           unit_cost: 130,
         },
       ],
-    })
+    });
 
     const afterPurchase = getVariantByBarcode(
       'PURCHASE001',
-    ) as PurchaseVariantTestRow
+    ) as PurchaseVariantTestRow;
 
-    expect(afterPurchase.buy_price).toBe(130)
+    expect(afterPurchase.buy_price).toBe(130);
 
     cancelPurchaseInvoice({
       purchase_id: purchase.purchaseId,
       reason: 'Test purchase cancellation',
       actor_id: 1,
-    })
+    });
 
     const afterCancellation = getVariantByBarcode(
       'PURCHASE001',
-    ) as PurchaseVariantTestRow
+    ) as PurchaseVariantTestRow;
 
-    expect(afterCancellation.buy_price).toBe(100)
-  })
+    expect(afterCancellation.buy_price).toBe(100);
+  });
 
   it('keeps the latest active purchase cost when cancelling an older purchase', () => {
-    const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
 
     const firstPurchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -560,7 +558,7 @@ describe('purchases repository', () => {
           unit_cost: 130,
         },
       ],
-    })
+    });
 
     const secondPurchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -573,36 +571,36 @@ describe('purchases repository', () => {
           unit_cost: 160,
         },
       ],
-    })
+    });
 
     expect(
       (getVariantByBarcode('PURCHASE001') as PurchaseVariantTestRow).buy_price,
-    ).toBe(160)
+    ).toBe(160);
 
     cancelPurchaseInvoice({
       purchase_id: firstPurchase.purchaseId,
       reason: 'Cancel older purchase',
       actor_id: 1,
-    })
+    });
 
     expect(
       (getVariantByBarcode('PURCHASE001') as PurchaseVariantTestRow).buy_price,
-    ).toBe(160)
+    ).toBe(160);
 
     cancelPurchaseInvoice({
       purchase_id: secondPurchase.purchaseId,
       reason: 'Cancel latest purchase',
       actor_id: 1,
-    })
+    });
 
     expect(
       (getVariantByBarcode('PURCHASE001') as PurchaseVariantTestRow).buy_price,
-    ).toBe(100)
-  })
+    ).toBe(100);
+  });
 
   it('records supplier payment and reduces supplier balance', () => {
-    const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -615,13 +613,13 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    expect(purchase.total_amount).toBe(500)
-    expect(purchase.remaining_amount).toBe(500)
-    expect(getSupplierBalance(supplierId)).toBe(500)
-    expect(getCashMovementTotal('out')).toBe(0)
-    expect(getSupplierPaymentsCount(supplierId)).toBe(0)
+    expect(purchase.total_amount).toBe(500);
+    expect(purchase.remaining_amount).toBe(500);
+    expect(getSupplierBalance(supplierId)).toBe(500);
+    expect(getCashMovementTotal('out')).toBe(0);
+    expect(getSupplierPaymentsCount(supplierId)).toBe(0);
 
     const payment = recordSupplierPayment({
       supplier_id: supplierId,
@@ -630,24 +628,24 @@ describe('purchases repository', () => {
       payment_method: 'cash',
       actor_id: 1,
       notes: 'Partial supplier payment',
-    })
+    });
 
-    expect(payment.ok).toBe(true)
+    expect(payment.ok).toBe(true);
 
-    expect(getSupplierBalance(supplierId)).toBe(300)
-    expect(getCashMovementTotal('out')).toBe(200)
-    expect(getSupplierPaymentsCount(supplierId)).toBe(1)
+    expect(getSupplierBalance(supplierId)).toBe(300);
+    expect(getCashMovementTotal('out')).toBe(200);
+    expect(getSupplierPaymentsCount(supplierId)).toBe(1);
 
-    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(invoice.payments).toHaveLength(1)
-    expect(invoice.payments[0].amount).toBe(200)
-  })
+    expect(invoice.payments).toHaveLength(1);
+    expect(invoice.payments[0].amount).toBe(200);
+  });
 
   it('cancels latest supplier payment and restores supplier debt', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -662,7 +660,7 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
     const payment = recordSupplierPayment({
       supplier_id: supplierId,
@@ -674,11 +672,11 @@ describe('purchases repository', () => {
       payment_method: 'cash',
 
       actor_id: 1,
-    })
+    });
 
-    const access = getSupplierPaymentBatchAccess(payment.payment_batch_id, 1)
+    const access = getSupplierPaymentBatchAccess(payment.payment_batch_id, 1);
 
-    expect(access.requires_admin_password).toBe(false)
+    expect(access.requires_admin_password).toBe(false);
 
     const result = cancelSupplierPaymentBatch({
       batch_id: payment.payment_batch_id,
@@ -686,36 +684,36 @@ describe('purchases repository', () => {
       reason: 'Wrong amount',
 
       actor_id: 1,
-    })
+    });
 
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(true);
 
-    expect(result.cancelled_amount).toBe(200)
+    expect(result.cancelled_amount).toBe(200);
 
-    expect(getSupplierBalance(supplierId)).toBe(500)
+    expect(getSupplierBalance(supplierId)).toBe(500);
 
-    const statement = getSupplierStatement(supplierId, 1) as any
+    const statement = getSupplierStatement(supplierId, 1) as any;
 
-    expect(statement.summary.total_paid).toBe(0)
+    expect(statement.summary.total_paid).toBe(0);
 
     const cancelledEntries = statement.entries.filter(
       (entry: any) =>
         Number(entry.batch_id) === Number(payment.payment_batch_id),
-    )
+    );
 
-    expect(cancelledEntries).toHaveLength(1)
+    expect(cancelledEntries).toHaveLength(1);
 
-    expect(cancelledEntries[0].credit).toBe(0)
+    expect(cancelledEntries[0].credit).toBe(0);
 
-    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(invoice.purchase.paid_amount).toBe(0)
+    expect(invoice.purchase.paid_amount).toBe(0);
 
-    expect(invoice.purchase.remaining_amount).toBe(500)
+    expect(invoice.purchase.remaining_amount).toBe(500);
 
-    expect(invoice.purchase.payment_status).toBe('unpaid')
+    expect(invoice.purchase.payment_status).toBe('unpaid');
 
-    const db = getDb()
+    const db = getDb();
 
     const batch = db
       .prepare(
@@ -725,9 +723,9 @@ describe('purchases repository', () => {
       WHERE id = ?
       `,
       )
-      .get(payment.payment_batch_id) as any
+      .get(payment.payment_batch_id) as any;
 
-    expect(batch.cancelled_at).toBeTruthy()
+    expect(batch.cancelled_at).toBeTruthy();
 
     const movement = db
       .prepare(
@@ -747,9 +745,9 @@ describe('purchases repository', () => {
       LIMIT 1
       `,
       )
-      .get(payment.payment_batch_id) as any
+      .get(payment.payment_batch_id) as any;
 
-    expect(movement.cancelled_at).toBeNull()
+    expect(movement.cancelled_at).toBeNull();
 
     const reverseMovement = db
       .prepare(
@@ -766,17 +764,17 @@ describe('purchases repository', () => {
         LIMIT 1
         `,
       )
-      .get(payment.payment_batch_id) as any
+      .get(payment.payment_batch_id) as any;
 
-    expect(reverseMovement).toBeTruthy()
-    expect(reverseMovement.direction).toBe('in')
-    expect(Number(reverseMovement.amount)).toBe(200)
-  })
+    expect(reverseMovement).toBeTruthy();
+    expect(reverseMovement.direction).toBe('in');
+    expect(Number(reverseMovement.amount)).toBe(200);
+  });
 
   it('updates latest supplier payment and replaces its financial effects', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -794,7 +792,7 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
     const payment = recordSupplierPayment({
       supplier_id: supplierId,
@@ -806,9 +804,9 @@ describe('purchases repository', () => {
       payment_method: 'cash',
 
       actor_id: 1,
-    })
+    });
 
-    expect(getSupplierBalance(supplierId)).toBe(300)
+    expect(getSupplierBalance(supplierId)).toBe(300);
 
     const result = updateSupplierPaymentBatch({
       batch_id: payment.payment_batch_id,
@@ -820,27 +818,27 @@ describe('purchases repository', () => {
       notes: 'Corrected supplier payment',
 
       actor_id: 1,
-    })
+    });
 
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(true);
 
-    expect(result.old_amount).toBe(200)
+    expect(result.old_amount).toBe(200);
 
-    expect(result.new_amount).toBe(75)
+    expect(result.new_amount).toBe(75);
 
-    expect(result.batch_id).not.toBe(payment.payment_batch_id)
+    expect(result.batch_id).not.toBe(payment.payment_batch_id);
 
-    expect(getSupplierBalance(supplierId)).toBe(425)
+    expect(getSupplierBalance(supplierId)).toBe(425);
 
-    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(invoice.purchase.paid_amount).toBe(75)
+    expect(invoice.purchase.paid_amount).toBe(75);
 
-    expect(invoice.purchase.remaining_amount).toBe(425)
+    expect(invoice.purchase.remaining_amount).toBe(425);
 
-    expect(invoice.purchase.payment_status).toBe('partial')
+    expect(invoice.purchase.payment_status).toBe('partial');
 
-    const db = getDb()
+    const db = getDb();
 
     const oldBatch = db
       .prepare(
@@ -852,11 +850,11 @@ describe('purchases repository', () => {
       WHERE id = ?
       `,
       )
-      .get(payment.payment_batch_id) as any
+      .get(payment.payment_batch_id) as any;
 
-    expect(oldBatch.cancelled_at).toBeTruthy()
+    expect(oldBatch.cancelled_at).toBeTruthy();
 
-    expect(Number(oldBatch.replacement_batch_id)).toBe(result.batch_id)
+    expect(Number(oldBatch.replacement_batch_id)).toBe(result.batch_id);
 
     const newBatch = db
       .prepare(
@@ -868,15 +866,15 @@ describe('purchases repository', () => {
       WHERE id = ?
       `,
       )
-      .get(result.batch_id) as any
+      .get(result.batch_id) as any;
 
-    expect(Number(newBatch.amount)).toBe(75)
+    expect(Number(newBatch.amount)).toBe(75);
 
-    expect(newBatch.cancelled_at).toBeNull()
+    expect(newBatch.cancelled_at).toBeNull();
 
-    expect(newBatch.created_at).toBe(oldBatch.created_at)
+    expect(newBatch.created_at).toBe(oldBatch.created_at);
 
-    expect(Number(newBatch.created_by)).toBe(Number(oldBatch.created_by))
+    expect(Number(newBatch.created_by)).toBe(Number(oldBatch.created_by));
 
     const oldCashMovement = db
       .prepare(
@@ -893,9 +891,9 @@ describe('purchases repository', () => {
       LIMIT 1
       `,
       )
-      .get(payment.payment_batch_id) as any
+      .get(payment.payment_batch_id) as any;
 
-    expect(oldCashMovement.cancelled_at).toBeNull()
+    expect(oldCashMovement.cancelled_at).toBeNull();
 
     const reverseMovement = db
       .prepare(
@@ -912,11 +910,11 @@ describe('purchases repository', () => {
         LIMIT 1
         `,
       )
-      .get(payment.payment_batch_id) as any
+      .get(payment.payment_batch_id) as any;
 
-    expect(reverseMovement).toBeTruthy()
-    expect(reverseMovement.direction).toBe('in')
-    expect(Number(reverseMovement.amount)).toBe(200)
+    expect(reverseMovement).toBeTruthy();
+    expect(reverseMovement.direction).toBe('in');
+    expect(Number(reverseMovement.amount)).toBe(200);
 
     const newCashMovement = db
       .prepare(
@@ -933,17 +931,17 @@ describe('purchases repository', () => {
       LIMIT 1
       `,
       )
-      .get(result.batch_id) as any
+      .get(result.batch_id) as any;
 
-    expect(newCashMovement.cancelled_at).toBeNull()
+    expect(newCashMovement.cancelled_at).toBeNull();
 
-    expect(Number(newCashMovement.amount)).toBe(75)
-  })
+    expect(Number(newCashMovement.amount)).toBe(75);
+  });
 
   it('blocks cancelling older supplier payment when a newer active payment exists', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -957,7 +955,7 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
     const firstPayment = recordSupplierPayment({
       supplier_id: supplierId,
@@ -969,7 +967,7 @@ describe('purchases repository', () => {
       payment_method: 'cash',
 
       actor_id: 1,
-    })
+    });
 
     recordSupplierPayment({
       supplier_id: supplierId,
@@ -981,7 +979,7 @@ describe('purchases repository', () => {
       payment_method: 'cash',
 
       actor_id: 1,
-    })
+    });
 
     expect(() =>
       cancelSupplierPaymentBatch({
@@ -991,13 +989,13 @@ describe('purchases repository', () => {
 
         actor_id: 1,
       }),
-    ).toThrow('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للمورد')
-  })
+    ).toThrow('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للمورد');
+  });
 
   it('blocks supplier payment mutation when a newer invoice-time payment exists', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const firstPurchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1010,7 +1008,7 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
     const manualPayment = recordSupplierPayment({
       supplier_id: supplierId,
@@ -1022,7 +1020,7 @@ describe('purchases repository', () => {
       payment_method: 'cash',
 
       actor_id: 1,
-    })
+    });
 
     createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1042,7 +1040,7 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
     expect(() =>
       cancelSupplierPaymentBatch({
@@ -1052,12 +1050,12 @@ describe('purchases repository', () => {
 
         actor_id: 1,
       }),
-    ).toThrow('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للمورد')
-  })
+    ).toThrow('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للمورد');
+  });
 
   it('blocks purchase cancellation when legacy manual supplier payment exists', () => {
-    const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1070,9 +1068,9 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
@@ -1091,7 +1089,7 @@ describe('purchases repository', () => {
       100,
       'cash',
       'Legacy manual supplier payment',
-    )
+    );
 
     expect(() =>
       cancelPurchaseInvoice({
@@ -1099,12 +1097,12 @@ describe('purchases repository', () => {
         reason: 'Cancel test',
         actor_id: 1,
       }),
-    ).toThrow('لا يمكن إلغاء فاتورة الشراء لأنها تحتوي على دفعة مورد لاحقة')
-  })
+    ).toThrow('لا يمكن إلغاء فاتورة الشراء لأنها تحتوي على دفعة مورد لاحقة');
+  });
 
   it('records full supplier payment and clears supplier balance', () => {
-    const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1117,9 +1115,9 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    expect(getSupplierBalance(supplierId)).toBe(500)
+    expect(getSupplierBalance(supplierId)).toBe(500);
 
     const payment = recordSupplierPayment({
       supplier_id: supplierId,
@@ -1128,17 +1126,17 @@ describe('purchases repository', () => {
       payment_method: 'cash',
       actor_id: 1,
       notes: 'Full supplier payment',
-    })
+    });
 
-    expect(payment.ok).toBe(true)
+    expect(payment.ok).toBe(true);
 
-    expect(getSupplierBalance(supplierId)).toBe(0)
-    expect(getCashMovementTotal('out')).toBe(500)
-    expect(getSupplierPaymentsCount(supplierId)).toBe(1)
-  })
+    expect(getSupplierBalance(supplierId)).toBe(0);
+    expect(getCashMovementTotal('out')).toBe(500);
+    expect(getSupplierPaymentsCount(supplierId)).toBe(1);
+  });
 
   it('rejects supplier payment with invalid amount', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
     expect(() =>
       recordSupplierPayment({
@@ -1147,8 +1145,8 @@ describe('purchases repository', () => {
         payment_method: 'cash',
         actor_id: 1,
       }),
-    ).toThrow()
-  })
+    ).toThrow();
+  });
 
   it('rejects supplier payment for missing supplier', () => {
     expect(() =>
@@ -1158,12 +1156,12 @@ describe('purchases repository', () => {
         payment_method: 'cash',
         actor_id: 1,
       }),
-    ).toThrow('المورد غير موجود')
-  })
+    ).toThrow('المورد غير موجود');
+  });
 
   it('rejects supplier payment greater than supplier balance', () => {
-    const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
 
     createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1176,9 +1174,9 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    expect(getSupplierBalance(supplierId)).toBe(500)
+    expect(getSupplierBalance(supplierId)).toBe(500);
 
     expect(() =>
       recordSupplierPayment({
@@ -1187,15 +1185,15 @@ describe('purchases repository', () => {
         payment_method: 'cash',
         actor_id: 1,
       }),
-    ).toThrow('قيمة الدفع أكبر من رصيد المورد')
+    ).toThrow('قيمة الدفع أكبر من رصيد المورد');
 
-    expect(getSupplierBalance(supplierId)).toBe(500)
-    expect(getCashMovementTotal('out')).toBe(0)
-  })
+    expect(getSupplierBalance(supplierId)).toBe(500);
+    expect(getCashMovementTotal('out')).toBe(0);
+  });
 
   it('returns supplier statement with purchases and payments', () => {
-    const supplierId = createTestSupplier()
-    const variant = seedPurchaseProduct()
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1209,7 +1207,7 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
     recordSupplierPayment({
       supplier_id: supplierId,
@@ -1218,20 +1216,20 @@ describe('purchases repository', () => {
       amount: 200,
       payment_method: 'cash',
       notes: 'Second payment',
-    })
+    });
 
-    const statement = getSupplierStatement(supplierId) as any
+    const statement = getSupplierStatement(supplierId) as any;
 
-    expect(statement.supplier.id).toBe(supplierId)
-    expect(statement.purchases.length).toBeGreaterThanOrEqual(1)
-    expect(statement.payments.length).toBeGreaterThanOrEqual(2)
-    expect(getSupplierBalance(supplierId)).toBe(200)
-  })
+    expect(statement.supplier.id).toBe(supplierId);
+    expect(statement.purchases.length).toBeGreaterThanOrEqual(1);
+    expect(statement.payments.length).toBeGreaterThanOrEqual(2);
+    expect(getSupplierBalance(supplierId)).toBe(200);
+  });
 
   it('filters purchase invoices by payment state', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const paid = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1245,7 +1243,7 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
     const partial = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1259,7 +1257,7 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
     const unpaid = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1272,52 +1270,54 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
     const paidResult = listPurchaseInvoices({
       payment_filter: 'paid',
-    }) as any
+    }) as any;
 
-    expect(paidResult.rows.map((row: any) => row.id)).toEqual([paid.purchaseId])
+    expect(paidResult.rows.map((row: any) => row.id)).toEqual([
+      paid.purchaseId,
+    ]);
 
     const unpaidResult = listPurchaseInvoices({
       payment_filter: 'unpaid',
-    }) as any
+    }) as any;
 
-    const unpaidIds = unpaidResult.rows.map((row: any) => row.id)
+    const unpaidIds = unpaidResult.rows.map((row: any) => row.id);
 
-    expect(unpaidIds).toContain(partial.purchaseId)
+    expect(unpaidIds).toContain(partial.purchaseId);
 
-    expect(unpaidIds).toContain(unpaid.purchaseId)
+    expect(unpaidIds).toContain(unpaid.purchaseId);
 
-    expect(unpaidIds).not.toContain(paid.purchaseId)
-  })
+    expect(unpaidIds).not.toContain(paid.purchaseId);
+  });
 
   it('keeps purchase and supplier cash history immutable across shifts', () => {
-    const db = getDb()
+    const db = getDb();
 
     /*
      * جهز درج بـ1000 عن طريق
      * إغلاق الشفت الحالي وفتح واحد
      * بالجرد الفعلي.
      */
-    const firstOpen = getOpenCashShift()!
+    const firstOpen = getOpenCashShift()!;
 
     closeCashShift({
       shift_id: firstOpen.id,
       closing_counted_amount: 0,
       left_for_next_shift: 0,
       closed_by: 1,
-    })
+    });
 
     const shift1 = openCashShift({
       opening_counted_amount: 1000,
       opened_by: 1,
-    })
+    });
 
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       actor_id: 1,
@@ -1337,9 +1337,9 @@ describe('purchases repository', () => {
           unit_cost: 150,
         },
       ],
-    })
+    });
 
-    expect(purchase.shift_id).toBe(shift1.id)
+    expect(purchase.shift_id).toBe(shift1.id);
 
     const purchaseMovement = db
       .prepare(
@@ -1352,21 +1352,21 @@ describe('purchases repository', () => {
       LIMIT 1
     `,
       )
-      .get(purchase.purchaseId) as any
+      .get(purchase.purchaseId) as any;
 
-    expect(Number(purchaseMovement.shift_id)).toBe(shift1.id)
+    expect(Number(purchaseMovement.shift_id)).toBe(shift1.id);
 
     closeCashShift({
       shift_id: shift1.id,
       closing_counted_amount: 800,
       left_for_next_shift: 800,
       closed_by: 1,
-    })
+    });
 
     const shift2 = openCashShift({
       opening_counted_amount: 800,
       opened_by: 1,
-    })
+    });
 
     const cancelled = cancelPurchaseInvoice({
       purchase_id: purchase.purchaseId,
@@ -1374,9 +1374,9 @@ describe('purchases repository', () => {
       reason: 'إلغاء في شفت جديد',
 
       actor_id: 1,
-    })
+    });
 
-    expect(cancelled.cancelled_shift_id).toBe(shift2.id)
+    expect(cancelled.cancelled_shift_id).toBe(shift2.id);
 
     const cancelledPurchaseRow = db
       .prepare(
@@ -1391,13 +1391,13 @@ describe('purchases repository', () => {
     WHERE id = ?
     `,
       )
-      .get(purchase.purchaseId) as any
+      .get(purchase.purchaseId) as any;
 
-    expect(Number(cancelledPurchaseRow.cancelled_by)).toBe(1)
+    expect(Number(cancelledPurchaseRow.cancelled_by)).toBe(1);
 
-    expect(Number(cancelledPurchaseRow.cancelled_shift_id)).toBe(shift2.id)
+    expect(Number(cancelledPurchaseRow.cancelled_shift_id)).toBe(shift2.id);
 
-    expect(cancelledPurchaseRow.cancel_reason).toBe('إلغاء في شفت جديد')
+    expect(cancelledPurchaseRow.cancel_reason).toBe('إلغاء في شفت جديد');
 
     /*
      * حركة الدفع الأصلية لا تلغى.
@@ -1412,11 +1412,11 @@ describe('purchases repository', () => {
       WHERE id = ?
     `,
       )
-      .get(purchaseMovement.id) as any
+      .get(purchaseMovement.id) as any;
 
-    expect(originalAfterCancel.cancelled_at).toBeNull()
+    expect(originalAfterCancel.cancelled_at).toBeNull();
 
-    expect(Number(originalAfterCancel.shift_id)).toBe(shift1.id)
+    expect(Number(originalAfterCancel.shift_id)).toBe(shift1.id);
 
     const reverse = db
       .prepare(
@@ -1430,19 +1430,19 @@ describe('purchases repository', () => {
       LIMIT 1
     `,
       )
-      .get(purchase.purchaseId) as any
+      .get(purchase.purchaseId) as any;
 
-    expect(reverse.direction).toBe('in')
+    expect(reverse.direction).toBe('in');
 
-    expect(Number(reverse.amount)).toBe(200)
+    expect(Number(reverse.amount)).toBe(200);
 
-    expect(Number(reverse.shift_id)).toBe(shift2.id)
-  })
+    expect(Number(reverse.shift_id)).toBe(shift2.id);
+  });
 
   it('updates purchase invoice in place and preserves its creation identity', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1460,9 +1460,9 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    const before = getPurchaseInvoice(purchase.purchaseId) as any
+    const before = getPurchaseInvoice(purchase.purchaseId) as any;
 
     const result = updatePurchaseInvoice({
       purchase_id: purchase.purchaseId,
@@ -1496,53 +1496,53 @@ describe('purchases repository', () => {
           unit_cost: 120,
         },
       ],
-    })
+    });
 
-    expect(result.ok).toBe(true)
+    expect(result.ok).toBe(true);
 
-    expect(result.purchase_id).toBe(purchase.purchaseId)
+    expect(result.purchase_id).toBe(purchase.purchaseId);
 
-    const after = getPurchaseInvoice(purchase.purchaseId) as any
+    const after = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(after.purchase.id).toBe(before.purchase.id)
+    expect(after.purchase.id).toBe(before.purchase.id);
 
-    expect(after.purchase.created_at).toBe(before.purchase.created_at)
+    expect(after.purchase.created_at).toBe(before.purchase.created_at);
 
-    expect(Number(after.purchase.total_amount)).toBe(360)
+    expect(Number(after.purchase.total_amount)).toBe(360);
 
-    expect(Number(after.purchase.paid_amount)).toBe(60)
+    expect(Number(after.purchase.paid_amount)).toBe(60);
 
-    expect(Number(after.purchase.remaining_amount)).toBe(300)
+    expect(Number(after.purchase.remaining_amount)).toBe(300);
 
-    expect(after.purchase.payment_status).toBe('partial')
+    expect(after.purchase.payment_status).toBe('partial');
 
-    expect(after.items).toHaveLength(1)
+    expect(after.items).toHaveLength(1);
 
-    expect(Number(after.items[0].quantity)).toBe(3)
+    expect(Number(after.items[0].quantity)).toBe(3);
 
-    expect(Number(after.items[0].unit_cost)).toBe(120)
+    expect(Number(after.items[0].unit_cost)).toBe(120);
 
-    expect(getStockByBarcode('PURCHASE001')).toBe(3)
+    expect(getStockByBarcode('PURCHASE001')).toBe(3);
 
-    expect(getSupplierTotalPurchased(supplierId)).toBe(360)
+    expect(getSupplierTotalPurchased(supplierId)).toBe(360);
 
-    expect(getSupplierBalance(supplierId)).toBe(300)
+    expect(getSupplierBalance(supplierId)).toBe(300);
 
     expect(
       (getVariantByBarcode('PURCHASE001') as PurchaseVariantTestRow).buy_price,
-    ).toBe(120)
+    ).toBe(120);
 
-    const editedCostState = getVariantCostState('PURCHASE001')
+    const editedCostState = getVariantCostState('PURCHASE001');
 
-    expect(Number(editedCostState.average_cost)).toBe(120)
+    expect(Number(editedCostState.average_cost)).toBe(120);
 
-    expect(Number(editedCostState.inventory_value)).toBe(360)
-  })
+    expect(Number(editedCostState.inventory_value)).toBe(360);
+  });
 
   it('recalculates weighted average when correcting a purchase cost', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct(10)
+    const variant = seedPurchaseProduct(10);
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1560,13 +1560,13 @@ describe('purchases repository', () => {
           unit_cost: 200,
         },
       ],
-    })
+    });
 
     expect(getVariantCostState('PURCHASE001')).toMatchObject({
       buy_price: 200,
       average_cost: 150,
       inventory_value: 3000,
-    })
+    });
 
     updatePurchaseInvoice({
       purchase_id: purchase.purchaseId,
@@ -1598,21 +1598,21 @@ describe('purchases repository', () => {
           unit_cost: 220,
         },
       ],
-    })
+    });
 
-    const costState = getVariantCostState('PURCHASE001')
+    const costState = getVariantCostState('PURCHASE001');
 
-    expect(Number(costState.buy_price)).toBe(220)
+    expect(Number(costState.buy_price)).toBe(220);
 
-    expect(Number(costState.average_cost)).toBe(160)
+    expect(Number(costState.average_cost)).toBe(160);
 
-    expect(Number(costState.inventory_value)).toBe(3200)
-  })
+    expect(Number(costState.inventory_value)).toBe(3200);
+  });
 
   it('removes purchase returns at their purchase cost and restores the same value on cancellation', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct(10)
+    const variant = seedPurchaseProduct(10);
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1630,9 +1630,9 @@ describe('purchases repository', () => {
           unit_cost: 200,
         },
       ],
-    })
+    });
 
-    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
     const purchaseReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
@@ -1648,9 +1648,9 @@ describe('purchases repository', () => {
           quantity: 2,
         },
       ],
-    })
+    });
 
-    let state = getVariantCostState('PURCHASE001')
+    let state = getVariantCostState('PURCHASE001');
 
     /*
      * قبل المرتجع:
@@ -1659,11 +1659,11 @@ describe('purchases repository', () => {
      * رجعنا للمورد:
      * 2×200 = 400
      */
-    expect(Number(state.stock)).toBe(18)
+    expect(Number(state.stock)).toBe(18);
 
-    expect(Number(state.inventory_value)).toBe(2600)
+    expect(Number(state.inventory_value)).toBe(2600);
 
-    expect(Number(state.average_cost)).toBeCloseTo(144.4444, 4)
+    expect(Number(state.average_cost)).toBeCloseTo(144.4444, 4);
 
     cancelPurchaseReturn({
       return_id: purchaseReturn.return_id,
@@ -1671,21 +1671,21 @@ describe('purchases repository', () => {
       reason: 'Undo return',
 
       actor_id: 1,
-    })
+    });
 
-    state = getVariantCostState('PURCHASE001')
+    state = getVariantCostState('PURCHASE001');
 
-    expect(Number(state.stock)).toBe(20)
+    expect(Number(state.stock)).toBe(20);
 
-    expect(Number(state.inventory_value)).toBe(3000)
+    expect(Number(state.inventory_value)).toBe(3000);
 
-    expect(Number(state.average_cost)).toBe(150)
-  })
+    expect(Number(state.average_cost)).toBe(150);
+  });
 
   it('corrects a purchase after part of its stock was sold without changing historical sale cost', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1703,13 +1703,13 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
     /*
      * نحاكي إن 5 قطع خرجت
      * بالفعل بتكلفتها التاريخية.
      */
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
@@ -1735,7 +1735,7 @@ describe('purchases repository', () => {
       'Test historical sale'
     )
     `,
-    ).run(variant.variant_id)
+    ).run(variant.variant_id);
 
     db.prepare(
       `
@@ -1747,7 +1747,7 @@ describe('purchases repository', () => {
 
     WHERE id = ?
     `,
-    ).run(variant.variant_id)
+    ).run(variant.variant_id);
 
     updatePurchaseInvoice({
       purchase_id: purchase.purchaseId,
@@ -1779,9 +1779,9 @@ describe('purchases repository', () => {
           unit_cost: 120,
         },
       ],
-    })
+    });
 
-    const state = getVariantCostState('PURCHASE001')
+    const state = getVariantCostState('PURCHASE001');
 
     /*
      * إجمالي تكلفة الشراء الصحيحة = 1200
@@ -1792,19 +1792,19 @@ describe('purchases repository', () => {
      *
      * المتوسط الحالي = 140
      */
-    expect(Number(state.stock)).toBe(5)
+    expect(Number(state.stock)).toBe(5);
 
-    expect(Number(state.inventory_value)).toBe(700)
+    expect(Number(state.inventory_value)).toBe(700);
 
-    expect(Number(state.average_cost)).toBe(140)
+    expect(Number(state.average_cost)).toBe(140);
 
-    expect(Number(state.buy_price)).toBe(120)
-  })
+    expect(Number(state.buy_price)).toBe(120);
+  });
 
   it('blocks purchase edit after supplier payment history exists', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1822,7 +1822,7 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
     recordSupplierPayment({
       supplier_id: supplierId,
@@ -1834,7 +1834,7 @@ describe('purchases repository', () => {
       payment_method: 'store_cash',
 
       actor_id: 1,
-    })
+    });
 
     expect(() =>
       updatePurchaseInvoice({
@@ -1868,13 +1868,13 @@ describe('purchases repository', () => {
           },
         ],
       }),
-    ).toThrow('سجل دفعات مورد لاحقة')
-  })
+    ).toThrow('سجل دفعات مورد لاحقة');
+  });
 
   it('cancels purchase return and restores stock supplier debt and invoice state', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1892,7 +1892,7 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
     const purchaseReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
@@ -1910,11 +1910,11 @@ describe('purchases repository', () => {
           quantity: 2,
         },
       ],
-    })
+    });
 
-    expect(getStockByBarcode('PURCHASE001')).toBe(3)
+    expect(getStockByBarcode('PURCHASE001')).toBe(3);
 
-    expect(getSupplierBalance(supplierId)).toBe(300)
+    expect(getSupplierBalance(supplierId)).toBe(300);
 
     const cancelled = cancelPurchaseReturn({
       return_id: purchaseReturn.return_id,
@@ -1922,35 +1922,35 @@ describe('purchases repository', () => {
       reason: 'Wrong purchase return',
 
       actor_id: 1,
-    })
+    });
 
-    expect(cancelled.ok).toBe(true)
+    expect(cancelled.ok).toBe(true);
 
-    expect(getStockByBarcode('PURCHASE001')).toBe(5)
+    expect(getStockByBarcode('PURCHASE001')).toBe(5);
 
-    expect(getSupplierBalance(supplierId)).toBe(500)
+    expect(getSupplierBalance(supplierId)).toBe(500);
 
-    expect(getSupplierTotalPurchased(supplierId)).toBe(500)
+    expect(getSupplierTotalPurchased(supplierId)).toBe(500);
 
-    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(Number(invoice.purchase.remaining_amount)).toBe(500)
+    expect(Number(invoice.purchase.remaining_amount)).toBe(500);
 
-    expect(invoice.purchase.payment_status).toBe('unpaid')
+    expect(invoice.purchase.payment_status).toBe('unpaid');
 
-    expect(Number(invoice.items[0].returned_quantity)).toBe(0)
+    expect(Number(invoice.items[0].returned_quantity)).toBe(0);
 
-    expect(Number(invoice.items[0].returnable_quantity)).toBe(5)
+    expect(Number(invoice.items[0].returnable_quantity)).toBe(5);
 
-    const oldReturn = getPurchaseReturn(purchaseReturn.return_id) as any
+    const oldReturn = getPurchaseReturn(purchaseReturn.return_id) as any;
 
-    expect(oldReturn.return.cancelled_at).toBeTruthy()
-  })
+    expect(oldReturn.return.cancelled_at).toBeTruthy();
+  });
 
   it('requires LIFO cancellation for purchase returns', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -1968,11 +1968,11 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    const purchaseItemId = Number(invoice.items[0].id)
+    const purchaseItemId = Number(invoice.items[0].id);
 
     const firstReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
@@ -1988,7 +1988,7 @@ describe('purchases repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
     const secondReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
@@ -2004,7 +2004,7 @@ describe('purchases repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
     expect(() =>
       cancelPurchaseReturn({
@@ -2012,7 +2012,7 @@ describe('purchases repository', () => {
 
         actor_id: 1,
       }),
-    ).toThrow('آخر مرتجع شراء فعال')
+    ).toThrow('آخر مرتجع شراء فعال');
 
     expect(() =>
       cancelPurchaseReturn({
@@ -2020,13 +2020,13 @@ describe('purchases repository', () => {
 
         actor_id: 1,
       }),
-    ).not.toThrow()
-  })
+    ).not.toThrow();
+  });
 
   it('updates latest purchase return by cancelling it and creating a replacement', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -2044,11 +2044,11 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    const purchaseItemId = Number(invoice.items[0].id)
+    const purchaseItemId = Number(invoice.items[0].id);
 
     const firstReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
@@ -2064,7 +2064,7 @@ describe('purchases repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
     const updated = updatePurchaseReturn({
       return_id: firstReturn.return_id,
@@ -2084,35 +2084,35 @@ describe('purchases repository', () => {
           quantity: 2,
         },
       ],
-    })
+    });
 
-    expect(updated.edited).toBe(true)
+    expect(updated.edited).toBe(true);
 
-    expect(updated.return_id).not.toBe(firstReturn.return_id)
+    expect(updated.return_id).not.toBe(firstReturn.return_id);
 
-    const oldReturn = getPurchaseReturn(firstReturn.return_id) as any
+    const oldReturn = getPurchaseReturn(firstReturn.return_id) as any;
 
-    expect(oldReturn.return.cancelled_at).toBeTruthy()
+    expect(oldReturn.return.cancelled_at).toBeTruthy();
 
     expect(Number(oldReturn.return.replacement_return_id)).toBe(
       updated.return_id,
-    )
+    );
 
-    const currentInvoice = getPurchaseInvoice(purchase.purchaseId) as any
+    const currentInvoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(Number(currentInvoice.items[0].returned_quantity)).toBe(2)
+    expect(Number(currentInvoice.items[0].returned_quantity)).toBe(2);
 
-    expect(Number(currentInvoice.items[0].returnable_quantity)).toBe(3)
+    expect(Number(currentInvoice.items[0].returnable_quantity)).toBe(3);
 
-    expect(getStockByBarcode('PURCHASE001')).toBe(3)
+    expect(getStockByBarcode('PURCHASE001')).toBe(3);
 
-    expect(getSupplierBalance(supplierId)).toBe(300)
-  })
+    expect(getSupplierBalance(supplierId)).toBe(300);
+  });
 
   it('blocks purchase edit even when its return history was cancelled', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -2130,9 +2130,9 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
     const purchaseReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
@@ -2148,13 +2148,13 @@ describe('purchases repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
     cancelPurchaseReturn({
       return_id: purchaseReturn.return_id,
 
       actor_id: 1,
-    })
+    });
 
     expect(() =>
       updatePurchaseInvoice({
@@ -2188,13 +2188,13 @@ describe('purchases repository', () => {
           },
         ],
       }),
-    ).toThrow('سجل مرتجعات شراء سابق')
-  })
+    ).toThrow('سجل مرتجعات شراء سابق');
+  });
 
   it('rejects duplicate variants in a purchase invoice', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     expect(() =>
       createPurchaseInvoice({
@@ -2221,13 +2221,13 @@ describe('purchases repository', () => {
           },
         ],
       }),
-    ).toThrow('صنف مكرر')
-  })
+    ).toThrow('صنف مكرر');
+  });
 
   it('rejects duplicate variants when editing a purchase invoice and keeps original state', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -2245,13 +2245,13 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    const before = getPurchaseInvoice(purchase.purchaseId) as any
+    const before = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(getStockByBarcode('PURCHASE001')).toBe(2)
+    expect(getStockByBarcode('PURCHASE001')).toBe(2);
 
-    expect(getSupplierBalance(supplierId)).toBe(200)
+    expect(getSupplierBalance(supplierId)).toBe(200);
 
     expect(() =>
       updatePurchaseInvoice({
@@ -2294,47 +2294,47 @@ describe('purchases repository', () => {
           },
         ],
       }),
-    ).toThrow('يوجد صنف مكرر أو غير صحيح داخل الفاتورة')
+    ).toThrow('يوجد صنف مكرر أو غير صحيح داخل الفاتورة');
 
-    const after = getPurchaseInvoice(purchase.purchaseId) as any
+    const after = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(after.purchase.id).toBe(before.purchase.id)
+    expect(after.purchase.id).toBe(before.purchase.id);
 
-    expect(after.purchase.created_at).toBe(before.purchase.created_at)
+    expect(after.purchase.created_at).toBe(before.purchase.created_at);
 
-    expect(Number(after.purchase.total_amount)).toBe(200)
+    expect(Number(after.purchase.total_amount)).toBe(200);
 
-    expect(Number(after.purchase.paid_amount)).toBe(0)
+    expect(Number(after.purchase.paid_amount)).toBe(0);
 
-    expect(Number(after.purchase.remaining_amount)).toBe(200)
+    expect(Number(after.purchase.remaining_amount)).toBe(200);
 
-    expect(after.purchase.payment_status).toBe('unpaid')
+    expect(after.purchase.payment_status).toBe('unpaid');
 
-    expect(after.items).toHaveLength(1)
+    expect(after.items).toHaveLength(1);
 
-    expect(Number(after.items[0].quantity)).toBe(2)
+    expect(Number(after.items[0].quantity)).toBe(2);
 
-    expect(Number(after.items[0].unit_cost)).toBe(100)
+    expect(Number(after.items[0].unit_cost)).toBe(100);
 
-    expect(getStockByBarcode('PURCHASE001')).toBe(2)
+    expect(getStockByBarcode('PURCHASE001')).toBe(2);
 
-    expect(getSupplierBalance(supplierId)).toBe(200)
+    expect(getSupplierBalance(supplierId)).toBe(200);
 
-    expect(getSupplierTotalPurchased(supplierId)).toBe(200)
+    expect(getSupplierTotalPurchased(supplierId)).toBe(200);
 
-    const costState = getVariantCostState('PURCHASE001')
+    const costState = getVariantCostState('PURCHASE001');
 
-    expect(Number(costState.buy_price)).toBe(100)
+    expect(Number(costState.buy_price)).toBe(100);
 
-    expect(Number(costState.average_cost)).toBe(100)
+    expect(Number(costState.average_cost)).toBe(100);
 
-    expect(Number(costState.inventory_value)).toBe(200)
-  })
+    expect(Number(costState.inventory_value)).toBe(200);
+  });
 
   it('rejects duplicate lines in the same purchase return', () => {
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
@@ -2352,11 +2352,11 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    const invoice = getPurchaseInvoice(purchase.purchaseId) as any
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    const itemId = Number(invoice.items[0].id)
+    const itemId = Number(invoice.items[0].id);
 
     expect(() =>
       createPurchaseReturn({
@@ -2379,15 +2379,15 @@ describe('purchases repository', () => {
           },
         ],
       }),
-    ).toThrow('مكرر')
+    ).toThrow('مكرر');
 
-    expect(getStockByBarcode('PURCHASE001')).toBe(5)
-  })
+    expect(getStockByBarcode('PURCHASE001')).toBe(5);
+  });
 
   it('includes supplier aging in the statement', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
     const insertPurchase = db.prepare(
       `
@@ -2415,15 +2415,15 @@ describe('purchases repository', () => {
           )
         )
         `,
-    )
+    );
 
-    insertPurchase.run(supplierId, 150, 150, '-5 days')
+    insertPurchase.run(supplierId, 150, 150, '-5 days');
 
-    insertPurchase.run(supplierId, 250, 250, '-45 days')
+    insertPurchase.run(supplierId, 250, 250, '-45 days');
 
-    insertPurchase.run(supplierId, 350, 350, '-75 days')
+    insertPurchase.run(supplierId, 350, 350, '-75 days');
 
-    insertPurchase.run(supplierId, 450, 450, '-120 days')
+    insertPurchase.run(supplierId, 450, 450, '-120 days');
 
     db.prepare(
       `
@@ -2433,9 +2433,9 @@ describe('purchases repository', () => {
 
       WHERE id = ?
       `,
-    ).run(supplierId)
+    ).run(supplierId);
 
-    const statement = getSupplierStatement(supplierId, 1) as any
+    const statement = getSupplierStatement(supplierId, 1) as any;
 
     expect(statement.summary.aging).toEqual({
       days_0_30: 150,
@@ -2447,17 +2447,17 @@ describe('purchases repository', () => {
       days_90_plus: 450,
 
       total: 1200,
-    })
+    });
 
-    expect(statement.summary.balance).toBe(1200)
-  })
+    expect(statement.summary.balance).toBe(1200);
+  });
 
   it('snapshots supplier credit terms into purchase due date', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const variant = seedPurchaseProduct()
+    const variant = seedPurchaseProduct();
 
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
     db.prepare(
       `
@@ -2467,7 +2467,7 @@ describe('purchases repository', () => {
 
       WHERE id = ?
       `,
-    ).run(supplierId)
+    ).run(supplierId);
 
     const purchase = createPurchaseInvoice({
       actor_id: 1,
@@ -2487,7 +2487,7 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
     const saved = db
       .prepare(
@@ -2502,9 +2502,9 @@ describe('purchases repository', () => {
         `,
       )
       .get(purchase.purchaseId) as {
-      business_date: string
-      due_date: string | null
-    }
+      business_date: string;
+      due_date: string | null;
+    };
 
     const expected = db
       .prepare(
@@ -2517,12 +2517,12 @@ describe('purchases repository', () => {
         `,
       )
       .get(saved.business_date) as {
-      due_date: string
-    }
+      due_date: string;
+    };
 
-    expect(purchase.due_date).toBe(expected.due_date)
+    expect(purchase.due_date).toBe(expected.due_date);
 
-    expect(saved.due_date).toBe(expected.due_date)
+    expect(saved.due_date).toBe(expected.due_date);
 
     db.prepare(
       `
@@ -2532,7 +2532,7 @@ describe('purchases repository', () => {
 
       WHERE id = ?
       `,
-    ).run(supplierId)
+    ).run(supplierId);
 
     const edited = updatePurchaseInvoice({
       purchase_id: purchase.purchaseId,
@@ -2566,9 +2566,9 @@ describe('purchases repository', () => {
           unit_cost: 100,
         },
       ],
-    })
+    });
 
-    expect(edited.due_date).toBe(expected.due_date)
+    expect(edited.due_date).toBe(expected.due_date);
 
     const afterEdit = db
       .prepare(
@@ -2581,16 +2581,16 @@ describe('purchases repository', () => {
         `,
       )
       .get(purchase.purchaseId) as {
-      due_date: string | null
-    }
+      due_date: string | null;
+    };
 
-    expect(afterEdit.due_date).toBe(expected.due_date)
-  })
+    expect(afterEdit.due_date).toBe(expected.due_date);
+  });
 
   it('includes supplier due summary in statement', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const supplierId = createTestSupplier()
+    const supplierId = createTestSupplier();
 
     db.prepare(
       `
@@ -2619,7 +2619,7 @@ describe('purchases repository', () => {
         )
       )
       `,
-    ).run(supplierId)
+    ).run(supplierId);
 
     db.prepare(
       `
@@ -2629,12 +2629,12 @@ describe('purchases repository', () => {
 
       WHERE id = ?
       `,
-    ).run(supplierId)
+    ).run(supplierId);
 
-    const statement = getSupplierStatement(supplierId, 1) as any
+    const statement = getSupplierStatement(supplierId, 1) as any;
 
-    expect(statement.summary.due.overdue).toBe(250)
+    expect(statement.summary.due.overdue).toBe(250);
 
-    expect(statement.summary.due.total_open).toBe(250)
-  })
-})
+    expect(statement.summary.due.total_open).toBe(250);
+  });
+});

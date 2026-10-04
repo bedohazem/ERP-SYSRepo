@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { beforeEach, describe, expect, it } from 'vitest';
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 import {
   addProductVariant,
   createProduct,
@@ -13,28 +13,28 @@ import {
   toggleProductActive,
   toggleVariantActive,
   updateVariant,
-} from '../../src/main/database/repositories/product.repo'
+} from '../../src/main/database/repositories/product.repo';
 
 type ProductVariantTestRow = {
-  id: number
-  product_id: number
-  barcode: string
-  size: string
-  color: string
-  buy_price: number
-  sell_price: number
-  discount_price: number | null
-  min_stock: number
-  is_active: number
-  stock: number
-}
+  id: number;
+  product_id: number;
+  barcode: string;
+  size: string;
+  color: string;
+  buy_price: number;
+  sell_price: number;
+  discount_price: number | null;
+  min_stock: number;
+  is_active: number;
+  stock: number;
+};
 
 describe('product repository', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
-  })
+    closeDb();
+    getDb();
+    resetDatabaseData();
+  });
 
   it('creates a product with one variant and opening stock', () => {
     const result = createProduct({
@@ -53,24 +53,24 @@ describe('product repository', () => {
           opening_qty: 10,
         },
       ],
-    })
+    });
 
-    expect(result.success).toBe(true)
-    expect(result.productId).toBeGreaterThan(0)
+    expect(result.success).toBe(true);
+    expect(result.productId).toBeGreaterThan(0);
 
-    const products = getProducts('T-Shirt')
-    expect(products).toHaveLength(1)
-    expect(products[0].name).toBe('T-Shirt')
-    expect(products[0].variants_count).toBe(1)
-    expect(products[0].active_variants_count).toBe(1)
+    const products = getProducts('T-Shirt');
+    expect(products).toHaveLength(1);
+    expect(products[0].name).toBe('T-Shirt');
+    expect(products[0].variants_count).toBe(1);
+    expect(products[0].active_variants_count).toBe(1);
 
     const variants = getProductVariants(
       result.productId,
-    ) as ProductVariantTestRow[]
-    expect(variants).toHaveLength(1)
-    expect(variants[0].barcode).toBe('TS001')
-    expect(variants[0].stock).toBe(10)
-  })
+    ) as ProductVariantTestRow[];
+    expect(variants).toHaveLength(1);
+    expect(variants[0].barcode).toBe('TS001');
+    expect(variants[0].stock).toBe(10);
+  });
 
   it('stores product prices as whole pounds', () => {
     const result = createProduct({
@@ -97,17 +97,17 @@ describe('product repository', () => {
           opening_qty: 1,
         },
       ],
-    })
+    });
 
     let variants = getProductVariants(
       result.productId,
-    ) as ProductVariantTestRow[]
+    ) as ProductVariantTestRow[];
 
-    expect(variants[0].buy_price).toBe(100)
+    expect(variants[0].buy_price).toBe(100);
 
-    expect(variants[0].sell_price).toBe(151)
+    expect(variants[0].sell_price).toBe(151);
 
-    expect(variants[0].discount_price).toBe(121)
+    expect(variants[0].discount_price).toBe(121);
 
     updateVariant({
       id: variants[0].id,
@@ -125,16 +125,16 @@ describe('product repository', () => {
       discount_price: 130.5,
 
       min_stock: 5,
-    })
+    });
 
-    variants = getProductVariants(result.productId) as ProductVariantTestRow[]
+    variants = getProductVariants(result.productId) as ProductVariantTestRow[];
 
-    expect(variants[0].buy_price).toBe(111)
+    expect(variants[0].buy_price).toBe(111);
 
-    expect(variants[0].sell_price).toBe(160)
+    expect(variants[0].sell_price).toBe(160);
 
-    expect(variants[0].discount_price).toBe(131)
-  })
+    expect(variants[0].discount_price).toBe(131);
+  });
 
   it('rejects empty product name', () => {
     expect(() =>
@@ -153,8 +153,8 @@ describe('product repository', () => {
           },
         ],
       }),
-    ).toThrow('اسم المنتج مطلوب')
-  })
+    ).toThrow('اسم المنتج مطلوب');
+  });
 
   it('rejects product without variants', () => {
     expect(() =>
@@ -163,8 +163,8 @@ describe('product repository', () => {
         category_id: null,
         variants: [],
       }),
-    ).toThrow('لازم تضيف صنف واحد على الأقل')
-  })
+    ).toThrow('لازم تضيف صنف واحد على الأقل');
+  });
 
   it('rejects empty barcode', () => {
     expect(() =>
@@ -183,8 +183,8 @@ describe('product repository', () => {
           },
         ],
       }),
-    ).toThrow('الباركود مطلوب')
-  })
+    ).toThrow('الباركود مطلوب');
+  });
 
   it('rejects duplicate barcode inside same product', () => {
     expect(() =>
@@ -212,8 +212,8 @@ describe('product repository', () => {
           },
         ],
       }),
-    ).toThrow('مكرر في نفس المنتج')
-  })
+    ).toThrow('مكرر في نفس المنتج');
+  });
 
   it('rejects existing barcode in another product', () => {
     createProduct({
@@ -230,7 +230,7 @@ describe('product repository', () => {
           opening_qty: 1,
         },
       ],
-    })
+    });
 
     expect(() =>
       createProduct({
@@ -248,8 +248,8 @@ describe('product repository', () => {
           },
         ],
       }),
-    ).toThrow('مستخدم بالفعل')
-  })
+    ).toThrow('مستخدم بالفعل');
+  });
 
   it('rejects negative opening quantity', () => {
     expect(() =>
@@ -268,8 +268,8 @@ describe('product repository', () => {
           },
         ],
       }),
-    ).toThrow('كمية المخزون الافتتاحي غير صحيحة')
-  })
+    ).toThrow('كمية المخزون الافتتاحي غير صحيحة');
+  });
 
   it('rolls back product creation when opening stock is invalid', () => {
     expect(() =>
@@ -288,11 +288,11 @@ describe('product repository', () => {
           },
         ],
       }),
-    ).toThrow()
+    ).toThrow();
 
-    const products = getProducts('Rollback Product', true)
-    expect(products).toHaveLength(0)
-  })
+    const products = getProducts('Rollback Product', true);
+    expect(products).toHaveLength(0);
+  });
 
   it('adds a variant to an existing product', () => {
     const product = createProduct({
@@ -309,7 +309,7 @@ describe('product repository', () => {
           opening_qty: 5,
         },
       ],
-    })
+    });
 
     const variant = addProductVariant({
       product_id: product.productId,
@@ -320,18 +320,18 @@ describe('product repository', () => {
       sell_price: 170,
       min_stock: 4,
       opening_qty: 3,
-    })
+    });
 
-    expect(variant.success).toBe(true)
-    expect(variant.variantId).toBeGreaterThan(0)
+    expect(variant.success).toBe(true);
+    expect(variant.variantId).toBeGreaterThan(0);
 
     const variants = getProductVariants(
       product.productId,
-    ) as ProductVariantTestRow[]
-    expect(variants).toHaveLength(2)
-    expect(variants[1].barcode).toBe('MULTI002')
-    expect(variants[1].stock).toBe(3)
-  })
+    ) as ProductVariantTestRow[];
+    expect(variants).toHaveLength(2);
+    expect(variants[1].barcode).toBe('MULTI002');
+    expect(variants[1].stock).toBe(3);
+  });
 
   it('searches sale variants only when stock is available', () => {
     createProduct({
@@ -357,14 +357,14 @@ describe('product repository', () => {
           opening_qty: 0,
         },
       ],
-    })
+    });
 
-    const results = searchSaleVariants('Searchable')
+    const results = searchSaleVariants('Searchable');
 
-    expect(results).toHaveLength(1)
-    expect(results[0].barcode).toBe('SEARCH001')
-    expect(results[0].stock).toBe(7)
-  })
+    expect(results).toHaveLength(1);
+    expect(results[0].barcode).toBe('SEARCH001');
+    expect(results[0].stock).toBe(7);
+  });
 
   it('gets variant by exact barcode', () => {
     createProduct({
@@ -381,14 +381,14 @@ describe('product repository', () => {
           opening_qty: 4,
         },
       ],
-    })
+    });
 
-    const variant = getVariantByBarcode('BAR001')
+    const variant = getVariantByBarcode('BAR001');
 
-    expect(variant).toBeDefined()
-    expect(variant?.barcode).toBe('BAR001')
-    expect(variant?.stock).toBe(4)
-  })
+    expect(variant).toBeDefined();
+    expect(variant?.barcode).toBe('BAR001');
+    expect(variant?.stock).toBe(4);
+  });
 
   it('rejects negative buy price', () => {
     expect(() =>
@@ -407,8 +407,8 @@ describe('product repository', () => {
           },
         ],
       }),
-    ).toThrow()
-  })
+    ).toThrow();
+  });
 
   it('rejects negative sell price', () => {
     expect(() =>
@@ -427,8 +427,8 @@ describe('product repository', () => {
           },
         ],
       }),
-    ).toThrow()
-  })
+    ).toThrow();
+  });
 
   it('rejects negative minimum stock', () => {
     expect(() =>
@@ -447,8 +447,8 @@ describe('product repository', () => {
           },
         ],
       }),
-    ).toThrow()
-  })
+    ).toThrow();
+  });
 
   it('rejects updating product with empty name', () => {
     const product = createProduct({
@@ -465,7 +465,7 @@ describe('product repository', () => {
           opening_qty: 1,
         },
       ],
-    })
+    });
 
     expect(() =>
       updateProduct({
@@ -475,8 +475,8 @@ describe('product repository', () => {
         description: null,
         image_path: null,
       }),
-    ).toThrow()
-  })
+    ).toThrow();
+  });
 
   it('rolls back product and variant edits when one variant update fails', () => {
     const product = createProduct({
@@ -502,7 +502,7 @@ describe('product repository', () => {
           opening_qty: 3,
         },
       ],
-    })
+    });
 
     createProduct({
       name: 'Atomic Other Product',
@@ -518,11 +518,11 @@ describe('product repository', () => {
           opening_qty: 1,
         },
       ],
-    })
+    });
 
     const before = getProductVariants(
       product.productId,
-    ) as ProductVariantTestRow[]
+    ) as ProductVariantTestRow[];
 
     expect(() =>
       updateProduct({
@@ -557,32 +557,32 @@ describe('product repository', () => {
           },
         ],
       }),
-    ).toThrow('مستخدم بالفعل')
+    ).toThrow('مستخدم بالفعل');
 
-    expect(getProducts('Atomic Changed Product', true)).toHaveLength(0)
+    expect(getProducts('Atomic Changed Product', true)).toHaveLength(0);
 
-    const originalProduct = getProducts('Atomic Original Product', true)
+    const originalProduct = getProducts('Atomic Original Product', true);
 
-    expect(originalProduct).toHaveLength(1)
-    expect(originalProduct[0].name).toBe('Atomic Original Product')
+    expect(originalProduct).toHaveLength(1);
+    expect(originalProduct[0].name).toBe('Atomic Original Product');
 
     const after = getProductVariants(
       product.productId,
-    ) as ProductVariantTestRow[]
+    ) as ProductVariantTestRow[];
 
-    expect(after).toHaveLength(2)
+    expect(after).toHaveLength(2);
 
-    expect(after[0].barcode).toBe('ATOMIC-001')
-    expect(after[0].size).toBe('M')
-    expect(after[0].color).toBe('Black')
-    expect(after[0].buy_price).toBe(100)
-    expect(after[0].sell_price).toBe(150)
-    expect(after[0].min_stock).toBe(5)
-    expect(after[0].stock).toBe(2)
+    expect(after[0].barcode).toBe('ATOMIC-001');
+    expect(after[0].size).toBe('M');
+    expect(after[0].color).toBe('Black');
+    expect(after[0].buy_price).toBe(100);
+    expect(after[0].sell_price).toBe(150);
+    expect(after[0].min_stock).toBe(5);
+    expect(after[0].stock).toBe(2);
 
-    expect(after[1].barcode).toBe('ATOMIC-002')
-    expect(after[1].stock).toBe(3)
-  })
+    expect(after[1].barcode).toBe('ATOMIC-002');
+    expect(after[1].stock).toBe(3);
+  });
 
   it('keeps stock and inventory value when disabling a variant', () => {
     const product = createProduct({
@@ -599,13 +599,13 @@ describe('product repository', () => {
           opening_qty: 5,
         },
       ],
-    })
+    });
 
     const before = getProductVariants(
       product.productId,
-    ) as ProductVariantTestRow[]
+    ) as ProductVariantTestRow[];
 
-    const variantId = before[0].id
+    const variantId = before[0].id;
 
     const beforeCost = getDb()
       .prepare(
@@ -618,18 +618,18 @@ describe('product repository', () => {
         `,
       )
       .get(variantId) as {
-      average_cost: number
-      inventory_value: number
-    }
+      average_cost: number;
+      inventory_value: number;
+    };
 
-    toggleVariantActive(variantId, 0)
+    toggleVariantActive(variantId, 0);
 
     const disabled = getProductVariants(
       product.productId,
-    ) as ProductVariantTestRow[]
+    ) as ProductVariantTestRow[];
 
-    expect(disabled[0].is_active).toBe(0)
-    expect(disabled[0].stock).toBe(5)
+    expect(disabled[0].is_active).toBe(0);
+    expect(disabled[0].stock).toBe(5);
 
     const afterCost = getDb()
       .prepare(
@@ -642,12 +642,12 @@ describe('product repository', () => {
         `,
       )
       .get(variantId) as {
-      average_cost: number
-      inventory_value: number
-    }
+      average_cost: number;
+      inventory_value: number;
+    };
 
-    expect(afterCost.average_cost).toBe(beforeCost.average_cost)
-    expect(afterCost.inventory_value).toBe(beforeCost.inventory_value)
+    expect(afterCost.average_cost).toBe(beforeCost.average_cost);
+    expect(afterCost.inventory_value).toBe(beforeCost.inventory_value);
 
     const zeroMovements = getDb()
       .prepare(
@@ -658,21 +658,21 @@ describe('product repository', () => {
           AND reference_type = 'deactivate_zero_stock'
         `,
       )
-      .get(variantId) as { count: number }
+      .get(variantId) as { count: number };
 
-    expect(zeroMovements.count).toBe(0)
+    expect(zeroMovements.count).toBe(0);
 
-    expect(searchSaleVariants('Disable Variant Product')).toHaveLength(0)
+    expect(searchSaleVariants('Disable Variant Product')).toHaveLength(0);
 
-    toggleVariantActive(variantId, 1)
+    toggleVariantActive(variantId, 1);
 
     const reactivated = getProductVariants(
       product.productId,
-    ) as ProductVariantTestRow[]
+    ) as ProductVariantTestRow[];
 
-    expect(reactivated[0].stock).toBe(5)
-    expect(searchSaleVariants('Disable Variant Product')).toHaveLength(1)
-  })
+    expect(reactivated[0].stock).toBe(5);
+    expect(searchSaleVariants('Disable Variant Product')).toHaveLength(1);
+  });
 
   it('keeps all variant stock when disabling a product', () => {
     const product = createProduct({
@@ -698,25 +698,25 @@ describe('product repository', () => {
           opening_qty: 2,
         },
       ],
-    })
+    });
 
     const before = getProductVariants(
       product.productId,
-    ) as ProductVariantTestRow[]
+    ) as ProductVariantTestRow[];
 
-    toggleProductActive(product.productId, 0)
+    toggleProductActive(product.productId, 0);
 
     const after = getProductVariants(
       product.productId,
-    ) as ProductVariantTestRow[]
+    ) as ProductVariantTestRow[];
 
-    expect(after).toHaveLength(2)
+    expect(after).toHaveLength(2);
 
     expect(after.map((variant) => variant.stock)).toEqual(
       before.map((variant) => variant.stock),
-    )
+    );
 
-    expect(searchSaleVariants('Disable Whole Product')).toHaveLength(0)
+    expect(searchSaleVariants('Disable Whole Product')).toHaveLength(0);
 
     const zeroMovements = getDb()
       .prepare(
@@ -727,20 +727,20 @@ describe('product repository', () => {
           AND reference_type = 'deactivate_zero_stock'
         `,
       )
-      .get(before[0].id, before[1].id) as { count: number }
+      .get(before[0].id, before[1].id) as { count: number };
 
-    expect(zeroMovements.count).toBe(0)
+    expect(zeroMovements.count).toBe(0);
 
-    toggleProductActive(product.productId, 1)
+    toggleProductActive(product.productId, 1);
 
     const reactivated = getProductVariants(
       product.productId,
-    ) as ProductVariantTestRow[]
+    ) as ProductVariantTestRow[];
 
-    expect(reactivated.map((variant) => variant.stock)).toEqual([3, 2])
+    expect(reactivated.map((variant) => variant.stock)).toEqual([3, 2]);
 
-    expect(searchSaleVariants('Disable Whole Product')).toHaveLength(2)
-  })
+    expect(searchSaleVariants('Disable Whole Product')).toHaveLength(2);
+  });
 
   it('keeps stock when variant is disabled through updateVariant', () => {
     const product = createProduct({
@@ -757,13 +757,13 @@ describe('product repository', () => {
           opening_qty: 4,
         },
       ],
-    })
+    });
 
     const before = getProductVariants(
       product.productId,
-    ) as ProductVariantTestRow[]
+    ) as ProductVariantTestRow[];
 
-    const variant = before[0]
+    const variant = before[0];
 
     updateVariant({
       id: variant.id,
@@ -775,14 +775,14 @@ describe('product repository', () => {
       discount_price: variant.discount_price,
       min_stock: variant.min_stock,
       is_active: 0,
-    })
+    });
 
     const after = getProductVariants(
       product.productId,
-    ) as ProductVariantTestRow[]
+    ) as ProductVariantTestRow[];
 
-    expect(after[0].is_active).toBe(0)
-    expect(after[0].stock).toBe(4)
+    expect(after[0].is_active).toBe(0);
+    expect(after[0].stock).toBe(4);
 
     const zeroMovements = getDb()
       .prepare(
@@ -793,10 +793,10 @@ describe('product repository', () => {
           AND reference_type = 'deactivate_zero_stock'
         `,
       )
-      .get(variant.id) as { count: number }
+      .get(variant.id) as { count: number };
 
-    expect(zeroMovements.count).toBe(0)
-  })
+    expect(zeroMovements.count).toBe(0);
+  });
 
   it('paginates products and returns the filtered total', () => {
     createProduct({
@@ -813,7 +813,7 @@ describe('product repository', () => {
           opening_qty: 0,
         },
       ],
-    })
+    });
 
     createProduct({
       name: 'Paged Product 2',
@@ -829,7 +829,7 @@ describe('product repository', () => {
           opening_qty: 0,
         },
       ],
-    })
+    });
 
     createProduct({
       name: 'Paged Product 3',
@@ -845,33 +845,33 @@ describe('product repository', () => {
           opening_qty: 0,
         },
       ],
-    })
+    });
 
     const firstPage = listProductsPage({
       search: 'Paged Product',
       limit: 2,
       offset: 0,
-    })
+    });
 
-    expect(firstPage.total).toBe(3)
-    expect(firstPage.rows).toHaveLength(2)
-    expect((firstPage.rows[0] as any).name).toBe('Paged Product 3')
-    expect((firstPage.rows[1] as any).name).toBe('Paged Product 2')
-    expect(firstPage.limit).toBe(2)
-    expect(firstPage.offset).toBe(0)
+    expect(firstPage.total).toBe(3);
+    expect(firstPage.rows).toHaveLength(2);
+    expect((firstPage.rows[0] as any).name).toBe('Paged Product 3');
+    expect((firstPage.rows[1] as any).name).toBe('Paged Product 2');
+    expect(firstPage.limit).toBe(2);
+    expect(firstPage.offset).toBe(0);
 
     const secondPage = listProductsPage({
       search: 'Paged Product',
       limit: 2,
       offset: 2,
-    })
+    });
 
-    expect(secondPage.total).toBe(3)
-    expect(secondPage.rows).toHaveLength(1)
-    expect((secondPage.rows[0] as any).name).toBe('Paged Product 1')
-    expect(secondPage.limit).toBe(2)
-    expect(secondPage.offset).toBe(2)
-  })
+    expect(secondPage.total).toBe(3);
+    expect(secondPage.rows).toHaveLength(1);
+    expect((secondPage.rows[0] as any).name).toBe('Paged Product 1');
+    expect(secondPage.limit).toBe(2);
+    expect(secondPage.offset).toBe(2);
+  });
 
   it('uses discount price as the active sale price', () => {
     const product = createProduct({
@@ -897,33 +897,33 @@ describe('product repository', () => {
           opening_qty: 3,
         },
       ],
-    })
+    });
 
     const variants = getProductVariants(
       product.productId,
-    ) as ProductVariantTestRow[]
+    ) as ProductVariantTestRow[];
 
-    expect(variants[0].sell_price).toBe(900)
+    expect(variants[0].sell_price).toBe(900);
 
-    expect(variants[0].discount_price).toBe(500)
+    expect(variants[0].discount_price).toBe(500);
 
-    const barcodeVariant = getVariantByBarcode('DISCOUNT001')
+    const barcodeVariant = getVariantByBarcode('DISCOUNT001');
 
-    expect(barcodeVariant?.original_sell_price).toBe(900)
+    expect(barcodeVariant?.original_sell_price).toBe(900);
 
-    expect(barcodeVariant?.discount_price).toBe(500)
+    expect(barcodeVariant?.discount_price).toBe(500);
 
-    expect(barcodeVariant?.sell_price).toBe(500)
+    expect(barcodeVariant?.sell_price).toBe(500);
 
-    const search = searchSaleVariants('Discount Product')
+    const search = searchSaleVariants('Discount Product');
 
-    expect(search[0].sell_price).toBe(500)
-  })
+    expect(search[0].sell_price).toBe(500);
+  });
 
   it('filters products without category and returns the filtered total', () => {
     const category = createCategory({
       name: 'Categorized Products',
-    })
+    });
 
     createProduct({
       name: 'Product With Category',
@@ -944,7 +944,7 @@ describe('product repository', () => {
           opening_qty: 0,
         },
       ],
-    })
+    });
 
     createProduct({
       name: 'Product Without Category 1',
@@ -965,7 +965,7 @@ describe('product repository', () => {
           opening_qty: 0,
         },
       ],
-    })
+    });
 
     createProduct({
       name: 'Product Without Category 2',
@@ -986,32 +986,34 @@ describe('product repository', () => {
           opening_qty: 0,
         },
       ],
-    })
+    });
 
     const result = listProductsPage({
       categoryId: 'uncategorized',
 
       limit: 50,
       offset: 0,
-    })
+    });
 
-    expect(result.total).toBe(2)
+    expect(result.total).toBe(2);
 
-    expect(result.rows).toHaveLength(2)
+    expect(result.rows).toHaveLength(2);
 
-    expect(result.rows.every((row: any) => row.category_id === null)).toBe(true)
+    expect(result.rows.every((row: any) => row.category_id === null)).toBe(
+      true,
+    );
 
     const categorized = listProductsPage({
       categoryId: category.id,
 
       limit: 50,
       offset: 0,
-    })
+    });
 
-    expect(categorized.total).toBe(1)
+    expect(categorized.total).toBe(1);
 
-    expect((categorized.rows[0] as any).name).toBe('Product With Category')
-  })
+    expect((categorized.rows[0] as any).name).toBe('Product With Category');
+  });
 
   it('rejects discount price equal to or above regular price', () => {
     expect(() =>
@@ -1039,6 +1041,6 @@ describe('product repository', () => {
           },
         ],
       }),
-    ).toThrow('السعر بعد الخصم يجب أن يكون أقل من سعر البيع الأصلي')
-  })
-})
+    ).toThrow('السعر بعد الخصم يجب أن يكون أقل من سعر البيع الأصلي');
+  });
+});

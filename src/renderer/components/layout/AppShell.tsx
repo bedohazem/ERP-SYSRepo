@@ -1,37 +1,37 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../../store/auth.store'
-import { useAppStore } from '../../store/app.store'
-import ShiftHeaderControl from '../shifts/ShiftHeaderControl'
-import type { PermissionKey } from '../../../shared/permissions'
+import { useEffect, useState, type ReactNode } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../store/auth.store';
+import { useAppStore } from '../../store/app.store';
+import ShiftHeaderControl from '../shifts/ShiftHeaderControl';
+import type { PermissionKey } from '../../../shared/permissions';
 
-import { hasUserPermission } from '../../utils/permissions'
+import { hasUserPermission } from '../../utils/permissions';
 
-type AppTheme = 'dark' | 'light'
+type AppTheme = 'dark' | 'light';
 
-const UI_IDLE_TIMEOUT_MS = 15 * 60 * 1000
+const UI_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 
-const SESSION_TOUCH_INTERVAL_MS = 60 * 1000
+const SESSION_TOUCH_INTERVAL_MS = 60 * 1000;
 
 function applyAppTheme(theme?: AppTheme) {
   document.documentElement.setAttribute(
     'data-theme',
     theme === 'light' ? 'light' : 'dark',
-  )
+  );
 }
 
-type Role = 'admin' | 'cashier'
+type Role = 'admin' | 'cashier';
 
 type MenuItem = {
-  to: string
-  label: string
-  icon: string
-  title: string
+  to: string;
+  label: string;
+  icon: string;
+  title: string;
 
-  roles?: Role[]
+  roles?: Role[];
 
-  permission?: PermissionKey
-}
+  permission?: PermissionKey;
+};
 
 const menuItems: MenuItem[] = [
   {
@@ -184,63 +184,63 @@ const menuItems: MenuItem[] = [
     title: 'عن البرنامج والدعم',
     permission: 'about.view',
   },
-]
+];
 
 function normalizeEscapeLabel(value?: string | null) {
   return String(value || '')
     .replace(/\s+/g, ' ')
-    .trim()
+    .trim();
 }
 
 function isVisiblePopupElement(element: HTMLElement) {
-  const style = window.getComputedStyle(element)
+  const style = window.getComputedStyle(element);
 
   return (
     style.display !== 'none' &&
     style.visibility !== 'hidden' &&
     element.getClientRects().length > 0
-  )
+  );
 }
 
 function getTopVisiblePopup(selector: string) {
   const elements = Array.from(
     document.querySelectorAll<HTMLElement>(selector),
-  ).filter(isVisiblePopupElement)
+  ).filter(isVisiblePopupElement);
 
-  let selected: HTMLElement | null = null
-  let selectedZIndex = Number.NEGATIVE_INFINITY
+  let selected: HTMLElement | null = null;
+  let selectedZIndex = Number.NEGATIVE_INFINITY;
 
   elements.forEach((element) => {
     const rawZIndex = Number.parseInt(
       window.getComputedStyle(element).zIndex,
       10,
-    )
+    );
 
-    const zIndex = Number.isFinite(rawZIndex) ? rawZIndex : 0
+    const zIndex = Number.isFinite(rawZIndex) ? rawZIndex : 0;
 
     if (!selected || zIndex >= selectedZIndex) {
-      selected = element
-      selectedZIndex = zIndex
+      selected = element;
+      selectedZIndex = zIndex;
     }
-  })
+  });
 
-  return selected
+  return selected;
 }
 
 function findEscapeCloseButton(root: HTMLElement) {
   const buttons = Array.from(
     root.querySelectorAll<HTMLButtonElement>('button'),
-  ).filter((button) => !button.disabled)
+  ).filter((button) => !button.disabled);
 
   // الأولوية لزر إغلاق حقيقي أو X
   const closeButton = buttons.find((button) => {
     if (button.dataset.escapeClose === 'true') {
-      return true
+      return true;
     }
 
-    const text = normalizeEscapeLabel(button.textContent)
-    const ariaLabel = normalizeEscapeLabel(button.getAttribute('aria-label'))
-    const title = normalizeEscapeLabel(button.getAttribute('title'))
+    const text = normalizeEscapeLabel(button.textContent);
+    const ariaLabel = normalizeEscapeLabel(button.getAttribute('aria-label'));
+    const title = normalizeEscapeLabel(button.getAttribute('title'));
 
     return (
       text === '×' ||
@@ -252,17 +252,17 @@ function findEscapeCloseButton(root: HTMLElement) {
       /^(إغلاق|اغلاق)(?:\s|$)/.test(text) ||
       /(إغلاق|اغلاق|close)/i.test(ariaLabel) ||
       /(إغلاق|اغلاق|close)/i.test(title)
-    )
-  })
+    );
+  });
 
   if (closeButton) {
-    return closeButton
+    return closeButton;
   }
 
   // لو مفيش زر إغلاق، نستخدم زر الإلغاء
   return (
     buttons.find((button) => {
-      const text = normalizeEscapeLabel(button.textContent)
+      const text = normalizeEscapeLabel(button.textContent);
 
       return (
         text === 'إلغاء' ||
@@ -270,293 +270,299 @@ function findEscapeCloseButton(root: HTMLElement) {
         text === 'رجوع' ||
         text === 'عودة' ||
         text.toLowerCase() === 'cancel'
-      )
+      );
     }) || null
-  )
+  );
 }
 
 export default function AppShell({
   title,
   children,
 }: {
-  title: string
-  children: ReactNode
+  title: string;
+  children: ReactNode;
 }) {
-  const user = useAuthStore((s) => s.user)
-  const logout = useAuthStore((s) => s.logout)
-  const lockSession = useAuthStore((s) => s.lock)
-  const setPermissions = useAuthStore((s) => s.setPermissions)
-  const navigate = useNavigate()
-  const location = useLocation()
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+  const lockSession = useAuthStore((s) => s.lock);
+  const setPermissions = useAuthStore((s) => s.setPermissions);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const { sidebarOpen, toggleSidebar } = useAppStore()
+  const { sidebarOpen, toggleSidebar } = useAppStore();
 
   const [pageStickyEnabled, setPageStickyEnabled] = useState(() => {
     return (
       localStorage.getItem(`erp_page_sticky:${location.pathname}`) !== 'false'
-    )
-  })
+    );
+  });
 
   useEffect(() => {
     setPageStickyEnabled(
       localStorage.getItem(`erp_page_sticky:${location.pathname}`) !== 'false',
-    )
-  }, [location.pathname])
+    );
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!user?.id) {
-      return
+      return;
     }
 
-    let idleTimer: number | undefined
+    let idleTimer: number | undefined;
 
-    let lastServerTouchAt = 0
+    let lastServerTouchAt = 0;
 
-    let locking = false
+    let locking = false;
 
     async function lockNow() {
       if (locking) {
-        return
+        return;
       }
 
-      locking = true
+      locking = true;
 
       try {
-        await lockSession()
+        await lockSession();
       } finally {
         navigate('/?locked=1', {
           replace: true,
-        })
+        });
       }
     }
 
     function scheduleIdleLock() {
       if (idleTimer) {
-        window.clearTimeout(idleTimer)
+        window.clearTimeout(idleTimer);
       }
 
       idleTimer = window.setTimeout(() => {
-        void lockNow()
-      }, UI_IDLE_TIMEOUT_MS)
+        void lockNow();
+      }, UI_IDLE_TIMEOUT_MS);
     }
 
     function touchServer() {
-      const now = Date.now()
+      const now = Date.now();
 
       if (now - lastServerTouchAt < SESSION_TOUCH_INTERVAL_MS) {
-        return
+        return;
       }
 
-      lastServerTouchAt = now
+      lastServerTouchAt = now;
 
       void window.api
         .touchAuthSession()
         .then((result) => {
           if (!result.success) {
-            void lockNow()
+            void lockNow();
           }
           if (Array.isArray(result.permissions)) {
-            setPermissions(result.permissions)
+            setPermissions(result.permissions);
           }
         })
         .catch(() => {
-          void lockNow()
-        })
+          void lockNow();
+        });
     }
 
     function handleActivity() {
-      scheduleIdleLock()
-      touchServer()
+      scheduleIdleLock();
+      touchServer();
     }
 
-    const events = ['pointerdown', 'keydown', 'touchstart', 'wheel'] as const
+    const events = ['pointerdown', 'keydown', 'touchstart', 'wheel'] as const;
 
     events.forEach((eventName) => {
-      window.addEventListener(eventName, handleActivity)
-    })
+      window.addEventListener(eventName, handleActivity);
+    });
 
-    window.addEventListener('focus', handleActivity)
+    window.addEventListener('focus', handleActivity);
 
-    scheduleIdleLock()
-    touchServer()
+    scheduleIdleLock();
+    touchServer();
 
     return () => {
       if (idleTimer) {
-        window.clearTimeout(idleTimer)
+        window.clearTimeout(idleTimer);
       }
 
       events.forEach((eventName) => {
-        window.removeEventListener(eventName, handleActivity)
-      })
+        window.removeEventListener(eventName, handleActivity);
+      });
 
-      window.removeEventListener('focus', handleActivity)
-    }
-  }, [user?.id, lockSession, navigate, setPermissions])
+      window.removeEventListener('focus', handleActivity);
+    };
+  }, [user?.id, lockSession, navigate, setPermissions]);
 
   function togglePageSticky() {
     setPageStickyEnabled((current) => {
-      const next = !current
+      const next = !current;
 
-      localStorage.setItem(`erp_page_sticky:${location.pathname}`, String(next))
+      localStorage.setItem(
+        `erp_page_sticky:${location.pathname}`,
+        String(next),
+      );
 
-      return next
-    })
+      return next;
+    });
   }
 
-  const [isMobile, setIsMobile] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [appLogoUrl, setAppLogoUrl] = useState('')
-  const [appName, setAppName] = useState('ERP Store')
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [appLogoUrl, setAppLogoUrl] = useState('');
+  const [appName, setAppName] = useState('ERP Store');
 
   const [appTheme, setAppTheme] = useState<'dark' | 'light'>(
     document.documentElement.getAttribute('data-theme') === 'light'
       ? 'light'
       : 'dark',
-  )
+  );
 
   function applyTheme(theme: 'dark' | 'light') {
-    setAppTheme(theme)
-    document.documentElement.setAttribute('data-theme', theme)
+    setAppTheme(theme);
+    document.documentElement.setAttribute('data-theme', theme);
   }
 
   async function changeTheme(theme: 'dark' | 'light') {
-    applyTheme(theme)
+    applyTheme(theme);
 
     try {
       const result = await window.api.saveAppTheme(theme, {
         actor_id: user?.id,
-      })
+      });
 
       if (result?.success === false) {
-        return
+        return;
       }
 
       if (result?.status?.app_theme) {
-        applyTheme(result.status.app_theme === 'light' ? 'light' : 'dark')
+        applyTheme(result.status.app_theme === 'light' ? 'light' : 'dark');
 
         window.dispatchEvent(
           new CustomEvent('license-status-changed', {
             detail: result.status,
           }),
-        )
+        );
       }
     } catch (error) {
-      console.error('Failed to save app theme:', error)
+      console.error('Failed to save app theme:', error);
     }
   }
-  const isLight = appTheme === 'light'
+  const isLight = appTheme === 'light';
 
-  const userRole: Role = user?.role === 'admin' ? 'admin' : 'cashier'
+  const userRole: Role = user?.role === 'admin' ? 'admin' : 'cashier';
 
   const visibleMenuItems = menuItems.filter((item) => {
-    const roleAllowed = !item.roles || item.roles.includes(userRole)
+    const roleAllowed = !item.roles || item.roles.includes(userRole);
 
     const permissionAllowed =
-      !item.permission || hasUserPermission(user, item.permission)
+      !item.permission || hasUserPermission(user, item.permission);
 
-    return roleAllowed && permissionAllowed
-  })
+    return roleAllowed && permissionAllowed;
+  });
 
-  const effectiveSidebarOpen = isMobile ? true : sidebarOpen
+  const effectiveSidebarOpen = isMobile ? true : sidebarOpen;
 
   useEffect(() => {
     function handleResize() {
-      const nextIsMobile = window.innerWidth <= 900
-      setIsMobile(nextIsMobile)
+      const nextIsMobile = window.innerWidth <= 900;
+      setIsMobile(nextIsMobile);
 
       if (!nextIsMobile) {
-        setMobileMenuOpen(false)
+        setMobileMenuOpen(false);
       }
     }
 
-    handleResize()
+    handleResize();
 
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     function handleGlobalEscape(event: KeyboardEvent) {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape') return;
 
       // لو الصفحة نفسها تعاملت بالفعل مع Esc
       // زي Payment Modal في المبيعات، منعملش حاجة تانية.
-      if (event.defaultPrevented) return
+      if (event.defaultPrevented) return;
 
-      const modalOverlay = getTopVisiblePopup('.theme-modal-overlay')
+      const modalOverlay = getTopVisiblePopup('.theme-modal-overlay');
 
       if (modalOverlay) {
-        const closeButton = findEscapeCloseButton(modalOverlay)
+        const closeButton = findEscapeCloseButton(modalOverlay);
 
         if (closeButton) {
-          event.preventDefault()
-          closeButton.click()
+          event.preventDefault();
+          closeButton.click();
         }
 
         // طالما فيه Modal مفتوح ممنوع نقفل حاجة تحته.
-        return
+        return;
       }
 
       // على الموبايل Esc يقفل القائمة الجانبية.
       if (isMobile && mobileMenuOpen) {
-        event.preventDefault()
-        setMobileMenuOpen(false)
+        event.preventDefault();
+        setMobileMenuOpen(false);
       }
     }
 
-    document.addEventListener('keydown', handleGlobalEscape)
+    document.addEventListener('keydown', handleGlobalEscape);
 
     return () => {
-      document.removeEventListener('keydown', handleGlobalEscape)
-    }
-  }, [isMobile, mobileMenuOpen])
+      document.removeEventListener('keydown', handleGlobalEscape);
+    };
+  }, [isMobile, mobileMenuOpen]);
 
   useEffect(() => {
     void window.api
       .getLicenseStatus()
       .then((status) => {
-        setAppLogoUrl(status.app_logo_url || '')
-        setAppName(status.app_name || 'ERP Store')
-        const nextTheme = status.app_theme === 'light' ? 'light' : 'dark'
-        applyTheme(nextTheme)
+        setAppLogoUrl(status.app_logo_url || '');
+        setAppName(status.app_name || 'ERP Store');
+        const nextTheme = status.app_theme === 'light' ? 'light' : 'dark';
+        applyTheme(nextTheme);
       })
       .catch(() => {
-        setAppLogoUrl('')
-        setAppName('ERP Store')
-      })
-  }, [])
+        setAppLogoUrl('');
+        setAppName('ERP Store');
+      });
+  }, []);
 
   async function handleLogout() {
     try {
-      await logout()
-      navigate('/')
+      await logout();
+      navigate('/');
     } catch (error) {
-      console.error('Logout error:', error)
-      window.alert('تعذر تسجيل الخروج، حاول مرة أخرى')
+      console.error('Logout error:', error);
+      window.alert('تعذر تسجيل الخروج، حاول مرة أخرى');
     }
   }
 
   useEffect(() => {
     function handleLicenseChanged(event: Event) {
-      const customEvent = event as CustomEvent<any>
+      const customEvent = event as CustomEvent<any>;
 
       if (customEvent.detail) {
-        setAppLogoUrl(customEvent.detail.app_logo_url || '')
-        setAppName(customEvent.detail.app_name || 'ERP Store')
+        setAppLogoUrl(customEvent.detail.app_logo_url || '');
+        setAppName(customEvent.detail.app_name || 'ERP Store');
         const nextTheme =
-          customEvent.detail.app_theme === 'light' ? 'light' : 'dark'
-        setAppTheme(nextTheme)
-        document.documentElement.setAttribute('data-theme', nextTheme)
-        applyAppTheme(customEvent.detail.app_theme)
+          customEvent.detail.app_theme === 'light' ? 'light' : 'dark';
+        setAppTheme(nextTheme);
+        document.documentElement.setAttribute('data-theme', nextTheme);
+        applyAppTheme(customEvent.detail.app_theme);
       }
     }
 
-    window.addEventListener('license-status-changed', handleLicenseChanged)
+    window.addEventListener('license-status-changed', handleLicenseChanged);
 
     return () => {
-      window.removeEventListener('license-status-changed', handleLicenseChanged)
-    }
-  }, [])
+      window.removeEventListener(
+        'license-status-changed',
+        handleLicenseChanged,
+      );
+    };
+  }, []);
 
   return (
     <div
@@ -734,14 +740,14 @@ export default function AppShell({
         className="app-sidebar-scroll"
         onMouseDown={(event) => {
           if (event.button === 1) {
-            event.preventDefault()
-            event.stopPropagation()
+            event.preventDefault();
+            event.stopPropagation();
           }
         }}
         onAuxClick={(event) => {
           if (event.button === 1) {
-            event.preventDefault()
-            event.stopPropagation()
+            event.preventDefault();
+            event.stopPropagation();
           }
         }}
         style={{
@@ -821,9 +827,9 @@ export default function AppShell({
             type="button"
             onClick={() => {
               if (isMobile) {
-                setMobileMenuOpen(false)
+                setMobileMenuOpen(false);
               } else {
-                toggleSidebar()
+                toggleSidebar();
               }
             }}
             title={
@@ -890,11 +896,11 @@ export default function AppShell({
               title={item.title}
               onClick={() => {
                 if (item.to === '/sales') {
-                  window.dispatchEvent(new CustomEvent('sales-focus-barcode'))
+                  window.dispatchEvent(new CustomEvent('sales-focus-barcode'));
                 }
 
                 if (isMobile) {
-                  setMobileMenuOpen(false)
+                  setMobileMenuOpen(false);
                 }
               }}
               style={({ isActive }) => ({
@@ -1006,7 +1012,7 @@ export default function AppShell({
         </div>
       </aside>
     </div>
-  )
+  );
 }
 
 function LogoBox({ appLogoUrl, size }: { appLogoUrl: string; size: number }) {
@@ -1034,14 +1040,14 @@ function LogoBox({ appLogoUrl, size }: { appLogoUrl: string; size: number }) {
             objectFit: 'cover',
           }}
           onError={(e) => {
-            e.currentTarget.style.display = 'none'
+            e.currentTarget.style.display = 'none';
           }}
         />
       ) : (
         <span style={{ fontSize: '20px' }}>👕</span>
       )}
     </div>
-  )
+  );
 }
 
 const mobileMenuButtonStyle: React.CSSProperties = {
@@ -1053,7 +1059,7 @@ const mobileMenuButtonStyle: React.CSSProperties = {
   color: '#fff',
   cursor: 'pointer',
   fontSize: '20px',
-}
+};
 
 function themeButtonStyle(
   active: boolean,
@@ -1077,5 +1083,5 @@ function themeButtonStyle(
     cursor: 'pointer',
     padding: expanded ? '0 12px' : '0',
     width: '100%',
-  }
+  };
 }

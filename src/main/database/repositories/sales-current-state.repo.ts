@@ -1,21 +1,21 @@
-import { getDb } from '../db'
-import { roundMoney } from '../../../shared/money'
+import { getDb } from '../db';
+import { roundMoney } from '../../../shared/money';
 
 function positive(value: unknown) {
-  return Math.max(0, Number(value || 0))
+  return Math.max(0, Number(value || 0));
 }
 
 function isRegularUnitGroupId(value?: string | null) {
-  return String(value || '').startsWith('regular:')
+  return String(value || '').startsWith('regular:');
 }
 
 export function getSaleCurrentState(saleIdInput: number) {
-  const db = getDb()
+  const db = getDb();
 
-  const saleId = Number(saleIdInput)
+  const saleId = Number(saleIdInput);
 
   if (!saleId) {
-    throw new Error('رقم الفاتورة غير صحيح')
+    throw new Error('رقم الفاتورة غير صحيح');
   }
 
   const sale = db
@@ -46,10 +46,10 @@ export function getSaleCurrentState(saleIdInput: number) {
       LIMIT 1
       `,
     )
-    .get(saleId) as any
+    .get(saleId) as any;
 
   if (!sale) {
-    throw new Error('الفاتورة غير موجودة')
+    throw new Error('الفاتورة غير موجودة');
   }
 
   const salePayments = db
@@ -72,12 +72,12 @@ export function getSaleCurrentState(saleIdInput: number) {
       `,
     )
     .all(saleId) as Array<{
-    id: number
-    sale_id: number
-    payment_method: string
-    amount: number
-    created_at: string
-  }>
+    id: number;
+    sale_id: number;
+    payment_method: string;
+    amount: number;
+    created_at: string;
+  }>;
 
   const promotionSnapshots = db
     .prepare(
@@ -102,10 +102,10 @@ export function getSaleCurrentState(saleIdInput: number) {
         promotion_id ASC
       `,
     )
-    .all(saleId) as any[]
+    .all(saleId) as any[];
 
   const promotionSnapshot =
-    promotionSnapshots.length === 1 ? promotionSnapshots[0] : null
+    promotionSnapshots.length === 1 ? promotionSnapshots[0] : null;
 
   const loyaltySnapshot = db
     .prepare(
@@ -116,10 +116,10 @@ export function getSaleCurrentState(saleIdInput: number) {
       LIMIT 1
       `,
     )
-    .get(saleId) as any
+    .get(saleId) as any;
 
   const loyaltySnapshotIsExact =
-    String(loyaltySnapshot?.source || 'legacy_estimated') === 'exact'
+    String(loyaltySnapshot?.source || 'legacy_estimated') === 'exact';
 
   const effectiveLoyaltySnapshot = {
     enabled: Number(loyaltySnapshot?.enabled || 0) === 1,
@@ -138,7 +138,7 @@ export function getSaleCurrentState(saleIdInput: number) {
     source: loyaltySnapshotIsExact ? 'exact' : 'legacy_estimated',
 
     is_exact: loyaltySnapshotIsExact,
-  }
+  };
 
   /*
    * Original immutable sale items.
@@ -183,11 +183,11 @@ export function getSaleCurrentState(saleIdInput: number) {
       ORDER BY si.id ASC
       `,
     )
-    .all(saleId) as any[]
+    .all(saleId) as any[];
 
   const originalItemById = new Map<number, any>(
     originalItems.map((item: any) => [Number(item.id), item]),
-  )
+  );
 
   const loyalty = db
     .prepare(
@@ -198,7 +198,7 @@ export function getSaleCurrentState(saleIdInput: number) {
       ORDER BY id ASC
       `,
     )
-    .all(saleId) as any[]
+    .all(saleId) as any[];
 
   /*
    * Promotion units represent the physical
@@ -251,40 +251,40 @@ export function getSaleCurrentState(saleIdInput: number) {
         spu.id ASC
       `,
     )
-    .all(saleId) as any[]
+    .all(saleId) as any[];
 
   const representedGroupIds = new Set(
     promotionUnits.map((unit) => String(unit.promotion_group_id)),
-  )
+  );
 
   const representedOriginalItemIds = new Set(
     promotionUnits.map((unit) => Number(unit.original_sale_item_id)),
-  )
+  );
 
   /*
    * Aggregate current promotion units for
    * display. Paid/gift states are deliberately
    * separate even for the same variant.
    */
-  const currentUnitBuckets = new Map<string, any>()
+  const currentUnitBuckets = new Map<string, any>();
 
   for (const unit of promotionUnits) {
-    const groupId = String(unit.promotion_group_id)
+    const groupId = String(unit.promotion_group_id);
 
-    const isRegular = isRegularUnitGroupId(groupId)
+    const isRegular = isRegularUnitGroupId(groupId);
 
     const originalItem = originalItemById.get(
       Number(unit.original_sale_item_id),
-    )
+    );
 
     const originalItemQuantity = Math.max(
       1,
       Number(originalItem?.quantity || 1),
-    )
+    );
 
     const originalPromotionDiscountPerUnit = isRegular
       ? positive(originalItem?.promotion_discount_value) / originalItemQuantity
-      : 0
+      : 0;
 
     const key = isRegular
       ? [
@@ -304,9 +304,9 @@ export function getSaleCurrentState(saleIdInput: number) {
           Number(unit.current_unit_price),
 
           Number(unit.current_is_gift),
-        ].join(':')
+        ].join(':');
 
-    let bucket = currentUnitBuckets.get(key)
+    let bucket = currentUnitBuckets.get(key);
 
     if (!bucket) {
       bucket = {
@@ -349,40 +349,40 @@ export function getSaleCurrentState(saleIdInput: number) {
         original_sale_item_ids: [],
 
         sort_order: Number(unit.original_sale_item_id),
-      }
+      };
 
-      currentUnitBuckets.set(key, bucket)
+      currentUnitBuckets.set(key, bucket);
     }
 
-    bucket.quantity += 1
+    bucket.quantity += 1;
 
     if (isRegular) {
-      bucket.promotion_discount_value += originalPromotionDiscountPerUnit
+      bucket.promotion_discount_value += originalPromotionDiscountPerUnit;
     }
 
-    bucket.returned_quantity += Number(unit.is_returned || 0) === 1 ? 1 : 0
+    bucket.returned_quantity += Number(unit.is_returned || 0) === 1 ? 1 : 0;
 
-    bucket.promotion_unit_ids.push(Number(unit.id))
+    bucket.promotion_unit_ids.push(Number(unit.id));
 
     if (
       !bucket.original_sale_item_ids.includes(
         Number(unit.original_sale_item_id),
       )
     ) {
-      bucket.original_sale_item_ids.push(Number(unit.original_sale_item_id))
+      bucket.original_sale_item_ids.push(Number(unit.original_sale_item_id));
     }
 
     bucket.sort_order = Math.min(
       Number(bucket.sort_order),
       Number(unit.original_sale_item_id),
-    )
+    );
   }
 
   const currentPromotionItems = Array.from(currentUnitBuckets.values()).map(
     (item) => {
       const lineTotal = roundMoney(
         Number(item.quantity) * Number(item.unit_price),
-      )
+      );
 
       return {
         ...item,
@@ -394,9 +394,9 @@ export function getSaleCurrentState(saleIdInput: number) {
           : Number(item.is_gift) === 1
             ? lineTotal
             : 0,
-      }
+      };
     },
-  )
+  );
 
   /*
    * Any item that has no current PromotionUnit
@@ -411,15 +411,15 @@ export function getSaleCurrentState(saleIdInput: number) {
   const unchangedItems = originalItems
     .filter((item) => {
       if (representedOriginalItemIds.has(Number(item.id))) {
-        return false
+        return false;
       }
-      const groupId = item.promotion_group_id
+      const groupId = item.promotion_group_id;
 
       if (!groupId) {
-        return true
+        return true;
       }
 
-      return !representedGroupIds.has(String(groupId))
+      return !representedGroupIds.has(String(groupId));
     })
     .map((item) => ({
       ...item,
@@ -441,27 +441,27 @@ export function getSaleCurrentState(saleIdInput: number) {
       returned_quantity: Number(item.returned_quantity || 0),
 
       sort_order: Number(item.id),
-    }))
+    }));
 
   const currentItems = [...currentPromotionItems, ...unchangedItems].sort(
     (a, b) =>
       Number(a.sort_order) - Number(b.sort_order) ||
       String(a.id).localeCompare(String(b.id)),
-  )
+  );
 
   const currentSubTotal = roundMoney(
     currentItems.reduce(
       (total, item) => total + Number(item.line_total || 0),
       0,
     ),
-  )
+  );
 
   const currentPromotionDiscount = roundMoney(
     currentItems.reduce(
       (total, item) => total + Number(item.promotion_discount_value || 0),
       0,
     ),
-  )
+  );
 
   /*
    * Normal discount and loyalty discount keep
@@ -471,30 +471,30 @@ export function getSaleCurrentState(saleIdInput: number) {
    * negative. The applied amount is capped by
    * what remains payable.
    */
-  const originalNormalDiscount = positive(sale.discount_value)
+  const originalNormalDiscount = positive(sale.discount_value);
 
-  const originalLoyaltyDiscount = positive(sale.loyalty_discount_value)
+  const originalLoyaltyDiscount = positive(sale.loyalty_discount_value);
 
   const afterPromotion = Math.max(
     0,
     roundMoney(currentSubTotal - currentPromotionDiscount),
-  )
+  );
 
   const currentNormalDiscount = roundMoney(
     Math.min(originalNormalDiscount, afterPromotion),
-  )
+  );
 
   const afterNormalDiscount = Math.max(
     0,
     roundMoney(afterPromotion - currentNormalDiscount),
-  )
+  );
 
   const originalRedeemedPoints = Math.max(
     0,
     Math.floor(Number(sale.loyalty_points_redeemed || 0)),
-  )
+  );
 
-  const loyaltyPointValue = Number(effectiveLoyaltySnapshot.point_value || 0)
+  const loyaltyPointValue = Number(effectiveLoyaltySnapshot.point_value || 0);
 
   const maxRedeemablePoints =
     effectiveLoyaltySnapshot.enabled && loyaltyPointValue > 0
@@ -503,13 +503,13 @@ export function getSaleCurrentState(saleIdInput: number) {
 
           Math.floor((afterNormalDiscount + 0.0000001) / loyaltyPointValue),
         )
-      : 0
+      : 0;
 
   const exactRedeemedPoints =
     maxRedeemablePoints > 0 &&
     maxRedeemablePoints < effectiveLoyaltySnapshot.min_redeem_points
       ? 0
-      : maxRedeemablePoints
+      : maxRedeemablePoints;
 
   /*
    * Legacy invoices do not have reliable
@@ -521,16 +521,16 @@ export function getSaleCurrentState(saleIdInput: number) {
    */
   const currentLoyaltyPointsRedeemed = loyaltySnapshotIsExact
     ? exactRedeemedPoints
-    : originalRedeemedPoints
+    : originalRedeemedPoints;
 
   const currentLoyaltyDiscount = loyaltySnapshotIsExact
     ? roundMoney(currentLoyaltyPointsRedeemed * loyaltyPointValue)
-    : roundMoney(Math.min(originalLoyaltyDiscount, afterNormalDiscount))
+    : roundMoney(Math.min(originalLoyaltyDiscount, afterNormalDiscount));
 
   const currentGrandTotal = Math.max(
     0,
     roundMoney(afterNormalDiscount - currentLoyaltyDiscount),
-  )
+  );
 
   const returnSummary = db
     .prepare(
@@ -637,20 +637,23 @@ export function getSaleCurrentState(saleIdInput: number) {
           IS NULL
       `,
     )
-    .get(saleId) as any
+    .get(saleId) as any;
 
   const totalReturnValue = roundMoney(
     Number(returnSummary?.total_return_value || 0),
-  )
+  );
 
   const netGrandTotal = Math.max(
     0,
     roundMoney(currentGrandTotal - totalReturnValue),
-  )
+  );
 
-  const remainingAmount = positive(sale.remaining_amount)
+  const remainingAmount = positive(sale.remaining_amount);
 
-  const netPaidAmount = Math.max(0, roundMoney(netGrandTotal - remainingAmount))
+  const netPaidAmount = Math.max(
+    0,
+    roundMoney(netGrandTotal - remainingAmount),
+  );
 
   const exchangeSummary = db
     .prepare(
@@ -721,7 +724,7 @@ export function getSaleCurrentState(saleIdInput: number) {
           IS NULL
       `,
     )
-    .get(saleId) as any
+    .get(saleId) as any;
 
   const exchanges = db
     .prepare(
@@ -750,13 +753,13 @@ export function getSaleCurrentState(saleIdInput: number) {
       ORDER BY se.id ASC
       `,
     )
-    .all(saleId) as any[]
+    .all(saleId) as any[];
 
   const ledgerLoyaltyPointsRedeemed = Math.max(
     0,
     Number(sale.loyalty_points_redeemed || 0) +
       Number(exchangeSummary?.loyalty_redeemed_points_adjustment || 0),
-  )
+  );
 
   const currentLoyaltyPointsEarned = Math.max(
     0,
@@ -766,7 +769,7 @@ export function getSaleCurrentState(saleIdInput: number) {
       : Number(sale.loyalty_points_earned || 0) +
           Number(exchangeSummary?.loyalty_earned_points_adjustment || 0) -
           Number(returnSummary?.returned_loyalty_points_reversed || 0),
-  )
+  );
 
   const getExchangeItems = db.prepare(
     `
@@ -823,7 +826,7 @@ export function getSaleCurrentState(saleIdInput: number) {
 
       ORDER BY sei.id ASC
       `,
-  )
+  );
 
   const exchangeHistory = exchanges.map((exchange) => ({
     ...exchange,
@@ -831,15 +834,15 @@ export function getSaleCurrentState(saleIdInput: number) {
     code: `EXC-${String(exchange.id).padStart(5, '0')}`,
 
     items: getExchangeItems.all(exchange.id),
-  }))
+  }));
 
   const currentTotalDiscount = roundMoney(
     currentPromotionDiscount + currentNormalDiscount + currentLoyaltyDiscount,
-  )
+  );
 
   const exchangeDifferenceTotal = roundMoney(
     Number(exchangeSummary?.difference_total || 0),
-  )
+  );
 
   /*
    * Helpful audit check:
@@ -851,11 +854,11 @@ export function getSaleCurrentState(saleIdInput: number) {
   const eventCalculatedGrandTotal = Math.max(
     0,
     roundMoney(Number(sale.grand_total || 0) + exchangeDifferenceTotal),
-  )
+  );
 
   const financialIntegrityDelta = roundMoney(
     currentGrandTotal - eventCalculatedGrandTotal,
-  )
+  );
 
   const financials = {
     original_sub_total: roundMoney(Number(sale.sub_total || 0)),
@@ -933,7 +936,7 @@ export function getSaleCurrentState(saleIdInput: number) {
     current_loyalty_points_redeemed: currentLoyaltyPointsRedeemed,
 
     ledger_loyalty_points_redeemed: ledgerLoyaltyPointsRedeemed,
-  }
+  };
 
   const originalReceipt = {
     sale: {
@@ -945,7 +948,7 @@ export function getSaleCurrentState(saleIdInput: number) {
     payments: salePayments,
 
     loyalty,
-  }
+  };
 
   const currentSale = {
     ...sale,
@@ -983,7 +986,7 @@ export function getSaleCurrentState(saleIdInput: number) {
     exchange_count: Number(exchangeSummary?.exchange_count || 0),
 
     exchange_difference_total: exchangeDifferenceTotal,
-  }
+  };
 
   const currentReceipt = {
     sale: currentSale,
@@ -993,7 +996,7 @@ export function getSaleCurrentState(saleIdInput: number) {
     payments: salePayments,
 
     loyalty,
-  }
+  };
 
   return {
     sale: currentSale,
@@ -1013,7 +1016,7 @@ export function getSaleCurrentState(saleIdInput: number) {
     exchanges: exchangeHistory,
 
     promotion_units: promotionUnits,
-  }
+  };
 }
 
 export function calculateSaleEarnedPoints(
@@ -1021,10 +1024,10 @@ export function calculateSaleEarnedPoints(
   netTotal: number,
   fallback: number,
 ): number {
-  const snapshot = state.loyalty_snapshot
+  const snapshot = state.loyalty_snapshot;
 
   if (!snapshot.is_exact) {
-    return Math.max(0, fallback)
+    return Math.max(0, fallback);
   }
 
   if (
@@ -1033,11 +1036,11 @@ export function calculateSaleEarnedPoints(
     snapshot.earn_amount <= 0 ||
     snapshot.earn_points <= 0
   ) {
-    return 0
+    return 0;
   }
 
   return (
     Math.floor(Math.max(0, netTotal) / snapshot.earn_amount) *
     snapshot.earn_points
-  )
+  );
 }

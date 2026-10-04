@@ -1,26 +1,26 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { beforeEach, describe, expect, it } from 'vitest';
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 import {
   createProduct,
   getVariantByBarcode,
-} from '../../src/main/database/repositories/product.repo'
+} from '../../src/main/database/repositories/product.repo';
 import {
   createSale,
   getSaleReceipt,
   createSaleReturn,
   cancelSaleReturn,
   cancelSaleInvoice,
-} from '../../src/main/database/repositories/sales.repo'
+} from '../../src/main/database/repositories/sales.repo';
 import {
   createPromotion,
   togglePromotion,
-} from '../../src/main/database/repositories/promotions.repo'
+} from '../../src/main/database/repositories/promotions.repo';
 
 import {
   createSaleExchange,
   cancelSaleExchange,
-} from '../../src/main/database/repositories/sales-exchange.repo'
-import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
+} from '../../src/main/database/repositories/sales-exchange.repo';
+import { createCashMovement } from '../../src/main/database/repositories/cash.repo';
 import {
   adjustCustomerPoints,
   cancelCustomerPaymentBatch,
@@ -36,44 +36,44 @@ import {
   listCustomers,
   updateCustomer,
   updateCustomerPaymentBatch,
-} from '../../src/main/database/repositories/customers.repo'
+} from '../../src/main/database/repositories/customers.repo';
 
 import {
   closeCashShift,
   getOpenCashShift,
   openCashShift,
-} from '../../src/main/database/repositories/cash-shifts.repo'
+} from '../../src/main/database/repositories/cash-shifts.repo';
 
 type CustomerTestRow = {
-  id: number
-  name: string
-  phone: string | null
-  email: string | null
-  address: string | null
-  notes: string | null
-  points_balance: number
-  total_spent: number
-  balance: number
-  credit_limit: number | null
-  credit_days: number | null
-  is_active: number
-  sales_count: number
-  last_sale_at: string | null
-}
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  notes: string | null;
+  points_balance: number;
+  total_spent: number;
+  balance: number;
+  credit_limit: number | null;
+  credit_days: number | null;
+  is_active: number;
+  sales_count: number;
+  last_sale_at: string | null;
+};
 
 type SaleVariantTestRow = {
-  variant_id: number
-  product_id: number
-  product_name: string
-  barcode: string
-  size: string
-  color: string
-  sell_price: number
-  buy_price: number
-  stock: number
-  min_stock: number
-  is_active: number
-}
+  variant_id: number;
+  product_id: number;
+  product_name: string;
+  barcode: string;
+  size: string;
+  color: string;
+  sell_price: number;
+  buy_price: number;
+  stock: number;
+  min_stock: number;
+  is_active: number;
+};
 
 function seedProduct() {
   createProduct({
@@ -92,17 +92,16 @@ function seedProduct() {
         opening_qty: 20,
       },
     ],
-  })
+  });
 
   const variant = getVariantByBarcode('CUSTOMER001') as
-    | SaleVariantTestRow
-    | undefined
+    SaleVariantTestRow | undefined;
 
   if (!variant) {
-    throw new Error('Failed to seed customer test product variant')
+    throw new Error('Failed to seed customer test product variant');
   }
 
-  return variant
+  return variant;
 }
 
 function createTestCustomer(phone = '01000000000') {
@@ -112,11 +111,11 @@ function createTestCustomer(phone = '01000000000') {
     email: 'customer@test.com',
     address: 'Cairo',
     notes: 'Test notes',
-  }) as CustomerTestRow
+  }) as CustomerTestRow;
 }
 
 function createPartialSale(customerId: number, paid = 100) {
-  const variant = seedProduct()
+  const variant = seedProduct();
 
   return createSale({
     user_id: 1,
@@ -138,11 +137,11 @@ function createPartialSale(customerId: number, paid = 100) {
         unit_price: 150,
       },
     ],
-  })
+  });
 }
 
 function getCashMovementTotal(direction: 'in' | 'out') {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -152,13 +151,13 @@ function getCashMovementTotal(direction: 'in' | 'out') {
       WHERE direction = ?
       `,
     )
-    .get(direction) as { total: number }
+    .get(direction) as { total: number };
 
-  return Number(row.total || 0)
+  return Number(row.total || 0);
 }
 
 function getCustomerPaymentsCount(customerId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -168,22 +167,22 @@ function getCustomerPaymentsCount(customerId: number) {
       WHERE customer_id = ?
       `,
     )
-    .get(customerId) as { count: number }
+    .get(customerId) as { count: number };
 
-  return Number(row.count || 0)
+  return Number(row.count || 0);
 }
 
 describe('customers repository', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
+    closeDb();
+    getDb();
+    resetDatabaseData();
 
     openCashShift({
       opening_counted_amount: 0,
       opened_by: 1,
-    })
-  })
+    });
+  });
 
   it('creates a customer', () => {
     const customer = createCustomer({
@@ -192,16 +191,16 @@ describe('customers repository', () => {
       email: ' ahmed@test.com ',
       address: ' Cairo ',
       notes: ' VIP ',
-    }) as CustomerTestRow
+    }) as CustomerTestRow;
 
-    expect(customer.id).toBeGreaterThan(0)
-    expect(customer.name).toBe('Ahmed Ali')
-    expect(customer.phone).toBe('01012345678')
-    expect(customer.email).toBe('ahmed@test.com')
-    expect(customer.address).toBe('Cairo')
-    expect(customer.notes).toBe('VIP')
-    expect(customer.is_active).toBe(1)
-  })
+    expect(customer.id).toBeGreaterThan(0);
+    expect(customer.name).toBe('Ahmed Ali');
+    expect(customer.phone).toBe('01012345678');
+    expect(customer.email).toBe('ahmed@test.com');
+    expect(customer.address).toBe('Cairo');
+    expect(customer.notes).toBe('VIP');
+    expect(customer.is_active).toBe(1);
+  });
 
   it('stores and updates customer credit limit', () => {
     const customer = createCustomer({
@@ -210,9 +209,9 @@ describe('customers repository', () => {
       phone: '01077770001',
 
       credit_limit: 5000,
-    }) as CustomerTestRow
+    }) as CustomerTestRow;
 
-    expect(customer.credit_limit).toBe(5000)
+    expect(customer.credit_limit).toBe(5000);
 
     const updated = updateCustomer({
       id: customer.id,
@@ -222,9 +221,9 @@ describe('customers repository', () => {
       phone: customer.phone,
 
       credit_limit: 2500,
-    }) as CustomerTestRow
+    }) as CustomerTestRow;
 
-    expect(updated.credit_limit).toBe(2500)
+    expect(updated.credit_limit).toBe(2500);
 
     expect(() =>
       updateCustomer({
@@ -236,8 +235,8 @@ describe('customers repository', () => {
 
         credit_limit: -1,
       }),
-    ).toThrow('الحد الائتماني')
-  })
+    ).toThrow('الحد الائتماني');
+  });
 
   it('stores and updates customer credit terms', () => {
     const customer = createCustomer({
@@ -246,9 +245,9 @@ describe('customers repository', () => {
       phone: '01077770003',
 
       credit_days: 30,
-    }) as CustomerTestRow
+    }) as CustomerTestRow;
 
-    expect(customer.credit_days).toBe(30)
+    expect(customer.credit_days).toBe(30);
 
     const updated = updateCustomer({
       id: customer.id,
@@ -258,9 +257,9 @@ describe('customers repository', () => {
       phone: customer.phone,
 
       credit_days: 0,
-    }) as CustomerTestRow
+    }) as CustomerTestRow;
 
-    expect(updated.credit_days).toBe(0)
+    expect(updated.credit_days).toBe(0);
 
     const preserved = updateCustomer({
       id: customer.id,
@@ -268,9 +267,9 @@ describe('customers repository', () => {
       name: customer.name,
 
       phone: customer.phone,
-    }) as CustomerTestRow
+    }) as CustomerTestRow;
 
-    expect(preserved.credit_days).toBe(0)
+    expect(preserved.credit_days).toBe(0);
 
     expect(() =>
       updateCustomer({
@@ -282,7 +281,7 @@ describe('customers repository', () => {
 
         credit_days: -1,
       }),
-    ).toThrow('مدة الائتمان')
+    ).toThrow('مدة الائتمان');
 
     expect(() =>
       updateCustomer({
@@ -294,17 +293,17 @@ describe('customers repository', () => {
 
         credit_days: 2.5,
       }),
-    ).toThrow('مدة الائتمان')
-  })
+    ).toThrow('مدة الائتمان');
+  });
 
   it('splits open customer debt into aging buckets', () => {
-    const db = getDb()
+    const db = getDb();
 
     const customer = createCustomer({
       name: 'Aging Customer',
 
       phone: '01077770002',
-    }) as CustomerTestRow
+    }) as CustomerTestRow;
 
     const insertSale = db.prepare(
       `
@@ -338,15 +337,15 @@ describe('customers repository', () => {
           'store_cash'
         )
         `,
-    )
+    );
 
-    insertSale.run(customer.id, '-10 days', 100, 100, 100)
+    insertSale.run(customer.id, '-10 days', 100, 100, 100);
 
-    insertSale.run(customer.id, '-40 days', 200, 200, 200)
+    insertSale.run(customer.id, '-40 days', 200, 200, 200);
 
-    insertSale.run(customer.id, '-70 days', 300, 300, 300)
+    insertSale.run(customer.id, '-70 days', 300, 300, 300);
 
-    insertSale.run(customer.id, '-100 days', 400, 400, 400)
+    insertSale.run(customer.id, '-100 days', 400, 400, 400);
 
     db.prepare(
       `
@@ -356,11 +355,11 @@ describe('customers repository', () => {
 
       WHERE id = ?
       `,
-    ).run(customer.id)
+    ).run(customer.id);
 
     const list = listCustomers({
       debtors_only: true,
-    })
+    });
 
     expect(list.summary.aging).toEqual({
       days_0_30: 100,
@@ -368,9 +367,9 @@ describe('customers repository', () => {
       days_61_90: 300,
       days_90_plus: 400,
       total: 1000,
-    })
+    });
 
-    const statement = getCustomerStatement(customer.id, 1) as any
+    const statement = getCustomerStatement(customer.id, 1) as any;
 
     expect(statement.summary.aging).toEqual({
       days_0_30: 100,
@@ -378,8 +377,8 @@ describe('customers repository', () => {
       days_61_90: 300,
       days_90_plus: 400,
       total: 1000,
-    })
-  })
+    });
+  });
 
   it('rejects empty customer name', () => {
     expect(() =>
@@ -387,62 +386,62 @@ describe('customers repository', () => {
         name: '   ',
         phone: '01011111111',
       }),
-    ).toThrow('اسم العميل مطلوب')
-  })
+    ).toThrow('اسم العميل مطلوب');
+  });
 
   it('rejects duplicate customer phone', () => {
     createCustomer({
       name: 'First Customer',
       phone: '01022222222',
-    })
+    });
 
     expect(() =>
       createCustomer({
         name: 'Second Customer',
         phone: '01022222222',
       }),
-    ).toThrow()
-  })
+    ).toThrow();
+  });
 
   it('lists active customers only', () => {
     const customer1 = createCustomer({
       name: 'Active Customer',
       phone: '01033333333',
-    }) as CustomerTestRow
+    }) as CustomerTestRow;
 
     const customer2 = createCustomer({
       name: 'Deleted Customer',
       phone: '01044444444',
-    }) as CustomerTestRow
+    }) as CustomerTestRow;
 
-    deleteCustomer(customer2.id)
+    deleteCustomer(customer2.id);
 
-    const customers = getCustomers() as CustomerTestRow[]
+    const customers = getCustomers() as CustomerTestRow[];
 
     expect(customers.some((customer) => customer.id === customer1.id)).toBe(
       true,
-    )
+    );
     expect(customers.some((customer) => customer.id === customer2.id)).toBe(
       false,
-    )
-  })
+    );
+  });
 
   it('searches customers by name phone and email', () => {
     createCustomer({
       name: 'Mohamed Search',
       phone: '01055555555',
       email: 'search@test.com',
-    })
+    });
 
-    expect(searchCustomers('Mohamed') as CustomerTestRow[]).toHaveLength(1)
-    expect(searchCustomers('010555') as CustomerTestRow[]).toHaveLength(1)
-    expect(searchCustomers('search@test') as CustomerTestRow[]).toHaveLength(1)
-  })
+    expect(searchCustomers('Mohamed') as CustomerTestRow[]).toHaveLength(1);
+    expect(searchCustomers('010555') as CustomerTestRow[]).toHaveLength(1);
+    expect(searchCustomers('search@test') as CustomerTestRow[]).toHaveLength(1);
+  });
 
   it('keeps cancelled sales in customer history but excludes them from active invoice counts', () => {
-    const customer = createTestCustomer('01088889991')
+    const customer = createTestCustomer('01088889991');
 
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const activeSale = createSale({
       user_id: 1,
@@ -478,7 +477,7 @@ describe('customers repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     const cancelledSale = createSale({
       user_id: 1,
@@ -514,17 +513,9 @@ describe('customers repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    const db = getDb()
-
-    db.prepare(
-      `
-    UPDATE sales
-    SET created_at = ?
-    WHERE id = ?
-    `,
-    ).run('2026-09-01 10:00:00', activeSale.saleId)
+    const db = getDb();
 
     db.prepare(
       `
@@ -532,7 +523,15 @@ describe('customers repository', () => {
     SET created_at = ?
     WHERE id = ?
     `,
-    ).run('2026-09-02 10:00:00', cancelledSale.saleId)
+    ).run('2026-09-01 10:00:00', activeSale.saleId);
+
+    db.prepare(
+      `
+    UPDATE sales
+    SET created_at = ?
+    WHERE id = ?
+    `,
+    ).run('2026-09-02 10:00:00', cancelledSale.saleId);
 
     cancelSaleInvoice({
       sale_id: cancelledSale.saleId,
@@ -540,67 +539,67 @@ describe('customers repository', () => {
       reason: 'Cancelled for customer history test',
 
       actor_id: 1,
-    })
+    });
 
-    const byId = getCustomerById(customer.id) as CustomerTestRow
+    const byId = getCustomerById(customer.id) as CustomerTestRow;
 
-    expect(byId.sales_count).toBe(1)
+    expect(byId.sales_count).toBe(1);
 
-    expect(String(byId.last_sale_at)).toContain('2026-09-01')
+    expect(String(byId.last_sale_at)).toContain('2026-09-01');
 
-    const allCustomers = getCustomers() as CustomerTestRow[]
+    const allCustomers = getCustomers() as CustomerTestRow[];
 
-    const allRow = allCustomers.find((row) => row.id === customer.id)
+    const allRow = allCustomers.find((row) => row.id === customer.id);
 
-    expect(allRow?.sales_count).toBe(1)
+    expect(allRow?.sales_count).toBe(1);
 
-    const searchRows = searchCustomers('01088889991') as CustomerTestRow[]
+    const searchRows = searchCustomers('01088889991') as CustomerTestRow[];
 
-    expect(searchRows[0]?.sales_count).toBe(1)
+    expect(searchRows[0]?.sales_count).toBe(1);
 
     const page = listCustomers({
       search: '01088889991',
-    })
+    });
 
     const pageRow = page.rows.find(
       (row: any) => Number(row.id) === customer.id,
-    ) as CustomerTestRow | undefined
+    ) as CustomerTestRow | undefined;
 
-    expect(pageRow?.sales_count).toBe(1)
+    expect(pageRow?.sales_count).toBe(1);
 
-    const history = getCustomerHistory(customer.id) as any
+    const history = getCustomerHistory(customer.id) as any;
 
     /*
      * History يحتفظ بالسجلين:
      * الفعال + الملغي.
      */
-    expect(history.sales).toHaveLength(2)
+    expect(history.sales).toHaveLength(2);
 
     /*
      * لكن Summary الخاص بالعميل
      * يحسب الفعالة فقط.
      */
-    expect(history.customer.sales_count).toBe(1)
+    expect(history.customer.sales_count).toBe(1);
 
     const activeHistorySale = history.sales.find(
       (sale: any) => Number(sale.id) === Number(activeSale.saleId),
-    )
+    );
 
     const cancelledHistorySale = history.sales.find(
       (sale: any) => Number(sale.id) === Number(cancelledSale.saleId),
-    )
+    );
 
-    expect(activeHistorySale?.cancelled_at).toBeNull()
+    expect(activeHistorySale?.cancelled_at).toBeNull();
 
-    expect(cancelledHistorySale?.cancelled_at).toBeTruthy()
+    expect(cancelledHistorySale?.cancelled_at).toBeTruthy();
 
     expect(cancelledHistorySale?.cancel_reason).toBe(
       'Cancelled for customer history test',
-    )
-  })
+    );
+  });
 
   it('updates a customer', () => {
-    const customer = createTestCustomer()
+    const customer = createTestCustomer();
 
     const updated = updateCustomer({
       id: customer.id,
@@ -609,18 +608,18 @@ describe('customers repository', () => {
       email: 'updated@test.com',
       address: 'Alex',
       notes: 'Updated notes',
-    }) as CustomerTestRow
+    }) as CustomerTestRow;
 
-    expect(updated.id).toBe(customer.id)
-    expect(updated.name).toBe('Updated Customer')
-    expect(updated.phone).toBe('01066666666')
-    expect(updated.email).toBe('updated@test.com')
-    expect(updated.address).toBe('Alex')
-    expect(updated.notes).toBe('Updated notes')
-  })
+    expect(updated.id).toBe(customer.id);
+    expect(updated.name).toBe('Updated Customer');
+    expect(updated.phone).toBe('01066666666');
+    expect(updated.email).toBe('updated@test.com');
+    expect(updated.address).toBe('Alex');
+    expect(updated.notes).toBe('Updated notes');
+  });
 
   it('rejects updating customer with empty name', () => {
-    const customer = createTestCustomer()
+    const customer = createTestCustomer();
 
     expect(() =>
       updateCustomer({
@@ -628,82 +627,82 @@ describe('customers repository', () => {
         name: '   ',
         phone: customer.phone,
       }),
-    ).toThrow('اسم العميل مطلوب')
-  })
+    ).toThrow('اسم العميل مطلوب');
+  });
 
   it('soft deletes a customer', () => {
-    const customer = createTestCustomer()
+    const customer = createTestCustomer();
 
-    const result = deleteCustomer(customer.id)
+    const result = deleteCustomer(customer.id);
 
-    expect(result.ok).toBe(true)
+    expect(result.ok).toBe(true);
 
-    const deleted = getCustomerById(customer.id) as CustomerTestRow
-    expect(deleted.is_active).toBe(0)
+    const deleted = getCustomerById(customer.id) as CustomerTestRow;
+    expect(deleted.is_active).toBe(0);
 
-    const customers = getCustomers() as CustomerTestRow[]
-    expect(customers.some((item) => item.id === customer.id)).toBe(false)
-  })
+    const customers = getCustomers() as CustomerTestRow[];
+    expect(customers.some((item) => item.id === customer.id)).toBe(false);
+  });
 
   it('rejects deleting a customer with outstanding debt', () => {
-    const customer = createTestCustomer()
+    const customer = createTestCustomer();
 
-    createPartialSale(customer.id, 100)
+    createPartialSale(customer.id, 100);
 
-    const beforeDelete = getCustomerById(customer.id) as CustomerTestRow
+    const beforeDelete = getCustomerById(customer.id) as CustomerTestRow;
 
-    expect(beforeDelete.balance).toBe(200)
+    expect(beforeDelete.balance).toBe(200);
 
     expect(() => deleteCustomer(customer.id)).toThrow(
       'لا يمكن حذف العميل لأن عليه مديونية',
-    )
+    );
 
-    const afterDelete = getCustomerById(customer.id) as CustomerTestRow
+    const afterDelete = getCustomerById(customer.id) as CustomerTestRow;
 
-    expect(afterDelete.is_active).toBe(1)
-  })
+    expect(afterDelete.is_active).toBe(1);
+  });
 
   it('adjusts customer loyalty points', () => {
-    const customer = createTestCustomer()
+    const customer = createTestCustomer();
 
     const updated = adjustCustomerPoints({
       customer_id: customer.id,
       points: 10,
       notes: 'Manual points adjustment',
-    }) as CustomerTestRow
+    }) as CustomerTestRow;
 
-    expect(updated.points_balance).toBe(10)
+    expect(updated.points_balance).toBe(10);
 
-    const history = getCustomerHistory(customer.id) as any
+    const history = getCustomerHistory(customer.id) as any;
 
-    expect(history.customer.id).toBe(customer.id)
-    expect(history.loyalty).toHaveLength(1)
-    expect(history.loyalty[0].type).toBe('adjust')
-    expect(history.loyalty[0].points).toBe(10)
-  })
+    expect(history.customer.id).toBe(customer.id);
+    expect(history.loyalty).toHaveLength(1);
+    expect(history.loyalty[0].type).toBe('adjust');
+    expect(history.loyalty[0].points).toBe(10);
+  });
 
   it('rejects points adjustment with zero points', () => {
-    const customer = createTestCustomer()
+    const customer = createTestCustomer();
 
     expect(() =>
       adjustCustomerPoints({
         customer_id: customer.id,
         points: 0,
       }),
-    ).toThrow('عدد النقاط مطلوب')
-  })
+    ).toThrow('عدد النقاط مطلوب');
+  });
 
   it('records customer payment for a specific sale and reduces balance', () => {
-    const customer = createTestCustomer()
-    const sale = createPartialSale(customer.id, 100)
+    const customer = createTestCustomer();
+    const sale = createPartialSale(customer.id, 100);
 
-    expect(sale.remaining_amount).toBe(200)
+    expect(sale.remaining_amount).toBe(200);
 
     const beforePaymentCustomer = getCustomerById(
       customer.id,
-    ) as CustomerTestRow
-    expect(beforePaymentCustomer.balance).toBe(200)
-    expect(getCashMovementTotal('in')).toBe(100)
+    ) as CustomerTestRow;
+    expect(beforePaymentCustomer.balance).toBe(200);
+    expect(getCashMovementTotal('in')).toBe(100);
 
     const payment = recordCustomerPayment({
       customer_id: customer.id,
@@ -712,30 +711,32 @@ describe('customers repository', () => {
       amount: 150,
       payment_method: 'cash',
       notes: 'Payment on specific sale',
-    })
+    });
 
-    expect(payment.ok).toBe(true)
-    expect(payment.paid_amount).toBe(150)
-    expect(payment.allocations).toHaveLength(1)
-    expect(payment.allocations[0].sale_id).toBe(sale.saleId)
-    expect(payment.allocations[0].amount).toBe(150)
+    expect(payment.ok).toBe(true);
+    expect(payment.paid_amount).toBe(150);
+    expect(payment.allocations).toHaveLength(1);
+    expect(payment.allocations[0].sale_id).toBe(sale.saleId);
+    expect(payment.allocations[0].amount).toBe(150);
 
-    const afterPaymentCustomer = getCustomerById(customer.id) as CustomerTestRow
-    expect(afterPaymentCustomer.balance).toBe(50)
+    const afterPaymentCustomer = getCustomerById(
+      customer.id,
+    ) as CustomerTestRow;
+    expect(afterPaymentCustomer.balance).toBe(50);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
-    expect(receipt.sale.paid).toBe(250)
-    expect(receipt.sale.remaining_amount).toBe(50)
-    expect(receipt.sale.payment_status).toBe('partial')
+    const receipt = getSaleReceipt(sale.saleId) as any;
+    expect(receipt.sale.paid).toBe(250);
+    expect(receipt.sale.remaining_amount).toBe(50);
+    expect(receipt.sale.payment_status).toBe('partial');
 
-    expect(getCustomerPaymentsCount(customer.id)).toBe(1)
-    expect(getCashMovementTotal('in')).toBe(250)
-  })
+    expect(getCustomerPaymentsCount(customer.id)).toBe(1);
+    expect(getCashMovementTotal('in')).toBe(250);
+  });
 
   it('rounds customer payments to whole pounds', () => {
-    const customer = createTestCustomer('01090909090')
+    const customer = createTestCustomer('01090909090');
 
-    const sale = createPartialSale(customer.id, 100)
+    const sale = createPartialSale(customer.id, 100);
 
     const payment = recordCustomerPayment({
       customer_id: customer.id,
@@ -747,33 +748,33 @@ describe('customers repository', () => {
       amount: 10.5,
 
       payment_method: 'cash',
-    })
+    });
 
-    expect(payment.paid_amount).toBe(11)
+    expect(payment.paid_amount).toBe(11);
 
-    expect(payment.allocations[0].amount).toBe(11)
+    expect(payment.allocations[0].amount).toBe(11);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
-    expect(receipt.sale.paid).toBe(111)
+    expect(receipt.sale.paid).toBe(111);
 
-    expect(receipt.sale.remaining_amount).toBe(189)
+    expect(receipt.sale.remaining_amount).toBe(189);
 
-    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow
+    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow;
 
-    expect(updatedCustomer.balance).toBe(189)
+    expect(updatedCustomer.balance).toBe(189);
 
     /*
      * 100 من البيع
      * + 11 دفعة العميل.
      */
-    expect(getCashMovementTotal('in')).toBe(111)
-  })
+    expect(getCashMovementTotal('in')).toBe(111);
+  });
 
   it('cancels customer payment batch and restores debt and sale balance', () => {
-    const customer = createTestCustomer()
+    const customer = createTestCustomer();
 
-    const sale = createPartialSale(customer.id, 100)
+    const sale = createPartialSale(customer.id, 100);
 
     const payment = recordCustomerPayment({
       customer_id: customer.id,
@@ -781,11 +782,11 @@ describe('customers repository', () => {
       amount: 150,
       payment_method: 'cash',
       actor_id: 1,
-    })
+    });
 
-    const access = getCustomerPaymentBatchAccess(payment.payment_batch_id, 1)
+    const access = getCustomerPaymentBatchAccess(payment.payment_batch_id, 1);
 
-    expect(access.requires_admin_password).toBe(false)
+    expect(access.requires_admin_password).toBe(false);
 
     const result = cancelCustomerPaymentBatch({
       batch_id: payment.payment_batch_id,
@@ -793,25 +794,25 @@ describe('customers repository', () => {
       reason: 'Wrong amount',
 
       actor_id: 1,
-    })
+    });
 
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(true);
 
-    expect(result.cancelled_amount).toBe(150)
+    expect(result.cancelled_amount).toBe(150);
 
-    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow
+    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow;
 
-    expect(updatedCustomer.balance).toBe(200)
+    expect(updatedCustomer.balance).toBe(200);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
-    expect(receipt.sale.paid).toBe(100)
+    expect(receipt.sale.paid).toBe(100);
 
-    expect(receipt.sale.remaining_amount).toBe(200)
+    expect(receipt.sale.remaining_amount).toBe(200);
 
-    expect(receipt.sale.payment_status).toBe('partial')
+    expect(receipt.sale.payment_status).toBe('partial');
 
-    const db = getDb()
+    const db = getDb();
 
     const batch = db
       .prepare(
@@ -821,9 +822,9 @@ describe('customers repository', () => {
       WHERE id = ?
       `,
       )
-      .get(payment.payment_batch_id) as any
+      .get(payment.payment_batch_id) as any;
 
-    expect(batch.cancelled_at).toBeTruthy()
+    expect(batch.cancelled_at).toBeTruthy();
 
     const movement = db
       .prepare(
@@ -836,9 +837,9 @@ describe('customers repository', () => {
       LIMIT 1
       `,
       )
-      .get(payment.payment_batch_id) as any
+      .get(payment.payment_batch_id) as any;
 
-    expect(movement.cancelled_at).toBeNull()
+    expect(movement.cancelled_at).toBeNull();
 
     const reverseMovement = db
       .prepare(
@@ -857,31 +858,31 @@ describe('customers repository', () => {
     LIMIT 1
     `,
       )
-      .get(payment.payment_batch_id) as any
+      .get(payment.payment_batch_id) as any;
 
-    expect(reverseMovement).toBeTruthy()
+    expect(reverseMovement).toBeTruthy();
 
-    expect(reverseMovement.direction).toBe('out')
+    expect(reverseMovement.direction).toBe('out');
 
-    expect(Number(reverseMovement.amount)).toBe(150)
+    expect(Number(reverseMovement.amount)).toBe(150);
 
-    const statement = getCustomerStatement(customer.id) as any
+    const statement = getCustomerStatement(customer.id) as any;
 
-    expect(statement.summary.total_paid).toBe(100)
+    expect(statement.summary.total_paid).toBe(100);
 
-    expect(statement.summary.balance).toBe(200)
-  })
+    expect(statement.summary.balance).toBe(200);
+  });
 
   it('keeps customer payment history immutable across shifts for create update and cancel', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const customer = createTestCustomer()
+    const customer = createTestCustomer();
 
-    const sale = createPartialSale(customer.id, 100)
+    const sale = createPartialSale(customer.id, 100);
 
-    const originalShift = getOpenCashShift()
+    const originalShift = getOpenCashShift();
 
-    expect(originalShift).toBeTruthy()
+    expect(originalShift).toBeTruthy();
 
     const payment = recordCustomerPayment({
       customer_id: customer.id,
@@ -893,9 +894,9 @@ describe('customers repository', () => {
       payment_method: 'cash',
 
       actor_id: 1,
-    })
+    });
 
-    expect(payment.shift_id).toBe(originalShift!.id)
+    expect(payment.shift_id).toBe(originalShift!.id);
 
     const originalMovement = db
       .prepare(
@@ -915,9 +916,9 @@ describe('customers repository', () => {
       LIMIT 1
       `,
       )
-      .get(payment.payment_batch_id) as any
+      .get(payment.payment_batch_id) as any;
 
-    expect(Number(originalMovement.shift_id)).toBe(originalShift!.id)
+    expect(Number(originalMovement.shift_id)).toBe(originalShift!.id);
 
     closeCashShift({
       shift_id: originalShift!.id,
@@ -927,12 +928,12 @@ describe('customers repository', () => {
       left_for_next_shift: 250,
 
       closed_by: 1,
-    })
+    });
 
     const correctionShift = openCashShift({
       opening_counted_amount: 250,
       opened_by: 1,
-    })
+    });
 
     const updated = updateCustomerPaymentBatch({
       batch_id: payment.payment_batch_id,
@@ -944,9 +945,9 @@ describe('customers repository', () => {
       notes: 'Corrected in next shift',
 
       actor_id: 1,
-    })
+    });
 
-    expect(updated.shift_id).toBe(correctionShift.id)
+    expect(updated.shift_id).toBe(correctionShift.id);
 
     const oldBatch = db
       .prepare(
@@ -959,11 +960,11 @@ describe('customers repository', () => {
       WHERE id = ?
       `,
       )
-      .get(payment.payment_batch_id) as any
+      .get(payment.payment_batch_id) as any;
 
-    expect(Number(oldBatch.shift_id)).toBe(originalShift!.id)
+    expect(Number(oldBatch.shift_id)).toBe(originalShift!.id);
 
-    expect(Number(oldBatch.cancelled_shift_id)).toBe(correctionShift.id)
+    expect(Number(oldBatch.cancelled_shift_id)).toBe(correctionShift.id);
 
     const newBatch = db
       .prepare(
@@ -974,9 +975,9 @@ describe('customers repository', () => {
       WHERE id = ?
       `,
       )
-      .get(updated.batch_id) as any
+      .get(updated.batch_id) as any;
 
-    expect(Number(newBatch.shift_id)).toBe(correctionShift.id)
+    expect(Number(newBatch.shift_id)).toBe(correctionShift.id);
 
     /*
      * الحركة التاريخية الأصلية
@@ -992,11 +993,13 @@ describe('customers repository', () => {
         WHERE id = ?
         `,
       )
-      .get(originalMovement.id) as any
+      .get(originalMovement.id) as any;
 
-    expect(originalMovementAfterUpdate.cancelled_at).toBeNull()
+    expect(originalMovementAfterUpdate.cancelled_at).toBeNull();
 
-    expect(Number(originalMovementAfterUpdate.shift_id)).toBe(originalShift!.id)
+    expect(Number(originalMovementAfterUpdate.shift_id)).toBe(
+      originalShift!.id,
+    );
 
     const updateReverse = db
       .prepare(
@@ -1014,13 +1017,13 @@ describe('customers repository', () => {
       LIMIT 1
       `,
       )
-      .get(payment.payment_batch_id) as any
+      .get(payment.payment_batch_id) as any;
 
-    expect(Number(updateReverse.shift_id)).toBe(correctionShift.id)
+    expect(Number(updateReverse.shift_id)).toBe(correctionShift.id);
 
-    expect(updateReverse.direction).toBe('out')
+    expect(updateReverse.direction).toBe('out');
 
-    expect(Number(updateReverse.amount)).toBe(150)
+    expect(Number(updateReverse.amount)).toBe(150);
 
     /*
      * دلوقتي نلغي الدفعة
@@ -1032,9 +1035,9 @@ describe('customers repository', () => {
       reason: 'Cancel corrected payment',
 
       actor_id: 1,
-    })
+    });
 
-    expect(cancelled.cancelled_shift_id).toBe(correctionShift.id)
+    expect(cancelled.cancelled_shift_id).toBe(correctionShift.id);
 
     const cancelReverse = db
       .prepare(
@@ -1052,13 +1055,13 @@ describe('customers repository', () => {
       LIMIT 1
       `,
       )
-      .get(updated.batch_id) as any
+      .get(updated.batch_id) as any;
 
-    expect(Number(cancelReverse.shift_id)).toBe(correctionShift.id)
+    expect(Number(cancelReverse.shift_id)).toBe(correctionShift.id);
 
-    expect(cancelReverse.direction).toBe('out')
+    expect(cancelReverse.direction).toBe('out');
 
-    expect(Number(cancelReverse.amount)).toBe(75)
+    expect(Number(cancelReverse.amount)).toBe(75);
 
     /*
      * في النهاية يفضل فقط
@@ -1095,16 +1098,16 @@ describe('customers repository', () => {
       `,
       )
       .get() as {
-      balance: number
-    }
+      balance: number;
+    };
 
-    expect(Number(drawer.balance)).toBe(100)
-  })
+    expect(Number(drawer.balance)).toBe(100);
+  });
 
   it('updates customer payment batch and replaces its financial effects', () => {
-    const customer = createTestCustomer()
+    const customer = createTestCustomer();
 
-    const sale = createPartialSale(customer.id, 100)
+    const sale = createPartialSale(customer.id, 100);
 
     const payment = recordCustomerPayment({
       customer_id: customer.id,
@@ -1112,7 +1115,7 @@ describe('customers repository', () => {
       amount: 150,
       payment_method: 'cash',
       actor_id: 1,
-    })
+    });
 
     const result = updateCustomerPaymentBatch({
       batch_id: payment.payment_batch_id,
@@ -1124,28 +1127,28 @@ describe('customers repository', () => {
       notes: 'Corrected payment',
 
       actor_id: 1,
-    })
+    });
 
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(true);
 
-    expect(result.old_amount).toBe(150)
-    expect(result.new_amount).toBe(75)
+    expect(result.old_amount).toBe(150);
+    expect(result.new_amount).toBe(75);
 
-    expect(result.batch_id).not.toBe(payment.payment_batch_id)
+    expect(result.batch_id).not.toBe(payment.payment_batch_id);
 
-    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow
+    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow;
 
-    expect(updatedCustomer.balance).toBe(125)
+    expect(updatedCustomer.balance).toBe(125);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
-    expect(receipt.sale.paid).toBe(175)
+    expect(receipt.sale.paid).toBe(175);
 
-    expect(receipt.sale.remaining_amount).toBe(125)
+    expect(receipt.sale.remaining_amount).toBe(125);
 
-    expect(receipt.sale.payment_status).toBe('partial')
+    expect(receipt.sale.payment_status).toBe('partial');
 
-    const db = getDb()
+    const db = getDb();
 
     const oldBatch = db
       .prepare(
@@ -1155,11 +1158,11 @@ describe('customers repository', () => {
       WHERE id = ?
       `,
       )
-      .get(payment.payment_batch_id) as any
+      .get(payment.payment_batch_id) as any;
 
-    expect(oldBatch.cancelled_at).toBeTruthy()
+    expect(oldBatch.cancelled_at).toBeTruthy();
 
-    expect(Number(oldBatch.replacement_batch_id)).toBe(result.batch_id)
+    expect(Number(oldBatch.replacement_batch_id)).toBe(result.batch_id);
 
     const newBatch = db
       .prepare(
@@ -1169,14 +1172,14 @@ describe('customers repository', () => {
       WHERE id = ?
       `,
       )
-      .get(result.batch_id) as any
+      .get(result.batch_id) as any;
 
-    expect(Number(newBatch.amount)).toBe(75)
+    expect(Number(newBatch.amount)).toBe(75);
 
-    expect(newBatch.cancelled_at).toBeNull()
-    expect(newBatch.created_at).toBe(oldBatch.created_at)
+    expect(newBatch.cancelled_at).toBeNull();
+    expect(newBatch.created_at).toBe(oldBatch.created_at);
 
-    expect(Number(newBatch.created_by)).toBe(Number(oldBatch.created_by))
+    expect(Number(newBatch.created_by)).toBe(Number(oldBatch.created_by));
 
     const activeCash = db
       .prepare(
@@ -1202,22 +1205,22 @@ describe('customers repository', () => {
       `,
       )
       .get() as {
-      balance: number
-    }
+      balance: number;
+    };
 
-    expect(Number(activeCash.balance)).toBe(175)
+    expect(Number(activeCash.balance)).toBe(175);
 
-    const statement = getCustomerStatement(customer.id) as any
+    const statement = getCustomerStatement(customer.id) as any;
 
-    expect(statement.summary.total_paid).toBe(175)
+    expect(statement.summary.total_paid).toBe(175);
 
-    expect(statement.summary.balance).toBe(125)
-  })
+    expect(statement.summary.balance).toBe(125);
+  });
 
   it('rejects cancelling customer payment when cash balance cannot cover reversal', () => {
-    const customer = createTestCustomer()
+    const customer = createTestCustomer();
 
-    const sale = createPartialSale(customer.id, 100)
+    const sale = createPartialSale(customer.id, 100);
 
     const payment = recordCustomerPayment({
       customer_id: customer.id,
@@ -1225,7 +1228,7 @@ describe('customers repository', () => {
       amount: 150,
       payment_method: 'cash',
       actor_id: 1,
-    })
+    });
 
     createCashMovement({
       type: 'withdraw',
@@ -1235,7 +1238,7 @@ describe('customers repository', () => {
       reference_type: 'manual',
       notes: 'Consume cash before cancellation',
       created_by: 1,
-    })
+    });
 
     expect(() =>
       cancelCustomerPaymentBatch({
@@ -1245,22 +1248,22 @@ describe('customers repository', () => {
 
         actor_id: 1,
       }),
-    ).toThrow('رصيد حساب الدفع الحالي لا يكفي')
+    ).toThrow('رصيد حساب الدفع الحالي لا يكفي');
 
-    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow
+    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow;
 
-    expect(updatedCustomer.balance).toBe(50)
+    expect(updatedCustomer.balance).toBe(50);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
-    expect(receipt.sale.paid).toBe(250)
+    expect(receipt.sale.paid).toBe(250);
 
-    expect(receipt.sale.remaining_amount).toBe(50)
-  })
+    expect(receipt.sale.remaining_amount).toBe(50);
+  });
 
   it('caps customer payment to sale remaining amount', () => {
-    const customer = createTestCustomer()
-    const sale = createPartialSale(customer.id, 100)
+    const customer = createTestCustomer();
+    const sale = createPartialSale(customer.id, 100);
 
     const payment = recordCustomerPayment({
       customer_id: customer.id,
@@ -1268,25 +1271,25 @@ describe('customers repository', () => {
       amount: 500,
       payment_method: 'cash',
       actor_id: 1,
-    })
+    });
 
-    expect(payment.ok).toBe(true)
-    expect(payment.paid_amount).toBe(200)
+    expect(payment.ok).toBe(true);
+    expect(payment.paid_amount).toBe(200);
 
-    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow
-    expect(updatedCustomer.balance).toBe(0)
+    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow;
+    expect(updatedCustomer.balance).toBe(0);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
-    expect(receipt.sale.paid).toBe(300)
-    expect(receipt.sale.remaining_amount).toBe(0)
-    expect(receipt.sale.payment_status).toBe('paid')
-  })
+    const receipt = getSaleReceipt(sale.saleId) as any;
+    expect(receipt.sale.paid).toBe(300);
+    expect(receipt.sale.remaining_amount).toBe(0);
+    expect(receipt.sale.payment_status).toBe('paid');
+  });
 
   it('records general customer payment and allocates to oldest open sales', () => {
-    const customer = createTestCustomer()
-    const firstSale = createPartialSale(customer.id, 100)
+    const customer = createTestCustomer();
+    const firstSale = createPartialSale(customer.id, 100);
 
-    const variant = getVariantByBarcode('CUSTOMER001') as SaleVariantTestRow
+    const variant = getVariantByBarcode('CUSTOMER001') as SaleVariantTestRow;
 
     const secondSale = createSale({
       user_id: 1,
@@ -1308,12 +1311,12 @@ describe('customers repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     const customerBeforePayment = getCustomerById(
       customer.id,
-    ) as CustomerTestRow
-    expect(customerBeforePayment.balance).toBe(500)
+    ) as CustomerTestRow;
+    expect(customerBeforePayment.balance).toBe(500);
 
     const payment = recordCustomerPayment({
       customer_id: customer.id,
@@ -1321,47 +1324,49 @@ describe('customers repository', () => {
       payment_method: 'cash',
       notes: 'General customer payment',
       actor_id: 1,
-    })
+    });
 
-    expect(payment.ok).toBe(true)
-    expect(payment.paid_amount).toBe(350)
-    expect(payment.allocations).toHaveLength(2)
+    expect(payment.ok).toBe(true);
+    expect(payment.paid_amount).toBe(350);
+    expect(payment.allocations).toHaveLength(2);
     expect(payment.allocations[0]).toEqual({
       sale_id: firstSale.saleId,
       amount: 200,
-    })
+    });
     expect(payment.allocations[1]).toEqual({
       sale_id: secondSale.saleId,
       amount: 150,
-    })
+    });
 
-    const firstReceipt = getSaleReceipt(firstSale.saleId) as any
-    const secondReceipt = getSaleReceipt(secondSale.saleId) as any
+    const firstReceipt = getSaleReceipt(firstSale.saleId) as any;
+    const secondReceipt = getSaleReceipt(secondSale.saleId) as any;
 
-    expect(firstReceipt.sale.remaining_amount).toBe(0)
-    expect(firstReceipt.sale.payment_status).toBe('paid')
+    expect(firstReceipt.sale.remaining_amount).toBe(0);
+    expect(firstReceipt.sale.payment_status).toBe('paid');
 
-    expect(secondReceipt.sale.remaining_amount).toBe(150)
-    expect(secondReceipt.sale.payment_status).toBe('partial')
+    expect(secondReceipt.sale.remaining_amount).toBe(150);
+    expect(secondReceipt.sale.payment_status).toBe('partial');
 
-    const customerAfterPayment = getCustomerById(customer.id) as CustomerTestRow
-    expect(customerAfterPayment.balance).toBe(150)
-    const statement = getCustomerStatement(customer.id, 1) as any
+    const customerAfterPayment = getCustomerById(
+      customer.id,
+    ) as CustomerTestRow;
+    expect(customerAfterPayment.balance).toBe(150);
+    const statement = getCustomerStatement(customer.id, 1) as any;
 
     const batchEntries = statement.entries.filter(
       (entry: any) =>
         Number(entry.batch_id) === Number(payment.payment_batch_id),
-    )
+    );
 
-    expect(batchEntries).toHaveLength(1)
+    expect(batchEntries).toHaveLength(1);
 
-    expect(batchEntries[0].credit).toBe(350)
+    expect(batchEntries[0].credit).toBe(350);
 
-    expect(batchEntries[0].allocations).toHaveLength(2)
-  })
+    expect(batchEntries[0].allocations).toHaveLength(2);
+  });
 
   it('rejects customer payment with invalid amount', () => {
-    const customer = createTestCustomer()
+    const customer = createTestCustomer();
 
     expect(() =>
       recordCustomerPayment({
@@ -1370,8 +1375,8 @@ describe('customers repository', () => {
         payment_method: 'cash',
         actor_id: 1,
       }),
-    ).toThrow()
-  })
+    ).toThrow();
+  });
 
   it('rejects customer payment for missing customer', () => {
     expect(() =>
@@ -1381,11 +1386,11 @@ describe('customers repository', () => {
         payment_method: 'cash',
         actor_id: 1,
       }),
-    ).toThrow('العميل غير موجود')
-  })
+    ).toThrow('العميل غير موجود');
+  });
 
   it('rejects customer payment when customer has no balance', () => {
-    const customer = createTestCustomer()
+    const customer = createTestCustomer();
 
     expect(() =>
       recordCustomerPayment({
@@ -1394,12 +1399,12 @@ describe('customers repository', () => {
         payment_method: 'cash',
         actor_id: 1,
       }),
-    ).toThrow('لا يوجد رصيد مستحق على العميل')
-  })
+    ).toThrow('لا يوجد رصيد مستحق على العميل');
+  });
 
   it('returns customer statement summary', () => {
-    const customer = createTestCustomer()
-    const sale = createPartialSale(customer.id, 100)
+    const customer = createTestCustomer();
+    const sale = createPartialSale(customer.id, 100);
 
     recordCustomerPayment({
       customer_id: customer.id,
@@ -1407,24 +1412,24 @@ describe('customers repository', () => {
       amount: 50,
       payment_method: 'cash',
       actor_id: 1,
-    })
+    });
 
-    const statement = getCustomerStatement(customer.id) as any
+    const statement = getCustomerStatement(customer.id) as any;
 
-    expect(statement.customer.id).toBe(customer.id)
-    expect(statement.sales).toHaveLength(1)
-    expect(statement.payments).toHaveLength(1)
-    expect(statement.entries.length).toBeGreaterThanOrEqual(3)
-    expect(statement.summary.total_sales).toBe(300)
-    expect(statement.summary.total_paid).toBe(150)
-    expect(statement.summary.balance).toBe(150)
-    expect(statement.summary.open_sales).toBe(1)
-  })
+    expect(statement.customer.id).toBe(customer.id);
+    expect(statement.sales).toHaveLength(1);
+    expect(statement.payments).toHaveLength(1);
+    expect(statement.entries.length).toBeGreaterThanOrEqual(3);
+    expect(statement.summary.total_sales).toBe(300);
+    expect(statement.summary.total_paid).toBe(150);
+    expect(statement.summary.balance).toBe(150);
+    expect(statement.summary.open_sales).toBe(1);
+  });
 
   it('paginates customers and returns debt summary', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const created: CustomerTestRow[] = []
+    const created: CustomerTestRow[] = [];
 
     for (let index = 1; index <= 5; index += 1) {
       created.push(
@@ -1432,7 +1437,7 @@ describe('customers repository', () => {
           name: `Paged Customer ${index}`,
           phone: `0109000000${index}`,
         }) as CustomerTestRow,
-      )
+      );
     }
 
     db.prepare(
@@ -1441,33 +1446,33 @@ describe('customers repository', () => {
     SET balance = 250
     WHERE id = ?
   `,
-    ).run(created[0].id)
+    ).run(created[0].id);
 
     const firstPage = listCustomers({
       limit: 2,
       offset: 0,
-    })
+    });
 
     const secondPage = listCustomers({
       limit: 2,
       offset: 2,
-    })
+    });
 
-    expect(firstPage.total).toBe(5)
-    expect(firstPage.rows).toHaveLength(2)
-    expect(secondPage.rows).toHaveLength(2)
+    expect(firstPage.total).toBe(5);
+    expect(firstPage.rows).toHaveLength(2);
+    expect(secondPage.rows).toHaveLength(2);
 
-    expect(firstPage.summary.total_debt).toBe(250)
+    expect(firstPage.summary.total_debt).toBe(250);
 
-    expect(firstPage.summary.debtors_count).toBe(1)
+    expect(firstPage.summary.debtors_count).toBe(1);
 
-    expect(firstPage.summary.top_debtor?.id).toBe(created[0].id)
-  })
+    expect(firstPage.summary.top_debtor?.id).toBe(created[0].id);
+  });
 
   it('does not hide customer history after 100 records', () => {
-    const customer = createTestCustomer('01091919191')
+    const customer = createTestCustomer('01091919191');
 
-    const db = getDb()
+    const db = getDb();
 
     const insert = db.prepare(`
     INSERT INTO loyalty_transactions (
@@ -1479,20 +1484,20 @@ describe('customers repository', () => {
       notes
     )
     VALUES (?, NULL, 'adjust', 1, 0, ?)
-  `)
+  `);
 
     const insertHistory = db.transaction(() => {
       for (let index = 1; index <= 105; index += 1) {
-        insert.run(customer.id, `history ${index}`)
+        insert.run(customer.id, `history ${index}`);
       }
-    })
+    });
 
-    insertHistory()
+    insertHistory();
 
-    const history = getCustomerHistory(customer.id) as any
+    const history = getCustomerHistory(customer.id) as any;
 
-    expect(history.loyalty).toHaveLength(105)
-  })
+    expect(history.loyalty).toHaveLength(105);
+  });
 
   it.each([
     { paid: 200, replacement: 150, total: 450, netPaid: 200, balance: 250 },
@@ -1503,9 +1508,9 @@ describe('customers repository', () => {
   ])(
     'reconciles exchange statement for paid=$paid replacement=$replacement',
     ({ paid, replacement, total, netPaid, balance }) => {
-      const db = getDb()
-      const customer = createTestCustomer()
-      const prices = [150, 200, 250, 300, 350]
+      const db = getDb();
+      const customer = createTestCustomer();
+      const prices = [150, 200, 250, 300, 350];
 
       createProduct({
         name: 'Statement Exchange Product',
@@ -1532,10 +1537,10 @@ describe('customers repository', () => {
             opening_qty: 20,
           },
         ],
-      })
+      });
 
       const variantAt = (price: number) =>
-        getVariantByBarcode(`STMT${price}`) as SaleVariantTestRow
+        getVariantByBarcode(`STMT${price}`) as SaleVariantTestRow;
 
       const promotion = createPromotion({
         name: 'Statement Buy 2 Get 1',
@@ -1545,9 +1550,9 @@ describe('customers repository', () => {
         free_qty: 1,
         scope_type: 'all',
         actor_id: 1,
-      })
+      });
 
-      togglePromotion(promotion.promotionId, 1)
+      togglePromotion(promotion.promotionId, 1);
 
       const sale = createSale({
         user_id: 1,
@@ -1560,7 +1565,7 @@ describe('customers repository', () => {
         change_amount: 0,
         payment_method: 'cash',
         items: [300, 250, 200].map((price) => {
-          const variant = variantAt(price)
+          const variant = variantAt(price);
 
           return {
             variant_id: variant.variant_id,
@@ -1570,9 +1575,9 @@ describe('customers repository', () => {
             color: variant.color,
             quantity: 1,
             unit_price: price,
-          }
+          };
         }),
-      })
+      });
 
       const unit = db
         .prepare(
@@ -1584,12 +1589,12 @@ describe('customers repository', () => {
           LIMIT 1
           `,
         )
-        .get(sale.saleId, variantAt(300).variant_id) as { id: number }
+        .get(sale.saleId, variantAt(300).variant_id) as { id: number };
 
       const replacementVariant =
         replacement === 300
           ? (getVariantByBarcode('STMT300ALT') as SaleVariantTestRow)
-          : variantAt(replacement)
+          : variantAt(replacement);
 
       const exchange = createSaleExchange({
         original_sale_id: sale.saleId,
@@ -1601,38 +1606,38 @@ describe('customers repository', () => {
             new_variant_id: replacementVariant.variant_id,
           },
         ],
-      })
+      });
 
       function checkStatement(
         expectedSales: number,
         expectedPaid: number,
         expectedBalance: number,
       ) {
-        const statement = getCustomerStatement(customer.id) as any
+        const statement = getCustomerStatement(customer.id) as any;
 
-        expect(statement.summary.total_sales).toBe(expectedSales)
-        expect(statement.summary.total_paid).toBe(expectedPaid)
-        expect(statement.summary.balance).toBe(expectedBalance)
-        expect(statement.summary.open_sales).toBe(expectedBalance > 0 ? 1 : 0)
+        expect(statement.summary.total_sales).toBe(expectedSales);
+        expect(statement.summary.total_paid).toBe(expectedPaid);
+        expect(statement.summary.balance).toBe(expectedBalance);
+        expect(statement.summary.open_sales).toBe(expectedBalance > 0 ? 1 : 0);
 
         const initialPayment = statement.entries.find(
           (entry: any) => entry.id === `sale-paid-${sale.saleId}`,
-        )
+        );
 
-        expect(initialPayment.credit).toBe(paid)
+        expect(initialPayment.credit).toBe(paid);
 
         const ledgerBalance = statement.entries.reduce(
           (sum: number, entry: any) =>
             sum + Number(entry.debit) - Number(entry.credit),
           0,
-        )
+        );
 
-        expect(ledgerBalance).toBeCloseTo(expectedBalance, 2)
+        expect(ledgerBalance).toBeCloseTo(expectedBalance, 2);
       }
 
-      checkStatement(total, netPaid, balance)
+      checkStatement(total, netPaid, balance);
 
-      const laterPaid = balance > 0 ? 50 : 0
+      const laterPaid = balance > 0 ? 50 : 0;
 
       if (laterPaid > 0) {
         recordCustomerPayment({
@@ -1642,26 +1647,26 @@ describe('customers repository', () => {
           payment_method: 'cash',
           notes: 'تسوية مديونية بسبب استبدال - دفعة فعلية',
           actor_id: 1,
-        })
+        });
 
-        checkStatement(total, netPaid + laterPaid, balance - laterPaid)
+        checkStatement(total, netPaid + laterPaid, balance - laterPaid);
       }
 
       cancelSaleExchange({
         exchange_id: exchange.exchangeId,
         actor_id: 1,
-      })
+      });
 
-      checkStatement(550, paid + laterPaid, 550 - paid - laterPaid)
+      checkStatement(550, paid + laterPaid, 550 - paid - laterPaid);
     },
-  )
+  );
 
   it.each([100, 250, 300])(
     'reconciles returns and cancellation with initial payment %s',
     (paid) => {
-      const customer = createTestCustomer()
-      const sale = createPartialSale(customer.id, paid)
-      const receipt = getSaleReceipt(sale.saleId) as any
+      const customer = createTestCustomer();
+      const sale = createPartialSale(customer.id, paid);
+      const receipt = getSaleReceipt(sale.saleId) as any;
 
       const returned = createSaleReturn({
         original_sale_id: sale.saleId,
@@ -1674,7 +1679,7 @@ describe('customers repository', () => {
             quantity: 1,
           },
         ],
-      })
+      });
 
       // تغطية مرتجع قديم يعتمد على حركة الخزنة لتحديد المبلغ المردود.
       if (paid === 250) {
@@ -1682,17 +1687,17 @@ describe('customers repository', () => {
           .prepare(
             'UPDATE sale_returns SET cash_refund_amount = NULL WHERE id = ?',
           )
-          .run(returned.returnId)
+          .run(returned.returnId);
       }
 
-      const statement = getCustomerStatement(customer.id) as any
-      const expectedPaid = Math.min(paid, 150)
-      const expectedBalance = Math.max(0, 150 - paid)
+      const statement = getCustomerStatement(customer.id) as any;
+      const expectedPaid = Math.min(paid, 150);
+      const expectedBalance = Math.max(0, 150 - paid);
 
-      expect(statement.summary.total_sales).toBe(150)
-      expect(statement.summary.total_paid).toBe(expectedPaid)
-      expect(statement.summary.balance).toBe(expectedBalance)
-      expect(statement.summary.open_sales).toBe(expectedBalance > 0 ? 1 : 0)
+      expect(statement.summary.total_sales).toBe(150);
+      expect(statement.summary.total_paid).toBe(expectedPaid);
+      expect(statement.summary.balance).toBe(expectedBalance);
+      expect(statement.summary.open_sales).toBe(expectedBalance > 0 ? 1 : 0);
 
       expect(
         statement.entries.reduce(
@@ -1700,18 +1705,18 @@ describe('customers repository', () => {
             sum + Number(entry.debit) - Number(entry.credit),
           0,
         ),
-      ).toBeCloseTo(expectedBalance, 2)
+      ).toBeCloseTo(expectedBalance, 2);
 
       cancelSaleReturn({
         return_id: returned.returnId,
         actor_id: 1,
-      })
+      });
 
-      const restored = getCustomerStatement(customer.id) as any
+      const restored = getCustomerStatement(customer.id) as any;
 
-      expect(restored.summary.total_sales).toBe(300)
-      expect(restored.summary.total_paid).toBe(paid)
-      expect(restored.summary.balance).toBe(300 - paid)
+      expect(restored.summary.total_sales).toBe(300);
+      expect(restored.summary.total_paid).toBe(paid);
+      expect(restored.summary.balance).toBe(300 - paid);
 
       expect(
         restored.entries.reduce(
@@ -1719,29 +1724,29 @@ describe('customers repository', () => {
             sum + Number(entry.debit) - Number(entry.credit),
           0,
         ),
-      ).toBeCloseTo(300 - paid, 2)
+      ).toBeCloseTo(300 - paid, 2);
     },
-  )
+  );
 
   it('allows admin customer payment to store safe without an open shift', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const customer = createTestCustomer('01099999999')
+    const customer = createTestCustomer('01099999999');
 
-    const sale = createPartialSale(customer.id, 100)
+    const sale = createPartialSale(customer.id, 100);
 
-    const shift = getOpenCashShift()
+    const shift = getOpenCashShift();
 
-    expect(shift).toBeTruthy()
+    expect(shift).toBeTruthy();
 
     closeCashShift({
       shift_id: shift!.id,
       closing_counted_amount: 100,
       left_for_next_shift: 0,
       closed_by: 1,
-    })
+    });
 
-    expect(getOpenCashShift()).toBeNull()
+    expect(getOpenCashShift()).toBeNull();
 
     const result = recordCustomerPayment({
       customer_id: customer.id,
@@ -1750,10 +1755,10 @@ describe('customers repository', () => {
       payment_method: 'store_safe',
       actor_id: 1,
       notes: 'تحصيل من الخزنة الآمنة بعد إغلاق الشفت',
-    })
+    });
 
-    expect(result.shift_id).toBeNull()
-    expect(result.paid_amount).toBe(50)
+    expect(result.shift_id).toBeNull();
+    expect(result.paid_amount).toBe(50);
 
     const batch = db
       .prepare(
@@ -1763,10 +1768,10 @@ describe('customers repository', () => {
       WHERE id = ?
       `,
       )
-      .get(result.payment_batch_id) as any
+      .get(result.payment_batch_id) as any;
 
-    expect(batch.shift_id).toBeNull()
-    expect(batch.payment_method).toBe('store_safe')
+    expect(batch.shift_id).toBeNull();
+    expect(batch.payment_method).toBe('store_safe');
 
     const movement = db
       .prepare(
@@ -1778,22 +1783,22 @@ describe('customers repository', () => {
       LIMIT 1
       `,
       )
-      .get(result.payment_batch_id) as any
+      .get(result.payment_batch_id) as any;
 
-    expect(movement.shift_id).toBeNull()
-    expect(movement.payment_method).toBe('store_safe')
-    expect(movement.direction).toBe('in')
-    expect(Number(movement.amount)).toBe(50)
-  })
+    expect(movement.shift_id).toBeNull();
+    expect(movement.payment_method).toBe('store_safe');
+    expect(movement.direction).toBe('in');
+    expect(Number(movement.amount)).toBe(50);
+  });
 
   it('summarizes customer debt by due date', () => {
-    const db = getDb()
+    const db = getDb();
 
     const customer = createCustomer({
       name: 'Due Customer',
 
       phone: '01077770004',
-    }) as CustomerTestRow
+    }) as CustomerTestRow;
 
     const insertSale = db.prepare(
       `
@@ -1828,11 +1833,11 @@ describe('customers repository', () => {
           'store_cash'
         )
         `,
-    )
+    );
 
     const dueDate = (modifier: string | null) => {
       if (!modifier) {
-        return null
+        return null;
       }
 
       const row = db
@@ -1847,21 +1852,21 @@ describe('customers repository', () => {
           `,
         )
         .get(modifier) as {
-        value: string
-      }
+        value: string;
+      };
 
-      return row.value
-    }
+      return row.value;
+    };
 
-    insertSale.run(customer.id, dueDate('-1 day'), 100, 100, 100)
+    insertSale.run(customer.id, dueDate('-1 day'), 100, 100, 100);
 
-    insertSale.run(customer.id, dueDate('+0 days'), 200, 200, 200)
+    insertSale.run(customer.id, dueDate('+0 days'), 200, 200, 200);
 
-    insertSale.run(customer.id, dueDate('+3 days'), 300, 300, 300)
+    insertSale.run(customer.id, dueDate('+3 days'), 300, 300, 300);
 
-    insertSale.run(customer.id, dueDate('+10 days'), 400, 400, 400)
+    insertSale.run(customer.id, dueDate('+10 days'), 400, 400, 400);
 
-    insertSale.run(customer.id, null, 500, 500, 500)
+    insertSale.run(customer.id, null, 500, 500, 500);
 
     db.prepare(
       `
@@ -1871,11 +1876,11 @@ describe('customers repository', () => {
 
       WHERE id = ?
       `,
-    ).run(customer.id)
+    ).run(customer.id);
 
     const page = listCustomers({
       search: 'Due Customer',
-    })
+    });
 
     expect(page.summary.due).toEqual({
       overdue: 100,
@@ -1887,9 +1892,9 @@ describe('customers repository', () => {
       without_due_date: 500,
 
       total_open: 1500,
-    })
+    });
 
-    const statement = getCustomerStatement(customer.id, 1) as any
+    const statement = getCustomerStatement(customer.id, 1) as any;
 
     expect(statement.summary.due).toEqual({
       overdue: 100,
@@ -1901,6 +1906,6 @@ describe('customers repository', () => {
       without_due_date: 500,
 
       total_open: 1500,
-    })
-  })
-})
+    });
+  });
+});

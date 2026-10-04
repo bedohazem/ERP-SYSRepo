@@ -9,5 +9,5 @@ type AppStore = {
 export const useAppStore = create<AppStore>((set) => ({
   sidebarOpen: true,
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-  setSidebarOpen: (value) => set({ sidebarOpen: value })
+  setSidebarOpen: (value) => set({ sidebarOpen: value }),
 }));

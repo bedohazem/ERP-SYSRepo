@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 
 import {
   closeCashShift,
@@ -16,81 +16,81 @@ import {
   listCashShifts,
   resolveCashShiftVariance,
   forceCloseCashShift,
-} from '../../src/main/database/repositories/cash-shifts.repo'
+} from '../../src/main/database/repositories/cash-shifts.repo';
 
 import {
   createCashMovement,
   getCashSummary,
-} from '../../src/main/database/repositories/cash.repo'
+} from '../../src/main/database/repositories/cash.repo';
 
 describe('cash shifts repository', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
-  })
+    closeDb();
+    getDb();
+    resetDatabaseData();
+  });
 
   it('opens first shift and reconciles drawer balance to actual counted amount', () => {
     const shift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
-    expect(shift.status).toBe('open')
+    expect(shift.status).toBe('open');
 
-    expect(shift.expected_opening_amount).toBeNull()
+    expect(shift.expected_opening_amount).toBeNull();
 
-    expect(shift.opening_counted_amount).toBe(500)
+    expect(shift.opening_counted_amount).toBe(500);
 
-    expect(shift.opening_difference).toBe(0)
+    expect(shift.opening_difference).toBe(0);
 
-    expect(getOpenCashShift()?.id).toBe(shift.id)
+    expect(getOpenCashShift()?.id).toBe(shift.id);
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(500)
-  })
+    ).toBe(500);
+  });
 
   it('shows previous handover before opening the next shift', () => {
     const firstShift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     closeCashShift({
       shift_id: firstShift.id,
       closing_counted_amount: 500,
       left_for_next_shift: 300,
       closed_by: 1,
-    })
+    });
 
-    const preview = getCashShiftOpeningPreview()
+    const preview = getCashShiftOpeningPreview();
 
-    expect(preview.can_open).toBe(true)
+    expect(preview.can_open).toBe(true);
 
-    expect(preview.previous_shift_id).toBe(firstShift.id)
+    expect(preview.previous_shift_id).toBe(firstShift.id);
 
-    expect(preview.expected_opening_amount).toBe(300)
-  })
+    expect(preview.expected_opening_amount).toBe(300);
+  });
 
   it('prevents opening more than one shift at the same time', () => {
     openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     expect(() =>
       openCashShift({
         opening_counted_amount: 600,
         opened_by: 1,
       }),
-    ).toThrow('يوجد شفت مفتوح بالفعل')
-  })
+    ).toThrow('يوجد شفت مفتوح بالفعل');
+  });
 
   it('prevents a cashier from operating on another cashier shift', () => {
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
@@ -103,7 +103,7 @@ describe('cash shifts repository', () => {
     )
     VALUES (?, ?, ?, 'cashier', 1)
     `,
-    ).run('Shift Cashier One', 'shift_cashier_one', 'x')
+    ).run('Shift Cashier One', 'shift_cashier_one', 'x');
 
     db.prepare(
       `
@@ -116,7 +116,7 @@ describe('cash shifts repository', () => {
     )
     VALUES (?, ?, ?, 'cashier', 1)
     `,
-    ).run('Shift Cashier Two', 'shift_cashier_two', 'x')
+    ).run('Shift Cashier Two', 'shift_cashier_two', 'x');
 
     const firstCashier = db
       .prepare(
@@ -128,8 +128,8 @@ describe('cash shifts repository', () => {
     `,
       )
       .get() as {
-      id: number
-    }
+      id: number;
+    };
 
     const secondCashier = db
       .prepare(
@@ -141,32 +141,32 @@ describe('cash shifts repository', () => {
     `,
       )
       .get() as {
-      id: number
-    }
+      id: number;
+    };
 
     const shift = openCashShift({
       opening_counted_amount: 100,
       opened_by: firstCashier.id,
-    })
+    });
 
-    expect(requireOperationalCashShift(firstCashier.id).id).toBe(shift.id)
+    expect(requireOperationalCashShift(firstCashier.id).id).toBe(shift.id);
 
     expect(() => requireOperationalCashShift(secondCashier.id)).toThrow(
       'الشفت المفتوح تابع لمستخدم آخر',
-    )
+    );
 
     /*
      * المستخدم رقم 1 هو الأدمن الافتراضي.
      */
-    expect(requireOperationalCashShift(1).id).toBe(shift.id)
-  })
+    expect(requireOperationalCashShift(1).id).toBe(shift.id);
+  });
 
   it('allows admin non-drawer financial operations without an open shift', () => {
-    expect(resolveFinancialOperationShift(1, ['owner_bank'])).toBeNull()
+    expect(resolveFinancialOperationShift(1, ['owner_bank'])).toBeNull();
 
-    expect(resolveFinancialOperationShift(1, ['owner_cash'])).toBeNull()
+    expect(resolveFinancialOperationShift(1, ['owner_cash'])).toBeNull();
 
-    expect(resolveFinancialOperationShift(1, ['owner_vodafone'])).toBeNull()
+    expect(resolveFinancialOperationShift(1, ['owner_vodafone'])).toBeNull();
 
     expect(() =>
       resolveFinancialOperationShift(
@@ -174,11 +174,11 @@ describe('cash shifts repository', () => {
         ['store_cash'],
         'لا يمكن تنفيذ العملية بدون شفت مفتوح',
       ),
-    ).toThrow('لا يمكن تنفيذ العملية بدون شفت مفتوح')
-  })
+    ).toThrow('لا يمكن تنفيذ العملية بدون شفت مفتوح');
+  });
 
   it('requires cashiers to have their own shift for every financial account', () => {
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
@@ -191,7 +191,7 @@ describe('cash shifts repository', () => {
       )
       VALUES (?, ?, ?, 'cashier', 1)
       `,
-    ).run('Financial Shift Cashier', 'financial_shift_cashier', 'x')
+    ).run('Financial Shift Cashier', 'financial_shift_cashier', 'x');
 
     const cashier = db
       .prepare(
@@ -202,8 +202,8 @@ describe('cash shifts repository', () => {
         `,
       )
       .get() as {
-      id: number
-    }
+      id: number;
+    };
 
     expect(() =>
       resolveFinancialOperationShift(
@@ -211,27 +211,27 @@ describe('cash shifts repository', () => {
         ['owner_bank'],
         'لا يمكن تنفيذ العملية بدون شفت مفتوح',
       ),
-    ).toThrow('لا يمكن تنفيذ العملية بدون شفت مفتوح')
+    ).toThrow('لا يمكن تنفيذ العملية بدون شفت مفتوح');
 
     const shift = openCashShift({
       opening_counted_amount: 100,
       opened_by: cashier.id,
-    })
+    });
 
     expect(resolveFinancialOperationShift(cashier.id, ['owner_bank'])?.id).toBe(
       shift.id,
-    )
+    );
 
     expect(resolveFinancialOperationShift(cashier.id, ['store_cash'])?.id).toBe(
       shift.id,
-    )
-  })
+    );
+  });
 
   it('calculates expected drawer balance from shift cash movements', () => {
     const shift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -240,7 +240,7 @@ describe('cash shifts repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: shift.id,
-    })
+    });
 
     createCashMovement({
       type: 'expense',
@@ -249,23 +249,23 @@ describe('cash shifts repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: shift.id,
-    })
+    });
 
-    const preview = getCashShiftExpectedBalance(shift.id)
+    const preview = getCashShiftExpectedBalance(shift.id);
 
-    expect(preview.opening_counted_amount).toBe(500)
+    expect(preview.opening_counted_amount).toBe(500);
 
-    expect(preview.cash_in).toBe(1000)
-    expect(preview.cash_out).toBe(100)
+    expect(preview.cash_in).toBe(1000);
+    expect(preview.cash_out).toBe(100);
 
-    expect(preview.expected_closing_amount).toBe(1400)
-  })
+    expect(preview.expected_closing_amount).toBe(1400);
+  });
 
   it('closes matching shift and transfers excess to safe', () => {
     const shift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -274,7 +274,7 @@ describe('cash shifts repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: shift.id,
-    })
+    });
 
     const closed = closeCashShift({
       shift_id: shift.id,
@@ -284,31 +284,31 @@ describe('cash shifts repository', () => {
       left_for_next_shift: 300,
 
       closed_by: 1,
-    })
+    });
 
-    expect(closed.status).toBe('closed')
+    expect(closed.status).toBe('closed');
 
-    expect(closed.expected_closing_amount).toBe(1500)
+    expect(closed.expected_closing_amount).toBe(1500);
 
-    expect(closed.closing_counted_amount).toBe(1500)
+    expect(closed.closing_counted_amount).toBe(1500);
 
-    expect(closed.closing_difference).toBe(0)
+    expect(closed.closing_difference).toBe(0);
 
-    expect(closed.left_for_next_shift).toBe(300)
+    expect(closed.left_for_next_shift).toBe(300);
 
-    expect(closed.safe_transfer_amount).toBe(1200)
+    expect(closed.safe_transfer_amount).toBe(1200);
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(300)
+    ).toBe(300);
 
     expect(
       getCashSummary({
         payment_method: 'store_safe',
       }).balance,
-    ).toBe(1200)
+    ).toBe(1200);
 
     const variance = getDb()
       .prepare(
@@ -323,17 +323,17 @@ describe('cash shifts repository', () => {
         LIMIT 1
         `,
       )
-      .get(shift.id)
+      .get(shift.id);
 
-    expect(variance).toBeUndefined()
-  })
+    expect(variance).toBeUndefined();
+  });
 
   it('force closes an abandoned shift without creating a fake physical count', () => {
     const shift = openCashShift({
       opening_counted_amount: 500,
 
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -347,7 +347,7 @@ describe('cash shifts repository', () => {
       created_by: 1,
 
       shift_id: shift.id,
-    })
+    });
 
     const closed = forceCloseCashShift({
       shift_id: shift.id,
@@ -357,19 +357,19 @@ describe('cash shifts repository', () => {
       approved_by: 1,
 
       reason: 'الكاشير غير متاح ولا يمكن تنفيذ جرد فعلي',
-    })
+    });
 
-    expect(closed.status).toBe('closed')
+    expect(closed.status).toBe('closed');
 
-    expect(closed.expected_closing_amount).toBe(1500)
+    expect(closed.expected_closing_amount).toBe(1500);
 
-    expect(closed.closing_counted_amount).toBeNull()
+    expect(closed.closing_counted_amount).toBeNull();
 
-    expect(closed.closing_difference).toBeNull()
+    expect(closed.closing_difference).toBeNull();
 
-    expect(closed.left_for_next_shift).toBe(1500)
+    expect(closed.left_for_next_shift).toBe(1500);
 
-    expect(Number(closed.safe_transfer_amount || 0)).toBe(0)
+    expect(Number(closed.safe_transfer_amount || 0)).toBe(0);
 
     /*
      * لا يتم تحريك الأموال
@@ -379,13 +379,13 @@ describe('cash shifts repository', () => {
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(1500)
+    ).toBe(1500);
 
     expect(
       getCashSummary({
         payment_method: 'store_safe',
       }).balance,
-    ).toBe(0)
+    ).toBe(0);
 
     const closingVariance = getDb()
       .prepare(
@@ -401,13 +401,13 @@ describe('cash shifts repository', () => {
             'closing'
         `,
       )
-      .get(shift.id)
+      .get(shift.id);
 
-    expect(closingVariance).toBeUndefined()
+    expect(closingVariance).toBeUndefined();
 
-    const preview = getCashShiftOpeningPreview()
+    const preview = getCashShiftOpeningPreview();
 
-    expect(preview.expected_opening_amount).toBe(1500)
+    expect(preview.expected_opening_amount).toBe(1500);
 
     /*
      * أول عد فعلي بعد الطوارئ
@@ -417,9 +417,9 @@ describe('cash shifts repository', () => {
       opening_counted_amount: 1400,
 
       opened_by: 1,
-    })
+    });
 
-    expect(nextShift.opening_difference).toBe(-100)
+    expect(nextShift.opening_difference).toBe(-100);
 
     const openingVariance = getDb()
       .prepare(
@@ -438,20 +438,20 @@ describe('cash shifts repository', () => {
             'opening'
         `,
       )
-      .get(nextShift.id) as any
+      .get(nextShift.id) as any;
 
-    expect(openingVariance.kind).toBe('shortage')
+    expect(openingVariance.kind).toBe('shortage');
 
-    expect(Number(openingVariance.amount)).toBe(100)
+    expect(Number(openingVariance.amount)).toBe(100);
 
-    expect(openingVariance.status).toBe('pending')
-  })
+    expect(openingVariance.status).toBe('pending');
+  });
 
   it('records closing shortage without corrupting drawer balance', () => {
     const shift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -460,7 +460,7 @@ describe('cash shifts repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: shift.id,
-    })
+    });
 
     const closed = closeCashShift({
       shift_id: shift.id,
@@ -470,13 +470,13 @@ describe('cash shifts repository', () => {
       left_for_next_shift: 400,
 
       closed_by: 1,
-    })
+    });
 
-    expect(closed.expected_closing_amount).toBe(1500)
+    expect(closed.expected_closing_amount).toBe(1500);
 
-    expect(closed.closing_difference).toBe(-100)
+    expect(closed.closing_difference).toBe(-100);
 
-    expect(closed.safe_transfer_amount).toBe(1000)
+    expect(closed.safe_transfer_amount).toBe(1000);
 
     const variance = getDb()
       .prepare(
@@ -491,32 +491,32 @@ describe('cash shifts repository', () => {
         LIMIT 1
         `,
       )
-      .get(shift.id) as any
+      .get(shift.id) as any;
 
-    expect(variance.kind).toBe('shortage')
+    expect(variance.kind).toBe('shortage');
 
-    expect(Number(variance.amount)).toBe(100)
+    expect(Number(variance.amount)).toBe(100);
 
-    expect(variance.status).toBe('pending')
+    expect(variance.status).toBe('pending');
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(400)
+    ).toBe(400);
 
     expect(
       getCashSummary({
         payment_method: 'store_safe',
       }).balance,
-    ).toBe(1000)
-  })
+    ).toBe(1000);
+  });
 
   it('resolves a pending shift variance without changing cash balances', () => {
     const shift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -525,7 +525,7 @@ describe('cash shifts repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: shift.id,
-    })
+    });
 
     closeCashShift({
       shift_id: shift.id,
@@ -535,31 +535,31 @@ describe('cash shifts repository', () => {
       left_for_next_shift: 400,
 
       closed_by: 1,
-    })
+    });
 
     const pendingBefore = listCashShiftVariances({
       status: 'pending',
-    })
+    });
 
-    expect(pendingBefore.total).toBe(1)
+    expect(pendingBefore.total).toBe(1);
 
-    const variance = pendingBefore.rows[0]
+    const variance = pendingBefore.rows[0];
 
-    expect(variance.shift_id).toBe(shift.id)
+    expect(variance.shift_id).toBe(shift.id);
 
-    expect(variance.stage).toBe('closing')
+    expect(variance.stage).toBe('closing');
 
-    expect(variance.kind).toBe('shortage')
+    expect(variance.kind).toBe('shortage');
 
-    expect(Number(variance.amount)).toBe(100)
+    expect(Number(variance.amount)).toBe(100);
 
     const drawerBefore = getCashSummary({
       payment_method: 'store_cash',
-    }).balance
+    }).balance;
 
     const safeBefore = getCashSummary({
       payment_method: 'store_safe',
-    }).balance
+    }).balance;
 
     const resolved = resolveCashShiftVariance({
       variance_id: variance.id,
@@ -569,43 +569,43 @@ describe('cash shifts repository', () => {
       resolution_notes: 'تمت مراجعة العجز واعتماد نتيجة الجرد',
 
       resolved_by: 1,
-    })
+    });
 
-    expect(resolved.status).toBe('resolved')
+    expect(resolved.status).toBe('resolved');
 
-    expect(resolved.resolution_type).toBe('explained')
+    expect(resolved.resolution_type).toBe('explained');
 
     expect(resolved.resolution_notes).toBe(
       'تمت مراجعة العجز واعتماد نتيجة الجرد',
-    )
+    );
 
-    expect(resolved.resolved_by).toBe(1)
+    expect(resolved.resolved_by).toBe(1);
 
-    expect(resolved.resolved_at).toBeTruthy()
+    expect(resolved.resolved_at).toBeTruthy();
 
     expect(
       listCashShiftVariances({
         status: 'pending',
       }).total,
-    ).toBe(0)
+    ).toBe(0);
 
     expect(
       listCashShiftVariances({
         status: 'resolved',
       }).total,
-    ).toBe(1)
+    ).toBe(1);
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(drawerBefore)
+    ).toBe(drawerBefore);
 
     expect(
       getCashSummary({
         payment_method: 'store_safe',
       }).balance,
-    ).toBe(safeBefore)
+    ).toBe(safeBefore);
 
     expect(() =>
       resolveCashShiftVariance({
@@ -617,11 +617,11 @@ describe('cash shifts repository', () => {
 
         resolved_by: 1,
       }),
-    ).toThrow('تمت مراجعة فرق الشفت بالفعل')
-  })
+    ).toThrow('تمت مراجعة فرق الشفت بالفعل');
+  });
 
   it('allows only admins to resolve shift variances', () => {
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
@@ -641,7 +641,7 @@ describe('cash shifts repository', () => {
       1
     )
     `,
-    ).run('Variance Cashier', 'variance_cashier', 'x')
+    ).run('Variance Cashier', 'variance_cashier', 'x');
 
     const cashier = db
       .prepare(
@@ -655,13 +655,13 @@ describe('cash shifts repository', () => {
       `,
       )
       .get() as {
-      id: number
-    }
+      id: number;
+    };
 
     const shift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -670,7 +670,7 @@ describe('cash shifts repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: shift.id,
-    })
+    });
 
     closeCashShift({
       shift_id: shift.id,
@@ -680,11 +680,11 @@ describe('cash shifts repository', () => {
       left_for_next_shift: 550,
 
       closed_by: 1,
-    })
+    });
 
     const variance = listCashShiftVariances({
       status: 'pending',
-    }).rows[0]
+    }).rows[0];
 
     expect(() =>
       resolveCashShiftVariance({
@@ -696,14 +696,14 @@ describe('cash shifts repository', () => {
 
         resolved_by: cashier.id,
       }),
-    ).toThrow('مراجعة فروق الشفتات متاحة لمدير النظام فقط')
-  })
+    ).toThrow('مراجعة فروق الشفتات متاحة لمدير النظام فقط');
+  });
 
   it('records closing surplus and keeps it pending', () => {
     const shift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -712,7 +712,7 @@ describe('cash shifts repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: shift.id,
-    })
+    });
 
     const closed = closeCashShift({
       shift_id: shift.id,
@@ -722,9 +722,9 @@ describe('cash shifts repository', () => {
       left_for_next_shift: 400,
 
       closed_by: 1,
-    })
+    });
 
-    expect(closed.closing_difference).toBe(100)
+    expect(closed.closing_difference).toBe(100);
 
     const variance = getDb()
       .prepare(
@@ -739,32 +739,32 @@ describe('cash shifts repository', () => {
         LIMIT 1
         `,
       )
-      .get(shift.id) as any
+      .get(shift.id) as any;
 
-    expect(variance.kind).toBe('surplus')
+    expect(variance.kind).toBe('surplus');
 
-    expect(Number(variance.amount)).toBe(100)
+    expect(Number(variance.amount)).toBe(100);
 
-    expect(variance.status).toBe('pending')
+    expect(variance.status).toBe('pending');
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(400)
+    ).toBe(400);
 
     expect(
       getCashSummary({
         payment_method: 'store_safe',
       }).balance,
-    ).toBe(1200)
-  })
+    ).toBe(1200);
+  });
 
   it('reverses rejected closing shortage into the selected non-drawer account', () => {
     const shift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -773,33 +773,33 @@ describe('cash shifts repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: shift.id,
-    })
+    });
 
     closeCashShift({
       shift_id: shift.id,
       closing_counted_amount: 1400,
       left_for_next_shift: 400,
       closed_by: 1,
-    })
+    });
 
     const variance = listCashShiftVariances({
       status: 'pending',
-    }).rows[0]
+    }).rows[0];
 
-    expect(variance.kind).toBe('shortage')
-    expect(Number(variance.amount)).toBe(100)
+    expect(variance.kind).toBe('shortage');
+    expect(Number(variance.amount)).toBe(100);
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(400)
+    ).toBe(400);
 
     expect(
       getCashSummary({
         payment_method: 'store_safe',
       }).balance,
-    ).toBe(1000)
+    ).toBe(1000);
 
     const resolved = resolveCashShiftVariance({
       variance_id: variance.id,
@@ -807,22 +807,22 @@ describe('cash shifts repository', () => {
       resolution_notes: 'العجز ناتج عن مصروف لم يتم تسجيله',
       reversal_account: 'store_safe',
       resolved_by: 1,
-    })
+    });
 
-    expect(resolved.status).toBe('resolved')
-    expect(resolved.resolution_type).toBe('rejected')
+    expect(resolved.status).toBe('resolved');
+    expect(resolved.resolution_type).toBe('rejected');
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(400)
+    ).toBe(400);
 
     expect(
       getCashSummary({
         payment_method: 'store_safe',
       }).balance,
-    ).toBe(1100)
+    ).toBe(1100);
 
     const reversal = getDb()
       .prepare(
@@ -834,20 +834,20 @@ describe('cash shifts repository', () => {
       LIMIT 1
       `,
       )
-      .get(variance.id) as any
+      .get(variance.id) as any;
 
-    expect(reversal).toBeTruthy()
-    expect(reversal.direction).toBe('in')
-    expect(Number(reversal.amount)).toBe(100)
-    expect(reversal.payment_method).toBe('store_safe')
-    expect(reversal.shift_id).toBeNull()
-  })
+    expect(reversal).toBeTruthy();
+    expect(reversal.direction).toBe('in');
+    expect(Number(reversal.amount)).toBe(100);
+    expect(reversal.payment_method).toBe('store_safe');
+    expect(reversal.shift_id).toBeNull();
+  });
 
   it('reverses rejected closing surplus from the selected non-drawer account', () => {
     const shift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -856,27 +856,27 @@ describe('cash shifts repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: shift.id,
-    })
+    });
 
     closeCashShift({
       shift_id: shift.id,
       closing_counted_amount: 1600,
       left_for_next_shift: 400,
       closed_by: 1,
-    })
+    });
 
     const variance = listCashShiftVariances({
       status: 'pending',
-    }).rows[0]
+    }).rows[0];
 
-    expect(variance.kind).toBe('surplus')
-    expect(Number(variance.amount)).toBe(100)
+    expect(variance.kind).toBe('surplus');
+    expect(Number(variance.amount)).toBe(100);
 
     expect(
       getCashSummary({
         payment_method: 'store_safe',
       }).balance,
-    ).toBe(1200)
+    ).toBe(1200);
 
     const resolved = resolveCashShiftVariance({
       variance_id: variance.id,
@@ -884,22 +884,22 @@ describe('cash shifts repository', () => {
       resolution_notes: 'الزيادة ناتجة عن عملية لم يتم تسجيلها',
       reversal_account: 'store_safe',
       resolved_by: 1,
-    })
+    });
 
-    expect(resolved.status).toBe('resolved')
-    expect(resolved.resolution_type).toBe('rejected')
+    expect(resolved.status).toBe('resolved');
+    expect(resolved.resolution_type).toBe('rejected');
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(400)
+    ).toBe(400);
 
     expect(
       getCashSummary({
         payment_method: 'store_safe',
       }).balance,
-    ).toBe(1100)
+    ).toBe(1100);
 
     const reversal = getDb()
       .prepare(
@@ -911,20 +911,20 @@ describe('cash shifts repository', () => {
       LIMIT 1
       `,
       )
-      .get(variance.id) as any
+      .get(variance.id) as any;
 
-    expect(reversal).toBeTruthy()
-    expect(reversal.direction).toBe('out')
-    expect(Number(reversal.amount)).toBe(100)
-    expect(reversal.payment_method).toBe('store_safe')
-    expect(reversal.shift_id).toBeNull()
-  })
+    expect(reversal).toBeTruthy();
+    expect(reversal.direction).toBe('out');
+    expect(Number(reversal.amount)).toBe(100);
+    expect(reversal.payment_method).toBe('store_safe');
+    expect(reversal.shift_id).toBeNull();
+  });
 
   it('does not allow rejected closing variance to be reversed against store drawer', () => {
     const shift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -933,18 +933,18 @@ describe('cash shifts repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: shift.id,
-    })
+    });
 
     closeCashShift({
       shift_id: shift.id,
       closing_counted_amount: 1600,
       left_for_next_shift: 400,
       closed_by: 1,
-    })
+    });
 
     const variance = listCashShiftVariances({
       status: 'pending',
-    }).rows[0]
+    }).rows[0];
 
     expect(() =>
       resolveCashShiftVariance({
@@ -954,20 +954,20 @@ describe('cash shifts repository', () => {
         reversal_account: 'store_cash',
         resolved_by: 1,
       }),
-    ).toThrow('لا يمكن عكس فرق شفت مغلق على درج المحل')
+    ).toThrow('لا يمكن عكس فرق شفت مغلق على درج المحل');
 
     expect(
       listCashShiftVariances({
         status: 'pending',
       }).total,
-    ).toBe(1)
-  })
+    ).toBe(1);
+  });
 
   it('compares next shift actual opening against previous handover', () => {
     const firstShift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -976,7 +976,7 @@ describe('cash shifts repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: firstShift.id,
-    })
+    });
 
     closeCashShift({
       shift_id: firstShift.id,
@@ -986,20 +986,20 @@ describe('cash shifts repository', () => {
       left_for_next_shift: 800,
 
       closed_by: 1,
-    })
+    });
 
     const secondShift = openCashShift({
       opening_counted_amount: 750,
       opened_by: 1,
-    })
+    });
 
-    expect(secondShift.previous_shift_id).toBe(firstShift.id)
+    expect(secondShift.previous_shift_id).toBe(firstShift.id);
 
-    expect(secondShift.expected_opening_amount).toBe(800)
+    expect(secondShift.expected_opening_amount).toBe(800);
 
-    expect(secondShift.opening_counted_amount).toBe(750)
+    expect(secondShift.opening_counted_amount).toBe(750);
 
-    expect(secondShift.opening_difference).toBe(-50)
+    expect(secondShift.opening_difference).toBe(-50);
 
     const variance = getDb()
       .prepare(
@@ -1014,56 +1014,56 @@ describe('cash shifts repository', () => {
         LIMIT 1
         `,
       )
-      .get(secondShift.id) as any
+      .get(secondShift.id) as any;
 
-    expect(variance.kind).toBe('shortage')
+    expect(variance.kind).toBe('shortage');
 
-    expect(Number(variance.amount)).toBe(50)
+    expect(Number(variance.amount)).toBe(50);
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(750)
-  })
+    ).toBe(750);
+  });
 
   it('corrects opening shortage to zero and resolves the variance', () => {
     const firstShift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     closeCashShift({
       shift_id: firstShift.id,
       closing_counted_amount: 500,
       left_for_next_shift: 500,
       closed_by: 1,
-    })
+    });
 
     const secondShift = openCashShift({
       opening_counted_amount: 450,
       opened_by: 1,
-    })
+    });
 
-    expect(secondShift.expected_opening_amount).toBe(500)
-    expect(secondShift.opening_counted_amount).toBe(450)
-    expect(secondShift.opening_difference).toBe(-50)
+    expect(secondShift.expected_opening_amount).toBe(500);
+    expect(secondShift.opening_counted_amount).toBe(450);
+    expect(secondShift.opening_difference).toBe(-50);
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(450)
+    ).toBe(450);
 
     const variance = listCashShiftVariances({
       status: 'pending',
     }).rows.find(
       (row) => row.shift_id === secondShift.id && row.stage === 'opening',
-    )
+    );
 
-    expect(variance).toBeTruthy()
-    expect(variance!.kind).toBe('shortage')
-    expect(Number(variance!.amount)).toBe(50)
+    expect(variance).toBeTruthy();
+    expect(variance!.kind).toBe('shortage');
+    expect(Number(variance!.amount)).toBe(50);
 
     const corrected = resolveCashShiftVariance({
       variance_id: variance!.id,
@@ -1071,23 +1071,23 @@ describe('cash shifts repository', () => {
       resolution_notes: 'تم إعادة عد درج المحل',
       corrected_opening_amount: 500,
       resolved_by: 1,
-    })
+    });
 
-    expect(corrected.status).toBe('resolved')
-    expect(corrected.resolution_type).toBe('corrected')
-    expect(Number(corrected.amount)).toBe(0)
+    expect(corrected.status).toBe('resolved');
+    expect(corrected.resolution_type).toBe('corrected');
+    expect(Number(corrected.amount)).toBe(0);
 
-    const updatedShift = getOpenCashShift()
+    const updatedShift = getOpenCashShift();
 
-    expect(updatedShift?.id).toBe(secondShift.id)
-    expect(updatedShift?.opening_counted_amount).toBe(500)
-    expect(updatedShift?.opening_difference).toBe(0)
+    expect(updatedShift?.id).toBe(secondShift.id);
+    expect(updatedShift?.opening_counted_amount).toBe(500);
+    expect(updatedShift?.opening_difference).toBe(0);
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(500)
+    ).toBe(500);
 
     const correctionMovement = getDb()
       .prepare(
@@ -1100,41 +1100,41 @@ describe('cash shifts repository', () => {
       LIMIT 1
       `,
       )
-      .get(variance!.id) as any
+      .get(variance!.id) as any;
 
-    expect(correctionMovement).toBeTruthy()
-    expect(correctionMovement.direction).toBe('in')
-    expect(Number(correctionMovement.amount)).toBe(50)
-    expect(correctionMovement.payment_method).toBe('store_cash')
-    expect(correctionMovement.shift_id).toBe(secondShift.id)
-  })
+    expect(correctionMovement).toBeTruthy();
+    expect(correctionMovement.direction).toBe('in');
+    expect(Number(correctionMovement.amount)).toBe(50);
+    expect(correctionMovement.payment_method).toBe('store_cash');
+    expect(correctionMovement.shift_id).toBe(secondShift.id);
+  });
 
   it('keeps opening variance pending after a partial count correction', () => {
     const firstShift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     closeCashShift({
       shift_id: firstShift.id,
       closing_counted_amount: 500,
       left_for_next_shift: 500,
       closed_by: 1,
-    })
+    });
 
     const secondShift = openCashShift({
       opening_counted_amount: 450,
       opened_by: 1,
-    })
+    });
 
     const variance = listCashShiftVariances({
       status: 'pending',
     }).rows.find(
       (row) => row.shift_id === secondShift.id && row.stage === 'opening',
-    )
+    );
 
-    expect(variance).toBeTruthy()
-    expect(Number(variance!.amount)).toBe(50)
+    expect(variance).toBeTruthy();
+    expect(Number(variance!.amount)).toBe(50);
 
     const corrected = resolveCashShiftVariance({
       variance_id: variance!.id,
@@ -1142,57 +1142,57 @@ describe('cash shifts repository', () => {
       resolution_notes: 'تم إعادة العد وظهر أن الجرد الصحيح 480',
       corrected_opening_amount: 480,
       resolved_by: 1,
-    })
+    });
 
-    expect(corrected.status).toBe('pending')
-    expect(corrected.resolution_type).toBeNull()
-    expect(corrected.kind).toBe('shortage')
-    expect(Number(corrected.amount)).toBe(20)
+    expect(corrected.status).toBe('pending');
+    expect(corrected.resolution_type).toBeNull();
+    expect(corrected.kind).toBe('shortage');
+    expect(Number(corrected.amount)).toBe(20);
 
-    const updatedShift = getOpenCashShift()
+    const updatedShift = getOpenCashShift();
 
-    expect(updatedShift?.opening_counted_amount).toBe(480)
-    expect(updatedShift?.opening_difference).toBe(-20)
+    expect(updatedShift?.opening_counted_amount).toBe(480);
+    expect(updatedShift?.opening_difference).toBe(-20);
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(480)
-  })
+    ).toBe(480);
+  });
 
   it('prevents correcting opening count after the shift is closed', () => {
     const firstShift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     closeCashShift({
       shift_id: firstShift.id,
       closing_counted_amount: 500,
       left_for_next_shift: 500,
       closed_by: 1,
-    })
+    });
 
     const secondShift = openCashShift({
       opening_counted_amount: 450,
       opened_by: 1,
-    })
+    });
 
     const variance = listCashShiftVariances({
       status: 'pending',
     }).rows.find(
       (row) => row.shift_id === secondShift.id && row.stage === 'opening',
-    )
+    );
 
-    expect(variance).toBeTruthy()
+    expect(variance).toBeTruthy();
 
     closeCashShift({
       shift_id: secondShift.id,
       closing_counted_amount: 450,
       left_for_next_shift: 450,
       closed_by: 1,
-    })
+    });
 
     expect(() =>
       resolveCashShiftVariance({
@@ -1202,18 +1202,18 @@ describe('cash shifts repository', () => {
         corrected_opening_amount: 500,
         resolved_by: 1,
       }),
-    ).toThrow('لا يمكن تصحيح جرد افتتاح شفت بعد إغلاقه، يمكن اعتماد الفرق فقط')
+    ).toThrow('لا يمكن تصحيح جرد افتتاح شفت بعد إغلاقه، يمكن اعتماد الفرق فقط');
 
     const stillPending = listCashShiftVariances({
       status: 'pending',
-    }).rows.find((row) => row.id === variance!.id)
+    }).rows.find((row) => row.id === variance!.id);
 
-    expect(stillPending).toBeTruthy()
-    expect(Number(stillPending!.amount)).toBe(50)
-  })
+    expect(stillPending).toBeTruthy();
+    expect(Number(stillPending!.amount)).toBe(50);
+  });
 
   it('allows only shift owner or admin to close shift', () => {
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
@@ -1227,7 +1227,7 @@ describe('cash shifts repository', () => {
 
       VALUES (?, ?, ?, 'cashier', 1)
       `,
-    ).run('Cashier One', 'cashier_one', 'x')
+    ).run('Cashier One', 'cashier_one', 'x');
 
     db.prepare(
       `
@@ -1241,7 +1241,7 @@ describe('cash shifts repository', () => {
 
       VALUES (?, ?, ?, 'cashier', 1)
       `,
-    ).run('Cashier Two', 'cashier_two', 'x')
+    ).run('Cashier Two', 'cashier_two', 'x');
 
     const firstCashier = db
       .prepare(
@@ -1252,8 +1252,8 @@ describe('cash shifts repository', () => {
         `,
       )
       .get('cashier_one') as {
-      id: number
-    }
+      id: number;
+    };
 
     const secondCashier = db
       .prepare(
@@ -1264,13 +1264,13 @@ describe('cash shifts repository', () => {
         `,
       )
       .get('cashier_two') as {
-      id: number
-    }
+      id: number;
+    };
 
     const shift = openCashShift({
       opening_counted_amount: 0,
       opened_by: firstCashier.id,
-    })
+    });
 
     expect(() =>
       closeCashShift({
@@ -1279,7 +1279,7 @@ describe('cash shifts repository', () => {
         left_for_next_shift: 0,
         closed_by: secondCashier.id,
       }),
-    ).toThrow('لا يمكن إغلاق الشفت إلا بواسطة صاحب الشفت أو المدير')
+    ).toThrow('لا يمكن إغلاق الشفت إلا بواسطة صاحب الشفت أو المدير');
 
     expect(() =>
       closeCashShift({
@@ -1288,7 +1288,7 @@ describe('cash shifts repository', () => {
         left_for_next_shift: 0,
         closed_by: 1,
       }),
-    ).toThrow('سبب إغلاق المدير للشفت مطلوب')
+    ).toThrow('سبب إغلاق المدير للشفت مطلوب');
 
     const closed = closeCashShift({
       shift_id: shift.id,
@@ -1296,10 +1296,10 @@ describe('cash shifts repository', () => {
       left_for_next_shift: 0,
       closed_by: 1,
       close_reason: 'إغلاق إداري للشفت',
-    })
+    });
 
-    expect(closed.status).toBe('closed')
-  })
+    expect(closed.status).toBe('closed');
+  });
 
   it('moves legacy drawer excess to safe on the first shift without reducing total cash', () => {
     createCashMovement({
@@ -1308,48 +1308,48 @@ describe('cash shifts repository', () => {
       amount: 3267,
       payment_method: 'store_cash',
       created_by: 1,
-    })
+    });
 
     const beforeDrawer = Number(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    )
+    );
 
     const beforeSafe = Number(
       getCashSummary({
         payment_method: 'store_safe',
       }).balance,
-    )
+    );
 
-    expect(beforeDrawer + beforeSafe).toBe(3267)
+    expect(beforeDrawer + beforeSafe).toBe(3267);
 
     const shift = openCashShift({
       opening_counted_amount: 10,
       opened_by: 1,
-    })
+    });
 
     const drawer = Number(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    )
+    );
 
     const safe = Number(
       getCashSummary({
         payment_method: 'store_safe',
       }).balance,
-    )
+    );
 
-    expect(drawer).toBe(10)
-    expect(safe).toBe(3257)
+    expect(drawer).toBe(10);
+    expect(safe).toBe(3257);
 
-    expect(drawer + safe).toBe(3267)
+    expect(drawer + safe).toBe(3267);
 
-    const preview = getCashShiftExpectedBalance(shift.id)
+    const preview = getCashShiftExpectedBalance(shift.id);
 
-    expect(preview.expected_closing_amount).toBe(10)
-  })
+    expect(preview.expected_closing_amount).toBe(10);
+  });
 
   it('rejects invalid shift amounts', () => {
     expect(() =>
@@ -1357,12 +1357,12 @@ describe('cash shifts repository', () => {
         opening_counted_amount: Number.NaN,
         opened_by: 1,
       }),
-    ).toThrow('رصيد افتتاح الشفت غير صحيح')
+    ).toThrow('رصيد افتتاح الشفت غير صحيح');
 
     const shift = openCashShift({
       opening_counted_amount: 100,
       opened_by: 1,
-    })
+    });
 
     expect(() =>
       closeCashShift({
@@ -1371,11 +1371,11 @@ describe('cash shifts repository', () => {
         left_for_next_shift: 0,
         closed_by: 1,
       }),
-    ).toThrow('قيمة جرد إغلاق الشفت غير صحيحة')
-  })
+    ).toThrow('قيمة جرد إغلاق الشفت غير صحيحة');
+  });
 
   it('summarizes drawer activity from shifts without counting safe handover transfers', () => {
-    const db = getDb()
+    const db = getDb();
 
     const dayRow = db
       .prepare(
@@ -1384,13 +1384,13 @@ describe('cash shifts repository', () => {
       `,
       )
       .get() as {
-      day: string
-    }
+      day: string;
+    };
 
     const firstShift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -1399,19 +1399,19 @@ describe('cash shifts repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: firstShift.id,
-    })
+    });
 
     closeCashShift({
       shift_id: firstShift.id,
       closing_counted_amount: 800,
       left_for_next_shift: 200,
       closed_by: 1,
-    })
+    });
 
     const secondShift = openCashShift({
       opening_counted_amount: 200,
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'expense',
@@ -1420,39 +1420,39 @@ describe('cash shifts repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: secondShift.id,
-    })
+    });
 
     const summary = getCashShiftDaySummary({
       business_date: dayRow.day,
       user_id: 1,
-    })
+    });
 
-    expect(summary.shifts_count).toBe(2)
-    expect(summary.closed_shifts_count).toBe(1)
+    expect(summary.shifts_count).toBe(2);
+    expect(summary.closed_shifts_count).toBe(1);
 
-    expect(summary.has_open_shift).toBe(true)
-    expect(summary.all_closed).toBe(false)
+    expect(summary.has_open_shift).toBe(true);
+    expect(summary.all_closed).toBe(false);
 
-    expect(summary.first_shift_id).toBe(firstShift.id)
+    expect(summary.first_shift_id).toBe(firstShift.id);
 
-    expect(summary.last_shift_id).toBe(secondShift.id)
+    expect(summary.last_shift_id).toBe(secondShift.id);
 
-    expect(summary.opening_drawer_balance).toBe(500)
+    expect(summary.opening_drawer_balance).toBe(500);
 
-    expect(summary.cash_in).toBe(300)
-    expect(summary.cash_out).toBe(50)
+    expect(summary.cash_in).toBe(300);
+    expect(summary.cash_out).toBe(50);
 
-    expect(summary.balance_before_handover).toBe(150)
+    expect(summary.balance_before_handover).toBe(150);
 
-    expect(summary.ending_drawer_balance).toBe(150)
-  })
+    expect(summary.ending_drawer_balance).toBe(150);
+  });
 
   it('lists shift history with operational drawer totals', () => {
     const firstShift = openCashShift({
       opening_counted_amount: 500,
 
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -1466,7 +1466,7 @@ describe('cash shifts repository', () => {
       created_by: 1,
 
       shift_id: firstShift.id,
-    })
+    });
 
     createCashMovement({
       type: 'expense',
@@ -1480,7 +1480,7 @@ describe('cash shifts repository', () => {
       created_by: 1,
 
       shift_id: firstShift.id,
-    })
+    });
 
     closeCashShift({
       shift_id: firstShift.id,
@@ -1490,45 +1490,45 @@ describe('cash shifts repository', () => {
       left_for_next_shift: 100,
 
       closed_by: 1,
-    })
+    });
 
     const secondShift = openCashShift({
       opening_counted_amount: 100,
 
       opened_by: 1,
-    })
+    });
 
     const all = listCashShifts({
       status: 'all',
-    })
+    });
 
-    expect(all.total).toBe(2)
+    expect(all.total).toBe(2);
 
-    expect(all.rows[0].id).toBe(secondShift.id)
+    expect(all.rows[0].id).toBe(secondShift.id);
 
     const closed = listCashShifts({
       status: 'closed',
-    })
+    });
 
-    expect(closed.total).toBe(1)
+    expect(closed.total).toBe(1);
 
-    expect(closed.rows[0].id).toBe(firstShift.id)
+    expect(closed.rows[0].id).toBe(firstShift.id);
 
-    expect(closed.rows[0].cash_in).toBe(200)
+    expect(closed.rows[0].cash_in).toBe(200);
 
-    expect(closed.rows[0].cash_out).toBe(50)
+    expect(closed.rows[0].cash_out).toBe(50);
 
-    expect(closed.rows[0].safe_transfer_amount).toBe(550)
+    expect(closed.rows[0].safe_transfer_amount).toBe(550);
 
-    expect(closed.rows[0].pending_variance_count).toBe(0)
-  })
+    expect(closed.rows[0].pending_variance_count).toBe(0);
+  });
 
   it('returns complete shift details', () => {
     const shift = openCashShift({
       opening_counted_amount: 300,
 
       opened_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -1542,7 +1542,7 @@ describe('cash shifts repository', () => {
       created_by: 1,
 
       shift_id: shift.id,
-    })
+    });
 
     createCashMovement({
       type: 'expense',
@@ -1556,7 +1556,7 @@ describe('cash shifts repository', () => {
       created_by: 1,
 
       shift_id: shift.id,
-    })
+    });
 
     closeCashShift({
       shift_id: shift.id,
@@ -1566,27 +1566,27 @@ describe('cash shifts repository', () => {
       left_for_next_shift: 100,
 
       closed_by: 1,
-    })
+    });
 
-    const details = getCashShiftDetails(shift.id)
+    const details = getCashShiftDetails(shift.id);
 
-    expect(details.shift.id).toBe(shift.id)
+    expect(details.shift.id).toBe(shift.id);
 
-    expect(details.shift.status).toBe('closed')
+    expect(details.shift.status).toBe('closed');
 
-    expect(details.preview.cash_in).toBe(150)
+    expect(details.preview.cash_in).toBe(150);
 
-    expect(details.preview.cash_out).toBe(25)
+    expect(details.preview.cash_out).toBe(25);
 
-    expect(details.preview.expected_closing_amount).toBe(425)
+    expect(details.preview.expected_closing_amount).toBe(425);
 
-    expect(details.movements.length).toBeGreaterThanOrEqual(4)
+    expect(details.movements.length).toBeGreaterThanOrEqual(4);
 
-    expect(details.variances).toHaveLength(0)
-  })
+    expect(details.variances).toHaveLength(0);
+  });
 
   it('filters and paginates shift history by user', () => {
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
@@ -1606,7 +1606,7 @@ describe('cash shifts repository', () => {
       1
     )
     `,
-    ).run('History Cashier', 'history_cashier', 'x')
+    ).run('History Cashier', 'history_cashier', 'x');
 
     const cashier = db
       .prepare(
@@ -1620,14 +1620,14 @@ describe('cash shifts repository', () => {
       `,
       )
       .get() as {
-      id: number
-    }
+      id: number;
+    };
 
     const first = openCashShift({
       opening_counted_amount: 100,
 
       opened_by: 1,
-    })
+    });
 
     closeCashShift({
       shift_id: first.id,
@@ -1637,13 +1637,13 @@ describe('cash shifts repository', () => {
       left_for_next_shift: 100,
 
       closed_by: 1,
-    })
+    });
 
     const second = openCashShift({
       opening_counted_amount: 100,
 
       opened_by: cashier.id,
-    })
+    });
 
     closeCashShift({
       shift_id: second.id,
@@ -1653,45 +1653,45 @@ describe('cash shifts repository', () => {
       left_for_next_shift: 100,
 
       closed_by: cashier.id,
-    })
+    });
 
     const adminRows = listCashShifts({
       user_id: 1,
-    })
+    });
 
-    expect(adminRows.total).toBe(1)
+    expect(adminRows.total).toBe(1);
 
-    expect(adminRows.rows[0].id).toBe(first.id)
+    expect(adminRows.rows[0].id).toBe(first.id);
 
     const cashierRows = listCashShifts({
       user_id: cashier.id,
-    })
+    });
 
-    expect(cashierRows.total).toBe(1)
+    expect(cashierRows.total).toBe(1);
 
-    expect(cashierRows.rows[0].id).toBe(second.id)
+    expect(cashierRows.rows[0].id).toBe(second.id);
 
     const firstPage = listCashShifts({
       limit: 1,
       offset: 0,
-    })
+    });
 
     const secondPage = listCashShifts({
       limit: 1,
       offset: 1,
-    })
+    });
 
-    expect(firstPage.total).toBe(2)
+    expect(firstPage.total).toBe(2);
 
-    expect(firstPage.rows).toHaveLength(1)
+    expect(firstPage.rows).toHaveLength(1);
 
-    expect(secondPage.rows).toHaveLength(1)
+    expect(secondPage.rows).toHaveLength(1);
 
-    expect(firstPage.rows[0].id).not.toBe(secondPage.rows[0].id)
-  })
+    expect(firstPage.rows[0].id).not.toBe(secondPage.rows[0].id);
+  });
 
   it('filters and paginates shift variances by user', () => {
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
@@ -1711,7 +1711,7 @@ describe('cash shifts repository', () => {
       1
     )
     `,
-    ).run('Variance Filter Cashier', 'variance_filter_cashier', 'x')
+    ).run('Variance Filter Cashier', 'variance_filter_cashier', 'x');
 
     const cashier = db
       .prepare(
@@ -1725,14 +1725,14 @@ describe('cash shifts repository', () => {
       `,
       )
       .get() as {
-      id: number
-    }
+      id: number;
+    };
 
     const first = openCashShift({
       opening_counted_amount: 500,
 
       opened_by: 1,
-    })
+    });
 
     closeCashShift({
       shift_id: first.id,
@@ -1742,49 +1742,49 @@ describe('cash shifts repository', () => {
       left_for_next_shift: 450,
 
       closed_by: 1,
-    })
+    });
 
     const second = openCashShift({
       opening_counted_amount: 400,
 
       opened_by: cashier.id,
-    })
+    });
 
     const adminVariances = listCashShiftVariances({
       status: 'all',
       user_id: 1,
-    })
+    });
 
-    expect(adminVariances.total).toBe(1)
+    expect(adminVariances.total).toBe(1);
 
-    expect(adminVariances.rows[0].shift_id).toBe(first.id)
+    expect(adminVariances.rows[0].shift_id).toBe(first.id);
 
     const cashierVariances = listCashShiftVariances({
       status: 'all',
 
       user_id: cashier.id,
-    })
+    });
 
-    expect(cashierVariances.total).toBe(1)
+    expect(cashierVariances.total).toBe(1);
 
-    expect(cashierVariances.rows[0].shift_id).toBe(second.id)
+    expect(cashierVariances.rows[0].shift_id).toBe(second.id);
 
     const pageOne = listCashShiftVariances({
       status: 'all',
       limit: 1,
       offset: 0,
-    })
+    });
 
     const pageTwo = listCashShiftVariances({
       status: 'all',
       limit: 1,
       offset: 1,
-    })
+    });
 
-    expect(pageOne.total).toBe(2)
+    expect(pageOne.total).toBe(2);
 
-    expect(pageOne.rows).toHaveLength(1)
+    expect(pageOne.rows).toHaveLength(1);
 
-    expect(pageTwo.rows).toHaveLength(1)
-  })
-})
+    expect(pageTwo.rows).toHaveLength(1);
+  });
+});

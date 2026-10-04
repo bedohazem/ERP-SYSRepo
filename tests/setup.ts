@@ -1,23 +1,23 @@
-import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-import { vi } from 'vitest'
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { vi } from 'vitest';
 
-process.env.ERP_TEST_ADMIN_PASSWORD = 'Admin1234'
-const testUserDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-test-'))
+process.env.ERP_TEST_ADMIN_PASSWORD = 'Admin1234';
+const testUserDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-test-'));
 
 vi.mock('electron', () => {
-  const BrowserWindow = vi.fn()
+  const BrowserWindow = vi.fn();
 
   Object.assign(BrowserWindow, {
     fromWebContents: vi.fn(() => null),
     getAllWindows: vi.fn(() => []),
-  })
+  });
 
   return {
     app: {
       getPath: (_name: string) => {
-        return testUserDataDir
+        return testUserDataDir;
       },
     },
 
@@ -59,5 +59,5 @@ vi.mock('electron', () => {
     Menu: {
       setApplicationMenu: vi.fn(),
     },
-  }
-})
+  };
+});

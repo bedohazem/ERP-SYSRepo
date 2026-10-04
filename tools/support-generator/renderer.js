@@ -1,98 +1,98 @@
-let privateKeyPath = ''
+let privateKeyPath = '';
 
-const $ = (id) => document.getElementById(id)
+const $ = (id) => document.getElementById(id);
 
 function setMessage(message, type = 'error') {
-  const element = $('message')
+  const element = $('message');
 
   if (!message) {
-    element.classList.add('hidden')
+    element.classList.add('hidden');
 
-    element.textContent = ''
+    element.textContent = '';
 
-    return
+    return;
   }
 
-  element.textContent = message
+  element.textContent = message;
 
-  element.className = `message ${type}`
+  element.className = `message ${type}`;
 }
 
 function selectTab(tab) {
-  const activation = tab === 'activation'
+  const activation = tab === 'activation';
 
-  $('activationTab').classList.toggle('active', activation)
+  $('activationTab').classList.toggle('active', activation);
 
-  $('recoveryTab').classList.toggle('active', !activation)
+  $('recoveryTab').classList.toggle('active', !activation);
 
-  $('activationPanel').classList.toggle('hidden', !activation)
+  $('activationPanel').classList.toggle('hidden', !activation);
 
-  $('recoveryPanel').classList.toggle('hidden', activation)
+  $('recoveryPanel').classList.toggle('hidden', activation);
 
-  setMessage('')
+  setMessage('');
 }
 
 async function copyText(value) {
   try {
-    await navigator.clipboard.writeText(value)
+    await navigator.clipboard.writeText(value);
 
-    setMessage('تم نسخ الكود', 'success')
+    setMessage('تم نسخ الكود', 'success');
   } catch {
-    setMessage('تعذر نسخ الكود')
+    setMessage('تعذر نسخ الكود');
   }
 }
 
-$('activationTab').addEventListener('click', () => selectTab('activation'))
+$('activationTab').addEventListener('click', () => selectTab('activation'));
 
-$('recoveryTab').addEventListener('click', () => selectTab('recovery'))
+$('recoveryTab').addEventListener('click', () => selectTab('recovery'));
 
 $('chooseKeyButton').addEventListener('click', async () => {
   try {
-    const result = await window.supportApi.choosePrivateKey()
+    const result = await window.supportApi.choosePrivateKey();
 
     if (result.canceled) {
-      return
+      return;
     }
 
-    privateKeyPath = result.path
+    privateKeyPath = result.path;
 
-    $('privateKeyLabel').textContent = `جاهز: ${result.name}`
+    $('privateKeyLabel').textContent = `جاهز: ${result.name}`;
 
-    setMessage('تم تحميل مفتاح التوقيع', 'success')
+    setMessage('تم تحميل مفتاح التوقيع', 'success');
   } catch (error) {
-    setMessage(error?.message || 'تعذر تحميل المفتاح')
+    setMessage(error?.message || 'تعذر تحميل المفتاح');
   }
-})
+});
 
 $('generateActivationButton').addEventListener('click', async () => {
-  setMessage('')
+  setMessage('');
 
   const result = await window.supportApi.generateActivation({
     private_key_path: privateKeyPath,
 
     device_code: $('activationDevice').value,
-  })
+  });
 
   if (!result.success) {
-    setMessage(result.message)
+    setMessage(result.message);
 
-    return
+    return;
   }
 
-  $('activationToken').value = result.token
+  $('activationToken').value = result.token;
 
   $('activationMeta').textContent =
-    `License ID: ${result.license_id} | Device: ${result.device_code}`
+    `License ID: ${result.license_id} | Device: ${result.device_code}`;
 
-  $('activationResult').classList.remove('hidden')
-})
+  $('activationResult').classList.remove('hidden');
+});
 
 $('copyActivationButton').addEventListener('click', () => {
-  void copyText($('activationToken').value)
-})
+  void copyText($('activationToken').value);
+});
 
 $('generateRecoveryButton').addEventListener('click', async () => {
-  setMessage('')
+  setMessage('');
 
   const result = await window.supportApi.generateRecovery({
     private_key_path: privateKeyPath,
@@ -104,24 +104,24 @@ $('generateRecoveryButton').addEventListener('click', async () => {
     username: $('recoveryUsername').value,
 
     minutes: $('recoveryMinutes').value,
-  })
+  });
 
   if (!result.success) {
-    setMessage(result.message)
+    setMessage(result.message);
 
-    return
+    return;
   }
 
-  $('recoveryToken').value = result.token
+  $('recoveryToken').value = result.token;
 
   $('recoveryMeta').textContent =
     `User: ${result.username} | Request: ${result.request_id} | Expires: ${new Date(
       result.expires_at,
-    ).toLocaleString()}`
+    ).toLocaleString()}`;
 
-  $('recoveryResult').classList.remove('hidden')
-})
+  $('recoveryResult').classList.remove('hidden');
+});
 
 $('copyRecoveryButton').addEventListener('click', () => {
-  void copyText($('recoveryToken').value)
-})
+  void copyText($('recoveryToken').value);
+});

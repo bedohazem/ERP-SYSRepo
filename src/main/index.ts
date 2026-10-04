@@ -1,79 +1,86 @@
-import { app, BrowserWindow, nativeImage, Menu, session, shell } from 'electron'
-import path from 'node:path'
-import { getDb } from './database/db'
-import { registerAuthIpc } from './ipc/auth.ipc'
-import { registerProductsIpc } from './ipc/products.ipc'
-import { registerSettingsIpc } from './ipc/settings.ipc'
-import { registerSalesIpc } from './ipc/sales.ipc'
-import { registerCustomersIpc } from './ipc/customers.ipc'
-import { registerReportsIpc } from './ipc/reports.ipc'
-import { registerInventoryIpc } from './ipc/inventory.ipc'
-import { registerSuppliersIpc } from './ipc/suppliers.ipc'
-import { registerPurchasesIpc } from './ipc/purchases.ipc'
-import { registerCashIpc } from './ipc/cash.ipc'
-import { registerExpenseIpc } from './ipc/expense.ipc'
-import { registerActivityIpc } from './ipc/activity.ipc'
-import { getAppLicenseStatus } from './database/repositories/settings.repo'
-import { createAutoBackup } from './database/auto-backup'
-import { registerStockCountIpc } from './ipc/stock-count.ipc'
-import { registerLiabilitiesIpc } from './ipc/liabilities.ipc'
-import { registerPrintIpc } from './ipc/print.ipc'
-import { registerCashDrawerIpc } from './ipc/cash-drawer.ipc'
-import { registerPromotionsIpc } from './ipc/promotions.ipc'
+import {
+  app,
+  BrowserWindow,
+  nativeImage,
+  Menu,
+  session,
+  shell,
+} from 'electron';
+import path from 'node:path';
+import { getDb } from './database/db';
+import { registerAuthIpc } from './ipc/auth.ipc';
+import { registerProductsIpc } from './ipc/products.ipc';
+import { registerSettingsIpc } from './ipc/settings.ipc';
+import { registerSalesIpc } from './ipc/sales.ipc';
+import { registerCustomersIpc } from './ipc/customers.ipc';
+import { registerReportsIpc } from './ipc/reports.ipc';
+import { registerInventoryIpc } from './ipc/inventory.ipc';
+import { registerSuppliersIpc } from './ipc/suppliers.ipc';
+import { registerPurchasesIpc } from './ipc/purchases.ipc';
+import { registerCashIpc } from './ipc/cash.ipc';
+import { registerExpenseIpc } from './ipc/expense.ipc';
+import { registerActivityIpc } from './ipc/activity.ipc';
+import { getAppLicenseStatus } from './database/repositories/settings.repo';
+import { createAutoBackup } from './database/auto-backup';
+import { registerStockCountIpc } from './ipc/stock-count.ipc';
+import { registerLiabilitiesIpc } from './ipc/liabilities.ipc';
+import { registerPrintIpc } from './ipc/print.ipc';
+import { registerCashDrawerIpc } from './ipc/cash-drawer.ipc';
+import { registerPromotionsIpc } from './ipc/promotions.ipc';
 import {
   configureMainWindowSecurity,
   configureSessionPermissions,
   getSecureWebPreferences,
-} from './electron-security'
+} from './electron-security';
 
-let mainWindow: BrowserWindow | null = null
-let hourlyBackupTimer: NodeJS.Timeout | null = null
-let shutdownBackupDone = false
+let mainWindow: BrowserWindow | null = null;
+let hourlyBackupTimer: NodeJS.Timeout | null = null;
+let shutdownBackupDone = false;
 
-const e2eSmokeEnabled = process.env.ERP_E2E_SMOKE === '1'
+const e2eSmokeEnabled = process.env.ERP_E2E_SMOKE === '1';
 
-const e2eUserDataDir = String(process.env.ERP_E2E_USER_DATA_DIR || '').trim()
+const e2eUserDataDir = String(process.env.ERP_E2E_USER_DATA_DIR || '').trim();
 
 if (e2eSmokeEnabled && e2eUserDataDir) {
   /*
    * الـE2E ممنوع يلمس
    * قاعدة بيانات المستخدم الحقيقية.
    */
-  app.setPath('userData', e2eUserDataDir)
+  app.setPath('userData', e2eUserDataDir);
 }
 
 function startAutoBackupScheduler() {
   setTimeout(() => {
-    void createAutoBackup('startup')
-  }, 10000)
+    void createAutoBackup('startup');
+  }, 10000);
 
   hourlyBackupTimer = setInterval(
     () => {
-      void createAutoBackup('hourly')
+      void createAutoBackup('hourly');
     },
     60 * 60 * 1000,
-  )
+  );
 }
 
-const appRoot = app.isPackaged ? app.getAppPath() : process.cwd()
-const appIconPath = path.join(appRoot, 'build', 'icon.ico')
+const appRoot = app.isPackaged ? app.getAppPath() : process.cwd();
+const appIconPath = path.join(appRoot, 'build', 'icon.ico');
 const runtimeSecurityOptions = {
   appRoot,
   isPackaged: app.isPackaged,
   openExternal: (url: string) => shell.openExternal(url),
-}
+};
 
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.abdelrahmanhazem.erpstore')
+  app.setAppUserModelId('com.abdelrahmanhazem.erpstore');
 }
 
-Menu.setApplicationMenu(null)
+Menu.setApplicationMenu(null);
 
 function createWindow(): void {
-  const preloadPath = path.join(appRoot, 'preload.cjs')
-  const appStatus = getAppLicenseStatus()
-  const appName = appStatus.app_name || 'ERP Store'
-  const appIcon = nativeImage.createFromPath(appIconPath)
+  const preloadPath = path.join(appRoot, 'preload.cjs');
+  const appStatus = getAppLicenseStatus();
+  const appName = appStatus.app_name || 'ERP Store';
+  const appIcon = nativeImage.createFromPath(appIconPath);
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -88,34 +95,34 @@ function createWindow(): void {
       ...getSecureWebPreferences(app.isPackaged),
       preload: preloadPath,
     },
-  })
+  });
 
-  configureMainWindowSecurity(mainWindow, runtimeSecurityOptions)
+  configureMainWindowSecurity(mainWindow, runtimeSecurityOptions);
 
-  mainWindow.setMenu(null)
-  mainWindow.setMenuBarVisibility(false)
+  mainWindow.setMenu(null);
+  mainWindow.setMenuBarVisibility(false);
 
   if (!appIcon.isEmpty()) {
-    mainWindow.setIcon(appIcon)
+    mainWindow.setIcon(appIcon);
   }
 
-  mainWindow.maximize()
+  mainWindow.maximize();
 
-  const isDev = !app.isPackaged && !e2eSmokeEnabled
+  const isDev = !app.isPackaged && !e2eSmokeEnabled;
 
   if (isDev) {
-    void mainWindow.loadURL('http://localhost:3000')
+    void mainWindow.loadURL('http://localhost:3000');
   } else {
     void mainWindow.loadFile(
       path.join(appRoot, 'dist', 'renderer', 'index.html'),
-    )
+    );
   }
 
   mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow?.setTitle(appName)
+    mainWindow?.setTitle(appName);
 
     if (!e2eSmokeEnabled || !mainWindow) {
-      return
+      return;
     }
 
     /*
@@ -183,117 +190,117 @@ function createWindow(): void {
           Boolean(result?.rootExists) &&
           Boolean(result?.apiExists) &&
           Boolean(result?.ipcReady) &&
-          Boolean(result?.bodyHasText)
+          Boolean(result?.bodyHasText);
 
         if (!ok) {
-          console.error('ERP_E2E_SMOKE_FAILED', JSON.stringify(result))
+          console.error('ERP_E2E_SMOKE_FAILED', JSON.stringify(result));
 
-          setTimeout(() => app.exit(1), 100)
+          setTimeout(() => app.exit(1), 100);
 
-          return
+          return;
         }
 
-        console.log('ERP_E2E_SMOKE_READY', JSON.stringify(result))
+        console.log('ERP_E2E_SMOKE_READY', JSON.stringify(result));
 
-        setTimeout(() => app.exit(0), 100)
+        setTimeout(() => app.exit(0), 100);
       })
       .catch((error) => {
-        console.error('ERP_E2E_SMOKE_FAILED', error)
+        console.error('ERP_E2E_SMOKE_FAILED', error);
 
-        setTimeout(() => app.exit(1), 100)
-      })
-  })
+        setTimeout(() => app.exit(1), 100);
+      });
+  });
 
   mainWindow.on('closed', () => {
-    mainWindow = null
-  })
+    mainWindow = null;
+  });
 }
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock()
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
-  app.quit()
+  app.quit();
 } else {
   app.on('second-instance', () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
-      return
+      return;
     }
 
     if (mainWindow.isMinimized()) {
-      mainWindow.restore()
+      mainWindow.restore();
     }
 
     if (!mainWindow.isVisible()) {
-      mainWindow.show()
+      mainWindow.show();
     }
 
-    mainWindow.focus()
-  })
+    mainWindow.focus();
+  });
 
   app.on('web-contents-created', (_event, contents) => {
     contents.on('will-attach-webview', (event) => {
-      event.preventDefault()
-    })
-  })
+      event.preventDefault();
+    });
+  });
 
   app.whenReady().then(() => {
-    configureSessionPermissions(session.defaultSession, runtimeSecurityOptions)
+    configureSessionPermissions(session.defaultSession, runtimeSecurityOptions);
 
-    getDb()
+    getDb();
 
-    registerAuthIpc()
-    registerProductsIpc()
-    registerSettingsIpc()
-    registerSalesIpc()
-    registerCustomersIpc()
-    registerReportsIpc()
-    registerInventoryIpc()
-    registerStockCountIpc()
-    registerSuppliersIpc()
-    registerPurchasesIpc()
-    registerCashIpc()
-    registerExpenseIpc()
-    registerActivityIpc()
-    registerLiabilitiesIpc()
-    registerPrintIpc()
-    registerCashDrawerIpc()
-    registerPromotionsIpc()
+    registerAuthIpc();
+    registerProductsIpc();
+    registerSettingsIpc();
+    registerSalesIpc();
+    registerCustomersIpc();
+    registerReportsIpc();
+    registerInventoryIpc();
+    registerStockCountIpc();
+    registerSuppliersIpc();
+    registerPurchasesIpc();
+    registerCashIpc();
+    registerExpenseIpc();
+    registerActivityIpc();
+    registerLiabilitiesIpc();
+    registerPrintIpc();
+    registerCashDrawerIpc();
+    registerPromotionsIpc();
 
-    createWindow()
-    startAutoBackupScheduler()
+    createWindow();
+    startAutoBackupScheduler();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow()
+        createWindow();
       }
-    })
-  })
+    });
+  });
 
   app.on('before-quit', async (event) => {
     if (shutdownBackupDone) {
-      return
+      return;
     }
 
-    event.preventDefault()
-    shutdownBackupDone = true
+    event.preventDefault();
+    shutdownBackupDone = true;
 
     if (hourlyBackupTimer) {
-      clearInterval(hourlyBackupTimer)
-      hourlyBackupTimer = null
+      clearInterval(hourlyBackupTimer);
+      hourlyBackupTimer = null;
     }
 
     try {
-      await createAutoBackup('shutdown')
+      await createAutoBackup('shutdown');
     } catch (error) {
-      console.error('Shutdown backup failed:', error)
+      console.error('Shutdown backup failed:', error);
     }
 
-    app.quit()
-  })
+    app.quit();
+  });
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
-      app.quit()
+      app.quit();
     }
-  })
+  });
 }

@@ -1,74 +1,76 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react';
 
-import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
 
 type ShiftUserOption = {
-  id: number
+  id: number;
 
-  name: string
+  name: string;
 
-  role: string
-}
+  role: string;
+};
 
 type CashDrawerEvent = {
-  id: number
+  id: number;
 
-  status: 'success' | 'failed'
+  status: 'success' | 'failed';
 
-  shift_id: number
+  shift_id: number;
 
-  shift_opened_by: number | null
+  shift_opened_by: number | null;
 
-  shift_opened_by_name: string | null
+  shift_opened_by_name: string | null;
 
-  user_id: number | null
+  user_id: number | null;
 
-  user_name: string | null
+  user_name: string | null;
 
-  username: string | null
+  username: string | null;
 
-  reason: string
+  reason: string;
 
-  printer_name: string
+  printer_name: string;
 
-  error: string | null
+  error: string | null;
 
-  created_at: string
-}
+  created_at: string;
+};
 
 type Props = {
-  users: ShiftUserOption[]
-}
+  users: ShiftUserOption[];
+};
 
-type StatusFilter = 'all' | 'success' | 'failed'
+type StatusFilter = 'all' | 'success' | 'failed';
 
 export default function CashDrawerHistorySection({ users }: Props) {
-  const [rows, setRows] = useState<CashDrawerEvent[]>([])
+  const [rows, setRows] = useState<CashDrawerEvent[]>([]);
 
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useState(1);
 
-  const [total, setTotal] = useState(0)
+  const [total, setTotal] = useState(0);
 
-  const [successCount, setSuccessCount] = useState(0)
+  const [successCount, setSuccessCount] = useState(0);
 
-  const [failedCount, setFailedCount] = useState(0)
+  const [failedCount, setFailedCount] = useState(0);
 
-  const [shiftId, setShiftId] = useState('')
+  const [shiftId, setShiftId] = useState('');
 
-  const [userId, setUserId] = useState('')
+  const [userId, setUserId] = useState('');
 
-  const [status, setStatus] = useState<StatusFilter>('all')
+  const [status, setStatus] = useState<StatusFilter>('all');
 
-  const [dateFrom, setDateFrom] = useState('')
+  const [dateFrom, setDateFrom] = useState('');
 
-  const [dateTo, setDateTo] = useState('')
+  const [dateTo, setDateTo] = useState('');
 
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false);
 
   async function loadData(targetPage = page) {
-    const safePage = Math.max(1, Number(targetPage || 1))
+    const safePage = Math.max(1, Number(targetPage || 1));
 
-    setLoading(true)
+    setLoading(true);
 
     try {
       const result = await window.api.getCashDrawerNoSaleEvents({
@@ -85,35 +87,35 @@ export default function CashDrawerHistorySection({ users }: Props) {
         limit: SYSTEM_PAGE_SIZE,
 
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
-      })
+      });
 
-      setRows(Array.isArray(result?.rows) ? result.rows : [])
+      setRows(Array.isArray(result?.rows) ? result.rows : []);
 
-      setTotal(Number(result?.total || 0))
+      setTotal(Number(result?.total || 0));
 
-      setSuccessCount(Number(result?.success_count || 0))
+      setSuccessCount(Number(result?.success_count || 0));
 
-      setFailedCount(Number(result?.failed_count || 0))
+      setFailedCount(Number(result?.failed_count || 0));
 
-      setPage(safePage)
+      setPage(safePage);
     } catch (error) {
-      console.error('Failed to load cash drawer report:', error)
+      console.error('Failed to load cash drawer report:', error);
 
-      setRows([])
+      setRows([]);
 
-      setTotal(0)
+      setTotal(0);
 
-      setSuccessCount(0)
+      setSuccessCount(0);
 
-      setFailedCount(0)
+      setFailedCount(0);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    void loadData(1)
-  }, [])
+    void loadData(1);
+  }, []);
 
   return (
     <section
@@ -242,9 +244,9 @@ export default function CashDrawerHistorySection({ users }: Props) {
           type="button"
           disabled={loading}
           onClick={() => {
-            setPage(1)
+            setPage(1);
 
-            void loadData(1)
+            void loadData(1);
           }}
           style={{
             ...buttonStyle,
@@ -261,7 +263,7 @@ export default function CashDrawerHistorySection({ users }: Props) {
         totalItems={total}
         loading={loading}
         onPageChange={(nextPage) => {
-          void loadData(nextPage)
+          void loadData(nextPage);
         }}
       />
 
@@ -374,16 +376,16 @@ export default function CashDrawerHistorySection({ users }: Props) {
         </table>
       </div>
     </section>
-  )
+  );
 }
 
 function Metric({
   title,
   value,
 }: {
-  title: string
+  title: string;
 
-  value: number
+  value: number;
 }) {
   return (
     <div
@@ -421,16 +423,16 @@ function Metric({
         {value}
       </div>
     </div>
-  )
+  );
 }
 
 function Field({
   label,
   children,
 }: {
-  label: string
+  label: string;
 
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
     <label
@@ -448,33 +450,33 @@ function Field({
 
       {children}
     </label>
-  )
+  );
 }
 
 function getReasonLabel(reason: string) {
   if (reason === 'manual') {
-    return 'فتح يدوي'
+    return 'فتح يدوي';
   }
 
   if (reason === 'test') {
-    return 'اختبار'
+    return 'اختبار';
   }
 
-  return reason || '—'
+  return reason || '—';
 }
 
 function formatDate(value?: string | null) {
   if (!value) {
-    return '—'
+    return '—';
   }
 
-  const date = new Date(value)
+  const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return value
+    return value;
   }
 
-  return date.toLocaleString('ar-EG')
+  return date.toLocaleString('ar-EG');
 }
 
 const inputStyle: React.CSSProperties = {
@@ -491,7 +493,7 @@ const inputStyle: React.CSSProperties = {
   color: '#fff',
 
   padding: '0 10px',
-}
+};
 
 const buttonStyle: React.CSSProperties = {
   minHeight: '40px',
@@ -505,7 +507,7 @@ const buttonStyle: React.CSSProperties = {
   cursor: 'pointer',
 
   fontWeight: 900,
-}
+};
 
 const thStyle: React.CSSProperties = {
   padding: '11px',
@@ -517,7 +519,7 @@ const thStyle: React.CSSProperties = {
   color: '#cbd5e1',
 
   fontSize: '12px',
-}
+};
 
 const tdStyle: React.CSSProperties = {
   padding: '11px',
@@ -527,4 +529,4 @@ const tdStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 
   fontSize: '12px',
-}
+};

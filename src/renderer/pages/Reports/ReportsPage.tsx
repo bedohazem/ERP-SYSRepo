@@ -1,69 +1,69 @@
-import { useEffect, useState } from 'react'
-import { getPaymentMethodLabel } from '../../utils/payment-method'
-import { buildReportsCsv, buildReportsPdfHtml } from './report-export'
-import { formatMoney } from '../../../shared/money'
+import { useEffect, useState } from 'react';
+import { getPaymentMethodLabel } from '../../utils/payment-method';
+import { buildReportsCsv, buildReportsPdfHtml } from './report-export';
+import { formatMoney } from '../../../shared/money';
 
 type ReportsData = {
   summary: {
-    sales_count: number
-    returns_count: number
-    gross_sales: number
-    total_returns: number
-    loyalty_discounts: number
-    net_sales: number
-    gross_profit_before_discounts: number
-    net_profit_after_discounts: number
-    total_expenses: number
-    total_liability_payments: number
-    total_purchase_invoices: number
-    total_manual_deposits: number
-    total_manual_withdrawals: number
-    final_net_profit: number
-    normal_discounts: number
-    promotion_discounts: number
-    total_discounts: number
-    exchange_count: number
-    exchange_adjustment: number
-    exchange_cash_collection: number
-    exchange_cash_refund: number
-    exchange_debt_reduction: number
-    exchange_discount_adjustment: number
-    approved_closing_surplus: number
-    approved_closing_shortage: number
-    approved_opening_surplus: number
-    approved_opening_shortage: number
-  }
+    sales_count: number;
+    returns_count: number;
+    gross_sales: number;
+    total_returns: number;
+    loyalty_discounts: number;
+    net_sales: number;
+    gross_profit_before_discounts: number;
+    net_profit_after_discounts: number;
+    total_expenses: number;
+    total_liability_payments: number;
+    total_purchase_invoices: number;
+    total_manual_deposits: number;
+    total_manual_withdrawals: number;
+    final_net_profit: number;
+    normal_discounts: number;
+    promotion_discounts: number;
+    total_discounts: number;
+    exchange_count: number;
+    exchange_adjustment: number;
+    exchange_cash_collection: number;
+    exchange_cash_refund: number;
+    exchange_debt_reduction: number;
+    exchange_discount_adjustment: number;
+    approved_closing_surplus: number;
+    approved_closing_shortage: number;
+    approved_opening_surplus: number;
+    approved_opening_shortage: number;
+  };
   cashAccounts: Array<{
-    payment_method: string
-    label: string
-    total_in: number
-    total_out: number
-    balance: number
-  }>
-  cashAccountsTotalBalance: number
-  topProducts: any[]
-  dailySales: any[]
-  paymentMethods: any[]
+    payment_method: string;
+    label: string;
+    total_in: number;
+    total_out: number;
+    balance: number;
+  }>;
+  cashAccountsTotalBalance: number;
+  topProducts: any[];
+  dailySales: any[];
+  paymentMethods: any[];
   cashierSales: Array<{
-    user_id: number | null
+    user_id: number | null;
 
-    cashier_name: string
+    cashier_name: string;
 
-    sales_count: number
-    sales_total: number
+    sales_count: number;
+    sales_total: number;
 
-    returns_count: number
-    returns_total: number
+    returns_count: number;
+    returns_total: number;
 
-    exchange_count: number
+    exchange_count: number;
 
-    exchange_adjustment: number
+    exchange_adjustment: number;
 
-    net_sales: number
-  }>
-  lowStock: any[]
-  topCustomers: any[]
-}
+    net_sales: number;
+  }>;
+  lowStock: any[];
+  topCustomers: any[];
+};
 
 const emptyReports: ReportsData = {
   summary: {
@@ -103,57 +103,57 @@ const emptyReports: ReportsData = {
   cashierSales: [],
   lowStock: [],
   topCustomers: [],
-}
+};
 
 function getMonthRange(value: string) {
-  const match = /^(\d{4})-(\d{2})$/.exec(value)
+  const match = /^(\d{4})-(\d{2})$/.exec(value);
 
   if (!match) {
-    return null
+    return null;
   }
 
-  const year = Number(match[1])
+  const year = Number(match[1]);
 
-  const month = Number(match[2])
+  const month = Number(match[2]);
 
   if (!Number.isInteger(year) || month < 1 || month > 12) {
-    return null
+    return null;
   }
 
-  const lastDay = new Date(year, month, 0).getDate()
+  const lastDay = new Date(year, month, 0).getDate();
 
   return {
     from: `${value}-01`,
 
     to: `${value}-${String(lastDay).padStart(2, '0')}`,
-  }
+  };
 }
 
 function formatMonthLabel(value: string) {
-  const range = getMonthRange(value)
+  const range = getMonthRange(value);
 
   if (!range) {
-    return ''
+    return '';
   }
 
-  const [year, month] = value.split('-').map(Number)
+  const [year, month] = value.split('-').map(Number);
 
   return new Intl.DateTimeFormat('ar-EG', {
     month: 'long',
     year: 'numeric',
-  }).format(new Date(year, month - 1, 1))
+  }).format(new Date(year, month - 1, 1));
 }
 
 export default function ReportsPage() {
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [monthFilter, setMonthFilter] = useState('')
-  const [data, setData] = useState<ReportsData>(emptyReports)
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
-  const [exporting, setExporting] = useState<'pdf' | 'csv' | null>(null)
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
+  const [data, setData] = useState<ReportsData>(emptyReports);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [exporting, setExporting] = useState<'pdf' | 'csv' | null>(null);
 
-  const [messageType, setMessageType] = useState<'success' | 'error'>('error')
+  const [messageType, setMessageType] = useState<'success' | 'error'>('error');
 
   function showMessage(
     type: 'success' | 'error',
@@ -162,64 +162,64 @@ export default function ReportsPage() {
 
     duration = 3200,
   ) {
-    setMessageType(type)
+    setMessageType(type);
 
-    setMessage(text)
+    setMessage(text);
 
     window.setTimeout(
       () => {
-        setMessage('')
+        setMessage('');
       },
 
       duration,
-    )
+    );
   }
 
   function getPeriodLabel() {
     if (monthFilter) {
-      return formatMonthLabel(monthFilter)
+      return formatMonthLabel(monthFilter);
     }
 
     if (dateFrom && dateTo) {
-      return `${dateFrom} إلى ${dateTo}`
+      return `${dateFrom} إلى ${dateTo}`;
     }
 
     if (dateFrom) {
-      return `من ${dateFrom}`
+      return `من ${dateFrom}`;
     }
 
     if (dateTo) {
-      return `حتى ${dateTo}`
+      return `حتى ${dateTo}`;
     }
 
-    return 'كل الفترات'
+    return 'كل الفترات';
   }
 
   function getExportFileSuffix() {
     if (monthFilter) {
-      return monthFilter
+      return monthFilter;
     }
 
     if (dateFrom || dateTo) {
-      return `${dateFrom || 'start'}_${dateTo || 'end'}`
+      return `${dateFrom || 'start'}_${dateTo || 'end'}`;
     }
 
-    return new Date().toISOString().slice(0, 10)
+    return new Date().toISOString().slice(0, 10);
   }
 
   async function exportPdf() {
     if (exporting) {
-      return
+      return;
     }
 
-    setExporting('pdf')
+    setExporting('pdf');
 
     try {
       const html = buildReportsPdfHtml(
         data,
 
         getPeriodLabel(),
-      )
+      );
 
       const result = await window.api.saveReportPdfFromHtml({
         html,
@@ -227,19 +227,19 @@ export default function ReportsPage() {
         defaultFileName: `erp-report-${getExportFileSuffix()}.pdf`,
 
         landscape: true,
-      })
+      });
 
       if (result?.canceled) {
-        return
+        return;
       }
 
       showMessage(
         'success',
 
         'تم حفظ تقرير PDF بنجاح',
-      )
+      );
     } catch (error) {
-      console.error('Failed to export report PDF:', error)
+      console.error('Failed to export report PDF:', error);
 
       showMessage(
         'error',
@@ -249,43 +249,43 @@ export default function ReportsPage() {
           : 'تعذر تصدير تقرير PDF',
 
         4500,
-      )
+      );
     } finally {
-      setExporting(null)
+      setExporting(null);
     }
   }
 
   async function exportCsv() {
     if (exporting) {
-      return
+      return;
     }
 
-    setExporting('csv')
+    setExporting('csv');
 
     try {
       const text = buildReportsCsv(
         data,
 
         getPeriodLabel(),
-      )
+      );
 
       const result = await window.api.saveReportCsvText({
         text,
 
         defaultFileName: `erp-report-${getExportFileSuffix()}.csv`,
-      })
+      });
 
       if (result?.canceled) {
-        return
+        return;
       }
 
       showMessage(
         'success',
 
         'تم حفظ تقرير CSV بنجاح',
-      )
+      );
     } catch (error) {
-      console.error('Failed to export report CSV:', error)
+      console.error('Failed to export report CSV:', error);
 
       showMessage(
         'error',
@@ -295,40 +295,40 @@ export default function ReportsPage() {
           : 'تعذر تصدير تقرير CSV',
 
         4500,
-      )
+      );
     } finally {
-      setExporting(null)
+      setExporting(null);
     }
   }
 
   async function loadReports() {
-    setLoading(true)
+    setLoading(true);
 
     try {
       const result = await window.api.getReportsSummary({
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
-      })
+      });
 
-      setData(result)
+      setData(result);
     } catch (error) {
-      console.error('Failed to load reports:', error)
+      console.error('Failed to load reports:', error);
       showMessage(
         'error',
 
         'حدث خطأ أثناء تحميل التقارير',
 
         4500,
-      )
-      setData(emptyReports)
+      );
+      setData(emptyReports);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   useEffect(() => {
-    void loadReports()
-  }, [dateFrom, dateTo])
+    void loadReports();
+  }, [dateFrom, dateTo]);
 
   return (
     <div
@@ -403,24 +403,24 @@ export default function ReportsPage() {
               type="month"
               value={monthFilter}
               onChange={(e) => {
-                const value = e.target.value
+                const value = e.target.value;
 
-                setMonthFilter(value)
+                setMonthFilter(value);
 
                 if (!value) {
-                  setDateFrom('')
-                  setDateTo('')
-                  return
+                  setDateFrom('');
+                  setDateTo('');
+                  return;
                 }
 
-                const range = getMonthRange(value)
+                const range = getMonthRange(value);
 
                 if (!range) {
-                  return
+                  return;
                 }
 
-                setDateFrom(range.from)
-                setDateTo(range.to)
+                setDateFrom(range.from);
+                setDateTo(range.to);
               }}
               title="اختيار شهر كامل"
               style={inputStyle}
@@ -482,9 +482,9 @@ export default function ReportsPage() {
               type="date"
               value={dateFrom}
               onChange={(e) => {
-                setMonthFilter('')
+                setMonthFilter('');
 
-                setDateFrom(e.target.value)
+                setDateFrom(e.target.value);
               }}
               style={inputStyle}
             />
@@ -493,9 +493,9 @@ export default function ReportsPage() {
               type="date"
               value={dateTo}
               onChange={(e) => {
-                setMonthFilter('')
+                setMonthFilter('');
 
-                setDateTo(e.target.value)
+                setDateTo(e.target.value);
               }}
               style={inputStyle}
             />
@@ -765,7 +765,7 @@ export default function ReportsPage() {
         />
       </div>
     </div>
-  )
+  );
 }
 
 function StatCard({
@@ -775,11 +775,11 @@ function StatCard({
   success,
   danger,
 }: {
-  title: string
-  value: string
-  highlight?: boolean
-  success?: boolean
-  danger?: boolean
+  title: string;
+  value: string;
+  highlight?: boolean;
+  success?: boolean;
+  danger?: boolean;
 }) {
   const color = danger
     ? '#fca5a5'
@@ -787,18 +787,18 @@ function StatCard({
       ? '#6ee7b7'
       : highlight
         ? '#bfdbfe'
-        : '#e5e7eb'
+        : '#e5e7eb';
 
   return (
     <div className="glass-card" style={statCardStyle}>
       <div style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</div>
       <strong style={{ color, fontSize: '24px' }}>{value}</strong>
     </div>
-  )
+  );
 }
 
 function DailySalesBars({ rows }: { rows: any[] }) {
-  const maxValue = Math.max(...rows.map((row) => Number(row.total || 0)), 0)
+  const maxValue = Math.max(...rows.map((row) => Number(row.total || 0)), 0);
 
   return (
     <div className="glass-card" style={cardStyle}>
@@ -863,10 +863,10 @@ function DailySalesBars({ rows }: { rows: any[] }) {
           }}
         >
           {rows.map((row) => {
-            const total = Number(row.total || 0)
+            const total = Number(row.total || 0);
 
             const width =
-              maxValue > 0 ? Math.max((total / maxValue) * 100, 4) : 4
+              maxValue > 0 ? Math.max((total / maxValue) * 100, 4) : 4;
 
             return (
               <div
@@ -910,12 +910,12 @@ function DailySalesBars({ rows }: { rows: any[] }) {
                   />
                 </div>
               </div>
-            )
+            );
           })}
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function ReportTable({
@@ -925,27 +925,30 @@ function ReportTable({
   emptyText,
   pageSize = 10,
 }: {
-  title: string
-  columns: string[]
-  rows: any[][]
-  emptyText: string
-  pageSize?: number
+  title: string;
+  columns: string[];
+  rows: any[][];
+  emptyText: string;
+  pageSize?: number;
 }) {
-  const [page, setPage] = useState(1)
+  const [page, setPage] = useState(1);
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
 
-  const safePage = Math.min(Math.max(page, 1), totalPages)
+  const safePage = Math.min(Math.max(page, 1), totalPages);
 
-  const visibleRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
+  const visibleRows = rows.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize,
+  );
 
   useEffect(() => {
-    setPage(1)
-  }, [rows])
+    setPage(1);
+  }, [rows]);
 
-  const startItem = rows.length > 0 ? (safePage - 1) * pageSize + 1 : 0
+  const startItem = rows.length > 0 ? (safePage - 1) * pageSize + 1 : 0;
 
-  const endItem = Math.min(safePage * pageSize, rows.length)
+  const endItem = Math.min(safePage * pageSize, rows.length);
 
   return (
     <div className="glass-card" style={cardStyle}>
@@ -1088,27 +1091,27 @@ function ReportTable({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 function formatDateOnly(value?: string) {
-  if (!value) return '—'
+  if (!value) return '—';
 
   try {
-    const raw = String(value)
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
+    const raw = String(value);
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
 
     return new Date(normalized).toLocaleDateString('ar-EG', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
-    })
+    });
   } catch {
-    return value
+    return value;
   }
 }
 
@@ -1117,14 +1120,14 @@ const cardStyle: React.CSSProperties = {
   borderRadius: '16px',
   display: 'grid',
   gap: '10px',
-}
+};
 
 const statCardStyle: React.CSSProperties = {
   padding: '14px',
   borderRadius: '16px',
   display: 'grid',
   gap: '8px',
-}
+};
 
 const inputStyle: React.CSSProperties = {
   height: '44px',
@@ -1137,7 +1140,7 @@ const inputStyle: React.CSSProperties = {
   textAlign: 'right',
   direction: 'rtl',
   boxSizing: 'border-box',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -1148,16 +1151,16 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   fontWeight: 800,
   whiteSpace: 'nowrap',
-}
+};
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
-}
+};

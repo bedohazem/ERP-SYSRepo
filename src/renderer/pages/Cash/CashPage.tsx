@@ -1,45 +1,47 @@
-import { useEffect, useState } from 'react'
-import { useAuthStore } from '../../store/auth.store'
+import { useEffect, useState } from 'react';
+import { useAuthStore } from '../../store/auth.store';
 import {
   CASH_ACCOUNT_OPTIONS,
   getPaymentMethodLabel,
-} from '../../utils/payment-method'
-import FinancialCancelModal from '../../components/FinancialCancelModal'
-import MultiSelectFilter from '../../components/MultiSelectFilter'
-import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
-import { formatMoney } from '../../../shared/money'
+} from '../../utils/payment-method';
+import FinancialCancelModal from '../../components/FinancialCancelModal';
+import MultiSelectFilter from '../../components/MultiSelectFilter';
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
+import { formatMoney } from '../../../shared/money';
 
 type CashSummary = {
-  total_in: number
-  total_out: number
-  balance: number
-}
+  total_in: number;
+  total_out: number;
+  balance: number;
+};
 
 type CashAccountBalance = {
-  value: string
-  label: string
-  balance: number
-}
+  value: string;
+  label: string;
+  balance: number;
+};
 
 type CashMovement = {
-  id: number
-  type: string
-  direction: 'in' | 'out'
-  amount: number
-  payment_method: string
-  notes: string
-  created_at: string
-  business_date?: string | null
-  created_by_name?: string
-  reference_id?: number | null
-  reference_type?: string | null
-  cancelled_at?: string | null
-  cancelled_by?: number | null
-  cancel_reason?: string | null
-  replacement_movement_id?: number | null
+  id: number;
+  type: string;
+  direction: 'in' | 'out';
+  amount: number;
+  payment_method: string;
+  notes: string;
+  created_at: string;
+  business_date?: string | null;
+  created_by_name?: string;
+  reference_id?: number | null;
+  reference_type?: string | null;
+  cancelled_at?: string | null;
+  cancelled_by?: number | null;
+  cancel_reason?: string | null;
+  replacement_movement_id?: number | null;
 
-  transfer_to_account?: string | null
-}
+  transfer_to_account?: string | null;
+};
 
 const CASH_TYPE_FILTER_OPTIONS = [
   { value: 'sale', label: 'بيع' },
@@ -78,12 +80,12 @@ const CASH_TYPE_FILTER_OPTIONS = [
     value: 'shift_adjustment',
     label: 'تسوية شفت',
   },
-]
+];
 
 const CASH_DIRECTION_FILTER_OPTIONS = [
   { value: 'in', label: 'داخل' },
   { value: 'out', label: 'خارج' },
-]
+];
 
 const CASH_SUMMARY_ACCOUNT_OPTIONS = [
   ...CASH_ACCOUNT_OPTIONS,
@@ -91,108 +93,110 @@ const CASH_SUMMARY_ACCOUNT_OPTIONS = [
     value: 'store_safe',
     label: 'الخزنة الآمنة',
   },
-]
+];
 
 export default function CashPage() {
-  const currentUser = useAuthStore((s) => s.user)
-  const isAdmin = currentUser?.role === 'admin'
+  const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role === 'admin';
   const cashSummaryAccountOptions = isAdmin
     ? CASH_SUMMARY_ACCOUNT_OPTIONS
-    : CASH_ACCOUNT_OPTIONS
-  const [summary, setSummary] = useState<CashSummary | null>(null)
-  const [movements, setMovements] = useState<CashMovement[]>([])
-  const [movementsTotal, setMovementsTotal] = useState(0)
-  const [movementsPage, setMovementsPage] = useState(1)
+    : CASH_ACCOUNT_OPTIONS;
+  const [summary, setSummary] = useState<CashSummary | null>(null);
+  const [movements, setMovements] = useState<CashMovement[]>([]);
+  const [movementsTotal, setMovementsTotal] = useState(0);
+  const [movementsPage, setMovementsPage] = useState(1);
   const [cancelMovementTarget, setCancelMovementTarget] =
-    useState<CashMovement | null>(null)
+    useState<CashMovement | null>(null);
 
-  const [cancelMovementReason, setCancelMovementReason] = useState('')
+  const [cancelMovementReason, setCancelMovementReason] = useState('');
 
-  const [cancelMovementPassword, setCancelMovementPassword] = useState('')
+  const [cancelMovementPassword, setCancelMovementPassword] = useState('');
 
-  const [cancellingMovement, setCancellingMovement] = useState(false)
+  const [cancellingMovement, setCancellingMovement] = useState(false);
   const [editMovementTarget, setEditMovementTarget] =
-    useState<CashMovement | null>(null)
+    useState<CashMovement | null>(null);
 
   const [editMovementType, setEditMovementType] = useState<
     'deposit' | 'withdraw'
-  >('deposit')
+  >('deposit');
 
-  const [editMovementAmount, setEditMovementAmount] = useState('')
+  const [editMovementAmount, setEditMovementAmount] = useState('');
 
-  const [editMovementAccount, setEditMovementAccount] = useState('store_cash')
+  const [editMovementAccount, setEditMovementAccount] = useState('store_cash');
 
-  const [editTransferFrom, setEditTransferFrom] = useState('store_cash')
+  const [editTransferFrom, setEditTransferFrom] = useState('store_cash');
 
-  const [editTransferTo, setEditTransferTo] = useState('owner_cash')
+  const [editTransferTo, setEditTransferTo] = useState('owner_cash');
 
-  const [editMovementNotes, setEditMovementNotes] = useState('')
+  const [editMovementNotes, setEditMovementNotes] = useState('');
 
-  const [editMovementPassword, setEditMovementPassword] = useState('')
+  const [editMovementPassword, setEditMovementPassword] = useState('');
 
-  const [updatingMovement, setUpdatingMovement] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const [updatingMovement, setUpdatingMovement] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
-    type: 'success' | 'error'
-    text: string
-  } | null>(null)
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   function showMessage(
     type: 'success' | 'error',
     text: string,
     duration = 1800,
   ) {
-    setMessage({ type, text })
+    setMessage({ type, text });
 
     setTimeout(() => {
-      setMessage(null)
-    }, duration)
+      setMessage(null);
+    }, duration);
   }
 
   const [movementType, setMovementType] = useState<'deposit' | 'withdraw'>(
     'deposit',
-  )
-  const [amount, setAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('store_cash')
-  const [drawerBalance, setDrawerBalance] = useState(0)
+  );
+  const [amount, setAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('store_cash');
+  const [drawerBalance, setDrawerBalance] = useState(0);
   const [accountBalances, setAccountBalances] = useState<CashAccountBalance[]>(
     [],
-  )
-  const [totalAccountBalance, setTotalAccountBalance] = useState(0)
-  const [notes, setNotes] = useState('')
+  );
+  const [totalAccountBalance, setTotalAccountBalance] = useState(0);
+  const [notes, setNotes] = useState('');
 
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [filterTypes, setFilterTypes] = useState<string[]>([])
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [filterTypes, setFilterTypes] = useState<string[]>([]);
 
-  const [filterDirections, setFilterDirections] = useState<string[]>([])
+  const [filterDirections, setFilterDirections] = useState<string[]>([]);
 
-  const [filterPaymentMethods, setFilterPaymentMethods] = useState<string[]>([])
-  const [search, setSearch] = useState('')
-  const [manualModalOpen, setManualModalOpen] = useState(false)
+  const [filterPaymentMethods, setFilterPaymentMethods] = useState<string[]>(
+    [],
+  );
+  const [search, setSearch] = useState('');
+  const [manualModalOpen, setManualModalOpen] = useState(false);
 
-  const [transferModalOpen, setTransferModalOpen] = useState(false)
-  const [transferFromAccount, setTransferFromAccount] = useState('store_cash')
-  const [transferToAccount, setTransferToAccount] = useState('owner_cash')
-  const [transferAmount, setTransferAmount] = useState('')
-  const [transferNotes, setTransferNotes] = useState('')
-  const [transferring, setTransferring] = useState(false)
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferFromAccount, setTransferFromAccount] = useState('store_cash');
+  const [transferToAccount, setTransferToAccount] = useState('owner_cash');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferNotes, setTransferNotes] = useState('');
+  const [transferring, setTransferring] = useState(false);
 
   function canManageCashMovement(item: CashMovement) {
     if (!isAdmin) {
-      return false
+      return false;
     }
 
     if (item.cancelled_at || Number(item.replacement_movement_id || 0) > 0) {
-      return false
+      return false;
     }
 
     if (
       item.reference_type === 'manual' &&
       (item.type === 'deposit' || item.type === 'withdraw')
     ) {
-      return true
+      return true;
     }
 
     if (
@@ -200,15 +204,15 @@ export default function CashPage() {
       item.reference_type === 'cash_transfer' &&
       item.direction === 'out'
     ) {
-      return true
+      return true;
     }
 
-    return false
+    return false;
   }
 
   async function loadData(page = movementsPage) {
-    setLoading(true)
-    const safePage = Math.max(1, Number(page || 1))
+    setLoading(true);
+    const safePage = Math.max(1, Number(page || 1));
     const filters = {
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
@@ -219,86 +223,86 @@ export default function CashPage() {
       payment_methods:
         filterPaymentMethods.length > 0 ? filterPaymentMethods : undefined,
       search: search || undefined,
-    }
+    };
 
     const movementFilters = {
       ...filters,
       limit: SYSTEM_PAGE_SIZE,
       offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
-    }
+    };
 
     try {
-      const summaryData = await window.api.getCashSummary(filters)
-      const movementsData = await window.api.getCashMovements(movementFilters)
+      const summaryData = await window.api.getCashSummary(filters);
+      const movementsData = await window.api.getCashMovements(movementFilters);
       const drawerSummary = await window.api.getCashSummary({
         payment_method: 'store_cash',
-      })
+      });
 
       const accountSummaryRows = await Promise.all(
         cashSummaryAccountOptions.map(async (option) => {
           const accountSummary = await window.api.getCashSummary({
             payment_method: option.value,
-          })
+          });
 
           return {
             value: option.value,
             label: option.label,
             balance: Number(accountSummary?.balance || 0),
-          }
+          };
         }),
-      )
+      );
 
       const totalBalance = accountSummaryRows.reduce(
         (sum, account) => sum + Number(account.balance || 0),
 
         0,
-      )
+      );
 
-      setDrawerBalance(Number(drawerSummary?.balance || 0))
+      setDrawerBalance(Number(drawerSummary?.balance || 0));
 
-      setAccountBalances(accountSummaryRows)
+      setAccountBalances(accountSummaryRows);
 
-      setTotalAccountBalance(totalBalance)
+      setTotalAccountBalance(totalBalance);
 
-      setSummary(summaryData)
-      setMovements(Array.isArray(movementsData.rows) ? movementsData.rows : [])
+      setSummary(summaryData);
+      setMovements(Array.isArray(movementsData.rows) ? movementsData.rows : []);
 
-      setMovementsTotal(Number(movementsData.total || 0))
-      setMovementsPage(safePage)
+      setMovementsTotal(Number(movementsData.total || 0));
+      setMovementsPage(safePage);
     } catch (error) {
-      console.error(error)
-      showMessage('error', 'حدث خطأ أثناء تحميل بيانات الخزنة')
+      console.error(error);
+      showMessage('error', 'حدث خطأ أثناء تحميل بيانات الخزنة');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function saveCashMovement() {
-    const parsedAmount = Number(amount)
+    const parsedAmount = Number(amount);
 
     if (!parsedAmount || parsedAmount <= 0) {
-      showMessage('error', 'اكتب مبلغ صحيح')
-      return
+      showMessage('error', 'اكتب مبلغ صحيح');
+      return;
     }
 
-    const direction = movementType === 'deposit' ? 'in' : 'out'
+    const direction = movementType === 'deposit' ? 'in' : 'out';
 
     if (direction === 'out') {
       const selectedAccountBalance = Number(
         accountBalances.find((account) => account.value === paymentMethod)
           ?.balance || 0,
-      )
+      );
 
       if (parsedAmount > selectedAccountBalance) {
         showMessage(
           'error',
           `رصيد ${getPaymentMethodLabel(paymentMethod)} غير كافٍ. الرصيد الحالي ${money(selectedAccountBalance)}`,
-        )
-        return
+        );
+        return;
       }
     }
 
-    setSaving(true)
+    setSaving(true);
 
     try {
       await window.api.createCashMovement({
@@ -312,18 +316,18 @@ export default function CashPage() {
           notes.trim() ||
           (movementType === 'deposit' ? 'إيداع يدوي' : 'سحب يدوي'),
         created_by: currentUser?.id ?? null,
-      })
+      });
 
-      setManualModalOpen(false)
-      setMovementType('deposit')
-      setAmount('')
-      setPaymentMethod('store_cash')
-      setNotes('')
+      setManualModalOpen(false);
+      setMovementType('deposit');
+      setAmount('');
+      setPaymentMethod('store_cash');
+      setNotes('');
 
-      showMessage('success', 'تم حفظ حركة الخزنة بنجاح')
-      await loadData(movementsPage)
+      showMessage('success', 'تم حفظ حركة الخزنة بنجاح');
+      await loadData(movementsPage);
     } catch (error) {
-      console.error(error)
+      console.error(error);
 
       showMessage(
         'error',
@@ -331,39 +335,39 @@ export default function CashPage() {
           ? error.message
           : 'حدث خطأ أثناء حفظ حركة الخزنة. لم يتم تطبيق أي تغييرات.',
         4500,
-      )
+      );
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
   async function saveCashTransfer() {
-    const parsedAmount = Number(transferAmount || 0)
+    const parsedAmount = Number(transferAmount || 0);
 
     if (!parsedAmount || parsedAmount <= 0) {
-      showMessage('error', 'اكتب مبلغ صحيح للتحويل')
-      return
+      showMessage('error', 'اكتب مبلغ صحيح للتحويل');
+      return;
     }
 
     if (transferFromAccount === transferToAccount) {
-      showMessage('error', 'لا يمكن التحويل لنفس الحساب')
-      return
+      showMessage('error', 'لا يمكن التحويل لنفس الحساب');
+      return;
     }
 
     const fromBalance = Number(
       accountBalances.find((account) => account.value === transferFromAccount)
         ?.balance || 0,
-    )
+    );
 
     if (parsedAmount > fromBalance) {
       showMessage(
         'error',
         `رصيد ${getPaymentMethodLabel(transferFromAccount)} غير كافٍ. الرصيد الحالي ${money(fromBalance)}`,
-      )
-      return
+      );
+      return;
     }
 
-    setTransferring(true)
+    setTransferring(true);
 
     try {
       await window.api.createCashTransfer({
@@ -374,17 +378,17 @@ export default function CashPage() {
           transferNotes.trim() ||
           `تحويل من ${getPaymentMethodLabel(transferFromAccount)} إلى ${getPaymentMethodLabel(transferToAccount)}`,
         created_by: currentUser?.id ?? null,
-      })
-      setTransferModalOpen(false)
-      setTransferFromAccount('store_cash')
-      setTransferToAccount('owner_cash')
-      setTransferAmount('')
-      setTransferNotes('')
+      });
+      setTransferModalOpen(false);
+      setTransferFromAccount('store_cash');
+      setTransferToAccount('owner_cash');
+      setTransferAmount('');
+      setTransferNotes('');
 
-      showMessage('success', 'تم تحويل المبلغ بين الحسابات بنجاح')
-      await loadData(movementsPage)
+      showMessage('success', 'تم تحويل المبلغ بين الحسابات بنجاح');
+      await loadData(movementsPage);
     } catch (error) {
-      console.error(error)
+      console.error(error);
       showMessage(
         'error',
 
@@ -393,16 +397,16 @@ export default function CashPage() {
           : 'حدث خطأ أثناء تحويل المبلغ. لم يتم تطبيق أي تغييرات.',
 
         4500,
-      )
+      );
     } finally {
-      setTransferring(false)
+      setTransferring(false);
     }
   }
 
   async function confirmCancelCashMovement() {
-    if (!cancelMovementTarget || cancellingMovement) return
+    if (!cancelMovementTarget || cancellingMovement) return;
 
-    setCancellingMovement(true)
+    setCancellingMovement(true);
 
     try {
       const result = await window.api.cancelCashMovement({
@@ -410,7 +414,7 @@ export default function CashPage() {
         reason: cancelMovementReason.trim() || 'إلغاء حركة خزنة',
         actor_id: currentUser?.id ?? null,
         admin_password: cancelMovementPassword,
-      })
+      });
 
       if (!result?.success) {
         showMessage(
@@ -419,17 +423,17 @@ export default function CashPage() {
           result?.message || 'تعذر إلغاء حركة الخزنة. لم يتم تطبيق أي تغييرات.',
 
           4500,
-        )
-        return
+        );
+        return;
       }
 
-      setCancelMovementTarget(null)
-      setCancelMovementReason('')
-      setCancelMovementPassword('')
+      setCancelMovementTarget(null);
+      setCancelMovementReason('');
+      setCancelMovementPassword('');
 
-      showMessage('success', 'تم إلغاء حركة الخزنة')
+      showMessage('success', 'تم إلغاء حركة الخزنة');
 
-      await loadData(movementsPage)
+      await loadData(movementsPage);
     } catch (error: any) {
       showMessage(
         'error',
@@ -438,73 +442,73 @@ export default function CashPage() {
           'حدث خطأ أثناء إلغاء حركة الخزنة. لم يتم تطبيق أي تغييرات.',
 
         4500,
-      )
+      );
     } finally {
-      setCancellingMovement(false)
+      setCancellingMovement(false);
     }
   }
 
   function openEditCashMovement(item: CashMovement) {
-    setEditMovementTarget(item)
+    setEditMovementTarget(item);
 
-    setEditMovementAmount(String(Number(item.amount || 0)))
+    setEditMovementAmount(String(Number(item.amount || 0)));
 
-    setEditMovementNotes(item.notes || '')
+    setEditMovementNotes(item.notes || '');
 
-    setEditMovementPassword('')
+    setEditMovementPassword('');
 
     if (item.type === 'transfer') {
-      setEditTransferFrom(item.payment_method || 'store_cash')
+      setEditTransferFrom(item.payment_method || 'store_cash');
 
-      setEditTransferTo(item.transfer_to_account || 'owner_cash')
+      setEditTransferTo(item.transfer_to_account || 'owner_cash');
 
-      return
+      return;
     }
 
-    setEditMovementType(item.type === 'withdraw' ? 'withdraw' : 'deposit')
+    setEditMovementType(item.type === 'withdraw' ? 'withdraw' : 'deposit');
 
-    setEditMovementAccount(item.payment_method || 'store_cash')
+    setEditMovementAccount(item.payment_method || 'store_cash');
   }
 
   function closeEditCashMovement() {
-    if (updatingMovement) return
+    if (updatingMovement) return;
 
-    setEditMovementTarget(null)
-    setEditMovementAmount('')
-    setEditMovementNotes('')
-    setEditMovementPassword('')
+    setEditMovementTarget(null);
+    setEditMovementAmount('');
+    setEditMovementNotes('');
+    setEditMovementPassword('');
   }
 
   async function confirmUpdateCashMovement() {
     if (!editMovementTarget || updatingMovement) {
-      return
+      return;
     }
 
-    const amount = Number(editMovementAmount || 0)
+    const amount = Number(editMovementAmount || 0);
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      showMessage('error', 'اكتب مبلغ صحيح')
+      showMessage('error', 'اكتب مبلغ صحيح');
 
-      return
+      return;
     }
 
     if (!editMovementPassword.trim()) {
-      showMessage('error', 'اكتب كلمة مرور المدير')
+      showMessage('error', 'اكتب كلمة مرور المدير');
 
-      return
+      return;
     }
 
     const isTransfer =
       editMovementTarget.type === 'transfer' &&
-      editMovementTarget.reference_type === 'cash_transfer'
+      editMovementTarget.reference_type === 'cash_transfer';
 
     if (isTransfer && editTransferFrom === editTransferTo) {
-      showMessage('error', 'لا يمكن التحويل لنفس الحساب')
+      showMessage('error', 'لا يمكن التحويل لنفس الحساب');
 
-      return
+      return;
     }
 
-    setUpdatingMovement(true)
+    setUpdatingMovement(true);
 
     try {
       const result = await window.api.updateCashMovement({
@@ -529,7 +533,7 @@ export default function CashPage() {
         actor_id: currentUser?.id ?? null,
 
         admin_password: editMovementPassword,
-      })
+      });
 
       if (!result.success) {
         showMessage(
@@ -538,19 +542,19 @@ export default function CashPage() {
           result.message || 'تعذر تعديل حركة الخزنة. لم يتم تطبيق أي تغييرات.',
 
           4500,
-        )
+        );
 
-        return
+        return;
       }
 
-      closeEditCashMovement()
+      closeEditCashMovement();
 
       showMessage(
         'success',
         isTransfer ? 'تم تعديل التحويل' : 'تم تعديل حركة الخزنة',
-      )
+      );
 
-      await loadData(movementsPage)
+      await loadData(movementsPage);
     } catch (error) {
       showMessage(
         'error',
@@ -560,58 +564,58 @@ export default function CashPage() {
           : 'تعذر تعديل حركة الخزنة. لم يتم تطبيق أي تغييرات.',
 
         4500,
-      )
+      );
     } finally {
-      setUpdatingMovement(false)
+      setUpdatingMovement(false);
     }
   }
 
   function handleCreateMovement() {
-    void saveCashMovement()
+    void saveCashMovement();
   }
 
   useEffect(() => {
-    void loadData(1)
-  }, [])
+    void loadData(1);
+  }, []);
 
   function getTypeLabel(type: string) {
     switch (type) {
       case 'sale':
-        return 'بيع'
+        return 'بيع';
       case 'sale_return':
-        return 'مرتجع بيع'
+        return 'مرتجع بيع';
       case 'sale_exchange':
-        return 'استبدال بيع'
+        return 'استبدال بيع';
       case 'customer_payment':
-        return 'دفعة عميل'
+        return 'دفعة عميل';
       case 'supplier_payment':
-        return 'دفعة مورد'
+        return 'دفعة مورد';
       case 'expense':
-        return 'مصروف'
+        return 'مصروف';
       case 'withdraw':
-        return 'سحب'
+        return 'سحب';
       case 'deposit':
-        return 'إيداع'
+        return 'إيداع';
       case 'liability_payment':
-        return 'دفعة التزام'
+        return 'دفعة التزام';
       case 'transfer':
-        return 'تحويل داخلي'
+        return 'تحويل داخلي';
       case 'purchase_return':
-        return 'مرتجع شراء'
+        return 'مرتجع شراء';
       case 'shift_adjustment':
-        return 'تسوية شفت'
+        return 'تسوية شفت';
 
       default:
-        return type
+        return type;
     }
   }
 
   function formatDate(value?: string) {
-    if (!value) return '—'
+    if (!value) return '—';
 
     try {
-      const raw = String(value)
-      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
+      const raw = String(value);
+      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
 
       return new Date(normalized).toLocaleString('ar-EG', {
         year: 'numeric',
@@ -619,28 +623,28 @@ export default function CashPage() {
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
-      })
+      });
     } catch {
-      return value
+      return value;
     }
   }
 
   function money(value: unknown) {
-    return formatMoney(value)
+    return formatMoney(value);
   }
 
   function getLocalDateKey(date: Date) {
-    const year = date.getFullYear()
+    const year = date.getFullYear();
 
-    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const month = String(date.getMonth() + 1).padStart(2, '0');
 
-    const day = String(date.getDate()).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0');
 
-    return `${year}-${month}-${day}`
+    return `${year}-${month}-${day}`;
   }
 
   async function getAllCashMovementsForPrint() {
-    const batchSize = 200
+    const batchSize = 200;
 
     const baseFilters = {
       date_from: dateFrom || undefined,
@@ -654,44 +658,44 @@ export default function CashPage() {
         filterPaymentMethods.length > 0 ? filterPaymentMethods : undefined,
 
       search: search || undefined,
-    }
+    };
 
     const firstResult = await window.api.getCashMovements({
       ...baseFilters,
       limit: batchSize,
       offset: 0,
-    })
+    });
 
     const allMovements: CashMovement[] = Array.isArray(firstResult.rows)
       ? [...firstResult.rows]
-      : []
+      : [];
 
-    const total = Number(firstResult.total || 0)
+    const total = Number(firstResult.total || 0);
 
     for (let offset = batchSize; offset < total; offset += batchSize) {
       const result = await window.api.getCashMovements({
         ...baseFilters,
         limit: batchSize,
         offset,
-      })
+      });
 
       if (Array.isArray(result.rows)) {
-        allMovements.push(...result.rows)
+        allMovements.push(...result.rows);
       }
     }
 
-    return allMovements.filter((item) => !item.cancelled_at)
+    return allMovements.filter((item) => !item.cancelled_at);
   }
 
   async function printCashReport() {
-    let printMovements: CashMovement[] = []
+    let printMovements: CashMovement[] = [];
 
     try {
-      printMovements = await getAllCashMovementsForPrint()
+      printMovements = await getAllCashMovementsForPrint();
     } catch (error) {
-      console.error('Failed to load cash movements for print:', error)
-      showMessage('error', 'حدث خطأ أثناء تجهيز كشف الخزنة للطباعة')
-      return
+      console.error('Failed to load cash movements for print:', error);
+      showMessage('error', 'حدث خطأ أثناء تجهيز كشف الخزنة للطباعة');
+      return;
     }
 
     const filtersText = [
@@ -715,7 +719,7 @@ export default function CashPage() {
             .join('، ')}`
         : null,
       search.trim() ? `بحث: ${search.trim()}` : null,
-    ].filter(Boolean)
+    ].filter(Boolean);
 
     const accountCardsHtml = accountBalances
       .map(
@@ -728,7 +732,7 @@ export default function CashPage() {
           </div>
         `,
       )
-      .join('')
+      .join('');
 
     const rowsHtml = printMovements
       .map(
@@ -748,7 +752,7 @@ export default function CashPage() {
           </tr>
         `,
       )
-      .join('')
+      .join('');
 
     const html = `
       <!doctype html>
@@ -972,21 +976,21 @@ export default function CashPage() {
 
         </body>
       </html>
-    `
+    `;
 
     try {
       const result = await window.api.printHtmlWithDialog({
         html,
         previewWidth: 1100,
         previewHeight: 800,
-      })
+      });
 
       if (!result.ok && !result.canceled) {
-        showMessage('error', result.message || 'تعذر فتح نافذة الطباعة')
+        showMessage('error', result.message || 'تعذر فتح نافذة الطباعة');
       }
     } catch (error) {
-      console.error('Failed to print cash report:', error)
-      showMessage('error', 'تعذر فتح نافذة الطباعة')
+      console.error('Failed to print cash report:', error);
+      showMessage('error', 'تعذر فتح نافذة الطباعة');
     }
   }
 
@@ -1237,8 +1241,8 @@ export default function CashPage() {
           <button
             type="button"
             onClick={() => {
-              setMovementsPage(1)
-              void loadData(1)
+              setMovementsPage(1);
+              void loadData(1);
             }}
             style={{ ...primaryButtonStyle, height: '36px', padding: '0 12px' }}
           >
@@ -1248,14 +1252,14 @@ export default function CashPage() {
           <button
             type="button"
             onClick={() => {
-              setDateFrom('')
-              setDateTo('')
-              setFilterTypes([])
-              setFilterDirections([])
-              setFilterPaymentMethods([])
-              setSearch('')
-              setMovementsPage(1)
-              setTimeout(() => void loadData(1), 0)
+              setDateFrom('');
+              setDateTo('');
+              setFilterTypes([]);
+              setFilterDirections([]);
+              setFilterPaymentMethods([]);
+              setSearch('');
+              setMovementsPage(1);
+              setTimeout(() => void loadData(1), 0);
             }}
             style={{
               ...secondaryButtonStyle,
@@ -1316,7 +1320,7 @@ export default function CashPage() {
           totalItems={movementsTotal}
           loading={loading}
           onPageChange={(page) => {
-            void loadData(page)
+            void loadData(page);
           }}
         />
 
@@ -1486,15 +1490,15 @@ export default function CashPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setCancelMovementTarget(item)
+                              setCancelMovementTarget(item);
 
                               setCancelMovementReason(
                                 item.type === 'transfer'
                                   ? 'إلغاء تحويل بين الحسابات'
                                   : `إلغاء ${getTypeLabel(item.type)}`,
-                              )
+                              );
 
-                              setCancelMovementPassword('')
+                              setCancelMovementPassword('');
                             }}
                             style={{
                               height: '32px',
@@ -1658,13 +1662,13 @@ export default function CashPage() {
                       accountBalances.find(
                         (account) => account.value === option.value,
                       )?.balance || 0,
-                    )
+                    );
 
                     return (
                       <option key={option.value} value={option.value}>
                         {option.label} - الرصيد {money(balance)}
                       </option>
-                    )
+                    );
                   })}
                 </select>
               </Field>
@@ -1896,16 +1900,16 @@ export default function CashPage() {
         onReasonChange={setCancelMovementReason}
         onPasswordChange={setCancelMovementPassword}
         onClose={() => {
-          if (cancellingMovement) return
+          if (cancellingMovement) return;
 
-          setCancelMovementTarget(null)
-          setCancelMovementReason('')
-          setCancelMovementPassword('')
+          setCancelMovementTarget(null);
+          setCancelMovementReason('');
+          setCancelMovementPassword('');
         }}
         onConfirm={() => void confirmCancelCashMovement()}
       />
     </div>
-  )
+  );
 }
 
 function escapeHtml(value: string) {
@@ -1914,7 +1918,7 @@ function escapeHtml(value: string) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+    .replace(/'/g, '&#039;');
 }
 
 function SummaryCard({
@@ -1924,11 +1928,11 @@ function SummaryCard({
   border,
   compact = false,
 }: {
-  title: string
-  value: string
-  color: string
-  border: string
-  compact?: boolean
+  title: string;
+  value: string;
+  color: string;
+  border: string;
+  compact?: boolean;
 }) {
   return (
     <div
@@ -1967,15 +1971,15 @@ function SummaryCard({
         {value}
       </strong>
     </div>
-  )
+  );
 }
 
 function Field({
   label,
   children,
 }: {
-  label: string
-  children: React.ReactNode
+  label: string;
+  children: React.ReactNode;
 }) {
   return (
     <label style={{ display: 'grid', gap: '4px', minWidth: 0 }}>
@@ -1984,14 +1988,14 @@ function Field({
       </span>
       {children}
     </label>
-  )
+  );
 }
 
 const labelStyle: React.CSSProperties = {
   color: '#94a3b8',
   fontWeight: 800,
   fontSize: '11px',
-}
+};
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -2005,7 +2009,7 @@ const inputStyle: React.CSSProperties = {
   textAlign: 'right',
   direction: 'rtl',
   boxSizing: 'border-box',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -2016,7 +2020,7 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 900,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.12)',
@@ -2027,7 +2031,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontWeight: 900,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const dangerButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(239,68,68,0.35)',
@@ -2038,7 +2042,7 @@ const dangerButtonStyle: React.CSSProperties = {
   fontWeight: 900,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const modalStyle: React.CSSProperties = {
   width: '480px',
@@ -2049,19 +2053,19 @@ const modalStyle: React.CSSProperties = {
   padding: '22px',
   direction: 'rtl',
   boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
-}
+};
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   fontWeight: 800,
   whiteSpace: 'nowrap',
-}
+};
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
-}
+};
 
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
@@ -2074,7 +2078,7 @@ const modalOverlayStyle: React.CSSProperties = {
   padding: '20px',
   backdropFilter: 'blur(7px)',
   WebkitBackdropFilter: 'blur(7px)',
-}
+};
 
 const modalCardStyle: React.CSSProperties = {
   width: '520px',
@@ -2087,7 +2091,7 @@ const modalCardStyle: React.CSSProperties = {
   direction: 'rtl',
   color: 'var(--text)',
   overflow: 'hidden',
-}
+};
 
 const modalHeaderStyle: React.CSSProperties = {
   display: 'flex',
@@ -2095,7 +2099,7 @@ const modalHeaderStyle: React.CSSProperties = {
   justifyContent: 'space-between',
   gap: '12px',
   marginBottom: '16px',
-}
+};
 
 const miniCloseButtonStyle: React.CSSProperties = {
   width: '34px',
@@ -2106,4 +2110,4 @@ const miniCloseButtonStyle: React.CSSProperties = {
   color: 'var(--text)',
   fontSize: '18px',
   cursor: 'pointer',
-}
+};

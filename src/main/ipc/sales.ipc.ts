@@ -1,10 +1,10 @@
-import { ipcMain } from 'electron'
+import { ipcMain } from 'electron';
 import {
   logAction,
   runCriticalActionWithAudit,
   type ActionLogInput,
-} from './activity-helper'
-import { requireAuthenticatedUser, requirePermission } from '../auth-session'
+} from './activity-helper';
+import { requireAuthenticatedUser, requirePermission } from '../auth-session';
 import {
   createSale,
   getSaleReceipt,
@@ -19,20 +19,23 @@ import {
   getSaleEditAccess,
   updateSaleInvoice,
   CreditLimitExceededError,
-} from '../database/repositories/sales.repo'
-import { userHasPermission } from '../database/repositories/user.repo'
+} from '../database/repositories/sales.repo';
+import { userHasPermission } from '../database/repositories/user.repo';
 import {
   getVariantByBarcode,
   searchSaleVariants,
-} from '../database/repositories/product.repo'
+} from '../database/repositories/product.repo';
 import {
   cancelSaleExchange,
   createSaleExchange,
   getSaleExchangeCancellationAccess,
   getSaleExchangeState,
   listSaleExchanges,
-} from '../database/repositories/sales-exchange.repo'
-import { requireAdmin, requireAdminApprovalForActor } from './permission-helper'
+} from '../database/repositories/sales-exchange.repo';
+import {
+  requireAdmin,
+  requireAdminApprovalForActor,
+} from './permission-helper';
 import {
   optionalBooleanValue,
   optionalEnumValue,
@@ -51,14 +54,14 @@ import {
   optionalNonNegativeMoney,
   requireNonNegativeMoney,
   requirePositiveMoney,
-} from './input-validation'
-import { getSaleCurrentState } from '../database/repositories/sales-current-state.repo'
+} from './input-validation';
+import { getSaleCurrentState } from '../database/repositories/sales-current-state.repo';
 import {
   createHeldSale,
   deleteHeldSale,
   getHeldSale,
   listHeldSales,
-} from '../database/repositories/held-sales.repo'
+} from '../database/repositories/held-sales.repo';
 
 const SALES_COST_FIELDS = new Set([
   'buy_price',
@@ -67,31 +70,31 @@ const SALES_COST_FIELDS = new Set([
   'new_unit_cost',
   'original_unit_cost',
   'current_unit_cost',
-])
+]);
 
 const SALES_COST_JSON_FIELDS = new Set([
   'before_state_json',
   'after_state_json',
-])
+]);
 
 function redactSalesCostData<T>(value: T): T {
   if (Array.isArray(value)) {
-    return value.map((item) => redactSalesCostData(item)) as T
+    return value.map((item) => redactSalesCostData(item)) as T;
   }
 
   if (value === null || typeof value !== 'object') {
-    return value
+    return value;
   }
 
-  const source = value as Record<string, unknown>
+  const source = value as Record<string, unknown>;
 
-  const result: Record<string, unknown> = {}
+  const result: Record<string, unknown> = {};
 
   for (const [key, child] of Object.entries(source)) {
     if (SALES_COST_FIELDS.has(key)) {
-      result[key] = 0
+      result[key] = 0;
 
-      continue
+      continue;
     }
 
     /*
@@ -99,30 +102,30 @@ function redactSalesCostData<T>(value: T): T {
      * cost values encoded inside JSON strings.
      */
     if (SALES_COST_JSON_FIELDS.has(key)) {
-      result[key] = '[]'
+      result[key] = '[]';
 
-      continue
+      continue;
     }
 
-    result[key] = redactSalesCostData(child)
+    result[key] = redactSalesCostData(child);
   }
 
-  return result as T
+  return result as T;
 }
 
 function protectSalesCostData<T>(
   actor: {
-    id: number
-    role: string
+    id: number;
+    role: string;
   },
 
   value: T,
 ): T {
   if (actor.role === 'admin' || userHasPermission(actor.id, 'costs.view')) {
-    return value
+    return value;
   }
 
-  return redactSalesCostData(value)
+  return redactSalesCostData(value);
 }
 
 const SALE_PAYMENT_METHOD_VALUES = [
@@ -140,7 +143,7 @@ const SALE_PAYMENT_METHOD_VALUES = [
   'fawry_machine',
 
   'split',
-] as const
+] as const;
 
 const SALE_PAYMENT_ENTRY_METHOD_VALUES = [
   'cash',
@@ -155,47 +158,47 @@ const SALE_PAYMENT_ENTRY_METHOD_VALUES = [
   'owner_bank',
   'owner_vodafone',
   'fawry_machine',
-] as const
+] as const;
 
-const SALE_PAYMENT_STATUS_VALUES = ['paid', 'partial', 'unpaid'] as const
+const SALE_PAYMENT_STATUS_VALUES = ['paid', 'partial', 'unpaid'] as const;
 
-const HELD_SALE_DISCOUNT_TYPES = ['amount', 'percent'] as const
+const HELD_SALE_DISCOUNT_TYPES = ['amount', 'percent'] as const;
 
-const HELD_SALE_DELETE_MODES = ['resumed', 'discarded'] as const
+const HELD_SALE_DELETE_MODES = ['resumed', 'discarded'] as const;
 
 function optionalSaleDate(value: unknown): string | null | undefined {
   if (value === undefined) {
-    return undefined
+    return undefined;
   }
 
   if (value === null || value === '') {
-    return null
+    return null;
   }
 
   if (typeof value !== 'string') {
-    throw new Error('تاريخ البيع غير صحيح')
+    throw new Error('تاريخ البيع غير صحيح');
   }
 
-  const date = value.trim()
+  const date = value.trim();
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new Error('تاريخ البيع غير صحيح')
+    throw new Error('تاريخ البيع غير صحيح');
   }
 
-  return date
+  return date;
 }
 
 function normalizeSaleWriteInput(input: unknown) {
-  const payload = requireObjectInput(input, 'بيانات فاتورة البيع')
+  const payload = requireObjectInput(input, 'بيانات فاتورة البيع');
 
-  const rawItems = requireArrayInput(payload.items, 'أصناف فاتورة البيع', 500)
+  const rawItems = requireArrayInput(payload.items, 'أصناف فاتورة البيع', 500);
 
   if (rawItems.length === 0) {
-    throw new Error('أصناف فاتورة البيع مطلوبة')
+    throw new Error('أصناف فاتورة البيع مطلوبة');
   }
 
   const items = rawItems.map((rawItem) => {
-    const item = requireObjectInput(rawItem, 'بيانات صنف البيع')
+    const item = requireObjectInput(rawItem, 'بيانات صنف البيع');
 
     return {
       variant_id: requirePositiveInteger(item.variant_id, 'رقم صنف البيع'),
@@ -215,8 +218,8 @@ function normalizeSaleWriteInput(input: unknown) {
       quantity: requirePositiveNumber(item.quantity, 'كمية صنف البيع'),
 
       unit_price: requireNonNegativeMoney(item.unit_price, 'سعر صنف البيع'),
-    }
-  })
+    };
+  });
 
   const paymentMethod = requireEnumValue(
     payload.payment_method === undefined ||
@@ -228,14 +231,17 @@ function normalizeSaleWriteInput(input: unknown) {
     SALE_PAYMENT_METHOD_VALUES,
 
     'طريقة دفع فاتورة البيع',
-  )
+  );
 
   const payments =
     payload.payments === undefined || payload.payments === null
       ? undefined
       : requireArrayInput(payload.payments, 'وسائل دفع فاتورة البيع', 10).map(
           (rawPayment) => {
-            const payment = requireObjectInput(rawPayment, 'بيانات وسيلة الدفع')
+            const payment = requireObjectInput(
+              rawPayment,
+              'بيانات وسيلة الدفع',
+            );
 
             return {
               payment_method: requireEnumValue(
@@ -245,12 +251,12 @@ function normalizeSaleWriteInput(input: unknown) {
               ),
 
               amount: requirePositiveMoney(payment.amount, 'مبلغ وسيلة الدفع'),
-            }
+            };
           },
-        )
+        );
 
   if (paymentMethod === 'split' && (!payments || payments.length < 2)) {
-    throw new Error('الدفع المتعدد يحتاج وسيلتي دفع على الأقل')
+    throw new Error('الدفع المتعدد يحتاج وسيلتي دفع على الأقل');
   }
 
   const promotionIds =
@@ -258,7 +264,7 @@ function normalizeSaleWriteInput(input: unknown) {
       ? undefined
       : requireArrayInput(payload.promotion_ids, 'العروض', 100).map((id) =>
           requirePositiveInteger(id, 'رقم العرض'),
-        )
+        );
 
   return {
     customer_id: optionalPositiveInteger(payload.customer_id, 'رقم العميل'),
@@ -331,11 +337,11 @@ function normalizeSaleWriteInput(input: unknown) {
       'كلمة مرور المدير',
       256,
     ),
-  }
+  };
 }
 
 function normalizeSaleUpdateInput(input: unknown) {
-  const payload = requireObjectInput(input, 'بيانات تعديل فاتورة البيع')
+  const payload = requireObjectInput(input, 'بيانات تعديل فاتورة البيع');
 
   return {
     ...normalizeSaleWriteInput(payload),
@@ -343,20 +349,20 @@ function normalizeSaleUpdateInput(input: unknown) {
     sale_id: requirePositiveInteger(payload.sale_id, 'رقم فاتورة البيع'),
 
     reason: requireTrimmedString(payload.reason, 'سبب تعديل فاتورة البيع', 500),
-  }
+  };
 }
 
 function normalizeHeldSaleInput(input: unknown) {
-  const payload = requireObjectInput(input, 'بيانات الفاتورة المعلقة')
+  const payload = requireObjectInput(input, 'بيانات الفاتورة المعلقة');
 
   const rawItems = requireArrayInput(
     payload.items,
     'أصناف الفاتورة المعلقة',
     500,
-  )
+  );
 
   if (rawItems.length === 0) {
-    throw new Error('لا يمكن تعليق فاتورة فارغة')
+    throw new Error('لا يمكن تعليق فاتورة فارغة');
   }
 
   const discountType =
@@ -368,7 +374,7 @@ function normalizeHeldSaleInput(input: unknown) {
           payload.discount_type,
           HELD_SALE_DISCOUNT_TYPES,
           'نوع خصم الفاتورة المعلقة',
-        )
+        );
 
   const discountValue =
     discountType === 'amount'
@@ -379,10 +385,10 @@ function normalizeHeldSaleInput(input: unknown) {
       : (optionalNonNegativeNumber(
           payload.discount_value,
           'نسبة خصم الفاتورة المعلقة',
-        ) ?? 0)
+        ) ?? 0);
 
   if (discountType === 'percent' && discountValue > 100) {
-    throw new Error('نسبة الخصم لا يمكن أن تتجاوز 100%')
+    throw new Error('نسبة الخصم لا يمكن أن تتجاوز 100%');
   }
 
   return {
@@ -401,7 +407,7 @@ function normalizeHeldSaleInput(input: unknown) {
     ),
 
     items: rawItems.map((rawItem) => {
-      const item = requireObjectInput(rawItem, 'بيانات صنف الفاتورة المعلقة')
+      const item = requireObjectInput(rawItem, 'بيانات صنف الفاتورة المعلقة');
 
       return {
         variant_id: requirePositiveInteger(
@@ -413,13 +419,13 @@ function normalizeHeldSaleInput(input: unknown) {
           item.quantity,
           'كمية صنف الفاتورة المعلقة',
         ),
-      }
+      };
     }),
-  }
+  };
 }
 
 function normalizeHeldSaleDeleteInput(input: unknown) {
-  const payload = requireObjectInput(input, 'بيانات حذف الفاتورة المعلقة')
+  const payload = requireObjectInput(input, 'بيانات حذف الفاتورة المعلقة');
 
   return {
     held_sale_id: requirePositiveInteger(
@@ -432,16 +438,16 @@ function normalizeHeldSaleDeleteInput(input: unknown) {
       HELD_SALE_DELETE_MODES,
       'وضع حذف الفاتورة المعلقة',
     ),
-  }
+  };
 }
 
 function normalizeSaleReturnInput(input: unknown) {
-  const payload = requireObjectInput(input, 'بيانات مرتجع البيع')
+  const payload = requireObjectInput(input, 'بيانات مرتجع البيع');
 
-  const rawItems = requireArrayInput(payload.items, 'أصناف مرتجع البيع', 500)
+  const rawItems = requireArrayInput(payload.items, 'أصناف مرتجع البيع', 500);
 
   if (rawItems.length === 0) {
-    throw new Error('لا توجد أصناف للمرتجع')
+    throw new Error('لا توجد أصناف للمرتجع');
   }
 
   return {
@@ -459,7 +465,7 @@ function normalizeSaleReturnInput(input: unknown) {
     ),
 
     items: rawItems.map((rawItem) => {
-      const item = requireObjectInput(rawItem, 'بيانات صنف المرتجع')
+      const item = requireObjectInput(rawItem, 'بيانات صنف المرتجع');
 
       return {
         sale_item_id: requirePositiveInteger(
@@ -470,18 +476,18 @@ function normalizeSaleReturnInput(input: unknown) {
         variant_id: requirePositiveInteger(item.variant_id, 'رقم صنف المرتجع'),
 
         quantity: requirePositiveNumber(item.quantity, 'كمية المرتجع'),
-      }
+      };
     }),
-  }
+  };
 }
 
 function normalizeSaleExchangeInput(input: unknown) {
-  const payload = requireObjectInput(input, 'بيانات استبدال البيع')
+  const payload = requireObjectInput(input, 'بيانات استبدال البيع');
 
-  const rawItems = requireArrayInput(payload.items, 'أصناف الاستبدال', 500)
+  const rawItems = requireArrayInput(payload.items, 'أصناف الاستبدال', 500);
 
   if (rawItems.length === 0) {
-    throw new Error('لا توجد أصناف للاستبدال')
+    throw new Error('لا توجد أصناف للاستبدال');
   }
 
   return {
@@ -499,7 +505,7 @@ function normalizeSaleExchangeInput(input: unknown) {
     reason: optionalTrimmedString(payload.reason, 'سبب الاستبدال', 500),
 
     items: rawItems.map((rawItem) => {
-      const item = requireObjectInput(rawItem, 'بيانات صنف الاستبدال')
+      const item = requireObjectInput(rawItem, 'بيانات صنف الاستبدال');
 
       return {
         promotion_unit_id: requirePositiveInteger(
@@ -511,13 +517,13 @@ function normalizeSaleExchangeInput(input: unknown) {
           item.new_variant_id,
           'رقم الصنف البديل',
         ),
-      }
+      };
     }),
-  }
+  };
 }
 
 function normalizeSaleCancellationInput(input: unknown) {
-  const payload = requireObjectInput(input, 'بيانات إلغاء فاتورة البيع')
+  const payload = requireObjectInput(input, 'بيانات إلغاء فاتورة البيع');
 
   return {
     sale_id: requirePositiveInteger(payload.sale_id, 'رقم فاتورة البيع'),
@@ -539,11 +545,11 @@ function normalizeSaleCancellationInput(input: unknown) {
       'كلمة مرور المدير',
       256,
     ),
-  }
+  };
 }
 
 function normalizeSaleReturnCancellationInput(input: unknown) {
-  const payload = requireObjectInput(input, 'بيانات إلغاء مرتجع البيع')
+  const payload = requireObjectInput(input, 'بيانات إلغاء مرتجع البيع');
 
   return {
     return_id: requirePositiveInteger(payload.return_id, 'رقم مرتجع البيع'),
@@ -561,11 +567,11 @@ function normalizeSaleReturnCancellationInput(input: unknown) {
       'كلمة مرور المدير',
       256,
     ),
-  }
+  };
 }
 
 function normalizeSaleExchangeCancellationInput(input: unknown) {
-  const payload = requireObjectInput(input, 'بيانات إلغاء الاستبدال')
+  const payload = requireObjectInput(input, 'بيانات إلغاء الاستبدال');
 
   return {
     exchange_id: requirePositiveInteger(
@@ -586,7 +592,7 @@ function normalizeSaleExchangeCancellationInput(input: unknown) {
       'كلمة مرور المدير',
       256,
     ),
-  }
+  };
 }
 
 export function registerSalesIpc(): void {
@@ -597,35 +603,35 @@ export function registerSalesIpc(): void {
       payload:
         | string
         | {
-            query?: string
-            categoryId?: number | string | null
-            limit?: number
+            query?: string;
+            categoryId?: number | string | null;
+            limit?: number;
           },
     ) => {
-      const actor = requirePermission(event, 'sales.use')
+      const actor = requirePermission(event, 'sales.use');
 
       const result = searchSaleVariants(
         typeof payload === 'string'
           ? (payload ?? '')
           : (payload ?? { query: '' }),
-      )
+      );
 
-      return protectSalesCostData(actor, result)
+      return protectSalesCostData(actor, result);
     },
-  )
+  );
 
   ipcMain.handle('sales:get-variant-by-barcode', (event, barcode: string) => {
-    const actor = requirePermission(event, 'sales.use')
+    const actor = requirePermission(event, 'sales.use');
 
-    const result = getVariantByBarcode(barcode ?? '')
+    const result = getVariantByBarcode(barcode ?? '');
 
-    return protectSalesCostData(actor, result)
-  })
+    return protectSalesCostData(actor, result);
+  });
 
   ipcMain.handle('sales:create', (event, input) => {
-    const actor = requirePermission(event, 'sales.use')
+    const actor = requirePermission(event, 'sales.use');
 
-    input = normalizeSaleWriteInput(input)
+    input = normalizeSaleWriteInput(input);
 
     const runCreate = (approvedBy: number | null) =>
       createSale({
@@ -638,12 +644,12 @@ export function registerSalesIpc(): void {
          * جاي من الـRenderer.
          */
         credit_limit_override_approved_by: approvedBy,
-      })
+      });
 
     const buildAudit = (
       result: ReturnType<typeof createSale>,
     ): ActionLogInput[] => {
-      const logs: ActionLogInput[] = []
+      const logs: ActionLogInput[] = [];
 
       if (result.credit_limit_override_approved_by) {
         logs.push({
@@ -672,7 +678,7 @@ export function registerSalesIpc(): void {
 
             approved_by: result.credit_limit_override_approved_by,
           },
-        })
+        });
       }
 
       logs.push({
@@ -702,21 +708,21 @@ export function registerSalesIpc(): void {
           credit_limit_override_approved_by:
             result.credit_limit_override_approved_by ?? null,
         },
-      })
+      });
 
-      return logs
-    }
+      return logs;
+    };
 
     const runCreateWithAudit = (approvedBy: number | null) =>
-      runCriticalActionWithAudit(() => runCreate(approvedBy), buildAudit)
+      runCriticalActionWithAudit(() => runCreate(approvedBy), buildAudit);
 
-    let result: ReturnType<typeof createSale>
+    let result: ReturnType<typeof createSale>;
 
     try {
-      result = runCreateWithAudit(null)
+      result = runCreateWithAudit(null);
     } catch (error) {
       if (!(error instanceof CreditLimitExceededError)) {
-        throw error
+        throw error;
       }
 
       if (!input?.credit_limit_override_requested) {
@@ -728,7 +734,7 @@ export function registerSalesIpc(): void {
           message: error.message,
 
           credit: error.details,
-        }
+        };
       }
 
       const approval = requireAdminApprovalForActor(
@@ -737,28 +743,28 @@ export function registerSalesIpc(): void {
         input?.admin_username,
 
         input?.admin_password,
-      )
+      );
 
-      result = runCreateWithAudit(approval.id)
+      result = runCreateWithAudit(approval.id);
     }
 
     return {
       success: true,
 
       ...result,
-    }
-  })
+    };
+  });
 
   ipcMain.handle('sales:hold', (event, input) => {
-    const actor = requirePermission(event, 'sales.use')
+    const actor = requirePermission(event, 'sales.use');
 
-    input = normalizeHeldSaleInput(input)
+    input = normalizeHeldSaleInput(input);
 
     const result = createHeldSale({
       ...input,
 
       user_id: actor.id,
-    })
+    });
 
     logAction({
       actor_id: actor.id,
@@ -776,23 +782,23 @@ export function registerSalesIpc(): void {
 
         items_count: input?.items?.length || 0,
       },
-    })
+    });
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle('sales:list-held', (event) => {
-    const actor = requirePermission(event, 'sales.use')
+    const actor = requirePermission(event, 'sales.use');
 
     return listHeldSales({
       actor_id: actor.id,
 
       is_admin: actor.role === 'admin',
-    })
-  })
+    });
+  });
 
   ipcMain.handle('sales:get-held', (event, heldSaleId: number) => {
-    const actor = requirePermission(event, 'sales.use')
+    const actor = requirePermission(event, 'sales.use');
 
     const result = getHeldSale({
       held_sale_id: requirePositiveInteger(heldSaleId, 'رقم الفاتورة المعلقة'),
@@ -800,15 +806,15 @@ export function registerSalesIpc(): void {
       actor_id: actor.id,
 
       is_admin: actor.role === 'admin',
-    })
+    });
 
-    return protectSalesCostData(actor, result)
-  })
+    return protectSalesCostData(actor, result);
+  });
 
   ipcMain.handle('sales:delete-held', (event, input) => {
-    const actor = requirePermission(event, 'sales.use')
-    input = normalizeHeldSaleDeleteInput(input)
-    const mode = input?.mode === 'resumed' ? 'resumed' : 'discarded'
+    const actor = requirePermission(event, 'sales.use');
+    input = normalizeHeldSaleDeleteInput(input);
+    const mode = input?.mode === 'resumed' ? 'resumed' : 'discarded';
 
     const result = deleteHeldSale({
       held_sale_id: Number(input?.held_sale_id),
@@ -816,7 +822,7 @@ export function registerSalesIpc(): void {
       actor_id: actor.id,
 
       is_admin: actor.role === 'admin',
-    })
+    });
 
     logAction({
       actor_id: actor.id,
@@ -832,27 +838,27 @@ export function registerSalesIpc(): void {
 
         customer_id: result.customer_id ?? null,
       },
-    })
+    });
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle('sales:update', (event, input) => {
-    const actor = requirePermission(event, 'sales.history')
+    const actor = requirePermission(event, 'sales.history');
 
-    const actorId = actor.id
+    const actorId = actor.id;
 
-    let approvedBy: number | null = null
+    let approvedBy: number | null = null;
 
     try {
-      input = normalizeSaleUpdateInput(input)
+      input = normalizeSaleUpdateInput(input);
 
-      const saleId = input.sale_id
+      const saleId = input.sale_id;
 
-      const access = getSaleEditAccess(saleId, actorId)
+      const access = getSaleEditAccess(saleId, actorId);
 
       if (Number(access.user_id || 0) !== Number(actorId || 0)) {
-        requireAdmin(actorId)
+        requireAdmin(actorId);
       }
 
       /*
@@ -866,12 +872,12 @@ export function registerSalesIpc(): void {
           input?.admin_username,
 
           input?.admin_password,
-        )
+        );
 
-        approvedBy = approval.id
+        approvedBy = approval.id;
       }
 
-      let creditOverrideApprovedBy: number | null = null
+      let creditOverrideApprovedBy: number | null = null;
 
       /*
        * لو الواجهة رجعت بعد
@@ -880,7 +886,7 @@ export function registerSalesIpc(): void {
        */
       if (input?.credit_limit_override_requested) {
         if (approvedBy) {
-          creditOverrideApprovedBy = approvedBy
+          creditOverrideApprovedBy = approvedBy;
         } else {
           const approval = requireAdminApprovalForActor(
             actor,
@@ -888,15 +894,15 @@ export function registerSalesIpc(): void {
             input?.admin_username,
 
             input?.admin_password,
-          )
+          );
 
-          approvedBy = approval.id
+          approvedBy = approval.id;
 
-          creditOverrideApprovedBy = approval.id
+          creditOverrideApprovedBy = approval.id;
         }
       }
 
-      const before = getSaleReceipt(saleId)
+      const before = getSaleReceipt(saleId);
 
       const criticalResult = runCriticalActionWithAudit(
         () => {
@@ -912,18 +918,18 @@ export function registerSalesIpc(): void {
              * Approved ID بنفسه.
              */
             credit_limit_override_approved_by: creditOverrideApprovedBy,
-          })
+          });
 
-          const after = getSaleReceipt(saleId)
+          const after = getSaleReceipt(saleId);
 
           return {
             result,
             after,
-          }
+          };
         },
 
         ({ result, after }) => {
-          const logs: ActionLogInput[] = []
+          const logs: ActionLogInput[] = [];
 
           if (result.credit_limit_override_approved_by) {
             logs.push({
@@ -950,7 +956,7 @@ export function registerSalesIpc(): void {
 
                 approved_by: result.credit_limit_override_approved_by,
               },
-            })
+            });
           }
 
           logs.push({
@@ -983,17 +989,17 @@ export function registerSalesIpc(): void {
                 payments: after.payments,
               },
             },
-          })
+          });
 
-          return logs
+          return logs;
         },
-      )
+      );
 
       return {
         success: true,
 
         ...criticalResult.result,
-      }
+      };
     } catch (error) {
       if (error instanceof CreditLimitExceededError) {
         return {
@@ -1004,7 +1010,7 @@ export function registerSalesIpc(): void {
           message: error.message,
 
           credit: error.details,
-        }
+        };
       }
 
       return {
@@ -1012,58 +1018,58 @@ export function registerSalesIpc(): void {
 
         message:
           error instanceof Error ? error.message : 'تعذر تعديل فاتورة البيع',
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('sales:get-receipt', (event, saleId: number) => {
-    const actor = requirePermission(event, 'sales.history')
+    const actor = requirePermission(event, 'sales.history');
 
     const result = getSaleReceipt(
       requirePositiveInteger(saleId, 'رقم فاتورة البيع'),
-    )
+    );
 
-    return protectSalesCostData(actor, result)
-  })
+    return protectSalesCostData(actor, result);
+  });
 
   ipcMain.handle('sales:current-state', (event, saleId: number) => {
-    const actor = requirePermission(event, 'sales.history')
+    const actor = requirePermission(event, 'sales.history');
 
     const result = getSaleCurrentState(
       requirePositiveInteger(saleId, 'رقم فاتورة البيع'),
-    )
+    );
 
-    return protectSalesCostData(actor, result)
-  })
+    return protectSalesCostData(actor, result);
+  });
 
   ipcMain.handle('sales:return-history', (event, saleId: number) => {
-    requirePermission(event, 'sales.history')
+    requirePermission(event, 'sales.history');
 
     return getSaleReturnHistory(
       requirePositiveInteger(saleId, 'رقم فاتورة البيع'),
-    )
-  })
+    );
+  });
 
   ipcMain.handle('sales:exchange-state', (event, saleId: number) => {
-    const actor = requirePermission(event, 'sales.history')
+    const actor = requirePermission(event, 'sales.history');
 
     const result = getSaleExchangeState(
       requirePositiveInteger(saleId, 'رقم فاتورة البيع'),
-    )
+    );
 
-    return protectSalesCostData(actor, result)
-  })
+    return protectSalesCostData(actor, result);
+  });
 
   ipcMain.handle('sales:exchange', (event, input) => {
-    const actor = requirePermission(event, 'sales.exchanges')
+    const actor = requirePermission(event, 'sales.exchanges');
 
-    input = normalizeSaleExchangeInput(input)
+    input = normalizeSaleExchangeInput(input);
 
     if (actor.role !== 'admin' && input.payment_method === 'store_safe') {
-      throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط')
+      throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط');
     }
 
-    const actorId = actor.id
+    const actorId = actor.id;
 
     const result = runCriticalActionWithAudit(
       () =>
@@ -1108,35 +1114,35 @@ export function registerSalesIpc(): void {
           items_count: input.items?.length || 0,
         },
       }),
-    )
+    );
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle('sales:list-exchanges', (event, input) => {
-    const actor = requirePermission(event, 'sales.history')
-    const result = listSaleExchanges(input)
+    const actor = requirePermission(event, 'sales.history');
+    const result = listSaleExchanges(input);
 
-    return protectSalesCostData(actor, result)
-  })
+    return protectSalesCostData(actor, result);
+  });
 
   ipcMain.handle('sales:cancel-exchange', (event, input) => {
-    const actor = requirePermission(event, 'sales.exchanges')
+    const actor = requirePermission(event, 'sales.exchanges');
 
-    const actorId = actor.id
+    const actorId = actor.id;
 
-    let approvedBy: number | null = null
+    let approvedBy: number | null = null;
 
     try {
-      input = normalizeSaleExchangeCancellationInput(input)
+      input = normalizeSaleExchangeCancellationInput(input);
       const access = getSaleExchangeCancellationAccess(
         input.exchange_id,
 
         actorId,
-      )
+      );
 
       if (Number(access.user_id || 0) !== Number(actorId || 0)) {
-        requireAdmin(actorId)
+        requireAdmin(actorId);
       }
 
       if (access.requires_admin_password) {
@@ -1146,9 +1152,9 @@ export function registerSalesIpc(): void {
           input?.admin_username,
 
           input?.admin_password,
-        )
+        );
 
-        approvedBy = approval.id
+        approvedBy = approval.id;
       }
 
       const result = runCriticalActionWithAudit(
@@ -1188,48 +1194,48 @@ export function registerSalesIpc(): void {
             shift_id: result.cancelled_shift_id,
           },
         }),
-      )
+      );
 
       return {
         success: true,
 
         ...result,
-      }
+      };
     } catch (error) {
       return {
         success: false,
 
         message:
           error instanceof Error ? error.message : 'تعذر إلغاء عملية الاستبدال',
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('sales:list', (event, input) => {
-    requirePermission(event, 'sales.history')
+    requirePermission(event, 'sales.history');
 
-    return listSales(input)
-  })
+    return listSales(input);
+  });
 
   ipcMain.handle('sales:list-returns', (event, input) => {
-    requirePermission(event, 'sales.history')
+    requirePermission(event, 'sales.history');
 
-    return listSaleReturns(input)
-  })
+    return listSaleReturns(input);
+  });
 
   ipcMain.handle('sales:return', (event, input) => {
-    const actor = requirePermission(event, 'sales.returns')
+    const actor = requirePermission(event, 'sales.returns');
 
-    input = normalizeSaleReturnInput(input)
+    input = normalizeSaleReturnInput(input);
 
     if (
       actor.role !== 'admin' &&
       input.refund_payment_method === 'store_safe'
     ) {
-      throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط')
+      throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط');
     }
 
-    const actorId = actor.id
+    const actorId = actor.id;
 
     const result = runCriticalActionWithAudit(
       () =>
@@ -1262,24 +1268,24 @@ export function registerSalesIpc(): void {
           shift_id: result.shift_id,
         },
       }),
-    )
+    );
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle('sales:cancel', (event, input) => {
-    const actor = requirePermission(event, 'sales.history')
+    const actor = requirePermission(event, 'sales.history');
 
-    const actorId = actor.id
+    const actorId = actor.id;
 
-    let approvedBy: number | null = null
+    let approvedBy: number | null = null;
 
     try {
-      input = normalizeSaleCancellationInput(input)
-      const access = getSaleCancellationAccess(input.sale_id, actorId)
+      input = normalizeSaleCancellationInput(input);
+      const access = getSaleCancellationAccess(input.sale_id, actorId);
 
       if (Number(access.user_id || 0) !== Number(actorId || 0)) {
-        requireAdmin(actorId)
+        requireAdmin(actorId);
       }
 
       if (access.requires_admin_password) {
@@ -1289,9 +1295,9 @@ export function registerSalesIpc(): void {
           input?.admin_username,
 
           input?.admin_password,
-        )
+        );
 
-        approvedBy = approval.id
+        approvedBy = approval.id;
       }
 
       const result = runCriticalActionWithAudit(
@@ -1325,35 +1331,35 @@ export function registerSalesIpc(): void {
             shift_id: result.cancelled_shift_id,
           },
         }),
-      )
+      );
 
       return {
         success: true,
 
         ...result,
-      }
+      };
     } catch (error) {
       return {
         success: false,
         message:
           error instanceof Error ? error.message : 'تعذر إلغاء فاتورة البيع',
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('sales:cancel-return', (event, input) => {
-    const actor = requirePermission(event, 'sales.returns')
+    const actor = requirePermission(event, 'sales.returns');
 
-    const actorId = actor.id
+    const actorId = actor.id;
 
-    let approvedBy: number | null = null
+    let approvedBy: number | null = null;
 
     try {
-      input = normalizeSaleReturnCancellationInput(input)
-      const access = getSaleReturnCancellationAccess(input.return_id, actorId)
+      input = normalizeSaleReturnCancellationInput(input);
+      const access = getSaleReturnCancellationAccess(input.return_id, actorId);
 
       if (Number(access.user_id || 0) !== Number(actorId || 0)) {
-        requireAdmin(actorId)
+        requireAdmin(actorId);
       }
 
       if (access.requires_admin_password) {
@@ -1363,9 +1369,9 @@ export function registerSalesIpc(): void {
           input?.admin_username,
 
           input?.admin_password,
-        )
+        );
 
-        approvedBy = approval.id
+        approvedBy = approval.id;
       }
 
       const result = runCriticalActionWithAudit(
@@ -1401,19 +1407,19 @@ export function registerSalesIpc(): void {
             shift_id: result.cancelled_shift_id,
           },
         }),
-      )
+      );
 
       return {
         success: true,
 
         ...result,
-      }
+      };
     } catch (error) {
       return {
         success: false,
         message:
           error instanceof Error ? error.message : 'تعذر إلغاء مرتجع البيع',
-      }
+      };
     }
-  })
+  });
 }

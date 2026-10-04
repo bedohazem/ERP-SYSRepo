@@ -1,27 +1,27 @@
-const { app, BrowserWindow, dialog, ipcMain, session } = require('electron')
+const { app, BrowserWindow, dialog, ipcMain, session } = require('electron');
 
-const fs = require('node:fs')
+const fs = require('node:fs');
 
-const path = require('node:path')
-const { pathToFileURL } = require('node:url')
-const crypto = require('node:crypto')
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const crypto = require('node:crypto');
 
-let mainWindow = null
-const supportIndexPath = path.join(__dirname, 'index.html')
+let mainWindow = null;
+const supportIndexPath = path.join(__dirname, 'index.html');
 
 function isTrustedSupportUrl(rawUrl) {
   try {
-    const url = new URL(rawUrl)
+    const url = new URL(rawUrl);
 
     if (url.search) {
-      return false
+      return false;
     }
 
-    url.hash = ''
+    url.hash = '';
 
-    return url.toString() === pathToFileURL(supportIndexPath).toString()
+    return url.toString() === pathToFileURL(supportIndexPath).toString();
   } catch {
-    return false
+    return false;
   }
 }
 
@@ -31,40 +31,40 @@ function configureSupportPermissions() {
       callback(
         permission === 'clipboard-sanitized-write' &&
           isTrustedSupportUrl(details?.requestingUrl || ''),
-      )
+      );
     },
-  )
+  );
 
   session.defaultSession.setPermissionCheckHandler(
     (_webContents, permission, requestingOrigin, details) => {
-      const requestingUrl = details?.requestingUrl || requestingOrigin || ''
+      const requestingUrl = details?.requestingUrl || requestingOrigin || '';
 
       return (
         permission === 'clipboard-sanitized-write' &&
         isTrustedSupportUrl(requestingUrl)
-      )
+      );
     },
-  )
+  );
 }
 
 function hardenSupportWindow(window) {
   window.webContents.setWindowOpenHandler(() => ({
     action: 'deny',
-  }))
+  }));
 
   window.webContents.on('will-frame-navigate', (event) => {
-    event.preventDefault()
-  })
+    event.preventDefault();
+  });
 
   window.webContents.on('will-redirect', (event) => {
-    event.preventDefault()
-  })
+    event.preventDefault();
+  });
 }
 
 function normalizeCode(value) {
   return String(value || '')
     .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
+    .replace(/[^A-Z0-9]/g, '');
 }
 
 function formatCode(value) {
@@ -72,27 +72,27 @@ function formatCode(value) {
     normalizeCode(value)
       .match(/.{1,4}/g)
       ?.join('-') || normalizeCode(value)
-  )
+  );
 }
 
 function loadPrivateKey(privateKeyPath) {
   if (!privateKeyPath || !fs.existsSync(privateKeyPath)) {
-    throw new Error('اختر ملف Private Key أولًا')
+    throw new Error('اختر ملف Private Key أولًا');
   }
 
-  const key = crypto.createPrivateKey(fs.readFileSync(privateKeyPath, 'utf8'))
+  const key = crypto.createPrivateKey(fs.readFileSync(privateKeyPath, 'utf8'));
 
   if (key.asymmetricKeyType !== 'ed25519') {
-    throw new Error('الـPrivate Key ليس Ed25519')
+    throw new Error('الـPrivate Key ليس Ed25519');
   }
 
-  return key
+  return key;
 }
 
 function signToken(prefix, payload, privateKey) {
-  const buffer = Buffer.from(JSON.stringify(payload), 'utf8')
+  const buffer = Buffer.from(JSON.stringify(payload), 'utf8');
 
-  const signature = crypto.sign(null, buffer, privateKey)
+  const signature = crypto.sign(null, buffer, privateKey);
 
   return [
     prefix,
@@ -100,7 +100,7 @@ function signToken(prefix, payload, privateKey) {
     buffer.toString('base64url'),
 
     signature.toString('base64url'),
-  ].join('.')
+  ].join('.');
 }
 
 function createWindow() {
@@ -130,13 +130,13 @@ function createWindow() {
 
       devTools: !app.isPackaged,
     },
-  })
+  });
 
-  hardenSupportWindow(mainWindow)
+  hardenSupportWindow(mainWindow);
 
-  mainWindow.removeMenu()
+  mainWindow.removeMenu();
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html'))
+  mainWindow.loadFile(path.join(__dirname, 'index.html'));
 }
 
 ipcMain.handle('support:choose-private-key', async () => {
@@ -152,20 +152,20 @@ ipcMain.handle('support:choose-private-key', async () => {
         extensions: ['pem'],
       },
     ],
-  })
+  });
 
   if (result.canceled || !result.filePaths[0]) {
     return {
       canceled: true,
-    }
+    };
   }
 
-  const filePath = result.filePaths[0]
+  const filePath = result.filePaths[0];
 
   /*
    * نتحقق منه فور الاختيار.
    */
-  loadPrivateKey(filePath)
+  loadPrivateKey(filePath);
 
   return {
     canceled: false,
@@ -173,20 +173,20 @@ ipcMain.handle('support:choose-private-key', async () => {
     path: filePath,
 
     name: path.basename(filePath),
-  }
-})
+  };
+});
 
 ipcMain.handle('support:generate-activation', (_event, input) => {
   try {
-    const privateKey = loadPrivateKey(input?.private_key_path)
+    const privateKey = loadPrivateKey(input?.private_key_path);
 
-    const deviceCode = normalizeCode(input?.device_code)
+    const deviceCode = normalizeCode(input?.device_code);
 
     if (!deviceCode) {
-      throw new Error('اكتب Device Code')
+      throw new Error('اكتب Device Code');
     }
 
-    const issuedAt = Math.floor(Date.now() / 1000)
+    const issuedAt = Math.floor(Date.now() / 1000);
 
     const payload = {
       v: 1,
@@ -203,9 +203,9 @@ ipcMain.handle('support:generate-activation', (_event, input) => {
        * Lifetime license حاليًا.
        */
       expires_at: null,
-    }
+    };
 
-    const token = signToken('ERPA1', payload, privateKey)
+    const token = signToken('ERPA1', payload, privateKey);
 
     return {
       success: true,
@@ -217,40 +217,40 @@ ipcMain.handle('support:generate-activation', (_event, input) => {
       device_code: formatCode(deviceCode),
 
       issued_at: new Date(issuedAt * 1000).toISOString(),
-    }
+    };
   } catch (error) {
     return {
       success: false,
 
       message:
         error instanceof Error ? error.message : 'تعذر إنشاء كود التفعيل',
-    }
+    };
   }
-})
+});
 
 ipcMain.handle('support:generate-recovery', (_event, input) => {
   try {
-    const privateKey = loadPrivateKey(input?.private_key_path)
+    const privateKey = loadPrivateKey(input?.private_key_path);
 
-    const deviceCode = normalizeCode(input?.device_code)
+    const deviceCode = normalizeCode(input?.device_code);
 
-    const requestId = normalizeCode(input?.request_id)
+    const requestId = normalizeCode(input?.request_id);
 
-    const username = String(input?.username || '').trim()
+    const username = String(input?.username || '').trim();
 
-    const minutes = Number(input?.minutes || 15)
+    const minutes = Number(input?.minutes || 15);
 
     if (!deviceCode || !requestId || !username) {
-      throw new Error('Device Code و Request ID و Username مطلوبة')
+      throw new Error('Device Code و Request ID و Username مطلوبة');
     }
 
     if (!Number.isFinite(minutes) || minutes < 1 || minutes > 15) {
-      throw new Error('صلاحية Recovery Code من 1 إلى 15 دقيقة')
+      throw new Error('صلاحية Recovery Code من 1 إلى 15 دقيقة');
     }
 
-    const issuedAt = Math.floor(Date.now() / 1000)
+    const issuedAt = Math.floor(Date.now() / 1000);
 
-    const expiresAt = issuedAt + Math.floor(minutes * 60)
+    const expiresAt = issuedAt + Math.floor(minutes * 60);
 
     const payload = {
       v: 1,
@@ -266,9 +266,9 @@ ipcMain.handle('support:generate-recovery', (_event, input) => {
       issued_at: issuedAt,
 
       expires_at: expiresAt,
-    }
+    };
 
-    const token = signToken('ERPR1', payload, privateKey)
+    const token = signToken('ERPR1', payload, privateKey);
 
     return {
       success: true,
@@ -282,44 +282,44 @@ ipcMain.handle('support:generate-recovery', (_event, input) => {
       username,
 
       expires_at: new Date(expiresAt * 1000).toISOString(),
-    }
+    };
   } catch (error) {
     return {
       success: false,
 
       message:
         error instanceof Error ? error.message : 'تعذر إنشاء Recovery Code',
-    }
+    };
   }
-})
+});
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock()
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
-  app.quit()
+  app.quit();
 } else {
   app.on('second-instance', () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
-      return
+      return;
     }
 
     if (mainWindow.isMinimized()) {
-      mainWindow.restore()
+      mainWindow.restore();
     }
 
     if (!mainWindow.isVisible()) {
-      mainWindow.show()
+      mainWindow.show();
     }
 
-    mainWindow.focus()
-  })
+    mainWindow.focus();
+  });
 
   app.whenReady().then(() => {
-    configureSupportPermissions()
-    createWindow()
-  })
+    configureSupportPermissions();
+    createWindow();
+  });
 
   app.on('window-all-closed', () => {
-    app.quit()
-  })
+    app.quit();
+  });
 }

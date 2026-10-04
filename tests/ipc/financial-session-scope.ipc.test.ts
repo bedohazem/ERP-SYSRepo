@@ -1,6 +1,6 @@
-import { EventEmitter } from 'node:events'
+import { EventEmitter } from 'node:events';
 
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { ipcMain, type IpcMainInvokeEvent } from 'electron';
 
 import {
   afterAll,
@@ -10,51 +10,51 @@ import {
   expect,
   it,
   vi,
-} from 'vitest'
+} from 'vitest';
 
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 
 import {
   createUser,
   findUserByUsername,
   getEffectiveUserPermissions,
   setUserPermissions,
-} from '../../src/main/database/repositories/user.repo'
+} from '../../src/main/database/repositories/user.repo';
 
-import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
+import { createCashMovement } from '../../src/main/database/repositories/cash.repo';
 
 import {
   closeCashShift,
   openCashShift,
-} from '../../src/main/database/repositories/cash-shifts.repo'
+} from '../../src/main/database/repositories/cash-shifts.repo';
 
-import { startAuthSession } from '../../src/main/auth-session'
+import { startAuthSession } from '../../src/main/auth-session';
 
-import { registerCashIpc } from '../../src/main/ipc/cash.ipc'
+import { registerCashIpc } from '../../src/main/ipc/cash.ipc';
 
-import { registerReportsIpc } from '../../src/main/ipc/reports.ipc'
+import { registerReportsIpc } from '../../src/main/ipc/reports.ipc';
 
-type Handler = (event: IpcMainInvokeEvent, ...args: any[]) => any
+type Handler = (event: IpcMainInvokeEvent, ...args: any[]) => any;
 
-const handlers = new Map<string, Handler>()
+const handlers = new Map<string, Handler>();
 
 function makeClient() {
   const sender = Object.assign(new EventEmitter(), {
     mainFrame: {},
 
     isDestroyed: () => false,
-  })
+  });
 
   const event = {
     sender,
 
     senderFrame: sender.mainFrame,
-  } as unknown as IpcMainInvokeEvent
+  } as unknown as IpcMainInvokeEvent;
 
   return {
     sender,
     event,
-  }
+  };
 }
 
 async function invoke(
@@ -62,58 +62,58 @@ async function invoke(
   channel: string,
   ...args: any[]
 ) {
-  const handler = handlers.get(channel)
+  const handler = handlers.get(channel);
 
   if (!handler) {
-    throw new Error(`Missing handler: ${channel}`)
+    throw new Error(`Missing handler: ${channel}`);
   }
 
-  return handler(event, ...args)
+  return handler(event, ...args);
 }
 
 describe('financial IPC session scope', () => {
   beforeAll(() => {
     vi.mocked(ipcMain.handle).mockImplementation((channel, handler) => {
-      handlers.set(channel, handler)
-    })
+      handlers.set(channel, handler);
+    });
 
-    registerCashIpc()
-    registerReportsIpc()
-  })
+    registerCashIpc();
+    registerReportsIpc();
+  });
 
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
-  })
+    closeDb();
+    getDb();
+    resetDatabaseData();
+  });
 
   afterAll(() => {
-    vi.mocked(ipcMain.handle).mockReset()
+    vi.mocked(ipcMain.handle).mockReset();
 
-    closeDb()
-  })
+    closeDb();
+  });
 
   it('requires authentication for cash and reports summaries', async () => {
-    const { event } = makeClient()
+    const { event } = makeClient();
 
     await expect(invoke(event, 'cash:summary', {})).rejects.toThrow(
       'سجل الدخول أولًا',
-    )
+    );
 
     await expect(invoke(event, 'reports:summary', {})).rejects.toThrow(
       'سجل الدخول أولًا',
-    )
-  })
+    );
+  });
 
   it('forces cashiers to their own cash summary', async () => {
-    const admin = findUserByUsername('admin')!
+    const admin = findUserByUsername('admin')!;
 
     const cashier = createUser(
       'Scoped Cashier',
       'scoped_cashier',
       '5678',
       'cashier',
-    )
+    );
 
     createCashMovement({
       type: 'sale',
@@ -121,7 +121,7 @@ describe('financial IPC session scope', () => {
       amount: 100,
       payment_method: 'owner_bank',
       created_by: admin.id,
-    })
+    });
 
     createCashMovement({
       type: 'sale',
@@ -129,11 +129,11 @@ describe('financial IPC session scope', () => {
       amount: 40,
       payment_method: 'owner_bank',
       created_by: cashier.id,
-    })
+    });
 
-    const { event } = makeClient()
+    const { event } = makeClient();
 
-    startAuthSession(event, cashier.id)
+    startAuthSession(event, cashier.id);
 
     const result = await invoke(event, 'cash:summary', {
       /*
@@ -143,17 +143,17 @@ describe('financial IPC session scope', () => {
       created_by: admin.id,
 
       payment_method: 'owner_bank',
-    })
+    });
 
-    expect(Number(result.total_in)).toBe(40)
+    expect(Number(result.total_in)).toBe(40);
 
-    expect(Number(result.balance)).toBe(40)
-  })
+    expect(Number(result.balance)).toBe(40);
+  });
 
   it('gives cashiers only their active shift dashboard and blocks full reports', async () => {
-    const db = getDb()
+    const db = getDb();
 
-    const admin = findUserByUsername('admin')!
+    const admin = findUserByUsername('admin')!;
 
     const cashier = createUser(
       'Report Cashier',
@@ -163,7 +163,7 @@ describe('financial IPC session scope', () => {
       '5678',
 
       'cashier',
-    )
+    );
 
     /*
      * شفت قديم للمدير.
@@ -172,7 +172,7 @@ describe('financial IPC session scope', () => {
       opening_counted_amount: 0,
 
       opened_by: admin.id,
-    })
+    });
 
     const insertSale = db.prepare(
       `
@@ -205,9 +205,9 @@ describe('financial IPC session scope', () => {
           'cash'
         )
         `,
-    )
+    );
 
-    insertSale.run(admin.id, adminShift.id, 100, 100, 100)
+    insertSale.run(admin.id, adminShift.id, 100, 100, 100);
 
     closeCashShift({
       shift_id: adminShift.id,
@@ -217,7 +217,7 @@ describe('financial IPC session scope', () => {
       left_for_next_shift: 0,
 
       closed_by: admin.id,
-    })
+    });
 
     /*
      * يبدأ شفت الكاشير الجديد.
@@ -226,17 +226,17 @@ describe('financial IPC session scope', () => {
       opening_counted_amount: 0,
 
       opened_by: cashier.id,
-    })
+    });
 
-    insertSale.run(cashier.id, cashierShift.id, 40, 40, 40)
+    insertSale.run(cashier.id, cashierShift.id, 40, 40, 40);
 
-    const { event } = makeClient()
+    const { event } = makeClient();
 
-    startAuthSession(event, cashier.id)
+    startAuthSession(event, cashier.id);
 
     await expect(invoke(event, 'reports:summary', {})).rejects.toThrow(
       'غير مصرح لك بتنفيذ هذه العملية',
-    )
+    );
 
     /*
      * محاولة إرسال ID المدير
@@ -247,18 +247,18 @@ describe('financial IPC session scope', () => {
       user_id: admin.id,
 
       shift_id: adminShift.id,
-    })
+    });
 
-    expect(result.shift?.id).toBe(cashierShift.id)
+    expect(result.shift?.id).toBe(cashierShift.id);
 
-    expect(result.sales.invoices_count).toBe(1)
+    expect(result.sales.invoices_count).toBe(1);
 
-    expect(result.sales.invoice_sales).toBe(40)
+    expect(result.sales.invoice_sales).toBe(40);
 
-    expect('cashAccounts' in result).toBe(false)
+    expect('cashAccounts' in result).toBe(false);
 
-    expect('cashAccountsTotalBalance' in result).toBe(false)
-  })
+    expect('cashAccountsTotalBalance' in result).toBe(false);
+  });
 
   it('blocks cashiers from cash management without permission', async () => {
     const cashier = createUser(
@@ -266,15 +266,15 @@ describe('financial IPC session scope', () => {
       'blocked_cashier',
       '5678',
       'cashier',
-    )
+    );
 
-    const { event } = makeClient()
+    const { event } = makeClient();
 
-    startAuthSession(event, cashier.id)
+    startAuthSession(event, cashier.id);
 
     await expect(invoke(event, 'cash:list', {})).rejects.toThrow(
       'غير مصرح لك بتنفيذ هذه العملية',
-    )
+    );
 
     await expect(
       invoke(event, 'cash:create-movement', {
@@ -284,7 +284,7 @@ describe('financial IPC session scope', () => {
 
         payment_method: 'store_cash',
       }),
-    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية');
 
     await expect(
       invoke(event, 'cash:transfer', {
@@ -294,8 +294,8 @@ describe('financial IPC session scope', () => {
 
         amount: 50,
       }),
-    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
-  })
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية');
+  });
 
   it('blocks cashiers from shift management details without permission', async () => {
     const cashier = createUser(
@@ -303,17 +303,17 @@ describe('financial IPC session scope', () => {
       'blind_cashier',
       '5678',
       'cashier',
-    )
+    );
 
     const shift = openCashShift({
       opening_counted_amount: 100,
 
       opened_by: cashier.id,
-    })
+    });
 
-    const cashierClient = makeClient()
+    const cashierClient = makeClient();
 
-    startAuthSession(cashierClient.event, cashier.id)
+    startAuthSession(cashierClient.event, cashier.id);
 
     await expect(
       invoke(
@@ -323,7 +323,7 @@ describe('financial IPC session scope', () => {
 
         shift.id,
       ),
-    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية');
 
     await expect(
       invoke(
@@ -335,17 +335,17 @@ describe('financial IPC session scope', () => {
           business_date: '2026-09-16',
         },
       ),
-    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية')
-  })
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية');
+  });
 
   it('redacts reconciliation targets from cashier shift responses', async () => {
-    const admin = findUserByUsername('admin')!
+    const admin = findUserByUsername('admin')!;
 
     const previousShift = openCashShift({
       opening_counted_amount: 100,
 
       opened_by: admin.id,
-    })
+    });
 
     closeCashShift({
       shift_id: previousShift.id,
@@ -355,41 +355,41 @@ describe('financial IPC session scope', () => {
       left_for_next_shift: 80,
 
       closed_by: admin.id,
-    })
+    });
 
     const cashier = createUser(
       'Blind Reconciliation Cashier',
       'blind_reconciliation_cashier',
       '5678',
       'cashier',
-    )
+    );
 
-    const cashierClient = makeClient()
+    const cashierClient = makeClient();
 
-    startAuthSession(cashierClient.event, cashier.id)
+    startAuthSession(cashierClient.event, cashier.id);
 
     const preview = await invoke(
       cashierClient.event,
       'cash-shifts:opening-preview',
-    )
+    );
 
-    expect(preview.expected_opening_amount).toBeNull()
+    expect(preview.expected_opening_amount).toBeNull();
 
-    expect(preview.previous_shift_id).toBeNull()
+    expect(preview.previous_shift_id).toBeNull();
 
     const opened = await invoke(cashierClient.event, 'cash-shifts:open', {
       opening_counted_amount: 70,
-    })
+    });
 
-    expect('expected_opening_amount' in opened).toBe(false)
+    expect('expected_opening_amount' in opened).toBe(false);
 
-    expect('opening_difference' in opened).toBe(false)
+    expect('opening_difference' in opened).toBe(false);
 
-    const current = await invoke(cashierClient.event, 'cash-shifts:get-open')
+    const current = await invoke(cashierClient.event, 'cash-shifts:get-open');
 
-    expect(current.id).toBe(opened.id)
+    expect(current.id).toBe(opened.id);
 
-    expect('opening_difference' in current).toBe(false)
+    expect('opening_difference' in current).toBe(false);
 
     const closed = await invoke(cashierClient.event, 'cash-shifts:close', {
       shift_id: opened.id,
@@ -397,42 +397,42 @@ describe('financial IPC session scope', () => {
       closing_counted_amount: 60,
 
       left_for_next_shift: 50,
-    })
+    });
 
-    expect(closed.status).toBe('closed')
-    expect(closed.closed_at).toBeTruthy()
+    expect(closed.status).toBe('closed');
+    expect(closed.closed_at).toBeTruthy();
 
-    expect('expected_closing_amount' in closed).toBe(false)
+    expect('expected_closing_amount' in closed).toBe(false);
 
-    expect('closing_difference' in closed).toBe(false)
-  })
+    expect('closing_difference' in closed).toBe(false);
+  });
 
   it('keeps reconciliation details available to admins', async () => {
-    const admin = findUserByUsername('admin')!
+    const admin = findUserByUsername('admin')!;
 
     const shift = openCashShift({
       opening_counted_amount: 250,
 
       opened_by: admin.id,
-    })
+    });
 
-    const adminClient = makeClient()
+    const adminClient = makeClient();
 
-    startAuthSession(adminClient.event, admin.id)
+    startAuthSession(adminClient.event, admin.id);
 
     const preview = await invoke(
       adminClient.event,
       'cash-shifts:preview',
       shift.id,
-    )
+    );
 
-    expect(preview.shift_id).toBe(shift.id)
+    expect(preview.shift_id).toBe(shift.id);
 
-    expect(preview.expected_closing_amount).toBe(250)
-  })
+    expect(preview.expected_closing_amount).toBe(250);
+  });
 
   it('keeps store_safe hidden from non-admin users even with cash management permission', async () => {
-    const admin = findUserByUsername('admin')!
+    const admin = findUserByUsername('admin')!;
 
     createCashMovement({
       type: 'deposit',
@@ -440,7 +440,7 @@ describe('financial IPC session scope', () => {
       amount: 500,
       payment_method: 'store_safe',
       created_by: admin.id,
-    })
+    });
 
     createCashMovement({
       type: 'deposit',
@@ -448,44 +448,44 @@ describe('financial IPC session scope', () => {
       amount: 100,
       payment_method: 'owner_cash',
       created_by: admin.id,
-    })
+    });
 
     const cashier = createUser(
       'Cash Manager',
       'cash_manager',
       '5678',
       'cashier',
-    )
+    );
 
     setUserPermissions(cashier.id, [
       ...getEffectiveUserPermissions(cashier.id),
 
       'cash.manage',
-    ])
+    ]);
 
-    const { event } = makeClient()
+    const { event } = makeClient();
 
-    startAuthSession(event, cashier.id)
+    startAuthSession(event, cashier.id);
 
-    const movements = await invoke(event, 'cash:list', {})
+    const movements = await invoke(event, 'cash:list', {});
 
     expect(
       movements.rows.some((row: any) => row.payment_method === 'store_safe'),
-    ).toBe(false)
+    ).toBe(false);
 
     expect(
       movements.rows.some((row: any) => row.payment_method === 'owner_cash'),
-    ).toBe(true)
+    ).toBe(true);
 
-    const summary = await invoke(event, 'cash:summary', {})
+    const summary = await invoke(event, 'cash:summary', {});
 
-    expect(Number(summary.balance)).toBe(100)
+    expect(Number(summary.balance)).toBe(100);
 
     const safeSummary = await invoke(event, 'cash:summary', {
       payment_method: 'store_safe',
-    })
+    });
 
-    expect(Number(safeSummary.balance)).toBe(0)
+    expect(Number(safeSummary.balance)).toBe(0);
 
     await expect(
       invoke(event, 'cash:create-movement', {
@@ -495,8 +495,8 @@ describe('financial IPC session scope', () => {
 
         payment_method: 'store_safe',
       }),
-    ).rejects.toThrow('الخزنة الآمنة متاحة لمدير النظام فقط')
-  })
+    ).rejects.toThrow('الخزنة الآمنة متاحة لمدير النظام فقط');
+  });
 
   it('lets shift managers load safe user options without granting user administration data', async () => {
     const cashier = createUser(
@@ -504,35 +504,35 @@ describe('financial IPC session scope', () => {
       'shift_manager',
       '5678',
       'cashier',
-    )
+    );
 
     setUserPermissions(cashier.id, [
       ...getEffectiveUserPermissions(cashier.id),
 
       'shifts.manage',
-    ])
+    ]);
 
-    const { event } = makeClient()
+    const { event } = makeClient();
 
-    startAuthSession(event, cashier.id)
+    startAuthSession(event, cashier.id);
 
-    const users = await invoke(event, 'cash-shifts:users')
+    const users = await invoke(event, 'cash-shifts:users');
 
-    expect(Array.isArray(users)).toBe(true)
+    expect(Array.isArray(users)).toBe(true);
 
-    expect(users.length).toBeGreaterThan(0)
+    expect(users.length).toBeGreaterThan(0);
 
     for (const user of users) {
-      expect(Object.keys(user).sort()).toEqual(['id', 'name', 'role'])
+      expect(Object.keys(user).sort()).toEqual(['id', 'name', 'role']);
     }
-  })
+  });
 
   it('rejects malformed cash and shift inputs before repository coercion', async () => {
-    const admin = findUserByUsername('admin')!
+    const admin = findUserByUsername('admin')!;
 
-    const { event } = makeClient()
+    const { event } = makeClient();
 
-    startAuthSession(event, admin.id)
+    startAuthSession(event, admin.id);
 
     /*
      * Number(true) = 1.
@@ -547,7 +547,7 @@ describe('financial IPC session scope', () => {
 
         payment_method: 'owner_cash',
       }),
-    ).rejects.toThrow('مبلغ حركة الخزنة غير صحيح')
+    ).rejects.toThrow('مبلغ حركة الخزنة غير صحيح');
 
     /*
      * resolveCashAccount القديم
@@ -562,7 +562,7 @@ describe('financial IPC session scope', () => {
 
         amount: 10,
       }),
-    ).rejects.toThrow('حساب التحويل المصدر غير صحيح')
+    ).rejects.toThrow('حساب التحويل المصدر غير صحيح');
 
     /*
      * Number(true) = 1 كذلك،
@@ -572,6 +572,6 @@ describe('financial IPC session scope', () => {
       invoke(event, 'cash-shifts:open', {
         opening_counted_amount: true,
       }),
-    ).rejects.toThrow('رصيد افتتاح الشفت غير صحيح')
-  })
-})
+    ).rejects.toThrow('رصيد افتتاح الشفت غير صحيح');
+  });
+});

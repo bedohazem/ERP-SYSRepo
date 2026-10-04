@@ -1,79 +1,79 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 
 import {
   createCategory,
   createProduct,
   getVariantByBarcode,
-} from '../../src/main/database/repositories/product.repo'
+} from '../../src/main/database/repositories/product.repo';
 
 import {
   createPromotion,
   togglePromotion,
-} from '../../src/main/database/repositories/promotions.repo'
+} from '../../src/main/database/repositories/promotions.repo';
 
 import {
   cancelSaleReturn,
   createSale,
   createSaleReturn,
   listSales,
-} from '../../src/main/database/repositories/sales.repo'
+} from '../../src/main/database/repositories/sales.repo';
 
 import {
   cancelSaleExchange,
   createSaleExchange,
   listSaleExchanges,
-} from '../../src/main/database/repositories/sales-exchange.repo'
+} from '../../src/main/database/repositories/sales-exchange.repo';
 
-import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo'
+import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo';
 
-import { getReportsSummary } from '../../src/main/database/repositories/reports.repo'
+import { getReportsSummary } from '../../src/main/database/repositories/reports.repo';
 
 import {
   closeCashShift,
   getOpenCashShift,
   openCashShift,
-} from '../../src/main/database/repositories/cash-shifts.repo'
+} from '../../src/main/database/repositories/cash-shifts.repo';
 
 type VariantRow = {
-  variant_id: number
-  product_id: number
-  product_name: string
-  barcode: string
-  size: string
-  color: string
-  buy_price: number
-  sell_price: number
-  stock: number
-}
+  variant_id: number;
+  product_id: number;
+  product_name: string;
+  barcode: string;
+  size: string;
+  color: string;
+  buy_price: number;
+  sell_price: number;
+  stock: number;
+};
 
-type PromoBarcode = 'CEX150' | 'CEX200' | 'CEX250' | 'CEX300' | 'CEX350'
+type PromoBarcode = 'CEX150' | 'CEX200' | 'CEX250' | 'CEX300' | 'CEX350';
 
 function setLoyaltyEnabled(enabled: boolean) {
-  const db = getDb()
+  const db = getDb();
 
   const update = db.prepare(`
     UPDATE app_settings
     SET value = ?
     WHERE key = ?
-  `)
+  `);
 
-  update.run(enabled ? 'true' : 'false', 'loyalty_enabled')
+  update.run(enabled ? 'true' : 'false', 'loyalty_enabled');
 
-  update.run('100', 'loyalty_earn_amount')
+  update.run('100', 'loyalty_earn_amount');
 
-  update.run('1', 'loyalty_earn_points')
+  update.run('1', 'loyalty_earn_points');
 
-  update.run('1', 'loyalty_point_value')
+  update.run('1', 'loyalty_point_value');
 
-  update.run('1', 'loyalty_min_redeem_points')
+  update.run('1', 'loyalty_min_redeem_points');
 }
 
 function seedCatalog() {
   const category = createCategory({
     name: 'Exchange Cancellation Category',
-  })
+  });
 
   createProduct({
     name: 'Exchange Cancellation Product',
@@ -130,10 +130,10 @@ function seedCatalog() {
         opening_qty: 20,
       },
     ],
-  })
+  });
 
   const get = (barcode: PromoBarcode) =>
-    getVariantByBarcode(barcode) as VariantRow
+    getVariantByBarcode(barcode) as VariantRow;
 
   return {
     categoryId: Number(category.id),
@@ -145,7 +145,7 @@ function seedCatalog() {
       CEX300: get('CEX300'),
       CEX350: get('CEX350'),
     },
-  }
+  };
 }
 
 function createCustomer(points = 0) {
@@ -164,19 +164,19 @@ function createCustomer(points = 0) {
       'Exchange Cancel Customer',
       `0109${Date.now().toString().slice(-7)}`,
       points,
-    )
+    );
 
-  return Number(result.lastInsertRowid)
+  return Number(result.lastInsertRowid);
 }
 
 function createPromotionSale(
   barcodes: PromoBarcode[],
   options?: {
-    customerId?: number | null
-    paid?: number
+    customerId?: number | null;
+    paid?: number;
   },
 ) {
-  const catalog = seedCatalog()
+  const catalog = seedCatalog();
 
   const promotion = createPromotion({
     name: 'Cancel Test Buy 2 Get 1',
@@ -195,12 +195,12 @@ function createPromotionSale(
     product_ids: [],
 
     actor_id: 1,
-  })
+  });
 
-  togglePromotion(promotion.promotionId, 1)
+  togglePromotion(promotion.promotionId, 1);
 
   const items = barcodes.map((barcode) => {
-    const variant = catalog.variants[barcode]
+    const variant = catalog.variants[barcode];
 
     return {
       variant_id: variant.variant_id,
@@ -216,22 +216,22 @@ function createPromotionSale(
       quantity: 1,
 
       unit_price: variant.sell_price,
-    }
-  })
+    };
+  });
 
   const subTotal = items.reduce(
     (total, item) => total + Number(item.unit_price),
     0,
-  )
+  );
 
-  const freeCount = Math.floor(items.length / 3)
+  const freeCount = Math.floor(items.length / 3);
 
   const promotionDiscount = [...items]
     .sort((a, b) => Number(a.unit_price) - Number(b.unit_price))
     .slice(0, freeCount)
-    .reduce((total, item) => total + Number(item.unit_price), 0)
+    .reduce((total, item) => total + Number(item.unit_price), 0);
 
-  const grandTotal = subTotal - promotionDiscount
+  const grandTotal = subTotal - promotionDiscount;
 
   const sale = createSale({
     user_id: 1,
@@ -253,7 +253,7 @@ function createPromotionSale(
     paid: options?.paid === undefined ? grandTotal : options.paid,
 
     items,
-  })
+  });
 
   return {
     ...catalog,
@@ -261,7 +261,7 @@ function createPromotionSale(
     promotionId: promotion.promotionId,
 
     sale,
-  }
+  };
 }
 
 function getUnits(saleId: number) {
@@ -274,17 +274,17 @@ function getUnits(saleId: number) {
       ORDER BY id ASC
       `,
     )
-    .all(saleId) as any[]
+    .all(saleId) as any[];
 }
 
 function getUnitByPrice(saleId: number, price: number) {
   return getUnits(saleId).find(
     (unit) => Number(unit.current_unit_price) === price,
-  )
+  );
 }
 
 function stock(barcode: string) {
-  return Number((getVariantByBarcode(barcode) as VariantRow).stock || 0)
+  return Number((getVariantByBarcode(barcode) as VariantRow).stock || 0);
 }
 
 function customerBalance(customerId: number) {
@@ -297,9 +297,9 @@ function customerBalance(customerId: number) {
       LIMIT 1
       `,
     )
-    .get(customerId) as any
+    .get(customerId) as any;
 
-  return Number(row?.balance || 0)
+  return Number(row?.balance || 0);
 }
 
 function customerPoints(customerId: number) {
@@ -312,9 +312,9 @@ function customerPoints(customerId: number) {
       LIMIT 1
       `,
     )
-    .get(customerId) as any
+    .get(customerId) as any;
 
-  return Number(row?.points_balance || 0)
+  return Number(row?.points_balance || 0);
 }
 
 function fullBundleReturnItems(saleId: number) {
@@ -345,26 +345,26 @@ function fullBundleReturnItems(saleId: number) {
       variant_id: Number(item.variant_id),
 
       quantity: Number(item.quantity),
-    }))
+    }));
 }
 
 describe('sale exchange cancellation', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
+    closeDb();
+    getDb();
+    resetDatabaseData();
 
-    setLoyaltyEnabled(false)
+    setLoyaltyEnabled(false);
     openCashShift({
       opening_counted_amount: 0,
       opened_by: 1,
-    })
-  })
+    });
+  });
 
   it('cancels the latest exchange and restores stock current state cash reports and audit history', () => {
-    const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150'])
+    const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);
 
-    const giftUnit = getUnitByPrice(result.sale.saleId, 150)
+    const giftUnit = getUnitByPrice(result.sale.saleId, 150);
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -382,13 +382,13 @@ describe('sale exchange cancellation', () => {
           new_variant_id: result.variants.CEX300.variant_id,
         },
       ],
-    })
+    });
 
-    expect(exchange.difference_amount).toBe(100)
+    expect(exchange.difference_amount).toBe(100);
 
-    expect(stock('CEX150')).toBe(20)
+    expect(stock('CEX150')).toBe(20);
 
-    expect(stock('CEX300')).toBe(19)
+    expect(stock('CEX300')).toBe(19);
 
     const cancelled = cancelSaleExchange({
       exchange_id: exchange.exchangeId,
@@ -396,29 +396,29 @@ describe('sale exchange cancellation', () => {
       reason: 'رجوع عن الاستبدال',
 
       actor_id: 1,
-    })
+    });
 
-    expect(cancelled.ok).toBe(true)
+    expect(cancelled.ok).toBe(true);
 
-    expect(cancelled.exchange_id).toBe(exchange.exchangeId)
+    expect(cancelled.exchange_id).toBe(exchange.exchangeId);
 
-    expect(cancelled.cash_refunded).toBe(100)
+    expect(cancelled.cash_refunded).toBe(100);
 
-    const units = getUnits(result.sale.saleId)
+    const units = getUnits(result.sale.saleId);
 
     expect(
       units
         .map((unit) => Number(unit.current_unit_price))
         .sort((a: number, b: number) => a - b),
-    ).toEqual([150, 200, 250])
+    ).toEqual([150, 200, 250]);
 
-    const gift = units.find((unit) => Number(unit.current_is_gift) === 1)
+    const gift = units.find((unit) => Number(unit.current_is_gift) === 1);
 
-    expect(Number(gift.current_unit_price)).toBe(150)
+    expect(Number(gift.current_unit_price)).toBe(150);
 
-    expect(stock('CEX150')).toBe(19)
+    expect(stock('CEX150')).toBe(19);
 
-    expect(stock('CEX300')).toBe(20)
+    expect(stock('CEX300')).toBe(20);
 
     const reverseCash = getDb()
       .prepare(
@@ -437,13 +437,13 @@ describe('sale exchange cancellation', () => {
             LIMIT 1
             `,
       )
-      .get(exchange.exchangeId) as any
+      .get(exchange.exchangeId) as any;
 
-    expect(reverseCash).toBeTruthy()
+    expect(reverseCash).toBeTruthy();
 
-    expect(reverseCash.direction).toBe('out')
+    expect(reverseCash.direction).toBe('out');
 
-    expect(Number(reverseCash.amount)).toBe(100)
+    expect(Number(reverseCash.amount)).toBe(100);
 
     const exchangeRow = getDb()
       .prepare(
@@ -454,56 +454,56 @@ describe('sale exchange cancellation', () => {
             LIMIT 1
             `,
       )
-      .get(exchange.exchangeId) as any
+      .get(exchange.exchangeId) as any;
 
-    expect(exchangeRow.cancelled_at).toBeTruthy()
+    expect(exchangeRow.cancelled_at).toBeTruthy();
 
-    expect(exchangeRow.cancel_reason).toBe('رجوع عن الاستبدال')
+    expect(exchangeRow.cancel_reason).toBe('رجوع عن الاستبدال');
 
-    const state = getSaleCurrentState(result.sale.saleId)
+    const state = getSaleCurrentState(result.sale.saleId);
 
-    expect(state.financials.exchange_count).toBe(0)
+    expect(state.financials.exchange_count).toBe(0);
 
-    expect(state.financials.net_grand_total).toBe(450)
+    expect(state.financials.net_grand_total).toBe(450);
 
-    expect(state.exchanges).toHaveLength(1)
+    expect(state.exchanges).toHaveLength(1);
 
-    expect(state.exchanges[0].cancelled_at).toBeTruthy()
+    expect(state.exchanges[0].cancelled_at).toBeTruthy();
 
     const history = listSaleExchanges({
       status: 'cancelled',
 
       search: String(exchange.exchangeId),
-    })
+    });
 
-    expect(history.rows).toHaveLength(1)
+    expect(history.rows).toHaveLength(1);
 
-    expect(history.rows[0].can_cancel).toBe(false)
+    expect(history.rows[0].can_cancel).toBe(false);
 
     const sales = listSales({
       search: `#${result.sale.saleId}`,
 
       limit: 50,
       offset: 0,
-    })
+    });
 
-    expect(Number((sales.rows[0] as any).exchange_count)).toBe(0)
+    expect(Number((sales.rows[0] as any).exchange_count)).toBe(0);
 
-    expect(Number((sales.rows[0] as any).cancelled_exchange_count)).toBe(1)
+    expect(Number((sales.rows[0] as any).cancelled_exchange_count)).toBe(1);
 
-    const reports = getReportsSummary() as any
+    const reports = getReportsSummary() as any;
 
-    expect(reports.summary.exchange_count).toBe(0)
+    expect(reports.summary.exchange_count).toBe(0);
 
-    expect(reports.summary.gross_sales).toBe(450)
+    expect(reports.summary.gross_sales).toBe(450);
 
-    expect(reports.summary.net_sales).toBe(450)
-  })
+    expect(reports.summary.net_sales).toBe(450);
+  });
 
   it('requires LIFO cancellation across the whole invoice', () => {
-    const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150'])
+    const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);
 
-    const unit = getUnitByPrice(result.sale.saleId, 150)
+    const unit = getUnitByPrice(result.sale.saleId, 150);
 
     const first = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -517,7 +517,7 @@ describe('sale exchange cancellation', () => {
           new_variant_id: result.variants.CEX300.variant_id,
         },
       ],
-    })
+    });
 
     const second = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -531,7 +531,7 @@ describe('sale exchange cancellation', () => {
           new_variant_id: result.variants.CEX350.variant_id,
         },
       ],
-    })
+    });
 
     expect(() =>
       cancelSaleExchange({
@@ -541,7 +541,7 @@ describe('sale exchange cancellation', () => {
 
         reason: 'إلغاء غير مرتب',
       }),
-    ).toThrow('يجب إلغاء آخر عملية استبدال أولًا')
+    ).toThrow('يجب إلغاء آخر عملية استبدال أولًا');
 
     cancelSaleExchange({
       exchange_id: second.exchangeId,
@@ -549,7 +549,7 @@ describe('sale exchange cancellation', () => {
       actor_id: 1,
 
       reason: 'إلغاء الثاني',
-    })
+    });
 
     cancelSaleExchange({
       exchange_id: first.exchangeId,
@@ -557,21 +557,21 @@ describe('sale exchange cancellation', () => {
       actor_id: 1,
 
       reason: 'إلغاء الأول',
-    })
+    });
 
-    const units = getUnits(result.sale.saleId)
+    const units = getUnits(result.sale.saleId);
 
     expect(
       units
         .map((item) => Number(item.current_unit_price))
         .sort((a: number, b: number) => a - b),
-    ).toEqual([150, 200, 250])
-  })
+    ).toEqual([150, 200, 250]);
+  });
 
   it('blocks exchange cancellation while a newer active return exists', () => {
-    const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150'])
+    const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);
 
-    const gift = getUnitByPrice(result.sale.saleId, 150)
+    const gift = getUnitByPrice(result.sale.saleId, 150);
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -585,7 +585,7 @@ describe('sale exchange cancellation', () => {
           new_variant_id: result.variants.CEX300.variant_id,
         },
       ],
-    })
+    });
 
     const saleReturn = createSaleReturn({
       original_sale_id: result.sale.saleId,
@@ -595,7 +595,7 @@ describe('sale exchange cancellation', () => {
       refund_payment_method: 'store_cash',
 
       items: fullBundleReturnItems(result.sale.saleId),
-    })
+    });
 
     expect(() =>
       cancelSaleExchange({
@@ -605,7 +605,7 @@ describe('sale exchange cancellation', () => {
 
         reason: 'محاولة قبل المرتجع',
       }),
-    ).toThrow('يجب إلغاء المرتجع الأحدث أولًا')
+    ).toThrow('يجب إلغاء المرتجع الأحدث أولًا');
 
     cancelSaleReturn({
       return_id: saleReturn.returnId,
@@ -613,7 +613,7 @@ describe('sale exchange cancellation', () => {
       actor_id: 1,
 
       reason: 'إلغاء المرتجع',
-    })
+    });
 
     const cancelled = cancelSaleExchange({
       exchange_id: exchange.exchangeId,
@@ -621,24 +621,24 @@ describe('sale exchange cancellation', () => {
       actor_id: 1,
 
       reason: 'إلغاء بعد المرتجع',
-    })
+    });
 
-    expect(cancelled.ok).toBe(true)
-  })
+    expect(cancelled.ok).toBe(true);
+  });
 
   it('restores customer debt when cancelling a cheaper exchange', () => {
-    const customerId = createCustomer()
+    const customerId = createCustomer();
 
     const result = createPromotionSale(['CEX300', 'CEX250', 'CEX200'], {
       customerId,
       paid: 400,
-    })
+    });
 
-    expect(result.sale.remaining_amount).toBe(150)
+    expect(result.sale.remaining_amount).toBe(150);
 
-    expect(customerBalance(customerId)).toBe(150)
+    expect(customerBalance(customerId)).toBe(150);
 
-    const unit300 = getUnitByPrice(result.sale.saleId, 300)
+    const unit300 = getUnitByPrice(result.sale.saleId, 300);
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -652,11 +652,11 @@ describe('sale exchange cancellation', () => {
           new_variant_id: result.variants.CEX150.variant_id,
         },
       ],
-    })
+    });
 
-    expect(exchange.difference_amount).toBe(-100)
+    expect(exchange.difference_amount).toBe(-100);
 
-    expect(exchange.debt_reduction_amount).toBe(100)
+    expect(exchange.debt_reduction_amount).toBe(100);
 
     const afterExchange = getDb()
       .prepare(
@@ -668,11 +668,11 @@ describe('sale exchange cancellation', () => {
             WHERE id = ?
             `,
       )
-      .get(result.sale.saleId) as any
+      .get(result.sale.saleId) as any;
 
-    expect(Number(afterExchange.remaining_amount)).toBe(50)
+    expect(Number(afterExchange.remaining_amount)).toBe(50);
 
-    expect(customerBalance(customerId)).toBe(50)
+    expect(customerBalance(customerId)).toBe(50);
 
     const cancelled = cancelSaleExchange({
       exchange_id: exchange.exchangeId,
@@ -680,9 +680,9 @@ describe('sale exchange cancellation', () => {
       actor_id: 1,
 
       reason: 'إلغاء استبدال خفض الدين',
-    })
+    });
 
-    expect(cancelled.debt_restored).toBe(100)
+    expect(cancelled.debt_restored).toBe(100);
 
     const restoredSale = getDb()
       .prepare(
@@ -695,29 +695,29 @@ describe('sale exchange cancellation', () => {
             WHERE id = ?
             `,
       )
-      .get(result.sale.saleId) as any
+      .get(result.sale.saleId) as any;
 
-    expect(Number(restoredSale.remaining_amount)).toBe(150)
+    expect(Number(restoredSale.remaining_amount)).toBe(150);
 
-    expect(restoredSale.payment_status).toBe('partial')
+    expect(restoredSale.payment_status).toBe('partial');
 
-    expect(customerBalance(customerId)).toBe(150)
-  })
+    expect(customerBalance(customerId)).toBe(150);
+  });
 
   it('reverses loyalty adjustments created by the cancelled exchange', () => {
-    setLoyaltyEnabled(true)
+    setLoyaltyEnabled(true);
 
-    const customerId = createCustomer()
+    const customerId = createCustomer();
 
     const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150'], {
       customerId,
-    })
+    });
 
-    expect(result.sale.loyalty_points_earned).toBe(4)
+    expect(result.sale.loyalty_points_earned).toBe(4);
 
-    expect(customerPoints(customerId)).toBe(4)
+    expect(customerPoints(customerId)).toBe(4);
 
-    const gift = getUnitByPrice(result.sale.saleId, 150)
+    const gift = getUnitByPrice(result.sale.saleId, 150);
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -731,11 +731,11 @@ describe('sale exchange cancellation', () => {
           new_variant_id: result.variants.CEX300.variant_id,
         },
       ],
-    })
+    });
 
-    expect(exchange.loyalty_earned_points_adjustment).toBe(1)
+    expect(exchange.loyalty_earned_points_adjustment).toBe(1);
 
-    expect(customerPoints(customerId)).toBe(5)
+    expect(customerPoints(customerId)).toBe(5);
 
     const cancelled = cancelSaleExchange({
       exchange_id: exchange.exchangeId,
@@ -743,23 +743,23 @@ describe('sale exchange cancellation', () => {
       actor_id: 1,
 
       reason: 'إلغاء مع النقاط',
-    })
+    });
 
-    expect(cancelled.loyalty_balance_reversed).toBe(-1)
+    expect(cancelled.loyalty_balance_reversed).toBe(-1);
 
-    expect(customerPoints(customerId)).toBe(4)
+    expect(customerPoints(customerId)).toBe(4);
 
-    const state = getSaleCurrentState(result.sale.saleId)
+    const state = getSaleCurrentState(result.sale.saleId);
 
-    expect(state.financials.current_loyalty_points_earned).toBe(4)
-  })
+    expect(state.financials.current_loyalty_points_earned).toBe(4);
+  });
 
   it('cancels a previous-shift exchange in the current shift', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150'])
+    const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);
 
-    const gift = getUnitByPrice(result.sale.saleId, 150)
+    const gift = getUnitByPrice(result.sale.saleId, 150);
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -775,13 +775,13 @@ describe('sale exchange cancellation', () => {
           new_variant_id: result.variants.CEX300.variant_id,
         },
       ],
-    })
+    });
 
-    expect(exchange.amount_to_collect).toBe(100)
+    expect(exchange.amount_to_collect).toBe(100);
 
-    const originalShift = getOpenCashShift()
+    const originalShift = getOpenCashShift();
 
-    expect(originalShift).toBeTruthy()
+    expect(originalShift).toBeTruthy();
 
     closeCashShift({
       shift_id: originalShift!.id,
@@ -791,7 +791,7 @@ describe('sale exchange cancellation', () => {
       left_for_next_shift: 550,
 
       closed_by: 1,
-    })
+    });
 
     expect(() =>
       cancelSaleExchange({
@@ -801,12 +801,12 @@ describe('sale exchange cancellation', () => {
 
         reason: 'إلغاء بدون شفت',
       }),
-    ).toThrow('لا يمكن إلغاء استبدال بدون شفت مفتوح')
+    ).toThrow('لا يمكن إلغاء استبدال بدون شفت مفتوح');
 
     const currentShift = openCashShift({
       opening_counted_amount: 550,
       opened_by: 1,
-    })
+    });
 
     const cancelled = cancelSaleExchange({
       exchange_id: exchange.exchangeId,
@@ -814,9 +814,9 @@ describe('sale exchange cancellation', () => {
       actor_id: 1,
 
       reason: 'إلغاء الاستبدال في شفت جديد',
-    })
+    });
 
-    expect(cancelled.cancelled_shift_id).toBe(currentShift.id)
+    expect(cancelled.cancelled_shift_id).toBe(currentShift.id);
 
     const exchangeRow = db
       .prepare(
@@ -829,13 +829,13 @@ describe('sale exchange cancellation', () => {
     `,
       )
       .get(exchange.exchangeId) as {
-      shift_id: number
-      cancelled_shift_id: number
-    }
+      shift_id: number;
+      cancelled_shift_id: number;
+    };
 
-    expect(exchangeRow.shift_id).toBe(originalShift!.id)
+    expect(exchangeRow.shift_id).toBe(originalShift!.id);
 
-    expect(exchangeRow.cancelled_shift_id).toBe(currentShift.id)
+    expect(exchangeRow.cancelled_shift_id).toBe(currentShift.id);
 
     const reverseMovement = db
       .prepare(
@@ -853,15 +853,15 @@ describe('sale exchange cancellation', () => {
     `,
       )
       .get(exchange.exchangeId) as {
-      shift_id: number
-      direction: string
-      amount: number
-    }
+      shift_id: number;
+      direction: string;
+      amount: number;
+    };
 
-    expect(reverseMovement.shift_id).toBe(currentShift.id)
+    expect(reverseMovement.shift_id).toBe(currentShift.id);
 
-    expect(reverseMovement.direction).toBe('out')
+    expect(reverseMovement.direction).toBe('out');
 
-    expect(Number(reverseMovement.amount)).toBe(100)
-  })
-})
+    expect(Number(reverseMovement.amount)).toBe(100);
+  });
+});

@@ -1,41 +1,41 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { beforeEach, describe, expect, it } from 'vitest';
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 import {
   createCategory,
   createProduct,
   getVariantByBarcode,
-} from '../../src/main/database/repositories/product.repo'
+} from '../../src/main/database/repositories/product.repo';
 import {
   createPromotion,
   togglePromotion,
   updatePromotion,
-} from '../../src/main/database/repositories/promotions.repo'
+} from '../../src/main/database/repositories/promotions.repo';
 import {
   createSale,
   getSaleReceipt,
-} from '../../src/main/database/repositories/sales.repo'
-import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
-import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo'
-import { getSaleExchangeState } from '../../src/main/database/repositories/sales-exchange.repo'
+} from '../../src/main/database/repositories/sales.repo';
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo';
+import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo';
+import { getSaleExchangeState } from '../../src/main/database/repositories/sales-exchange.repo';
 
 type TestVariant = {
-  variant_id: number
-  product_id: number
-  product_name: string
-  barcode: string
-  size: string
-  color: string
-  sell_price: number
-}
+  variant_id: number;
+  product_id: number;
+  product_name: string;
+  barcode: string;
+  size: string;
+  color: string;
+  sell_price: number;
+};
 
 function seedPromotionCatalog() {
   const promoCategory = createCategory({
     name: 'Exchange Promo Category',
-  })
+  });
 
   const otherCategory = createCategory({
     name: 'Exchange Other Category',
-  })
+  });
 
   createProduct({
     name: 'Exchange Promo Product',
@@ -71,11 +71,11 @@ function seedPromotionCatalog() {
         opening_qty: 10,
       },
     ],
-  })
+  });
 
-  const variant250 = getVariantByBarcode('EX250') as TestVariant
-  const variant200 = getVariantByBarcode('EX200') as TestVariant
-  const variant150 = getVariantByBarcode('EX150') as TestVariant
+  const variant250 = getVariantByBarcode('EX250') as TestVariant;
+  const variant200 = getVariantByBarcode('EX200') as TestVariant;
+  const variant150 = getVariantByBarcode('EX150') as TestVariant;
 
   return {
     promoCategoryId: Number(promoCategory.id),
@@ -83,11 +83,11 @@ function seedPromotionCatalog() {
     variant250,
     variant200,
     variant150,
-  }
+  };
 }
 
 function createBuy2Get1Sale() {
-  const catalog = seedPromotionCatalog()
+  const catalog = seedPromotionCatalog();
 
   const promotion = createPromotion({
     name: 'Original Buy 2 Get 1',
@@ -99,9 +99,9 @@ function createBuy2Get1Sale() {
     category_id: catalog.promoCategoryId,
     product_ids: [],
     actor_id: 1,
-  })
+  });
 
-  togglePromotion(promotion.promotionId, 1)
+  togglePromotion(promotion.promotionId, 1);
 
   const sale = createSale({
     user_id: 1,
@@ -142,30 +142,30 @@ function createBuy2Get1Sale() {
         unit_price: 150,
       },
     ],
-  })
+  });
 
   return {
     ...catalog,
     promotionId: promotion.promotionId,
     sale,
-  }
+  };
 }
 
 describe('sale promotion exchange state', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
+    closeDb();
+    getDb();
+    resetDatabaseData();
 
     openCashShift({
       opening_counted_amount: 0,
       opened_by: 1,
-    })
-  })
+    });
+  });
 
   it('stores an immutable promotion snapshot and one state row per bundle unit', () => {
-    const result = createBuy2Get1Sale()
-    const db = getDb()
+    const result = createBuy2Get1Sale();
+    const db = getDb();
 
     const snapshot = db
       .prepare(
@@ -176,16 +176,16 @@ describe('sale promotion exchange state', () => {
         LIMIT 1
         `,
       )
-      .get(result.sale.saleId) as any
+      .get(result.sale.saleId) as any;
 
-    expect(snapshot).toBeTruthy()
-    expect(Number(snapshot.promotion_id)).toBe(result.promotionId)
-    expect(snapshot.promotion_type).toBe('buy_x_get_y')
-    expect(Number(snapshot.buy_qty)).toBe(2)
-    expect(Number(snapshot.free_qty)).toBe(1)
-    expect(snapshot.scope_type).toBe('category')
-    expect(Number(snapshot.category_id)).toBe(result.promoCategoryId)
-    expect(JSON.parse(snapshot.product_ids_json)).toEqual([])
+    expect(snapshot).toBeTruthy();
+    expect(Number(snapshot.promotion_id)).toBe(result.promotionId);
+    expect(snapshot.promotion_type).toBe('buy_x_get_y');
+    expect(Number(snapshot.buy_qty)).toBe(2);
+    expect(Number(snapshot.free_qty)).toBe(1);
+    expect(snapshot.scope_type).toBe('category');
+    expect(Number(snapshot.category_id)).toBe(result.promoCategoryId);
+    expect(JSON.parse(snapshot.product_ids_json)).toEqual([]);
 
     const units = db
       .prepare(
@@ -196,59 +196,59 @@ describe('sale promotion exchange state', () => {
         ORDER BY id ASC
         `,
       )
-      .all(result.sale.saleId) as any[]
+      .all(result.sale.saleId) as any[];
 
-    expect(units).toHaveLength(3)
+    expect(units).toHaveLength(3);
 
     const groupIds = Array.from(
       new Set(units.map((unit) => String(unit.promotion_group_id))),
-    )
+    );
 
-    expect(groupIds).toHaveLength(1)
+    expect(groupIds).toHaveLength(1);
 
     expect(
       units.filter((unit) => Number(unit.current_is_gift || 0) === 1),
-    ).toHaveLength(1)
+    ).toHaveLength(1);
 
     const giftUnit = units.find(
       (unit) => Number(unit.current_is_gift || 0) === 1,
-    )
+    );
 
-    expect(Number(giftUnit.current_unit_price)).toBe(150)
+    expect(Number(giftUnit.current_unit_price)).toBe(150);
 
     expect(
       units
         .map((unit) => Number(unit.current_unit_price))
         .sort((a, b) => a - b),
-    ).toEqual([150, 200, 250])
+    ).toEqual([150, 200, 250]);
 
     for (const unit of units) {
       expect(Number(unit.original_variant_id)).toBe(
         Number(unit.current_variant_id),
-      )
+      );
 
       expect(Number(unit.original_unit_price)).toBe(
         Number(unit.current_unit_price),
-      )
+      );
 
-      expect(Number(unit.original_is_gift)).toBe(Number(unit.current_is_gift))
+      expect(Number(unit.original_is_gift)).toBe(Number(unit.current_is_gift));
 
-      expect(Number(unit.is_returned)).toBe(0)
+      expect(Number(unit.is_returned)).toBe(0);
     }
 
-    const receipt = getSaleReceipt(result.sale.saleId) as any
+    const receipt = getSaleReceipt(result.sale.saleId) as any;
 
     expect(receipt.items.every((item: any) => item.promotion_group_id)).toBe(
       true,
-    )
+    );
 
     expect(
       receipt.items.filter((item: any) => Number(item.is_gift || 0) === 1),
-    ).toHaveLength(1)
-  })
+    ).toHaveLength(1);
+  });
 
   it('keeps original promotion rules after the promotion is edited later', () => {
-    const result = createBuy2Get1Sale()
+    const result = createBuy2Get1Sale();
 
     updatePromotion({
       id: result.promotionId,
@@ -261,9 +261,9 @@ describe('sale promotion exchange state', () => {
       category_id: result.otherCategoryId,
       product_ids: [],
       actor_id: 1,
-    })
+    });
 
-    const db = getDb()
+    const db = getDb();
 
     const livePromotion = db
       .prepare(
@@ -277,11 +277,11 @@ describe('sale promotion exchange state', () => {
         LIMIT 1
         `,
       )
-      .get(result.promotionId) as any
+      .get(result.promotionId) as any;
 
-    expect(Number(livePromotion.buy_qty)).toBe(3)
-    expect(Number(livePromotion.free_qty)).toBe(1)
-    expect(Number(livePromotion.category_id)).toBe(result.otherCategoryId)
+    expect(Number(livePromotion.buy_qty)).toBe(3);
+    expect(Number(livePromotion.free_qty)).toBe(1);
+    expect(Number(livePromotion.category_id)).toBe(result.otherCategoryId);
 
     const snapshot = db
       .prepare(
@@ -292,40 +292,42 @@ describe('sale promotion exchange state', () => {
         LIMIT 1
         `,
       )
-      .get(result.sale.saleId) as any
+      .get(result.sale.saleId) as any;
 
-    expect(Number(snapshot.buy_qty)).toBe(2)
-    expect(Number(snapshot.free_qty)).toBe(1)
-    expect(Number(snapshot.category_id)).toBe(result.promoCategoryId)
-    expect(snapshot.scope_type).toBe('category')
+    expect(Number(snapshot.buy_qty)).toBe(2);
+    expect(Number(snapshot.free_qty)).toBe(1);
+    expect(Number(snapshot.category_id)).toBe(result.promoCategoryId);
+    expect(snapshot.scope_type).toBe('category');
 
-    const state = getSaleCurrentState(result.sale.saleId)
+    const state = getSaleCurrentState(result.sale.saleId);
 
-    expect(state.promotion_snapshot).toBeTruthy()
+    expect(state.promotion_snapshot).toBeTruthy();
 
-    expect(state.promotion_snapshot.promotion_name).toBe('Original Buy 2 Get 1')
+    expect(state.promotion_snapshot.promotion_name).toBe(
+      'Original Buy 2 Get 1',
+    );
 
-    expect(state.promotion_snapshot.promotion_type).toBe('buy_x_get_y')
+    expect(state.promotion_snapshot.promotion_type).toBe('buy_x_get_y');
 
-    expect(Number(state.promotion_snapshot.buy_qty)).toBe(2)
+    expect(Number(state.promotion_snapshot.buy_qty)).toBe(2);
 
-    expect(Number(state.promotion_snapshot.free_qty)).toBe(1)
+    expect(Number(state.promotion_snapshot.free_qty)).toBe(1);
 
-    expect(state.promotion_snapshot.scope_type).toBe('category')
+    expect(state.promotion_snapshot.scope_type).toBe('category');
 
     expect(Number(state.promotion_snapshot.category_id)).toBe(
       result.promoCategoryId,
-    )
-  })
+    );
+  });
 
   it('keeps multiple buy-x-get-y groups linked to their own promotion snapshots', () => {
     const categoryA = createCategory({
       name: 'Multi Promo A',
-    })
+    });
 
     const categoryB = createCategory({
       name: 'Multi Promo B',
-    })
+    });
 
     createProduct({
       name: 'Multi Product A',
@@ -350,7 +352,7 @@ describe('sale promotion exchange state', () => {
           opening_qty: 10,
         },
       ],
-    })
+    });
 
     createProduct({
       name: 'Multi Product B',
@@ -375,11 +377,11 @@ describe('sale promotion exchange state', () => {
           opening_qty: 10,
         },
       ],
-    })
+    });
 
-    const variantA = getVariantByBarcode('MULTI-A') as TestVariant
+    const variantA = getVariantByBarcode('MULTI-A') as TestVariant;
 
-    const variantB = getVariantByBarcode('MULTI-B') as TestVariant
+    const variantB = getVariantByBarcode('MULTI-B') as TestVariant;
 
     const promotionA = createPromotion({
       name: 'Multi Offer A',
@@ -398,7 +400,7 @@ describe('sale promotion exchange state', () => {
       product_ids: [],
 
       actor_id: 1,
-    })
+    });
 
     const promotionB = createPromotion({
       name: 'Multi Offer B',
@@ -417,11 +419,11 @@ describe('sale promotion exchange state', () => {
       product_ids: [],
 
       actor_id: 1,
-    })
+    });
 
-    togglePromotion(promotionA.promotionId, 1)
+    togglePromotion(promotionA.promotionId, 1);
 
-    togglePromotion(promotionB.promotionId, 1)
+    togglePromotion(promotionB.promotionId, 1);
 
     const sale = createSale({
       user_id: 1,
@@ -477,9 +479,9 @@ describe('sale promotion exchange state', () => {
           unit_price: 200,
         },
       ],
-    })
+    });
 
-    const db = getDb()
+    const db = getDb();
 
     const snapshots = db
       .prepare(
@@ -497,41 +499,41 @@ describe('sale promotion exchange state', () => {
       `,
       )
       .all(sale.saleId) as Array<{
-      promotion_id: number
-    }>
+      promotion_id: number;
+    }>;
 
     expect(snapshots.map((snapshot) => Number(snapshot.promotion_id))).toEqual(
       [promotionA.promotionId, promotionB.promotionId].sort((a, b) => a - b),
-    )
+    );
 
-    const currentState = getSaleCurrentState(sale.saleId)
+    const currentState = getSaleCurrentState(sale.saleId);
 
-    expect(currentState.promotion_snapshot).toBeNull()
+    expect(currentState.promotion_snapshot).toBeNull();
 
-    expect(currentState.promotion_snapshots).toHaveLength(2)
+    expect(currentState.promotion_snapshots).toHaveLength(2);
 
-    const exchangeState = getSaleExchangeState(sale.saleId)
+    const exchangeState = getSaleExchangeState(sale.saleId);
 
     const promotionGroups = exchangeState.groups.filter(
       (group) => group.group_kind === 'promotion',
-    )
+    );
 
-    expect(promotionGroups).toHaveLength(2)
+    expect(promotionGroups).toHaveLength(2);
 
     const linkedPromotionIds = promotionGroups
       .map((group) => Number(group.promotion_snapshot?.promotion_id))
-      .sort((a, b) => a - b)
+      .sort((a, b) => a - b);
 
     expect(linkedPromotionIds).toEqual(
       [promotionA.promotionId, promotionB.promotionId].sort((a, b) => a - b),
-    )
+    );
 
     for (const group of promotionGroups) {
-      expect(group.promotion_snapshot?.promotion_type).toBe('buy_x_get_y')
+      expect(group.promotion_snapshot?.promotion_type).toBe('buy_x_get_y');
 
       expect(String(group.promotion_group_id)).toContain(
         `_promotion_${group.promotion_snapshot?.promotion_id}_bundle_`,
-      )
+      );
     }
-  })
-})
+  });
+});

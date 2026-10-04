@@ -1,81 +1,83 @@
-import { useEffect, useRef, useState } from 'react'
-import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
-import { useAuthStore } from '../../store/auth.store'
-import { hasUserPermission } from '../../utils/permissions'
-import { formatMoney } from '../../../shared/money'
+import { useEffect, useRef, useState } from 'react';
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
+import { useAuthStore } from '../../store/auth.store';
+import { hasUserPermission } from '../../utils/permissions';
+import { formatMoney } from '../../../shared/money';
 
 type InventoryRow = {
-  variant_id: number
-  product_id: number
-  product_name: string
-  category_id?: number | null
-  category_name?: string | null
-  barcode?: string | null
-  size?: string | null
-  color?: string | null
-  buy_price: number
-  sell_price: number
-  min_stock: number
-  is_active: number
-  product_is_active: number
-  stock: number
-}
+  variant_id: number;
+  product_id: number;
+  product_name: string;
+  category_id?: number | null;
+  category_name?: string | null;
+  barcode?: string | null;
+  size?: string | null;
+  color?: string | null;
+  buy_price: number;
+  sell_price: number;
+  min_stock: number;
+  is_active: number;
+  product_is_active: number;
+  stock: number;
+};
 
 type MovementRow = {
-  id: number
-  variant_id: number
-  type: 'in' | 'out'
-  quantity: number
-  signed_quantity: number
-  reference_id?: number | null
-  reference_type?: string | null
-  notes?: string | null
-  created_by?: number | null
-  created_by_name?: string | null
-  created_at: string
-  product_name: string
-  barcode?: string | null
-  size?: string | null
-  color?: string | null
-}
+  id: number;
+  variant_id: number;
+  type: 'in' | 'out';
+  quantity: number;
+  signed_quantity: number;
+  reference_id?: number | null;
+  reference_type?: string | null;
+  notes?: string | null;
+  created_by?: number | null;
+  created_by_name?: string | null;
+  created_at: string;
+  product_name: string;
+  barcode?: string | null;
+  size?: string | null;
+  color?: string | null;
+};
 
 type Category = {
-  id: number
-  name: string
-  description?: string | null
-}
+  id: number;
+  name: string;
+  description?: string | null;
+};
 
-type InventoryStatusFilter = 'available' | 'low' | 'out' | 'inactive'
+type InventoryStatusFilter = 'available' | 'low' | 'out' | 'inactive';
 
 type InventoryAnalytics = {
-  stock_units: number
+  stock_units: number;
 
-  sold_units_30d: number
+  sold_units_30d: number;
 
-  dead_stock_variants_90d: number
+  dead_stock_variants_90d: number;
 
-  dead_stock_units_90d: number
+  dead_stock_units_90d: number;
 
-  dead_stock_value_90d: number
+  dead_stock_value_90d: number;
 
-  potential_gross_profit: number
+  potential_gross_profit: number;
 
   top_mover: {
-    variant_id: number
+    variant_id: number;
 
-    product_name: string
+    product_name: string;
 
-    barcode?: string | null
+    barcode?: string | null;
 
-    size?: string | null
+    size?: string | null;
 
-    color?: string | null
+    color?: string | null;
 
-    current_stock: number
+    current_stock: number;
 
-    sold_units_30d: number
-  } | null
-}
+    sold_units_30d: number;
+  } | null;
+};
 
 const emptyInventoryAnalytics: InventoryAnalytics = {
   stock_units: 0,
@@ -91,39 +93,39 @@ const emptyInventoryAnalytics: InventoryAnalytics = {
   potential_gross_profit: 0,
 
   top_mover: null,
-}
+};
 
 export default function InventoryPage() {
-  const currentUser = useAuthStore((s) => s.user)
-  const isAdmin = currentUser?.role === 'admin'
-  const canViewCosts = hasUserPermission(currentUser, 'costs.view')
-  const canAdjustInventory = hasUserPermission(currentUser, 'inventory.adjust')
-  const [rows, setRows] = useState<InventoryRow[]>([])
-  const [inventoryTotal, setInventoryTotal] = useState(0)
-  const [inventoryPage, setInventoryPage] = useState(1)
-  const [movements, setMovements] = useState<MovementRow[]>([])
-  const [movementsTotal, setMovementsTotal] = useState(0)
-  const [movementsPage, setMovementsPage] = useState(1)
-  const [search, setSearch] = useState('')
-  const [categories, setCategories] = useState<Category[]>([])
-  const [categoryFilter, setCategoryFilter] = useState('all')
+  const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role === 'admin';
+  const canViewCosts = hasUserPermission(currentUser, 'costs.view');
+  const canAdjustInventory = hasUserPermission(currentUser, 'inventory.adjust');
+  const [rows, setRows] = useState<InventoryRow[]>([]);
+  const [inventoryTotal, setInventoryTotal] = useState(0);
+  const [inventoryPage, setInventoryPage] = useState(1);
+  const [movements, setMovements] = useState<MovementRow[]>([]);
+  const [movementsTotal, setMovementsTotal] = useState(0);
+  const [movementsPage, setMovementsPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilters, setStatusFilters] = useState<InventoryStatusFilter[]>(
     [],
-  )
+  );
 
-  const [statusFilterOpen, setStatusFilterOpen] = useState(false)
+  const [statusFilterOpen, setStatusFilterOpen] = useState(false);
 
-  const statusFilterRef = useRef<HTMLDivElement | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
+  const statusFilterRef = useRef<HTMLDivElement | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
 
-  const [adjustItem, setAdjustItem] = useState<InventoryRow | null>(null)
-  const [targetStock, setTargetStock] = useState('')
-  const [adjustNotes, setAdjustNotes] = useState('')
-  const [savingAdjust, setSavingAdjust] = useState(false)
+  const [adjustItem, setAdjustItem] = useState<InventoryRow | null>(null);
+  const [targetStock, setTargetStock] = useState('');
+  const [adjustNotes, setAdjustNotes] = useState('');
+  const [savingAdjust, setSavingAdjust] = useState(false);
 
-  const [historyItem, setHistoryItem] = useState<InventoryRow | null>(null)
-  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyItem, setHistoryItem] = useState<InventoryRow | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const [stats, setStats] = useState({
     total: 0,
@@ -133,36 +135,36 @@ export default function InventoryPage() {
     totalBuyValue: 0,
     totalSellValue: 0,
     inactive: 0,
-  })
+  });
 
   const [analytics, setAnalytics] = useState<InventoryAnalytics>(
     emptyInventoryAnalytics,
-  )
+  );
 
   useEffect(() => {
-    let mounted = true
+    let mounted = true;
 
     window.api
       .getCategories()
       .then((data) => {
-        if (!mounted) return
-        setCategories(Array.isArray(data) ? data : [])
+        if (!mounted) return;
+        setCategories(Array.isArray(data) ? data : []);
       })
       .catch((error) => {
-        console.error('Failed to load categories:', error)
-        setCategories([])
-      })
+        console.error('Failed to load categories:', error);
+        setCategories([]);
+      });
 
     return () => {
-      mounted = false
-    }
-  }, [])
+      mounted = false;
+    };
+  }, []);
 
   async function loadAnalytics() {
     try {
       const result = await window.api.getInventoryAnalytics({
         categoryId: categoryFilter,
-      })
+      });
 
       setAnalytics({
         stock_units: Number(result?.stock_units || 0),
@@ -178,19 +180,19 @@ export default function InventoryPage() {
         potential_gross_profit: Number(result?.potential_gross_profit || 0),
 
         top_mover: result?.top_mover || null,
-      })
+      });
     } catch (error) {
-      console.error('Failed to load inventory analytics:', error)
+      console.error('Failed to load inventory analytics:', error);
 
-      setAnalytics(emptyInventoryAnalytics)
+      setAnalytics(emptyInventoryAnalytics);
     }
   }
 
   async function loadInventory(page = inventoryPage) {
-    setLoading(true)
+    setLoading(true);
 
     try {
-      const safePage = Math.max(1, Number(page || 1))
+      const safePage = Math.max(1, Number(page || 1));
 
       const result = await window.api.getInventoryPage({
         search,
@@ -198,22 +200,22 @@ export default function InventoryPage() {
         categoryId: categoryFilter,
         limit: SYSTEM_PAGE_SIZE,
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
-      })
+      });
 
-      const total = Number(result.total || 0)
+      const total = Number(result.total || 0);
 
-      const totalPages = Math.max(1, Math.ceil(total / SYSTEM_PAGE_SIZE))
+      const totalPages = Math.max(1, Math.ceil(total / SYSTEM_PAGE_SIZE));
 
       if (safePage > totalPages) {
-        setInventoryPage(totalPages)
-        await loadInventory(totalPages)
-        return
+        setInventoryPage(totalPages);
+        await loadInventory(totalPages);
+        return;
       }
 
-      setRows(Array.isArray(result.rows) ? result.rows : [])
+      setRows(Array.isArray(result.rows) ? result.rows : []);
 
-      setInventoryTotal(total)
-      setInventoryPage(safePage)
+      setInventoryTotal(total);
+      setInventoryPage(safePage);
 
       setStats({
         total: Number(result.summary?.total || 0),
@@ -223,14 +225,14 @@ export default function InventoryPage() {
         totalBuyValue: Number(result.summary?.totalBuyValue || 0),
         totalSellValue: Number(result.summary?.totalSellValue || 0),
         inactive: Number(result.summary?.inactive || 0),
-      })
+      });
     } catch (error) {
-      console.error('Failed to load inventory:', error)
+      console.error('Failed to load inventory:', error);
 
-      showMessage('حدث خطأ أثناء تحميل المخزون')
+      showMessage('حدث خطأ أثناء تحميل المخزون');
 
-      setRows([])
-      setInventoryTotal(0)
+      setRows([]);
+      setInventoryTotal(0);
 
       setStats({
         total: 0,
@@ -240,36 +242,36 @@ export default function InventoryPage() {
         totalBuyValue: 0,
         totalSellValue: 0,
         inactive: 0,
-      })
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      setInventoryPage(1)
-      void loadInventory(1)
-    }, 250)
+      setInventoryPage(1);
+      void loadInventory(1);
+    }, 250);
 
-    return () => clearTimeout(handle)
-  }, [search, statusFilters, categoryFilter])
+    return () => clearTimeout(handle);
+  }, [search, statusFilters, categoryFilter]);
 
   useEffect(() => {
-    void loadAnalytics()
-  }, [categoryFilter])
+    void loadAnalytics();
+  }, [categoryFilter]);
 
   function toggleStatusFilter(filter: InventoryStatusFilter) {
     setStatusFilters((current) =>
       current.includes(filter)
         ? current.filter((item) => item !== filter)
         : [...current, filter],
-    )
+    );
   }
 
   function getStatusFilterLabel() {
     if (statusFilters.length === 0) {
-      return 'كل الحالات'
+      return 'كل الحالات';
     }
 
     const labels: Record<InventoryStatusFilter, string> = {
@@ -277,96 +279,99 @@ export default function InventoryPage() {
       low: 'منخفض',
       out: 'نافد',
       inactive: 'متعطل',
-    }
+    };
 
     if (statusFilters.length === 1) {
-      return labels[statusFilters[0]]
+      return labels[statusFilters[0]];
     }
 
-    return statusFilters.map((status) => labels[status]).join(' + ')
+    return statusFilters.map((status) => labels[status]).join(' + ');
   }
 
   function showMessage(text: string, duration = 1800) {
-    setMessage(text)
+    setMessage(text);
 
     setTimeout(() => {
-      setMessage('')
-    }, duration)
+      setMessage('');
+    }, duration);
   }
 
   function openAdjust(item: InventoryRow) {
     if (!canAdjustInventory) {
-      return
+      return;
     }
-    setAdjustItem(item)
-    setTargetStock(String(Number(item.stock || 0)))
-    setAdjustNotes('')
+    setAdjustItem(item);
+    setTargetStock(String(Number(item.stock || 0)));
+    setAdjustNotes('');
   }
 
   async function saveAdjustment() {
-    if (!adjustItem) return
-    if (savingAdjust) return
+    if (!adjustItem) return;
+    if (savingAdjust) return;
 
-    const nextStock = Number(targetStock)
+    const nextStock = Number(targetStock);
 
     if (!Number.isFinite(nextStock) || nextStock < 0) {
-      showMessage('اكتب مخزون صحيح')
-      return
+      showMessage('اكتب مخزون صحيح');
+      return;
     }
 
-    setSavingAdjust(true)
+    setSavingAdjust(true);
 
     try {
       const result = await window.api.adjustVariantStock({
         variant_id: adjustItem.variant_id,
         target_stock: nextStock,
         notes: adjustNotes.trim() || null,
-      })
+      });
 
       showMessage(
         result.diff === 0
           ? 'لا يوجد تغيير في المخزون'
           : `تم تعديل المخزون من ${result.old_stock} إلى ${result.new_stock}`,
-      )
+      );
 
-      setAdjustItem(null)
-      await Promise.all([loadInventory(inventoryPage), loadAnalytics()])
+      setAdjustItem(null);
+      await Promise.all([loadInventory(inventoryPage), loadAnalytics()]);
     } catch (error) {
-      console.error('Failed to adjust stock:', error)
+      console.error('Failed to adjust stock:', error);
 
-      showMessage('حدث خطأ أثناء تسوية المخزون. لم يتم تطبيق أي تغييرات.', 4500)
+      showMessage(
+        'حدث خطأ أثناء تسوية المخزون. لم يتم تطبيق أي تغييرات.',
+        4500,
+      );
     } finally {
-      setSavingAdjust(false)
+      setSavingAdjust(false);
     }
   }
 
   async function openHistory(item: InventoryRow, page = 1) {
-    setHistoryItem(item)
-    setHistoryLoading(true)
+    setHistoryItem(item);
+    setHistoryLoading(true);
 
     try {
-      const safePage = Math.max(1, Number(page || 1))
+      const safePage = Math.max(1, Number(page || 1));
 
       const result = await window.api.getStockMovements({
         variant_id: item.variant_id,
         limit: SYSTEM_PAGE_SIZE,
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
-      })
+      });
 
-      setMovements(Array.isArray(result.rows) ? result.rows : [])
+      setMovements(Array.isArray(result.rows) ? result.rows : []);
 
-      setMovementsTotal(Number(result.total || 0))
+      setMovementsTotal(Number(result.total || 0));
 
-      setMovementsPage(safePage)
+      setMovementsPage(safePage);
     } catch (error) {
-      console.error('Failed to load stock movements:', error)
+      console.error('Failed to load stock movements:', error);
 
-      showMessage('حدث خطأ أثناء تحميل سجل الحركات')
+      showMessage('حدث خطأ أثناء تحميل سجل الحركات');
 
-      setMovements([])
-      setMovementsTotal(0)
+      setMovements([]);
+      setMovementsTotal(0);
     } finally {
-      setHistoryLoading(false)
+      setHistoryLoading(false);
     }
   }
 
@@ -375,25 +380,25 @@ export default function InventoryPage() {
       const inventoryRows = await window.api.getInventoryList({
         search: '',
         status: 'all',
-      })
+      });
 
       const printRows: InventoryRow[] = Array.isArray(inventoryRows)
         ? inventoryRows
-        : []
-      const html = buildInventoryEmployeesPdfHtml(printRows)
+        : [];
+      const html = buildInventoryEmployeesPdfHtml(printRows);
 
       const result = await window.api.savePdfFromHtml({
         html,
         defaultFileName: `inventory-employees-${new Date().toISOString().slice(0, 10)}.pdf`,
         landscape: true,
-      })
+      });
 
-      if (result?.canceled) return
+      if (result?.canceled) return;
 
-      showMessage('تم حفظ PDF المخزون بنجاح')
+      showMessage('تم حفظ PDF المخزون بنجاح');
     } catch (error) {
-      console.error('Failed to save inventory PDF:', error)
-      showMessage('حدث خطأ أثناء حفظ PDF المخزون')
+      console.error('Failed to save inventory PDF:', error);
+      showMessage('حدث خطأ أثناء حفظ PDF المخزون');
     }
   }
 
@@ -472,7 +477,7 @@ export default function InventoryPage() {
                   loadInventory(inventoryPage),
 
                   loadAnalytics(),
-                ])
+                ]);
               }}
               style={primaryButtonStyle}
             >
@@ -808,7 +813,7 @@ export default function InventoryPage() {
           totalItems={inventoryTotal}
           loading={loading}
           onPageChange={(page) => {
-            void loadInventory(page)
+            void loadInventory(page);
           }}
         />
 
@@ -1091,8 +1096,8 @@ export default function InventoryPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setHistoryItem(null)
-                  setMovements([])
+                  setHistoryItem(null);
+                  setMovements([]);
                 }}
                 style={closeButtonStyle}
               >
@@ -1105,7 +1110,7 @@ export default function InventoryPage() {
               totalItems={movementsTotal}
               loading={historyLoading}
               onPageChange={(page) => {
-                void openHistory(historyItem, page)
+                void openHistory(historyItem, page);
               }}
             />
 
@@ -1196,10 +1201,10 @@ export default function InventoryPage() {
             <button
               type="button"
               onClick={() => {
-                setHistoryItem(null)
-                setMovements([])
-                setMovementsTotal(0)
-                setMovementsPage(1)
+                setHistoryItem(null);
+                setMovements([]);
+                setMovementsTotal(0);
+                setMovementsPage(1);
               }}
               style={{
                 ...secondaryButtonStyle,
@@ -1212,36 +1217,36 @@ export default function InventoryPage() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function buildInventoryEmployeesPdfHtml(printRows: InventoryRow[]) {
   const activeRows = printRows.filter(
     (item) =>
       Number(item.product_is_active) === 1 && Number(item.is_active) === 1,
-  )
+  );
 
-  const inactiveCount = printRows.length - activeRows.length
+  const inactiveCount = printRows.length - activeRows.length;
 
   const availableCount = activeRows.filter(
     (item) => Number(item.stock || 0) > Number(item.min_stock || 0),
-  ).length
+  ).length;
 
   const lowCount = activeRows.filter(
     (item) =>
       Number(item.stock || 0) > 0 &&
       Number(item.stock || 0) <= Number(item.min_stock || 0),
-  ).length
+  ).length;
 
   const outCount = activeRows.filter(
     (item) => Number(item.stock || 0) === 0,
-  ).length
+  ).length;
 
   const rowsHtml = printRows
     .map((item, index) => {
-      const stock = Number(item.stock || 0)
-      const minStock = Number(item.min_stock || 0)
-      const statusText = getInventoryStatusText(item)
+      const stock = Number(item.stock || 0);
+      const minStock = Number(item.min_stock || 0);
+      const statusText = getInventoryStatusText(item);
 
       return `
         <tr>
@@ -1258,9 +1263,9 @@ function buildInventoryEmployeesPdfHtml(printRows: InventoryRow[]) {
           <td>${statusText}</td>
           <td class="notes-cell">&nbsp;</td>
         </tr>
-      `
+      `;
     })
-    .join('')
+    .join('');
 
   return `
     <!doctype html>
@@ -1456,7 +1461,7 @@ function buildInventoryEmployeesPdfHtml(printRows: InventoryRow[]) {
         </div>
       </body>
     </html>
-  `
+  `;
 }
 
 function StatCard({
@@ -1466,11 +1471,11 @@ function StatCard({
   warning,
   danger,
 }: {
-  title: string
-  value: string
-  success?: boolean
-  warning?: boolean
-  danger?: boolean
+  title: string;
+  value: string;
+  success?: boolean;
+  warning?: boolean;
+  danger?: boolean;
 }) {
   const color = danger
     ? '#fca5a5'
@@ -1478,22 +1483,22 @@ function StatCard({
       ? '#fdba74'
       : success
         ? '#6ee7b7'
-        : '#e5e7eb'
+        : '#e5e7eb';
 
   return (
     <div className="glass-card" style={statCardStyle}>
       <div style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</div>
       <strong style={{ color, fontSize: '21px' }}>{value}</strong>
     </div>
-  )
+  );
 }
 
 function StatusBadge({ item }: { item: InventoryRow }) {
-  const stock = Number(item.stock || 0)
-  const minStock = Number(item.min_stock || 0)
+  const stock = Number(item.stock || 0);
+  const minStock = Number(item.min_stock || 0);
 
   const isInactive =
-    Number(item.product_is_active) !== 1 || Number(item.is_active) !== 1
+    Number(item.product_is_active) !== 1 || Number(item.is_active) !== 1;
 
   if (isInactive) {
     return (
@@ -1510,29 +1515,29 @@ function StatusBadge({ item }: { item: InventoryRow }) {
       >
         متعطل
       </span>
-    )
+    );
   }
 
-  let text = 'متاح'
-  let color = '#6ee7b7'
-  let background = 'rgba(16,185,129,0.10)'
-  let border = 'rgba(16,185,129,0.25)'
+  let text = 'متاح';
+  let color = '#6ee7b7';
+  let background = 'rgba(16,185,129,0.10)';
+  let border = 'rgba(16,185,129,0.25)';
 
   if (stock < 0) {
-    text = 'سالب'
-    color = '#fca5a5'
-    background = 'rgba(239,68,68,0.10)'
-    border = 'rgba(239,68,68,0.25)'
+    text = 'سالب';
+    color = '#fca5a5';
+    background = 'rgba(239,68,68,0.10)';
+    border = 'rgba(239,68,68,0.25)';
   } else if (stock === 0) {
-    text = 'نافد'
-    color = '#fca5a5'
-    background = 'rgba(239,68,68,0.10)'
-    border = 'rgba(239,68,68,0.25)'
+    text = 'نافد';
+    color = '#fca5a5';
+    background = 'rgba(239,68,68,0.10)';
+    border = 'rgba(239,68,68,0.25)';
   } else if (stock <= minStock) {
-    text = 'منخفض'
-    color = '#fdba74'
-    background = 'rgba(249,115,22,0.10)'
-    border = 'rgba(249,115,22,0.25)'
+    text = 'منخفض';
+    color = '#fdba74';
+    background = 'rgba(249,115,22,0.10)';
+    border = 'rgba(249,115,22,0.25)';
   }
 
   return (
@@ -1549,35 +1554,35 @@ function StatusBadge({ item }: { item: InventoryRow }) {
     >
       {text}
     </span>
-  )
+  );
 }
 
 function stockColor(item: InventoryRow) {
-  const stock = Number(item.stock || 0)
-  const minStock = Number(item.min_stock || 0)
+  const stock = Number(item.stock || 0);
+  const minStock = Number(item.min_stock || 0);
 
   if (Number(item.product_is_active) !== 1 || Number(item.is_active) !== 1) {
-    return '#94a3b8'
+    return '#94a3b8';
   }
 
-  if (stock < 0) return '#fca5a5'
-  if (stock === 0) return '#fca5a5'
-  if (stock <= minStock) return '#fdba74'
-  return '#6ee7b7'
+  if (stock < 0) return '#fca5a5';
+  if (stock === 0) return '#fca5a5';
+  if (stock <= minStock) return '#fdba74';
+  return '#6ee7b7';
 }
 
 function getInventoryStatusText(item: InventoryRow) {
-  const stock = Number(item.stock || 0)
-  const minStock = Number(item.min_stock || 0)
+  const stock = Number(item.stock || 0);
+  const minStock = Number(item.min_stock || 0);
 
   if (Number(item.product_is_active) !== 1 || Number(item.is_active) !== 1) {
-    return 'متعطل'
+    return 'متعطل';
   }
 
-  if (stock < 0) return 'سالب'
-  if (stock === 0) return 'نافد'
-  if (stock <= minStock) return 'منخفض'
-  return 'متاح'
+  if (stock < 0) return 'سالب';
+  if (stock === 0) return 'نافد';
+  if (stock <= minStock) return 'منخفض';
+  return 'متاح';
 }
 
 function escapeHtml(value: string) {
@@ -1586,31 +1591,31 @@ function escapeHtml(value: string) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+    .replace(/'/g, '&#039;');
 }
 
 function movementTypeName(movement: MovementRow) {
-  if (movement.reference_type === 'sale') return 'بيع'
-  if (movement.reference_type === 'return') return 'مرتجع'
-  if (movement.reference_type === 'opening_stock') return 'رصيد افتتاحي'
-  if (movement.reference_type === 'manual_adjust') return 'تسوية يدوية'
+  if (movement.reference_type === 'sale') return 'بيع';
+  if (movement.reference_type === 'return') return 'مرتجع';
+  if (movement.reference_type === 'opening_stock') return 'رصيد افتتاحي';
+  if (movement.reference_type === 'manual_adjust') return 'تسوية يدوية';
 
-  if (movement.type === 'in') return 'دخول'
-  if (movement.type === 'out') return 'خروج'
+  if (movement.type === 'in') return 'دخول';
+  if (movement.type === 'out') return 'خروج';
 
-  return movement.type
+  return movement.type;
 }
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 function formatDate(value?: string) {
-  if (!value) return '—'
+  if (!value) return '—';
 
   try {
-    const raw = String(value)
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
+    const raw = String(value);
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
 
     return new Date(normalized).toLocaleString('ar-EG', {
       year: 'numeric',
@@ -1618,9 +1623,9 @@ function formatDate(value?: string) {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-    })
+    });
   } catch {
-    return value
+    return value;
   }
 }
 
@@ -1629,14 +1634,14 @@ const cardStyle: React.CSSProperties = {
   borderRadius: '18px',
   display: 'grid',
   gap: '14px',
-}
+};
 
 const statCardStyle: React.CSSProperties = {
   padding: '14px',
   borderRadius: '18px',
   display: 'grid',
   gap: '10px',
-}
+};
 
 const inputStyle: React.CSSProperties = {
   height: '44px',
@@ -1649,7 +1654,7 @@ const inputStyle: React.CSSProperties = {
   textAlign: 'right',
   direction: 'rtl',
   boxSizing: 'border-box',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -1660,7 +1665,7 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid #7c3aed',
@@ -1671,7 +1676,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const smallButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(124,58,237,0.7)',
@@ -1684,7 +1689,7 @@ const smallButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
   whiteSpace: 'nowrap',
   fontSize: '12px',
-}
+};
 
 const thStyle: React.CSSProperties = {
   padding: '10px 8px',
@@ -1692,7 +1697,7 @@ const thStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
   fontSize: '13px',
   borderBottom: '1px solid rgba(255,255,255,0.08)',
-}
+};
 
 const tdStyle: React.CSSProperties = {
   padding: '10px 8px',
@@ -1700,7 +1705,7 @@ const tdStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
   fontSize: '13px',
   verticalAlign: 'middle',
-}
+};
 
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
@@ -1711,7 +1716,7 @@ const modalOverlayStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   padding: '20px',
-}
+};
 
 const modalStyle: React.CSSProperties = {
   width: '480px',
@@ -1724,17 +1729,17 @@ const modalStyle: React.CSSProperties = {
   padding: '22px',
   direction: 'rtl',
   boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
-}
+};
 
 const fieldStyle: React.CSSProperties = {
   display: 'grid',
   gap: '8px',
-}
+};
 
 const labelStyle: React.CSSProperties = {
   color: '#cbd5e1',
   fontWeight: 800,
-}
+};
 
 const closeButtonStyle: React.CSSProperties = {
   width: '34px',
@@ -1745,4 +1750,4 @@ const closeButtonStyle: React.CSSProperties = {
   color: '#fff',
   cursor: 'pointer',
   fontSize: '20px',
-}
+};

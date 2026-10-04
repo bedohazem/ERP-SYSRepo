@@ -1,35 +1,35 @@
-import { getPaymentMethodLabel } from '../../utils/payment-method'
-import { roundMoney } from '../../../shared/money'
+import { getPaymentMethodLabel } from '../../utils/payment-method';
+import { roundMoney } from '../../../shared/money';
 
 export type ReportsExportData = {
-  summary: Record<string, number>
+  summary: Record<string, number>;
 
   cashAccounts: Array<{
-    payment_method: string
-    label: string
-    total_in: number
-    total_out: number
-    balance: number
-  }>
+    payment_method: string;
+    label: string;
+    total_in: number;
+    total_out: number;
+    balance: number;
+  }>;
 
-  cashAccountsTotalBalance: number
+  cashAccountsTotalBalance: number;
 
-  topProducts: any[]
-  dailySales: any[]
-  paymentMethods: any[]
-  cashierSales: any[]
-  lowStock: any[]
-  topCustomers: any[]
-}
+  topProducts: any[];
+  dailySales: any[];
+  paymentMethods: any[];
+  cashierSales: any[];
+  lowStock: any[];
+  topCustomers: any[];
+};
 
 type ExportSection = {
-  title: string
-  columns: string[]
-  rows: Array<Array<string | number>>
-}
+  title: string;
+  columns: string[];
+  rows: Array<Array<string | number>>;
+};
 
 function numberValue(value: unknown) {
-  return String(roundMoney(value))
+  return String(roundMoney(value));
 }
 
 function escapeHtml(value: unknown) {
@@ -38,15 +38,15 @@ function escapeHtml(value: unknown) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+    .replace(/'/g, '&#039;');
 }
 
 function csvCell(value: unknown) {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`
+  return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }
 
 function buildSections(data: ReportsExportData): ExportSection[] {
-  const summary = data.summary || {}
+  const summary = data.summary || {};
 
   return [
     {
@@ -236,7 +236,7 @@ function buildSections(data: ReportsExportData): ExportSection[] {
         .sort((a, b) => String(a.day).localeCompare(String(b.day)))
         .map((row) => [row.day, numberValue(row.total)]),
     },
-  ]
+  ];
 }
 
 export function buildReportsCsv(
@@ -244,7 +244,7 @@ export function buildReportsCsv(
 
   periodLabel: string,
 ) {
-  const sections = buildSections(data)
+  const sections = buildSections(data);
 
   const lines: string[] = [
     csvCell('تقرير ERP'),
@@ -252,21 +252,21 @@ export function buildReportsCsv(
     csvCell(`الفترة: ${periodLabel}`),
 
     '',
-  ]
+  ];
 
   for (const section of sections) {
-    lines.push(csvCell(section.title))
+    lines.push(csvCell(section.title));
 
-    lines.push(section.columns.map(csvCell).join(','))
+    lines.push(section.columns.map(csvCell).join(','));
 
     for (const row of section.rows) {
-      lines.push(row.map(csvCell).join(','))
+      lines.push(row.map(csvCell).join(','));
     }
 
-    lines.push('')
+    lines.push('');
   }
 
-  return lines.join('\r\n')
+  return lines.join('\r\n');
 }
 
 export function buildReportsPdfHtml(
@@ -274,7 +274,7 @@ export function buildReportsPdfHtml(
 
   periodLabel: string,
 ) {
-  const sections = buildSections(data)
+  const sections = buildSections(data);
 
   const sectionsHtml = sections
     .map((section) => {
@@ -299,7 +299,7 @@ export function buildReportsPdfHtml(
                   لا توجد بيانات
                 </td>
               </tr>
-            `
+            `;
 
       return `
           <section>
@@ -321,9 +321,9 @@ export function buildReportsPdfHtml(
               </tbody>
             </table>
           </section>
-        `
+        `;
     })
-    .join('')
+    .join('');
 
   return `
 <!doctype html>
@@ -437,5 +437,5 @@ export function buildReportsPdfHtml(
   ${sectionsHtml}
 </body>
 </html>
-  `.trim()
+  `.trim();
 }

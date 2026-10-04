@@ -1,14 +1,14 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties } from 'react';
 
-export const SYSTEM_PAGE_SIZE = 50
+export const SYSTEM_PAGE_SIZE = 50;
 
 type PaginationBarProps = {
-  page: number
-  totalItems: number
-  pageSize?: number
-  loading?: boolean
-  onPageChange: (page: number) => void
-}
+  page: number;
+  totalItems: number;
+  pageSize?: number;
+  loading?: boolean;
+  onPageChange: (page: number) => void;
+};
 
 export default function PaginationBar({
   page,
@@ -18,15 +18,15 @@ export default function PaginationBar({
   onPageChange,
 }: PaginationBarProps) {
   if (totalItems <= 0) {
-    return null
+    return null;
   }
 
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
-  const safePage = Math.min(Math.max(Number(page || 1), 1), totalPages)
+  const safePage = Math.min(Math.max(Number(page || 1), 1), totalPages);
 
-  const startItem = (safePage - 1) * pageSize + 1
-  const endItem = Math.min(safePage * pageSize, totalItems)
+  const startItem = (safePage - 1) * pageSize + 1;
+  const endItem = Math.min(safePage * pageSize, totalItems);
 
   const buttonStyle = (disabled: boolean): CSSProperties => ({
     height: '34px',
@@ -38,7 +38,7 @@ export default function PaginationBar({
     fontWeight: 800,
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.4 : 1,
-  })
+  });
 
   return (
     <div
@@ -121,5 +121,5 @@ export default function PaginationBar({
         عرض {startItem} - {endItem} من {totalItems}
       </div>
     </div>
-  )
+  );
 }

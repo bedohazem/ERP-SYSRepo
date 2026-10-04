@@ -1,42 +1,42 @@
-import Database from 'better-sqlite3'
-import { afterEach, describe, expect, it } from 'vitest'
+import Database from 'better-sqlite3';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   runDatabaseMigrations,
   type DatabaseMigration,
-} from '../../src/main/database/migrations/migrations'
+} from '../../src/main/database/migrations/migrations';
 
-import { closeDb, getDb } from '../../src/main/database/db'
+import { closeDb, getDb } from '../../src/main/database/db';
 
-const memoryDatabases: Database.Database[] = []
+const memoryDatabases: Database.Database[] = [];
 
 function createMemoryDatabase() {
-  const database = new Database(':memory:')
+  const database = new Database(':memory:');
 
-  memoryDatabases.push(database)
+  memoryDatabases.push(database);
 
-  return database
+  return database;
 }
 
 afterEach(() => {
-  closeDb()
+  closeDb();
 
   while (memoryDatabases.length > 0) {
-    const database = memoryDatabases.pop()
+    const database = memoryDatabases.pop();
 
     try {
-      database?.close()
+      database?.close();
     } catch {
       // ignore test cleanup failure
     }
   }
-})
+});
 
 describe('database migrations', () => {
   it('runs migrations once and records them in order', () => {
-    const database = createMemoryDatabase()
+    const database = createMemoryDatabase();
 
-    const calls: string[] = []
+    const calls: string[] = [];
 
     const migrations: DatabaseMigration[] = [
       {
@@ -44,14 +44,14 @@ describe('database migrations', () => {
         name: 'create-probe',
 
         up: (db) => {
-          calls.push('v1')
+          calls.push('v1');
 
           db.exec(`
             CREATE TABLE migration_probe (
               id INTEGER PRIMARY KEY,
               value TEXT
             );
-          `)
+          `);
         },
       },
 
@@ -60,7 +60,7 @@ describe('database migrations', () => {
         name: 'seed-probe',
 
         up: (db) => {
-          calls.push('v2')
+          calls.push('v2');
 
           db.prepare(
             `
@@ -71,16 +71,16 @@ describe('database migrations', () => {
 
             VALUES (1, 'ok')
             `,
-          ).run()
+          ).run();
         },
       },
-    ]
+    ];
 
-    runDatabaseMigrations(database, migrations)
+    runDatabaseMigrations(database, migrations);
 
-    runDatabaseMigrations(database, migrations)
+    runDatabaseMigrations(database, migrations);
 
-    expect(calls).toEqual(['v1', 'v2'])
+    expect(calls).toEqual(['v1', 'v2']);
 
     const rows = database
       .prepare(
@@ -94,7 +94,7 @@ describe('database migrations', () => {
         ORDER BY version
         `,
       )
-      .all()
+      .all();
 
     expect(rows).toEqual([
       {
@@ -105,7 +105,7 @@ describe('database migrations', () => {
         version: 2,
         name: 'seed-probe',
       },
-    ])
+    ]);
 
     const probe = database
       .prepare(
@@ -119,15 +119,15 @@ describe('database migrations', () => {
       )
       .get() as
       | {
-          value: string
+          value: string;
         }
-      | undefined
+      | undefined;
 
-    expect(probe?.value).toBe('ok')
-  })
+    expect(probe?.value).toBe('ok');
+  });
 
   it('rolls back a failed migration without recording its version', () => {
-    const database = createMemoryDatabase()
+    const database = createMemoryDatabase();
 
     const migrations: DatabaseMigration[] = [
       {
@@ -139,7 +139,7 @@ describe('database migrations', () => {
             CREATE TABLE valid_probe (
               id INTEGER PRIMARY KEY
             );
-          `)
+          `);
         },
       },
 
@@ -152,16 +152,16 @@ describe('database migrations', () => {
             CREATE TABLE rolled_back_probe (
               id INTEGER PRIMARY KEY
             );
-          `)
+          `);
 
-          throw new Error('simulated migration failure')
+          throw new Error('simulated migration failure');
         },
       },
-    ]
+    ];
 
     expect(() => runDatabaseMigrations(database, migrations)).toThrow(
       'simulated migration failure',
-    )
+    );
 
     const versions = database
       .prepare(
@@ -174,10 +174,10 @@ describe('database migrations', () => {
         `,
       )
       .all() as Array<{
-      version: number
-    }>
+      version: number;
+    }>;
 
-    expect(versions.map((row) => row.version)).toEqual([1])
+    expect(versions.map((row) => row.version)).toEqual([1]);
 
     const rolledBackTable = database
       .prepare(
@@ -194,13 +194,13 @@ describe('database migrations', () => {
         LIMIT 1
         `,
       )
-      .get()
+      .get();
 
-    expect(rolledBackTable).toBeUndefined()
-  })
+    expect(rolledBackTable).toBeUndefined();
+  });
 
   it('rejects a non sequential migration plan', () => {
-    const database = createMemoryDatabase()
+    const database = createMemoryDatabase();
 
     expect(() =>
       runDatabaseMigrations(database, [
@@ -216,13 +216,13 @@ describe('database migrations', () => {
           up: () => undefined,
         },
       ]),
-    ).toThrow('خطة ترقية قاعدة البيانات غير صحيحة')
-  })
+    ).toThrow('خطة ترقية قاعدة البيانات غير صحيحة');
+  });
 
   it('boots ERP with the latest schema before repositories run', () => {
-    closeDb()
+    closeDb();
 
-    const database = getDb()
+    const database = getDb();
 
     const migrations = database
       .prepare(
@@ -236,7 +236,7 @@ describe('database migrations', () => {
         ORDER BY version
         `,
       )
-      .all()
+      .all();
 
     expect(migrations).toEqual([
       {
@@ -289,7 +289,7 @@ describe('database migrations', () => {
 
         name: 'purchase-orders',
       },
-    ])
+    ]);
 
     const userPermissionColumns = database
       .prepare(
@@ -300,8 +300,8 @@ describe('database migrations', () => {
       `,
       )
       .all() as Array<{
-      name: string
-    }>
+      name: string;
+    }>;
 
     expect(userPermissionColumns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
@@ -310,7 +310,7 @@ describe('database migrations', () => {
         'allowed',
         'updated_at',
       ]),
-    )
+    );
 
     const purchaseReturnColumns = database
       .prepare(
@@ -321,8 +321,8 @@ describe('database migrations', () => {
         `,
       )
       .all() as Array<{
-      name: string
-    }>
+      name: string;
+    }>;
 
     const purchaseInvoiceColumns = database
       .prepare(
@@ -333,18 +333,18 @@ describe('database migrations', () => {
           `,
       )
       .all() as Array<{
-      name: string
-    }>
+      name: string;
+    }>;
 
     expect(purchaseInvoiceColumns.map((column) => column.name)).toContain(
       'business_date',
-    )
+    );
 
     expect(purchaseInvoiceColumns.map((column) => column.name)).toContain(
       'due_date',
-    )
+    );
 
-    const columnNames = purchaseReturnColumns.map((column) => column.name)
+    const columnNames = purchaseReturnColumns.map((column) => column.name);
 
     expect(columnNames).toEqual(
       expect.arrayContaining([
@@ -362,7 +362,7 @@ describe('database migrations', () => {
         'cancelled_shift_id',
         'replacement_return_id',
       ]),
-    )
+    );
 
     const variantColumns = database
       .prepare(
@@ -373,12 +373,12 @@ describe('database migrations', () => {
       `,
       )
       .all() as Array<{
-      name: string
-    }>
+      name: string;
+    }>;
 
     expect(variantColumns.map((column) => column.name)).toEqual(
       expect.arrayContaining(['average_cost', 'inventory_value']),
-    )
+    );
 
     const stockMovementColumns = database
       .prepare(
@@ -389,12 +389,12 @@ describe('database migrations', () => {
       `,
       )
       .all() as Array<{
-      name: string
-    }>
+      name: string;
+    }>;
 
     expect(stockMovementColumns.map((column) => column.name)).toEqual(
       expect.arrayContaining(['unit_cost', 'cost_value', 'created_by']),
-    )
+    );
 
     const stockMovementIndexes = database
       .prepare(
@@ -405,12 +405,12 @@ describe('database migrations', () => {
       `,
       )
       .all() as Array<{
-      name: string
-    }>
+      name: string;
+    }>;
 
     expect(stockMovementIndexes.map((index) => index.name)).toContain(
       'idx_stock_movements_created_by',
-    )
+    );
 
     const heldSaleColumns = database
       .prepare(
@@ -421,8 +421,8 @@ describe('database migrations', () => {
       `,
       )
       .all() as Array<{
-      name: string
-    }>
+      name: string;
+    }>;
 
     expect(heldSaleColumns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
@@ -436,7 +436,7 @@ describe('database migrations', () => {
         'created_at',
         'updated_at',
       ]),
-    )
+    );
 
     const heldSaleItemColumns = database
       .prepare(
@@ -447,8 +447,8 @@ describe('database migrations', () => {
       `,
       )
       .all() as Array<{
-      name: string
-    }>
+      name: string;
+    }>;
 
     expect(heldSaleItemColumns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
@@ -458,7 +458,7 @@ describe('database migrations', () => {
         'quantity',
         'position',
       ]),
-    )
+    );
 
     const customerColumns = database
       .prepare(
@@ -469,12 +469,12 @@ describe('database migrations', () => {
       `,
       )
       .all() as Array<{
-      name: string
-    }>
+      name: string;
+    }>;
 
     expect(customerColumns.map((column) => column.name)).toEqual(
       expect.arrayContaining(['credit_limit', 'credit_days']),
-    )
+    );
 
     const supplierColumns = database
       .prepare(
@@ -485,12 +485,12 @@ describe('database migrations', () => {
       `,
       )
       .all() as Array<{
-      name: string
-    }>
+      name: string;
+    }>;
 
     expect(supplierColumns.map((column) => column.name)).toContain(
       'credit_days',
-    )
+    );
 
     const saleColumns = database
       .prepare(
@@ -501,8 +501,8 @@ describe('database migrations', () => {
       `,
       )
       .all() as Array<{
-      name: string
-    }>
+      name: string;
+    }>;
 
     expect(saleColumns.map((column) => column.name)).toEqual(
       expect.arrayContaining([
@@ -511,6 +511,6 @@ describe('database migrations', () => {
         'credit_limit_override_approved_by',
         'due_date',
       ]),
-    )
-  })
-})
+    );
+  });
+});

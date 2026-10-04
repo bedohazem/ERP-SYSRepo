@@ -1,64 +1,66 @@
-import { getDb } from '../db'
-import { hashPassword } from '../../security/password'
+import { getDb } from '../db';
+import { hashPassword } from '../../security/password';
 import {
   getRoleDefaultPermissions,
   isPermissionKey,
   PERMISSION_KEYS,
   normalizePermissions,
   type PermissionKey,
-} from '../../../shared/permissions'
+} from '../../../shared/permissions';
 
 export type UserRow = {
-  id: number
-  name: string
-  username: string
-  password: string
-  role: string
-  is_active: number
-  must_change_password: number
-  created_at: string
-}
+  id: number;
+  name: string;
+  username: string;
+  password: string;
+  role: string;
+  is_active: number;
+  must_change_password: number;
+  created_at: string;
+};
 
-export type PublicUserRow = Omit<UserRow, 'password'>
+export type PublicUserRow = Omit<UserRow, 'password'>;
 
 type UpdateUserInput = {
-  id: number
-  name: string
-  username: string
-  role: string
-  is_active?: number
-}
+  id: number;
+  name: string;
+  username: string;
+  role: string;
+  is_active?: number;
+};
 
 function toPublicUser(user: UserRow): PublicUserRow {
-  const { password, ...safeUser } = user
-  return safeUser
+  const { password, ...safeUser } = user;
+  return safeUser;
 }
 
 function normalizeRole(role?: string) {
-  return role === 'admin' ? 'admin' : 'cashier'
+  return role === 'admin' ? 'admin' : 'cashier';
 }
 
 type UserPermissionOverrideRow = {
-  permission: string
-  allowed: number
-}
+  permission: string;
+  allowed: number;
+};
 
 export function getEffectiveUserPermissions(
   userIdInput: number,
 ): PermissionKey[] {
-  const userId = Number(userIdInput)
+  const userId = Number(userIdInput);
 
-  const user = getUserByIdInternal(userId)
+  const user = getUserByIdInternal(userId);
 
   if (!user || Number(user.is_active) !== 1) {
-    return []
+    return [];
   }
 
   if (user.role === 'admin') {
-    return [...PERMISSION_KEYS]
+    return [...PERMISSION_KEYS];
   }
 
-  const effective = new Set<PermissionKey>(getRoleDefaultPermissions(user.role))
+  const effective = new Set<PermissionKey>(
+    getRoleDefaultPermissions(user.role),
+  );
 
   const overrides = getDb()
     .prepare(
@@ -72,34 +74,34 @@ export function getEffectiveUserPermissions(
       WHERE user_id = ?
       `,
     )
-    .all(userId) as UserPermissionOverrideRow[]
+    .all(userId) as UserPermissionOverrideRow[];
 
   for (const row of overrides) {
     if (!isPermissionKey(row.permission)) {
-      continue
+      continue;
     }
 
     if (Number(row.allowed) === 1) {
-      effective.add(row.permission)
+      effective.add(row.permission);
     } else {
-      effective.delete(row.permission)
+      effective.delete(row.permission);
     }
   }
 
-  return [...effective]
+  return [...effective];
 }
 
 export function userHasPermission(userId: number, permission: PermissionKey) {
-  return getEffectiveUserPermissions(userId).includes(permission)
+  return getEffectiveUserPermissions(userId).includes(permission);
 }
 
 export function getUserPermissionSettings(userIdInput: number) {
-  const userId = Number(userIdInput)
+  const userId = Number(userIdInput);
 
-  const user = getUserByIdInternal(userId)
+  const user = getUserByIdInternal(userId);
 
   if (!user) {
-    throw new Error('المستخدم غير موجود')
+    throw new Error('المستخدم غير موجود');
   }
 
   const overrides = getDb()
@@ -116,7 +118,7 @@ export function getUserPermissionSettings(userIdInput: number) {
       ORDER BY permission ASC
       `,
     )
-    .all(userId) as UserPermissionOverrideRow[]
+    .all(userId) as UserPermissionOverrideRow[];
 
   return {
     user_id: user.id,
@@ -132,40 +134,42 @@ export function getUserPermissionSettings(userIdInput: number) {
     overrides: overrides.filter((row) => isPermissionKey(row.permission)),
 
     effective_permissions: getEffectiveUserPermissions(user.id),
-  }
+  };
 }
 
 export function setUserPermissions(
   userIdInput: number,
   permissionsInput: readonly string[],
 ) {
-  const db = getDb()
+  const db = getDb();
 
-  const userId = Number(userIdInput)
+  const userId = Number(userIdInput);
 
-  const user = getUserByIdInternal(userId)
+  const user = getUserByIdInternal(userId);
 
   if (!user) {
-    throw new Error('المستخدم غير موجود')
+    throw new Error('المستخدم غير موجود');
   }
 
   if (user.role === 'admin') {
-    throw new Error('صلاحيات مدير النظام كاملة وثابتة')
+    throw new Error('صلاحيات مدير النظام كاملة وثابتة');
   }
 
-  const rawPermissions = Array.isArray(permissionsInput) ? permissionsInput : []
+  const rawPermissions = Array.isArray(permissionsInput)
+    ? permissionsInput
+    : [];
 
   const invalidPermission = rawPermissions.find(
     (permission) => !isPermissionKey(String(permission)),
-  )
+  );
 
   if (invalidPermission) {
-    throw new Error(`صلاحية غير معروفة: ${invalidPermission}`)
+    throw new Error(`صلاحية غير معروفة: ${invalidPermission}`);
   }
 
-  const desired = new Set<PermissionKey>(normalizePermissions(rawPermissions))
+  const desired = new Set<PermissionKey>(normalizePermissions(rawPermissions));
 
-  const defaults = new Set<PermissionKey>(getRoleDefaultPermissions(user.role))
+  const defaults = new Set<PermissionKey>(getRoleDefaultPermissions(user.role));
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -174,7 +178,7 @@ export function setUserPermissions(
 
       WHERE user_id = ?
       `,
-    ).run(userId)
+    ).run(userId);
 
     const insert = db.prepare(
       `
@@ -186,12 +190,12 @@ export function setUserPermissions(
 
         VALUES (?, ?, ?)
         `,
-    )
+    );
 
     for (const permission of PERMISSION_KEYS) {
-      const desiredAllowed = desired.has(permission)
+      const desiredAllowed = desired.has(permission);
 
-      const defaultAllowed = defaults.has(permission)
+      const defaultAllowed = defaults.has(permission);
 
       /*
        * نخزن Overrides فقط.
@@ -199,7 +203,7 @@ export function setUserPermissions(
        * مش محتاجين Row.
        */
       if (desiredAllowed === defaultAllowed) {
-        continue
+        continue;
       }
 
       insert.run(
@@ -208,25 +212,24 @@ export function setUserPermissions(
         permission,
 
         desiredAllowed ? 1 : 0,
-      )
+      );
     }
-  })
+  });
 
-  tx()
+  tx();
 
-  return getUserPermissionSettings(userId)
+  return getUserPermissionSettings(userId);
 }
 
 function getUserByIdInternal(id: number): UserRow | undefined {
-  const db = getDb()
+  const db = getDb();
 
   return db.prepare(`SELECT * FROM users WHERE id = ?`).get(id) as
-    | UserRow
-    | undefined
+    UserRow | undefined;
 }
 
 function countOtherActiveAdmins(userId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -238,13 +241,13 @@ function countOtherActiveAdmins(userId: number) {
         AND is_active = 1
       `,
     )
-    .get(userId) as { count: number }
+    .get(userId) as { count: number };
 
-  return Number(row.count || 0)
+  return Number(row.count || 0);
 }
 
 function ensureUsernameAvailable(username: string, exceptUserId?: number) {
-  const db = getDb()
+  const db = getDb();
 
   const existing = exceptUserId
     ? db
@@ -252,10 +255,10 @@ function ensureUsernameAvailable(username: string, exceptUserId?: number) {
         .get(username, exceptUserId)
     : db
         .prepare(`SELECT id FROM users WHERE username = ? LIMIT 1`)
-        .get(username)
+        .get(username);
 
   if (existing) {
-    throw new Error('اسم المستخدم مستخدم بالفعل')
+    throw new Error('اسم المستخدم مستخدم بالفعل');
   }
 }
 
@@ -264,24 +267,24 @@ function ensureCanChangeAdminStatus(
   nextRole: string,
   nextActive: number,
 ) {
-  const current = getUserByIdInternal(userId)
+  const current = getUserByIdInternal(userId);
 
   if (!current) {
-    throw new Error('المستخدم غير موجود')
+    throw new Error('المستخدم غير موجود');
   }
 
   const isRemovingAdminPower =
     current.role === 'admin' &&
-    (nextRole !== 'admin' || Number(nextActive) !== 1)
+    (nextRole !== 'admin' || Number(nextActive) !== 1);
 
   if (isRemovingAdminPower && countOtherActiveAdmins(userId) === 0) {
-    throw new Error('لا يمكن تعطيل أو تغيير آخر مدير في النظام')
+    throw new Error('لا يمكن تعطيل أو تغيير آخر مدير في النظام');
   }
 }
 
 export function listUsers(search = ''): PublicUserRow[] {
-  const db = getDb()
-  const cleanSearch = search.trim()
+  const db = getDb();
+  const cleanSearch = search.trim();
 
   if (!cleanSearch) {
     return db
@@ -292,7 +295,7 @@ export function listUsers(search = ''): PublicUserRow[] {
         ORDER BY id ASC
         `,
       )
-      .all() as PublicUserRow[]
+      .all() as PublicUserRow[];
   }
 
   return db
@@ -310,24 +313,24 @@ export function listUsers(search = ''): PublicUserRow[] {
       `%${cleanSearch}%`,
       `%${cleanSearch}%`,
       `%${cleanSearch}%`,
-    ) as PublicUserRow[]
+    ) as PublicUserRow[];
 }
 
 export function listUsersPage(input?: {
-  search?: string
-  limit?: number
-  offset?: number
+  search?: string;
+  limit?: number;
+  offset?: number;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const search = String(input?.search || '').trim()
+  const search = String(input?.search || '').trim();
 
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
 
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
-  const where: string[] = []
-  const params: any[] = []
+  const where: string[] = [];
+  const params: any[] = [];
 
   if (search) {
     where.push(`
@@ -336,14 +339,14 @@ export function listUsersPage(input?: {
         OR username LIKE ?
         OR role LIKE ?
       )
-    `)
+    `);
 
-    const q = `%${search}%`
+    const q = `%${search}%`;
 
-    params.push(q, q, q)
+    params.push(q, q, q);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const rows = db
     .prepare(
@@ -362,7 +365,7 @@ export function listUsersPage(input?: {
       OFFSET ?
     `,
     )
-    .all(...params, limit, offset) as PublicUserRow[]
+    .all(...params, limit, offset) as PublicUserRow[];
 
   const totalRow = db
     .prepare(
@@ -373,15 +376,15 @@ export function listUsersPage(input?: {
     `,
     )
     .get(...params) as {
-    total: number
-  }
+    total: number;
+  };
 
   return {
     rows,
     total: Number(totalRow?.total || 0),
     limit,
     offset,
-  }
+  };
 }
 
 export function createUser(
@@ -390,28 +393,28 @@ export function createUser(
   password: string,
   role: string = 'cashier',
   options?: {
-    mustChangePassword?: boolean
+    mustChangePassword?: boolean;
   },
 ): PublicUserRow {
-  const db = getDb()
+  const db = getDb();
 
-  const cleanName = name.trim()
+  const cleanName = name.trim();
 
-  const cleanUsername = username.trim()
+  const cleanUsername = username.trim();
 
   /*
    * لا نعمل trim للباسورد.
    */
-  const rawPassword = String(password ?? '')
+  const rawPassword = String(password ?? '');
 
-  const cleanRole = normalizeRole(role)
+  const cleanRole = normalizeRole(role);
 
   if (!cleanName) {
-    throw new Error('اسم المستخدم مطلوب')
+    throw new Error('اسم المستخدم مطلوب');
   }
 
   if (!cleanUsername) {
-    throw new Error('اسم الدخول مطلوب')
+    throw new Error('اسم الدخول مطلوب');
   }
 
   /*
@@ -420,10 +423,10 @@ export function createUser(
    * الأقوى 8 + حرف + رقم.
    */
   if (rawPassword.length < 4) {
-    throw new Error('كلمة المرور يجب ألا تقل عن 4 أحرف')
+    throw new Error('كلمة المرور يجب ألا تقل عن 4 أحرف');
   }
 
-  ensureUsernameAvailable(cleanUsername)
+  ensureUsernameAvailable(cleanUsername);
 
   const result = db
     .prepare(
@@ -448,41 +451,41 @@ export function createUser(
       hashPassword(rawPassword),
       cleanRole,
       options?.mustChangePassword ? 1 : 0,
-    )
+    );
 
-  const created = getUserByIdInternal(Number(result.lastInsertRowid))
+  const created = getUserByIdInternal(Number(result.lastInsertRowid));
 
   if (!created) {
-    throw new Error('فشل إنشاء المستخدم')
+    throw new Error('فشل إنشاء المستخدم');
   }
 
-  return toPublicUser(created)
+  return toPublicUser(created);
 }
 
 export function updateUser(input: UpdateUserInput): PublicUserRow {
-  const db = getDb()
+  const db = getDb();
 
-  const current = getUserByIdInternal(input.id)
+  const current = getUserByIdInternal(input.id);
 
   if (!current) {
-    throw new Error('المستخدم غير موجود')
+    throw new Error('المستخدم غير موجود');
   }
 
-  const cleanName = input.name.trim()
-  const cleanUsername = input.username.trim()
-  const cleanRole = normalizeRole(input.role)
-  const nextActive = input.is_active === 0 ? 0 : 1
+  const cleanName = input.name.trim();
+  const cleanUsername = input.username.trim();
+  const cleanRole = normalizeRole(input.role);
+  const nextActive = input.is_active === 0 ? 0 : 1;
 
   if (!cleanName) {
-    throw new Error('اسم المستخدم مطلوب')
+    throw new Error('اسم المستخدم مطلوب');
   }
 
   if (!cleanUsername) {
-    throw new Error('اسم الدخول مطلوب')
+    throw new Error('اسم الدخول مطلوب');
   }
 
-  ensureUsernameAvailable(cleanUsername, input.id)
-  ensureCanChangeAdminStatus(input.id, cleanRole, nextActive)
+  ensureUsernameAvailable(cleanUsername, input.id);
+  ensureCanChangeAdminStatus(input.id, cleanRole, nextActive);
 
   db.prepare(
     `
@@ -493,7 +496,7 @@ export function updateUser(input: UpdateUserInput): PublicUserRow {
         is_active = ?
     WHERE id = ?
     `,
-  ).run(cleanName, cleanUsername, cleanRole, nextActive, input.id)
+  ).run(cleanName, cleanUsername, cleanRole, nextActive, input.id);
 
   if (cleanRole !== current.role) {
     db.prepare(
@@ -502,42 +505,42 @@ export function updateUser(input: UpdateUserInput): PublicUserRow {
 
       WHERE user_id = ?
       `,
-    ).run(input.id)
+    ).run(input.id);
   }
 
-  const updated = getUserByIdInternal(input.id)
+  const updated = getUserByIdInternal(input.id);
 
   if (!updated) {
-    throw new Error('فشل تحديث المستخدم')
+    throw new Error('فشل تحديث المستخدم');
   }
 
-  return toPublicUser(updated)
+  return toPublicUser(updated);
 }
 
 export function setUserActive(userId: number, isActive: number): PublicUserRow {
-  const db = getDb()
-  const current = getUserByIdInternal(userId)
+  const db = getDb();
+  const current = getUserByIdInternal(userId);
 
   if (!current) {
-    throw new Error('المستخدم غير موجود')
+    throw new Error('المستخدم غير موجود');
   }
 
-  const nextActive = isActive ? 1 : 0
+  const nextActive = isActive ? 1 : 0;
 
-  ensureCanChangeAdminStatus(userId, current.role, nextActive)
+  ensureCanChangeAdminStatus(userId, current.role, nextActive);
 
   db.prepare(`UPDATE users SET is_active = ? WHERE id = ?`).run(
     nextActive,
     userId,
-  )
+  );
 
-  const updated = getUserByIdInternal(userId)
+  const updated = getUserByIdInternal(userId);
 
   if (!updated) {
-    throw new Error('فشل تحديث حالة المستخدم')
+    throw new Error('فشل تحديث حالة المستخدم');
   }
 
-  return toPublicUser(updated)
+  return toPublicUser(updated);
 }
 
 export function resetUserPassword(
@@ -545,18 +548,18 @@ export function resetUserPassword(
   password: string,
   mustChangePassword = true,
 ): PublicUserRow {
-  const db = getDb()
+  const db = getDb();
 
-  const rawPassword = String(password ?? '')
+  const rawPassword = String(password ?? '');
 
   if (rawPassword.length < 4) {
-    throw new Error('كلمة المرور يجب ألا تقل عن 4 أحرف')
+    throw new Error('كلمة المرور يجب ألا تقل عن 4 أحرف');
   }
 
-  const current = getUserByIdInternal(userId)
+  const current = getUserByIdInternal(userId);
 
   if (!current) {
-    throw new Error('المستخدم غير موجود')
+    throw new Error('المستخدم غير موجود');
   }
 
   db.prepare(
@@ -569,29 +572,29 @@ export function resetUserPassword(
 
     WHERE id = ?
     `,
-  ).run(hashPassword(rawPassword), mustChangePassword ? 1 : 0, userId)
+  ).run(hashPassword(rawPassword), mustChangePassword ? 1 : 0, userId);
 
-  const updated = getUserByIdInternal(userId)
+  const updated = getUserByIdInternal(userId);
 
   if (!updated) {
-    throw new Error('فشل تغيير كلمة المرور')
+    throw new Error('فشل تغيير كلمة المرور');
   }
 
-  return toPublicUser(updated)
+  return toPublicUser(updated);
 }
 
 export function changeOwnPassword(
   userId: number,
   password: string,
 ): PublicUserRow {
-  return resetUserPassword(userId, password, false)
+  return resetUserPassword(userId, password, false);
 }
 
 export function setUserPasswordChangeRequired(
   userId: number,
   required: boolean,
 ): void {
-  const db = getDb()
+  const db = getDb();
 
   db.prepare(
     `
@@ -602,11 +605,11 @@ export function setUserPasswordChangeRequired(
 
     WHERE id = ?
     `,
-  ).run(required ? 1 : 0, userId)
+  ).run(required ? 1 : 0, userId);
 }
 
 export function getAuthBootstrapStatus() {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -628,13 +631,13 @@ export function getAuthBootstrapStatus() {
       `,
     )
     .get() as {
-    total_users: number
-    active_admins: number | null
-  }
+    total_users: number;
+    active_admins: number | null;
+  };
 
-  const totalUsers = Number(row?.total_users || 0)
+  const totalUsers = Number(row?.total_users || 0);
 
-  const activeAdmins = Number(row?.active_admins || 0)
+  const activeAdmins = Number(row?.active_admins || 0);
 
   return {
     total_users: totalUsers,
@@ -644,7 +647,7 @@ export function getAuthBootstrapStatus() {
     needs_setup: totalUsers === 0,
 
     blocked: totalUsers > 0 && activeAdmins === 0,
-  }
+  };
 }
 
 export function createInitialAdmin(
@@ -652,19 +655,19 @@ export function createInitialAdmin(
   username: string,
   password: string,
 ): PublicUserRow {
-  const status = getAuthBootstrapStatus()
+  const status = getAuthBootstrapStatus();
 
   if (!status.needs_setup) {
-    throw new Error('تم إعداد حساب مدير للنظام بالفعل')
+    throw new Error('تم إعداد حساب مدير للنظام بالفعل');
   }
 
   return createUser(name, username, password, 'admin', {
     mustChangePassword: false,
-  })
+  });
 }
 
 export function findUserByUsername(username: string): UserRow | undefined {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .prepare(
@@ -677,17 +680,17 @@ export function findUserByUsername(username: string): UserRow | undefined {
         AND is_active = 1
       `,
     )
-    .get(username.trim()) as UserRow | undefined
+    .get(username.trim()) as UserRow | undefined;
 }
 
 export function upgradeUserPasswordHash(
   userId: number,
   password: string,
 ): void {
-  const db = getDb()
+  const db = getDb();
 
   db.prepare(`UPDATE users SET password = ? WHERE id = ?`).run(
     hashPassword(String(password ?? '')),
     userId,
-  )
+  );
 }

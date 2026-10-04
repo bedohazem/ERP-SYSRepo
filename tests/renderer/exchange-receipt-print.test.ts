@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest';
 
-import { buildSaleExchangeReceiptHtml } from '../../src/renderer/utils/exchangeReceiptPrint'
+import { buildSaleExchangeReceiptHtml } from '../../src/renderer/utils/exchangeReceiptPrint';
 
 describe('sale exchange receipt', () => {
   it('uses generic exchange labels for regular invoices', () => {
@@ -48,16 +48,16 @@ describe('sale exchange receipt', () => {
           new_unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(html).toContain('إيصال استبدال')
+    expect(html).toContain('إيصال استبدال');
 
-    expect(html).toContain('القيمة قبل الاستبدال')
+    expect(html).toContain('القيمة قبل الاستبدال');
 
-    expect(html).toContain('القيمة بعد الاستبدال')
+    expect(html).toContain('القيمة بعد الاستبدال');
 
-    expect(html).not.toContain('قيمة العرض قبل')
+    expect(html).not.toContain('قيمة العرض قبل');
 
-    expect(html).not.toContain('قيمة العرض بعد')
-  })
-})
+    expect(html).not.toContain('قيمة العرض بعد');
+  });
+});

@@ -1,123 +1,123 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, KeyboardEvent } from 'react'
-import { useAuthStore } from '../../store/auth.store'
-import { hasUserPermission } from '../../utils/permissions'
-import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import PurchaseOrdersPanel from './PurchaseOrdersPanel'
-import { formatMoney, roundMoney } from '../../../shared/money'
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, KeyboardEvent } from 'react';
+import { useAuthStore } from '../../store/auth.store';
+import { hasUserPermission } from '../../utils/permissions';
+import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import PurchaseOrdersPanel from './PurchaseOrdersPanel';
+import { formatMoney, roundMoney } from '../../../shared/money';
 
-const PURCHASE_DRAFT_KEY = 'fony_purchase_invoice_draft_v1'
+const PURCHASE_DRAFT_KEY = 'fony_purchase_invoice_draft_v1';
 
 type Supplier = {
-  id: number
-  name: string
-  phone?: string | null
-  balance: number
-}
+  id: number;
+  name: string;
+  phone?: string | null;
+  balance: number;
+};
 
 type Category = {
-  id: number
-  name: string
-  description?: string | null
-}
+  id: number;
+  name: string;
+  description?: string | null;
+};
 
 type VariantRow = {
-  variant_id: number
-  product_id?: number
-  product_name: string
-  barcode?: string | null
-  size?: string | null
-  color?: string | null
-  buy_price: number
-  sell_price: number
-  stock: number
-}
+  variant_id: number;
+  product_id?: number;
+  product_name: string;
+  barcode?: string | null;
+  size?: string | null;
+  color?: string | null;
+  buy_price: number;
+  sell_price: number;
+  stock: number;
+};
 
 type ProductOption = {
-  id: number
-  name: string
-  category_name?: string | null
-  variants_count?: number
-  active_variants_count?: number
-}
+  id: number;
+  name: string;
+  category_name?: string | null;
+  variants_count?: number;
+  active_variants_count?: number;
+};
 
-type QuickProductMode = 'newProduct' | 'newVariant'
+type QuickProductMode = 'newProduct' | 'newVariant';
 
 type PurchaseLine = VariantRow & {
-  quantity: number
-  unit_cost: number
-}
+  quantity: number;
+  unit_cost: number;
+};
 
 function generateBarcodeValue() {
-  const timestampPart = Date.now().toString().slice(-10)
+  const timestampPart = Date.now().toString().slice(-10);
   const randomPart = Math.floor(Math.random() * 100)
     .toString()
-    .padStart(2, '0')
+    .padStart(2, '0');
 
-  return `2${timestampPart}${randomPart}`
+  return `2${timestampPart}${randomPart}`;
 }
 
 export default function PurchasesPage() {
-  const currentUser = useAuthStore((s) => s.user)
-  const navigate = useNavigate()
-  const isAdmin = currentUser?.role === 'admin'
+  const currentUser = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
+  const isAdmin = currentUser?.role === 'admin';
 
-  const canManageProducts = hasUserPermission(currentUser, 'products.manage')
-  const [searchParams] = useSearchParams()
+  const canManageProducts = hasUserPermission(currentUser, 'products.manage');
+  const [searchParams] = useSearchParams();
 
-  const editPurchaseId = Number(searchParams.get('edit') || 0)
+  const editPurchaseId = Number(searchParams.get('edit') || 0);
 
-  const isEditing = Number.isInteger(editPurchaseId) && editPurchaseId > 0
+  const isEditing = Number.isInteger(editPurchaseId) && editPurchaseId > 0;
 
-  const [editLoading, setEditLoading] = useState(false)
+  const [editLoading, setEditLoading] = useState(false);
 
-  const [editReason, setEditReason] = useState('')
+  const [editReason, setEditReason] = useState('');
 
-  const [editAdminPassword, setEditAdminPassword] = useState('')
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [supplierId, setSupplierId] = useState<number | ''>('')
-  const [supplierSearch, setSupplierSearch] = useState('')
+  const [editAdminPassword, setEditAdminPassword] = useState('');
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [supplierId, setSupplierId] = useState<number | ''>('');
+  const [supplierSearch, setSupplierSearch] = useState('');
 
-  const [productSearch, setProductSearch] = useState('')
-  const [productResults, setProductResults] = useState<VariantRow[]>([])
-  const [lines, setLines] = useState<PurchaseLine[]>([])
-  const productSearchRef = useRef<HTMLInputElement | null>(null)
+  const [productSearch, setProductSearch] = useState('');
+  const [productResults, setProductResults] = useState<VariantRow[]>([]);
+  const [lines, setLines] = useState<PurchaseLine[]>([]);
+  const productSearchRef = useRef<HTMLInputElement | null>(null);
 
-  const [paidAmount, setPaidAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('store_cash')
-  const [notes, setNotes] = useState('')
+  const [paidAmount, setPaidAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('store_cash');
+  const [notes, setNotes] = useState('');
 
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>(
     'amount',
-  )
-  const [discountDraft, setDiscountDraft] = useState('')
+  );
+  const [discountDraft, setDiscountDraft] = useState('');
 
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState('')
-  const [purchaseOrdersOpen, setPurchaseOrdersOpen] = useState(false)
-  const [draftHydrated, setDraftHydrated] = useState(false)
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [purchaseOrdersOpen, setPurchaseOrdersOpen] = useState(false);
+  const [draftHydrated, setDraftHydrated] = useState(false);
 
-  const [quickProductOpen, setQuickProductOpen] = useState(false)
-  const [quickProductSaving, setQuickProductSaving] = useState(false)
-  const [quickMode, setQuickMode] = useState<QuickProductMode>('newProduct')
-  const [quickProductSearch, setQuickProductSearch] = useState('')
+  const [quickProductOpen, setQuickProductOpen] = useState(false);
+  const [quickProductSaving, setQuickProductSaving] = useState(false);
+  const [quickMode, setQuickMode] = useState<QuickProductMode>('newProduct');
+  const [quickProductSearch, setQuickProductSearch] = useState('');
   const [quickExistingProducts, setQuickExistingProducts] = useState<
     ProductOption[]
-  >([])
+  >([]);
   const [quickExistingProductId, setQuickExistingProductId] = useState<
     number | ''
-  >('')
+  >('');
 
-  const [quickProductName, setQuickProductName] = useState('')
-  const [quickBarcode, setQuickBarcode] = useState('')
-  const [quickSize, setQuickSize] = useState('')
-  const [quickColor, setQuickColor] = useState('')
-  const [quickBuyPrice, setQuickBuyPrice] = useState('')
-  const [quickSellPrice, setQuickSellPrice] = useState('')
-  const [quickQuantity, setQuickQuantity] = useState('1')
+  const [quickProductName, setQuickProductName] = useState('');
+  const [quickBarcode, setQuickBarcode] = useState('');
+  const [quickSize, setQuickSize] = useState('');
+  const [quickColor, setQuickColor] = useState('');
+  const [quickBuyPrice, setQuickBuyPrice] = useState('');
+  const [quickSellPrice, setQuickSellPrice] = useState('');
+  const [quickQuantity, setQuickQuantity] = useState('1');
 
   const subTotal = useMemo(
     () =>
@@ -129,127 +129,127 @@ export default function PurchasesPage() {
         ),
       ),
     [lines],
-  )
+  );
 
   const discountValue = useMemo(() => {
-    const raw = Number(discountDraft || 0)
+    const raw = Number(discountDraft || 0);
 
-    const value = Number.isFinite(raw) ? Math.max(0, raw) : 0
+    const value = Number.isFinite(raw) ? Math.max(0, raw) : 0;
 
     if (discountType === 'percent') {
       return roundMoney(
         Math.min(subTotal, (subTotal * Math.min(value, 100)) / 100),
-      )
+      );
     }
 
-    return roundMoney(Math.min(subTotal, value))
-  }, [discountDraft, discountType, subTotal])
+    return roundMoney(Math.min(subTotal, value));
+  }, [discountDraft, discountType, subTotal]);
 
-  const totalAmount = roundMoney(Math.max(0, subTotal - discountValue))
+  const totalAmount = roundMoney(Math.max(0, subTotal - discountValue));
 
   function getDiscountedUnitCost(line: PurchaseLine) {
-    const qty = Number(line.quantity || 0)
-    const originalUnitCost = Number(line.unit_cost || 0)
-    const lineTotal = qty * originalUnitCost
+    const qty = Number(line.quantity || 0);
+    const originalUnitCost = Number(line.unit_cost || 0);
+    const lineTotal = qty * originalUnitCost;
 
     if (qty <= 0 || subTotal <= 0 || discountValue <= 0) {
-      return originalUnitCost
+      return originalUnitCost;
     }
 
-    const lineDiscount = (lineTotal / subTotal) * discountValue
-    const discountedLineTotal = Math.max(0, lineTotal - lineDiscount)
+    const lineDiscount = (lineTotal / subTotal) * discountValue;
+    const discountedLineTotal = Math.max(0, lineTotal - lineDiscount);
 
-    return discountedLineTotal / qty
+    return discountedLineTotal / qty;
   }
 
   const paid = roundMoney(
     Math.min(Math.max(Number(paidAmount || 0), 0), totalAmount),
-  )
+  );
 
-  const remaining = roundMoney(Math.max(0, totalAmount - paid))
+  const remaining = roundMoney(Math.max(0, totalAmount - paid));
 
   async function loadSuppliers(searchValue = supplierSearch) {
     const result = await window.api.listSuppliers({
       search: searchValue.trim() || undefined,
       limit: 30,
       offset: 0,
-    })
+    });
 
-    setSuppliers(Array.isArray(result?.rows) ? result.rows : [])
+    setSuppliers(Array.isArray(result?.rows) ? result.rows : []);
   }
 
   useEffect(() => {
     if (isEditing) {
-      setDraftHydrated(true)
-      return
+      setDraftHydrated(true);
+      return;
     }
 
-    const rawDraft = localStorage.getItem(PURCHASE_DRAFT_KEY)
+    const rawDraft = localStorage.getItem(PURCHASE_DRAFT_KEY);
 
     if (!rawDraft) {
-      setDraftHydrated(true)
-      return
+      setDraftHydrated(true);
+      return;
     }
 
     try {
       const draft = JSON.parse(rawDraft) as {
-        supplierId?: number | ''
-        supplierSearch?: string
-        productSearch?: string
-        lines?: PurchaseLine[]
-        paidAmount?: string
-        paymentMethod?: string
-        notes?: string
-        discountType?: 'amount' | 'percent'
-        discountDraft?: string
-      }
+        supplierId?: number | '';
+        supplierSearch?: string;
+        productSearch?: string;
+        lines?: PurchaseLine[];
+        paidAmount?: string;
+        paymentMethod?: string;
+        notes?: string;
+        discountType?: 'amount' | 'percent';
+        discountDraft?: string;
+      };
 
       if (draft.supplierId !== undefined) {
-        setSupplierId(draft.supplierId === '' ? '' : Number(draft.supplierId))
+        setSupplierId(draft.supplierId === '' ? '' : Number(draft.supplierId));
       }
 
       if (typeof draft.supplierSearch === 'string') {
-        setSupplierSearch(draft.supplierSearch)
+        setSupplierSearch(draft.supplierSearch);
       }
 
       if (typeof draft.productSearch === 'string') {
-        setProductSearch(draft.productSearch)
+        setProductSearch(draft.productSearch);
       }
 
       if (Array.isArray(draft.lines)) {
-        setLines(draft.lines)
+        setLines(draft.lines);
       }
 
       if (typeof draft.paidAmount === 'string') {
-        setPaidAmount(draft.paidAmount)
+        setPaidAmount(draft.paidAmount);
       }
 
       if (typeof draft.paymentMethod === 'string') {
-        setPaymentMethod(draft.paymentMethod)
+        setPaymentMethod(draft.paymentMethod);
       }
 
       if (typeof draft.notes === 'string') {
-        setNotes(draft.notes)
+        setNotes(draft.notes);
       }
 
       if (draft.discountType === 'amount' || draft.discountType === 'percent') {
-        setDiscountType(draft.discountType)
+        setDiscountType(draft.discountType);
       }
 
       if (typeof draft.discountDraft === 'string') {
-        setDiscountDraft(draft.discountDraft)
+        setDiscountDraft(draft.discountDraft);
       }
     } catch (error) {
-      console.error('Failed to load purchase draft:', error)
-      localStorage.removeItem(PURCHASE_DRAFT_KEY)
+      console.error('Failed to load purchase draft:', error);
+      localStorage.removeItem(PURCHASE_DRAFT_KEY);
     } finally {
-      setDraftHydrated(true)
+      setDraftHydrated(true);
     }
-  }, [isEditing])
+  }, [isEditing]);
 
   useEffect(() => {
-    if (!draftHydrated) return
-    if (isEditing) return
+    if (!draftHydrated) return;
+    if (isEditing) return;
 
     const hasDraftData = Boolean(
       supplierId ||
@@ -261,11 +261,11 @@ export default function PurchasesPage() {
       notes.trim() ||
       discountType !== 'amount' ||
       discountDraft.trim(),
-    )
+    );
 
     if (!hasDraftData) {
-      localStorage.removeItem(PURCHASE_DRAFT_KEY)
-      return
+      localStorage.removeItem(PURCHASE_DRAFT_KEY);
+      return;
     }
 
     localStorage.setItem(
@@ -281,7 +281,7 @@ export default function PurchasesPage() {
         discountType,
         discountDraft,
       }),
-    )
+    );
   }, [
     draftHydrated,
     supplierId,
@@ -294,16 +294,16 @@ export default function PurchasesPage() {
     discountType,
     discountDraft,
     isEditing,
-  ])
+  ]);
 
   useEffect(() => {
     if (!isEditing) {
-      setEditLoading(false)
-      return
+      setEditLoading(false);
+      return;
     }
 
     if (!currentUser) {
-      return
+      return;
     }
 
     /*
@@ -311,53 +311,53 @@ export default function PurchasesPage() {
      * True Admin Only.
      */
     if (!isAdmin) {
-      setEditLoading(false)
+      setEditLoading(false);
 
       navigate('/purchase-history', {
         replace: true,
-      })
+      });
 
-      return
+      return;
     }
 
-    let mounted = true
+    let mounted = true;
 
-    setEditLoading(true)
+    setEditLoading(true);
 
     window.api
       .getPurchaseInvoice(editPurchaseId)
       .then((data) => {
-        if (!mounted) return
+        if (!mounted) return;
 
-        const purchase = data.purchase
+        const purchase = data.purchase;
 
         if (
           purchase.status === 'cancelled' ||
           purchase.payment_status === 'cancelled'
         ) {
-          throw new Error('لا يمكن تعديل فاتورة شراء ملغاة')
+          throw new Error('لا يمكن تعديل فاتورة شراء ملغاة');
         }
 
         const storedSubTotal = Number(
           purchase.sub_total ||
             Number(purchase.total_amount || 0) +
               Number(purchase.discount_value || 0),
-        )
+        );
 
-        const storedTotal = Number(purchase.total_amount || 0)
+        const storedTotal = Number(purchase.total_amount || 0);
 
         const discountFactor =
           storedSubTotal > 0 && storedTotal > 0
             ? storedTotal / storedSubTotal
-            : 1
+            : 1;
 
         const nextLines: PurchaseLine[] = (data.items ?? []).map((item) => {
-          const storedUnitCost = Number(item.unit_cost || 0)
+          const storedUnitCost = Number(item.unit_cost || 0);
 
           const originalUnitCost =
             discountFactor > 0
               ? Number((storedUnitCost / discountFactor).toFixed(4))
-              : storedUnitCost
+              : storedUnitCost;
 
           return {
             variant_id: Number(item.variant_id),
@@ -379,27 +379,27 @@ export default function PurchasesPage() {
             quantity: Number(item.quantity || 0),
 
             unit_cost: originalUnitCost,
-          }
-        })
+          };
+        });
 
         const nextDiscountType =
-          purchase.discount_type === 'percent' ? 'percent' : 'amount'
+          purchase.discount_type === 'percent' ? 'percent' : 'amount';
 
-        const nextDiscountInput = Number(purchase.discount_input || 0)
+        const nextDiscountInput = Number(purchase.discount_input || 0);
 
-        setSupplierId(Number(purchase.supplier_id))
+        setSupplierId(Number(purchase.supplier_id));
 
-        setSupplierSearch(purchase.supplier_name || '')
+        setSupplierSearch(purchase.supplier_name || '');
 
-        setLines(nextLines)
+        setLines(nextLines);
 
-        setPaidAmount(String(Number(purchase.paid_amount || 0)))
+        setPaidAmount(String(Number(purchase.paid_amount || 0)));
 
-        setPaymentMethod(purchase.payment_method || 'store_cash')
+        setPaymentMethod(purchase.payment_method || 'store_cash');
 
-        setNotes(purchase.notes || '')
+        setNotes(purchase.notes || '');
 
-        setDiscountType(nextDiscountType)
+        setDiscountType(nextDiscountType);
 
         setDiscountDraft(
           nextDiscountInput > 0
@@ -408,46 +408,46 @@ export default function PurchasesPage() {
                 Number(purchase.discount_value || 0) > 0
               ? String(Number(purchase.discount_value))
               : '',
-        )
+        );
 
-        setEditReason('')
-        setEditAdminPassword('')
+        setEditReason('');
+        setEditAdminPassword('');
       })
       .catch((error) => {
-        console.error('Failed to load purchase for editing:', error)
+        console.error('Failed to load purchase for editing:', error);
 
-        showMessage(getErrorMessage(error, 'تعذر فتح فاتورة الشراء للتعديل'))
+        showMessage(getErrorMessage(error, 'تعذر فتح فاتورة الشراء للتعديل'));
       })
       .finally(() => {
         if (mounted) {
-          setEditLoading(false)
+          setEditLoading(false);
         }
-      })
+      });
 
     return () => {
-      mounted = false
-    }
-  }, [currentUser, editPurchaseId, isAdmin, isEditing, navigate])
+      mounted = false;
+    };
+  }, [currentUser, editPurchaseId, isAdmin, isEditing, navigate]);
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      void loadSuppliers(supplierSearch)
-    }, 250)
+      void loadSuppliers(supplierSearch);
+    }, 250);
 
-    return () => clearTimeout(handle)
-  }, [supplierSearch])
+    return () => clearTimeout(handle);
+  }, [supplierSearch]);
 
   useEffect(() => {
     if (!quickProductOpen || quickMode !== 'newVariant') {
-      return
+      return;
     }
 
-    const q = quickProductSearch.trim()
+    const q = quickProductSearch.trim();
 
     if (!q) {
-      setQuickExistingProducts([])
-      setQuickExistingProductId('')
-      return
+      setQuickExistingProducts([]);
+      setQuickExistingProductId('');
+      return;
     }
 
     const handle = setTimeout(async () => {
@@ -457,29 +457,29 @@ export default function PurchasesPage() {
           includeInactive: false,
           limit: 20,
           offset: 0,
-        })
+        });
 
-        const rows = Array.isArray(result?.rows) ? result.rows : []
-        setQuickExistingProducts(rows)
+        const rows = Array.isArray(result?.rows) ? result.rows : [];
+        setQuickExistingProducts(rows);
 
         if (rows.length === 1) {
-          setQuickExistingProductId(Number(rows[0].id))
+          setQuickExistingProductId(Number(rows[0].id));
         }
       } catch (error) {
-        console.error(error)
-        setQuickExistingProducts([])
+        console.error(error);
+        setQuickExistingProducts([]);
       }
-    }, 250)
+    }, 250);
 
-    return () => clearTimeout(handle)
-  }, [quickProductOpen, quickMode, quickProductSearch])
+    return () => clearTimeout(handle);
+  }, [quickProductOpen, quickMode, quickProductSearch]);
 
   useEffect(() => {
-    const q = productSearch.trim()
+    const q = productSearch.trim();
 
     if (!q) {
-      setProductResults([])
-      return
+      setProductResults([]);
+      return;
     }
 
     const handle = setTimeout(async () => {
@@ -490,69 +490,69 @@ export default function PurchasesPage() {
           categoryId: categoryFilter,
           limit: 20,
           offset: 0,
-        })
+        });
 
-        setProductResults(Array.isArray(result?.rows) ? result.rows : [])
+        setProductResults(Array.isArray(result?.rows) ? result.rows : []);
       } catch (error) {
-        console.error(error)
-        setProductResults([])
+        console.error(error);
+        setProductResults([]);
       }
-    }, 250)
+    }, 250);
 
-    return () => clearTimeout(handle)
-  }, [productSearch, categoryFilter])
+    return () => clearTimeout(handle);
+  }, [productSearch, categoryFilter]);
 
   useEffect(() => {
     function handleEscapeDropdown(event: globalThis.KeyboardEvent) {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape') return;
 
       // الـModal الرئيسي هيتعامل معاه AppShell.
-      if (quickProductOpen) return
+      if (quickProductOpen) return;
 
-      if (productResults.length === 0) return
+      if (productResults.length === 0) return;
 
-      event.preventDefault()
+      event.preventDefault();
 
-      setProductResults([])
+      setProductResults([]);
 
       requestAnimationFrame(() => {
-        productSearchRef.current?.focus()
-      })
+        productSearchRef.current?.focus();
+      });
     }
 
-    document.addEventListener('keydown', handleEscapeDropdown)
+    document.addEventListener('keydown', handleEscapeDropdown);
 
     return () => {
-      document.removeEventListener('keydown', handleEscapeDropdown)
-    }
-  }, [quickProductOpen, productResults.length])
+      document.removeEventListener('keydown', handleEscapeDropdown);
+    };
+  }, [quickProductOpen, productResults.length]);
 
   useEffect(() => {
-    let mounted = true
+    let mounted = true;
 
     window.api
       .getCategories()
       .then((data) => {
-        if (!mounted) return
-        setCategories(Array.isArray(data) ? data : [])
+        if (!mounted) return;
+        setCategories(Array.isArray(data) ? data : []);
       })
       .catch((error) => {
-        console.error('Failed to load categories:', error)
-        setCategories([])
-      })
+        console.error('Failed to load categories:', error);
+        setCategories([]);
+      });
 
     return () => {
-      mounted = false
-    }
-  }, [])
+      mounted = false;
+    };
+  }, []);
 
   function showMessage(text: string) {
-    setMessage(text)
-    setTimeout(() => setMessage(''), 1800)
+    setMessage(text);
+    setTimeout(() => setMessage(''), 1800);
   }
 
   function addLine(item: VariantRow) {
-    addLineWithValues(item, 1, Number(item.buy_price || 0))
+    addLineWithValues(item, 1, Number(item.buy_price || 0));
   }
 
   function addLineWithValues(
@@ -560,10 +560,10 @@ export default function PurchasesPage() {
     quantityValue = 1,
     unitCostValue?: number,
   ) {
-    const quantity = Math.max(1, Number(quantityValue || 1))
-    const unitCost = Math.max(0, Number(unitCostValue ?? item.buy_price ?? 0))
+    const quantity = Math.max(1, Number(quantityValue || 1));
+    const unitCost = Math.max(0, Number(unitCostValue ?? item.buy_price ?? 0));
 
-    const exists = lines.find((x) => x.variant_id === item.variant_id)
+    const exists = lines.find((x) => x.variant_id === item.variant_id);
 
     if (exists) {
       setLines((prev) =>
@@ -576,7 +576,7 @@ export default function PurchasesPage() {
               }
             : x,
         ),
-      )
+      );
     } else {
       setLines((prev) => [
         ...prev,
@@ -585,75 +585,75 @@ export default function PurchasesPage() {
           quantity,
           unit_cost: unitCost,
         },
-      ])
+      ]);
     }
 
-    setProductSearch('')
-    setProductResults([])
+    setProductSearch('');
+    setProductResults([]);
 
     setTimeout(() => {
-      productSearchRef.current?.focus()
-    }, 0)
+      productSearchRef.current?.focus();
+    }, 0);
   }
 
   function openQuickProductModal(searchValue = productSearch) {
-    const cleanValue = searchValue.trim()
+    const cleanValue = searchValue.trim();
 
     const looksLikeBarcode =
       Boolean(cleanValue) &&
       /^[0-9A-Za-z_.-]+$/.test(cleanValue) &&
-      /\d/.test(cleanValue)
+      /\d/.test(cleanValue);
 
-    setQuickMode('newProduct')
-    setQuickBarcode(looksLikeBarcode ? cleanValue : '')
-    setQuickProductName(looksLikeBarcode ? '' : cleanValue)
-    setQuickProductSearch(looksLikeBarcode ? '' : cleanValue)
-    setQuickExistingProducts([])
-    setQuickExistingProductId('')
+    setQuickMode('newProduct');
+    setQuickBarcode(looksLikeBarcode ? cleanValue : '');
+    setQuickProductName(looksLikeBarcode ? '' : cleanValue);
+    setQuickProductSearch(looksLikeBarcode ? '' : cleanValue);
+    setQuickExistingProducts([]);
+    setQuickExistingProductId('');
 
-    setQuickSize('')
-    setQuickColor('')
-    setQuickBuyPrice('')
-    setQuickSellPrice('')
-    setQuickQuantity('1')
-    setQuickProductOpen(true)
+    setQuickSize('');
+    setQuickColor('');
+    setQuickBuyPrice('');
+    setQuickSellPrice('');
+    setQuickQuantity('1');
+    setQuickProductOpen(true);
   }
 
   async function saveQuickProductFromPurchase() {
-    const name = quickProductName.trim()
-    const barcode = quickBarcode.trim()
-    const size = quickSize.trim()
-    const color = quickColor.trim()
-    const buyPrice = Number(quickBuyPrice || 0)
-    const sellPrice = Number(quickSellPrice || 0)
-    const quantity = Math.max(1, Number(quickQuantity || 1))
+    const name = quickProductName.trim();
+    const barcode = quickBarcode.trim();
+    const size = quickSize.trim();
+    const color = quickColor.trim();
+    const buyPrice = Number(quickBuyPrice || 0);
+    const sellPrice = Number(quickSellPrice || 0);
+    const quantity = Math.max(1, Number(quickQuantity || 1));
 
     if (quickMode === 'newProduct' && !name) {
-      showMessage('اكتب اسم المنتج')
-      return
+      showMessage('اكتب اسم المنتج');
+      return;
     }
 
     if (quickMode === 'newVariant' && !quickExistingProductId) {
-      showMessage('اختار المنتج الموجود الذي سيتم إضافة الصنف عليه')
-      return
+      showMessage('اختار المنتج الموجود الذي سيتم إضافة الصنف عليه');
+      return;
     }
 
     if (!barcode) {
-      showMessage('اكتب الباركود')
-      return
+      showMessage('اكتب الباركود');
+      return;
     }
 
     if (!Number.isFinite(buyPrice) || buyPrice < 0) {
-      showMessage('سعر الشراء غير صحيح')
-      return
+      showMessage('سعر الشراء غير صحيح');
+      return;
     }
 
     if (!Number.isFinite(sellPrice) || sellPrice < 0) {
-      showMessage('سعر البيع غير صحيح')
-      return
+      showMessage('سعر البيع غير صحيح');
+      return;
     }
 
-    setQuickProductSaving(true)
+    setQuickProductSaving(true);
 
     try {
       const result =
@@ -690,7 +690,7 @@ export default function PurchasesPage() {
                   opening_qty: 0,
                 },
               ],
-            })
+            });
 
       if (!result?.success) {
         showMessage(
@@ -698,8 +698,8 @@ export default function PurchasesPage() {
             (quickMode === 'newVariant'
               ? 'فشل إضافة الصنف للمنتج'
               : 'فشل إنشاء المنتج'),
-        )
-        return
+        );
+        return;
       }
 
       const inventoryResult = await window.api.getInventoryPage({
@@ -707,39 +707,39 @@ export default function PurchasesPage() {
         status: 'all',
         limit: 20,
         offset: 0,
-      })
+      });
 
       const inventoryRows = Array.isArray(inventoryResult?.rows)
         ? inventoryResult.rows
-        : []
+        : [];
 
       const createdVariant = Array.isArray(inventoryRows)
         ? inventoryRows.find(
             (item: VariantRow) => String(item.barcode || '').trim() === barcode,
           )
-        : null
+        : null;
 
       if (!createdVariant) {
         showMessage(
           'تم الحفظ لكن لم يتم العثور على الصنف في المخزون، ابحث عنه بالباركود',
-        )
-        return
+        );
+        return;
       }
 
-      addLineWithValues(createdVariant, quantity, buyPrice)
+      addLineWithValues(createdVariant, quantity, buyPrice);
 
-      setQuickProductOpen(false)
-      setQuickMode('newProduct')
-      setQuickProductSearch('')
-      setQuickExistingProducts([])
-      setQuickExistingProductId('')
+      setQuickProductOpen(false);
+      setQuickMode('newProduct');
+      setQuickProductSearch('');
+      setQuickExistingProducts([]);
+      setQuickExistingProductId('');
       showMessage(
         quickMode === 'newVariant'
           ? 'تم إضافة الصنف للمنتج وإضافته للفاتورة'
           : 'تم إنشاء المنتج وإضافته للفاتورة',
-      )
+      );
     } catch (error) {
-      console.error(error)
+      console.error(error);
       showMessage(
         getErrorMessage(
           error,
@@ -747,37 +747,37 @@ export default function PurchasesPage() {
             ? 'حدث خطأ أثناء إضافة الصنف للمنتج'
             : 'حدث خطأ أثناء إنشاء المنتج',
         ),
-      )
+      );
     } finally {
-      setQuickProductSaving(false)
+      setQuickProductSaving(false);
     }
   }
 
   function handleProductSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== 'Enter') return
+    if (e.key !== 'Enter') return;
 
-    e.preventDefault()
+    e.preventDefault();
 
-    const q = productSearch.trim()
+    const q = productSearch.trim();
 
-    if (!q) return
+    if (!q) return;
 
     const exactBarcode = productResults.find(
       (item) => String(item.barcode || '').trim() === q,
-    )
+    );
 
     if (exactBarcode) {
-      addLine(exactBarcode)
-      return
+      addLine(exactBarcode);
+      return;
     }
 
     if (productResults.length === 1) {
-      addLine(productResults[0])
-      return
+      addLine(productResults[0]);
+      return;
     }
 
     if (productResults.length > 1) {
-      addLine(productResults[0])
+      addLine(productResults[0]);
     }
   }
 
@@ -786,37 +786,37 @@ export default function PurchasesPage() {
       prev.map((line) =>
         line.variant_id === variantId ? { ...line, ...patch } : line,
       ),
-    )
+    );
   }
 
   function removeLine(variantId: number) {
-    setLines((prev) => prev.filter((line) => line.variant_id !== variantId))
+    setLines((prev) => prev.filter((line) => line.variant_id !== variantId));
   }
 
   async function savePurchase() {
-    if (saving) return
+    if (saving) return;
 
     if (!supplierId) {
-      showMessage('اختار المورد')
-      return
+      showMessage('اختار المورد');
+      return;
     }
 
     if (lines.length === 0) {
-      showMessage('أضف أصناف للفاتورة')
-      return
+      showMessage('أضف أصناف للفاتورة');
+      return;
     }
 
     if (isEditing && !editReason.trim()) {
-      showMessage('اكتب سبب تعديل الفاتورة')
-      return
+      showMessage('اكتب سبب تعديل الفاتورة');
+      return;
     }
 
     if (isEditing && !editAdminPassword.trim()) {
-      showMessage('اكتب كلمة مرور المدير')
-      return
+      showMessage('اكتب كلمة مرور المدير');
+      return;
     }
 
-    setSaving(true)
+    setSaving(true);
 
     try {
       const purchaseInput = {
@@ -843,7 +843,7 @@ export default function PurchasesPage() {
 
           unit_cost: Number(getDiscountedUnitCost(line).toFixed(4)),
         })),
-      }
+      };
 
       const result = isEditing
         ? await window.api.updatePurchaseInvoice({
@@ -859,39 +859,39 @@ export default function PurchasesPage() {
             ...purchaseInput,
 
             actor_id: currentUser?.id,
-          })
+          });
 
       if (isEditing) {
-        showMessage(`تم تعديل فاتورة الشراء #${editPurchaseId}`)
+        showMessage(`تم تعديل فاتورة الشراء #${editPurchaseId}`);
 
-        navigate('/purchase-history')
+        navigate('/purchase-history');
 
-        return
+        return;
       }
 
       showMessage(
         result.remaining_amount > 0
           ? `تم حفظ فاتورة الشراء، المتبقي ${money(result.remaining_amount)}`
           : 'تم حفظ فاتورة الشراء مدفوعة بالكامل',
-      )
+      );
 
-      localStorage.removeItem(PURCHASE_DRAFT_KEY)
+      localStorage.removeItem(PURCHASE_DRAFT_KEY);
 
-      setSupplierId('')
-      setSupplierSearch('')
-      setLines([])
-      setPaidAmount('')
-      setNotes('')
-      setProductSearch('')
-      setProductResults([])
-      setPaymentMethod('store_cash')
-      setDiscountType('amount')
-      setDiscountDraft('')
+      setSupplierId('');
+      setSupplierSearch('');
+      setLines([]);
+      setPaidAmount('');
+      setNotes('');
+      setProductSearch('');
+      setProductResults([]);
+      setPaymentMethod('store_cash');
+      setDiscountType('amount');
+      setDiscountDraft('');
     } catch (error) {
-      console.error('Failed to save purchase:', error)
-      showMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ فاتورة الشراء'))
+      console.error('Failed to save purchase:', error);
+      showMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ فاتورة الشراء'));
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
@@ -901,13 +901,13 @@ export default function PurchasesPage() {
         ? error.message
         : typeof error === 'string'
           ? error
-          : ''
+          : '';
 
     const match = raw.match(
       /Error invoking remote method '[^']+': Error: (.*)$/,
-    )
+    );
 
-    return match?.[1] || raw || fallback
+    return match?.[1] || raw || fallback;
   }
 
   return (
@@ -1531,7 +1531,7 @@ export default function PurchasesPage() {
         open={purchaseOrdersOpen}
         onClose={() => setPurchaseOrdersOpen(false)}
         onPurchaseReceived={() => {
-          void loadSuppliers(supplierSearch)
+          void loadSuppliers(supplierSearch);
         }}
       />
 
@@ -1573,10 +1573,10 @@ export default function PurchasesPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setQuickMode('newVariant')
+                  setQuickMode('newVariant');
                   setQuickProductSearch(
                     quickProductSearch || quickProductName || productSearch,
-                  )
+                  );
                 }}
                 style={quickModeButtonStyle(quickMode === 'newVariant')}
               >
@@ -1617,8 +1617,8 @@ export default function PurchasesPage() {
                       placeholder="اكتب اسم المنتج الموجود"
                       value={quickProductSearch}
                       onChange={(e) => {
-                        setQuickProductSearch(e.target.value)
-                        setQuickExistingProductId('')
+                        setQuickProductSearch(e.target.value);
+                        setQuickExistingProductId('');
                       }}
                       style={inputStyle}
                       autoFocus
@@ -1759,11 +1759,11 @@ export default function PurchasesPage() {
         </div>
       )}
     </>
-  )
+  );
 }
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 const cardStyle: CSSProperties = {
@@ -1771,17 +1771,17 @@ const cardStyle: CSSProperties = {
   borderRadius: '18px',
   display: 'grid',
   gap: '14px',
-}
+};
 
 const fieldStyle: CSSProperties = {
   display: 'grid',
   gap: '8px',
-}
+};
 
 const labelStyle: CSSProperties = {
   color: '#cbd5e1',
   fontWeight: 800,
-}
+};
 
 const inputStyle: CSSProperties = {
   height: '44px',
@@ -1794,7 +1794,7 @@ const inputStyle: CSSProperties = {
   textAlign: 'right',
   direction: 'rtl',
   boxSizing: 'border-box',
-}
+};
 
 const primaryButtonStyle: CSSProperties = {
   border: 'none',
@@ -1805,7 +1805,7 @@ const primaryButtonStyle: CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const quickAddSmallButtonStyle: CSSProperties = {
   border: 'none',
@@ -1818,7 +1818,7 @@ const quickAddSmallButtonStyle: CSSProperties = {
   cursor: 'pointer',
   fontSize: '12px',
   whiteSpace: 'nowrap',
-}
+};
 
 const smallButtonStyle: CSSProperties = {
   border: '1px solid rgba(255,255,255,0.10)',
@@ -1830,7 +1830,7 @@ const smallButtonStyle: CSSProperties = {
   fontWeight: 900,
   padding: '0 12px',
   cursor: 'pointer',
-}
+};
 
 function quickModeButtonStyle(active: boolean): CSSProperties {
   return {
@@ -1844,7 +1844,7 @@ function quickModeButtonStyle(active: boolean): CSSProperties {
     fontWeight: 900,
     padding: '0 14px',
     cursor: 'pointer',
-  }
+  };
 }
 
 const dangerButtonStyle: CSSProperties = {
@@ -1856,14 +1856,14 @@ const dangerButtonStyle: CSSProperties = {
   fontWeight: 800,
   padding: '0 12px',
   cursor: 'pointer',
-}
+};
 
 const thStyle: CSSProperties = {
   padding: '10px 8px',
   fontWeight: 800,
   whiteSpace: 'nowrap',
   fontSize: '13px',
-}
+};
 
 const tdStyle: CSSProperties = {
   padding: '10px 8px',
@@ -1871,4 +1871,4 @@ const tdStyle: CSSProperties = {
   whiteSpace: 'nowrap',
   fontSize: '13px',
   verticalAlign: 'middle',
-}
+};

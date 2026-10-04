@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react';
 
 import {
   canResolveCashShiftVariance,
@@ -6,88 +6,81 @@ import {
   getCashShiftVarianceResolutionLabel,
   getCashShiftVarianceStageLabel,
   getCashShiftVarianceStatusLabel,
-} from '../../utils/cash-shifts'
-import ShiftHistorySection from './ShiftHistorySection'
-import CashDrawerHistorySection from './CashDrawerHistorySection'
-import { useAuthStore } from '../../store/auth.store'
-import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
-import { formatMoney } from '../../../shared/money'
+} from '../../utils/cash-shifts';
+import ShiftHistorySection from './ShiftHistorySection';
+import CashDrawerHistorySection from './CashDrawerHistorySection';
+import { useAuthStore } from '../../store/auth.store';
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
+import { formatMoney } from '../../../shared/money';
 
 type CashShift = {
-  id: number
+  id: number;
 
-  status: 'open' | 'closed'
+  status: 'open' | 'closed';
 
-  opened_by: number
-  opened_by_name?: string | null
+  opened_by: number;
+  opened_by_name?: string | null;
 
-  opened_at: string
+  opened_at: string;
 
-  opening_counted_amount: number
-  opening_difference: number
+  opening_counted_amount: number;
+  opening_difference: number;
 
-  expected_closing_amount?: number | null
-  closing_counted_amount?: number | null
-  closing_difference?: number | null
+  expected_closing_amount?: number | null;
+  closing_counted_amount?: number | null;
+  closing_difference?: number | null;
 
-  left_for_next_shift?: number | null
-  safe_transfer_amount?: number | null
+  left_for_next_shift?: number | null;
+  safe_transfer_amount?: number | null;
 
-  closed_by?: number | null
-  closed_by_name?: string | null
-  closed_at?: string | null
-}
+  closed_by?: number | null;
+  closed_by_name?: string | null;
+  closed_at?: string | null;
+};
 
 type CashShiftVariance = {
-  id: number
+  id: number;
 
-  shift_id: number
+  shift_id: number;
 
-  stage: 'opening' | 'closing'
+  stage: 'opening' | 'closing';
 
-  kind: 'shortage' | 'surplus'
+  kind: 'shortage' | 'surplus';
 
-  amount: number
+  amount: number;
 
-  status: 'pending' | 'resolved'
+  status: 'pending' | 'resolved';
 
   resolution_type:
-    | 'approved'
-    | 'rejected'
-    | 'corrected'
-    | 'explained'
-    | 'other'
-    | null
+    'approved' | 'rejected' | 'corrected' | 'explained' | 'other' | null;
 
-  resolution_notes: string | null
+  resolution_notes: string | null;
 
-  resolved_by: number | null
+  resolved_by: number | null;
 
-  resolved_by_name?: string | null
+  resolved_by_name?: string | null;
 
-  resolved_at: string | null
+  resolved_at: string | null;
 
-  created_at: string
+  created_at: string;
 
-  shift_status: 'open' | 'closed'
+  shift_status: 'open' | 'closed';
 
-  opened_by: number
+  opened_by: number;
 
-  opened_by_name?: string | null
+  opened_by_name?: string | null;
 
-  shift_opened_at: string
+  shift_opened_at: string;
 
-  shift_closed_at: string | null
-}
+  shift_closed_at: string | null;
+};
 
-type VarianceStatusFilter = 'all' | 'pending' | 'resolved'
+type VarianceStatusFilter = 'all' | 'pending' | 'resolved';
 
 type ResolutionType =
-  | 'approved'
-  | 'rejected'
-  | 'corrected'
-  | 'explained'
-  | 'other'
+  'approved' | 'rejected' | 'corrected' | 'explained' | 'other';
 
 const VARIANCE_REVERSAL_ACCOUNT_OPTIONS = [
   { value: 'store_safe', label: 'الخزنة الآمنة' },
@@ -95,59 +88,59 @@ const VARIANCE_REVERSAL_ACCOUNT_OPTIONS = [
   { value: 'owner_bank', label: 'حساب بنك / فيزا المالك' },
   { value: 'owner_vodafone', label: 'فودافون كاش المالك' },
   { value: 'fawry_machine', label: 'ماكينة فوري' },
-]
+];
 
 type ShiftUserOption = {
-  id: number
-  name: string
-  role: string
-}
+  id: number;
+  name: string;
+  role: string;
+};
 
 export default function ShiftManagementPage() {
-  const currentUser = useAuthStore((s) => s.user)
+  const currentUser = useAuthStore((s) => s.user);
 
-  const isAdmin = currentUser?.role === 'admin'
-  const [openShift, setOpenShift] = useState<CashShift | null>(null)
+  const isAdmin = currentUser?.role === 'admin';
+  const [openShift, setOpenShift] = useState<CashShift | null>(null);
 
-  const [variances, setVariances] = useState<CashShiftVariance[]>([])
+  const [variances, setVariances] = useState<CashShiftVariance[]>([]);
 
-  const [shiftUsers, setShiftUsers] = useState<ShiftUserOption[]>([])
+  const [shiftUsers, setShiftUsers] = useState<ShiftUserOption[]>([]);
 
-  const [variancePage, setVariancePage] = useState(1)
+  const [variancePage, setVariancePage] = useState(1);
 
-  const [varianceUserId, setVarianceUserId] = useState('')
+  const [varianceUserId, setVarianceUserId] = useState('');
 
-  const [varianceDateFrom, setVarianceDateFrom] = useState('')
+  const [varianceDateFrom, setVarianceDateFrom] = useState('');
 
-  const [varianceDateTo, setVarianceDateTo] = useState('')
+  const [varianceDateTo, setVarianceDateTo] = useState('');
 
   const [statusFilter, setStatusFilter] =
-    useState<VarianceStatusFilter>('pending')
+    useState<VarianceStatusFilter>('pending');
 
-  const [pendingCount, setPendingCount] = useState(0)
+  const [pendingCount, setPendingCount] = useState(0);
 
-  const [total, setTotal] = useState(0)
+  const [total, setTotal] = useState(0);
 
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false);
 
   const [message, setMessage] = useState<{
-    type: 'success' | 'error'
-    text: string
-  } | null>(null)
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const [resolveTarget, setResolveTarget] = useState<CashShiftVariance | null>(
     null,
-  )
+  );
 
   const [resolutionType, setResolutionType] =
-    useState<ResolutionType>('explained')
+    useState<ResolutionType>('explained');
 
-  const [resolutionNotes, setResolutionNotes] = useState('')
-  const [reversalAccount, setReversalAccount] = useState('store_safe')
-  const [correctedOpeningAmount, setCorrectedOpeningAmount] = useState('')
-  const [adminPassword, setAdminPassword] = useState('')
+  const [resolutionNotes, setResolutionNotes] = useState('');
+  const [reversalAccount, setReversalAccount] = useState('store_safe');
+  const [correctedOpeningAmount, setCorrectedOpeningAmount] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
 
-  const [resolving, setResolving] = useState(false)
+  const [resolving, setResolving] = useState(false);
 
   function showMessage(
     type: 'success' | 'error',
@@ -159,17 +152,17 @@ export default function ShiftManagementPage() {
     setMessage({
       type,
       text,
-    })
+    });
 
     window.setTimeout(() => {
-      setMessage(null)
-    }, duration)
+      setMessage(null);
+    }, duration);
   }
 
   async function loadData(filter = statusFilter, page = variancePage) {
-    setLoading(true)
+    setLoading(true);
 
-    const safePage = Math.max(1, Number(page || 1))
+    const safePage = Math.max(1, Number(page || 1));
 
     try {
       const [currentShift, varianceResult] = await Promise.all([
@@ -188,121 +181,121 @@ export default function ShiftManagementPage() {
 
           offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
         }),
-      ])
+      ]);
 
-      setOpenShift(currentShift || null)
+      setOpenShift(currentShift || null);
 
       setVariances(
         Array.isArray(varianceResult?.rows) ? varianceResult.rows : [],
-      )
+      );
 
-      setTotal(Number(varianceResult?.total || 0))
+      setTotal(Number(varianceResult?.total || 0));
 
-      setPendingCount(Number(varianceResult?.pending_count || 0))
+      setPendingCount(Number(varianceResult?.pending_count || 0));
 
-      setVariancePage(safePage)
+      setVariancePage(safePage);
     } catch (error) {
-      console.error(error)
+      console.error(error);
 
       showMessage(
         'error',
         error instanceof Error
           ? error.message
           : 'تعذر تحميل بيانات إدارة الشفتات',
-      )
+      );
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function loadShiftUsers() {
     try {
-      const users = await window.api.getCashShiftUsers()
+      const users = await window.api.getCashShiftUsers();
 
-      setShiftUsers(Array.isArray(users) ? users : [])
+      setShiftUsers(Array.isArray(users) ? users : []);
     } catch (error) {
-      console.error('Failed to load shift users:', error)
+      console.error('Failed to load shift users:', error);
 
-      setShiftUsers([])
+      setShiftUsers([]);
     }
   }
 
   useEffect(() => {
-    void loadShiftUsers()
-    void loadData('pending', 1)
-  }, [])
+    void loadShiftUsers();
+    void loadData('pending', 1);
+  }, []);
 
   function openVarianceReview(variance: CashShiftVariance) {
     if (!isAdmin) {
-      return
+      return;
     }
 
     if (!canResolveCashShiftVariance(variance)) {
-      return
+      return;
     }
 
-    setResolveTarget(variance)
+    setResolveTarget(variance);
 
-    setResolutionType('approved')
+    setResolutionType('approved');
 
     setCorrectedOpeningAmount(
       variance.stage === 'opening' && openShift?.id === variance.shift_id
         ? String(openShift.opening_counted_amount ?? '')
         : '',
-    )
+    );
 
-    setReversalAccount('store_safe')
+    setReversalAccount('store_safe');
 
-    setResolutionNotes('')
+    setResolutionNotes('');
 
-    setAdminPassword('')
+    setAdminPassword('');
   }
 
   function closeVarianceReview() {
     if (resolving) {
-      return
+      return;
     }
 
-    setResolveTarget(null)
-    setCorrectedOpeningAmount('')
-    setResolutionType('explained')
-    setReversalAccount('store_safe')
-    setResolutionNotes('')
+    setResolveTarget(null);
+    setCorrectedOpeningAmount('');
+    setResolutionType('explained');
+    setReversalAccount('store_safe');
+    setResolutionNotes('');
 
-    setAdminPassword('')
+    setAdminPassword('');
   }
 
   async function submitVarianceReview() {
     if (!resolveTarget || resolving) {
-      return
+      return;
     }
 
     if (!resolutionNotes.trim()) {
-      showMessage('error', 'اكتب نتيجة مراجعة فرق الشفت')
+      showMessage('error', 'اكتب نتيجة مراجعة فرق الشفت');
 
-      return
+      return;
     }
 
     if (resolveTarget.stage === 'opening' && resolutionType === 'corrected') {
-      const correctedAmount = Number(correctedOpeningAmount)
+      const correctedAmount = Number(correctedOpeningAmount);
 
       if (
         correctedOpeningAmount.trim() === '' ||
         !Number.isFinite(correctedAmount) ||
         correctedAmount < 0
       ) {
-        showMessage('error', 'اكتب الجرد الصحيح عند افتتاح الشفت')
-        return
+        showMessage('error', 'اكتب الجرد الصحيح عند افتتاح الشفت');
+        return;
       }
     }
 
     if (!adminPassword.trim()) {
-      showMessage('error', 'اكتب كلمة مرور المدير')
+      showMessage('error', 'اكتب كلمة مرور المدير');
 
-      return
+      return;
     }
 
-    setResolving(true)
+    setResolving(true);
 
     try {
       const result = await window.api.resolveCashShiftVariance({
@@ -319,7 +312,7 @@ export default function ShiftManagementPage() {
           resolutionType === 'rejected' ? reversalAccount : undefined,
 
         admin_password: adminPassword,
-      })
+      });
 
       if (!result?.success) {
         showMessage(
@@ -328,12 +321,12 @@ export default function ShiftManagementPage() {
           result?.message || 'تعذر مراجعة فرق الشفت. لم يتم تطبيق أي تغييرات.',
 
           4500,
-        )
+        );
 
-        return
+        return;
       }
 
-      closeVarianceReview()
+      closeVarianceReview();
 
       if (resolutionType === 'corrected') {
         showMessage(
@@ -341,12 +334,12 @@ export default function ShiftManagementPage() {
           result.variance?.status === 'resolved'
             ? 'تم تصحيح جرد الافتتاح وإغلاق الفرق'
             : 'تم تصحيح الجرد وتحديث فرق الافتتاح المتبقي',
-        )
+        );
       } else {
-        showMessage('success', 'تم اعتماد مراجعة فرق الشفت')
+        showMessage('success', 'تم اعتماد مراجعة فرق الشفت');
       }
 
-      await loadData(statusFilter, variancePage)
+      await loadData(statusFilter, variancePage);
     } catch (error) {
       showMessage(
         'error',
@@ -356,9 +349,9 @@ export default function ShiftManagementPage() {
           : 'تعذر مراجعة فرق الشفت. لم يتم تطبيق أي تغييرات.',
 
         4500,
-      )
+      );
     } finally {
-      setResolving(false)
+      setResolving(false);
     }
   }
 
@@ -563,7 +556,7 @@ export default function ShiftManagementPage() {
           totalItems={total}
           loading={loading}
           onPageChange={(page) => {
-            void loadData(statusFilter, page)
+            void loadData(statusFilter, page);
           }}
         />
 
@@ -616,12 +609,12 @@ export default function ShiftManagementPage() {
               <select
                 value={statusFilter}
                 onChange={(e) => {
-                  const next = e.target.value as VarianceStatusFilter
+                  const next = e.target.value as VarianceStatusFilter;
 
-                  setStatusFilter(next)
-                  setVariancePage(1)
+                  setStatusFilter(next);
+                  setVariancePage(1);
 
-                  void loadData(next, 1)
+                  void loadData(next, 1);
                 }}
                 style={inputStyle}
               >
@@ -672,9 +665,9 @@ export default function ShiftManagementPage() {
               type="button"
               disabled={loading}
               onClick={() => {
-                setVariancePage(1)
+                setVariancePage(1);
 
-                void loadData(statusFilter, 1)
+                void loadData(statusFilter, 1);
               }}
               style={{
                 ...primaryButtonStyle,
@@ -1116,35 +1109,35 @@ export default function ShiftManagementPage() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function getFilterLabel(filter: VarianceStatusFilter) {
   switch (filter) {
     case 'pending':
-      return 'الفروق قيد المراجعة'
+      return 'الفروق قيد المراجعة';
 
     case 'resolved':
-      return 'الفروق التي تمت مراجعتها'
+      return 'الفروق التي تمت مراجعتها';
 
     default:
-      return 'كل فروق الشفتات'
+      return 'كل فروق الشفتات';
   }
 }
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 function formatDate(value?: string | null) {
   if (!value) {
-    return '—'
+    return '—';
   }
 
   try {
-    const raw = String(value)
+    const raw = String(value);
 
-    const normalized = raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`
+    const normalized = raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`;
 
     return new Date(normalized).toLocaleString('ar-EG', {
       year: 'numeric',
@@ -1152,9 +1145,9 @@ function formatDate(value?: string | null) {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-    })
+    });
   } catch {
-    return String(value)
+    return String(value);
   }
 }
 
@@ -1164,10 +1157,10 @@ function SummaryCard({
   subtitle,
   warning = false,
 }: {
-  title: string
-  value: string
-  subtitle: string
-  warning?: boolean
+  title: string;
+  value: string;
+  subtitle: string;
+  warning?: boolean;
 }) {
   return (
     <div
@@ -1222,7 +1215,7 @@ function SummaryCard({
         {subtitle}
       </div>
     </div>
-  )
+  );
 }
 
 function InfoItem({ label, value }: { label: string; value: string }) {
@@ -1254,15 +1247,15 @@ function InfoItem({ label, value }: { label: string; value: string }) {
 
       <strong>{value}</strong>
     </div>
-  )
+  );
 }
 
 function Field({
   label,
   children,
 }: {
-  label: string
-  children: React.ReactNode
+  label: string;
+  children: React.ReactNode;
 }) {
   return (
     <label
@@ -1286,7 +1279,7 @@ function Field({
 
       {children}
     </label>
-  )
+  );
 }
 
 const inputStyle: React.CSSProperties = {
@@ -1309,7 +1302,7 @@ const inputStyle: React.CSSProperties = {
   direction: 'rtl',
 
   boxSizing: 'border-box',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -1327,7 +1320,7 @@ const primaryButtonStyle: React.CSSProperties = {
   padding: '0 16px',
 
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   minHeight: '42px',
@@ -1345,7 +1338,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   padding: '0 16px',
 
   cursor: 'pointer',
-}
+};
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
@@ -1359,7 +1352,7 @@ const thStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 
   background: 'rgba(255,255,255,0.03)',
-}
+};
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
@@ -1369,7 +1362,7 @@ const tdStyle: React.CSSProperties = {
   textAlign: 'right',
 
   whiteSpace: 'nowrap',
-}
+};
 
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
@@ -1389,7 +1382,7 @@ const modalOverlayStyle: React.CSSProperties = {
   background: 'rgba(2,6,23,0.82)',
 
   backdropFilter: 'blur(7px)',
-}
+};
 
 const modalCardStyle: React.CSSProperties = {
   width: '520px',
@@ -1409,7 +1402,7 @@ const modalCardStyle: React.CSSProperties = {
   direction: 'rtl',
 
   boxShadow: '0 30px 100px rgba(0,0,0,0.75)',
-}
+};
 
 const closeButtonStyle: React.CSSProperties = {
   width: '34px',
@@ -1427,4 +1420,4 @@ const closeButtonStyle: React.CSSProperties = {
   fontSize: '18px',
 
   cursor: 'pointer',
-}
+};

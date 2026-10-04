@@ -1,13 +1,13 @@
-import { ipcMain } from 'electron'
+import { ipcMain } from 'electron';
 
-import { listActivityLogs } from '../database/repositories/activity.repo'
+import { listActivityLogs } from '../database/repositories/activity.repo';
 
-import { requirePermission } from '../auth-session'
+import { requirePermission } from '../auth-session';
 
 export function registerActivityIpc(): void {
   ipcMain.handle('activity:list', (event, input) => {
-    requirePermission(event, 'activity.view')
+    requirePermission(event, 'activity.view');
 
-    return listActivityLogs(input)
-  })
+    return listActivityLogs(input);
+  });
 }

@@ -1,165 +1,165 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { beforeEach, describe, expect, it } from 'vitest';
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 import {
   createProduct,
   getVariantByBarcode,
-} from '../../src/main/database/repositories/product.repo'
+} from '../../src/main/database/repositories/product.repo';
 import {
   createSale,
   createSaleReturn,
   getSaleReceipt,
-} from '../../src/main/database/repositories/sales.repo'
-import { createExpense } from '../../src/main/database/repositories/expense.repo'
+} from '../../src/main/database/repositories/sales.repo';
+import { createExpense } from '../../src/main/database/repositories/expense.repo';
 import {
   createLiability,
   recordLiabilityPayment,
-} from '../../src/main/database/repositories/liabilities.repo'
+} from '../../src/main/database/repositories/liabilities.repo';
 import {
   getAdminCashFlowAlerts,
   getCashierDashboardSummary,
   getReportsSummary,
-} from '../../src/main/database/repositories/reports.repo'
+} from '../../src/main/database/repositories/reports.repo';
 
-import { createPurchaseInvoice } from '../../src/main/database/repositories/purchases.repo'
+import { createPurchaseInvoice } from '../../src/main/database/repositories/purchases.repo';
 
-import { createSupplier } from '../../src/main/database/repositories/suppliers.repo'
+import { createSupplier } from '../../src/main/database/repositories/suppliers.repo';
 
-import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
+import { createCashMovement } from '../../src/main/database/repositories/cash.repo';
 import {
   closeCashShift,
   getOpenCashShift,
   openCashShift,
   listCashShiftVariances,
   resolveCashShiftVariance,
-} from '../../src/main/database/repositories/cash-shifts.repo'
-import { createUser } from '../../src/main/database/repositories/user.repo'
+} from '../../src/main/database/repositories/cash-shifts.repo';
+import { createUser } from '../../src/main/database/repositories/user.repo';
 import {
   createSaleExchange,
   getSaleExchangeState,
-} from '../../src/main/database/repositories/sales-exchange.repo'
-import { recordCustomerPayment } from '../../src/main/database/repositories/customers.repo'
+} from '../../src/main/database/repositories/sales-exchange.repo';
+import { recordCustomerPayment } from '../../src/main/database/repositories/customers.repo';
 
 type ReportVariantTestRow = {
-  variant_id: number
-  product_id: number
-  product_name: string
-  barcode: string
-  size: string
-  color: string
-  sell_price: number
-  buy_price: number
-  stock: number
-  min_stock: number
-  is_active: number
-}
+  variant_id: number;
+  product_id: number;
+  product_name: string;
+  barcode: string;
+  size: string;
+  color: string;
+  sell_price: number;
+  buy_price: number;
+  stock: number;
+  min_stock: number;
+  is_active: number;
+};
 
 type CustomerTestRow = {
-  id: number
-  name: string
-  phone: string | null
-}
+  id: number;
+  name: string;
+  phone: string | null;
+};
 
 type ReportPaymentMethodRow = {
-  payment_method: string
-  count: number
-  total: number
-}
+  payment_method: string;
+  count: number;
+  total: number;
+};
 
 type ReportTopProductRow = {
-  variant_id: number
-  product_name: string
-  size: string
-  color: string
-  net_quantity: number
-  net_total: number
-}
+  variant_id: number;
+  product_name: string;
+  size: string;
+  color: string;
+  net_quantity: number;
+  net_total: number;
+};
 
 type ReportTopCustomerRow = {
-  id: number
-  name: string
-  phone: string | null
-  sales_count: number
-  total_spent: number
-}
+  id: number;
+  name: string;
+  phone: string | null;
+  sales_count: number;
+  total_spent: number;
+};
 
 type ReportDailySaleRow = {
-  day: string
-  total: number
-}
+  day: string;
+  total: number;
+};
 
 type ReportLowStockRow = {
-  variant_id: number
-  product_name: string
-  barcode: string
-  size: string
-  color: string
-  min_stock: number
-  stock: number
-}
+  variant_id: number;
+  product_name: string;
+  barcode: string;
+  size: string;
+  color: string;
+  min_stock: number;
+  stock: number;
+};
 
 type ReportsSummaryTestResult = {
   summary: {
-    sales_count: number
-    returns_count: number
-    gross_sales: number
-    total_returns: number
-    normal_discounts: number
-    loyalty_discounts: number
-    total_discounts: number
-    net_sales: number
-    gross_profit_before_discounts: number
-    net_profit_after_discounts: number
-    total_expenses: number
-    total_liability_payments: number
-    total_purchase_invoices: number
-    total_manual_deposits: number
-    total_manual_withdrawals: number
-    final_net_profit: number
-    approved_opening_surplus: number
-    approved_opening_shortage: number
-  }
+    sales_count: number;
+    returns_count: number;
+    gross_sales: number;
+    total_returns: number;
+    normal_discounts: number;
+    loyalty_discounts: number;
+    total_discounts: number;
+    net_sales: number;
+    gross_profit_before_discounts: number;
+    net_profit_after_discounts: number;
+    total_expenses: number;
+    total_liability_payments: number;
+    total_purchase_invoices: number;
+    total_manual_deposits: number;
+    total_manual_withdrawals: number;
+    final_net_profit: number;
+    approved_opening_surplus: number;
+    approved_opening_shortage: number;
+  };
   cashAccounts: Array<{
-    payment_method: string
-    label: string
-    total_in: number
-    total_out: number
-    balance: number
-  }>
+    payment_method: string;
+    label: string;
+    total_in: number;
+    total_out: number;
+    balance: number;
+  }>;
 
-  cashAccountsTotalBalance: number
+  cashAccountsTotalBalance: number;
   cashierSales: Array<{
-    user_id: number | null
+    user_id: number | null;
 
-    cashier_name: string
+    cashier_name: string;
 
-    sales_count: number
-    sales_total: number
+    sales_count: number;
+    sales_total: number;
 
-    returns_count: number
-    returns_total: number
+    returns_count: number;
+    returns_total: number;
 
-    exchange_count: number
+    exchange_count: number;
 
-    exchange_adjustment: number
+    exchange_adjustment: number;
 
-    net_sales: number
-  }>
-  topProducts: ReportTopProductRow[]
-  dailySales: ReportDailySaleRow[]
-  paymentMethods: ReportPaymentMethodRow[]
-  lowStock: ReportLowStockRow[]
-  topCustomers: ReportTopCustomerRow[]
-}
+    net_sales: number;
+  }>;
+  topProducts: ReportTopProductRow[];
+  dailySales: ReportDailySaleRow[];
+  paymentMethods: ReportPaymentMethodRow[];
+  lowStock: ReportLowStockRow[];
+  topCustomers: ReportTopCustomerRow[];
+};
 
 function seedReportProduct(options?: {
-  name?: string
-  barcode?: string
-  openingQty?: number
-  minStock?: number
-  buyPrice?: number
-  sellPrice?: number
+  name?: string;
+  barcode?: string;
+  openingQty?: number;
+  minStock?: number;
+  buyPrice?: number;
+  sellPrice?: number;
 }) {
-  const barcode = options?.barcode ?? 'REPORT001'
+  const barcode = options?.barcode ?? 'REPORT001';
 
   createProduct({
     name: options?.name ?? 'Report Product',
@@ -177,21 +177,20 @@ function seedReportProduct(options?: {
         opening_qty: options?.openingQty ?? 20,
       },
     ],
-  })
+  });
 
   const variant = getVariantByBarcode(barcode) as
-    | ReportVariantTestRow
-    | undefined
+    ReportVariantTestRow | undefined;
 
   if (!variant) {
-    throw new Error(`Failed to seed report product: ${barcode}`)
+    throw new Error(`Failed to seed report product: ${barcode}`);
   }
 
-  return variant
+  return variant;
 }
 
 function createTestCustomer(name = 'Report Customer', phone = '01000000000') {
-  const db = getDb()
+  const db = getDb();
 
   const result = db
     .prepare(
@@ -200,40 +199,40 @@ function createTestCustomer(name = 'Report Customer', phone = '01000000000') {
       VALUES (?, ?)
       `,
     )
-    .run(name, phone)
+    .run(name, phone);
 
   return {
     id: Number(result.lastInsertRowid),
     name,
     phone,
-  } as CustomerTestRow
+  } as CustomerTestRow;
 }
 
 describe('reports repository', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
+    closeDb();
+    getDb();
+    resetDatabaseData();
 
     openCashShift({
       opening_counted_amount: 0,
       opened_by: 1,
-    })
-  })
+    });
+  });
 
   it('builds admin cash-flow alerts from customer and supplier due dates', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const customer = createTestCustomer('Cash Flow Customer', '01055559991')
+    const customer = createTestCustomer('Cash Flow Customer', '01055559991');
 
     const supplier = createSupplier({
       name: 'Cash Flow Supplier',
       phone: '01155559991',
-    }) as any
+    }) as any;
 
     const dueDate = (modifier: string | null) => {
       if (modifier === null) {
-        return null
+        return null;
       }
 
       const row = db
@@ -248,11 +247,11 @@ describe('reports repository', () => {
           `,
         )
         .get(modifier) as {
-        value: string
-      }
+        value: string;
+      };
 
-      return row.value
-    }
+      return row.value;
+    };
 
     const insertSale = db.prepare(
       `
@@ -287,17 +286,17 @@ describe('reports repository', () => {
         'store_cash'
       )
       `,
-    )
+    );
 
-    insertSale.run(customer.id, dueDate('-1 day'), 100, 100, 100)
+    insertSale.run(customer.id, dueDate('-1 day'), 100, 100, 100);
 
-    insertSale.run(customer.id, dueDate('+0 days'), 200, 200, 200)
+    insertSale.run(customer.id, dueDate('+0 days'), 200, 200, 200);
 
-    insertSale.run(customer.id, dueDate('+5 days'), 300, 300, 300)
+    insertSale.run(customer.id, dueDate('+5 days'), 300, 300, 300);
 
-    insertSale.run(customer.id, dueDate('+15 days'), 400, 400, 400)
+    insertSale.run(customer.id, dueDate('+15 days'), 400, 400, 400);
 
-    insertSale.run(customer.id, null, 500, 500, 500)
+    insertSale.run(customer.id, null, 500, 500, 500);
 
     const insertPurchase = db.prepare(
       `
@@ -322,19 +321,19 @@ describe('reports repository', () => {
         ?
       )
       `,
-    )
+    );
 
-    insertPurchase.run(supplier.id, 80, 80, dueDate('-1 day'))
+    insertPurchase.run(supplier.id, 80, 80, dueDate('-1 day'));
 
-    insertPurchase.run(supplier.id, 90, 90, dueDate('+0 days'))
+    insertPurchase.run(supplier.id, 90, 90, dueDate('+0 days'));
 
-    insertPurchase.run(supplier.id, 110, 110, dueDate('+5 days'))
+    insertPurchase.run(supplier.id, 110, 110, dueDate('+5 days'));
 
-    insertPurchase.run(supplier.id, 130, 130, dueDate('+15 days'))
+    insertPurchase.run(supplier.id, 130, 130, dueDate('+15 days'));
 
-    insertPurchase.run(supplier.id, 120, 120, null)
+    insertPurchase.run(supplier.id, 120, 120, null);
 
-    const alerts = getAdminCashFlowAlerts()
+    const alerts = getAdminCashFlowAlerts();
 
     expect(alerts.customers).toEqual({
       overdue: 100,
@@ -342,7 +341,7 @@ describe('reports repository', () => {
       due_soon: 300,
       without_due_date: 500,
       total_open: 1500,
-    })
+    });
 
     expect(alerts.suppliers).toEqual({
       overdue: 80,
@@ -350,39 +349,39 @@ describe('reports repository', () => {
       due_soon: 110,
       without_due_date: 120,
       total_open: 530,
-    })
+    });
 
     expect(alerts.near_term).toEqual({
       customer_receivables: 500,
       supplier_payables: 200,
       net: 300,
-    })
-  })
+    });
+  });
 
   it('returns empty summary when there is no business data', () => {
-    const report = getReportsSummary() as ReportsSummaryTestResult
+    const report = getReportsSummary() as ReportsSummaryTestResult;
 
-    expect(report.summary.sales_count).toBe(0)
-    expect(report.summary.returns_count).toBe(0)
-    expect(report.summary.gross_sales).toBe(0)
-    expect(report.summary.total_returns).toBe(0)
-    expect(report.summary.net_sales).toBe(0)
-    expect(report.summary.gross_profit_before_discounts).toBe(0)
-    expect(report.summary.net_profit_after_discounts).toBe(0)
-    expect(report.summary.total_expenses).toBe(0)
-    expect(report.summary.total_liability_payments).toBe(0)
-    expect(report.summary.total_purchase_invoices).toBe(0)
-    expect(report.cashierSales).toHaveLength(0)
-    expect(report.summary.total_manual_deposits).toBe(0)
+    expect(report.summary.sales_count).toBe(0);
+    expect(report.summary.returns_count).toBe(0);
+    expect(report.summary.gross_sales).toBe(0);
+    expect(report.summary.total_returns).toBe(0);
+    expect(report.summary.net_sales).toBe(0);
+    expect(report.summary.gross_profit_before_discounts).toBe(0);
+    expect(report.summary.net_profit_after_discounts).toBe(0);
+    expect(report.summary.total_expenses).toBe(0);
+    expect(report.summary.total_liability_payments).toBe(0);
+    expect(report.summary.total_purchase_invoices).toBe(0);
+    expect(report.cashierSales).toHaveLength(0);
+    expect(report.summary.total_manual_deposits).toBe(0);
 
-    expect(report.summary.total_manual_withdrawals).toBe(0)
-    expect(report.summary.final_net_profit).toBe(0)
+    expect(report.summary.total_manual_withdrawals).toBe(0);
+    expect(report.summary.final_net_profit).toBe(0);
 
-    expect(report.topProducts).toHaveLength(0)
-    expect(report.dailySales).toHaveLength(0)
-    expect(report.paymentMethods).toHaveLength(0)
-    expect(report.topCustomers).toHaveLength(0)
-  })
+    expect(report.topProducts).toHaveLength(0);
+    expect(report.dailySales).toHaveLength(0);
+    expect(report.paymentMethods).toHaveLength(0);
+    expect(report.topCustomers).toHaveLength(0);
+  });
 
   it('separates store safe balance and reports total financial account balances', () => {
     createCashMovement({
@@ -397,7 +396,7 @@ describe('reports repository', () => {
       reference_type: 'manual',
 
       created_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'deposit',
@@ -411,7 +410,7 @@ describe('reports repository', () => {
       reference_type: 'manual',
 
       created_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'deposit',
@@ -425,40 +424,40 @@ describe('reports repository', () => {
       reference_type: 'manual',
 
       created_by: 1,
-    })
+    });
 
-    const report = getReportsSummary() as ReportsSummaryTestResult
+    const report = getReportsSummary() as ReportsSummaryTestResult;
 
     const storeCash = report.cashAccounts.find(
       (row) => row.payment_method === 'store_cash',
-    )
+    );
 
     const storeSafe = report.cashAccounts.find(
       (row) => row.payment_method === 'store_safe',
-    )
+    );
 
     const ownerBank = report.cashAccounts.find(
       (row) => row.payment_method === 'owner_bank',
-    )
+    );
 
-    expect(storeCash).toBeTruthy()
+    expect(storeCash).toBeTruthy();
 
-    expect(Number(storeCash?.balance)).toBe(100)
+    expect(Number(storeCash?.balance)).toBe(100);
 
-    expect(storeSafe).toBeTruthy()
+    expect(storeSafe).toBeTruthy();
 
-    expect(storeSafe?.label).toBe('الخزنة الآمنة')
+    expect(storeSafe?.label).toBe('الخزنة الآمنة');
 
-    expect(Number(storeSafe?.balance)).toBe(250)
+    expect(Number(storeSafe?.balance)).toBe(250);
 
-    expect(ownerBank).toBeTruthy()
+    expect(ownerBank).toBeTruthy();
 
-    expect(Number(ownerBank?.balance)).toBe(300)
+    expect(Number(ownerBank?.balance)).toBe(300);
 
-    expect(report.cashAccountsTotalBalance).toBe(650)
+    expect(report.cashAccountsTotalBalance).toBe(650);
 
-    expect('cashTotalCapital' in report).toBe(false)
-  })
+    expect('cashTotalCapital' in report).toBe(false);
+  });
 
   it('calculates sales profit discounts expenses and liability payments', () => {
     const variant = seedReportProduct({
@@ -467,9 +466,9 @@ describe('reports repository', () => {
       openingQty: 20,
       buyPrice: 100,
       sellPrice: 150,
-    })
+    });
 
-    const customer = createTestCustomer()
+    const customer = createTestCustomer();
 
     createSale({
       user_id: 1,
@@ -491,14 +490,14 @@ describe('reports repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     createExpense({
       title: 'Report Expense',
       amount: 30,
       payment_method: 'cash',
       created_by: 1,
-    })
+    });
 
     const liability = createLiability({
       party_name: 'Report Party',
@@ -506,53 +505,53 @@ describe('reports repository', () => {
       total_amount: 100,
       paid_amount: 0,
       actor_id: 1,
-    })
+    });
 
     recordLiabilityPayment({
       liability_id: liability.liability_id,
       amount: 40,
       payment_method: 'cash',
       actor_id: 1,
-    })
+    });
 
-    const report = getReportsSummary() as ReportsSummaryTestResult
+    const report = getReportsSummary() as ReportsSummaryTestResult;
 
-    expect(report.summary.sales_count).toBe(1)
-    expect(report.summary.returns_count).toBe(0)
+    expect(report.summary.sales_count).toBe(1);
+    expect(report.summary.returns_count).toBe(0);
 
-    expect(report.summary.gross_sales).toBe(280)
-    expect(report.summary.normal_discounts).toBe(20)
-    expect(report.summary.loyalty_discounts).toBe(0)
-    expect(report.summary.total_discounts).toBe(20)
-    expect(report.summary.total_returns).toBe(0)
-    expect(report.summary.net_sales).toBe(280)
+    expect(report.summary.gross_sales).toBe(280);
+    expect(report.summary.normal_discounts).toBe(20);
+    expect(report.summary.loyalty_discounts).toBe(0);
+    expect(report.summary.total_discounts).toBe(20);
+    expect(report.summary.total_returns).toBe(0);
+    expect(report.summary.net_sales).toBe(280);
 
-    expect(report.summary.gross_profit_before_discounts).toBe(100)
-    expect(report.summary.net_profit_after_discounts).toBe(80)
+    expect(report.summary.gross_profit_before_discounts).toBe(100);
+    expect(report.summary.net_profit_after_discounts).toBe(80);
 
-    expect(report.summary.total_expenses).toBe(30)
-    expect(report.summary.total_liability_payments).toBe(40)
-    expect(report.summary.final_net_profit).toBe(50)
+    expect(report.summary.total_expenses).toBe(30);
+    expect(report.summary.total_liability_payments).toBe(40);
+    expect(report.summary.final_net_profit).toBe(50);
 
-    expect(report.paymentMethods).toHaveLength(1)
-    expect(report.paymentMethods[0].payment_method).toBe('cash')
-    expect(report.paymentMethods[0].count).toBe(1)
-    expect(report.paymentMethods[0].total).toBe(280)
+    expect(report.paymentMethods).toHaveLength(1);
+    expect(report.paymentMethods[0].payment_method).toBe('cash');
+    expect(report.paymentMethods[0].count).toBe(1);
+    expect(report.paymentMethods[0].total).toBe(280);
 
-    expect(report.topProducts).toHaveLength(1)
-    expect(report.topProducts[0].product_name).toBe('Report Shirt')
-    expect(report.topProducts[0].net_quantity).toBe(2)
-    expect(report.topProducts[0].net_total).toBe(300)
+    expect(report.topProducts).toHaveLength(1);
+    expect(report.topProducts[0].product_name).toBe('Report Shirt');
+    expect(report.topProducts[0].net_quantity).toBe(2);
+    expect(report.topProducts[0].net_total).toBe(300);
 
-    expect(report.topCustomers).toHaveLength(1)
-    expect(report.topCustomers[0].id).toBe(customer.id)
-    expect(report.topCustomers[0].name).toBe('Report Customer')
-    expect(report.topCustomers[0].sales_count).toBe(1)
-    expect(report.topCustomers[0].total_spent).toBe(280)
+    expect(report.topCustomers).toHaveLength(1);
+    expect(report.topCustomers[0].id).toBe(customer.id);
+    expect(report.topCustomers[0].name).toBe('Report Customer');
+    expect(report.topCustomers[0].sales_count).toBe(1);
+    expect(report.topCustomers[0].total_spent).toBe(280);
 
-    expect(report.dailySales.length).toBeGreaterThanOrEqual(1)
-    expect(report.dailySales[0].total).toBe(280)
-  })
+    expect(report.dailySales.length).toBeGreaterThanOrEqual(1);
+    expect(report.dailySales[0].total).toBe(280);
+  });
 
   it('reports actual collections including later customer payments', () => {
     const variant = seedReportProduct({
@@ -565,9 +564,9 @@ describe('reports repository', () => {
       buyPrice: 100,
 
       sellPrice: 150,
-    })
+    });
 
-    const customer = createTestCustomer('Collections Customer', '01077779991')
+    const customer = createTestCustomer('Collections Customer', '01077779991');
 
     const sale = createSale({
       user_id: 1,
@@ -603,7 +602,7 @@ describe('reports repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     recordCustomerPayment({
       customer_id: customer.id,
@@ -615,26 +614,26 @@ describe('reports repository', () => {
       payment_method: 'card',
 
       actor_id: 1,
-    })
+    });
 
-    const report = getReportsSummary() as ReportsSummaryTestResult
+    const report = getReportsSummary() as ReportsSummaryTestResult;
 
     const cash = report.paymentMethods.find(
       (row) => row.payment_method === 'cash',
-    )
+    );
 
     const card = report.paymentMethods.find(
       (row) => row.payment_method === 'card',
-    )
+    );
 
-    expect(cash).toBeTruthy()
-    expect(cash?.count).toBe(1)
-    expect(cash?.total).toBe(100)
+    expect(cash).toBeTruthy();
+    expect(cash?.count).toBe(1);
+    expect(cash?.total).toBe(100);
 
-    expect(card).toBeTruthy()
-    expect(card?.count).toBe(1)
-    expect(card?.total).toBe(200)
-  })
+    expect(card).toBeTruthy();
+    expect(card?.count).toBe(1);
+    expect(card?.total).toBe(200);
+  });
 
   it('subtracts returns from sales totals top products and customers', () => {
     const variant = seedReportProduct({
@@ -643,9 +642,9 @@ describe('reports repository', () => {
       openingQty: 20,
       buyPrice: 100,
       sellPrice: 150,
-    })
+    });
 
-    const customer = createTestCustomer('Return Customer', '01011111111')
+    const customer = createTestCustomer('Return Customer', '01011111111');
 
     const sale = createSale({
       user_id: 1,
@@ -667,10 +666,10 @@ describe('reports repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    const receipt = getSaleReceipt(sale.saleId) as any
-    const saleItemId = receipt.items[0].id
+    const receipt = getSaleReceipt(sale.saleId) as any;
+    const saleItemId = receipt.items[0].id;
 
     createSaleReturn({
       original_sale_id: sale.saleId,
@@ -683,33 +682,33 @@ describe('reports repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    const report = getReportsSummary() as ReportsSummaryTestResult
+    const report = getReportsSummary() as ReportsSummaryTestResult;
 
-    expect(report.summary.sales_count).toBe(1)
-    expect(report.summary.returns_count).toBe(1)
+    expect(report.summary.sales_count).toBe(1);
+    expect(report.summary.returns_count).toBe(1);
 
-    expect(report.summary.gross_sales).toBe(300)
-    expect(report.summary.total_returns).toBe(150)
-    expect(report.summary.net_sales).toBe(150)
+    expect(report.summary.gross_sales).toBe(300);
+    expect(report.summary.total_returns).toBe(150);
+    expect(report.summary.net_sales).toBe(150);
 
-    expect(report.summary.gross_profit_before_discounts).toBe(50)
-    expect(report.summary.net_profit_after_discounts).toBe(50)
+    expect(report.summary.gross_profit_before_discounts).toBe(50);
+    expect(report.summary.net_profit_after_discounts).toBe(50);
 
-    expect(report.topProducts).toHaveLength(1)
-    expect(report.topProducts[0].product_name).toBe('Return Report Product')
-    expect(report.topProducts[0].net_quantity).toBe(1)
-    expect(report.topProducts[0].net_total).toBe(150)
+    expect(report.topProducts).toHaveLength(1);
+    expect(report.topProducts[0].product_name).toBe('Return Report Product');
+    expect(report.topProducts[0].net_quantity).toBe(1);
+    expect(report.topProducts[0].net_total).toBe(150);
 
-    expect(report.topCustomers).toHaveLength(1)
-    expect(report.topCustomers[0].name).toBe('Return Customer')
-    expect(report.topCustomers[0].sales_count).toBe(1)
-    expect(report.topCustomers[0].total_spent).toBe(150)
+    expect(report.topCustomers).toHaveLength(1);
+    expect(report.topCustomers[0].name).toBe('Return Customer');
+    expect(report.topCustomers[0].sales_count).toBe(1);
+    expect(report.topCustomers[0].total_spent).toBe(150);
 
-    expect(report.dailySales.length).toBeGreaterThanOrEqual(1)
-    expect(report.dailySales[0].total).toBe(150)
-  })
+    expect(report.dailySales.length).toBeGreaterThanOrEqual(1);
+    expect(report.dailySales[0].total).toBe(150);
+  });
 
   it('reports low stock items', () => {
     seedReportProduct({
@@ -719,7 +718,7 @@ describe('reports repository', () => {
       minStock: 5,
       buyPrice: 100,
       sellPrice: 150,
-    })
+    });
 
     seedReportProduct({
       name: 'Available Stock Report Product',
@@ -728,17 +727,17 @@ describe('reports repository', () => {
       minStock: 5,
       buyPrice: 100,
       sellPrice: 150,
-    })
+    });
 
-    const report = getReportsSummary() as ReportsSummaryTestResult
+    const report = getReportsSummary() as ReportsSummaryTestResult;
 
     expect(report.lowStock.some((item) => item.barcode === 'REPORT-LOW')).toBe(
       true,
-    )
+    );
     expect(
       report.lowStock.some((item) => item.barcode === 'REPORT-AVAILABLE'),
-    ).toBe(false)
-  })
+    ).toBe(false);
+  });
 
   it('filters reports by date range', () => {
     const variant = seedReportProduct({
@@ -747,14 +746,14 @@ describe('reports repository', () => {
       openingQty: 20,
       buyPrice: 100,
       sellPrice: 150,
-    })
+    });
 
-    const now = new Date()
+    const now = new Date();
     const reportDate = [
       now.getFullYear(),
       String(now.getMonth() + 1).padStart(2, '0'),
       String(now.getDate()).padStart(2, '0'),
-    ].join('-')
+    ].join('-');
 
     createSale({
       user_id: 1,
@@ -777,26 +776,26 @@ describe('reports repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     const todayReport = getReportsSummary({
       date_from: reportDate,
       date_to: reportDate,
-    }) as ReportsSummaryTestResult
+    }) as ReportsSummaryTestResult;
 
     const futureReport = getReportsSummary({
       date_from: '2099-01-01',
       date_to: '2099-01-31',
-    }) as ReportsSummaryTestResult
+    }) as ReportsSummaryTestResult;
 
-    expect(todayReport.summary.sales_count).toBe(1)
-    expect(todayReport.summary.gross_sales).toBe(150)
+    expect(todayReport.summary.sales_count).toBe(1);
+    expect(todayReport.summary.gross_sales).toBe(150);
 
-    expect(futureReport.summary.sales_count).toBe(0)
-    expect(futureReport.summary.gross_sales).toBe(0)
-    expect(futureReport.topProducts).toHaveLength(0)
-    expect(futureReport.dailySales).toHaveLength(0)
-  })
+    expect(futureReport.summary.sales_count).toBe(0);
+    expect(futureReport.summary.gross_sales).toBe(0);
+    expect(futureReport.topProducts).toHaveLength(0);
+    expect(futureReport.dailySales).toHaveLength(0);
+  });
 
   it('reports purchase invoices and manual cash movements', () => {
     const variant = seedReportProduct({
@@ -809,11 +808,11 @@ describe('reports repository', () => {
       buyPrice: 100,
 
       sellPrice: 150,
-    })
+    });
 
     const supplier = createSupplier({
       name: 'Report Supplier',
-    }) as any
+    }) as any;
 
     createPurchaseInvoice({
       supplier_id: supplier.id,
@@ -829,7 +828,7 @@ describe('reports repository', () => {
           unit_cost: 120,
         },
       ],
-    })
+    });
 
     createCashMovement({
       type: 'deposit',
@@ -845,7 +844,7 @@ describe('reports repository', () => {
       notes: 'Manual report deposit',
 
       created_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'withdraw',
@@ -861,16 +860,16 @@ describe('reports repository', () => {
       notes: 'Manual report withdrawal',
 
       created_by: 1,
-    })
+    });
 
-    const report = getReportsSummary() as ReportsSummaryTestResult
+    const report = getReportsSummary() as ReportsSummaryTestResult;
 
-    expect(report.summary.total_purchase_invoices).toBe(240)
+    expect(report.summary.total_purchase_invoices).toBe(240);
 
-    expect(report.summary.total_manual_deposits).toBe(500)
+    expect(report.summary.total_manual_deposits).toBe(500);
 
-    expect(report.summary.total_manual_withdrawals).toBe(120)
-  })
+    expect(report.summary.total_manual_withdrawals).toBe(120);
+  });
 
   it('groups monthly sales by cashier', () => {
     const variant = seedReportProduct({
@@ -883,7 +882,7 @@ describe('reports repository', () => {
       buyPrice: 50,
 
       sellPrice: 100,
-    })
+    });
 
     const secondUser = createUser(
       'Second Cashier',
@@ -898,7 +897,7 @@ describe('reports repository', () => {
        * على نفس الشفت المفتوح.
        */
       'admin',
-    )
+    );
 
     const firstSale = createSale({
       user_id: 1,
@@ -932,7 +931,7 @@ describe('reports repository', () => {
           unit_price: 100,
         },
       ],
-    })
+    });
 
     const secondSale = createSale({
       user_id: secondUser.id,
@@ -966,9 +965,9 @@ describe('reports repository', () => {
           unit_price: 100,
         },
       ],
-    })
+    });
 
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
@@ -982,37 +981,37 @@ describe('reports repository', () => {
         WHERE id IN (?, ?)
       )
       `,
-    ).run('2026-09-05 09:00:00', firstSale.saleId, secondSale.saleId)
+    ).run('2026-09-05 09:00:00', firstSale.saleId, secondSale.saleId);
 
     const report = getReportsSummary({
       date_from: '2026-09-01',
 
       date_to: '2026-09-30',
-    }) as ReportsSummaryTestResult
+    }) as ReportsSummaryTestResult;
 
-    expect(report.cashierSales).toHaveLength(2)
+    expect(report.cashierSales).toHaveLength(2);
 
-    const first = report.cashierSales.find((row) => Number(row.user_id) === 1)
+    const first = report.cashierSales.find((row) => Number(row.user_id) === 1);
 
     const second = report.cashierSales.find(
       (row) => Number(row.user_id) === Number(secondUser.id),
-    )
+    );
 
-    expect(first).toBeTruthy()
-    expect(second).toBeTruthy()
+    expect(first).toBeTruthy();
+    expect(second).toBeTruthy();
 
-    expect(first?.sales_count).toBe(1)
+    expect(first?.sales_count).toBe(1);
 
-    expect(first?.sales_total).toBe(100)
+    expect(first?.sales_total).toBe(100);
 
-    expect(first?.net_sales).toBe(100)
+    expect(first?.net_sales).toBe(100);
 
-    expect(second?.sales_count).toBe(1)
+    expect(second?.sales_count).toBe(1);
 
-    expect(second?.sales_total).toBe(200)
+    expect(second?.sales_total).toBe(200);
 
-    expect(second?.net_sales).toBe(200)
-  })
+    expect(second?.net_sales).toBe(200);
+  });
 
   it('removes returned invoice discounts from the active shift dashboard even when another admin creates the return', () => {
     const variant = seedReportProduct({
@@ -1025,7 +1024,7 @@ describe('reports repository', () => {
       buyPrice: 100,
 
       sellPrice: 200,
-    })
+    });
 
     /*
      * beforeEach فتح شفت
@@ -1065,9 +1064,9 @@ describe('reports repository', () => {
           unit_price: 200,
         },
       ],
-    })
+    });
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
     /*
      * مستخدم Admin آخر
@@ -1083,7 +1082,7 @@ describe('reports repository', () => {
       '1234',
 
       'admin',
-    )
+    );
 
     createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1101,24 +1100,24 @@ describe('reports repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
     const dashboard = getCashierDashboardSummary({
       user_id: 1,
-    })
+    });
 
-    expect(dashboard.sales.invoice_sales).toBe(150)
+    expect(dashboard.sales.invoice_sales).toBe(150);
 
-    expect(dashboard.sales.returns_total).toBe(150)
+    expect(dashboard.sales.returns_total).toBe(150);
 
-    expect(dashboard.sales.net_sales).toBe(0)
+    expect(dashboard.sales.net_sales).toBe(0);
 
-    expect(dashboard.discounts.normal).toBe(0)
+    expect(dashboard.discounts.normal).toBe(0);
 
-    expect(dashboard.discounts.total).toBe(0)
+    expect(dashboard.discounts.total).toBe(0);
 
-    expect(dashboard.sales.returns_count).toBe(1)
-  })
+    expect(dashboard.sales.returns_count).toBe(1);
+  });
 
   it('separates exchange invoice adjustment from cash refund when the sale has debt', () => {
     const oldVariant = seedReportProduct({
@@ -1131,7 +1130,7 @@ describe('reports repository', () => {
       buyPrice: 200,
 
       sellPrice: 450,
-    })
+    });
 
     const newVariant = seedReportProduct({
       name: 'New Debt Exchange Product',
@@ -1143,13 +1142,13 @@ describe('reports repository', () => {
       buyPrice: 10,
 
       sellPrice: 20,
-    })
+    });
 
     const customer = createTestCustomer(
       'Exchange Debt Customer',
 
       '01099999999',
-    )
+    );
 
     const sale = createSale({
       user_id: 1,
@@ -1185,15 +1184,15 @@ describe('reports repository', () => {
           unit_price: 450,
         },
       ],
-    })
+    });
 
-    const state = getSaleExchangeState(sale.saleId)
+    const state = getSaleExchangeState(sale.saleId);
 
     const regularGroup = state.groups.find(
       (group: any) => group.group_kind === 'regular',
-    )
+    );
 
-    expect(regularGroup).toBeTruthy()
+    expect(regularGroup).toBeTruthy();
 
     const exchange = createSaleExchange({
       original_sale_id: sale.saleId,
@@ -1209,28 +1208,28 @@ describe('reports repository', () => {
           new_variant_id: newVariant.variant_id,
         },
       ],
-    })
+    });
 
     /*
      * قيمة الفاتورة نزلت
      * من 450 إلى 20.
      */
-    expect(exchange.difference_amount).toBe(-430)
+    expect(exchange.difference_amount).toBe(-430);
 
     /*
      * المديونية القديمة 250
      * يتم إلغاؤها أولًا.
      */
-    expect(exchange.debt_reduction_amount).toBe(250)
+    expect(exchange.debt_reduction_amount).toBe(250);
 
     /*
      * العميل دفع 200،
      * وأخذ منتج بـ20،
      * إذن الرد النقدي 180.
      */
-    expect(exchange.amount_to_refund).toBe(180)
+    expect(exchange.amount_to_refund).toBe(180);
 
-    const db = getDb()
+    const db = getDb();
 
     const today = db
       .prepare(
@@ -1243,25 +1242,25 @@ describe('reports repository', () => {
         `,
       )
       .get() as {
-      day: string
-    }
+      day: string;
+    };
 
     const dashboard = getCashierDashboardSummary({
       user_id: 1,
-    })
+    });
 
-    expect(dashboard.sales.invoice_sales).toBe(450)
+    expect(dashboard.sales.invoice_sales).toBe(450);
 
-    expect(dashboard.sales.exchange_adjustment).toBe(-430)
+    expect(dashboard.sales.exchange_adjustment).toBe(-430);
 
-    expect(dashboard.sales.exchange_debt_reduction).toBe(250)
+    expect(dashboard.sales.exchange_debt_reduction).toBe(250);
 
-    expect(dashboard.sales.exchange_cash_refund).toBe(180)
+    expect(dashboard.sales.exchange_cash_refund).toBe(180);
 
-    expect(dashboard.sales.exchange_cash_difference).toBe(-180)
+    expect(dashboard.sales.exchange_cash_difference).toBe(-180);
 
-    expect(dashboard.sales.net_sales).toBe(20)
-  })
+    expect(dashboard.sales.net_sales).toBe(20);
+  });
 
   it('shows customer payment total and counted shift opening on cashier dashboard', () => {
     const variant = seedReportProduct({
@@ -1274,13 +1273,13 @@ describe('reports repository', () => {
       buyPrice: 100,
 
       sellPrice: 500,
-    })
+    });
 
     const customer = createTestCustomer(
       'Dashboard Payment Customer',
 
       '01088888888',
-    )
+    );
 
     const sale = createSale({
       user_id: 1,
@@ -1316,7 +1315,7 @@ describe('reports repository', () => {
           unit_price: 500,
         },
       ],
-    })
+    });
 
     recordCustomerPayment({
       customer_id: customer.id,
@@ -1328,9 +1327,9 @@ describe('reports repository', () => {
       payment_method: 'cash',
 
       actor_id: 1,
-    })
+    });
 
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
@@ -1345,7 +1344,7 @@ describe('reports repository', () => {
 
         AND opened_by = 1
       `,
-    ).run()
+    ).run();
 
     const today = db
       .prepare(
@@ -1358,23 +1357,23 @@ describe('reports repository', () => {
         `,
       )
       .get() as {
-      day: string
-    }
+      day: string;
+    };
 
     const dashboard = getCashierDashboardSummary({
       user_id: 1,
-    })
+    });
 
-    expect(dashboard.operations.customer_payments_count).toBe(1)
+    expect(dashboard.operations.customer_payments_count).toBe(1);
 
-    expect(dashboard.operations.customer_payments_total).toBe(125)
+    expect(dashboard.operations.customer_payments_total).toBe(125);
 
-    expect(dashboard.shift).toBeTruthy()
+    expect(dashboard.shift).toBeTruthy();
 
-    expect(dashboard.shift?.opening_counted_amount).toBe(350)
+    expect(dashboard.shift?.opening_counted_amount).toBe(350);
 
-    expect(dashboard.shift?.status).toBe('open')
-  })
+    expect(dashboard.shift?.status).toBe('open');
+  });
 
   it('resets the cashier dashboard when a new shift starts', () => {
     const variant = seedReportProduct({
@@ -1387,15 +1386,15 @@ describe('reports repository', () => {
       buyPrice: 50,
 
       sellPrice: 100,
-    })
+    });
 
     /*
      * beforeEach فتح بالفعل
      * الشفت الأول للمستخدم 1.
      */
-    const firstShift = getOpenCashShift()
+    const firstShift = getOpenCashShift();
 
-    expect(firstShift).toBeTruthy()
+    expect(firstShift).toBeTruthy();
 
     createSale({
       user_id: 1,
@@ -1431,15 +1430,15 @@ describe('reports repository', () => {
           unit_price: 100,
         },
       ],
-    })
+    });
 
     const firstDashboard = getCashierDashboardSummary({
       user_id: 1,
-    })
+    });
 
-    expect(firstDashboard.shift?.id).toBe(firstShift!.id)
+    expect(firstDashboard.shift?.id).toBe(firstShift!.id);
 
-    expect(firstDashboard.sales.invoice_sales).toBe(100)
+    expect(firstDashboard.sales.invoice_sales).toBe(100);
 
     closeCashShift({
       shift_id: firstShift!.id,
@@ -1448,7 +1447,7 @@ describe('reports repository', () => {
       left_for_next_shift: 0,
 
       closed_by: 1,
-    })
+    });
 
     const secondCashier = createUser(
       'Second Shift Cashier',
@@ -1463,13 +1462,13 @@ describe('reports repository', () => {
        * ليست موضوع الاختبار.
        */
       'admin',
-    )
+    );
 
     const secondShift = openCashShift({
       opening_counted_amount: 75,
 
       opened_by: secondCashier.id,
-    })
+    });
 
     /*
      * بمجرد فتح شفت جديد:
@@ -1477,15 +1476,15 @@ describe('reports repository', () => {
      */
     const emptySecondDashboard = getCashierDashboardSummary({
       user_id: secondCashier.id,
-    })
+    });
 
-    expect(emptySecondDashboard.shift?.id).toBe(secondShift.id)
+    expect(emptySecondDashboard.shift?.id).toBe(secondShift.id);
 
-    expect(emptySecondDashboard.shift?.opening_counted_amount).toBe(75)
+    expect(emptySecondDashboard.shift?.opening_counted_amount).toBe(75);
 
-    expect(emptySecondDashboard.sales.invoice_sales).toBe(0)
+    expect(emptySecondDashboard.sales.invoice_sales).toBe(0);
 
-    expect(emptySecondDashboard.sales.invoices_count).toBe(0)
+    expect(emptySecondDashboard.sales.invoices_count).toBe(0);
 
     createSale({
       user_id: secondCashier.id,
@@ -1521,23 +1520,23 @@ describe('reports repository', () => {
           unit_price: 100,
         },
       ],
-    })
+    });
 
     const secondDashboard = getCashierDashboardSummary({
       user_id: secondCashier.id,
-    })
+    });
 
-    expect(secondDashboard.shift?.id).toBe(secondShift.id)
+    expect(secondDashboard.shift?.id).toBe(secondShift.id);
 
-    expect(secondDashboard.sales.invoice_sales).toBe(200)
+    expect(secondDashboard.sales.invoice_sales).toBe(200);
 
-    expect(secondDashboard.sales.invoices_count).toBe(1)
+    expect(secondDashboard.sales.invoices_count).toBe(1);
 
     /*
      * مبيعات الشفت الأول
      * لم تنتقل للشفت الثاني.
      */
-    expect(secondDashboard.sales.invoice_sales).not.toBe(300)
+    expect(secondDashboard.sales.invoice_sales).not.toBe(300);
 
     /*
      * صاحب الشفت القديم لا يرى
@@ -1546,12 +1545,12 @@ describe('reports repository', () => {
      */
     const oldCashierDashboard = getCashierDashboardSummary({
       user_id: 1,
-    })
+    });
 
-    expect(oldCashierDashboard.shift).toBeNull()
+    expect(oldCashierDashboard.shift).toBeNull();
 
-    expect(oldCashierDashboard.sales.invoice_sales).toBe(0)
-  })
+    expect(oldCashierDashboard.sales.invoice_sales).toBe(0);
+  });
 
   it('shows paid sales and outstanding debt for active shift invoices', () => {
     const variant = seedReportProduct({
@@ -1564,13 +1563,13 @@ describe('reports repository', () => {
       buyPrice: 100,
 
       sellPrice: 300,
-    })
+    });
 
     const customer = createTestCustomer(
       'Credit Customer',
 
       '01077777777',
-    )
+    );
 
     const sale = createSale({
       user_id: 1,
@@ -1606,19 +1605,19 @@ describe('reports repository', () => {
           unit_price: 300,
         },
       ],
-    })
+    });
 
     let dashboard = getCashierDashboardSummary({
       user_id: 1,
-    })
+    });
 
-    expect(dashboard.sales.invoice_sales).toBe(300)
+    expect(dashboard.sales.invoice_sales).toBe(300);
 
-    expect(dashboard.sales.paid_sales_total).toBe(150)
+    expect(dashboard.sales.paid_sales_total).toBe(150);
 
-    expect(dashboard.sales.outstanding_debt_total).toBe(150)
+    expect(dashboard.sales.outstanding_debt_total).toBe(150);
 
-    expect(dashboard.sales.outstanding_debt_invoices_count).toBe(1)
+    expect(dashboard.sales.outstanding_debt_invoices_count).toBe(1);
 
     /*
      * العميل دفع 50
@@ -1634,23 +1633,23 @@ describe('reports repository', () => {
       payment_method: 'cash',
 
       actor_id: 1,
-    })
+    });
 
     dashboard = getCashierDashboardSummary({
       user_id: 1,
-    })
+    });
 
-    expect(dashboard.sales.paid_sales_total).toBe(200)
+    expect(dashboard.sales.paid_sales_total).toBe(200);
 
-    expect(dashboard.sales.outstanding_debt_total).toBe(100)
+    expect(dashboard.sales.outstanding_debt_total).toBe(100);
 
-    expect(dashboard.sales.outstanding_debt_invoices_count).toBe(1)
-  })
+    expect(dashboard.sales.outstanding_debt_invoices_count).toBe(1);
+  });
 
   it('keeps shift operations on the shift opening business date', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const shift = getOpenCashShift()!
+    const shift = getOpenCashShift()!;
 
     /*
      * نحاكي شفت بدأ في
@@ -1667,7 +1666,7 @@ describe('reports repository', () => {
 
       WHERE id = ?
       `,
-    ).run(shift.id)
+    ).run(shift.id);
 
     const shiftDate = db
       .prepare(
@@ -1684,8 +1683,8 @@ describe('reports repository', () => {
         `,
       )
       .get(shift.id) as {
-      day: string
-    }
+      day: string;
+    };
 
     const variant = seedReportProduct({
       name: 'Shift Date Product',
@@ -1697,7 +1696,7 @@ describe('reports repository', () => {
       buyPrice: 50,
 
       sellPrice: 100,
-    })
+    });
 
     const sale = createSale({
       user_id: 1,
@@ -1740,7 +1739,7 @@ describe('reports repository', () => {
           unit_price: 100,
         },
       ],
-    })
+    });
 
     const saleRow = db
       .prepare(
@@ -1755,15 +1754,15 @@ describe('reports repository', () => {
         `,
       )
       .get(sale.saleId) as {
-      business_date: string
-      shift_id: number
-    }
+      business_date: string;
+      shift_id: number;
+    };
 
-    expect(saleRow.shift_id).toBe(shift.id)
+    expect(saleRow.shift_id).toBe(shift.id);
 
-    expect(saleRow.business_date).toBe(shiftDate.day)
+    expect(saleRow.business_date).toBe(shiftDate.day);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
     createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1781,7 +1780,7 @@ describe('reports repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
     createExpense({
       title: 'Shift date expense',
@@ -1791,23 +1790,23 @@ describe('reports repository', () => {
       payment_method: 'cash',
 
       created_by: 1,
-    })
+    });
 
     const report = getReportsSummary({
       date_from: shiftDate.day,
 
       date_to: shiftDate.day,
-    }) as ReportsSummaryTestResult
+    }) as ReportsSummaryTestResult;
 
-    expect(report.summary.sales_count).toBe(1)
+    expect(report.summary.sales_count).toBe(1);
 
-    expect(report.summary.gross_sales).toBe(200)
+    expect(report.summary.gross_sales).toBe(200);
 
-    expect(report.summary.returns_count).toBe(1)
+    expect(report.summary.returns_count).toBe(1);
 
-    expect(report.summary.total_returns).toBe(100)
+    expect(report.summary.total_returns).toBe(100);
 
-    expect(report.summary.total_expenses).toBe(10)
+    expect(report.summary.total_expenses).toBe(10);
 
     const movements = db
       .prepare(
@@ -1830,20 +1829,20 @@ describe('reports repository', () => {
         `,
       )
       .all(shift.id) as Array<{
-      business_date: string
-    }>
+      business_date: string;
+    }>;
 
-    expect(movements.length).toBeGreaterThan(0)
+    expect(movements.length).toBeGreaterThan(0);
 
     expect(
       movements.every((movement) => movement.business_date === shiftDate.day),
-    ).toBe(true)
-  })
+    ).toBe(true);
+  });
 
   it('includes approved closing surplus in final net profit', () => {
-    const shift = getOpenCashShift()
+    const shift = getOpenCashShift();
 
-    expect(shift).toBeTruthy()
+    expect(shift).toBeTruthy();
 
     createCashMovement({
       type: 'sale',
@@ -1852,80 +1851,82 @@ describe('reports repository', () => {
       payment_method: 'store_cash',
       created_by: 1,
       shift_id: shift!.id,
-    })
+    });
 
     closeCashShift({
       shift_id: shift!.id,
       closing_counted_amount: 150,
       left_for_next_shift: 0,
       closed_by: 1,
-    })
+    });
 
     const variance = listCashShiftVariances({
       status: 'pending',
-    }).rows.find((row) => row.shift_id === shift!.id && row.stage === 'closing')
+    }).rows.find(
+      (row) => row.shift_id === shift!.id && row.stage === 'closing',
+    );
 
-    expect(variance).toBeTruthy()
-    expect(variance!.kind).toBe('surplus')
-    expect(Number(variance!.amount)).toBe(50)
+    expect(variance).toBeTruthy();
+    expect(variance!.kind).toBe('surplus');
+    expect(Number(variance!.amount)).toBe(50);
 
     resolveCashShiftVariance({
       variance_id: variance!.id,
       resolution_type: 'approved',
       resolution_notes: 'زيادة إغلاق حقيقية',
       resolved_by: 1,
-    })
+    });
 
-    const report = getReportsSummary()
+    const report = getReportsSummary();
 
-    expect(report.summary.approved_closing_surplus).toBe(50)
-    expect(report.summary.approved_closing_shortage).toBe(0)
-    expect(report.summary.final_net_profit).toBe(50)
-  })
+    expect(report.summary.approved_closing_surplus).toBe(50);
+    expect(report.summary.approved_closing_shortage).toBe(0);
+    expect(report.summary.final_net_profit).toBe(50);
+  });
 
   it('includes approved opening surplus in final net profit', () => {
-    const firstShift = getOpenCashShift()
+    const firstShift = getOpenCashShift();
 
-    expect(firstShift).toBeTruthy()
+    expect(firstShift).toBeTruthy();
 
     closeCashShift({
       shift_id: firstShift!.id,
       closing_counted_amount: 0,
       left_for_next_shift: 0,
       closed_by: 1,
-    })
+    });
 
     const secondShift = openCashShift({
       opening_counted_amount: 50,
       opened_by: 1,
-    })
+    });
 
-    expect(secondShift.expected_opening_amount).toBe(0)
-    expect(secondShift.opening_difference).toBe(50)
+    expect(secondShift.expected_opening_amount).toBe(0);
+    expect(secondShift.opening_difference).toBe(50);
 
     const variance = listCashShiftVariances({
       status: 'pending',
     }).rows.find(
       (row) => row.shift_id === secondShift.id && row.stage === 'opening',
-    )
+    );
 
-    expect(variance).toBeTruthy()
-    expect(variance!.kind).toBe('surplus')
-    expect(Number(variance!.amount)).toBe(50)
+    expect(variance).toBeTruthy();
+    expect(variance!.kind).toBe('surplus');
+    expect(Number(variance!.amount)).toBe(50);
 
     resolveCashShiftVariance({
       variance_id: variance!.id,
       resolution_type: 'approved',
       resolution_notes: 'زيادة افتتاح حقيقية',
       resolved_by: 1,
-    })
+    });
 
-    const report = getReportsSummary()
+    const report = getReportsSummary();
 
-    expect(report.summary.approved_opening_surplus).toBe(50)
-    expect(report.summary.approved_opening_shortage).toBe(0)
-    expect(report.summary.final_net_profit).toBe(50)
-  })
+    expect(report.summary.approved_opening_surplus).toBe(50);
+    expect(report.summary.approved_opening_shortage).toBe(0);
+    expect(report.summary.final_net_profit).toBe(50);
+  });
 
   it('reports split invoice amounts under each payment method', () => {
     const variant = seedReportProduct({
@@ -1934,7 +1935,7 @@ describe('reports repository', () => {
       openingQty: 10,
       buyPrice: 100,
       sellPrice: 150,
-    })
+    });
 
     createSale({
       user_id: 1,
@@ -1970,29 +1971,29 @@ describe('reports repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    const report = getReportsSummary() as ReportsSummaryTestResult
+    const report = getReportsSummary() as ReportsSummaryTestResult;
 
-    expect(report.summary.sales_count).toBe(1)
-    expect(report.summary.gross_sales).toBe(150)
+    expect(report.summary.sales_count).toBe(1);
+    expect(report.summary.gross_sales).toBe(150);
 
     const cash = report.paymentMethods.find(
       (row) => row.payment_method === 'cash',
-    )
+    );
 
     const bank = report.paymentMethods.find(
       (row) => row.payment_method === 'bank_transfer',
-    )
+    );
 
-    expect(cash).toBeTruthy()
-    expect(Number(cash!.count)).toBe(1)
-    expect(Number(cash!.total)).toBe(50)
+    expect(cash).toBeTruthy();
+    expect(Number(cash!.count)).toBe(1);
+    expect(Number(cash!.total)).toBe(50);
 
-    expect(bank).toBeTruthy()
-    expect(Number(bank!.count)).toBe(1)
-    expect(Number(bank!.total)).toBe(100)
-  })
+    expect(bank).toBeTruthy();
+    expect(Number(bank!.count)).toBe(1);
+    expect(Number(bank!.total)).toBe(100);
+  });
 
   it('keeps historical sale profit unchanged after a later purchase changes the product cost', () => {
     const variant = seedReportProduct({
@@ -2005,7 +2006,7 @@ describe('reports repository', () => {
       buyPrice: 100,
 
       sellPrice: 150,
-    })
+    });
 
     createSale({
       user_id: 1,
@@ -2041,17 +2042,17 @@ describe('reports repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    const beforePurchase = getReportsSummary() as ReportsSummaryTestResult
+    const beforePurchase = getReportsSummary() as ReportsSummaryTestResult;
 
-    expect(beforePurchase.summary.gross_profit_before_discounts).toBe(50)
+    expect(beforePurchase.summary.gross_profit_before_discounts).toBe(50);
 
-    expect(beforePurchase.summary.net_profit_after_discounts).toBe(50)
+    expect(beforePurchase.summary.net_profit_after_discounts).toBe(50);
 
     const supplier = createSupplier({
       name: 'Historical Profit Supplier',
-    }) as any
+    }) as any;
 
     createPurchaseInvoice({
       supplier_id: supplier.id,
@@ -2069,9 +2070,9 @@ describe('reports repository', () => {
           unit_cost: 300,
         },
       ],
-    })
+    });
 
-    const afterPurchase = getReportsSummary() as ReportsSummaryTestResult
+    const afterPurchase = getReportsSummary() as ReportsSummaryTestResult;
 
     /*
      * سعر الشراء الحالي ومتوسط
@@ -2080,9 +2081,9 @@ describe('reports repository', () => {
      * لكن البيع القديم خرج وقتها
      * بتكلفة 100، فربحه يظل 50.
      */
-    expect(afterPurchase.summary.gross_profit_before_discounts).toBe(50)
+    expect(afterPurchase.summary.gross_profit_before_discounts).toBe(50);
 
-    expect(afterPurchase.summary.net_profit_after_discounts).toBe(50)
+    expect(afterPurchase.summary.net_profit_after_discounts).toBe(50);
 
     const saleItem = getDb()
       .prepare(
@@ -2097,9 +2098,9 @@ describe('reports repository', () => {
         `,
       )
       .get() as {
-      unit_cost: number
-    }
+      unit_cost: number;
+    };
 
-    expect(Number(saleItem.unit_cost)).toBe(100)
-  })
-})
+    expect(Number(saleItem.unit_cost)).toBe(100);
+  });
+});

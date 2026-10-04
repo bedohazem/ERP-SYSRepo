@@ -1,9 +1,9 @@
-import { getDb } from '../db'
+import { getDb } from '../db';
 import {
   getInventoryCostState,
   issueStockAtAverageCost,
   receiveStockAtCost,
-} from '../inventory-cost'
+} from '../inventory-cost';
 
 const STOCK_SUM_SQL = `
   IFNULL(SUM(
@@ -13,30 +13,30 @@ const STOCK_SUM_SQL = `
       ELSE 0
     END
   ), 0)
-`
+`;
 
 export function createStockCountSession(input: {
-  title: string
-  notes?: string | null
-  actor_id?: number | null
-  categoryId?: number | string | null
+  title: string;
+  notes?: string | null;
+  actor_id?: number | null;
+  categoryId?: number | string | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const title = String(input.title || '').trim()
+  const title = String(input.title || '').trim();
 
   if (!title) {
-    throw new Error('اسم جلسة الجرد مطلوب')
+    throw new Error('اسم جلسة الجرد مطلوب');
   }
 
-  const rawCategoryId = input.categoryId
+  const rawCategoryId = input.categoryId;
   const categoryId =
-    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null
+    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null;
 
   const categorySql =
     categoryId && Number.isFinite(categoryId) && categoryId > 0
       ? `AND p.category_id = ?`
-      : ''
+      : '';
 
   const tx = db.transaction(() => {
     const result = db
@@ -59,9 +59,9 @@ export function createStockCountSession(input: {
         categorySql ? categoryId : null,
 
         input.actor_id ?? null,
-      )
+      );
 
-    const sessionId = Number(result.lastInsertRowid)
+    const sessionId = Number(result.lastInsertRowid);
 
     db.prepare(
       `
@@ -90,7 +90,7 @@ export function createStockCountSession(input: {
       ) x
       ORDER BY x.variant_id ASC
       `,
-    ).run(sessionId, ...(categorySql ? [categoryId] : []))
+    ).run(sessionId, ...(categorySql ? [categoryId] : []));
 
     const countRow = db
       .prepare(
@@ -100,21 +100,21 @@ export function createStockCountSession(input: {
         WHERE session_id = ?
         `,
       )
-      .get(sessionId) as { count: number }
+      .get(sessionId) as { count: number };
 
     return {
       id: sessionId,
       title,
       status: 'open',
       items_count: Number(countRow.count || 0),
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function listStockCountSessions() {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .prepare(
@@ -225,11 +225,11 @@ export function listStockCountSessions() {
       ORDER BY scs.id DESC
       `,
     )
-    .all()
+    .all();
 }
 
 export function getStockCountSession(sessionId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const session = db
     .prepare(
@@ -245,10 +245,10 @@ export function getStockCountSession(sessionId: number) {
       LIMIT 1
       `,
     )
-    .get(Number(sessionId)) as any
+    .get(Number(sessionId)) as any;
 
   if (!session) {
-    throw new Error('جلسة الجرد غير موجودة')
+    throw new Error('جلسة الجرد غير موجودة');
   }
 
   // تحديث كمية النظام من حركات المخزون عند فتح الجلسة.
@@ -287,7 +287,7 @@ export function getStockCountSession(sessionId: number) {
 
     WHERE session_id = ?
     `,
-    ).run(Number(sessionId), Number(sessionId))
+    ).run(Number(sessionId), Number(sessionId));
   }
 
   const items = db
@@ -360,38 +360,38 @@ export function getStockCountSession(sessionId: number) {
       ORDER BY p.id ASC, v.id ASC
       `,
     )
-    .all(Number(sessionId))
+    .all(Number(sessionId));
 
   return {
     session,
     items,
-  }
+  };
 }
 
 export function updateStockCountItem(input: {
-  session_id: number
-  item_id: number
-  actual_stock: number
-  notes?: string | null
+  session_id: number;
+  item_id: number;
+  actual_stock: number;
+  notes?: string | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
   const session = db
     .prepare(`SELECT id, status FROM stock_count_sessions WHERE id = ? LIMIT 1`)
-    .get(Number(input.session_id)) as any
+    .get(Number(input.session_id)) as any;
 
   if (!session) {
-    throw new Error('جلسة الجرد غير موجودة')
+    throw new Error('جلسة الجرد غير موجودة');
   }
 
   if (session.status !== 'open') {
-    throw new Error('لا يمكن تعديل جرد غير مفتوح')
+    throw new Error('لا يمكن تعديل جرد غير مفتوح');
   }
 
-  const actualStock = Number(input.actual_stock)
+  const actualStock = Number(input.actual_stock);
 
   if (!Number.isFinite(actualStock) || actualStock < 0) {
-    throw new Error('الكمية الفعلية غير صحيحة')
+    throw new Error('الكمية الفعلية غير صحيحة');
   }
 
   const result = db
@@ -411,46 +411,46 @@ export function updateStockCountItem(input: {
       input.notes?.trim() || null,
       Number(input.item_id),
       Number(input.session_id),
-    )
+    );
 
   if (result.changes === 0) {
-    throw new Error('بند الجرد غير موجود')
+    throw new Error('بند الجرد غير موجود');
   }
 
   return {
     success: true,
-  }
+  };
 }
 
 export function scanStockCountBarcode(input: {
-  session_id: number
-  barcode: string
-  quantity?: number
+  session_id: number;
+  barcode: string;
+  quantity?: number;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const sessionId = Number(input.session_id)
-  const barcode = String(input.barcode || '').trim()
-  const quantity = input.quantity == null ? 1 : Number(input.quantity)
+  const sessionId = Number(input.session_id);
+  const barcode = String(input.barcode || '').trim();
+  const quantity = input.quantity == null ? 1 : Number(input.quantity);
 
   if (!barcode) {
-    throw new Error('الباركود مطلوب')
+    throw new Error('الباركود مطلوب');
   }
 
   if (!Number.isFinite(quantity) || quantity <= 0) {
-    throw new Error('الكمية غير صحيحة')
+    throw new Error('الكمية غير صحيحة');
   }
 
   const session = db
     .prepare(`SELECT id, status FROM stock_count_sessions WHERE id = ? LIMIT 1`)
-    .get(sessionId) as any
+    .get(sessionId) as any;
 
   if (!session) {
-    throw new Error('جلسة الجرد غير موجودة')
+    throw new Error('جلسة الجرد غير موجودة');
   }
 
   if (session.status !== 'open') {
-    throw new Error('لا يمكن التعديل على جرد غير مفتوح')
+    throw new Error('لا يمكن التعديل على جرد غير مفتوح');
   }
 
   const item = db
@@ -472,13 +472,13 @@ export function scanStockCountBarcode(input: {
       LIMIT 1
       `,
     )
-    .get(sessionId, barcode) as any
+    .get(sessionId, barcode) as any;
 
   if (!item) {
-    throw new Error('لم يتم العثور على صنف بهذا الباركود داخل جلسة الجرد')
+    throw new Error('لم يتم العثور على صنف بهذا الباركود داخل جلسة الجرد');
   }
 
-  const nextActual = Number(item.actual_stock || 0) + quantity
+  const nextActual = Number(item.actual_stock || 0) + quantity;
 
   db.prepare(
     `
@@ -488,7 +488,7 @@ export function scanStockCountBarcode(input: {
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
     `,
-  ).run(nextActual, Number(item.id))
+  ).run(nextActual, Number(item.id));
 
   return {
     success: true,
@@ -498,30 +498,30 @@ export function scanStockCountBarcode(input: {
     barcode: item.barcode,
     size: item.size,
     color: item.color,
-  }
+  };
 }
 
 export function approveStockCountSession(input: {
-  session_id: number
-  actor_id?: number | null
+  session_id: number;
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const sessionId = Number(input.session_id)
+  const sessionId = Number(input.session_id);
 
   const tx = db.transaction(() => {
     const session = db
       .prepare(
         `SELECT id, title, status FROM stock_count_sessions WHERE id = ? LIMIT 1`,
       )
-      .get(sessionId) as any
+      .get(sessionId) as any;
 
     if (!session) {
-      throw new Error('جلسة الجرد غير موجودة')
+      throw new Error('جلسة الجرد غير موجودة');
     }
 
     if (session.status !== 'open') {
-      throw new Error('جلسة الجرد ليست مفتوحة')
+      throw new Error('جلسة الجرد ليست مفتوحة');
     }
 
     // مزامنة كمية النظام قبل الاعتماد مباشرة؛
@@ -539,12 +539,12 @@ export function approveStockCountSession(input: {
           )
         `,
       )
-      .get(sessionId) as { count: number }
+      .get(sessionId) as { count: number };
 
     if (Number(changedStock.count || 0) > 0) {
       throw new Error(
         `تم تغيير مخزون ${changedStock.count} صنف أثناء الجرد. افتح الجلسة مرة أخرى وراجع الكميات قبل الاعتماد`,
-      )
+      );
     }
 
     const uncounted = db
@@ -556,10 +556,10 @@ export function approveStockCountSession(input: {
           AND actual_stock IS NULL
         `,
       )
-      .get(sessionId) as { count: number }
+      .get(sessionId) as { count: number };
 
     if (Number(uncounted.count || 0) > 0) {
-      throw new Error(`يوجد ${uncounted.count} صنف لم يتم جرده`)
+      throw new Error(`يوجد ${uncounted.count} صنف لم يتم جرده`);
     }
 
     const items = db
@@ -580,33 +580,33 @@ export function approveStockCountSession(input: {
         WHERE sci.session_id = ?
         `,
       )
-      .all(sessionId) as any[]
+      .all(sessionId) as any[];
 
-    let changedItems = 0
-    let shortageItems = 0
-    let surplusItems = 0
-    let totalShortageQty = 0
-    let totalSurplusQty = 0
+    let changedItems = 0;
+    let shortageItems = 0;
+    let surplusItems = 0;
+    let totalShortageQty = 0;
+    let totalSurplusQty = 0;
 
     for (const item of items) {
-      const systemStock = Number(item.system_stock || 0)
-      const actualStock = Number(item.actual_stock || 0)
-      const diff = actualStock - systemStock
+      const systemStock = Number(item.system_stock || 0);
+      const actualStock = Number(item.actual_stock || 0);
+      const diff = actualStock - systemStock;
 
       if (diff === 0) {
-        continue
+        continue;
       }
 
-      changedItems += 1
+      changedItems += 1;
 
       if (diff > 0) {
-        surplusItems += 1
-        totalSurplusQty += diff
+        surplusItems += 1;
+        totalSurplusQty += diff;
 
-        const costState = getInventoryCostState(db, Number(item.variant_id))
+        const costState = getInventoryCostState(db, Number(item.variant_id));
 
         const inboundUnitCost =
-          systemStock > 0 ? costState.average_cost : costState.buy_price
+          systemStock > 0 ? costState.average_cost : costState.buy_price;
 
         receiveStockAtCost(db, {
           variant_id: Number(item.variant_id),
@@ -620,10 +620,10 @@ export function approveStockCountSession(input: {
           reference_type: 'stock_count',
           created_by: input.actor_id ?? null,
           notes: `تسوية جرد #${sessionId}: زيادة ${diff}`,
-        })
+        });
       } else {
-        shortageItems += 1
-        totalShortageQty += Math.abs(diff)
+        shortageItems += 1;
+        totalShortageQty += Math.abs(diff);
 
         issueStockAtAverageCost(db, {
           variant_id: Number(item.variant_id),
@@ -635,7 +635,7 @@ export function approveStockCountSession(input: {
           reference_type: 'stock_count',
           created_by: input.actor_id ?? null,
           notes: `تسوية جرد #${sessionId}: عجز ${Math.abs(diff)}`,
-        })
+        });
       }
     }
 
@@ -648,7 +648,7 @@ export function approveStockCountSession(input: {
         approved_at = CURRENT_TIMESTAMP
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, sessionId)
+    ).run(input.actor_id ?? null, sessionId);
 
     return {
       success: true,
@@ -658,17 +658,17 @@ export function approveStockCountSession(input: {
       surplus_items: surplusItems,
       total_shortage_qty: totalShortageQty,
       total_surplus_qty: totalSurplusQty,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function cancelStockCountSession(input: {
-  session_id: number
-  actor_id?: number | null
+  session_id: number;
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
   const result = db
     .prepare(
@@ -682,14 +682,14 @@ export function cancelStockCountSession(input: {
         AND status = 'open'
       `,
     )
-    .run(input.actor_id ?? null, Number(input.session_id))
+    .run(input.actor_id ?? null, Number(input.session_id));
 
   if (result.changes === 0) {
-    throw new Error('لا يمكن إلغاء جلسة الجرد')
+    throw new Error('لا يمكن إلغاء جلسة الجرد');
   }
 
   return {
     success: true,
     session_id: Number(input.session_id),
-  }
+  };
 }

@@ -1,8 +1,8 @@
-import { ipcMain } from 'electron'
-import { runCriticalActionWithAudit } from './activity-helper'
-import { requireAnyPermission, requirePermission } from '../auth-session'
+import { ipcMain } from 'electron';
+import { runCriticalActionWithAudit } from './activity-helper';
+import { requireAnyPermission, requirePermission } from '../auth-session';
 
-import { userHasPermission } from '../database/repositories/user.repo'
+import { userHasPermission } from '../database/repositories/user.repo';
 
 import {
   adjustVariantStock,
@@ -10,7 +10,7 @@ import {
   getInventoryList,
   getStockMovements,
   listInventoryPage,
-} from '../database/repositories/inventory.repo'
+} from '../database/repositories/inventory.repo';
 
 const INVENTORY_COST_FIELDS = new Set([
   'buy_price',
@@ -24,71 +24,71 @@ const INVENTORY_COST_FIELDS = new Set([
 
   'dead_stock_value_90d',
   'potential_gross_profit',
-])
+]);
 
 function redactInventoryCosts<T>(value: T): T {
   if (Array.isArray(value)) {
-    return value.map(redactInventoryCosts) as T
+    return value.map(redactInventoryCosts) as T;
   }
 
   if (value === null || typeof value !== 'object') {
-    return value
+    return value;
   }
 
-  const result: Record<string, unknown> = {}
+  const result: Record<string, unknown> = {};
 
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
     if (INVENTORY_COST_FIELDS.has(key)) {
-      result[key] = 0
+      result[key] = 0;
 
-      continue
+      continue;
     }
 
-    result[key] = redactInventoryCosts(child)
+    result[key] = redactInventoryCosts(child);
   }
 
-  return result as T
+  return result as T;
 }
 
 function protectInventoryCosts<T>(
   actor: {
-    id: number
-    role: string
+    id: number;
+    role: string;
   },
 
   value: T,
 ): T {
   if (actor.role === 'admin' || userHasPermission(actor.id, 'costs.view')) {
-    return value
+    return value;
   }
 
-  return redactInventoryCosts(value)
+  return redactInventoryCosts(value);
 }
 
 export function registerInventoryIpc(): void {
   ipcMain.handle('inventory:list', (event, input) => {
-    const actor = requirePermission(event, 'inventory.view')
+    const actor = requirePermission(event, 'inventory.view');
 
-    return protectInventoryCosts(actor, getInventoryList(input))
-  })
+    return protectInventoryCosts(actor, getInventoryList(input));
+  });
 
   ipcMain.handle('inventory:list-page', (event, input) => {
     const actor = requireAnyPermission(event, [
       'inventory.view',
       'purchases.manage',
-    ])
+    ]);
 
-    return protectInventoryCosts(actor, listInventoryPage(input))
-  })
+    return protectInventoryCosts(actor, listInventoryPage(input));
+  });
 
   ipcMain.handle('inventory:analytics', (event, input) => {
-    const actor = requirePermission(event, 'inventory.view')
+    const actor = requirePermission(event, 'inventory.view');
 
-    return protectInventoryCosts(actor, getInventoryAnalytics(input))
-  })
+    return protectInventoryCosts(actor, getInventoryAnalytics(input));
+  });
 
   ipcMain.handle('inventory:adjust-stock', (event, input) => {
-    const actorId = requirePermission(event, 'inventory.adjust').id
+    const actorId = requirePermission(event, 'inventory.adjust').id;
 
     const result = runCriticalActionWithAudit(
       () =>
@@ -119,14 +119,14 @@ export function registerInventoryIpc(): void {
           notes: input?.notes || '',
         },
       }),
-    )
+    );
 
-    return result
-  })
+    return result;
+  });
 
   ipcMain.handle('inventory:movements', (event, input) => {
-    const actor = requirePermission(event, 'inventory.view')
+    const actor = requirePermission(event, 'inventory.view');
 
-    return protectInventoryCosts(actor, getStockMovements(input))
-  })
+    return protectInventoryCosts(actor, getStockMovements(input));
+  });
 }

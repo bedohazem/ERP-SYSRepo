@@ -9,10 +9,7 @@ await build({
   target: 'node20',
   minify: true,
   sourcemap: false,
-  external: [
-    'electron',
-    'better-sqlite3'
-  ]
+  external: ['electron', 'better-sqlite3'],
 });
 
 console.log('Built main process to dist/main/index.cjs');

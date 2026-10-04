@@ -1,12 +1,12 @@
-import { getDb } from '../db'
-import { createCashMovement, resolveCashAccount } from './cash.repo'
+import { getDb } from '../db';
+import { createCashMovement, resolveCashAccount } from './cash.repo';
 import {
   requireOperationalCashShift,
   resolveFinancialOperationShift,
-} from './cash-shifts.repo'
+} from './cash-shifts.repo';
 
-import { getShiftBusinessDate } from '../shift-business-date'
-import { roundMoney } from '../../../shared/money'
+import { getShiftBusinessDate } from '../shift-business-date';
+import { roundMoney } from '../../../shared/money';
 
 function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
   const row = db
@@ -16,49 +16,49 @@ function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
       `,
     )
     .get() as {
-    business_date: string
-  }
+    business_date: string;
+  };
 
-  return String(row?.business_date || '')
+  return String(row?.business_date || '');
 }
 
 function normalizeCreditLimit(value: unknown): number | null {
   if (value === null || value === undefined || String(value).trim() === '') {
-    return null
+    return null;
   }
 
-  const amount = Number(value)
+  const amount = Number(value);
 
   if (!Number.isFinite(amount) || amount < 0) {
-    throw new Error('الحد الائتماني يجب أن يكون صفر أو رقمًا موجبًا')
+    throw new Error('الحد الائتماني يجب أن يكون صفر أو رقمًا موجبًا');
   }
 
-  return roundMoney(amount)
+  return roundMoney(amount);
 }
 
 function normalizeCreditDays(value: unknown): number | null {
   if (value === null || value === undefined || String(value).trim() === '') {
-    return null
+    return null;
   }
 
-  const days = Number(value)
+  const days = Number(value);
 
   if (!Number.isInteger(days) || days < 0) {
-    throw new Error('مدة الائتمان يجب أن تكون صفر أو عدد أيام صحيح موجب')
+    throw new Error('مدة الائتمان يجب أن تكون صفر أو عدد أيام صحيح موجب');
   }
 
-  return days
+  return days;
 }
 
 function getAgingSummaryForCustomer(
   customerId?: number | null,
   search?: string,
 ) {
-  const db = getDb()
+  const db = getDb();
 
-  const id = Number(customerId || 0)
+  const id = Number(customerId || 0);
 
-  const searchValue = String(search || '').trim()
+  const searchValue = String(search || '').trim();
 
   const where: string[] = [
     `
@@ -82,20 +82,20 @@ function getAgingSummaryForCustomer(
       2
     ) > 0
     `,
-  ]
+  ];
 
-  const params: any[] = []
+  const params: any[] = [];
 
   if (id > 0) {
-    where.push('s.customer_id = ?')
+    where.push('s.customer_id = ?');
 
-    params.push(id)
+    params.push(id);
   } else {
     /*
      * نفس Scope الخاص بقائمة العملاء:
      * العملاء النشطون فقط.
      */
-    where.push('c.is_active = 1')
+    where.push('c.is_active = 1');
 
     if (searchValue) {
       where.push(`
@@ -120,11 +120,11 @@ function getAgingSummaryForCustomer(
             ''
           ) LIKE ?
         )
-      `)
+      `);
 
-      const q = `%${searchValue}%`
+      const q = `%${searchValue}%`;
 
-      params.push(q, q, q, q)
+      params.push(q, q, q, q);
     }
   }
 
@@ -235,7 +235,7 @@ function getAgingSummaryForCustomer(
       ) open_sales
       `,
     )
-    .get(...params) as any
+    .get(...params) as any;
 
   return {
     days_0_30: Number(Number(row?.days_0_30 || 0).toFixed(2)),
@@ -247,18 +247,18 @@ function getAgingSummaryForCustomer(
     days_90_plus: Number(Number(row?.days_90_plus || 0).toFixed(2)),
 
     total: Number(Number(row?.total || 0).toFixed(2)),
-  }
+  };
 }
 
 export function getCustomerDueSummary(
   customerId?: number | null,
   search?: string,
 ) {
-  const db = getDb()
+  const db = getDb();
 
-  const id = Number(customerId || 0)
+  const id = Number(customerId || 0);
 
-  const searchValue = String(search || '').trim()
+  const searchValue = String(search || '').trim();
 
   const where: string[] = [
     `
@@ -282,16 +282,16 @@ export function getCustomerDueSummary(
       2
     ) > 0
     `,
-  ]
+  ];
 
-  const params: any[] = []
+  const params: any[] = [];
 
   if (id > 0) {
-    where.push('s.customer_id = ?')
+    where.push('s.customer_id = ?');
 
-    params.push(id)
+    params.push(id);
   } else {
-    where.push('c.is_active = 1')
+    where.push('c.is_active = 1');
 
     if (searchValue) {
       where.push(`
@@ -316,11 +316,11 @@ export function getCustomerDueSummary(
             ''
           ) LIKE ?
         )
-      `)
+      `);
 
-      const q = `%${searchValue}%`
+      const q = `%${searchValue}%`;
 
-      params.push(q, q, q, q)
+      params.push(q, q, q, q);
     }
   }
 
@@ -428,7 +428,7 @@ export function getCustomerDueSummary(
       ) open_sales
       `,
     )
-    .get(...params) as any
+    .get(...params) as any;
 
   return {
     overdue: Number(Number(row?.overdue || 0).toFixed(2)),
@@ -440,35 +440,35 @@ export function getCustomerDueSummary(
     without_due_date: Number(Number(row?.without_due_date || 0).toFixed(2)),
 
     total_open: Number(Number(row?.total_open || 0).toFixed(2)),
-  }
+  };
 }
 
 export type CustomerInput = {
-  name: string
-  phone?: string | null
-  email?: string | null
-  address?: string | null
-  notes?: string | null
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
 
   /*
    * null = بدون حد ائتماني.
    * 0 = ممنوع مديونية.
    */
-  credit_limit?: number | null
+  credit_limit?: number | null;
   /*
    * null = بدون تاريخ استحقاق تلقائي.
    * 0 = نفس يوم الفاتورة.
    */
-  credit_days?: number | null
-}
+  credit_days?: number | null;
+};
 
 export type CustomerUpdateInput = CustomerInput & {
-  id: number
-  is_active?: number
-}
+  id: number;
+  is_active?: number;
+};
 
 export function getCustomers() {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .prepare(
@@ -490,12 +490,12 @@ export function getCustomers() {
       ORDER BY c.id DESC
     `,
     )
-    .all()
+    .all();
 }
 
 export function searchCustomers(query: string) {
-  const db = getDb()
-  const q = `%${query.trim()}%`
+  const db = getDb();
+  const q = `%${query.trim()}%`;
 
   return db
     .prepare(
@@ -523,26 +523,26 @@ export function searchCustomers(query: string) {
       LIMIT 30
     `,
     )
-    .all(q, q, q)
+    .all(q, q, q);
 }
 
 export function listCustomers(input?: {
-  search?: string
-  debtors_only?: boolean
-  limit?: number
-  offset?: number
+  search?: string;
+  debtors_only?: boolean;
+  limit?: number;
+  offset?: number;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const search = input?.search?.trim() || ''
+  const search = input?.search?.trim() || '';
 
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
 
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
-  const baseWhere: string[] = [`c.is_active = 1`]
+  const baseWhere: string[] = [`c.is_active = 1`];
 
-  const baseParams: any[] = []
+  const baseParams: any[] = [];
 
   if (search) {
     baseWhere.push(`
@@ -552,20 +552,20 @@ export function listCustomers(input?: {
         OR IFNULL(c.email, '') LIKE ?
         OR IFNULL(c.address, '') LIKE ?
       )
-    `)
+    `);
 
-    const q = `%${search}%`
+    const q = `%${search}%`;
 
-    baseParams.push(q, q, q, q)
+    baseParams.push(q, q, q, q);
   }
 
-  const rowsWhere = [...baseWhere]
+  const rowsWhere = [...baseWhere];
 
   if (input?.debtors_only) {
-    rowsWhere.push(`IFNULL(c.balance, 0) > 0`)
+    rowsWhere.push(`IFNULL(c.balance, 0) > 0`);
   }
 
-  const rowsWhereSql = `WHERE ${rowsWhere.join(' AND ')}`
+  const rowsWhereSql = `WHERE ${rowsWhere.join(' AND ')}`;
 
   const rows = db
     .prepare(
@@ -597,7 +597,7 @@ export function listCustomers(input?: {
       OFFSET ?
     `,
     )
-    .all(...baseParams, limit, offset)
+    .all(...baseParams, limit, offset);
 
   const totalRow = db
     .prepare(
@@ -610,12 +610,12 @@ export function listCustomers(input?: {
     `,
     )
     .get(...baseParams) as {
-    total: number
-  }
+    total: number;
+  };
 
-  const debtWhere = [...baseWhere, `IFNULL(c.balance, 0) > 0`]
+  const debtWhere = [...baseWhere, `IFNULL(c.balance, 0) > 0`];
 
-  const debtWhereSql = `WHERE ${debtWhere.join(' AND ')}`
+  const debtWhereSql = `WHERE ${debtWhere.join(' AND ')}`;
 
   const debtSummaryRow = db
     .prepare(
@@ -632,7 +632,7 @@ export function listCustomers(input?: {
       ${debtWhereSql}
     `,
     )
-    .get(...baseParams) as any
+    .get(...baseParams) as any;
 
   const topDebtor = db
     .prepare(
@@ -653,11 +653,11 @@ export function listCustomers(input?: {
       LIMIT 1
     `,
     )
-    .get(...baseParams) as any
+    .get(...baseParams) as any;
 
-  const aging = getAgingSummaryForCustomer(null, search)
+  const aging = getAgingSummaryForCustomer(null, search);
 
-  const due = getCustomerDueSummary(null, search)
+  const due = getCustomerDueSummary(null, search);
 
   return {
     rows,
@@ -681,22 +681,22 @@ export function listCustomers(input?: {
       aging,
       due,
     },
-  }
+  };
 }
 
 export function createCustomer(input: CustomerInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const name = input.name?.trim()
-  const phone = input.phone?.trim() || null
-  const email = input.email?.trim() || null
-  const address = input.address?.trim() || null
-  const notes = input.notes?.trim() || null
-  const creditLimit = normalizeCreditLimit(input.credit_limit)
-  const creditDays = normalizeCreditDays(input.credit_days)
+  const name = input.name?.trim();
+  const phone = input.phone?.trim() || null;
+  const email = input.email?.trim() || null;
+  const address = input.address?.trim() || null;
+  const notes = input.notes?.trim() || null;
+  const creditLimit = normalizeCreditLimit(input.credit_limit);
+  const creditDays = normalizeCreditDays(input.credit_days);
 
   if (!name) {
-    throw new Error('اسم العميل مطلوب')
+    throw new Error('اسم العميل مطلوب');
   }
 
   const result = db
@@ -714,26 +714,26 @@ export function createCustomer(input: CustomerInput) {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
     )
-    .run(name, phone, email, address, notes, creditLimit, creditDays)
+    .run(name, phone, email, address, notes, creditLimit, creditDays);
 
-  return getCustomerById(Number(result.lastInsertRowid))
+  return getCustomerById(Number(result.lastInsertRowid));
 }
 
 export function updateCustomer(input: CustomerUpdateInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const name = input.name?.trim()
-  const phone = input.phone?.trim() || null
-  const email = input.email?.trim() || null
-  const address = input.address?.trim() || null
-  const notes = input.notes?.trim() || null
+  const name = input.name?.trim();
+  const phone = input.phone?.trim() || null;
+  const email = input.email?.trim() || null;
+  const address = input.address?.trim() || null;
+  const notes = input.notes?.trim() || null;
 
   if (!input.id) {
-    throw new Error('Customer ID is required')
+    throw new Error('Customer ID is required');
   }
 
   if (!name) {
-    throw new Error('اسم العميل مطلوب')
+    throw new Error('اسم العميل مطلوب');
   }
 
   const current = db
@@ -752,25 +752,25 @@ export function updateCustomer(input: CustomerUpdateInput) {
     )
     .get(input.id) as
     | {
-        credit_limit: number | null
+        credit_limit: number | null;
 
-        credit_days: number | null
+        credit_days: number | null;
       }
-    | undefined
+    | undefined;
 
   if (!current) {
-    throw new Error('العميل غير موجود')
+    throw new Error('العميل غير موجود');
   }
 
   const creditLimit =
     input.credit_limit === undefined
       ? current.credit_limit
-      : normalizeCreditLimit(input.credit_limit)
+      : normalizeCreditLimit(input.credit_limit);
 
   const creditDays =
     input.credit_days === undefined
       ? current.credit_days
-      : normalizeCreditDays(input.credit_days)
+      : normalizeCreditDays(input.credit_days);
 
   db.prepare(
     `
@@ -786,18 +786,18 @@ export function updateCustomer(input: CustomerUpdateInput) {
       updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
   `,
-  ).run(name, phone, email, address, notes, creditLimit, creditDays, input.id)
+  ).run(name, phone, email, address, notes, creditLimit, creditDays, input.id);
 
-  return getCustomerById(input.id)
+  return getCustomerById(input.id);
 }
 
 export function deleteCustomer(id: number) {
-  const db = getDb()
+  const db = getDb();
 
-  const customerId = Number(id)
+  const customerId = Number(id);
 
   if (!customerId) {
-    throw new Error('رقم العميل غير صحيح')
+    throw new Error('رقم العميل غير صحيح');
   }
 
   const customer = db
@@ -815,14 +815,14 @@ export function deleteCustomer(id: number) {
     )
     .get(customerId) as
     | {
-        id: number
-        name: string
-        balance: number
+        id: number;
+        name: string;
+        balance: number;
       }
-    | undefined
+    | undefined;
 
   if (!customer) {
-    throw new Error('العميل غير موجود')
+    throw new Error('العميل غير موجود');
   }
 
   const openDebtRow = db
@@ -842,19 +842,19 @@ export function deleteCustomer(id: number) {
     )
     .get(customerId) as
     | {
-        open_debt: number
+        open_debt: number;
       }
-    | undefined
+    | undefined;
 
   const outstandingAmount = Math.max(
     Number(customer.balance || 0),
     Number(openDebtRow?.open_debt || 0),
-  )
+  );
 
   if (Number(outstandingAmount.toFixed(2)) > 0) {
     throw new Error(
       `لا يمكن حذف العميل لأن عليه مديونية بقيمة ${outstandingAmount.toFixed(2)} ج.م`,
-    )
+    );
   }
 
   db.prepare(
@@ -865,13 +865,13 @@ export function deleteCustomer(id: number) {
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
     `,
-  ).run(customerId)
+  ).run(customerId);
 
-  return { ok: true }
+  return { ok: true };
 }
 
 export function getCustomerById(id: number) {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .prepare(
@@ -893,13 +893,13 @@ export function getCustomerById(id: number) {
       LIMIT 1
     `,
     )
-    .get(id)
+    .get(id);
 }
 
 export function getCustomerHistory(customerId: number) {
-  const db = getDb()
+  const db = getDb();
 
-  const customer = getCustomerById(customerId)
+  const customer = getCustomerById(customerId);
 
   const sales = db
     .prepare(
@@ -933,7 +933,7 @@ export function getCustomerHistory(customerId: number) {
       ORDER BY id DESC
     `,
     )
-    .all(customerId)
+    .all(customerId);
 
   const loyalty = db
     .prepare(
@@ -944,31 +944,31 @@ export function getCustomerHistory(customerId: number) {
       ORDER BY id DESC
     `,
     )
-    .all(customerId)
+    .all(customerId);
 
   return {
     customer,
     sales,
     loyalty,
-  }
+  };
 }
 
 export function adjustCustomerPoints(input: {
-  customer_id: number
-  points: number
-  notes?: string | null
+  customer_id: number;
+  points: number;
+  notes?: string | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const customerId = Number(input.customer_id)
-  const points = Number(input.points || 0)
+  const customerId = Number(input.customer_id);
+  const points = Number(input.points || 0);
 
   if (!customerId) {
-    throw new Error('Customer ID is required')
+    throw new Error('Customer ID is required');
   }
 
   if (!points) {
-    throw new Error('عدد النقاط مطلوب')
+    throw new Error('عدد النقاط مطلوب');
   }
 
   const tx = db.transaction(() => {
@@ -979,7 +979,7 @@ export function adjustCustomerPoints(input: {
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `,
-    ).run(points, customerId)
+    ).run(points, customerId);
 
     db.prepare(
       `
@@ -993,58 +993,58 @@ export function adjustCustomerPoints(input: {
       )
       VALUES (?, NULL, 'adjust', ?, 0, ?)
     `,
-    ).run(customerId, points, input.notes ?? null)
+    ).run(customerId, points, input.notes ?? null);
 
-    return getCustomerById(customerId)
-  })
+    return getCustomerById(customerId);
+  });
 
-  return tx()
+  return tx();
 }
 
 export function recordCustomerPayment(input: {
-  customer_id: number
-  sale_id?: number | null
-  amount: number
-  payment_method?: string
-  notes?: string | null
-  actor_id?: number | null
+  customer_id: number;
+  sale_id?: number | null;
+  amount: number;
+  payment_method?: string;
+  notes?: string | null;
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const customerId = Number(input.customer_id)
-  const saleId = input.sale_id ? Number(input.sale_id) : null
-  const amountInput = roundMoney(input.amount)
+  const customerId = Number(input.customer_id);
+  const saleId = input.sale_id ? Number(input.sale_id) : null;
+  const amountInput = roundMoney(input.amount);
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
-  const paymentMethod = String(input.payment_method || 'cash').trim() || 'cash'
+  const paymentMethod = String(input.payment_method || 'cash').trim() || 'cash';
 
   const openShift = resolveFinancialOperationShift(
     actorId,
     [paymentMethod],
     'لا يمكن تسجيل دفعة عميل من درج المحل بدون شفت مفتوح',
-  )
+  );
 
   if (!customerId) {
-    throw new Error('Customer ID is required')
+    throw new Error('Customer ID is required');
   }
 
   if (!Number.isFinite(amountInput) || amountInput <= 0) {
-    throw new Error('مبلغ الدفعة غير صحيح')
+    throw new Error('مبلغ الدفعة غير صحيح');
   }
 
   const tx = db.transaction(() => {
     const customer = db
       .prepare(`SELECT * FROM customers WHERE id = ? AND is_active = 1 LIMIT 1`)
-      .get(customerId) as any
+      .get(customerId) as any;
 
     if (!customer) {
-      throw new Error('العميل غير موجود')
+      throw new Error('العميل غير موجود');
     }
 
     const businessDate = openShift
       ? getShiftBusinessDate(openShift.id)
-      : getCurrentBusinessDate(db)
+      : getCurrentBusinessDate(db);
 
     const batchResult = db
       .prepare(
@@ -1070,9 +1070,9 @@ export function recordCustomerPayment(input: {
         input.actor_id ?? null,
         businessDate,
         openShift?.id ?? null,
-      )
+      );
 
-    const paymentBatchId = Number(batchResult.lastInsertRowid)
+    const paymentBatchId = Number(batchResult.lastInsertRowid);
 
     const insertPayment = db.prepare(`
       INSERT INTO customer_payments (
@@ -1084,7 +1084,7 @@ export function recordCustomerPayment(input: {
         notes
       )
       VALUES (?, ?, ?, ?, ?, ?)
-    `)
+    `);
 
     const updateSale = db.prepare(`
       UPDATE sales
@@ -1093,13 +1093,13 @@ export function recordCustomerPayment(input: {
         remaining_amount = ?,
         payment_status = ?
       WHERE id = ?
-    `)
+    `);
 
-    let totalPaid = 0
+    let totalPaid = 0;
     const allocations: Array<{
-      sale_id: number | null
-      amount: number
-    }> = []
+      sale_id: number | null;
+      amount: number;
+    }> = [];
 
     // دفعة على فاتورة معينة
     if (saleId) {
@@ -1115,19 +1115,19 @@ export function recordCustomerPayment(input: {
           LIMIT 1
         `,
         )
-        .get(saleId, customerId) as any
+        .get(saleId, customerId) as any;
 
       if (!sale) {
-        throw new Error('الفاتورة غير موجودة')
+        throw new Error('الفاتورة غير موجودة');
       }
 
-      const remaining = roundMoney(sale.remaining_amount)
+      const remaining = roundMoney(sale.remaining_amount);
 
       if (remaining <= 0) {
-        throw new Error('الفاتورة مدفوعة بالكامل بالفعل')
+        throw new Error('الفاتورة مدفوعة بالكامل بالفعل');
       }
 
-      const finalAmount = roundMoney(Math.min(amountInput, remaining))
+      const finalAmount = roundMoney(Math.min(amountInput, remaining));
 
       const newPaid = roundMoney(
         Math.min(
@@ -1135,14 +1135,14 @@ export function recordCustomerPayment(input: {
 
           roundMoney(sale.paid) + finalAmount,
         ),
-      )
+      );
 
-      const newRemaining = roundMoney(Math.max(0, remaining - finalAmount))
+      const newRemaining = roundMoney(Math.max(0, remaining - finalAmount));
 
       const newStatus =
-        newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
+        newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
 
-      updateSale.run(newPaid, newRemaining, newStatus, saleId)
+      updateSale.run(newPaid, newRemaining, newStatus, saleId);
 
       insertPayment.run(
         customerId,
@@ -1151,21 +1151,21 @@ export function recordCustomerPayment(input: {
         finalAmount,
         paymentMethod,
         input.notes?.trim() || `دفعة على فاتورة بيع رقم ${saleId}`,
-      )
+      );
 
-      totalPaid = finalAmount
+      totalPaid = finalAmount;
 
       allocations.push({
         sale_id: saleId,
         amount: finalAmount,
-      })
+      });
     } else {
       // دفعة عامة للعميل: تتوزع على أقدم فواتير مفتوحة
-      const customerBalance = roundMoney(customer.balance)
-      let remainingPayment = Math.min(amountInput, customerBalance)
+      const customerBalance = roundMoney(customer.balance);
+      let remainingPayment = Math.min(amountInput, customerBalance);
 
       if (remainingPayment <= 0) {
-        throw new Error('لا يوجد رصيد مستحق على العميل')
+        throw new Error('لا يوجد رصيد مستحق على العميل');
       }
 
       const openSales = db
@@ -1180,30 +1180,30 @@ export function recordCustomerPayment(input: {
           ORDER BY id ASC
         `,
         )
-        .all(customerId) as any[]
+        .all(customerId) as any[];
 
       if (openSales.length === 0) {
-        throw new Error('لا توجد فواتير مفتوحة لهذا العميل')
+        throw new Error('لا توجد فواتير مفتوحة لهذا العميل');
       }
 
       for (const sale of openSales) {
-        if (remainingPayment <= 0) break
+        if (remainingPayment <= 0) break;
 
-        const saleRemaining = roundMoney(sale.remaining_amount)
+        const saleRemaining = roundMoney(sale.remaining_amount);
 
-        const payNow = roundMoney(Math.min(remainingPayment, saleRemaining))
+        const payNow = roundMoney(Math.min(remainingPayment, saleRemaining));
 
         const newPaid = Math.min(
           Number(sale.grand_total || 0),
           Number(sale.paid || 0) + payNow,
-        )
+        );
 
-        const newRemaining = Math.max(0, saleRemaining - payNow)
+        const newRemaining = Math.max(0, saleRemaining - payNow);
 
         const newStatus =
-          newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
+          newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
 
-        updateSale.run(newPaid, newRemaining, newStatus, sale.id)
+        updateSale.run(newPaid, newRemaining, newStatus, sale.id);
         insertPayment.run(
           customerId,
           sale.id,
@@ -1212,21 +1212,21 @@ export function recordCustomerPayment(input: {
           paymentMethod,
           input.notes?.trim() ||
             `دفعة عامة موزعة على فاتورة بيع رقم ${sale.id}`,
-        )
+        );
 
-        totalPaid = roundMoney(totalPaid + payNow)
+        totalPaid = roundMoney(totalPaid + payNow);
 
-        remainingPayment = roundMoney(remainingPayment - payNow)
+        remainingPayment = roundMoney(remainingPayment - payNow);
 
         allocations.push({
           sale_id: sale.id,
           amount: payNow,
-        })
+        });
       }
     }
 
     if (totalPaid <= 0) {
-      throw new Error('لم يتم تسجيل أي دفعة')
+      throw new Error('لم يتم تسجيل أي دفعة');
     }
 
     db.prepare(
@@ -1235,7 +1235,7 @@ export function recordCustomerPayment(input: {
       SET amount = ?
       WHERE id = ?
       `,
-    ).run(totalPaid, paymentBatchId)
+    ).run(totalPaid, paymentBatchId);
 
     db.prepare(
       `
@@ -1245,7 +1245,7 @@ export function recordCustomerPayment(input: {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `,
-    ).run(totalPaid, customerId)
+    ).run(totalPaid, customerId);
 
     createCashMovement({
       type: 'customer_payment',
@@ -1261,7 +1261,7 @@ export function recordCustomerPayment(input: {
       created_by: input.actor_id ?? null,
       business_date: businessDate,
       shift_id: openShift?.id ?? null,
-    })
+    });
 
     return {
       ok: true,
@@ -1274,17 +1274,17 @@ export function recordCustomerPayment(input: {
 
       allocations,
       shift_id: openShift?.id ?? null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function getCustomerPaymentBatchAccess(
   batchId: number,
   actorId?: number | null,
 ) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -1311,14 +1311,14 @@ export function getCustomerPaymentBatchAccess(
     )
     .get(Number(actorId || 0), Number(batchId)) as
     | {
-        id: number
-        created_by: number | null
-        requires_admin_password: number
+        id: number;
+        created_by: number | null;
+        requires_admin_password: number;
       }
-    | undefined
+    | undefined;
 
   if (!row) {
-    throw new Error('دفعة العميل غير موجودة')
+    throw new Error('دفعة العميل غير موجودة');
   }
 
   return {
@@ -1327,32 +1327,32 @@ export function getCustomerPaymentBatchAccess(
     created_by: row.created_by == null ? null : Number(row.created_by),
 
     requires_admin_password: Number(row.requires_admin_password || 0) === 1,
-  }
+  };
 }
 
 export function cancelCustomerPaymentBatch(input: {
-  batch_id: number
-  reason?: string | null
-  actor_id?: number | null
+  batch_id: number;
+  reason?: string | null;
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const batchId = Number(input.batch_id || 0)
+  const batchId = Number(input.batch_id || 0);
 
   if (!batchId) {
-    throw new Error('رقم دفعة العميل غير صحيح')
+    throw new Error('رقم دفعة العميل غير صحيح');
   }
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
   const openShift = requireOperationalCashShift(
     actorId,
     'لا يمكن إلغاء دفعة عميل بدون شفت مفتوح',
-  )
+  );
 
-  const cancellationBusinessDate = getShiftBusinessDate(openShift.id)
+  const cancellationBusinessDate = getShiftBusinessDate(openShift.id);
 
-  const reason = String(input.reason || '').trim() || 'إلغاء دفعة عميل'
+  const reason = String(input.reason || '').trim() || 'إلغاء دفعة عميل';
 
   const batch = db
     .prepare(
@@ -1372,14 +1372,14 @@ export function cancelCustomerPaymentBatch(input: {
       LIMIT 1
       `,
     )
-    .get(batchId) as any
+    .get(batchId) as any;
 
   if (!batch) {
-    throw new Error('دفعة العميل غير موجودة')
+    throw new Error('دفعة العميل غير موجودة');
   }
 
   if (batch.cancelled_at) {
-    throw new Error('دفعة العميل ملغاة بالفعل')
+    throw new Error('دفعة العميل ملغاة بالفعل');
   }
 
   const allocations = db
@@ -1405,23 +1405,25 @@ export function cancelCustomerPaymentBatch(input: {
       ORDER BY cp.id ASC
       `,
     )
-    .all(batchId) as any[]
+    .all(batchId) as any[];
 
   if (allocations.length === 0) {
-    throw new Error('لا توجد توزيعات مرتبطة بدفعة العميل')
+    throw new Error('لا توجد توزيعات مرتبطة بدفعة العميل');
   }
 
   if (allocations.some((allocation) => allocation.sale_cancelled_at)) {
-    throw new Error('لا يمكن إلغاء الدفعة لأن إحدى الفواتير المرتبطة بها ملغاة')
+    throw new Error(
+      'لا يمكن إلغاء الدفعة لأن إحدى الفواتير المرتبطة بها ملغاة',
+    );
   }
 
   const allocationTotal = allocations.reduce(
     (sum, allocation) => sum + Number(allocation.amount || 0),
     0,
-  )
+  );
 
   if (Math.abs(allocationTotal - Number(batch.amount || 0)) > 0.01) {
-    throw new Error('بيانات دفعة العميل غير متطابقة')
+    throw new Error('بيانات دفعة العميل غير متطابقة');
   }
 
   const cashMovement = db
@@ -1441,14 +1443,14 @@ export function cancelCustomerPaymentBatch(input: {
       LIMIT 1
       `,
     )
-    .get(batchId) as any
+    .get(batchId) as any;
 
   if (!cashMovement) {
-    throw new Error('حركة الخزنة الخاصة بدفعة العميل غير موجودة')
+    throw new Error('حركة الخزنة الخاصة بدفعة العميل غير موجودة');
   }
 
   if (cashMovement.cancelled_at) {
-    throw new Error('حركة الخزنة الخاصة بالدفعة ملغاة بالفعل')
+    throw new Error('حركة الخزنة الخاصة بالدفعة ملغاة بالفعل');
   }
 
   const cashBalanceRow = db
@@ -1478,32 +1480,32 @@ export function cancelCustomerPaymentBatch(input: {
     )
     .get(String(cashMovement.payment_method || 'store_cash')) as
     | {
-        balance: number
+        balance: number;
       }
-    | undefined
+    | undefined;
 
-  const currentCashBalance = Number(cashBalanceRow?.balance || 0)
+  const currentCashBalance = Number(cashBalanceRow?.balance || 0);
 
   if (currentCashBalance + 0.0001 < allocationTotal) {
     throw new Error(
       `لا يمكن إلغاء الدفعة لأن رصيد حساب الدفع الحالي لا يكفي لعكس مبلغ ${allocationTotal.toFixed(2)} ج.م`,
-    )
+    );
   }
 
   const tx = db.transaction(() => {
     for (const allocation of allocations) {
-      const amount = Number(allocation.amount || 0)
+      const amount = Number(allocation.amount || 0);
 
-      const nextPaid = Math.max(0, Number(allocation.paid || 0) - amount)
+      const nextPaid = Math.max(0, Number(allocation.paid || 0) - amount);
 
       const nextRemaining = Math.min(
         Number(allocation.grand_total || 0),
 
         Math.max(0, Number(allocation.remaining_amount || 0) + amount),
-      )
+      );
 
       const nextStatus =
-        nextRemaining <= 0 ? 'paid' : nextPaid > 0 ? 'partial' : 'unpaid'
+        nextRemaining <= 0 ? 'paid' : nextPaid > 0 ? 'partial' : 'unpaid';
 
       db.prepare(
         `
@@ -1516,7 +1518,7 @@ export function cancelCustomerPaymentBatch(input: {
 
         WHERE id = ?
         `,
-      ).run(nextPaid, nextRemaining, nextStatus, Number(allocation.sale_id))
+      ).run(nextPaid, nextRemaining, nextStatus, Number(allocation.sale_id));
     }
 
     db.prepare(
@@ -1531,7 +1533,7 @@ export function cancelCustomerPaymentBatch(input: {
 
       WHERE id = ?
       `,
-    ).run(allocationTotal, Number(batch.customer_id))
+    ).run(allocationTotal, Number(batch.customer_id));
 
     db.prepare(
       `
@@ -1549,7 +1551,7 @@ export function cancelCustomerPaymentBatch(input: {
 
       WHERE id = ?
       `,
-    ).run(actorId, openShift.id, reason, batchId)
+    ).run(actorId, openShift.id, reason, batchId);
 
     createCashMovement({
       type: 'customer_payment',
@@ -1572,7 +1574,7 @@ export function cancelCustomerPaymentBatch(input: {
       business_date: cancellationBusinessDate,
 
       shift_id: openShift.id,
-    })
+    });
 
     return {
       success: true,
@@ -1590,39 +1592,39 @@ export function cancelCustomerPaymentBatch(input: {
 
         amount: Number(allocation.amount || 0),
       })),
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function updateCustomerPaymentBatch(input: {
-  batch_id: number
-  amount: number
-  payment_method?: string
-  notes?: string | null
-  actor_id?: number | null
+  batch_id: number;
+  amount: number;
+  payment_method?: string;
+  notes?: string | null;
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const batchId = Number(input.batch_id || 0)
-  const amountInput = roundMoney(input.amount)
+  const batchId = Number(input.batch_id || 0);
+  const amountInput = roundMoney(input.amount);
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
   const openShift = requireOperationalCashShift(
     actorId,
     'لا يمكن تعديل دفعة عميل بدون شفت مفتوح',
-  )
+  );
 
-  const correctionBusinessDate = getShiftBusinessDate(openShift.id)
+  const correctionBusinessDate = getShiftBusinessDate(openShift.id);
 
   if (!batchId) {
-    throw new Error('رقم دفعة العميل غير صحيح')
+    throw new Error('رقم دفعة العميل غير صحيح');
   }
 
   if (!Number.isFinite(amountInput) || amountInput <= 0) {
-    throw new Error('مبلغ الدفعة المعدل غير صحيح')
+    throw new Error('مبلغ الدفعة المعدل غير صحيح');
   }
 
   const batch = db
@@ -1643,14 +1645,14 @@ export function updateCustomerPaymentBatch(input: {
       LIMIT 1
       `,
     )
-    .get(batchId) as any
+    .get(batchId) as any;
 
   if (!batch) {
-    throw new Error('دفعة العميل غير موجودة')
+    throw new Error('دفعة العميل غير موجودة');
   }
 
   if (batch.cancelled_at) {
-    throw new Error('لا يمكن تعديل دفعة ملغاة')
+    throw new Error('لا يمكن تعديل دفعة ملغاة');
   }
 
   const customer = db
@@ -1662,10 +1664,10 @@ export function updateCustomerPaymentBatch(input: {
       LIMIT 1
       `,
     )
-    .get(Number(batch.customer_id)) as any
+    .get(Number(batch.customer_id)) as any;
 
   if (!customer) {
-    throw new Error('العميل غير موجود')
+    throw new Error('العميل غير موجود');
   }
 
   const allocations = db
@@ -1691,23 +1693,25 @@ export function updateCustomerPaymentBatch(input: {
       ORDER BY cp.id ASC
       `,
     )
-    .all(batchId) as any[]
+    .all(batchId) as any[];
 
   if (allocations.length === 0) {
-    throw new Error('لا توجد توزيعات مرتبطة بدفعة العميل')
+    throw new Error('لا توجد توزيعات مرتبطة بدفعة العميل');
   }
 
   if (allocations.some((allocation) => allocation.sale_cancelled_at)) {
-    throw new Error('لا يمكن تعديل الدفعة لأن إحدى الفواتير المرتبطة بها ملغاة')
+    throw new Error(
+      'لا يمكن تعديل الدفعة لأن إحدى الفواتير المرتبطة بها ملغاة',
+    );
   }
 
   const oldTotal = allocations.reduce(
     (sum, allocation) => sum + Number(allocation.amount || 0),
     0,
-  )
+  );
 
   if (Math.abs(oldTotal - Number(batch.amount || 0)) > 0.01) {
-    throw new Error('بيانات دفعة العميل غير متطابقة')
+    throw new Error('بيانات دفعة العميل غير متطابقة');
   }
 
   const cashMovement = db
@@ -1726,36 +1730,36 @@ export function updateCustomerPaymentBatch(input: {
       LIMIT 1
       `,
     )
-    .get(batchId) as any
+    .get(batchId) as any;
 
   if (!cashMovement) {
-    throw new Error('حركة الخزنة الخاصة بدفعة العميل غير موجودة')
+    throw new Error('حركة الخزنة الخاصة بدفعة العميل غير موجودة');
   }
 
   if (cashMovement.cancelled_at) {
-    throw new Error('حركة الخزنة الخاصة بالدفعة ملغاة بالفعل')
+    throw new Error('حركة الخزنة الخاصة بالدفعة ملغاة بالفعل');
   }
 
   if (Math.abs(Number(cashMovement.amount || 0) - oldTotal) > 0.01) {
-    throw new Error('قيمة حركة الخزنة لا تطابق قيمة الدفعة')
+    throw new Error('قيمة حركة الخزنة لا تطابق قيمة الدفعة');
   }
 
-  const specificSaleId = Number(batch.sale_id || 0)
+  const specificSaleId = Number(batch.sale_id || 0);
 
   const customerAvailableAfterReverse = Math.max(
     0,
     Number(customer.balance || 0) + oldTotal,
-  )
+  );
 
-  let availableForNewPayment = customerAvailableAfterReverse
+  let availableForNewPayment = customerAvailableAfterReverse;
 
   if (specificSaleId) {
     const targetSale = allocations.find(
       (allocation) => Number(allocation.sale_id) === specificSaleId,
-    )
+    );
 
     if (!targetSale) {
-      throw new Error('الفاتورة المرتبطة بالدفعة غير موجودة')
+      throw new Error('الفاتورة المرتبطة بالدفعة غير موجودة');
     }
 
     const oldAllocationOnSale = allocations.reduce(
@@ -1764,7 +1768,7 @@ export function updateCustomerPaymentBatch(input: {
           ? sum + Number(allocation.amount || 0)
           : sum,
       0,
-    )
+    );
 
     availableForNewPayment = Math.min(
       customerAvailableAfterReverse,
@@ -1773,24 +1777,24 @@ export function updateCustomerPaymentBatch(input: {
         0,
         Number(targetSale.remaining_amount || 0) + oldAllocationOnSale,
       ),
-    )
+    );
   }
 
   if (amountInput > availableForNewPayment + 0.0001) {
     throw new Error(
       `مبلغ الدفعة المعدل أكبر من المديونية المتاحة وهي ${availableForNewPayment.toFixed(2)} ج.م`,
-    )
+    );
   }
 
   const newPaymentMethod =
     String(input.payment_method || batch.payment_method || 'cash').trim() ||
-    'cash'
+    'cash';
 
   const oldAccount = resolveCashAccount(
     cashMovement.payment_method || batch.payment_method || 'cash',
-  )
+  );
 
-  const newAccount = resolveCashAccount(newPaymentMethod)
+  const newAccount = resolveCashAccount(newPaymentMethod);
 
   const cashBalanceRow = db
     .prepare(
@@ -1819,40 +1823,40 @@ export function updateCustomerPaymentBatch(input: {
     )
     .get(oldAccount) as
     | {
-        balance: number
+        balance: number;
       }
-    | undefined
+    | undefined;
 
-  const oldAccountBalance = Number(cashBalanceRow?.balance || 0)
+  const oldAccountBalance = Number(cashBalanceRow?.balance || 0);
 
   if (oldAccount === newAccount) {
     if (oldAccountBalance + amountInput + 0.0001 < oldTotal) {
-      throw new Error('رصيد حساب الدفع الحالي لا يكفي لتنفيذ تعديل الدفعة')
+      throw new Error('رصيد حساب الدفع الحالي لا يكفي لتنفيذ تعديل الدفعة');
     }
   } else if (oldAccountBalance + 0.0001 < oldTotal) {
-    throw new Error('رصيد حساب الدفع القديم لا يكفي لنقل الدفعة إلى حساب آخر')
+    throw new Error('رصيد حساب الدفع القديم لا يكفي لنقل الدفعة إلى حساب آخر');
   }
 
   const newNotes =
     input.notes === undefined
       ? (batch.notes ?? null)
-      : input.notes?.trim() || null
+      : input.notes?.trim() || null;
 
   const tx = db.transaction(() => {
     // عكس تأثير الدفعة القديمة على الفواتير
     for (const allocation of allocations) {
-      const amount = Number(allocation.amount || 0)
+      const amount = Number(allocation.amount || 0);
 
-      const nextPaid = Math.max(0, Number(allocation.paid || 0) - amount)
+      const nextPaid = Math.max(0, Number(allocation.paid || 0) - amount);
 
       const nextRemaining = Math.min(
         Number(allocation.grand_total || 0),
 
         Math.max(0, Number(allocation.remaining_amount || 0) + amount),
-      )
+      );
 
       const nextStatus =
-        nextRemaining <= 0 ? 'paid' : nextPaid > 0 ? 'partial' : 'unpaid'
+        nextRemaining <= 0 ? 'paid' : nextPaid > 0 ? 'partial' : 'unpaid';
 
       db.prepare(
         `
@@ -1863,7 +1867,7 @@ export function updateCustomerPaymentBatch(input: {
           payment_status = ?
         WHERE id = ?
         `,
-      ).run(nextPaid, nextRemaining, nextStatus, Number(allocation.sale_id))
+      ).run(nextPaid, nextRemaining, nextStatus, Number(allocation.sale_id));
     }
 
     // إعادة المديونية القديمة أولاً
@@ -1876,7 +1880,7 @@ export function updateCustomerPaymentBatch(input: {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
       `,
-    ).run(oldTotal, Number(batch.customer_id))
+    ).run(oldTotal, Number(batch.customer_id));
 
     // إنشاء Batch بديل مع الاحتفاظ
     // بتاريخ ومالك العملية الأصليين
@@ -1914,9 +1918,9 @@ export function updateCustomerPaymentBatch(input: {
         openShift.id,
 
         batch.created_at,
-      )
+      );
 
-    const newBatchId = Number(newBatchResult.lastInsertRowid)
+    const newBatchId = Number(newBatchResult.lastInsertRowid);
 
     // تعليم العملية القديمة بأنها استبدلت
     db.prepare(
@@ -1936,7 +1940,7 @@ export function updateCustomerPaymentBatch(input: {
 
       WHERE id = ?
       `,
-    ).run(actorId, openShift.id, 'تم تعديل دفعة العميل', newBatchId, batchId)
+    ).run(actorId, openShift.id, 'تم تعديل دفعة العميل', newBatchId, batchId);
 
     const insertPayment = db.prepare(`
       INSERT INTO customer_payments (
@@ -1948,7 +1952,7 @@ export function updateCustomerPaymentBatch(input: {
         notes
       )
       VALUES (?, ?, ?, ?, ?, ?)
-    `)
+    `);
 
     const updateSale = db.prepare(`
       UPDATE sales
@@ -1957,14 +1961,14 @@ export function updateCustomerPaymentBatch(input: {
         remaining_amount = ?,
         payment_status = ?
       WHERE id = ?
-    `)
+    `);
 
-    let totalPaid = 0
+    let totalPaid = 0;
 
     const newAllocations: Array<{
-      sale_id: number
-      amount: number
-    }> = []
+      sale_id: number;
+      amount: number;
+    }> = [];
 
     if (specificSaleId) {
       const sale = db
@@ -1979,29 +1983,29 @@ export function updateCustomerPaymentBatch(input: {
           LIMIT 1
           `,
         )
-        .get(specificSaleId, Number(batch.customer_id)) as any
+        .get(specificSaleId, Number(batch.customer_id)) as any;
 
       if (!sale) {
-        throw new Error('الفاتورة المرتبطة بالدفعة غير موجودة')
+        throw new Error('الفاتورة المرتبطة بالدفعة غير موجودة');
       }
 
-      const remaining = Number(sale.remaining_amount || 0)
+      const remaining = Number(sale.remaining_amount || 0);
 
       if (amountInput > remaining + 0.0001) {
-        throw new Error('مبلغ الدفعة المعدل أكبر من المتبقي على الفاتورة')
+        throw new Error('مبلغ الدفعة المعدل أكبر من المتبقي على الفاتورة');
       }
 
       const newPaid = Math.min(
         Number(sale.grand_total || 0),
         Number(sale.paid || 0) + amountInput,
-      )
+      );
 
-      const newRemaining = Math.max(0, remaining - amountInput)
+      const newRemaining = Math.max(0, remaining - amountInput);
 
       const newStatus =
-        newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
+        newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
 
-      updateSale.run(newPaid, newRemaining, newStatus, specificSaleId)
+      updateSale.run(newPaid, newRemaining, newStatus, specificSaleId);
 
       insertPayment.run(
         Number(batch.customer_id),
@@ -2010,16 +2014,16 @@ export function updateCustomerPaymentBatch(input: {
         amountInput,
         newPaymentMethod,
         newNotes || `دفعة معدلة على فاتورة بيع رقم ${specificSaleId}`,
-      )
+      );
 
-      totalPaid = amountInput
+      totalPaid = amountInput;
 
       newAllocations.push({
         sale_id: specificSaleId,
         amount: amountInput,
-      })
+      });
     } else {
-      let remainingPayment = amountInput
+      let remainingPayment = amountInput;
 
       const openSales = db
         .prepare(
@@ -2033,32 +2037,32 @@ export function updateCustomerPaymentBatch(input: {
           ORDER BY id ASC
           `,
         )
-        .all(Number(batch.customer_id)) as any[]
+        .all(Number(batch.customer_id)) as any[];
 
       for (const sale of openSales) {
         if (remainingPayment <= 0.0001) {
-          break
+          break;
         }
 
-        const saleRemaining = Number(sale.remaining_amount || 0)
+        const saleRemaining = Number(sale.remaining_amount || 0);
 
-        const payNow = Math.min(remainingPayment, saleRemaining)
+        const payNow = Math.min(remainingPayment, saleRemaining);
 
         if (payNow <= 0) {
-          continue
+          continue;
         }
 
         const newPaid = Math.min(
           Number(sale.grand_total || 0),
           Number(sale.paid || 0) + payNow,
-        )
+        );
 
-        const newRemaining = Math.max(0, saleRemaining - payNow)
+        const newRemaining = Math.max(0, saleRemaining - payNow);
 
         const newStatus =
-          newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
+          newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
 
-        updateSale.run(newPaid, newRemaining, newStatus, sale.id)
+        updateSale.run(newPaid, newRemaining, newStatus, sale.id);
 
         insertPayment.run(
           Number(batch.customer_id),
@@ -2067,24 +2071,24 @@ export function updateCustomerPaymentBatch(input: {
           payNow,
           newPaymentMethod,
           newNotes || `دفعة معدلة موزعة على فاتورة بيع رقم ${sale.id}`,
-        )
+        );
 
-        totalPaid += payNow
-        remainingPayment -= payNow
+        totalPaid += payNow;
+        remainingPayment -= payNow;
 
         newAllocations.push({
           sale_id: Number(sale.id),
           amount: payNow,
-        })
+        });
       }
 
       if (remainingPayment > 0.0001) {
-        throw new Error('تعذر توزيع كامل مبلغ الدفعة المعدلة')
+        throw new Error('تعذر توزيع كامل مبلغ الدفعة المعدلة');
       }
     }
 
     if (Math.abs(totalPaid - amountInput) > 0.01) {
-      throw new Error('تعذر تسجيل مبلغ الدفعة المعدل بالكامل')
+      throw new Error('تعذر تسجيل مبلغ الدفعة المعدل بالكامل');
     }
 
     db.prepare(
@@ -2093,7 +2097,7 @@ export function updateCustomerPaymentBatch(input: {
       SET amount = ?
       WHERE id = ?
       `,
-    ).run(totalPaid, newBatchId)
+    ).run(totalPaid, newBatchId);
 
     db.prepare(
       `
@@ -2106,7 +2110,7 @@ export function updateCustomerPaymentBatch(input: {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
       `,
-    ).run(totalPaid, Number(batch.customer_id))
+    ).run(totalPaid, Number(batch.customer_id));
 
     /*
      * أولًا نسجل الدفعة الجديدة.
@@ -2136,7 +2140,7 @@ export function updateCustomerPaymentBatch(input: {
       business_date: correctionBusinessDate,
 
       shift_id: openShift.id,
-    })
+    });
 
     /*
      * لا نلغي حركة الدفعة التاريخية.
@@ -2162,7 +2166,7 @@ export function updateCustomerPaymentBatch(input: {
       business_date: correctionBusinessDate,
 
       shift_id: openShift.id,
-    })
+    });
 
     return {
       success: true,
@@ -2180,21 +2184,21 @@ export function updateCustomerPaymentBatch(input: {
       allocations: newAllocations,
 
       shift_id: openShift.id,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function getCustomerStatement(
   customerId: number,
   actorId?: number | null,
 ) {
-  const db = getDb()
-  const id = Number(customerId)
+  const db = getDb();
+  const id = Number(customerId);
 
   if (!id) {
-    throw new Error('Customer ID is required')
+    throw new Error('Customer ID is required');
   }
 
   const customer = db
@@ -2206,10 +2210,10 @@ export function getCustomerStatement(
       LIMIT 1
     `,
     )
-    .get(id) as any
+    .get(id) as any;
 
   if (!customer) {
-    throw new Error('العميل غير موجود')
+    throw new Error('العميل غير موجود');
   }
 
   const sales = db
@@ -2222,7 +2226,7 @@ export function getCustomerStatement(
       ORDER BY created_at DESC, id DESC
     `,
     )
-    .all(id) as any[]
+    .all(id) as any[];
 
   const payments = db
     .prepare(
@@ -2262,39 +2266,39 @@ export function getCustomerStatement(
     ORDER BY cp.created_at DESC, cp.id DESC
     `,
     )
-    .all(Number(actorId || 0), id) as any[]
+    .all(Number(actorId || 0), id) as any[];
 
   function isInternalSettlement(payment: any) {
-    if (payment.batch_id) return false
+    if (payment.batch_id) return false;
 
-    const notes = String(payment.notes || '').trim()
+    const notes = String(payment.notes || '').trim();
 
     return (
       notes.startsWith('تسوية مديونية بسبب مرتجع') ||
       notes.startsWith('تسوية مديونية بسبب استبدال')
-    )
+    );
   }
 
   function isCancelledPaymentBatch(payment: any) {
-    return Boolean(payment.batch_id && payment.batch_cancelled_at)
+    return Boolean(payment.batch_id && payment.batch_cancelled_at);
   }
 
-  const normalPaymentsBySale = new Map<number, number>()
+  const normalPaymentsBySale = new Map<number, number>();
 
   for (const payment of payments) {
     if (isInternalSettlement(payment) || isCancelledPaymentBatch(payment)) {
-      continue
+      continue;
     }
 
-    const saleId = Number(payment.sale_id || 0)
-    const amount = Number(payment.amount || 0)
+    const saleId = Number(payment.sale_id || 0);
+    const amount = Number(payment.amount || 0);
 
-    if (!saleId || amount <= 0) continue
+    if (!saleId || amount <= 0) continue;
 
     normalPaymentsBySale.set(
       saleId,
       Number(normalPaymentsBySale.get(saleId) || 0) + amount,
-    )
+    );
   }
 
   const saleEntries = sales.map((sale) => ({
@@ -2312,21 +2316,21 @@ export function getCustomerStatement(
       ? sale.cancel_reason || 'فاتورة ملغاة'
       : sale.notes,
     created_at: sale.created_at,
-  }))
+  }));
 
   const initialPaymentEntries = sales
     .filter((sale) => !sale.cancelled_at)
     .map((sale) => {
       const normalLaterPaid = Number(
         normalPaymentsBySale.get(Number(sale.id)) || 0,
-      )
+      );
 
-      const initialPaid = Math.max(0, Number(sale.paid || 0) - normalLaterPaid)
+      const initialPaid = Math.max(0, Number(sale.paid || 0) - normalLaterPaid);
 
       return {
         sale,
         initialPaid,
-      }
+      };
     })
     .filter((item) => item.initialPaid > 0)
     .map(({ sale, initialPaid }) => ({
@@ -2339,50 +2343,50 @@ export function getCustomerStatement(
       payment_method: sale.payment_method,
       notes: 'دفعة مسجلة وقت إنشاء الفاتورة',
       created_at: sale.created_at,
-    }))
+    }));
 
-  const batchPayments = new Map<number, any[]>()
+  const batchPayments = new Map<number, any[]>();
 
-  const standalonePayments: any[] = []
+  const standalonePayments: any[] = [];
 
   for (const payment of payments) {
-    if (isInternalSettlement(payment)) continue
+    if (isInternalSettlement(payment)) continue;
 
-    const batchId = Number(payment.batch_id || 0)
+    const batchId = Number(payment.batch_id || 0);
 
     if (!batchId) {
-      standalonePayments.push(payment)
-      continue
+      standalonePayments.push(payment);
+      continue;
     }
 
-    const current = batchPayments.get(batchId) || []
+    const current = batchPayments.get(batchId) || [];
 
-    current.push(payment)
+    current.push(payment);
 
-    batchPayments.set(batchId, current)
+    batchPayments.set(batchId, current);
   }
 
   const batchPaymentEntries = Array.from(batchPayments.entries()).map(
     ([batchId, rows]) => {
-      const first = rows[0]
+      const first = rows[0];
 
-      const cancelled = Boolean(first.batch_cancelled_at)
+      const cancelled = Boolean(first.batch_cancelled_at);
 
-      const replaced = Boolean(first.replacement_batch_id)
+      const replaced = Boolean(first.replacement_batch_id);
 
       const allocations = rows.map((row) => ({
         sale_id: Number(row.sale_id),
 
         amount: Number(row.amount || 0),
-      }))
+      }));
 
       const totalAmount =
         Number(first.batch_amount || 0) ||
-        allocations.reduce((sum, item) => sum + item.amount, 0)
+        allocations.reduce((sum, item) => sum + item.amount, 0);
 
       const invoicesText = allocations
         .map((item) => `#${item.sale_id}: ${item.amount.toFixed(2)} ج.م`)
-        .join('، ')
+        .join('، ');
 
       return {
         id: `payment-batch-${batchId}`,
@@ -2423,9 +2427,9 @@ export function getCustomerStatement(
         allocations_text: invoicesText,
 
         created_at: first.batch_created_at || first.created_at,
-      }
+      };
     },
-  )
+  );
 
   const standalonePaymentEntries = standalonePayments.map((payment) => ({
     id: `payment-${payment.id}`,
@@ -2441,7 +2445,7 @@ export function getCustomerStatement(
     notes: payment.notes,
     cancelled_at: null,
     created_at: payment.created_at,
-  }))
+  }));
 
   const adjustments = db
     .prepare(
@@ -2495,19 +2499,19 @@ export function getCustomerStatement(
         AND IFNULL(s.type, 'sale') = 'sale'
       `,
     )
-    .all(id, id) as any[]
+    .all(id, id) as any[];
 
   const adjustmentEntries = adjustments.flatMap((row) => {
-    const isReturn = row.kind === 'return'
-    const label = isReturn ? 'مرتجع' : 'استبدال'
-    const prefix = isReturn ? 'RET' : 'EXC'
-    const code = `${prefix}-${String(row.id).padStart(5, '0')}`
-    const cancelled = Boolean(row.cancelled_at)
-    const suffix = cancelled ? ' - ملغي' : ''
+    const isReturn = row.kind === 'return';
+    const label = isReturn ? 'مرتجع' : 'استبدال';
+    const prefix = isReturn ? 'RET' : 'EXC';
+    const code = `${prefix}-${String(row.id).padStart(5, '0')}`;
+    const cancelled = Boolean(row.cancelled_at);
+    const suffix = cancelled ? ' - ملغي' : '';
 
-    const difference = Number(row.difference_amount || 0)
-    const collected = Number(row.cash_collection_amount || 0)
-    const refunded = Number(row.cash_refund_amount || 0)
+    const difference = Number(row.difference_amount || 0);
+    const collected = Number(row.cash_collection_amount || 0);
+    const refunded = Number(row.cash_refund_amount || 0);
 
     const common = {
       sale_id: Number(row.sale_id),
@@ -2517,7 +2521,7 @@ export function getCustomerStatement(
         ? row.cancel_reason || 'عملية ملغاة'
         : row.reason || null,
       created_at: row.created_at,
-    }
+    };
 
     return [
       {
@@ -2543,10 +2547,10 @@ export function getCustomerStatement(
             },
           ]
         : []),
-    ]
-  })
+    ];
+  });
 
-  const paymentEntries = [...batchPaymentEntries, ...standalonePaymentEntries]
+  const paymentEntries = [...batchPaymentEntries, ...standalonePaymentEntries];
 
   const entries = [
     ...saleEntries,
@@ -2556,34 +2560,34 @@ export function getCustomerStatement(
   ].sort(
     (a, b) =>
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  )
+  );
 
   const totalSales = entries.reduce((sum, entry) => {
     if (entry.type !== 'sale' && entry.type !== 'adjustment') {
-      return sum
+      return sum;
     }
 
-    return sum + Number(entry.debit || 0) - Number(entry.credit || 0)
-  }, 0)
+    return sum + Number(entry.debit || 0) - Number(entry.credit || 0);
+  }, 0);
 
   const totalPaid = entries.reduce((sum, entry) => {
-    if (entry.type !== 'payment') return sum
+    if (entry.type !== 'payment') return sum;
 
-    return sum + Number(entry.credit || 0) - Number(entry.debit || 0)
-  }, 0)
+    return sum + Number(entry.credit || 0) - Number(entry.debit || 0);
+  }, 0);
 
   const openSales = sales.filter(
     (sale) => !sale.cancelled_at && Number(sale.remaining_amount || 0) > 0,
-  )
+  );
 
-  const aging = getAgingSummaryForCustomer(id)
+  const aging = getAgingSummaryForCustomer(id);
 
-  const due = getCustomerDueSummary(id)
+  const due = getCustomerDueSummary(id);
 
-  const balance = Number(customer.balance || 0)
+  const balance = Number(customer.balance || 0);
 
   const creditLimit =
-    customer.credit_limit == null ? null : Number(customer.credit_limit)
+    customer.credit_limit == null ? null : Number(customer.credit_limit);
 
   const credit = {
     credit_limit: creditLimit,
@@ -2602,7 +2606,7 @@ export function getCustomerStatement(
           ),
 
     over_limit: creditLimit !== null && balance > creditLimit + 0.0001,
-  }
+  };
 
   return {
     customer,
@@ -2618,5 +2622,5 @@ export function getCustomerStatement(
       due,
       credit,
     },
-  }
+  };
 }

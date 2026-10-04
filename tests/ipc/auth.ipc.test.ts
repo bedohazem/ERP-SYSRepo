@@ -1,5 +1,5 @@
-import { EventEmitter } from 'node:events'
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { EventEmitter } from 'node:events';
+import { ipcMain, type IpcMainInvokeEvent } from 'electron';
 import {
   afterAll,
   beforeAll,
@@ -8,36 +8,36 @@ import {
   expect,
   it,
   vi,
-} from 'vitest'
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+} from 'vitest';
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 import {
   createUser,
   findUserByUsername,
   resetUserPassword,
   setUserActive,
   updateUser,
-} from '../../src/main/database/repositories/user.repo'
-import { registerAuthIpc } from '../../src/main/ipc/auth.ipc'
+} from '../../src/main/database/repositories/user.repo';
+import { registerAuthIpc } from '../../src/main/ipc/auth.ipc';
 import {
   isPasswordHashed,
   verifyPassword,
-} from '../../src/main/security/password'
+} from '../../src/main/security/password';
 
-type Handler = (event: IpcMainInvokeEvent, ...args: any[]) => any
-const handlers = new Map<string, Handler>()
+type Handler = (event: IpcMainInvokeEvent, ...args: any[]) => any;
+const handlers = new Map<string, Handler>();
 
 function makeClient() {
   const sender = Object.assign(new EventEmitter(), {
     mainFrame: {},
     isDestroyed: () => false,
-  })
+  });
 
   const event = {
     sender,
     senderFrame: sender.mainFrame,
-  } as unknown as IpcMainInvokeEvent
+  } as unknown as IpcMainInvokeEvent;
 
-  return { sender, event }
+  return { sender, event };
 }
 
 async function invoke(
@@ -45,13 +45,13 @@ async function invoke(
   channel: string,
   ...args: any[]
 ) {
-  const handler = handlers.get(channel)
+  const handler = handlers.get(channel);
 
   if (!handler) {
-    throw new Error('Missing handler: ' + channel)
+    throw new Error('Missing handler: ' + channel);
   }
 
-  return handler(event, ...args)
+  return handler(event, ...args);
 }
 
 async function login(
@@ -62,53 +62,53 @@ async function login(
   const result = await invoke(event, 'auth:login', {
     username,
     password,
-  })
+  });
 
-  expect(result.success).toBe(true)
-  expect(result.user.password).toBeUndefined()
+  expect(result.success).toBe(true);
+  expect(result.user.password).toBeUndefined();
 
-  return result.user
+  return result.user;
 }
 
 describe('auth IPC authorization', () => {
   beforeAll(() => {
     vi.mocked(ipcMain.handle).mockImplementation((channel, handler) => {
-      handlers.set(channel, handler)
-    })
+      handlers.set(channel, handler);
+    });
 
-    registerAuthIpc()
-  })
+    registerAuthIpc();
+  });
 
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
-  })
+    closeDb();
+    getDb();
+    resetDatabaseData();
+  });
 
   afterAll(() => {
-    vi.mocked(ipcMain.handle).mockReset()
-    closeDb()
-  })
+    vi.mocked(ipcMain.handle).mockReset();
+    closeDb();
+  });
 
   it('does not expose public registration', () => {
-    expect(handlers.has('auth:register')).toBe(false)
-  })
+    expect(handlers.has('auth:register')).toBe(false);
+  });
 
   it('records login logout and failed login activity', async () => {
-    const first = makeClient()
+    const first = makeClient();
 
-    const admin = await login(first.event)
+    const admin = await login(first.event);
 
-    expect((await invoke(first.event, 'auth:logout')).success).toBe(true)
+    expect((await invoke(first.event, 'auth:logout')).success).toBe(true);
 
-    const second = makeClient()
+    const second = makeClient();
 
     const failed = await invoke(second.event, 'auth:login', {
       username: 'admin',
       password: 'wrong-password',
-    })
+    });
 
-    expect(failed.success).toBe(false)
+    expect(failed.success).toBe(false);
 
     const logs = getDb()
       .prepare(
@@ -122,50 +122,50 @@ describe('auth IPC authorization', () => {
         `,
       )
       .all() as Array<{
-      user_id: number | null
-      action: string
-      entity: string
-    }>
+      user_id: number | null;
+      action: string;
+      entity: string;
+    }>;
 
     expect(logs.map((row) => row.action)).toEqual([
       'auth_login_succeeded',
       'auth_logout',
       'auth_login_failed',
-    ])
+    ]);
 
-    expect(logs[0].user_id).toBe(admin.id)
+    expect(logs[0].user_id).toBe(admin.id);
 
-    expect(logs[1].user_id).toBe(admin.id)
+    expect(logs[1].user_id).toBe(admin.id);
 
-    expect(logs[2].user_id).toBeNull()
+    expect(logs[2].user_id).toBeNull();
 
     for (const row of logs) {
-      expect(row.entity).toBe('auth')
+      expect(row.entity).toBe('auth');
     }
-  })
+  });
 
   it.each(['anonymous', 'cashier'])(
     'rejects forged admin IDs from %s without changing users',
     async (kind) => {
-      const { event } = makeClient()
-      const admin = findUserByUsername('admin')!
+      const { event } = makeClient();
+      const admin = findUserByUsername('admin')!;
       const cashier = createUser(
         'Cashier',
         'cashier_test',
         'Cashier5678',
         'cashier',
-      )
+      );
 
       if (kind === 'cashier') {
-        await login(event, cashier.username, 'Cashier5678')
+        await login(event, cashier.username, 'Cashier5678');
       }
 
       // تجاهل Log تسجيل الدخول هنا؛
       // الاختبار مخصص للتأكد أن المحاولات
       // غير المصرح بها لا تنشئ Logs.
-      getDb().prepare('DELETE FROM activity_logs').run()
+      getDb().prepare('DELETE FROM activity_logs').run();
 
-      const before = getDb().prepare('SELECT * FROM users ORDER BY id').all()
+      const before = getDb().prepare('SELECT * FROM users ORDER BY id').all();
 
       const attempts: Array<[string, ...any[]]> = [
         ['users:list', { actor_id: admin.id }],
@@ -193,41 +193,41 @@ describe('auth IPC authorization', () => {
         ],
         ['users:set-active', cashier.id, 0, admin.id],
         ['users:reset-password', admin.id, '5678', admin.id],
-      ]
+      ];
 
       for (const [channel, ...args] of attempts) {
-        const result = await invoke(event, channel, ...args)
-        expect(result.success).toBe(false)
+        const result = await invoke(event, channel, ...args);
+        expect(result.success).toBe(false);
       }
 
       expect(getDb().prepare('SELECT * FROM users ORDER BY id').all()).toEqual(
         before,
-      )
+      );
 
       expect(getDb().prepare('SELECT * FROM activity_logs').all()).toHaveLength(
         0,
-      )
+      );
     },
-  )
+  );
 
   it('lets the authenticated admin manage users and records the real actor', async () => {
-    const { event } = makeClient()
-    const admin = await login(event)
+    const { event } = makeClient();
+    const admin = await login(event);
     // تسجيل الدخول له Audit منفصل.
     // هنا نختبر Logs إدارة المستخدمين فقط.
-    getDb().prepare('DELETE FROM activity_logs').run()
+    getDb().prepare('DELETE FROM activity_logs').run();
     const created = await invoke(event, 'users:create', {
       name: 'Managed',
       username: 'managed',
       password: 'Managed123',
       role: 'admin',
       actor_id: 999999,
-    })
+    });
 
-    expect(created.success).toBe(true)
-    expect(created.user.password).toBeUndefined()
+    expect(created.success).toBe(true);
+    expect(created.user.password).toBeUndefined();
 
-    const id = created.user.id
+    const id = created.user.id;
 
     const updated = await invoke(event, 'users:update', {
       id,
@@ -236,62 +236,62 @@ describe('auth IPC authorization', () => {
       role: 'cashier',
       is_active: 1,
       actor_id: 999999,
-    })
+    });
 
-    expect(updated.success).toBe(true)
+    expect(updated.success).toBe(true);
 
     expect(
       (await invoke(event, 'users:set-active', id, 0, 999999)).success,
-    ).toBe(true)
+    ).toBe(true);
 
     expect(
       (await invoke(event, 'users:set-active', id, 1, 999999)).success,
-    ).toBe(true)
+    ).toBe(true);
 
     expect(
       (await invoke(event, 'users:reset-password', id, 'Reset9012', 999999))
         .success,
-    ).toBe(true)
+    ).toBe(true);
 
-    const listed = await invoke(event, 'users:list')
+    const listed = await invoke(event, 'users:list');
     const paged = await invoke(event, 'users:list-page', {
       limit: 1,
       offset: 0,
-    })
+    });
 
-    expect(listed.success).toBe(true)
-    expect(listed.users).toHaveLength(2)
-    expect(paged.success).toBe(true)
-    expect(paged.total).toBe(2)
-    expect(paged.users).toHaveLength(1)
+    expect(listed.success).toBe(true);
+    expect(listed.users).toHaveLength(2);
+    expect(paged.success).toBe(true);
+    expect(paged.total).toBe(2);
+    expect(paged.users).toHaveLength(1);
 
     for (const user of [...listed.users, ...paged.users]) {
-      expect(user.password).toBeUndefined()
+      expect(user.password).toBeUndefined();
     }
 
     expect(
       verifyPassword('Reset9012', findUserByUsername('managed')!.password),
-    ).toBe(true)
+    ).toBe(true);
 
     const logs = getDb()
       .prepare('SELECT user_id FROM activity_logs ORDER BY id')
-      .all() as Array<{ user_id: number }>
+      .all() as Array<{ user_id: number }>;
 
-    expect(logs).toHaveLength(5)
+    expect(logs).toHaveLength(5);
 
     for (const row of logs) {
-      expect(row.user_id).toBe(admin.id)
+      expect(row.user_id).toBe(admin.id);
     }
-  })
+  });
 
   it.each(['logout', 'failed login'])(
     'clears the session after %s',
     async (action) => {
-      const { event } = makeClient()
-      const admin = await login(event)
+      const { event } = makeClient();
+      const admin = await login(event);
 
       if (action === 'logout') {
-        expect((await invoke(event, 'auth:logout')).success).toBe(true)
+        expect((await invoke(event, 'auth:logout')).success).toBe(true);
       } else {
         expect(
           (
@@ -300,7 +300,7 @@ describe('auth IPC authorization', () => {
               password: 'wrong',
             })
           ).success,
-        ).toBe(false)
+        ).toBe(false);
       }
 
       expect(
@@ -309,24 +309,24 @@ describe('auth IPC authorization', () => {
             actor_id: admin.id,
           })
         ).success,
-      ).toBe(false)
+      ).toBe(false);
     },
-  )
+  );
 
   it('does not share an admin session with another window or a child frame', async () => {
-    const { event } = makeClient()
-    const admin = await login(event)
-    const other = makeClient()
+    const { event } = makeClient();
+    const admin = await login(event);
+    const other = makeClient();
 
     const child = {
       ...event,
       senderFrame: {},
-    } as unknown as IpcMainInvokeEvent
+    } as unknown as IpcMainInvokeEvent;
 
     const detached = {
       ...event,
       senderFrame: null,
-    } as unknown as IpcMainInvokeEvent
+    } as unknown as IpcMainInvokeEvent;
 
     for (const caller of [other.event, child, detached]) {
       expect(
@@ -335,7 +335,7 @@ describe('auth IPC authorization', () => {
             actor_id: admin.id,
           })
         ).success,
-      ).toBe(false)
+      ).toBe(false);
     }
 
     expect(
@@ -345,12 +345,12 @@ describe('auth IPC authorization', () => {
           password: '1234',
         })
       ).success,
-    ).toBe(false)
+    ).toBe(false);
 
-    expect((await invoke(child, 'auth:logout')).success).toBe(false)
+    expect((await invoke(child, 'auth:logout')).success).toBe(false);
 
-    expect((await invoke(event, 'users:list')).success).toBe(true)
-  })
+    expect((await invoke(event, 'users:list')).success).toBe(true);
+  });
 
   it.each(['role', 'active', 'password'])(
     'rechecks the admin after a %s change',
@@ -360,17 +360,17 @@ describe('auth IPC authorization', () => {
         'second_admin',
         'Second5678',
         'admin',
-      )
+      );
 
-      const { event } = makeClient()
-      await login(event, user.username, 'Second5678')
+      const { event } = makeClient();
+      await login(event, user.username, 'Second5678');
 
       if (change === 'role') {
-        updateUser({ ...user, role: 'cashier' })
+        updateUser({ ...user, role: 'cashier' });
       } else if (change === 'active') {
-        setUserActive(user.id, 0)
+        setUserActive(user.id, 0);
       } else {
-        resetUserPassword(user.id, '9012')
+        resetUserPassword(user.id, '9012');
       }
 
       expect(
@@ -379,40 +379,40 @@ describe('auth IPC authorization', () => {
             actor_id: user.id,
           })
         ).success,
-      ).toBe(false)
+      ).toBe(false);
     },
-  )
+  );
 
   it('keeps the session during hash routing and child-frame navigation', async () => {
-    const { event, sender } = makeClient()
-    await login(event)
+    const { event, sender } = makeClient();
+    await login(event);
 
     sender.emit('did-start-navigation', {
       isMainFrame: true,
       isSameDocument: true,
-    })
+    });
 
     sender.emit('did-start-navigation', {
       isMainFrame: false,
       isSameDocument: false,
-    })
+    });
 
-    expect((await invoke(event, 'users:list')).success).toBe(true)
-  })
+    expect((await invoke(event, 'users:list')).success).toBe(true);
+  });
 
   it.each(['reload', 'crash', 'destroy'])(
     'clears the session after %s',
     async (action) => {
-      const { event, sender } = makeClient()
-      const admin = await login(event)
+      const { event, sender } = makeClient();
+      const admin = await login(event);
 
       if (action === 'reload') {
         sender.emit('did-start-navigation', {
           isMainFrame: true,
           isSameDocument: false,
-        })
+        });
       } else {
-        sender.emit(action === 'crash' ? 'render-process-gone' : 'destroyed')
+        sender.emit(action === 'crash' ? 'render-process-gone' : 'destroyed');
       }
 
       expect(
@@ -421,37 +421,37 @@ describe('auth IPC authorization', () => {
             actor_id: admin.id,
           })
         ).success,
-      ).toBe(false)
+      ).toBe(false);
     },
-  )
+  );
 
   it('preserves legacy password migration and creates a valid session', async () => {
     getDb()
       .prepare(
         "UPDATE users SET password = 'Legacy1234' WHERE username = 'admin'",
       )
-      .run()
+      .run();
 
-    const { event } = makeClient()
-    await login(event, 'admin', 'Legacy1234')
+    const { event } = makeClient();
+    await login(event, 'admin', 'Legacy1234');
 
-    expect(isPasswordHashed(findUserByUsername('admin')!.password)).toBe(true)
+    expect(isPasswordHashed(findUserByUsername('admin')!.password)).toBe(true);
 
-    expect((await invoke(event, 'users:list')).success).toBe(true)
-  })
+    expect((await invoke(event, 'users:list')).success).toBe(true);
+  });
 
   it('bootstraps the first admin only when the database has no users', async () => {
-    const db = getDb()
+    const db = getDb();
 
-    db.prepare('DELETE FROM activity_logs').run()
+    db.prepare('DELETE FROM activity_logs').run();
 
-    db.prepare('DELETE FROM users').run()
+    db.prepare('DELETE FROM users').run();
 
-    const client = makeClient()
+    const client = makeClient();
 
-    const before = await invoke(client.event, 'auth:bootstrap-status')
+    const before = await invoke(client.event, 'auth:bootstrap-status');
 
-    expect(before.needs_setup).toBe(true)
+    expect(before.needs_setup).toBe(true);
 
     const weak = await invoke(client.event, 'auth:bootstrap-admin', {
       name: 'Owner',
@@ -459,9 +459,9 @@ describe('auth IPC authorization', () => {
       username: 'owner',
 
       password: '1234',
-    })
+    });
 
-    expect(weak.success).toBe(false)
+    expect(weak.success).toBe(false);
 
     const created = await invoke(client.event, 'auth:bootstrap-admin', {
       name: 'Owner',
@@ -469,15 +469,15 @@ describe('auth IPC authorization', () => {
       username: 'owner',
 
       password: 'Owner1234',
-    })
+    });
 
-    expect(created.success).toBe(true)
+    expect(created.success).toBe(true);
 
-    expect(created.user.role).toBe('admin')
+    expect(created.user.role).toBe('admin');
 
-    const after = await invoke(client.event, 'auth:bootstrap-status')
+    const after = await invoke(client.event, 'auth:bootstrap-status');
 
-    expect(after.needs_setup).toBe(false)
+    expect(after.needs_setup).toBe(false);
 
     const second = await invoke(client.event, 'auth:bootstrap-admin', {
       name: 'Second',
@@ -485,15 +485,15 @@ describe('auth IPC authorization', () => {
       username: 'second',
 
       password: 'Second1234',
-    })
+    });
 
-    expect(second.success).toBe(false)
-  })
+    expect(second.success).toBe(false);
+  });
 
   it('lets newly created users login with their assigned password without forcing another change', async () => {
-    const adminClient = makeClient()
+    const adminClient = makeClient();
 
-    await login(adminClient.event)
+    await login(adminClient.event);
 
     const created = await invoke(adminClient.event, 'users:create', {
       name: 'New Cashier',
@@ -503,31 +503,31 @@ describe('auth IPC authorization', () => {
       password: 'Cashier1234',
 
       role: 'cashier',
-    })
+    });
 
-    expect(created.success).toBe(true)
+    expect(created.success).toBe(true);
 
-    const user = findUserByUsername('new_cashier')!
+    const user = findUserByUsername('new_cashier')!;
 
-    expect(Number(user.must_change_password)).toBe(0)
+    expect(Number(user.must_change_password)).toBe(0);
 
-    const cashierClient = makeClient()
+    const cashierClient = makeClient();
 
     const result = await invoke(cashierClient.event, 'auth:login', {
       username: 'new_cashier',
 
       password: 'Cashier1234',
-    })
+    });
 
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(true);
 
-    expect(result.requires_password_change).toBe(false)
+    expect(result.requires_password_change).toBe(false);
 
-    expect(result.user.username).toBe('new_cashier')
-  })
+    expect(result.user.username).toBe('new_cashier');
+  });
 
   it('forces users with weak legacy passwords to choose a strong password', async () => {
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
@@ -539,100 +539,100 @@ describe('auth IPC authorization', () => {
 
     WHERE username = 'admin'
     `,
-    ).run()
+    ).run();
 
-    const client = makeClient()
+    const client = makeClient();
 
     const result = await invoke(client.event, 'auth:login', {
       username: 'admin',
 
       password: '1234',
-    })
+    });
 
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(true);
 
-    expect(result.requires_password_change).toBe(true)
+    expect(result.requires_password_change).toBe(true);
 
-    const blocked = await invoke(client.event, 'users:list')
+    const blocked = await invoke(client.event, 'users:list');
 
-    expect(blocked.success).toBe(false)
+    expect(blocked.success).toBe(false);
 
-    expect(blocked.message).toContain('تغيير كلمة المرور')
+    expect(blocked.message).toContain('تغيير كلمة المرور');
 
     const weak = await invoke(client.event, 'auth:change-password', {
       password: 'abcdefgh',
-    })
+    });
 
-    expect(weak.success).toBe(false)
+    expect(weak.success).toBe(false);
 
     const changed = await invoke(client.event, 'auth:change-password', {
       password: 'Admin5678',
-    })
+    });
 
-    expect(changed.success).toBe(true)
+    expect(changed.success).toBe(true);
 
-    expect((await invoke(client.event, 'users:list')).success).toBe(true)
-  })
+    expect((await invoke(client.event, 'users:list')).success).toBe(true);
+  });
 
   it('rate limits repeated failed login attempts', async () => {
-    vi.useFakeTimers()
+    vi.useFakeTimers();
 
     try {
-      vi.setSystemTime(new Date('2026-09-22T10:00:00Z'))
+      vi.setSystemTime(new Date('2026-09-22T10:00:00Z'));
 
-      const client = makeClient()
+      const client = makeClient();
 
-      let lastResult: any = null
+      let lastResult: any = null;
 
       for (let index = 0; index < 5; index += 1) {
         lastResult = await invoke(client.event, 'auth:login', {
           username: 'admin',
 
           password: 'Wrong123',
-        })
+        });
       }
 
-      expect(lastResult.success).toBe(false)
+      expect(lastResult.success).toBe(false);
 
-      expect(Number(lastResult.retry_after_seconds)).toBeGreaterThan(0)
+      expect(Number(lastResult.retry_after_seconds)).toBeGreaterThan(0);
 
       const blockedCorrect = await invoke(client.event, 'auth:login', {
         username: 'admin',
 
         password: 'Admin1234',
-      })
+      });
 
-      expect(blockedCorrect.success).toBe(false)
+      expect(blockedCorrect.success).toBe(false);
 
-      vi.advanceTimersByTime(31_000)
+      vi.advanceTimersByTime(31_000);
 
       const allowed = await invoke(client.event, 'auth:login', {
         username: 'admin',
 
         password: 'Admin1234',
-      })
+      });
 
-      expect(allowed.success).toBe(true)
+      expect(allowed.success).toBe(true);
     } finally {
-      vi.useRealTimers()
+      vi.useRealTimers();
     }
-  })
+  });
 
   it('expires idle sessions and lets real activity extend them', async () => {
-    vi.useFakeTimers()
+    vi.useFakeTimers();
 
     try {
-      vi.setSystemTime(new Date('2026-09-22T10:00:00Z'))
+      vi.setSystemTime(new Date('2026-09-22T10:00:00Z'));
 
-      const client = makeClient()
+      const client = makeClient();
 
-      await login(client.event)
+      await login(client.event);
 
-      vi.advanceTimersByTime(14 * 60 * 1000)
+      vi.advanceTimersByTime(14 * 60 * 1000);
 
-      const touch = await invoke(client.event, 'auth:touch')
+      const touch = await invoke(client.event, 'auth:touch');
 
-      expect(touch.success).toBe(true)
+      expect(touch.success).toBe(true);
 
       /*
        * عدت 28 دقيقة من بداية
@@ -640,23 +640,23 @@ describe('auth IPC authorization', () => {
        * في النص، إذًا Session
        * ما زالت سليمة.
        */
-      vi.advanceTimersByTime(14 * 60 * 1000)
+      vi.advanceTimersByTime(14 * 60 * 1000);
 
-      expect((await invoke(client.event, 'users:list')).success).toBe(true)
+      expect((await invoke(client.event, 'users:list')).success).toBe(true);
 
       /*
        * بعدها 16 دقيقة بدون
        * أي نشاط.
        */
-      vi.advanceTimersByTime(16 * 60 * 1000)
+      vi.advanceTimersByTime(16 * 60 * 1000);
 
-      const expired = await invoke(client.event, 'users:list')
+      const expired = await invoke(client.event, 'users:list');
 
-      expect(expired.success).toBe(false)
+      expect(expired.success).toBe(false);
 
-      expect(expired.message).toContain('عدم الاستخدام')
+      expect(expired.message).toContain('عدم الاستخدام');
     } finally {
-      vi.useRealTimers()
+      vi.useRealTimers();
     }
-  })
-})
+  });
+});

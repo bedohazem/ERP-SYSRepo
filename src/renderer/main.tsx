@@ -10,5 +10,5 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <LicenseGate>
       <RouterProvider router={router} />
     </LicenseGate>
-  </React.StrictMode>
+  </React.StrictMode>,
 );

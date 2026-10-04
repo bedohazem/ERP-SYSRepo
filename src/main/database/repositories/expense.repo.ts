@@ -1,38 +1,38 @@
-import { getDb } from '../db'
-import { createCashMovement, resolveCashAccount } from './cash.repo'
-import { createCriticalActivityLog } from './activity.repo'
-import { resolveFinancialOperationShift } from './cash-shifts.repo'
-import { getShiftBusinessDate } from '../shift-business-date'
-import { roundMoney } from '../../../shared/money'
+import { getDb } from '../db';
+import { createCashMovement, resolveCashAccount } from './cash.repo';
+import { createCriticalActivityLog } from './activity.repo';
+import { resolveFinancialOperationShift } from './cash-shifts.repo';
+import { getShiftBusinessDate } from '../shift-business-date';
+import { roundMoney } from '../../../shared/money';
 
 export type CreateExpenseInput = {
-  title: string
-  category?: string | null
-  amount: number
-  payment_method?: string
-  notes?: string | null
-  created_by?: number | null
-}
+  title: string;
+  category?: string | null;
+  amount: number;
+  payment_method?: string;
+  notes?: string | null;
+  created_by?: number | null;
+};
 
 export type CancelExpenseInput = {
-  id: number
-  reason?: string | null
-  actor_id?: number | null
-  can_manage_all?: boolean
-  approved_by?: number | null
-}
+  id: number;
+  reason?: string | null;
+  actor_id?: number | null;
+  can_manage_all?: boolean;
+  approved_by?: number | null;
+};
 
 export type UpdateExpenseInput = {
-  id: number
-  title: string
-  category?: string | null
-  amount: number
-  payment_method?: string
-  notes?: string | null
-  actor_id?: number | null
-  can_manage_all?: boolean
-  approved_by?: number | null
-}
+  id: number;
+  title: string;
+  category?: string | null;
+  amount: number;
+  payment_method?: string;
+  notes?: string | null;
+  actor_id?: number | null;
+  can_manage_all?: boolean;
+  approved_by?: number | null;
+};
 
 function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
   const row = db
@@ -44,10 +44,10 @@ function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
       `,
     )
     .get() as {
-    business_date: string
-  }
+    business_date: string;
+  };
 
-  return String(row?.business_date || '')
+  return String(row?.business_date || '');
 }
 
 function appendCreatedByFilter(
@@ -56,48 +56,48 @@ function appendCreatedByFilter(
   createdBy?: number | null,
 ) {
   if (createdBy === undefined || createdBy === null) {
-    return
+    return;
   }
 
-  const userId = Number(createdBy)
+  const userId = Number(createdBy);
 
   if (!Number.isFinite(userId) || userId <= 0) {
-    where.push('1 = 0')
-    return
+    where.push('1 = 0');
+    return;
   }
 
-  where.push('e.created_by = ?')
-  params.push(userId)
+  where.push('e.created_by = ?');
+  params.push(userId);
 }
 
 export function createExpense(input: CreateExpenseInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const title = input.title?.trim()
+  const title = input.title?.trim();
 
   if (!title) {
-    throw new Error('عنوان المصروف مطلوب')
+    throw new Error('عنوان المصروف مطلوب');
   }
 
-  const amount = roundMoney(input.amount)
+  const amount = roundMoney(input.amount);
 
   if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('قيمة المصروف غير صحيحة')
+    throw new Error('قيمة المصروف غير صحيحة');
   }
 
-  const actorId = Number(input.created_by || 0)
+  const actorId = Number(input.created_by || 0);
 
-  const paymentMethod = resolveCashAccount(input.payment_method || 'cash')
+  const paymentMethod = resolveCashAccount(input.payment_method || 'cash');
 
   const openShift = resolveFinancialOperationShift(
     actorId,
     [paymentMethod],
     'لا يمكن تسجيل مصروف من درج المحل بدون شفت مفتوح',
-  )
+  );
 
   const businessDate = openShift
     ? getShiftBusinessDate(openShift.id)
-    : getCurrentBusinessDate(db)
+    : getCurrentBusinessDate(db);
 
   const tx = db.transaction(() => {
     const result = db
@@ -124,9 +124,9 @@ export function createExpense(input: CreateExpenseInput) {
         input.notes?.trim() || null,
         actorId,
         openShift?.id ?? null,
-      )
+      );
 
-    const expenseId = Number(result.lastInsertRowid)
+    const expenseId = Number(result.lastInsertRowid);
 
     createCriticalActivityLog({
       user_id: actorId,
@@ -150,7 +150,7 @@ export function createExpense(input: CreateExpenseInput) {
 
         shift_id: openShift?.id ?? null,
       }),
-    })
+    });
 
     createCashMovement({
       type: 'expense',
@@ -172,7 +172,7 @@ export function createExpense(input: CreateExpenseInput) {
       business_date: businessDate,
 
       shift_id: openShift?.id ?? null,
-    })
+    });
 
     return {
       id: expenseId,
@@ -180,35 +180,35 @@ export function createExpense(input: CreateExpenseInput) {
       success: true,
 
       shift_id: openShift?.id ?? null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function listExpenses(input?: {
-  date_from?: string
-  date_to?: string
-  created_by?: number | null
+  date_from?: string;
+  date_to?: string;
+  created_by?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const where: string[] = [`e.cancelled_at IS NULL`]
-  const params: any[] = []
+  const where: string[] = [`e.cancelled_at IS NULL`];
+  const params: any[] = [];
 
   if (input?.date_from) {
-    where.push(`datetime(e.created_at, 'localtime') >= datetime(?)`)
-    params.push(`${input.date_from} 00:00:00`)
+    where.push(`datetime(e.created_at, 'localtime') >= datetime(?)`);
+    params.push(`${input.date_from} 00:00:00`);
   }
 
   if (input?.date_to) {
-    where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`)
-    params.push(`${input.date_to} 23:59:59`)
+    where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`);
+    params.push(`${input.date_to} 23:59:59`);
   }
 
-  appendCreatedByFilter(where, params, input?.created_by)
+  appendCreatedByFilter(where, params, input?.created_by);
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   return db
     .prepare(
@@ -224,37 +224,37 @@ export function listExpenses(input?: {
       ORDER BY e.id DESC
     `,
     )
-    .all(...params)
+    .all(...params);
 }
 
 export function listExpensesPage(input?: {
-  date_from?: string
-  date_to?: string
-  created_by?: number | null
-  limit?: number
-  offset?: number
+  date_from?: string;
+  date_to?: string;
+  created_by?: number | null;
+  limit?: number;
+  offset?: number;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
-  const where: string[] = []
-  const params: any[] = []
+  const where: string[] = [];
+  const params: any[] = [];
 
   if (input?.date_from) {
-    where.push(`datetime(e.created_at, 'localtime') >= datetime(?)`)
-    params.push(`${input.date_from} 00:00:00`)
+    where.push(`datetime(e.created_at, 'localtime') >= datetime(?)`);
+    params.push(`${input.date_from} 00:00:00`);
   }
 
   if (input?.date_to) {
-    where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`)
-    params.push(`${input.date_to} 23:59:59`)
+    where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`);
+    params.push(`${input.date_to} 23:59:59`);
   }
 
-  appendCreatedByFilter(where, params, input?.created_by)
+  appendCreatedByFilter(where, params, input?.created_by);
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const rows = db
     .prepare(
@@ -276,7 +276,7 @@ export function listExpensesPage(input?: {
       OFFSET ?
     `,
     )
-    .all(...params, limit, offset)
+    .all(...params, limit, offset);
 
   const totalRow = db
     .prepare(
@@ -286,11 +286,11 @@ export function listExpensesPage(input?: {
     ${whereSql}
     `,
     )
-    .get(...params) as any
+    .get(...params) as any;
 
   const activeWhereSql = where.length
     ? `${whereSql} AND e.cancelled_at IS NULL`
-    : `WHERE e.cancelled_at IS NULL`
+    : `WHERE e.cancelled_at IS NULL`;
 
   const summary = db
     .prepare(
@@ -304,7 +304,7 @@ export function listExpensesPage(input?: {
       ${activeWhereSql}
     `,
     )
-    .get(...params) as any
+    .get(...params) as any;
 
   return {
     rows,
@@ -312,28 +312,28 @@ export function listExpensesPage(input?: {
     total_amount: roundMoney(summary?.total_amount),
     limit,
     offset,
-  }
+  };
 }
 
 export function updateExpense(input: UpdateExpenseInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const expenseId = Number(input.id || 0)
+  const expenseId = Number(input.id || 0);
 
   if (!expenseId) {
-    throw new Error('رقم المصروف غير صحيح')
+    throw new Error('رقم المصروف غير صحيح');
   }
 
-  const title = String(input.title || '').trim()
+  const title = String(input.title || '').trim();
 
   if (!title) {
-    throw new Error('عنوان المصروف مطلوب')
+    throw new Error('عنوان المصروف مطلوب');
   }
 
-  const amount = roundMoney(input.amount)
+  const amount = roundMoney(input.amount);
 
   if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('قيمة المصروف غير صحيحة')
+    throw new Error('قيمة المصروف غير صحيحة');
   }
 
   const expense = db
@@ -348,23 +348,23 @@ export function updateExpense(input: UpdateExpenseInput) {
       LIMIT 1
       `,
     )
-    .get(expenseId) as any
+    .get(expenseId) as any;
 
   if (!expense) {
-    throw new Error('المصروف غير موجود')
+    throw new Error('المصروف غير موجود');
   }
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
   if (
     input.can_manage_all !== true &&
     (!actorId || Number(expense.created_by || 0) !== actorId)
   ) {
-    throw new Error('غير مصرح لك بتعديل هذا المصروف')
+    throw new Error('غير مصرح لك بتعديل هذا المصروف');
   }
 
   if (expense.cancelled_at) {
-    throw new Error('لا يمكن تعديل مصروف ملغي')
+    throw new Error('لا يمكن تعديل مصروف ملغي');
   }
 
   const cashMovement = db
@@ -390,47 +390,47 @@ export function updateExpense(input: UpdateExpenseInput) {
       LIMIT 1
       `,
     )
-    .get(expenseId) as any
+    .get(expenseId) as any;
 
   if (!cashMovement) {
-    throw new Error('حركة الخزنة الخاصة بالمصروف غير موجودة')
+    throw new Error('حركة الخزنة الخاصة بالمصروف غير موجودة');
   }
 
   if (cashMovement.cancelled_at) {
-    throw new Error('حركة الخزنة الخاصة بالمصروف ملغاة بالفعل')
+    throw new Error('حركة الخزنة الخاصة بالمصروف ملغاة بالفعل');
   }
 
   if (
     Math.abs(Number(cashMovement.amount || 0) - Number(expense.amount || 0)) >
     0.01
   ) {
-    throw new Error('قيمة المصروف لا تطابق حركة الخزنة')
+    throw new Error('قيمة المصروف لا تطابق حركة الخزنة');
   }
 
   if (
     resolveCashAccount(cashMovement.payment_method) !==
     resolveCashAccount(expense.payment_method)
   ) {
-    throw new Error('حساب المصروف لا يطابق حركة الخزنة')
+    throw new Error('حساب المصروف لا يطابق حركة الخزنة');
   }
 
-  const category = String(input.category || '').trim() || null
+  const category = String(input.category || '').trim() || null;
 
-  const notes = String(input.notes || '').trim() || null
+  const notes = String(input.notes || '').trim() || null;
 
   const paymentMethod = resolveCashAccount(
     input.payment_method || expense.payment_method || 'store_cash',
-  )
+  );
 
   const openShift = resolveFinancialOperationShift(
     actorId,
     [cashMovement.payment_method, paymentMethod],
     'لا يمكن تعديل مصروف يؤثر على درج المحل بدون شفت مفتوح',
-  )
+  );
 
   const correctionBusinessDate = openShift
     ? getShiftBusinessDate(openShift.id)
-    : getCurrentBusinessDate(db)
+    : getCurrentBusinessDate(db);
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -455,7 +455,7 @@ export function updateExpense(input: UpdateExpenseInput) {
       notes,
       openShift?.id ?? null,
       expenseId,
-    )
+    );
 
     /*
      * لا نلغي حركة المصروف القديمة.
@@ -481,9 +481,9 @@ export function updateExpense(input: UpdateExpenseInput) {
       business_date: correctionBusinessDate,
 
       shift_id: openShift?.id ?? null,
-    })
+    });
 
-    const reverseCashMovementId = Number(reverse.lastInsertRowid || 0)
+    const reverseCashMovementId = Number(reverse.lastInsertRowid || 0);
 
     /*
      * نسجل القيمة الجديدة
@@ -509,9 +509,9 @@ export function updateExpense(input: UpdateExpenseInput) {
       business_date: correctionBusinessDate,
 
       shift_id: openShift?.id ?? null,
-    })
+    });
 
-    const newCashMovementId = Number(replacement.lastInsertRowid || 0)
+    const newCashMovementId = Number(replacement.lastInsertRowid || 0);
 
     createCriticalActivityLog({
       user_id: actorId,
@@ -555,7 +555,7 @@ export function updateExpense(input: UpdateExpenseInput) {
           shift_id: openShift?.id ?? null,
         },
       }),
-    })
+    });
 
     return {
       success: true,
@@ -569,19 +569,19 @@ export function updateExpense(input: UpdateExpenseInput) {
       cash_movement_id: newCashMovementId,
 
       updated_shift_id: openShift?.id ?? null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function cancelExpense(input: CancelExpenseInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const expenseId = Number(input.id)
+  const expenseId = Number(input.id);
 
   if (!expenseId) {
-    throw new Error('رقم المصروف غير صحيح')
+    throw new Error('رقم المصروف غير صحيح');
   }
 
   const expense = db
@@ -596,23 +596,23 @@ export function cancelExpense(input: CancelExpenseInput) {
       LIMIT 1
       `,
     )
-    .get(expenseId) as any
+    .get(expenseId) as any;
 
   if (!expense) {
-    throw new Error('المصروف غير موجود')
+    throw new Error('المصروف غير موجود');
   }
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
   if (
     input.can_manage_all !== true &&
     (!actorId || Number(expense.created_by || 0) !== actorId)
   ) {
-    throw new Error('غير مصرح لك بإلغاء هذا المصروف')
+    throw new Error('غير مصرح لك بإلغاء هذا المصروف');
   }
 
   if (expense.cancelled_at) {
-    throw new Error('المصروف ملغي بالفعل')
+    throw new Error('المصروف ملغي بالفعل');
   }
 
   const cashMovement = db
@@ -638,27 +638,27 @@ export function cancelExpense(input: CancelExpenseInput) {
       LIMIT 1
       `,
     )
-    .get(expenseId) as any
+    .get(expenseId) as any;
 
   if (!cashMovement) {
-    throw new Error('حركة الخزنة الخاصة بالمصروف غير موجودة')
+    throw new Error('حركة الخزنة الخاصة بالمصروف غير موجودة');
   }
 
   if (cashMovement.cancelled_at) {
-    throw new Error('حركة الخزنة الخاصة بالمصروف ملغاة بالفعل')
+    throw new Error('حركة الخزنة الخاصة بالمصروف ملغاة بالفعل');
   }
 
   const openShift = resolveFinancialOperationShift(
     actorId,
     [cashMovement.payment_method],
     'لا يمكن إلغاء مصروف يؤثر على درج المحل بدون شفت مفتوح',
-  )
+  );
 
   const cancellationBusinessDate = openShift
     ? getShiftBusinessDate(openShift.id)
-    : getCurrentBusinessDate(db)
+    : getCurrentBusinessDate(db);
 
-  const reason = String(input.reason || '').trim() || 'إلغاء مصروف'
+  const reason = String(input.reason || '').trim() || 'إلغاء مصروف';
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -677,7 +677,7 @@ export function cancelExpense(input: CancelExpenseInput) {
 
       WHERE id = ?
       `,
-    ).run(actorId, openShift?.id ?? null, reason, expenseId)
+    ).run(actorId, openShift?.id ?? null, reason, expenseId);
 
     const reverse = createCashMovement({
       type: 'expense',
@@ -699,9 +699,9 @@ export function cancelExpense(input: CancelExpenseInput) {
       business_date: cancellationBusinessDate,
 
       shift_id: openShift?.id ?? null,
-    })
+    });
 
-    const reverseCashMovementId = Number(reverse.lastInsertRowid || 0)
+    const reverseCashMovementId = Number(reverse.lastInsertRowid || 0);
 
     createCriticalActivityLog({
       user_id: actorId,
@@ -727,7 +727,7 @@ export function cancelExpense(input: CancelExpenseInput) {
 
         shift_id: openShift?.id ?? null,
       }),
-    })
+    });
 
     return {
       success: true,
@@ -737,8 +737,8 @@ export function cancelExpense(input: CancelExpenseInput) {
       cancelled_shift_id: openShift?.id ?? null,
 
       reverse_cash_movement_id: reverseCashMovementId,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }

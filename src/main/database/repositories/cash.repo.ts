@@ -1,7 +1,7 @@
-import { getDb } from '../db'
-import { createCriticalActivityLog } from './activity.repo'
-import { getShiftBusinessDate } from '../shift-business-date'
-import { roundMoney } from '../../../shared/money'
+import { getDb } from '../db';
+import { createCriticalActivityLog } from './activity.repo';
+import { getShiftBusinessDate } from '../shift-business-date';
+import { roundMoney } from '../../../shared/money';
 export type CashMovementInput = {
   type:
     | 'sale'
@@ -15,44 +15,44 @@ export type CashMovementInput = {
     | 'withdraw'
     | 'deposit'
     | 'transfer'
-    | 'shift_adjustment'
+    | 'shift_adjustment';
 
-  direction: 'in' | 'out'
+  direction: 'in' | 'out';
 
-  amount: number
+  amount: number;
 
-  payment_method?: string
+  payment_method?: string;
 
-  reference_id?: number | null
-  reference_type?: string | null
+  reference_id?: number | null;
+  reference_type?: string | null;
 
-  notes?: string | null
+  notes?: string | null;
 
-  created_by?: number | null
-  business_date?: string | null
-  shift_id?: number | null
-}
+  created_by?: number | null;
+  business_date?: string | null;
+  shift_id?: number | null;
+};
 
 export type CashFilterInput = {
-  date_from?: string
-  date_to?: string
+  date_from?: string;
+  date_to?: string;
 
-  type?: string
-  types?: string[]
+  type?: string;
+  types?: string[];
 
-  direction?: 'all' | 'in' | 'out'
-  directions?: string[]
+  direction?: 'all' | 'in' | 'out';
+  directions?: string[];
 
-  payment_method?: string
-  payment_methods?: string[]
-  exclude_payment_methods?: string[]
-  search?: string
-  reference_type?: string
-  created_by?: number | null
-  shift_id?: number | null
-  limit?: number
-  offset?: number
-}
+  payment_method?: string;
+  payment_methods?: string[];
+  exclude_payment_methods?: string[];
+  search?: string;
+  reference_type?: string;
+  created_by?: number | null;
+  shift_id?: number | null;
+  limit?: number;
+  offset?: number;
+};
 
 export type CashAccountKey =
   | 'store_cash'
@@ -60,24 +60,24 @@ export type CashAccountKey =
   | 'owner_cash'
   | 'owner_bank'
   | 'owner_vodafone'
-  | 'fawry_machine'
+  | 'fawry_machine';
 
 export type CashTransferInput = {
-  from_account: string
-  to_account: string
-  amount: number
-  notes?: string | null
-  created_by?: number | null
-  shift_id?: number | null
-}
+  from_account: string;
+  to_account: string;
+  amount: number;
+  notes?: string | null;
+  created_by?: number | null;
+  shift_id?: number | null;
+};
 
 export type CashDayCloseInput = {
-  business_date: string
-  counted_amount: number
-  carry_over_amount?: number
-  target_account?: string
-  closed_by?: number | null
-}
+  business_date: string;
+  counted_amount: number;
+  carry_over_amount?: number;
+  target_account?: string;
+  closed_by?: number | null;
+};
 
 export function resolveCashAccount(value?: string | null): CashAccountKey {
   switch (value) {
@@ -87,28 +87,28 @@ export function resolveCashAccount(value?: string | null): CashAccountKey {
     case 'owner_bank':
     case 'owner_vodafone':
     case 'fawry_machine':
-      return value
+      return value;
 
     case 'cash':
-      return 'store_cash'
+      return 'store_cash';
 
     case 'card':
-      return 'fawry_machine'
+      return 'fawry_machine';
 
     case 'wallet':
-      return 'owner_vodafone'
+      return 'owner_vodafone';
 
     case 'bank':
     case 'bank_transfer':
-      return 'owner_bank'
+      return 'owner_bank';
 
     default:
-      return 'store_cash'
+      return 'store_cash';
   }
 }
 
 function normalizeLegacyCashMovementAccounts() {
-  const db = getDb()
+  const db = getDb();
 
   db.prepare(
     `
@@ -125,13 +125,13 @@ function normalizeLegacyCashMovementAccounts() {
        OR TRIM(payment_method) = ''
        OR payment_method IN ('cash', 'card', 'wallet', 'bank', 'bank_transfer')
   `,
-  ).run()
+  ).run();
 }
 
 function getAccountBalance(account: string) {
-  const db = getDb()
-  normalizeLegacyCashMovementAccounts()
-  const safeAccount = resolveCashAccount(account)
+  const db = getDb();
+  normalizeLegacyCashMovementAccounts();
+  const safeAccount = resolveCashAccount(account);
 
   const row = db
     .prepare(
@@ -144,38 +144,40 @@ function getAccountBalance(account: string) {
        AND cancelled_at IS NULL
     `,
     )
-    .get(safeAccount) as { total_in: number; total_out: number } | undefined
+    .get(safeAccount) as { total_in: number; total_out: number } | undefined;
 
-  return roundMoney(Number(row?.total_in || 0) - Number(row?.total_out || 0))
+  return roundMoney(Number(row?.total_in || 0) - Number(row?.total_out || 0));
 }
 
 function getAccountLabel(account: CashAccountKey) {
   switch (account) {
     case 'store_cash':
-      return 'كاش درج المحل'
+      return 'كاش درج المحل';
     case 'store_safe':
-      return 'الخزنة الآمنة'
+      return 'الخزنة الآمنة';
     case 'owner_cash':
-      return 'كاش مع المالك'
+      return 'كاش مع المالك';
     case 'owner_bank':
-      return 'حساب بنك / فيزا المالك'
+      return 'حساب بنك / فيزا المالك';
     case 'owner_vodafone':
-      return 'فودافون كاش المالك'
+      return 'فودافون كاش المالك';
     case 'fawry_machine':
-      return 'ماكينة فوري'
+      return 'ماكينة فوري';
     default:
-      return account
+      return account;
   }
 }
 
 function buildCashWhere(
   input?: CashFilterInput,
   options?: {
-    activeOnly?: boolean
+    activeOnly?: boolean;
   },
 ) {
-  const where: string[] = options?.activeOnly ? [`cm.cancelled_at IS NULL`] : []
-  const params: any[] = []
+  const where: string[] = options?.activeOnly
+    ? [`cm.cancelled_at IS NULL`]
+    : [];
+  const params: any[] = [];
 
   if (input?.date_from) {
     where.push(`
@@ -183,9 +185,9 @@ function buildCashWhere(
         NULLIF(cm.business_date, ''),
         date(cm.created_at, 'localtime')
       ) >= ?
-    `)
+    `);
 
-    params.push(input.date_from)
+    params.push(input.date_from);
   }
 
   if (input?.date_to) {
@@ -194,9 +196,9 @@ function buildCashWhere(
         NULLIF(cm.business_date, ''),
         date(cm.created_at, 'localtime')
       ) <= ?
-    `)
+    `);
 
-    params.push(input.date_to)
+    params.push(input.date_to);
   }
 
   const selectedTypes = Array.from(
@@ -207,17 +209,17 @@ function buildCashWhere(
             .filter((value) => Boolean(value) && value !== 'all')
         : [],
     ),
-  )
+  );
 
   if (selectedTypes.length > 0) {
-    const placeholders = selectedTypes.map(() => '?').join(', ')
+    const placeholders = selectedTypes.map(() => '?').join(', ');
 
-    where.push(`cm.type IN (${placeholders})`)
+    where.push(`cm.type IN (${placeholders})`);
 
-    params.push(...selectedTypes)
+    params.push(...selectedTypes);
   } else if (input?.type && input.type !== 'all') {
-    where.push(`cm.type = ?`)
-    params.push(input.type)
+    where.push(`cm.type = ?`);
+    params.push(input.type);
   }
 
   const selectedDirections = Array.from(
@@ -226,17 +228,17 @@ function buildCashWhere(
         ? input.directions.filter((value) => value === 'in' || value === 'out')
         : [],
     ),
-  )
+  );
 
   if (selectedDirections.length > 0) {
-    const placeholders = selectedDirections.map(() => '?').join(', ')
+    const placeholders = selectedDirections.map(() => '?').join(', ');
 
-    where.push(`cm.direction IN (${placeholders})`)
+    where.push(`cm.direction IN (${placeholders})`);
 
-    params.push(...selectedDirections)
+    params.push(...selectedDirections);
   } else if (input?.direction && input.direction !== 'all') {
-    where.push(`cm.direction = ?`)
-    params.push(input.direction)
+    where.push(`cm.direction = ?`);
+    params.push(input.direction);
   }
 
   const selectedPaymentMethods = Array.from(
@@ -248,18 +250,18 @@ function buildCashWhere(
             .map((value) => resolveCashAccount(value))
         : [],
     ),
-  )
+  );
 
   if (selectedPaymentMethods.length > 0) {
-    const placeholders = selectedPaymentMethods.map(() => '?').join(', ')
+    const placeholders = selectedPaymentMethods.map(() => '?').join(', ');
 
-    where.push(`cm.payment_method IN (${placeholders})`)
+    where.push(`cm.payment_method IN (${placeholders})`);
 
-    params.push(...selectedPaymentMethods)
+    params.push(...selectedPaymentMethods);
   } else if (input?.payment_method && input.payment_method !== 'all') {
-    where.push(`cm.payment_method = ?`)
+    where.push(`cm.payment_method = ?`);
 
-    params.push(resolveCashAccount(input.payment_method))
+    params.push(resolveCashAccount(input.payment_method));
   }
 
   const excludedPaymentMethods = Array.from(
@@ -271,29 +273,29 @@ function buildCashWhere(
             .map((value) => resolveCashAccount(value))
         : [],
     ),
-  )
+  );
 
   if (excludedPaymentMethods.length > 0) {
-    const placeholders = excludedPaymentMethods.map(() => '?').join(', ')
+    const placeholders = excludedPaymentMethods.map(() => '?').join(', ');
 
-    where.push(`cm.payment_method NOT IN (${placeholders})`)
+    where.push(`cm.payment_method NOT IN (${placeholders})`);
 
-    params.push(...excludedPaymentMethods)
+    params.push(...excludedPaymentMethods);
   }
 
   if (input?.reference_type && input.reference_type !== 'all') {
-    where.push(`cm.reference_type = ?`)
-    params.push(input.reference_type)
+    where.push(`cm.reference_type = ?`);
+    params.push(input.reference_type);
   }
 
   if (input?.created_by) {
-    where.push(`cm.created_by = ?`)
-    params.push(Number(input.created_by))
+    where.push(`cm.created_by = ?`);
+    params.push(Number(input.created_by));
   }
 
   if (input?.shift_id) {
-    where.push(`cm.shift_id = ?`)
-    params.push(Number(input.shift_id))
+    where.push(`cm.shift_id = ?`);
+    params.push(Number(input.shift_id));
   }
 
   if (input?.search?.trim()) {
@@ -303,54 +305,54 @@ function buildCashWhere(
       OR cm.payment_method LIKE ?
       OR u.name LIKE ?
       OR u.username LIKE ?
-    )`)
+    )`);
 
-    const search = `%${input.search.trim()}%`
-    params.push(search, search, search, search, search)
+    const search = `%${input.search.trim()}%`;
+    params.push(search, search, search, search, search);
   }
 
   return {
     whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '',
     params,
-  }
+  };
 }
 
 export function createCashMovement(input: CashMovementInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const amount = roundMoney(input.amount)
-  const type = String(input.type || '').trim()
-  const direction = input.direction
-  const account = resolveCashAccount(input.payment_method || 'store_cash')
+  const amount = roundMoney(input.amount);
+  const type = String(input.type || '').trim();
+  const direction = input.direction;
+  const account = resolveCashAccount(input.payment_method || 'store_cash');
 
-  const shiftId = Number(input.shift_id || 0)
+  const shiftId = Number(input.shift_id || 0);
 
   const businessDate =
     shiftId > 0
       ? getShiftBusinessDate(shiftId)
       : input.business_date
         ? normalizeBusinessDate(input.business_date)
-        : null
+        : null;
 
   if (!type) {
-    throw new Error('نوع حركة الخزنة مطلوب')
+    throw new Error('نوع حركة الخزنة مطلوب');
   }
 
   if (direction !== 'in' && direction !== 'out') {
-    throw new Error('اتجاه حركة الخزنة غير صحيح')
+    throw new Error('اتجاه حركة الخزنة غير صحيح');
   }
 
   if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('مبلغ حركة الخزنة غير صحيح')
+    throw new Error('مبلغ حركة الخزنة غير صحيح');
   }
 
   if (direction === 'out') {
-    const currentBalance = getAccountBalance(account)
+    const currentBalance = getAccountBalance(account);
 
     if (amount > currentBalance) {
       throw new Error(
         `لا يمكن إتمام العملية: رصيد ${getAccountLabel(account)} غير كافٍ. الرصيد الحالي ${roundMoney(currentBalance)} ج.م والمطلوب ${amount} ج.م`,
-      )
+      );
     }
   }
 
@@ -384,9 +386,9 @@ export function createCashMovement(input: CashMovementInput) {
         input.created_by ?? null,
         businessDate,
         input.shift_id ?? null,
-      )
+      );
 
-    const movementId = Number(result.lastInsertRowid)
+    const movementId = Number(result.lastInsertRowid);
 
     createCriticalActivityLog({
       user_id: input.created_by ?? null,
@@ -410,20 +412,20 @@ export function createCashMovement(input: CashMovementInput) {
 
         shift_id: input.shift_id ?? null,
       }),
-    })
+    });
 
-    return result
-  })
+    return result;
+  });
 
-  return tx()
+  return tx();
 }
 
 export function getCashSummary(input?: CashFilterInput) {
-  const db = getDb()
-  normalizeLegacyCashMovementAccounts()
+  const db = getDb();
+  normalizeLegacyCashMovementAccounts();
   const { whereSql, params } = buildCashWhere(input, {
     activeOnly: true,
-  })
+  });
 
   const row = db
     .prepare(
@@ -438,29 +440,29 @@ export function getCashSummary(input?: CashFilterInput) {
     `,
     )
     .get(...params) as {
-    total_in: number
-    total_out: number
-    movements_count: number
-  }
+    total_in: number;
+    total_out: number;
+    movements_count: number;
+  };
 
   return {
     total_in: Number(row.total_in || 0),
     total_out: Number(row.total_out || 0),
     balance: Number(row.total_in || 0) - Number(row.total_out || 0),
     movements_count: Number(row.movements_count || 0),
-  }
+  };
 }
 
 export function listCashMovements(input?: CashFilterInput) {
-  const db = getDb()
+  const db = getDb();
 
-  normalizeLegacyCashMovementAccounts()
+  normalizeLegacyCashMovementAccounts();
 
-  const { whereSql, params } = buildCashWhere(input)
+  const { whereSql, params } = buildCashWhere(input);
 
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
 
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
   const rows = db
     .prepare(
@@ -514,7 +516,7 @@ export function listCashMovements(input?: CashFilterInput) {
       OFFSET ?
     `,
     )
-    .all(...params, limit, offset)
+    .all(...params, limit, offset);
 
   const totalRow = db
     .prepare(
@@ -525,36 +527,36 @@ export function listCashMovements(input?: CashFilterInput) {
       ${whereSql}
     `,
     )
-    .get(...params) as { total: number }
+    .get(...params) as { total: number };
 
   return {
     rows,
     total: Number(totalRow?.total || 0),
     limit,
     offset,
-  }
+  };
 }
 
 export function createCashTransfer(input: CashTransferInput) {
-  const db = getDb()
-  normalizeLegacyCashMovementAccounts()
+  const db = getDb();
+  normalizeLegacyCashMovementAccounts();
 
-  const amount = roundMoney(input.amount)
-  const fromAccount = resolveCashAccount(input.from_account)
-  const toAccount = resolveCashAccount(input.to_account)
+  const amount = roundMoney(input.amount);
+  const fromAccount = resolveCashAccount(input.from_account);
+  const toAccount = resolveCashAccount(input.to_account);
 
   if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('مبلغ التحويل غير صحيح')
+    throw new Error('مبلغ التحويل غير صحيح');
   }
 
   if (fromAccount === toAccount) {
-    throw new Error('لا يمكن التحويل لنفس الحساب')
+    throw new Error('لا يمكن التحويل لنفس الحساب');
   }
 
-  const fromBalance = getAccountBalance(fromAccount)
+  const fromBalance = getAccountBalance(fromAccount);
 
   if (amount > fromBalance) {
-    throw new Error('المبلغ المسحوب أكبر من رصيد الحساب')
+    throw new Error('المبلغ المسحوب أكبر من رصيد الحساب');
   }
 
   const tx = db.transaction(() => {
@@ -568,7 +570,7 @@ export function createCashTransfer(input: CashTransferInput) {
       notes: input.notes || `تحويل من ${fromAccount} إلى ${toAccount}`,
       created_by: input.created_by ?? null,
       shift_id: input.shift_id ?? null,
-    })
+    });
 
     const inResult = createCashMovement({
       type: 'transfer',
@@ -580,7 +582,7 @@ export function createCashTransfer(input: CashTransferInput) {
       notes: input.notes || `تحويل من ${fromAccount} إلى ${toAccount}`,
       created_by: input.created_by ?? null,
       shift_id: input.shift_id ?? null,
-    })
+    });
 
     return {
       ok: true,
@@ -590,10 +592,10 @@ export function createCashTransfer(input: CashTransferInput) {
       out_id: Number(outResult.lastInsertRowid || 0),
       in_id: Number(inResult.lastInsertRowid || 0),
       shift_id: input.shift_id ?? null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
@@ -606,28 +608,28 @@ function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
       `,
     )
     .get() as {
-    business_date: string
-  }
+    business_date: string;
+  };
 
-  return String(row?.business_date || '')
+  return String(row?.business_date || '');
 }
 
 function normalizeBusinessDate(value?: string | null) {
-  const businessDate = String(value || '').trim()
+  const businessDate = String(value || '').trim();
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) {
-    throw new Error('تاريخ تقفيل اليوم غير صحيح')
+    throw new Error('تاريخ تقفيل اليوم غير صحيح');
   }
 
-  return businessDate
+  return businessDate;
 }
 
 export function getCashDayClosePreview(businessDateInput: string) {
-  const db = getDb()
+  const db = getDb();
 
-  normalizeLegacyCashMovementAccounts()
+  normalizeLegacyCashMovementAccounts();
 
-  const businessDate = normalizeBusinessDate(businessDateInput)
+  const businessDate = normalizeBusinessDate(businessDateInput);
 
   const existingClosing = db
     .prepare(
@@ -641,7 +643,7 @@ export function getCashDayClosePreview(businessDateInput: string) {
       LIMIT 1
     `,
     )
-    .get(businessDate) as any
+    .get(businessDate) as any;
 
   if (existingClosing) {
     const latestClosing = db
@@ -660,12 +662,12 @@ export function getCashDayClosePreview(businessDateInput: string) {
       )
       .get() as
       | {
-          id: number
+          id: number;
         }
-      | undefined
+      | undefined;
 
     const canManageClosing =
-      Number(latestClosing?.id || 0) === Number(existingClosing.id)
+      Number(latestClosing?.id || 0) === Number(existingClosing.id);
 
     return {
       business_date: businessDate,
@@ -686,7 +688,7 @@ export function getCashDayClosePreview(businessDateInput: string) {
       ),
 
       breakdown: [],
-    }
+    };
   }
 
   const openingRow = db
@@ -712,7 +714,7 @@ export function getCashDayClosePreview(businessDateInput: string) {
         ) < ?
     `,
     )
-    .get(businessDate) as { balance: number } | undefined
+    .get(businessDate) as { balance: number } | undefined;
 
   const todayRow = db
     .prepare(
@@ -750,10 +752,10 @@ export function getCashDayClosePreview(businessDateInput: string) {
     )
     .get(businessDate) as
     | {
-        total_in: number
-        total_out: number
+        total_in: number;
+        total_out: number;
       }
-    | undefined
+    | undefined;
 
   const breakdown = db
     .prepare(
@@ -782,17 +784,17 @@ export function getCashDayClosePreview(businessDateInput: string) {
       type: row.type,
       direction: row.direction,
       total: Number(row.total || 0),
-    }))
+    }));
 
-  const openingDrawerBalance = roundMoney(Number(openingRow?.balance || 0))
+  const openingDrawerBalance = roundMoney(Number(openingRow?.balance || 0));
 
-  const dayCashIn = roundMoney(Number(todayRow?.total_in || 0))
+  const dayCashIn = roundMoney(Number(todayRow?.total_in || 0));
 
-  const dayCashOut = roundMoney(Number(todayRow?.total_out || 0))
+  const dayCashOut = roundMoney(Number(todayRow?.total_out || 0));
 
   const systemClosingBalance = roundMoney(
     openingDrawerBalance + dayCashIn - dayCashOut,
-  )
+  );
 
   return {
     business_date: businessDate,
@@ -806,44 +808,46 @@ export function getCashDayClosePreview(businessDateInput: string) {
     system_closing_balance: systemClosingBalance,
 
     breakdown,
-  }
+  };
 }
 
 export function closeCashDay(input: CashDayCloseInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const businessDate = normalizeBusinessDate(input.business_date)
+  const businessDate = normalizeBusinessDate(input.business_date);
 
-  const countedAmount = roundMoney(Number(input.counted_amount || 0))
+  const countedAmount = roundMoney(Number(input.counted_amount || 0));
 
-  const carryOverAmount = roundMoney(Number(input.carry_over_amount || 0))
+  const carryOverAmount = roundMoney(Number(input.carry_over_amount || 0));
 
   if (!Number.isFinite(countedAmount) || countedAmount < 0) {
-    throw new Error('قيمة الجرد الفعلي غير صحيحة')
+    throw new Error('قيمة الجرد الفعلي غير صحيحة');
   }
 
   if (!Number.isFinite(carryOverAmount) || carryOverAmount < 0) {
-    throw new Error('المبلغ المتبقي في الدرج غير صحيح')
+    throw new Error('المبلغ المتبقي في الدرج غير صحيح');
   }
 
-  const targetAccount = resolveCashAccount(input.target_account || 'owner_cash')
+  const targetAccount = resolveCashAccount(
+    input.target_account || 'owner_cash',
+  );
 
   if (!['owner_cash', 'owner_bank', 'owner_vodafone'].includes(targetAccount)) {
-    throw new Error('حساب تحويل تقفيل اليوم غير صحيح')
+    throw new Error('حساب تحويل تقفيل اليوم غير صحيح');
   }
 
   const tx = db.transaction(() => {
-    const preview = getCashDayClosePreview(businessDate)
+    const preview = getCashDayClosePreview(businessDate);
 
     if (preview.already_closed) {
-      throw new Error(`تم تقفيل يوم ${businessDate} بالفعل`)
+      throw new Error(`تم تقفيل يوم ${businessDate} بالفعل`);
     }
 
     const systemClosingBalance = roundMoney(
       Number(preview.system_closing_balance || 0),
-    )
+    );
 
-    const difference = roundMoney(countedAmount - systemClosingBalance)
+    const difference = roundMoney(countedAmount - systemClosingBalance);
 
     if (Math.abs(difference) > 0.01) {
       throw new Error(
@@ -852,14 +856,14 @@ export function closeCashDay(input: CashDayCloseInput) {
         )} ج.م والجرد الفعلي ${countedAmount.toFixed(
           2,
         )} ج.م والفرق ${difference.toFixed(2)} ج.م`,
-      )
+      );
     }
 
     if (carryOverAmount > countedAmount) {
-      throw new Error('المبلغ المتبقي لليوم التالي أكبر من رصيد الدرج')
+      throw new Error('المبلغ المتبقي لليوم التالي أكبر من رصيد الدرج');
     }
 
-    const transferAmount = roundMoney(countedAmount - carryOverAmount)
+    const transferAmount = roundMoney(countedAmount - carryOverAmount);
 
     const closingResult = db
       .prepare(
@@ -892,15 +896,15 @@ export function closeCashDay(input: CashDayCloseInput) {
         transferAmount,
         transferAmount > 0 ? targetAccount : null,
         input.closed_by ?? null,
-      )
+      );
 
-    const closingId = Number(closingResult.lastInsertRowid)
+    const closingId = Number(closingResult.lastInsertRowid);
 
     if (transferAmount > 0) {
       const note =
         `تقفيل يوم ${businessDate} - ` +
         `تحويل ${transferAmount.toFixed(2)} ج.م - ` +
-        `المتبقي في الدرج ${carryOverAmount.toFixed(2)} ج.م`
+        `المتبقي في الدرج ${carryOverAmount.toFixed(2)} ج.م`;
 
       createCashMovement({
         type: 'transfer',
@@ -912,7 +916,7 @@ export function closeCashDay(input: CashDayCloseInput) {
         notes: note,
         created_by: input.closed_by ?? null,
         business_date: businessDate,
-      })
+      });
 
       createCashMovement({
         type: 'transfer',
@@ -924,7 +928,7 @@ export function closeCashDay(input: CashDayCloseInput) {
         notes: note,
         created_by: input.closed_by ?? null,
         business_date: businessDate,
-      })
+      });
     }
 
     createCriticalActivityLog({
@@ -944,7 +948,7 @@ export function closeCashDay(input: CashDayCloseInput) {
         transfer_amount: transferAmount,
         target_account: transferAmount > 0 ? targetAccount : null,
       }),
-    })
+    });
 
     return {
       ok: true,
@@ -964,17 +968,17 @@ export function closeCashDay(input: CashDayCloseInput) {
       transfer_amount: transferAmount,
 
       target_account: transferAmount > 0 ? targetAccount : null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 function getCashDayClosingMutationContext(closingId: number) {
-  const db = getDb()
+  const db = getDb();
 
   if (!closingId) {
-    throw new Error('رقم تقفيل اليوم غير صحيح')
+    throw new Error('رقم تقفيل اليوم غير صحيح');
   }
 
   const closing = db
@@ -989,10 +993,10 @@ function getCashDayClosingMutationContext(closingId: number) {
       LIMIT 1
       `,
     )
-    .get(closingId) as any
+    .get(closingId) as any;
 
   if (!closing) {
-    throw new Error('تقفيل اليوم غير موجود')
+    throw new Error('تقفيل اليوم غير موجود');
   }
 
   const latestClosing = db
@@ -1013,15 +1017,15 @@ function getCashDayClosingMutationContext(closingId: number) {
     )
     .get() as
     | {
-        id: number
-        business_date: string
+        id: number;
+        business_date: string;
       }
-    | undefined
+    | undefined;
 
   if (Number(latestClosing?.id || 0) !== closingId) {
     throw new Error(
       'لا يمكن تعديل أو إلغاء هذا التقفيل قبل إلغاء التقفيلات الأحدث',
-    )
+    );
   }
 
   const movements = db
@@ -1038,48 +1042,50 @@ function getCashDayClosingMutationContext(closingId: number) {
       ORDER BY id ASC
       `,
     )
-    .all(closingId) as any[]
+    .all(closingId) as any[];
 
-  const transferAmount = roundMoney(Number(closing.transfer_amount || 0))
+  const transferAmount = roundMoney(Number(closing.transfer_amount || 0));
 
   if (transferAmount > 0) {
     const outMovement = movements.find(
       (movement) =>
         movement.direction === 'out' &&
         resolveCashAccount(movement.payment_method) === 'store_cash',
-    )
+    );
 
-    const inMovement = movements.find((movement) => movement.direction === 'in')
+    const inMovement = movements.find(
+      (movement) => movement.direction === 'in',
+    );
 
     if (!outMovement || !inMovement) {
-      throw new Error('حركات تحويل تقفيل اليوم غير مكتملة')
+      throw new Error('حركات تحويل تقفيل اليوم غير مكتملة');
     }
 
     if (
       Math.abs(Number(outMovement.amount || 0) - transferAmount) > 0.01 ||
       Math.abs(Number(inMovement.amount || 0) - transferAmount) > 0.01
     ) {
-      throw new Error('قيمة تحويل تقفيل اليوم غير متطابقة')
+      throw new Error('قيمة تحويل تقفيل اليوم غير متطابقة');
     }
 
-    const destinationBalance = getAccountBalance(inMovement.payment_method)
+    const destinationBalance = getAccountBalance(inMovement.payment_method);
 
     if (destinationBalance + 0.0001 < transferAmount) {
       throw new Error(
         `لا يمكن تعديل أو إلغاء التقفيل لأن رصيد ${getAccountLabel(
           resolveCashAccount(inMovement.payment_method),
         )} لا يكفي لعكس تحويل التقفيل`,
-      )
+      );
     }
   } else if (movements.length > 0) {
-    throw new Error('بيانات تحويل تقفيل اليوم غير متطابقة')
+    throw new Error('بيانات تحويل تقفيل اليوم غير متطابقة');
   }
 
   return {
     db,
     closing,
     movements,
-  }
+  };
 }
 
 function cancelDayCloseMovements(
@@ -1087,7 +1093,7 @@ function cancelDayCloseMovements(
   actorId: number | null,
   reason: string,
 ) {
-  const db = getDb()
+  const db = getDb();
 
   const cancelMovement = db.prepare(
     `
@@ -1104,30 +1110,30 @@ function cancelDayCloseMovements(
     WHERE id = ?
       AND cancelled_at IS NULL
     `,
-  )
+  );
 
   for (const movement of movements) {
-    cancelMovement.run(actorId, reason, Number(movement.id))
+    cancelMovement.run(actorId, reason, Number(movement.id));
   }
 }
 
 export function cancelCashDayClosing(input: {
-  closing_id: number
-  reason?: string | null
-  actor_id?: number | null
+  closing_id: number;
+  reason?: string | null;
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const closingId = Number(input.closing_id || 0)
+  const closingId = Number(input.closing_id || 0);
 
-  const reason = String(input.reason || '').trim() || 'إلغاء تقفيل يوم'
+  const reason = String(input.reason || '').trim() || 'إلغاء تقفيل يوم';
 
   const tx = db.transaction(() => {
-    const { closing, movements } = getCashDayClosingMutationContext(closingId)
+    const { closing, movements } = getCashDayClosingMutationContext(closingId);
 
-    const businessDate = String(closing.business_date || '')
+    const businessDate = String(closing.business_date || '');
 
-    cancelDayCloseMovements(movements, input.actor_id ?? null, reason)
+    cancelDayCloseMovements(movements, input.actor_id ?? null, reason);
 
     /*
       نحذف سجل التقفيل النشط حتى يصبح
@@ -1143,7 +1149,7 @@ export function cancelCashDayClosing(input: {
 
       WHERE id = ?
       `,
-    ).run(closingId)
+    ).run(closingId);
 
     createCriticalActivityLog({
       user_id: input.actor_id ?? null,
@@ -1175,7 +1181,7 @@ export function cancelCashDayClosing(input: {
 
         reason,
       }),
-    })
+    });
 
     return {
       success: true,
@@ -1183,60 +1189,62 @@ export function cancelCashDayClosing(input: {
       closing_id: closingId,
 
       business_date: businessDate,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function updateCashDayClosing(input: {
-  closing_id: number
-  carry_over_amount: number
-  target_account?: string
-  actor_id?: number | null
+  closing_id: number;
+  carry_over_amount: number;
+  target_account?: string;
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const closingId = Number(input.closing_id || 0)
+  const closingId = Number(input.closing_id || 0);
 
-  const carryOverAmount = roundMoney(Number(input.carry_over_amount || 0))
+  const carryOverAmount = roundMoney(Number(input.carry_over_amount || 0));
 
   if (!Number.isFinite(carryOverAmount) || carryOverAmount < 0) {
-    throw new Error('المبلغ المتبقي في الدرج غير صحيح')
+    throw new Error('المبلغ المتبقي في الدرج غير صحيح');
   }
 
-  const targetAccount = resolveCashAccount(input.target_account || 'owner_cash')
+  const targetAccount = resolveCashAccount(
+    input.target_account || 'owner_cash',
+  );
 
   if (!['owner_cash', 'owner_bank', 'owner_vodafone'].includes(targetAccount)) {
-    throw new Error('حساب تحويل تقفيل اليوم غير صحيح')
+    throw new Error('حساب تحويل تقفيل اليوم غير صحيح');
   }
 
   const tx = db.transaction(() => {
-    const { closing, movements } = getCashDayClosingMutationContext(closingId)
+    const { closing, movements } = getCashDayClosingMutationContext(closingId);
 
     const countedAmount = roundMoney(
       Number(closing.counted_closing_balance || 0),
-    )
+    );
 
     if (carryOverAmount > countedAmount) {
-      throw new Error('المبلغ المتبقي لليوم التالي أكبر من رصيد الدرج')
+      throw new Error('المبلغ المتبقي لليوم التالي أكبر من رصيد الدرج');
     }
 
-    const newTransferAmount = roundMoney(countedAmount - carryOverAmount)
+    const newTransferAmount = roundMoney(countedAmount - carryOverAmount);
 
-    const businessDate = String(closing.business_date || '')
+    const businessDate = String(closing.business_date || '');
 
-    const oldCarryOver = Number(closing.carry_over_amount || 0)
+    const oldCarryOver = Number(closing.carry_over_amount || 0);
 
-    const oldTransferAmount = Number(closing.transfer_amount || 0)
+    const oldTransferAmount = Number(closing.transfer_amount || 0);
 
-    const oldTargetAccount = closing.target_account ?? null
+    const oldTargetAccount = closing.target_account ?? null;
 
     cancelDayCloseMovements(
       movements,
       input.actor_id ?? null,
       `تم تعديل تقفيل يوم ${businessDate}`,
-    )
+    );
 
     db.prepare(
       `
@@ -1259,13 +1267,13 @@ export function updateCashDayClosing(input: {
       newTransferAmount > 0 ? targetAccount : null,
 
       closingId,
-    )
+    );
 
     if (newTransferAmount > 0) {
       const note =
         `تقفيل يوم ${businessDate} - ` +
         `تحويل ${newTransferAmount.toFixed(2)} ج.م - ` +
-        `المتبقي في الدرج ${carryOverAmount.toFixed(2)} ج.م`
+        `المتبقي في الدرج ${carryOverAmount.toFixed(2)} ج.م`;
 
       createCashMovement({
         type: 'transfer',
@@ -1285,7 +1293,7 @@ export function updateCashDayClosing(input: {
         created_by: input.actor_id ?? null,
 
         business_date: businessDate,
-      })
+      });
 
       createCashMovement({
         type: 'transfer',
@@ -1305,7 +1313,7 @@ export function updateCashDayClosing(input: {
         created_by: input.actor_id ?? null,
 
         business_date: businessDate,
-      })
+      });
     }
 
     createCriticalActivityLog({
@@ -1336,7 +1344,7 @@ export function updateCashDayClosing(input: {
           target_account: newTransferAmount > 0 ? targetAccount : null,
         },
       }),
-    })
+    });
 
     return {
       success: true,
@@ -1352,21 +1360,21 @@ export function updateCashDayClosing(input: {
       transfer_amount: newTransferAmount,
 
       target_account: newTransferAmount > 0 ? targetAccount : null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function getCashMovementMutationContext(movementIdInput: number) {
-  const db = getDb()
+  const db = getDb();
 
-  normalizeLegacyCashMovementAccounts()
+  normalizeLegacyCashMovementAccounts();
 
-  const movementId = Number(movementIdInput || 0)
+  const movementId = Number(movementIdInput || 0);
 
   if (!movementId) {
-    throw new Error('رقم حركة الخزنة غير صحيح')
+    throw new Error('رقم حركة الخزنة غير صحيح');
   }
 
   const movement = db
@@ -1378,29 +1386,29 @@ export function getCashMovementMutationContext(movementIdInput: number) {
       LIMIT 1
       `,
     )
-    .get(movementId) as any
+    .get(movementId) as any;
 
   if (!movement) {
-    throw new Error('حركة الخزنة غير موجودة')
+    throw new Error('حركة الخزنة غير موجودة');
   }
 
   if (movement.cancelled_at) {
-    throw new Error('حركة الخزنة ملغاة بالفعل')
+    throw new Error('حركة الخزنة ملغاة بالفعل');
   }
 
   if (Number(movement.replacement_movement_id || 0) > 0) {
-    throw new Error('تم تعديل أو عكس هذه الحركة بالفعل')
+    throw new Error('تم تعديل أو عكس هذه الحركة بالفعل');
   }
 
   const isManual =
     movement.reference_type === 'manual' &&
-    (movement.type === 'deposit' || movement.type === 'withdraw')
+    (movement.type === 'deposit' || movement.type === 'withdraw');
 
   const isTransfer =
-    movement.type === 'transfer' && movement.reference_type === 'cash_transfer'
+    movement.type === 'transfer' && movement.reference_type === 'cash_transfer';
 
   if (!isManual && !isTransfer) {
-    throw new Error('هذه الحركة مرتبطة بعملية أخرى ويجب تعديلها من مصدرها')
+    throw new Error('هذه الحركة مرتبطة بعملية أخرى ويجب تعديلها من مصدرها');
   }
 
   if (isManual) {
@@ -1408,13 +1416,13 @@ export function getCashMovementMutationContext(movementIdInput: number) {
       kind: 'manual' as const,
       movement,
       accounts: [resolveCashAccount(movement.payment_method)],
-    }
+    };
   }
 
   const outId =
     movement.direction === 'in'
       ? Number(movement.reference_id || 0)
-      : Number(movement.id)
+      : Number(movement.id);
 
   const outMovement = db
     .prepare(
@@ -1428,7 +1436,7 @@ export function getCashMovementMutationContext(movementIdInput: number) {
       LIMIT 1
       `,
     )
-    .get(outId) as any
+    .get(outId) as any;
 
   const inMovement = db
     .prepare(
@@ -1443,28 +1451,28 @@ export function getCashMovementMutationContext(movementIdInput: number) {
       LIMIT 1
       `,
     )
-    .get(outId) as any
+    .get(outId) as any;
 
   if (!outMovement || !inMovement) {
-    throw new Error('تعذر العثور على طرفي التحويل')
+    throw new Error('تعذر العثور على طرفي التحويل');
   }
 
   if (outMovement.cancelled_at || inMovement.cancelled_at) {
-    throw new Error('التحويل ملغي بالفعل')
+    throw new Error('التحويل ملغي بالفعل');
   }
 
   if (
     Number(outMovement.replacement_movement_id || 0) > 0 ||
     Number(inMovement.replacement_movement_id || 0) > 0
   ) {
-    throw new Error('تم تعديل أو عكس هذا التحويل بالفعل')
+    throw new Error('تم تعديل أو عكس هذا التحويل بالفعل');
   }
 
   if (
     Math.abs(Number(outMovement.amount || 0) - Number(inMovement.amount || 0)) >
     0.01
   ) {
-    throw new Error('قيمة طرفي التحويل غير متطابقة')
+    throw new Error('قيمة طرفي التحويل غير متطابقة');
   }
 
   return {
@@ -1478,76 +1486,76 @@ export function getCashMovementMutationContext(movementIdInput: number) {
         resolveCashAccount(inMovement.payment_method),
       ]),
     ),
-  }
+  };
 }
 
 export function updateCashMovement(input: {
-  id: number
+  id: number;
 
-  type?: 'deposit' | 'withdraw'
-  approved_by?: number | null
-  amount: number
+  type?: 'deposit' | 'withdraw';
+  approved_by?: number | null;
+  amount: number;
 
-  payment_method?: string
+  payment_method?: string;
 
-  from_account?: string
-  to_account?: string
+  from_account?: string;
+  to_account?: string;
 
-  notes?: string | null
+  notes?: string | null;
 
-  actor_id?: number | null
-  shift_id?: number | null
+  actor_id?: number | null;
+  shift_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  normalizeLegacyCashMovementAccounts()
+  normalizeLegacyCashMovementAccounts();
 
-  const movementId = Number(input.id || 0)
+  const movementId = Number(input.id || 0);
 
-  const amount = roundMoney(Number(input.amount || 0))
+  const amount = roundMoney(Number(input.amount || 0));
 
   if (!movementId) {
-    throw new Error('رقم حركة الخزنة غير صحيح')
+    throw new Error('رقم حركة الخزنة غير صحيح');
   }
 
   if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('مبلغ حركة الخزنة غير صحيح')
+    throw new Error('مبلغ حركة الخزنة غير صحيح');
   }
 
-  const context = getCashMovementMutationContext(movementId)
+  const context = getCashMovementMutationContext(movementId);
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
   const correctionShiftId =
     input.shift_id === undefined || input.shift_id === null
       ? null
-      : Number(input.shift_id)
+      : Number(input.shift_id);
 
-  const correctionBusinessDate = getCurrentBusinessDate(db)
+  const correctionBusinessDate = getCurrentBusinessDate(db);
 
   if (context.kind === 'manual') {
-    const movement = context.movement
+    const movement = context.movement;
 
     const newType =
       input.type === 'withdraw'
         ? 'withdraw'
         : input.type === 'deposit'
           ? 'deposit'
-          : movement.type
+          : movement.type;
 
-    const newDirection: 'in' | 'out' = newType === 'deposit' ? 'in' : 'out'
+    const newDirection: 'in' | 'out' = newType === 'deposit' ? 'in' : 'out';
 
     const newAccount = resolveCashAccount(
       input.payment_method || movement.payment_method || 'store_cash',
-    )
+    );
 
     const notes =
       input.notes === undefined
         ? (movement.notes ?? null)
-        : String(input.notes || '').trim() || null
+        : String(input.notes || '').trim() || null;
 
     const reverseDirection: 'in' | 'out' =
-      movement.direction === 'in' ? 'out' : 'in'
+      movement.direction === 'in' ? 'out' : 'in';
 
     const tx = db.transaction(() => {
       /*
@@ -1574,9 +1582,9 @@ export function updateCashMovement(input: {
         business_date: correctionBusinessDate,
 
         shift_id: correctionShiftId,
-      })
+      });
 
-      const reverseMovementId = Number(reverse.lastInsertRowid || 0)
+      const reverseMovementId = Number(reverse.lastInsertRowid || 0);
 
       const replacement = createCashMovement({
         type: newType,
@@ -1598,9 +1606,9 @@ export function updateCashMovement(input: {
         business_date: correctionBusinessDate,
 
         shift_id: correctionShiftId,
-      })
+      });
 
-      const newMovementId = Number(replacement.lastInsertRowid || 0)
+      const newMovementId = Number(replacement.lastInsertRowid || 0);
 
       /*
        * replacement_movement_id هنا لا يعني
@@ -1617,7 +1625,7 @@ export function updateCashMovement(input: {
 
         WHERE id = ?
         `,
-      ).run(newMovementId, movement.id)
+      ).run(newMovementId, movement.id);
 
       createCriticalActivityLog({
         user_id: actorId,
@@ -1667,7 +1675,7 @@ export function updateCashMovement(input: {
             shift_id: correctionShiftId,
           },
         }),
-      })
+      });
 
       return {
         success: true,
@@ -1687,32 +1695,32 @@ export function updateCashMovement(input: {
         payment_method: newAccount,
 
         shift_id: correctionShiftId,
-      }
-    })
+      };
+    });
 
-    return tx()
+    return tx();
   }
 
-  const { outMovement, inMovement } = context
+  const { outMovement, inMovement } = context;
 
-  const oldAmount = roundMoney(Number(outMovement.amount || 0))
+  const oldAmount = roundMoney(Number(outMovement.amount || 0));
 
   const fromAccount = resolveCashAccount(
     input.from_account || outMovement.payment_method,
-  )
+  );
 
   const toAccount = resolveCashAccount(
     input.to_account || inMovement.payment_method,
-  )
+  );
 
   if (fromAccount === toAccount) {
-    throw new Error('لا يمكن التحويل لنفس الحساب')
+    throw new Error('لا يمكن التحويل لنفس الحساب');
   }
 
   const notes =
     input.notes === undefined
       ? (outMovement.notes ?? null)
-      : String(input.notes || '').trim() || null
+      : String(input.notes || '').trim() || null;
 
   const tx = db.transaction(() => {
     /*
@@ -1740,9 +1748,9 @@ export function updateCashMovement(input: {
       business_date: correctionBusinessDate,
 
       shift_id: correctionShiftId,
-    })
+    });
 
-    const reverseOutId = Number(reverseOut.lastInsertRowid || 0)
+    const reverseOutId = Number(reverseOut.lastInsertRowid || 0);
 
     const reverseIn = createCashMovement({
       type: 'transfer',
@@ -1764,9 +1772,9 @@ export function updateCashMovement(input: {
       business_date: correctionBusinessDate,
 
       shift_id: correctionShiftId,
-    })
+    });
 
-    const reverseInId = Number(reverseIn.lastInsertRowid || 0)
+    const reverseInId = Number(reverseIn.lastInsertRowid || 0);
 
     /*
      * تسجيل التحويل المصحح كعملية جديدة.
@@ -1791,9 +1799,9 @@ export function updateCashMovement(input: {
       business_date: correctionBusinessDate,
 
       shift_id: correctionShiftId,
-    })
+    });
 
-    const newOutId = Number(newOut.lastInsertRowid || 0)
+    const newOutId = Number(newOut.lastInsertRowid || 0);
 
     const newIn = createCashMovement({
       type: 'transfer',
@@ -1815,9 +1823,9 @@ export function updateCashMovement(input: {
       business_date: correctionBusinessDate,
 
       shift_id: correctionShiftId,
-    })
+    });
 
-    const newInId = Number(newIn.lastInsertRowid || 0)
+    const newInId = Number(newIn.lastInsertRowid || 0);
 
     db.prepare(
       `
@@ -1845,7 +1853,7 @@ export function updateCashMovement(input: {
 
       outMovement.id,
       inMovement.id,
-    )
+    );
 
     createCriticalActivityLog({
       user_id: actorId,
@@ -1895,7 +1903,7 @@ export function updateCashMovement(input: {
           shift_id: correctionShiftId,
         },
       }),
-    })
+    });
 
     return {
       success: true,
@@ -1913,47 +1921,47 @@ export function updateCashMovement(input: {
       to_account: toAccount,
 
       shift_id: correctionShiftId,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function cancelCashMovement(input: {
-  id: number
-  reason?: string | null
-  approved_by?: number | null
-  actor_id?: number | null
-  shift_id?: number | null
+  id: number;
+  reason?: string | null;
+  approved_by?: number | null;
+  actor_id?: number | null;
+  shift_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  normalizeLegacyCashMovementAccounts()
+  normalizeLegacyCashMovementAccounts();
 
-  const movementId = Number(input.id || 0)
+  const movementId = Number(input.id || 0);
 
   if (!movementId) {
-    throw new Error('رقم حركة الخزنة غير صحيح')
+    throw new Error('رقم حركة الخزنة غير صحيح');
   }
 
-  const context = getCashMovementMutationContext(movementId)
+  const context = getCashMovementMutationContext(movementId);
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
   const correctionShiftId =
     input.shift_id === undefined || input.shift_id === null
       ? null
-      : Number(input.shift_id)
+      : Number(input.shift_id);
 
-  const correctionBusinessDate = getCurrentBusinessDate(db)
+  const correctionBusinessDate = getCurrentBusinessDate(db);
 
-  const reason = String(input.reason || '').trim() || 'إلغاء حركة خزنة'
+  const reason = String(input.reason || '').trim() || 'إلغاء حركة خزنة';
 
   if (context.kind === 'manual') {
-    const movement = context.movement
+    const movement = context.movement;
 
     const reverseDirection: 'in' | 'out' =
-      movement.direction === 'in' ? 'out' : 'in'
+      movement.direction === 'in' ? 'out' : 'in';
 
     const tx = db.transaction(() => {
       const reverse = createCashMovement({
@@ -1976,9 +1984,9 @@ export function cancelCashMovement(input: {
         business_date: correctionBusinessDate,
 
         shift_id: correctionShiftId,
-      })
+      });
 
-      const reverseMovementId = Number(reverse.lastInsertRowid || 0)
+      const reverseMovementId = Number(reverse.lastInsertRowid || 0);
 
       db.prepare(
         `
@@ -1988,7 +1996,7 @@ export function cancelCashMovement(input: {
 
         WHERE id = ?
         `,
-      ).run(reverseMovementId, movement.id)
+      ).run(reverseMovementId, movement.id);
 
       createCriticalActivityLog({
         user_id: actorId,
@@ -2014,7 +2022,7 @@ export function cancelCashMovement(input: {
 
           shift_id: correctionShiftId,
         }),
-      })
+      });
 
       return {
         success: true,
@@ -2024,15 +2032,15 @@ export function cancelCashMovement(input: {
         reverse_movement_id: reverseMovementId,
 
         shift_id: correctionShiftId,
-      }
-    })
+      };
+    });
 
-    return tx()
+    return tx();
   }
 
-  const { outMovement, inMovement } = context
+  const { outMovement, inMovement } = context;
 
-  const oldAmount = roundMoney(Number(outMovement.amount || 0))
+  const oldAmount = roundMoney(Number(outMovement.amount || 0));
 
   const tx = db.transaction(() => {
     /*
@@ -2059,9 +2067,9 @@ export function cancelCashMovement(input: {
       business_date: correctionBusinessDate,
 
       shift_id: correctionShiftId,
-    })
+    });
 
-    const reverseOutId = Number(reverseOut.lastInsertRowid || 0)
+    const reverseOutId = Number(reverseOut.lastInsertRowid || 0);
 
     const reverseIn = createCashMovement({
       type: 'transfer',
@@ -2083,9 +2091,9 @@ export function cancelCashMovement(input: {
       business_date: correctionBusinessDate,
 
       shift_id: correctionShiftId,
-    })
+    });
 
-    const reverseInId = Number(reverseIn.lastInsertRowid || 0)
+    const reverseInId = Number(reverseIn.lastInsertRowid || 0);
 
     /*
      * نستخدم replacement_movement_id
@@ -2118,7 +2126,7 @@ export function cancelCashMovement(input: {
 
       outMovement.id,
       inMovement.id,
-    )
+    );
 
     createCriticalActivityLog({
       user_id: actorId,
@@ -2150,7 +2158,7 @@ export function cancelCashMovement(input: {
 
         shift_id: correctionShiftId,
       }),
-    })
+    });
 
     return {
       success: true,
@@ -2160,8 +2168,8 @@ export function cancelCashMovement(input: {
       reverse_movement_ids: [reverseOutId, reverseInId],
 
       shift_id: correctionShiftId,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }

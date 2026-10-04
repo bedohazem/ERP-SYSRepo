@@ -1,42 +1,42 @@
-import QRCode from 'qrcode'
+import QRCode from 'qrcode';
 import {
   getPaymentMethodLabel,
   getPaymentMethodShortLabel,
-} from './payment-method'
-import { roundMoney } from '../../shared/money'
+} from './payment-method';
+import { roundMoney } from '../../shared/money';
 
 export type SaleReceiptData = {
-  sale: any
-  items: any[]
+  sale: any;
+  items: any[];
 
   payments?: Array<{
-    payment_method: string
-    amount: number
-  }>
+    payment_method: string;
+    amount: number;
+  }>;
 
-  loyalty?: any[]
-}
+  loyalty?: any[];
+};
 
 export type StoreReceiptInfo = {
-  app_name?: string
-  app_logo_url?: string
-  store_phone?: string
-  store_address?: string
-  store_qr_enabled?: boolean
-  store_qr_title?: string
-  store_qr_primary_url?: string
-}
+  app_name?: string;
+  app_logo_url?: string;
+  store_phone?: string;
+  store_address?: string;
+  store_qr_enabled?: boolean;
+  store_qr_title?: string;
+  store_qr_primary_url?: string;
+};
 
 export type ReceiptPrintSettings = {
-  receipt_silent_print: boolean
-  receipt_paper_size: '80mm' | '58mm' | 'custom'
-  receipt_width_px: number
-  receipt_padding_top_px: number
-  receipt_padding_right_px: number
-  receipt_padding_bottom_px: number
-  receipt_padding_left_px: number
-  receipt_font_size_px: number
-}
+  receipt_silent_print: boolean;
+  receipt_paper_size: '80mm' | '58mm' | 'custom';
+  receipt_width_px: number;
+  receipt_padding_top_px: number;
+  receipt_padding_right_px: number;
+  receipt_padding_bottom_px: number;
+  receipt_padding_left_px: number;
+  receipt_font_size_px: number;
+};
 
 export const DEFAULT_RECEIPT_PRINT_SETTINGS: ReceiptPrintSettings = {
   receipt_silent_print: false,
@@ -47,13 +47,13 @@ export const DEFAULT_RECEIPT_PRINT_SETTINGS: ReceiptPrintSettings = {
   receipt_padding_bottom_px: 10,
   receipt_padding_left_px: 18,
   receipt_font_size_px: 12,
-}
+};
 
 export const ENGINEER_FOOTER =
-  'برمجة وتصميم: بشمهندس عبدالرحمن حازم   01155559287-01068377869'
+  'برمجة وتصميم: بشمهندس عبدالرحمن حازم   01155559287-01068377869';
 
 export function money(value: number | string | null | undefined): string {
-  return String(roundMoney(value))
+  return String(roundMoney(value));
 }
 
 export function escapeHtml(value: unknown) {
@@ -62,54 +62,54 @@ export function escapeHtml(value: unknown) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+    .replace(/'/g, '&#039;');
 }
 
 export function getPaymentStatusLabel(status?: string | null) {
-  if (status === 'paid') return 'مدفوعة'
-  if (status === 'partial') return 'مدفوعة جزئيًا'
-  if (status === 'unpaid') return 'غير مدفوعة'
-  if (status === 'cancelled') return 'ملغاة'
-  return status || '—'
+  if (status === 'paid') return 'مدفوعة';
+  if (status === 'partial') return 'مدفوعة جزئيًا';
+  if (status === 'unpaid') return 'غير مدفوعة';
+  if (status === 'cancelled') return 'ملغاة';
+  return status || '—';
 }
 
 export function formatReceiptDate(
   value?: string | null,
   businessDate?: string | null,
 ): string {
-  if (!value) return '—'
+  if (!value) return '—';
 
   try {
-    const raw = String(value)
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
-    const date = new Date(normalized)
+    const raw = String(value);
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
+    const date = new Date(normalized);
 
     let datePart = date.toLocaleDateString('en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
-    })
+    });
 
     if (businessDate && /^\d{4}-\d{2}-\d{2}$/.test(String(businessDate))) {
-      const [year, month, day] = String(businessDate).split('-')
-      datePart = `${day}/${month}/${year}`
+      const [year, month, day] = String(businessDate).split('-');
+      datePart = `${day}/${month}/${year}`;
     }
 
     const timePart = date.toLocaleTimeString('en-GB', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
-    })
+    });
 
-    return `${datePart}  ${timePart}`
+    return `${datePart}  ${timePart}`;
   } catch {
-    return value
+    return value;
   }
 }
 
 export async function loadReceiptStoreInfo(): Promise<StoreReceiptInfo> {
   try {
-    const status = await window.api.getLicenseStatus()
+    const status = await window.api.getLicenseStatus();
 
     return {
       app_name: status.app_name,
@@ -119,19 +119,19 @@ export async function loadReceiptStoreInfo(): Promise<StoreReceiptInfo> {
       store_qr_enabled: status.store_qr_enabled,
       store_qr_title: status.store_qr_title,
       store_qr_primary_url: status.store_qr_primary_url,
-    }
+    };
   } catch (error) {
-    console.error('Failed to load store receipt info:', error)
-    return {}
+    console.error('Failed to load store receipt info:', error);
+    return {};
   }
 }
 
 export async function loadReceiptPrintSettings(): Promise<ReceiptPrintSettings> {
   try {
-    return await window.api.getReceiptPrintSettings()
+    return await window.api.getReceiptPrintSettings();
   } catch (error) {
-    console.error('Failed to load receipt print settings:', error)
-    return DEFAULT_RECEIPT_PRINT_SETTINGS
+    console.error('Failed to load receipt print settings:', error);
+    return DEFAULT_RECEIPT_PRINT_SETTINGS;
   }
 }
 
@@ -144,13 +144,13 @@ export async function buildReceiptQrDataUrl(
         width: 120,
         margin: 1,
         errorCorrectionLevel: 'M',
-      })
+      });
     }
   } catch (error) {
-    console.error('Failed to generate receipt QR:', error)
+    console.error('Failed to generate receipt QR:', error);
   }
 
-  return ''
+  return '';
 }
 
 export async function openReceiptPrintWindow(html: string): Promise<boolean> {
@@ -159,21 +159,21 @@ export async function openReceiptPrintWindow(html: string): Promise<boolean> {
       html,
       previewHeight: 700,
       previewWidth: 420,
-    })
+    });
 
     /*
      * الإلغاء اختيار طبيعي من المستخدم،
      * وليس خطأ في الطباعة.
      */
     if (result?.canceled) {
-      return true
+      return true;
     }
 
-    return Boolean(result?.ok)
+    return Boolean(result?.ok);
   } catch (error) {
-    console.error('Print dialog failed:', error)
+    console.error('Print dialog failed:', error);
 
-    return false
+    return false;
   }
 }
 
@@ -184,24 +184,24 @@ function getReceiptFinance(
   const remainingAmount = Math.max(
     0,
     Number(receipt.sale.remaining_amount || 0),
-  )
+  );
 
-  const grandTotal = Number(receipt.sale.grand_total || 0)
+  const grandTotal = Number(receipt.sale.grand_total || 0);
 
-  const paidNetAmount = Math.max(0, grandTotal - remainingAmount)
+  const paidNetAmount = Math.max(0, grandTotal - remainingAmount);
   const activeReturnHistory = returnHistory.filter(
     (item: any) => !item?.cancelled_at,
-  )
+  );
   const totalReturns = activeReturnHistory.reduce((sum, item: any) => {
-    return sum + Number(item.refund_amount || item.total_return_amount || 0)
-  }, 0)
+    return sum + Number(item.refund_amount || item.total_return_amount || 0);
+  }, 0);
 
-  const netPaidAmount = Math.max(0, paidNetAmount - totalReturns)
-  const netTotal = Math.max(0, grandTotal - totalReturns)
+  const netPaidAmount = Math.max(0, paidNetAmount - totalReturns);
+  const netTotal = Math.max(0, grandTotal - totalReturns);
 
-  const changeAmount = Math.max(0, Number(receipt.sale.change_amount || 0))
+  const changeAmount = Math.max(0, Number(receipt.sale.change_amount || 0));
 
-  const receivedAmount = netPaidAmount + changeAmount
+  const receivedAmount = netPaidAmount + changeAmount;
 
   return {
     remainingAmount,
@@ -212,7 +212,7 @@ function getReceiptFinance(
     netTotal,
     changeAmount,
     receivedAmount,
-  }
+  };
 }
 
 export function buildSaleReceiptHtml(
@@ -222,11 +222,11 @@ export function buildSaleReceiptHtml(
   qrDataUrl = '',
   printSettings: ReceiptPrintSettings = DEFAULT_RECEIPT_PRINT_SETTINGS,
 ) {
-  const sale = receipt.sale
+  const sale = receipt.sale;
   const validPayments = (receipt.payments ?? []).filter(
     (payment) =>
       payment.payment_method !== 'split' && Number(payment.amount || 0) > 0,
-  )
+  );
 
   const paymentText =
     validPayments.length > 0
@@ -238,8 +238,8 @@ export function buildSaleReceiptHtml(
               )} ${money(payment.amount)}`,
           )
           .join(' + ')
-      : getPaymentMethodShortLabel(sale.payment_method) || '—'
-  const finance = getReceiptFinance(receipt, returnHistory)
+      : getPaymentMethodShortLabel(sale.payment_method) || '—';
+  const finance = getReceiptFinance(receipt, returnHistory);
 
   const {
     remainingAmount,
@@ -250,30 +250,30 @@ export function buildSaleReceiptHtml(
     netTotal,
     changeAmount,
     receivedAmount,
-  } = finance
+  } = finance;
 
-  const storeName = String(storeInfo.app_name || 'ERP Store').trim()
+  const storeName = String(storeInfo.app_name || 'ERP Store').trim();
 
-  const storeLogoUrl = String(storeInfo.app_logo_url || '').trim()
+  const storeLogoUrl = String(storeInfo.app_logo_url || '').trim();
 
-  const storePhone = String(storeInfo.store_phone || '').trim()
+  const storePhone = String(storeInfo.store_phone || '').trim();
 
-  const storeAddress = String(storeInfo.store_address || '').trim()
+  const storeAddress = String(storeInfo.store_address || '').trim();
 
   const itemRows = receipt.items
     .map((item: any) => {
-      const originalQty = Number(item.quantity || 0)
-      const returnedQty = Number(item.returned_quantity || 0)
-      const netQty = Math.max(0, originalQty - returnedQty)
-      const unitPrice = Number(item.unit_price || 0)
-      const netLineTotal = netQty * unitPrice
+      const originalQty = Number(item.quantity || 0);
+      const returnedQty = Number(item.returned_quantity || 0);
+      const netQty = Math.max(0, originalQty - returnedQty);
+      const unitPrice = Number(item.unit_price || 0);
+      const netLineTotal = netQty * unitPrice;
 
       const details = [
         item.size ? String(item.size) : '',
         item.color ? String(item.color) : '',
       ]
         .filter(Boolean)
-        .join(' / ')
+        .join(' / ');
 
       return `
       <tr class="${returnedQty > 0 ? 'has-return' : ''}">
@@ -297,9 +297,9 @@ export function buildSaleReceiptHtml(
         <td>${money(unitPrice)}</td>
         <td class="line-total">${money(netLineTotal)}</td>
       </tr>
-    `
+    `;
     })
-    .join('')
+    .join('');
 
   return `
     <!doctype html>
@@ -1030,18 +1030,18 @@ export function buildSaleReceiptHtml(
       </body>
 
     </html>
-  `
+  `;
 }
 
 export async function printSaleReceiptHtml(options: {
-  receipt: SaleReceiptData
-  returnHistory?: any[]
-  onBlocked?: () => void
-  onError?: (message: string) => void
+  receipt: SaleReceiptData;
+  returnHistory?: any[];
+  onBlocked?: () => void;
+  onError?: (message: string) => void;
 }) {
-  const storeInfo = await loadReceiptStoreInfo()
-  const printSettings = await loadReceiptPrintSettings()
-  const qrDataUrl = await buildReceiptQrDataUrl(storeInfo)
+  const storeInfo = await loadReceiptStoreInfo();
+  const printSettings = await loadReceiptPrintSettings();
+  const qrDataUrl = await buildReceiptQrDataUrl(storeInfo);
 
   const html = buildSaleReceiptHtml(
     options.receipt,
@@ -1049,37 +1049,37 @@ export async function printSaleReceiptHtml(options: {
     storeInfo,
     qrDataUrl,
     printSettings,
-  )
+  );
 
   if (printSettings.receipt_silent_print) {
     try {
       const result = await window.api.printHtmlSilent({
         html,
-      })
+      });
 
       if (!result?.ok) {
-        options.onError?.(result?.message || 'فشل تنفيذ الطباعة الصامتة')
+        options.onError?.(result?.message || 'فشل تنفيذ الطباعة الصامتة');
 
-        return false
+        return false;
       }
 
-      return true
+      return true;
     } catch (error) {
-      console.error('Silent receipt print failed:', error)
+      console.error('Silent receipt print failed:', error);
 
       options.onError?.(
         error instanceof Error ? error.message : 'فشل تنفيذ الطباعة الصامتة',
-      )
+      );
 
-      return false
+      return false;
     }
   }
 
-  const opened = await openReceiptPrintWindow(html)
+  const opened = await openReceiptPrintWindow(html);
 
   if (!opened) {
-    options.onBlocked?.()
+    options.onBlocked?.();
   }
 
-  return opened
+  return opened;
 }

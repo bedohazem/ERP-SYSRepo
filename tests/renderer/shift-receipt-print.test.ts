@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest';
 
-import { buildShiftCloseReceiptHtml } from '../../src/renderer/utils/shiftReceiptPrint'
+import { buildShiftCloseReceiptHtml } from '../../src/renderer/utils/shiftReceiptPrint';
 
-import { DEFAULT_RECEIPT_PRINT_SETTINGS } from '../../src/renderer/utils/receiptPrint'
+import { DEFAULT_RECEIPT_PRINT_SETTINGS } from '../../src/renderer/utils/receiptPrint';
 
 describe('shift close thermal receipt', () => {
   it('builds a thermal shift receipt without reconciliation secrets', () => {
@@ -34,40 +34,40 @@ describe('shift close thermal receipt', () => {
 
         receipt_width_px: 245,
       },
-    )
+    );
 
-    expect(html).toContain('إيصال إغلاق شفت')
+    expect(html).toContain('إيصال إغلاق شفت');
 
-    expect(html).toContain('#17')
+    expect(html).toContain('#17');
 
-    expect(html).toContain('Test Cashier')
+    expect(html).toContain('Test Cashier');
 
-    expect(html).toContain('500')
-    expect(html).toContain('100')
+    expect(html).toContain('500');
+    expect(html).toContain('100');
 
     /*
      * 500 - 100
      */
-    expect(html).toContain('400')
+    expect(html).toContain('400');
 
-    expect(html).not.toContain('500.00')
-    expect(html).not.toContain('100.00')
-    expect(html).not.toContain('400.00')
+    expect(html).not.toContain('500.00');
+    expect(html).not.toContain('100.00');
+    expect(html).not.toContain('400.00');
 
-    expect(html).toContain('width:\n              245px')
+    expect(html).toContain('width:\n              245px');
 
     /*
      * ممنوع كشف نتيجة
      * المطابقة للكاشير.
      */
-    expect(html).not.toContain('المفروض في الدرج')
+    expect(html).not.toContain('المفروض في الدرج');
 
-    expect(html).not.toContain('عجز')
+    expect(html).not.toContain('عجز');
 
-    expect(html).not.toContain('زيادة')
+    expect(html).not.toContain('زيادة');
 
-    expect(html).not.toContain('expected_closing_amount')
+    expect(html).not.toContain('expected_closing_amount');
 
-    expect(html).not.toContain('closing_difference')
-  })
-})
+    expect(html).not.toContain('closing_difference');
+  });
+});

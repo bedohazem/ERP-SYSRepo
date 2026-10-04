@@ -1,44 +1,44 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 
 import {
   createCategory,
   createProduct,
   getVariantByBarcode,
-} from '../../src/main/database/repositories/product.repo'
+} from '../../src/main/database/repositories/product.repo';
 
 import {
   createPromotion,
   togglePromotion,
-} from '../../src/main/database/repositories/promotions.repo'
+} from '../../src/main/database/repositories/promotions.repo';
 
 import {
   createSale,
   createSaleReturn,
   getSaleReceipt,
-} from '../../src/main/database/repositories/sales.repo'
+} from '../../src/main/database/repositories/sales.repo';
 
-import { createSaleExchange } from '../../src/main/database/repositories/sales-exchange.repo'
+import { createSaleExchange } from '../../src/main/database/repositories/sales-exchange.repo';
 
-import { getReportsSummary } from '../../src/main/database/repositories/reports.repo'
-import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
+import { getReportsSummary } from '../../src/main/database/repositories/reports.repo';
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo';
 type VariantRow = {
-  variant_id: number
-  product_id: number
-  product_name: string
-  barcode: string
-  size: string
-  color: string
-  buy_price: number
-  sell_price: number
-  stock: number
-}
+  variant_id: number;
+  product_id: number;
+  product_name: string;
+  barcode: string;
+  size: string;
+  color: string;
+  buy_price: number;
+  sell_price: number;
+  stock: number;
+};
 
 function seedExchangeReportSale() {
   const category = createCategory({
     name: 'Exchange Report Category',
-  })
+  });
 
   createProduct({
     name: 'Exchange Report Product',
@@ -83,17 +83,17 @@ function seedExchangeReportSale() {
         opening_qty: 20,
       },
     ],
-  })
+  });
 
-  const variant150 = getVariantByBarcode('REP150') as VariantRow
+  const variant150 = getVariantByBarcode('REP150') as VariantRow;
 
-  const variant200 = getVariantByBarcode('REP200') as VariantRow
+  const variant200 = getVariantByBarcode('REP200') as VariantRow;
 
-  const variant250 = getVariantByBarcode('REP250') as VariantRow
+  const variant250 = getVariantByBarcode('REP250') as VariantRow;
 
-  const variant300 = getVariantByBarcode('REP300') as VariantRow
+  const variant300 = getVariantByBarcode('REP300') as VariantRow;
 
-  const db = getDb()
+  const db = getDb();
 
   const customerResult = db
     .prepare(
@@ -105,9 +105,9 @@ function seedExchangeReportSale() {
       VALUES (?, ?)
       `,
     )
-    .run('Exchange Report Customer', '01098765432')
+    .run('Exchange Report Customer', '01098765432');
 
-  const customerId = Number(customerResult.lastInsertRowid)
+  const customerId = Number(customerResult.lastInsertRowid);
 
   const promotion = createPromotion({
     name: 'Report Buy 2 Get 1',
@@ -119,9 +119,9 @@ function seedExchangeReportSale() {
     category_id: Number(category.id),
     product_ids: [],
     actor_id: 1,
-  })
+  });
 
-  togglePromotion(promotion.promotionId, 1)
+  togglePromotion(promotion.promotionId, 1);
 
   const sale = createSale({
     user_id: 1,
@@ -165,7 +165,7 @@ function seedExchangeReportSale() {
         unit_price: 150,
       },
     ],
-  })
+  });
 
   const giftUnit = db
     .prepare(
@@ -177,9 +177,9 @@ function seedExchangeReportSale() {
       LIMIT 1
       `,
     )
-    .get(sale.saleId) as any
+    .get(sale.saleId) as any;
 
-  expect(giftUnit).toBeTruthy()
+  expect(giftUnit).toBeTruthy();
 
   const exchange = createSaleExchange({
     original_sale_id: sale.saleId,
@@ -195,7 +195,7 @@ function seedExchangeReportSale() {
         new_variant_id: variant300.variant_id,
       },
     ],
-  })
+  });
 
   return {
     db,
@@ -208,96 +208,96 @@ function seedExchangeReportSale() {
     variant200,
     variant250,
     variant300,
-  }
+  };
 }
 
 describe('reports with sale exchanges', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
+    closeDb();
+    getDb();
+    resetDatabaseData();
 
     openCashShift({
       opening_counted_amount: 0,
       opened_by: 1,
-    })
-  })
+    });
+  });
 
   it('includes an exchange in sales discounts products customers and profit', () => {
-    const result = seedExchangeReportSale()
+    const result = seedExchangeReportSale();
 
-    const report = getReportsSummary() as any
+    const report = getReportsSummary() as any;
 
-    expect(report.summary.sales_count).toBe(1)
+    expect(report.summary.sales_count).toBe(1);
 
-    expect(report.summary.exchange_count).toBe(1)
+    expect(report.summary.exchange_count).toBe(1);
 
-    expect(report.summary.exchange_adjustment).toBe(100)
+    expect(report.summary.exchange_adjustment).toBe(100);
 
-    expect(report.summary.gross_sales).toBe(550)
+    expect(report.summary.gross_sales).toBe(550);
 
-    expect(report.summary.net_sales).toBe(550)
+    expect(report.summary.net_sales).toBe(550);
 
-    expect(report.summary.promotion_discounts).toBe(200)
+    expect(report.summary.promotion_discounts).toBe(200);
 
-    expect(report.summary.total_discounts).toBe(200)
+    expect(report.summary.total_discounts).toBe(200);
 
-    expect(report.summary.gross_profit_before_discounts).toBe(430)
+    expect(report.summary.gross_profit_before_discounts).toBe(430);
 
-    expect(report.summary.net_profit_after_discounts).toBe(230)
+    expect(report.summary.net_profit_after_discounts).toBe(230);
 
-    expect(report.summary.final_net_profit).toBe(230)
+    expect(report.summary.final_net_profit).toBe(230);
 
     const product150 = report.topProducts.find(
       (row: any) => Number(row.variant_id) === result.variant150.variant_id,
-    )
+    );
 
     const product200 = report.topProducts.find(
       (row: any) => Number(row.variant_id) === result.variant200.variant_id,
-    )
+    );
 
     const product250 = report.topProducts.find(
       (row: any) => Number(row.variant_id) === result.variant250.variant_id,
-    )
+    );
 
     const product300 = report.topProducts.find(
       (row: any) => Number(row.variant_id) === result.variant300.variant_id,
-    )
+    );
 
-    expect(product150).toBeUndefined()
+    expect(product150).toBeUndefined();
 
-    expect(Number(product200.net_quantity)).toBe(1)
+    expect(Number(product200.net_quantity)).toBe(1);
 
-    expect(Number(product250.net_quantity)).toBe(1)
+    expect(Number(product250.net_quantity)).toBe(1);
 
-    expect(Number(product300.net_quantity)).toBe(1)
+    expect(Number(product300.net_quantity)).toBe(1);
 
-    expect(Number(product300.net_total)).toBe(300)
+    expect(Number(product300.net_total)).toBe(300);
 
     expect(
       report.dailySales.reduce(
         (total: number, row: any) => total + Number(row.total || 0),
         0,
       ),
-    ).toBe(550)
+    ).toBe(550);
 
     const payment = report.paymentMethods.find(
       (row: any) => row.payment_method === 'cash',
-    )
+    );
 
-    expect(payment).toBeTruthy()
+    expect(payment).toBeTruthy();
 
-    expect(Number(payment.count)).toBe(2)
+    expect(Number(payment.count)).toBe(2);
 
-    expect(Number(payment.total)).toBe(550)
+    expect(Number(payment.total)).toBe(550);
 
     const customer = report.topCustomers.find(
       (row: any) => Number(row.id) === result.customerId,
-    )
+    );
 
-    expect(customer).toBeTruthy()
+    expect(customer).toBeTruthy();
 
-    expect(Number(customer.total_spent)).toBe(550)
+    expect(Number(customer.total_spent)).toBe(550);
 
     const exchangeItem = result.db
       .prepare(
@@ -308,11 +308,11 @@ describe('reports with sale exchanges', () => {
             LIMIT 1
             `,
       )
-      .get(result.exchange.exchangeId) as any
+      .get(result.exchange.exchangeId) as any;
 
-    expect(Number(exchangeItem.old_unit_cost)).toBe(80)
+    expect(Number(exchangeItem.old_unit_cost)).toBe(80);
 
-    expect(Number(exchangeItem.new_unit_cost)).toBe(130)
+    expect(Number(exchangeItem.new_unit_cost)).toBe(130);
 
     /*
      * تغيير سعر الشراء الحالي بعد
@@ -327,15 +327,15 @@ describe('reports with sale exchanges', () => {
           WHERE id = ?
           `,
       )
-      .run(result.variant300.variant_id)
+      .run(result.variant300.variant_id);
 
-    const reportAfterCostChange = getReportsSummary() as any
+    const reportAfterCostChange = getReportsSummary() as any;
 
-    expect(reportAfterCostChange.summary.net_profit_after_discounts).toBe(230)
-  })
+    expect(reportAfterCostChange.summary.net_profit_after_discounts).toBe(230);
+  });
 
   it('attributes sale and exchange to the shift opening business date', () => {
-    const result = seedExchangeReportSale()
+    const result = seedExchangeReportSale();
 
     const shiftRow = result.db
       .prepare(
@@ -351,8 +351,8 @@ describe('reports with sale exchanges', () => {
         `,
       )
       .get(result.sale.saleId) as {
-      shift_id: number
-    }
+      shift_id: number;
+    };
 
     /*
      * نحاكي شفت بدأ يوم 10 أغسطس
@@ -370,7 +370,7 @@ describe('reports with sale exchanges', () => {
         WHERE id = ?
         `,
       )
-      .run(shiftRow.shift_id)
+      .run(shiftRow.shift_id);
 
     /*
      * حتى لو business_date القديم
@@ -391,7 +391,7 @@ describe('reports with sale exchanges', () => {
         WHERE id = ?
         `,
       )
-      .run(result.sale.saleId)
+      .run(result.sale.saleId);
 
     /*
      * ونحاكي أن الاستبدال حصل
@@ -415,32 +415,32 @@ describe('reports with sale exchanges', () => {
         WHERE id = ?
         `,
       )
-      .run(result.exchange.exchangeId)
+      .run(result.exchange.exchangeId);
 
     const shiftDay = getReportsSummary({
       date_from: '2026-08-10',
       date_to: '2026-08-10',
-    }) as any
+    }) as any;
 
     /*
      * البيع والاستبدال الاثنين
      * داخل نفس يوم الشفت.
      */
-    expect(shiftDay.summary.sales_count).toBe(1)
+    expect(shiftDay.summary.sales_count).toBe(1);
 
-    expect(shiftDay.summary.exchange_count).toBe(1)
+    expect(shiftDay.summary.exchange_count).toBe(1);
 
-    expect(shiftDay.summary.exchange_adjustment).toBe(100)
+    expect(shiftDay.summary.exchange_adjustment).toBe(100);
 
-    expect(shiftDay.summary.gross_sales).toBe(550)
+    expect(shiftDay.summary.gross_sales).toBe(550);
 
-    expect(shiftDay.summary.net_sales).toBe(550)
+    expect(shiftDay.summary.net_sales).toBe(550);
 
-    expect(shiftDay.summary.promotion_discounts).toBe(200)
+    expect(shiftDay.summary.promotion_discounts).toBe(200);
 
-    expect(shiftDay.summary.gross_profit_before_discounts).toBe(430)
+    expect(shiftDay.summary.gross_profit_before_discounts).toBe(430);
 
-    expect(shiftDay.summary.net_profit_after_discounts).toBe(230)
+    expect(shiftDay.summary.net_profit_after_discounts).toBe(230);
 
     /*
      * يوم 12 لا يجب أن يظهر فيه شيء،
@@ -450,23 +450,23 @@ describe('reports with sale exchanges', () => {
     const calendarDay = getReportsSummary({
       date_from: '2026-08-12',
       date_to: '2026-08-12',
-    }) as any
+    }) as any;
 
-    expect(calendarDay.summary.sales_count).toBe(0)
+    expect(calendarDay.summary.sales_count).toBe(0);
 
-    expect(calendarDay.summary.exchange_count).toBe(0)
+    expect(calendarDay.summary.exchange_count).toBe(0);
 
-    expect(calendarDay.summary.exchange_adjustment).toBe(0)
+    expect(calendarDay.summary.exchange_adjustment).toBe(0);
 
-    expect(calendarDay.summary.gross_sales).toBe(0)
+    expect(calendarDay.summary.gross_sales).toBe(0);
 
-    expect(calendarDay.summary.net_sales).toBe(0)
-  })
+    expect(calendarDay.summary.net_sales).toBe(0);
+  });
 
   it('returns the exchanged bundle without leaving sales profit or products behind', () => {
-    const result = seedExchangeReportSale()
+    const result = seedExchangeReportSale();
 
-    const receipt = getSaleReceipt(result.sale.saleId) as any
+    const receipt = getSaleReceipt(result.sale.saleId) as any;
 
     const saleReturn = createSaleReturn({
       original_sale_id: result.sale.saleId,
@@ -482,32 +482,32 @@ describe('reports with sale exchanges', () => {
 
         quantity: Number(item.quantity),
       })),
-    })
+    });
 
-    expect(saleReturn.return_value).toBe(550)
+    expect(saleReturn.return_value).toBe(550);
 
-    const report = getReportsSummary() as any
+    const report = getReportsSummary() as any;
 
-    expect(report.summary.gross_sales).toBe(550)
+    expect(report.summary.gross_sales).toBe(550);
 
-    expect(report.summary.total_returns).toBe(550)
+    expect(report.summary.total_returns).toBe(550);
 
-    expect(report.summary.net_sales).toBe(0)
+    expect(report.summary.net_sales).toBe(0);
 
-    expect(report.summary.total_discounts).toBe(0)
+    expect(report.summary.total_discounts).toBe(0);
 
-    expect(report.summary.gross_profit_before_discounts).toBe(0)
+    expect(report.summary.gross_profit_before_discounts).toBe(0);
 
-    expect(report.summary.net_profit_after_discounts).toBe(0)
+    expect(report.summary.net_profit_after_discounts).toBe(0);
 
-    expect(report.summary.final_net_profit).toBe(0)
+    expect(report.summary.final_net_profit).toBe(0);
 
-    expect(report.topProducts).toHaveLength(0)
+    expect(report.topProducts).toHaveLength(0);
 
     const customer = report.topCustomers.find(
       (row: any) => Number(row.id) === result.customerId,
-    )
+    );
 
-    expect(Number(customer?.total_spent || 0)).toBe(0)
-  })
-})
+    expect(Number(customer?.total_spent || 0)).toBe(0);
+  });
+});

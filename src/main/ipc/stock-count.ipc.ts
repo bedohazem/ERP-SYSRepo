@@ -1,6 +1,6 @@
-import { ipcMain } from 'electron'
-import { logAction, runCriticalActionWithAudit } from './activity-helper'
-import { requireAuthenticatedAdmin, requirePermission } from '../auth-session'
+import { ipcMain } from 'electron';
+import { logAction, runCriticalActionWithAudit } from './activity-helper';
+import { requireAuthenticatedAdmin, requirePermission } from '../auth-session';
 import {
   approveStockCountSession,
   cancelStockCountSession,
@@ -9,19 +9,19 @@ import {
   listStockCountSessions,
   scanStockCountBarcode,
   updateStockCountItem,
-} from '../database/repositories/stock-count.repo'
+} from '../database/repositories/stock-count.repo';
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
-    return error.message
+    return error.message;
   }
 
-  return 'حدث خطأ غير متوقع'
+  return 'حدث خطأ غير متوقع';
 }
 
 function getCashierSessionView(session: any) {
   if (!session) {
-    return session
+    return session;
   }
 
   const {
@@ -31,14 +31,14 @@ function getCashierSessionView(session: any) {
     buy_difference_value: _buyDifferenceValue,
     sell_difference_value: _sellDifferenceValue,
     ...safeSession
-  } = session
+  } = session;
 
-  return safeSession
+  return safeSession;
 }
 
 function getCashierSessionDetailsView(details: any) {
   if (!details) {
-    return details
+    return details;
   }
 
   return {
@@ -56,49 +56,49 @@ function getCashierSessionDetailsView(details: any) {
             sell_difference_value: _sellDifferenceValue,
 
             ...safeItem
-          } = item
+          } = item;
 
-          return safeItem
+          return safeItem;
         })
       : [],
-  }
+  };
 }
 
 export function registerStockCountIpc(): void {
   ipcMain.handle('stock-count:list', (event) => {
-    const actor = requirePermission(event, 'stock_count.view')
+    const actor = requirePermission(event, 'stock_count.view');
 
-    const sessions = listStockCountSessions()
+    const sessions = listStockCountSessions();
 
     if (actor.role === 'admin') {
-      return sessions
+      return sessions;
     }
 
-    return sessions.map(getCashierSessionView)
-  })
+    return sessions.map(getCashierSessionView);
+  });
 
   ipcMain.handle('stock-count:get', (event, sessionId: number) => {
-    const actor = requirePermission(event, 'stock_count.view')
+    const actor = requirePermission(event, 'stock_count.view');
 
-    const details = getStockCountSession(Number(sessionId))
+    const details = getStockCountSession(Number(sessionId));
 
     if (actor.role === 'admin') {
-      return details
+      return details;
     }
 
-    return getCashierSessionDetailsView(details)
-  })
+    return getCashierSessionDetailsView(details);
+  });
 
   ipcMain.handle('stock-count:create', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requireAuthenticatedAdmin(event);
 
       const result = createStockCountSession({
         title: input.title,
         notes: input.notes,
         actor_id: actorId,
         categoryId: input.categoryId ?? null,
-      })
+      });
 
       logAction({
         actor_id: actorId,
@@ -110,22 +110,22 @@ export function registerStockCountIpc(): void {
           items_count: result.items_count,
           categoryId: input.categoryId ?? null,
         },
-      })
+      });
 
-      return result
+      return result;
     } catch (error) {
       return {
         success: false,
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('stock-count:update-item', (event, input) => {
     try {
-      const actorId = requirePermission(event, 'stock_count.count').id
+      const actorId = requirePermission(event, 'stock_count.count').id;
 
-      const result = updateStockCountItem(input)
+      const result = updateStockCountItem(input);
 
       logAction({
         actor_id: actorId,
@@ -137,22 +137,22 @@ export function registerStockCountIpc(): void {
           actual_stock: Number(input.actual_stock),
           notes: input.notes || '',
         },
-      })
+      });
 
-      return result
+      return result;
     } catch (error) {
       return {
         success: false,
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('stock-count:scan', (event, input) => {
     try {
-      const actorId = requirePermission(event, 'stock_count.count').id
+      const actorId = requirePermission(event, 'stock_count.count').id;
 
-      const result = scanStockCountBarcode(input)
+      const result = scanStockCountBarcode(input);
 
       logAction({
         actor_id: actorId,
@@ -166,20 +166,20 @@ export function registerStockCountIpc(): void {
           actual_stock: result.actual_stock,
           quantity: Number(input.quantity || 1),
         },
-      })
+      });
 
-      return result
+      return result;
     } catch (error) {
       return {
         success: false,
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('stock-count:approve', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requireAuthenticatedAdmin(event);
 
       const result = runCriticalActionWithAudit(
         () =>
@@ -200,20 +200,20 @@ export function registerStockCountIpc(): void {
 
           details: result,
         }),
-      )
+      );
 
-      return result
+      return result;
     } catch (error) {
       return {
         success: false,
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('stock-count:cancel', (event, input) => {
     try {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requireAuthenticatedAdmin(event);
 
       const result = runCriticalActionWithAudit(
         () =>
@@ -236,14 +236,14 @@ export function registerStockCountIpc(): void {
             session_id: input.session_id,
           },
         }),
-      )
+      );
 
-      return result
+      return result;
     } catch (error) {
       return {
         success: false,
         message: getErrorMessage(error),
-      }
+      };
     }
-  })
+  });
 }

@@ -8,7 +8,7 @@ import {
   saveAppName,
   saveAppTheme,
   saveBarcodePrintSettings,
-  saveLoyaltySettings
+  saveLoyaltySettings,
 } from '../../src/main/database/repositories/settings.repo';
 
 function getSettingValue(key: string) {
@@ -21,7 +21,7 @@ function getSettingValue(key: string) {
       FROM app_settings
       WHERE key = ?
       LIMIT 1
-      `
+      `,
     )
     .get(key) as { value: string } | undefined;
 
@@ -68,7 +68,7 @@ describe('settings repository', () => {
       barcode_price_font_size: 9,
       barcode_price_position: 'top',
       barcode_price_align: 'right',
-      barcode_svg_height: 30
+      barcode_svg_height: 30,
     });
 
     expect(result.success).toBe(true);
@@ -109,7 +109,7 @@ describe('settings repository', () => {
       loyalty_earn_amount: 200,
       loyalty_earn_points: 5,
       loyalty_point_value: 2,
-      loyalty_min_redeem_points: 10
+      loyalty_min_redeem_points: 10,
     });
 
     expect(saved.loyalty_enabled).toBe(false);
@@ -134,7 +134,7 @@ describe('settings repository', () => {
       loyalty_earn_amount: 0,
       loyalty_earn_points: 0,
       loyalty_point_value: 0,
-      loyalty_min_redeem_points: 0
+      loyalty_min_redeem_points: 0,
     });
 
     expect(saved.loyalty_enabled).toBe(true);
@@ -159,7 +159,9 @@ describe('settings repository', () => {
 
     expect(result.success).toBe(true);
     expect(result.status.app_logo_url).toBe('https://example.com/logo.png');
-    expect(getSettingValue('app_logo_url')).toBe('https://example.com/logo.png');
+    expect(getSettingValue('app_logo_url')).toBe(
+      'https://example.com/logo.png',
+    );
   });
 
   it('saves app name and falls back to default when empty', () => {
@@ -196,22 +198,22 @@ describe('settings repository', () => {
     expect(() =>
       saveBarcodePrintSettings({
         ...current,
-        barcode_label_width_mm: 0
-      })
+        barcode_label_width_mm: 0,
+      }),
     ).toThrow();
 
     expect(() =>
       saveBarcodePrintSettings({
         ...current,
-        barcode_label_height_mm: -10
-      })
+        barcode_label_height_mm: -10,
+      }),
     ).toThrow();
 
     expect(() =>
       saveBarcodePrintSettings({
         ...current,
-        barcode_copies: 0
-      })
+        barcode_copies: 0,
+      }),
     ).toThrow();
   });
 
@@ -221,22 +223,22 @@ describe('settings repository', () => {
     expect(() =>
       saveBarcodePrintSettings({
         ...current,
-        barcode_name_font_size: 0
-      })
+        barcode_name_font_size: 0,
+      }),
     ).toThrow();
 
     expect(() =>
       saveBarcodePrintSettings({
         ...current,
-        barcode_price_font_size: -1
-      })
+        barcode_price_font_size: -1,
+      }),
     ).toThrow();
 
     expect(() =>
       saveBarcodePrintSettings({
         ...current,
-        barcode_svg_height: 0
-      })
+        barcode_svg_height: 0,
+      }),
     ).toThrow();
   });
 
@@ -247,8 +249,8 @@ describe('settings repository', () => {
         loyalty_earn_amount: -100,
         loyalty_earn_points: 1,
         loyalty_point_value: 1,
-        loyalty_min_redeem_points: 1
-      })
+        loyalty_min_redeem_points: 1,
+      }),
     ).toThrow();
 
     expect(() =>
@@ -257,8 +259,8 @@ describe('settings repository', () => {
         loyalty_earn_amount: 100,
         loyalty_earn_points: -1,
         loyalty_point_value: 1,
-        loyalty_min_redeem_points: 1
-      })
+        loyalty_min_redeem_points: 1,
+      }),
     ).toThrow();
 
     expect(() =>
@@ -267,8 +269,8 @@ describe('settings repository', () => {
         loyalty_earn_amount: 100,
         loyalty_earn_points: 1,
         loyalty_point_value: -1,
-        loyalty_min_redeem_points: 1
-      })
+        loyalty_min_redeem_points: 1,
+      }),
     ).toThrow();
 
     expect(() =>
@@ -277,8 +279,8 @@ describe('settings repository', () => {
         loyalty_earn_amount: 100,
         loyalty_earn_points: 1,
         loyalty_point_value: 1,
-        loyalty_min_redeem_points: -5
-      })
+        loyalty_min_redeem_points: -5,
+      }),
     ).toThrow();
   });
 });

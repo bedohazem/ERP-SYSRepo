@@ -10,7 +10,7 @@ type BarcodePreviewProps = {
 export default function BarcodePreview({
   value,
   width = 1.8,
-  height = 50
+  height = 50,
 }: BarcodePreviewProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
 
@@ -24,7 +24,7 @@ export default function BarcodePreview({
         width,
         height,
         margin: 4,
-        fontSize: 14
+        fontSize: 14,
       });
     } catch (error) {
       console.error('Barcode render failed:', error);

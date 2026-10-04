@@ -1,32 +1,32 @@
 type FinancialCancelModalProps = {
-  open: boolean
+  open: boolean;
 
-  title: string
+  title: string;
 
-  description?: string
+  description?: string;
 
-  reason: string
+  reason: string;
 
-  username?: string
+  username?: string;
 
-  password?: string
+  password?: string;
 
-  requireUsername?: boolean
+  requireUsername?: boolean;
 
-  requirePassword?: boolean
+  requirePassword?: boolean;
 
-  loading?: boolean
+  loading?: boolean;
 
-  onReasonChange: (value: string) => void
+  onReasonChange: (value: string) => void;
 
-  onUsernameChange?: (value: string) => void
+  onUsernameChange?: (value: string) => void;
 
-  onPasswordChange?: (value: string) => void
+  onPasswordChange?: (value: string) => void;
 
-  onClose: () => void
+  onClose: () => void;
 
-  onConfirm: () => void
-}
+  onConfirm: () => void;
+};
 
 export default function FinancialCancelModal({
   open,
@@ -54,13 +54,13 @@ export default function FinancialCancelModal({
 
   onConfirm,
 }: FinancialCancelModalProps) {
-  if (!open) return null
+  if (!open) return null;
 
   const disabled =
     loading ||
     !reason.trim() ||
     (requireUsername && !username.trim()) ||
-    (requirePassword && !password.trim())
+    (requirePassword && !password.trim());
 
   return (
     <div
@@ -275,5 +275,5 @@ export default function FinancialCancelModal({
         </div>
       </div>
     </div>
-  )
+  );
 }

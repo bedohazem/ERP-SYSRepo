@@ -1,9 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { beforeEach, describe, expect, it } from 'vitest';
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 import {
   createProduct,
   getVariantByBarcode,
-} from '../../src/main/database/repositories/product.repo'
+} from '../../src/main/database/repositories/product.repo';
 import {
   createSale,
   createSaleReturn,
@@ -13,42 +13,42 @@ import {
   listSaleReturns,
   updateSaleInvoice,
   cancelSaleInvoice,
-} from '../../src/main/database/repositories/sales.repo'
+} from '../../src/main/database/repositories/sales.repo';
 
-import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo'
+import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo';
 import {
   closeCashShift,
   getOpenCashShift,
   openCashShift,
-} from '../../src/main/database/repositories/cash-shifts.repo'
+} from '../../src/main/database/repositories/cash-shifts.repo';
 import {
   createPromotion,
   togglePromotion,
-} from '../../src/main/database/repositories/promotions.repo'
-import { createCashMovement } from '../../src/main/database/repositories/cash.repo'
+} from '../../src/main/database/repositories/promotions.repo';
+import { createCashMovement } from '../../src/main/database/repositories/cash.repo';
 import {
   recordCustomerPayment,
   cancelCustomerPaymentBatch,
-} from '../../src/main/database/repositories/customers.repo'
+} from '../../src/main/database/repositories/customers.repo';
 
 import {
   getInventoryCostState,
   receiveStockAtCost,
-} from '../../src/main/database/inventory-cost'
+} from '../../src/main/database/inventory-cost';
 
 type SaleVariantTestRow = {
-  variant_id: number
-  product_id: number
-  product_name: string
-  barcode: string
-  size: string
-  color: string
-  sell_price: number
-  buy_price: number
-  stock: number
-  min_stock: number
-  is_active: number
-}
+  variant_id: number;
+  product_id: number;
+  product_name: string;
+  barcode: string;
+  size: string;
+  color: string;
+  sell_price: number;
+  buy_price: number;
+  stock: number;
+  min_stock: number;
+  is_active: number;
+};
 
 function seedProduct() {
   createProduct({
@@ -67,32 +67,31 @@ function seedProduct() {
         opening_qty: 10,
       },
     ],
-  })
+  });
 
   const variant = getVariantByBarcode('SALE001') as
-    | SaleVariantTestRow
-    | undefined
+    SaleVariantTestRow | undefined;
 
   if (!variant) {
-    throw new Error('Failed to seed test product variant')
+    throw new Error('Failed to seed test product variant');
   }
 
-  return variant
+  return variant;
 }
 
 function getCashMovementCount() {
-  const db = getDb()
+  const db = getDb();
   const row = db
     .prepare(`SELECT COUNT(*) AS count FROM cash_movements`)
     .get() as {
-    count: number
-  }
+    count: number;
+  };
 
-  return row.count
+  return row.count;
 }
 
 function getCashMovementTotal(direction: 'in' | 'out') {
-  const db = getDb()
+  const db = getDb();
   const row = db
     .prepare(
       `
@@ -101,13 +100,13 @@ function getCashMovementTotal(direction: 'in' | 'out') {
       WHERE direction = ?
       `,
     )
-    .get(direction) as { total: number }
+    .get(direction) as { total: number };
 
-  return row.total
+  return row.total;
 }
 
 function createTestCustomer() {
-  const db = getDb()
+  const db = getDb();
 
   const result = db
     .prepare(
@@ -116,13 +115,13 @@ function createTestCustomer() {
       VALUES (?, ?, ?, ?, ?)
       `,
     )
-    .run('Test Customer', '01000000000', null, null, null)
+    .run('Test Customer', '01000000000', null, null, null);
 
-  return Number(result.lastInsertRowid)
+  return Number(result.lastInsertRowid);
 }
 
 function getCustomerBalance(customerId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -133,13 +132,13 @@ function getCustomerBalance(customerId: number) {
       LIMIT 1
       `,
     )
-    .get(customerId) as { balance: number }
+    .get(customerId) as { balance: number };
 
-  return Number(row.balance || 0)
+  return Number(row.balance || 0);
 }
 
 function getCustomerPoints(customerId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -150,13 +149,13 @@ function getCustomerPoints(customerId: number) {
       LIMIT 1
       `,
     )
-    .get(customerId) as { points_balance: number }
+    .get(customerId) as { points_balance: number };
 
-  return Number(row.points_balance || 0)
+  return Number(row.points_balance || 0);
 }
 
 function getLoyaltyTransactionsCount(customerId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -166,13 +165,13 @@ function getLoyaltyTransactionsCount(customerId: number) {
       WHERE customer_id = ?
       `,
     )
-    .get(customerId) as { count: number }
+    .get(customerId) as { count: number };
 
-  return Number(row.count || 0)
+  return Number(row.count || 0);
 }
 
 function setCustomerPoints(customerId: number, points: number) {
-  const db = getDb()
+  const db = getDb();
 
   db.prepare(
     `
@@ -180,56 +179,57 @@ function setCustomerPoints(customerId: number, points: number) {
     SET points_balance = ?
     WHERE id = ?
     `,
-  ).run(points, customerId)
+  ).run(points, customerId);
 }
 
 function resetLoyaltySettingsForSalesTests() {
-  const db = getDb()
+  const db = getDb();
 
   const update = db.prepare(`
     UPDATE app_settings
     SET value = ?
     WHERE key = ?
-  `)
+  `);
 
-  update.run('true', 'loyalty_enabled')
+  update.run('true', 'loyalty_enabled');
 
-  update.run('100', 'loyalty_earn_amount')
+  update.run('100', 'loyalty_earn_amount');
 
-  update.run('1', 'loyalty_earn_points')
+  update.run('1', 'loyalty_earn_points');
 
-  update.run('1', 'loyalty_point_value')
+  update.run('1', 'loyalty_point_value');
 
-  update.run('1', 'loyalty_min_redeem_points')
+  update.run('1', 'loyalty_min_redeem_points');
 }
 
 function getStockByBarcode(barcode: string) {
-  const variant = getVariantByBarcode(barcode) as SaleVariantTestRow | undefined
+  const variant = getVariantByBarcode(barcode) as
+    SaleVariantTestRow | undefined;
 
   if (!variant) {
-    throw new Error(`Variant not found for barcode: ${barcode}`)
+    throw new Error(`Variant not found for barcode: ${barcode}`);
   }
 
-  return Number(variant.stock || 0)
+  return Number(variant.stock || 0);
 }
 
 describe('sales repository', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
+    closeDb();
+    getDb();
+    resetDatabaseData();
 
-    resetLoyaltySettingsForSalesTests()
+    resetLoyaltySettingsForSalesTests();
     openCashShift({
       opening_counted_amount: 0,
       opened_by: 1,
-    })
-  })
+    });
+  });
 
   it('snapshots moving weighted average cost into the sale and keeps remaining inventory value', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
-    const db = getDb()
+    const db = getDb();
 
     receiveStockAtCost(db, {
       variant_id: variant.variant_id,
@@ -245,15 +245,15 @@ describe('sales repository', () => {
       reference_type: 'test_purchase',
 
       notes: 'Weighted average test',
-    })
+    });
 
-    const beforeSale = getInventoryCostState(db, variant.variant_id)
+    const beforeSale = getInventoryCostState(db, variant.variant_id);
 
-    expect(beforeSale.stock).toBe(20)
+    expect(beforeSale.stock).toBe(20);
 
-    expect(beforeSale.average_cost).toBe(150)
+    expect(beforeSale.average_cost).toBe(150);
 
-    expect(beforeSale.inventory_value).toBe(3000)
+    expect(beforeSale.inventory_value).toBe(3000);
 
     const sale = createSale({
       user_id: 1,
@@ -289,23 +289,23 @@ describe('sales repository', () => {
           unit_price: 250,
         },
       ],
-    })
+    });
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
-    expect(Number(receipt.items[0].unit_cost)).toBe(150)
+    expect(Number(receipt.items[0].unit_cost)).toBe(150);
 
-    const afterSale = getInventoryCostState(db, variant.variant_id)
+    const afterSale = getInventoryCostState(db, variant.variant_id);
 
-    expect(afterSale.stock).toBe(16)
+    expect(afterSale.stock).toBe(16);
 
-    expect(afterSale.average_cost).toBe(150)
+    expect(afterSale.average_cost).toBe(150);
 
-    expect(afterSale.inventory_value).toBe(2400)
-  })
+    expect(afterSale.inventory_value).toBe(2400);
+  });
 
   it('rejects missing user_id', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     expect(() =>
       createSale({
@@ -329,8 +329,8 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('User ID is required')
-  })
+    ).toThrow('User ID is required');
+  });
 
   it('rejects sale without items', () => {
     expect(() =>
@@ -345,19 +345,19 @@ describe('sales repository', () => {
         paid: 0,
         items: [],
       }),
-    ).toThrow('Sale items are required')
-  })
+    ).toThrow('Sale items are required');
+  });
 
   it('requires an open shift and links the sale cash movement to it', () => {
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
     DELETE FROM cash_shifts
   `,
-    ).run()
+    ).run();
 
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     expect(() =>
       createSale({
@@ -381,12 +381,12 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('لا يمكن تسجيل فاتورة بيع من درج المحل بدون شفت مفتوح')
+    ).toThrow('لا يمكن تسجيل فاتورة بيع من درج المحل بدون شفت مفتوح');
 
     const shift = openCashShift({
       opening_counted_amount: 0,
       opened_by: 1,
-    })
+    });
 
     const result = createSale({
       user_id: 1,
@@ -408,9 +408,9 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(result.shift_id).toBe(shift.id)
+    expect(result.shift_id).toBe(shift.id);
 
     const sale = db
       .prepare(
@@ -421,10 +421,10 @@ describe('sales repository', () => {
     `,
       )
       .get(result.saleId) as {
-      shift_id: number
-    }
+      shift_id: number;
+    };
 
-    expect(sale.shift_id).toBe(shift.id)
+    expect(sale.shift_id).toBe(shift.id);
 
     const movement = db
       .prepare(
@@ -437,18 +437,18 @@ describe('sales repository', () => {
     `,
       )
       .get(result.saleId) as {
-      shift_id: number
-    }
+      shift_id: number;
+    };
 
-    expect(movement.shift_id).toBe(shift.id)
-  })
+    expect(movement.shift_id).toBe(shift.id);
+  });
 
   it('allows admin sale to store safe without an open shift', () => {
-    const db = getDb()
+    const db = getDb();
 
-    db.prepare(`DELETE FROM cash_shifts`).run()
+    db.prepare(`DELETE FROM cash_shifts`).run();
 
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const result = createSale({
       user_id: 1,
@@ -470,9 +470,9 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(result.shift_id).toBeNull()
+    expect(result.shift_id).toBeNull();
 
     const sale = db
       .prepare(
@@ -482,10 +482,10 @@ describe('sales repository', () => {
       WHERE id = ?
       `,
       )
-      .get(result.saleId) as any
+      .get(result.saleId) as any;
 
-    expect(sale.shift_id).toBeNull()
-    expect(sale.payment_method).toBe('store_safe')
+    expect(sale.shift_id).toBeNull();
+    expect(sale.payment_method).toBe('store_safe');
 
     const movement = db
       .prepare(
@@ -497,16 +497,16 @@ describe('sales repository', () => {
       LIMIT 1
       `,
       )
-      .get(result.saleId) as any
+      .get(result.saleId) as any;
 
-    expect(movement.shift_id).toBeNull()
-    expect(movement.payment_method).toBe('store_safe')
-    expect(movement.direction).toBe('in')
-    expect(Number(movement.amount)).toBe(150)
-  })
+    expect(movement.shift_id).toBeNull();
+    expect(movement.payment_method).toBe('store_safe');
+    expect(movement.direction).toBe('in');
+    expect(Number(movement.amount)).toBe(150);
+  });
 
   it('rejects item quantity less than or equal zero', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     expect(() =>
       createSale({
@@ -530,11 +530,11 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('كمية غير صحيحة')
-  })
+    ).toThrow('كمية غير صحيحة');
+  });
 
   it('rejects sale quantity greater than available stock', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     expect(() =>
       createSale({
@@ -558,11 +558,11 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('المخزون غير كافي')
-  })
+    ).toThrow('المخزون غير كافي');
+  });
 
   it('creates a fully paid cash sale', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const result = createSale({
       user_id: 1,
@@ -584,24 +584,24 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(result.saleId).toBeGreaterThan(0)
-    expect(result.grand_total).toBe(300)
-    expect(result.paid_amount).toBe(300)
-    expect(result.remaining_amount).toBe(0)
-    expect(result.payment_status).toBe('paid')
+    expect(result.saleId).toBeGreaterThan(0);
+    expect(result.grand_total).toBe(300);
+    expect(result.paid_amount).toBe(300);
+    expect(result.remaining_amount).toBe(0);
+    expect(result.payment_status).toBe('paid');
 
-    const receipt = getSaleReceipt(result.saleId) as any
+    const receipt = getSaleReceipt(result.saleId) as any;
 
-    expect(receipt.sale.id).toBe(result.saleId)
-    expect(receipt.items).toHaveLength(1)
-    expect(receipt.items[0].quantity).toBe(2)
-    expect(receipt.items[0].line_total).toBe(300)
-  })
+    expect(receipt.sale.id).toBe(result.saleId);
+    expect(receipt.items).toHaveLength(1);
+    expect(receipt.items[0].quantity).toBe(2);
+    expect(receipt.items[0].line_total).toBe(300);
+  });
 
   it('decreases stock after sale', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     createSale({
       user_id: 1,
@@ -623,19 +623,18 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     const updatedVariant = getVariantByBarcode('SALE001') as
-      | SaleVariantTestRow
-      | undefined
+      SaleVariantTestRow | undefined;
 
-    expect(updatedVariant?.stock).toBe(8)
-  })
+    expect(updatedVariant?.stock).toBe(8);
+  });
 
   it('creates cash movement for paid sale amount', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
-    expect(getCashMovementCount()).toBe(0)
+    expect(getCashMovementCount()).toBe(0);
 
     createSale({
       user_id: 1,
@@ -657,14 +656,14 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(getCashMovementCount()).toBe(1)
-    expect(getCashMovementTotal('in')).toBe(300)
-  })
+    expect(getCashMovementCount()).toBe(1);
+    expect(getCashMovementTotal('in')).toBe(300);
+  });
 
   it('rejects credit sale without customer', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     expect(() =>
       createSale({
@@ -688,12 +687,12 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('لا يمكن البيع آجل بدون اختيار عميل')
-  })
+    ).toThrow('لا يمكن البيع آجل بدون اختيار عميل');
+  });
 
   it('creates a partial sale with customer and increases customer balance', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
     const result = createSale({
       user_id: 1,
@@ -715,20 +714,20 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(result.saleId).toBeGreaterThan(0)
-    expect(result.grand_total).toBe(300)
-    expect(result.paid_amount).toBe(100)
-    expect(result.remaining_amount).toBe(200)
-    expect(result.payment_status).toBe('partial')
+    expect(result.saleId).toBeGreaterThan(0);
+    expect(result.grand_total).toBe(300);
+    expect(result.paid_amount).toBe(100);
+    expect(result.remaining_amount).toBe(200);
+    expect(result.payment_status).toBe('partial');
 
-    expect(getCustomerBalance(customerId)).toBe(200)
-    expect(getCashMovementTotal('in')).toBe(100)
-  })
+    expect(getCustomerBalance(customerId)).toBe(200);
+    expect(getCashMovementTotal('in')).toBe(100);
+  });
 
   it('caps paid amount to grand total when customer pays more than total', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const result = createSale({
       user_id: 1,
@@ -750,23 +749,23 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(result.grand_total).toBe(300)
-    expect(result.paid_amount).toBe(300)
-    expect(result.remaining_amount).toBe(0)
-    expect(result.payment_status).toBe('paid')
+    expect(result.grand_total).toBe(300);
+    expect(result.paid_amount).toBe(300);
+    expect(result.remaining_amount).toBe(0);
+    expect(result.payment_status).toBe('paid');
 
-    expect(getCashMovementTotal('in')).toBe(300)
+    expect(getCashMovementTotal('in')).toBe(300);
 
-    const receipt = getSaleReceipt(result.saleId) as any
+    const receipt = getSaleReceipt(result.saleId) as any;
 
-    expect(receipt.sale.paid).toBe(300)
-    expect(receipt.sale.change_amount).toBe(200)
-  })
+    expect(receipt.sale.paid).toBe(300);
+    expect(receipt.sale.change_amount).toBe(200);
+  });
 
   it('calculates grand total from subtotal and discount value', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const result = createSale({
       user_id: 1,
@@ -788,23 +787,23 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(result.grand_total).toBe(250)
-    expect(result.paid_amount).toBe(250)
-    expect(result.remaining_amount).toBe(0)
-    expect(result.payment_status).toBe('paid')
+    expect(result.grand_total).toBe(250);
+    expect(result.paid_amount).toBe(250);
+    expect(result.remaining_amount).toBe(0);
+    expect(result.payment_status).toBe('paid');
 
-    const receipt = getSaleReceipt(result.saleId) as any
+    const receipt = getSaleReceipt(result.saleId) as any;
 
-    expect(receipt.sale.sub_total).toBe(300)
-    expect(receipt.sale.discount_value).toBe(50)
-    expect(receipt.sale.grand_total).toBe(250)
-  })
+    expect(receipt.sale.sub_total).toBe(300);
+    expect(receipt.sale.discount_value).toBe(50);
+    expect(receipt.sale.grand_total).toBe(250);
+  });
 
   it('earns loyalty points for customer sale', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
     const result = createSale({
       user_id: 1,
@@ -826,21 +825,21 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(result.loyalty_points_earned).toBe(3)
-    expect(result.loyalty_points_redeemed).toBe(0)
-    expect(result.loyalty_discount_value).toBe(0)
+    expect(result.loyalty_points_earned).toBe(3);
+    expect(result.loyalty_points_redeemed).toBe(0);
+    expect(result.loyalty_discount_value).toBe(0);
 
-    expect(getCustomerPoints(customerId)).toBe(3)
-    expect(getLoyaltyTransactionsCount(customerId)).toBe(1)
-  })
+    expect(getCustomerPoints(customerId)).toBe(3);
+    expect(getLoyaltyTransactionsCount(customerId)).toBe(1);
+  });
 
   it('redeems loyalty points and applies loyalty discount', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
-    setCustomerPoints(customerId, 10)
+    setCustomerPoints(customerId, 10);
 
     const result = createSale({
       user_id: 1,
@@ -863,43 +862,43 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(result.loyalty_points_redeemed).toBe(5)
-    expect(result.loyalty_discount_value).toBe(5)
-    expect(result.grand_total).toBe(295)
-    expect(result.paid_amount).toBe(295)
-    expect(result.remaining_amount).toBe(0)
-    expect(result.payment_status).toBe('paid')
+    expect(result.loyalty_points_redeemed).toBe(5);
+    expect(result.loyalty_discount_value).toBe(5);
+    expect(result.grand_total).toBe(295);
+    expect(result.paid_amount).toBe(295);
+    expect(result.remaining_amount).toBe(0);
+    expect(result.payment_status).toBe('paid');
 
-    expect(result.loyalty_points_earned).toBe(2)
-    expect(getCustomerPoints(customerId)).toBe(7)
-    expect(getLoyaltyTransactionsCount(customerId)).toBe(2)
+    expect(result.loyalty_points_earned).toBe(2);
+    expect(getCustomerPoints(customerId)).toBe(7);
+    expect(getLoyaltyTransactionsCount(customerId)).toBe(2);
 
-    const receipt = getSaleReceipt(result.saleId) as any
+    const receipt = getSaleReceipt(result.saleId) as any;
 
-    expect(receipt.sale.loyalty_points_redeemed).toBe(5)
-    expect(receipt.sale.loyalty_discount_value).toBe(5)
-    expect(receipt.sale.grand_total).toBe(295)
-  })
+    expect(receipt.sale.loyalty_points_redeemed).toBe(5);
+    expect(receipt.sale.loyalty_discount_value).toBe(5);
+    expect(receipt.sale.grand_total).toBe(295);
+  });
 
   it('rejects redemption when invoice value would reduce redeemed points below the minimum', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
-    setCustomerPoints(customerId, 10)
+    setCustomerPoints(customerId, 10);
 
-    const db = getDb()
+    const db = getDb();
 
     const updateSetting = db.prepare(`
         UPDATE app_settings
         SET value = ?
         WHERE key = ?
-      `)
+      `);
 
-    updateSetting.run('4', 'loyalty_min_redeem_points')
+    updateSetting.run('4', 'loyalty_min_redeem_points');
 
-    updateSetting.run('100', 'loyalty_point_value')
+    updateSetting.run('100', 'loyalty_point_value');
 
     expect(() =>
       createSale({
@@ -932,16 +931,16 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('قيمة الفاتورة لا تسمح باستخدام الحد الأدنى من النقاط')
+    ).toThrow('قيمة الفاتورة لا تسمح باستخدام الحد الأدنى من النقاط');
 
-    expect(getCustomerPoints(customerId)).toBe(10)
-  })
+    expect(getCustomerPoints(customerId)).toBe(10);
+  });
 
   it('rejects redeeming more loyalty points than customer balance', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
-    setCustomerPoints(customerId, 3)
+    setCustomerPoints(customerId, 3);
 
     expect(() =>
       createSale({
@@ -966,13 +965,13 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('رصيد نقاط العميل غير كافي')
+    ).toThrow('رصيد نقاط العميل غير كافي');
 
-    expect(getCustomerPoints(customerId)).toBe(3)
-  })
+    expect(getCustomerPoints(customerId)).toBe(3);
+  });
 
   it('rejects redeeming loyalty points for missing customer', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     expect(() =>
       createSale({
@@ -997,11 +996,11 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('العميل غير موجود')
-  })
+    ).toThrow('العميل غير موجود');
+  });
 
   it('creates a sale return for a fully paid sale and restores stock with cash refund', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -1023,13 +1022,13 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(getStockByBarcode('SALE001')).toBe(8)
-    expect(getCashMovementTotal('in')).toBe(300)
+    expect(getStockByBarcode('SALE001')).toBe(8);
+    expect(getCashMovementTotal('in')).toBe(300);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
-    const saleItemId = receipt.items[0].id
+    const receipt = getSaleReceipt(sale.saleId) as any;
+    const saleItemId = receipt.items[0].id;
 
     const saleReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1042,33 +1041,33 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(saleReturn.returnId).toBeGreaterThan(0)
-    expect(saleReturn.return_value).toBe(150)
-    expect(saleReturn.refundAmount).toBe(150)
-    expect(saleReturn.debt_reduction_amount).toBe(0)
+    expect(saleReturn.returnId).toBeGreaterThan(0);
+    expect(saleReturn.return_value).toBe(150);
+    expect(saleReturn.refundAmount).toBe(150);
+    expect(saleReturn.debt_reduction_amount).toBe(0);
 
-    expect(getStockByBarcode('SALE001')).toBe(9)
-    expect(getCashMovementTotal('out')).toBe(150)
+    expect(getStockByBarcode('SALE001')).toBe(9);
+    expect(getCashMovementTotal('out')).toBe(150);
     const storeCashReturns = listSaleReturns({
       payment_method: 'store_cash',
-    })
+    });
 
-    expect(storeCashReturns.total).toBe(1)
-    expect(Number(storeCashReturns.rows[0].id)).toBe(saleReturn.returnId)
+    expect(storeCashReturns.total).toBe(1);
+    expect(Number(storeCashReturns.rows[0].id)).toBe(saleReturn.returnId);
 
     const bankReturns = listSaleReturns({
       payment_method: 'owner_bank',
-    })
+    });
 
-    expect(bankReturns.total).toBe(0)
-  })
+    expect(bankReturns.total).toBe(0);
+  });
 
   it('requires a new open shift for return and links refund to current shift', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -1090,22 +1089,22 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    const originalShift = getOpenCashShift()
+    const originalShift = getOpenCashShift();
 
-    expect(originalShift).toBeTruthy()
+    expect(originalShift).toBeTruthy();
 
     closeCashShift({
       shift_id: originalShift!.id,
       closing_counted_amount: 300,
       left_for_next_shift: 300,
       closed_by: 1,
-    })
+    });
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
-    const saleItemId = receipt.items[0].id
+    const saleItemId = receipt.items[0].id;
 
     expect(() =>
       createSaleReturn({
@@ -1120,12 +1119,12 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('لا يمكن تسجيل مرتجع بيع بدون شفت مفتوح')
+    ).toThrow('لا يمكن تسجيل مرتجع بيع بدون شفت مفتوح');
 
     const currentShift = openCashShift({
       opening_counted_amount: 300,
       opened_by: 1,
-    })
+    });
 
     const saleReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1138,11 +1137,11 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(saleReturn.shift_id).toBe(currentShift.id)
+    expect(saleReturn.shift_id).toBe(currentShift.id);
 
-    expect(saleReturn.shift_id).not.toBe(originalShift!.id)
+    expect(saleReturn.shift_id).not.toBe(originalShift!.id);
 
     const returnRow = db
       .prepare(
@@ -1153,10 +1152,10 @@ describe('sales repository', () => {
     `,
       )
       .get(saleReturn.returnId) as {
-      shift_id: number
-    }
+      shift_id: number;
+    };
 
-    expect(returnRow.shift_id).toBe(currentShift.id)
+    expect(returnRow.shift_id).toBe(currentShift.id);
 
     const refundMovement = db
       .prepare(
@@ -1170,15 +1169,15 @@ describe('sales repository', () => {
     `,
       )
       .get(saleReturn.returnId) as {
-      shift_id: number
-    }
+      shift_id: number;
+    };
 
-    expect(refundMovement.shift_id).toBe(currentShift.id)
-  })
+    expect(refundMovement.shift_id).toBe(currentShift.id);
+  });
 
   it('reduces customer debt before cash refund when returning from partial sale', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
     const sale = createSale({
       user_id: 1,
@@ -1200,17 +1199,17 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(sale.remaining_amount).toBe(200)
-    expect(sale.payment_status).toBe('partial')
-    expect(getCustomerBalance(customerId)).toBe(200)
-    expect(getStockByBarcode('SALE001')).toBe(8)
-    expect(getCashMovementTotal('in')).toBe(100)
-    expect(getCashMovementTotal('out')).toBe(0)
+    expect(sale.remaining_amount).toBe(200);
+    expect(sale.payment_status).toBe('partial');
+    expect(getCustomerBalance(customerId)).toBe(200);
+    expect(getStockByBarcode('SALE001')).toBe(8);
+    expect(getCashMovementTotal('in')).toBe(100);
+    expect(getCashMovementTotal('out')).toBe(0);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
-    const saleItemId = receipt.items[0].id
+    const receipt = getSaleReceipt(sale.saleId) as any;
+    const saleItemId = receipt.items[0].id;
 
     const saleReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1223,25 +1222,25 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(saleReturn.return_value).toBe(150)
-    expect(saleReturn.debt_reduction_amount).toBe(150)
-    expect(saleReturn.refundAmount).toBe(0)
+    expect(saleReturn.return_value).toBe(150);
+    expect(saleReturn.debt_reduction_amount).toBe(150);
+    expect(saleReturn.refundAmount).toBe(0);
 
-    expect(getCustomerBalance(customerId)).toBe(50)
-    expect(getStockByBarcode('SALE001')).toBe(9)
-    expect(getCashMovementTotal('out')).toBe(0)
+    expect(getCustomerBalance(customerId)).toBe(50);
+    expect(getStockByBarcode('SALE001')).toBe(9);
+    expect(getCashMovementTotal('out')).toBe(0);
 
-    const updatedReceipt = getSaleReceipt(sale.saleId) as any
+    const updatedReceipt = getSaleReceipt(sale.saleId) as any;
 
-    expect(updatedReceipt.sale.remaining_amount).toBe(50)
-    expect(updatedReceipt.sale.payment_status).toBe('partial')
-  })
+    expect(updatedReceipt.sale.remaining_amount).toBe(50);
+    expect(updatedReceipt.sale.payment_status).toBe('partial');
+  });
 
   it('reduces full customer debt then refunds remaining cash on return', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
     const sale = createSale({
       user_id: 1,
@@ -1263,16 +1262,16 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(sale.remaining_amount).toBe(100)
-    expect(sale.payment_status).toBe('partial')
-    expect(getCustomerBalance(customerId)).toBe(100)
-    expect(getCashMovementTotal('in')).toBe(200)
-    expect(getCashMovementTotal('out')).toBe(0)
+    expect(sale.remaining_amount).toBe(100);
+    expect(sale.payment_status).toBe('partial');
+    expect(getCustomerBalance(customerId)).toBe(100);
+    expect(getCashMovementTotal('in')).toBe(200);
+    expect(getCashMovementTotal('out')).toBe(0);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
-    const saleItemId = receipt.items[0].id
+    const receipt = getSaleReceipt(sale.saleId) as any;
+    const saleItemId = receipt.items[0].id;
 
     const saleReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1285,24 +1284,24 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(saleReturn.return_value).toBe(150)
-    expect(saleReturn.debt_reduction_amount).toBe(100)
-    expect(saleReturn.refundAmount).toBe(50)
+    expect(saleReturn.return_value).toBe(150);
+    expect(saleReturn.debt_reduction_amount).toBe(100);
+    expect(saleReturn.refundAmount).toBe(50);
 
-    expect(getCustomerBalance(customerId)).toBe(0)
-    expect(getStockByBarcode('SALE001')).toBe(9)
-    expect(getCashMovementTotal('out')).toBe(50)
+    expect(getCustomerBalance(customerId)).toBe(0);
+    expect(getStockByBarcode('SALE001')).toBe(9);
+    expect(getCashMovementTotal('out')).toBe(50);
 
-    const updatedReceipt = getSaleReceipt(sale.saleId) as any
+    const updatedReceipt = getSaleReceipt(sale.saleId) as any;
 
-    expect(updatedReceipt.sale.remaining_amount).toBe(0)
-    expect(updatedReceipt.sale.payment_status).toBe('paid')
-  })
+    expect(updatedReceipt.sale.remaining_amount).toBe(0);
+    expect(updatedReceipt.sale.payment_status).toBe('paid');
+  });
 
   it('rejects returning quantity greater than sold quantity', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -1324,10 +1323,10 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    const receipt = getSaleReceipt(sale.saleId) as any
-    const saleItemId = receipt.items[0].id
+    const receipt = getSaleReceipt(sale.saleId) as any;
+    const saleItemId = receipt.items[0].id;
 
     expect(() =>
       createSaleReturn({
@@ -1342,14 +1341,14 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('الكمية المطلوبة أكبر من المتاح للمرتجع')
+    ).toThrow('الكمية المطلوبة أكبر من المتاح للمرتجع');
 
-    expect(getStockByBarcode('SALE001')).toBe(8)
-    expect(getCashMovementTotal('out')).toBe(0)
-  })
+    expect(getStockByBarcode('SALE001')).toBe(8);
+    expect(getCashMovementTotal('out')).toBe(0);
+  });
 
   it('rejects returning more than remaining returnable quantity after previous return', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -1371,10 +1370,10 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    const receipt = getSaleReceipt(sale.saleId) as any
-    const saleItemId = receipt.items[0].id
+    const receipt = getSaleReceipt(sale.saleId) as any;
+    const saleItemId = receipt.items[0].id;
 
     const firstReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1387,11 +1386,11 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(firstReturn.return_value).toBe(150)
-    expect(getStockByBarcode('SALE001')).toBe(9)
-    expect(getCashMovementTotal('out')).toBe(150)
+    expect(firstReturn.return_value).toBe(150);
+    expect(getStockByBarcode('SALE001')).toBe(9);
+    expect(getCashMovementTotal('out')).toBe(150);
 
     expect(() =>
       createSaleReturn({
@@ -1406,14 +1405,14 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('الكمية المطلوبة أكبر من المتاح للمرتجع')
+    ).toThrow('الكمية المطلوبة أكبر من المتاح للمرتجع');
 
-    expect(getStockByBarcode('SALE001')).toBe(9)
-    expect(getCashMovementTotal('out')).toBe(150)
-  })
+    expect(getStockByBarcode('SALE001')).toBe(9);
+    expect(getCashMovementTotal('out')).toBe(150);
+  });
 
   it('calculates sale return value proportionally when original sale has discount', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -1435,13 +1434,13 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(sale.grand_total).toBe(240)
-    expect(getCashMovementTotal('in')).toBe(240)
+    expect(sale.grand_total).toBe(240);
+    expect(getCashMovementTotal('in')).toBe(240);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
-    const saleItemId = receipt.items[0].id
+    const receipt = getSaleReceipt(sale.saleId) as any;
+    const saleItemId = receipt.items[0].id;
 
     const saleReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1454,18 +1453,18 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(saleReturn.return_value).toBe(120)
-    expect(saleReturn.refundAmount).toBe(120)
-    expect(saleReturn.debt_reduction_amount).toBe(0)
+    expect(saleReturn.return_value).toBe(120);
+    expect(saleReturn.refundAmount).toBe(120);
+    expect(saleReturn.debt_reduction_amount).toBe(0);
 
-    expect(getCashMovementTotal('out')).toBe(120)
-    expect(getStockByBarcode('SALE001')).toBe(9)
-  })
+    expect(getCashMovementTotal('out')).toBe(120);
+    expect(getStockByBarcode('SALE001')).toBe(9);
+  });
 
   it('rounds returns to whole pounds while preserving the cumulative invoice value', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -1505,11 +1504,11 @@ describe('sales repository', () => {
           unit_price: 300,
         },
       ],
-    })
+    });
 
-    expect(sale.grand_total).toBe(950)
+    expect(sale.grand_total).toBe(950);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
     const firstReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1522,11 +1521,11 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(firstReturn.return_value).toBe(332)
+    expect(firstReturn.return_value).toBe(332);
 
-    expect(firstReturn.refundAmount).toBe(332)
+    expect(firstReturn.refundAmount).toBe(332);
 
     const secondReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1539,11 +1538,11 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(secondReturn.return_value).toBe(333)
+    expect(secondReturn.return_value).toBe(333);
 
-    expect(secondReturn.refundAmount).toBe(333)
+    expect(secondReturn.refundAmount).toBe(333);
 
     const thirdReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1556,12 +1555,12 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(thirdReturn.return_value).toBe(285)
-    expect(thirdReturn.refundAmount).toBe(285)
+    expect(thirdReturn.return_value).toBe(285);
+    expect(thirdReturn.refundAmount).toBe(285);
 
-    expect(getCashMovementTotal('out')).toBe(950)
+    expect(getCashMovementTotal('out')).toBe(950);
 
     const rows = getDb()
       .prepare(
@@ -1574,20 +1573,20 @@ describe('sales repository', () => {
       `,
       )
       .all(sale.saleId) as Array<{
-      refund_amount: number
-    }>
+      refund_amount: number;
+    }>;
 
     expect(rows.map((row) => Number(row.refund_amount))).toEqual([
       332, 333, 285,
-    ])
+    ]);
 
     expect(
       rows.every((row) => Number.isInteger(Number(row.refund_amount))),
-    ).toBe(true)
-  })
+    ).toBe(true);
+  });
 
   it('preserves the whole-pound invoice value across small partial returns', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -1627,11 +1626,11 @@ describe('sales repository', () => {
           unit_price: 1,
         },
       ],
-    })
+    });
 
-    expect(sale.grand_total).toBe(1)
+    expect(sale.grand_total).toBe(1);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
     const firstReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1643,9 +1642,9 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(firstReturn.return_value).toBe(0)
+    expect(firstReturn.return_value).toBe(0);
 
     const secondReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1657,16 +1656,16 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(secondReturn.return_value).toBe(1)
+    expect(secondReturn.return_value).toBe(1);
 
-    expect(getCashMovementTotal('out')).toBe(1)
-  })
+    expect(getCashMovementTotal('out')).toBe(1);
+  });
 
   it('rounds debt settlement to whole pounds and restores it on return cancellation', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
     const sale = createSale({
       user_id: 1,
@@ -1688,11 +1687,11 @@ describe('sales repository', () => {
           unit_price: 100.5,
         },
       ],
-    })
+    });
 
-    expect(sale.remaining_amount).toBe(51)
+    expect(sale.remaining_amount).toBe(51);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
     createCashMovement({
       type: 'deposit',
@@ -1701,7 +1700,7 @@ describe('sales repository', () => {
       payment_method: 'store_cash',
       notes: 'Cash buffer for return rounding',
       created_by: 1,
-    })
+    });
 
     const result = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1713,27 +1712,27 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(result.return_value).toBe(101)
+    expect(result.return_value).toBe(101);
 
-    expect(result.debt_reduction_amount).toBe(51)
+    expect(result.debt_reduction_amount).toBe(51);
 
-    expect(result.refundAmount).toBe(50)
+    expect(result.refundAmount).toBe(50);
 
-    expect(getCashMovementTotal('out')).toBe(50)
+    expect(getCashMovementTotal('out')).toBe(50);
 
-    const afterReturn = getSaleReceipt(sale.saleId) as any
-    expect(afterReturn.sale.remaining_amount).toBe(0)
+    const afterReturn = getSaleReceipt(sale.saleId) as any;
+    expect(afterReturn.sale.remaining_amount).toBe(0);
 
     cancelSaleReturn({
       return_id: result.returnId,
       actor_id: 1,
       reason: 'Verify fractional debt restoration',
-    })
+    });
 
-    const afterCancellation = getSaleReceipt(sale.saleId) as any
-    expect(afterCancellation.sale.remaining_amount).toBe(51)
+    const afterCancellation = getSaleReceipt(sale.saleId) as any;
+    expect(afterCancellation.sale.remaining_amount).toBe(51);
 
     const customer = getDb()
       .prepare(
@@ -1744,20 +1743,20 @@ describe('sales repository', () => {
       `,
       )
       .get(customerId) as {
-      balance: number
-      total_spent: number
-    }
+      balance: number;
+      total_spent: number;
+    };
 
-    expect(customer.balance).toBe(51)
+    expect(customer.balance).toBe(51);
 
-    expect(customer.total_spent).toBe(101)
-  })
+    expect(customer.total_spent).toBe(101);
+  });
 
   it('calculates sale return value proportionally when original sale has loyalty discount', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
-    setCustomerPoints(customerId, 10)
+    setCustomerPoints(customerId, 10);
 
     const sale = createSale({
       user_id: 1,
@@ -1780,15 +1779,15 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(sale.grand_total).toBe(294)
-    expect(sale.loyalty_points_redeemed).toBe(6)
-    expect(sale.loyalty_discount_value).toBe(6)
-    expect(getCashMovementTotal('in')).toBe(294)
+    expect(sale.grand_total).toBe(294);
+    expect(sale.loyalty_points_redeemed).toBe(6);
+    expect(sale.loyalty_discount_value).toBe(6);
+    expect(getCashMovementTotal('in')).toBe(294);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
-    const saleItemId = receipt.items[0].id
+    const receipt = getSaleReceipt(sale.saleId) as any;
+    const saleItemId = receipt.items[0].id;
 
     const saleReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1801,19 +1800,19 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(saleReturn.return_value).toBe(147)
-    expect(saleReturn.refundAmount).toBe(147)
-    expect(saleReturn.debt_reduction_amount).toBe(0)
+    expect(saleReturn.return_value).toBe(147);
+    expect(saleReturn.refundAmount).toBe(147);
+    expect(saleReturn.debt_reduction_amount).toBe(0);
 
-    expect(getCashMovementTotal('out')).toBe(147)
-    expect(getStockByBarcode('SALE001')).toBe(9)
-  })
+    expect(getCashMovementTotal('out')).toBe(147);
+    expect(getStockByBarcode('SALE001')).toBe(9);
+  });
 
   it('recalculates earned loyalty points from the remaining sale value after return', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
     const sale = createSale({
       user_id: 1,
@@ -1835,13 +1834,13 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(sale.loyalty_points_earned).toBe(3)
-    expect(getCustomerPoints(customerId)).toBe(3)
+    expect(sale.loyalty_points_earned).toBe(3);
+    expect(getCustomerPoints(customerId)).toBe(3);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
-    const saleItemId = receipt.items[0].id
+    const receipt = getSaleReceipt(sale.saleId) as any;
+    const saleItemId = receipt.items[0].id;
 
     const saleReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1854,9 +1853,9 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(saleReturn.return_value).toBe(150)
+    expect(saleReturn.return_value).toBe(150);
 
     /*
      * Original sale = 300
@@ -1871,14 +1870,14 @@ describe('sales repository', () => {
      * New earned target = floor(150 / 100) = 1
      * Therefore reverse 3 - 1 = 2 points.
      */
-    expect(saleReturn.loyalty_points_reversed).toBe(2)
+    expect(saleReturn.loyalty_points_reversed).toBe(2);
 
-    expect(getCustomerPoints(customerId)).toBe(1)
-  })
+    expect(getCustomerPoints(customerId)).toBe(1);
+  });
 
   it('uses recorded loyalty points proportionally for legacy returns instead of estimated rules', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
     const sale = createSale({
       user_id: 1,
@@ -1908,13 +1907,13 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(sale.loyalty_points_earned).toBe(3)
+    expect(sale.loyalty_points_earned).toBe(3);
 
-    expect(getCustomerPoints(customerId)).toBe(3)
+    expect(getCustomerPoints(customerId)).toBe(3);
 
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
@@ -1930,9 +1929,9 @@ describe('sales repository', () => {
 
       WHERE sale_id = ?
       `,
-    ).run(sale.saleId)
+    ).run(sale.saleId);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
     const saleReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1948,9 +1947,9 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(saleReturn.return_value).toBe(150)
+    expect(saleReturn.return_value).toBe(150);
 
     /*
      * Legacy invoice:
@@ -1964,14 +1963,14 @@ describe('sales repository', () => {
      *
      * floor(3 * 50%) = 1 point reversed.
      */
-    expect(saleReturn.loyalty_points_reversed).toBe(1)
+    expect(saleReturn.loyalty_points_reversed).toBe(1);
 
-    expect(getCustomerPoints(customerId)).toBe(2)
-  })
+    expect(getCustomerPoints(customerId)).toBe(2);
+  });
 
   it('filters sales by payment state', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
     const createTestSale = (paid: number) =>
       createSale({
@@ -2003,35 +2002,35 @@ describe('sales repository', () => {
             unit_price: 150,
           },
         ],
-      })
+      });
 
-    const paid = createTestSale(150)
+    const paid = createTestSale(150);
 
-    const partial = createTestSale(50)
+    const partial = createTestSale(50);
 
-    const unpaid = createTestSale(0)
+    const unpaid = createTestSale(0);
 
     const paidResult = listSales({
       payment_filter: 'paid',
-    }) as any
+    }) as any;
 
-    expect(paidResult.rows.map((row: any) => row.id)).toEqual([paid.saleId])
+    expect(paidResult.rows.map((row: any) => row.id)).toEqual([paid.saleId]);
 
     const unpaidResult = listSales({
       payment_filter: 'unpaid',
-    }) as any
+    }) as any;
 
-    const unpaidIds = unpaidResult.rows.map((row: any) => row.id)
+    const unpaidIds = unpaidResult.rows.map((row: any) => row.id);
 
-    expect(unpaidIds).toContain(partial.saleId)
+    expect(unpaidIds).toContain(partial.saleId);
 
-    expect(unpaidIds).toContain(unpaid.saleId)
+    expect(unpaidIds).toContain(unpaid.saleId);
 
-    expect(unpaidIds).not.toContain(paid.saleId)
-  })
+    expect(unpaidIds).not.toContain(paid.saleId);
+  });
 
   it('applies active promotion and preserves discount on return', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const promotion = createPromotion({
       name: '25 Percent Sale',
@@ -2043,9 +2042,9 @@ describe('sales repository', () => {
       scope_type: 'all',
 
       actor_id: 1,
-    })
+    });
 
-    togglePromotion(promotion.promotionId, 1)
+    togglePromotion(promotion.promotionId, 1);
 
     const sale = createSale({
       user_id: 1,
@@ -2083,17 +2082,17 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(sale.promotion_discount_value).toBe(38)
+    expect(sale.promotion_discount_value).toBe(38);
 
-    expect(sale.grand_total).toBe(102)
+    expect(sale.grand_total).toBe(102);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
-    expect(receipt.sale.promotion_discount_value).toBe(38)
+    expect(receipt.sale.promotion_discount_value).toBe(38);
 
-    expect(receipt.items[0].promotion_discount_value).toBe(38)
+    expect(receipt.items[0].promotion_discount_value).toBe(38);
 
     createCashMovement({
       type: 'deposit',
@@ -2102,7 +2101,7 @@ describe('sales repository', () => {
       payment_method: 'store_cash',
       notes: 'Test cash buffer for rounded return',
       created_by: 1,
-    })
+    });
 
     const result = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -2118,13 +2117,13 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(result.return_value).toBe(102)
+    expect(result.return_value).toBe(102);
 
-    expect(result.refundAmount).toBe(102)
+    expect(result.refundAmount).toBe(102);
 
-    const db = getDb()
+    const db = getDb();
 
     const returnRow = db
       .prepare(
@@ -2139,15 +2138,15 @@ describe('sales repository', () => {
           LIMIT 1
           `,
       )
-      .get(sale.saleId) as any
+      .get(sale.saleId) as any;
 
-    expect(Number(returnRow.promotion_discount_value)).toBe(38)
+    expect(Number(returnRow.promotion_discount_value)).toBe(38);
 
-    expect(Number(returnRow.refund_amount)).toBe(102)
-  })
+    expect(Number(returnRow.refund_amount)).toBe(102);
+  });
 
   it('applies buy 2 get 1 promotion', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const promotion = createPromotion({
       name: 'Buy 2 Get 1',
@@ -2163,9 +2162,9 @@ describe('sales repository', () => {
       scope_type: 'all',
 
       actor_id: 1,
-    })
+    });
 
-    togglePromotion(promotion.promotionId, 1)
+    togglePromotion(promotion.promotionId, 1);
 
     const sale = createSale({
       user_id: 1,
@@ -2203,48 +2202,48 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(sale.promotion_discount_value).toBe(150)
+    expect(sale.promotion_discount_value).toBe(150);
 
-    expect(sale.grand_total).toBe(300)
+    expect(sale.grand_total).toBe(300);
 
     const listedSales = listSales({
       search: `#${sale.saleId}`,
       limit: 50,
       offset: 0,
-    })
+    });
 
-    expect(listedSales.rows).toHaveLength(1)
+    expect(listedSales.rows).toHaveLength(1);
 
-    const listedSale = listedSales.rows[0] as any
+    const listedSale = listedSales.rows[0] as any;
 
-    expect(Number(listedSale.promotion_id)).toBe(promotion.promotionId)
+    expect(Number(listedSale.promotion_id)).toBe(promotion.promotionId);
 
-    expect(listedSale.promotion_name).toBe('Buy 2 Get 1')
+    expect(listedSale.promotion_name).toBe('Buy 2 Get 1');
 
-    expect(Number(listedSale.promotion_discount_value)).toBe(150)
+    expect(Number(listedSale.promotion_discount_value)).toBe(150);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
-    expect(receipt.items).toHaveLength(2)
+    expect(receipt.items).toHaveLength(2);
 
     const giftItem = receipt.items.find(
       (item: any) => Number(item.promotion_discount_value || 0) > 0,
-    )
+    );
 
     const paidItem = receipt.items.find(
       (item: any) => Number(item.promotion_discount_value || 0) === 0,
-    )
+    );
 
-    expect(giftItem).toBeTruthy()
-    expect(paidItem).toBeTruthy()
+    expect(giftItem).toBeTruthy();
+    expect(paidItem).toBeTruthy();
 
-    expect(Number(giftItem.quantity)).toBe(1)
-    expect(Number(giftItem.promotion_discount_value)).toBe(150)
+    expect(Number(giftItem.quantity)).toBe(1);
+    expect(Number(giftItem.promotion_discount_value)).toBe(150);
 
-    expect(Number(paidItem.quantity)).toBe(2)
-    expect(Number(paidItem.promotion_discount_value)).toBe(0)
+    expect(Number(paidItem.quantity)).toBe(2);
+    expect(Number(paidItem.promotion_discount_value)).toBe(0);
 
     const returned = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -2267,13 +2266,13 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(returned.return_value).toBe(300)
-  })
+    expect(returned.return_value).toBe(300);
+  });
 
   it('rejects partial return of a buy x get y bundle but allows the full bundle', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const promotion = createPromotion({
       name: 'Buy 2 Get 1 Return Bundle Test',
@@ -2285,9 +2284,9 @@ describe('sales repository', () => {
       category_id: null,
       product_ids: [],
       actor_id: 1,
-    })
+    });
 
-    togglePromotion(promotion.promotionId, 1)
+    togglePromotion(promotion.promotionId, 1);
 
     const sale = createSale({
       user_id: 1,
@@ -2310,12 +2309,12 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(sale.promotion_discount_value).toBe(150)
-    expect(sale.grand_total).toBe(300)
+    expect(sale.promotion_discount_value).toBe(150);
+    expect(sale.grand_total).toBe(300);
 
-    const db = getDb()
+    const db = getDb();
 
     const saleItems = db
       .prepare(
@@ -2332,26 +2331,26 @@ describe('sales repository', () => {
       ORDER BY id ASC
       `,
       )
-      .all(sale.saleId) as any[]
+      .all(sale.saleId) as any[];
 
-    expect(saleItems).toHaveLength(2)
+    expect(saleItems).toHaveLength(2);
 
     const paidItem = saleItems.find(
       (item: any) => Number(item.is_gift || 0) === 0,
-    )
+    );
 
     const giftItem = saleItems.find(
       (item: any) => Number(item.is_gift || 0) === 1,
-    )
+    );
 
-    expect(paidItem).toBeTruthy()
-    expect(giftItem).toBeTruthy()
+    expect(paidItem).toBeTruthy();
+    expect(giftItem).toBeTruthy();
 
-    expect(Number(paidItem.quantity)).toBe(2)
-    expect(Number(giftItem.quantity)).toBe(1)
+    expect(Number(paidItem.quantity)).toBe(2);
+    expect(Number(giftItem.quantity)).toBe(1);
 
-    expect(paidItem.promotion_group_id).toBeTruthy()
-    expect(giftItem.promotion_group_id).toBe(paidItem.promotion_group_id)
+    expect(paidItem.promotion_group_id).toBeTruthy();
+    expect(giftItem.promotion_group_id).toBe(paidItem.promotion_group_id);
 
     expect(() =>
       createSaleReturn({
@@ -2365,9 +2364,9 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('لا يمكن عمل مرتجع جزئي للعرض')
+    ).toThrow('لا يمكن عمل مرتجع جزئي للعرض');
 
-    expect(getStockByBarcode('SALE001')).toBe(7)
+    expect(getStockByBarcode('SALE001')).toBe(7);
 
     const fullReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -2384,14 +2383,14 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(fullReturn.return_value).toBe(300)
-    expect(getStockByBarcode('SALE001')).toBe(10)
-  })
+    expect(fullReturn.return_value).toBe(300);
+    expect(getStockByBarcode('SALE001')).toBe(10);
+  });
 
   it('allows returning the standalone paid unit outside a buy 2 get 1 bundle', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const promotion = createPromotion({
       name: 'Buy 2 Get 1 With Standalone Unit',
@@ -2403,9 +2402,9 @@ describe('sales repository', () => {
       category_id: null,
       product_ids: [],
       actor_id: 1,
-    })
+    });
 
-    togglePromotion(promotion.promotionId, 1)
+    togglePromotion(promotion.promotionId, 1);
 
     const sale = createSale({
       user_id: 1,
@@ -2428,12 +2427,12 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(sale.promotion_discount_value).toBe(150)
-    expect(sale.grand_total).toBe(450)
+    expect(sale.promotion_discount_value).toBe(150);
+    expect(sale.grand_total).toBe(450);
 
-    const db = getDb()
+    const db = getDb();
 
     const saleItems = db
       .prepare(
@@ -2449,26 +2448,26 @@ describe('sales repository', () => {
         ORDER BY id ASC
         `,
       )
-      .all(sale.saleId) as any[]
+      .all(sale.saleId) as any[];
 
     const groupedItems = saleItems.filter(
       (item: any) => item.promotion_group_id,
-    )
+    );
 
     const standaloneItems = saleItems.filter(
       (item: any) => !item.promotion_group_id,
-    )
+    );
 
     expect(
       groupedItems.reduce(
         (total: number, item: any) => total + Number(item.quantity),
         0,
       ),
-    ).toBe(3)
+    ).toBe(3);
 
-    expect(standaloneItems).toHaveLength(1)
-    expect(Number(standaloneItems[0].quantity)).toBe(1)
-    expect(Number(standaloneItems[0].is_gift || 0)).toBe(0)
+    expect(standaloneItems).toHaveLength(1);
+    expect(Number(standaloneItems[0].quantity)).toBe(1);
+    expect(Number(standaloneItems[0].is_gift || 0)).toBe(0);
 
     const returned = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -2480,14 +2479,14 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(returned.return_value).toBe(150)
-    expect(getStockByBarcode('SALE001')).toBe(7)
-  })
+    expect(returned.return_value).toBe(150);
+    expect(getStockByBarcode('SALE001')).toBe(7);
+  });
 
   it('creates independent groups for two buy 2 get 1 bundles', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const promotion = createPromotion({
       name: 'Two Buy 2 Get 1 Bundles',
@@ -2499,9 +2498,9 @@ describe('sales repository', () => {
       category_id: null,
       product_ids: [],
       actor_id: 1,
-    })
+    });
 
-    togglePromotion(promotion.promotionId, 1)
+    togglePromotion(promotion.promotionId, 1);
 
     const sale = createSale({
       user_id: 1,
@@ -2524,12 +2523,12 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(sale.promotion_discount_value).toBe(300)
-    expect(sale.grand_total).toBe(600)
+    expect(sale.promotion_discount_value).toBe(300);
+    expect(sale.grand_total).toBe(600);
 
-    const db = getDb()
+    const db = getDb();
 
     const saleItems = db
       .prepare(
@@ -2546,25 +2545,25 @@ describe('sales repository', () => {
         ORDER BY id ASC
         `,
       )
-      .all(sale.saleId) as any[]
+      .all(sale.saleId) as any[];
 
     const groupIds = Array.from(
       new Set(saleItems.map((item: any) => String(item.promotion_group_id))),
-    )
+    );
 
-    expect(groupIds).toHaveLength(2)
+    expect(groupIds).toHaveLength(2);
 
     for (const groupId of groupIds) {
       const groupItems = saleItems.filter(
         (item: any) => item.promotion_group_id === groupId,
-      )
+      );
 
       expect(
         groupItems.reduce(
           (total: number, item: any) => total + Number(item.quantity),
           0,
         ),
-      ).toBe(3)
+      ).toBe(3);
 
       expect(
         groupItems.reduce(
@@ -2573,12 +2572,12 @@ describe('sales repository', () => {
             (Number(item.is_gift || 0) === 1 ? Number(item.quantity) : 0),
           0,
         ),
-      ).toBe(1)
+      ).toBe(1);
     }
 
     const firstGroupItems = saleItems.filter(
       (item: any) => item.promotion_group_id === groupIds[0],
-    )
+    );
 
     const returned = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -2588,11 +2587,11 @@ describe('sales repository', () => {
         variant_id: Number(item.variant_id),
         quantity: Number(item.quantity),
       })),
-    })
+    });
 
-    expect(returned.return_value).toBe(300)
-    expect(getStockByBarcode('SALE001')).toBe(7)
-  })
+    expect(returned.return_value).toBe(300);
+    expect(getStockByBarcode('SALE001')).toBe(7);
+  });
 
   it('groups different priced items into the same buy 2 get 1 bundle and makes the cheapest item the gift', () => {
     createProduct({
@@ -2629,11 +2628,11 @@ describe('sales repository', () => {
           opening_qty: 5,
         },
       ],
-    })
+    });
 
-    const variant250 = getVariantByBarcode('PROMO250') as SaleVariantTestRow
-    const variant200 = getVariantByBarcode('PROMO200') as SaleVariantTestRow
-    const variant150 = getVariantByBarcode('PROMO150') as SaleVariantTestRow
+    const variant250 = getVariantByBarcode('PROMO250') as SaleVariantTestRow;
+    const variant200 = getVariantByBarcode('PROMO200') as SaleVariantTestRow;
+    const variant150 = getVariantByBarcode('PROMO150') as SaleVariantTestRow;
 
     const promotion = createPromotion({
       name: 'Mixed Price Buy 2 Get 1',
@@ -2645,9 +2644,9 @@ describe('sales repository', () => {
       category_id: null,
       product_ids: [],
       actor_id: 1,
-    })
+    });
 
-    togglePromotion(promotion.promotionId, 1)
+    togglePromotion(promotion.promotionId, 1);
 
     const sale = createSale({
       user_id: 1,
@@ -2688,12 +2687,12 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(sale.promotion_discount_value).toBe(150)
-    expect(sale.grand_total).toBe(450)
+    expect(sale.promotion_discount_value).toBe(150);
+    expect(sale.grand_total).toBe(450);
 
-    const db = getDb()
+    const db = getDb();
 
     const saleItems = db
       .prepare(
@@ -2711,23 +2710,23 @@ describe('sales repository', () => {
         ORDER BY id ASC
         `,
       )
-      .all(sale.saleId) as any[]
+      .all(sale.saleId) as any[];
 
-    expect(saleItems).toHaveLength(3)
+    expect(saleItems).toHaveLength(3);
 
     const groupIds = Array.from(
       new Set(saleItems.map((item: any) => String(item.promotion_group_id))),
-    )
+    );
 
-    expect(groupIds).toHaveLength(1)
+    expect(groupIds).toHaveLength(1);
 
     const giftItem = saleItems.find(
       (item: any) => Number(item.is_gift || 0) === 1,
-    )
+    );
 
-    expect(giftItem).toBeTruthy()
-    expect(Number(giftItem.unit_price)).toBe(150)
-    expect(Number(giftItem.promotion_discount_value)).toBe(150)
+    expect(giftItem).toBeTruthy();
+    expect(Number(giftItem.unit_price)).toBe(150);
+    expect(Number(giftItem.promotion_discount_value)).toBe(150);
 
     const returned = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -2737,16 +2736,16 @@ describe('sales repository', () => {
         variant_id: Number(item.variant_id),
         quantity: Number(item.quantity),
       })),
-    })
+    });
 
-    expect(returned.return_value).toBe(450)
-  })
+    expect(returned.return_value).toBe(450);
+  });
 
   it.each([2, 3])(
     'checks combined return quantities with %s units in stock',
     (remainingStock) => {
-      const db = getDb()
-      const variant = seedProduct()
+      const db = getDb();
+      const variant = seedProduct();
 
       const promotion = createPromotion({
         name: 'Return cancellation stock check',
@@ -2756,9 +2755,9 @@ describe('sales repository', () => {
         free_qty: 1,
         scope_type: 'all',
         actor_id: 1,
-      })
+      });
 
-      togglePromotion(promotion.promotionId, 1)
+      togglePromotion(promotion.promotionId, 1);
 
       function sell(
         quantity: number,
@@ -2786,11 +2785,11 @@ describe('sales repository', () => {
               unit_price: variant.sell_price,
             },
           ],
-        })
+        });
       }
 
-      const sale = sell(3, 300, promotion.promotionId)
-      const receipt = getSaleReceipt(sale.saleId) as any
+      const sale = sell(3, 300, promotion.promotionId);
+      const receipt = getSaleReceipt(sale.saleId) as any;
 
       const returned = createSaleReturn({
         original_sale_id: sale.saleId,
@@ -2801,29 +2800,31 @@ describe('sales repository', () => {
           variant_id: Number(item.variant_id),
           quantity: Number(item.quantity),
         })),
-      })
+      });
 
       const returnedItems = db
         .prepare(
           'SELECT variant_id, quantity FROM sale_return_items WHERE return_id = ?',
         )
         .all(returned.returnId) as Array<{
-        variant_id: number
-        quantity: number
-      }>
+        variant_id: number;
+        quantity: number;
+      }>;
 
-      expect(returnedItems.length).toBeGreaterThan(1)
-      expect(new Set(returnedItems.map((item) => item.variant_id)).size).toBe(1)
+      expect(returnedItems.length).toBeGreaterThan(1);
+      expect(new Set(returnedItems.map((item) => item.variant_id)).size).toBe(
+        1,
+      );
       expect(returnedItems.reduce((sum, item) => sum + item.quantity, 0)).toBe(
         3,
-      )
+      );
 
-      togglePromotion(promotion.promotionId, 0)
+      togglePromotion(promotion.promotionId, 0);
 
-      const soldLater = 10 - remainingStock
-      sell(soldLater, soldLater * variant.sell_price)
+      const soldLater = 10 - remainingStock;
+      sell(soldLater, soldLater * variant.sell_price);
 
-      expect(getStockByBarcode(variant.barcode)).toBe(remainingStock)
+      expect(getStockByBarcode(variant.barcode)).toBe(remainingStock);
 
       const tables = [
         'sales',
@@ -2831,46 +2832,46 @@ describe('sales repository', () => {
         'sale_promotion_units',
         'stock_movements',
         'cash_movements',
-      ]
+      ];
 
       const snapshot = () =>
         tables.map((table) =>
           db.prepare(`SELECT * FROM ${table} ORDER BY id`).all(),
-        )
+        );
 
-      const before = snapshot()
-      const cashInBefore = getCashMovementTotal('in')
+      const before = snapshot();
+      const cashInBefore = getCashMovementTotal('in');
 
       const cancel = () =>
         cancelSaleReturn({
           return_id: returned.returnId,
           actor_id: 1,
           reason: 'Stock regression test',
-        })
+        });
 
       if (remainingStock === 2) {
-        expect(cancel).toThrow('أقل من كمية المرتجع')
-        expect(snapshot()).toEqual(before)
-        expect(getStockByBarcode(variant.barcode)).toBe(2)
-        return
+        expect(cancel).toThrow('أقل من كمية المرتجع');
+        expect(snapshot()).toEqual(before);
+        expect(getStockByBarcode(variant.barcode)).toBe(2);
+        return;
       }
 
-      expect(cancel().ok).toBe(true)
-      expect(getStockByBarcode(variant.barcode)).toBe(0)
-      expect(getCashMovementTotal('in')).toBe(cashInBefore + 300)
+      expect(cancel().ok).toBe(true);
+      expect(getStockByBarcode(variant.barcode)).toBe(0);
+      expect(getCashMovementTotal('in')).toBe(cashInBefore + 300);
 
       const returnRow = db
         .prepare('SELECT cancelled_at FROM sale_returns WHERE id = ?')
-        .get(returned.returnId) as { cancelled_at: string | null }
+        .get(returned.returnId) as { cancelled_at: string | null };
 
-      expect(returnRow.cancelled_at).not.toBeNull()
+      expect(returnRow.cancelled_at).not.toBeNull();
     },
-  )
+  );
 
   it('requires cancelling newer returns before restoring loyalty points', () => {
-    const db = getDb()
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const db = getDb();
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
     const sale = createSale({
       user_id: 1,
@@ -2892,9 +2893,9 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
     function returnOne() {
       return createSaleReturn({
@@ -2908,16 +2909,16 @@ describe('sales repository', () => {
             quantity: 1,
           },
         ],
-      })
+      });
     }
 
-    expect(getCustomerPoints(customerId)).toBe(3)
+    expect(getCustomerPoints(customerId)).toBe(3);
 
-    const firstReturn = returnOne()
-    expect(getCustomerPoints(customerId)).toBe(1)
+    const firstReturn = returnOne();
+    expect(getCustomerPoints(customerId)).toBe(1);
 
-    const secondReturn = returnOne()
-    expect(getCustomerPoints(customerId)).toBe(0)
+    const secondReturn = returnOne();
+    expect(getCustomerPoints(customerId)).toBe(0);
 
     // نفس التوقيت للتأكد أن ترتيب الإلغاء يعتمد على رقم المرتجع.
     db.prepare(
@@ -2930,7 +2931,7 @@ describe('sales repository', () => {
       )
       WHERE id = ?
       `,
-    ).run(firstReturn.returnId, secondReturn.returnId)
+    ).run(firstReturn.returnId, secondReturn.returnId);
 
     const tables = [
       'customers',
@@ -2940,49 +2941,49 @@ describe('sales repository', () => {
       'cash_movements',
       'customer_payments',
       'loyalty_transactions',
-    ]
+    ];
 
     const snapshot = () =>
       tables.map((table) =>
         db.prepare(`SELECT * FROM ${table} ORDER BY id`).all(),
-      )
+      );
 
-    const before = snapshot()
+    const before = snapshot();
 
     expect(() =>
       cancelSaleReturn({
         return_id: firstReturn.returnId,
         actor_id: 1,
       }),
-    ).toThrow('يجب إلغاء المرتجع الأحدث')
+    ).toThrow('يجب إلغاء المرتجع الأحدث');
 
-    expect(snapshot()).toEqual(before)
+    expect(snapshot()).toEqual(before);
 
     expect(
       cancelSaleReturn({
         return_id: secondReturn.returnId,
         actor_id: 1,
       }).ok,
-    ).toBe(true)
+    ).toBe(true);
 
-    expect(getCustomerPoints(customerId)).toBe(1)
-    expect(getStockByBarcode(variant.barcode)).toBe(9)
+    expect(getCustomerPoints(customerId)).toBe(1);
+    expect(getStockByBarcode(variant.barcode)).toBe(9);
 
     expect(
       cancelSaleReturn({
         return_id: firstReturn.returnId,
         actor_id: 1,
       }).ok,
-    ).toBe(true)
+    ).toBe(true);
 
-    expect(getCustomerPoints(customerId)).toBe(3)
-    expect(getStockByBarcode(variant.barcode)).toBe(8)
-  })
+    expect(getCustomerPoints(customerId)).toBe(3);
+    expect(getStockByBarcode(variant.barcode)).toBe(8);
+  });
 
   it('cancels a previous-shift sale in the current shift', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -3004,18 +3005,18 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    const originalShift = getOpenCashShift()
+    const originalShift = getOpenCashShift();
 
-    expect(originalShift).toBeTruthy()
+    expect(originalShift).toBeTruthy();
 
     closeCashShift({
       shift_id: originalShift!.id,
       closing_counted_amount: 150,
       left_for_next_shift: 150,
       closed_by: 1,
-    })
+    });
 
     expect(() =>
       cancelSaleInvoice({
@@ -3023,20 +3024,20 @@ describe('sales repository', () => {
         actor_id: 1,
         reason: 'Cancel without shift',
       }),
-    ).toThrow('لا يمكن إلغاء فاتورة بيع بدون شفت مفتوح')
+    ).toThrow('لا يمكن إلغاء فاتورة بيع بدون شفت مفتوح');
 
     const currentShift = openCashShift({
       opening_counted_amount: 150,
       opened_by: 1,
-    })
+    });
 
     const cancelled = cancelSaleInvoice({
       sale_id: sale.saleId,
       actor_id: 1,
       reason: 'إلغاء في شفت جديد',
-    })
+    });
 
-    expect(cancelled.cancelled_shift_id).toBe(currentShift.id)
+    expect(cancelled.cancelled_shift_id).toBe(currentShift.id);
 
     const saleRow = db
       .prepare(
@@ -3049,13 +3050,13 @@ describe('sales repository', () => {
     `,
       )
       .get(sale.saleId) as {
-      shift_id: number
-      cancelled_shift_id: number
-    }
+      shift_id: number;
+      cancelled_shift_id: number;
+    };
 
-    expect(saleRow.shift_id).toBe(originalShift!.id)
+    expect(saleRow.shift_id).toBe(originalShift!.id);
 
-    expect(saleRow.cancelled_shift_id).toBe(currentShift.id)
+    expect(saleRow.cancelled_shift_id).toBe(currentShift.id);
 
     const refundMovement = db
       .prepare(
@@ -3071,19 +3072,19 @@ describe('sales repository', () => {
     `,
       )
       .get(sale.saleId) as {
-      shift_id: number
-      direction: string
-    }
+      shift_id: number;
+      direction: string;
+    };
 
-    expect(refundMovement.shift_id).toBe(currentShift.id)
+    expect(refundMovement.shift_id).toBe(currentShift.id);
 
-    expect(refundMovement.direction).toBe('out')
-  })
+    expect(refundMovement.direction).toBe('out');
+  });
 
   it('cancels a previous-shift return in the current shift', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -3105,9 +3106,9 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
     const saleReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -3120,20 +3121,20 @@ describe('sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(saleReturn.refundAmount).toBe(150)
+    expect(saleReturn.refundAmount).toBe(150);
 
-    const originalShift = getOpenCashShift()
+    const originalShift = getOpenCashShift();
 
-    expect(originalShift).toBeTruthy()
+    expect(originalShift).toBeTruthy();
 
     closeCashShift({
       shift_id: originalShift!.id,
       closing_counted_amount: 150,
       left_for_next_shift: 150,
       closed_by: 1,
-    })
+    });
 
     expect(() =>
       cancelSaleReturn({
@@ -3141,20 +3142,20 @@ describe('sales repository', () => {
         actor_id: 1,
         reason: 'Cancel return without shift',
       }),
-    ).toThrow('لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح')
+    ).toThrow('لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح');
 
     const currentShift = openCashShift({
       opening_counted_amount: 150,
       opened_by: 1,
-    })
+    });
 
     const cancelled = cancelSaleReturn({
       return_id: saleReturn.returnId,
       actor_id: 1,
       reason: 'إلغاء المرتجع في شفت جديد',
-    })
+    });
 
-    expect(cancelled.cancelled_shift_id).toBe(currentShift.id)
+    expect(cancelled.cancelled_shift_id).toBe(currentShift.id);
 
     const returnRow = db
       .prepare(
@@ -3167,13 +3168,13 @@ describe('sales repository', () => {
     `,
       )
       .get(saleReturn.returnId) as {
-      shift_id: number
-      cancelled_shift_id: number
-    }
+      shift_id: number;
+      cancelled_shift_id: number;
+    };
 
-    expect(returnRow.shift_id).toBe(originalShift!.id)
+    expect(returnRow.shift_id).toBe(originalShift!.id);
 
-    expect(returnRow.cancelled_shift_id).toBe(currentShift.id)
+    expect(returnRow.cancelled_shift_id).toBe(currentShift.id);
 
     const movement = db
       .prepare(
@@ -3189,17 +3190,17 @@ describe('sales repository', () => {
     `,
       )
       .get(saleReturn.returnId) as {
-      shift_id: number
-      direction: string
-    }
+      shift_id: number;
+      direction: string;
+    };
 
-    expect(movement.shift_id).toBe(currentShift.id)
+    expect(movement.shift_id).toBe(currentShift.id);
 
-    expect(movement.direction).toBe('in')
-  })
+    expect(movement.direction).toBe('in');
+  });
 
   it('filters invoice history by payment method', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const cashSale = createSale({
       user_id: 1,
@@ -3233,7 +3234,7 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     const cardSale = createSale({
       user_id: 1,
@@ -3267,36 +3268,36 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     const cardResult = listSales({
       payment_method: 'card',
-    })
+    });
 
-    expect(cardResult.total).toBe(1)
+    expect(cardResult.total).toBe(1);
 
-    expect(cardResult.rows).toHaveLength(1)
+    expect(cardResult.rows).toHaveLength(1);
 
-    expect(Number(cardResult.rows[0].id)).toBe(cardSale.saleId)
+    expect(Number(cardResult.rows[0].id)).toBe(cardSale.saleId);
 
-    expect(cardResult.rows[0].payment_method).toBe('card')
+    expect(cardResult.rows[0].payment_method).toBe('card');
 
     const cashResult = listSales({
       payment_method: 'cash',
-    })
+    });
 
-    expect(cashResult.total).toBe(1)
+    expect(cashResult.total).toBe(1);
 
-    expect(Number(cashResult.rows[0].id)).toBe(cashSale.saleId)
+    expect(Number(cashResult.rows[0].id)).toBe(cashSale.saleId);
 
-    const allResult = listSales()
+    const allResult = listSales();
 
-    expect(allResult.total).toBe(2)
-  })
+    expect(allResult.total).toBe(2);
+  });
 
   it('stores split payments and exposes them on receipt and payment filters', () => {
-    const db = getDb()
-    const variant = seedProduct()
+    const db = getDb();
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -3332,7 +3333,7 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     const saleRow = db
       .prepare(
@@ -3346,12 +3347,12 @@ describe('sales repository', () => {
       WHERE id = ?
       `,
       )
-      .get(sale.saleId) as any
+      .get(sale.saleId) as any;
 
-    expect(saleRow.payment_method).toBe('split')
-    expect(Number(saleRow.paid)).toBe(150)
-    expect(Number(saleRow.remaining_amount)).toBe(0)
-    expect(saleRow.payment_status).toBe('paid')
+    expect(saleRow.payment_method).toBe('split');
+    expect(Number(saleRow.paid)).toBe(150);
+    expect(Number(saleRow.remaining_amount)).toBe(0);
+    expect(saleRow.payment_status).toBe('paid');
 
     const rows = db
       .prepare(
@@ -3362,77 +3363,77 @@ describe('sales repository', () => {
       ORDER BY id ASC
       `,
       )
-      .all(sale.saleId) as any[]
+      .all(sale.saleId) as any[];
 
-    expect(rows).toHaveLength(2)
+    expect(rows).toHaveLength(2);
 
     const storedPayments = Object.fromEntries(
       rows.map((row) => [String(row.payment_method), Number(row.amount)]),
-    )
+    );
 
     expect(storedPayments).toEqual({
       store_cash: 50,
       owner_bank: 100,
-    })
+    });
 
-    const receipt = getSaleReceipt(sale.saleId)
+    const receipt = getSaleReceipt(sale.saleId);
 
-    expect(receipt.payments).toHaveLength(2)
+    expect(receipt.payments).toHaveLength(2);
 
     const receiptPayments = Object.fromEntries(
       receipt.payments.map((row: any) => [
         String(row.payment_method),
         Number(row.amount),
       ]),
-    )
+    );
 
     expect(receiptPayments).toEqual({
       store_cash: 50,
       owner_bank: 100,
-    })
+    });
 
     const cashFilter = listSales({
       payment_method: 'cash',
-    })
+    });
 
-    expect(cashFilter.total).toBe(1)
-    expect(Number(cashFilter.rows[0].id)).toBe(sale.saleId)
+    expect(cashFilter.total).toBe(1);
+    expect(Number(cashFilter.rows[0].id)).toBe(sale.saleId);
 
     const bankFilter = listSales({
       payment_method: 'bank_transfer',
-    })
+    });
 
     const splitFilter = listSales({
       payment_method: 'split',
-    })
+    });
 
-    expect(splitFilter.total).toBe(1)
-    expect(Number(splitFilter.rows[0].id)).toBe(sale.saleId)
+    expect(splitFilter.total).toBe(1);
+    expect(Number(splitFilter.rows[0].id)).toBe(sale.saleId);
 
-    const currentState = getSaleCurrentState(sale.saleId)
+    const currentState = getSaleCurrentState(sale.saleId);
 
-    expect(currentState.current_receipt.payments).toHaveLength(2)
-    expect(currentState.original_receipt.payments).toHaveLength(2)
+    expect(currentState.current_receipt.payments).toHaveLength(2);
+    expect(currentState.original_receipt.payments).toHaveLength(2);
 
     const currentPayments = Object.fromEntries(
       currentState.current_receipt.payments.map((payment: any) => [
         String(payment.payment_method),
         Number(payment.amount),
       ]),
-    )
+    );
 
     expect(currentPayments).toEqual({
       store_cash: 50,
       owner_bank: 100,
-    })
+    });
 
-    expect(bankFilter.total).toBe(1)
-    expect(Number(bankFilter.rows[0].id)).toBe(sale.saleId)
-  })
+    expect(bankFilter.total).toBe(1);
+    expect(Number(bankFilter.rows[0].id)).toBe(sale.saleId);
+  });
 
   it('uses only the drawer part of split payment for shift closing balance', () => {
-    const db = getDb()
-    const variant = seedProduct()
+    const db = getDb();
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -3468,7 +3469,7 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     const movements = db
       .prepare(
@@ -3484,29 +3485,29 @@ describe('sales repository', () => {
       ORDER BY id ASC
       `,
       )
-      .all(sale.saleId) as any[]
+      .all(sale.saleId) as any[];
 
-    expect(movements).toHaveLength(2)
+    expect(movements).toHaveLength(2);
 
     const drawerMovement = movements.find(
       (row) => row.payment_method === 'store_cash',
-    )
+    );
 
     const bankMovement = movements.find(
       (row) => row.payment_method === 'owner_bank',
-    )
+    );
 
-    expect(drawerMovement).toBeTruthy()
-    expect(drawerMovement.direction).toBe('in')
-    expect(Number(drawerMovement.amount)).toBe(50)
+    expect(drawerMovement).toBeTruthy();
+    expect(drawerMovement.direction).toBe('in');
+    expect(Number(drawerMovement.amount)).toBe(50);
 
-    expect(bankMovement).toBeTruthy()
-    expect(bankMovement.direction).toBe('in')
-    expect(Number(bankMovement.amount)).toBe(100)
+    expect(bankMovement).toBeTruthy();
+    expect(bankMovement.direction).toBe('in');
+    expect(Number(bankMovement.amount)).toBe(100);
 
-    const shift = getOpenCashShift()
+    const shift = getOpenCashShift();
 
-    expect(shift).toBeTruthy()
+    expect(shift).toBeTruthy();
 
     const closed = closeCashShift({
       shift_id: shift!.id,
@@ -3516,16 +3517,16 @@ describe('sales repository', () => {
       left_for_next_shift: 0,
 
       closed_by: 1,
-    })
+    });
 
-    expect(closed.expected_closing_amount).toBe(50)
-    expect(closed.closing_counted_amount).toBe(50)
-    expect(closed.closing_difference).toBe(0)
-  })
+    expect(closed.expected_closing_amount).toBe(50);
+    expect(closed.closing_counted_amount).toBe(50);
+    expect(closed.closing_difference).toBe(0);
+  });
 
   it('refunds every split payment to its original account when sale is cancelled', () => {
-    const db = getDb()
-    const variant = seedProduct()
+    const db = getDb();
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -3561,13 +3562,13 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     cancelSaleInvoice({
       sale_id: sale.saleId,
       actor_id: 1,
       reason: 'اختبار إلغاء فاتورة دفع متعدد',
-    })
+    });
 
     const refunds = db
       .prepare(
@@ -3583,25 +3584,25 @@ describe('sales repository', () => {
       ORDER BY id ASC
       `,
       )
-      .all(sale.saleId) as any[]
+      .all(sale.saleId) as any[];
 
-    expect(refunds).toHaveLength(2)
+    expect(refunds).toHaveLength(2);
 
     const cashRefund = refunds.find(
       (row) => row.payment_method === 'store_cash',
-    )
+    );
 
     const bankRefund = refunds.find(
       (row) => row.payment_method === 'owner_bank',
-    )
+    );
 
-    expect(cashRefund).toBeTruthy()
-    expect(cashRefund.direction).toBe('out')
-    expect(Number(cashRefund.amount)).toBe(50)
+    expect(cashRefund).toBeTruthy();
+    expect(cashRefund.direction).toBe('out');
+    expect(Number(cashRefund.amount)).toBe(50);
 
-    expect(bankRefund).toBeTruthy()
-    expect(bankRefund.direction).toBe('out')
-    expect(Number(bankRefund.amount)).toBe(100)
+    expect(bankRefund).toBeTruthy();
+    expect(bankRefund.direction).toBe('out');
+    expect(Number(bankRefund.amount)).toBe(100);
 
     const balances = db
       .prepare(
@@ -3628,15 +3629,15 @@ describe('sales repository', () => {
       GROUP BY payment_method
       `,
       )
-      .all(sale.saleId) as any[]
+      .all(sale.saleId) as any[];
 
     for (const row of balances) {
-      expect(Number(row.balance)).toBe(0)
+      expect(Number(row.balance)).toBe(0);
     }
-  })
+  });
 
   it('edits a sale while preserving invoice id and stock', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -3661,9 +3662,9 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(getStockByBarcode('SALE001')).toBe(9)
+    expect(getStockByBarcode('SALE001')).toBe(9);
 
     const updated = updateSaleInvoice({
       sale_id: sale.saleId,
@@ -3690,26 +3691,26 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(updated.saleId).toBe(sale.saleId)
+    expect(updated.saleId).toBe(sale.saleId);
 
-    expect(getStockByBarcode('SALE001')).toBe(8)
+    expect(getStockByBarcode('SALE001')).toBe(8);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
-    expect(receipt.sale.id).toBe(sale.saleId)
+    expect(receipt.sale.id).toBe(sale.saleId);
 
-    expect(Number(receipt.sale.grand_total)).toBe(300)
+    expect(Number(receipt.sale.grand_total)).toBe(300);
 
-    expect(receipt.items).toHaveLength(1)
+    expect(receipt.items).toHaveLength(1);
 
-    expect(Number(receipt.items[0].quantity)).toBe(2)
-  })
+    expect(Number(receipt.items[0].quantity)).toBe(2);
+  });
 
   it('edits split payment without duplicating account balances', () => {
-    const db = getDb()
-    const variant = seedProduct()
+    const db = getDb();
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -3744,7 +3745,7 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     updateSaleInvoice({
       sale_id: sale.saleId,
@@ -3781,23 +3782,23 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    const receipt = getSaleReceipt(sale.saleId)
+    const receipt = getSaleReceipt(sale.saleId);
 
-    expect(receipt.payments).toHaveLength(2)
+    expect(receipt.payments).toHaveLength(2);
 
     const payments = Object.fromEntries(
       receipt.payments.map((payment: any) => [
         payment.payment_method,
         Number(payment.amount),
       ]),
-    )
+    );
 
     expect(payments).toEqual({
       store_cash: 100,
       owner_bank: 50,
-    })
+    });
 
     const balances = db
       .prepare(
@@ -3825,20 +3826,20 @@ describe('sales repository', () => {
       GROUP BY payment_method
       `,
       )
-      .all(sale.saleId) as any[]
+      .all(sale.saleId) as any[];
 
     const balanceMap = Object.fromEntries(
       balances.map((row) => [row.payment_method, Number(row.balance)]),
-    )
+    );
 
     expect(balanceMap).toEqual({
       store_cash: 100,
       owner_bank: 50,
-    })
-  })
+    });
+  });
 
   it('prevents editing a sale that was created with a promotion', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const promotion = createPromotion({
       name: 'Edit Protection Offer',
@@ -3846,9 +3847,9 @@ describe('sales repository', () => {
       value: 25,
       scope_type: 'all',
       actor_id: 1,
-    })
+    });
 
-    togglePromotion(promotion.promotionId, 1)
+    togglePromotion(promotion.promotionId, 1);
 
     const sale = createSale({
       user_id: 1,
@@ -3879,7 +3880,7 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     expect(() =>
       updateSaleInvoice({
@@ -3913,11 +3914,11 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('لا يمكن تعديل فاتورة تم إنشاؤها بعرض')
-  })
+    ).toThrow('لا يمكن تعديل فاتورة تم إنشاؤها بعرض');
+  });
 
   it('prevents a new active promotion from changing an old sale during edit', () => {
-    const variant = seedProduct()
+    const variant = seedProduct();
 
     const sale = createSale({
       user_id: 1,
@@ -3946,7 +3947,7 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     const promotion = createPromotion({
       name: 'New Offer After Sale',
@@ -3954,9 +3955,9 @@ describe('sales repository', () => {
       value: 25,
       scope_type: 'all',
       actor_id: 1,
-    })
+    });
 
-    togglePromotion(promotion.promotionId, 1)
+    togglePromotion(promotion.promotionId, 1);
 
     expect(() =>
       updateSaleInvoice({
@@ -3990,12 +3991,12 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('لا يمكن تعديل الفاتورة لأن هناك عرضًا نشطًا ينطبق على أصنافها')
-  })
+    ).toThrow('لا يمكن تعديل الفاتورة لأن هناك عرضًا نشطًا ينطبق على أصنافها');
+  });
 
   it('recalculates customer debt correctly when editing a credit sale', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
     const sale = createSale({
       user_id: 1,
@@ -4024,9 +4025,9 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(getCustomerBalance(customerId)).toBe(100)
+    expect(getCustomerBalance(customerId)).toBe(100);
 
     updateSaleInvoice({
       sale_id: sale.saleId,
@@ -4057,20 +4058,20 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(getCustomerBalance(customerId)).toBe(200)
+    expect(getCustomerBalance(customerId)).toBe(200);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
-    expect(Number(receipt.sale.remaining_amount)).toBe(200)
+    expect(Number(receipt.sale.remaining_amount)).toBe(200);
 
-    expect(receipt.sale.payment_status).toBe('partial')
-  })
+    expect(receipt.sale.payment_status).toBe('partial');
+  });
 
   it('prevents editing a sale that has customer payment history even after payment cancellation', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
     const sale = createSale({
       user_id: 1,
@@ -4099,7 +4100,7 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     const payment = recordCustomerPayment({
       customer_id: customerId,
@@ -4111,7 +4112,7 @@ describe('sales repository', () => {
       payment_method: 'cash',
 
       actor_id: 1,
-    })
+    });
 
     cancelCustomerPaymentBatch({
       batch_id: payment.payment_batch_id,
@@ -4119,7 +4120,7 @@ describe('sales repository', () => {
       actor_id: 1,
 
       reason: 'اختبار إلغاء دفعة',
-    })
+    });
 
     expect(() =>
       updateSaleInvoice({
@@ -4157,14 +4158,14 @@ describe('sales repository', () => {
           },
         ],
       }),
-    ).toThrow('لا يمكن تعديل فاتورة لها سجل دفعات عميل سابق')
-  })
+    ).toThrow('لا يمكن تعديل فاتورة لها سجل دفعات عميل سابق');
+  });
 
   it('reverses old loyalty effect and applies the edited sale loyalty values once', () => {
-    const variant = seedProduct()
-    const customerId = createTestCustomer()
+    const variant = seedProduct();
+    const customerId = createTestCustomer();
 
-    setCustomerPoints(customerId, 10)
+    setCustomerPoints(customerId, 10);
 
     const sale = createSale({
       user_id: 1,
@@ -4197,7 +4198,7 @@ describe('sales repository', () => {
           unit_price: 100,
         },
       ],
-    })
+    });
 
     /*
      * البداية 10
@@ -4205,7 +4206,7 @@ describe('sales repository', () => {
      * +1 مكتسبة
      * = 6
      */
-    expect(getCustomerPoints(customerId)).toBe(6)
+    expect(getCustomerPoints(customerId)).toBe(6);
 
     updateSaleInvoice({
       sale_id: sale.saleId,
@@ -4240,7 +4241,7 @@ describe('sales repository', () => {
           unit_price: 100,
         },
       ],
-    })
+    });
 
     /*
      * نرجع أثر القديمة:
@@ -4249,23 +4250,23 @@ describe('sales repository', () => {
      * الجديدة:
      * 10 - 2 + 1 = 9
      */
-    expect(getCustomerPoints(customerId)).toBe(9)
+    expect(getCustomerPoints(customerId)).toBe(9);
 
-    expect(getLoyaltyTransactionsCount(customerId)).toBe(2)
+    expect(getLoyaltyTransactionsCount(customerId)).toBe(2);
 
-    const receipt = getSaleReceipt(sale.saleId) as any
+    const receipt = getSaleReceipt(sale.saleId) as any;
 
-    expect(Number(receipt.sale.loyalty_points_redeemed)).toBe(2)
+    expect(Number(receipt.sale.loyalty_points_redeemed)).toBe(2);
 
-    expect(Number(receipt.sale.loyalty_points_earned)).toBe(1)
-  })
+    expect(Number(receipt.sale.loyalty_points_earned)).toBe(1);
+  });
 
   it('blocks credit limit exceed and allows only a valid admin override', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const variant = seedProduct()
+    const variant = seedProduct();
 
-    const customerId = createTestCustomer()
+    const customerId = createTestCustomer();
 
     db.prepare(
       `
@@ -4278,7 +4279,7 @@ describe('sales repository', () => {
 
       WHERE id = ?
       `,
-    ).run(customerId)
+    ).run(customerId);
 
     const input = {
       user_id: 1,
@@ -4320,11 +4321,11 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    }
+    };
 
-    expect(() => createSale(input)).toThrow('ستتجاوز الحد الائتماني')
+    expect(() => createSale(input)).toThrow('ستتجاوز الحد الائتماني');
 
-    expect(getCustomerBalance(customerId)).toBe(0)
+    expect(getCustomerBalance(customerId)).toBe(0);
 
     const saleCount = db
       .prepare(
@@ -4336,10 +4337,10 @@ describe('sales repository', () => {
         `,
       )
       .get() as {
-      count: number
-    }
+      count: number;
+    };
 
-    expect(saleCount.count).toBe(0)
+    expect(saleCount.count).toBe(0);
 
     expect(() =>
       createSale({
@@ -4347,7 +4348,7 @@ describe('sales repository', () => {
 
         credit_limit_override_approved_by: 999999,
       }),
-    ).toThrow('موافقة تجاوز الحد الائتماني غير صالحة')
+    ).toThrow('موافقة تجاوز الحد الائتماني غير صالحة');
 
     const result = createSale({
       ...input,
@@ -4356,17 +4357,17 @@ describe('sales repository', () => {
        * Seeded admin.
        */
       credit_limit_override_approved_by: 1,
-    })
+    });
 
-    expect(result.saleId).toBeGreaterThan(0)
+    expect(result.saleId).toBeGreaterThan(0);
 
-    expect(result.credit_limit_at_sale).toBe(100)
+    expect(result.credit_limit_at_sale).toBe(100);
 
-    expect(result.customer_balance_before).toBe(0)
+    expect(result.customer_balance_before).toBe(0);
 
-    expect(result.credit_limit_override_approved_by).toBe(1)
+    expect(result.credit_limit_override_approved_by).toBe(1);
 
-    expect(getCustomerBalance(customerId)).toBe(150)
+    expect(getCustomerBalance(customerId)).toBe(150);
 
     const sale = db
       .prepare(
@@ -4383,21 +4384,21 @@ describe('sales repository', () => {
         WHERE id = ?
         `,
       )
-      .get(result.saleId) as any
+      .get(result.saleId) as any;
 
-    expect(Number(sale.credit_limit_at_sale)).toBe(100)
+    expect(Number(sale.credit_limit_at_sale)).toBe(100);
 
-    expect(Number(sale.customer_balance_before)).toBe(0)
+    expect(Number(sale.customer_balance_before)).toBe(0);
 
-    expect(Number(sale.credit_limit_override_approved_by)).toBe(1)
-  })
+    expect(Number(sale.credit_limit_override_approved_by)).toBe(1);
+  });
 
   it('snapshots customer credit terms into sale due date', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const variant = seedProduct()
+    const variant = seedProduct();
 
-    const customerId = createTestCustomer()
+    const customerId = createTestCustomer();
 
     db.prepare(
       `
@@ -4407,7 +4408,7 @@ describe('sales repository', () => {
 
       WHERE id = ?
       `,
-    ).run(customerId)
+    ).run(customerId);
 
     const sale = createSale({
       user_id: 1,
@@ -4443,7 +4444,7 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     const saved = db
       .prepare(
@@ -4458,9 +4459,9 @@ describe('sales repository', () => {
         `,
       )
       .get(sale.saleId) as {
-      business_date: string
-      due_date: string | null
-    }
+      business_date: string;
+      due_date: string | null;
+    };
 
     const expected = db
       .prepare(
@@ -4473,12 +4474,12 @@ describe('sales repository', () => {
         `,
       )
       .get(saved.business_date) as {
-      due_date: string
-    }
+      due_date: string;
+    };
 
-    expect(saved.due_date).toBe(expected.due_date)
+    expect(saved.due_date).toBe(expected.due_date);
 
-    expect(sale.due_date).toBe(expected.due_date)
+    expect(sale.due_date).toBe(expected.due_date);
 
     /*
      * تغيير Terms العميل بعد
@@ -4493,7 +4494,7 @@ describe('sales repository', () => {
 
       WHERE id = ?
       `,
-    ).run(customerId)
+    ).run(customerId);
 
     const edited = updateSaleInvoice({
       sale_id: sale.saleId,
@@ -4537,9 +4538,9 @@ describe('sales repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
-    expect(edited.due_date).toBe(expected.due_date)
+    expect(edited.due_date).toBe(expected.due_date);
 
     const afterEdit = db
       .prepare(
@@ -4552,9 +4553,9 @@ describe('sales repository', () => {
         `,
       )
       .get(sale.saleId) as {
-      due_date: string | null
-    }
+      due_date: string | null;
+    };
 
-    expect(afterEdit.due_date).toBe(expected.due_date)
-  })
-})
+    expect(afterEdit.due_date).toBe(expected.due_date);
+  });
+});

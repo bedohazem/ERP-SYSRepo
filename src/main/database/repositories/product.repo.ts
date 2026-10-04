@@ -1,49 +1,49 @@
-import { getDb } from '../db'
-import { receiveStockAtCost } from '../inventory-cost'
-import { roundMoney } from '../../../shared/money'
+import { getDb } from '../db';
+import { receiveStockAtCost } from '../inventory-cost';
+import { roundMoney } from '../../../shared/money';
 
 export type CategoryRow = {
-  id: number
-  name: string
-  description: string | null
-  is_active: number
-  created_at: string
-}
+  id: number;
+  name: string;
+  description: string | null;
+  is_active: number;
+  created_at: string;
+};
 
 export type ProductRow = {
-  id: number
-  name: string
-  category_id: number | null
-  category_name: string | null
-  image_path: string | null
-  description: string | null
-  is_active: number
-  created_at: string
-  variants_count: number
-  active_variants_count: number
-}
+  id: number;
+  name: string;
+  category_id: number | null;
+  category_name: string | null;
+  image_path: string | null;
+  description: string | null;
+  is_active: number;
+  created_at: string;
+  variants_count: number;
+  active_variants_count: number;
+};
 
 export type ProductVariantInput = {
-  barcode: string
-  size: string
-  color: string
-  buy_price: number
-  sell_price: number
+  barcode: string;
+  size: string;
+  color: string;
+  buy_price: number;
+  sell_price: number;
 
-  discount_price?: number | null
+  discount_price?: number | null;
 
-  min_stock: number
-  opening_qty?: number
-}
+  min_stock: number;
+  opening_qty?: number;
+};
 
 export type CreateProductInput = {
-  actor_id?: number | null
-  name: string
-  category_id: number | null
-  image_path?: string | null
-  description?: string | null
-  variants: ProductVariantInput[]
-}
+  actor_id?: number | null;
+  name: string;
+  category_id: number | null;
+  image_path?: string | null;
+  description?: string | null;
+  variants: ProductVariantInput[];
+};
 
 const STOCK_SUM_SQL = `
   IFNULL(SUM(
@@ -53,7 +53,7 @@ const STOCK_SUM_SQL = `
       ELSE 0
     END
   ), 0)
-`
+`;
 
 function getCurrentVariantStock(
   db: ReturnType<typeof getDb>,
@@ -74,9 +74,9 @@ function getCurrentVariantStock(
       WHERE variant_id = ?
     `,
     )
-    .get(variantId) as { stock: number } | undefined
+    .get(variantId) as { stock: number } | undefined;
 
-  return Number(row?.stock || 0)
+  return Number(row?.stock || 0);
 }
 
 function addVariantToOpenStockCountSessions(
@@ -98,17 +98,17 @@ function addVariantToOpenStockCountSessions(
     )
     .get(productId) as
     | {
-        id: number
-        category_id: number | null
-        is_active: number
+        id: number;
+        category_id: number | null;
+        is_active: number;
       }
-    | undefined
+    | undefined;
 
   if (!product || Number(product.is_active) !== 1) {
-    return
+    return;
   }
 
-  const systemStock = getCurrentVariantStock(db, variantId)
+  const systemStock = getCurrentVariantStock(db, variantId);
 
   db.prepare(
     `
@@ -134,7 +134,7 @@ function addVariantToOpenStockCountSessions(
         OR scs.category_id = ?
       )
     `,
-  ).run(variantId, systemStock, product.category_id)
+  ).run(variantId, systemStock, product.category_id);
 }
 
 function removeVariantFromOpenStockCountSessions(
@@ -151,7 +151,7 @@ function removeVariantFromOpenStockCountSessions(
         WHERE status = 'open'
       )
     `,
-  ).run(variantId)
+  ).run(variantId);
 }
 
 function syncVariantOpenStockCountMembership(
@@ -172,26 +172,26 @@ function syncVariantOpenStockCountMembership(
     )
     .get(variantId) as
     | {
-        id: number
-        product_id: number
-        is_active: number
+        id: number;
+        product_id: number;
+        is_active: number;
       }
-    | undefined
+    | undefined;
 
   if (!variant) {
-    return
+    return;
   }
 
   if (Number(variant.is_active) !== 1) {
-    removeVariantFromOpenStockCountSessions(db, variantId)
-    return
+    removeVariantFromOpenStockCountSessions(db, variantId);
+    return;
   }
 
   addVariantToOpenStockCountSessions(
     db,
     Number(variant.id),
     Number(variant.product_id),
-  )
+  );
 }
 
 function syncProductOpenStockCountMembership(
@@ -211,13 +211,13 @@ function syncProductOpenStockCountMembership(
     )
     .get(productId) as
     | {
-        id: number
-        is_active: number
+        id: number;
+        is_active: number;
       }
-    | undefined
+    | undefined;
 
   if (!product) {
-    return
+    return;
   }
 
   const variants = db
@@ -231,25 +231,25 @@ function syncProductOpenStockCountMembership(
       `,
     )
     .all(productId) as Array<{
-    id: number
-    is_active: number
-  }>
+    id: number;
+    is_active: number;
+  }>;
 
   for (const variant of variants) {
     if (Number(product.is_active) === 1 && Number(variant.is_active) === 1) {
-      addVariantToOpenStockCountSessions(db, Number(variant.id), productId)
+      addVariantToOpenStockCountSessions(db, Number(variant.id), productId);
     } else {
-      removeVariantFromOpenStockCountSessions(db, Number(variant.id))
+      removeVariantFromOpenStockCountSessions(db, Number(variant.id));
     }
   }
 }
 
 function ensureBarcodeAvailable(barcode: string, exceptVariantId?: number) {
-  const db = getDb()
-  const cleanBarcode = String(barcode || '').trim()
+  const db = getDb();
+  const cleanBarcode = String(barcode || '').trim();
 
   if (!cleanBarcode) {
-    throw new Error('الباركود مطلوب')
+    throw new Error('الباركود مطلوب');
   }
 
   const existing = exceptVariantId
@@ -273,76 +273,76 @@ function ensureBarcodeAvailable(barcode: string, exceptVariantId?: number) {
           LIMIT 1
         `,
         )
-        .get(cleanBarcode)
+        .get(cleanBarcode);
 
   if (existing) {
-    throw new Error(`الباركود "${cleanBarcode}" مستخدم بالفعل`)
+    throw new Error(`الباركود "${cleanBarcode}" مستخدم بالفعل`);
   }
 }
 
 function ensureInputBarcodesAreUnique(variants: ProductVariantInput[]) {
-  const seen = new Set<string>()
+  const seen = new Set<string>();
 
   for (const variant of variants) {
-    const barcode = String(variant.barcode || '').trim()
+    const barcode = String(variant.barcode || '').trim();
 
     if (!barcode) {
-      throw new Error('الباركود مطلوب')
+      throw new Error('الباركود مطلوب');
     }
 
     if (seen.has(barcode)) {
-      throw new Error(`الباركود "${barcode}" مكرر في نفس المنتج`)
+      throw new Error(`الباركود "${barcode}" مكرر في نفس المنتج`);
     }
 
-    seen.add(barcode)
-    ensureBarcodeAvailable(barcode)
+    seen.add(barcode);
+    ensureBarcodeAvailable(barcode);
   }
 }
 
 function validateVariantNumbers(
   variant: ProductVariantInput | AddProductVariantInput | UpdateVariantInput,
 ) {
-  const rawBuyPrice = Number(variant.buy_price)
+  const rawBuyPrice = Number(variant.buy_price);
 
-  const rawSellPrice = Number(variant.sell_price)
+  const rawSellPrice = Number(variant.sell_price);
 
-  const minStock = Number(variant.min_stock)
+  const minStock = Number(variant.min_stock);
 
   if (!Number.isFinite(rawBuyPrice) || rawBuyPrice < 0) {
-    throw new Error('سعر الشراء غير صحيح')
+    throw new Error('سعر الشراء غير صحيح');
   }
 
   if (!Number.isFinite(rawSellPrice) || rawSellPrice < 0) {
-    throw new Error('سعر البيع غير صحيح')
+    throw new Error('سعر البيع غير صحيح');
   }
 
-  const sellPrice = roundMoney(rawSellPrice)
+  const sellPrice = roundMoney(rawSellPrice);
 
   if (variant.discount_price !== null && variant.discount_price !== undefined) {
-    const rawDiscountPrice = Number(variant.discount_price)
+    const rawDiscountPrice = Number(variant.discount_price);
 
     if (!Number.isFinite(rawDiscountPrice) || rawDiscountPrice <= 0) {
-      throw new Error('السعر بعد الخصم غير صحيح')
+      throw new Error('السعر بعد الخصم غير صحيح');
     }
 
-    const discountPrice = roundMoney(rawDiscountPrice)
+    const discountPrice = roundMoney(rawDiscountPrice);
 
     if (discountPrice <= 0) {
-      throw new Error('السعر بعد الخصم غير صحيح')
+      throw new Error('السعر بعد الخصم غير صحيح');
     }
 
     if (discountPrice >= sellPrice) {
-      throw new Error('السعر بعد الخصم يجب أن يكون أقل من سعر البيع الأصلي')
+      throw new Error('السعر بعد الخصم يجب أن يكون أقل من سعر البيع الأصلي');
     }
   }
 
   if (!Number.isFinite(minStock) || minStock < 0) {
-    throw new Error('حد المخزون الأدنى غير صحيح')
+    throw new Error('حد المخزون الأدنى غير صحيح');
   }
 }
 
 export function getCategories(includeInactive = false): CategoryRow[] {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .prepare(
@@ -353,27 +353,27 @@ export function getCategories(includeInactive = false): CategoryRow[] {
       ORDER BY is_active DESC, name ASC
       `,
     )
-    .all() as CategoryRow[]
+    .all() as CategoryRow[];
 }
 
 export function createCategory(input: {
-  name: string
-  description?: string | null
+  name: string;
+  description?: string | null;
 }) {
-  const db = getDb()
-  const name = String(input.name || '').trim()
+  const db = getDb();
+  const name = String(input.name || '').trim();
 
   if (!name) {
-    throw new Error('اسم التصنيف مطلوب')
+    throw new Error('اسم التصنيف مطلوب');
   }
 
   const existing = db
     .prepare(`SELECT id, is_active FROM categories WHERE name = ? LIMIT 1`)
-    .get(name) as { id: number; is_active: number } | undefined
+    .get(name) as { id: number; is_active: number } | undefined;
 
   if (existing) {
     if (Number(existing.is_active) === 1) {
-      throw new Error('التصنيف موجود بالفعل')
+      throw new Error('التصنيف موجود بالفعل');
     }
 
     db.prepare(
@@ -383,9 +383,9 @@ export function createCategory(input: {
           description = ?
       WHERE id = ?
       `,
-    ).run(input.description ?? null, existing.id)
+    ).run(input.description ?? null, existing.id);
 
-    return { success: true, id: existing.id, reactivated: true }
+    return { success: true, id: existing.id, reactivated: true };
   }
 
   const result = db
@@ -395,37 +395,37 @@ export function createCategory(input: {
       VALUES (?, ?, 1)
       `,
     )
-    .run(name, input.description ?? null)
+    .run(name, input.description ?? null);
 
   return {
     success: true,
     id: Number(result.lastInsertRowid),
-  }
+  };
 }
 
 export function updateCategory(input: {
-  id: number
-  name: string
-  description?: string | null
+  id: number;
+  name: string;
+  description?: string | null;
 }) {
-  const db = getDb()
-  const id = Number(input.id)
-  const name = String(input.name || '').trim()
+  const db = getDb();
+  const id = Number(input.id);
+  const name = String(input.name || '').trim();
 
   if (!id) {
-    throw new Error('التصنيف غير صحيح')
+    throw new Error('التصنيف غير صحيح');
   }
 
   if (!name) {
-    throw new Error('اسم التصنيف مطلوب')
+    throw new Error('اسم التصنيف مطلوب');
   }
 
   const duplicate = db
     .prepare(`SELECT id FROM categories WHERE name = ? AND id <> ? LIMIT 1`)
-    .get(name, id)
+    .get(name, id);
 
   if (duplicate) {
-    throw new Error('يوجد تصنيف آخر بنفس الاسم')
+    throw new Error('يوجد تصنيف آخر بنفس الاسم');
   }
 
   db.prepare(
@@ -435,17 +435,17 @@ export function updateCategory(input: {
         description = ?
     WHERE id = ?
     `,
-  ).run(name, input.description ?? null, id)
+  ).run(name, input.description ?? null, id);
 
-  return { success: true }
+  return { success: true };
 }
 
 export function toggleCategoryActive(categoryId: number, isActive: number) {
-  const db = getDb()
-  const id = Number(categoryId)
+  const db = getDb();
+  const id = Number(categoryId);
 
   if (!id) {
-    throw new Error('التصنيف غير صحيح')
+    throw new Error('التصنيف غير صحيح');
   }
 
   db.prepare(
@@ -454,9 +454,9 @@ export function toggleCategoryActive(categoryId: number, isActive: number) {
     SET is_active = ?
     WHERE id = ?
     `,
-  ).run(Number(isActive) ? 1 : 0, id)
+  ).run(Number(isActive) ? 1 : 0, id);
 
-  return { success: true }
+  return { success: true };
 }
 
 export function getProducts(
@@ -464,27 +464,29 @@ export function getProducts(
   includeInactive = false,
   categoryId?: number | string | null,
 ): ProductRow[] {
-  const db = getDb()
-  const term = search.trim()
-  const query = `%${term}%`
+  const db = getDb();
+  const term = search.trim();
+  const query = `%${term}%`;
 
-  const categoryFilter = String(categoryId ?? 'all')
+  const categoryFilter = String(categoryId ?? 'all');
 
-  const isUncategorized = categoryFilter === 'uncategorized'
+  const isUncategorized = categoryFilter === 'uncategorized';
 
   const selectedCategoryId =
-    !isUncategorized && categoryFilter !== 'all' ? Number(categoryFilter) : null
+    !isUncategorized && categoryFilter !== 'all'
+      ? Number(categoryFilter)
+      : null;
 
   const hasSelectedCategory =
     selectedCategoryId !== null &&
     Number.isFinite(selectedCategoryId) &&
-    selectedCategoryId > 0
+    selectedCategoryId > 0;
 
   const categorySql = isUncategorized
     ? `AND p.category_id IS NULL`
     : hasSelectedCategory
       ? `AND p.category_id = ?`
-      : ''
+      : '';
 
   const params = [
     ...(hasSelectedCategory ? [selectedCategoryId] : []),
@@ -494,7 +496,7 @@ export function getProducts(
     term,
     query,
     query,
-  ]
+  ];
 
   return db
     .prepare(
@@ -544,44 +546,46 @@ export function getProducts(
       ORDER BY p.id DESC
       `,
     )
-    .all(...params) as ProductRow[]
+    .all(...params) as ProductRow[];
 }
 
 export function listProductsPage(input?: {
-  search?: string
-  includeInactive?: boolean
-  categoryId?: number | string | null
-  limit?: number
-  offset?: number
+  search?: string;
+  includeInactive?: boolean;
+  categoryId?: number | string | null;
+  limit?: number;
+  offset?: number;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const term = String(input?.search || '').trim()
-  const query = `%${term}%`
+  const term = String(input?.search || '').trim();
+  const query = `%${term}%`;
 
-  const includeInactive = Boolean(input?.includeInactive)
+  const includeInactive = Boolean(input?.includeInactive);
 
-  const categoryFilter = String(input?.categoryId ?? 'all')
+  const categoryFilter = String(input?.categoryId ?? 'all');
 
-  const isUncategorized = categoryFilter === 'uncategorized'
+  const isUncategorized = categoryFilter === 'uncategorized';
 
   const selectedCategoryId =
-    !isUncategorized && categoryFilter !== 'all' ? Number(categoryFilter) : null
+    !isUncategorized && categoryFilter !== 'all'
+      ? Number(categoryFilter)
+      : null;
 
   const hasSelectedCategory =
     selectedCategoryId !== null &&
     Number.isFinite(selectedCategoryId) &&
-    selectedCategoryId > 0
+    selectedCategoryId > 0;
 
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
 
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
   const categorySql = isUncategorized
     ? `AND p.category_id IS NULL`
     : hasSelectedCategory
       ? `AND p.category_id = ?`
-      : ''
+      : '';
 
   const params: any[] = [
     ...(hasSelectedCategory ? [selectedCategoryId] : []),
@@ -591,7 +595,7 @@ export function listProductsPage(input?: {
     term,
     query,
     query,
-  ]
+  ];
 
   const whereSql = `
     WHERE
@@ -613,7 +617,7 @@ export function listProductsPage(input?: {
             )
         )
       )
-  `
+  `;
 
   const rows = db
     .prepare(
@@ -654,7 +658,7 @@ export function listProductsPage(input?: {
       OFFSET ?
     `,
     )
-    .all(...params, limit, offset)
+    .all(...params, limit, offset);
 
   const totalRow = db
     .prepare(
@@ -670,19 +674,19 @@ export function listProductsPage(input?: {
     `,
     )
     .get(...params) as {
-    total: number
-  }
+    total: number;
+  };
 
   return {
     rows,
     total: Number(totalRow?.total || 0),
     limit,
     offset,
-  }
+  };
 }
 
 export function getProductVariants(productId: number, includeInactive = true) {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .prepare(
@@ -717,12 +721,12 @@ export function getProductVariants(productId: number, includeInactive = true) {
       ORDER BY v.id ASC
       `,
     )
-    .all(productId)
+    .all(productId);
 }
 
 export function toggleVariantActive(variantId: number, isActive: number) {
-  const db = getDb()
-  const nextActive = Number(isActive) ? 1 : 0
+  const db = getDb();
+  const nextActive = Number(isActive) ? 1 : 0;
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -731,31 +735,31 @@ export function toggleVariantActive(variantId: number, isActive: number) {
       SET is_active = ?
       WHERE id = ?
       `,
-    ).run(nextActive, variantId)
+    ).run(nextActive, variantId);
 
-    syncVariantOpenStockCountMembership(db, Number(variantId))
-  })
+    syncVariantOpenStockCountMembership(db, Number(variantId));
+  });
 
-  tx()
+  tx();
 
-  return { success: true }
+  return { success: true };
 }
 
 export function createProduct(input: CreateProductInput) {
-  const db = getDb()
+  const db = getDb();
 
   if (!input.name?.trim()) {
-    throw new Error('اسم المنتج مطلوب')
+    throw new Error('اسم المنتج مطلوب');
   }
 
   if (!input.variants?.length) {
-    throw new Error('لازم تضيف صنف واحد على الأقل')
+    throw new Error('لازم تضيف صنف واحد على الأقل');
   }
 
-  ensureInputBarcodesAreUnique(input.variants)
+  ensureInputBarcodesAreUnique(input.variants);
 
   for (const variant of input.variants) {
-    validateVariantNumbers(variant)
+    validateVariantNumbers(variant);
   }
 
   const tx = db.transaction(() => {
@@ -771,9 +775,9 @@ export function createProduct(input: CreateProductInput) {
         input.category_id,
         input.image_path ?? null,
         input.description ?? null,
-      )
+      );
 
-    const productId = Number(productResult.lastInsertRowid)
+    const productId = Number(productResult.lastInsertRowid);
 
     const insertVariant = db.prepare(
       `
@@ -790,7 +794,7 @@ export function createProduct(input: CreateProductInput) {
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
       `,
-    )
+    );
 
     for (const variant of input.variants) {
       const variantResult = insertVariant.run(
@@ -804,13 +808,13 @@ export function createProduct(input: CreateProductInput) {
           ? null
           : roundMoney(variant.discount_price),
         variant.min_stock,
-      )
+      );
 
-      const variantId = Number(variantResult.lastInsertRowid)
-      const openingQty = Number(variant.opening_qty ?? 0)
+      const variantId = Number(variantResult.lastInsertRowid);
+      const openingQty = Number(variant.opening_qty ?? 0);
 
       if (!Number.isFinite(openingQty) || openingQty < 0) {
-        throw new Error('كمية المخزون الافتتاحي غير صحيحة')
+        throw new Error('كمية المخزون الافتتاحي غير صحيحة');
       }
 
       if (openingQty > 0) {
@@ -826,47 +830,47 @@ export function createProduct(input: CreateProductInput) {
           reference_type: 'opening_stock',
 
           notes: 'رصيد افتتاحي عند إنشاء المنتج',
-        })
+        });
       }
-      addVariantToOpenStockCountSessions(db, variantId, productId)
+      addVariantToOpenStockCountSessions(db, variantId, productId);
     }
 
-    return productId
-  })
+    return productId;
+  });
 
-  const productId = tx()
-  return { success: true, productId }
+  const productId = tx();
+  return { success: true, productId };
 }
 
 export type AddProductVariantInput = {
-  actor_id?: number | null
-  product_id: number
-  barcode: string
-  size: string
-  color: string
-  buy_price: number
-  sell_price: number
+  actor_id?: number | null;
+  product_id: number;
+  barcode: string;
+  size: string;
+  color: string;
+  buy_price: number;
+  sell_price: number;
 
-  discount_price?: number | null
+  discount_price?: number | null;
 
-  min_stock: number
-  opening_qty?: number
-}
+  min_stock: number;
+  opening_qty?: number;
+};
 
 export function addProductVariant(input: AddProductVariantInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const cleanBarcode = String(input.barcode || '').trim()
-  ensureBarcodeAvailable(cleanBarcode)
-  validateVariantNumbers(input)
+  const cleanBarcode = String(input.barcode || '').trim();
+  ensureBarcodeAvailable(cleanBarcode);
+  validateVariantNumbers(input);
 
   const tx = db.transaction(() => {
     const product = db
       .prepare(`SELECT id FROM products WHERE id = ? LIMIT 1`)
-      .get(input.product_id)
+      .get(input.product_id);
 
     if (!product) {
-      throw new Error('المنتج غير موجود')
+      throw new Error('المنتج غير موجود');
     }
 
     const variantResult = db
@@ -897,13 +901,13 @@ export function addProductVariant(input: AddProductVariantInput) {
 
         input.discount_price == null ? null : roundMoney(input.discount_price),
         input.min_stock,
-      )
+      );
 
-    const variantId = Number(variantResult.lastInsertRowid)
-    const openingQty = Number(input.opening_qty ?? 0)
+    const variantId = Number(variantResult.lastInsertRowid);
+    const openingQty = Number(input.opening_qty ?? 0);
 
     if (!Number.isFinite(openingQty) || openingQty < 0) {
-      throw new Error('كمية المخزون الافتتاحي غير صحيحة')
+      throw new Error('كمية المخزون الافتتاحي غير صحيحة');
     }
 
     if (openingQty > 0) {
@@ -919,54 +923,54 @@ export function addProductVariant(input: AddProductVariantInput) {
         reference_type: 'opening_stock',
 
         notes: 'رصيد افتتاحي عند إضافة صنف جديد',
-      })
+      });
     }
 
-    addVariantToOpenStockCountSessions(db, variantId, input.product_id)
+    addVariantToOpenStockCountSessions(db, variantId, input.product_id);
 
-    return variantId
-  })
+    return variantId;
+  });
 
-  const variantId = tx()
+  const variantId = tx();
 
   return {
     success: true,
     variantId,
-  }
+  };
 }
 
 export type UpdateVariantInput = {
-  id: number
-  barcode: string
-  size: string
-  color: string
-  buy_price: number
-  sell_price: number
+  id: number;
+  barcode: string;
+  size: string;
+  color: string;
+  buy_price: number;
+  sell_price: number;
 
-  discount_price?: number | null
+  discount_price?: number | null;
 
-  min_stock: number
-  is_active?: number
-}
+  min_stock: number;
+  is_active?: number;
+};
 
 export type UpdateProductInput = {
-  id: number
-  name: string
-  category_id: number | null
-  description?: string | null
-  image_path?: string | null
-  variants?: UpdateVariantInput[]
-}
+  id: number;
+  name: string;
+  category_id: number | null;
+  description?: string | null;
+  image_path?: string | null;
+  variants?: UpdateVariantInput[];
+};
 
 function updateVariantInsideTransaction(
   db: ReturnType<typeof getDb>,
   input: UpdateVariantInput,
   expectedProductId?: number,
 ) {
-  const variantId = Number(input.id)
+  const variantId = Number(input.id);
 
   if (!variantId) {
-    throw new Error('الصنف غير صحيح')
+    throw new Error('الصنف غير صحيح');
   }
 
   const existingVariant = db
@@ -982,28 +986,28 @@ function updateVariantInsideTransaction(
     )
     .get(variantId) as
     | {
-        id: number
-        product_id: number
+        id: number;
+        product_id: number;
       }
-    | undefined
+    | undefined;
 
   if (!existingVariant) {
-    throw new Error('الصنف غير موجود')
+    throw new Error('الصنف غير موجود');
   }
 
   if (
     expectedProductId &&
     Number(existingVariant.product_id) !== Number(expectedProductId)
   ) {
-    throw new Error('أحد الأصناف لا يتبع المنتج المحدد')
+    throw new Error('أحد الأصناف لا يتبع المنتج المحدد');
   }
 
-  const cleanBarcode = String(input.barcode || '').trim()
+  const cleanBarcode = String(input.barcode || '').trim();
 
-  ensureBarcodeAvailable(cleanBarcode, variantId)
-  validateVariantNumbers(input)
+  ensureBarcodeAvailable(cleanBarcode, variantId);
+  validateVariantNumbers(input);
 
-  const nextActive = input.is_active ?? 1
+  const nextActive = input.is_active ?? 1;
 
   db.prepare(
     `
@@ -1031,26 +1035,26 @@ function updateVariantInsideTransaction(
     input.min_stock,
     nextActive,
     variantId,
-  )
+  );
 
-  syncVariantOpenStockCountMembership(db, variantId)
+  syncVariantOpenStockCountMembership(db, variantId);
 }
 
 export function updateProduct(input: UpdateProductInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const productId = Number(input.id)
-  const cleanName = input.name?.trim()
+  const productId = Number(input.id);
+  const cleanName = input.name?.trim();
 
   if (!productId) {
-    throw new Error('المنتج غير صحيح')
+    throw new Error('المنتج غير صحيح');
   }
 
   if (!cleanName) {
-    throw new Error('اسم المنتج مطلوب')
+    throw new Error('اسم المنتج مطلوب');
   }
 
-  const variants = Array.isArray(input.variants) ? input.variants : []
+  const variants = Array.isArray(input.variants) ? input.variants : [];
 
   const tx = db.transaction(() => {
     const product = db
@@ -1062,10 +1066,10 @@ export function updateProduct(input: UpdateProductInput) {
         LIMIT 1
         `,
       )
-      .get(productId)
+      .get(productId);
 
     if (!product) {
-      throw new Error('المنتج غير موجود')
+      throw new Error('المنتج غير موجود');
     }
 
     db.prepare(
@@ -1084,37 +1088,37 @@ export function updateProduct(input: UpdateProductInput) {
       input.description ?? null,
       input.image_path ?? null,
       productId,
-    )
+    );
 
     for (const variant of variants) {
-      updateVariantInsideTransaction(db, variant, productId)
+      updateVariantInsideTransaction(db, variant, productId);
     }
-  })
+  });
 
-  tx()
+  tx();
 
   return {
     success: true,
     productId,
     variants_count: variants.length,
-  }
+  };
 }
 
 export function updateVariant(input: UpdateVariantInput) {
-  const db = getDb()
+  const db = getDb();
 
   const tx = db.transaction(() => {
-    updateVariantInsideTransaction(db, input)
-  })
+    updateVariantInsideTransaction(db, input);
+  });
 
-  tx()
+  tx();
 
-  return { success: true }
+  return { success: true };
 }
 
 export function toggleProductActive(productId: number, isActive: number) {
-  const db = getDb()
-  const nextActive = Number(isActive) ? 1 : 0
+  const db = getDb();
+  const nextActive = Number(isActive) ? 1 : 0;
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -1123,33 +1127,33 @@ export function toggleProductActive(productId: number, isActive: number) {
       SET is_active = ?
       WHERE id = ?
       `,
-    ).run(nextActive, productId)
+    ).run(nextActive, productId);
 
-    syncProductOpenStockCountMembership(db, Number(productId))
-  })
+    syncProductOpenStockCountMembership(db, Number(productId));
+  });
 
-  tx()
+  tx();
 
-  return { success: true }
+  return { success: true };
 }
 
 export type SaleSearchVariantRow = {
-  variant_id: number
-  product_id: number
-  product_name: string
-  category_id: number | null
-  category_name: string | null
-  barcode: string
-  size: string
-  color: string
-  sell_price: number
-  original_sell_price: number
-  discount_price: number | null
-  buy_price: number
-  stock: number
-  min_stock: number
-  is_active: number
-}
+  variant_id: number;
+  product_id: number;
+  product_name: string;
+  category_id: number | null;
+  category_name: string | null;
+  barcode: string;
+  size: string;
+  color: string;
+  sell_price: number;
+  original_sell_price: number;
+  discount_price: number | null;
+  buy_price: number;
+  stock: number;
+  min_stock: number;
+  is_active: number;
+};
 
 export function searchSaleVariants(
   input:
@@ -1157,36 +1161,38 @@ export function searchSaleVariants(
     | { query?: string; categoryId?: number | string | null; limit?: number },
   limit = 30,
 ): SaleSearchVariantRow[] {
-  const db = getDb()
+  const db = getDb();
 
   const trimmed =
-    typeof input === 'string' ? input.trim() : String(input?.query || '').trim()
+    typeof input === 'string'
+      ? input.trim()
+      : String(input?.query || '').trim();
 
   if (!trimmed) {
-    return []
+    return [];
   }
 
-  const rawCategoryId = typeof input === 'string' ? null : input?.categoryId
+  const rawCategoryId = typeof input === 'string' ? null : input?.categoryId;
   const categoryId =
-    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null
+    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null;
 
   const safeLimit =
     typeof input === 'string'
       ? limit
-      : Math.min(Math.max(Number(input?.limit || limit), 1), 100)
+      : Math.min(Math.max(Number(input?.limit || limit), 1), 100);
 
-  const params: any[] = []
+  const params: any[] = [];
 
-  let categorySql = ''
+  let categorySql = '';
 
   if (categoryId && Number.isFinite(categoryId) && categoryId > 0) {
-    categorySql = `AND p.category_id = ?`
-    params.push(categoryId)
+    categorySql = `AND p.category_id = ?`;
+    params.push(categoryId);
   }
 
-  const likeQuery = `%${trimmed}%`
+  const likeQuery = `%${trimmed}%`;
 
-  params.push(likeQuery, likeQuery, likeQuery, likeQuery, trimmed, safeLimit)
+  params.push(likeQuery, likeQuery, likeQuery, likeQuery, trimmed, safeLimit);
 
   return db
     .prepare(
@@ -1249,13 +1255,13 @@ export function searchSaleVariants(
       LIMIT ?
       `,
     )
-    .all(...params) as SaleSearchVariantRow[]
+    .all(...params) as SaleSearchVariantRow[];
 }
 
 export function getVariantByBarcode(
   barcode: string,
 ): SaleSearchVariantRow | undefined {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .prepare(
@@ -1303,5 +1309,5 @@ export function getVariantByBarcode(
       LIMIT 1
       `,
     )
-    .get(barcode) as SaleSearchVariantRow | undefined
+    .get(barcode) as SaleSearchVariantRow | undefined;
 }

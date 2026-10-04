@@ -1,50 +1,50 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react';
 
-import { getPasswordPolicyError } from '../../../shared/password-policy'
+import { getPasswordPolicyError } from '../../../shared/password-policy';
 
 type Props = {
-  appTheme: 'dark' | 'light'
+  appTheme: 'dark' | 'light';
 
-  onClose: (recoveredUsername?: string) => void
-}
+  onClose: (recoveredUsername?: string) => void;
+};
 
 type RecoveryRequest = {
-  device_code: string
-  request_id: string
-  expires_at: string
-}
+  device_code: string;
+  request_id: string;
+  expires_at: string;
+};
 
 export default function AdminPasswordRecovery({ appTheme, onClose }: Props) {
-  const [request, setRequest] = useState<RecoveryRequest | null>(null)
+  const [request, setRequest] = useState<RecoveryRequest | null>(null);
 
-  const [username, setUsername] = useState('')
+  const [username, setUsername] = useState('');
 
-  const [recoveryCode, setRecoveryCode] = useState('')
+  const [recoveryCode, setRecoveryCode] = useState('');
 
-  const [password, setPassword] = useState('')
+  const [password, setPassword] = useState('');
 
-  const [confirmPassword, setConfirmPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('');
 
-  const [requestLoading, setRequestLoading] = useState(true)
+  const [requestLoading, setRequestLoading] = useState(true);
 
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving] = useState(false);
 
-  const [error, setError] = useState('')
+  const [error, setError] = useState('');
 
-  const [success, setSuccess] = useState(false)
+  const [success, setSuccess] = useState(false);
 
-  const isLight = appTheme === 'light'
+  const isLight = appTheme === 'light';
 
   async function createRequest() {
     if (requestLoading) {
-      return
+      return;
     }
 
-    setError('')
-    setRequestLoading(true)
+    setError('');
+    setRequestLoading(true);
 
     try {
-      const result = await window.api.requestAdminPasswordRecovery()
+      const result = await window.api.requestAdminPasswordRecovery();
 
       if (
         !result.success ||
@@ -52,9 +52,9 @@ export default function AdminPasswordRecovery({ appTheme, onClose }: Props) {
         !result.request_id ||
         !result.expires_at
       ) {
-        setError(result.message || 'تعذر إنشاء طلب الاسترجاع')
+        setError(result.message || 'تعذر إنشاء طلب الاسترجاع');
 
-        return
+        return;
       }
 
       setRequest({
@@ -63,29 +63,29 @@ export default function AdminPasswordRecovery({ appTheme, onClose }: Props) {
         request_id: result.request_id,
 
         expires_at: result.expires_at,
-      })
+      });
 
-      setRecoveryCode('')
+      setRecoveryCode('');
     } catch (error) {
-      console.error('Recovery request failed:', error)
+      console.error('Recovery request failed:', error);
 
-      setError('تعذر إنشاء طلب الاسترجاع')
+      setError('تعذر إنشاء طلب الاسترجاع');
     } finally {
-      setRequestLoading(false)
+      setRequestLoading(false);
     }
   }
 
   useEffect(() => {
-    let active = true
+    let active = true;
 
     async function load() {
-      setRequestLoading(true)
+      setRequestLoading(true);
 
       try {
-        const result = await window.api.requestAdminPasswordRecovery()
+        const result = await window.api.requestAdminPasswordRecovery();
 
         if (!active) {
-          return
+          return;
         }
 
         if (
@@ -94,9 +94,9 @@ export default function AdminPasswordRecovery({ appTheme, onClose }: Props) {
           !result.request_id ||
           !result.expires_at
         ) {
-          setError(result.message || 'تعذر إنشاء طلب الاسترجاع')
+          setError(result.message || 'تعذر إنشاء طلب الاسترجاع');
 
-          return
+          return;
         }
 
         setRequest({
@@ -105,38 +105,38 @@ export default function AdminPasswordRecovery({ appTheme, onClose }: Props) {
           request_id: result.request_id,
 
           expires_at: result.expires_at,
-        })
+        });
       } catch (error) {
-        console.error('Recovery request failed:', error)
+        console.error('Recovery request failed:', error);
 
         if (active) {
-          setError('تعذر إنشاء طلب الاسترجاع')
+          setError('تعذر إنشاء طلب الاسترجاع');
         }
       } finally {
         if (active) {
-          setRequestLoading(false)
+          setRequestLoading(false);
         }
       }
     }
 
-    void load()
+    void load();
 
     return () => {
-      active = false
-    }
-  }, [])
+      active = false;
+    };
+  }, []);
 
   async function copySupportData() {
     if (!request) {
-      return
+      return;
     }
 
-    const cleanUsername = username.trim()
+    const cleanUsername = username.trim();
 
     if (!cleanUsername) {
-      setError('اكتب اسم دخول المدير أولًا ثم انسخ بيانات الاسترجاع')
+      setError('اكتب اسم دخول المدير أولًا ثم انسخ بيانات الاسترجاع');
 
-      return
+      return;
     }
 
     const text = [
@@ -145,53 +145,53 @@ export default function AdminPasswordRecovery({ appTheme, onClose }: Props) {
       `Device Code: ${request.device_code}`,
       `Request ID: ${request.request_id}`,
       `Admin Username: ${cleanUsername}`,
-    ].join('\n')
+    ].join('\n');
 
     try {
-      await navigator.clipboard.writeText(text)
+      await navigator.clipboard.writeText(text);
 
-      setError('')
+      setError('');
     } catch {
-      setError('تعذر نسخ البيانات. انسخ القيم يدويًا.')
+      setError('تعذر نسخ البيانات. انسخ القيم يدويًا.');
     }
   }
 
   async function submit() {
     if (saving || !request) {
-      return
+      return;
     }
 
-    setError('')
+    setError('');
 
-    const cleanUsername = username.trim()
+    const cleanUsername = username.trim();
 
     if (!cleanUsername) {
-      setError('اكتب اسم دخول المدير')
+      setError('اكتب اسم دخول المدير');
 
-      return
+      return;
     }
 
     if (!recoveryCode.trim()) {
-      setError('اكتب Recovery Code المرسل من الدعم')
+      setError('اكتب Recovery Code المرسل من الدعم');
 
-      return
+      return;
     }
 
-    const passwordError = getPasswordPolicyError(password)
+    const passwordError = getPasswordPolicyError(password);
 
     if (passwordError) {
-      setError(passwordError)
+      setError(passwordError);
 
-      return
+      return;
     }
 
     if (password !== confirmPassword) {
-      setError('كلمة المرور وتأكيدها غير متطابقين')
+      setError('كلمة المرور وتأكيدها غير متطابقين');
 
-      return
+      return;
     }
 
-    setSaving(true)
+    setSaving(true);
 
     try {
       const result = await window.api.recoverAdminPassword({
@@ -202,21 +202,21 @@ export default function AdminPasswordRecovery({ appTheme, onClose }: Props) {
         recovery_code: recoveryCode.trim(),
 
         new_password: password,
-      })
+      });
 
       if (!result.success) {
-        setError(result.message || 'تعذر استرجاع الحساب')
+        setError(result.message || 'تعذر استرجاع الحساب');
 
-        return
+        return;
       }
 
-      setSuccess(true)
+      setSuccess(true);
     } catch (error) {
-      console.error('Admin recovery failed:', error)
+      console.error('Admin recovery failed:', error);
 
-      setError('تعذر استرجاع الحساب')
+      setError('تعذر استرجاع الحساب');
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
@@ -284,7 +284,7 @@ export default function AdminPasswordRecovery({ appTheme, onClose }: Props) {
           </button>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -527,7 +527,7 @@ export default function AdminPasswordRecovery({ appTheme, onClose }: Props) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 const inputStyle: React.CSSProperties = {
@@ -548,7 +548,7 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
 
   boxSizing: 'border-box',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   height: '50px',
@@ -564,7 +564,7 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 900,
 
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   minHeight: '46px',
@@ -582,4 +582,4 @@ const secondaryButtonStyle: React.CSSProperties = {
   cursor: 'pointer',
 
   padding: '8px 14px',
-}
+};

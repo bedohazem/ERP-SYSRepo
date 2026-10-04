@@ -1,36 +1,36 @@
-import { getDb } from '../db'
-import { roundMoney } from '../../../shared/money'
+import { getDb } from '../db';
+import { roundMoney } from '../../../shared/money';
 
 export type SupplierInput = {
-  name: string
-  phone?: string | null
-  email?: string | null
-  address?: string | null
-  notes?: string | null
-  credit_days?: number | null
-}
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  credit_days?: number | null;
+};
 
 export type SupplierUpdateInput = SupplierInput & {
-  id: number
-}
+  id: number;
+};
 
 function cleanText(value?: string | null) {
-  const text = value?.trim()
-  return text ? text : null
+  const text = value?.trim();
+  return text ? text : null;
 }
 
 function normalizeCreditDays(value: unknown): number | null {
   if (value === null || value === undefined || String(value).trim() === '') {
-    return null
+    return null;
   }
 
-  const days = Number(value)
+  const days = Number(value);
 
   if (!Number.isInteger(days) || days < 0) {
-    throw new Error('مدة الائتمان يجب أن تكون صفر أو عدد أيام صحيح موجب')
+    throw new Error('مدة الائتمان يجب أن تكون صفر أو عدد أيام صحيح موجب');
   }
 
-  return days
+  return days;
 }
 
 export function getSupplierAgingSummary(
@@ -38,11 +38,11 @@ export function getSupplierAgingSummary(
 
   search?: string,
 ) {
-  const db = getDb()
+  const db = getDb();
 
-  const id = Number(supplierId || 0)
+  const id = Number(supplierId || 0);
 
-  const searchValue = String(search || '').trim()
+  const searchValue = String(search || '').trim();
 
   const where: string[] = [
     `
@@ -66,20 +66,20 @@ export function getSupplierAgingSummary(
       2
     ) > 0
     `,
-  ]
+  ];
 
-  const params: any[] = []
+  const params: any[] = [];
 
   if (id > 0) {
-    where.push('pi.supplier_id = ?')
+    where.push('pi.supplier_id = ?');
 
-    params.push(id)
+    params.push(id);
   } else {
     /*
      * نفس Scope الخاص بقائمة الموردين:
      * الموردون النشطون فقط.
      */
-    where.push('s.is_active = 1')
+    where.push('s.is_active = 1');
 
     if (searchValue) {
       where.push(`
@@ -104,11 +104,11 @@ export function getSupplierAgingSummary(
             ''
           ) LIKE ?
         )
-      `)
+      `);
 
-      const q = `%${searchValue}%`
+      const q = `%${searchValue}%`;
 
-      params.push(q, q, q, q)
+      params.push(q, q, q, q);
     }
   }
 
@@ -219,7 +219,7 @@ export function getSupplierAgingSummary(
       ) open_purchases
       `,
     )
-    .get(...params) as any
+    .get(...params) as any;
 
   return {
     days_0_30: roundMoney(row?.days_0_30),
@@ -231,18 +231,18 @@ export function getSupplierAgingSummary(
     days_90_plus: roundMoney(row?.days_90_plus),
 
     total: roundMoney(row?.total),
-  }
+  };
 }
 
 export function getSupplierDueSummary(
   supplierId?: number | null,
   search?: string,
 ) {
-  const db = getDb()
+  const db = getDb();
 
-  const id = Number(supplierId || 0)
+  const id = Number(supplierId || 0);
 
-  const searchValue = String(search || '').trim()
+  const searchValue = String(search || '').trim();
 
   const where: string[] = [
     `
@@ -266,16 +266,16 @@ export function getSupplierDueSummary(
       2
     ) > 0
     `,
-  ]
+  ];
 
-  const params: any[] = []
+  const params: any[] = [];
 
   if (id > 0) {
-    where.push('pi.supplier_id = ?')
+    where.push('pi.supplier_id = ?');
 
-    params.push(id)
+    params.push(id);
   } else {
-    where.push('s.is_active = 1')
+    where.push('s.is_active = 1');
 
     if (searchValue) {
       where.push(`
@@ -300,11 +300,11 @@ export function getSupplierDueSummary(
             ''
           ) LIKE ?
         )
-      `)
+      `);
 
-      const q = `%${searchValue}%`
+      const q = `%${searchValue}%`;
 
-      params.push(q, q, q, q)
+      params.push(q, q, q, q);
     }
   }
 
@@ -410,7 +410,7 @@ export function getSupplierDueSummary(
       ) open_purchases
       `,
     )
-    .get(...params) as any
+    .get(...params) as any;
 
   return {
     overdue: roundMoney(row?.overdue),
@@ -422,12 +422,12 @@ export function getSupplierDueSummary(
     without_due_date: roundMoney(row?.without_due_date),
 
     total_open: roundMoney(row?.total_open),
-  }
+  };
 }
 
 export function getSuppliers(search = '') {
-  const db = getDb()
-  const q = `%${search.trim()}%`
+  const db = getDb();
+  const q = `%${search.trim()}%`;
 
   if (!search.trim()) {
     return db
@@ -445,7 +445,7 @@ export function getSuppliers(search = '') {
         id DESC
       `,
       )
-      .all()
+      .all();
   }
 
   return db
@@ -469,28 +469,28 @@ export function getSuppliers(search = '') {
       id DESC
     `,
     )
-    .all(q, q, q, q)
+    .all(q, q, q, q);
 }
 
 export function listSuppliers(input?: {
-  search?: string
+  search?: string;
 
-  limit?: number
-  offset?: number
+  limit?: number;
+  offset?: number;
 
-  include_summary?: boolean
+  include_summary?: boolean;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const search = input?.search?.trim() || ''
+  const search = input?.search?.trim() || '';
 
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
 
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
-  const where: string[] = [`is_active = 1`]
+  const where: string[] = [`is_active = 1`];
 
-  const params: any[] = []
+  const params: any[] = [];
 
   if (search) {
     where.push(`
@@ -500,14 +500,14 @@ export function listSuppliers(input?: {
         OR IFNULL(email, '') LIKE ?
         OR IFNULL(address, '') LIKE ?
       )
-    `)
+    `);
 
-    const q = `%${search}%`
+    const q = `%${search}%`;
 
-    params.push(q, q, q, q)
+    params.push(q, q, q, q);
   }
 
-  const whereSql = `WHERE ${where.join(' AND ')}`
+  const whereSql = `WHERE ${where.join(' AND ')}`;
 
   const rows = db
     .prepare(
@@ -529,7 +529,7 @@ export function listSuppliers(input?: {
       OFFSET ?
     `,
     )
-    .all(...params, limit, offset)
+    .all(...params, limit, offset);
 
   const totalRow = db
     .prepare(
@@ -541,16 +541,16 @@ export function listSuppliers(input?: {
     `,
     )
     .get(...params) as {
-    total: number
-  }
+    total: number;
+  };
 
   const aging = input?.include_summary
     ? getSupplierAgingSummary(null, search)
-    : null
+    : null;
 
   const due = input?.include_summary
     ? getSupplierDueSummary(null, search)
-    : null
+    : null;
 
   return {
     rows,
@@ -566,11 +566,11 @@ export function listSuppliers(input?: {
           due,
         }
       : undefined,
-  }
+  };
 }
 
 export function getSupplierById(id: number) {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .prepare(
@@ -581,19 +581,19 @@ export function getSupplierById(id: number) {
       LIMIT 1
     `,
     )
-    .get(id)
+    .get(id);
 }
 
 export function createSupplier(input: SupplierInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const name = input.name?.trim()
+  const name = input.name?.trim();
 
   if (!name) {
-    throw new Error('اسم المورد مطلوب')
+    throw new Error('اسم المورد مطلوب');
   }
 
-  const creditDays = normalizeCreditDays(input.credit_days)
+  const creditDays = normalizeCreditDays(input.credit_days);
 
   const result = db
     .prepare(
@@ -616,23 +616,23 @@ export function createSupplier(input: SupplierInput) {
       cleanText(input.address),
       cleanText(input.notes),
       creditDays,
-    )
+    );
 
-  return getSupplierById(Number(result.lastInsertRowid))
+  return getSupplierById(Number(result.lastInsertRowid));
 }
 
 export function updateSupplier(input: SupplierUpdateInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const id = Number(input.id)
-  const name = input.name?.trim()
+  const id = Number(input.id);
+  const name = input.name?.trim();
 
   if (!id) {
-    throw new Error('Supplier ID is required')
+    throw new Error('Supplier ID is required');
   }
 
   if (!name) {
-    throw new Error('اسم المورد مطلوب')
+    throw new Error('اسم المورد مطلوب');
   }
 
   const current = db
@@ -650,18 +650,18 @@ export function updateSupplier(input: SupplierUpdateInput) {
     )
     .get(id) as
     | {
-        credit_days: number | null
+        credit_days: number | null;
       }
-    | undefined
+    | undefined;
 
   if (!current) {
-    throw new Error('المورد غير موجود')
+    throw new Error('المورد غير موجود');
   }
 
   const creditDays =
     input.credit_days === undefined
       ? current.credit_days
-      : normalizeCreditDays(input.credit_days)
+      : normalizeCreditDays(input.credit_days);
 
   db.prepare(
     `
@@ -684,18 +684,18 @@ export function updateSupplier(input: SupplierUpdateInput) {
     cleanText(input.notes),
     creditDays,
     id,
-  )
+  );
 
-  return getSupplierById(id)
+  return getSupplierById(id);
 }
 
 export function deleteSupplier(id: number) {
-  const db = getDb()
+  const db = getDb();
 
-  const supplierId = Number(id)
+  const supplierId = Number(id);
 
   if (!supplierId) {
-    throw new Error('رقم المورد غير صحيح')
+    throw new Error('رقم المورد غير صحيح');
   }
 
   const supplier = db
@@ -713,14 +713,14 @@ export function deleteSupplier(id: number) {
     )
     .get(supplierId) as
     | {
-        id: number
-        name: string
-        balance: number
+        id: number;
+        name: string;
+        balance: number;
       }
-    | undefined
+    | undefined;
 
   if (!supplier) {
-    throw new Error('المورد غير موجود')
+    throw new Error('المورد غير موجود');
   }
 
   const openDebtRow = db
@@ -739,26 +739,26 @@ export function deleteSupplier(id: number) {
     )
     .get(supplierId) as
     | {
-        open_debt: number
+        open_debt: number;
       }
-    | undefined
+    | undefined;
 
-  const supplierBalance = roundMoney(supplier.balance)
+  const supplierBalance = roundMoney(supplier.balance);
 
   if (supplierBalance < 0) {
     throw new Error(
       `لا يمكن حذف المورد لأن له رصيدًا ماليًا غير مسوّى بقيمة ${Math.abs(supplierBalance)} ج.م`,
-    )
+    );
   }
 
   const outstandingAmount = roundMoney(
     Math.max(supplierBalance, Number(openDebtRow?.open_debt || 0)),
-  )
+  );
 
   if (outstandingAmount > 0) {
     throw new Error(
       `لا يمكن حذف المورد لأن له مستحقات بقيمة ${outstandingAmount} ج.م`,
-    )
+    );
   }
 
   db.prepare(
@@ -769,7 +769,7 @@ export function deleteSupplier(id: number) {
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
     `,
-  ).run(supplierId)
+  ).run(supplierId);
 
-  return { ok: true }
+  return { ok: true };
 }

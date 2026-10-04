@@ -1,18 +1,18 @@
-import Database from 'better-sqlite3'
-import path from 'node:path'
-import { app } from 'electron'
-import { hashPassword } from '../security/password'
-import { runDatabaseMigrations } from './migrations/migrations'
-let db: Database.Database
+import Database from 'better-sqlite3';
+import path from 'node:path';
+import { app } from 'electron';
+import { hashPassword } from '../security/password';
+import { runDatabaseMigrations } from './migrations/migrations';
+let db: Database.Database;
 
 export function getDbPath(): string {
-  return path.join(app.getPath('userData'), 'erp.db')
+  return path.join(app.getPath('userData'), 'erp.db');
 }
 
 export function closeDb(): void {
   if (db) {
-    db.close()
-    db = undefined as unknown as Database.Database
+    db.close();
+    db = undefined as unknown as Database.Database;
   }
 }
 
@@ -28,12 +28,12 @@ function repairLegacyFirstShiftOpeningTransfer(db: Database.Database) {
     )
     .get() as
     | {
-        id: number
+        id: number;
       }
-    | undefined
+    | undefined;
 
   if (!firstShift) {
-    return
+    return;
   }
 
   const badMovement = db
@@ -64,17 +64,17 @@ function repairLegacyFirstShiftOpeningTransfer(db: Database.Database) {
     )
     .get(firstShift.id, firstShift.id) as
     | {
-        id: number
-        amount: number
-        created_by: number | null
-        business_date: string | null
-        created_at: string | null
-        shift_id: number
+        id: number;
+        amount: number;
+        created_by: number | null;
+        business_date: string | null;
+        created_at: string | null;
+        shift_id: number;
       }
-    | undefined
+    | undefined;
 
   if (!badMovement || Number(badMovement.amount || 0) <= 0) {
-    return
+    return;
   }
 
   const tx = db.transaction(() => {
@@ -97,7 +97,7 @@ function repairLegacyFirstShiftOpeningTransfer(db: Database.Database) {
         LIMIT 1
         `,
       )
-      .get(badMovement.id)
+      .get(badMovement.id);
 
     /*
      * الحركة القديمة لم تكن سحبًا حقيقيًا.
@@ -121,7 +121,7 @@ function repairLegacyFirstShiftOpeningTransfer(db: Database.Database) {
     ).run(
       `تصحيح ترحيل الرصيد السابق عند فتح أول شفت #${firstShift.id} إلى الخزنة الآمنة`,
       badMovement.id,
-    )
+    );
 
     if (!safeMovementExists) {
       db.prepare(
@@ -171,18 +171,18 @@ function repairLegacyFirstShiftOpeningTransfer(db: Database.Database) {
         badMovement.business_date,
         badMovement.shift_id,
         badMovement.created_at,
-      )
+      );
     }
-  })
+  });
 
-  tx()
+  tx();
 }
 
 export function getDb(): Database.Database {
   if (!db) {
-    const dbPath = getDbPath()
+    const dbPath = getDbPath();
 
-    db = new Database(dbPath)
+    db = new Database(dbPath);
 
     db.exec(`
       PRAGMA foreign_keys = ON;
@@ -958,7 +958,7 @@ export function getDb(): Database.Database {
         FOREIGN KEY (variant_id) REFERENCES product_variants(id)
       );
 
-    `)
+    `);
 
     runDatabaseMigrations(db, [
       {
@@ -970,159 +970,184 @@ export function getDb(): Database.Database {
             'users',
             'must_change_password',
             'INTEGER NOT NULL DEFAULT 0',
-          )
+          );
 
-          safeAddColumn(db, 'activity_logs', 'approved_by', 'INTEGER')
+          safeAddColumn(db, 'activity_logs', 'approved_by', 'INTEGER');
 
-          safeAddColumn(db, 'product_variants', 'discount_price', 'REAL')
-          safeAddColumn(db, 'promotions', 'type', `TEXT DEFAULT 'percent'`)
+          safeAddColumn(db, 'product_variants', 'discount_price', 'REAL');
+          safeAddColumn(db, 'promotions', 'type', `TEXT DEFAULT 'percent'`);
 
-          safeAddColumn(db, 'promotions', 'value', 'REAL DEFAULT 0')
+          safeAddColumn(db, 'promotions', 'value', 'REAL DEFAULT 0');
 
-          safeAddColumn(db, 'promotions', 'scope_type', `TEXT DEFAULT 'all'`)
+          safeAddColumn(db, 'promotions', 'scope_type', `TEXT DEFAULT 'all'`);
 
-          safeAddColumn(db, 'promotions', 'category_id', 'INTEGER')
+          safeAddColumn(db, 'promotions', 'category_id', 'INTEGER');
 
-          safeAddColumn(db, 'promotions', 'is_active', 'INTEGER DEFAULT 0')
+          safeAddColumn(db, 'promotions', 'is_active', 'INTEGER DEFAULT 0');
 
-          safeAddColumn(db, 'promotions', 'created_by', 'INTEGER')
+          safeAddColumn(db, 'promotions', 'created_by', 'INTEGER');
 
-          safeAddColumn(db, 'promotions', 'buy_qty', 'INTEGER')
-          safeAddColumn(db, 'promotions', 'free_qty', 'INTEGER')
-          safeAddColumn(db, 'promotions', 'duration_hours', 'REAL')
-          safeAddColumn(db, 'promotions', 'ends_at', 'INTEGER')
-          safeAddColumn(db, 'stock_count_sessions', 'category_id', 'INTEGER')
+          safeAddColumn(db, 'promotions', 'buy_qty', 'INTEGER');
+          safeAddColumn(db, 'promotions', 'free_qty', 'INTEGER');
+          safeAddColumn(db, 'promotions', 'duration_hours', 'REAL');
+          safeAddColumn(db, 'promotions', 'ends_at', 'INTEGER');
+          safeAddColumn(db, 'stock_count_sessions', 'category_id', 'INTEGER');
           safeAddColumn(
             db,
             'sales',
             'loyalty_points_earned',
             'INTEGER DEFAULT 0',
-          )
+          );
           safeAddColumn(
             db,
             'sales',
             'loyalty_points_redeemed',
             'INTEGER DEFAULT 0',
-          )
-          safeAddColumn(db, 'sales', 'loyalty_discount_value', 'REAL DEFAULT 0')
-          safeAddColumn(db, 'sales', 'promotion_id', 'INTEGER')
+          );
+          safeAddColumn(
+            db,
+            'sales',
+            'loyalty_discount_value',
+            'REAL DEFAULT 0',
+          );
+          safeAddColumn(db, 'sales', 'promotion_id', 'INTEGER');
 
-          safeAddColumn(db, 'sales', 'promotion_name', 'TEXT')
+          safeAddColumn(db, 'sales', 'promotion_name', 'TEXT');
 
           safeAddColumn(
             db,
             'sales',
             'promotion_discount_value',
             'REAL DEFAULT 0',
-          )
+          );
 
           safeAddColumn(
             db,
             'sale_items',
             'promotion_discount_value',
             'REAL DEFAULT 0',
-          )
+          );
 
           safeAddColumn(
             db,
             'sale_items',
             'is_gift',
             'INTEGER NOT NULL DEFAULT 0',
-          )
+          );
 
-          safeAddColumn(db, 'sale_items', 'promotion_group_id', 'TEXT')
+          safeAddColumn(db, 'sale_items', 'promotion_group_id', 'TEXT');
 
-          safeAddColumn(db, 'sale_returns', 'normal_discount_value', 'REAL')
+          safeAddColumn(db, 'sale_returns', 'normal_discount_value', 'REAL');
 
-          safeAddColumn(db, 'sale_return_items', 'promotion_unit_id', 'INTEGER')
+          safeAddColumn(
+            db,
+            'sale_return_items',
+            'promotion_unit_id',
+            'INTEGER',
+          );
 
           safeAddColumn(
             db,
             'sale_exchanges',
             'cash_collection_amount',
             'REAL NOT NULL DEFAULT 0',
-          )
+          );
 
           safeAddColumn(
             db,
             'sale_exchanges',
             'debt_reduction_amount',
             'REAL NOT NULL DEFAULT 0',
-          )
+          );
 
           safeAddColumn(
             db,
             'sale_exchanges',
             'cash_refund_amount',
             'REAL NOT NULL DEFAULT 0',
-          )
+          );
 
           safeAddColumn(
             db,
             'sale_promotion_units',
             'original_unit_cost',
             'REAL',
-          )
+          );
 
-          safeAddColumn(db, 'sale_promotion_units', 'current_unit_cost', 'REAL')
+          safeAddColumn(
+            db,
+            'sale_promotion_units',
+            'current_unit_cost',
+            'REAL',
+          );
 
-          safeAddColumn(db, 'sale_exchange_items', 'old_unit_cost', 'REAL')
+          safeAddColumn(db, 'sale_exchange_items', 'old_unit_cost', 'REAL');
 
-          safeAddColumn(db, 'sale_exchange_items', 'new_unit_cost', 'REAL')
+          safeAddColumn(db, 'sale_exchange_items', 'new_unit_cost', 'REAL');
 
-          safeAddColumn(db, 'sale_exchanges', 'old_invoice_sub_total', 'REAL')
+          safeAddColumn(db, 'sale_exchanges', 'old_invoice_sub_total', 'REAL');
 
-          safeAddColumn(db, 'sale_exchanges', 'new_invoice_sub_total', 'REAL')
+          safeAddColumn(db, 'sale_exchanges', 'new_invoice_sub_total', 'REAL');
 
           safeAddColumn(
             db,
             'sale_exchanges',
             'old_promotion_discount_value',
             'REAL',
-          )
+          );
 
           safeAddColumn(
             db,
             'sale_exchanges',
             'new_promotion_discount_value',
             'REAL',
-          )
+          );
 
           safeAddColumn(
             db,
             'sale_exchanges',
             'old_normal_discount_value',
             'REAL',
-          )
+          );
 
           safeAddColumn(
             db,
             'sale_exchanges',
             'new_normal_discount_value',
             'REAL',
-          )
+          );
 
           safeAddColumn(
             db,
             'sale_exchanges',
             'old_loyalty_discount_value',
             'REAL',
-          )
+          );
 
           safeAddColumn(
             db,
             'sale_exchanges',
             'new_loyalty_discount_value',
             'REAL',
-          )
+          );
 
-          safeAddColumn(db, 'sale_exchanges', 'old_invoice_grand_total', 'REAL')
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'old_invoice_grand_total',
+            'REAL',
+          );
 
-          safeAddColumn(db, 'sale_exchanges', 'new_invoice_grand_total', 'REAL')
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'new_invoice_grand_total',
+            'REAL',
+          );
 
-          safeAddColumn(db, 'sale_exchanges', 'old_net_total', 'REAL')
+          safeAddColumn(db, 'sale_exchanges', 'old_net_total', 'REAL');
 
-          safeAddColumn(db, 'sale_exchanges', 'new_net_total', 'REAL')
+          safeAddColumn(db, 'sale_exchanges', 'new_net_total', 'REAL');
 
           db.exec(`
             UPDATE sale_promotion_units
@@ -1176,124 +1201,124 @@ export function getDb(): Database.Database {
               LIMIT 1
             )
             WHERE new_unit_cost IS NULL;
-          `)
+          `);
 
           safeAddColumn(
             db,
             'sale_returns',
             'promotion_discount_value',
             'REAL DEFAULT 0',
-          )
+          );
 
           safeAddColumn(
             db,
             'sale_return_items',
             'promotion_discount_value',
             'REAL DEFAULT 0',
-          )
+          );
 
           safeAddColumn(
             db,
             'sale_exchanges',
             'loyalty_earned_points_adjustment',
             'INTEGER NOT NULL DEFAULT 0',
-          )
+          );
 
           safeAddColumn(
             db,
             'sale_exchanges',
             'loyalty_redeemed_points_adjustment',
             'INTEGER NOT NULL DEFAULT 0',
-          )
+          );
 
-          safeAddColumn(db, 'sale_exchanges', 'cancelled_at', 'TEXT')
+          safeAddColumn(db, 'sale_exchanges', 'cancelled_at', 'TEXT');
 
-          safeAddColumn(db, 'sale_exchanges', 'cancelled_by', 'INTEGER')
+          safeAddColumn(db, 'sale_exchanges', 'cancelled_by', 'INTEGER');
 
-          safeAddColumn(db, 'sale_exchanges', 'cancel_reason', 'TEXT')
-          safeAddColumn(db, 'sale_exchanges', 'shift_id', 'INTEGER')
-          safeAddColumn(db, 'sale_exchanges', 'cancelled_shift_id', 'INTEGER')
+          safeAddColumn(db, 'sale_exchanges', 'cancel_reason', 'TEXT');
+          safeAddColumn(db, 'sale_exchanges', 'shift_id', 'INTEGER');
+          safeAddColumn(db, 'sale_exchanges', 'cancelled_shift_id', 'INTEGER');
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
               idx_sale_exchanges_cancelled_shift_id
             ON sale_exchanges(cancelled_shift_id);
-          `)
+          `);
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
               idx_sale_exchanges_shift_id
             ON sale_exchanges(shift_id);
-          `)
+          `);
           safeAddColumn(
             db,
             'sale_loyalty_snapshots',
             'source',
             `TEXT NOT NULL DEFAULT 'exact'`,
-          )
-          safeAddColumn(db, 'sales', 'parent_sale_id', 'INTEGER')
-          safeAddColumn(db, 'sales', 'return_reason', 'TEXT')
-          safeAddColumn(db, 'sales', 'type', `TEXT DEFAULT 'sale'`)
-          safeAddColumn(db, 'suppliers', 'email', 'TEXT')
-          safeAddColumn(db, 'suppliers', 'address', 'TEXT')
-          safeAddColumn(db, 'suppliers', 'notes', 'TEXT')
-          safeAddColumn(db, 'suppliers', 'total_purchased', 'REAL DEFAULT 0')
-          safeAddColumn(db, 'suppliers', 'balance', 'REAL DEFAULT 0')
-          safeAddColumn(db, 'suppliers', 'is_active', 'INTEGER DEFAULT 1')
-          safeAddColumn(db, 'suppliers', 'updated_at', 'TEXT')
+          );
+          safeAddColumn(db, 'sales', 'parent_sale_id', 'INTEGER');
+          safeAddColumn(db, 'sales', 'return_reason', 'TEXT');
+          safeAddColumn(db, 'sales', 'type', `TEXT DEFAULT 'sale'`);
+          safeAddColumn(db, 'suppliers', 'email', 'TEXT');
+          safeAddColumn(db, 'suppliers', 'address', 'TEXT');
+          safeAddColumn(db, 'suppliers', 'notes', 'TEXT');
+          safeAddColumn(db, 'suppliers', 'total_purchased', 'REAL DEFAULT 0');
+          safeAddColumn(db, 'suppliers', 'balance', 'REAL DEFAULT 0');
+          safeAddColumn(db, 'suppliers', 'is_active', 'INTEGER DEFAULT 1');
+          safeAddColumn(db, 'suppliers', 'updated_at', 'TEXT');
           safeAddColumn(
             db,
             'purchase_invoices',
             'payment_method',
             `TEXT DEFAULT 'cash'`,
-          )
-          safeAddColumn(db, 'purchase_invoices', 'notes', 'TEXT')
-          safeAddColumn(db, 'purchase_invoices', 'sub_total', 'REAL DEFAULT 0')
+          );
+          safeAddColumn(db, 'purchase_invoices', 'notes', 'TEXT');
+          safeAddColumn(db, 'purchase_invoices', 'sub_total', 'REAL DEFAULT 0');
           safeAddColumn(
             db,
             'purchase_invoices',
             'discount_type',
             `TEXT DEFAULT 'amount'`,
-          )
+          );
 
           safeAddColumn(
             db,
             'purchase_invoices',
             'discount_input',
             'REAL DEFAULT 0',
-          )
+          );
           safeAddColumn(
             db,
             'purchase_invoices',
             'discount_value',
             'REAL DEFAULT 0',
-          )
+          );
           safeAddColumn(
             db,
             'purchase_invoices',
             'status',
             `TEXT DEFAULT 'active'`,
-          )
-          safeAddColumn(db, 'purchase_invoices', 'cancelled_at', 'TEXT')
-          safeAddColumn(db, 'purchase_invoices', 'cancelled_by', 'INTEGER')
-          safeAddColumn(db, 'purchase_invoices', 'cancel_reason', 'TEXT')
-          safeAddColumn(db, 'supplier_payments', 'purchase_id', 'INTEGER')
-          safeAddColumn(db, 'supplier_payments', 'batch_id', 'INTEGER')
+          );
+          safeAddColumn(db, 'purchase_invoices', 'cancelled_at', 'TEXT');
+          safeAddColumn(db, 'purchase_invoices', 'cancelled_by', 'INTEGER');
+          safeAddColumn(db, 'purchase_invoices', 'cancel_reason', 'TEXT');
+          safeAddColumn(db, 'supplier_payments', 'purchase_id', 'INTEGER');
+          safeAddColumn(db, 'supplier_payments', 'batch_id', 'INTEGER');
           safeAddColumn(
             db,
             'supplier_payments',
             'payment_method',
             `TEXT DEFAULT 'cash'`,
-          )
-          safeAddColumn(db, 'supplier_payments', 'notes', 'TEXT')
+          );
+          safeAddColumn(db, 'supplier_payments', 'notes', 'TEXT');
 
-          safeAddColumn(db, 'customers', 'balance', 'REAL DEFAULT 0')
+          safeAddColumn(db, 'customers', 'balance', 'REAL DEFAULT 0');
 
-          safeAddColumn(db, 'sales', 'remaining_amount', 'REAL DEFAULT 0')
-          safeAddColumn(db, 'sales', 'payment_status', `TEXT DEFAULT 'paid'`)
+          safeAddColumn(db, 'sales', 'remaining_amount', 'REAL DEFAULT 0');
+          safeAddColumn(db, 'sales', 'payment_status', `TEXT DEFAULT 'paid'`);
 
-          safeAddColumn(db, 'sales', 'business_date', 'TEXT')
-          safeAddColumn(db, 'sales', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'sales', 'business_date', 'TEXT');
+          safeAddColumn(db, 'sales', 'shift_id', 'INTEGER');
 
           db.prepare(
             `
@@ -1339,51 +1364,51 @@ export function getDb(): Database.Database {
               AND IFNULL(s.paid, 0) > 0
               AND IFNULL(s.payment_method, '') <> 'split'
             `,
-          ).run()
+          ).run();
 
           db.prepare(
             `
             DELETE FROM sale_payments
             WHERE payment_method = 'split'
             `,
-          ).run()
+          ).run();
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
               idx_sales_shift_id
             ON sales(shift_id);
-          `)
-          safeAddColumn(db, 'sales', 'cancelled_at', 'TEXT')
-          safeAddColumn(db, 'sales', 'cancelled_by', 'INTEGER')
-          safeAddColumn(db, 'sales', 'cancel_reason', 'TEXT')
-          safeAddColumn(db, 'sales', 'cancelled_shift_id', 'INTEGER')
+          `);
+          safeAddColumn(db, 'sales', 'cancelled_at', 'TEXT');
+          safeAddColumn(db, 'sales', 'cancelled_by', 'INTEGER');
+          safeAddColumn(db, 'sales', 'cancel_reason', 'TEXT');
+          safeAddColumn(db, 'sales', 'cancelled_shift_id', 'INTEGER');
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
               idx_sales_cancelled_shift_id
             ON sales(cancelled_shift_id);
-          `)
-          safeAddColumn(db, 'sale_returns', 'cancelled_at', 'TEXT')
-          safeAddColumn(db, 'sale_returns', 'cancelled_by', 'INTEGER')
-          safeAddColumn(db, 'sale_returns', 'cancel_reason', 'TEXT')
-          safeAddColumn(db, 'sale_returns', 'shift_id', 'INTEGER')
+          `);
+          safeAddColumn(db, 'sale_returns', 'cancelled_at', 'TEXT');
+          safeAddColumn(db, 'sale_returns', 'cancelled_by', 'INTEGER');
+          safeAddColumn(db, 'sale_returns', 'cancel_reason', 'TEXT');
+          safeAddColumn(db, 'sale_returns', 'shift_id', 'INTEGER');
 
-          safeAddColumn(db, 'sale_returns', 'cancelled_shift_id', 'INTEGER')
+          safeAddColumn(db, 'sale_returns', 'cancelled_shift_id', 'INTEGER');
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
               idx_sale_returns_cancelled_shift_id
             ON sale_returns(cancelled_shift_id);
-          `)
+          `);
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
               idx_sale_returns_shift_id
             ON sale_returns(shift_id);
-          `)
-          safeAddColumn(db, 'sale_returns', 'debt_reduction_amount', 'REAL')
+          `);
+          safeAddColumn(db, 'sale_returns', 'debt_reduction_amount', 'REAL');
 
-          safeAddColumn(db, 'sale_returns', 'cash_refund_amount', 'REAL')
+          safeAddColumn(db, 'sale_returns', 'cash_refund_amount', 'REAL');
 
           db.prepare(
             `
@@ -1392,25 +1417,25 @@ export function getDb(): Database.Database {
             WHERE business_date IS NULL
               OR TRIM(business_date) = ''
             `,
-          ).run()
+          ).run();
 
-          safeAddColumn(db, 'customer_payments', 'sale_id', 'INTEGER')
-          safeAddColumn(db, 'customer_payments', 'batch_id', 'INTEGER')
+          safeAddColumn(db, 'customer_payments', 'sale_id', 'INTEGER');
+          safeAddColumn(db, 'customer_payments', 'batch_id', 'INTEGER');
           safeAddColumn(
             db,
             'customer_payments',
             'payment_method',
             `TEXT DEFAULT 'cash'`,
-          )
-          safeAddColumn(db, 'customer_payments', 'notes', 'TEXT')
-          safeAddColumn(db, 'customer_payment_batches', 'shift_id', 'INTEGER')
+          );
+          safeAddColumn(db, 'customer_payments', 'notes', 'TEXT');
+          safeAddColumn(db, 'customer_payment_batches', 'shift_id', 'INTEGER');
 
           safeAddColumn(
             db,
             'customer_payment_batches',
             'cancelled_shift_id',
             'INTEGER',
-          )
+          );
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
@@ -1420,63 +1445,63 @@ export function getDb(): Database.Database {
             CREATE INDEX IF NOT EXISTS
               idx_customer_payment_batches_cancelled_shift_id
             ON customer_payment_batches(cancelled_shift_id);
-          `)
-          safeAddColumn(db, 'store_liabilities', 'category', 'TEXT')
+          `);
+          safeAddColumn(db, 'store_liabilities', 'category', 'TEXT');
           safeAddColumn(
             db,
             'store_liabilities',
             'paid_amount',
             'REAL DEFAULT 0',
-          )
+          );
           safeAddColumn(
             db,
             'store_liabilities',
             'remaining_amount',
             'REAL DEFAULT 0',
-          )
+          );
           safeAddColumn(
             db,
             'store_liabilities',
             'status',
             `TEXT DEFAULT 'open'`,
-          )
-          safeAddColumn(db, 'store_liabilities', 'due_date', 'TEXT')
-          safeAddColumn(db, 'store_liabilities', 'updated_at', 'TEXT')
+          );
+          safeAddColumn(db, 'store_liabilities', 'due_date', 'TEXT');
+          safeAddColumn(db, 'store_liabilities', 'updated_at', 'TEXT');
           safeAddColumn(
             db,
             'store_liability_payments',
             'payment_method',
             `TEXT DEFAULT 'cash'`,
-          )
-          safeAddColumn(db, 'store_liability_payments', 'notes', 'TEXT')
+          );
+          safeAddColumn(db, 'store_liability_payments', 'notes', 'TEXT');
 
-          safeAddColumn(db, 'cash_movements', 'business_date', 'TEXT')
-          safeAddColumn(db, 'cash_movements', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'cash_movements', 'business_date', 'TEXT');
+          safeAddColumn(db, 'cash_movements', 'shift_id', 'INTEGER');
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
               idx_cash_movements_shift_id
             ON cash_movements(shift_id);
-          `)
-          safeAddColumn(db, 'cash_movements', 'cancelled_at', 'TEXT')
-          safeAddColumn(db, 'cash_movements', 'cancelled_by', 'INTEGER')
-          safeAddColumn(db, 'cash_movements', 'cancel_reason', 'TEXT')
+          `);
+          safeAddColumn(db, 'cash_movements', 'cancelled_at', 'TEXT');
+          safeAddColumn(db, 'cash_movements', 'cancelled_by', 'INTEGER');
+          safeAddColumn(db, 'cash_movements', 'cancel_reason', 'TEXT');
           safeAddColumn(
             db,
             'cash_movements',
             'replacement_movement_id',
             'INTEGER',
-          )
-          repairLegacyFirstShiftOpeningTransfer(db)
-          safeAddColumn(db, 'expenses', 'cancelled_at', 'TEXT')
-          safeAddColumn(db, 'expenses', 'cancelled_by', 'INTEGER')
-          safeAddColumn(db, 'expenses', 'cancel_reason', 'TEXT')
+          );
+          repairLegacyFirstShiftOpeningTransfer(db);
+          safeAddColumn(db, 'expenses', 'cancelled_at', 'TEXT');
+          safeAddColumn(db, 'expenses', 'cancelled_by', 'INTEGER');
+          safeAddColumn(db, 'expenses', 'cancel_reason', 'TEXT');
 
-          safeAddColumn(db, 'expenses', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'expenses', 'shift_id', 'INTEGER');
 
-          safeAddColumn(db, 'expenses', 'updated_shift_id', 'INTEGER')
+          safeAddColumn(db, 'expenses', 'updated_shift_id', 'INTEGER');
 
-          safeAddColumn(db, 'expenses', 'cancelled_shift_id', 'INTEGER')
+          safeAddColumn(db, 'expenses', 'cancelled_shift_id', 'INTEGER');
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
@@ -1490,25 +1515,30 @@ export function getDb(): Database.Database {
             CREATE INDEX IF NOT EXISTS
               idx_expenses_cancelled_shift_id
             ON expenses(cancelled_shift_id);
-          `)
+          `);
 
-          safeAddColumn(db, 'store_liability_payments', 'cancelled_at', 'TEXT')
+          safeAddColumn(db, 'store_liability_payments', 'cancelled_at', 'TEXT');
           safeAddColumn(
             db,
             'store_liability_payments',
             'cancelled_by',
             'INTEGER',
-          )
-          safeAddColumn(db, 'store_liability_payments', 'cancel_reason', 'TEXT')
+          );
+          safeAddColumn(
+            db,
+            'store_liability_payments',
+            'cancel_reason',
+            'TEXT',
+          );
 
-          safeAddColumn(db, 'store_liability_payments', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'store_liability_payments', 'shift_id', 'INTEGER');
 
           safeAddColumn(
             db,
             'store_liability_payments',
             'cancelled_shift_id',
             'INTEGER',
-          )
+          );
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
@@ -1518,27 +1548,27 @@ export function getDb(): Database.Database {
             CREATE INDEX IF NOT EXISTS
               idx_store_liability_payments_cancelled_shift_id
             ON store_liability_payments(cancelled_shift_id);
-          `)
+          `);
 
-          safeAddColumn(db, 'purchase_items', 'previous_buy_price', 'REAL')
+          safeAddColumn(db, 'purchase_items', 'previous_buy_price', 'REAL');
 
-          safeAddColumn(db, 'purchase_invoices', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'purchase_invoices', 'shift_id', 'INTEGER');
 
           safeAddColumn(
             db,
             'purchase_invoices',
             'cancelled_shift_id',
             'INTEGER',
-          )
+          );
 
-          safeAddColumn(db, 'supplier_payment_batches', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'supplier_payment_batches', 'shift_id', 'INTEGER');
 
           safeAddColumn(
             db,
             'supplier_payment_batches',
             'cancelled_shift_id',
             'INTEGER',
-          )
+          );
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
@@ -1556,18 +1586,18 @@ export function getDb(): Database.Database {
             CREATE INDEX IF NOT EXISTS
               idx_supplier_payment_batches_cancelled_shift_id
             ON supplier_payment_batches(cancelled_shift_id);
-          `)
+          `);
 
           safeAddColumn(
             db,
             'store_liability_payments',
             'replacement_payment_id',
             'INTEGER',
-          )
+          );
 
-          safeAddColumn(db, 'store_liabilities', 'cancelled_at', 'TEXT')
-          safeAddColumn(db, 'store_liabilities', 'cancelled_by', 'INTEGER')
-          safeAddColumn(db, 'store_liabilities', 'cancel_reason', 'TEXT')
+          safeAddColumn(db, 'store_liabilities', 'cancelled_at', 'TEXT');
+          safeAddColumn(db, 'store_liabilities', 'cancelled_by', 'INTEGER');
+          safeAddColumn(db, 'store_liabilities', 'cancel_reason', 'TEXT');
 
           db.prepare(
             `
@@ -1584,10 +1614,10 @@ export function getDb(): Database.Database {
                 OR TRIM(business_date) = ''
               )
             `,
-          ).run()
+          ).run();
 
-          normalizePurchaseMoney(db)
-          normalizeStockMovementTypes(db)
+          normalizePurchaseMoney(db);
+          normalizeStockMovementTypes(db);
 
           db.prepare(
             `
@@ -1691,7 +1721,7 @@ export function getDb(): Database.Database {
                 'sale'
               ) = 'sale'
             `,
-          ).run()
+          ).run();
 
           db.prepare(
             `
@@ -1722,7 +1752,7 @@ export function getDb(): Database.Database {
                   ) > 2
               )
             `,
-          ).run()
+          ).run();
 
           db.prepare(
             `
@@ -1774,7 +1804,7 @@ export function getDb(): Database.Database {
             WHERE IFNULL(type, 'sale') = 'sale'
               AND cancelled_at IS NULL
             `,
-          ).run()
+          ).run();
         },
       },
 
@@ -1822,36 +1852,41 @@ export function getDb(): Database.Database {
               unit_cost REAL NOT NULL,
               line_total REAL NOT NULL
             );
-          `)
+          `);
 
           /*
            * توافق مع قواعد البيانات التي أنشأت
            * purchase_returns سابقًا من Repository layer.
            */
-          safeAddColumn(db, 'purchase_returns', 'shift_id', 'INTEGER')
+          safeAddColumn(db, 'purchase_returns', 'shift_id', 'INTEGER');
 
           safeAddColumn(
             db,
             'purchase_returns',
             'debt_reduction_amount',
             'REAL DEFAULT 0',
-          )
+          );
 
           safeAddColumn(
             db,
             'purchase_returns',
             'cash_refund_amount',
             'REAL DEFAULT 0',
-          )
+          );
 
-          safeAddColumn(db, 'purchase_returns', 'refund_payment_method', 'TEXT')
+          safeAddColumn(
+            db,
+            'purchase_returns',
+            'refund_payment_method',
+            'TEXT',
+          );
 
           safeAddColumn(
             db,
             'purchase_returns',
             'refund_mode',
             `TEXT DEFAULT 'cash'`,
-          )
+          );
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
@@ -1869,7 +1904,7 @@ export function getDb(): Database.Database {
             CREATE INDEX IF NOT EXISTS
               idx_purchase_return_items_purchase_item_id
             ON purchase_return_items(purchase_item_id);
-          `)
+          `);
         },
       },
 
@@ -1878,7 +1913,7 @@ export function getDb(): Database.Database {
         name: 'purchase-corrections',
 
         up: () => {
-          safeAddColumn(db, 'purchase_invoices', 'business_date', 'TEXT')
+          safeAddColumn(db, 'purchase_invoices', 'business_date', 'TEXT');
 
           db.prepare(
             `
@@ -1891,22 +1926,27 @@ export function getDb(): Database.Database {
               business_date IS NULL
               OR TRIM(business_date) = ''
             `,
-          ).run()
+          ).run();
 
-          safeAddColumn(db, 'purchase_returns', 'cancelled_at', 'TEXT')
+          safeAddColumn(db, 'purchase_returns', 'cancelled_at', 'TEXT');
 
-          safeAddColumn(db, 'purchase_returns', 'cancelled_by', 'INTEGER')
+          safeAddColumn(db, 'purchase_returns', 'cancelled_by', 'INTEGER');
 
-          safeAddColumn(db, 'purchase_returns', 'cancel_reason', 'TEXT')
+          safeAddColumn(db, 'purchase_returns', 'cancel_reason', 'TEXT');
 
-          safeAddColumn(db, 'purchase_returns', 'cancelled_shift_id', 'INTEGER')
+          safeAddColumn(
+            db,
+            'purchase_returns',
+            'cancelled_shift_id',
+            'INTEGER',
+          );
 
           safeAddColumn(
             db,
             'purchase_returns',
             'replacement_return_id',
             'INTEGER',
-          )
+          );
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
@@ -1923,7 +1963,7 @@ export function getDb(): Database.Database {
             CREATE INDEX IF NOT EXISTS
               idx_purchase_returns_replacement_return_id
             ON purchase_returns(replacement_return_id);
-          `)
+          `);
         },
       },
 
@@ -1937,24 +1977,24 @@ export function getDb(): Database.Database {
             'product_variants',
             'average_cost',
             'REAL NOT NULL DEFAULT 0',
-          )
+          );
 
           safeAddColumn(
             db,
             'product_variants',
             'inventory_value',
             'REAL NOT NULL DEFAULT 0',
-          )
+          );
 
-          safeAddColumn(db, 'stock_movements', 'unit_cost', 'REAL')
+          safeAddColumn(db, 'stock_movements', 'unit_cost', 'REAL');
 
-          safeAddColumn(db, 'stock_movements', 'cost_value', 'REAL')
+          safeAddColumn(db, 'stock_movements', 'cost_value', 'REAL');
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
               idx_stock_movements_variant_id
             ON stock_movements(variant_id);
-          `)
+          `);
 
           /*
            * دي نقطة بداية للنسخ القديمة.
@@ -2066,7 +2106,7 @@ export function getDb(): Database.Database {
                   ELSE 0
                 END
             `,
-          ).run()
+          ).run();
         },
       },
 
@@ -2103,7 +2143,7 @@ export function getDb(): Database.Database {
             CREATE INDEX IF NOT EXISTS
               idx_user_permissions_user_id
             ON user_permissions(user_id);
-          `)
+          `);
         },
       },
 
@@ -2192,7 +2232,7 @@ export function getDb(): Database.Database {
           ON sale_promotion_snapshots(
             sale_id
           );
-        `)
+        `);
         },
       },
 
@@ -2281,7 +2321,7 @@ export function getDb(): Database.Database {
               held_sale_id,
               position
             );
-          `)
+          `);
         },
       },
 
@@ -2290,23 +2330,23 @@ export function getDb(): Database.Database {
         name: 'customer-credit-aging',
 
         up: () => {
-          safeAddColumn(db, 'customers', 'credit_limit', 'REAL')
+          safeAddColumn(db, 'customers', 'credit_limit', 'REAL');
 
           /*
            * Snapshot وقت البيع عشان نعرف
            * لاحقًا هل الفاتورة تجاوزت الحد
            * الائتماني وبموافقة مين.
            */
-          safeAddColumn(db, 'sales', 'credit_limit_at_sale', 'REAL')
+          safeAddColumn(db, 'sales', 'credit_limit_at_sale', 'REAL');
 
-          safeAddColumn(db, 'sales', 'customer_balance_before', 'REAL')
+          safeAddColumn(db, 'sales', 'customer_balance_before', 'REAL');
 
           safeAddColumn(
             db,
             'sales',
             'credit_limit_override_approved_by',
             'INTEGER',
-          )
+          );
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
@@ -2324,7 +2364,7 @@ export function getDb(): Database.Database {
               remaining_amount,
               cancelled_at
             );
-          `)
+          `);
         },
       },
 
@@ -2333,13 +2373,13 @@ export function getDb(): Database.Database {
         name: 'credit-terms-due-dates',
 
         up: () => {
-          safeAddColumn(db, 'customers', 'credit_days', 'INTEGER')
+          safeAddColumn(db, 'customers', 'credit_days', 'INTEGER');
 
-          safeAddColumn(db, 'suppliers', 'credit_days', 'INTEGER')
+          safeAddColumn(db, 'suppliers', 'credit_days', 'INTEGER');
 
-          safeAddColumn(db, 'sales', 'due_date', 'TEXT')
+          safeAddColumn(db, 'sales', 'due_date', 'TEXT');
 
-          safeAddColumn(db, 'purchase_invoices', 'due_date', 'TEXT')
+          safeAddColumn(db, 'purchase_invoices', 'due_date', 'TEXT');
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
@@ -2359,7 +2399,7 @@ export function getDb(): Database.Database {
               remaining_amount,
               cancelled_at
             );
-          `)
+          `);
         },
       },
 
@@ -2373,13 +2413,13 @@ export function getDb(): Database.Database {
             'stock_movements',
             'created_by',
             'INTEGER REFERENCES users(id)',
-          )
+          );
 
           db.exec(`
             CREATE INDEX IF NOT EXISTS
               idx_stock_movements_created_by
             ON stock_movements(created_by);
-          `)
+          `);
         },
       },
 
@@ -2517,21 +2557,21 @@ export function getDb(): Database.Database {
             ON purchase_order_items(
               variant_id
             );
-          `)
+          `);
         },
       },
-    ])
+    ]);
 
-    seedTestAdminUser(db)
-    seedDefaultCategories(db)
-    seedDefaultAppSettings(db)
+    seedTestAdminUser(db);
+    seedDefaultCategories(db);
+    seedDefaultAppSettings(db);
   }
 
-  return db
+  return db;
 }
 
 export function resetDatabaseData(): void {
-  const database = getDb()
+  const database = getDb();
 
   database.transaction(() => {
     database.exec(`
@@ -2599,12 +2639,12 @@ export function resetDatabaseData(): void {
 
       DELETE FROM sqlite_sequence;
 
-    `)
+    `);
 
-    seedTestAdminUser(database)
-    seedDefaultCategories(database)
-    seedDefaultAppSettings(database)
-  })()
+    seedTestAdminUser(database);
+    seedDefaultCategories(database);
+    seedDefaultAppSettings(database);
+  })();
 }
 
 function safeAddColumn(
@@ -2616,15 +2656,15 @@ function safeAddColumn(
   const columns = database
     .prepare(`PRAGMA table_info(${table})`)
     .all() as Array<{
-    name: string
-  }>
+    name: string;
+  }>;
 
-  const exists = columns.some((c) => c.name === column)
+  const exists = columns.some((c) => c.name === column);
 
   if (!exists) {
     database
       .prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
-      .run()
+      .run();
   }
 }
 
@@ -2657,7 +2697,7 @@ function normalizePurchaseMoney(database: Database.Database): void {
         )
     `,
       )
-      .run()
+      .run();
 
     database
       .prepare(
@@ -2673,7 +2713,7 @@ function normalizePurchaseMoney(database: Database.Database): void {
         AND IFNULL(payment_status, '') != 'cancelled'
     `,
       )
-      .run()
+      .run();
 
     database
       .prepare(
@@ -2685,7 +2725,7 @@ function normalizePurchaseMoney(database: Database.Database): void {
       )
     `,
       )
-      .run()
+      .run();
 
     database
       .prepare(
@@ -2697,7 +2737,7 @@ function normalizePurchaseMoney(database: Database.Database): void {
       )
     `,
       )
-      .run()
+      .run();
 
     database
       .prepare(
@@ -2721,8 +2761,8 @@ function normalizePurchaseMoney(database: Database.Database): void {
         END
     `,
       )
-      .run()
-  })()
+      .run();
+  })();
 }
 
 function normalizeStockMovementTypes(database: Database.Database): void {
@@ -2737,7 +2777,7 @@ function normalizeStockMovementTypes(database: Database.Database): void {
       WHERE type IN ('opening', 'product_opening', 'opening_stock')
       `,
     )
-    .run()
+    .run();
 
   // احتياطي لو أي نسخة قديمة كانت مسمية البيع أو المرتجع بأسماء مختلفة
   database
@@ -2748,7 +2788,7 @@ function normalizeStockMovementTypes(database: Database.Database): void {
       WHERE type IN ('sale_out', 'sales_out')
       `,
     )
-    .run()
+    .run();
 
   database
     .prepare(
@@ -2758,7 +2798,7 @@ function normalizeStockMovementTypes(database: Database.Database): void {
       WHERE type IN ('return_in', 'sale_return', 'return')
       `,
     )
-    .run()
+    .run();
 }
 
 function seedTestAdminUser(database: Database.Database): void {
@@ -2768,10 +2808,10 @@ function seedTestAdminUser(database: Database.Database): void {
    * Production لا يحتوي
    * على أي Default Admin.
    */
-  const testPassword = String(process.env.ERP_TEST_ADMIN_PASSWORD || '')
+  const testPassword = String(process.env.ERP_TEST_ADMIN_PASSWORD || '');
 
   if (!testPassword) {
-    return
+    return;
   }
 
   const existingAdmin = database
@@ -2786,10 +2826,10 @@ function seedTestAdminUser(database: Database.Database): void {
         LIMIT 1
         `,
     )
-    .get('admin')
+    .get('admin');
 
   if (existingAdmin) {
-    return
+    return;
   }
 
   database
@@ -2809,38 +2849,38 @@ function seedTestAdminUser(database: Database.Database): void {
       )
       `,
     )
-    .run('Test Administrator', 'admin', hashPassword(testPassword), 'admin')
+    .run('Test Administrator', 'admin', hashPassword(testPassword), 'admin');
 }
 
 function seedDefaultCategories(database: Database.Database): void {
   const countRow = database
     .prepare(`SELECT COUNT(*) as count FROM categories`)
-    .get() as { count: number }
+    .get() as { count: number };
 
   if (countRow.count > 0) {
-    return
+    return;
   }
 
   const stmt = database.prepare(`
     INSERT INTO categories (name, description, is_active)
     VALUES (?, ?, 1)
-  `)
+  `);
 
   const defaults = [
     ['كاجوال', 'ملابس كاجوال'],
     ['رسمي', 'ملابس رسمية'],
     ['رياضي', 'ملابس رياضية'],
     ['أطفال', 'ملابس أطفال'],
-  ]
+  ];
 
   const insertMany = database.transaction((items: string[][]) => {
     for (const item of items) {
-      stmt.run(item[0], item[1])
+      stmt.run(item[0], item[1]);
     }
-  })
+  });
 
-  insertMany(defaults)
-  console.log('Seeded default categories')
+  insertMany(defaults);
+  console.log('Seeded default categories');
 }
 
 function seedDefaultAppSettings(database: Database.Database): void {
@@ -2890,25 +2930,25 @@ function seedDefaultAppSettings(database: Database.Database): void {
 
     // أقل عدد نقاط ينفع يستخدمهم
     { key: 'loyalty_min_redeem_points', value: '1' },
-  ]
+  ];
 
   const existsStmt = database.prepare(
     `SELECT key FROM app_settings WHERE key = ? LIMIT 1`,
-  )
+  );
 
   const insertStmt = database.prepare(
     `INSERT INTO app_settings (key, value) VALUES (?, ?)`,
-  )
+  );
 
   const tx = database.transaction(() => {
     for (const item of defaults) {
-      const exists = existsStmt.get(item.key)
+      const exists = existsStmt.get(item.key);
 
       if (!exists) {
-        insertStmt.run(item.key, item.value)
+        insertStmt.run(item.key, item.value);
       }
     }
-  })
+  });
 
-  tx()
+  tx();
 }

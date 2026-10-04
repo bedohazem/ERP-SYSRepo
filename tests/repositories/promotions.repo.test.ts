@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 
 import {
   calculateActivePromotionsForSale,
@@ -8,17 +8,17 @@ import {
   getActivePromotions,
   listPromotions,
   togglePromotion,
-} from '../../src/main/database/repositories/promotions.repo'
+} from '../../src/main/database/repositories/promotions.repo';
 
 describe('promotions repository', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
-  })
+    closeDb();
+    getDb();
+    resetDatabaseData();
+  });
 
   it('allows multiple non-overlapping promotions and calculates both', () => {
-    const db = getDb()
+    const db = getDb();
 
     const categoryA = Number(
       db
@@ -35,7 +35,7 @@ describe('promotions repository', () => {
         `,
         )
         .run().lastInsertRowid,
-    )
+    );
 
     const categoryB = Number(
       db
@@ -52,7 +52,7 @@ describe('promotions repository', () => {
         `,
         )
         .run().lastInsertRowid,
-    )
+    );
 
     const productA = Number(
       db
@@ -71,7 +71,7 @@ describe('promotions repository', () => {
         `,
         )
         .run(categoryA).lastInsertRowid,
-    )
+    );
 
     const productB = Number(
       db
@@ -90,7 +90,7 @@ describe('promotions repository', () => {
         `,
         )
         .run(categoryB).lastInsertRowid,
-    )
+    );
 
     const variantA = Number(
       db
@@ -111,7 +111,7 @@ describe('promotions repository', () => {
         `,
         )
         .run(productA).lastInsertRowid,
-    )
+    );
 
     const variantB = Number(
       db
@@ -132,7 +132,7 @@ describe('promotions repository', () => {
         `,
         )
         .run(productB).lastInsertRowid,
-    )
+    );
 
     const first = createPromotion({
       name: 'Offer A',
@@ -146,7 +146,7 @@ describe('promotions repository', () => {
       product_ids: [productA],
 
       actor_id: 1,
-    })
+    });
 
     const second = createPromotion({
       name: 'Offer B',
@@ -160,15 +160,15 @@ describe('promotions repository', () => {
       product_ids: [productB],
 
       actor_id: 1,
-    })
+    });
 
-    togglePromotion(first.promotionId, 1)
+    togglePromotion(first.promotionId, 1);
 
-    togglePromotion(second.promotionId, 1)
+    togglePromotion(second.promotionId, 1);
 
     expect(
       getActivePromotions().map((promotion: any) => Number(promotion.id)),
-    ).toEqual([first.promotionId, second.promotionId])
+    ).toEqual([first.promotionId, second.promotionId]);
 
     const result = calculateActivePromotionsForSale([
       {
@@ -186,15 +186,15 @@ describe('promotions repository', () => {
 
         unit_price: 50,
       },
-    ])
+    ]);
 
-    expect(result.promotion_discount_value).toBe(20)
+    expect(result.promotion_discount_value).toBe(20);
 
-    expect(result.item_discounts).toEqual([10, 10])
-  })
+    expect(result.item_discounts).toEqual([10, 10]);
+  });
 
   it('rejects overlapping active promotions', () => {
-    const db = getDb()
+    const db = getDb();
 
     const productId = Number(
       db
@@ -211,7 +211,7 @@ describe('promotions repository', () => {
         `,
         )
         .run().lastInsertRowid,
-    )
+    );
 
     const first = createPromotion({
       name: 'First Overlap',
@@ -223,7 +223,7 @@ describe('promotions repository', () => {
       scope_type: 'products',
 
       product_ids: [productId],
-    })
+    });
 
     const second = createPromotion({
       name: 'Second Overlap',
@@ -235,18 +235,18 @@ describe('promotions repository', () => {
       scope_type: 'products',
 
       product_ids: [productId],
-    })
+    });
 
-    togglePromotion(first.promotionId, 1)
+    togglePromotion(first.promotionId, 1);
 
     expect(() => togglePromotion(second.promotionId, 1)).toThrow(
       'يتداخل مع العرض',
-    )
+    );
 
-    const rows = listPromotions() as any[]
+    const rows = listPromotions() as any[];
 
-    expect(rows.filter((row) => Number(row.is_active) === 1)).toHaveLength(1)
-  })
+    expect(rows.filter((row) => Number(row.is_active) === 1)).toHaveLength(1);
+  });
 
   it('rejects percent above 100', () => {
     expect(() =>
@@ -261,8 +261,8 @@ describe('promotions repository', () => {
 
         actor_id: 1,
       }),
-    ).toThrow('نسبة الخصم لا يمكن أن تتجاوز 100%')
-  })
+    ).toThrow('نسبة الخصم لا يمكن أن تتجاوز 100%');
+  });
 
   it('rounds fixed promotion money but preserves fractional percentages', () => {
     const fixed = createPromotion({
@@ -273,7 +273,7 @@ describe('promotions repository', () => {
       value: 12.5,
 
       scope_type: 'all',
-    })
+    });
 
     const percent = createPromotion({
       name: 'Fractional Percent',
@@ -283,18 +283,18 @@ describe('promotions repository', () => {
       value: 12.5,
 
       scope_type: 'all',
-    })
+    });
 
-    const rows = listPromotions() as any[]
+    const rows = listPromotions() as any[];
 
-    const fixedRow = rows.find((row) => Number(row.id) === fixed.promotionId)
+    const fixedRow = rows.find((row) => Number(row.id) === fixed.promotionId);
 
     const percentRow = rows.find(
       (row) => Number(row.id) === percent.promotionId,
-    )
+    );
 
-    expect(Number(fixedRow.value)).toBe(13)
+    expect(Number(fixedRow.value)).toBe(13);
 
-    expect(Number(percentRow.value)).toBe(12.5)
-  })
-})
+    expect(Number(percentRow.value)).toBe(12.5);
+  });
+});

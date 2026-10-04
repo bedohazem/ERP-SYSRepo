@@ -1,70 +1,70 @@
-import { getDb } from '../db'
-import { createCashMovement, resolveCashAccount } from './cash.repo'
-import { createCriticalActivityLog } from './activity.repo'
-import { resolveFinancialOperationShift } from './cash-shifts.repo'
-import { roundMoney } from '../../../shared/money'
+import { getDb } from '../db';
+import { createCashMovement, resolveCashAccount } from './cash.repo';
+import { createCriticalActivityLog } from './activity.repo';
+import { resolveFinancialOperationShift } from './cash-shifts.repo';
+import { roundMoney } from '../../../shared/money';
 
 export type CreateLiabilityInput = {
-  party_name: string
-  title: string
-  category?: string | null
-  total_amount: number
-  paid_amount?: number
-  payment_method?: string
-  due_date?: string | null
-  notes?: string | null
-  actor_id?: number | null
-}
+  party_name: string;
+  title: string;
+  category?: string | null;
+  total_amount: number;
+  paid_amount?: number;
+  payment_method?: string;
+  due_date?: string | null;
+  notes?: string | null;
+  actor_id?: number | null;
+};
 
 export type RecordLiabilityPaymentInput = {
-  liability_id: number
-  amount: number
-  payment_method?: string
-  notes?: string | null
-  actor_id?: number | null
-}
+  liability_id: number;
+  amount: number;
+  payment_method?: string;
+  notes?: string | null;
+  actor_id?: number | null;
+};
 
 export type UpdateLiabilityInput = {
-  id: number
-  party_name: string
-  title: string
-  category?: string | null
-  total_amount: number
-  due_date?: string | null
-  notes?: string | null
-  approved_by?: number | null
-  actor_id?: number | null
-}
+  id: number;
+  party_name: string;
+  title: string;
+  category?: string | null;
+  total_amount: number;
+  due_date?: string | null;
+  notes?: string | null;
+  approved_by?: number | null;
+  actor_id?: number | null;
+};
 
 export type UpdateLiabilityPaymentInput = {
-  payment_id: number
-  amount: number
-  payment_method?: string
-  notes?: string | null
-  approved_by?: number | null
-  actor_id?: number | null
-}
+  payment_id: number;
+  amount: number;
+  payment_method?: string;
+  notes?: string | null;
+  approved_by?: number | null;
+  actor_id?: number | null;
+};
 
 function cleanText(value: unknown) {
-  return String(value || '').trim()
+  return String(value || '').trim();
 }
 
 function getLiabilityByIdOrThrow(id: number) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(`SELECT * FROM store_liabilities WHERE id = ? LIMIT 1`)
-    .get(id) as any
+    .get(id) as any;
 
   if (!row) {
-    throw new Error('الالتزام غير موجود')
+    throw new Error('الالتزام غير موجود');
   }
 
-  return row
+  return row;
 }
 
 function getStatus(remaining: number) {
-  return remaining <= 0 ? 'paid' : 'open'
+  return remaining <= 0 ? 'paid' : 'open';
 }
 
 function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
@@ -77,34 +77,34 @@ function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
       `,
     )
     .get() as {
-    business_date: string
-  }
+    business_date: string;
+  };
 
-  return String(row?.business_date || '')
+  return String(row?.business_date || '');
 }
 
 export function createLiability(input: CreateLiabilityInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const partyName = cleanText(input.party_name)
-  const title = cleanText(input.title)
-  const totalAmount = roundMoney(input.total_amount)
+  const partyName = cleanText(input.party_name);
+  const title = cleanText(input.title);
+  const totalAmount = roundMoney(input.total_amount);
 
   const initialPaid = Math.min(
     Math.max(roundMoney(input.paid_amount ?? 0), 0),
     totalAmount,
-  )
+  );
 
   if (!partyName) {
-    throw new Error('اسم الشخص أو الجهة مطلوب')
+    throw new Error('اسم الشخص أو الجهة مطلوب');
   }
 
   if (!title) {
-    throw new Error('عنوان الالتزام مطلوب')
+    throw new Error('عنوان الالتزام مطلوب');
   }
 
   if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
-    throw new Error('قيمة الالتزام غير صحيحة')
+    throw new Error('قيمة الالتزام غير صحيحة');
   }
 
   const tx = db.transaction(() => {
@@ -138,9 +138,9 @@ export function createLiability(input: CreateLiabilityInput) {
         input.due_date || null,
         cleanText(input.notes) || null,
         input.actor_id ?? null,
-      )
+      );
 
-    const liabilityId = Number(result.lastInsertRowid)
+    const liabilityId = Number(result.lastInsertRowid);
 
     createCriticalActivityLog({
       user_id: input.actor_id ?? null,
@@ -154,7 +154,7 @@ export function createLiability(input: CreateLiabilityInput) {
         initial_paid: initialPaid,
         remaining_amount: totalAmount,
       }),
-    })
+    });
 
     if (initialPaid > 0) {
       recordLiabilityPayment({
@@ -163,53 +163,53 @@ export function createLiability(input: CreateLiabilityInput) {
         payment_method: input.payment_method || 'cash',
         notes: 'دفعة مبدئية عند إنشاء الالتزام',
         actor_id: input.actor_id ?? null,
-      })
+      });
     }
 
-    const liability = getLiabilityByIdOrThrow(liabilityId)
+    const liability = getLiabilityByIdOrThrow(liabilityId);
 
     return {
       success: true,
       liability_id: liabilityId,
       liability,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const liability = getLiabilityByIdOrThrow(Number(input.liability_id))
+  const liability = getLiabilityByIdOrThrow(Number(input.liability_id));
 
-  const amount = roundMoney(input.amount)
+  const amount = roundMoney(input.amount);
 
   if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('مبلغ الدفعة غير صحيح')
+    throw new Error('مبلغ الدفعة غير صحيح');
   }
 
   if (liability.status === 'cancelled') {
-    throw new Error('لا يمكن تسجيل دفعة على التزام ملغي')
+    throw new Error('لا يمكن تسجيل دفعة على التزام ملغي');
   }
 
-  const remainingBefore = roundMoney(liability.remaining_amount)
+  const remainingBefore = roundMoney(liability.remaining_amount);
 
   if (amount > remainingBefore) {
-    throw new Error('مبلغ الدفعة أكبر من المتبقي')
+    throw new Error('مبلغ الدفعة أكبر من المتبقي');
   }
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
-  const paymentMethod = resolveCashAccount(input.payment_method || 'cash')
+  const paymentMethod = resolveCashAccount(input.payment_method || 'cash');
 
   const openShift = resolveFinancialOperationShift(
     actorId,
     [paymentMethod],
     'لا يمكن تسجيل دفعة التزام من درج المحل بدون شفت مفتوح',
-  )
+  );
 
-  const businessDate = getCurrentBusinessDate(db)
+  const businessDate = getCurrentBusinessDate(db);
 
   const tx = db.transaction(() => {
     const paymentResult = db
@@ -235,17 +235,17 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
         cleanText(input.notes) || null,
         actorId,
         openShift?.id ?? null,
-      )
+      );
 
-    const paymentId = Number(paymentResult.lastInsertRowid)
+    const paymentId = Number(paymentResult.lastInsertRowid);
 
-    const nextPaid = roundMoney(Number(liability.paid_amount || 0) + amount)
+    const nextPaid = roundMoney(Number(liability.paid_amount || 0) + amount);
 
     const nextRemaining = roundMoney(
       Math.max(0, Number(liability.total_amount || 0) - nextPaid),
-    )
+    );
 
-    const nextStatus = getStatus(nextRemaining)
+    const nextStatus = getStatus(nextRemaining);
 
     db.prepare(
       `
@@ -260,7 +260,7 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
 
       WHERE id = ?
       `,
-    ).run(nextPaid, nextRemaining, nextStatus, liability.id)
+    ).run(nextPaid, nextRemaining, nextStatus, liability.id);
 
     createCashMovement({
       type: 'liability_payment',
@@ -282,7 +282,7 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
       business_date: businessDate,
 
       shift_id: openShift?.id ?? null,
-    })
+    });
 
     createCriticalActivityLog({
       user_id: actorId,
@@ -306,7 +306,7 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
 
         shift_id: openShift?.id ?? null,
       }),
-    })
+    });
 
     return {
       success: true,
@@ -322,21 +322,21 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
       status: nextStatus,
 
       shift_id: openShift?.id ?? null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function listLiabilities(input?: { search?: string; status?: string }) {
-  const db = getDb()
+  const db = getDb();
 
-  const where: string[] = []
-  const params: any[] = []
+  const where: string[] = [];
+  const params: any[] = [];
 
   if (input?.status && input.status !== 'all') {
-    where.push(`l.status = ?`)
-    params.push(input.status)
+    where.push(`l.status = ?`);
+    params.push(input.status);
   }
 
   if (input?.search?.trim()) {
@@ -345,13 +345,13 @@ export function listLiabilities(input?: { search?: string; status?: string }) {
       OR l.title LIKE ?
       OR l.category LIKE ?
       OR l.notes LIKE ?
-    )`)
+    )`);
 
-    const search = `%${input.search.trim()}%`
-    params.push(search, search, search, search)
+    const search = `%${input.search.trim()}%`;
+    params.push(search, search, search, search);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   return db
     .prepare(
@@ -371,23 +371,23 @@ export function listLiabilities(input?: { search?: string; status?: string }) {
       ORDER BY l.id DESC
     `,
     )
-    .all(...params)
+    .all(...params);
 }
 
 export function listLiabilitiesPage(input?: {
-  search?: string
-  status?: string
-  limit?: number
-  offset?: number
+  search?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const where: string[] = []
-  const params: any[] = []
+  const where: string[] = [];
+  const params: any[] = [];
 
   if (input?.status && input.status !== 'all') {
-    where.push(`l.status = ?`)
-    params.push(input.status)
+    where.push(`l.status = ?`);
+    params.push(input.status);
   }
 
   if (input?.search?.trim()) {
@@ -398,18 +398,18 @@ export function listLiabilitiesPage(input?: {
         OR IFNULL(l.category, '') LIKE ?
         OR IFNULL(l.notes, '') LIKE ?
       )
-    `)
+    `);
 
-    const search = `%${input.search.trim()}%`
+    const search = `%${input.search.trim()}%`;
 
-    params.push(search, search, search, search)
+    params.push(search, search, search, search);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
 
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
   const rows = db
     .prepare(
@@ -438,7 +438,7 @@ export function listLiabilitiesPage(input?: {
       OFFSET ?
     `,
     )
-    .all(...params, limit, offset)
+    .all(...params, limit, offset);
 
   const totalRow = db
     .prepare(
@@ -449,20 +449,20 @@ export function listLiabilitiesPage(input?: {
     `,
     )
     .get(...params) as {
-    total: number
-  }
+    total: number;
+  };
 
   return {
     rows,
     total: Number(totalRow?.total || 0),
     limit,
     offset,
-  }
+  };
 }
 
 export function getLiabilityStatement(liabilityId: number) {
-  const db = getDb()
-  const liability = getLiabilityByIdOrThrow(liabilityId)
+  const db = getDb();
+  const liability = getLiabilityByIdOrThrow(liabilityId);
 
   const payments = db
     .prepare(
@@ -476,45 +476,45 @@ export function getLiabilityStatement(liabilityId: number) {
       ORDER BY p.id DESC
     `,
     )
-    .all(liabilityId)
+    .all(liabilityId);
 
   return {
     liability,
     payments,
-  }
+  };
 }
 
 export function updateLiability(input: UpdateLiabilityInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const liabilityId = Number(input.id || 0)
+  const liabilityId = Number(input.id || 0);
 
   if (!liabilityId) {
-    throw new Error('رقم الالتزام غير صحيح')
+    throw new Error('رقم الالتزام غير صحيح');
   }
 
-  const liability = getLiabilityByIdOrThrow(liabilityId)
+  const liability = getLiabilityByIdOrThrow(liabilityId);
 
   if (liability.status === 'cancelled' || liability.cancelled_at) {
-    throw new Error('لا يمكن تعديل التزام ملغي')
+    throw new Error('لا يمكن تعديل التزام ملغي');
   }
 
-  const partyName = cleanText(input.party_name)
+  const partyName = cleanText(input.party_name);
 
-  const title = cleanText(input.title)
+  const title = cleanText(input.title);
 
-  const totalAmount = roundMoney(Number(input.total_amount || 0))
+  const totalAmount = roundMoney(Number(input.total_amount || 0));
 
   if (!partyName) {
-    throw new Error('اسم الشخص أو الجهة مطلوب')
+    throw new Error('اسم الشخص أو الجهة مطلوب');
   }
 
   if (!title) {
-    throw new Error('عنوان الالتزام مطلوب')
+    throw new Error('عنوان الالتزام مطلوب');
   }
 
   if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
-    throw new Error('قيمة الالتزام غير صحيحة')
+    throw new Error('قيمة الالتزام غير صحيحة');
   }
 
   const paidRow = db
@@ -533,26 +533,26 @@ export function updateLiability(input: UpdateLiabilityInput) {
       `,
     )
     .get(liabilityId) as {
-    paid: number
-  }
+    paid: number;
+  };
 
-  const activePaid = roundMoney(Number(paidRow?.paid || 0))
+  const activePaid = roundMoney(Number(paidRow?.paid || 0));
 
   if (totalAmount + 0.0001 < activePaid) {
     throw new Error(
       `لا يمكن جعل قيمة الالتزام أقل من إجمالي المدفوع وهو ${activePaid} ج.م`,
-    )
+    );
   }
 
-  const remaining = roundMoney(Math.max(0, totalAmount - activePaid))
+  const remaining = roundMoney(Math.max(0, totalAmount - activePaid));
 
-  const status = getStatus(remaining)
+  const status = getStatus(remaining);
 
-  const category = cleanText(input.category) || null
+  const category = cleanText(input.category) || null;
 
-  const dueDate = cleanText(input.due_date) || null
+  const dueDate = cleanText(input.due_date) || null;
 
-  const notes = cleanText(input.notes) || null
+  const notes = cleanText(input.notes) || null;
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -585,7 +585,7 @@ export function updateLiability(input: UpdateLiabilityInput) {
       dueDate,
       notes,
       liabilityId,
-    )
+    );
 
     createCriticalActivityLog({
       user_id: input.actor_id ?? null,
@@ -637,7 +637,7 @@ export function updateLiability(input: UpdateLiabilityInput) {
           notes,
         },
       }),
-    })
+    });
 
     return {
       success: true,
@@ -651,26 +651,26 @@ export function updateLiability(input: UpdateLiabilityInput) {
       remaining_amount: remaining,
 
       status,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function cancelLiability(input: {
-  id: number
-  reason?: string | null
-  actor_id?: number | null
+  id: number;
+  reason?: string | null;
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const liability = getLiabilityByIdOrThrow(Number(input.id))
+  const liability = getLiabilityByIdOrThrow(Number(input.id));
 
   if (Number(liability.paid_amount || 0) > 0) {
-    throw new Error('لا يمكن إلغاء التزام عليه دفعات')
+    throw new Error('لا يمكن إلغاء التزام عليه دفعات');
   }
 
-  const reason = String(input.reason || '').trim() || 'إلغاء الالتزام'
+  const reason = String(input.reason || '').trim() || 'إلغاء الالتزام';
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -698,7 +698,7 @@ export function cancelLiability(input: {
       reason,
 
       liability.id,
-    )
+    );
 
     createCriticalActivityLog({
       user_id: input.actor_id ?? null,
@@ -718,38 +718,38 @@ export function cancelLiability(input: {
 
         reason,
       }),
-    })
+    });
 
     return {
       success: true,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function getLiabilitiesSummary(input?: {
-  date_from?: string
-  date_to?: string
+  date_from?: string;
+  date_to?: string;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const where: string[] = []
-  const params: any[] = []
+  const where: string[] = [];
+  const params: any[] = [];
 
   if (input?.date_from) {
-    where.push(`datetime(p.created_at, 'localtime') >= datetime(?)`)
-    params.push(`${input.date_from} 00:00:00`)
+    where.push(`datetime(p.created_at, 'localtime') >= datetime(?)`);
+    params.push(`${input.date_from} 00:00:00`);
   }
 
   if (input?.date_to) {
-    where.push(`datetime(p.created_at, 'localtime') <= datetime(?)`)
-    params.push(`${input.date_to} 23:59:59`)
+    where.push(`datetime(p.created_at, 'localtime') <= datetime(?)`);
+    params.push(`${input.date_to} 23:59:59`);
   }
 
-  where.push(`p.cancelled_at IS NULL`)
+  where.push(`p.cancelled_at IS NULL`);
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const paidRow = db
     .prepare(
@@ -759,7 +759,7 @@ export function getLiabilitiesSummary(input?: {
       ${whereSql}
     `,
     )
-    .get(...params) as any
+    .get(...params) as any;
 
   const totalsRow = db
     .prepare(
@@ -788,7 +788,7 @@ export function getLiabilitiesSummary(input?: {
       WHERE status != 'cancelled'
     `,
     )
-    .get() as any
+    .get() as any;
 
   return {
     paid_in_period: roundMoney(paidRow.paid_total),
@@ -801,16 +801,16 @@ export function getLiabilitiesSummary(input?: {
     count: Number(totalsRow.count || 0),
     open_count: Number(totalsRow.open_count || 0),
     paid_count: Number(totalsRow.paid_count || 0),
-  }
+  };
 }
 
 function getLiabilityPaymentMutationContext(paymentIdInput: number) {
-  const db = getDb()
+  const db = getDb();
 
-  const paymentId = Number(paymentIdInput || 0)
+  const paymentId = Number(paymentIdInput || 0);
 
   if (!paymentId) {
-    throw new Error('رقم دفعة الالتزام غير صحيح')
+    throw new Error('رقم دفعة الالتزام غير صحيح');
   }
 
   const payment = db
@@ -842,18 +842,18 @@ function getLiabilityPaymentMutationContext(paymentIdInput: number) {
       LIMIT 1
       `,
     )
-    .get(paymentId) as any
+    .get(paymentId) as any;
 
   if (!payment) {
-    throw new Error('دفعة الالتزام غير موجودة')
+    throw new Error('دفعة الالتزام غير موجودة');
   }
 
   if (payment.cancelled_at) {
-    throw new Error('الدفعة ملغاة بالفعل')
+    throw new Error('الدفعة ملغاة بالفعل');
   }
 
   if (payment.liability_status === 'cancelled') {
-    throw new Error('الالتزام نفسه ملغي')
+    throw new Error('الالتزام نفسه ملغي');
   }
 
   const cashMovement = db
@@ -879,14 +879,14 @@ function getLiabilityPaymentMutationContext(paymentIdInput: number) {
       LIMIT 1
       `,
     )
-    .get(paymentId) as any
+    .get(paymentId) as any;
 
   if (!cashMovement) {
-    throw new Error('حركة الخزنة الخاصة بدفعة الالتزام غير موجودة')
+    throw new Error('حركة الخزنة الخاصة بدفعة الالتزام غير موجودة');
   }
 
   if (cashMovement.cancelled_at) {
-    throw new Error('حركة الخزنة الخاصة بالدفعة ملغاة بالفعل')
+    throw new Error('حركة الخزنة الخاصة بالدفعة ملغاة بالفعل');
   }
 
   if (
@@ -895,14 +895,14 @@ function getLiabilityPaymentMutationContext(paymentIdInput: number) {
         roundMoney(Number(payment.amount || 0)),
     ) > 0.01
   ) {
-    throw new Error('قيمة دفعة الالتزام لا تطابق حركة الخزنة')
+    throw new Error('قيمة دفعة الالتزام لا تطابق حركة الخزنة');
   }
 
   if (
     resolveCashAccount(cashMovement.payment_method) !==
     resolveCashAccount(payment.payment_method)
   ) {
-    throw new Error('حساب دفعة الالتزام لا يطابق حركة الخزنة')
+    throw new Error('حساب دفعة الالتزام لا يطابق حركة الخزنة');
   }
 
   return {
@@ -913,18 +913,18 @@ function getLiabilityPaymentMutationContext(paymentIdInput: number) {
     payment,
 
     cashMovement,
-  }
+  };
 }
 
 export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
-  const amount = roundMoney(Number(input.amount || 0))
+  const amount = roundMoney(Number(input.amount || 0));
 
   if (!Number.isFinite(amount) || amount <= 0) {
-    throw new Error('مبلغ الدفعة المعدل غير صحيح')
+    throw new Error('مبلغ الدفعة المعدل غير صحيح');
   }
 
   const { db, paymentId, payment, cashMovement } =
-    getLiabilityPaymentMutationContext(Number(input.payment_id))
+    getLiabilityPaymentMutationContext(Number(input.payment_id));
 
   const otherPaidRow = db
     .prepare(
@@ -947,10 +947,10 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
       `,
     )
     .get(payment.liability_id, paymentId) as {
-    paid: number
-  }
+    paid: number;
+  };
 
-  const otherPaid = roundMoney(Number(otherPaidRow?.paid || 0))
+  const otherPaid = roundMoney(Number(otherPaidRow?.paid || 0));
 
   const maximumAmount = roundMoney(
     Math.max(
@@ -958,32 +958,32 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
 
       Number(payment.total_amount || 0) - otherPaid,
     ),
-  )
+  );
 
   if (amount > maximumAmount + 0.0001) {
     throw new Error(
       `مبلغ الدفعة المعدل أكبر من المتاح وهو ${maximumAmount} ج.م`,
-    )
+    );
   }
 
   const paymentMethod = resolveCashAccount(
     input.payment_method || payment.payment_method || 'store_cash',
-  )
+  );
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
   const openShift = resolveFinancialOperationShift(
     actorId,
     [cashMovement.payment_method, paymentMethod],
     'لا يمكن تعديل دفعة التزام تؤثر على درج المحل بدون شفت مفتوح',
-  )
+  );
 
-  const correctionBusinessDate = getCurrentBusinessDate(db)
+  const correctionBusinessDate = getCurrentBusinessDate(db);
 
   const notes =
     input.notes === undefined
       ? (payment.notes ?? null)
-      : cleanText(input.notes) || null
+      : cleanText(input.notes) || null;
 
   const tx = db.transaction(() => {
     const replacementResult = db
@@ -1009,9 +1009,9 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
         notes,
         actorId,
         openShift?.id ?? null,
-      )
+      );
 
-    const newPaymentId = Number(replacementResult.lastInsertRowid)
+    const newPaymentId = Number(replacementResult.lastInsertRowid);
 
     db.prepare(
       `
@@ -1033,7 +1033,7 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
 
       WHERE id = ?
       `,
-    ).run(actorId, openShift?.id ?? null, newPaymentId, paymentId)
+    ).run(actorId, openShift?.id ?? null, newPaymentId, paymentId);
 
     /*
      * نسيب حركة الدفع القديمة
@@ -1059,9 +1059,9 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
       business_date: correctionBusinessDate,
 
       shift_id: openShift?.id ?? null,
-    })
+    });
 
-    const reverseCashMovementId = Number(reverseCash.lastInsertRowid || 0)
+    const reverseCashMovementId = Number(reverseCash.lastInsertRowid || 0);
 
     const replacementCash = createCashMovement({
       type: 'liability_payment',
@@ -1083,9 +1083,9 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
       business_date: correctionBusinessDate,
 
       shift_id: openShift?.id ?? null,
-    })
+    });
 
-    const newCashMovementId = Number(replacementCash.lastInsertRowid || 0)
+    const newCashMovementId = Number(replacementCash.lastInsertRowid || 0);
 
     const totals = db
       .prepare(
@@ -1106,10 +1106,10 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
         `,
       )
       .get(payment.liability_id) as {
-      paid: number
-    }
+      paid: number;
+    };
 
-    const nextPaid = roundMoney(Number(totals?.paid || 0))
+    const nextPaid = roundMoney(Number(totals?.paid || 0));
 
     const nextRemaining = roundMoney(
       Math.max(
@@ -1117,9 +1117,9 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
 
         Number(payment.total_amount || 0) - nextPaid,
       ),
-    )
+    );
 
-    const nextStatus = getStatus(nextRemaining)
+    const nextStatus = getStatus(nextRemaining);
 
     db.prepare(
       `
@@ -1134,7 +1134,7 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
 
       WHERE id = ?
       `,
-    ).run(nextPaid, nextRemaining, nextStatus, payment.liability_id)
+    ).run(nextPaid, nextRemaining, nextStatus, payment.liability_id);
 
     createCriticalActivityLog({
       user_id: actorId,
@@ -1176,7 +1176,7 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
           shift_id: openShift?.id ?? null,
         },
       }),
-    })
+    });
 
     return {
       success: true,
@@ -1202,32 +1202,32 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
       shift_id: openShift?.id ?? null,
 
       reverse_cash_movement_id: reverseCashMovementId,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function cancelLiabilityPayment(input: {
-  payment_id: number
-  reason?: string | null
-  actor_id?: number | null
-  approved_by?: number | null
+  payment_id: number;
+  reason?: string | null;
+  actor_id?: number | null;
+  approved_by?: number | null;
 }) {
   const { db, paymentId, payment, cashMovement } =
-    getLiabilityPaymentMutationContext(Number(input.payment_id))
+    getLiabilityPaymentMutationContext(Number(input.payment_id));
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
   const openShift = resolveFinancialOperationShift(
     actorId,
     [cashMovement.payment_method],
     'لا يمكن إلغاء دفعة التزام تؤثر على درج المحل بدون شفت مفتوح',
-  )
+  );
 
-  const cancellationBusinessDate = getCurrentBusinessDate(db)
+  const cancellationBusinessDate = getCurrentBusinessDate(db);
 
-  const reason = String(input.reason || '').trim() || 'إلغاء دفعة التزام'
+  const reason = String(input.reason || '').trim() || 'إلغاء دفعة التزام';
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -1247,7 +1247,7 @@ export function cancelLiabilityPayment(input: {
 
       WHERE id = ?
       `,
-    ).run(actorId, openShift?.id ?? null, reason, paymentId)
+    ).run(actorId, openShift?.id ?? null, reason, paymentId);
 
     const reverseCash = createCashMovement({
       type: 'liability_payment',
@@ -1269,9 +1269,9 @@ export function cancelLiabilityPayment(input: {
       business_date: cancellationBusinessDate,
 
       shift_id: openShift?.id ?? null,
-    })
+    });
 
-    const reverseCashMovementId = Number(reverseCash.lastInsertRowid || 0)
+    const reverseCashMovementId = Number(reverseCash.lastInsertRowid || 0);
 
     const totals = db
       .prepare(
@@ -1291,9 +1291,9 @@ export function cancelLiabilityPayment(input: {
             IS NULL
         `,
       )
-      .get(payment.liability_id) as any
+      .get(payment.liability_id) as any;
 
-    const nextPaid = roundMoney(Number(totals?.paid || 0))
+    const nextPaid = roundMoney(Number(totals?.paid || 0));
 
     const nextRemaining = roundMoney(
       Math.max(
@@ -1301,9 +1301,9 @@ export function cancelLiabilityPayment(input: {
 
         Number(payment.total_amount || 0) - nextPaid,
       ),
-    )
+    );
 
-    const nextStatus = getStatus(nextRemaining)
+    const nextStatus = getStatus(nextRemaining);
 
     db.prepare(
       `
@@ -1318,7 +1318,7 @@ export function cancelLiabilityPayment(input: {
 
       WHERE id = ?
       `,
-    ).run(nextPaid, nextRemaining, nextStatus, payment.liability_id)
+    ).run(nextPaid, nextRemaining, nextStatus, payment.liability_id);
 
     createCriticalActivityLog({
       user_id: actorId,
@@ -1342,7 +1342,7 @@ export function cancelLiabilityPayment(input: {
 
         shift_id: openShift?.id ?? null,
       }),
-    })
+    });
 
     return {
       success: true,
@@ -1360,8 +1360,8 @@ export function cancelLiabilityPayment(input: {
       cancelled_shift_id: openShift?.id ?? null,
 
       reverse_cash_movement_id: reverseCashMovementId,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }

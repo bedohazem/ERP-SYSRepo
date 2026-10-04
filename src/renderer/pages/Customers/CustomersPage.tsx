@@ -1,34 +1,36 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useAuthStore } from '../../store/auth.store'
+import { useEffect, useMemo, useState } from 'react';
+import { useAuthStore } from '../../store/auth.store';
 import {
   CUSTOMER_PAYMENT_METHOD_OPTIONS,
   getPaymentMethodLabel,
   ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS,
-} from '../../utils/payment-method'
-import { hasUserPermission } from '../../utils/permissions'
-import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
-import { formatMoney } from '../../../shared/money'
+} from '../../utils/payment-method';
+import { hasUserPermission } from '../../utils/permissions';
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
+import { formatMoney } from '../../../shared/money';
 
 type CustomerRow = {
-  id: number
-  name: string
-  phone?: string | null
-  email?: string | null
-  address?: string | null
-  notes?: string | null
+  id: number;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
 
-  points_balance: number
+  points_balance: number;
 
-  total_spent: number
+  total_spent: number;
 
-  balance: number
+  balance: number;
 
-  credit_limit: number | null
-  credit_days: number | null
-  sales_count?: number
+  credit_limit: number | null;
+  credit_days: number | null;
+  sales_count?: number;
 
-  last_sale_at?: string | null
-}
+  last_sale_at?: string | null;
+};
 
 const emptyForm = {
   name: '',
@@ -38,10 +40,10 @@ const emptyForm = {
   notes: '',
   credit_limit: '',
   credit_days: '',
-}
+};
 
-const CUSTOMER_HISTORY_PAGE_SIZE = 10
-const CUSTOMER_STATEMENT_PAGE_SIZE = 20
+const CUSTOMER_HISTORY_PAGE_SIZE = 10;
+const CUSTOMER_STATEMENT_PAGE_SIZE = 20;
 
 function getErrorMessage(error: unknown, fallback: string) {
   const raw =
@@ -49,53 +51,53 @@ function getErrorMessage(error: unknown, fallback: string) {
       ? error.message
       : typeof error === 'string'
         ? error
-        : ''
+        : '';
 
-  const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/)
+  const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/);
 
-  return match?.[1] || raw || fallback
+  return match?.[1] || raw || fallback;
 }
 
 function isErrorMessage(text: string) {
-  return /خطأ|تعذر|فشل|لم يتم|لا يمكن|غير صحيح|مطلوب/.test(text)
+  return /خطأ|تعذر|فشل|لم يتم|لا يمكن|غير صحيح|مطلوب/.test(text);
 }
 
 export default function CustomersPage() {
-  const currentUser = useAuthStore((s) => s.user)
-  const isAdmin = currentUser?.role === 'admin'
-  const canManageCustomers = hasUserPermission(currentUser, 'customers.manage')
+  const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role === 'admin';
+  const canManageCustomers = hasUserPermission(currentUser, 'customers.manage');
 
   const canManageCustomerPayments = hasUserPermission(
     currentUser,
     'customers.payments',
-  )
-  const [customers, setCustomers] = useState<CustomerRow[]>([])
-  const [customersTotal, setCustomersTotal] = useState(0)
+  );
+  const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const [customersTotal, setCustomersTotal] = useState(0);
 
-  const [customerPage, setCustomerPage] = useState(1)
+  const [customerPage, setCustomerPage] = useState(1);
 
   const [debtSummary, setDebtSummary] = useState<{
-    totalDebt: number
+    totalDebt: number;
 
-    debtorsCount: number
+    debtorsCount: number;
 
     topDebtor: {
-      id: number
-      name: string
-      balance: number
-    } | null
+      id: number;
+      name: string;
+      balance: number;
+    } | null;
 
     aging: {
-      days_0_30: number
+      days_0_30: number;
 
-      days_31_60: number
+      days_31_60: number;
 
-      days_61_90: number
+      days_61_90: number;
 
-      days_90_plus: number
+      days_90_plus: number;
 
-      total: number
-    }
+      total: number;
+    };
   }>({
     totalDebt: 0,
 
@@ -114,7 +116,7 @@ export default function CustomersPage() {
 
       total: 0,
     },
-  })
+  });
 
   const [dueSummary, setDueSummary] = useState({
     overdue: 0,
@@ -126,72 +128,72 @@ export default function CustomersPage() {
     without_due_date: 0,
 
     total_open: 0,
-  })
-  const [query, setQuery] = useState('')
-  const [showDebtorsOnly, setShowDebtorsOnly] = useState(false)
-  const [form, setForm] = useState(emptyForm)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [selectedCustomer, setSelectedCustomer] = useState<any>(null)
-  const [pointsAdjust, setPointsAdjust] = useState('')
-  const [pointsNotes, setPointsNotes] = useState('')
-  const [message, setMessage] = useState('')
+  });
+  const [query, setQuery] = useState('');
+  const [showDebtorsOnly, setShowDebtorsOnly] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [pointsAdjust, setPointsAdjust] = useState('');
+  const [pointsNotes, setPointsNotes] = useState('');
+  const [message, setMessage] = useState('');
 
-  const [loadingCustomers, setLoadingCustomers] = useState(false)
-  const [savingCustomer, setSavingCustomer] = useState(false)
-  const [historyLoading, setHistoryLoading] = useState(false)
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
-  const [historySalesPage, setHistorySalesPage] = useState(1)
+  const [historySalesPage, setHistorySalesPage] = useState(1);
 
-  const [historyLoyaltyPage, setHistoryLoyaltyPage] = useState(1)
+  const [historyLoyaltyPage, setHistoryLoyaltyPage] = useState(1);
 
-  const [statementPage, setStatementPage] = useState(1)
+  const [statementPage, setStatementPage] = useState(1);
 
-  const [statementData, setStatementData] = useState<any | null>(null)
-  const [statementLoading, setStatementLoading] = useState(false)
+  const [statementData, setStatementData] = useState<any | null>(null);
+  const [statementLoading, setStatementLoading] = useState(false);
 
   const [paymentCustomer, setPaymentCustomer] = useState<CustomerRow | null>(
     null,
-  )
-  const [paymentAmount, setPaymentAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('cash')
-  const [paymentNotes, setPaymentNotes] = useState('')
-  const [savingPayment, setSavingPayment] = useState(false)
+  );
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [savingPayment, setSavingPayment] = useState(false);
 
   const [paymentAction, setPaymentAction] = useState<{
-    mode: 'edit' | 'cancel'
-    entry: any
-  } | null>(null)
+    mode: 'edit' | 'cancel';
+    entry: any;
+  } | null>(null);
 
-  const [paymentActionAmount, setPaymentActionAmount] = useState('')
-  const [paymentActionMethod, setPaymentActionMethod] = useState('cash')
-  const [paymentActionNotes, setPaymentActionNotes] = useState('')
-  const [paymentActionReason, setPaymentActionReason] = useState('')
-  const [paymentActionPassword, setPaymentActionPassword] = useState('')
+  const [paymentActionAmount, setPaymentActionAmount] = useState('');
+  const [paymentActionMethod, setPaymentActionMethod] = useState('cash');
+  const [paymentActionNotes, setPaymentActionNotes] = useState('');
+  const [paymentActionReason, setPaymentActionReason] = useState('');
+  const [paymentActionPassword, setPaymentActionPassword] = useState('');
 
   const [paymentActionAdminUsername, setPaymentActionAdminUsername] =
-    useState('')
+    useState('');
 
   const [paymentActionRequirePassword, setPaymentActionRequirePassword] =
-    useState(false)
-  const [savingPaymentAction, setSavingPaymentAction] = useState(false)
+    useState(false);
+  const [savingPaymentAction, setSavingPaymentAction] = useState(false);
 
-  const [deleteTarget, setDeleteTarget] = useState<CustomerRow | null>(null)
-  const [deletingCustomer, setDeletingCustomer] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<CustomerRow | null>(null);
+  const [deletingCustomer, setDeletingCustomer] = useState(false);
 
   const editingCustomer = useMemo(
     () => customers.find((c) => c.id === editingId),
     [customers, editingId],
-  )
+  );
 
   async function loadCustomers(
     page = customerPage,
     searchValue = query,
     debtorsOnly = showDebtorsOnly,
   ) {
-    setLoadingCustomers(true)
+    setLoadingCustomers(true);
 
     try {
-      const safePage = Math.max(1, Number(page || 1))
+      const safePage = Math.max(1, Number(page || 1));
 
       const result = await window.api.listCustomers({
         search: searchValue.trim() || undefined,
@@ -201,18 +203,18 @@ export default function CustomersPage() {
         limit: SYSTEM_PAGE_SIZE,
 
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
-      })
+      });
 
-      const total = Number(result.total || 0)
+      const total = Number(result.total || 0);
 
-      const totalPages = Math.max(1, Math.ceil(total / SYSTEM_PAGE_SIZE))
+      const totalPages = Math.max(1, Math.ceil(total / SYSTEM_PAGE_SIZE));
 
       if (safePage > totalPages) {
-        setCustomerPage(totalPages)
+        setCustomerPage(totalPages);
 
-        await loadCustomers(totalPages, searchValue, debtorsOnly)
+        await loadCustomers(totalPages, searchValue, debtorsOnly);
 
-        return
+        return;
       }
 
       const normalizedRows = Array.isArray(result.rows)
@@ -241,11 +243,11 @@ export default function CustomersPage() {
 
             last_sale_at: customer.last_sale_at || null,
           }))
-        : []
+        : [];
 
-      setCustomers(normalizedRows)
-      setCustomersTotal(total)
-      setCustomerPage(safePage)
+      setCustomers(normalizedRows);
+      setCustomersTotal(total);
+      setCustomerPage(safePage);
 
       setDebtSummary({
         totalDebt: Number(result.summary?.total_debt || 0),
@@ -265,7 +267,7 @@ export default function CustomersPage() {
 
           total: Number(result.summary?.aging?.total || 0),
         },
-      })
+      });
 
       setDueSummary({
         overdue: Number(result.summary?.due?.overdue || 0),
@@ -277,14 +279,14 @@ export default function CustomersPage() {
         without_due_date: Number(result.summary?.due?.without_due_date || 0),
 
         total_open: Number(result.summary?.due?.total_open || 0),
-      })
+      });
     } catch (error) {
-      console.error('Failed to load customers:', error)
+      console.error('Failed to load customers:', error);
 
-      setMessage('حدث خطأ أثناء تحميل العملاء')
+      setMessage('حدث خطأ أثناء تحميل العملاء');
 
-      setCustomers([])
-      setCustomersTotal(0)
+      setCustomers([]);
+      setCustomersTotal(0);
 
       setDebtSummary({
         totalDebt: 0,
@@ -304,7 +306,7 @@ export default function CustomersPage() {
 
           total: 0,
         },
-      })
+      });
       setDueSummary({
         overdue: 0,
 
@@ -315,43 +317,43 @@ export default function CustomersPage() {
         without_due_date: 0,
 
         total_open: 0,
-      })
+      });
     } finally {
-      setLoadingCustomers(false)
+      setLoadingCustomers(false);
     }
   }
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      setCustomerPage(1)
+      setCustomerPage(1);
 
-      void loadCustomers(1, query, showDebtorsOnly)
-    }, 250)
+      void loadCustomers(1, query, showDebtorsOnly);
+    }, 250);
 
-    return () => clearTimeout(handle)
-  }, [query, showDebtorsOnly])
+    return () => clearTimeout(handle);
+  }, [query, showDebtorsOnly]);
 
   useEffect(() => {
-    if (!message) return
+    if (!message) return;
 
     const timer = window.setTimeout(
       () => {
-        setMessage('')
+        setMessage('');
       },
 
       isErrorMessage(message) ? 4500 : 1800,
-    )
+    );
 
-    return () => window.clearTimeout(timer)
-  }, [message])
+    return () => window.clearTimeout(timer);
+  }, [message]);
 
   function startCreate() {
-    setEditingId(null)
-    setForm(emptyForm)
+    setEditingId(null);
+    setForm(emptyForm);
   }
 
   function startEdit(customer: CustomerRow) {
-    setEditingId(customer.id)
+    setEditingId(customer.id);
     setForm({
       name: customer.name || '',
 
@@ -367,42 +369,42 @@ export default function CustomersPage() {
         customer.credit_limit == null ? '' : String(customer.credit_limit),
       credit_days:
         customer.credit_days == null ? '' : String(customer.credit_days),
-    })
+    });
   }
 
   async function saveCustomer() {
-    if (savingCustomer) return
+    if (savingCustomer) return;
 
     if (!form.name.trim()) {
-      setMessage('اسم العميل مطلوب')
-      return
+      setMessage('اسم العميل مطلوب');
+      return;
     }
 
     const creditLimit =
-      form.credit_limit.trim() === '' ? null : Number(form.credit_limit)
+      form.credit_limit.trim() === '' ? null : Number(form.credit_limit);
 
     if (
       creditLimit !== null &&
       (!Number.isFinite(creditLimit) || creditLimit < 0)
     ) {
-      setMessage('الحد الائتماني يجب أن يكون صفر أو رقمًا موجبًا')
+      setMessage('الحد الائتماني يجب أن يكون صفر أو رقمًا موجبًا');
 
-      return
+      return;
     }
 
     const creditDays =
-      form.credit_days.trim() === '' ? null : Number(form.credit_days)
+      form.credit_days.trim() === '' ? null : Number(form.credit_days);
 
     if (
       creditDays !== null &&
       (!Number.isInteger(creditDays) || creditDays < 0)
     ) {
-      setMessage('مدة الائتمان يجب أن تكون صفر أو عدد أيام صحيح موجب')
+      setMessage('مدة الائتمان يجب أن تكون صفر أو عدد أيام صحيح موجب');
 
-      return
+      return;
     }
 
-    setSavingCustomer(true)
+    setSavingCustomer(true);
 
     try {
       if (editingId) {
@@ -421,8 +423,8 @@ export default function CustomersPage() {
 
           credit_limit: creditLimit,
           credit_days: creditDays,
-        })
-        setMessage('تم تعديل العميل')
+        });
+        setMessage('تم تعديل العميل');
       } else {
         await window.api.createCustomer({
           name: form.name,
@@ -437,106 +439,106 @@ export default function CustomersPage() {
 
           credit_limit: creditLimit,
           credit_days: creditDays,
-        })
-        setMessage('تم إضافة العميل')
+        });
+        setMessage('تم إضافة العميل');
       }
 
-      setForm(emptyForm)
-      setEditingId(null)
-      await loadCustomers(customerPage)
+      setForm(emptyForm);
+      setEditingId(null);
+      await loadCustomers(customerPage);
     } catch (error) {
-      console.error('Failed to save customer:', error)
+      console.error('Failed to save customer:', error);
 
-      setMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ العميل'))
+      setMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ العميل'));
     } finally {
-      setSavingCustomer(false)
+      setSavingCustomer(false);
     }
   }
 
   function requestDeleteCustomer(customer: CustomerRow) {
-    setDeleteTarget(customer)
+    setDeleteTarget(customer);
   }
 
   async function confirmDeleteCustomer() {
-    if (!deleteTarget || deletingCustomer) return
+    if (!deleteTarget || deletingCustomer) return;
 
-    const deletedId = deleteTarget.id
+    const deletedId = deleteTarget.id;
 
-    setDeletingCustomer(true)
+    setDeletingCustomer(true);
 
     try {
-      await window.api.deleteCustomer(deletedId, currentUser?.id)
+      await window.api.deleteCustomer(deletedId, currentUser?.id);
 
       if (selectedCustomer?.customer?.id === deletedId) {
-        setSelectedCustomer(null)
-        setPointsAdjust('')
-        setPointsNotes('')
+        setSelectedCustomer(null);
+        setPointsAdjust('');
+        setPointsNotes('');
       }
 
       if (statementData?.customer?.id === deletedId) {
-        setStatementData(null)
+        setStatementData(null);
       }
 
       if (paymentCustomer?.id === deletedId) {
-        setPaymentCustomer(null)
-        setPaymentAmount('')
-        setPaymentNotes('')
+        setPaymentCustomer(null);
+        setPaymentAmount('');
+        setPaymentNotes('');
       }
 
       if (editingId === deletedId) {
-        setEditingId(null)
-        setForm(emptyForm)
+        setEditingId(null);
+        setForm(emptyForm);
       }
 
-      setDeleteTarget(null)
-      setMessage('تم حذف العميل')
-      await loadCustomers(customerPage)
+      setDeleteTarget(null);
+      setMessage('تم حذف العميل');
+      await loadCustomers(customerPage);
     } catch (error: any) {
-      console.error('Failed to delete customer:', error)
+      console.error('Failed to delete customer:', error);
 
-      setMessage(error?.message || 'حدث خطأ أثناء حذف العميل')
+      setMessage(error?.message || 'حدث خطأ أثناء حذف العميل');
     } finally {
-      setDeletingCustomer(false)
+      setDeletingCustomer(false);
     }
   }
 
   function cancelDeleteCustomer() {
-    if (deletingCustomer) return
-    setDeleteTarget(null)
+    if (deletingCustomer) return;
+    setDeleteTarget(null);
   }
 
   async function openHistory(customerId: number) {
-    setHistoryLoading(true)
+    setHistoryLoading(true);
 
     try {
-      const data = await window.api.getCustomerHistory(customerId)
+      const data = await window.api.getCustomerHistory(customerId);
 
       setSelectedCustomer({
         customer: data?.customer ?? null,
         sales: Array.isArray(data?.sales) ? data.sales : [],
         loyalty: Array.isArray(data?.loyalty) ? data.loyalty : [],
-      })
+      });
 
-      setPointsAdjust('')
-      setPointsNotes('')
+      setPointsAdjust('');
+      setPointsNotes('');
     } catch (error) {
-      console.error('Failed to load customer history:', error)
-      setMessage('حدث خطأ أثناء تحميل هيستوري العميل')
+      console.error('Failed to load customer history:', error);
+      setMessage('حدث خطأ أثناء تحميل هيستوري العميل');
     } finally {
-      setHistoryLoading(false)
-      setHistorySalesPage(1)
-      setHistoryLoyaltyPage(1)
+      setHistoryLoading(false);
+      setHistorySalesPage(1);
+      setHistoryLoyaltyPage(1);
     }
   }
 
   async function savePointsAdjust() {
-    if (!selectedCustomer?.customer?.id) return
+    if (!selectedCustomer?.customer?.id) return;
 
-    const points = Number(pointsAdjust)
+    const points = Number(pointsAdjust);
 
     if (!Number.isFinite(points) || points === 0) {
-      setMessage('اكتب عدد نقاط صحيح، مثال: 10 أو -5')
-      return
+      setMessage('اكتب عدد نقاط صحيح، مثال: 10 أو -5');
+      return;
     }
 
     try {
@@ -545,53 +547,53 @@ export default function CustomersPage() {
         points,
         notes: pointsNotes.trim() || null,
         actor_id: currentUser?.id,
-      })
+      });
 
-      await openHistory(selectedCustomer.customer.id)
-      await loadCustomers(customerPage)
-      setMessage('تم تعديل النقاط')
+      await openHistory(selectedCustomer.customer.id);
+      await loadCustomers(customerPage);
+      setMessage('تم تعديل النقاط');
     } catch (error) {
-      console.error('Failed to adjust points:', error)
+      console.error('Failed to adjust points:', error);
 
-      setMessage(getErrorMessage(error, 'حدث خطأ أثناء تعديل النقاط'))
+      setMessage(getErrorMessage(error, 'حدث خطأ أثناء تعديل النقاط'));
     }
   }
 
   async function openStatement(customer: CustomerRow) {
-    setStatementLoading(true)
-    setStatementPage(1)
+    setStatementLoading(true);
+    setStatementPage(1);
 
     try {
-      const data = await window.api.getCustomerStatement(customer.id)
+      const data = await window.api.getCustomerStatement(customer.id);
 
-      setStatementData(data)
+      setStatementData(data);
     } catch (error) {
-      console.error('Failed to load customer statement:', error)
+      console.error('Failed to load customer statement:', error);
 
-      setMessage('حدث خطأ أثناء تحميل كشف الحساب')
+      setMessage('حدث خطأ أثناء تحميل كشف الحساب');
     } finally {
-      setStatementLoading(false)
+      setStatementLoading(false);
     }
   }
 
   function openCustomerPayment(customer: CustomerRow) {
-    setPaymentCustomer(customer)
-    setPaymentAmount(String(Number(customer.balance || 0)))
-    setPaymentMethod('cash')
-    setPaymentNotes('')
+    setPaymentCustomer(customer);
+    setPaymentAmount(String(Number(customer.balance || 0)));
+    setPaymentMethod('cash');
+    setPaymentNotes('');
   }
 
   async function saveCustomerPayment() {
-    if (!paymentCustomer || savingPayment) return
+    if (!paymentCustomer || savingPayment) return;
 
-    const amount = Number(paymentAmount || 0)
+    const amount = Number(paymentAmount || 0);
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      setMessage('اكتب مبلغ صحيح')
-      return
+      setMessage('اكتب مبلغ صحيح');
+      return;
     }
 
-    setSavingPayment(true)
+    setSavingPayment(true);
 
     try {
       const result = await window.api.recordCustomerPayment({
@@ -600,129 +602,129 @@ export default function CustomersPage() {
         payment_method: paymentMethod,
         notes: paymentNotes.trim() || null,
         actor_id: currentUser?.id,
-      })
+      });
 
-      setMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`)
+      setMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`);
 
-      setPaymentCustomer(null)
-      setPaymentAmount('')
-      setPaymentNotes('')
+      setPaymentCustomer(null);
+      setPaymentAmount('');
+      setPaymentNotes('');
 
-      await loadCustomers(customerPage)
+      await loadCustomers(customerPage);
 
       if (statementData?.customer?.id === paymentCustomer.id) {
-        const data = await window.api.getCustomerStatement(paymentCustomer.id)
-        setStatementData(data)
+        const data = await window.api.getCustomerStatement(paymentCustomer.id);
+        setStatementData(data);
       }
     } catch (error) {
-      console.error('Failed to save customer payment:', error)
+      console.error('Failed to save customer payment:', error);
 
       setMessage(
         getErrorMessage(
           error,
           'حدث خطأ أثناء تسجيل الدفعة. لم يتم تطبيق أي تغييرات.',
         ),
-      )
+      );
     } finally {
-      setSavingPayment(false)
+      setSavingPayment(false);
     }
   }
 
   function canManageStatementPayment(entry: any) {
     if (!entry?.batch_id) {
-      return false
+      return false;
     }
 
     if (entry.cancelled_at || entry.replacement_batch_id) {
-      return false
+      return false;
     }
 
     return (
       isAdmin ||
       Number(entry.batch_created_by || 0) === Number(currentUser?.id || 0)
-    )
+    );
   }
 
   function openPaymentEdit(entry: any) {
     if (!canManageStatementPayment(entry)) {
-      return
+      return;
     }
 
     setPaymentAction({
       mode: 'edit',
       entry,
-    })
+    });
 
-    setPaymentActionAmount(String(Number(entry.credit || 0)))
+    setPaymentActionAmount(String(Number(entry.credit || 0)));
 
-    setPaymentActionMethod(String(entry.payment_method || 'cash'))
+    setPaymentActionMethod(String(entry.payment_method || 'cash'));
 
-    setPaymentActionNotes(String(entry.notes || ''))
+    setPaymentActionNotes(String(entry.notes || ''));
 
-    setPaymentActionReason('')
-    setPaymentActionPassword('')
-    setPaymentActionAdminUsername('')
+    setPaymentActionReason('');
+    setPaymentActionPassword('');
+    setPaymentActionAdminUsername('');
 
-    setPaymentActionRequirePassword(Boolean(entry.requires_admin_password))
+    setPaymentActionRequirePassword(Boolean(entry.requires_admin_password));
   }
 
   function openPaymentCancel(entry: any) {
     if (!canManageStatementPayment(entry)) {
-      return
+      return;
     }
 
     setPaymentAction({
       mode: 'cancel',
       entry,
-    })
+    });
 
-    setPaymentActionAmount('')
-    setPaymentActionMethod('cash')
-    setPaymentActionNotes('')
-    setPaymentActionReason('')
-    setPaymentActionPassword('')
-    setPaymentActionAdminUsername('')
+    setPaymentActionAmount('');
+    setPaymentActionMethod('cash');
+    setPaymentActionNotes('');
+    setPaymentActionReason('');
+    setPaymentActionPassword('');
+    setPaymentActionAdminUsername('');
 
-    setPaymentActionRequirePassword(Boolean(entry.requires_admin_password))
+    setPaymentActionRequirePassword(Boolean(entry.requires_admin_password));
   }
 
   function closePaymentAction() {
     if (savingPaymentAction) {
-      return
+      return;
     }
 
-    setPaymentAction(null)
-    setPaymentActionAmount('')
-    setPaymentActionMethod('cash')
-    setPaymentActionNotes('')
-    setPaymentActionReason('')
-    setPaymentActionPassword('')
-    setPaymentActionAdminUsername('')
-    setPaymentActionRequirePassword(false)
+    setPaymentAction(null);
+    setPaymentActionAmount('');
+    setPaymentActionMethod('cash');
+    setPaymentActionNotes('');
+    setPaymentActionReason('');
+    setPaymentActionPassword('');
+    setPaymentActionAdminUsername('');
+    setPaymentActionRequirePassword(false);
   }
 
   async function savePaymentAction() {
     if (!paymentAction || savingPaymentAction) {
-      return
+      return;
     }
 
-    const batchId = Number(paymentAction.entry?.batch_id || 0)
+    const batchId = Number(paymentAction.entry?.batch_id || 0);
 
     if (!batchId) {
-      setMessage('رقم دفعة العميل غير صحيح')
-      return
+      setMessage('رقم دفعة العميل غير صحيح');
+      return;
     }
 
     if (paymentAction.mode === 'edit') {
-      const amount = Number(paymentActionAmount || 0)
+      const amount = Number(paymentActionAmount || 0);
 
       if (!Number.isFinite(amount) || amount <= 0) {
-        setMessage('اكتب مبلغ دفعة صحيح')
-        return
+        setMessage('اكتب مبلغ دفعة صحيح');
+        return;
       }
     } else if (!paymentActionReason.trim()) {
-      setMessage('سبب الإلغاء مطلوب')
-      return
+      setMessage('سبب الإلغاء مطلوب');
+      return;
     }
 
     if (
@@ -730,18 +732,18 @@ export default function CustomersPage() {
       !isAdmin &&
       !paymentActionAdminUsername.trim()
     ) {
-      setMessage('اسم مستخدم المدير مطلوب')
+      setMessage('اسم مستخدم المدير مطلوب');
 
-      return
+      return;
     }
 
     if (paymentActionRequirePassword && !paymentActionPassword.trim()) {
-      setMessage('كلمة مرور المدير مطلوبة')
+      setMessage('كلمة مرور المدير مطلوبة');
 
-      return
+      return;
     }
 
-    setSavingPaymentAction(true)
+    setSavingPaymentAction(true);
 
     try {
       const result =
@@ -781,48 +783,48 @@ export default function CustomersPage() {
               admin_password: paymentActionRequirePassword
                 ? paymentActionPassword
                 : undefined,
-            })
+            });
 
       if (!result.success) {
         const errorMessage =
           result.message ||
           (paymentAction.mode === 'edit'
             ? 'تعذر تعديل دفعة العميل'
-            : 'تعذر إلغاء دفعة العميل')
+            : 'تعذر إلغاء دفعة العميل');
 
         if (errorMessage.includes('المدير')) {
-          setPaymentActionRequirePassword(true)
+          setPaymentActionRequirePassword(true);
         }
 
-        setMessage(errorMessage)
-        return
+        setMessage(errorMessage);
+        return;
       }
 
-      const customerId = Number(statementData?.customer?.id || 0)
+      const customerId = Number(statementData?.customer?.id || 0);
 
-      setPaymentAction(null)
-      setPaymentActionAmount('')
-      setPaymentActionNotes('')
-      setPaymentActionReason('')
-      setPaymentActionPassword('')
-      setPaymentActionAdminUsername('')
-      setPaymentActionRequirePassword(false)
+      setPaymentAction(null);
+      setPaymentActionAmount('');
+      setPaymentActionNotes('');
+      setPaymentActionReason('');
+      setPaymentActionPassword('');
+      setPaymentActionAdminUsername('');
+      setPaymentActionRequirePassword(false);
 
-      await loadCustomers(customerPage)
+      await loadCustomers(customerPage);
 
       if (customerId) {
-        const data = await window.api.getCustomerStatement(customerId)
+        const data = await window.api.getCustomerStatement(customerId);
 
-        setStatementData(data)
+        setStatementData(data);
       }
 
       setMessage(
         paymentAction.mode === 'edit'
           ? 'تم تعديل دفعة العميل'
           : 'تم إلغاء دفعة العميل',
-      )
+      );
     } catch (error) {
-      console.error('Failed to process customer payment:', error)
+      console.error('Failed to process customer payment:', error);
 
       setMessage(
         getErrorMessage(
@@ -832,14 +834,14 @@ export default function CustomersPage() {
             ? 'حدث خطأ أثناء تعديل الدفعة. لم يتم تطبيق أي تغييرات.'
             : 'حدث خطأ أثناء إلغاء الدفعة. لم يتم تطبيق أي تغييرات.',
         ),
-      )
+      );
     } finally {
-      setSavingPaymentAction(false)
+      setSavingPaymentAction(false);
     }
   }
 
   function money(value: unknown) {
-    return formatMoney(value)
+    return formatMoney(value);
   }
 
   function InfoCard({ title, value }: { title: string; value: string }) {
@@ -858,7 +860,7 @@ export default function CustomersPage() {
         <span style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</span>
         <strong style={{ color: '#fff', fontSize: '18px' }}>{value}</strong>
       </div>
-    )
+    );
   }
 
   function MiniDebtCard({ title, value }: { title: string; value: string }) {
@@ -891,15 +893,15 @@ export default function CustomersPage() {
           {value}
         </strong>
       </div>
-    )
+    );
   }
 
   function formatDate(value?: string) {
-    if (!value) return '—'
+    if (!value) return '—';
 
     try {
-      const raw = String(value)
-      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
+      const raw = String(value);
+      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
 
       return new Date(normalized).toLocaleString('ar-EG', {
         year: 'numeric',
@@ -907,26 +909,26 @@ export default function CustomersPage() {
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
-      })
+      });
     } catch {
-      return value
+      return value;
     }
   }
 
   function formatDateOnly(value?: string | null) {
-    const raw = String(value || '').trim()
+    const raw = String(value || '').trim();
 
     if (!raw) {
-      return '—'
+      return '—';
     }
 
-    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 
     if (!match) {
-      return raw
+      return raw;
     }
 
-    return `${match[3]}/${match[2]}/${match[1]}`
+    return `${match[3]}/${match[2]}/${match[1]}`;
   }
 
   return (
@@ -1224,7 +1226,7 @@ export default function CustomersPage() {
           totalItems={customersTotal}
           loading={loadingCustomers}
           onPageChange={(page) => {
-            void loadCustomers(page)
+            void loadCustomers(page);
           }}
         />
 
@@ -2389,7 +2391,7 @@ export default function CustomersPage() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 const inputStyle: React.CSSProperties = {
@@ -2403,7 +2405,7 @@ const inputStyle: React.CSSProperties = {
   textAlign: 'right',
   direction: 'rtl',
   minWidth: '220px',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -2414,7 +2416,7 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const secondaryOutlineButtonStyle: React.CSSProperties = {
   border: '1px solid #7c3aed',
@@ -2425,7 +2427,7 @@ const secondaryOutlineButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const smallButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(124,58,237,0.55)',
@@ -2435,25 +2437,25 @@ const smallButtonStyle: React.CSSProperties = {
   padding: '8px 10px',
   cursor: 'pointer',
   fontWeight: 700,
-}
+};
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   fontWeight: 800,
   whiteSpace: 'nowrap',
-}
+};
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
-}
+};
 
 const statementThStyle: React.CSSProperties = {
   ...thStyle,
   whiteSpace: 'normal',
   overflowWrap: 'anywhere',
-}
+};
 
 const statementTdStyle: React.CSSProperties = {
   ...tdStyle,
@@ -2462,7 +2464,7 @@ const statementTdStyle: React.CSSProperties = {
   wordBreak: 'break-word',
   verticalAlign: 'top',
   lineHeight: 1.6,
-}
+};
 
 const statCardStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.05)',
@@ -2471,7 +2473,7 @@ const statCardStyle: React.CSSProperties = {
   display: 'grid',
   gap: '8px',
   color: '#cbd5e1',
-}
+};
 
 const historyRowStyle: React.CSSProperties = {
   display: 'grid',
@@ -2481,7 +2483,7 @@ const historyRowStyle: React.CSSProperties = {
   borderRadius: '10px',
   background: 'rgba(255,255,255,0.04)',
   color: '#e5e7eb',
-}
+};
 
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
@@ -2492,7 +2494,7 @@ const modalOverlayStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   padding: '20px',
-}
+};
 
 const modalStyle: React.CSSProperties = {
   width: '480px',
@@ -2505,17 +2507,17 @@ const modalStyle: React.CSSProperties = {
   padding: '22px',
   direction: 'rtl',
   boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
-}
+};
 
 const fieldStyle: React.CSSProperties = {
   display: 'grid',
   gap: '8px',
-}
+};
 
 const labelStyle: React.CSSProperties = {
   color: '#cbd5e1',
   fontWeight: 800,
-}
+};
 
 const closeButtonStyle: React.CSSProperties = {
   width: '34px',
@@ -2526,4 +2528,4 @@ const closeButtonStyle: React.CSSProperties = {
   color: '#fff',
   cursor: 'pointer',
   fontSize: '20px',
-}
+};

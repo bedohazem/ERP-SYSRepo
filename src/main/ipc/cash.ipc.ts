@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain } from 'electron';
 
 import {
   createCashMovement,
@@ -8,7 +8,7 @@ import {
   updateCashMovement,
   getCashMovementMutationContext,
   listCashMovements,
-} from '../database/repositories/cash.repo'
+} from '../database/repositories/cash.repo';
 import {
   closeCashShift,
   getCashShiftExpectedBalance,
@@ -23,8 +23,8 @@ import {
   getCashShiftDetails,
   resolveCashShiftVariance,
   forceCloseCashShift,
-} from '../database/repositories/cash-shifts.repo'
-import { requireAdminPassword } from './permission-helper'
+} from '../database/repositories/cash-shifts.repo';
+import { requireAdminPassword } from './permission-helper';
 import {
   optionalEnumValue,
   optionalNonNegativeNumber,
@@ -39,16 +39,16 @@ import {
   optionalNonNegativeMoney,
   requireNonNegativeMoney,
   requirePositiveMoney,
-} from './input-validation'
+} from './input-validation';
 import {
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
   requirePermission,
-} from '../auth-session'
+} from '../auth-session';
 import {
   listUsers,
   userHasPermission,
-} from '../database/repositories/user.repo'
+} from '../database/repositories/user.repo';
 
 const CASH_ACCOUNT_INPUT_VALUES = [
   'store_cash',
@@ -67,9 +67,9 @@ const CASH_ACCOUNT_INPUT_VALUES = [
   'wallet',
   'bank',
   'bank_transfer',
-] as const
+] as const;
 
-const CASH_MOVEMENT_TYPES = ['deposit', 'withdraw'] as const
+const CASH_MOVEMENT_TYPES = ['deposit', 'withdraw'] as const;
 
 const SHIFT_VARIANCE_RESOLUTION_TYPES = [
   'approved',
@@ -77,11 +77,11 @@ const SHIFT_VARIANCE_RESOLUTION_TYPES = [
   'corrected',
   'explained',
   'other',
-] as const
+] as const;
 
 function getCashierShiftView(shift: any) {
   if (!shift) {
-    return null
+    return null;
   }
 
   return {
@@ -96,15 +96,15 @@ function getCashierShiftView(shift: any) {
     opened_at: shift.opened_at,
 
     closed_at: shift.closed_at ?? null,
-  }
+  };
 }
 
 export function registerCashIpc(): void {
   ipcMain.handle('cash:summary', (event, input) => {
-    const user = requireAuthenticatedUser(event)
+    const user = requireAuthenticatedUser(event);
 
     const canManageCash =
-      user.role === 'admin' || userHasPermission(user.id, 'cash.manage')
+      user.role === 'admin' || userHasPermission(user.id, 'cash.manage');
 
     return getCashSummary({
       ...(input || {}),
@@ -117,35 +117,35 @@ export function registerCashIpc(): void {
         user.role === 'admin' ? input?.exclude_payment_methods : ['store_safe'],
 
       created_by: canManageCash ? input?.created_by : user.id,
-    })
-  })
+    });
+  });
 
   ipcMain.handle('cash:transfer', (event, input) => {
-    const actorId = requirePermission(event, 'cash.manage').id
+    const actorId = requirePermission(event, 'cash.manage').id;
 
-    const payload = requireObjectInput(input, 'بيانات التحويل')
+    const payload = requireObjectInput(input, 'بيانات التحويل');
 
     const fromAccount = requireEnumValue(
       payload.from_account,
       CASH_ACCOUNT_INPUT_VALUES,
       'حساب التحويل المصدر',
-    )
+    );
 
     const toAccount = requireEnumValue(
       payload.to_account,
       CASH_ACCOUNT_INPUT_VALUES,
       'حساب التحويل المستلم',
-    )
+    );
 
-    const amount = requirePositiveMoney(payload.amount, 'مبلغ التحويل')
+    const amount = requirePositiveMoney(payload.amount, 'مبلغ التحويل');
 
-    const notes = optionalTrimmedString(payload.notes, 'ملاحظات التحويل')
+    const notes = optionalTrimmedString(payload.notes, 'ملاحظات التحويل');
 
     const openShift = resolveFinancialOperationShift(
       actorId,
       [fromAccount, toAccount],
       'لا يمكن تنفيذ تحويل يؤثر على درج المحل بدون شفت مفتوح',
-    )
+    );
 
     return createCashTransfer({
       from_account: fromAccount,
@@ -154,11 +154,11 @@ export function registerCashIpc(): void {
       notes,
       created_by: actorId,
       shift_id: openShift?.id ?? null,
-    })
-  })
+    });
+  });
 
   ipcMain.handle('cash:list', (event, input) => {
-    const actor = requirePermission(event, 'cash.manage')
+    const actor = requirePermission(event, 'cash.manage');
 
     return listCashMovements({
       ...(input || {}),
@@ -167,44 +167,44 @@ export function registerCashIpc(): void {
         actor.role === 'admin'
           ? input?.exclude_payment_methods
           : ['store_safe'],
-    })
-  })
+    });
+  });
 
   ipcMain.handle('cash:create-movement', (event, input) => {
-    const actorId = requirePermission(event, 'cash.manage').id
+    const actorId = requirePermission(event, 'cash.manage').id;
 
-    const payload = requireObjectInput(input, 'بيانات حركة الخزنة')
+    const payload = requireObjectInput(input, 'بيانات حركة الخزنة');
 
     const type = requireEnumValue(
       payload.type,
       CASH_MOVEMENT_TYPES,
       'نوع حركة الخزنة اليدوية',
-    )
+    );
 
-    const direction: 'in' | 'out' = type === 'deposit' ? 'in' : 'out'
+    const direction: 'in' | 'out' = type === 'deposit' ? 'in' : 'out';
 
     const rawPaymentMethod =
       payload.payment_method === undefined ||
       payload.payment_method === null ||
       payload.payment_method === ''
         ? 'store_cash'
-        : payload.payment_method
+        : payload.payment_method;
 
     const paymentMethod = requireEnumValue(
       rawPaymentMethod,
       CASH_ACCOUNT_INPUT_VALUES,
       'حساب حركة الخزنة',
-    )
+    );
 
-    const amount = requirePositiveMoney(payload.amount, 'مبلغ حركة الخزنة')
+    const amount = requirePositiveMoney(payload.amount, 'مبلغ حركة الخزنة');
 
-    const notes = optionalTrimmedString(payload.notes, 'ملاحظات حركة الخزنة')
+    const notes = optionalTrimmedString(payload.notes, 'ملاحظات حركة الخزنة');
 
     const openShift = resolveFinancialOperationShift(
       actorId,
       [paymentMethod],
       'لا يمكن تسجيل حركة على درج المحل بدون شفت مفتوح',
-    )
+    );
 
     return createCashMovement({
       type,
@@ -216,68 +216,68 @@ export function registerCashIpc(): void {
       notes,
       created_by: actorId,
       shift_id: openShift?.id ?? null,
-    })
-  })
+    });
+  });
 
   ipcMain.handle('cash:update-movement', (event, input) => {
     try {
-      const actorId = requireAuthenticatedUser(event).id
+      const actorId = requireAuthenticatedUser(event).id;
 
-      const payload = requireObjectInput(input, 'بيانات تعديل حركة الخزنة')
+      const payload = requireObjectInput(input, 'بيانات تعديل حركة الخزنة');
 
       const adminPassword = optionalStringValue(
         payload.admin_password,
         'كلمة مرور المدير',
         256,
-      )
+      );
 
-      const approval = requireAdminPassword(actorId, adminPassword)
+      const approval = requireAdminPassword(actorId, adminPassword);
 
-      const movementId = requirePositiveInteger(payload.id, 'رقم حركة الخزنة')
+      const movementId = requirePositiveInteger(payload.id, 'رقم حركة الخزنة');
 
-      const amount = requirePositiveMoney(payload.amount, 'مبلغ حركة الخزنة')
+      const amount = requirePositiveMoney(payload.amount, 'مبلغ حركة الخزنة');
 
       const type = optionalEnumValue(
         payload.type,
         CASH_MOVEMENT_TYPES,
         'نوع حركة الخزنة',
-      )
+      );
 
       const paymentMethod = optionalEnumValue(
         payload.payment_method,
         CASH_ACCOUNT_INPUT_VALUES,
         'حساب حركة الخزنة',
-      )
+      );
 
       const fromAccount = optionalEnumValue(
         payload.from_account,
         CASH_ACCOUNT_INPUT_VALUES,
         'حساب التحويل المصدر',
-      )
+      );
 
       const toAccount = optionalEnumValue(
         payload.to_account,
         CASH_ACCOUNT_INPUT_VALUES,
         'حساب التحويل المستلم',
-      )
+      );
 
-      const notes = optionalTrimmedString(payload.notes, 'ملاحظات حركة الخزنة')
+      const notes = optionalTrimmedString(payload.notes, 'ملاحظات حركة الخزنة');
 
-      const mutationContext = getCashMovementMutationContext(movementId)
+      const mutationContext = getCashMovementMutationContext(movementId);
 
-      const requestedAccounts: string[] = []
+      const requestedAccounts: string[] = [];
 
       if (mutationContext.kind === 'manual') {
         if (paymentMethod) {
-          requestedAccounts.push(paymentMethod)
+          requestedAccounts.push(paymentMethod);
         }
       } else {
         if (fromAccount) {
-          requestedAccounts.push(fromAccount)
+          requestedAccounts.push(fromAccount);
         }
 
         if (toAccount) {
-          requestedAccounts.push(toAccount)
+          requestedAccounts.push(toAccount);
         }
       }
 
@@ -285,7 +285,7 @@ export function registerCashIpc(): void {
         actorId,
         [...mutationContext.accounts, ...requestedAccounts],
         'لا يمكن تعديل حركة تؤثر على درج المحل بدون شفت مفتوح',
-      )
+      );
 
       return updateCashMovement({
         id: movementId,
@@ -307,46 +307,46 @@ export function registerCashIpc(): void {
         actor_id: actorId,
 
         shift_id: openShift?.id ?? null,
-      })
+      });
     } catch (error) {
       return {
         success: false,
 
         message:
           error instanceof Error ? error.message : 'تعذر تعديل حركة الخزنة',
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('cash:cancel-movement', (event, input) => {
     try {
-      const actorId = requireAuthenticatedUser(event).id
+      const actorId = requireAuthenticatedUser(event).id;
 
-      const payload = requireObjectInput(input, 'بيانات إلغاء حركة الخزنة')
+      const payload = requireObjectInput(input, 'بيانات إلغاء حركة الخزنة');
 
       const adminPassword = optionalStringValue(
         payload.admin_password,
         'كلمة مرور المدير',
         256,
-      )
+      );
 
-      const approval = requireAdminPassword(actorId, adminPassword)
+      const approval = requireAdminPassword(actorId, adminPassword);
 
-      const movementId = requirePositiveInteger(payload.id, 'رقم حركة الخزنة')
+      const movementId = requirePositiveInteger(payload.id, 'رقم حركة الخزنة');
 
       const reason = optionalTrimmedString(
         payload.reason,
         'سبب إلغاء حركة الخزنة',
         500,
-      )
+      );
 
-      const mutationContext = getCashMovementMutationContext(movementId)
+      const mutationContext = getCashMovementMutationContext(movementId);
 
       const openShift = resolveFinancialOperationShift(
         actorId,
         mutationContext.accounts,
         'لا يمكن إلغاء حركة تؤثر على درج المحل بدون شفت مفتوح',
-      )
+      );
 
       return cancelCashMovement({
         id: movementId,
@@ -358,29 +358,29 @@ export function registerCashIpc(): void {
         actor_id: actorId,
 
         shift_id: openShift?.id ?? null,
-      })
+      });
     } catch (error) {
       return {
         success: false,
 
         message:
           error instanceof Error ? error.message : 'تعذر إلغاء حركة الخزنة',
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('cash-shifts:day-summary', (event, input) => {
-    requirePermission(event, 'shifts.manage')
+    requirePermission(event, 'shifts.manage');
 
     return getCashShiftDaySummary({
       business_date: String(input?.business_date || ''),
 
       user_id: input?.user_id ?? null,
-    })
-  })
+    });
+  });
 
   ipcMain.handle('cash-shifts:list', (event, input) => {
-    requirePermission(event, 'shifts.manage')
+    requirePermission(event, 'shifts.manage');
 
     return listCashShifts({
       status: input?.status || 'all',
@@ -394,11 +394,11 @@ export function registerCashIpc(): void {
       limit: Number(input?.limit || 50),
 
       offset: Number(input?.offset || 0),
-    })
-  })
+    });
+  });
 
   ipcMain.handle('cash-shifts:users', (event) => {
-    requirePermission(event, 'shifts.manage')
+    requirePermission(event, 'shifts.manage');
 
     return listUsers('').map((user) => ({
       id: Number(user.id),
@@ -406,17 +406,17 @@ export function registerCashIpc(): void {
       name: String(user.name || ''),
 
       role: String(user.role || ''),
-    }))
-  })
+    }));
+  });
 
   ipcMain.handle('cash-shifts:details', (event, shiftId) => {
-    requirePermission(event, 'shifts.manage')
+    requirePermission(event, 'shifts.manage');
 
-    return getCashShiftDetails(Number(shiftId))
-  })
+    return getCashShiftDetails(Number(shiftId));
+  });
 
   ipcMain.handle('cash-shifts:list-variances', (event, input) => {
-    requirePermission(event, 'shifts.manage')
+    requirePermission(event, 'shifts.manage');
 
     return listCashShiftVariances({
       status: input?.status || 'pending',
@@ -430,50 +430,50 @@ export function registerCashIpc(): void {
       limit: Number(input?.limit || 50),
 
       offset: Number(input?.offset || 0),
-    })
-  })
+    });
+  });
 
   ipcMain.handle('cash-shifts:resolve-variance', (event, input) => {
     try {
-      const actor = requireAuthenticatedUser(event)
+      const actor = requireAuthenticatedUser(event);
 
-      const payload = requireObjectInput(input, 'بيانات مراجعة فرق الشفت')
+      const payload = requireObjectInput(input, 'بيانات مراجعة فرق الشفت');
 
       const adminPassword = optionalStringValue(
         payload.admin_password,
         'كلمة مرور المدير',
         256,
-      )
+      );
 
-      const approval = requireAdminPassword(actor.id, adminPassword)
+      const approval = requireAdminPassword(actor.id, adminPassword);
 
       const varianceId = requirePositiveInteger(
         payload.variance_id,
         'رقم فرق الشفت',
-      )
+      );
 
       const resolutionType = requireEnumValue(
         payload.resolution_type,
         SHIFT_VARIANCE_RESOLUTION_TYPES,
         'نوع مراجعة فرق الشفت',
-      )
+      );
 
       const resolutionNotes = requireTrimmedString(
         payload.resolution_notes,
         'ملاحظات مراجعة فرق الشفت',
         1000,
-      )
+      );
 
       const reversalAccount = optionalEnumValue(
         payload.reversal_account,
         CASH_ACCOUNT_INPUT_VALUES,
         'حساب عكس فرق الشفت',
-      )
+      );
 
       const correctedOpeningAmount = optionalNonNegativeMoney(
         payload.corrected_opening_amount,
         'الجرد الصحيح عند افتتاح الشفت',
-      )
+      );
 
       const variance = resolveCashShiftVariance({
         variance_id: varianceId,
@@ -489,47 +489,47 @@ export function registerCashIpc(): void {
         corrected_opening_amount: correctedOpeningAmount ?? null,
 
         resolved_by: actor.id,
-      })
+      });
 
       return {
         success: true,
         variance,
-      }
+      };
     } catch (error) {
       return {
         success: false,
 
         message:
           error instanceof Error ? error.message : 'تعذر مراجعة فرق الشفت',
-      }
+      };
     }
-  })
+  });
 
   ipcMain.handle('cash-shifts:get-open', (event) => {
-    const actor = requirePermission(event, 'shifts.operate_own')
+    const actor = requirePermission(event, 'shifts.operate_own');
 
-    const shift = getOpenCashShift()
+    const shift = getOpenCashShift();
 
     const canManageShifts =
-      actor.role === 'admin' || userHasPermission(actor.id, 'shifts.manage')
+      actor.role === 'admin' || userHasPermission(actor.id, 'shifts.manage');
 
     if (canManageShifts) {
-      return shift
+      return shift;
     }
 
-    return getCashierShiftView(shift)
-  })
+    return getCashierShiftView(shift);
+  });
 
   ipcMain.handle('cash-shifts:opening-preview', (event) => {
-    const actor = requirePermission(event, 'shifts.operate_own')
+    const actor = requirePermission(event, 'shifts.operate_own');
 
-    const preview = getCashShiftOpeningPreview()
+    const preview = getCashShiftOpeningPreview();
 
     const canManageShifts =
-      actor.role === 'admin' || userHasPermission(actor.id, 'shifts.manage')
+      actor.role === 'admin' || userHasPermission(actor.id, 'shifts.manage');
 
     if (canManageShifts) {
-      return preview
+      return preview;
     }
 
     return {
@@ -547,95 +547,95 @@ export function registerCashIpc(): void {
       expected_opening_amount: null,
 
       previous_closed_at: null,
-    }
-  })
+    };
+  });
 
   ipcMain.handle('cash-shifts:open', (event, input) => {
-    const actor = requirePermission(event, 'shifts.operate_own')
+    const actor = requirePermission(event, 'shifts.operate_own');
 
-    const payload = requireObjectInput(input, 'بيانات فتح الشفت')
+    const payload = requireObjectInput(input, 'بيانات فتح الشفت');
 
     const openingCountedAmount = requireNonNegativeMoney(
       payload.opening_counted_amount,
       'رصيد افتتاح الشفت',
-    )
+    );
 
     const shift = openCashShift({
       opening_counted_amount: openingCountedAmount,
 
       opened_by: actor.id,
-    })
+    });
 
     const canManageShifts =
-      actor.role === 'admin' || userHasPermission(actor.id, 'shifts.manage')
+      actor.role === 'admin' || userHasPermission(actor.id, 'shifts.manage');
 
     if (canManageShifts) {
-      return shift
+      return shift;
     }
 
-    return getCashierShiftView(shift)
-  })
+    return getCashierShiftView(shift);
+  });
 
   ipcMain.handle('cash-shifts:preview', (event, shiftId) => {
-    requirePermission(event, 'shifts.manage')
+    requirePermission(event, 'shifts.manage');
 
-    const safeShiftId = requirePositiveInteger(shiftId, 'رقم الشفت')
+    const safeShiftId = requirePositiveInteger(shiftId, 'رقم الشفت');
 
-    const shift = getCashShiftById(safeShiftId)
+    const shift = getCashShiftById(safeShiftId);
 
     if (!shift) {
-      throw new Error('الشفت غير موجود')
+      throw new Error('الشفت غير موجود');
     }
 
-    return getCashShiftExpectedBalance(shift.id)
-  })
+    return getCashShiftExpectedBalance(shift.id);
+  });
 
   ipcMain.handle('cash-shifts:close', (event, input) => {
-    const actor = requirePermission(event, 'shifts.operate_own')
+    const actor = requirePermission(event, 'shifts.operate_own');
 
-    const payload = requireObjectInput(input, 'بيانات إغلاق الشفت')
+    const payload = requireObjectInput(input, 'بيانات إغلاق الشفت');
 
-    const shiftId = requirePositiveInteger(payload.shift_id, 'رقم الشفت')
+    const shiftId = requirePositiveInteger(payload.shift_id, 'رقم الشفت');
 
     const closingCountedAmount = requireNonNegativeMoney(
       payload.closing_counted_amount,
       'الجرد الفعلي عند إغلاق الشفت',
-    )
+    );
 
     const leftForNextShift = requireNonNegativeMoney(
       payload.left_for_next_shift,
       'المبلغ المتروك للشفت التالي',
-    )
+    );
 
     const closeReason = optionalTrimmedString(
       payload.close_reason,
       'سبب إغلاق الشفت',
       500,
-    )
+    );
 
     const adminPassword = optionalStringValue(
       payload.admin_password,
       'كلمة مرور المدير',
       256,
-    )
+    );
 
-    const shift = getCashShiftById(shiftId)
+    const shift = getCashShiftById(shiftId);
 
     if (!shift) {
-      throw new Error('الشفت غير موجود')
+      throw new Error('الشفت غير موجود');
     }
 
     if (actor.role !== 'admin' && Number(shift.opened_by) !== actor.id) {
-      throw new Error('لا يمكنك إغلاق شفت مستخدم آخر')
+      throw new Error('لا يمكنك إغلاق شفت مستخدم آخر');
     }
 
     const isAdminClosingOtherShift =
-      actor.role === 'admin' && Number(shift.opened_by) !== actor.id
+      actor.role === 'admin' && Number(shift.opened_by) !== actor.id;
 
-    let approvedBy: number | null = null
+    let approvedBy: number | null = null;
 
     if (isAdminClosingOtherShift) {
-      approvedBy = requireAdminPassword(actor.id, adminPassword).id
+      approvedBy = requireAdminPassword(actor.id, adminPassword).id;
     }
 
     const closedShift = closeCashShift({
@@ -650,38 +650,38 @@ export function registerCashIpc(): void {
       close_reason: closeReason,
 
       closed_by: actor.id,
-    })
+    });
 
     const canManageShifts =
-      actor.role === 'admin' || userHasPermission(actor.id, 'shifts.manage')
+      actor.role === 'admin' || userHasPermission(actor.id, 'shifts.manage');
 
     if (canManageShifts) {
-      return closedShift
+      return closedShift;
     }
 
-    return getCashierShiftView(closedShift)
-  })
+    return getCashierShiftView(closedShift);
+  });
 
   ipcMain.handle('cash-shifts:force-close', (event, input) => {
-    const actorId = requireAuthenticatedAdmin(event)
+    const actorId = requireAuthenticatedAdmin(event);
 
-    const payload = requireObjectInput(input, 'بيانات الإغلاق الطارئ للشفت')
+    const payload = requireObjectInput(input, 'بيانات الإغلاق الطارئ للشفت');
 
     const adminPassword = optionalStringValue(
       payload.admin_password,
       'كلمة مرور المدير',
       256,
-    )
+    );
 
-    const approval = requireAdminPassword(actorId, adminPassword)
+    const approval = requireAdminPassword(actorId, adminPassword);
 
-    const shiftId = requirePositiveInteger(payload.shift_id, 'رقم الشفت')
+    const shiftId = requirePositiveInteger(payload.shift_id, 'رقم الشفت');
 
     const reason = requireTrimmedString(
       payload.reason,
       'سبب الإغلاق الطارئ',
       500,
-    )
+    );
 
     return forceCloseCashShift({
       shift_id: shiftId,
@@ -691,6 +691,6 @@ export function registerCashIpc(): void {
       approved_by: approval.id,
 
       reason,
-    })
-  })
+    });
+  });
 }

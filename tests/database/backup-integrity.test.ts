@@ -1,77 +1,79 @@
-import fs from 'node:fs'
-import path from 'node:path'
+import fs from 'node:fs';
+import path from 'node:path';
 
-import Database from 'better-sqlite3'
+import Database from 'better-sqlite3';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   closeDb,
   getDb,
   getDbPath,
   resetDatabaseData,
-} from '../../src/main/database/db'
+} from '../../src/main/database/db';
 
-import { validateErpDatabaseFile } from '../../src/main/database/backup-integrity'
+import { validateErpDatabaseFile } from '../../src/main/database/backup-integrity';
 
 import {
   createVerifiedDatabaseBackup,
   restoreVerifiedDatabase,
-} from '../../src/main/database/database-backup'
+} from '../../src/main/database/database-backup';
 
 function tempPath(name: string) {
-  return path.join(path.dirname(getDbPath()), name)
+  return path.join(path.dirname(getDbPath()), name);
 }
 
 describe('database backup integrity', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
-  })
+    closeDb();
+    getDb();
+    resetDatabaseData();
+  });
 
   it('creates a verified ERP backup', async () => {
-    const backupPath = tempPath(`verified-${Date.now()}.db`)
+    const backupPath = tempPath(`verified-${Date.now()}.db`);
 
     try {
-      const result = await createVerifiedDatabaseBackup(backupPath)
+      const result = await createVerifiedDatabaseBackup(backupPath);
 
-      expect(result.size).toBeGreaterThan(0)
+      expect(result.size).toBeGreaterThan(0);
 
-      expect(result.tables).toContain('users')
+      expect(result.tables).toContain('users');
 
-      expect(result.tables).toContain('sales')
+      expect(result.tables).toContain('sales');
 
-      expect(() => validateErpDatabaseFile(backupPath)).not.toThrow()
+      expect(() => validateErpDatabaseFile(backupPath)).not.toThrow();
     } finally {
       try {
         fs.rmSync(backupPath, {
           force: true,
-        })
+        });
       } catch {
         // ignore
       }
     }
-  })
+  });
 
   it('rejects a non database file', () => {
-    const badPath = tempPath(`bad-${Date.now()}.db`)
+    const badPath = tempPath(`bad-${Date.now()}.db`);
 
-    fs.writeFileSync(badPath, 'not a database', 'utf8')
+    fs.writeFileSync(badPath, 'not a database', 'utf8');
 
     try {
-      expect(() => validateErpDatabaseFile(badPath)).toThrow('قاعدة بيانات ERP')
+      expect(() => validateErpDatabaseFile(badPath)).toThrow(
+        'قاعدة بيانات ERP',
+      );
     } finally {
       fs.rmSync(badPath, {
         force: true,
-      })
+      });
     }
-  })
+  });
 
   it('rejects a valid sqlite database that is not an ERP backup', () => {
-    const otherPath = tempPath(`other-${Date.now()}.db`)
+    const otherPath = tempPath(`other-${Date.now()}.db`);
 
-    const other = new Database(otherPath)
+    const other = new Database(otherPath);
 
     other.exec(
       `
@@ -80,27 +82,27 @@ describe('database backup integrity', () => {
             text TEXT
           );
           `,
-    )
+    );
 
-    other.close()
+    other.close();
 
     try {
       expect(() => validateErpDatabaseFile(otherPath)).toThrow(
         'ليس نسخة ERP صالحة',
-      )
+      );
     } finally {
       fs.rmSync(otherPath, {
         force: true,
-      })
+      });
     }
-  })
+  });
 
   it('restores a verified backup and preserves a safety backup', async () => {
-    const sourcePath = tempPath(`restore-source-${Date.now()}.db`)
+    const sourcePath = tempPath(`restore-source-${Date.now()}.db`);
 
-    await createVerifiedDatabaseBackup(sourcePath)
+    await createVerifiedDatabaseBackup(sourcePath);
 
-    const db = getDb()
+    const db = getDb();
 
     db.prepare(
       `
@@ -118,13 +120,13 @@ describe('database backup integrity', () => {
           DO UPDATE SET
             value = excluded.value
           `,
-    ).run()
+    ).run();
 
-    const restored = await restoreVerifiedDatabase(sourcePath)
+    const restored = await restoreVerifiedDatabase(sourcePath);
 
-    expect(restored.safetyBackupPath).toBeTruthy()
+    expect(restored.safetyBackupPath).toBeTruthy();
 
-    expect(fs.existsSync(restored.safetyBackupPath!)).toBe(true)
+    expect(fs.existsSync(restored.safetyBackupPath!)).toBe(true);
 
     const marker = getDb()
       .prepare(
@@ -137,26 +139,26 @@ describe('database backup integrity', () => {
                 'restore_test_marker'
               `,
       )
-      .get()
+      .get();
 
-    expect(marker).toBeUndefined()
+    expect(marker).toBeUndefined();
 
     fs.rmSync(sourcePath, {
       force: true,
-    })
+    });
 
     fs.rmSync(restored.safetyBackupPath!, {
       force: true,
-    })
-  })
+    });
+  });
 
   it('automatically rolls back when replacing the live database fails', async () => {
-    const sourcePath = tempPath(`rollback-source-${Date.now()}.db`)
+    const sourcePath = tempPath(`rollback-source-${Date.now()}.db`);
 
     /*
      * Source صالحة.
      */
-    await createVerifiedDatabaseBackup(sourcePath)
+    await createVerifiedDatabaseBackup(sourcePath);
 
     /*
      * بعد إنشاء Source نضيف
@@ -181,18 +183,18 @@ describe('database backup integrity', () => {
           value = excluded.value
         `,
       )
-      .run()
+      .run();
 
-    const renameSpy = vi.spyOn(fs, 'renameSync')
+    const renameSpy = vi.spyOn(fs, 'renameSync');
 
     renameSpy.mockImplementationOnce(() => {
-      throw new Error('simulated replace failure')
-    })
+      throw new Error('simulated replace failure');
+    });
 
     try {
       await expect(restoreVerifiedDatabase(sourcePath)).rejects.toThrow(
         'simulated replace failure',
-      )
+      );
 
       /*
        * القاعدة الأصلية لازم
@@ -213,40 +215,40 @@ describe('database backup integrity', () => {
         )
         .get() as
         | {
-            value: string
+            value: string;
           }
-        | undefined
+        | undefined;
 
-      expect(marker?.value).toBe('current-database')
+      expect(marker?.value).toBe('current-database');
 
-      expect(() => validateErpDatabaseFile(getDbPath())).not.toThrow()
+      expect(() => validateErpDatabaseFile(getDbPath())).not.toThrow();
     } finally {
-      renameSpy.mockRestore()
+      renameSpy.mockRestore();
 
       fs.rmSync(sourcePath, {
         force: true,
-      })
+      });
 
       /*
        * ننظف Safety backups
        * التي أنشأها الاختبار.
        */
-      const dir = path.dirname(getDbPath())
+      const dir = path.dirname(getDbPath());
 
-      const prefix = `${path.basename(getDbPath())}.before-restore-`
+      const prefix = `${path.basename(getDbPath())}.before-restore-`;
 
       for (const file of fs.readdirSync(dir)) {
         if (file.startsWith(prefix) && file.endsWith('.bak')) {
           fs.rmSync(path.join(dir, file), {
             force: true,
-          })
+          });
         }
       }
     }
-  })
+  });
 
   it('does not touch the live database when the selected backup is invalid', async () => {
-    const badPath = tempPath(`invalid-restore-${Date.now()}.db`)
+    const badPath = tempPath(`invalid-restore-${Date.now()}.db`);
 
     getDb()
       .prepare(
@@ -266,12 +268,12 @@ describe('database backup integrity', () => {
           value = excluded.value
         `,
       )
-      .run()
+      .run();
 
-    fs.writeFileSync(badPath, 'definitely not sqlite', 'utf8')
+    fs.writeFileSync(badPath, 'definitely not sqlite', 'utf8');
 
     try {
-      await expect(restoreVerifiedDatabase(badPath)).rejects.toThrow()
+      await expect(restoreVerifiedDatabase(badPath)).rejects.toThrow();
 
       const marker = getDb()
         .prepare(
@@ -288,15 +290,15 @@ describe('database backup integrity', () => {
         )
         .get() as
         | {
-            value: string
+            value: string;
           }
-        | undefined
+        | undefined;
 
-      expect(marker?.value).toBe('still-here')
+      expect(marker?.value).toBe('still-here');
     } finally {
       fs.rmSync(badPath, {
         force: true,
-      })
+      });
     }
-  })
-})
+  });
+});

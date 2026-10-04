@@ -1,44 +1,44 @@
-import crypto from 'node:crypto'
+import crypto from 'node:crypto';
 
-import { SUPPORT_SIGNING_PUBLIC_KEY_PEM } from './support-signing-public-key'
+import { SUPPORT_SIGNING_PUBLIC_KEY_PEM } from './support-signing-public-key';
 
-export const SUPPORT_RECOVERY_TOKEN_MAX_TTL_SECONDS = 15 * 60
+export const SUPPORT_RECOVERY_TOKEN_MAX_TTL_SECONDS = 15 * 60;
 
 export type SupportRecoveryTokenPayload = {
-  v: 1
+  v: 1;
 
-  purpose: 'admin_password_recovery'
+  purpose: 'admin_password_recovery';
 
-  device_code: string
+  device_code: string;
 
-  request_id: string
+  request_id: string;
 
-  username: string
+  username: string;
 
-  issued_at: number
+  issued_at: number;
 
-  expires_at: number
-}
+  expires_at: number;
+};
 
 export function normalizeRecoveryCode(value: unknown): string {
   return String(value ?? '')
     .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
+    .replace(/[^A-Z0-9]/g, '');
 }
 
 export function isSupportRecoveryConfigured(): boolean {
-  const pem = String(SUPPORT_SIGNING_PUBLIC_KEY_PEM || '').trim()
+  const pem = String(SUPPORT_SIGNING_PUBLIC_KEY_PEM || '').trim();
 
   if (!pem) {
-    return false
+    return false;
   }
 
   try {
-    const key = crypto.createPublicKey(pem)
+    const key = crypto.createPublicKey(pem);
 
-    return key.asymmetricKeyType === 'ed25519'
+    return key.asymmetricKeyType === 'ed25519';
   } catch {
-    return false
+    return false;
   }
 }
 
@@ -46,60 +46,60 @@ export function verifySupportRecoveryToken(
   tokenInput: unknown,
   publicKeyPem = SUPPORT_SIGNING_PUBLIC_KEY_PEM,
 ): SupportRecoveryTokenPayload {
-  const token = String(tokenInput ?? '').trim()
+  const token = String(tokenInput ?? '').trim();
 
   if (!token || token.length > 4096) {
-    throw new Error('Recovery Code غير صحيح')
+    throw new Error('Recovery Code غير صحيح');
   }
 
-  const parts = token.split('.')
+  const parts = token.split('.');
 
   if (parts.length !== 3 || parts[0] !== 'ERPR1') {
-    throw new Error('Recovery Code غير صحيح')
+    throw new Error('Recovery Code غير صحيح');
   }
 
-  const [, encodedPayload, encodedSignature] = parts
+  const [, encodedPayload, encodedSignature] = parts;
 
-  const pem = String(publicKeyPem || '').trim()
+  const pem = String(publicKeyPem || '').trim();
 
   if (!pem) {
-    throw new Error('Support Recovery غير مفعّل في هذه النسخة')
+    throw new Error('Support Recovery غير مفعّل في هذه النسخة');
   }
 
   try {
-    const publicKey = crypto.createPublicKey(pem)
+    const publicKey = crypto.createPublicKey(pem);
 
     if (publicKey.asymmetricKeyType !== 'ed25519') {
-      throw new Error('Invalid key type')
+      throw new Error('Invalid key type');
     }
 
-    const payloadBuffer = Buffer.from(encodedPayload, 'base64url')
+    const payloadBuffer = Buffer.from(encodedPayload, 'base64url');
 
-    const signature = Buffer.from(encodedSignature, 'base64url')
+    const signature = Buffer.from(encodedSignature, 'base64url');
 
-    const valid = crypto.verify(null, payloadBuffer, publicKey, signature)
+    const valid = crypto.verify(null, payloadBuffer, publicKey, signature);
 
     if (!valid) {
-      throw new Error('Invalid signature')
+      throw new Error('Invalid signature');
     }
 
     const raw = JSON.parse(
       payloadBuffer.toString('utf8'),
-    ) as Partial<SupportRecoveryTokenPayload>
+    ) as Partial<SupportRecoveryTokenPayload>;
 
     if (raw.v !== 1 || raw.purpose !== 'admin_password_recovery') {
-      throw new Error('Invalid payload')
+      throw new Error('Invalid payload');
     }
 
-    const deviceCode = normalizeRecoveryCode(raw.device_code)
+    const deviceCode = normalizeRecoveryCode(raw.device_code);
 
-    const requestId = normalizeRecoveryCode(raw.request_id)
+    const requestId = normalizeRecoveryCode(raw.request_id);
 
-    const username = String(raw.username ?? '').trim()
+    const username = String(raw.username ?? '').trim();
 
-    const issuedAt = Number(raw.issued_at)
+    const issuedAt = Number(raw.issued_at);
 
-    const expiresAt = Number(raw.expires_at)
+    const expiresAt = Number(raw.expires_at);
 
     if (
       !deviceCode ||
@@ -108,7 +108,7 @@ export function verifySupportRecoveryToken(
       !Number.isInteger(issuedAt) ||
       !Number.isInteger(expiresAt)
     ) {
-      throw new Error('Invalid payload')
+      throw new Error('Invalid payload');
     }
 
     return {
@@ -125,8 +125,8 @@ export function verifySupportRecoveryToken(
       issued_at: issuedAt,
 
       expires_at: expiresAt,
-    }
+    };
   } catch {
-    throw new Error('Recovery Code غير صحيح')
+    throw new Error('Recovery Code غير صحيح');
   }
 }

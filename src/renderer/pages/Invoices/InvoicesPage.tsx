@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../../store/auth.store'
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../store/auth.store';
 import {
   CASH_ACCOUNT_OPTIONS,
   ADMIN_CASH_ACCOUNT_OPTIONS,
@@ -8,276 +8,276 @@ import {
   ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS,
   getPaymentMethodLabel,
   getPaymentMethodShortLabel,
-} from '../../utils/payment-method'
-import { hasUserPermission } from '../../utils/permissions'
-import { printSaleReceiptHtml } from '../../utils/receiptPrint'
-import { printSaleExchangeReceiptHtml } from '../../utils/exchangeReceiptPrint'
-import FinancialCancelModal from '../../components/FinancialCancelModal'
-import SaleExchangeModal from '../../components/SaleExchangeModal'
+} from '../../utils/payment-method';
+import { hasUserPermission } from '../../utils/permissions';
+import { printSaleReceiptHtml } from '../../utils/receiptPrint';
+import { printSaleExchangeReceiptHtml } from '../../utils/exchangeReceiptPrint';
+import FinancialCancelModal from '../../components/FinancialCancelModal';
+import SaleExchangeModal from '../../components/SaleExchangeModal';
 
-import { getActiveSaleReturnHistory } from '../../utils/sale-return-history'
+import { getActiveSaleReturnHistory } from '../../utils/sale-return-history';
 import {
   getPromotionRulesText,
   getPromotionScopeLabel,
   getPromotionTypeLabel,
-} from '../../utils/promotion-display'
-import { formatMoney, roundMoney } from '../../../shared/money'
+} from '../../utils/promotion-display';
+import { formatMoney, roundMoney } from '../../../shared/money';
 
 type SaleRow = {
-  id: number
-  customer_name?: string | null
-  customer_phone?: string | null
-  cashier_name?: string | null
-  sub_total: number
-  discount_value: number
-  promotion_id?: number | null
-  promotion_name?: string | null
-  promotion_discount_value?: number
-  loyalty_discount_value: number
-  grand_total: number
-  paid: number
-  remaining_amount: number
-  payment_status: string
-  change_amount: number
-  payment_method: string
-  loyalty_points_earned: number
-  loyalty_points_redeemed: number
-  created_at: string
-  items_count: number
-  total_quantity: number
-  returned_quantity: number
-  return_count: number
-  customer_payment_history_count?: number
-  cancelled_return_count?: number
-  total_return_amount: number
-  cancelled_at?: string | null
-  cancelled_by?: number | null
-  cancel_reason?: string | null
-  user_id?: number | null
-  requires_admin_password?: number | boolean
-  original_sub_total?: number
-  original_grand_total?: number
+  id: number;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  cashier_name?: string | null;
+  sub_total: number;
+  discount_value: number;
+  promotion_id?: number | null;
+  promotion_name?: string | null;
+  promotion_discount_value?: number;
+  loyalty_discount_value: number;
+  grand_total: number;
+  paid: number;
+  remaining_amount: number;
+  payment_status: string;
+  change_amount: number;
+  payment_method: string;
+  loyalty_points_earned: number;
+  loyalty_points_redeemed: number;
+  created_at: string;
+  items_count: number;
+  total_quantity: number;
+  returned_quantity: number;
+  return_count: number;
+  customer_payment_history_count?: number;
+  cancelled_return_count?: number;
+  total_return_amount: number;
+  cancelled_at?: string | null;
+  cancelled_by?: number | null;
+  cancel_reason?: string | null;
+  user_id?: number | null;
+  requires_admin_password?: number | boolean;
+  original_sub_total?: number;
+  original_grand_total?: number;
 
-  total_discount_value?: number
+  total_discount_value?: number;
 
-  current_net_total?: number
-  current_paid_amount?: number
+  current_net_total?: number;
+  current_paid_amount?: number;
 
-  exchange_count?: number
-  cancelled_exchange_count?: number
-  exchange_difference_total?: number
-}
+  exchange_count?: number;
+  cancelled_exchange_count?: number;
+  exchange_difference_total?: number;
+};
 
-type InvoicesTab = 'sales' | 'returns' | 'exchanges'
+type InvoicesTab = 'sales' | 'returns' | 'exchanges';
 
 type ExchangeItemRow = {
-  id: number
+  id: number;
 
-  exchange_id: number
+  exchange_id: number;
 
-  promotion_unit_id: number
+  promotion_unit_id: number;
 
-  old_variant_id: number
-  new_variant_id: number
+  old_variant_id: number;
+  new_variant_id: number;
 
-  old_unit_price: number
-  new_unit_price: number
+  old_unit_price: number;
+  new_unit_price: number;
 
-  old_is_gift: number
-  new_is_gift: number
+  old_is_gift: number;
+  new_is_gift: number;
 
-  quantity: number
+  quantity: number;
 
-  old_product_name: string
+  old_product_name: string;
 
-  old_size?: string | null
-  old_color?: string | null
+  old_size?: string | null;
+  old_color?: string | null;
 
-  new_product_name: string
+  new_product_name: string;
 
-  new_size?: string | null
-  new_color?: string | null
-}
+  new_size?: string | null;
+  new_color?: string | null;
+};
 
 type ExchangeRow = {
-  id: number
+  id: number;
 
-  code: string
+  code: string;
 
-  original_sale_id: number
+  original_sale_id: number;
 
-  user_id?: number | null
+  user_id?: number | null;
 
-  promotion_group_id: string
+  promotion_group_id: string;
 
-  old_group_total: number
-  new_group_total: number
+  old_group_total: number;
+  new_group_total: number;
 
-  difference_amount: number
+  difference_amount: number;
 
-  cash_collection_amount: number
+  cash_collection_amount: number;
 
-  debt_reduction_amount: number
+  debt_reduction_amount: number;
 
-  cash_refund_amount: number
+  cash_refund_amount: number;
 
-  loyalty_earned_points_adjustment: number
+  loyalty_earned_points_adjustment: number;
 
-  loyalty_redeemed_points_adjustment: number
+  loyalty_redeemed_points_adjustment: number;
 
-  payment_method: string
+  payment_method: string;
 
-  reason?: string | null
+  reason?: string | null;
 
-  business_date?: string | null
+  business_date?: string | null;
 
-  accounting_date: string
+  accounting_date: string;
 
-  created_at: string
+  created_at: string;
 
-  cancelled_at?: string | null
+  cancelled_at?: string | null;
 
-  cancelled_by?: number | null
+  cancelled_by?: number | null;
 
-  cancel_reason?: string | null
+  cancel_reason?: string | null;
 
-  cancelled_by_name?: string | null
+  cancelled_by_name?: string | null;
 
-  customer_name?: string | null
+  customer_name?: string | null;
 
-  customer_phone?: string | null
+  customer_phone?: string | null;
 
-  cashier_name?: string | null
+  cashier_name?: string | null;
 
-  items_count: number
+  items_count: number;
 
-  total_quantity: number
+  total_quantity: number;
 
-  requires_admin_password?: number | boolean
+  requires_admin_password?: number | boolean;
 
-  can_cancel: boolean
+  can_cancel: boolean;
 
-  cancel_block_reason?: string | null
+  cancel_block_reason?: string | null;
 
-  items: ExchangeItemRow[]
-}
+  items: ExchangeItemRow[];
+};
 
 type ReturnRow = {
-  id: number
-  code: string
-  original_sale_id: number
-  customer_name?: string | null
-  customer_phone?: string | null
-  cashier_name?: string | null
-  sub_total: number
-  loyalty_discount_value: number
-  refund_amount: number
-  debt_reduction_amount?: number
-  cash_refund_amount?: number
-  payment_method: string
-  reason?: string | null
-  loyalty_points_reversed: number
-  created_at: string
-  items_count: number
-  total_quantity: number
-  cancelled_at?: string | null
-  cancelled_by?: number | null
-  cancel_reason?: string | null
-  user_id?: number | null
-  requires_admin_password?: number | boolean
-}
+  id: number;
+  code: string;
+  original_sale_id: number;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  cashier_name?: string | null;
+  sub_total: number;
+  loyalty_discount_value: number;
+  refund_amount: number;
+  debt_reduction_amount?: number;
+  cash_refund_amount?: number;
+  payment_method: string;
+  reason?: string | null;
+  loyalty_points_reversed: number;
+  created_at: string;
+  items_count: number;
+  total_quantity: number;
+  cancelled_at?: string | null;
+  cancelled_by?: number | null;
+  cancel_reason?: string | null;
+  user_id?: number | null;
+  requires_admin_password?: number | boolean;
+};
 
 type ReceiptData = {
-  sale: any
+  sale: any;
 
-  items: any[]
+  items: any[];
 
   payments?: Array<{
-    id?: number
-    sale_id?: number
-    payment_method: string
-    amount: number
-    created_at?: string | null
-  }>
+    id?: number;
+    sale_id?: number;
+    payment_method: string;
+    amount: number;
+    created_at?: string | null;
+  }>;
 
-  loyalty: any[]
+  loyalty: any[];
 
   original_receipt?: {
-    sale: any
-    items: any[]
-    loyalty: any[]
+    sale: any;
+    items: any[];
+    loyalty: any[];
     payments?: Array<{
-      payment_method: string
-      amount: number
-    }>
-  }
+      payment_method: string;
+      amount: number;
+    }>;
+  };
 
-  financials?: any
-  promotion_snapshot?: any | null
-  promotion_snapshots?: any[]
-  exchanges?: any[]
-}
+  financials?: any;
+  promotion_snapshot?: any | null;
+  promotion_snapshots?: any[];
+  exchanges?: any[];
+};
 
 type StoreReceiptInfo = {
-  app_name?: string
-  app_logo_url?: string
-  store_phone?: string
-  store_address?: string
-  store_qr_enabled?: boolean
-  store_qr_title?: string
-  store_qr_primary_url?: string
-}
+  app_name?: string;
+  app_logo_url?: string;
+  store_phone?: string;
+  store_address?: string;
+  store_qr_enabled?: boolean;
+  store_qr_title?: string;
+  store_qr_primary_url?: string;
+};
 
 type ReturnDraftSourceItem = {
-  sale_item_id: number
-  variant_id: number
-  quantity: number
-}
+  sale_item_id: number;
+  variant_id: number;
+  quantity: number;
+};
 
 type ReturnBundleUnit = {
-  id: number
-  original_sale_item_id: number
+  id: number;
+  original_sale_item_id: number;
 
-  current_variant_id: number
-  current_unit_price: number
-  current_is_gift: number
+  current_variant_id: number;
+  current_unit_price: number;
+  current_is_gift: number;
 
-  is_returned: number
+  is_returned: number;
 
-  current_product_name: string
-  current_size?: string | null
-  current_color?: string | null
-}
+  current_product_name: string;
+  current_size?: string | null;
+  current_color?: string | null;
+};
 
 type ReturnDraftItem = {
-  sale_item_id: number
-  variant_id: number
+  sale_item_id: number;
+  variant_id: number;
 
-  product_name: string
-  size?: string | null
-  color?: string | null
+  product_name: string;
+  size?: string | null;
+  color?: string | null;
 
-  sold_quantity: number
-  returned_quantity: number
-  returnable_quantity: number
-  return_quantity: number
+  sold_quantity: number;
+  returned_quantity: number;
+  returnable_quantity: number;
+  return_quantity: number;
 
-  unit_price: number
-  promotion_discount_value: number
+  unit_price: number;
+  promotion_discount_value: number;
 
-  is_promotion_bundle?: boolean
+  is_promotion_bundle?: boolean;
 
-  promotion_group_id?: string | null
+  promotion_group_id?: string | null;
 
-  source_items?: ReturnDraftSourceItem[]
+  source_items?: ReturnDraftSourceItem[];
 
-  bundle_units?: ReturnBundleUnit[]
-}
+  bundle_units?: ReturnBundleUnit[];
+};
 
-const INVOICE_PAGE_SIZE = 50
+const INVOICE_PAGE_SIZE = 50;
 
 async function loadCurrentReceiptData(saleId: number): Promise<ReceiptData> {
-  const state = await window.api.getSaleCurrentState(saleId)
+  const state = await window.api.getSaleCurrentState(saleId);
 
   return {
     ...state.current_receipt,
@@ -289,15 +289,15 @@ async function loadCurrentReceiptData(saleId: number): Promise<ReceiptData> {
     financials: state.financials,
 
     exchanges: state.exchanges,
-  }
+  };
 }
 
 function mapReceiptItemToReturnDraft(item: any): ReturnDraftItem {
-  const soldQty = Number(item.quantity || 0)
+  const soldQty = Number(item.quantity || 0);
 
-  const returnedQty = Number(item.returned_quantity || 0)
+  const returnedQty = Number(item.returned_quantity || 0);
 
-  const returnableQty = Math.max(0, soldQty - returnedQty)
+  const returnableQty = Math.max(0, soldQty - returnedQty);
 
   return {
     sale_item_id: Number(item.id),
@@ -322,66 +322,68 @@ function mapReceiptItemToReturnDraft(item: any): ReturnDraftItem {
     is_promotion_bundle: false,
 
     promotion_group_id: item.promotion_group_id ?? null,
-  }
+  };
 }
 
 function buildReturnDraftItems(
   receipt: ReceiptData,
   exchangeState: any | null,
 ): ReturnDraftItem[] {
-  const receiptItems = Array.isArray(receipt.items) ? receipt.items : []
+  const receiptItems = Array.isArray(receipt.items) ? receipt.items : [];
 
   if (!exchangeState) {
-    return receiptItems.map(mapReceiptItemToReturnDraft)
+    return receiptItems.map(mapReceiptItemToReturnDraft);
   }
 
-  const groups = Array.isArray(exchangeState.groups) ? exchangeState.groups : []
+  const groups = Array.isArray(exchangeState.groups)
+    ? exchangeState.groups
+    : [];
 
   const buyXGetYGroups = groups.filter(
     (group: any) =>
       group.group_kind === 'promotion' &&
       group.promotion_snapshot?.promotion_type === 'buy_x_get_y',
-  )
+  );
 
   if (buyXGetYGroups.length === 0) {
-    return receiptItems.map(mapReceiptItemToReturnDraft)
+    return receiptItems.map(mapReceiptItemToReturnDraft);
   }
 
-  const handledGroupIds = new Set<string>()
+  const handledGroupIds = new Set<string>();
 
-  const bundleDrafts: ReturnDraftItem[] = []
+  const bundleDrafts: ReturnDraftItem[] = [];
 
   buyXGetYGroups.forEach((group: any, groupIndex: number) => {
-    const groupId = String(group.promotion_group_id || '')
+    const groupId = String(group.promotion_group_id || '');
 
-    const units = Array.isArray(group.units) ? group.units : []
+    const units = Array.isArray(group.units) ? group.units : [];
 
     if (!groupId || units.length === 0) {
-      throw new Error('بيانات إحدى مجموعات العرض غير مكتملة')
+      throw new Error('بيانات إحدى مجموعات العرض غير مكتملة');
     }
 
     const sourceItems = receiptItems.filter(
       (item: any) => String(item.promotion_group_id || '') === groupId,
-    )
+    );
 
     if (sourceItems.length === 0) {
-      throw new Error('تعذر ربط العرض بأصناف الفاتورة الأصلية')
+      throw new Error('تعذر ربط العرض بأصناف الفاتورة الأصلية');
     }
 
     const sourceQuantity = sourceItems.reduce(
       (total: number, item: any) => total + Number(item.quantity || 0),
       0,
-    )
+    );
 
     if (sourceQuantity !== units.length) {
-      throw new Error('عدد قطع العرض الحالية لا يطابق الفاتورة الأصلية')
+      throw new Error('عدد قطع العرض الحالية لا يطابق الفاتورة الأصلية');
     }
 
-    handledGroupIds.add(groupId)
+    handledGroupIds.add(groupId);
 
     const hasReturnedUnit = units.some(
       (unit: any) => Number(unit.is_returned || 0) === 1,
-    )
+    );
 
     const grossTotal = roundMoney(
       units.reduce(
@@ -389,7 +391,7 @@ function buildReturnDraftItems(
           total + Number(unit.current_unit_price || 0),
         0,
       ),
-    )
+    );
 
     const promotionDiscount = roundMoney(
       units.reduce(
@@ -400,7 +402,7 @@ function buildReturnDraftItems(
             : 0),
         0,
       ),
-    )
+    );
 
     bundleDrafts.push({
       /*
@@ -474,119 +476,122 @@ function buildReturnDraftItems(
 
         current_color: unit.current_color ?? null,
       })),
-    })
-  })
+    });
+  });
 
   const regularDrafts = receiptItems
     .filter((item: any) => {
-      const groupId = item.promotion_group_id
+      const groupId = item.promotion_group_id;
 
       if (!groupId) {
-        return true
+        return true;
       }
 
-      return !handledGroupIds.has(String(groupId))
+      return !handledGroupIds.has(String(groupId));
     })
-    .map(mapReceiptItemToReturnDraft)
+    .map(mapReceiptItemToReturnDraft);
 
-  return [...bundleDrafts, ...regularDrafts]
+  return [...bundleDrafts, ...regularDrafts];
 }
 
 export default function InvoicesPage() {
-  const navigate = useNavigate()
-  const [rows, setRows] = useState<SaleRow[]>([])
-  const [total, setTotal] = useState(0)
-  const [salesPage, setSalesPage] = useState(1)
-  const [activeTab, setActiveTab] = useState<InvoicesTab>('sales')
-  const [returnRows, setReturnRows] = useState<ReturnRow[]>([])
-  const [returnsTotal, setReturnsTotal] = useState(0)
-  const [returnsPage, setReturnsPage] = useState(1)
-  const [returnsLoading, setReturnsLoading] = useState(false)
+  const navigate = useNavigate();
+  const [rows, setRows] = useState<SaleRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [salesPage, setSalesPage] = useState(1);
+  const [activeTab, setActiveTab] = useState<InvoicesTab>('sales');
+  const [returnRows, setReturnRows] = useState<ReturnRow[]>([]);
+  const [returnsTotal, setReturnsTotal] = useState(0);
+  const [returnsPage, setReturnsPage] = useState(1);
+  const [returnsLoading, setReturnsLoading] = useState(false);
 
-  const [exchangeRows, setExchangeRows] = useState<ExchangeRow[]>([])
+  const [exchangeRows, setExchangeRows] = useState<ExchangeRow[]>([]);
 
-  const [exchangesTotal, setExchangesTotal] = useState(0)
+  const [exchangesTotal, setExchangesTotal] = useState(0);
 
-  const [exchangesPage, setExchangesPage] = useState(1)
+  const [exchangesPage, setExchangesPage] = useState(1);
 
-  const [exchangesLoading, setExchangesLoading] = useState(false)
+  const [exchangesLoading, setExchangesLoading] = useState(false);
 
   const [exchangeStatusFilter, setExchangeStatusFilter] = useState<
     'all' | 'active' | 'cancelled'
-  >('all')
+  >('all');
 
   const [selectedExchange, setSelectedExchange] = useState<ExchangeRow | null>(
     null,
-  )
+  );
 
   const [cancelExchangeTarget, setCancelExchangeTarget] =
-    useState<ExchangeRow | null>(null)
+    useState<ExchangeRow | null>(null);
 
-  const [cancelExchangeReason, setCancelExchangeReason] = useState('')
+  const [cancelExchangeReason, setCancelExchangeReason] = useState('');
 
-  const [cancelExchangePassword, setCancelExchangePassword] = useState('')
+  const [cancelExchangePassword, setCancelExchangePassword] = useState('');
 
   const [cancelExchangeAdminUsername, setCancelExchangeAdminUsername] =
-    useState('')
+    useState('');
 
-  const [cancellingExchange, setCancellingExchange] = useState(false)
+  const [cancellingExchange, setCancellingExchange] = useState(false);
 
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState('');
 
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>(
     'all',
-  )
-  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all')
+  );
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState('all');
   const [returnPaymentMethodFilter, setReturnPaymentMethodFilter] =
-    useState('all')
+    useState('all');
 
   const [exchangePaymentMethodFilter, setExchangePaymentMethodFilter] =
-    useState('all')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [loading, setLoading] = useState(false)
+    useState('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [loading, setLoading] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(
     null,
-  )
-  const [selectedReturnHistory, setSelectedReturnHistory] = useState<any[]>([])
-  const [message, setMessage] = useState('')
-  const user = useAuthStore((s) => s.user)
-  const isAdmin = user?.role === 'admin'
-  const canReturnSales = hasUserPermission(user, 'sales.returns')
+  );
+  const [selectedReturnHistory, setSelectedReturnHistory] = useState<any[]>([]);
+  const [message, setMessage] = useState('');
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === 'admin';
+  const canReturnSales = hasUserPermission(user, 'sales.returns');
 
-  const canExchangeSales = hasUserPermission(user, 'sales.exchanges')
-  const [cancelSaleTarget, setCancelSaleTarget] = useState<SaleRow | null>(null)
+  const canExchangeSales = hasUserPermission(user, 'sales.exchanges');
+  const [cancelSaleTarget, setCancelSaleTarget] = useState<SaleRow | null>(
+    null,
+  );
 
-  const [cancelSaleReason, setCancelSaleReason] = useState('')
+  const [cancelSaleReason, setCancelSaleReason] = useState('');
 
-  const [cancelSalePassword, setCancelSalePassword] = useState('')
+  const [cancelSalePassword, setCancelSalePassword] = useState('');
 
-  const [cancelSaleAdminUsername, setCancelSaleAdminUsername] = useState('')
+  const [cancelSaleAdminUsername, setCancelSaleAdminUsername] = useState('');
 
-  const [cancellingSale, setCancellingSale] = useState(false)
+  const [cancellingSale, setCancellingSale] = useState(false);
 
   const [cancelReturnTarget, setCancelReturnTarget] =
-    useState<ReturnRow | null>(null)
+    useState<ReturnRow | null>(null);
 
-  const [cancelReturnReason, setCancelReturnReason] = useState('')
+  const [cancelReturnReason, setCancelReturnReason] = useState('');
 
-  const [cancelReturnPassword, setCancelReturnPassword] = useState('')
+  const [cancelReturnPassword, setCancelReturnPassword] = useState('');
 
-  const [cancelReturnAdminUsername, setCancelReturnAdminUsername] = useState('')
+  const [cancelReturnAdminUsername, setCancelReturnAdminUsername] =
+    useState('');
 
-  const [cancellingReturn, setCancellingReturn] = useState(false)
-  const [returnReceipt, setReturnReceipt] = useState<ReceiptData | null>(null)
-  const [returnItems, setReturnItems] = useState<ReturnDraftItem[]>([])
-  const [returnReason, setReturnReason] = useState('')
-  const [returnRefundAccount, setReturnRefundAccount] = useState('store_cash')
-  const [savingReturn, setSavingReturn] = useState(false)
-  const [exchangeSaleId, setExchangeSaleId] = useState<number | null>(null)
+  const [cancellingReturn, setCancellingReturn] = useState(false);
+  const [returnReceipt, setReturnReceipt] = useState<ReceiptData | null>(null);
+  const [returnItems, setReturnItems] = useState<ReturnDraftItem[]>([]);
+  const [returnReason, setReturnReason] = useState('');
+  const [returnRefundAccount, setReturnRefundAccount] = useState('store_cash');
+  const [savingReturn, setSavingReturn] = useState(false);
+  const [exchangeSaleId, setExchangeSaleId] = useState<number | null>(null);
 
   async function loadInvoices(page = salesPage) {
-    setLoading(true)
+    setLoading(true);
 
     try {
-      const safePage = Math.max(1, Number(page || 1))
+      const safePage = Math.max(1, Number(page || 1));
 
       const result = await window.api.listSales({
         search,
@@ -603,25 +608,25 @@ export default function InvoicesPage() {
         limit: INVOICE_PAGE_SIZE,
 
         offset: (safePage - 1) * INVOICE_PAGE_SIZE,
-      })
+      });
 
-      setRows(Array.isArray(result.rows) ? result.rows : [])
-      setTotal(Number(result.total || 0))
+      setRows(Array.isArray(result.rows) ? result.rows : []);
+      setTotal(Number(result.total || 0));
     } catch (error) {
-      console.error('Failed to load invoices:', error)
-      setMessage('حدث خطأ أثناء تحميل الفواتير')
-      setRows([])
-      setTotal(0)
+      console.error('Failed to load invoices:', error);
+      setMessage('حدث خطأ أثناء تحميل الفواتير');
+      setRows([]);
+      setTotal(0);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function loadReturns(page = returnsPage) {
-    setReturnsLoading(true)
+    setReturnsLoading(true);
 
     try {
-      const safePage = Math.max(1, Number(page || 1))
+      const safePage = Math.max(1, Number(page || 1));
 
       const result = await window.api.listSaleReturns({
         search,
@@ -634,25 +639,25 @@ export default function InvoicesPage() {
         actor_id: user?.id ?? null,
         limit: INVOICE_PAGE_SIZE,
         offset: (safePage - 1) * INVOICE_PAGE_SIZE,
-      })
+      });
 
-      setReturnRows(Array.isArray(result.rows) ? result.rows : [])
-      setReturnsTotal(Number(result.total || 0))
+      setReturnRows(Array.isArray(result.rows) ? result.rows : []);
+      setReturnsTotal(Number(result.total || 0));
     } catch (error) {
-      console.error('Failed to load returns:', error)
-      setMessage('حدث خطأ أثناء تحميل سجل المرتجعات')
-      setReturnRows([])
-      setReturnsTotal(0)
+      console.error('Failed to load returns:', error);
+      setMessage('حدث خطأ أثناء تحميل سجل المرتجعات');
+      setReturnRows([]);
+      setReturnsTotal(0);
     } finally {
-      setReturnsLoading(false)
+      setReturnsLoading(false);
     }
   }
 
   async function loadExchanges(page = exchangesPage) {
-    setExchangesLoading(true)
+    setExchangesLoading(true);
 
     try {
-      const safePage = Math.max(1, Number(page || 1))
+      const safePage = Math.max(1, Number(page || 1));
 
       const result = await window.api.listSaleExchanges({
         search,
@@ -671,35 +676,35 @@ export default function InvoicesPage() {
         limit: INVOICE_PAGE_SIZE,
 
         offset: (safePage - 1) * INVOICE_PAGE_SIZE,
-      })
+      });
 
-      setExchangeRows(Array.isArray(result.rows) ? result.rows : [])
+      setExchangeRows(Array.isArray(result.rows) ? result.rows : []);
 
-      setExchangesTotal(Number(result.total || 0))
+      setExchangesTotal(Number(result.total || 0));
     } catch (error) {
-      console.error('Failed to load exchanges:', error)
+      console.error('Failed to load exchanges:', error);
 
-      setMessage('حدث خطأ أثناء تحميل سجل الاستبدالات')
+      setMessage('حدث خطأ أثناء تحميل سجل الاستبدالات');
 
-      setExchangeRows([])
-      setExchangesTotal(0)
+      setExchangeRows([]);
+      setExchangesTotal(0);
     } finally {
-      setExchangesLoading(false)
+      setExchangesLoading(false);
     }
   }
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      setSalesPage(1)
+      setSalesPage(1);
 
-      setReturnsPage(1)
+      setReturnsPage(1);
 
-      setExchangesPage(1)
+      setExchangesPage(1);
 
-      void Promise.all([loadInvoices(1), loadReturns(1), loadExchanges(1)])
-    }, 250)
+      void Promise.all([loadInvoices(1), loadReturns(1), loadExchanges(1)]);
+    }, 250);
 
-    return () => clearTimeout(handle)
+    return () => clearTimeout(handle);
   }, [
     search,
     dateFrom,
@@ -709,19 +714,19 @@ export default function InvoicesPage() {
     returnPaymentMethodFilter,
     exchangePaymentMethodFilter,
     exchangeStatusFilter,
-  ])
+  ]);
 
   useEffect(() => {
-    if (!message) return
+    if (!message) return;
 
     const timer = window.setTimeout(() => {
-      setMessage('')
-    }, 1800)
+      setMessage('');
+    }, 1800);
 
     return () => {
-      window.clearTimeout(timer)
-    }
-  }, [message])
+      window.clearTimeout(timer);
+    };
+  }, [message]);
 
   async function openReceipt(saleId: number) {
     try {
@@ -729,13 +734,13 @@ export default function InvoicesPage() {
         loadCurrentReceiptData(saleId),
 
         window.api.getSaleReturnHistory(saleId),
-      ])
-      setSelectedReceipt(receipt)
+      ]);
+      setSelectedReceipt(receipt);
 
-      setSelectedReturnHistory(getActiveSaleReturnHistory(history))
+      setSelectedReturnHistory(getActiveSaleReturnHistory(history));
     } catch (error) {
-      console.error('Failed to open receipt:', error)
-      setMessage('حدث خطأ أثناء فتح الفاتورة')
+      console.error('Failed to open receipt:', error);
+      setMessage('حدث خطأ أثناء فتح الفاتورة');
     }
   }
 
@@ -745,7 +750,7 @@ export default function InvoicesPage() {
 
       returnHistory: getActiveSaleReturnHistory(returnHistory),
       onBlocked: () => setMessage('لم يتم فتح نافذة الطباعة'),
-    })
+    });
   }
 
   function resolveRefundAccountFromPaymentMethod(method?: string | null) {
@@ -755,23 +760,23 @@ export default function InvoicesPage() {
       case 'owner_bank':
       case 'owner_vodafone':
       case 'fawry_machine':
-        return method
+        return method;
 
       case 'cash':
-        return 'store_cash'
+        return 'store_cash';
 
       case 'card':
-        return 'fawry_machine'
+        return 'fawry_machine';
 
       case 'wallet':
-        return 'owner_vodafone'
+        return 'owner_vodafone';
 
       case 'bank':
       case 'bank_transfer':
-        return 'owner_bank'
+        return 'owner_bank';
 
       default:
-        return 'store_cash'
+        return 'store_cash';
     }
   }
 
@@ -781,13 +786,13 @@ export default function InvoicesPage() {
         ? error.message
         : typeof error === 'string'
           ? error
-          : ''
+          : '';
 
     const match = raw.match(
       /Error invoking remote method '[^']+': Error: (.*)$/,
-    )
+    );
 
-    return match?.[1] || raw || fallback
+    return match?.[1] || raw || fallback;
   }
 
   async function openReturnPopup(saleId: number) {
@@ -795,21 +800,21 @@ export default function InvoicesPage() {
       const [receipt, currentState] = await Promise.all([
         window.api.getSaleReceipt(saleId),
         window.api.getSaleCurrentState(saleId),
-      ])
+      ]);
 
-      let exchangeState: any | null = null
+      let exchangeState: any | null = null;
 
       const promotionSnapshots = Array.isArray(currentState.promotion_snapshots)
         ? currentState.promotion_snapshots
-        : []
+        : [];
 
       const hasBuyXGetY = promotionSnapshots.some(
         (snapshot: any) => snapshot?.promotion_type === 'buy_x_get_y',
-      )
+      );
 
       if (hasBuyXGetY) {
         try {
-          const state = await window.api.getSaleExchangeState(saleId)
+          const state = await window.api.getSaleExchangeState(saleId);
 
           const hasBundleGroups =
             Array.isArray(state.groups) &&
@@ -817,58 +822,58 @@ export default function InvoicesPage() {
               (group: any) =>
                 group.group_kind === 'promotion' &&
                 group.promotion_snapshot?.promotion_type === 'buy_x_get_y',
-            )
+            );
 
           if (hasBundleGroups) {
-            exchangeState = state
+            exchangeState = state;
           }
         } catch (exchangeError) {
           const exchangeMessage = getErrorMessage(
             exchangeError,
 
             'تعذر قراءة حالة العرض',
-          )
+          );
 
           if (!exchangeMessage.includes('نسخة محفوظة')) {
-            throw exchangeError
+            throw exchangeError;
           }
         }
       }
 
-      const draftItems = buildReturnDraftItems(receipt, exchangeState)
+      const draftItems = buildReturnDraftItems(receipt, exchangeState);
 
       setReturnReceipt({
         ...receipt,
         financials: currentState.financials,
-      })
+      });
 
-      setReturnReason('')
+      setReturnReason('');
 
       const originalPayments = Array.isArray(receipt.payments)
         ? receipt.payments.filter(
             (payment: any) => Number(payment.amount || 0) > 0,
           )
-        : []
+        : [];
 
       if (originalPayments.length > 1) {
-        setReturnRefundAccount('')
+        setReturnRefundAccount('');
       } else if (originalPayments.length === 1) {
         setReturnRefundAccount(
           resolveRefundAccountFromPaymentMethod(
             originalPayments[0].payment_method,
           ),
-        )
+        );
       } else {
         setReturnRefundAccount(
           resolveRefundAccountFromPaymentMethod(receipt.sale?.payment_method),
-        )
+        );
       }
 
-      setReturnItems(draftItems)
+      setReturnItems(draftItems);
     } catch (error) {
-      console.error('Failed to open return popup:', error)
+      console.error('Failed to open return popup:', error);
 
-      setMessage(getErrorMessage(error, 'حدث خطأ أثناء فتح المرتجع'))
+      setMessage(getErrorMessage(error, 'حدث خطأ أثناء فتح المرتجع'));
     }
   }
 
@@ -885,20 +890,20 @@ export default function InvoicesPage() {
             }
           : item,
       ),
-    )
+    );
   }
 
   async function submitReturn() {
-    if (savingReturn) return
+    if (savingReturn) return;
 
     if (!user?.id) {
-      setMessage('المستخدم غير مسجل')
-      return
+      setMessage('المستخدم غير مسجل');
+      return;
     }
 
     if (!returnReceipt?.sale?.id) {
-      setMessage('الفاتورة الأصلية غير موجودة')
-      return
+      setMessage('الفاتورة الأصلية غير موجودة');
+      return;
     }
 
     const rawSelectedItems = returnItems
@@ -911,7 +916,7 @@ export default function InvoicesPage() {
             variant_id: sourceItem.variant_id,
 
             quantity: sourceItem.quantity,
-          }))
+          }));
         }
 
         return [
@@ -922,27 +927,27 @@ export default function InvoicesPage() {
 
             quantity: item.return_quantity,
           },
-        ]
-      })
+        ];
+      });
 
     const selectedItems = Array.from(
       new Map(
         rawSelectedItems.map((item) => [item.sale_item_id, item]),
       ).values(),
-    )
+    );
 
     if (returnCashRefund > 0 && !returnRefundAccount) {
-      setMessage('اختر الحساب المالي الذي سيتم رد المبلغ منه')
+      setMessage('اختر الحساب المالي الذي سيتم رد المبلغ منه');
 
-      return
+      return;
     }
 
     if (selectedItems.length === 0) {
-      setMessage('اختار كمية مرتجع أولا')
-      return
+      setMessage('اختار كمية مرتجع أولا');
+      return;
     }
 
-    setSavingReturn(true)
+    setSavingReturn(true);
 
     try {
       const result = await window.api.createSaleReturn({
@@ -951,46 +956,46 @@ export default function InvoicesPage() {
         reason: returnReason.trim() || null,
         refund_payment_method: returnRefundAccount,
         items: selectedItems,
-      })
+      });
 
       setMessage(
         `تم عمل مرتجع ${result.returnCode || `RET-${String(result.returnSaleId).padStart(5, '0')}`}`,
-      )
-      setReturnReceipt(null)
-      setReturnItems([])
-      setReturnReason('')
-      setReturnRefundAccount('store_cash')
+      );
+      setReturnReceipt(null);
+      setReturnItems([]);
+      setReturnReason('');
+      setReturnRefundAccount('store_cash');
       await Promise.all([
         loadInvoices(salesPage),
         loadReturns(returnsPage),
         loadExchanges(exchangesPage),
-      ])
+      ]);
 
       if (returnReceipt?.sale?.id) {
-        const saleId = Number(returnReceipt.sale.id)
+        const saleId = Number(returnReceipt.sale.id);
 
         const [receipt, history] = await Promise.all([
           loadCurrentReceiptData(saleId),
 
           window.api.getSaleReturnHistory(saleId),
-        ])
+        ]);
 
-        setSelectedReceipt(receipt)
+        setSelectedReceipt(receipt);
 
-        setSelectedReturnHistory(getActiveSaleReturnHistory(history))
+        setSelectedReturnHistory(getActiveSaleReturnHistory(history));
       }
     } catch (error) {
-      console.error('Failed to create return:', error)
-      setMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ المرتجع'))
+      console.error('Failed to create return:', error);
+      setMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ المرتجع'));
     } finally {
-      setSavingReturn(false)
+      setSavingReturn(false);
     }
   }
 
   async function confirmCancelSale() {
-    if (!cancelSaleTarget || cancellingSale) return
+    if (!cancelSaleTarget || cancellingSale) return;
 
-    setCancellingSale(true)
+    setCancellingSale(true);
 
     try {
       const result = await window.api.cancelSaleInvoice({
@@ -1002,7 +1007,7 @@ export default function InvoicesPage() {
         admin_username: cancelSaleAdminUsername || undefined,
 
         admin_password: cancelSalePassword,
-      })
+      });
 
       if (!result?.success) {
         if (result?.message?.includes('اكتب كلمة مرور المدير')) {
@@ -1013,34 +1018,34 @@ export default function InvoicesPage() {
                   requires_admin_password: true,
                 }
               : prev,
-          )
+          );
         }
-        setMessage(result?.message || 'تعذر إلغاء فاتورة البيع')
-        return
+        setMessage(result?.message || 'تعذر إلغاء فاتورة البيع');
+        return;
       }
 
-      setCancelSaleTarget(null)
-      setCancelSaleReason('')
-      setCancelSalePassword('')
-      setCancelSaleAdminUsername('')
-      setSelectedReceipt(null)
+      setCancelSaleTarget(null);
+      setCancelSaleReason('');
+      setCancelSalePassword('');
+      setCancelSaleAdminUsername('');
+      setSelectedReceipt(null);
 
-      setMessage(`تم إلغاء فاتورة #${cancelSaleTarget.id}`)
+      setMessage(`تم إلغاء فاتورة #${cancelSaleTarget.id}`);
 
       await Promise.all([
         loadInvoices(salesPage),
         loadReturns(returnsPage),
         loadExchanges(exchangesPage),
-      ])
+      ]);
     } finally {
-      setCancellingSale(false)
+      setCancellingSale(false);
     }
   }
 
   async function confirmCancelReturn() {
-    if (!cancelReturnTarget || cancellingReturn) return
+    if (!cancelReturnTarget || cancellingReturn) return;
 
-    setCancellingReturn(true)
+    setCancellingReturn(true);
 
     try {
       const result = await window.api.cancelSaleReturn({
@@ -1053,7 +1058,7 @@ export default function InvoicesPage() {
         admin_username: cancelReturnAdminUsername || undefined,
 
         admin_password: cancelReturnPassword,
-      })
+      });
 
       if (!result?.success) {
         if (result?.message?.includes('اكتب كلمة مرور المدير')) {
@@ -1064,36 +1069,36 @@ export default function InvoicesPage() {
                   requires_admin_password: true,
                 }
               : prev,
-          )
+          );
         }
-        setMessage(result?.message || 'تعذر إلغاء مرتجع البيع')
-        return
+        setMessage(result?.message || 'تعذر إلغاء مرتجع البيع');
+        return;
       }
 
-      setCancelReturnTarget(null)
-      setCancelReturnReason('')
-      setCancelReturnPassword('')
-      setCancelReturnAdminUsername('')
-      setSelectedReceipt(null)
+      setCancelReturnTarget(null);
+      setCancelReturnReason('');
+      setCancelReturnPassword('');
+      setCancelReturnAdminUsername('');
+      setSelectedReceipt(null);
 
-      setMessage(`تم إلغاء المرتجع ${cancelReturnTarget.code}`)
+      setMessage(`تم إلغاء المرتجع ${cancelReturnTarget.code}`);
 
       await Promise.all([
         loadInvoices(salesPage),
         loadReturns(returnsPage),
         loadExchanges(exchangesPage),
-      ])
+      ]);
     } finally {
-      setCancellingReturn(false)
+      setCancellingReturn(false);
     }
   }
 
   async function confirmCancelExchange() {
     if (!cancelExchangeTarget || cancellingExchange) {
-      return
+      return;
     }
 
-    setCancellingExchange(true)
+    setCancellingExchange(true);
 
     try {
       const result = await window.api.cancelSaleExchange({
@@ -1108,7 +1113,7 @@ export default function InvoicesPage() {
         admin_username: cancelExchangeAdminUsername || undefined,
 
         admin_password: cancelExchangePassword,
-      })
+      });
 
       if (!result?.success) {
         if (result?.message?.includes('اكتب كلمة مرور المدير')) {
@@ -1120,29 +1125,29 @@ export default function InvoicesPage() {
                   requires_admin_password: true,
                 }
               : prev,
-          )
+          );
         }
 
-        setMessage(result?.message || 'تعذر إلغاء عملية الاستبدال')
+        setMessage(result?.message || 'تعذر إلغاء عملية الاستبدال');
 
-        return
+        return;
       }
 
-      const code = cancelExchangeTarget.code
+      const code = cancelExchangeTarget.code;
 
-      setCancelExchangeTarget(null)
+      setCancelExchangeTarget(null);
 
-      setCancelExchangeReason('')
+      setCancelExchangeReason('');
 
-      setCancelExchangePassword('')
+      setCancelExchangePassword('');
 
-      setCancelExchangeAdminUsername('')
+      setCancelExchangeAdminUsername('');
 
-      setSelectedExchange(null)
+      setSelectedExchange(null);
 
-      setSelectedReceipt(null)
+      setSelectedReceipt(null);
 
-      setMessage(`تم إلغاء الاستبدال ${code}`)
+      setMessage(`تم إلغاء الاستبدال ${code}`);
 
       await Promise.all([
         loadInvoices(salesPage),
@@ -1150,15 +1155,15 @@ export default function InvoicesPage() {
         loadReturns(returnsPage),
 
         loadExchanges(exchangesPage),
-      ])
+      ]);
     } finally {
-      setCancellingExchange(false)
+      setCancellingExchange(false);
     }
   }
 
   const hasReturnSelection = returnItems.some(
     (item) => Number(item.return_quantity || 0) > 0,
-  )
+  );
 
   const returnGrossTotal = roundMoney(
     returnItems.reduce(
@@ -1166,56 +1171,56 @@ export default function InvoicesPage() {
         sum + Number(item.return_quantity || 0) * Number(item.unit_price || 0),
       0,
     ),
-  )
+  );
 
   const previousReturnGrossTotal = roundMoney(
     Number(returnReceipt?.financials?.returned_sub_total || 0),
-  )
+  );
 
   const previousPromotionDiscount = roundMoney(
     Number(returnReceipt?.financials?.returned_promotion_discount || 0),
-  )
+  );
 
   const returnPromotionDiscountShare = roundMoney(
     returnItems.reduce((sum, item) => {
-      const soldQty = Math.max(0, Number(item.sold_quantity || 0))
+      const soldQty = Math.max(0, Number(item.sold_quantity || 0));
 
       if (soldQty <= 0 || item.return_quantity <= 0) {
-        return sum
+        return sum;
       }
 
       const previousQty = Math.min(
         soldQty,
         Math.max(0, Number(item.returned_quantity || 0)),
-      )
+      );
 
       const cumulativeQty = Math.min(
         soldQty,
         previousQty + Math.max(0, Number(item.return_quantity || 0)),
-      )
+      );
 
       const originalItemPromotion = Math.max(
         0,
         Number(item.promotion_discount_value || 0),
-      )
+      );
 
       const previousTarget = roundMoney(
         originalItemPromotion * (previousQty / soldQty),
-      )
+      );
 
       const cumulativeTarget = roundMoney(
         originalItemPromotion * (cumulativeQty / soldQty),
-      )
+      );
 
-      return sum + Math.max(0, cumulativeTarget - previousTarget)
+      return sum + Math.max(0, cumulativeTarget - previousTarget);
     }, 0),
-  )
+  );
 
   const currentInvoiceSubTotal = Number(
     returnReceipt?.financials?.current_sub_total ??
       returnReceipt?.sale?.sub_total ??
       0,
-  )
+  );
 
   const currentPromotionDiscount = Math.max(
     0,
@@ -1224,26 +1229,26 @@ export default function InvoicesPage() {
         returnReceipt?.sale?.promotion_discount_value ??
         0,
     ),
-  )
+  );
 
   const currentInvoiceAfterPromotion = Math.max(
     0,
     roundMoney(currentInvoiceSubTotal - currentPromotionDiscount),
-  )
+  );
 
   const previousAfterPromotion = Math.max(
     0,
     roundMoney(previousReturnGrossTotal - previousPromotionDiscount),
-  )
+  );
 
   const returnAfterPromotion = Math.max(
     0,
     roundMoney(returnGrossTotal - returnPromotionDiscountShare),
-  )
+  );
 
   const cumulativeAfterPromotion = roundMoney(
     previousAfterPromotion + returnAfterPromotion,
-  )
+  );
 
   const currentNormalDiscount = Math.max(
     0,
@@ -1252,12 +1257,12 @@ export default function InvoicesPage() {
         returnReceipt?.sale?.discount_value ??
         0,
     ),
-  )
+  );
 
   const previousNormalDiscount = Math.max(
     0,
     Number(returnReceipt?.financials?.returned_normal_discount || 0),
-  )
+  );
 
   const targetNormalDiscount =
     currentInvoiceAfterPromotion > 0
@@ -1268,22 +1273,22 @@ export default function InvoicesPage() {
               1,
             ),
         )
-      : 0
+      : 0;
 
   const returnDiscountShare = Math.max(
     0,
     roundMoney(targetNormalDiscount - previousNormalDiscount),
-  )
+  );
 
   const invoiceBeforeLoyalty = Math.max(
     0,
     roundMoney(currentInvoiceAfterPromotion - currentNormalDiscount),
-  )
+  );
 
   const cumulativeBeforeLoyalty = Math.max(
     0,
     roundMoney(cumulativeAfterPromotion - targetNormalDiscount),
-  )
+  );
 
   const currentLoyaltyDiscount = Math.max(
     0,
@@ -1292,12 +1297,12 @@ export default function InvoicesPage() {
         returnReceipt?.sale?.loyalty_discount_value ??
         0,
     ),
-  )
+  );
 
   const previousLoyaltyDiscount = Math.max(
     0,
     Number(returnReceipt?.financials?.returned_loyalty_discount || 0),
-  )
+  );
 
   const targetLoyaltyDiscount =
     invoiceBeforeLoyalty > 0
@@ -1305,55 +1310,55 @@ export default function InvoicesPage() {
           currentLoyaltyDiscount *
             Math.min(cumulativeBeforeLoyalty / invoiceBeforeLoyalty, 1),
         )
-      : 0
+      : 0;
 
   const returnLoyaltyDiscountShare = Math.max(
     0,
     roundMoney(targetLoyaltyDiscount - previousLoyaltyDiscount),
-  )
+  );
 
   const cumulativeExactReturnValue = Math.max(
     0,
     roundMoney(cumulativeBeforeLoyalty - targetLoyaltyDiscount),
-  )
+  );
 
   const previousReturnedValue = Math.max(
     0,
     Number(returnReceipt?.financials?.total_return_value || 0),
-  )
+  );
 
   const exactIncrementalReturnValue = roundMoney(
     cumulativeExactReturnValue - previousReturnedValue,
-  )
+  );
 
-  const returnTotal = Math.max(0, Math.round(exactIncrementalReturnValue))
+  const returnTotal = Math.max(0, Math.round(exactIncrementalReturnValue));
 
   const rawReturnRemainingAmount = Math.max(
     0,
     roundMoney(Number(returnReceipt?.sale?.remaining_amount || 0)),
-  )
+  );
 
   const returnDebtReduction = returnReceipt?.sale?.customer_id
     ? roundMoney(Math.min(returnTotal, rawReturnRemainingAmount))
-    : 0
+    : 0;
 
   const returnCashRefund = Math.max(
     0,
     roundMoney(returnTotal - returnDebtReduction),
-  )
+  );
 
-  const salesTotalPages = Math.max(1, Math.ceil(total / INVOICE_PAGE_SIZE))
+  const salesTotalPages = Math.max(1, Math.ceil(total / INVOICE_PAGE_SIZE));
 
   const returnsTotalPages = Math.max(
     1,
     Math.ceil(returnsTotal / INVOICE_PAGE_SIZE),
-  )
+  );
 
   const exchangesTotalPages = Math.max(
     1,
 
     Math.ceil(exchangesTotal / INVOICE_PAGE_SIZE),
-  )
+  );
 
   return (
     <div
@@ -1492,9 +1497,9 @@ export default function InvoicesPage() {
             <select
               value={paymentMethodFilter}
               onChange={(e) => {
-                setPaymentMethodFilter(e.target.value)
+                setPaymentMethodFilter(e.target.value);
 
-                setSalesPage(1)
+                setSalesPage(1);
               }}
               style={inputStyle}
             >
@@ -1534,8 +1539,8 @@ export default function InvoicesPage() {
             <select
               value={returnPaymentMethodFilter}
               onChange={(e) => {
-                setReturnPaymentMethodFilter(e.target.value)
-                setReturnsPage(1)
+                setReturnPaymentMethodFilter(e.target.value);
+                setReturnsPage(1);
               }}
               style={inputStyle}
             >
@@ -1556,8 +1561,8 @@ export default function InvoicesPage() {
             <select
               value={exchangePaymentMethodFilter}
               onChange={(e) => {
-                setExchangePaymentMethodFilter(e.target.value)
-                setExchangesPage(1)
+                setExchangePaymentMethodFilter(e.target.value);
+                setExchangesPage(1);
               }}
               style={inputStyle}
             >
@@ -1597,7 +1602,7 @@ export default function InvoicesPage() {
                 loadReturns(returnsPage),
 
                 loadExchanges(exchangesPage),
-              ])
+              ]);
             }}
             style={primaryButtonStyle}
           >
@@ -1663,8 +1668,8 @@ export default function InvoicesPage() {
             pageSize={INVOICE_PAGE_SIZE}
             loading={loading}
             onPageChange={(page) => {
-              setSalesPage(page)
-              void loadInvoices(page)
+              setSalesPage(page);
+              void loadInvoices(page);
             }}
           />
 
@@ -1995,12 +2000,12 @@ export default function InvoicesPage() {
                             loadCurrentReceiptData(sale.id),
 
                             window.api.getSaleReturnHistory(sale.id),
-                          ])
+                          ]);
 
                           void printReceipt(
                             receipt,
                             Array.isArray(history) ? history : [],
-                          )
+                          );
                         }}
                         style={smallButtonStyle}
                       >
@@ -2047,12 +2052,12 @@ export default function InvoicesPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setCancelSaleTarget(sale)
+                              setCancelSaleTarget(sale);
                               setCancelSaleReason(
                                 `إلغاء فاتورة بيع #${sale.id}`,
-                              )
-                              setCancelSalePassword('')
-                              setCancelSaleAdminUsername('')
+                              );
+                              setCancelSalePassword('');
+                              setCancelSaleAdminUsername('');
                             }}
                             style={{
                               ...smallButtonStyle,
@@ -2122,8 +2127,8 @@ export default function InvoicesPage() {
             pageSize={INVOICE_PAGE_SIZE}
             loading={returnsLoading}
             onPageChange={(page) => {
-              setReturnsPage(page)
-              void loadReturns(page)
+              setReturnsPage(page);
+              void loadReturns(page);
             }}
           />
 
@@ -2246,12 +2251,12 @@ export default function InvoicesPage() {
                             window.api.getSaleReturnHistory(
                               ret.original_sale_id,
                             ),
-                          ])
+                          ]);
 
                           void printReceipt(
                             receipt,
                             Array.isArray(history) ? history : [],
-                          )
+                          );
                         }}
                         style={smallButtonStyle}
                       >
@@ -2266,9 +2271,11 @@ export default function InvoicesPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setCancelReturnTarget(ret)
-                              setCancelReturnReason(`إلغاء المرتجع ${ret.code}`)
-                              setCancelReturnPassword('')
+                              setCancelReturnTarget(ret);
+                              setCancelReturnReason(
+                                `إلغاء المرتجع ${ret.code}`,
+                              );
+                              setCancelReturnPassword('');
                             }}
                             style={{
                               ...smallButtonStyle,
@@ -2339,9 +2346,9 @@ export default function InvoicesPage() {
             pageSize={INVOICE_PAGE_SIZE}
             loading={exchangesLoading}
             onPageChange={(page) => {
-              setExchangesPage(page)
+              setExchangesPage(page);
 
-              void loadExchanges(page)
+              void loadExchanges(page);
             }}
           />
 
@@ -2741,13 +2748,13 @@ export default function InvoicesPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              setCancelExchangeTarget(exchange)
+                              setCancelExchangeTarget(exchange);
 
                               setCancelExchangeReason(
                                 `إلغاء الاستبدال ${exchange.code}`,
-                              )
+                              );
 
-                              setCancelExchangePassword('')
+                              setCancelExchangePassword('');
                             }}
                             style={{
                               ...smallButtonStyle,
@@ -3940,11 +3947,11 @@ export default function InvoicesPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setReturnReceipt(null)
-                  setReturnItems([])
-                  setReturnReason('')
-                  setSelectedReceipt(null)
-                  setSelectedReturnHistory([])
+                  setReturnReceipt(null);
+                  setReturnItems([]);
+                  setReturnReason('');
+                  setSelectedReceipt(null);
+                  setSelectedReturnHistory([]);
                 }}
                 style={closeButtonStyle}
               >
@@ -4304,9 +4311,9 @@ export default function InvoicesPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setReturnReceipt(null)
-                    setReturnItems([])
-                    setReturnReason('')
+                    setReturnReceipt(null);
+                    setReturnItems([]);
+                    setReturnReason('');
                   }}
                   style={secondaryButtonStyle}
                 >
@@ -4324,18 +4331,18 @@ export default function InvoicesPage() {
         isAdmin={isAdmin}
         onClose={() => setExchangeSaleId(null)}
         onSuccess={(successMessage) => {
-          setMessage(successMessage)
+          setMessage(successMessage);
 
-          setExchangeSaleId(null)
+          setExchangeSaleId(null);
 
-          setSelectedReceipt(null)
-          setSelectedReturnHistory([])
+          setSelectedReceipt(null);
+          setSelectedReturnHistory([]);
 
           void Promise.all([
             loadInvoices(salesPage),
 
             loadExchanges(exchangesPage),
-          ])
+          ]);
         }}
       />
 
@@ -4359,12 +4366,12 @@ export default function InvoicesPage() {
         onUsernameChange={setCancelSaleAdminUsername}
         onPasswordChange={setCancelSalePassword}
         onClose={() => {
-          if (cancellingSale) return
+          if (cancellingSale) return;
 
-          setCancelSaleTarget(null)
-          setCancelSaleReason('')
-          setCancelSalePassword('')
-          setCancelSaleAdminUsername('')
+          setCancelSaleTarget(null);
+          setCancelSaleReason('');
+          setCancelSalePassword('');
+          setCancelSaleAdminUsername('');
         }}
         onConfirm={() => void confirmCancelSale()}
       />
@@ -4389,12 +4396,12 @@ export default function InvoicesPage() {
         onUsernameChange={setCancelReturnAdminUsername}
         onPasswordChange={setCancelReturnPassword}
         onClose={() => {
-          if (cancellingReturn) return
+          if (cancellingReturn) return;
 
-          setCancelReturnTarget(null)
-          setCancelReturnReason('')
-          setCancelReturnPassword('')
-          setCancelReturnAdminUsername('')
+          setCancelReturnTarget(null);
+          setCancelReturnReason('');
+          setCancelReturnPassword('');
+          setCancelReturnAdminUsername('');
         }}
         onConfirm={() => void confirmCancelReturn()}
       />
@@ -4420,21 +4427,21 @@ export default function InvoicesPage() {
         onPasswordChange={setCancelExchangePassword}
         onClose={() => {
           if (cancellingExchange) {
-            return
+            return;
           }
 
-          setCancelExchangeTarget(null)
+          setCancelExchangeTarget(null);
 
-          setCancelExchangeReason('')
+          setCancelExchangeReason('');
 
-          setCancelExchangePassword('')
+          setCancelExchangePassword('');
 
-          setCancelExchangeAdminUsername('')
+          setCancelExchangeAdminUsername('');
         }}
         onConfirm={() => void confirmCancelExchange()}
       />
     </div>
-  )
+  );
 }
 
 function PaginationBar({
@@ -4445,28 +4452,28 @@ function PaginationBar({
   loading,
   onPageChange,
 }: {
-  page: number
-  totalPages: number
-  totalItems: number
-  pageSize: number
-  loading?: boolean
-  onPageChange: (page: number) => void
+  page: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize: number;
+  loading?: boolean;
+  onPageChange: (page: number) => void;
 }) {
   if (totalItems <= 0) {
-    return null
+    return null;
   }
 
-  const safePage = Math.min(Math.max(page, 1), Math.max(totalPages, 1))
+  const safePage = Math.min(Math.max(page, 1), Math.max(totalPages, 1));
 
-  const startItem = (safePage - 1) * pageSize + 1
+  const startItem = (safePage - 1) * pageSize + 1;
 
-  const endItem = Math.min(safePage * pageSize, totalItems)
+  const endItem = Math.min(safePage * pageSize, totalItems);
 
   const buttonStyle = (disabled: boolean): React.CSSProperties => ({
     ...smallButtonStyle,
     opacity: disabled ? 0.45 : 1,
     cursor: disabled ? 'not-allowed' : 'pointer',
-  })
+  });
 
   return (
     <div
@@ -4550,7 +4557,7 @@ function PaginationBar({
         عرض {startItem} - {endItem} من {totalItems}
       </div>
     </div>
-  )
+  );
 }
 
 function SummaryLine({
@@ -4558,9 +4565,9 @@ function SummaryLine({
   value,
   strong,
 }: {
-  label: string
-  value: string
-  strong?: boolean
+  label: string;
+  value: string;
+  strong?: boolean;
 }) {
   return (
     <div
@@ -4576,23 +4583,23 @@ function SummaryLine({
       <span>{label}</span>
       <span>{value}</span>
     </div>
-  )
+  );
 }
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 function formatDate(value?: string) {
-  if (!value) return '—'
+  if (!value) return '—';
 
   try {
-    const raw = String(value)
+    const raw = String(value);
 
     // SQLite CURRENT_TIMESTAMP بيرجع UTC بالشكل ده:
     // 2026-04-27 10:30:00
     // فلازم نعلّمه إنه UTC بإضافة Z
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
 
     return new Date(normalized).toLocaleString('ar-EG', {
       year: 'numeric',
@@ -4600,37 +4607,37 @@ function formatDate(value?: string) {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-    })
+    });
   } catch {
-    return value
+    return value;
   }
 }
 
 function formatReceiptDate(value?: string) {
-  if (!value) return '—'
+  if (!value) return '—';
 
   try {
-    const raw = String(value)
+    const raw = String(value);
 
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
 
-    const date = new Date(normalized)
+    const date = new Date(normalized);
 
     const datePart = date.toLocaleDateString('en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
-    })
+    });
 
     const timePart = date.toLocaleTimeString('en-GB', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
-    })
+    });
 
-    return `${datePart}  ${timePart}`
+    return `${datePart}  ${timePart}`;
   } catch {
-    return value
+    return value;
   }
 }
 
@@ -4640,40 +4647,40 @@ function escapeHtml(value: unknown) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+    .replace(/'/g, '&#039;');
 }
 
 const ENGINEER_FOOTER =
-  'برمجة وتصميم: بشمهندس عبدالرحمن حازم - 01155559287/01068377869'
+  'برمجة وتصميم: بشمهندس عبدالرحمن حازم - 01155559287/01068377869';
 
 function getPaymentStatusLabel(status?: string | null) {
-  if (status === 'paid') return 'مدفوعة'
-  if (status === 'partial') return 'مدفوعة جزئيًا'
-  if (status === 'unpaid') return 'غير مدفوعة'
-  return status || '—'
+  if (status === 'paid') return 'مدفوعة';
+  if (status === 'partial') return 'مدفوعة جزئيًا';
+  if (status === 'unpaid') return 'غير مدفوعة';
+  return status || '—';
 }
 
 function getReturnAmount(item: any) {
-  return Number(item?.refund_amount ?? item?.grand_total ?? 0)
+  return Number(item?.refund_amount ?? item?.grand_total ?? 0);
 }
 
 function getReceiptFinance(receipt: ReceiptData, returnHistory: any[] = []) {
-  const sale = receipt.sale
+  const sale = receipt.sale;
 
-  const originalTotal = Number(sale.grand_total || 0)
+  const originalTotal = Number(sale.grand_total || 0);
   const totalReturns = returnHistory.reduce(
     (sum, item) => sum + getReturnAmount(item),
     0,
-  )
+  );
 
-  const netTotal = Math.max(0, originalTotal - totalReturns)
-  const remainingAmount = Math.max(0, Number(sale.remaining_amount || 0))
-  const netPaidAmount = Math.max(0, netTotal - remainingAmount)
+  const netTotal = Math.max(0, originalTotal - totalReturns);
+  const remainingAmount = Math.max(0, Number(sale.remaining_amount || 0));
+  const netPaidAmount = Math.max(0, netTotal - remainingAmount);
 
   const totalReturnedQuantity = (receipt.items ?? []).reduce(
     (sum, item) => sum + Number(item.returned_quantity || 0),
     0,
-  )
+  );
 
   return {
     originalTotal,
@@ -4683,7 +4690,7 @@ function getReceiptFinance(receipt: ReceiptData, returnHistory: any[] = []) {
     netPaidAmount,
     totalReturnedQuantity,
     paymentStatus: getPaymentStatusLabel(sale.payment_status),
-  }
+  };
 }
 
 const inputStyle: React.CSSProperties = {
@@ -4697,7 +4704,7 @@ const inputStyle: React.CSSProperties = {
   textAlign: 'right',
   direction: 'rtl',
   boxSizing: 'border-box',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -4708,7 +4715,7 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid #7c3aed',
@@ -4719,7 +4726,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const smallButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(124,58,237,0.55)',
@@ -4729,7 +4736,7 @@ const smallButtonStyle: React.CSSProperties = {
   padding: '8px 10px',
   cursor: 'pointer',
   fontWeight: 700,
-}
+};
 
 const closeButtonStyle: React.CSSProperties = {
   width: '34px',
@@ -4740,25 +4747,25 @@ const closeButtonStyle: React.CSSProperties = {
   color: '#fff',
   cursor: 'pointer',
   fontSize: '20px',
-}
+};
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   fontWeight: 800,
   whiteSpace: 'nowrap',
-}
+};
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
-}
+};
 
 const invoiceModalThStyle: React.CSSProperties = {
   ...thStyle,
   whiteSpace: 'normal',
   overflowWrap: 'anywhere',
-}
+};
 
 const invoiceModalTdStyle: React.CSSProperties = {
   ...tdStyle,
@@ -4767,7 +4774,7 @@ const invoiceModalTdStyle: React.CSSProperties = {
   wordBreak: 'break-word',
   verticalAlign: 'top',
   lineHeight: 1.6,
-}
+};
 
 const statCardStyle: React.CSSProperties = {
   display: 'grid',
@@ -4777,7 +4784,7 @@ const statCardStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.04)',
   border: '1px solid rgba(255,255,255,0.08)',
   color: '#94a3b8',
-}
+};
 
 function tabButtonStyle(active: boolean): React.CSSProperties {
   return {
@@ -4794,5 +4801,5 @@ function tabButtonStyle(active: boolean): React.CSSProperties {
     padding: '0 18px',
     cursor: 'pointer',
     boxShadow: active ? '0 12px 26px rgba(37,99,235,0.22)' : 'none',
-  }
+  };
 }

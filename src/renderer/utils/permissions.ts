@@ -1,28 +1,28 @@
 import {
   getRoleDefaultPermissions,
   type PermissionKey,
-} from '../../shared/permissions'
+} from '../../shared/permissions';
 
 export type PermissionUser =
   | {
-      role?: string | null
+      role?: string | null;
 
-      permissions?: PermissionKey[] | null
+      permissions?: PermissionKey[] | null;
     }
   | null
-  | undefined
+  | undefined;
 
 export function hasUserPermission(
   user: PermissionUser,
   permission: PermissionKey,
 ) {
   if (user?.role === 'admin') {
-    return true
+    return true;
   }
 
   const permissions = Array.isArray(user?.permissions)
     ? user.permissions
-    : getRoleDefaultPermissions(user?.role || 'cashier')
+    : getRoleDefaultPermissions(user?.role || 'cashier');
 
-  return permissions.includes(permission)
+  return permissions.includes(permission);
 }

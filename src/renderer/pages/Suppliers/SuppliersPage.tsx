@@ -1,26 +1,28 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useAuthStore } from '../../store/auth.store'
-import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method'
-import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
-import { hasUserPermission } from '../../utils/permissions'
-import { formatMoney, roundMoney } from '../../../shared/money'
+import { useEffect, useMemo, useState } from 'react';
+import { useAuthStore } from '../../store/auth.store';
+import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
+import { hasUserPermission } from '../../utils/permissions';
+import { formatMoney, roundMoney } from '../../../shared/money';
 
 function hasRemainingAmount(value: number) {
-  return roundMoney(value) > 0
+  return roundMoney(value) > 0;
 }
 
 type Supplier = {
-  id: number
-  name: string
-  phone?: string | null
-  email?: string | null
-  address?: string | null
-  notes?: string | null
-  total_purchased: number
-  balance: number
-  credit_days: number | null
-  created_at: string
-}
+  id: number;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  total_purchased: number;
+  balance: number;
+  credit_days: number | null;
+  created_at: string;
+};
 
 const emptyForm = {
   name: '',
@@ -29,15 +31,15 @@ const emptyForm = {
   address: '',
   notes: '',
   credit_days: '',
-}
+};
 
-const SUPPLIER_STATEMENT_PAGE_SIZE = 20
+const SUPPLIER_STATEMENT_PAGE_SIZE = 20;
 
 export default function SuppliersPage() {
-  const currentUser = useAuthStore((s) => s.user)
-  const isAdmin = currentUser?.role === 'admin'
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [suppliersTotal, setSuppliersTotal] = useState(0)
+  const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role === 'admin';
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [suppliersTotal, setSuppliersTotal] = useState(0);
   const [supplierAging, setSupplierAging] = useState({
     days_0_30: 0,
 
@@ -48,7 +50,7 @@ export default function SuppliersPage() {
     days_90_plus: 0,
 
     total: 0,
-  })
+  });
 
   const [supplierDue, setSupplierDue] = useState({
     overdue: 0,
@@ -60,72 +62,72 @@ export default function SuppliersPage() {
     without_due_date: 0,
 
     total_open: 0,
-  })
-  const canManagePurchases = hasUserPermission(currentUser, 'purchases.manage')
-  const [supplierPage, setSupplierPage] = useState(1)
+  });
+  const canManagePurchases = hasUserPermission(currentUser, 'purchases.manage');
+  const [supplierPage, setSupplierPage] = useState(1);
 
-  const [supplierStatementPage, setSupplierStatementPage] = useState(1)
-  const [search, setSearch] = useState('')
-  const [form, setForm] = useState(emptyForm)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState('')
+  const [supplierStatementPage, setSupplierStatementPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
 
-  const [statementData, setStatementData] = useState<any | null>(null)
-  const [statementLoading, setStatementLoading] = useState(false)
+  const [statementData, setStatementData] = useState<any | null>(null);
+  const [statementLoading, setStatementLoading] = useState(false);
 
-  const [paymentSupplier, setPaymentSupplier] = useState<Supplier | null>(null)
-  const [paymentAmount, setPaymentAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('store_cash')
-  const [paymentNotes, setPaymentNotes] = useState('')
-  const [savingPayment, setSavingPayment] = useState(false)
+  const [paymentSupplier, setPaymentSupplier] = useState<Supplier | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('store_cash');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [savingPayment, setSavingPayment] = useState(false);
   const [paymentAction, setPaymentAction] = useState<{
-    mode: 'edit' | 'cancel'
-    entry: any
-  } | null>(null)
+    mode: 'edit' | 'cancel';
+    entry: any;
+  } | null>(null);
 
-  const [paymentActionAmount, setPaymentActionAmount] = useState('')
+  const [paymentActionAmount, setPaymentActionAmount] = useState('');
 
-  const [paymentActionMethod, setPaymentActionMethod] = useState('store_cash')
+  const [paymentActionMethod, setPaymentActionMethod] = useState('store_cash');
 
-  const [paymentActionNotes, setPaymentActionNotes] = useState('')
+  const [paymentActionNotes, setPaymentActionNotes] = useState('');
 
-  const [paymentActionReason, setPaymentActionReason] = useState('')
+  const [paymentActionReason, setPaymentActionReason] = useState('');
 
-  const [paymentActionPassword, setPaymentActionPassword] = useState('')
+  const [paymentActionPassword, setPaymentActionPassword] = useState('');
 
   const [paymentActionRequirePassword, setPaymentActionRequirePassword] =
-    useState(false)
+    useState(false);
 
-  const [savingPaymentAction, setSavingPaymentAction] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null)
-  const [deletingSupplier, setDeletingSupplier] = useState(false)
+  const [savingPaymentAction, setSavingPaymentAction] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
+  const [deletingSupplier, setDeletingSupplier] = useState(false);
 
   const editingSupplier = useMemo(
     () => suppliers.find((x) => x.id === editingId),
     [suppliers, editingId],
-  )
+  );
 
   function isErrorMessage(text: string) {
-    return /خطأ|تعذر|فشل|لم يتم|لا يمكن|غير صحيح|مطلوب/.test(text)
+    return /خطأ|تعذر|فشل|لم يتم|لا يمكن|غير صحيح|مطلوب/.test(text);
   }
 
   function showMessage(text: string) {
-    setMessage(text)
+    setMessage(text);
 
     setTimeout(
       () => setMessage(''),
 
       isErrorMessage(text) ? 4500 : 1800,
-    )
+    );
   }
 
   async function loadSuppliers(page = supplierPage, searchValue = search) {
-    setLoading(true)
+    setLoading(true);
 
     try {
-      const safePage = Math.max(1, Number(page || 1))
+      const safePage = Math.max(1, Number(page || 1));
 
       const result = await window.api.listSuppliers({
         search: searchValue.trim() || undefined,
@@ -134,24 +136,24 @@ export default function SuppliersPage() {
 
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
         include_summary: true,
-      })
+      });
 
-      const total = Number(result.total || 0)
+      const total = Number(result.total || 0);
 
-      const totalPages = Math.max(1, Math.ceil(total / SYSTEM_PAGE_SIZE))
+      const totalPages = Math.max(1, Math.ceil(total / SYSTEM_PAGE_SIZE));
 
       if (safePage > totalPages) {
-        setSupplierPage(totalPages)
+        setSupplierPage(totalPages);
 
-        await loadSuppliers(totalPages, searchValue)
+        await loadSuppliers(totalPages, searchValue);
 
-        return
+        return;
       }
 
-      setSuppliers(Array.isArray(result.rows) ? result.rows : [])
+      setSuppliers(Array.isArray(result.rows) ? result.rows : []);
 
-      setSuppliersTotal(total)
-      setSupplierPage(safePage)
+      setSuppliersTotal(total);
+      setSupplierPage(safePage);
       setSupplierAging({
         days_0_30: Number(result.summary?.aging?.days_0_30 || 0),
 
@@ -162,7 +164,7 @@ export default function SuppliersPage() {
         days_90_plus: Number(result.summary?.aging?.days_90_plus || 0),
 
         total: Number(result.summary?.aging?.total || 0),
-      })
+      });
 
       setSupplierDue({
         overdue: Number(result.summary?.due?.overdue || 0),
@@ -174,14 +176,14 @@ export default function SuppliersPage() {
         without_due_date: Number(result.summary?.due?.without_due_date || 0),
 
         total_open: Number(result.summary?.due?.total_open || 0),
-      })
+      });
     } catch (error) {
-      console.error('Failed to load suppliers:', error)
+      console.error('Failed to load suppliers:', error);
 
-      showMessage('حدث خطأ أثناء تحميل الموردين')
+      showMessage('حدث خطأ أثناء تحميل الموردين');
 
-      setSuppliers([])
-      setSuppliersTotal(0)
+      setSuppliers([]);
+      setSuppliersTotal(0);
       setSupplierAging({
         days_0_30: 0,
 
@@ -192,7 +194,7 @@ export default function SuppliersPage() {
         days_90_plus: 0,
 
         total: 0,
-      })
+      });
 
       setSupplierDue({
         overdue: 0,
@@ -204,29 +206,29 @@ export default function SuppliersPage() {
         without_due_date: 0,
 
         total_open: 0,
-      })
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      setSupplierPage(1)
+      setSupplierPage(1);
 
-      void loadSuppliers(1, search)
-    }, 250)
+      void loadSuppliers(1, search);
+    }, 250);
 
-    return () => clearTimeout(handle)
-  }, [search])
+    return () => clearTimeout(handle);
+  }, [search]);
 
   function startCreate() {
-    setEditingId(null)
-    setForm(emptyForm)
+    setEditingId(null);
+    setForm(emptyForm);
   }
 
   function startEdit(supplier: Supplier) {
-    setEditingId(supplier.id)
+    setEditingId(supplier.id);
     setForm({
       name: supplier.name || '',
       phone: supplier.phone || '',
@@ -235,30 +237,30 @@ export default function SuppliersPage() {
       notes: supplier.notes || '',
       credit_days:
         supplier.credit_days == null ? '' : String(supplier.credit_days),
-    })
+    });
   }
 
   async function saveSupplier() {
-    if (saving) return
+    if (saving) return;
 
     if (!form.name.trim()) {
-      showMessage('اسم المورد مطلوب')
-      return
+      showMessage('اسم المورد مطلوب');
+      return;
     }
 
     const creditDays =
-      form.credit_days.trim() === '' ? null : Number(form.credit_days)
+      form.credit_days.trim() === '' ? null : Number(form.credit_days);
 
     if (
       creditDays !== null &&
       (!Number.isInteger(creditDays) || creditDays < 0)
     ) {
-      showMessage('مدة الائتمان يجب أن تكون صفر أو عدد أيام صحيح موجب')
+      showMessage('مدة الائتمان يجب أن تكون صفر أو عدد أيام صحيح موجب');
 
-      return
+      return;
     }
 
-    setSaving(true)
+    setSaving(true);
 
     try {
       if (editingId) {
@@ -278,9 +280,9 @@ export default function SuppliersPage() {
           credit_days: creditDays,
 
           actor_id: currentUser?.id,
-        })
+        });
 
-        showMessage('تم تعديل المورد')
+        showMessage('تم تعديل المورد');
       } else {
         await window.api.createSupplier({
           name: form.name,
@@ -296,92 +298,92 @@ export default function SuppliersPage() {
           credit_days: creditDays,
 
           actor_id: currentUser?.id,
-        })
-        showMessage('تم إضافة المورد')
+        });
+        showMessage('تم إضافة المورد');
       }
 
-      setForm(emptyForm)
-      setEditingId(null)
-      await loadSuppliers(supplierPage)
+      setForm(emptyForm);
+      setEditingId(null);
+      await loadSuppliers(supplierPage);
     } catch (error) {
-      console.error('Failed to save supplier:', error)
+      console.error('Failed to save supplier:', error);
 
-      showMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ المورد'))
+      showMessage(getErrorMessage(error, 'حدث خطأ أثناء حفظ المورد'));
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
   function requestDeleteSupplier(supplier: Supplier) {
-    setDeleteTarget(supplier)
+    setDeleteTarget(supplier);
   }
 
   function cancelDeleteSupplier() {
-    if (deletingSupplier) return
-    setDeleteTarget(null)
+    if (deletingSupplier) return;
+    setDeleteTarget(null);
   }
 
   async function confirmDeleteSupplier() {
-    if (!deleteTarget || deletingSupplier) return
+    if (!deleteTarget || deletingSupplier) return;
 
-    const deletedId = deleteTarget.id
+    const deletedId = deleteTarget.id;
 
-    setDeletingSupplier(true)
+    setDeletingSupplier(true);
 
     try {
-      await window.api.deleteSupplier(deletedId, currentUser?.id)
+      await window.api.deleteSupplier(deletedId, currentUser?.id);
 
       if (statementData?.supplier?.id === deletedId) {
-        setStatementData(null)
+        setStatementData(null);
       }
 
       if (paymentSupplier?.id === deletedId) {
-        setPaymentSupplier(null)
-        setPaymentAmount('')
-        setPaymentNotes('')
+        setPaymentSupplier(null);
+        setPaymentAmount('');
+        setPaymentNotes('');
       }
 
       if (editingId === deletedId) {
-        setEditingId(null)
-        setForm(emptyForm)
+        setEditingId(null);
+        setForm(emptyForm);
       }
 
-      setDeleteTarget(null)
-      showMessage('تم حذف المورد')
-      await loadSuppliers(supplierPage)
+      setDeleteTarget(null);
+      showMessage('تم حذف المورد');
+      await loadSuppliers(supplierPage);
     } catch (error: any) {
-      console.error('Failed to delete supplier:', error)
+      console.error('Failed to delete supplier:', error);
 
-      showMessage(error?.message || 'حدث خطأ أثناء حذف المورد')
+      showMessage(error?.message || 'حدث خطأ أثناء حذف المورد');
     } finally {
-      setDeletingSupplier(false)
+      setDeletingSupplier(false);
     }
   }
 
   async function openStatement(supplier: Supplier) {
-    setStatementLoading(true)
-    setSupplierStatementPage(1)
+    setStatementLoading(true);
+    setSupplierStatementPage(1);
 
     try {
-      const data = await window.api.getSupplierStatement(supplier.id)
-      setStatementData(data)
+      const data = await window.api.getSupplierStatement(supplier.id);
+      setStatementData(data);
     } catch (error) {
-      console.error('Failed to load supplier statement:', error)
-      showMessage('حدث خطأ أثناء تحميل كشف الحساب')
+      console.error('Failed to load supplier statement:', error);
+      showMessage('حدث خطأ أثناء تحميل كشف الحساب');
     } finally {
-      setStatementLoading(false)
+      setStatementLoading(false);
     }
   }
 
   async function saveSupplierStatementPdf() {
-    if (!statementData) return
+    if (!statementData) return;
 
     try {
-      const supplier = statementData.supplier
-      const summary = statementData.summary
+      const supplier = statementData.supplier;
+      const summary = statementData.summary;
       const entries = Array.isArray(statementData.entries)
         ? statementData.entries
-        : []
+        : [];
 
       const safeText = (value: unknown) =>
         String(value ?? '—')
@@ -389,7 +391,7 @@ export default function SuppliersPage() {
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;')
           .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#039;')
+          .replace(/'/g, '&#039;');
 
       const rowsHtml = entries.length
         ? entries
@@ -414,7 +416,7 @@ export default function SuppliersPage() {
             لا توجد حركات
           </td>
         </tr>
-      `
+      `;
 
       const html = `
       <!doctype html>
@@ -696,11 +698,11 @@ export default function SuppliersPage() {
           </div>
         </body>
       </html>
-    `
+    `;
 
       const supplierName = String(supplier?.name || 'supplier')
         .replace(/[<>:"/\\|?*]+/g, '-')
-        .trim()
+        .trim();
 
       const result = await window.api.savePdfFromHtml({
         html,
@@ -708,35 +710,35 @@ export default function SuppliersPage() {
           .toISOString()
           .slice(0, 10)}.pdf`,
         landscape: true,
-      })
+      });
 
-      if (result?.canceled) return
+      if (result?.canceled) return;
 
-      showMessage('تم حفظ كشف حساب المورد PDF بنجاح')
+      showMessage('تم حفظ كشف حساب المورد PDF بنجاح');
     } catch (error) {
-      console.error('Failed to save supplier statement PDF:', error)
-      showMessage('حدث خطأ أثناء حفظ كشف حساب المورد PDF')
+      console.error('Failed to save supplier statement PDF:', error);
+      showMessage('حدث خطأ أثناء حفظ كشف حساب المورد PDF');
     }
   }
 
   function openSupplierPayment(supplier: Supplier) {
-    setPaymentSupplier(supplier)
-    setPaymentAmount(String(roundMoney(supplier.balance)))
-    setPaymentMethod('store_cash')
-    setPaymentNotes('')
+    setPaymentSupplier(supplier);
+    setPaymentAmount(String(roundMoney(supplier.balance)));
+    setPaymentMethod('store_cash');
+    setPaymentNotes('');
   }
 
   async function saveSupplierPayment() {
-    if (!paymentSupplier || savingPayment) return
+    if (!paymentSupplier || savingPayment) return;
 
-    const amount = Number(paymentAmount || 0)
+    const amount = Number(paymentAmount || 0);
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      showMessage('اكتب مبلغ صحيح')
-      return
+      showMessage('اكتب مبلغ صحيح');
+      return;
     }
 
-    setSavingPayment(true)
+    setSavingPayment(true);
 
     try {
       const result = await window.api.recordSupplierPayment({
@@ -745,31 +747,31 @@ export default function SuppliersPage() {
         payment_method: paymentMethod,
         notes: paymentNotes.trim() || null,
         actor_id: currentUser?.id,
-      })
+      });
 
-      showMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`)
+      showMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`);
 
-      setPaymentSupplier(null)
-      setPaymentAmount('')
-      setPaymentNotes('')
+      setPaymentSupplier(null);
+      setPaymentAmount('');
+      setPaymentNotes('');
 
-      await loadSuppliers(supplierPage)
+      await loadSuppliers(supplierPage);
 
       if (statementData?.supplier?.id === paymentSupplier.id) {
-        const data = await window.api.getSupplierStatement(paymentSupplier.id)
-        setStatementData(data)
+        const data = await window.api.getSupplierStatement(paymentSupplier.id);
+        setStatementData(data);
       }
     } catch (error) {
-      console.error('Failed to save supplier payment:', error)
-      showMessage(getErrorMessage(error, 'حدث خطأ أثناء تسجيل الدفعة'))
+      console.error('Failed to save supplier payment:', error);
+      showMessage(getErrorMessage(error, 'حدث خطأ أثناء تسجيل الدفعة'));
     } finally {
-      setSavingPayment(false)
+      setSavingPayment(false);
     }
   }
 
   function canManageStatementPayment(entry: any) {
     if (!entry?.batch_id) {
-      return false
+      return false;
     }
 
     if (
@@ -777,108 +779,108 @@ export default function SuppliersPage() {
       entry.replacement_batch_id ||
       !entry.is_latest_mutable_batch
     ) {
-      return false
+      return false;
     }
 
     /*
      * تعديل/إلغاء دفعة المورد
      * True Admin Only.
      */
-    return isAdmin
+    return isAdmin;
   }
 
   function paymentMethodLabel(value?: string | null) {
-    if (!value) return '—'
+    if (!value) return '—';
 
     return (
       CASH_ACCOUNT_OPTIONS.find((option) => option.value === value)?.label ||
       value
-    )
+    );
   }
 
   function openPaymentEdit(entry: any) {
     if (!canManageStatementPayment(entry)) {
-      return
+      return;
     }
 
     setPaymentAction({
       mode: 'edit',
       entry,
-    })
+    });
 
-    setPaymentActionAmount(String(Number(entry.credit || 0)))
+    setPaymentActionAmount(String(Number(entry.credit || 0)));
 
-    setPaymentActionMethod(String(entry.payment_method || 'store_cash'))
+    setPaymentActionMethod(String(entry.payment_method || 'store_cash'));
 
-    setPaymentActionNotes(String(entry.notes || ''))
+    setPaymentActionNotes(String(entry.notes || ''));
 
-    setPaymentActionReason('')
-    setPaymentActionPassword('')
+    setPaymentActionReason('');
+    setPaymentActionPassword('');
 
-    setPaymentActionRequirePassword(Boolean(entry.requires_admin_password))
+    setPaymentActionRequirePassword(Boolean(entry.requires_admin_password));
   }
 
   function openPaymentCancel(entry: any) {
     if (!canManageStatementPayment(entry)) {
-      return
+      return;
     }
 
     setPaymentAction({
       mode: 'cancel',
       entry,
-    })
+    });
 
-    setPaymentActionAmount('')
-    setPaymentActionMethod('store_cash')
-    setPaymentActionNotes('')
-    setPaymentActionReason('')
-    setPaymentActionPassword('')
+    setPaymentActionAmount('');
+    setPaymentActionMethod('store_cash');
+    setPaymentActionNotes('');
+    setPaymentActionReason('');
+    setPaymentActionPassword('');
 
-    setPaymentActionRequirePassword(Boolean(entry.requires_admin_password))
+    setPaymentActionRequirePassword(Boolean(entry.requires_admin_password));
   }
 
   function closePaymentAction() {
-    if (savingPaymentAction) return
+    if (savingPaymentAction) return;
 
-    setPaymentAction(null)
-    setPaymentActionAmount('')
-    setPaymentActionMethod('store_cash')
-    setPaymentActionNotes('')
-    setPaymentActionReason('')
-    setPaymentActionPassword('')
-    setPaymentActionRequirePassword(false)
+    setPaymentAction(null);
+    setPaymentActionAmount('');
+    setPaymentActionMethod('store_cash');
+    setPaymentActionNotes('');
+    setPaymentActionReason('');
+    setPaymentActionPassword('');
+    setPaymentActionRequirePassword(false);
   }
 
   async function savePaymentAction() {
     if (!paymentAction || savingPaymentAction) {
-      return
+      return;
     }
 
-    const batchId = Number(paymentAction.entry?.batch_id || 0)
+    const batchId = Number(paymentAction.entry?.batch_id || 0);
 
     if (!batchId) {
-      showMessage('رقم دفعة المورد غير صحيح')
-      return
+      showMessage('رقم دفعة المورد غير صحيح');
+      return;
     }
 
     if (paymentAction.mode === 'edit') {
-      const amount = Number(paymentActionAmount || 0)
+      const amount = Number(paymentActionAmount || 0);
 
       if (!Number.isFinite(amount) || amount <= 0) {
-        showMessage('اكتب مبلغ دفعة صحيح')
-        return
+        showMessage('اكتب مبلغ دفعة صحيح');
+        return;
       }
     } else if (!paymentActionReason.trim()) {
-      showMessage('سبب الإلغاء مطلوب')
-      return
+      showMessage('سبب الإلغاء مطلوب');
+      return;
     }
 
     if (paymentActionRequirePassword && !paymentActionPassword.trim()) {
-      showMessage('كلمة مرور المدير مطلوبة')
-      return
+      showMessage('كلمة مرور المدير مطلوبة');
+      return;
     }
 
-    setSavingPaymentAction(true)
+    setSavingPaymentAction(true);
 
     try {
       const result =
@@ -908,49 +910,49 @@ export default function SuppliersPage() {
               admin_password: paymentActionRequirePassword
                 ? paymentActionPassword
                 : undefined,
-            })
+            });
 
       if (!result.success) {
         const errorMessage =
           result.message ||
           (paymentAction.mode === 'edit'
             ? 'تعذر تعديل دفعة المورد'
-            : 'تعذر إلغاء دفعة المورد')
+            : 'تعذر إلغاء دفعة المورد');
 
         if (errorMessage.includes('كلمة مرور')) {
-          setPaymentActionRequirePassword(true)
+          setPaymentActionRequirePassword(true);
         }
 
-        showMessage(errorMessage)
+        showMessage(errorMessage);
 
-        return
+        return;
       }
 
-      const supplierId = Number(statementData?.supplier?.id || 0)
+      const supplierId = Number(statementData?.supplier?.id || 0);
 
-      setPaymentAction(null)
-      setPaymentActionAmount('')
-      setPaymentActionNotes('')
-      setPaymentActionReason('')
-      setPaymentActionPassword('')
+      setPaymentAction(null);
+      setPaymentActionAmount('');
+      setPaymentActionNotes('');
+      setPaymentActionReason('');
+      setPaymentActionPassword('');
 
-      setPaymentActionRequirePassword(false)
+      setPaymentActionRequirePassword(false);
 
-      await loadSuppliers(supplierPage)
+      await loadSuppliers(supplierPage);
 
       if (supplierId) {
-        const data = await window.api.getSupplierStatement(supplierId)
+        const data = await window.api.getSupplierStatement(supplierId);
 
-        setStatementData(data)
+        setStatementData(data);
       }
 
       showMessage(
         paymentAction.mode === 'edit'
           ? 'تم تعديل دفعة المورد'
           : 'تم إلغاء دفعة المورد',
-      )
+      );
     } catch (error) {
-      console.error('Failed to process supplier payment:', error)
+      console.error('Failed to process supplier payment:', error);
 
       showMessage(
         getErrorMessage(
@@ -959,9 +961,9 @@ export default function SuppliersPage() {
             ? 'حدث خطأ أثناء تعديل الدفعة'
             : 'حدث خطأ أثناء إلغاء الدفعة',
         ),
-      )
+      );
     } finally {
-      setSavingPaymentAction(false)
+      setSavingPaymentAction(false);
     }
   }
 
@@ -981,15 +983,15 @@ export default function SuppliersPage() {
         <span style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</span>
         <strong style={{ color: '#fff', fontSize: '18px' }}>{value}</strong>
       </div>
-    )
+    );
   }
 
   function formatDate(value?: string) {
-    if (!value) return '—'
+    if (!value) return '—';
 
     try {
-      const raw = String(value)
-      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
+      const raw = String(value);
+      const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
 
       return new Date(normalized).toLocaleString('ar-EG', {
         year: 'numeric',
@@ -997,9 +999,9 @@ export default function SuppliersPage() {
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
-      })
+      });
     } catch {
-      return value
+      return value;
     }
   }
 
@@ -1009,29 +1011,29 @@ export default function SuppliersPage() {
         ? error.message
         : typeof error === 'string'
           ? error
-          : ''
+          : '';
 
     const match = raw.match(
       /Error invoking remote method '[^']+': Error: (.*)$/,
-    )
+    );
 
-    return match?.[1] || raw || fallback
+    return match?.[1] || raw || fallback;
   }
 
   function formatDateOnly(value?: string | null) {
-    const raw = String(value || '').trim()
+    const raw = String(value || '').trim();
 
     if (!raw) {
-      return '—'
+      return '—';
     }
 
-    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 
     if (!match) {
-      return raw
+      return raw;
     }
 
-    return `${match[3]}/${match[2]}/${match[1]}`
+    return `${match[3]}/${match[2]}/${match[1]}`;
   }
 
   return (
@@ -1256,7 +1258,7 @@ export default function SuppliersPage() {
           totalItems={suppliersTotal}
           loading={loading}
           onPageChange={(page) => {
-            void loadSuppliers(page)
+            void loadSuppliers(page);
           }}
         />
 
@@ -2214,7 +2216,7 @@ export default function SuppliersPage() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function Input({
@@ -2222,9 +2224,9 @@ function Input({
   value,
   onChange,
 }: {
-  placeholder: string
-  value: string
-  onChange: (value: string) => void
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
 }) {
   return (
     <input
@@ -2233,11 +2235,11 @@ function Input({
       onChange={(e) => onChange(e.target.value)}
       style={inputStyle}
     />
-  )
+  );
 }
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 const cardStyle: React.CSSProperties = {
@@ -2246,7 +2248,7 @@ const cardStyle: React.CSSProperties = {
   display: 'grid',
   gap: '14px',
   overflow: 'visible',
-}
+};
 
 const inputStyle: React.CSSProperties = {
   height: '44px',
@@ -2259,7 +2261,7 @@ const inputStyle: React.CSSProperties = {
   textAlign: 'right',
   direction: 'rtl',
   boxSizing: 'border-box',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -2270,7 +2272,7 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid #7c3aed',
@@ -2281,7 +2283,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const smallButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(124,58,237,0.55)',
@@ -2291,25 +2293,25 @@ const smallButtonStyle: React.CSSProperties = {
   padding: '8px 10px',
   cursor: 'pointer',
   fontWeight: 700,
-}
+};
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   fontWeight: 800,
   whiteSpace: 'nowrap',
-}
+};
 
 const tdStyle: React.CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
-}
+};
 
 const statementThStyle: React.CSSProperties = {
   ...thStyle,
   whiteSpace: 'normal',
   overflowWrap: 'anywhere',
-}
+};
 
 const statementTdStyle: React.CSSProperties = {
   ...tdStyle,
@@ -2318,7 +2320,7 @@ const statementTdStyle: React.CSSProperties = {
   wordBreak: 'break-word',
   verticalAlign: 'top',
   lineHeight: 1.6,
-}
+};
 
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
@@ -2329,7 +2331,7 @@ const modalOverlayStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   padding: '20px',
-}
+};
 
 const modalStyle: React.CSSProperties = {
   width: '480px',
@@ -2342,17 +2344,17 @@ const modalStyle: React.CSSProperties = {
   padding: '22px',
   direction: 'rtl',
   boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
-}
+};
 
 const fieldStyle: React.CSSProperties = {
   display: 'grid',
   gap: '8px',
-}
+};
 
 const labelStyle: React.CSSProperties = {
   color: '#cbd5e1',
   fontWeight: 800,
-}
+};
 
 const closeButtonStyle: React.CSSProperties = {
   width: '34px',
@@ -2363,4 +2365,4 @@ const closeButtonStyle: React.CSSProperties = {
   color: '#fff',
   cursor: 'pointer',
   fontSize: '20px',
-}
+};

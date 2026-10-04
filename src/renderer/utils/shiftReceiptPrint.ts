@@ -9,47 +9,47 @@ import {
   openReceiptPrintWindow,
   type ReceiptPrintSettings,
   type StoreReceiptInfo,
-} from './receiptPrint'
+} from './receiptPrint';
 
 export type ShiftCloseReceiptData = {
-  shift_id: number
+  shift_id: number;
 
-  cashier_name: string
+  cashier_name: string;
 
-  opened_at: string
+  opened_at: string;
 
-  closed_at?: string | null
+  closed_at?: string | null;
 
-  closing_counted_amount: number
+  closing_counted_amount: number;
 
-  left_for_next_shift: number
-}
+  left_for_next_shift: number;
+};
 
 export type ShiftReceiptPrintResult = {
-  ok: boolean
-  message?: string
-}
+  ok: boolean;
+  message?: string;
+};
 
 export function buildShiftCloseReceiptHtml(
   data: ShiftCloseReceiptData,
   storeInfo: StoreReceiptInfo = {},
   printSettings: ReceiptPrintSettings = DEFAULT_RECEIPT_PRINT_SETTINGS,
 ) {
-  const storeName = String(storeInfo.app_name || 'ERP Store').trim()
+  const storeName = String(storeInfo.app_name || 'ERP Store').trim();
 
-  const storeLogoUrl = String(storeInfo.app_logo_url || '').trim()
+  const storeLogoUrl = String(storeInfo.app_logo_url || '').trim();
 
-  const storePhone = String(storeInfo.store_phone || '').trim()
+  const storePhone = String(storeInfo.store_phone || '').trim();
 
-  const storeAddress = String(storeInfo.store_address || '').trim()
+  const storeAddress = String(storeInfo.store_address || '').trim();
 
-  const closingAmount = Math.max(0, Number(data.closing_counted_amount || 0))
+  const closingAmount = Math.max(0, Number(data.closing_counted_amount || 0));
 
-  const leftAmount = Math.max(0, Number(data.left_for_next_shift || 0))
+  const leftAmount = Math.max(0, Number(data.left_for_next_shift || 0));
 
-  const safeTransferAmount = Math.max(0, closingAmount - leftAmount)
+  const safeTransferAmount = Math.max(0, closingAmount - leftAmount);
 
-  const closedAt = data.closed_at || new Date().toISOString()
+  const closedAt = data.closed_at || new Date().toISOString();
 
   return `
     <!doctype html>
@@ -533,56 +533,56 @@ export function buildShiftCloseReceiptHtml(
     </body>
 
     </html>
-  `
+  `;
 }
 
 export async function printShiftCloseReceipt(
   data: ShiftCloseReceiptData,
 ): Promise<ShiftReceiptPrintResult> {
-  const storeInfo = await loadReceiptStoreInfo()
+  const storeInfo = await loadReceiptStoreInfo();
 
-  const printSettings = await loadReceiptPrintSettings()
+  const printSettings = await loadReceiptPrintSettings();
 
-  const html = buildShiftCloseReceiptHtml(data, storeInfo, printSettings)
+  const html = buildShiftCloseReceiptHtml(data, storeInfo, printSettings);
 
   if (printSettings.receipt_silent_print) {
     try {
       const result = await window.api.printHtmlSilent({
         html,
-      })
+      });
 
       if (!result?.ok) {
         return {
           ok: false,
 
           message: result?.message || 'تعذر طباعة إيصال الشفت',
-        }
+        };
       }
 
       return {
         ok: true,
-      }
+      };
     } catch (error) {
       return {
         ok: false,
 
         message:
           error instanceof Error ? error.message : 'تعذر طباعة إيصال الشفت',
-      }
+      };
     }
   }
 
-  const opened = await openReceiptPrintWindow(html)
+  const opened = await openReceiptPrintWindow(html);
 
   if (!opened) {
     return {
       ok: false,
 
       message: 'تعذر فتح نافذة الطباعة',
-    }
+    };
   }
 
   return {
     ok: true,
-  }
+  };
 }

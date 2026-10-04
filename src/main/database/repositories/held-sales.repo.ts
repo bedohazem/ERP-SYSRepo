@@ -1,41 +1,41 @@
-import { getDb } from '../db'
-import { roundMoney } from '../../../shared/money'
+import { getDb } from '../db';
+import { roundMoney } from '../../../shared/money';
 export type CreateHeldSaleInput = {
-  user_id: number
+  user_id: number;
 
-  customer_id?: number | null
+  customer_id?: number | null;
 
-  title?: string | null
+  title?: string | null;
 
-  discount_type?: 'amount' | 'percent'
+  discount_type?: 'amount' | 'percent';
 
-  discount_value?: number
+  discount_value?: number;
 
-  notes?: string | null
+  notes?: string | null;
 
   items: Array<{
-    variant_id: number
-    quantity: number
-  }>
-}
+    variant_id: number;
+    quantity: number;
+  }>;
+};
 
 type HeldSaleAccessInput = {
-  held_sale_id: number
+  held_sale_id: number;
 
-  actor_id: number
+  actor_id: number;
 
-  is_admin: boolean
-}
+  is_admin: boolean;
+};
 
 function getHeldSaleHeaderForAccess(input: HeldSaleAccessInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const heldSaleId = Number(input.held_sale_id || 0)
+  const heldSaleId = Number(input.held_sale_id || 0);
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
   if (!heldSaleId || !actorId) {
-    throw new Error('الفاتورة المعلقة غير صحيحة')
+    throw new Error('الفاتورة المعلقة غير صحيحة');
   }
 
   const row = db
@@ -97,41 +97,41 @@ function getHeldSaleHeaderForAccess(input: HeldSaleAccessInput) {
       input.is_admin ? 1 : 0,
 
       actorId,
-    ) as any
+    ) as any;
 
   if (!row) {
-    throw new Error('الفاتورة المعلقة غير موجودة أو غير متاحة لهذا المستخدم')
+    throw new Error('الفاتورة المعلقة غير موجودة أو غير متاحة لهذا المستخدم');
   }
 
-  return row
+  return row;
 }
 
 export function createHeldSale(input: CreateHeldSaleInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const userId = Number(input.user_id || 0)
+  const userId = Number(input.user_id || 0);
 
   if (!userId) {
-    throw new Error('المستخدم غير صحيح')
+    throw new Error('المستخدم غير صحيح');
   }
 
   if (!Array.isArray(input.items) || input.items.length === 0) {
-    throw new Error('لا يمكن تعليق فاتورة فارغة')
+    throw new Error('لا يمكن تعليق فاتورة فارغة');
   }
 
-  const discountType = input.discount_type === 'percent' ? 'percent' : 'amount'
+  const discountType = input.discount_type === 'percent' ? 'percent' : 'amount';
 
-  const discountValue = Number(input.discount_value || 0)
+  const discountValue = Number(input.discount_value || 0);
 
   if (!Number.isFinite(discountValue) || discountValue < 0) {
-    throw new Error('قيمة الخصم غير صحيحة')
+    throw new Error('قيمة الخصم غير صحيحة');
   }
 
   if (discountType === 'percent' && discountValue > 100) {
-    throw new Error('نسبة الخصم لا يمكن أن تتجاوز 100%')
+    throw new Error('نسبة الخصم لا يمكن أن تتجاوز 100%');
   }
 
-  const customerId = input.customer_id ? Number(input.customer_id) : null
+  const customerId = input.customer_id ? Number(input.customer_id) : null;
 
   if (customerId) {
     const customer = db
@@ -146,34 +146,34 @@ export function createHeldSale(input: CreateHeldSaleInput) {
         LIMIT 1
         `,
       )
-      .get(customerId)
+      .get(customerId);
 
     if (!customer) {
-      throw new Error('العميل غير موجود')
+      throw new Error('العميل غير موجود');
     }
   }
 
-  const quantities = new Map<number, number>()
+  const quantities = new Map<number, number>();
 
   for (const item of input.items) {
-    const variantId = Number(item.variant_id || 0)
+    const variantId = Number(item.variant_id || 0);
 
-    const quantity = Number(item.quantity || 0)
+    const quantity = Number(item.quantity || 0);
 
     if (!variantId || !Number.isFinite(quantity) || quantity <= 0) {
-      throw new Error('بيانات أحد أصناف الفاتورة غير صحيحة')
+      throw new Error('بيانات أحد أصناف الفاتورة غير صحيحة');
     }
 
     quantities.set(
       variantId,
 
       Number(quantities.get(variantId) || 0) + quantity,
-    )
+    );
   }
 
-  const variantIds = Array.from(quantities.keys())
+  const variantIds = Array.from(quantities.keys());
 
-  const placeholders = variantIds.map(() => '?').join(', ')
+  const placeholders = variantIds.map(() => '?').join(', ');
 
   const variants = db
     .prepare(
@@ -197,32 +197,32 @@ export function createHeldSale(input: CreateHeldSaleInput) {
       `,
     )
     .all(...variantIds) as Array<{
-    id: number
+    id: number;
 
-    is_active: number
+    is_active: number;
 
-    product_is_active: number
-  }>
+    product_is_active: number;
+  }>;
 
   const variantMap = new Map(
     variants.map((variant) => [Number(variant.id), variant]),
-  )
+  );
 
   for (const variantId of variantIds) {
-    const variant = variantMap.get(variantId)
+    const variant = variantMap.get(variantId);
 
     if (
       !variant ||
       Number(variant.is_active) !== 1 ||
       Number(variant.product_is_active) !== 1
     ) {
-      throw new Error('لا يمكن تعليق الفاتورة لأن أحد الأصناف لم يعد متاحًا')
+      throw new Error('لا يمكن تعليق الفاتورة لأن أحد الأصناف لم يعد متاحًا');
     }
   }
 
-  const title = String(input.title || '').trim() || 'فاتورة معلقة'
+  const title = String(input.title || '').trim() || 'فاتورة معلقة';
 
-  const notes = String(input.notes || '').trim()
+  const notes = String(input.notes || '').trim();
 
   const tx = db.transaction(() => {
     const result = db
@@ -259,9 +259,9 @@ export function createHeldSale(input: CreateHeldSaleInput) {
         discountType === 'amount' ? roundMoney(discountValue) : discountValue,
 
         notes || null,
-      )
+      );
 
-    const heldSaleId = Number(result.lastInsertRowid)
+    const heldSaleId = Number(result.lastInsertRowid);
 
     const insertItem = db.prepare(
       `
@@ -280,9 +280,9 @@ export function createHeldSale(input: CreateHeldSaleInput) {
             ?, ?, ?, ?
           )
           `,
-    )
+    );
 
-    let position = 0
+    let position = 0;
 
     for (const [variantId, quantity] of quantities.entries()) {
       insertItem.run(
@@ -293,32 +293,32 @@ export function createHeldSale(input: CreateHeldSaleInput) {
         quantity,
 
         position,
-      )
+      );
 
-      position += 1
+      position += 1;
     }
 
     return {
       success: true,
 
       heldSaleId,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function listHeldSales(input: {
-  actor_id: number
+  actor_id: number;
 
-  is_admin: boolean
+  is_admin: boolean;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
   if (!actorId) {
-    throw new Error('المستخدم غير صحيح')
+    throw new Error('المستخدم غير صحيح');
   }
 
   return db
@@ -423,13 +423,13 @@ export function listHeldSales(input: {
       input.is_admin ? 1 : 0,
 
       actorId,
-    )
+    );
 }
 
 export function getHeldSale(input: HeldSaleAccessInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const heldSale = getHeldSaleHeaderForAccess(input)
+  const heldSale = getHeldSaleHeaderForAccess(input);
 
   const items = db
     .prepare(
@@ -533,19 +533,19 @@ export function getHeldSale(input: HeldSaleAccessInput) {
         hsi.id ASC
       `,
     )
-    .all(heldSale.id)
+    .all(heldSale.id);
 
   return {
     ...heldSale,
 
     items,
-  }
+  };
 }
 
 export function deleteHeldSale(input: HeldSaleAccessInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const heldSale = getHeldSaleHeaderForAccess(input)
+  const heldSale = getHeldSaleHeaderForAccess(input);
 
   db.prepare(
     `
@@ -553,7 +553,7 @@ export function deleteHeldSale(input: HeldSaleAccessInput) {
 
     WHERE id = ?
     `,
-  ).run(heldSale.id)
+  ).run(heldSale.id);
 
   return {
     success: true,
@@ -563,5 +563,5 @@ export function deleteHeldSale(input: HeldSaleAccessInput) {
     title: heldSale.title,
 
     customer_id: heldSale.customer_id,
-  }
+  };
 }

@@ -1,65 +1,65 @@
-import crypto from 'node:crypto'
+import crypto from 'node:crypto';
 
-import { getDb } from '../database/db'
+import { getDb } from '../database/db';
 
 import {
   resetUserPassword,
   type PublicUserRow,
-} from '../database/repositories/user.repo'
+} from '../database/repositories/user.repo';
 
-import { getSupportDeviceCode } from './device-license'
+import { getSupportDeviceCode } from './device-license';
 
-import { assertPasswordPolicy } from '../../shared/password-policy'
+import { assertPasswordPolicy } from '../../shared/password-policy';
 
 import {
   normalizeRecoveryCode,
   SUPPORT_RECOVERY_TOKEN_MAX_TTL_SECONDS,
   verifySupportRecoveryToken,
-} from './support-recovery-token'
+} from './support-recovery-token';
 
-const RECOVERY_REQUEST_TTL_MS = 30 * 60 * 1000
+const RECOVERY_REQUEST_TTL_MS = 30 * 60 * 1000;
 
-const CLOCK_SKEW_SECONDS = 5 * 60
+const CLOCK_SKEW_SECONDS = 5 * 60;
 
-const GENERIC_RECOVERY_ERROR = 'بيانات الاسترجاع غير صحيحة أو منتهية'
+const GENERIC_RECOVERY_ERROR = 'بيانات الاسترجاع غير صحيحة أو منتهية';
 
 type RecoveryRequestRow = {
-  request_id: string
-  device_code: string
-  created_at_ms: number
-  expires_at_ms: number
-  used_at_ms: number | null
-}
+  request_id: string;
+  device_code: string;
+  created_at_ms: number;
+  expires_at_ms: number;
+  used_at_ms: number | null;
+};
 
 type RecoverInput = {
-  request_id?: string
-  username?: string
-  recovery_code?: string
-  new_password?: string
-}
+  request_id?: string;
+  username?: string;
+  recovery_code?: string;
+  new_password?: string;
+};
 
 type RecoveryOptions = {
   /*
    * للاختبارات الداخلية فقط.
    * الـIPC لا يمرر هذا الخيار.
    */
-  publicKeyPem?: string
+  publicKeyPem?: string;
 
-  nowMs?: number
-}
+  nowMs?: number;
+};
 
 function formatRequestId(value: string) {
-  const clean = normalizeRecoveryCode(value)
+  const clean = normalizeRecoveryCode(value);
 
-  return clean.match(/.{1,4}/g)?.join('-') || clean
+  return clean.match(/.{1,4}/g)?.join('-') || clean;
 }
 
 function invalidRecovery(): never {
-  throw new Error(GENERIC_RECOVERY_ERROR)
+  throw new Error(GENERIC_RECOVERY_ERROR);
 }
 
 export function createAdminPasswordRecoveryRequest(nowMs = Date.now()) {
-  const db = getDb()
+  const db = getDb();
 
   const adminCount = db
     .prepare(
@@ -75,20 +75,20 @@ export function createAdminPasswordRecoveryRequest(nowMs = Date.now()) {
       `,
     )
     .get() as {
-    count: number
-  }
+    count: number;
+  };
 
   if (Number(adminCount.count || 0) <= 0) {
-    throw new Error('لا يوجد حساب مدير فعال يمكن استرجاعه')
+    throw new Error('لا يوجد حساب مدير فعال يمكن استرجاعه');
   }
 
-  const deviceCode = normalizeRecoveryCode(getSupportDeviceCode())
+  const deviceCode = normalizeRecoveryCode(getSupportDeviceCode());
 
-  const requestId = crypto.randomBytes(8).toString('hex').toUpperCase()
+  const requestId = crypto.randomBytes(8).toString('hex').toUpperCase();
 
-  const expiresAtMs = nowMs + RECOVERY_REQUEST_TTL_MS
+  const expiresAtMs = nowMs + RECOVERY_REQUEST_TTL_MS;
 
-  const cleanupBefore = nowMs - 7 * 24 * 60 * 60 * 1000
+  const cleanupBefore = nowMs - 7 * 24 * 60 * 60 * 1000;
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -103,7 +103,7 @@ export function createAdminPasswordRecoveryRequest(nowMs = Date.now()) {
             OR expires_at_ms < ?
           )
         `,
-    ).run(cleanupBefore, nowMs)
+    ).run(cleanupBefore, nowMs);
 
     db.prepare(
       `
@@ -118,10 +118,10 @@ export function createAdminPasswordRecoveryRequest(nowMs = Date.now()) {
 
         VALUES (?, ?, ?, ?, NULL)
         `,
-    ).run(requestId, deviceCode, nowMs, expiresAtMs)
-  })
+    ).run(requestId, deviceCode, nowMs, expiresAtMs);
+  });
 
-  tx()
+  tx();
 
   return {
     device_code: getSupportDeviceCode(),
@@ -131,31 +131,31 @@ export function createAdminPasswordRecoveryRequest(nowMs = Date.now()) {
     expires_at: new Date(expiresAtMs).toISOString(),
 
     expires_in_seconds: Math.floor(RECOVERY_REQUEST_TTL_MS / 1000),
-  }
+  };
 }
 
 export function recoverAdminPassword(
   input: RecoverInput,
   options: RecoveryOptions = {},
 ): {
-  user: PublicUserRow
-  request_id: string
+  user: PublicUserRow;
+  request_id: string;
 } {
-  const db = getDb()
+  const db = getDb();
 
-  const nowMs = Number(options.nowMs ?? Date.now())
+  const nowMs = Number(options.nowMs ?? Date.now());
 
-  const requestId = normalizeRecoveryCode(input?.request_id)
+  const requestId = normalizeRecoveryCode(input?.request_id);
 
-  const username = String(input?.username ?? '').trim()
+  const username = String(input?.username ?? '').trim();
 
-  const token = String(input?.recovery_code ?? '').trim()
+  const token = String(input?.recovery_code ?? '').trim();
 
   if (!requestId || !username || !token) {
-    invalidRecovery()
+    invalidRecovery();
   }
 
-  const newPassword = assertPasswordPolicy(input?.new_password)
+  const newPassword = assertPasswordPolicy(input?.new_password);
 
   const request = db
     .prepare(
@@ -176,33 +176,33 @@ export function recoverAdminPassword(
       LIMIT 1
       `,
     )
-    .get(requestId) as RecoveryRequestRow | undefined
+    .get(requestId) as RecoveryRequestRow | undefined;
 
   if (
     !request ||
     request.used_at_ms !== null ||
     Number(request.expires_at_ms) <= nowMs
   ) {
-    invalidRecovery()
+    invalidRecovery();
   }
 
-  const currentDeviceCode = normalizeRecoveryCode(getSupportDeviceCode())
+  const currentDeviceCode = normalizeRecoveryCode(getSupportDeviceCode());
 
   if (normalizeRecoveryCode(request.device_code) !== currentDeviceCode) {
-    invalidRecovery()
+    invalidRecovery();
   }
 
-  let payload
+  let payload;
 
   try {
-    payload = verifySupportRecoveryToken(token, options.publicKeyPem)
+    payload = verifySupportRecoveryToken(token, options.publicKeyPem);
   } catch {
-    invalidRecovery()
+    invalidRecovery();
   }
 
-  const nowSeconds = Math.floor(nowMs / 1000)
+  const nowSeconds = Math.floor(nowMs / 1000);
 
-  const tokenLifetime = payload.expires_at - payload.issued_at
+  const tokenLifetime = payload.expires_at - payload.issued_at;
 
   if (
     payload.expires_at <= nowSeconds ||
@@ -210,13 +210,15 @@ export function recoverAdminPassword(
     tokenLifetime <= 0 ||
     tokenLifetime > SUPPORT_RECOVERY_TOKEN_MAX_TTL_SECONDS
   ) {
-    invalidRecovery()
+    invalidRecovery();
   }
 
-  const requestCreatedSeconds = Math.floor(Number(request.created_at_ms) / 1000)
+  const requestCreatedSeconds = Math.floor(
+    Number(request.created_at_ms) / 1000,
+  );
 
   if (payload.issued_at < requestCreatedSeconds - CLOCK_SKEW_SECONDS) {
-    invalidRecovery()
+    invalidRecovery();
   }
 
   if (
@@ -224,7 +226,7 @@ export function recoverAdminPassword(
     payload.request_id !== requestId ||
     payload.username !== username
   ) {
-    invalidRecovery()
+    invalidRecovery();
   }
 
   const admin = db
@@ -246,16 +248,16 @@ export function recoverAdminPassword(
     )
     .get(username) as
     | {
-        id: number
-        username: string
+        id: number;
+        username: string;
       }
-    | undefined
+    | undefined;
 
   if (!admin) {
-    invalidRecovery()
+    invalidRecovery();
   }
 
-  let updatedUser: PublicUserRow | null = null
+  let updatedUser: PublicUserRow | null = null;
 
   const tx = db.transaction(() => {
     const consumed = db
@@ -273,10 +275,10 @@ export function recoverAdminPassword(
             AND expires_at_ms > ?
           `,
       )
-      .run(nowMs, requestId, nowMs)
+      .run(nowMs, requestId, nowMs);
 
     if (Number(consumed.changes) !== 1) {
-      invalidRecovery()
+      invalidRecovery();
     }
 
     /*
@@ -284,18 +286,18 @@ export function recoverAdminPassword(
      * بنفسه الآن، لذلك ليس
      * Temporary Password.
      */
-    updatedUser = resetUserPassword(admin.id, newPassword, false)
-  })
+    updatedUser = resetUserPassword(admin.id, newPassword, false);
+  });
 
-  tx()
+  tx();
 
   if (!updatedUser) {
-    invalidRecovery()
+    invalidRecovery();
   }
 
   return {
     user: updatedUser,
 
     request_id: formatRequestId(requestId),
-  }
+  };
 }

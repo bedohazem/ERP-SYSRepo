@@ -1,110 +1,112 @@
-import { useEffect, useMemo, useState } from 'react'
-import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
-import { useAuthStore } from '../../store/auth.store'
-import { hasUserPermission } from '../../utils/permissions'
-import { formatMoney } from '../../../shared/money'
+import { useEffect, useMemo, useState } from 'react';
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
+import { useAuthStore } from '../../store/auth.store';
+import { hasUserPermission } from '../../utils/permissions';
+import { formatMoney } from '../../../shared/money';
 
 type StockCountSession = {
-  id: number
-  title: string
-  notes?: string | null
-  category_id?: number | null
-  status: 'open' | 'approved' | 'canceled'
-  created_by?: number | null
-  approved_by?: number | null
-  created_at: string
-  approved_at?: string | null
-  canceled_at?: string | null
-  created_by_name?: string | null
-  approved_by_name?: string | null
-  items_count: number
-  counted_count: number
-  matched_count?: number | null
-  shortage_count?: number | null
-  surplus_count?: number | null
-  buy_difference_value?: number | null
-  sell_difference_value?: number | null
-}
+  id: number;
+  title: string;
+  notes?: string | null;
+  category_id?: number | null;
+  status: 'open' | 'approved' | 'canceled';
+  created_by?: number | null;
+  approved_by?: number | null;
+  created_at: string;
+  approved_at?: string | null;
+  canceled_at?: string | null;
+  created_by_name?: string | null;
+  approved_by_name?: string | null;
+  items_count: number;
+  counted_count: number;
+  matched_count?: number | null;
+  shortage_count?: number | null;
+  surplus_count?: number | null;
+  buy_difference_value?: number | null;
+  sell_difference_value?: number | null;
+};
 
 type StockCountItem = {
-  id: number
-  session_id: number
-  variant_id: number
-  system_stock?: number | null
-  actual_stock?: number | null
-  notes?: string | null
-  product_name: string
-  category_id?: number | null
-  category_name?: string | null
-  barcode?: string | null
-  size?: string | null
-  color?: string | null
-  buy_price: number
-  sell_price: number
-  difference?: number | null
-  buy_difference_value?: number | null
-  sell_difference_value?: number | null
-}
+  id: number;
+  session_id: number;
+  variant_id: number;
+  system_stock?: number | null;
+  actual_stock?: number | null;
+  notes?: string | null;
+  product_name: string;
+  category_id?: number | null;
+  category_name?: string | null;
+  barcode?: string | null;
+  size?: string | null;
+  color?: string | null;
+  buy_price: number;
+  sell_price: number;
+  difference?: number | null;
+  buy_difference_value?: number | null;
+  sell_difference_value?: number | null;
+};
 
 type Category = {
-  id: number
-  name: string
-  description?: string | null
-}
+  id: number;
+  name: string;
+  description?: string | null;
+};
 
 type StockCountDetails = {
-  session: StockCountSession
-  items: StockCountItem[]
-}
+  session: StockCountSession;
+  items: StockCountItem[];
+};
 
 export default function StockCountPage() {
-  const currentUser = useAuthStore((s) => s.user)
-  const isAdmin = currentUser?.role === 'admin'
-  const canCountStock = hasUserPermission(currentUser, 'stock_count.count')
-  const [sessions, setSessions] = useState<StockCountSession[]>([])
-  const [sessionPage, setSessionPage] = useState(1)
-  const [selected, setSelected] = useState<StockCountDetails | null>(null)
-  const [countItemsPage, setCountItemsPage] = useState(1)
+  const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role === 'admin';
+  const canCountStock = hasUserPermission(currentUser, 'stock_count.count');
+  const [sessions, setSessions] = useState<StockCountSession[]>([]);
+  const [sessionPage, setSessionPage] = useState(1);
+  const [selected, setSelected] = useState<StockCountDetails | null>(null);
+  const [countItemsPage, setCountItemsPage] = useState(1);
 
-  const [loadingSessions, setLoadingSessions] = useState(false)
-  const [loadingDetails, setLoadingDetails] = useState(false)
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
-  const [newTitle, setNewTitle] = useState('')
-  const [newNotes, setNewNotes] = useState('')
-  const [categories, setCategories] = useState<Category[]>([])
-  const [newSessionCategoryId, setNewSessionCategoryId] = useState('all')
-  const [countCategoryFilter, setCountCategoryFilter] = useState('all')
-  const [creating, setCreating] = useState(false)
+  const [newTitle, setNewTitle] = useState('');
+  const [newNotes, setNewNotes] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [newSessionCategoryId, setNewSessionCategoryId] = useState('all');
+  const [countCategoryFilter, setCountCategoryFilter] = useState('all');
+  const [creating, setCreating] = useState(false);
 
-  const [barcode, setBarcode] = useState('')
-  const [scanMessage, setScanMessage] = useState('')
-  const [savingItemId, setSavingItemId] = useState<number | null>(null)
-  const [savingAll, setSavingAll] = useState(false)
-  const [actionLoading, setActionLoading] = useState(false)
+  const [barcode, setBarcode] = useState('');
+  const [scanMessage, setScanMessage] = useState('');
+  const [savingItemId, setSavingItemId] = useState<number | null>(null);
+  const [savingAll, setSavingAll] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<
     'all' | 'uncounted' | 'matched' | 'shortage' | 'surplus'
-  >('all')
+  >('all');
 
   // نخزن الرقم أثناء الكتابة بدون اعتبار المنتج مجرودًا قبل الحفظ.
-  const [actualDrafts, setActualDrafts] = useState<Record<number, string>>({})
+  const [actualDrafts, setActualDrafts] = useState<Record<number, string>>({});
 
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState('');
   const [confirmAction, setConfirmAction] = useState<
     null | 'approve' | 'cancel'
-  >(null)
+  >(null);
 
   const summary = useMemo(() => {
-    const items = selected?.items || []
+    const items = selected?.items || [];
 
     const counted = items.filter(
       (item) => item.actual_stock !== null && item.actual_stock !== undefined,
-    )
+    );
 
     const uncounted = items.filter(
       (item) => item.actual_stock === null || item.actual_stock === undefined,
-    )
+    );
 
     /*
      * الكاشير يعرف فقط
@@ -124,20 +126,20 @@ export default function StockCountPage() {
 
         buyDiff: 0,
         sellDiff: 0,
-      }
+      };
     }
 
     const matched = counted.filter(
       (item) => Number(item.actual_stock) === Number(item.system_stock),
-    )
+    );
 
     const shortage = counted.filter(
       (item) => Number(item.actual_stock) < Number(item.system_stock),
-    )
+    );
 
     const surplus = counted.filter(
       (item) => Number(item.actual_stock) > Number(item.system_stock),
-    )
+    );
 
     const buyDiff = counted.reduce(
       (sum, item) =>
@@ -145,7 +147,7 @@ export default function StockCountPage() {
         (Number(item.actual_stock || 0) - Number(item.system_stock || 0)) *
           Number(item.buy_price || 0),
       0,
-    )
+    );
 
     const sellDiff = counted.reduce(
       (sum, item) =>
@@ -153,7 +155,7 @@ export default function StockCountPage() {
         (Number(item.actual_stock || 0) - Number(item.system_stock || 0)) *
           Number(item.sell_price || 0),
       0,
-    )
+    );
 
     return {
       total: items.length,
@@ -170,15 +172,15 @@ export default function StockCountPage() {
 
       buyDiff,
       sellDiff,
-    }
-  }, [selected, isAdmin])
+    };
+  }, [selected, isAdmin]);
 
   const visibleItems = useMemo(() => {
-    const items = selected?.items || []
-    const q = search.trim().toLowerCase()
+    const items = selected?.items || [];
+    const q = search.trim().toLowerCase();
 
     return items.filter((item) => {
-      const actual = item.actual_stock
+      const actual = item.actual_stock;
       const diff =
         isAdmin &&
         actual !== null &&
@@ -186,26 +188,26 @@ export default function StockCountPage() {
         item.system_stock !== null &&
         item.system_stock !== undefined
           ? Number(actual) - Number(item.system_stock)
-          : null
+          : null;
 
       if (!isAdmin && filter !== 'all' && filter !== 'uncounted') {
-        return false
+        return false;
       }
 
       if (filter === 'uncounted' && actual !== null && actual !== undefined)
-        return false
-      if (filter === 'matched' && diff !== 0) return false
-      if (filter === 'shortage' && !(diff !== null && diff < 0)) return false
-      if (filter === 'surplus' && !(diff !== null && diff > 0)) return false
+        return false;
+      if (filter === 'matched' && diff !== 0) return false;
+      if (filter === 'shortage' && !(diff !== null && diff < 0)) return false;
+      if (filter === 'surplus' && !(diff !== null && diff > 0)) return false;
 
       if (
         countCategoryFilter !== 'all' &&
         Number(item.category_id || 0) !== Number(countCategoryFilter)
       ) {
-        return false
+        return false;
       }
 
-      if (!q) return true
+      if (!q) return true;
 
       return [
         item.product_name,
@@ -217,115 +219,115 @@ export default function StockCountPage() {
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
-        .includes(q)
-    })
-  }, [selected, isAdmin, search, filter, countCategoryFilter])
+        .includes(q);
+    });
+  }, [selected, isAdmin, search, filter, countCategoryFilter]);
 
   const pagedSessions = useMemo(() => {
-    const start = (sessionPage - 1) * SYSTEM_PAGE_SIZE
+    const start = (sessionPage - 1) * SYSTEM_PAGE_SIZE;
 
-    return sessions.slice(start, start + SYSTEM_PAGE_SIZE)
-  }, [sessions, sessionPage])
+    return sessions.slice(start, start + SYSTEM_PAGE_SIZE);
+  }, [sessions, sessionPage]);
 
   const pagedVisibleItems = useMemo(() => {
-    const start = (countItemsPage - 1) * SYSTEM_PAGE_SIZE
+    const start = (countItemsPage - 1) * SYSTEM_PAGE_SIZE;
 
-    return visibleItems.slice(start, start + SYSTEM_PAGE_SIZE)
-  }, [visibleItems, countItemsPage])
+    return visibleItems.slice(start, start + SYSTEM_PAGE_SIZE);
+  }, [visibleItems, countItemsPage]);
 
   useEffect(() => {
-    setCountItemsPage(1)
-  }, [search, filter, countCategoryFilter, selected?.session?.id])
+    setCountItemsPage(1);
+  }, [search, filter, countCategoryFilter, selected?.session?.id]);
 
   useEffect(() => {
     const totalPages = Math.max(
       1,
       Math.ceil(sessions.length / SYSTEM_PAGE_SIZE),
-    )
+    );
 
-    setSessionPage((current) => Math.min(current, totalPages))
-  }, [sessions.length])
-
-  useEffect(() => {
-    void loadSessions()
-  }, [])
+    setSessionPage((current) => Math.min(current, totalPages));
+  }, [sessions.length]);
 
   useEffect(() => {
-    let mounted = true
+    void loadSessions();
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
 
     window.api
       .getCategories()
       .then((data) => {
-        if (!mounted) return
-        setCategories(Array.isArray(data) ? data : [])
+        if (!mounted) return;
+        setCategories(Array.isArray(data) ? data : []);
       })
       .catch((error) => {
-        console.error('Failed to load categories:', error)
-        setCategories([])
-      })
+        console.error('Failed to load categories:', error);
+        setCategories([]);
+      });
 
     return () => {
-      mounted = false
-    }
-  }, [])
+      mounted = false;
+    };
+  }, []);
 
   function showMessage(text: string, duration = 1800) {
-    setMessage(text)
+    setMessage(text);
 
-    setTimeout(() => setMessage(''), duration)
+    setTimeout(() => setMessage(''), duration);
   }
 
   async function loadSessions() {
-    setLoadingSessions(true)
+    setLoadingSessions(true);
 
     try {
-      const data = await window.api.getStockCountSessions()
-      setSessions(Array.isArray(data) ? data : [])
+      const data = await window.api.getStockCountSessions();
+      setSessions(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Failed to load stock count sessions:', error)
-      showMessage('حدث خطأ أثناء تحميل جلسات الجرد')
+      console.error('Failed to load stock count sessions:', error);
+      showMessage('حدث خطأ أثناء تحميل جلسات الجرد');
     } finally {
-      setLoadingSessions(false)
+      setLoadingSessions(false);
     }
   }
 
   async function openSession(sessionId: number, resetView = true) {
-    setLoadingDetails(true)
+    setLoadingDetails(true);
 
     try {
-      const data = await window.api.getStockCountSession(sessionId)
-      setSelected(data)
+      const data = await window.api.getStockCountSession(sessionId);
+      setSelected(data);
 
       if (resetView) {
-        setActualDrafts({})
-        setSearch('')
-        setFilter('all')
-        setCountCategoryFilter('all')
-        setBarcode('')
-        setScanMessage('')
+        setActualDrafts({});
+        setSearch('');
+        setFilter('all');
+        setCountCategoryFilter('all');
+        setBarcode('');
+        setScanMessage('');
       }
     } catch (error) {
-      console.error('Failed to load stock count session:', error)
-      showMessage('حدث خطأ أثناء فتح جلسة الجرد')
+      console.error('Failed to load stock count session:', error);
+      showMessage('حدث خطأ أثناء فتح جلسة الجرد');
     } finally {
-      setLoadingDetails(false)
+      setLoadingDetails(false);
     }
   }
 
   async function createSession() {
     if (!isAdmin) {
-      showMessage('إنشاء الجرد متاح للمدير فقط')
-      return
+      showMessage('إنشاء الجرد متاح للمدير فقط');
+      return;
     }
 
     if (!newTitle.trim()) {
-      showMessage('اكتب اسم جلسة الجرد')
-      return
+      showMessage('اكتب اسم جلسة الجرد');
+      return;
     }
 
-    if (creating) return
+    if (creating) return;
 
-    setCreating(true)
+    setCreating(true);
 
     try {
       const result = await window.api.createStockCountSession({
@@ -333,66 +335,66 @@ export default function StockCountPage() {
         notes: newNotes.trim() || null,
         categoryId: newSessionCategoryId,
         actor_id: currentUser?.id,
-      })
+      });
 
       if (result?.success === false) {
-        showMessage(result.message || 'فشل إنشاء جلسة الجرد')
-        return
+        showMessage(result.message || 'فشل إنشاء جلسة الجرد');
+        return;
       }
 
-      setNewTitle('')
-      setNewNotes('')
-      setNewSessionCategoryId('all')
-      showMessage('تم إنشاء جلسة الجرد')
-      await loadSessions()
+      setNewTitle('');
+      setNewNotes('');
+      setNewSessionCategoryId('all');
+      showMessage('تم إنشاء جلسة الجرد');
+      await loadSessions();
 
       if (result?.id) {
-        await openSession(result.id)
+        await openSession(result.id);
       }
     } catch (error) {
-      console.error('Failed to create stock count session:', error)
-      showMessage('حدث خطأ أثناء إنشاء جلسة الجرد')
+      console.error('Failed to create stock count session:', error);
+      showMessage('حدث خطأ أثناء إنشاء جلسة الجرد');
     } finally {
-      setCreating(false)
+      setCreating(false);
     }
   }
 
   function updateLocalActual(itemId: number, value: string) {
-    const item = selected?.items.find((row) => row.id === itemId)
-    const savedValue = item?.actual_stock
+    const item = selected?.items.find((row) => row.id === itemId);
+    const savedValue = item?.actual_stock;
 
     setActualDrafts((prev) => {
-      const next = { ...prev }
+      const next = { ...prev };
 
       const returnedToSavedValue =
         savedValue !== null &&
         savedValue !== undefined &&
         value !== '' &&
-        Number(value) === Number(savedValue)
+        Number(value) === Number(savedValue);
 
       // لو المستخدم رجع لنفس القيمة المحفوظة،
       // نشيل الصنف من قائمة التعديلات.
       if (returnedToSavedValue) {
-        delete next[itemId]
+        delete next[itemId];
       } else {
-        next[itemId] = value
+        next[itemId] = value;
       }
 
-      return next
-    })
+      return next;
+    });
   }
 
   async function saveItem(item: StockCountItem) {
-    if (!selected) return
+    if (!selected) return;
 
     const rawActual = Object.prototype.hasOwnProperty.call(
       actualDrafts,
       item.id,
     )
       ? actualDrafts[item.id]
-      : item.actual_stock
+      : item.actual_stock;
 
-    const actualStock = Number(rawActual)
+    const actualStock = Number(rawActual);
 
     if (
       rawActual === '' ||
@@ -401,11 +403,11 @@ export default function StockCountPage() {
       !Number.isFinite(actualStock) ||
       actualStock < 0
     ) {
-      showMessage('اكتب كمية فعلية صحيحة')
-      return
+      showMessage('اكتب كمية فعلية صحيحة');
+      return;
     }
 
-    setSavingItemId(item.id)
+    setSavingItemId(item.id);
 
     try {
       const result = await window.api.updateStockCountItem({
@@ -413,48 +415,48 @@ export default function StockCountPage() {
         item_id: item.id,
         actual_stock: actualStock,
         notes: item.notes || null,
-      })
+      });
 
       if (result?.success === false) {
-        showMessage(result.message || 'فشل حفظ الكمية')
-        return
+        showMessage(result.message || 'فشل حفظ الكمية');
+        return;
       }
 
       setActualDrafts((prev) => {
-        const next = { ...prev }
-        delete next[item.id]
-        return next
-      })
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
 
-      showMessage('تم حفظ الكمية')
-      await openSession(selected.session.id, false)
+      showMessage('تم حفظ الكمية');
+      await openSession(selected.session.id, false);
     } catch (error) {
-      console.error('Failed to save stock count item:', error)
-      showMessage('حدث خطأ أثناء حفظ الكمية')
+      console.error('Failed to save stock count item:', error);
+      showMessage('حدث خطأ أثناء حفظ الكمية');
     } finally {
-      setSavingItemId(null)
+      setSavingItemId(null);
     }
   }
 
   async function saveAllItems() {
-    if (!selected || savingAll) return
+    if (!selected || savingAll) return;
 
-    const draftEntries = Object.entries(actualDrafts)
+    const draftEntries = Object.entries(actualDrafts);
 
     if (draftEntries.length === 0) {
-      showMessage('لا توجد كميات جديدة للحفظ')
-      return
+      showMessage('لا توجد كميات جديدة للحفظ');
+      return;
     }
 
     const itemsToSave = draftEntries.map(([itemId, rawValue]) => {
-      const item = selected.items.find((row) => row.id === Number(itemId))
+      const item = selected.items.find((row) => row.id === Number(itemId));
 
       return {
         item,
         rawValue,
         actualStock: Number(rawValue),
-      }
-    })
+      };
+    });
 
     const invalidItem = itemsToSave.find(
       ({ item, rawValue, actualStock }) =>
@@ -462,23 +464,23 @@ export default function StockCountPage() {
         rawValue === '' ||
         !Number.isFinite(actualStock) ||
         actualStock < 0,
-    )
+    );
 
     if (invalidItem) {
-      showMessage('يوجد صنف بكمية غير صحيحة')
-      return
+      showMessage('يوجد صنف بكمية غير صحيحة');
+      return;
     }
 
-    setSavingAll(true)
+    setSavingAll(true);
 
-    const savedIds: number[] = []
-    let failedCount = 0
+    const savedIds: number[] = [];
+    let failedCount = 0;
 
     try {
       for (const row of itemsToSave) {
         if (!row.item) {
-          failedCount += 1
-          continue
+          failedCount += 1;
+          continue;
         }
 
         try {
@@ -487,57 +489,57 @@ export default function StockCountPage() {
             item_id: row.item.id,
             actual_stock: row.actualStock,
             notes: row.item.notes || null,
-          })
+          });
 
           if (result?.success === false) {
-            failedCount += 1
-            continue
+            failedCount += 1;
+            continue;
           }
 
-          savedIds.push(row.item.id)
+          savedIds.push(row.item.id);
         } catch (error) {
           console.error(
             `Failed to save stock count item ${row.item.id}:`,
             error,
-          )
+          );
 
-          failedCount += 1
+          failedCount += 1;
         }
       }
 
       // نحذف من المسودات الأصناف التي تم حفظها فقط.
       setActualDrafts((prev) => {
-        const next = { ...prev }
+        const next = { ...prev };
 
         for (const itemId of savedIds) {
-          delete next[itemId]
+          delete next[itemId];
         }
 
-        return next
-      })
+        return next;
+      });
 
-      await openSession(selected.session.id, false)
+      await openSession(selected.session.id, false);
 
       if (failedCount > 0) {
         showMessage(
           `تم حفظ ${savedIds.length} صنف، وفشل حفظ ${failedCount} صنف`,
-        )
+        );
       } else {
-        showMessage(`تم حفظ ${savedIds.length} صنف بنجاح`)
+        showMessage(`تم حفظ ${savedIds.length} صنف بنجاح`);
       }
     } finally {
-      setSavingAll(false)
+      setSavingAll(false);
     }
   }
 
   async function scanBarcode() {
-    if (!selected) return
+    if (!selected) return;
 
-    const cleanBarcode = barcode.trim()
+    const cleanBarcode = barcode.trim();
 
     if (!cleanBarcode) {
-      setScanMessage('امسح أو اكتب الباركود')
-      return
+      setScanMessage('امسح أو اكتب الباركود');
+      return;
     }
 
     try {
@@ -545,92 +547,92 @@ export default function StockCountPage() {
         session_id: selected.session.id,
         barcode: cleanBarcode,
         quantity: 1,
-      })
+      });
 
       if (result?.success === false) {
-        setScanMessage(result.message || 'فشل قراءة الباركود')
-        return
+        setScanMessage(result.message || 'فشل قراءة الباركود');
+        return;
       }
 
       setScanMessage(
         `تم عد ${result.product_name || ''} - الكمية الحالية: ${result.actual_stock}`,
-      )
+      );
 
-      setBarcode('')
-      await openSession(selected.session.id)
+      setBarcode('');
+      await openSession(selected.session.id);
     } catch (error) {
-      console.error('Failed to scan stock count barcode:', error)
-      setScanMessage('حدث خطأ أثناء قراءة الباركود')
+      console.error('Failed to scan stock count barcode:', error);
+      setScanMessage('حدث خطأ أثناء قراءة الباركود');
     }
   }
 
   async function approveSession() {
-    if (!selected || !isAdmin || actionLoading) return
+    if (!selected || !isAdmin || actionLoading) return;
 
-    setActionLoading(true)
+    setActionLoading(true);
 
     try {
       const result = await window.api.approveStockCountSession({
         session_id: selected.session.id,
         actor_id: currentUser?.id,
-      })
+      });
 
       if (result?.success === false) {
         showMessage(
           result.message || 'فشل اعتماد الجرد. لم يتم تطبيق أي تغييرات.',
           4500,
-        )
+        );
 
-        return
+        return;
       }
 
-      setConfirmAction(null)
-      showMessage('تم اعتماد الجرد وتحديث المخزون')
-      await loadSessions()
-      await openSession(selected.session.id)
+      setConfirmAction(null);
+      showMessage('تم اعتماد الجرد وتحديث المخزون');
+      await loadSessions();
+      await openSession(selected.session.id);
     } catch (error) {
-      console.error('Failed to approve stock count session:', error)
+      console.error('Failed to approve stock count session:', error);
 
-      showMessage('حدث خطأ أثناء اعتماد الجرد. لم يتم تطبيق أي تغييرات.', 4500)
+      showMessage('حدث خطأ أثناء اعتماد الجرد. لم يتم تطبيق أي تغييرات.', 4500);
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
   }
 
   async function cancelSession() {
-    if (!selected || !isAdmin || actionLoading) return
+    if (!selected || !isAdmin || actionLoading) return;
 
-    setActionLoading(true)
+    setActionLoading(true);
 
     try {
       const result = await window.api.cancelStockCountSession({
         session_id: selected.session.id,
         actor_id: currentUser?.id,
-      })
+      });
 
       if (result?.success === false) {
         showMessage(
           result.message || 'فشل إلغاء الجرد. لم يتم تطبيق أي تغييرات.',
           4500,
-        )
+        );
 
-        return
+        return;
       }
 
-      setConfirmAction(null)
-      showMessage('تم إلغاء جلسة الجرد')
-      setSelected(null)
-      await loadSessions()
+      setConfirmAction(null);
+      showMessage('تم إلغاء جلسة الجرد');
+      setSelected(null);
+      await loadSessions();
     } catch (error) {
-      console.error('Failed to cancel stock count session:', error)
+      console.error('Failed to cancel stock count session:', error);
 
-      showMessage('حدث خطأ أثناء إلغاء الجرد. لم يتم تطبيق أي تغييرات.', 4500)
+      showMessage('حدث خطأ أثناء إلغاء الجرد. لم يتم تطبيق أي تغييرات.', 4500);
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
   }
 
-  const isOpen = selected?.session?.status === 'open'
+  const isOpen = selected?.session?.status === 'open';
 
   return (
     <div style={{ display: 'grid', gap: '18px' }}>
@@ -871,11 +873,11 @@ export default function StockCountPage() {
                     type="button"
                     onClick={() => {
                       if (Object.keys(actualDrafts).length > 0) {
-                        showMessage('اضغط حفظ الكل قبل اعتماد الجرد')
-                        return
+                        showMessage('اضغط حفظ الكل قبل اعتماد الجرد');
+                        return;
                       }
 
-                      setConfirmAction('approve')
+                      setConfirmAction('approve');
                     }}
                     disabled={actionLoading}
                     style={successButtonStyle}
@@ -898,11 +900,11 @@ export default function StockCountPage() {
                 type="button"
                 onClick={() => {
                   if (Object.keys(actualDrafts).length > 0) {
-                    showMessage('يوجد كميات غير محفوظة، اضغط حفظ الكل أولًا')
-                    return
+                    showMessage('يوجد كميات غير محفوظة، اضغط حفظ الكل أولًا');
+                    return;
                   }
 
-                  setSelected(null)
+                  setSelected(null);
                 }}
                 style={secondaryButtonStyle}
               >
@@ -951,7 +953,7 @@ export default function StockCountPage() {
                   onChange={(e) => setBarcode(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      void scanBarcode()
+                      void scanBarcode();
                     }
                   }}
                   placeholder="امسح أو اكتب الباركود"
@@ -1093,19 +1095,19 @@ export default function StockCountPage() {
 
                 {!loadingDetails &&
                   pagedVisibleItems.map((item) => {
-                    const draftActual = actualDrafts[item.id]
+                    const draftActual = actualDrafts[item.id];
 
                     const actual =
                       draftActual !== undefined
                         ? draftActual === ''
                           ? null
                           : Number(draftActual)
-                        : item.actual_stock
+                        : item.actual_stock;
 
                     const counted =
                       actual !== null &&
                       actual !== undefined &&
-                      Number.isFinite(Number(actual))
+                      Number.isFinite(Number(actual));
 
                     const diff =
                       isAdmin &&
@@ -1113,29 +1115,29 @@ export default function StockCountPage() {
                       item.system_stock !== null &&
                       item.system_stock !== undefined
                         ? Number(actual) - Number(item.system_stock)
-                        : null
+                        : null;
 
                     const hasDraft = Object.prototype.hasOwnProperty.call(
                       actualDrafts,
                       item.id,
-                    )
+                    );
 
-                    const rawDraft = hasDraft ? actualDrafts[item.id] : ''
-                    const draftNumber = Number(rawDraft)
+                    const rawDraft = hasDraft ? actualDrafts[item.id] : '';
+                    const draftNumber = Number(rawDraft);
 
                     const hasValidDraft =
                       hasDraft &&
                       rawDraft !== '' &&
                       Number.isFinite(draftNumber) &&
-                      draftNumber >= 0
+                      draftNumber >= 0;
 
                     const isSaved =
                       item.actual_stock !== null &&
                       item.actual_stock !== undefined &&
-                      !hasDraft
+                      !hasDraft;
 
                     const saveButtonDisabled =
-                      savingItemId === item.id || savingAll || !hasValidDraft
+                      savingItemId === item.id || savingAll || !hasValidDraft;
 
                     return (
                       <tr
@@ -1229,9 +1231,9 @@ export default function StockCountPage() {
                             <input
                               value={item.notes || ''}
                               onChange={(e) => {
-                                const value = e.target.value
+                                const value = e.target.value;
                                 setSelected((prev) => {
-                                  if (!prev) return prev
+                                  if (!prev) return prev;
 
                                   return {
                                     ...prev,
@@ -1240,8 +1242,8 @@ export default function StockCountPage() {
                                         ? { ...row, notes: value }
                                         : row,
                                     ),
-                                  }
-                                })
+                                  };
+                                });
                               }}
                               placeholder="ملاحظة"
                               style={{
@@ -1292,7 +1294,7 @@ export default function StockCountPage() {
                           )}
                         </td>
                       </tr>
-                    )
+                    );
                   })}
 
                 {!loadingDetails && visibleItems.length === 0 && (
@@ -1360,9 +1362,9 @@ export default function StockCountPage() {
                 }`}
                 onClick={() => {
                   if (confirmAction === 'approve') {
-                    void approveSession()
+                    void approveSession();
                   } else {
-                    void cancelSession()
+                    void cancelSession();
                   }
                 }}
                 disabled={actionLoading}
@@ -1391,22 +1393,22 @@ export default function StockCountPage() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function Field({
   label,
   children,
 }: {
-  label: string
-  children: React.ReactNode
+  label: string;
+  children: React.ReactNode;
 }) {
   return (
     <label style={{ display: 'grid', gap: '8px' }}>
       <span style={{ color: '#cbd5e1', fontWeight: 800 }}>{label}</span>
       {children}
     </label>
-  )
+  );
 }
 
 function InfoCard({ title, value }: { title: string; value: string }) {
@@ -1424,7 +1426,7 @@ function InfoCard({ title, value }: { title: string; value: string }) {
       <span style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</span>
       <strong style={{ color: '#fff', fontSize: '18px' }}>{value}</strong>
     </div>
-  )
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -1433,7 +1435,7 @@ function StatusBadge({ status }: { status: string }) {
       ? '#6ee7b7'
       : status === 'canceled'
         ? '#fca5a5'
-        : '#fdba74'
+        : '#fdba74';
 
   return (
     <span
@@ -1449,26 +1451,26 @@ function StatusBadge({ status }: { status: string }) {
     >
       {statusName(status)}
     </span>
-  )
+  );
 }
 
 function statusName(status: string) {
-  if (status === 'open') return 'مفتوح'
-  if (status === 'approved') return 'معتمد'
-  if (status === 'canceled') return 'ملغي'
-  return status
+  if (status === 'open') return 'مفتوح';
+  if (status === 'approved') return 'معتمد';
+  if (status === 'canceled') return 'ملغي';
+  return status;
 }
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return '—'
+  if (!value) return '—';
 
   try {
-    const raw = String(value)
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
+    const raw = String(value);
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
 
     return new Date(normalized).toLocaleString('ar-EG', {
       year: 'numeric',
@@ -1476,9 +1478,9 @@ function formatDate(value?: string | null) {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-    })
+    });
   } catch {
-    return value
+    return value;
   }
 }
 
@@ -1488,7 +1490,7 @@ const cardStyle: React.CSSProperties = {
   display: 'grid',
   gap: '16px',
   direction: 'rtl',
-}
+};
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -1499,20 +1501,20 @@ const inputStyle: React.CSSProperties = {
   padding: '11px 12px',
   outline: 'none',
   boxSizing: 'border-box',
-}
+};
 
 const thStyle: React.CSSProperties = {
   padding: '12px',
   borderBottom: '1px solid rgba(255,255,255,0.10)',
   whiteSpace: 'nowrap',
-}
+};
 
 const tdStyle: React.CSSProperties = {
   padding: '10px 12px',
   color: '#e5e7eb',
   verticalAlign: 'middle',
   whiteSpace: 'nowrap',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -1522,7 +1524,7 @@ const primaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontWeight: 900,
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.12)',
@@ -1532,7 +1534,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontWeight: 900,
   cursor: 'pointer',
-}
+};
 
 const successButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(34,197,94,0.35)',
@@ -1542,7 +1544,7 @@ const successButtonStyle: React.CSSProperties = {
   color: '#86efac',
   fontWeight: 900,
   cursor: 'pointer',
-}
+};
 
 const dangerButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(239,68,68,0.35)',
@@ -1552,7 +1554,7 @@ const dangerButtonStyle: React.CSSProperties = {
   color: '#fca5a5',
   fontWeight: 900,
   cursor: 'pointer',
-}
+};
 
 const smallButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.12)',
@@ -1562,7 +1564,7 @@ const smallButtonStyle: React.CSSProperties = {
   color: '#bfdbfe',
   fontWeight: 800,
   cursor: 'pointer',
-}
+};
 
 const toastStyle: React.CSSProperties = {
   position: 'fixed',
@@ -1577,7 +1579,7 @@ const toastStyle: React.CSSProperties = {
   fontWeight: 800,
   boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
   pointerEvents: 'none',
-}
+};
 
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
@@ -1587,7 +1589,7 @@ const modalOverlayStyle: React.CSSProperties = {
   display: 'grid',
   placeItems: 'center',
   padding: '20px',
-}
+};
 
 const modalStyle: React.CSSProperties = {
   width: 'min(520px, 100%)',
@@ -1599,4 +1601,4 @@ const modalStyle: React.CSSProperties = {
   display: 'grid',
   gap: '16px',
   boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
-}
+};

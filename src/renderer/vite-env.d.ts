@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-type PermissionKey = import('../shared/permissions').PermissionKey
+type PermissionKey = import('../shared/permissions').PermissionKey;
 
 type BarcodeItemPosition =
   | 'top'
@@ -11,89 +11,89 @@ type BarcodeItemPosition =
   | 'bottom'
   | 'bottom-left'
   | 'bottom-right'
-  | 'hidden'
+  | 'hidden';
 
-type BarcodeItemAlign = 'left' | 'center' | 'right'
+type BarcodeItemAlign = 'left' | 'center' | 'right';
 
 type BarcodePrintSettings = {
-  barcode_label_width_mm: number
-  barcode_label_height_mm: number
-  barcode_copies: number
-  barcode_auto_print_after_save: boolean
+  barcode_label_width_mm: number;
+  barcode_label_height_mm: number;
+  barcode_copies: number;
+  barcode_auto_print_after_save: boolean;
 
-  barcode_content_offset_x_mm: number
-  barcode_content_offset_y_mm: number
+  barcode_content_offset_x_mm: number;
+  barcode_content_offset_y_mm: number;
 
-  barcode_name_font_size: number
-  barcode_name_position: BarcodeItemPosition
-  barcode_name_align: BarcodeItemAlign
+  barcode_name_font_size: number;
+  barcode_name_position: BarcodeItemPosition;
+  barcode_name_align: BarcodeItemAlign;
 
-  barcode_price_font_size: number
-  barcode_price_position: BarcodeItemPosition
-  barcode_price_align: BarcodeItemAlign
+  barcode_price_font_size: number;
+  barcode_price_position: BarcodeItemPosition;
+  barcode_price_align: BarcodeItemAlign;
 
-  barcode_size_font_size: number
-  barcode_size_position: BarcodeItemPosition
-  barcode_size_align: BarcodeItemAlign
+  barcode_size_font_size: number;
+  barcode_size_position: BarcodeItemPosition;
+  barcode_size_align: BarcodeItemAlign;
 
-  barcode_color_font_size: number
-  barcode_color_position: BarcodeItemPosition
-  barcode_color_align: BarcodeItemAlign
+  barcode_color_font_size: number;
+  barcode_color_position: BarcodeItemPosition;
+  barcode_color_align: BarcodeItemAlign;
 
-  barcode_value_font_size: number
-  barcode_value_position: BarcodeItemPosition
-  barcode_value_align: BarcodeItemAlign
+  barcode_value_font_size: number;
+  barcode_value_position: BarcodeItemPosition;
+  barcode_value_align: BarcodeItemAlign;
 
-  barcode_svg_height: number
-}
+  barcode_svg_height: number;
+};
 
-type ReceiptPaperSize = '80mm' | '58mm' | 'custom'
+type ReceiptPaperSize = '80mm' | '58mm' | 'custom';
 
 type ReceiptPrintSettings = {
-  receipt_silent_print: boolean
-  receipt_paper_size: ReceiptPaperSize
-  receipt_width_px: number
-  receipt_padding_top_px: number
-  receipt_padding_right_px: number
-  receipt_padding_bottom_px: number
-  receipt_padding_left_px: number
-  receipt_font_size_px: number
-}
+  receipt_silent_print: boolean;
+  receipt_paper_size: ReceiptPaperSize;
+  receipt_width_px: number;
+  receipt_padding_top_px: number;
+  receipt_padding_right_px: number;
+  receipt_padding_bottom_px: number;
+  receipt_padding_left_px: number;
+  receipt_font_size_px: number;
+};
 
 type AdminCashFlowDueSummary = {
-  overdue: number
+  overdue: number;
 
-  due_today: number
+  due_today: number;
 
-  due_soon: number
+  due_soon: number;
 
-  without_due_date: number
+  without_due_date: number;
 
-  total_open: number
-}
+  total_open: number;
+};
 
-export {}
+export {};
 declare global {
   interface Window {
     __APP_LICENSE_STATUS__?: {
-      activated: boolean
-      trial_started_at: string
-      trial_days: number
-      trial_expires_at: string
-      days_left: number
-      expired: boolean
-      blocked?: boolean
-      message?: string
-      device_code?: string
-      app_logo_url: string
-      app_name: string
-      app_theme?: 'dark' | 'light'
-      store_phone?: string
-      store_address?: string
-      store_qr_enabled?: boolean
-      store_qr_title?: string
-      store_qr_primary_url?: string
-    }
+      activated: boolean;
+      trial_started_at: string;
+      trial_days: number;
+      trial_expires_at: string;
+      days_left: number;
+      expired: boolean;
+      blocked?: boolean;
+      message?: string;
+      device_code?: string;
+      app_logo_url: string;
+      app_name: string;
+      app_theme?: 'dark' | 'light';
+      store_phone?: string;
+      store_address?: string;
+      store_qr_enabled?: boolean;
+      store_qr_title?: string;
+      store_qr_primary_url?: string;
+    };
 
     api: {
       // =========================
@@ -101,278 +101,278 @@ declare global {
       // =========================
 
       getAuthBootstrapStatus: () => Promise<{
-        success: boolean
-        total_users: number
-        active_admins: number
-        needs_setup: boolean
-        blocked: boolean
-        message?: string
-      }>
+        success: boolean;
+        total_users: number;
+        active_admins: number;
+        needs_setup: boolean;
+        blocked: boolean;
+        message?: string;
+      }>;
 
       bootstrapInitialAdmin: (data: {
-        name: string
-        username: string
-        password: string
+        name: string;
+        username: string;
+        password: string;
       }) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
         user?: {
-          id: number
-          name: string
-          username: string
-          role: string
-        }
-      }>
+          id: number;
+          name: string;
+          username: string;
+          role: string;
+        };
+      }>;
 
       requestAdminPasswordRecovery: () => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
 
-        device_code?: string
-        request_id?: string
+        device_code?: string;
+        request_id?: string;
 
-        expires_at?: string
-        expires_in_seconds?: number
-      }>
+        expires_at?: string;
+        expires_in_seconds?: number;
+      }>;
 
       recoverAdminPassword: (input: {
-        request_id: string
+        request_id: string;
 
-        username: string
+        username: string;
 
-        recovery_code: string
+        recovery_code: string;
 
-        new_password: string
+        new_password: string;
       }) => Promise<{
-        success: boolean
-        message?: string
-      }>
+        success: boolean;
+        message?: string;
+      }>;
 
       changeOwnPassword: (input: { password: string }) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
         user?: {
-          id: number
-          name: string
-          username: string
-          role: string
-        }
-      }>
+          id: number;
+          name: string;
+          username: string;
+          role: string;
+        };
+      }>;
 
       touchAuthSession: () => Promise<{
-        success: boolean
-        message?: string
-        user_id?: number
-        permissions?: PermissionKey[]
-        idle_timeout_seconds?: number
-      }>
+        success: boolean;
+        message?: string;
+        user_id?: number;
+        permissions?: PermissionKey[];
+        idle_timeout_seconds?: number;
+      }>;
 
       lockAuthSession: () => Promise<{
-        success: boolean
-        message?: string
-      }>
+        success: boolean;
+        message?: string;
+      }>;
 
       login: (data: { username: string; password: string }) => Promise<{
-        success: boolean
-        message?: string
-        requires_password_change?: boolean
-        retry_after_seconds?: number
+        success: boolean;
+        message?: string;
+        requires_password_change?: boolean;
+        retry_after_seconds?: number;
         user?: {
-          id: number
-          name: string
-          username: string
-          role: string
-          permissions?: PermissionKey[]
-        }
-      }>
+          id: number;
+          name: string;
+          username: string;
+          role: string;
+          permissions?: PermissionKey[];
+        };
+      }>;
 
       logout: () => Promise<{
-        success: boolean
-        message?: string
-      }>
+        success: boolean;
+        message?: string;
+      }>;
 
       getUsers: (input?: { search?: string; actor_id?: number }) => Promise<{
-        success: boolean
-        message?: string
-        users: SystemUser[]
-      }>
+        success: boolean;
+        message?: string;
+        users: SystemUser[];
+      }>;
 
       getUsersPage: (input?: {
-        search?: string
-        actor_id?: number
-        limit?: number
-        offset?: number
+        search?: string;
+        actor_id?: number;
+        limit?: number;
+        offset?: number;
       }) => Promise<{
-        success: boolean
-        message?: string
-        users: SystemUser[]
-        total: number
-        limit: number
-        offset: number
-      }>
+        success: boolean;
+        message?: string;
+        users: SystemUser[];
+        total: number;
+        limit: number;
+        offset: number;
+      }>;
 
       getUserPermissions: (userId: number) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
 
         settings?: {
-          user_id: number
-          role: string
-          is_active: number
-          customizable: boolean
+          user_id: number;
+          role: string;
+          is_active: number;
+          customizable: boolean;
 
-          default_permissions: PermissionKey[]
+          default_permissions: PermissionKey[];
 
           overrides: Array<{
-            permission: string
-            allowed: number
-          }>
+            permission: string;
+            allowed: number;
+          }>;
 
-          effective_permissions: PermissionKey[]
-        }
-      }>
+          effective_permissions: PermissionKey[];
+        };
+      }>;
 
       setUserPermissions: (input: {
-        user_id: number
-        permissions: PermissionKey[]
+        user_id: number;
+        permissions: PermissionKey[];
       }) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
 
         settings?: {
-          user_id: number
-          role: string
-          is_active: number
-          customizable: boolean
+          user_id: number;
+          role: string;
+          is_active: number;
+          customizable: boolean;
 
-          default_permissions: PermissionKey[]
+          default_permissions: PermissionKey[];
 
           overrides: Array<{
-            permission: string
-            allowed: number
-          }>
+            permission: string;
+            allowed: number;
+          }>;
 
-          effective_permissions: PermissionKey[]
-        }
-      }>
+          effective_permissions: PermissionKey[];
+        };
+      }>;
 
       createSystemUser: (input: {
-        name: string
-        username: string
-        password: string
-        role: 'admin' | 'cashier'
-        actor_id?: number
-      }) => Promise<MutationResult<SystemUser>>
+        name: string;
+        username: string;
+        password: string;
+        role: 'admin' | 'cashier';
+        actor_id?: number;
+      }) => Promise<MutationResult<SystemUser>>;
 
       updateSystemUser: (input: {
-        id: number
-        name: string
-        username: string
-        role: 'admin' | 'cashier'
-        is_active: number
-        actor_id?: number
-      }) => Promise<MutationResult<SystemUser>>
+        id: number;
+        name: string;
+        username: string;
+        role: 'admin' | 'cashier';
+        is_active: number;
+        actor_id?: number;
+      }) => Promise<MutationResult<SystemUser>>;
 
       setUserActive: (
         userId: number,
         isActive: number,
         actorId?: number,
-      ) => Promise<MutationResult<SystemUser>>
+      ) => Promise<MutationResult<SystemUser>>;
 
       resetUserPassword: (
         userId: number,
         password: string,
         actorId?: number,
-      ) => Promise<MutationResult<SystemUser>>
+      ) => Promise<MutationResult<SystemUser>>;
 
       // =========================
       // Products
       // =========================
-      getCategories: (input?: { includeInactive?: boolean }) => Promise<any[]>
+      getCategories: (input?: { includeInactive?: boolean }) => Promise<any[]>;
 
       createCategory: (input: {
-        name: string
-        description?: string | null
-        actor_id?: number
-      }) => Promise<any>
+        name: string;
+        description?: string | null;
+        actor_id?: number;
+      }) => Promise<any>;
 
       updateCategory: (input: {
-        id: number
-        name: string
-        description?: string | null
-        actor_id?: number
-      }) => Promise<any>
+        id: number;
+        name: string;
+        description?: string | null;
+        actor_id?: number;
+      }) => Promise<any>;
 
       toggleCategoryActive: (
         categoryId: number,
         isActive: boolean | number,
         actorId?: number,
-      ) => Promise<any>
+      ) => Promise<any>;
 
-      getProducts: (payload?: any) => Promise<any[]>
+      getProducts: (payload?: any) => Promise<any[]>;
 
       getProductsPage: (input?: {
-        search?: string
-        includeInactive?: boolean
-        categoryId?: number | string | null
-        limit?: number
-        offset?: number
+        search?: string;
+        includeInactive?: boolean;
+        categoryId?: number | string | null;
+        limit?: number;
+        offset?: number;
       }) => Promise<{
-        rows: any[]
-        total: number
-        limit: number
-        offset: number
-      }>
+        rows: any[];
+        total: number;
+        limit: number;
+        offset: number;
+      }>;
 
-      getProductVariants: (payload?: any) => Promise<any[]>
+      getProductVariants: (payload?: any) => Promise<any[]>;
 
       toggleVariantActive: (
         variantId: number,
         isActive: boolean | number,
         actorId?: number,
-      ) => Promise<any>
+      ) => Promise<any>;
 
-      createProduct: (input: any) => Promise<any>
+      createProduct: (input: any) => Promise<any>;
 
-      updateProduct: (input: any) => Promise<any>
+      updateProduct: (input: any) => Promise<any>;
 
-      updateVariant: (input: any) => Promise<any>
+      updateVariant: (input: any) => Promise<any>;
 
       toggleProductActive: (
         productId: number,
         isActive: boolean | number,
         actorId?: number,
-      ) => Promise<any>
+      ) => Promise<any>;
 
       addProductVariant: (input: {
-        product_id: number
-        barcode: string
-        size: string
-        color: string
-        buy_price: number
-        sell_price: number
-        discount_price?: number | null
-        min_stock: number
-        opening_qty?: number
-        actor_id?: number
+        product_id: number;
+        barcode: string;
+        size: string;
+        color: string;
+        buy_price: number;
+        sell_price: number;
+        discount_price?: number | null;
+        min_stock: number;
+        opening_qty?: number;
+        actor_id?: number;
       }) => Promise<{
-        success: boolean
-        variantId?: number
-        message?: string
-      }>
+        success: boolean;
+        variantId?: number;
+        message?: string;
+      }>;
 
       // =========================
       // Barcode Print Settings
       // =========================
-      getBarcodePrintSettings: () => Promise<any>
+      getBarcodePrintSettings: () => Promise<any>;
 
-      saveBarcodePrintSettings: (input: any) => Promise<any>
+      saveBarcodePrintSettings: (input: any) => Promise<any>;
 
-      getReceiptPrintSettings: () => Promise<ReceiptPrintSettings>
+      getReceiptPrintSettings: () => Promise<ReceiptPrintSettings>;
 
       saveReceiptPrintSettings: (
         input: ReceiptPrintSettings,
-      ) => Promise<ReceiptPrintSettings>
+      ) => Promise<ReceiptPrintSettings>;
 
       // =========================
       // Sales
@@ -381,2430 +381,2432 @@ declare global {
         query:
           | string
           | {
-              query?: string
-              categoryId?: number | string | null
-              limit?: number
+              query?: string;
+              categoryId?: number | string | null;
+              limit?: number;
             },
-      ) => Promise<any[]>
-      getSaleReturnHistory: (saleId: number) => Promise<any[]>
+      ) => Promise<any[]>;
+      getSaleReturnHistory: (saleId: number) => Promise<any[]>;
 
-      getVariantByBarcode: (barcode: string) => Promise<any | null>
+      getVariantByBarcode: (barcode: string) => Promise<any | null>;
 
-      getPromotions: () => Promise<any[]>
+      getPromotions: () => Promise<any[]>;
 
-      getPromotion: (promotionId: number) => Promise<any>
+      getPromotion: (promotionId: number) => Promise<any>;
 
-      getActivePromotions: () => Promise<any[]>
+      getActivePromotions: () => Promise<any[]>;
 
-      createPromotion: (input: any) => Promise<any>
+      createPromotion: (input: any) => Promise<any>;
 
-      updatePromotion: (input: any) => Promise<any>
+      updatePromotion: (input: any) => Promise<any>;
 
       togglePromotion: (input: {
-        id: number
-        is_active: number
-        actor_id?: number
-      }) => Promise<any>
+        id: number;
+        is_active: number;
+        actor_id?: number;
+      }) => Promise<any>;
 
       createSale: (input: any) => Promise<{
-        success: boolean
+        success: boolean;
 
-        code?: 'CREDIT_LIMIT_EXCEEDED'
+        code?: 'CREDIT_LIMIT_EXCEEDED';
 
-        message?: string
+        message?: string;
 
         credit?: {
-          customer_id: number
+          customer_id: number;
 
-          credit_limit: number
+          credit_limit: number;
 
-          current_debt: number
+          current_debt: number;
 
-          additional_debt: number
+          additional_debt: number;
 
-          projected_debt: number
+          projected_debt: number;
 
-          excess_amount: number
-        }
+          excess_amount: number;
+        };
 
-        saleId?: number
+        saleId?: number;
 
-        loyalty_points_earned?: number
+        loyalty_points_earned?: number;
 
-        loyalty_points_redeemed?: number
+        loyalty_points_redeemed?: number;
 
-        loyalty_discount_value?: number
+        loyalty_discount_value?: number;
 
-        promotion_id?: number | null
+        promotion_id?: number | null;
 
-        promotion_name?: string | null
+        promotion_name?: string | null;
 
-        promotion_discount_value?: number
+        promotion_discount_value?: number;
 
-        grand_total?: number
+        grand_total?: number;
 
-        paid_amount?: number
+        paid_amount?: number;
 
-        remaining_amount?: number
+        remaining_amount?: number;
 
-        payment_status?: string
-        due_date?: string | null
+        payment_status?: string;
+        due_date?: string | null;
 
-        credit_limit_at_sale?: number | null
+        credit_limit_at_sale?: number | null;
 
-        customer_balance_before?: number | null
+        customer_balance_before?: number | null;
 
-        credit_limit_override_approved_by?: number | null
+        credit_limit_override_approved_by?: number | null;
 
-        shift_id?: number | null
-      }>
+        shift_id?: number | null;
+      }>;
 
       holdSale: (input: {
-        customer_id?: number | null
+        customer_id?: number | null;
 
-        title?: string | null
+        title?: string | null;
 
-        discount_type?: 'amount' | 'percent'
+        discount_type?: 'amount' | 'percent';
 
-        discount_value?: number
+        discount_value?: number;
 
-        notes?: string | null
+        notes?: string | null;
 
         items: Array<{
-          variant_id: number
-          quantity: number
-        }>
+          variant_id: number;
+          quantity: number;
+        }>;
       }) => Promise<{
-        success: boolean
+        success: boolean;
 
-        heldSaleId: number
-      }>
+        heldSaleId: number;
+      }>;
 
       listHeldSales: () => Promise<
         Array<{
-          id: number
+          id: number;
 
-          user_id: number
+          user_id: number;
 
-          cashier_name: string
+          cashier_name: string;
 
-          customer_id: number | null
+          customer_id: number | null;
 
-          customer_name?: string | null
+          customer_name?: string | null;
 
-          customer_phone?: string | null
+          customer_phone?: string | null;
 
-          title: string
+          title: string;
 
-          discount_type: 'amount' | 'percent'
+          discount_type: 'amount' | 'percent';
 
-          discount_value: number
+          discount_value: number;
 
-          notes?: string | null
+          notes?: string | null;
 
-          created_at: string
+          created_at: string;
 
-          updated_at: string
+          updated_at: string;
 
-          items_count: number
+          items_count: number;
 
-          total_quantity: number
+          total_quantity: number;
 
-          estimated_sub_total: number
+          estimated_sub_total: number;
         }>
-      >
+      >;
 
       getHeldSale: (heldSaleId: number) => Promise<{
-        id: number
+        id: number;
 
-        user_id: number
+        user_id: number;
 
-        cashier_name: string
+        cashier_name: string;
 
-        customer_id: number | null
+        customer_id: number | null;
 
-        customer_name?: string | null
+        customer_name?: string | null;
 
-        customer_phone?: string | null
-        customer_email?: string | null
+        customer_phone?: string | null;
+        customer_email?: string | null;
 
-        customer_address?: string | null
+        customer_address?: string | null;
 
-        customer_notes?: string | null
+        customer_notes?: string | null;
 
-        customer_points_balance?: number | null
+        customer_points_balance?: number | null;
 
-        customer_total_spent?: number | null
-        title: string
+        customer_total_spent?: number | null;
+        title: string;
 
-        discount_type: 'amount' | 'percent'
+        discount_type: 'amount' | 'percent';
 
-        discount_value: number
+        discount_value: number;
 
-        notes?: string | null
+        notes?: string | null;
 
-        created_at: string
+        created_at: string;
 
-        updated_at: string
+        updated_at: string;
 
         items: Array<{
-          id: number
+          id: number;
 
-          variant_id: number
+          variant_id: number;
 
-          quantity: number
+          quantity: number;
 
-          position: number
+          position: number;
 
-          product_id: number
+          product_id: number;
 
-          product_name: string
+          product_name: string;
 
-          category_id: number | null
+          category_id: number | null;
 
-          category_name?: string | null
+          category_name?: string | null;
 
-          barcode: string
+          barcode: string;
 
-          size: string
+          size: string;
 
-          color: string
+          color: string;
 
-          sell_price: number
+          sell_price: number;
 
-          buy_price: number
+          buy_price: number;
 
-          min_stock: number
+          min_stock: number;
 
-          is_active: number
+          is_active: number;
 
-          stock: number
-        }>
-      }>
+          stock: number;
+        }>;
+      }>;
 
       deleteHeldSale: (input: {
-        held_sale_id: number
+        held_sale_id: number;
 
-        mode: 'resumed' | 'discarded'
+        mode: 'resumed' | 'discarded';
       }) => Promise<{
-        success: boolean
+        success: boolean;
 
-        held_sale_id: number
+        held_sale_id: number;
 
-        title: string
+        title: string;
 
-        customer_id: number | null
-      }>
+        customer_id: number | null;
+      }>;
 
       updateSaleInvoice: (input: any) => Promise<{
-        success: boolean
-        message?: string
-        code?: 'CREDIT_LIMIT_EXCEEDED'
+        success: boolean;
+        message?: string;
+        code?: 'CREDIT_LIMIT_EXCEEDED';
 
         credit?: {
-          customer_id: number
+          customer_id: number;
 
-          credit_limit: number
+          credit_limit: number;
 
-          current_debt: number
+          current_debt: number;
 
-          additional_debt: number
+          additional_debt: number;
 
-          projected_debt: number
+          projected_debt: number;
 
-          excess_amount: number
-        }
-        saleId?: number
+          excess_amount: number;
+        };
+        saleId?: number;
 
-        grand_total?: number
+        grand_total?: number;
 
-        paid_amount?: number
+        paid_amount?: number;
 
-        remaining_amount?: number
+        remaining_amount?: number;
 
-        payment_status?: string
-        due_date?: string | null
-        shift_id?: number | null
-        credit_limit_at_sale?: number | null
+        payment_status?: string;
+        due_date?: string | null;
+        shift_id?: number | null;
+        credit_limit_at_sale?: number | null;
 
-        customer_balance_before?: number | null
+        customer_balance_before?: number | null;
 
-        credit_limit_override_approved_by?: number | null
-        edited?: boolean
-      }>
+        credit_limit_override_approved_by?: number | null;
+        edited?: boolean;
+      }>;
 
       getSaleReceipt: (saleId: number) => Promise<{
-        sale: any
-        items: any[]
+        sale: any;
+        items: any[];
         payments: Array<{
-          id: number
-          sale_id: number
-          payment_method: string
-          amount: number
-          created_at?: string | null
-        }>
-        loyalty: any[]
-      }>
+          id: number;
+          sale_id: number;
+          payment_method: string;
+          amount: number;
+          created_at?: string | null;
+        }>;
+        loyalty: any[];
+      }>;
 
       getSaleCurrentState: (saleId: number) => Promise<{
-        sale: any
+        sale: any;
 
         promotion_snapshot: {
-          sale_id: number
+          sale_id: number;
 
-          promotion_id: number
+          promotion_id: number;
 
-          promotion_name: string
+          promotion_name: string;
 
           promotion_type:
-            | 'percent'
-            | 'fixed_per_item'
-            | 'fixed_invoice'
-            | 'buy_x_get_y'
+            'percent' | 'fixed_per_item' | 'fixed_invoice' | 'buy_x_get_y';
 
-          promotion_value: number
+          promotion_value: number;
 
-          buy_qty: number | null
+          buy_qty: number | null;
 
-          free_qty: number | null
+          free_qty: number | null;
 
-          scope_type: 'all' | 'category' | 'products'
+          scope_type: 'all' | 'category' | 'products';
 
-          category_id: number | null
+          category_id: number | null;
 
-          product_ids_json: string
-        } | null
+          product_ids_json: string;
+        } | null;
 
         promotion_snapshots: Array<{
-          sale_id: number
+          sale_id: number;
 
-          promotion_id: number
+          promotion_id: number;
 
-          promotion_name: string
+          promotion_name: string;
 
           promotion_type:
-            | 'percent'
-            | 'fixed_per_item'
-            | 'fixed_invoice'
-            | 'buy_x_get_y'
+            'percent' | 'fixed_per_item' | 'fixed_invoice' | 'buy_x_get_y';
 
-          promotion_value: number
+          promotion_value: number;
 
-          buy_qty: number | null
+          buy_qty: number | null;
 
-          free_qty: number | null
+          free_qty: number | null;
 
-          scope_type: 'all' | 'category' | 'products'
+          scope_type: 'all' | 'category' | 'products';
 
-          category_id: number | null
+          category_id: number | null;
 
-          product_ids_json: string
-        }>
+          product_ids_json: string;
+        }>;
 
         financials: {
-          original_sub_total: number
+          original_sub_total: number;
 
-          original_promotion_discount_value: number
+          original_promotion_discount_value: number;
 
-          original_normal_discount_value: number
+          original_normal_discount_value: number;
 
-          original_loyalty_discount_value: number
+          original_loyalty_discount_value: number;
 
-          original_grand_total: number
+          original_grand_total: number;
 
-          current_sub_total: number
+          current_sub_total: number;
 
-          current_promotion_discount_value: number
+          current_promotion_discount_value: number;
 
-          current_normal_discount_value: number
+          current_normal_discount_value: number;
 
-          current_loyalty_discount_value: number
+          current_loyalty_discount_value: number;
 
-          current_total_discount: number
+          current_total_discount: number;
 
-          current_grand_total: number
+          current_grand_total: number;
 
-          total_return_value: number
+          total_return_value: number;
 
-          net_grand_total: number
+          net_grand_total: number;
 
-          remaining_amount: number
+          remaining_amount: number;
 
-          net_paid_amount: number
+          net_paid_amount: number;
 
-          return_count: number
+          return_count: number;
 
-          exchange_count: number
+          exchange_count: number;
 
-          exchange_difference_total: number
+          exchange_difference_total: number;
 
-          exchange_cash_collection_total: number
+          exchange_cash_collection_total: number;
 
-          exchange_debt_reduction_total: number
+          exchange_debt_reduction_total: number;
 
-          exchange_cash_refund_total: number
+          exchange_cash_refund_total: number;
 
-          financial_integrity_delta: number
-        }
+          financial_integrity_delta: number;
+        };
 
         current_receipt: {
-          sale: any
-          items: any[]
-          loyalty: any[]
+          sale: any;
+          items: any[];
+          loyalty: any[];
           payments: Array<{
-            id?: number
-            sale_id?: number
-            payment_method: string
-            amount: number
-            created_at?: string | null
-          }>
-        }
+            id?: number;
+            sale_id?: number;
+            payment_method: string;
+            amount: number;
+            created_at?: string | null;
+          }>;
+        };
 
         original_receipt: {
-          sale: any
-          items: any[]
-          loyalty: any[]
+          sale: any;
+          items: any[];
+          loyalty: any[];
           payments: Array<{
-            id?: number
-            sale_id?: number
-            payment_method: string
-            amount: number
-            created_at?: string | null
-          }>
-        }
+            id?: number;
+            sale_id?: number;
+            payment_method: string;
+            amount: number;
+            created_at?: string | null;
+          }>;
+        };
 
-        exchanges: any[]
+        exchanges: any[];
 
-        promotion_units: any[]
-      }>
+        promotion_units: any[];
+      }>;
 
       listSales: (input?: {
-        search?: string
+        search?: string;
 
-        payment_filter?: 'all' | 'paid' | 'unpaid'
-        payment_method?: string | null
-        date_from?: string
-        date_to?: string
-        limit?: number
-        offset?: number
-        actor_id?: number | null
+        payment_filter?: 'all' | 'paid' | 'unpaid';
+        payment_method?: string | null;
+        date_from?: string;
+        date_to?: string;
+        limit?: number;
+        offset?: number;
+        actor_id?: number | null;
       }) => Promise<{
         rows: Array<{
-          id: number
-          customer_id: number | null
-          user_id: number | null
-          sub_total: number
-          discount_value: number
-          promotion_id?: number | null
-          promotion_name?: string | null
-          promotion_discount_value: number
-          grand_total: number
-          paid: number
-          remaining_amount: number
-          payment_status: string
-          change_amount: number
-          payment_method: string
-          notes?: string | null
-          loyalty_points_earned: number
-          loyalty_points_redeemed: number
-          loyalty_discount_value: number
-          created_at: string
-          customer_name?: string | null
-          customer_phone?: string | null
-          cashier_name?: string | null
-          items_count: number
-          total_quantity: number
-          returned_quantity: number
-          return_count: number
-          customer_payment_history_count?: number
-          cancelled_return_count?: number
-          total_return_amount: number
-          cancelled_at?: string | null
-          cancelled_by?: number | null
-          cancel_reason?: string | null
-          requires_admin_password?: number | boolean
-          original_sub_total?: number
-          original_grand_total?: number
+          id: number;
+          customer_id: number | null;
+          user_id: number | null;
+          sub_total: number;
+          discount_value: number;
+          promotion_id?: number | null;
+          promotion_name?: string | null;
+          promotion_discount_value: number;
+          grand_total: number;
+          paid: number;
+          remaining_amount: number;
+          payment_status: string;
+          change_amount: number;
+          payment_method: string;
+          notes?: string | null;
+          loyalty_points_earned: number;
+          loyalty_points_redeemed: number;
+          loyalty_discount_value: number;
+          created_at: string;
+          customer_name?: string | null;
+          customer_phone?: string | null;
+          cashier_name?: string | null;
+          items_count: number;
+          total_quantity: number;
+          returned_quantity: number;
+          return_count: number;
+          customer_payment_history_count?: number;
+          cancelled_return_count?: number;
+          total_return_amount: number;
+          cancelled_at?: string | null;
+          cancelled_by?: number | null;
+          cancel_reason?: string | null;
+          requires_admin_password?: number | boolean;
+          original_sub_total?: number;
+          original_grand_total?: number;
 
-          total_discount_value?: number
+          total_discount_value?: number;
 
-          current_net_total?: number
-          current_paid_amount?: number
+          current_net_total?: number;
+          current_paid_amount?: number;
 
-          exchange_count?: number
+          exchange_count?: number;
 
-          cancelled_exchange_count?: number
+          cancelled_exchange_count?: number;
 
-          exchange_difference_total?: number
-        }>
-        total: number
-        limit: number
-        offset: number
-      }>
+          exchange_difference_total?: number;
+        }>;
+        total: number;
+        limit: number;
+        offset: number;
+      }>;
 
       createSaleReturn: (input: {
-        original_sale_id: number
-        user_id: number
-        reason?: string | null
-        refund_payment_method?: string | null
+        original_sale_id: number;
+        user_id: number;
+        reason?: string | null;
+        refund_payment_method?: string | null;
         items: Array<{
-          sale_item_id: number
-          variant_id: number
-          quantity: number
-        }>
+          sale_item_id: number;
+          variant_id: number;
+          quantity: number;
+        }>;
       }) => Promise<{
-        returnId?: number
-        returnCode?: string
-        return_value?: number
-        debt_reduction_amount?: number
-        returnSaleId: number
-        originalSaleId: number
-        refundAmount: number
-        loyalty_points_reversed: number
-        shift_id: number
-      }>
+        returnId?: number;
+        returnCode?: string;
+        return_value?: number;
+        debt_reduction_amount?: number;
+        returnSaleId: number;
+        originalSaleId: number;
+        refundAmount: number;
+        loyalty_points_reversed: number;
+        shift_id: number;
+      }>;
 
       listSaleReturns: (input?: {
-        search?: string
-        payment_method?: string | null
-        date_from?: string
-        date_to?: string
-        limit?: number
-        offset?: number
-        actor_id?: number | null
+        search?: string;
+        payment_method?: string | null;
+        date_from?: string;
+        date_to?: string;
+        limit?: number;
+        offset?: number;
+        actor_id?: number | null;
       }) => Promise<{
         rows: Array<{
-          id: number
-          code: string
-          original_sale_id: number
-          user_id: number | null
-          customer_name?: string | null
-          customer_phone?: string | null
-          cashier_name?: string | null
-          sub_total: number
-          loyalty_discount_value: number
-          refund_amount: number
-          payment_method: string
-          reason?: string | null
-          loyalty_points_reversed: number
-          created_at: string
-          items_count: number
-          total_quantity: number
-          cancelled_at?: string | null
-          cancelled_by?: number | null
-          cancel_reason?: string | null
-          requires_admin_password?: number | boolean
-          shift_id?: number | null
-          cancelled_shift_id?: number | null
-          debt_reduction_amount?: number
-          cash_refund_amount?: number
-        }>
-        total: number
-        limit: number
-        offset: number
-      }>
+          id: number;
+          code: string;
+          original_sale_id: number;
+          user_id: number | null;
+          customer_name?: string | null;
+          customer_phone?: string | null;
+          cashier_name?: string | null;
+          sub_total: number;
+          loyalty_discount_value: number;
+          refund_amount: number;
+          payment_method: string;
+          reason?: string | null;
+          loyalty_points_reversed: number;
+          created_at: string;
+          items_count: number;
+          total_quantity: number;
+          cancelled_at?: string | null;
+          cancelled_by?: number | null;
+          cancel_reason?: string | null;
+          requires_admin_password?: number | boolean;
+          shift_id?: number | null;
+          cancelled_shift_id?: number | null;
+          debt_reduction_amount?: number;
+          cash_refund_amount?: number;
+        }>;
+        total: number;
+        limit: number;
+        offset: number;
+      }>;
 
       cancelSaleInvoice: (input: {
-        sale_id: number
-        reason: string
-        actor_id?: number | null
-        admin_username?: string
-        admin_password?: string
+        sale_id: number;
+        reason: string;
+        actor_id?: number | null;
+        admin_username?: string;
+        admin_password?: string;
       }) => Promise<{
-        success: boolean
-        message?: string
-        sale_id?: number
-        refunded_amount?: number
-        removed_debt?: number
-        cancelled_shift_id?: number
-      }>
+        success: boolean;
+        message?: string;
+        sale_id?: number;
+        refunded_amount?: number;
+        removed_debt?: number;
+        cancelled_shift_id?: number;
+      }>;
 
       cancelSaleReturn: (input: {
-        return_id: number
-        reason: string
-        actor_id?: number | null
-        admin_username?: string
-        admin_password?: string
+        return_id: number;
+        reason: string;
+        actor_id?: number | null;
+        admin_username?: string;
+        admin_password?: string;
       }) => Promise<{
-        success: boolean
-        message?: string
-        return_id?: number
-        sale_id?: number
-        cash_restored?: number
-        debt_restored?: number
-        cancelled_shift_id?: number
-      }>
+        success: boolean;
+        message?: string;
+        return_id?: number;
+        sale_id?: number;
+        cash_restored?: number;
+        debt_restored?: number;
+        cancelled_shift_id?: number;
+      }>;
 
       getSaleExchangeState: (saleId: number) => Promise<{
-        sale: any
+        sale: any;
         payments: Array<{
-          payment_method: string
-          amount: number
-        }>
+          payment_method: string;
+          amount: number;
+        }>;
         snapshot: {
-          sale_id: number
-          promotion_id: number
-          promotion_name: string
-          promotion_type: string
-          promotion_value: number
-          buy_qty: number | null
-          free_qty: number | null
-          scope_type: string
-          category_id: number | null
-          product_ids_json: string
-          product_ids: number[]
-        } | null
+          sale_id: number;
+          promotion_id: number;
+          promotion_name: string;
+          promotion_type: string;
+          promotion_value: number;
+          buy_qty: number | null;
+          free_qty: number | null;
+          scope_type: string;
+          category_id: number | null;
+          product_ids_json: string;
+          product_ids: number[];
+        } | null;
 
         snapshots: Array<{
-          sale_id: number
+          sale_id: number;
 
-          promotion_id: number
+          promotion_id: number;
 
-          promotion_name: string
+          promotion_name: string;
 
-          promotion_type: string
+          promotion_type: string;
 
-          promotion_value: number
+          promotion_value: number;
 
-          buy_qty: number | null
+          buy_qty: number | null;
 
-          free_qty: number | null
+          free_qty: number | null;
 
-          scope_type: string
+          scope_type: string;
 
-          category_id: number | null
+          category_id: number | null;
 
-          product_ids_json: string
+          product_ids_json: string;
 
-          product_ids: number[]
-        }>
+          product_ids: number[];
+        }>;
 
         groups: Array<{
-          promotion_group_id: string
+          promotion_group_id: string;
 
-          group_kind: 'promotion' | 'regular'
+          group_kind: 'promotion' | 'regular';
 
-          promotion_id: number | null
+          promotion_id: number | null;
 
           promotion_snapshot: {
-            sale_id: number
+            sale_id: number;
 
-            promotion_id: number
+            promotion_id: number;
 
-            promotion_name: string
+            promotion_name: string;
 
-            promotion_type: string
+            promotion_type: string;
 
-            promotion_value: number
+            promotion_value: number;
 
-            buy_qty: number | null
+            buy_qty: number | null;
 
-            free_qty: number | null
+            free_qty: number | null;
 
-            scope_type: string
+            scope_type: string;
 
-            category_id: number | null
+            category_id: number | null;
 
-            product_ids_json: string
+            product_ids_json: string;
 
-            product_ids: number[]
-          } | null
+            product_ids: number[];
+          } | null;
 
           units: Array<{
-            id: number
-            sale_id: number
-            original_sale_item_id: number
-            promotion_group_id: string
+            id: number;
+            sale_id: number;
+            original_sale_item_id: number;
+            promotion_group_id: string;
 
-            original_variant_id: number
-            current_variant_id: number
+            original_variant_id: number;
+            current_variant_id: number;
 
-            original_unit_price: number
-            current_unit_price: number
+            original_unit_price: number;
+            current_unit_price: number;
 
-            original_is_gift: number
-            current_is_gift: number
+            original_is_gift: number;
+            current_is_gift: number;
 
-            is_returned: number
+            is_returned: number;
 
-            current_product_id: number
-            current_product_name: string
-            current_category_id: number | null
+            current_product_id: number;
+            current_product_name: string;
+            current_category_id: number | null;
 
-            current_barcode?: string | null
-            current_size?: string | null
-            current_color?: string | null
-          }>
-        }>
+            current_barcode?: string | null;
+            current_size?: string | null;
+            current_color?: string | null;
+          }>;
+        }>;
         financials: {
-          original_sub_total: number
-          original_normal_discount_value: number
-          original_loyalty_discount_value: number
+          original_sub_total: number;
+          original_normal_discount_value: number;
+          original_loyalty_discount_value: number;
 
-          current_sub_total: number
-          current_promotion_discount_value: number
-          current_normal_discount_value: number
-          current_loyalty_discount_value: number
-          current_total_discount: number
-          current_grand_total: number
+          current_sub_total: number;
+          current_promotion_discount_value: number;
+          current_normal_discount_value: number;
+          current_loyalty_discount_value: number;
+          current_total_discount: number;
+          current_grand_total: number;
 
-          total_return_value: number
-          net_grand_total: number
-          net_paid_amount: number
-        }
-      }>
+          total_return_value: number;
+          net_grand_total: number;
+          net_paid_amount: number;
+        };
+      }>;
 
       createSaleExchange: (input: {
-        original_sale_id: number
-        user_id: number
+        original_sale_id: number;
+        user_id: number;
 
-        payment_method?: string | null
-        reason?: string | null
+        payment_method?: string | null;
+        reason?: string | null;
 
         items: Array<{
-          promotion_unit_id: number
-          new_variant_id: number
-        }>
+          promotion_unit_id: number;
+          new_variant_id: number;
+        }>;
       }) => Promise<{
-        success: boolean
+        success: boolean;
 
-        exchangeId: number
-        exchangeCode: string
+        exchangeId: number;
+        exchangeCode: string;
 
-        original_sale_id: number
-        promotion_group_id: string
+        original_sale_id: number;
+        promotion_group_id: string;
 
-        old_group_total: number
-        new_group_total: number
-        difference_amount: number
+        old_group_total: number;
+        new_group_total: number;
+        difference_amount: number;
 
-        amount_to_collect: number
-        amount_to_refund: number
-        debt_reduction_amount: number
+        amount_to_collect: number;
+        amount_to_refund: number;
+        debt_reduction_amount: number;
 
-        payment_method: string
-        shift_id: number
-      }>
+        payment_method: string;
+        shift_id: number;
+      }>;
 
       listSaleExchanges: (input?: {
-        search?: string
-        payment_method?: string | null
-        date_from?: string
-        date_to?: string
+        search?: string;
+        payment_method?: string | null;
+        date_from?: string;
+        date_to?: string;
 
-        status?: 'all' | 'active' | 'cancelled'
+        status?: 'all' | 'active' | 'cancelled';
 
-        actor_id?: number | null
+        actor_id?: number | null;
 
-        limit?: number
-        offset?: number
+        limit?: number;
+        offset?: number;
       }) => Promise<{
         rows: Array<{
-          id: number
+          id: number;
 
-          code: string
+          code: string;
 
-          original_sale_id: number
+          original_sale_id: number;
 
-          user_id: number | null
-          shift_id?: number | null
-          cancelled_shift_id?: number | null
-          promotion_group_id: string
+          user_id: number | null;
+          shift_id?: number | null;
+          cancelled_shift_id?: number | null;
+          promotion_group_id: string;
 
-          old_group_total: number
-          new_group_total: number
+          old_group_total: number;
+          new_group_total: number;
 
-          difference_amount: number
+          difference_amount: number;
 
-          cash_collection_amount: number
+          cash_collection_amount: number;
 
-          debt_reduction_amount: number
+          debt_reduction_amount: number;
 
-          cash_refund_amount: number
+          cash_refund_amount: number;
 
-          loyalty_earned_points_adjustment: number
+          loyalty_earned_points_adjustment: number;
 
-          loyalty_redeemed_points_adjustment: number
+          loyalty_redeemed_points_adjustment: number;
 
-          payment_method: string
+          payment_method: string;
 
-          reason?: string | null
+          reason?: string | null;
 
-          business_date?: string | null
+          business_date?: string | null;
 
-          accounting_date: string
+          accounting_date: string;
 
-          created_at: string
+          created_at: string;
 
-          cancelled_at?: string | null
+          cancelled_at?: string | null;
 
-          cancelled_by?: number | null
+          cancelled_by?: number | null;
 
-          cancel_reason?: string | null
+          cancel_reason?: string | null;
 
-          cancelled_by_name?: string | null
+          cancelled_by_name?: string | null;
 
-          customer_id?: number | null
+          customer_id?: number | null;
 
-          customer_name?: string | null
+          customer_name?: string | null;
 
-          customer_phone?: string | null
+          customer_phone?: string | null;
 
-          cashier_name?: string | null
+          cashier_name?: string | null;
 
-          items_count: number
+          items_count: number;
 
-          total_quantity: number
+          total_quantity: number;
 
-          requires_admin_password: number | boolean
+          requires_admin_password: number | boolean;
 
-          is_latest_active: number | boolean
+          is_latest_active: number | boolean;
 
-          has_later_active_return: number | boolean
+          has_later_active_return: number | boolean;
 
-          can_cancel: boolean
+          can_cancel: boolean;
 
-          cancel_block_reason?: string | null
+          cancel_block_reason?: string | null;
 
           items: Array<{
-            id: number
+            id: number;
 
-            exchange_id: number
+            exchange_id: number;
 
-            promotion_unit_id: number
+            promotion_unit_id: number;
 
-            old_variant_id: number
+            old_variant_id: number;
 
-            new_variant_id: number
+            new_variant_id: number;
 
-            old_unit_price: number
+            old_unit_price: number;
 
-            new_unit_price: number
+            new_unit_price: number;
 
-            old_unit_cost?: number | null
+            old_unit_cost?: number | null;
 
-            new_unit_cost?: number | null
+            new_unit_cost?: number | null;
 
-            old_is_gift: number
+            old_is_gift: number;
 
-            new_is_gift: number
+            new_is_gift: number;
 
-            quantity: number
+            quantity: number;
 
-            old_product_name: string
+            old_product_name: string;
 
-            old_barcode?: string | null
+            old_barcode?: string | null;
 
-            old_size?: string | null
+            old_size?: string | null;
 
-            old_color?: string | null
+            old_color?: string | null;
 
-            new_product_name: string
+            new_product_name: string;
 
-            new_barcode?: string | null
+            new_barcode?: string | null;
 
-            new_size?: string | null
+            new_size?: string | null;
 
-            new_color?: string | null
-          }>
-        }>
+            new_color?: string | null;
+          }>;
+        }>;
 
-        total: number
+        total: number;
 
-        limit: number
-        offset: number
-      }>
+        limit: number;
+        offset: number;
+      }>;
 
       cancelSaleExchange: (input: {
-        exchange_id: number
-        reason: string
-        actor_id?: number | null
-        admin_username?: string
-        admin_password?: string
+        exchange_id: number;
+        reason: string;
+        actor_id?: number | null;
+        admin_username?: string;
+        admin_password?: string;
       }) => Promise<{
-        success: boolean
+        success: boolean;
 
-        message?: string
+        message?: string;
 
-        exchange_id?: number
+        exchange_id?: number;
 
-        exchange_code?: string
+        exchange_code?: string;
 
-        sale_id?: number
+        sale_id?: number;
 
-        cash_refunded?: number
+        cash_refunded?: number;
 
-        cash_collected?: number
+        cash_collected?: number;
 
-        debt_restored?: number
+        debt_restored?: number;
 
-        loyalty_balance_reversed?: number
+        loyalty_balance_reversed?: number;
 
-        restored_items?: number
-        cancelled_shift_id?: number
-      }>
+        restored_items?: number;
+        cancelled_shift_id?: number;
+      }>;
 
       // =========================
       // Customers
       // =========================
-      getCustomers: () => Promise<Customer[]>
+      getCustomers: () => Promise<Customer[]>;
 
       listCustomers: (input?: {
-        search?: string
-        debtors_only?: boolean
-        limit?: number
-        offset?: number
+        search?: string;
+        debtors_only?: boolean;
+        limit?: number;
+        offset?: number;
       }) => Promise<{
-        rows: Customer[]
-        total: number
-        limit: number
-        offset: number
+        rows: Customer[];
+        total: number;
+        limit: number;
+        offset: number;
         summary: {
-          total_debt: number
-          debtors_count: number
+          total_debt: number;
+          debtors_count: number;
           top_debtor: {
-            id: number
-            name: string
-            balance: number
-          } | null
+            id: number;
+            name: string;
+            balance: number;
+          } | null;
 
           aging: {
-            days_0_30: number
+            days_0_30: number;
 
-            days_31_60: number
+            days_31_60: number;
 
-            days_61_90: number
+            days_61_90: number;
 
-            days_90_plus: number
+            days_90_plus: number;
 
-            total: number
-          }
+            total: number;
+          };
           due: {
-            overdue: number
+            overdue: number;
 
-            due_today: number
+            due_today: number;
 
-            due_soon: number
+            due_soon: number;
 
-            without_due_date: number
+            without_due_date: number;
 
-            total_open: number
-          }
-        }
-      }>
+            total_open: number;
+          };
+        };
+      }>;
 
-      searchCustomers: (query: string) => Promise<Customer[]>
+      searchCustomers: (query: string) => Promise<Customer[]>;
 
-      getCustomerById: (id: number) => Promise<Customer | null>
+      getCustomerById: (id: number) => Promise<Customer | null>;
 
-      createCustomer: (input: CustomerInput) => Promise<Customer>
+      createCustomer: (input: CustomerInput) => Promise<Customer>;
 
-      updateCustomer: (input: CustomerUpdateInput) => Promise<Customer>
+      updateCustomer: (input: CustomerUpdateInput) => Promise<Customer>;
 
-      deleteCustomer: (id: number, actorId?: number) => Promise<{ ok: boolean }>
+      deleteCustomer: (
+        id: number,
+        actorId?: number,
+      ) => Promise<{ ok: boolean }>;
 
-      getCustomerHistory: (customerId: number) => Promise<CustomerHistory>
+      getCustomerHistory: (customerId: number) => Promise<CustomerHistory>;
 
       adjustCustomerPoints: (input: {
-        customer_id: number
-        points: number
-        notes?: string | null
-        actor_id?: number
-      }) => Promise<Customer>
+        customer_id: number;
+        points: number;
+        notes?: string | null;
+        actor_id?: number;
+      }) => Promise<Customer>;
 
       recordCustomerPayment: (input: {
-        customer_id: number
-        sale_id?: number | null
-        amount: number
-        payment_method?: string
-        notes?: string | null
-        actor_id?: number
+        customer_id: number;
+        sale_id?: number | null;
+        amount: number;
+        payment_method?: string;
+        notes?: string | null;
+        actor_id?: number;
       }) => Promise<{
-        ok: boolean
-        customer_id: number
-        payment_batch_id: number
-        paid_amount: number
-        shift_id: number | null
+        ok: boolean;
+        customer_id: number;
+        payment_batch_id: number;
+        paid_amount: number;
+        shift_id: number | null;
         allocations?: Array<{
-          sale_id: number | null
-          amount: number
-        }>
-      }>
+          sale_id: number | null;
+          amount: number;
+        }>;
+      }>;
 
       cancelCustomerPayment: (input: {
-        batch_id: number
-        reason: string
-        actor_id?: number | null
-        admin_username?: string
-        admin_password?: string
+        batch_id: number;
+        reason: string;
+        actor_id?: number | null;
+        admin_username?: string;
+        admin_password?: string;
       }) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
 
-        batch_id?: number
-        customer_id?: number
+        batch_id?: number;
+        customer_id?: number;
 
-        cancelled_amount?: number
-        cancelled_shift_id?: number
+        cancelled_amount?: number;
+        cancelled_shift_id?: number;
         allocations?: Array<{
-          sale_id: number
-          amount: number
-        }>
-      }>
+          sale_id: number;
+          amount: number;
+        }>;
+      }>;
 
       updateCustomerPayment: (input: {
-        batch_id: number
-        amount: number
-        payment_method?: string
-        notes?: string | null
-        actor_id?: number | null
-        admin_username?: string
-        admin_password?: string
+        batch_id: number;
+        amount: number;
+        payment_method?: string;
+        notes?: string | null;
+        actor_id?: number | null;
+        admin_username?: string;
+        admin_password?: string;
       }) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
 
-        replaced_batch_id?: number
-        batch_id?: number
-        customer_id?: number
+        replaced_batch_id?: number;
+        batch_id?: number;
+        customer_id?: number;
 
-        old_amount?: number
-        new_amount?: number
+        old_amount?: number;
+        new_amount?: number;
 
-        payment_method?: string
-        shift_id?: number
+        payment_method?: string;
+        shift_id?: number;
         allocations?: Array<{
-          sale_id: number
-          amount: number
-        }>
-      }>
+          sale_id: number;
+          amount: number;
+        }>;
+      }>;
 
       getCustomerStatement: (customerId: number) => Promise<{
-        customer: any
-        sales: any[]
-        payments: any[]
+        customer: any;
+        sales: any[];
+        payments: any[];
         entries: Array<{
-          id: string
-          type: 'sale' | 'payment' | 'adjustment'
-          title: string
-          debit: number
-          credit: number
-          due_date?: string | null
-          sale_id?: number | null
-          batch_id?: number | null
-          batch_created_by?: number | null
-          requires_admin_password?: boolean
+          id: string;
+          type: 'sale' | 'payment' | 'adjustment';
+          title: string;
+          debit: number;
+          credit: number;
+          due_date?: string | null;
+          sale_id?: number | null;
+          batch_id?: number | null;
+          batch_created_by?: number | null;
+          requires_admin_password?: boolean;
 
-          replacement_batch_id?: number | null
+          replacement_batch_id?: number | null;
 
           allocations?: Array<{
-            sale_id: number
-            amount: number
-          }>
+            sale_id: number;
+            amount: number;
+          }>;
 
-          allocations_text?: string
-          cancelled_at?: string | null
-          payment_status?: string
-          payment_method?: string
-          notes?: string | null
-          created_at: string
-        }>
+          allocations_text?: string;
+          cancelled_at?: string | null;
+          payment_status?: string;
+          payment_method?: string;
+          notes?: string | null;
+          created_at: string;
+        }>;
         summary: {
-          total_sales: number
-          total_paid: number
-          balance: number
-          open_sales: number
+          total_sales: number;
+          total_paid: number;
+          balance: number;
+          open_sales: number;
           aging: {
-            days_0_30: number
+            days_0_30: number;
 
-            days_31_60: number
+            days_31_60: number;
 
-            days_61_90: number
+            days_61_90: number;
 
-            days_90_plus: number
+            days_90_plus: number;
 
-            total: number
-          }
+            total: number;
+          };
 
           credit: {
-            credit_limit: number | null
+            credit_limit: number | null;
 
-            unlimited: boolean
+            unlimited: boolean;
 
-            current_debt: number
+            current_debt: number;
 
-            available_credit: number | null
+            available_credit: number | null;
 
-            over_limit: boolean
-          }
+            over_limit: boolean;
+          };
           due: {
-            overdue: number
+            overdue: number;
 
-            due_today: number
+            due_today: number;
 
-            due_soon: number
+            due_soon: number;
 
-            without_due_date: number
+            without_due_date: number;
 
-            total_open: number
-          }
-        }
-      }>
+            total_open: number;
+          };
+        };
+      }>;
 
       // =========================
       // Loyalty Settings
       // =========================
-      getLoyaltySettings: () => Promise<LoyaltySettings>
+      getLoyaltySettings: () => Promise<LoyaltySettings>;
 
-      saveLoyaltySettings: (input: LoyaltySettings) => Promise<LoyaltySettings>
+      saveLoyaltySettings: (input: LoyaltySettings) => Promise<LoyaltySettings>;
 
       //==========================
       //Backups
       //==========================
       backupDatabase: (input?: { actor_id?: number }) => Promise<{
-        success: boolean
-        canceled?: boolean
-        path?: string
-        message?: string
+        success: boolean;
+        canceled?: boolean;
+        path?: string;
+        message?: string;
         validation?: {
-          path: string
-          size: number
-          tables: string[]
-        }
-      }>
+          path: string;
+          size: number;
+          tables: string[];
+        };
+      }>;
 
       restoreDatabase: (input?: { actor_id?: number }) => Promise<{
-        success: boolean
-        canceled?: boolean
-        path?: string
-        safetyBackupPath?: string
-        message?: string
-        requires_relogin?: boolean
+        success: boolean;
+        canceled?: boolean;
+        path?: string;
+        safetyBackupPath?: string;
+        message?: string;
+        requires_relogin?: boolean;
 
         validation?: {
-          path: string
-          size: number
-          tables: string[]
-        }
-      }>
+          path: string;
+          size: number;
+          tables: string[];
+        };
+      }>;
 
       resetDatabase: (input?: { actor_id?: number }) => Promise<{
-        success: boolean
-        canceled?: boolean
-        message?: string
-        safetyBackupPath?: string
-        requires_setup?: boolean
-      }>
+        success: boolean;
+        canceled?: boolean;
+        message?: string;
+        safetyBackupPath?: string;
+        requires_setup?: boolean;
+      }>;
 
       getAutoBackupInfo: () => Promise<{
-        dir: string
+        dir: string;
 
-        maxBackups: number
+        maxBackups: number;
 
         retention: {
-          recent: number
-          daily: number
-          weekly: number
-          manual: number
-        }
+          recent: number;
+          daily: number;
+          weekly: number;
+          manual: number;
+        };
 
         files: Array<{
-          file: string
-          fullPath: string
-          size: number
-          createdAt: string
+          file: string;
+          fullPath: string;
+          size: number;
+          createdAt: string;
 
-          reason: 'startup' | 'hourly' | 'shutdown' | 'manual' | 'unknown'
-        }>
-      }>
+          reason: 'startup' | 'hourly' | 'shutdown' | 'manual' | 'unknown';
+        }>;
+      }>;
 
       chooseAutoBackupDir: (input?: { actor_id?: number }) => Promise<{
-        success: boolean
-        canceled?: boolean
-        message?: string
+        success: boolean;
+        canceled?: boolean;
+        message?: string;
         info?: {
-          dir: string
-          maxBackups: number
+          dir: string;
+          maxBackups: number;
           retention: {
-            recent: number
-            daily: number
-            weekly: number
-            manual: number
-          }
+            recent: number;
+            daily: number;
+            weekly: number;
+            manual: number;
+          };
           files: Array<{
-            file: string
-            fullPath: string
-            size: number
-            createdAt: string
-            reason: 'startup' | 'hourly' | 'shutdown' | 'manual' | 'unknown'
-          }>
-        }
-      }>
+            file: string;
+            fullPath: string;
+            size: number;
+            createdAt: string;
+            reason: 'startup' | 'hourly' | 'shutdown' | 'manual' | 'unknown';
+          }>;
+        };
+      }>;
 
       runAutoBackupNow: (input?: { actor_id?: number }) => Promise<{
-        success: boolean
-        skipped?: boolean
-        reason?: 'startup' | 'hourly' | 'shutdown' | 'manual'
-        path?: string
-        message?: string
+        success: boolean;
+        skipped?: boolean;
+        reason?: 'startup' | 'hourly' | 'shutdown' | 'manual';
+        path?: string;
+        message?: string;
         info?: {
-          dir: string
-          maxBackups: number
+          dir: string;
+          maxBackups: number;
           retention: {
-            recent: number
-            daily: number
-            weekly: number
-            manual: number
-          }
+            recent: number;
+            daily: number;
+            weekly: number;
+            manual: number;
+          };
           files: Array<{
-            file: string
-            fullPath: string
-            size: number
-            createdAt: string
-            reason: 'startup' | 'hourly' | 'shutdown' | 'manual' | 'unknown'
-          }>
-        }
-      }>
+            file: string;
+            fullPath: string;
+            size: number;
+            createdAt: string;
+            reason: 'startup' | 'hourly' | 'shutdown' | 'manual' | 'unknown';
+          }>;
+        };
+      }>;
 
       // =========================
       // Logs
       // =========================
       getActivityLogs: (input?: {
-        search?: string
-        action?: string
-        actions?: string[]
-        entity?: string
-        entities?: string[]
-        user_id?: number | null
-        date_from?: string
-        date_to?: string
-        limit?: number
-        offset?: number
+        search?: string;
+        action?: string;
+        actions?: string[];
+        entity?: string;
+        entities?: string[];
+        user_id?: number | null;
+        date_from?: string;
+        date_to?: string;
+        limit?: number;
+        offset?: number;
       }) => Promise<{
-        rows: ActivityLog[]
-        total: number
-        limit: number
-        offset: number
-      }>
+        rows: ActivityLog[];
+        total: number;
+        limit: number;
+        offset: number;
+      }>;
 
       // =========================
       // Reports
       // =========================
 
       getAdminCashFlowAlerts: () => Promise<{
-        customers: AdminCashFlowDueSummary
+        customers: AdminCashFlowDueSummary;
 
-        suppliers: AdminCashFlowDueSummary
+        suppliers: AdminCashFlowDueSummary;
 
         near_term: {
-          customer_receivables: number
+          customer_receivables: number;
 
-          supplier_payables: number
+          supplier_payables: number;
 
-          net: number
-        }
-      }>
+          net: number;
+        };
+      }>;
 
       getCashierDashboardSummary: () => Promise<{
-        date: string
+        date: string;
 
         shift: {
-          id: number
+          id: number;
 
-          status: 'open' | 'closed'
+          status: 'open' | 'closed';
 
-          opening_counted_amount: number
+          opening_counted_amount: number;
 
-          opened_at: string
+          opened_at: string;
 
-          closed_at: string | null
-        } | null
+          closed_at: string | null;
+        } | null;
 
         sales: {
-          invoices_count: number
-          cancelled_invoices_count: number
+          invoices_count: number;
+          cancelled_invoices_count: number;
 
-          invoice_sales: number
-          paid_sales_total: number
+          invoice_sales: number;
+          paid_sales_total: number;
 
-          outstanding_debt_total: number
+          outstanding_debt_total: number;
 
-          outstanding_debt_invoices_count: number
-          returns_count: number
-          cancelled_returns_count: number
-          returns_total: number
+          outstanding_debt_invoices_count: number;
+          returns_count: number;
+          cancelled_returns_count: number;
+          returns_total: number;
 
-          exchanges_count: number
-          cancelled_exchanges_count: number
-          exchange_adjustment: number
-          exchange_cash_collection: number
-          exchange_cash_refund: number
+          exchanges_count: number;
+          cancelled_exchanges_count: number;
+          exchange_adjustment: number;
+          exchange_cash_collection: number;
+          exchange_cash_refund: number;
 
-          exchange_cash_difference: number
+          exchange_cash_difference: number;
 
-          exchange_debt_reduction: number
-          net_sales: number
-        }
+          exchange_debt_reduction: number;
+          net_sales: number;
+        };
 
         discounts: {
-          normal: number
-          promotion: number
-          loyalty: number
-          total: number
-        }
+          normal: number;
+          promotion: number;
+          loyalty: number;
+          total: number;
+        };
 
         operations: {
-          customer_payments_count: number
+          customer_payments_count: number;
 
-          customer_payments_total: number
+          customer_payments_total: number;
 
-          cancelled_customer_payments_count: number
+          cancelled_customer_payments_count: number;
 
-          expenses_count: number
+          expenses_count: number;
 
-          cancelled_expenses_count: number
+          cancelled_expenses_count: number;
 
-          expenses_total: number
+          expenses_total: number;
 
-          stock_count_sessions_count: number
-        }
-      }>
+          stock_count_sessions_count: number;
+        };
+      }>;
 
       getReportsSummary: (input?: {
-        date_from?: string
-        date_to?: string
-        user_id?: number
+        date_from?: string;
+        date_to?: string;
+        user_id?: number;
       }) => Promise<{
         summary: {
-          sales_count: number
-          returns_count: number
-          gross_sales: number
-          total_returns: number
-          normal_discounts: number
-          promotion_discounts: number
-          loyalty_discounts: number
-          total_discounts: number
-          net_sales: number
-          gross_profit_before_discounts: number
-          net_profit_after_discounts: number
-          total_expenses: number
-          total_liability_payments: number
-          total_purchase_invoices: number
-          total_manual_deposits: number
-          total_manual_withdrawals: number
-          final_net_profit: number
-          cancelled_sales_count: number
-          cancelled_returns_count: number
-          exchange_count: number
-          exchange_adjustment: number
-          exchange_cash_collection: number
-          exchange_cash_refund: number
-          exchange_debt_reduction: number
-          exchange_discount_adjustment: number
-          approved_closing_surplus: number
-          approved_closing_shortage: number
-          approved_opening_surplus: number
-          approved_opening_shortage: number
-        }
+          sales_count: number;
+          returns_count: number;
+          gross_sales: number;
+          total_returns: number;
+          normal_discounts: number;
+          promotion_discounts: number;
+          loyalty_discounts: number;
+          total_discounts: number;
+          net_sales: number;
+          gross_profit_before_discounts: number;
+          net_profit_after_discounts: number;
+          total_expenses: number;
+          total_liability_payments: number;
+          total_purchase_invoices: number;
+          total_manual_deposits: number;
+          total_manual_withdrawals: number;
+          final_net_profit: number;
+          cancelled_sales_count: number;
+          cancelled_returns_count: number;
+          exchange_count: number;
+          exchange_adjustment: number;
+          exchange_cash_collection: number;
+          exchange_cash_refund: number;
+          exchange_debt_reduction: number;
+          exchange_discount_adjustment: number;
+          approved_closing_surplus: number;
+          approved_closing_shortage: number;
+          approved_opening_surplus: number;
+          approved_opening_shortage: number;
+        };
         cashAccounts: Array<{
-          payment_method: string
-          label: string
-          total_in: number
-          total_out: number
-          balance: number
-        }>
+          payment_method: string;
+          label: string;
+          total_in: number;
+          total_out: number;
+          balance: number;
+        }>;
 
-        cashAccountsTotalBalance: number
-        topProducts: Array<any>
-        dailySales: Array<any>
-        paymentMethods: Array<any>
+        cashAccountsTotalBalance: number;
+        topProducts: Array<any>;
+        dailySales: Array<any>;
+        paymentMethods: Array<any>;
         cashierSales: Array<{
-          user_id: number | null
+          user_id: number | null;
 
-          cashier_name: string
+          cashier_name: string;
 
-          sales_count: number
-          sales_total: number
+          sales_count: number;
+          sales_total: number;
 
-          returns_count: number
-          returns_total: number
+          returns_count: number;
+          returns_total: number;
 
-          exchange_count: number
+          exchange_count: number;
 
-          exchange_adjustment: number
+          exchange_adjustment: number;
 
-          net_sales: number
-        }>
-        lowStock: Array<any>
-        topCustomers: Array<any>
-      }>
+          net_sales: number;
+        }>;
+        lowStock: Array<any>;
+        topCustomers: Array<any>;
+      }>;
 
       // =========================
       // Inventory
       // =========================
       getInventoryList: (input?: {
-        search?: string
-        status?: 'all' | 'available' | 'low' | 'out' | 'negative' | 'inactive'
-        categoryId?: number | string | null
+        search?: string;
+        status?: 'all' | 'available' | 'low' | 'out' | 'negative' | 'inactive';
+        categoryId?: number | string | null;
       }) => Promise<
         Array<{
-          variant_id: number
-          product_id: number
-          product_name: string
-          barcode?: string | null
-          size?: string | null
-          color?: string | null
-          buy_price: number
-          sell_price: number
-          min_stock: number
-          is_active: number
-          product_is_active: number
-          stock: number
+          variant_id: number;
+          product_id: number;
+          product_name: string;
+          barcode?: string | null;
+          size?: string | null;
+          color?: string | null;
+          buy_price: number;
+          sell_price: number;
+          min_stock: number;
+          is_active: number;
+          product_is_active: number;
+          stock: number;
         }>
-      >
+      >;
 
       getInventoryPage: (input?: {
-        search?: string
+        search?: string;
 
-        status?: 'all' | 'available' | 'low' | 'out' | 'inactive'
+        status?: 'all' | 'available' | 'low' | 'out' | 'inactive';
 
-        statuses?: Array<'available' | 'low' | 'out' | 'inactive'>
+        statuses?: Array<'available' | 'low' | 'out' | 'inactive'>;
 
-        categoryId?: number | string | null
-        limit?: number
-        offset?: number
+        categoryId?: number | string | null;
+        limit?: number;
+        offset?: number;
       }) => Promise<{
-        rows: any[]
-        total: number
-        limit: number
-        offset: number
+        rows: any[];
+        total: number;
+        limit: number;
+        offset: number;
         summary: {
-          total: number
-          available: number
-          low: number
-          out: number
-          inactive: number
-          totalBuyValue: number
-          totalSellValue: number
-        }
-      }>
+          total: number;
+          available: number;
+          low: number;
+          out: number;
+          inactive: number;
+          totalBuyValue: number;
+          totalSellValue: number;
+        };
+      }>;
 
       getInventoryAnalytics: (input?: {
-        categoryId?: number | string | null
+        categoryId?: number | string | null;
       }) => Promise<{
-        stock_units: number
+        stock_units: number;
 
-        sold_units_30d: number
+        sold_units_30d: number;
 
-        dead_stock_variants_90d: number
+        dead_stock_variants_90d: number;
 
-        dead_stock_units_90d: number
+        dead_stock_units_90d: number;
 
-        dead_stock_value_90d: number
+        dead_stock_value_90d: number;
 
-        potential_gross_profit: number
+        potential_gross_profit: number;
 
         top_mover: {
-          variant_id: number
+          variant_id: number;
 
-          product_name: string
+          product_name: string;
 
-          barcode?: string | null
+          barcode?: string | null;
 
-          size?: string | null
+          size?: string | null;
 
-          color?: string | null
+          color?: string | null;
 
-          current_stock: number
+          current_stock: number;
 
-          sold_units_30d: number
-        } | null
-      }>
+          sold_units_30d: number;
+        } | null;
+      }>;
 
       adjustVariantStock: (input: {
-        variant_id: number
-        target_stock: number
-        notes?: string | null
-        actor_id?: number
+        variant_id: number;
+        target_stock: number;
+        notes?: string | null;
+        actor_id?: number;
       }) => Promise<{
-        success: boolean
-        variant_id: number
-        old_stock: number
-        new_stock: number
-        diff: number
-      }>
+        success: boolean;
+        variant_id: number;
+        old_stock: number;
+        new_stock: number;
+        diff: number;
+      }>;
 
       getStockMovements: (input?: {
-        variant_id?: number
-        search?: string
-        limit?: number
-        offset?: number
+        variant_id?: number;
+        search?: string;
+        limit?: number;
+        offset?: number;
       }) => Promise<{
         rows: Array<{
-          id: number
-          variant_id: number
-          type: 'in' | 'out'
-          quantity: number
-          signed_quantity: number
-          reference_id?: number | null
-          reference_type?: string | null
-          notes?: string | null
-          created_at: string
-          product_name: string
-          barcode?: string | null
-          size?: string | null
-          color?: string | null
-        }>
-        total: number
-        limit: number
-        offset: number
-      }>
+          id: number;
+          variant_id: number;
+          type: 'in' | 'out';
+          quantity: number;
+          signed_quantity: number;
+          reference_id?: number | null;
+          reference_type?: string | null;
+          notes?: string | null;
+          created_at: string;
+          product_name: string;
+          barcode?: string | null;
+          size?: string | null;
+          color?: string | null;
+        }>;
+        total: number;
+        limit: number;
+        offset: number;
+      }>;
 
-      getStockCountSessions: () => Promise<any[]>
+      getStockCountSessions: () => Promise<any[]>;
 
       getStockCountSession: (sessionId: number) => Promise<{
-        session: any
-        items: any[]
-      }>
+        session: any;
+        items: any[];
+      }>;
 
       createStockCountSession: (input: {
-        title: string
-        notes?: string | null
-        categoryId?: number | string | null
-        actor_id?: number
-      }) => Promise<any>
+        title: string;
+        notes?: string | null;
+        categoryId?: number | string | null;
+        actor_id?: number;
+      }) => Promise<any>;
 
       updateStockCountItem: (input: {
-        session_id: number
-        item_id: number
-        actual_stock: number
-        notes?: string | null
-      }) => Promise<any>
+        session_id: number;
+        item_id: number;
+        actual_stock: number;
+        notes?: string | null;
+      }) => Promise<any>;
 
       scanStockCountBarcode: (input: {
-        session_id: number
-        barcode: string
-        quantity?: number
-      }) => Promise<any>
+        session_id: number;
+        barcode: string;
+        quantity?: number;
+      }) => Promise<any>;
 
       approveStockCountSession: (input: {
-        session_id: number
-        actor_id?: number
-      }) => Promise<any>
+        session_id: number;
+        actor_id?: number;
+      }) => Promise<any>;
 
       cancelStockCountSession: (input: {
-        session_id: number
-        actor_id?: number
-      }) => Promise<any>
+        session_id: number;
+        actor_id?: number;
+      }) => Promise<any>;
 
       savePdfFromHtml: (input: {
-        html: string
-        defaultFileName?: string
-        landscape?: boolean
+        html: string;
+        defaultFileName?: string;
+        landscape?: boolean;
       }) => Promise<{
-        ok: boolean
-        canceled?: boolean
-        filePath?: string
-      }>
+        ok: boolean;
+        canceled?: boolean;
+        filePath?: string;
+      }>;
 
       saveReportPdfFromHtml: (input: {
-        html: string
+        html: string;
 
-        defaultFileName?: string
+        defaultFileName?: string;
 
-        landscape?: boolean
+        landscape?: boolean;
       }) => Promise<{
-        ok: boolean
+        ok: boolean;
 
-        canceled?: boolean
+        canceled?: boolean;
 
-        filePath?: string
-      }>
+        filePath?: string;
+      }>;
 
       saveReportCsvText: (input: {
-        text: string
+        text: string;
 
-        defaultFileName?: string
+        defaultFileName?: string;
       }) => Promise<{
-        ok: boolean
+        ok: boolean;
 
-        canceled?: boolean
+        canceled?: boolean;
 
-        filePath?: string
-      }>
+        filePath?: string;
+      }>;
 
       printHtmlSilent: (input: { html: string }) => Promise<{
-        ok: boolean
-        message?: string
-      }>
+        ok: boolean;
+        message?: string;
+      }>;
 
       printHtmlWithDialog: (input: {
-        html: string
-        previewWidth?: number
-        previewHeight?: number
+        html: string;
+        previewWidth?: number;
+        previewHeight?: number;
       }) => Promise<{
-        ok: boolean
-        canceled?: boolean
-        busy?: boolean
-        message?: string
-      }>
+        ok: boolean;
+        canceled?: boolean;
+        busy?: boolean;
+        message?: string;
+      }>;
 
       getCashDrawerSettings: () => Promise<{
-        printer_name: string
-        auto_open_cash_sale: boolean
-      }>
+        printer_name: string;
+        auto_open_cash_sale: boolean;
+      }>;
 
       saveCashDrawerSettings: (input: {
-        printer_name?: string | null
-        auto_open_cash_sale?: boolean
-        actor_id?: number
+        printer_name?: string | null;
+        auto_open_cash_sale?: boolean;
+        actor_id?: number;
       }) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
         settings: {
-          printer_name: string
-          auto_open_cash_sale: boolean
-        }
-      }>
+          printer_name: string;
+          auto_open_cash_sale: boolean;
+        };
+      }>;
 
       getCashDrawerPrinters: () => Promise<
         Array<{
-          name: string
-          displayName: string
-          description?: string
-          status?: number
-          isDefault: boolean
+          name: string;
+          displayName: string;
+          description?: string;
+          status?: number;
+          isDefault: boolean;
         }>
-      >
+      >;
 
       getCashDrawerNoSaleEvents: (input?: {
-        shift_id?: number | null
+        shift_id?: number | null;
 
-        user_id?: number | null
+        user_id?: number | null;
 
-        status?: 'all' | 'success' | 'failed'
+        status?: 'all' | 'success' | 'failed';
 
-        date_from?: string | null
+        date_from?: string | null;
 
-        date_to?: string | null
+        date_to?: string | null;
 
-        limit?: number
+        limit?: number;
 
-        offset?: number
+        offset?: number;
       }) => Promise<{
         rows: Array<{
-          id: number
+          id: number;
 
-          action: 'cash_drawer_opened' | 'cash_drawer_open_failed'
+          action: 'cash_drawer_opened' | 'cash_drawer_open_failed';
 
-          status: 'success' | 'failed'
+          status: 'success' | 'failed';
 
-          shift_id: number
+          shift_id: number;
 
-          shift_opened_by: number | null
+          shift_opened_by: number | null;
 
-          shift_opened_by_name: string | null
+          shift_opened_by_name: string | null;
 
-          user_id: number | null
+          user_id: number | null;
 
-          user_name: string | null
+          user_name: string | null;
 
-          username: string | null
+          username: string | null;
 
-          reason: string
+          reason: string;
 
-          printer_name: string
+          printer_name: string;
 
-          error: string | null
+          error: string | null;
 
-          created_at: string
-        }>
+          created_at: string;
+        }>;
 
-        total: number
+        total: number;
 
-        success_count: number
+        success_count: number;
 
-        failed_count: number
+        failed_count: number;
 
-        limit: number
+        limit: number;
 
-        offset: number
-      }>
+        offset: number;
+      }>;
 
       openCashDrawer: (input?: {
-        actor_id?: number
-        reason?: 'manual' | 'sale' | 'test' | string
-        sale_id?: number | null
+        actor_id?: number;
+        reason?: 'manual' | 'sale' | 'test' | string;
+        sale_id?: number | null;
       }) => Promise<{
-        success: boolean
-        message?: string
-      }>
+        success: boolean;
+        message?: string;
+      }>;
 
       // =========================
       // Suppliers
       // =========================
       getSuppliers: (search?: string) => Promise<
         Array<{
-          id: number
-          name: string
-          phone?: string | null
-          email?: string | null
-          address?: string | null
-          notes?: string | null
-          total_purchased: number
-          balance: number
-          is_active: number
-          created_at: string
-          updated_at?: string | null
-          credit_days?: number | null
+          id: number;
+          name: string;
+          phone?: string | null;
+          email?: string | null;
+          address?: string | null;
+          notes?: string | null;
+          total_purchased: number;
+          balance: number;
+          is_active: number;
+          created_at: string;
+          updated_at?: string | null;
+          credit_days?: number | null;
         }>
-      >
+      >;
 
       listSuppliers: (input?: {
-        search?: string
+        search?: string;
 
-        limit?: number
-        offset?: number
+        limit?: number;
+        offset?: number;
 
-        include_summary?: boolean
+        include_summary?: boolean;
       }) => Promise<{
-        rows: any[]
+        rows: any[];
 
-        total: number
+        total: number;
 
-        limit: number
-        offset: number
+        limit: number;
+        offset: number;
 
         summary?: {
           aging: {
-            days_0_30: number
+            days_0_30: number;
 
-            days_31_60: number
+            days_31_60: number;
 
-            days_61_90: number
+            days_61_90: number;
 
-            days_90_plus: number
+            days_90_plus: number;
 
-            total: number
-          } | null
+            total: number;
+          } | null;
 
           due: {
-            overdue: number
+            overdue: number;
 
-            due_today: number
+            due_today: number;
 
-            due_soon: number
+            due_soon: number;
 
-            without_due_date: number
+            without_due_date: number;
 
-            total_open: number
-          } | null
-        }
-      }>
+            total_open: number;
+          } | null;
+        };
+      }>;
 
-      getSupplierById: (id: number) => Promise<any>
+      getSupplierById: (id: number) => Promise<any>;
 
       createSupplier: (input: {
-        name: string
-        phone?: string | null
-        email?: string | null
-        address?: string | null
-        notes?: string | null
-        actor_id?: number
-        credit_days?: number | null
-      }) => Promise<any>
+        name: string;
+        phone?: string | null;
+        email?: string | null;
+        address?: string | null;
+        notes?: string | null;
+        actor_id?: number;
+        credit_days?: number | null;
+      }) => Promise<any>;
 
       updateSupplier: (input: {
-        id: number
-        name: string
-        phone?: string | null
-        email?: string | null
-        address?: string | null
-        notes?: string | null
-        actor_id?: number
-        credit_days?: number | null
-      }) => Promise<any>
+        id: number;
+        name: string;
+        phone?: string | null;
+        email?: string | null;
+        address?: string | null;
+        notes?: string | null;
+        actor_id?: number;
+        credit_days?: number | null;
+      }) => Promise<any>;
 
-      deleteSupplier: (id: number, actorId?: number) => Promise<{ ok: boolean }>
+      deleteSupplier: (
+        id: number,
+        actorId?: number,
+      ) => Promise<{ ok: boolean }>;
 
       // =========================
       // Purchases
       // =========================
       createPurchaseInvoice: (input: {
-        supplier_id: number
-        sub_total?: number
-        discount_type?: 'amount' | 'percent' | string
-        discount_input?: number
-        discount_value?: number
-        paid_amount?: number
-        payment_method?: string
-        notes?: string | null
-        actor_id?: number
+        supplier_id: number;
+        sub_total?: number;
+        discount_type?: 'amount' | 'percent' | string;
+        discount_input?: number;
+        discount_value?: number;
+        paid_amount?: number;
+        payment_method?: string;
+        notes?: string | null;
+        actor_id?: number;
         items: Array<{
-          variant_id: number
-          quantity: number
-          unit_cost: number
-        }>
+          variant_id: number;
+          quantity: number;
+          unit_cost: number;
+        }>;
       }) => Promise<{
-        purchaseId: number
-        total_amount: number
-        paid_amount: number
-        remaining_amount: number
-        payment_status: string
-        shift_id?: number | null
-        due_date?: string | null
-      }>
+        purchaseId: number;
+        total_amount: number;
+        paid_amount: number;
+        remaining_amount: number;
+        payment_status: string;
+        shift_id?: number | null;
+        due_date?: string | null;
+      }>;
 
       getPurchaseReorderSuggestions: (input?: {
-        categoryId?: number | string | null
+        categoryId?: number | string | null;
 
-        targetDays?: number
+        targetDays?: number;
       }) => Promise<
         Array<{
-          variant_id: number
+          variant_id: number;
 
-          product_id: number
+          product_id: number;
 
-          product_name: string
+          product_name: string;
 
-          category_id: number | null
+          category_id: number | null;
 
-          barcode?: string | null
+          barcode?: string | null;
 
-          size?: string | null
+          size?: string | null;
 
-          color?: string | null
+          color?: string | null;
 
-          current_stock: number
+          current_stock: number;
 
-          min_stock: number
+          min_stock: number;
 
-          sold_units_30d: number
+          sold_units_30d: number;
 
-          average_daily_sales: number
+          average_daily_sales: number;
 
-          target_days: number
+          target_days: number;
 
-          target_stock: number
+          target_stock: number;
 
-          suggested_quantity: number
+          suggested_quantity: number;
 
-          coverage_days: number | null
+          coverage_days: number | null;
 
-          unit_cost: number
+          unit_cost: number;
 
-          estimated_cost: number
+          estimated_cost: number;
 
-          reason: 'out' | 'low' | 'demand'
+          reason: 'out' | 'low' | 'demand';
         }>
-      >
+      >;
 
       listPurchaseOrders: (input?: {
-        status?: string
+        status?: string;
 
-        supplier_id?: number
-      }) => Promise<any[]>
+        supplier_id?: number;
+      }) => Promise<any[]>;
 
       getPurchaseOrder: (purchaseOrderId: number) => Promise<{
-        order: any
-        items: any[]
-      }>
+        order: any;
+        items: any[];
+      }>;
 
       createPurchaseOrder: (input: {
-        supplier_id: number
+        supplier_id: number;
 
-        notes?: string | null
+        notes?: string | null;
 
         items: Array<{
-          variant_id: number
+          variant_id: number;
 
-          quantity: number
+          quantity: number;
 
-          unit_cost?: number
-        }>
-      }) => Promise<any>
+          unit_cost?: number;
+        }>;
+      }) => Promise<any>;
 
       updatePurchaseOrder: (input: {
-        purchase_order_id: number
+        purchase_order_id: number;
 
-        supplier_id: number
+        supplier_id: number;
 
-        notes?: string | null
+        notes?: string | null;
 
         items: Array<{
-          variant_id: number
+          variant_id: number;
 
-          quantity: number
+          quantity: number;
 
-          unit_cost?: number
-        }>
-      }) => Promise<any>
+          unit_cost?: number;
+        }>;
+      }) => Promise<any>;
 
       markPurchaseOrderOrdered: (input: {
-        purchase_order_id: number
-      }) => Promise<any>
+        purchase_order_id: number;
+      }) => Promise<any>;
 
       cancelPurchaseOrder: (input: {
-        purchase_order_id: number
+        purchase_order_id: number;
 
-        reason?: string | null
-      }) => Promise<any>
+        reason?: string | null;
+      }) => Promise<any>;
 
       receivePurchaseOrder: (input: {
-        purchase_order_id: number
+        purchase_order_id: number;
 
-        paid_amount?: number
+        paid_amount?: number;
 
-        payment_method?: string
+        payment_method?: string;
 
-        discount_type?: 'amount' | 'percent'
+        discount_type?: 'amount' | 'percent';
 
-        discount_input?: number
+        discount_input?: number;
 
-        discount_value?: number
+        discount_value?: number;
 
-        notes?: string | null
-      }) => Promise<any>
+        notes?: string | null;
+      }) => Promise<any>;
 
       updatePurchaseInvoice: (input: {
-        purchase_id: number
-        supplier_id: number
+        purchase_id: number;
+        supplier_id: number;
 
-        sub_total?: number
-        discount_type?: 'amount' | 'percent' | string
-        discount_input?: number
-        discount_value?: number
+        sub_total?: number;
+        discount_type?: 'amount' | 'percent' | string;
+        discount_input?: number;
+        discount_value?: number;
 
-        paid_amount?: number
-        payment_method?: string
+        paid_amount?: number;
+        payment_method?: string;
 
-        notes?: string | null
-        reason: string
+        notes?: string | null;
+        reason: string;
 
-        admin_password: string
+        admin_password: string;
 
         items: Array<{
-          variant_id: number
-          quantity: number
-          unit_cost: number
-        }>
+          variant_id: number;
+          quantity: number;
+          unit_cost: number;
+        }>;
       }) => Promise<{
-        ok: boolean
-        edited: boolean
+        ok: boolean;
+        edited: boolean;
 
-        purchase_id: number
-        supplier_id: number
-        previous_supplier_id: number
+        purchase_id: number;
+        supplier_id: number;
+        previous_supplier_id: number;
 
-        total_amount: number
-        paid_amount: number
-        remaining_amount: number
-        payment_status: string
+        total_amount: number;
+        paid_amount: number;
+        remaining_amount: number;
+        payment_status: string;
 
-        items_count: number
-        shift_id?: number | null
-        due_date?: string | null
-      }>
+        items_count: number;
+        shift_id?: number | null;
+        due_date?: string | null;
+      }>;
 
       listPurchaseInvoices: (input?: {
-        search?: string
+        search?: string;
 
-        payment_filter?: 'all' | 'paid' | 'unpaid'
+        payment_filter?: 'all' | 'paid' | 'unpaid';
 
-        limit?: number
-        offset?: number
+        limit?: number;
+        offset?: number;
       }) => Promise<{
-        rows: any[]
-        total: number
-        limit: number
-        offset: number
-      }>
+        rows: any[];
+        total: number;
+        limit: number;
+        offset: number;
+      }>;
 
       getPurchaseInvoice: (purchaseId: number) => Promise<{
-        purchase: any
+        purchase: any;
         items: Array<{
-          id: number
-          purchase_id: number
-          variant_id: number
-          product_name: string
-          barcode?: string | null
-          size?: string | null
-          color?: string | null
-          quantity: number
-          unit_cost: number
-          line_total: number
-          current_buy_price?: number
-          sell_price?: number
-          stock?: number
-          returned_quantity?: number
-          returnable_quantity?: number
-        }>
-        payments: any[]
-        returns?: any[]
-      }>
+          id: number;
+          purchase_id: number;
+          variant_id: number;
+          product_name: string;
+          barcode?: string | null;
+          size?: string | null;
+          color?: string | null;
+          quantity: number;
+          unit_cost: number;
+          line_total: number;
+          current_buy_price?: number;
+          sell_price?: number;
+          stock?: number;
+          returned_quantity?: number;
+          returnable_quantity?: number;
+        }>;
+        payments: any[];
+        returns?: any[];
+      }>;
 
       cancelPurchaseInvoice: (input: {
-        purchase_id: number
-        reason?: string
-        actor_id?: number
-        admin_password: string
+        purchase_id: number;
+        reason?: string;
+        actor_id?: number;
+        admin_password: string;
       }) => Promise<{
-        ok: boolean
-        purchase_id: number
-        supplier_id: number
-        reversed_total: number
-        reversed_paid: number
-        reversed_remaining: number
-        items_count: number
-        cancelled_shift_id?: number | null
-      }>
+        ok: boolean;
+        purchase_id: number;
+        supplier_id: number;
+        reversed_total: number;
+        reversed_paid: number;
+        reversed_remaining: number;
+        items_count: number;
+        cancelled_shift_id?: number | null;
+      }>;
 
       createPurchaseReturn: (input: {
-        purchase_id: number
-        notes?: string | null
-        actor_id?: number
-        refund_payment_method?: string | null
-        refund_mode?: 'cash' | 'credit' | string
+        purchase_id: number;
+        notes?: string | null;
+        actor_id?: number;
+        refund_payment_method?: string | null;
+        refund_mode?: 'cash' | 'credit' | string;
         items: Array<{
-          purchase_item_id?: number
-          variant_id?: number
-          quantity: number
-        }>
+          purchase_item_id?: number;
+          variant_id?: number;
+          quantity: number;
+        }>;
       }) => Promise<{
-        ok: boolean
-        return_id: number
-        purchase_id: number
-        supplier_id: number
-        total_amount: number
-        items_count: number
-        debt_reduction_amount?: number
-        cash_refund_amount?: number
-        refund_mode?: string
-        refund_payment_method?: string | null
-      }>
+        ok: boolean;
+        return_id: number;
+        purchase_id: number;
+        supplier_id: number;
+        total_amount: number;
+        items_count: number;
+        debt_reduction_amount?: number;
+        cash_refund_amount?: number;
+        refund_mode?: string;
+        refund_payment_method?: string | null;
+      }>;
 
       updatePurchaseReturn: (input: {
-        return_id: number
+        return_id: number;
 
-        reason: string
-        admin_password: string
+        reason: string;
+        admin_password: string;
 
-        notes?: string | null
+        notes?: string | null;
 
-        refund_payment_method?: string | null
-        refund_mode?: 'cash' | 'credit' | string
+        refund_payment_method?: string | null;
+        refund_mode?: 'cash' | 'credit' | string;
 
         items: Array<{
-          purchase_item_id?: number
-          variant_id?: number
-          quantity: number
-        }>
+          purchase_item_id?: number;
+          variant_id?: number;
+          quantity: number;
+        }>;
       }) => Promise<{
-        ok: boolean
-        edited: boolean
+        ok: boolean;
+        edited: boolean;
 
-        return_id: number
-        replaced_return_id: number
+        return_id: number;
+        replaced_return_id: number;
 
-        purchase_id: number
-        supplier_id: number
+        purchase_id: number;
+        supplier_id: number;
 
-        total_amount: number
-        debt_reduction_amount?: number
-        cash_refund_amount?: number
+        total_amount: number;
+        debt_reduction_amount?: number;
+        cash_refund_amount?: number;
 
-        items_count: number
-        shift_id?: number | null
-      }>
+        items_count: number;
+        shift_id?: number | null;
+      }>;
 
       cancelPurchaseReturn: (input: {
-        return_id: number
+        return_id: number;
 
-        reason?: string
-        admin_password: string
+        reason?: string;
+        admin_password: string;
       }) => Promise<{
-        ok: boolean
+        ok: boolean;
 
-        return_id: number
-        purchase_id: number
-        supplier_id: number
+        return_id: number;
+        purchase_id: number;
+        supplier_id: number;
 
-        restored_total: number
-        restored_debt: number
-        reversed_cash: number
+        restored_total: number;
+        restored_debt: number;
+        reversed_cash: number;
 
-        items_count: number
+        items_count: number;
 
-        cancelled_shift_id?: number | null
-      }>
+        cancelled_shift_id?: number | null;
+      }>;
 
       listPurchaseReturns: (input?: {
-        search?: string
-        limit?: number
-        offset?: number
+        search?: string;
+        limit?: number;
+        offset?: number;
       }) => Promise<{
-        rows: any[]
-        total: number
-        limit: number
-        offset: number
-      }>
+        rows: any[];
+        total: number;
+        limit: number;
+        offset: number;
+      }>;
 
       getPurchaseReturn: (returnId: number) => Promise<{
-        return: any
-        items: any[]
-      }>
+        return: any;
+        items: any[];
+      }>;
 
       recordSupplierPayment: (input: {
-        supplier_id: number
-        purchase_id?: number | null
-        amount: number
-        payment_method?: string
-        notes?: string | null
-        actor_id?: number | null
+        supplier_id: number;
+        purchase_id?: number | null;
+        amount: number;
+        payment_method?: string;
+        notes?: string | null;
+        actor_id?: number | null;
       }) => Promise<{
-        ok: boolean
-        supplier_id: number
-        payment_batch_id: number
-        paid_amount: number
-        shift_id?: number | null
+        ok: boolean;
+        supplier_id: number;
+        payment_batch_id: number;
+        paid_amount: number;
+        shift_id?: number | null;
         allocations?: Array<{
-          purchase_id: number | null
-          amount: number
-        }>
-      }>
+          purchase_id: number | null;
+          amount: number;
+        }>;
+      }>;
 
       cancelSupplierPayment: (input: {
-        batch_id: number
-        reason: string
-        actor_id?: number | null
-        admin_password?: string
+        batch_id: number;
+        reason: string;
+        actor_id?: number | null;
+        admin_password?: string;
       }) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
 
-        batch_id?: number
-        supplier_id?: number
+        batch_id?: number;
+        supplier_id?: number;
 
-        cancelled_amount?: number
-        cancelled_shift_id?: number | null
+        cancelled_amount?: number;
+        cancelled_shift_id?: number | null;
         allocations?: Array<{
-          purchase_id: number
-          amount: number
-        }>
-      }>
+          purchase_id: number;
+          amount: number;
+        }>;
+      }>;
 
       updateSupplierPayment: (input: {
-        batch_id: number
-        amount: number
-        payment_method?: string
-        notes?: string | null
-        actor_id?: number | null
-        admin_password?: string
+        batch_id: number;
+        amount: number;
+        payment_method?: string;
+        notes?: string | null;
+        actor_id?: number | null;
+        admin_password?: string;
       }) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
 
-        replaced_batch_id?: number
-        batch_id?: number
+        replaced_batch_id?: number;
+        batch_id?: number;
 
-        supplier_id?: number
+        supplier_id?: number;
 
-        old_amount?: number
-        new_amount?: number
+        old_amount?: number;
+        new_amount?: number;
 
-        payment_method?: string
-        shift_id?: number | null
+        payment_method?: string;
+        shift_id?: number | null;
         allocations?: Array<{
-          purchase_id: number
-          amount: number
-        }>
-      }>
+          purchase_id: number;
+          amount: number;
+        }>;
+      }>;
 
       getSupplierStatement: (supplierId: number) => Promise<{
-        supplier: any
-        purchases: any[]
-        payments: any[]
-        returns?: any[]
+        supplier: any;
+        purchases: any[];
+        payments: any[];
+        returns?: any[];
         entries: Array<{
-          id: string
-          type: 'purchase' | 'payment' | 'purchase_return'
-          title: string
-          debit: number
-          credit: number
-          purchase_id?: number | null
-          batch_id?: number | null
-          due_date?: string | null
-          batch_created_by?: number | null
+          id: string;
+          type: 'purchase' | 'payment' | 'purchase_return';
+          title: string;
+          debit: number;
+          credit: number;
+          purchase_id?: number | null;
+          batch_id?: number | null;
+          due_date?: string | null;
+          batch_created_by?: number | null;
 
-          requires_admin_password?: boolean
+          requires_admin_password?: boolean;
 
-          is_latest_mutable_batch?: boolean
+          is_latest_mutable_batch?: boolean;
 
-          replacement_batch_id?: number | null
+          replacement_batch_id?: number | null;
 
           allocations?: Array<{
-            purchase_id: number
-            amount: number
-          }>
+            purchase_id: number;
+            amount: number;
+          }>;
 
-          allocations_text?: string
+          allocations_text?: string;
 
-          cancelled_at?: string | null
-          return_id?: number
-          payment_status?: string
-          payment_method?: string
-          notes?: string | null
-          created_at: string
-        }>
+          cancelled_at?: string | null;
+          return_id?: number;
+          payment_status?: string;
+          payment_method?: string;
+          notes?: string | null;
+          created_at: string;
+        }>;
         summary: {
-          total_purchased: number
+          total_purchased: number;
 
-          total_paid: number
+          total_paid: number;
 
-          total_returns?: number
+          total_returns?: number;
 
-          balance: number
+          balance: number;
 
-          open_purchases: number
+          open_purchases: number;
 
           aging: {
-            days_0_30: number
+            days_0_30: number;
 
-            days_31_60: number
+            days_31_60: number;
 
-            days_61_90: number
+            days_61_90: number;
 
-            days_90_plus: number
+            days_90_plus: number;
 
-            total: number
-          }
+            total: number;
+          };
           due: {
-            overdue: number
+            overdue: number;
 
-            due_today: number
+            due_today: number;
 
-            due_soon: number
+            due_soon: number;
 
-            without_due_date: number
+            without_due_date: number;
 
-            total_open: number
-          }
-        }
-      }>
+            total_open: number;
+          };
+        };
+      }>;
 
       // =========================
       // Cash Movements
       // =========================
 
       getCashSummary: (input?: {
-        date_from?: string
-        date_to?: string
-        type?: string
-        types?: string[]
-        direction?: 'all' | 'in' | 'out'
-        directions?: string[]
-        payment_method?: string
-        payment_methods?: string[]
-        search?: string
-        reference_type?: string
-        created_by?: number | null
+        date_from?: string;
+        date_to?: string;
+        type?: string;
+        types?: string[];
+        direction?: 'all' | 'in' | 'out';
+        directions?: string[];
+        payment_method?: string;
+        payment_methods?: string[];
+        search?: string;
+        reference_type?: string;
+        created_by?: number | null;
       }) => Promise<{
-        total_in: number
-        total_out: number
-        balance: number
-        movements_count: number
-      }>
+        total_in: number;
+        total_out: number;
+        balance: number;
+        movements_count: number;
+      }>;
 
       getCashMovements: (input?: {
-        date_from?: string
-        date_to?: string
-        type?: string
-        types?: string[]
-        direction?: 'all' | 'in' | 'out'
-        directions?: string[]
-        payment_method?: string
-        payment_methods?: string[]
-        search?: string
-        reference_type?: string
-        created_by?: number | null
-        limit?: number
-        offset?: number
+        date_from?: string;
+        date_to?: string;
+        type?: string;
+        types?: string[];
+        direction?: 'all' | 'in' | 'out';
+        directions?: string[];
+        payment_method?: string;
+        payment_methods?: string[];
+        search?: string;
+        reference_type?: string;
+        created_by?: number | null;
+        limit?: number;
+        offset?: number;
       }) => Promise<{
-        rows: any[]
-        total: number
-        limit: number
-        offset: number
-      }>
+        rows: any[];
+        total: number;
+        limit: number;
+        offset: number;
+      }>;
 
-      createCashMovement: (input: any) => Promise<any>
-      createCashTransfer: (input: any) => Promise<any>
+      createCashMovement: (input: any) => Promise<any>;
+      createCashTransfer: (input: any) => Promise<any>;
       getCashShiftOpeningPreview: () => Promise<{
-        can_open: boolean
-        open_shift: any | null
-        previous_shift_id: number | null
-        expected_opening_amount: number | null
-        previous_closed_at?: string | null
-      }>
-      getOpenCashShift: () => Promise<any | null>
+        can_open: boolean;
+        open_shift: any | null;
+        previous_shift_id: number | null;
+        expected_opening_amount: number | null;
+        previous_closed_at?: string | null;
+      }>;
+      getOpenCashShift: () => Promise<any | null>;
 
-      openCashShift: (input: { opening_counted_amount: number }) => Promise<any>
+      openCashShift: (input: {
+        opening_counted_amount: number;
+      }) => Promise<any>;
 
       getCashShiftExpectedBalance: (shiftId: number) => Promise<{
-        shift_id: number
-        opening_counted_amount: number
-        cash_in: number
-        cash_out: number
-        expected_closing_amount: number
+        shift_id: number;
+        opening_counted_amount: number;
+        cash_in: number;
+        cash_out: number;
+        expected_closing_amount: number;
         breakdown: Array<{
-          type: string
-          direction: 'in' | 'out'
-          total: number
-        }>
-      }>
+          type: string;
+          direction: 'in' | 'out';
+          total: number;
+        }>;
+      }>;
 
       getCashShiftDaySummary: (input: {
-        business_date: string
-        user_id?: number | null
+        business_date: string;
+        user_id?: number | null;
       }) => Promise<{
-        business_date: string
-        user_id: number | null
+        business_date: string;
+        user_id: number | null;
 
-        shifts_count: number
-        closed_shifts_count: number
+        shifts_count: number;
+        closed_shifts_count: number;
 
-        has_open_shift: boolean
-        all_closed: boolean
+        has_open_shift: boolean;
+        all_closed: boolean;
 
-        first_shift_id: number | null
-        last_shift_id: number | null
-        last_shift_status: 'open' | 'closed' | null
+        first_shift_id: number | null;
+        last_shift_id: number | null;
+        last_shift_status: 'open' | 'closed' | null;
 
-        opening_drawer_balance: number
+        opening_drawer_balance: number;
 
-        cash_in: number
-        cash_out: number
+        cash_in: number;
+        cash_out: number;
 
-        balance_before_handover: number
-        ending_drawer_balance: number
-      }>
+        balance_before_handover: number;
+        ending_drawer_balance: number;
+      }>;
 
       getCashShifts: (input?: {
-        status?: 'all' | 'open' | 'closed'
+        status?: 'all' | 'open' | 'closed';
 
-        user_id?: number | null
+        user_id?: number | null;
 
-        date_from?: string | null
-        date_to?: string | null
+        date_from?: string | null;
+        date_to?: string | null;
 
-        limit?: number
-        offset?: number
+        limit?: number;
+        offset?: number;
       }) => Promise<{
         rows: Array<{
-          id: number
+          id: number;
 
-          status: 'open' | 'closed'
+          status: 'open' | 'closed';
 
-          opened_by: number
-          opened_by_name?: string | null
-          opened_at: string
+          opened_by: number;
+          opened_by_name?: string | null;
+          opened_at: string;
 
-          previous_shift_id: number | null
+          previous_shift_id: number | null;
 
-          expected_opening_amount: number | null
+          expected_opening_amount: number | null;
 
-          opening_counted_amount: number
+          opening_counted_amount: number;
 
-          opening_difference: number
+          opening_difference: number;
 
-          expected_closing_amount: number | null
+          expected_closing_amount: number | null;
 
-          closing_counted_amount: number | null
+          closing_counted_amount: number | null;
 
-          closing_difference: number | null
+          closing_difference: number | null;
 
-          left_for_next_shift: number | null
+          left_for_next_shift: number | null;
 
-          safe_transfer_amount: number | null
+          safe_transfer_amount: number | null;
 
-          closed_by: number | null
+          closed_by: number | null;
 
-          closed_by_name?: string | null
+          closed_by_name?: string | null;
 
-          closed_at: string | null
+          closed_at: string | null;
 
-          close_reason: string | null
+          close_reason: string | null;
 
-          duration_minutes: number
+          duration_minutes: number;
 
-          cash_in: number
-          cash_out: number
+          cash_in: number;
+          cash_out: number;
 
-          variance_count: number
+          variance_count: number;
 
-          pending_variance_count: number
-        }>
+          pending_variance_count: number;
+        }>;
 
-        total: number
-        limit: number
-        offset: number
-      }>
+        total: number;
+        limit: number;
+        offset: number;
+      }>;
 
       getCashShiftUsers: () => Promise<
         Array<{
-          id: number
-          name: string
-          role: string
+          id: number;
+          name: string;
+          role: string;
         }>
-      >
+      >;
 
       getCashShiftDetails: (shiftId: number) => Promise<{
-        shift: any
+        shift: any;
 
         preview: {
-          shift_id: number
+          shift_id: number;
 
-          opening_counted_amount: number
+          opening_counted_amount: number;
 
-          cash_in: number
-          cash_out: number
+          cash_in: number;
+          cash_out: number;
 
-          expected_closing_amount: number
+          expected_closing_amount: number;
 
           breakdown: Array<{
-            type: string
+            type: string;
 
-            direction: 'in' | 'out'
+            direction: 'in' | 'out';
 
-            total: number
-          }>
-        }
+            total: number;
+          }>;
+        };
 
-        movements: any[]
+        movements: any[];
 
-        variances: any[]
-      }>
+        variances: any[];
+      }>;
 
       listCashShiftVariances: (input?: {
-        status?: 'all' | 'pending' | 'resolved'
+        status?: 'all' | 'pending' | 'resolved';
 
-        user_id?: number | null
+        user_id?: number | null;
 
-        date_from?: string | null
-        date_to?: string | null
+        date_from?: string | null;
+        date_to?: string | null;
 
-        limit?: number
-        offset?: number
+        limit?: number;
+        offset?: number;
       }) => Promise<{
         rows: Array<{
-          id: number
-          shift_id: number
+          id: number;
+          shift_id: number;
 
-          stage: 'opening' | 'closing'
-          kind: 'shortage' | 'surplus'
+          stage: 'opening' | 'closing';
+          kind: 'shortage' | 'surplus';
 
-          amount: number
+          amount: number;
 
-          status: 'pending' | 'resolved'
+          status: 'pending' | 'resolved';
 
           resolution_type:
             | 'approved'
@@ -2812,543 +2814,539 @@ declare global {
             | 'corrected'
             | 'explained'
             | 'other'
-            | null
+            | null;
 
-          resolution_notes: string | null
+          resolution_notes: string | null;
 
-          resolved_by: number | null
-          resolved_by_name?: string | null
-          resolved_at: string | null
+          resolved_by: number | null;
+          resolved_by_name?: string | null;
+          resolved_at: string | null;
 
-          created_at: string
+          created_at: string;
 
-          shift_status: 'open' | 'closed'
+          shift_status: 'open' | 'closed';
 
-          opened_by: number
-          opened_by_name?: string | null
+          opened_by: number;
+          opened_by_name?: string | null;
 
-          shift_opened_at: string
-          shift_closed_at: string | null
-        }>
+          shift_opened_at: string;
+          shift_closed_at: string | null;
+        }>;
 
-        total: number
-        pending_count: number
+        total: number;
+        pending_count: number;
 
-        limit: number
-        offset: number
-      }>
+        limit: number;
+        offset: number;
+      }>;
 
       resolveCashShiftVariance: (input: {
-        variance_id: number
+        variance_id: number;
 
         resolution_type:
-          | 'approved'
-          | 'rejected'
-          | 'corrected'
-          | 'explained'
-          | 'other'
+          'approved' | 'rejected' | 'corrected' | 'explained' | 'other';
 
-        resolution_notes: string
-        reversal_account?: string | null
-        corrected_opening_amount?: number | null
-        admin_password: string
+        resolution_notes: string;
+        reversal_account?: string | null;
+        corrected_opening_amount?: number | null;
+        admin_password: string;
       }) => Promise<{
-        success: boolean
-        message?: string
-        variance?: any
-      }>
+        success: boolean;
+        message?: string;
+        variance?: any;
+      }>;
 
       closeCashShift: (input: {
-        shift_id: number
-        closing_counted_amount: number
-        left_for_next_shift: number
-        close_reason?: string | null
-        admin_password?: string
-      }) => Promise<any>
+        shift_id: number;
+        closing_counted_amount: number;
+        left_for_next_shift: number;
+        close_reason?: string | null;
+        admin_password?: string;
+      }) => Promise<any>;
 
       forceCloseCashShift: (input: {
-        shift_id: number
+        shift_id: number;
 
-        reason: string
+        reason: string;
 
-        admin_password: string
-      }) => Promise<any>
+        admin_password: string;
+      }) => Promise<any>;
 
       updateCashMovement: (input: {
-        id: number
+        id: number;
 
-        type?: 'deposit' | 'withdraw'
+        type?: 'deposit' | 'withdraw';
 
-        amount: number
+        amount: number;
 
-        payment_method?: string
+        payment_method?: string;
 
-        from_account?: string
-        to_account?: string
+        from_account?: string;
+        to_account?: string;
 
-        notes?: string | null
+        notes?: string | null;
 
-        actor_id?: number | null
+        actor_id?: number | null;
 
-        admin_password: string
+        admin_password: string;
       }) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
 
-        replaced_movement_id?: number
+        replaced_movement_id?: number;
 
-        movement_id?: number
+        movement_id?: number;
 
-        replaced_movement_ids?: number[]
+        replaced_movement_ids?: number[];
 
-        movement_ids?: number[]
+        movement_ids?: number[];
 
-        type?: string
-        direction?: string
+        type?: string;
+        direction?: string;
 
-        amount?: number
+        amount?: number;
 
-        payment_method?: string
+        payment_method?: string;
 
-        from_account?: string
-        to_account?: string
-      }>
+        from_account?: string;
+        to_account?: string;
+      }>;
 
       cancelCashMovement: (input: {
-        id: number
-        reason?: string | null
-        actor_id?: number | null
-        admin_password: string
+        id: number;
+        reason?: string | null;
+        actor_id?: number | null;
+        admin_password: string;
       }) => Promise<{
-        success: boolean
-        message?: string
-        cancelled_ids?: number[]
-      }>
+        success: boolean;
+        message?: string;
+        cancelled_ids?: number[];
+      }>;
 
       // =========================
       // Expenses
       // =========================
       getExpenses: (input?: {
-        date_from?: string
-        date_to?: string
-      }) => Promise<any[]>
+        date_from?: string;
+        date_to?: string;
+      }) => Promise<any[]>;
 
       getExpensesPage: (input?: {
-        date_from?: string
-        date_to?: string
-        limit?: number
-        offset?: number
+        date_from?: string;
+        date_to?: string;
+        limit?: number;
+        offset?: number;
       }) => Promise<{
-        rows: any[]
-        total: number
-        total_amount: number
-        limit: number
-        offset: number
-      }>
-      createExpense: (input: any) => Promise<any>
+        rows: any[];
+        total: number;
+        total_amount: number;
+        limit: number;
+        offset: number;
+      }>;
+      createExpense: (input: any) => Promise<any>;
       updateExpense: (input: {
-        id: number
-        title: string
-        category?: string | null
-        amount: number
-        payment_method?: string
-        notes?: string | null
-        actor_id?: number | null
-        admin_password?: string
+        id: number;
+        title: string;
+        category?: string | null;
+        amount: number;
+        payment_method?: string;
+        notes?: string | null;
+        actor_id?: number | null;
+        admin_password?: string;
       }) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
 
-        id?: number
+        id?: number;
 
-        old_cash_movement_id?: number
+        old_cash_movement_id?: number;
 
-        cash_movement_id?: number
-      }>
+        cash_movement_id?: number;
+      }>;
 
       cancelExpense: (input: {
-        id: number
-        reason?: string | null
-        actor_id?: number | null
-        admin_password?: string
+        id: number;
+        reason?: string | null;
+        actor_id?: number | null;
+        admin_password?: string;
       }) => Promise<{
-        success: boolean
-        message?: string
-      }>
+        success: boolean;
+        message?: string;
+      }>;
 
       // =========================
       // Activation Code
       // =========================
       getLicenseStatus: () => Promise<{
-        activated: boolean
-        trial_started_at: string
-        trial_days: number
-        trial_expires_at: string
-        days_left: number
-        expired: boolean
-        blocked?: boolean
-        message?: string
-        device_code: string
-        app_logo_url: string
-        app_name: string
-        app_theme?: 'dark' | 'light'
-        store_phone?: string
-        store_address?: string
-        store_qr_enabled?: boolean
-        store_qr_title?: string
-        store_qr_primary_url?: string
-      }>
+        activated: boolean;
+        trial_started_at: string;
+        trial_days: number;
+        trial_expires_at: string;
+        days_left: number;
+        expired: boolean;
+        blocked?: boolean;
+        message?: string;
+        device_code: string;
+        app_logo_url: string;
+        app_name: string;
+        app_theme?: 'dark' | 'light';
+        store_phone?: string;
+        store_address?: string;
+        store_qr_enabled?: boolean;
+        store_qr_title?: string;
+        store_qr_primary_url?: string;
+      }>;
 
       activateApp: (code: string) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
         status?: {
-          activated: boolean
-          trial_started_at: string
-          trial_days: number
-          trial_expires_at: string
-          days_left: number
-          expired: boolean
-          blocked?: boolean
-          message?: string
-          device_code: string
-          app_logo_url: string
-          app_name: string
-          app_theme: 'dark' | 'light'
-        }
-      }>
+          activated: boolean;
+          trial_started_at: string;
+          trial_days: number;
+          trial_expires_at: string;
+          days_left: number;
+          expired: boolean;
+          blocked?: boolean;
+          message?: string;
+          device_code: string;
+          app_logo_url: string;
+          app_name: string;
+          app_theme: 'dark' | 'light';
+        };
+      }>;
 
       saveAppLogoUrl: (
         url: string,
         input?: { actor_id?: number },
       ) => Promise<{
-        success: boolean
+        success: boolean;
         status: {
-          activated: boolean
-          trial_started_at: string
-          trial_days: number
-          trial_expires_at: string
-          days_left: number
-          expired: boolean
-          blocked?: boolean
-          message?: string
-          device_code: string
-          app_logo_url: string
-          app_name: string
-          app_theme: 'dark' | 'light'
-        }
-      }>
+          activated: boolean;
+          trial_started_at: string;
+          trial_days: number;
+          trial_expires_at: string;
+          days_left: number;
+          expired: boolean;
+          blocked?: boolean;
+          message?: string;
+          device_code: string;
+          app_logo_url: string;
+          app_name: string;
+          app_theme: 'dark' | 'light';
+        };
+      }>;
 
       chooseAppLogo: (input?: { actor_id?: number }) => Promise<{
-        success: boolean
-        canceled?: boolean
-        logoUrl?: string
-        message?: string
+        success: boolean;
+        canceled?: boolean;
+        logoUrl?: string;
+        message?: string;
         status?: {
-          activated: boolean
-          trial_started_at: string
-          trial_days: number
-          trial_expires_at: string
-          days_left: number
-          expired: boolean
-          blocked?: boolean
-          message?: string
-          device_code: string
-          app_logo_url: string
-          app_name: string
-          app_theme: 'dark' | 'light'
-        }
-      }>
+          activated: boolean;
+          trial_started_at: string;
+          trial_days: number;
+          trial_expires_at: string;
+          days_left: number;
+          expired: boolean;
+          blocked?: boolean;
+          message?: string;
+          device_code: string;
+          app_logo_url: string;
+          app_name: string;
+          app_theme: 'dark' | 'light';
+        };
+      }>;
 
       deactivateApp: () => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
         status?: {
-          activated: boolean
-          trial_started_at: string
-          trial_days: number
-          trial_expires_at: string
-          days_left: number
-          expired: boolean
-          blocked?: boolean
-          message?: string
-          device_code: string
-          app_logo_url: string
-          app_name: string
-          app_theme: 'dark' | 'light'
-        }
-      }>
+          activated: boolean;
+          trial_started_at: string;
+          trial_days: number;
+          trial_expires_at: string;
+          days_left: number;
+          expired: boolean;
+          blocked?: boolean;
+          message?: string;
+          device_code: string;
+          app_logo_url: string;
+          app_name: string;
+          app_theme: 'dark' | 'light';
+        };
+      }>;
 
       saveAppName: (
         name: string,
         input?: { actor_id?: number },
       ) => Promise<{
-        success: boolean
+        success: boolean;
         status: {
-          activated: boolean
-          trial_started_at: string
-          trial_days: number
-          trial_expires_at: string
-          days_left: number
-          expired: boolean
-          blocked?: boolean
-          message?: string
-          device_code: string
-          app_logo_url: string
-          app_name: string
-          app_theme: 'dark' | 'light'
-        }
-      }>
+          activated: boolean;
+          trial_started_at: string;
+          trial_days: number;
+          trial_expires_at: string;
+          days_left: number;
+          expired: boolean;
+          blocked?: boolean;
+          message?: string;
+          device_code: string;
+          app_logo_url: string;
+          app_name: string;
+          app_theme: 'dark' | 'light';
+        };
+      }>;
 
       saveAppTheme: (
         theme: 'dark' | 'light',
         input?: { actor_id?: number },
       ) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
         status: {
-          activated: boolean
-          trial_started_at: string
-          trial_days: number
-          trial_expires_at: string
-          days_left: number
-          expired: boolean
-          blocked?: boolean
-          message?: string
-          device_code: string
-          app_logo_url: string
-          app_name: string
-          app_theme: 'dark' | 'light'
-        }
-      }>
+          activated: boolean;
+          trial_started_at: string;
+          trial_days: number;
+          trial_expires_at: string;
+          days_left: number;
+          expired: boolean;
+          blocked?: boolean;
+          message?: string;
+          device_code: string;
+          app_logo_url: string;
+          app_name: string;
+          app_theme: 'dark' | 'light';
+        };
+      }>;
 
       saveStoreContactInfo: (
         phone: string,
         address: string,
         input: any,
-      ) => Promise<any>
+      ) => Promise<any>;
 
       saveStoreQrSettings: (input: {
-        store_qr_enabled: boolean
-        store_qr_title?: string
-        store_qr_primary_url?: string
-        actor_id?: number
+        store_qr_enabled: boolean;
+        store_qr_title?: string;
+        store_qr_primary_url?: string;
+        actor_id?: number;
       }) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
         status?: {
-          activated: boolean
-          trial_started_at: string
-          trial_days: number
-          trial_expires_at: string
-          days_left: number
-          expired: boolean
-          blocked?: boolean
-          message?: string
-          device_code?: string
-          app_logo_url: string
-          app_name: string
-          app_theme?: 'dark' | 'light'
-          store_phone?: string
-          store_address?: string
-          store_qr_enabled?: boolean
-          store_qr_title?: string
-          store_qr_primary_url?: string
-        }
-      }>
+          activated: boolean;
+          trial_started_at: string;
+          trial_days: number;
+          trial_expires_at: string;
+          days_left: number;
+          expired: boolean;
+          blocked?: boolean;
+          message?: string;
+          device_code?: string;
+          app_logo_url: string;
+          app_name: string;
+          app_theme?: 'dark' | 'light';
+          store_phone?: string;
+          store_address?: string;
+          store_qr_enabled?: boolean;
+          store_qr_title?: string;
+          store_qr_primary_url?: string;
+        };
+      }>;
 
       // =========================
       // Liabilities
       // ==========================
       getLiabilities: (input?: {
-        search?: string
-        status?: string
-      }) => Promise<any[]>
+        search?: string;
+        status?: string;
+      }) => Promise<any[]>;
 
       getLiabilitiesPage: (input?: {
-        search?: string
-        status?: string
-        limit?: number
-        offset?: number
+        search?: string;
+        status?: string;
+        limit?: number;
+        offset?: number;
       }) => Promise<{
-        rows: any[]
-        total: number
-        limit: number
-        offset: number
-      }>
+        rows: any[];
+        total: number;
+        limit: number;
+        offset: number;
+      }>;
 
-      createLiability: (input: any) => Promise<any>
+      createLiability: (input: any) => Promise<any>;
       updateLiability: (input: {
-        id: number
-        party_name: string
-        title: string
-        category?: string | null
-        total_amount: number
-        due_date?: string | null
-        notes?: string | null
-        actor_id?: number | null
-        admin_password: string
+        id: number;
+        party_name: string;
+        title: string;
+        category?: string | null;
+        total_amount: number;
+        due_date?: string | null;
+        notes?: string | null;
+        actor_id?: number | null;
+        admin_password: string;
       }) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
 
-        liability_id?: number
+        liability_id?: number;
 
-        total_amount?: number
-        paid_amount?: number
-        remaining_amount?: number
+        total_amount?: number;
+        paid_amount?: number;
+        remaining_amount?: number;
 
-        status?: string
-      }>
-      recordLiabilityPayment: (input: any) => Promise<any>
+        status?: string;
+      }>;
+      recordLiabilityPayment: (input: any) => Promise<any>;
       updateLiabilityPayment: (input: {
-        payment_id: number
-        amount: number
-        payment_method?: string
-        notes?: string | null
-        actor_id?: number | null
-        admin_password: string
+        payment_id: number;
+        amount: number;
+        payment_method?: string;
+        notes?: string | null;
+        actor_id?: number | null;
+        admin_password: string;
       }) => Promise<{
-        success: boolean
-        message?: string
+        success: boolean;
+        message?: string;
 
-        liability_id?: number
+        liability_id?: number;
 
-        replaced_payment_id?: number
-        payment_id?: number
+        replaced_payment_id?: number;
+        payment_id?: number;
 
-        old_amount?: number
-        new_amount?: number
+        old_amount?: number;
+        new_amount?: number;
 
-        paid_amount?: number
-        remaining_amount?: number
+        paid_amount?: number;
+        remaining_amount?: number;
 
-        status?: string
+        status?: string;
 
-        payment_method?: string
-      }>
-      getLiabilityStatement: (liabilityId: number) => Promise<any>
-      cancelLiability: (input: any) => Promise<any>
+        payment_method?: string;
+      }>;
+      getLiabilityStatement: (liabilityId: number) => Promise<any>;
+      cancelLiability: (input: any) => Promise<any>;
       getLiabilitiesSummary: (input?: {
-        date_from?: string
-        date_to?: string
-      }) => Promise<any>
+        date_from?: string;
+        date_to?: string;
+      }) => Promise<any>;
 
       cancelLiabilityPayment: (input: {
-        payment_id: number
-        reason?: string | null
-        actor_id?: number | null
-        admin_password: string
+        payment_id: number;
+        reason?: string | null;
+        actor_id?: number | null;
+        admin_password: string;
       }) => Promise<{
-        success: boolean
-        message?: string
-        liability_id?: number
-        payment_id?: number
-        paid_amount?: number
-        remaining_amount?: number
-        status?: string
-      }>
-    }
+        success: boolean;
+        message?: string;
+        liability_id?: number;
+        payment_id?: number;
+        paid_amount?: number;
+        remaining_amount?: number;
+        status?: string;
+      }>;
+    };
   }
 
   type Customer = {
-    id: number
-    name: string
-    phone?: string | null
-    email?: string | null
-    address?: string | null
-    notes?: string | null
-    points_balance: number
-    total_spent: number
-    is_active?: number
-    sales_count?: number
-    last_sale_at?: string | null
-    created_at?: string
-    updated_at?: string
-    credit_limit?: number | null
-    credit_days?: number | null
-  }
+    id: number;
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+    address?: string | null;
+    notes?: string | null;
+    points_balance: number;
+    total_spent: number;
+    is_active?: number;
+    sales_count?: number;
+    last_sale_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+    credit_limit?: number | null;
+    credit_days?: number | null;
+  };
 
   type CustomerInput = {
-    name: string
-    phone?: string | null
-    email?: string | null
-    address?: string | null
-    notes?: string | null
-    credit_limit?: number | null
-    credit_days?: number | null
-  }
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+    address?: string | null;
+    notes?: string | null;
+    credit_limit?: number | null;
+    credit_days?: number | null;
+  };
 
   type CustomerUpdateInput = CustomerInput & {
-    id: number
-    is_active?: number
-    credit_limit?: number | null
-  }
+    id: number;
+    is_active?: number;
+    credit_limit?: number | null;
+  };
 
   type LoyaltySettings = {
-    loyalty_enabled: boolean
-    loyalty_earn_amount: number
-    loyalty_earn_points: number
-    loyalty_point_value: number
-    loyalty_min_redeem_points: number
-  }
+    loyalty_enabled: boolean;
+    loyalty_earn_amount: number;
+    loyalty_earn_points: number;
+    loyalty_point_value: number;
+    loyalty_min_redeem_points: number;
+  };
 
   type CustomerHistory = {
-    customer: Customer | null
+    customer: Customer | null;
     sales: Array<{
-      id: number
-      sub_total: number
-      discount_value: number
-      grand_total: number
-      paid: number
-      change_amount: number
-      payment_method: string
-      loyalty_points_earned: number
-      loyalty_points_redeemed: number
-      loyalty_discount_value: number
-      created_at: string
-    }>
+      id: number;
+      sub_total: number;
+      discount_value: number;
+      grand_total: number;
+      paid: number;
+      change_amount: number;
+      payment_method: string;
+      loyalty_points_earned: number;
+      loyalty_points_redeemed: number;
+      loyalty_discount_value: number;
+      created_at: string;
+    }>;
     loyalty: Array<{
-      id: number
-      customer_id: number
-      sale_id?: number | null
-      type: 'earn' | 'redeem' | 'adjust'
-      points: number
-      amount: number
-      notes?: string | null
-      created_at: string
-    }>
-  }
+      id: number;
+      customer_id: number;
+      sale_id?: number | null;
+      type: 'earn' | 'redeem' | 'adjust';
+      points: number;
+      amount: number;
+      notes?: string | null;
+      created_at: string;
+    }>;
+  };
 
   type SystemUser = {
-    id: number
-    name: string
-    username: string
-    permissions?: PermissionKey[]
-    role: 'admin' | 'cashier' | string
-    is_active: number
-    created_at: string
-    must_change_password?: number
-  }
+    id: number;
+    name: string;
+    username: string;
+    permissions?: PermissionKey[];
+    role: 'admin' | 'cashier' | string;
+    is_active: number;
+    created_at: string;
+    must_change_password?: number;
+  };
 
   type MutationResult<T = any> = {
-    success: boolean
-    message?: string
-    user?: T
-  }
+    success: boolean;
+    message?: string;
+    user?: T;
+  };
 
   type ActivityLog = {
-    id: number
-    user_id?: number | null
-    approved_by?: number | null
-    action: string
-    entity?: string | null
-    entity_id?: number | null
-    details?: string | null
-    created_at: string
-    user_name?: string | null
-    username?: string | null
-    approved_by_name?: string | null
-    approved_by_username?: string | null
-  }
+    id: number;
+    user_id?: number | null;
+    approved_by?: number | null;
+    action: string;
+    entity?: string | null;
+    entity_id?: number | null;
+    details?: string | null;
+    created_at: string;
+    user_name?: string | null;
+    username?: string | null;
+    approved_by_name?: string | null;
+    approved_by_username?: string | null;
+  };
 }

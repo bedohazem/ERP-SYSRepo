@@ -1,19 +1,19 @@
-import { getDb } from '../db'
-import { getCustomerDueSummary } from './customers.repo'
-import { getSupplierDueSummary } from './suppliers.repo'
+import { getDb } from '../db';
+import { getCustomerDueSummary } from './customers.repo';
+import { getSupplierDueSummary } from './suppliers.repo';
 
 type ReportFilter = {
-  date_from?: string
-  date_to?: string
-  user_id?: number
-}
+  date_from?: string;
+  date_to?: string;
+  user_id?: number;
+};
 
 export type CashierDashboardInput = {
-  user_id: number
-}
+  user_id: number;
+};
 
 function reportMoney(value: unknown) {
-  return Number(Number(value || 0).toFixed(2))
+  return Number(Number(value || 0).toFixed(2));
 }
 
 function buildWhere(
@@ -23,30 +23,30 @@ function buildWhere(
   userColumn?: string,
   dateExpression?: string,
 ) {
-  const where: string[] = [...extra]
-  const params: any[] = []
+  const where: string[] = [...extra];
+  const params: any[] = [];
 
-  const dateExpr = dateExpression || `date(${alias}.created_at, 'localtime')`
+  const dateExpr = dateExpression || `date(${alias}.created_at, 'localtime')`;
 
   if (input?.date_from) {
-    where.push(`${dateExpr} >= ?`)
-    params.push(input.date_from)
+    where.push(`${dateExpr} >= ?`);
+    params.push(input.date_from);
   }
 
   if (input?.date_to) {
-    where.push(`${dateExpr} <= ?`)
-    params.push(input.date_to)
+    where.push(`${dateExpr} <= ?`);
+    params.push(input.date_to);
   }
 
   if (input?.user_id && userColumn) {
-    where.push(`${userColumn} = ?`)
-    params.push(Number(input.user_id))
+    where.push(`${userColumn} = ?`);
+    params.push(Number(input.user_id));
   }
 
   return {
     whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '',
     params,
-  }
+  };
 }
 
 const CASH_ACCOUNT_ORDER = `
@@ -59,37 +59,39 @@ const CASH_ACCOUNT_ORDER = `
     WHEN 'fawry_machine' THEN 6
     ELSE 99
   END
-`
+`;
 
 function getCashAccountLabel(account: string) {
   switch (account) {
     case 'store_cash':
-      return 'كاش درج المحل'
+      return 'كاش درج المحل';
     case 'store_safe':
-      return 'الخزنة الآمنة'
+      return 'الخزنة الآمنة';
     case 'owner_cash':
-      return 'كاش مع المالك'
+      return 'كاش مع المالك';
     case 'owner_bank':
-      return 'حساب بنك / فيزا المالك'
+      return 'حساب بنك / فيزا المالك';
     case 'owner_vodafone':
-      return 'فودافون كاش المالك'
+      return 'فودافون كاش المالك';
     case 'fawry_machine':
-      return 'ماكينة فوري'
+      return 'ماكينة فوري';
     default:
-      return account || 'غير محدد'
+      return account || 'غير محدد';
   }
 }
 
 export function getAdminCashFlowAlerts() {
-  const customers = getCustomerDueSummary()
+  const customers = getCustomerDueSummary();
 
-  const suppliers = getSupplierDueSummary()
+  const suppliers = getSupplierDueSummary();
 
   const customerReceivables = reportMoney(
     customers.due_today + customers.due_soon,
-  )
+  );
 
-  const supplierPayables = reportMoney(suppliers.due_today + suppliers.due_soon)
+  const supplierPayables = reportMoney(
+    suppliers.due_today + suppliers.due_soon,
+  );
 
   return {
     customers,
@@ -103,11 +105,11 @@ export function getAdminCashFlowAlerts() {
 
       net: reportMoney(customerReceivables - supplierPayables),
     },
-  }
+  };
 }
 
 export function getReportsSummary(input?: ReportFilter) {
-  const db = getDb()
+  const db = getDb();
 
   const saleBusinessDate: string = `
     COALESCE(
@@ -134,7 +136,7 @@ export function getReportsSummary(input?: ReportFilter) {
         'localtime'
       )
     )
-  `
+  `;
 
   const returnBusinessDate: string = `
     COALESCE(
@@ -156,7 +158,7 @@ export function getReportsSummary(input?: ReportFilter) {
         'localtime'
       )
     )
-  `
+  `;
 
   const exchangeBusinessDate: string = `
     COALESCE(
@@ -183,7 +185,7 @@ export function getReportsSummary(input?: ReportFilter) {
         'localtime'
       )
     )
-  `
+  `;
 
   const expenseBusinessDate: string = `
     COALESCE(
@@ -205,7 +207,7 @@ export function getReportsSummary(input?: ReportFilter) {
         'localtime'
       )
     )
-  `
+  `;
 
   const cashMovementBusinessDate: string = `
   COALESCE(
@@ -232,7 +234,7 @@ export function getReportsSummary(input?: ReportFilter) {
       'localtime'
     )
   )
-`
+`;
 
   const cancelledSaleBusinessDate: string = `
     COALESCE(
@@ -255,7 +257,7 @@ export function getReportsSummary(input?: ReportFilter) {
         'localtime'
       )
     )
-  `
+  `;
 
   const cancelledReturnBusinessDate: string = `
     COALESCE(
@@ -278,7 +280,7 @@ export function getReportsSummary(input?: ReportFilter) {
         'localtime'
       )
     )
-  `
+  `;
 
   const salesWhere = buildWhere(
     's',
@@ -286,7 +288,7 @@ export function getReportsSummary(input?: ReportFilter) {
     [`IFNULL(s.type, 'sale') = 'sale'`, `s.cancelled_at IS NULL`],
     's.user_id',
     saleBusinessDate,
-  )
+  );
 
   const returnsWhere = buildWhere(
     'sr',
@@ -298,7 +300,7 @@ export function getReportsSummary(input?: ReportFilter) {
     ],
     'sr.user_id',
     returnBusinessDate,
-  )
+  );
 
   const exchangesWhere = buildWhere(
     'se',
@@ -310,7 +312,7 @@ export function getReportsSummary(input?: ReportFilter) {
     ],
     'se.user_id',
     exchangeBusinessDate,
-  )
+  );
 
   const cancelledSalesWhere = buildWhere(
     's',
@@ -318,7 +320,7 @@ export function getReportsSummary(input?: ReportFilter) {
     [`IFNULL(s.type, 'sale') = 'sale'`, `s.cancelled_at IS NOT NULL`],
     's.user_id',
     cancelledSaleBusinessDate,
-  )
+  );
 
   const cancelledReturnsWhere = buildWhere(
     'sr',
@@ -326,7 +328,7 @@ export function getReportsSummary(input?: ReportFilter) {
     [`sr.cancelled_at IS NOT NULL`],
     'sr.user_id',
     cancelledReturnBusinessDate,
-  )
+  );
 
   const combinedWhere = buildWhere(
     'x',
@@ -334,7 +336,7 @@ export function getReportsSummary(input?: ReportFilter) {
     [],
     'x.user_id',
     'x.business_date',
-  )
+  );
 
   const salesSummary = db
     .prepare(
@@ -376,7 +378,7 @@ export function getReportsSummary(input?: ReportFilter) {
       ${salesWhere.whereSql}
     `,
     )
-    .get(...salesWhere.params) as any
+    .get(...salesWhere.params) as any;
 
   const returnsSummary = db
     .prepare(
@@ -439,7 +441,7 @@ export function getReportsSummary(input?: ReportFilter) {
     ${returnsWhere.whereSql}
   `,
     )
-    .get(...returnsWhere.params) as any
+    .get(...returnsWhere.params) as any;
 
   const exchangeSummary = db
     .prepare(
@@ -533,7 +535,7 @@ export function getReportsSummary(input?: ReportFilter) {
       ${exchangesWhere.whereSql}
       `,
     )
-    .get(...exchangesWhere.params) as any
+    .get(...exchangesWhere.params) as any;
 
   const cancelledSalesRow = db
     .prepare(
@@ -543,7 +545,7 @@ export function getReportsSummary(input?: ReportFilter) {
     ${cancelledSalesWhere.whereSql}
     `,
     )
-    .get(...cancelledSalesWhere.params) as any
+    .get(...cancelledSalesWhere.params) as any;
 
   const cancelledReturnsRow = db
     .prepare(
@@ -553,7 +555,7 @@ export function getReportsSummary(input?: ReportFilter) {
     ${cancelledReturnsWhere.whereSql}
     `,
     )
-    .get(...cancelledReturnsWhere.params) as any
+    .get(...cancelledReturnsWhere.params) as any;
 
   const salesProfitRow = db
     .prepare(
@@ -584,7 +586,7 @@ export function getReportsSummary(input?: ReportFilter) {
       ) x
     `,
     )
-    .get(...salesWhere.params) as any
+    .get(...salesWhere.params) as any;
 
   const returnsProfitRow = db
     .prepare(
@@ -631,7 +633,7 @@ export function getReportsSummary(input?: ReportFilter) {
     ) x
   `,
     )
-    .get(...returnsWhere.params) as any
+    .get(...returnsWhere.params) as any;
 
   const exchangeProfitRow = db
     .prepare(
@@ -729,19 +731,19 @@ export function getReportsSummary(input?: ReportFilter) {
       ${exchangesWhere.whereSql}
       `,
     )
-    .get(...exchangesWhere.params) as any
+    .get(...exchangesWhere.params) as any;
 
-  const exchangeAdjustment = Number(exchangeSummary.exchange_adjustment || 0)
+  const exchangeAdjustment = Number(exchangeSummary.exchange_adjustment || 0);
 
   const grossPriceAdjustment = Number(
     exchangeProfitRow.gross_price_adjustment || 0,
-  )
+  );
 
-  const exchangeDiscountAdjustment = grossPriceAdjustment - exchangeAdjustment
+  const exchangeDiscountAdjustment = grossPriceAdjustment - exchangeAdjustment;
 
-  const grossSales = Number(salesSummary.gross_sales || 0) + exchangeAdjustment
+  const grossSales = Number(salesSummary.gross_sales || 0) + exchangeAdjustment;
 
-  const totalReturns = Number(returnsSummary.total_returns || 0)
+  const totalReturns = Number(returnsSummary.total_returns || 0);
 
   const normalDiscounts = Math.max(
     0,
@@ -749,7 +751,7 @@ export function getReportsSummary(input?: ReportFilter) {
     Number(salesSummary.normal_discounts || 0) -
       Number(returnsSummary.returned_normal_discounts || 0) +
       Number(exchangeSummary.normal_discount_adjustment || 0),
-  )
+  );
 
   const promotionDiscounts = Math.max(
     0,
@@ -757,7 +759,7 @@ export function getReportsSummary(input?: ReportFilter) {
     Number(salesSummary.promotion_discounts || 0) -
       Number(returnsSummary.returned_promotion_discounts || 0) +
       Number(exchangeSummary.promotion_discount_adjustment || 0),
-  )
+  );
 
   const loyaltyDiscounts = Math.max(
     0,
@@ -765,12 +767,12 @@ export function getReportsSummary(input?: ReportFilter) {
     Number(salesSummary.loyalty_discounts || 0) -
       Number(returnsSummary.returned_loyalty_discounts || 0) +
       Number(exchangeSummary.loyalty_discount_adjustment || 0),
-  )
+  );
 
   const returnedDiscounts =
     Number(returnsSummary.returned_normal_discounts || 0) +
     Number(returnsSummary.returned_promotion_discounts || 0) +
-    Number(returnsSummary.returned_loyalty_discounts || 0)
+    Number(returnsSummary.returned_loyalty_discounts || 0);
 
   const totalDiscounts = Math.max(
     0,
@@ -778,17 +780,17 @@ export function getReportsSummary(input?: ReportFilter) {
     Number(salesSummary.total_discounts || 0) -
       returnedDiscounts +
       exchangeDiscountAdjustment,
-  )
+  );
 
   const grossProfitBeforeDiscounts =
     Number(salesProfitRow.gross_profit_before_discounts || 0) -
     Number(returnsProfitRow.returned_profit_before_discounts || 0) +
-    Number(exchangeProfitRow.gross_profit_adjustment || 0)
+    Number(exchangeProfitRow.gross_profit_adjustment || 0);
 
   const netProfitAfterDiscounts =
     Number(salesProfitRow.net_profit_after_discounts || 0) -
     Number(returnsProfitRow.returned_profit_after_discounts || 0) +
-    Number(exchangeProfitRow.net_profit_adjustment || 0)
+    Number(exchangeProfitRow.net_profit_adjustment || 0);
 
   const expensesWhere = buildWhere(
     'e',
@@ -796,11 +798,11 @@ export function getReportsSummary(input?: ReportFilter) {
     [`e.cancelled_at IS NULL`],
     undefined,
     expenseBusinessDate,
-  )
+  );
 
   const liabilityPaymentsWhere = buildWhere('p', input, [
     `p.cancelled_at IS NULL`,
-  ])
+  ]);
 
   const purchasesWhere = buildWhere(
     'pi',
@@ -808,7 +810,7 @@ export function getReportsSummary(input?: ReportFilter) {
     [`pi.cancelled_at IS NULL`, `IFNULL(pi.status, 'active') <> 'cancelled'`],
     undefined,
     `date(pi.created_at, 'localtime')`,
-  )
+  );
 
   const manualCashWhere = buildWhere(
     'cm',
@@ -823,7 +825,7 @@ export function getReportsSummary(input?: ReportFilter) {
     NULLIF(cm.business_date, ''),
     date(cm.created_at, 'localtime')
   )`,
-  )
+  );
 
   const closingVarianceWhere = buildWhere(
     'csv',
@@ -835,7 +837,7 @@ export function getReportsSummary(input?: ReportFilter) {
     ],
     'cs.opened_by',
     `date(cs.opened_at, 'localtime')`,
-  )
+  );
 
   const openingVarianceWhere = buildWhere(
     'csv',
@@ -847,7 +849,7 @@ export function getReportsSummary(input?: ReportFilter) {
     ],
     'cs.opened_by',
     `date(cs.opened_at, 'localtime')`,
-  )
+  );
 
   const expensesRow = db
     .prepare(
@@ -857,7 +859,7 @@ export function getReportsSummary(input?: ReportFilter) {
       ${expensesWhere.whereSql}
     `,
     )
-    .get(...expensesWhere.params) as any
+    .get(...expensesWhere.params) as any;
 
   const liabilityPaymentsRow = db
     .prepare(
@@ -867,7 +869,7 @@ export function getReportsSummary(input?: ReportFilter) {
       ${liabilityPaymentsWhere.whereSql}
     `,
     )
-    .get(...liabilityPaymentsWhere.params) as any
+    .get(...liabilityPaymentsWhere.params) as any;
 
   const purchasesRow = db
     .prepare(
@@ -884,8 +886,8 @@ export function getReportsSummary(input?: ReportFilter) {
     `,
     )
     .get(...purchasesWhere.params) as {
-    total_purchase_invoices: number
-  }
+    total_purchase_invoices: number;
+  };
 
   const manualCashRow = db
     .prepare(
@@ -921,9 +923,9 @@ export function getReportsSummary(input?: ReportFilter) {
     `,
     )
     .get(...manualCashWhere.params) as {
-    total_manual_deposits: number
-    total_manual_withdrawals: number
-  }
+    total_manual_deposits: number;
+    total_manual_withdrawals: number;
+  };
 
   const closingVarianceRow = db
     .prepare(
@@ -960,9 +962,9 @@ export function getReportsSummary(input?: ReportFilter) {
     `,
     )
     .get(...closingVarianceWhere.params) as {
-    approved_closing_surplus: number
-    approved_closing_shortage: number
-  }
+    approved_closing_surplus: number;
+    approved_closing_shortage: number;
+  };
 
   const openingVarianceRow = db
     .prepare(
@@ -999,40 +1001,40 @@ export function getReportsSummary(input?: ReportFilter) {
     `,
     )
     .get(...openingVarianceWhere.params) as {
-    approved_opening_surplus: number
-    approved_opening_shortage: number
-  }
+    approved_opening_surplus: number;
+    approved_opening_shortage: number;
+  };
 
-  const totalExpenses = Number(expensesRow.total_expenses || 0)
+  const totalExpenses = Number(expensesRow.total_expenses || 0);
   const totalLiabilityPayments = Number(
     liabilityPaymentsRow.total_liability_payments || 0,
-  )
+  );
 
   const totalPurchaseInvoices = Number(
     purchasesRow.total_purchase_invoices || 0,
-  )
+  );
 
-  const totalManualDeposits = Number(manualCashRow.total_manual_deposits || 0)
+  const totalManualDeposits = Number(manualCashRow.total_manual_deposits || 0);
 
   const totalManualWithdrawals = Number(
     manualCashRow.total_manual_withdrawals || 0,
-  )
+  );
 
   const approvedClosingSurplus = Number(
     closingVarianceRow.approved_closing_surplus || 0,
-  )
+  );
 
   const approvedClosingShortage = Number(
     closingVarianceRow.approved_closing_shortage || 0,
-  )
+  );
 
   const approvedOpeningSurplus = Number(
     openingVarianceRow.approved_opening_surplus || 0,
-  )
+  );
 
   const approvedOpeningShortage = Number(
     openingVarianceRow.approved_opening_shortage || 0,
-  )
+  );
 
   const finalNetProfit =
     netProfitAfterDiscounts -
@@ -1040,7 +1042,7 @@ export function getReportsSummary(input?: ReportFilter) {
     approvedClosingSurplus -
     approvedClosingShortage +
     approvedOpeningSurplus -
-    approvedOpeningShortage
+    approvedOpeningShortage;
 
   const topProducts = db
     .prepare(
@@ -1279,7 +1281,7 @@ export function getReportsSummary(input?: ReportFilter) {
         net_quantity DESC
       `,
     )
-    .all(...combinedWhere.params)
+    .all(...combinedWhere.params);
 
   const dailySales = db
     .prepare(
@@ -1383,7 +1385,7 @@ export function getReportsSummary(input?: ReportFilter) {
         day ASC
       `,
     )
-    .all(...combinedWhere.params)
+    .all(...combinedWhere.params);
 
   const actualCollectionsWhere = buildWhere(
     'cm',
@@ -1415,7 +1417,7 @@ export function getReportsSummary(input?: ReportFilter) {
     'cm.created_by',
 
     cashMovementBusinessDate,
-  )
+  );
 
   const paymentMethods = db
     .prepare(
@@ -1515,7 +1517,7 @@ export function getReportsSummary(input?: ReportFilter) {
         total DESC
       `,
     )
-    .all(...actualCollectionsWhere.params)
+    .all(...actualCollectionsWhere.params);
 
   const cashierSales = db
     .prepare(
@@ -1735,7 +1737,7 @@ export function getReportsSummary(input?: ReportFilter) {
       exchange_adjustment: Number(row.exchange_adjustment || 0),
 
       net_sales: Number(row.net_sales || 0),
-    }))
+    }));
 
   const lowStock = db
     .prepare(
@@ -1764,7 +1766,7 @@ export function getReportsSummary(input?: ReportFilter) {
       ORDER BY stock ASC
     `,
     )
-    .all()
+    .all();
 
   const topCustomers = db
     .prepare(
@@ -1923,7 +1925,7 @@ export function getReportsSummary(input?: ReportFilter) {
         total_spent DESC
       `,
     )
-    .all(...combinedWhere.params)
+    .all(...combinedWhere.params);
 
   const cashAccounts = db
     .prepare(
@@ -1967,13 +1969,13 @@ export function getReportsSummary(input?: ReportFilter) {
       total_in: Number(row.total_in || 0),
       total_out: Number(row.total_out || 0),
       balance: Number(row.balance || 0),
-    }))
+    }));
 
   const cashAccountsTotalBalance = cashAccounts.reduce(
     (sum: number, account: any) => sum + Number(account.balance || 0),
 
     0,
-  )
+  );
 
   return {
     summary: {
@@ -2026,16 +2028,16 @@ export function getReportsSummary(input?: ReportFilter) {
     cashierSales,
     lowStock,
     topCustomers,
-  }
+  };
 }
 
 export function getCashierDashboardSummary(input: CashierDashboardInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const userId = Number(input?.user_id || 0)
+  const userId = Number(input?.user_id || 0);
 
   if (!Number.isInteger(userId) || userId <= 0) {
-    throw new Error('المستخدم غير صحيح')
+    throw new Error('المستخدم غير صحيح');
   }
 
   /*
@@ -2072,7 +2074,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
       LIMIT 1
       `,
     )
-    .get(userId) as any
+    .get(userId) as any;
 
   /*
    * لو مفيش شفت مفتوح:
@@ -2142,10 +2144,10 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
 
         stock_count_sessions_count: 0,
       },
-    }
+    };
   }
 
-  const shiftId = Number(shift.id)
+  const shiftId = Number(shift.id);
 
   /*
    * فواتير البيع التي أنشأها
@@ -2310,7 +2312,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           s.shift_id = ?
       `,
     )
-    .get(shiftId) as any
+    .get(shiftId) as any;
 
   /*
    * الإلغاءات التي نفذها
@@ -2332,7 +2334,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           s.cancelled_shift_id = ?
       `,
     )
-    .get(shiftId) as any
+    .get(shiftId) as any;
 
   /*
    * المرتجعات هنا مرتبطة
@@ -2424,7 +2426,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           sr.shift_id = ?
       `,
     )
-    .get(shiftId) as any
+    .get(shiftId) as any;
 
   const cancelledReturns = db
     .prepare(
@@ -2442,7 +2444,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           sr.cancelled_shift_id = ?
       `,
     )
-    .get(shiftId) as any
+    .get(shiftId) as any;
 
   /*
    * الاستبدالات التي تم تنفيذها
@@ -2550,7 +2552,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           se.shift_id = ?
       `,
     )
-    .get(shiftId) as any
+    .get(shiftId) as any;
 
   const cancelledExchanges = db
     .prepare(
@@ -2568,7 +2570,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           se.cancelled_shift_id = ?
       `,
     )
-    .get(shiftId) as any
+    .get(shiftId) as any;
 
   /*
    * دفعات العملاء:
@@ -2597,7 +2599,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           b.shift_id = ?
       `,
     )
-    .get(shiftId) as any
+    .get(shiftId) as any;
 
   const cancelledCustomerPayments = db
     .prepare(
@@ -2614,7 +2616,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
             b.cancelled_shift_id = ?
         `,
     )
-    .get(shiftId) as any
+    .get(shiftId) as any;
 
   const expenses = db
     .prepare(
@@ -2639,7 +2641,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           e.shift_id = ?
       `,
     )
-    .get(shiftId) as any
+    .get(shiftId) as any;
 
   const cancelledExpenses = db
     .prepare(
@@ -2657,7 +2659,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           e.cancelled_shift_id = ?
       `,
     )
-    .get(shiftId) as any
+    .get(shiftId) as any;
 
   /*
    * جلسات الجرد ليس لها shift_id
@@ -2697,25 +2699,25 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           ) >= datetime(?)
       `,
     )
-    .get(userId, shift.opened_at) as any
+    .get(userId, shift.opened_at) as any;
 
-  const invoiceSales = reportMoney(sales?.invoice_sales)
+  const invoiceSales = reportMoney(sales?.invoice_sales);
 
-  const returnsTotal = reportMoney(returns?.returns_total)
+  const returnsTotal = reportMoney(returns?.returns_total);
 
-  const exchangeAdjustment = reportMoney(exchanges?.exchange_adjustment)
+  const exchangeAdjustment = reportMoney(exchanges?.exchange_adjustment);
 
   const exchangeCashCollection = reportMoney(
     exchanges?.exchange_cash_collection,
-  )
+  );
 
-  const exchangeCashRefund = reportMoney(exchanges?.exchange_cash_refund)
+  const exchangeCashRefund = reportMoney(exchanges?.exchange_cash_refund);
 
   const exchangeCashDifference = reportMoney(
     exchangeCashCollection - exchangeCashRefund,
-  )
+  );
 
-  const exchangeDebtReduction = reportMoney(exchanges?.exchange_debt_reduction)
+  const exchangeDebtReduction = reportMoney(exchanges?.exchange_debt_reduction);
 
   const normalDiscount = Math.max(
     0,
@@ -2725,7 +2727,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
         Number(returns?.returned_normal_discount || 0) +
         Number(exchanges?.normal_discount_adjustment || 0),
     ),
-  )
+  );
 
   const promotionDiscount = Math.max(
     0,
@@ -2735,7 +2737,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
         Number(returns?.returned_promotion_discount || 0) +
         Number(exchanges?.promotion_discount_adjustment || 0),
     ),
-  )
+  );
 
   const loyaltyDiscount = Math.max(
     0,
@@ -2745,13 +2747,15 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
         Number(returns?.returned_loyalty_discount || 0) +
         Number(exchanges?.loyalty_discount_adjustment || 0),
     ),
-  )
+  );
 
   const totalDiscount = reportMoney(
     normalDiscount + promotionDiscount + loyaltyDiscount,
-  )
+  );
 
-  const netSales = reportMoney(invoiceSales + exchangeAdjustment - returnsTotal)
+  const netSales = reportMoney(
+    invoiceSales + exchangeAdjustment - returnsTotal,
+  );
 
   return {
     date: String(shift.business_date || ''),
@@ -2835,5 +2839,5 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
 
       stock_count_sessions_count: Number(stockCounts?.count || 0),
     },
-  }
+  };
 }

@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { beforeEach, describe, expect, it } from 'vitest';
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 import {
   createUser,
   findUserByUsername,
@@ -12,20 +12,20 @@ import {
   getUserPermissionSettings,
   setUserPermissions,
   upgradeUserPasswordHash,
-} from '../../src/main/database/repositories/user.repo'
+} from '../../src/main/database/repositories/user.repo';
 
 type PublicUserTestRow = {
-  id: number
-  name: string
-  username: string
-  role: string
-  is_active: number
-  created_at: string
-  password?: string
-}
+  id: number;
+  name: string;
+  username: string;
+  role: string;
+  is_active: number;
+  created_at: string;
+  password?: string;
+};
 
 function getUserRawById(id: number) {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .prepare(
@@ -36,25 +36,25 @@ function getUserRawById(id: number) {
       LIMIT 1
       `,
     )
-    .get(id) as PublicUserTestRow & { password: string }
+    .get(id) as PublicUserTestRow & { password: string };
 }
 
 describe('user repository', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
-  })
+    closeDb();
+    getDb();
+    resetDatabaseData();
+  });
 
   it('seeds default admin user', () => {
-    const users = listUsers() as PublicUserTestRow[]
+    const users = listUsers() as PublicUserTestRow[];
 
-    expect(users).toHaveLength(1)
-    expect(users[0].username).toBe('admin')
-    expect(users[0].role).toBe('admin')
-    expect(users[0].is_active).toBe(1)
-    expect(users[0].password).toBeUndefined()
-  })
+    expect(users).toHaveLength(1);
+    expect(users[0].username).toBe('admin');
+    expect(users[0].role).toBe('admin');
+    expect(users[0].is_active).toBe(1);
+    expect(users[0].password).toBeUndefined();
+  });
 
   it('creates a cashier user without returning password', () => {
     const user = createUser(
@@ -62,19 +62,19 @@ describe('user repository', () => {
       'cashier1',
       '1234',
       'cashier',
-    ) as PublicUserTestRow
+    ) as PublicUserTestRow;
 
-    expect(user.id).toBeGreaterThan(0)
-    expect(user.name).toBe('Cashier One')
-    expect(user.username).toBe('cashier1')
-    expect(user.role).toBe('cashier')
-    expect(user.is_active).toBe(1)
-    expect(user.password).toBeUndefined()
+    expect(user.id).toBeGreaterThan(0);
+    expect(user.name).toBe('Cashier One');
+    expect(user.username).toBe('cashier1');
+    expect(user.role).toBe('cashier');
+    expect(user.is_active).toBe(1);
+    expect(user.password).toBeUndefined();
 
-    const raw = getUserRawById(user.id)
-    expect(raw.password).not.toBe('1234')
-    expect(raw.password.length).toBeGreaterThan(10)
-  })
+    const raw = getUserRawById(user.id);
+    expect(raw.password).not.toBe('1234');
+    expect(raw.password.length).toBeGreaterThan(10);
+  });
 
   it('creates an admin user', () => {
     const user = createUser(
@@ -82,11 +82,11 @@ describe('user repository', () => {
       'admin2',
       '1234',
       'admin',
-    ) as PublicUserTestRow
+    ) as PublicUserTestRow;
 
-    expect(user.role).toBe('admin')
-    expect(user.username).toBe('admin2')
-  })
+    expect(user.role).toBe('admin');
+    expect(user.username).toBe('admin2');
+  });
 
   it('normalizes unknown role to cashier', () => {
     const user = createUser(
@@ -94,54 +94,56 @@ describe('user repository', () => {
       'unknown_role',
       '1234',
       'manager',
-    ) as PublicUserTestRow
+    ) as PublicUserTestRow;
 
-    expect(user.role).toBe('cashier')
-  })
+    expect(user.role).toBe('cashier');
+  });
 
   it('rejects empty name', () => {
     expect(() => createUser('   ', 'user1', '1234', 'cashier')).toThrow(
       'اسم المستخدم مطلوب',
-    )
-  })
+    );
+  });
 
   it('rejects empty username', () => {
     expect(() => createUser('User One', '   ', '1234', 'cashier')).toThrow(
       'اسم الدخول مطلوب',
-    )
-  })
+    );
+  });
 
   it('rejects short password', () => {
     expect(() => createUser('User One', 'user1', '123', 'cashier')).toThrow(
       'كلمة المرور يجب ألا تقل عن 4 أحرف',
-    )
-  })
+    );
+  });
 
   it('rejects duplicate username', () => {
-    createUser('Cashier One', 'duplicate_user', '1234', 'cashier')
+    createUser('Cashier One', 'duplicate_user', '1234', 'cashier');
 
     expect(() =>
       createUser('Cashier Two', 'duplicate_user', '1234', 'cashier'),
-    ).toThrow('اسم المستخدم مستخدم بالفعل')
-  })
+    ).toThrow('اسم المستخدم مستخدم بالفعل');
+  });
 
   it('lists users and searches by name username and role', () => {
-    createUser('Search Cashier', 'search_cashier', '1234', 'cashier')
+    createUser('Search Cashier', 'search_cashier', '1234', 'cashier');
 
-    const allUsers = listUsers() as PublicUserTestRow[]
-    const byName = listUsers('Search') as PublicUserTestRow[]
-    const byUsername = listUsers('search_cashier') as PublicUserTestRow[]
-    const byRole = listUsers('cashier') as PublicUserTestRow[]
+    const allUsers = listUsers() as PublicUserTestRow[];
+    const byName = listUsers('Search') as PublicUserTestRow[];
+    const byUsername = listUsers('search_cashier') as PublicUserTestRow[];
+    const byRole = listUsers('cashier') as PublicUserTestRow[];
 
-    expect(allUsers.length).toBeGreaterThanOrEqual(2)
-    expect(byName).toHaveLength(1)
-    expect(byName[0].username).toBe('search_cashier')
+    expect(allUsers.length).toBeGreaterThanOrEqual(2);
+    expect(byName).toHaveLength(1);
+    expect(byName[0].username).toBe('search_cashier');
 
-    expect(byUsername).toHaveLength(1)
-    expect(byUsername[0].name).toBe('Search Cashier')
+    expect(byUsername).toHaveLength(1);
+    expect(byUsername[0].name).toBe('Search Cashier');
 
-    expect(byRole.some((user) => user.username === 'search_cashier')).toBe(true)
-  })
+    expect(byRole.some((user) => user.username === 'search_cashier')).toBe(
+      true,
+    );
+  });
 
   it('updates user name username role and active status', () => {
     const user = createUser(
@@ -149,7 +151,7 @@ describe('user repository', () => {
       'old_username',
       '1234',
       'cashier',
-    ) as PublicUserTestRow
+    ) as PublicUserTestRow;
 
     const updated = updateUser({
       id: user.id,
@@ -157,15 +159,15 @@ describe('user repository', () => {
       username: 'new_username',
       role: 'admin',
       is_active: 1,
-    }) as PublicUserTestRow
+    }) as PublicUserTestRow;
 
-    expect(updated.id).toBe(user.id)
-    expect(updated.name).toBe('New Name')
-    expect(updated.username).toBe('new_username')
-    expect(updated.role).toBe('admin')
-    expect(updated.is_active).toBe(1)
-    expect(updated.password).toBeUndefined()
-  })
+    expect(updated.id).toBe(user.id);
+    expect(updated.name).toBe('New Name');
+    expect(updated.username).toBe('new_username');
+    expect(updated.role).toBe('admin');
+    expect(updated.is_active).toBe(1);
+    expect(updated.password).toBeUndefined();
+  });
 
   it('rejects updating missing user', () => {
     expect(() =>
@@ -176,8 +178,8 @@ describe('user repository', () => {
         role: 'cashier',
         is_active: 1,
       }),
-    ).toThrow('المستخدم غير موجود')
-  })
+    ).toThrow('المستخدم غير موجود');
+  });
 
   it('rejects updating user with duplicate username', () => {
     const user1 = createUser(
@@ -185,13 +187,13 @@ describe('user repository', () => {
       'user_one',
       '1234',
       'cashier',
-    ) as PublicUserTestRow
+    ) as PublicUserTestRow;
     const user2 = createUser(
       'User Two',
       'user_two',
       '1234',
       'cashier',
-    ) as PublicUserTestRow
+    ) as PublicUserTestRow;
 
     expect(() =>
       updateUser({
@@ -201,8 +203,8 @@ describe('user repository', () => {
         role: 'cashier',
         is_active: 1,
       }),
-    ).toThrow('اسم المستخدم مستخدم بالفعل')
-  })
+    ).toThrow('اسم المستخدم مستخدم بالفعل');
+  });
 
   it('deactivates and reactivates cashier user', () => {
     const user = createUser(
@@ -210,40 +212,40 @@ describe('user repository', () => {
       'cashier_toggle',
       '1234',
       'cashier',
-    ) as PublicUserTestRow
+    ) as PublicUserTestRow;
 
-    const inactive = setUserActive(user.id, 0) as PublicUserTestRow
-    expect(inactive.is_active).toBe(0)
+    const inactive = setUserActive(user.id, 0) as PublicUserTestRow;
+    expect(inactive.is_active).toBe(0);
 
-    expect(findUserByUsername('cashier_toggle')).toBeUndefined()
+    expect(findUserByUsername('cashier_toggle')).toBeUndefined();
 
-    const active = setUserActive(user.id, 1) as PublicUserTestRow
-    expect(active.is_active).toBe(1)
+    const active = setUserActive(user.id, 1) as PublicUserTestRow;
+    expect(active.is_active).toBe(1);
 
-    const found = findUserByUsername('cashier_toggle')
-    expect(found?.username).toBe('cashier_toggle')
-  })
+    const found = findUserByUsername('cashier_toggle');
+    expect(found?.username).toBe('cashier_toggle');
+  });
 
   it('rejects deactivating the last active admin', () => {
-    const admin = findUserByUsername('admin') as any
+    const admin = findUserByUsername('admin') as any;
 
     expect(() => setUserActive(admin.id, 0)).toThrow(
       'لا يمكن تعطيل أو تغيير آخر مدير في النظام',
-    )
-  })
+    );
+  });
 
   it('allows deactivating one admin when another active admin exists', () => {
-    const admin = findUserByUsername('admin') as any
+    const admin = findUserByUsername('admin') as any;
 
-    createUser('Second Admin', 'admin_second', '1234', 'admin')
+    createUser('Second Admin', 'admin_second', '1234', 'admin');
 
-    const inactive = setUserActive(admin.id, 0) as PublicUserTestRow
+    const inactive = setUserActive(admin.id, 0) as PublicUserTestRow;
 
-    expect(inactive.is_active).toBe(0)
-  })
+    expect(inactive.is_active).toBe(0);
+  });
 
   it('rejects changing the last admin role to cashier', () => {
-    const admin = findUserByUsername('admin') as any
+    const admin = findUserByUsername('admin') as any;
 
     expect(() =>
       updateUser({
@@ -253,8 +255,8 @@ describe('user repository', () => {
         role: 'cashier',
         is_active: 1,
       }),
-    ).toThrow('لا يمكن تعطيل أو تغيير آخر مدير في النظام')
-  })
+    ).toThrow('لا يمكن تعطيل أو تغيير آخر مدير في النظام');
+  });
 
   it('resets user password without returning password', () => {
     const user = createUser(
@@ -262,19 +264,19 @@ describe('user repository', () => {
       'password_user',
       '1234',
       'cashier',
-    ) as PublicUserTestRow
-    const oldRaw = getUserRawById(user.id)
+    ) as PublicUserTestRow;
+    const oldRaw = getUserRawById(user.id);
 
-    const updated = resetUserPassword(user.id, '5678') as PublicUserTestRow
+    const updated = resetUserPassword(user.id, '5678') as PublicUserTestRow;
 
-    expect(updated.id).toBe(user.id)
-    expect(updated.password).toBeUndefined()
+    expect(updated.id).toBe(user.id);
+    expect(updated.password).toBeUndefined();
 
-    const newRaw = getUserRawById(user.id)
+    const newRaw = getUserRawById(user.id);
 
-    expect(newRaw.password).not.toBe(oldRaw.password)
-    expect(newRaw.password).not.toBe('5678')
-  })
+    expect(newRaw.password).not.toBe(oldRaw.password);
+    expect(newRaw.password).not.toBe('5678');
+  });
 
   it('rejects reset password with short password', () => {
     const user = createUser(
@@ -282,12 +284,12 @@ describe('user repository', () => {
       'short_password_user',
       '1234',
       'cashier',
-    ) as PublicUserTestRow
+    ) as PublicUserTestRow;
 
     expect(() => resetUserPassword(user.id, '123')).toThrow(
       'كلمة المرور يجب ألا تقل عن 4 أحرف',
-    )
-  })
+    );
+  });
 
   it('finds only active user by username', () => {
     const user = createUser(
@@ -295,14 +297,14 @@ describe('user repository', () => {
       'find_user',
       '1234',
       'cashier',
-    ) as PublicUserTestRow
+    ) as PublicUserTestRow;
 
-    expect(findUserByUsername('find_user')?.id).toBe(user.id)
+    expect(findUserByUsername('find_user')?.id).toBe(user.id);
 
-    setUserActive(user.id, 0)
+    setUserActive(user.id, 0);
 
-    expect(findUserByUsername('find_user')).toBeUndefined()
-  })
+    expect(findUserByUsername('find_user')).toBeUndefined();
+  });
 
   it('upgrades user password hash', () => {
     const user = createUser(
@@ -310,16 +312,16 @@ describe('user repository', () => {
       'upgrade_user',
       '1234',
       'cashier',
-    ) as PublicUserTestRow
-    const before = getUserRawById(user.id)
+    ) as PublicUserTestRow;
+    const before = getUserRawById(user.id);
 
-    upgradeUserPasswordHash(user.id, '9999')
+    upgradeUserPasswordHash(user.id, '9999');
 
-    const after = getUserRawById(user.id)
+    const after = getUserRawById(user.id);
 
-    expect(after.password).not.toBe(before.password)
-    expect(after.password).not.toBe('9999')
-  })
+    expect(after.password).not.toBe(before.password);
+    expect(after.password).not.toBe('9999');
+  });
 
   it('paginates users and never exposes passwords', () => {
     const first = createUser(
@@ -327,49 +329,49 @@ describe('user repository', () => {
       'paged_user_1',
       '1234',
       'cashier',
-    ) as PublicUserTestRow
+    ) as PublicUserTestRow;
 
     const second = createUser(
       'Paged User 2',
       'paged_user_2',
       '1234',
       'cashier',
-    ) as PublicUserTestRow
+    ) as PublicUserTestRow;
 
     const third = createUser(
       'Paged User 3',
       'paged_user_3',
       '1234',
       'cashier',
-    ) as PublicUserTestRow
+    ) as PublicUserTestRow;
 
     const firstPage = listUsersPage({
       search: 'Paged User',
       limit: 2,
       offset: 0,
-    })
+    });
 
-    expect(firstPage.total).toBe(3)
-    expect(firstPage.rows).toHaveLength(2)
-    expect((firstPage.rows[0] as any).id).toBe(first.id)
-    expect((firstPage.rows[1] as any).id).toBe(second.id)
-    expect((firstPage.rows[0] as any).password).toBeUndefined()
-    expect((firstPage.rows[1] as any).password).toBeUndefined()
-    expect(firstPage.limit).toBe(2)
-    expect(firstPage.offset).toBe(0)
+    expect(firstPage.total).toBe(3);
+    expect(firstPage.rows).toHaveLength(2);
+    expect((firstPage.rows[0] as any).id).toBe(first.id);
+    expect((firstPage.rows[1] as any).id).toBe(second.id);
+    expect((firstPage.rows[0] as any).password).toBeUndefined();
+    expect((firstPage.rows[1] as any).password).toBeUndefined();
+    expect(firstPage.limit).toBe(2);
+    expect(firstPage.offset).toBe(0);
 
     const secondPage = listUsersPage({
       search: 'Paged User',
       limit: 2,
       offset: 2,
-    })
+    });
 
-    expect(secondPage.total).toBe(3)
-    expect(secondPage.rows).toHaveLength(1)
-    expect((secondPage.rows[0] as any).id).toBe(third.id)
-    expect((secondPage.rows[0] as any).password).toBeUndefined()
-    expect(secondPage.offset).toBe(2)
-  })
+    expect(secondPage.total).toBe(3);
+    expect(secondPage.rows).toHaveLength(1);
+    expect((secondPage.rows[0] as any).id).toBe(third.id);
+    expect((secondPage.rows[0] as any).password).toBeUndefined();
+    expect(secondPage.offset).toBe(2);
+  });
 
   it('gives cashiers the legacy default permissions', () => {
     const user = createUser(
@@ -377,22 +379,22 @@ describe('user repository', () => {
       'permission_cashier',
       '1234',
       'cashier',
-    )
+    );
 
-    const permissions = getEffectiveUserPermissions(user.id)
+    const permissions = getEffectiveUserPermissions(user.id);
 
-    expect(permissions).toContain('sales.use')
+    expect(permissions).toContain('sales.use');
 
-    expect(permissions).toContain('sales.history')
+    expect(permissions).toContain('sales.history');
 
-    expect(permissions).toContain('customers.manage')
+    expect(permissions).toContain('customers.manage');
 
-    expect(permissions).toContain('stock_count.count')
+    expect(permissions).toContain('stock_count.count');
 
-    expect(permissions).not.toContain('purchases.manage')
+    expect(permissions).not.toContain('purchases.manage');
 
-    expect(permissions).not.toContain('reports.view')
-  })
+    expect(permissions).not.toContain('reports.view');
+  });
 
   it('applies per-user permission overrides', () => {
     const user = createUser(
@@ -400,55 +402,55 @@ describe('user repository', () => {
       'custom_cashier',
       '1234',
       'cashier',
-    )
+    );
 
-    const current = getEffectiveUserPermissions(user.id)
+    const current = getEffectiveUserPermissions(user.id);
 
     const next = current.filter(
       (permission) => permission !== 'expenses.manage',
-    )
+    );
 
-    next.push('reports.view')
+    next.push('reports.view');
 
-    const settings = setUserPermissions(user.id, next)
+    const settings = setUserPermissions(user.id, next);
 
-    expect(settings.effective_permissions).toContain('reports.view')
+    expect(settings.effective_permissions).toContain('reports.view');
 
-    expect(settings.effective_permissions).not.toContain('expenses.manage')
-  })
+    expect(settings.effective_permissions).not.toContain('expenses.manage');
+  });
 
   it('keeps admins on full immutable permissions', () => {
-    const admin = findUserByUsername('admin')!
+    const admin = findUserByUsername('admin')!;
 
-    const permissions = getEffectiveUserPermissions(admin.id)
+    const permissions = getEffectiveUserPermissions(admin.id);
 
-    expect(permissions).toContain('purchases.manage')
+    expect(permissions).toContain('purchases.manage');
 
-    expect(permissions).toContain('reports.view')
+    expect(permissions).toContain('reports.view');
 
     expect(() => setUserPermissions(admin.id, [])).toThrow(
       'صلاحيات مدير النظام كاملة وثابتة',
-    )
-  })
+    );
+  });
 
   it('clears custom overrides when role changes', () => {
-    createUser('Second Admin', 'permission_admin_2', '1234', 'admin')
+    createUser('Second Admin', 'permission_admin_2', '1234', 'admin');
 
     const user = createUser(
       'Role Change Cashier',
       'role_change_cashier',
       '1234',
       'cashier',
-    )
+    );
 
     setUserPermissions(user.id, [
       ...getEffectiveUserPermissions(user.id),
       'reports.view',
-    ])
+    ]);
 
     expect(getUserPermissionSettings(user.id).overrides.length).toBeGreaterThan(
       0,
-    )
+    );
 
     updateUser({
       id: user.id,
@@ -460,10 +462,10 @@ describe('user repository', () => {
       role: 'admin',
 
       is_active: 1,
-    })
+    });
 
-    expect(getUserPermissionSettings(user.id).overrides).toHaveLength(0)
-  })
+    expect(getUserPermissionSettings(user.id).overrides).toHaveLength(0);
+  });
 
   it('adds permission dependencies and always preserves dashboard access', () => {
     const user = createUser(
@@ -471,22 +473,22 @@ describe('user repository', () => {
       'permission_dependency',
       '1234',
       'cashier',
-    )
+    );
 
-    let settings = setUserPermissions(user.id, ['products.manage'])
+    let settings = setUserPermissions(user.id, ['products.manage']);
 
-    expect(settings.effective_permissions).toContain('products.manage')
+    expect(settings.effective_permissions).toContain('products.manage');
 
-    expect(settings.effective_permissions).toContain('costs.view')
+    expect(settings.effective_permissions).toContain('costs.view');
 
-    expect(settings.effective_permissions).toContain('dashboard.view')
+    expect(settings.effective_permissions).toContain('dashboard.view');
 
-    settings = setUserPermissions(user.id, ['activity.view'])
+    settings = setUserPermissions(user.id, ['activity.view']);
 
-    expect(settings.effective_permissions).toContain('activity.view')
+    expect(settings.effective_permissions).toContain('activity.view');
 
-    expect(settings.effective_permissions).toContain('costs.view')
+    expect(settings.effective_permissions).toContain('costs.view');
 
-    expect(settings.effective_permissions).toContain('dashboard.view')
-  })
-})
+    expect(settings.effective_permissions).toContain('dashboard.view');
+  });
+});

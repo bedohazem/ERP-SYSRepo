@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
-import { CRITICAL_AUDIT_ERROR_MESSAGE } from '../../src/main/database/repositories/activity.repo'
+import { beforeEach, describe, expect, it } from 'vitest';
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
+import { CRITICAL_AUDIT_ERROR_MESSAGE } from '../../src/main/database/repositories/activity.repo';
 import {
   cancelCashDayClosing,
   closeCashDay,
@@ -12,34 +12,34 @@ import {
   updateCashMovement,
   updateCashDayClosing,
   cancelCashMovement,
-} from '../../src/main/database/repositories/cash.repo'
+} from '../../src/main/database/repositories/cash.repo';
 
 import {
   closeCashShift,
   getCashShiftExpectedBalance,
   openCashShift,
-} from '../../src/main/database/repositories/cash-shifts.repo'
+} from '../../src/main/database/repositories/cash-shifts.repo';
 
 type CashMovementTestRow = {
-  id: number
-  type: string
-  amount: number
-  direction: 'in' | 'out'
-  payment_method: string
-  reference_id: number | null
-  reference_type: string | null
-  notes: string | null
-  created_by: number | null
-  created_at: string
-  created_by_name?: string | null
-}
+  id: number;
+  type: string;
+  amount: number;
+  direction: 'in' | 'out';
+  payment_method: string;
+  reference_id: number | null;
+  reference_type: string | null;
+  notes: string | null;
+  created_by: number | null;
+  created_at: string;
+  created_by_name?: string | null;
+};
 
 function getCashMovementRows(input?: Parameters<typeof listCashMovements>[0]) {
-  return listCashMovements(input).rows as CashMovementTestRow[]
+  return listCashMovements(input).rows as CashMovementTestRow[];
 }
 
 function getActivityLogsCount() {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -48,13 +48,13 @@ function getActivityLogsCount() {
       FROM activity_logs
       `,
     )
-    .get() as { count: number }
+    .get() as { count: number };
 
-  return Number(row.count || 0)
+  return Number(row.count || 0);
 }
 
 function getLastActivityLog() {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .prepare(
@@ -65,15 +65,15 @@ function getLastActivityLog() {
       LIMIT 1
       `,
     )
-    .get() as any
+    .get() as any;
 }
 
 describe('cash repository', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
-  })
+    closeDb();
+    getDb();
+    resetDatabaseData();
+  });
 
   it('creates cash in movement and updates summary', () => {
     const result = createCashMovement({
@@ -83,20 +83,20 @@ describe('cash repository', () => {
       payment_method: 'cash',
       notes: 'Opening cash deposit',
       created_by: 1,
-    })
+    });
 
-    expect(Number(result.lastInsertRowid)).toBeGreaterThan(0)
+    expect(Number(result.lastInsertRowid)).toBeGreaterThan(0);
 
-    const summary = getCashSummary()
+    const summary = getCashSummary();
 
-    expect(summary.total_in).toBe(500)
-    expect(summary.total_out).toBe(0)
-    expect(summary.balance).toBe(500)
-    expect(summary.movements_count).toBe(1)
-  })
+    expect(summary.total_in).toBe(500);
+    expect(summary.total_out).toBe(0);
+    expect(summary.balance).toBe(500);
+    expect(summary.movements_count).toBe(1);
+  });
 
   it('rolls back cash movement when critical audit fails', () => {
-    const db = getDb()
+    const db = getDb();
 
     db.exec(`
     DROP TRIGGER IF EXISTS
@@ -111,7 +111,7 @@ describe('cash repository', () => {
         'forced cash audit failure'
       );
     END;
-  `)
+  `);
 
     try {
       expect(() =>
@@ -128,7 +128,7 @@ describe('cash repository', () => {
 
           created_by: 1,
         }),
-      ).toThrow(CRITICAL_AUDIT_ERROR_MESSAGE)
+      ).toThrow(CRITICAL_AUDIT_ERROR_MESSAGE);
 
       const movementCount = db
         .prepare(
@@ -138,17 +138,17 @@ describe('cash repository', () => {
         `,
         )
         .get() as {
-        count: number
-      }
+        count: number;
+      };
 
-      expect(Number(movementCount.count)).toBe(0)
+      expect(Number(movementCount.count)).toBe(0);
     } finally {
       db.exec(`
       DROP TRIGGER IF EXISTS
         fail_cash_movement_audit;
-    `)
+    `);
     }
-  })
+  });
 
   it('creates cash out movement and updates summary balance', () => {
     createCashMovement({
@@ -158,7 +158,7 @@ describe('cash repository', () => {
       payment_method: 'cash',
       notes: 'Cash in',
       created_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'expense',
@@ -167,23 +167,23 @@ describe('cash repository', () => {
       payment_method: 'cash',
       notes: 'Cash out',
       created_by: 1,
-    })
+    });
 
-    const summary = getCashSummary()
+    const summary = getCashSummary();
 
-    expect(summary.total_in).toBe(500)
-    expect(summary.total_out).toBe(200)
-    expect(summary.balance).toBe(300)
-    expect(summary.movements_count).toBe(2)
-  })
+    expect(summary.total_in).toBe(500);
+    expect(summary.total_out).toBe(200);
+    expect(summary.balance).toBe(300);
+    expect(summary.movements_count).toBe(2);
+  });
 
   it('links both cash transfer movements to the active shift', () => {
-    const db = getDb()
+    const db = getDb();
 
     const shift = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     const result = createCashTransfer({
       from_account: 'store_cash',
@@ -191,9 +191,9 @@ describe('cash repository', () => {
       amount: 200,
       created_by: 1,
       shift_id: shift.id,
-    })
+    });
 
-    expect(result.shift_id).toBe(shift.id)
+    expect(result.shift_id).toBe(shift.id);
 
     const outMovement = db
       .prepare(
@@ -203,7 +203,7 @@ describe('cash repository', () => {
         WHERE id = ?
         `,
       )
-      .get(result.out_id) as any
+      .get(result.out_id) as any;
 
     const inMovement = db
       .prepare(
@@ -213,11 +213,11 @@ describe('cash repository', () => {
         WHERE id = ?
         `,
       )
-      .get(result.in_id) as any
+      .get(result.in_id) as any;
 
-    expect(Number(outMovement.shift_id)).toBe(shift.id)
-    expect(Number(inMovement.shift_id)).toBe(shift.id)
-  })
+    expect(Number(outMovement.shift_id)).toBe(shift.id);
+    expect(Number(inMovement.shift_id)).toBe(shift.id);
+  });
 
   it('lists cash movements ordered by newest first', () => {
     createCashMovement({
@@ -227,7 +227,7 @@ describe('cash repository', () => {
       payment_method: 'cash',
       notes: 'First movement',
       created_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'withdraw',
@@ -236,14 +236,14 @@ describe('cash repository', () => {
       payment_method: 'cash',
       notes: 'Second movement',
       created_by: 1,
-    })
+    });
 
-    const rows = getCashMovementRows() as CashMovementTestRow[]
+    const rows = getCashMovementRows() as CashMovementTestRow[];
 
-    expect(rows).toHaveLength(2)
-    expect(rows[0].notes).toBe('Second movement')
-    expect(rows[1].notes).toBe('First movement')
-  })
+    expect(rows).toHaveLength(2);
+    expect(rows[0].notes).toBe('Second movement');
+    expect(rows[1].notes).toBe('First movement');
+  });
 
   it('filters cash movements by direction', () => {
     createCashMovement({
@@ -253,7 +253,7 @@ describe('cash repository', () => {
       payment_method: 'cash',
       notes: 'Only in',
       created_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'expense',
@@ -262,21 +262,21 @@ describe('cash repository', () => {
       payment_method: 'cash',
       notes: 'Only out',
       created_by: 1,
-    })
+    });
 
     const inRows = getCashMovementRows({
       direction: 'in',
-    }) as CashMovementTestRow[]
+    }) as CashMovementTestRow[];
     const outRows = getCashMovementRows({
       direction: 'out',
-    }) as CashMovementTestRow[]
+    }) as CashMovementTestRow[];
 
-    expect(inRows).toHaveLength(1)
-    expect(inRows[0].direction).toBe('in')
+    expect(inRows).toHaveLength(1);
+    expect(inRows[0].direction).toBe('in');
 
-    expect(outRows).toHaveLength(1)
-    expect(outRows[0].direction).toBe('out')
-  })
+    expect(outRows).toHaveLength(1);
+    expect(outRows[0].direction).toBe('out');
+  });
 
   it('filters cash movements by type and payment method', () => {
     createCashMovement({
@@ -286,7 +286,7 @@ describe('cash repository', () => {
       payment_method: 'cash',
       notes: 'Cash deposit',
       created_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'customer_payment',
@@ -295,21 +295,21 @@ describe('cash repository', () => {
       payment_method: 'card',
       notes: 'Card customer payment',
       created_by: 1,
-    })
+    });
 
     const depositRows = getCashMovementRows({
       type: 'deposit',
-    }) as CashMovementTestRow[]
+    }) as CashMovementTestRow[];
     const cardRows = getCashMovementRows({
       payment_method: 'card',
-    }) as CashMovementTestRow[]
+    }) as CashMovementTestRow[];
 
-    expect(depositRows).toHaveLength(1)
-    expect(depositRows[0].type).toBe('deposit')
+    expect(depositRows).toHaveLength(1);
+    expect(depositRows[0].type).toBe('deposit');
 
-    expect(cardRows).toHaveLength(1)
-    expect(cardRows[0].payment_method).toBe('fawry_machine')
-  })
+    expect(cardRows).toHaveLength(1);
+    expect(cardRows[0].payment_method).toBe('fawry_machine');
+  });
 
   it('filters cash movements by multiple types directions and accounts', () => {
     createCashMovement({
@@ -319,7 +319,7 @@ describe('cash repository', () => {
       payment_method: 'cash',
       notes: 'Store deposit',
       created_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'expense',
@@ -328,7 +328,7 @@ describe('cash repository', () => {
       payment_method: 'cash',
       notes: 'Store expense',
       created_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'customer_payment',
@@ -337,7 +337,7 @@ describe('cash repository', () => {
       payment_method: 'card',
       notes: 'Fawry payment',
       created_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'deposit',
@@ -346,34 +346,34 @@ describe('cash repository', () => {
       payment_method: 'bank',
       notes: 'Bank deposit',
       created_by: 1,
-    })
+    });
 
     const result = listCashMovements({
       types: ['deposit', 'expense'],
       directions: ['in'],
       payment_methods: ['store_cash', 'owner_bank'],
-    })
+    });
 
-    expect(result.total).toBe(2)
+    expect(result.total).toBe(2);
 
-    const rows = result.rows as CashMovementTestRow[]
+    const rows = result.rows as CashMovementTestRow[];
 
     expect(rows.map((row) => row.notes)).toEqual([
       'Bank deposit',
       'Store deposit',
-    ])
+    ]);
 
     const summary = getCashSummary({
       types: ['deposit', 'expense'],
       directions: ['in'],
       payment_methods: ['store_cash', 'owner_bank'],
-    })
+    });
 
-    expect(summary.total_in).toBe(800)
-    expect(summary.total_out).toBe(0)
-    expect(summary.balance).toBe(800)
-    expect(summary.movements_count).toBe(2)
-  })
+    expect(summary.total_in).toBe(800);
+    expect(summary.total_out).toBe(0);
+    expect(summary.balance).toBe(800);
+    expect(summary.movements_count).toBe(2);
+  });
 
   it('searches cash movements by notes', () => {
     createCashMovement({
@@ -383,7 +383,7 @@ describe('cash repository', () => {
       payment_method: 'cash',
       notes: 'Special searchable note',
       created_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'expense',
@@ -392,18 +392,18 @@ describe('cash repository', () => {
       payment_method: 'cash',
       notes: 'Other note',
       created_by: 1,
-    })
+    });
 
     const rows = getCashMovementRows({
       search: 'searchable',
-    }) as CashMovementTestRow[]
+    }) as CashMovementTestRow[];
 
-    expect(rows).toHaveLength(1)
-    expect(rows[0].notes).toBe('Special searchable note')
-  })
+    expect(rows).toHaveLength(1);
+    expect(rows[0].notes).toBe('Special searchable note');
+  });
 
   it('creates activity log when cash movement is created', () => {
-    expect(getActivityLogsCount()).toBe(0)
+    expect(getActivityLogsCount()).toBe(0);
 
     createCashMovement({
       type: 'deposit',
@@ -412,17 +412,17 @@ describe('cash repository', () => {
       payment_method: 'cash',
       notes: 'Movement with activity log',
       created_by: 1,
-    })
+    });
 
-    expect(getActivityLogsCount()).toBe(1)
+    expect(getActivityLogsCount()).toBe(1);
 
-    const log = getLastActivityLog()
+    const log = getLastActivityLog();
 
-    expect(log.action).toBe('cash_in')
-    expect(log.entity).toBe('cash_movements')
-    expect(log.entity_id).toBeGreaterThan(0)
-    expect(log.user_id).toBe(1)
-  })
+    expect(log.action).toBe('cash_in');
+    expect(log.entity).toBe('cash_movements');
+    expect(log.entity_id).toBeGreaterThan(0);
+    expect(log.user_id).toBe(1);
+  });
 
   it('rejects cash movement with zero amount', () => {
     expect(() =>
@@ -434,8 +434,8 @@ describe('cash repository', () => {
         notes: 'Invalid zero amount',
         created_by: 1,
       }),
-    ).toThrow()
-  })
+    ).toThrow();
+  });
 
   it('rejects cash movement with negative amount', () => {
     expect(() =>
@@ -447,8 +447,8 @@ describe('cash repository', () => {
         notes: 'Invalid negative amount',
         created_by: 1,
       }),
-    ).toThrow()
-  })
+    ).toThrow();
+  });
 
   it('rejects cash movement with invalid direction', () => {
     expect(() =>
@@ -460,8 +460,8 @@ describe('cash repository', () => {
         notes: 'Invalid direction',
         created_by: 1,
       }),
-    ).toThrow()
-  })
+    ).toThrow();
+  });
 
   it('rejects cash movement with missing type', () => {
     expect(() =>
@@ -473,8 +473,8 @@ describe('cash repository', () => {
         notes: 'Missing type',
         created_by: 1,
       }),
-    ).toThrow()
-  })
+    ).toThrow();
+  });
 
   it('closes the cash day and keeps the requested carry over', () => {
     createCashMovement({
@@ -484,7 +484,7 @@ describe('cash repository', () => {
       payment_method: 'store_cash',
       notes: 'Opening cash',
       created_by: 1,
-    })
+    });
 
     createCashMovement({
       type: 'expense',
@@ -493,7 +493,7 @@ describe('cash repository', () => {
       payment_method: 'store_cash',
       notes: 'Daily expense',
       created_by: 1,
-    })
+    });
 
     const dateRow = getDb()
       .prepare(
@@ -501,14 +501,14 @@ describe('cash repository', () => {
       SELECT date('now', 'localtime') AS day
     `,
       )
-      .get() as { day: string }
+      .get() as { day: string };
 
-    const preview = getCashDayClosePreview(dateRow.day)
+    const preview = getCashDayClosePreview(dateRow.day);
 
-    expect(preview.already_closed).toBe(false)
-    expect(preview.day_cash_in).toBe(1000)
-    expect(preview.day_cash_out).toBe(200)
-    expect(preview.system_closing_balance).toBe(800)
+    expect(preview.already_closed).toBe(false);
+    expect(preview.day_cash_in).toBe(1000);
+    expect(preview.day_cash_out).toBe(200);
+    expect(preview.system_closing_balance).toBe(800);
 
     const result = closeCashDay({
       business_date: dateRow.day,
@@ -516,25 +516,25 @@ describe('cash repository', () => {
       carry_over_amount: 100,
       target_account: 'owner_cash',
       closed_by: 1,
-    })
+    });
 
-    expect(result.transfer_amount).toBe(700)
-    expect(result.carry_over_amount).toBe(100)
+    expect(result.transfer_amount).toBe(700);
+    expect(result.carry_over_amount).toBe(100);
 
     const drawer = getCashSummary({
       payment_method: 'store_cash',
-    })
+    });
 
     const ownerCash = getCashSummary({
       payment_method: 'owner_cash',
-    })
+    });
 
-    expect(drawer.balance).toBe(100)
-    expect(ownerCash.balance).toBe(700)
+    expect(drawer.balance).toBe(100);
+    expect(ownerCash.balance).toBe(700);
 
-    const afterClose = getCashDayClosePreview(dateRow.day)
+    const afterClose = getCashDayClosePreview(dateRow.day);
 
-    expect(afterClose.already_closed).toBe(true)
+    expect(afterClose.already_closed).toBe(true);
 
     expect(() =>
       closeCashDay({
@@ -544,8 +544,8 @@ describe('cash repository', () => {
         target_account: 'owner_cash',
         closed_by: 1,
       }),
-    ).toThrow()
-  })
+    ).toThrow();
+  });
 
   it('cancels the latest day close and reopens the business day', () => {
     createCashMovement({
@@ -554,7 +554,7 @@ describe('cash repository', () => {
       amount: 1000,
       payment_method: 'store_cash',
       created_by: 1,
-    })
+    });
 
     const dateRow = getDb()
       .prepare(
@@ -567,8 +567,8 @@ describe('cash repository', () => {
       `,
       )
       .get() as {
-      day: string
-    }
+      day: string;
+    };
 
     const closing = closeCashDay({
       business_date: dateRow.day,
@@ -580,19 +580,19 @@ describe('cash repository', () => {
       target_account: 'owner_cash',
 
       closed_by: 1,
-    })
+    });
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(100)
+    ).toBe(100);
 
     expect(
       getCashSummary({
         payment_method: 'owner_cash',
       }).balance,
-    ).toBe(900)
+    ).toBe(900);
 
     const result = cancelCashDayClosing({
       closing_id: closing.closing_id,
@@ -600,25 +600,25 @@ describe('cash repository', () => {
       reason: 'Closed by mistake',
 
       actor_id: 1,
-    })
+    });
 
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(true);
 
-    expect(getCashDayClosePreview(dateRow.day).already_closed).toBe(false)
+    expect(getCashDayClosePreview(dateRow.day).already_closed).toBe(false);
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(1000)
+    ).toBe(1000);
 
     expect(
       getCashSummary({
         payment_method: 'owner_cash',
       }).balance,
-    ).toBe(0)
+    ).toBe(0);
 
-    const db = getDb()
+    const db = getDb();
 
     const activeClosing = db
       .prepare(
@@ -630,9 +630,9 @@ describe('cash repository', () => {
       WHERE business_date = ?
       `,
       )
-      .get(dateRow.day)
+      .get(dateRow.day);
 
-    expect(activeClosing).toBeUndefined()
+    expect(activeClosing).toBeUndefined();
 
     const cancelledTransfers = db
       .prepare(
@@ -651,10 +651,10 @@ describe('cash repository', () => {
       `,
       )
       .get(closing.closing_id) as {
-      count: number
-    }
+      count: number;
+    };
 
-    expect(Number(cancelledTransfers.count)).toBe(2)
+    expect(Number(cancelledTransfers.count)).toBe(2);
 
     const secondClosing = closeCashDay({
       business_date: dateRow.day,
@@ -666,16 +666,16 @@ describe('cash repository', () => {
       target_account: 'owner_cash',
 
       closed_by: 1,
-    })
+    });
 
-    expect(secondClosing.transfer_amount).toBe(800)
+    expect(secondClosing.transfer_amount).toBe(800);
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(200)
-  })
+    ).toBe(200);
+  });
 
   it('updates the latest day close transfer safely', () => {
     createCashMovement({
@@ -684,7 +684,7 @@ describe('cash repository', () => {
       amount: 1000,
       payment_method: 'store_cash',
       created_by: 1,
-    })
+    });
 
     const dateRow = getDb()
       .prepare(
@@ -697,8 +697,8 @@ describe('cash repository', () => {
       `,
       )
       .get() as {
-      day: string
-    }
+      day: string;
+    };
 
     const closing = closeCashDay({
       business_date: dateRow.day,
@@ -710,7 +710,7 @@ describe('cash repository', () => {
       target_account: 'owner_cash',
 
       closed_by: 1,
-    })
+    });
 
     const result = updateCashDayClosing({
       closing_id: closing.closing_id,
@@ -720,40 +720,40 @@ describe('cash repository', () => {
       target_account: 'owner_bank',
 
       actor_id: 1,
-    })
+    });
 
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(true);
 
-    expect(result.transfer_amount).toBe(700)
+    expect(result.transfer_amount).toBe(700);
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(300)
+    ).toBe(300);
 
     expect(
       getCashSummary({
         payment_method: 'owner_cash',
       }).balance,
-    ).toBe(0)
+    ).toBe(0);
 
     expect(
       getCashSummary({
         payment_method: 'owner_bank',
       }).balance,
-    ).toBe(700)
+    ).toBe(700);
 
-    const preview = getCashDayClosePreview(dateRow.day)
+    const preview = getCashDayClosePreview(dateRow.day);
 
-    expect(preview.already_closed).toBe(true)
+    expect(preview.already_closed).toBe(true);
 
-    expect(Number(preview.closing?.carry_over_amount)).toBe(300)
+    expect(Number(preview.closing?.carry_over_amount)).toBe(300);
 
-    expect(Number(preview.closing?.transfer_amount)).toBe(700)
+    expect(Number(preview.closing?.transfer_amount)).toBe(700);
 
-    expect(preview.closing?.target_account).toBe('owner_bank')
-  })
+    expect(preview.closing?.target_account).toBe('owner_bank');
+  });
 
   it('rejects day closing when physical cash does not match system cash', () => {
     createCashMovement({
@@ -762,7 +762,7 @@ describe('cash repository', () => {
       amount: 500,
       payment_method: 'store_cash',
       created_by: 1,
-    })
+    });
 
     const dateRow = getDb()
       .prepare(
@@ -770,7 +770,7 @@ describe('cash repository', () => {
       SELECT date('now', 'localtime') AS day
     `,
       )
-      .get() as { day: string }
+      .get() as { day: string };
 
     expect(() =>
       closeCashDay({
@@ -780,8 +780,8 @@ describe('cash repository', () => {
         target_account: 'owner_cash',
         closed_by: 1,
       }),
-    ).toThrow()
-  })
+    ).toThrow();
+  });
 
   it('paginates cash movements without losing older records', () => {
     for (let index = 1; index <= 5; index += 1) {
@@ -792,27 +792,29 @@ describe('cash repository', () => {
         payment_method: 'store_cash',
         notes: `movement ${index}`,
         created_by: 1,
-      })
+      });
     }
 
     const firstPage = listCashMovements({
       limit: 2,
       offset: 0,
-    })
+    });
 
     const secondPage = listCashMovements({
       limit: 2,
       offset: 2,
-    })
+    });
 
-    expect(firstPage.total).toBe(5)
-    expect(firstPage.rows).toHaveLength(2)
-    expect(secondPage.rows).toHaveLength(2)
+    expect(firstPage.total).toBe(5);
+    expect(firstPage.rows).toHaveLength(2);
+    expect(secondPage.rows).toHaveLength(2);
 
-    expect((firstPage.rows[0] as CashMovementTestRow).notes).toBe('movement 5')
+    expect((firstPage.rows[0] as CashMovementTestRow).notes).toBe('movement 5');
 
-    expect((secondPage.rows[0] as CashMovementTestRow).notes).toBe('movement 3')
-  })
+    expect((secondPage.rows[0] as CashMovementTestRow).notes).toBe(
+      'movement 3',
+    );
+  });
 
   it('updates a manual cash movement safely', () => {
     const created = createCashMovement({
@@ -829,9 +831,9 @@ describe('cash repository', () => {
       notes: 'Old manual movement',
 
       created_by: 1,
-    })
+    });
 
-    const oldId = Number(created.lastInsertRowid)
+    const oldId = Number(created.lastInsertRowid);
 
     const result = updateCashMovement({
       id: oldId,
@@ -845,11 +847,11 @@ describe('cash repository', () => {
       notes: 'Correct movement',
 
       actor_id: 1,
-    })
+    });
 
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(true);
 
-    const db = getDb()
+    const db = getDb();
 
     const oldMovement = db
       .prepare(
@@ -861,15 +863,17 @@ describe('cash repository', () => {
       WHERE id = ?
       `,
       )
-      .get(oldId) as any
+      .get(oldId) as any;
 
-    expect(oldMovement.cancelled_at).toBeNull()
+    expect(oldMovement.cancelled_at).toBeNull();
 
     if (!('movement_id' in result)) {
-      throw new Error('Expected manual cash movement update result')
+      throw new Error('Expected manual cash movement update result');
     }
 
-    expect(Number(oldMovement.replacement_movement_id)).toBe(result.movement_id)
+    expect(Number(oldMovement.replacement_movement_id)).toBe(
+      result.movement_id,
+    );
 
     const reverseMovement = db
       .prepare(
@@ -882,28 +886,28 @@ describe('cash repository', () => {
         LIMIT 1
         `,
       )
-      .get(oldId) as any
+      .get(oldId) as any;
 
-    expect(reverseMovement).toBeTruthy()
+    expect(reverseMovement).toBeTruthy();
 
-    expect(reverseMovement.direction).toBe('out')
+    expect(reverseMovement.direction).toBe('out');
 
-    expect(Number(reverseMovement.amount)).toBe(500)
+    expect(Number(reverseMovement.amount)).toBe(500);
 
-    expect(result.reverse_movement_id).toBe(Number(reverseMovement.id))
+    expect(result.reverse_movement_id).toBe(Number(reverseMovement.id));
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(0)
+    ).toBe(0);
 
     expect(
       getCashSummary({
         payment_method: 'owner_cash',
       }).balance,
-    ).toBe(300)
-  })
+    ).toBe(300);
+  });
 
   it('updates a cash transfer safely', () => {
     createCashMovement({
@@ -918,7 +922,7 @@ describe('cash repository', () => {
       reference_type: 'manual',
 
       created_by: 1,
-    })
+    });
 
     const transfer = createCashTransfer({
       from_account: 'store_cash',
@@ -930,7 +934,7 @@ describe('cash repository', () => {
       notes: 'Old transfer',
 
       created_by: 1,
-    })
+    });
 
     const result = updateCashMovement({
       id: transfer.out_id,
@@ -944,29 +948,29 @@ describe('cash repository', () => {
       notes: 'Correct transfer',
 
       actor_id: 1,
-    })
+    });
 
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(true);
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(750)
+    ).toBe(750);
 
     expect(
       getCashSummary({
         payment_method: 'owner_cash',
       }).balance,
-    ).toBe(0)
+    ).toBe(0);
 
     expect(
       getCashSummary({
         payment_method: 'owner_bank',
       }).balance,
-    ).toBe(250)
+    ).toBe(250);
 
-    const db = getDb()
+    const db = getDb();
 
     const oldRows = db
       .prepare(
@@ -980,22 +984,22 @@ describe('cash repository', () => {
       ORDER BY id ASC
       `,
       )
-      .all(transfer.out_id, transfer.in_id) as any[]
+      .all(transfer.out_id, transfer.in_id) as any[];
 
-    expect(oldRows.every((row) => row.cancelled_at == null)).toBe(true)
+    expect(oldRows.every((row) => row.cancelled_at == null)).toBe(true);
 
     expect(
       oldRows.every((row) => Number(row.replacement_movement_id || 0) > 0),
-    ).toBe(true)
-  })
+    ).toBe(true);
+  });
 
   it('records a previous-shift manual correction in the current shift', () => {
-    const db = getDb()
+    const db = getDb();
 
     const shift1 = openCashShift({
       opening_counted_amount: 0,
       opened_by: 1,
-    })
+    });
 
     const created = createCashMovement({
       type: 'deposit',
@@ -1005,21 +1009,21 @@ describe('cash repository', () => {
       reference_type: 'manual',
       created_by: 1,
       shift_id: shift1.id,
-    })
+    });
 
-    const oldId = Number(created.lastInsertRowid)
+    const oldId = Number(created.lastInsertRowid);
 
     closeCashShift({
       shift_id: shift1.id,
       closing_counted_amount: 500,
       left_for_next_shift: 500,
       closed_by: 1,
-    })
+    });
 
     const shift2 = openCashShift({
       opening_counted_amount: 500,
       opened_by: 1,
-    })
+    });
 
     const result = updateCashMovement({
       id: oldId,
@@ -1028,13 +1032,13 @@ describe('cash repository', () => {
       payment_method: 'store_cash',
       actor_id: 1,
       shift_id: shift2.id,
-    })
+    });
 
     if (!('movement_id' in result)) {
-      throw new Error('Expected manual movement result')
+      throw new Error('Expected manual movement result');
     }
 
-    expect(result.shift_id).toBe(shift2.id)
+    expect(result.shift_id).toBe(shift2.id);
 
     const original = db
       .prepare(
@@ -1044,11 +1048,11 @@ describe('cash repository', () => {
         WHERE id = ?
         `,
       )
-      .get(oldId) as any
+      .get(oldId) as any;
 
-    expect(Number(original.shift_id)).toBe(shift1.id)
+    expect(Number(original.shift_id)).toBe(shift1.id);
 
-    expect(original.cancelled_at).toBeNull()
+    expect(original.cancelled_at).toBeNull();
 
     const reverse = db
       .prepare(
@@ -1062,13 +1066,13 @@ describe('cash repository', () => {
         LIMIT 1
         `,
       )
-      .get(oldId) as any
+      .get(oldId) as any;
 
-    expect(reverse.direction).toBe('out')
+    expect(reverse.direction).toBe('out');
 
-    expect(Number(reverse.amount)).toBe(500)
+    expect(Number(reverse.amount)).toBe(500);
 
-    expect(Number(reverse.shift_id)).toBe(shift2.id)
+    expect(Number(reverse.shift_id)).toBe(shift2.id);
 
     const replacement = db
       .prepare(
@@ -1078,26 +1082,26 @@ describe('cash repository', () => {
         WHERE id = ?
         `,
       )
-      .get(result.movement_id) as any
+      .get(result.movement_id) as any;
 
-    expect(replacement.direction).toBe('in')
+    expect(replacement.direction).toBe('in');
 
-    expect(Number(replacement.amount)).toBe(600)
+    expect(Number(replacement.amount)).toBe(600);
 
-    expect(Number(replacement.shift_id)).toBe(shift2.id)
+    expect(Number(replacement.shift_id)).toBe(shift2.id);
 
     expect(getCashShiftExpectedBalance(shift2.id).expected_closing_amount).toBe(
       600,
-    )
-  })
+    );
+  });
 
   it('cancels a transfer by reversing it in the active shift', () => {
-    const db = getDb()
+    const db = getDb();
 
     const shift = openCashShift({
       opening_counted_amount: 1000,
       opened_by: 1,
-    })
+    });
 
     const transfer = createCashTransfer({
       from_account: 'store_cash',
@@ -1106,30 +1110,30 @@ describe('cash repository', () => {
       notes: 'Cancelable transfer',
       created_by: 1,
       shift_id: shift.id,
-    })
+    });
 
     const result = cancelCashMovement({
       id: transfer.out_id,
       reason: 'Cancel transfer',
       actor_id: 1,
       shift_id: shift.id,
-    })
+    });
 
-    expect(result.success).toBe(true)
+    expect(result.success).toBe(true);
 
-    expect(result.shift_id).toBe(shift.id)
+    expect(result.shift_id).toBe(shift.id);
 
     expect(
       getCashSummary({
         payment_method: 'store_cash',
       }).balance,
-    ).toBe(1000)
+    ).toBe(1000);
 
     expect(
       getCashSummary({
         payment_method: 'owner_cash',
       }).balance,
-    ).toBe(0)
+    ).toBe(0);
 
     const oldRows = db
       .prepare(
@@ -1140,13 +1144,13 @@ describe('cash repository', () => {
         ORDER BY id ASC
         `,
       )
-      .all(transfer.out_id, transfer.in_id) as any[]
+      .all(transfer.out_id, transfer.in_id) as any[];
 
-    expect(oldRows.every((row) => row.cancelled_at == null)).toBe(true)
+    expect(oldRows.every((row) => row.cancelled_at == null)).toBe(true);
 
     expect(
       oldRows.every((row) => Number(row.replacement_movement_id || 0) > 0),
-    ).toBe(true)
+    ).toBe(true);
 
     const reverseRows = db
       .prepare(
@@ -1158,16 +1162,16 @@ describe('cash repository', () => {
         ORDER BY id ASC
         `,
       )
-      .all() as any[]
+      .all() as any[];
 
-    expect(reverseRows).toHaveLength(2)
+    expect(reverseRows).toHaveLength(2);
 
     expect(reverseRows.every((row) => Number(row.shift_id) === shift.id)).toBe(
       true,
-    )
+    );
 
     expect(getCashShiftExpectedBalance(shift.id).expected_closing_amount).toBe(
       1000,
-    )
-  })
-})
+    );
+  });
+});

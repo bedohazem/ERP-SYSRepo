@@ -1,55 +1,55 @@
-import { BrowserWindow, ipcMain } from 'electron'
-import fs from 'node:fs/promises'
-import os from 'node:os'
-import path from 'node:path'
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
-import { getDb } from '../database/db'
-import { listCashDrawerNoSaleEvents } from '../database/repositories/activity.repo'
-import { requireOperationalCashShift } from '../database/repositories/cash-shifts.repo'
-import { logAction } from './activity-helper'
+import { BrowserWindow, ipcMain } from 'electron';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { getDb } from '../database/db';
+import { listCashDrawerNoSaleEvents } from '../database/repositories/activity.repo';
+import { requireOperationalCashShift } from '../database/repositories/cash-shifts.repo';
+import { logAction } from './activity-helper';
 import {
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
   requirePermission,
-} from '../auth-session'
+} from '../auth-session';
 
-const execFileAsync = promisify(execFile)
+const execFileAsync = promisify(execFile);
 
 type CashDrawerSettings = {
-  printer_name: string
-  auto_open_cash_sale: boolean
-}
+  printer_name: string;
+  auto_open_cash_sale: boolean;
+};
 
 type SaveCashDrawerSettingsInput = {
-  printer_name?: string | null
-  auto_open_cash_sale?: boolean
-  actor_id?: number
-}
+  printer_name?: string | null;
+  auto_open_cash_sale?: boolean;
+  actor_id?: number;
+};
 
 type OpenCashDrawerInput = {
-  actor_id?: number
-  reason?: 'manual' | 'sale' | 'test' | string
-  sale_id?: number | null
-}
+  actor_id?: number;
+  reason?: 'manual' | 'sale' | 'test' | string;
+  sale_id?: number | null;
+};
 
 const DEFAULT_SETTINGS: CashDrawerSettings = {
   printer_name: '',
   auto_open_cash_sale: true,
-}
+};
 
 function getSetting(key: string, fallback: string) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(`SELECT value FROM app_settings WHERE key = ? LIMIT 1`)
-    .get(key) as { value: string } | undefined
+    .get(key) as { value: string } | undefined;
 
-  return row?.value ?? fallback
+  return row?.value ?? fallback;
 }
 
 function saveSetting(key: string, value: string) {
-  const db = getDb()
+  const db = getDb();
 
   db.prepare(
     `
@@ -57,7 +57,7 @@ function saveSetting(key: string, value: string) {
     VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
   `,
-  ).run(key, value)
+  ).run(key, value);
 }
 
 function getCashDrawerSettings(): CashDrawerSettings {
@@ -71,31 +71,31 @@ function getCashDrawerSettings(): CashDrawerSettings {
         'cash_drawer_auto_open_cash_sale',
         String(DEFAULT_SETTINGS.auto_open_cash_sale),
       ) === 'true',
-  }
+  };
 }
 
 function saveCashDrawerSettings(
   input: SaveCashDrawerSettingsInput,
 ): CashDrawerSettings {
-  const printerName = String(input.printer_name || '').trim()
-  const autoOpenCashSale = Boolean(input.auto_open_cash_sale)
+  const printerName = String(input.printer_name || '').trim();
+  const autoOpenCashSale = Boolean(input.auto_open_cash_sale);
 
-  saveSetting('cash_drawer_printer_name', printerName)
-  saveSetting('cash_drawer_auto_open_cash_sale', String(autoOpenCashSale))
+  saveSetting('cash_drawer_printer_name', printerName);
+  saveSetting('cash_drawer_auto_open_cash_sale', String(autoOpenCashSale));
 
-  return getCashDrawerSettings()
+  return getCashDrawerSettings();
 }
 
 function getCashDrawerPulseBytes() {
   // ESC/POS command:
   // ESC p m t1 t2
   // 27, 112, 0, 25, 250
-  return [27, 112, 0, 25, 250]
+  return [27, 112, 0, 25, 250];
 }
 
 function buildPowerShellScript(printerName: string) {
-  const printerNameBase64 = Buffer.from(printerName, 'utf8').toString('base64')
-  const pulseBytes = getCashDrawerPulseBytes().join(',')
+  const printerNameBase64 = Buffer.from(printerName, 'utf8').toString('base64');
+  const pulseBytes = getCashDrawerPulseBytes().join(',');
 
   return `
 $ErrorActionPreference = "Stop"
@@ -201,30 +201,30 @@ if (-not $ok) {
   $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
   throw "Failed to open cash drawer. Win32Error=$err"
 }
-`
+`;
 }
 
 async function sendCashDrawerPulse(printerName: string) {
   if (process.platform !== 'win32') {
-    throw new Error('فتح درج الكاشير مدعوم على ويندوز فقط')
+    throw new Error('فتح درج الكاشير مدعوم على ويندوز فقط');
   }
 
-  const cleanPrinterName = String(printerName || '').trim()
+  const cleanPrinterName = String(printerName || '').trim();
 
   if (!cleanPrinterName) {
-    throw new Error('اختار طابعة درج الكاشير من الإعدادات أولًا')
+    throw new Error('اختار طابعة درج الكاشير من الإعدادات أولًا');
   }
 
   const scriptPath = path.join(
     os.tmpdir(),
     `erp-cash-drawer-${Date.now()}-${Math.random().toString(16).slice(2)}.ps1`,
-  )
+  );
 
   await fs.writeFile(
     scriptPath,
     buildPowerShellScript(cleanPrinterName),
     'utf8',
-  )
+  );
 
   try {
     await execFileAsync(
@@ -234,24 +234,24 @@ async function sendCashDrawerPulse(printerName: string) {
         windowsHide: true,
         timeout: 8000,
       },
-    )
+    );
   } catch {
     throw new Error(
       'تعذر فتح درج الكاشير، تأكد من توصيل الدرج والطابعة أو اختيار الطابعة الصحيحة من الإعدادات',
-    )
+    );
   } finally {
-    await fs.unlink(scriptPath).catch(() => {})
+    await fs.unlink(scriptPath).catch(() => {});
   }
 }
 
 export function registerCashDrawerIpc(): void {
   ipcMain.handle('cash-drawer:get-settings', (event) => {
-    const actor = requireAuthenticatedUser(event)
+    const actor = requireAuthenticatedUser(event);
 
-    const settings = getCashDrawerSettings()
+    const settings = getCashDrawerSettings();
 
     if (actor.role === 'admin') {
-      return settings
+      return settings;
     }
 
     /*
@@ -263,15 +263,15 @@ export function registerCashDrawerIpc(): void {
     return {
       ...settings,
       printer_name: '',
-    }
-  })
+    };
+  });
 
   ipcMain.handle(
     'cash-drawer:save-settings',
     (event, input: SaveCashDrawerSettingsInput) => {
-      const actorId = requireAuthenticatedAdmin(event)
+      const actorId = requireAuthenticatedAdmin(event);
 
-      const settings = saveCashDrawerSettings(input)
+      const settings = saveCashDrawerSettings(input);
 
       logAction({
         actor_id: actorId,
@@ -279,26 +279,26 @@ export function registerCashDrawerIpc(): void {
         entity: 'settings',
         entity_id: null,
         details: settings,
-      })
+      });
 
       return {
         success: true,
         settings,
         message: 'تم حفظ إعدادات درج الكاشير',
-      }
+      };
     },
-  )
+  );
 
   ipcMain.handle('cash-drawer:list-printers', async (event) => {
-    requireAuthenticatedAdmin(event)
+    requireAuthenticatedAdmin(event);
 
-    const parentWindow = BrowserWindow.fromWebContents(event.sender)
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
 
     if (!parentWindow) {
-      return []
+      return [];
     }
 
-    const printers = await parentWindow.webContents.getPrintersAsync()
+    const printers = await parentWindow.webContents.getPrintersAsync();
 
     return printers.map((printer: any) => ({
       name: printer.name,
@@ -306,11 +306,11 @@ export function registerCashDrawerIpc(): void {
       description: printer.description || '',
       status: printer.status,
       isDefault: Boolean(printer.isDefault),
-    }))
-  })
+    }));
+  });
 
   ipcMain.handle('cash-drawer:list-no-sale-events', (event, input) => {
-    requirePermission(event, 'shifts.manage')
+    requirePermission(event, 'shifts.manage');
 
     return listCashDrawerNoSaleEvents({
       shift_id: input?.shift_id ?? null,
@@ -326,30 +326,30 @@ export function registerCashDrawerIpc(): void {
       limit: Number(input?.limit || 50),
 
       offset: Number(input?.offset || 0),
-    })
-  })
+    });
+  });
 
   ipcMain.handle(
     'cash-drawer:open',
     async (event, input?: OpenCashDrawerInput) => {
-      const actor = requireAuthenticatedUser(event)
+      const actor = requireAuthenticatedUser(event);
 
-      const actorId = actor.id
+      const actorId = actor.id;
 
-      const settings = getCashDrawerSettings()
+      const settings = getCashDrawerSettings();
 
-      const rawSaleId = Number(input?.sale_id || 0)
+      const rawSaleId = Number(input?.sale_id || 0);
 
       const saleId =
-        Number.isInteger(rawSaleId) && rawSaleId > 0 ? rawSaleId : null
+        Number.isInteger(rawSaleId) && rawSaleId > 0 ? rawSaleId : null;
 
       const reason: 'manual' | 'sale' | 'test' = saleId
         ? 'sale'
         : input?.reason === 'test'
           ? 'test'
-          : 'manual'
+          : 'manual';
 
-      let shiftId: number | null = null
+      let shiftId: number | null = null;
 
       try {
         /*
@@ -362,9 +362,9 @@ export function registerCashDrawerIpc(): void {
           const shift = requireOperationalCashShift(
             actorId,
             'لا يمكن فتح درج الكاشير بدون شفت مفتوح',
-          )
+          );
 
-          shiftId = Number(shift.id)
+          shiftId = Number(shift.id);
         }
 
         /*
@@ -374,10 +374,10 @@ export function registerCashDrawerIpc(): void {
          * تقرير الشفتات.
          */
         if (reason === 'test' && actor.role !== 'admin') {
-          throw new Error('اختبار درج الكاشير متاح لمدير النظام فقط')
+          throw new Error('اختبار درج الكاشير متاح لمدير النظام فقط');
         }
 
-        await sendCashDrawerPulse(settings.printer_name)
+        await sendCashDrawerPulse(settings.printer_name);
 
         logAction({
           actor_id: actorId,
@@ -395,16 +395,16 @@ export function registerCashDrawerIpc(): void {
 
             printer_name: settings.printer_name,
           },
-        })
+        });
 
         return {
           success: true,
 
           message: 'تم إرسال أمر فتح درج الكاشير',
-        }
+        };
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : 'فشل فتح درج الكاشير'
+          error instanceof Error ? error.message : 'فشل فتح درج الكاشير';
 
         logAction({
           actor_id: actorId,
@@ -424,14 +424,14 @@ export function registerCashDrawerIpc(): void {
 
             error: message,
           },
-        })
+        });
 
         return {
           success: false,
 
           message,
-        }
+        };
       }
     },
-  )
+  );
 }

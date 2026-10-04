@@ -1,177 +1,173 @@
-import { getDb } from '../db'
-import { createCriticalActivityLog } from './activity.repo'
-import { roundMoney } from '../../../shared/money'
+import { getDb } from '../db';
+import { createCriticalActivityLog } from './activity.repo';
+import { roundMoney } from '../../../shared/money';
 import {
   createCashMovement,
   getCashSummary,
   resolveCashAccount,
-} from './cash.repo'
+} from './cash.repo';
 
 export type CashShiftRow = {
-  id: number
+  id: number;
 
-  status: 'open' | 'closed'
+  status: 'open' | 'closed';
 
-  opened_by: number
-  opened_by_name?: string | null
-  opened_at: string
+  opened_by: number;
+  opened_by_name?: string | null;
+  opened_at: string;
 
-  previous_shift_id: number | null
+  previous_shift_id: number | null;
 
-  expected_opening_amount: number | null
-  opening_counted_amount: number
-  opening_difference: number
+  expected_opening_amount: number | null;
+  opening_counted_amount: number;
+  opening_difference: number;
 
-  expected_closing_amount: number | null
-  closing_counted_amount: number | null
-  closing_difference: number | null
+  expected_closing_amount: number | null;
+  closing_counted_amount: number | null;
+  closing_difference: number | null;
 
-  left_for_next_shift: number | null
-  safe_transfer_amount: number | null
+  left_for_next_shift: number | null;
+  safe_transfer_amount: number | null;
 
-  closed_by: number | null
-  closed_by_name?: string | null
-  closed_at: string | null
+  closed_by: number | null;
+  closed_by_name?: string | null;
+  closed_at: string | null;
 
-  close_reason: string | null
-}
+  close_reason: string | null;
+};
 
 export type OpenCashShiftInput = {
-  opening_counted_amount: number
-  opened_by: number
-}
+  opening_counted_amount: number;
+  opened_by: number;
+};
 
 export type CloseCashShiftInput = {
-  shift_id: number
-  closing_counted_amount: number
-  left_for_next_shift: number
-  closed_by: number
-  close_reason?: string | null
-  approved_by?: number | null
-}
+  shift_id: number;
+  closing_counted_amount: number;
+  left_for_next_shift: number;
+  closed_by: number;
+  close_reason?: string | null;
+  approved_by?: number | null;
+};
 
 export type ForceCloseCashShiftInput = {
-  shift_id: number
+  shift_id: number;
 
-  closed_by: number
+  closed_by: number;
 
-  reason: string
+  reason: string;
 
-  approved_by?: number | null
-}
+  approved_by?: number | null;
+};
 
 export type CashShiftDaySummaryInput = {
-  business_date: string
-  user_id?: number | null
-}
+  business_date: string;
+  user_id?: number | null;
+};
 
 export type CashShiftHistoryFilterInput = {
-  status?: 'all' | 'open' | 'closed'
+  status?: 'all' | 'open' | 'closed';
 
-  user_id?: number | null
+  user_id?: number | null;
 
-  date_from?: string | null
-  date_to?: string | null
+  date_from?: string | null;
+  date_to?: string | null;
 
-  limit?: number
-  offset?: number
-}
+  limit?: number;
+  offset?: number;
+};
 
 export type CashShiftHistoryRow = CashShiftRow & {
-  duration_minutes: number
+  duration_minutes: number;
 
-  cash_in: number
-  cash_out: number
+  cash_in: number;
+  cash_out: number;
 
-  variance_count: number
-  pending_variance_count: number
-}
+  variance_count: number;
+  pending_variance_count: number;
+};
 
-export type CashShiftVarianceStatus = 'pending' | 'resolved'
+export type CashShiftVarianceStatus = 'pending' | 'resolved';
 
 export type CashShiftVarianceResolutionType =
-  | 'approved'
-  | 'rejected'
-  | 'corrected'
-  | 'explained'
-  | 'other'
+  'approved' | 'rejected' | 'corrected' | 'explained' | 'other';
 
 export type CashShiftVarianceRow = {
-  id: number
-  shift_id: number
+  id: number;
+  shift_id: number;
 
-  stage: 'opening' | 'closing'
-  kind: 'shortage' | 'surplus'
+  stage: 'opening' | 'closing';
+  kind: 'shortage' | 'surplus';
 
-  amount: number
+  amount: number;
 
-  status: CashShiftVarianceStatus
+  status: CashShiftVarianceStatus;
 
-  resolution_type: CashShiftVarianceResolutionType | null
+  resolution_type: CashShiftVarianceResolutionType | null;
 
-  resolution_notes: string | null
+  resolution_notes: string | null;
 
-  resolved_by: number | null
-  resolved_by_name?: string | null
-  resolved_at: string | null
+  resolved_by: number | null;
+  resolved_by_name?: string | null;
+  resolved_at: string | null;
 
-  created_at: string
+  created_at: string;
 
-  shift_status: 'open' | 'closed'
+  shift_status: 'open' | 'closed';
 
-  opened_by: number
-  opened_by_name?: string | null
+  opened_by: number;
+  opened_by_name?: string | null;
 
-  shift_opened_at: string
-  shift_closed_at: string | null
-}
+  shift_opened_at: string;
+  shift_closed_at: string | null;
+};
 
 export type CashShiftVarianceFilterInput = {
-  status?: 'all' | CashShiftVarianceStatus
+  status?: 'all' | CashShiftVarianceStatus;
 
-  user_id?: number | null
+  user_id?: number | null;
 
-  date_from?: string | null
-  date_to?: string | null
+  date_from?: string | null;
+  date_to?: string | null;
 
-  limit?: number
-  offset?: number
-}
+  limit?: number;
+  offset?: number;
+};
 
 export type ResolveCashShiftVarianceInput = {
-  variance_id: number
+  variance_id: number;
 
-  resolution_type: CashShiftVarianceResolutionType
+  resolution_type: CashShiftVarianceResolutionType;
 
-  resolution_notes: string
-  approved_by?: number | null
-  resolved_by: number
-  reversal_account?: string | null
-  corrected_opening_amount?: number | null
-}
+  resolution_notes: string;
+  approved_by?: number | null;
+  resolved_by: number;
+  reversal_account?: string | null;
+  corrected_opening_amount?: number | null;
+};
 
 function normalizeShiftBusinessDate(value?: string | null) {
-  const businessDate = String(value || '').trim()
+  const businessDate = String(value || '').trim();
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(businessDate)) {
-    throw new Error('تاريخ ملخص الشفتات غير صحيح')
+    throw new Error('تاريخ ملخص الشفتات غير صحيح');
   }
 
-  return businessDate
+  return businessDate;
 }
 
 function normalizeShiftHistoryDate(value?: string | null) {
-  const date = String(value || '').trim()
+  const date = String(value || '').trim();
 
   if (!date) {
-    return null
+    return null;
   }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new Error('تاريخ فلتر الشفتات غير صحيح')
+    throw new Error('تاريخ فلتر الشفتات غير صحيح');
   }
 
-  return date
+  return date;
 }
 
 function getShiftSelectSql() {
@@ -189,7 +185,7 @@ function getShiftSelectSql() {
 
     LEFT JOIN users closed_user
       ON closed_user.id = cs.closed_by
-  `
+  `;
 }
 
 function getVarianceSelectSql() {
@@ -224,16 +220,16 @@ function getVarianceSelectSql() {
 
     LEFT JOIN users resolver
       ON resolver.id = csv.resolved_by
-  `
+  `;
 }
 
 export function getCashShiftById(shiftId: number): CashShiftRow | null {
-  const db = getDb()
+  const db = getDb();
 
-  const id = Number(shiftId || 0)
+  const id = Number(shiftId || 0);
 
   if (!id) {
-    return null
+    return null;
   }
 
   const row = db
@@ -246,13 +242,13 @@ export function getCashShiftById(shiftId: number): CashShiftRow | null {
       LIMIT 1
       `,
     )
-    .get(id) as CashShiftRow | undefined
+    .get(id) as CashShiftRow | undefined;
 
-  return row || null
+  return row || null;
 }
 
 export function getOpenCashShift(): CashShiftRow | null {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -266,21 +262,21 @@ export function getOpenCashShift(): CashShiftRow | null {
       LIMIT 1
       `,
     )
-    .get() as CashShiftRow | undefined
+    .get() as CashShiftRow | undefined;
 
-  return row || null
+  return row || null;
 }
 
 export function requireOperationalCashShift(
   actorIdInput: number,
   noShiftMessage = 'لا يوجد شفت مفتوح',
 ): CashShiftRow {
-  const db = getDb()
+  const db = getDb();
 
-  const actorId = Number(actorIdInput || 0)
+  const actorId = Number(actorIdInput || 0);
 
   if (!Number.isInteger(actorId) || actorId <= 0) {
-    throw new Error('المستخدم غير صحيح')
+    throw new Error('المستخدم غير صحيح');
   }
 
   const actor = db
@@ -300,20 +296,20 @@ export function requireOperationalCashShift(
     )
     .get(actorId) as
     | {
-        id: number
-        role: string
-        is_active: number
+        id: number;
+        role: string;
+        is_active: number;
       }
-    | undefined
+    | undefined;
 
   if (!actor || Number(actor.is_active) !== 1) {
-    throw new Error('المستخدم غير موجود أو غير مفعل')
+    throw new Error('المستخدم غير موجود أو غير مفعل');
   }
 
-  const shift = getOpenCashShift()
+  const shift = getOpenCashShift();
 
   if (!shift) {
-    throw new Error(noShiftMessage)
+    throw new Error(noShiftMessage);
   }
 
   /*
@@ -323,10 +319,10 @@ export function requireOperationalCashShift(
    * المفتوح لأغراض الإدارة والطوارئ.
    */
   if (actor.role !== 'admin' && Number(shift.opened_by) !== actorId) {
-    throw new Error('الشفت المفتوح تابع لمستخدم آخر')
+    throw new Error('الشفت المفتوح تابع لمستخدم آخر');
   }
 
-  return shift
+  return shift;
 }
 
 export function resolveFinancialOperationShift(
@@ -334,12 +330,12 @@ export function resolveFinancialOperationShift(
   paymentMethods: Array<string | null | undefined>,
   noShiftMessage = 'لا يوجد شفت مفتوح',
 ): CashShiftRow | null {
-  const db = getDb()
+  const db = getDb();
 
-  const actorId = Number(actorIdInput || 0)
+  const actorId = Number(actorIdInput || 0);
 
   if (!Number.isInteger(actorId) || actorId <= 0) {
-    throw new Error('المستخدم غير صحيح')
+    throw new Error('المستخدم غير صحيح');
   }
 
   const actor = db
@@ -356,27 +352,27 @@ export function resolveFinancialOperationShift(
     )
     .get(actorId) as
     | {
-        id: number
-        role: string
-        is_active: number
+        id: number;
+        role: string;
+        is_active: number;
       }
-    | undefined
+    | undefined;
 
   if (!actor || Number(actor.is_active) !== 1) {
-    throw new Error('المستخدم غير موجود أو غير مفعل')
+    throw new Error('المستخدم غير موجود أو غير مفعل');
   }
 
-  const accounts = paymentMethods.length > 0 ? paymentMethods : ['cash']
+  const accounts = paymentMethods.length > 0 ? paymentMethods : ['cash'];
 
   const resolvedAccounts = accounts.map((method) =>
     resolveCashAccount(method || 'cash'),
-  )
+  );
 
   if (actor.role !== 'admin' && resolvedAccounts.includes('store_safe')) {
-    throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط')
+    throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط');
   }
 
-  const touchesDrawer = resolvedAccounts.includes('store_cash')
+  const touchesDrawer = resolvedAccounts.includes('store_cash');
 
   /*
    * الأدمن يقدر يعمل عملية على
@@ -389,16 +385,16 @@ export function resolveFinancialOperationShift(
    * له لازم تكون أثناء شفته.
    */
   if (actor.role === 'admin' && !touchesDrawer) {
-    return null
+    return null;
   }
 
-  return requireOperationalCashShift(actorId, noShiftMessage)
+  return requireOperationalCashShift(actorId, noShiftMessage);
 }
 
 export function getCashShiftOpeningPreview() {
-  const db = getDb()
+  const db = getDb();
 
-  const currentOpenShift = getOpenCashShift()
+  const currentOpenShift = getOpenCashShift();
 
   if (currentOpenShift) {
     return {
@@ -406,7 +402,7 @@ export function getCashShiftOpeningPreview() {
       open_shift: currentOpenShift,
       previous_shift_id: null,
       expected_opening_amount: null,
-    }
+    };
   }
 
   const previousShift = db
@@ -428,17 +424,17 @@ export function getCashShiftOpeningPreview() {
     )
     .get() as
     | {
-        id: number
-        left_for_next_shift: number | null
-        closed_at: string | null
+        id: number;
+        left_for_next_shift: number | null;
+        closed_at: string | null;
       }
-    | undefined
+    | undefined;
 
   const expectedOpeningAmount =
     previousShift?.left_for_next_shift === null ||
     previousShift?.left_for_next_shift === undefined
       ? null
-      : roundMoney(Number(previousShift.left_for_next_shift))
+      : roundMoney(Number(previousShift.left_for_next_shift));
 
   return {
     can_open: true,
@@ -450,28 +446,28 @@ export function getCashShiftOpeningPreview() {
     expected_opening_amount: expectedOpeningAmount,
 
     previous_closed_at: previousShift?.closed_at ?? null,
-  }
+  };
 }
 
 export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
-  const db = getDb()
+  const db = getDb();
 
-  const openedBy = Number(input.opened_by || 0)
+  const openedBy = Number(input.opened_by || 0);
 
-  const rawOpeningCountedAmount = Number(input.opening_counted_amount)
+  const rawOpeningCountedAmount = Number(input.opening_counted_amount);
 
   if (!Number.isInteger(openedBy) || openedBy <= 0) {
-    throw new Error('المستخدم غير صحيح')
+    throw new Error('المستخدم غير صحيح');
   }
 
   if (
     !Number.isFinite(rawOpeningCountedAmount) ||
     rawOpeningCountedAmount < 0
   ) {
-    throw new Error('رصيد افتتاح الشفت غير صحيح')
+    throw new Error('رصيد افتتاح الشفت غير صحيح');
   }
 
-  const openingCountedAmount = roundMoney(rawOpeningCountedAmount)
+  const openingCountedAmount = roundMoney(rawOpeningCountedAmount);
 
   const tx = db.transaction(() => {
     const currentOpenShift = db
@@ -491,14 +487,14 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
       )
       .get() as
       | {
-          id: number
-          opened_by: number
-          opened_at: string
+          id: number;
+          opened_by: number;
+          opened_at: string;
         }
-      | undefined
+      | undefined;
 
     if (currentOpenShift) {
-      throw new Error(`يوجد شفت مفتوح بالفعل رقم ${currentOpenShift.id}`)
+      throw new Error(`يوجد شفت مفتوح بالفعل رقم ${currentOpenShift.id}`);
     }
 
     const previousShift = db
@@ -519,21 +515,21 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
       )
       .get() as
       | {
-          id: number
-          left_for_next_shift: number | null
+          id: number;
+          left_for_next_shift: number | null;
         }
-      | undefined
+      | undefined;
 
     const expectedOpeningAmount =
       previousShift?.left_for_next_shift === null ||
       previousShift?.left_for_next_shift === undefined
         ? null
-        : roundMoney(Number(previousShift.left_for_next_shift))
+        : roundMoney(Number(previousShift.left_for_next_shift));
 
     const openingDifference =
       expectedOpeningAmount === null
         ? 0
-        : roundMoney(openingCountedAmount - expectedOpeningAmount)
+        : roundMoney(openingCountedAmount - expectedOpeningAmount);
 
     const result = db
       .prepare(
@@ -570,9 +566,9 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
         openingCountedAmount,
 
         openingDifference,
-      )
+      );
 
-    const shiftId = Number(result.lastInsertRowid)
+    const shiftId = Number(result.lastInsertRowid);
 
     if (expectedOpeningAmount !== null && Math.abs(openingDifference) > 0.01) {
       db.prepare(
@@ -599,7 +595,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
         openingDifference < 0 ? 'shortage' : 'surplus',
 
         Math.abs(openingDifference),
-      )
+      );
     }
 
     const currentDrawerBalance = roundMoney(
@@ -608,10 +604,10 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
           payment_method: 'store_cash',
         }).balance,
       ),
-    )
+    );
 
-    let accountReconciliationAmount = 0
-    let openingSafeTransferAmount = 0
+    let accountReconciliationAmount = 0;
+    let openingSafeTransferAmount = 0;
 
     /*
      * أول شفت فقط هو نقطة الانتقال
@@ -624,10 +620,10 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
     if (!previousShift) {
       const legacyDrawerExcess = roundMoney(
         currentDrawerBalance - openingCountedAmount,
-      )
+      );
 
       if (legacyDrawerExcess > 0.01) {
-        openingSafeTransferAmount = legacyDrawerExcess
+        openingSafeTransferAmount = legacyDrawerExcess;
 
         const outResult = createCashMovement({
           type: 'transfer',
@@ -646,7 +642,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
 
           created_by: openedBy,
           shift_id: shiftId,
-        })
+        });
 
         createCashMovement({
           type: 'transfer',
@@ -665,11 +661,11 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
 
           created_by: openedBy,
           shift_id: shiftId,
-        })
+        });
       } else if (legacyDrawerExcess < -0.01) {
         accountReconciliationAmount = roundMoney(
           openingCountedAmount - currentDrawerBalance,
-        )
+        );
 
         createCashMovement({
           type: 'shift_adjustment',
@@ -688,7 +684,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
 
           created_by: openedBy,
           shift_id: shiftId,
-        })
+        });
       }
     } else {
       /*
@@ -699,7 +695,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
        */
       accountReconciliationAmount = roundMoney(
         openingCountedAmount - currentDrawerBalance,
-      )
+      );
 
       if (Math.abs(accountReconciliationAmount) > 0.01) {
         createCashMovement({
@@ -719,7 +715,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
 
           created_by: openedBy,
           shift_id: shiftId,
-        })
+        });
       }
     }
 
@@ -743,27 +739,27 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
         account_reconciliation_amount: accountReconciliationAmount,
         opening_safe_transfer_amount: openingSafeTransferAmount,
       }),
-    })
+    });
 
-    const shift = getCashShiftById(shiftId)
+    const shift = getCashShiftById(shiftId);
 
     if (!shift) {
-      throw new Error('تعذر تحميل الشفت بعد فتحه')
+      throw new Error('تعذر تحميل الشفت بعد فتحه');
     }
 
-    return shift
-  })
+    return shift;
+  });
 
-  return tx()
+  return tx();
 }
 
 export function getCashShiftExpectedBalance(shiftId: number) {
-  const db = getDb()
+  const db = getDb();
 
-  const shift = getCashShiftById(shiftId)
+  const shift = getCashShiftById(shiftId);
 
   if (!shift) {
-    throw new Error('الشفت غير موجود')
+    throw new Error('الشفت غير موجود');
   }
 
   const totals = db
@@ -808,18 +804,18 @@ export function getCashShiftExpectedBalance(shiftId: number) {
     )
     .get(shift.id) as
     | {
-        total_in: number
-        total_out: number
+        total_in: number;
+        total_out: number;
       }
-    | undefined
+    | undefined;
 
-  const cashIn = roundMoney(Number(totals?.total_in || 0))
+  const cashIn = roundMoney(Number(totals?.total_in || 0));
 
-  const cashOut = roundMoney(Number(totals?.total_out || 0))
+  const cashOut = roundMoney(Number(totals?.total_out || 0));
 
   const expectedClosingAmount = roundMoney(
     Number(shift.opening_counted_amount || 0) + cashIn - cashOut,
-  )
+  );
 
   const breakdown = db
     .prepare(
@@ -856,7 +852,7 @@ export function getCashShiftExpectedBalance(shiftId: number) {
       type: String(row.type || ''),
       direction: row.direction as 'in' | 'out',
       total: roundMoney(Number(row.total || 0)),
-    }))
+    }));
 
   return {
     shift_id: shift.id,
@@ -871,23 +867,23 @@ export function getCashShiftExpectedBalance(shiftId: number) {
     expected_closing_amount: expectedClosingAmount,
 
     breakdown,
-  }
+  };
 }
 
 export function getCashShiftDaySummary(input: CashShiftDaySummaryInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const businessDate = normalizeShiftBusinessDate(input.business_date)
+  const businessDate = normalizeShiftBusinessDate(input.business_date);
 
-  const userId = Number(input.user_id || 0)
+  const userId = Number(input.user_id || 0);
 
-  const where = [`date(cs.opened_at, 'localtime') = ?`]
+  const where = [`date(cs.opened_at, 'localtime') = ?`];
 
-  const params: any[] = [businessDate]
+  const params: any[] = [businessDate];
 
   if (userId > 0) {
-    where.push(`cs.opened_by = ?`)
-    params.push(userId)
+    where.push(`cs.opened_by = ?`);
+    params.push(userId);
   }
 
   const shifts = db
@@ -902,7 +898,7 @@ export function getCashShiftDaySummary(input: CashShiftDaySummaryInput) {
         cs.id ASC
       `,
     )
-    .all(...params) as CashShiftRow[]
+    .all(...params) as CashShiftRow[];
 
   if (shifts.length === 0) {
     return {
@@ -927,12 +923,12 @@ export function getCashShiftDaySummary(input: CashShiftDaySummaryInput) {
 
       balance_before_handover: 0,
       ending_drawer_balance: 0,
-    }
+    };
   }
 
-  const shiftIds = shifts.map((shift) => Number(shift.id))
+  const shiftIds = shifts.map((shift) => Number(shift.id));
 
-  const placeholders = shiftIds.map(() => '?').join(', ')
+  const placeholders = shiftIds.map(() => '?').join(', ');
 
   /*
    * نحسب فقط التشغيل الحقيقي للدرج.
@@ -988,21 +984,21 @@ export function getCashShiftDaySummary(input: CashShiftDaySummaryInput) {
     )
     .get(...shiftIds) as
     | {
-        total_in: number
-        total_out: number
+        total_in: number;
+        total_out: number;
       }
-    | undefined
+    | undefined;
 
-  const firstShift = shifts[0]
+  const firstShift = shifts[0];
 
-  const lastShift = shifts[shifts.length - 1]
+  const lastShift = shifts[shifts.length - 1];
 
-  const cashIn = roundMoney(Number(totals?.total_in || 0))
+  const cashIn = roundMoney(Number(totals?.total_in || 0));
 
-  const cashOut = roundMoney(Number(totals?.total_out || 0))
+  const cashOut = roundMoney(Number(totals?.total_out || 0));
 
-  let balanceBeforeHandover = 0
-  let endingDrawerBalance = 0
+  let balanceBeforeHandover = 0;
+  let endingDrawerBalance = 0;
 
   if (lastShift.status === 'closed') {
     balanceBeforeHandover = roundMoney(
@@ -1012,24 +1008,24 @@ export function getCashShiftDaySummary(input: CashShiftDaySummaryInput) {
           lastShift.opening_counted_amount ??
           0,
       ),
-    )
+    );
 
     endingDrawerBalance = roundMoney(
       Number(lastShift.left_for_next_shift ?? balanceBeforeHandover),
-    )
+    );
   } else {
-    const preview = getCashShiftExpectedBalance(lastShift.id)
+    const preview = getCashShiftExpectedBalance(lastShift.id);
 
     balanceBeforeHandover = roundMoney(
       Number(preview.expected_closing_amount || 0),
-    )
+    );
 
-    endingDrawerBalance = balanceBeforeHandover
+    endingDrawerBalance = balanceBeforeHandover;
   }
 
   const closedShiftsCount = shifts.filter(
     (shift) => shift.status === 'closed',
-  ).length
+  ).length;
 
   return {
     business_date: businessDate,
@@ -1060,58 +1056,58 @@ export function getCashShiftDaySummary(input: CashShiftDaySummaryInput) {
     balance_before_handover: balanceBeforeHandover,
 
     ending_drawer_balance: endingDrawerBalance,
-  }
+  };
 }
 
 export function listCashShifts(input?: CashShiftHistoryFilterInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const status = input?.status || 'all'
+  const status = input?.status || 'all';
 
   if (status !== 'all' && status !== 'open' && status !== 'closed') {
-    throw new Error('حالة الشفت غير صحيحة')
+    throw new Error('حالة الشفت غير صحيحة');
   }
 
-  const userId = Number(input?.user_id || 0)
+  const userId = Number(input?.user_id || 0);
 
-  const dateFrom = normalizeShiftHistoryDate(input?.date_from)
+  const dateFrom = normalizeShiftHistoryDate(input?.date_from);
 
-  const dateTo = normalizeShiftHistoryDate(input?.date_to)
+  const dateTo = normalizeShiftHistoryDate(input?.date_to);
 
   if (dateFrom && dateTo && dateFrom > dateTo) {
-    throw new Error('تاريخ البداية أكبر من تاريخ النهاية')
+    throw new Error('تاريخ البداية أكبر من تاريخ النهاية');
   }
 
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
 
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
-  const where: string[] = []
-  const params: any[] = []
+  const where: string[] = [];
+  const params: any[] = [];
 
   if (status !== 'all') {
-    where.push(`cs.status = ?`)
-    params.push(status)
+    where.push(`cs.status = ?`);
+    params.push(status);
   }
 
   if (userId > 0) {
-    where.push(`cs.opened_by = ?`)
-    params.push(userId)
+    where.push(`cs.opened_by = ?`);
+    params.push(userId);
   }
 
   if (dateFrom) {
-    where.push(`date(cs.opened_at, 'localtime') >= ?`)
+    where.push(`date(cs.opened_at, 'localtime') >= ?`);
 
-    params.push(dateFrom)
+    params.push(dateFrom);
   }
 
   if (dateTo) {
-    where.push(`date(cs.opened_at, 'localtime') <= ?`)
+    where.push(`date(cs.opened_at, 'localtime') <= ?`);
 
-    params.push(dateTo)
+    params.push(dateTo);
   }
 
-  const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
   const rows = db
     .prepare(
@@ -1224,7 +1220,7 @@ export function listCashShifts(input?: CashShiftHistoryFilterInput) {
       OFFSET ?
       `,
     )
-    .all(...params, limit, offset) as CashShiftHistoryRow[]
+    .all(...params, limit, offset) as CashShiftHistoryRow[];
 
   const totalRow = db
     .prepare(
@@ -1237,8 +1233,8 @@ export function listCashShifts(input?: CashShiftHistoryFilterInput) {
       `,
     )
     .get(...params) as {
-    total: number
-  }
+    total: number;
+  };
 
   return {
     rows: rows.map((row) => ({
@@ -1259,25 +1255,25 @@ export function listCashShifts(input?: CashShiftHistoryFilterInput) {
 
     limit,
     offset,
-  }
+  };
 }
 
 export function getCashShiftDetails(shiftIdInput: number) {
-  const db = getDb()
+  const db = getDb();
 
-  const shiftId = Number(shiftIdInput || 0)
+  const shiftId = Number(shiftIdInput || 0);
 
   if (!Number.isInteger(shiftId) || shiftId <= 0) {
-    throw new Error('رقم الشفت غير صحيح')
+    throw new Error('رقم الشفت غير صحيح');
   }
 
-  const shift = getCashShiftById(shiftId)
+  const shift = getCashShiftById(shiftId);
 
   if (!shift) {
-    throw new Error('الشفت غير موجود')
+    throw new Error('الشفت غير موجود');
   }
 
-  const preview = getCashShiftExpectedBalance(shiftId)
+  const preview = getCashShiftExpectedBalance(shiftId);
 
   const movements = db
     .prepare(
@@ -1297,7 +1293,7 @@ export function getCashShiftDetails(shiftIdInput: number) {
       ORDER BY cm.id ASC
       `,
     )
-    .all(shiftId)
+    .all(shiftId);
 
   const variances = db
     .prepare(
@@ -1309,25 +1305,25 @@ export function getCashShiftDetails(shiftIdInput: number) {
       ORDER BY csv.id ASC
       `,
     )
-    .all(shiftId) as CashShiftVarianceRow[]
+    .all(shiftId) as CashShiftVarianceRow[];
 
   return {
     shift,
     preview,
     movements,
     variances,
-  }
+  };
 }
 
 export function getCashShiftVarianceById(
   varianceIdInput: number,
 ): CashShiftVarianceRow | null {
-  const db = getDb()
+  const db = getDb();
 
-  const varianceId = Number(varianceIdInput || 0)
+  const varianceId = Number(varianceIdInput || 0);
 
   if (!varianceId) {
-    return null
+    return null;
   }
 
   const row = db
@@ -1340,62 +1336,62 @@ export function getCashShiftVarianceById(
       LIMIT 1
       `,
     )
-    .get(varianceId) as CashShiftVarianceRow | undefined
+    .get(varianceId) as CashShiftVarianceRow | undefined;
 
-  return row || null
+  return row || null;
 }
 
 export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const status = input?.status || 'pending'
+  const status = input?.status || 'pending';
 
   if (status !== 'all' && status !== 'pending' && status !== 'resolved') {
-    throw new Error('حالة فرق الشفت غير صحيحة')
+    throw new Error('حالة فرق الشفت غير صحيحة');
   }
 
-  const userId = Number(input?.user_id || 0)
+  const userId = Number(input?.user_id || 0);
 
-  const dateFrom = normalizeShiftHistoryDate(input?.date_from)
+  const dateFrom = normalizeShiftHistoryDate(input?.date_from);
 
-  const dateTo = normalizeShiftHistoryDate(input?.date_to)
+  const dateTo = normalizeShiftHistoryDate(input?.date_to);
 
   if (dateFrom && dateTo && dateFrom > dateTo) {
-    throw new Error('تاريخ البداية أكبر من تاريخ النهاية')
+    throw new Error('تاريخ البداية أكبر من تاريخ النهاية');
   }
 
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
 
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
-  const where: string[] = []
-  const params: any[] = []
+  const where: string[] = [];
+  const params: any[] = [];
 
   if (status !== 'all') {
-    where.push(`csv.status = ?`)
+    where.push(`csv.status = ?`);
 
-    params.push(status)
+    params.push(status);
   }
 
   if (userId > 0) {
-    where.push(`cs.opened_by = ?`)
+    where.push(`cs.opened_by = ?`);
 
-    params.push(userId)
+    params.push(userId);
   }
 
   if (dateFrom) {
-    where.push(`date(cs.opened_at, 'localtime') >= ?`)
+    where.push(`date(cs.opened_at, 'localtime') >= ?`);
 
-    params.push(dateFrom)
+    params.push(dateFrom);
   }
 
   if (dateTo) {
-    where.push(`date(cs.opened_at, 'localtime') <= ?`)
+    where.push(`date(cs.opened_at, 'localtime') <= ?`);
 
-    params.push(dateTo)
+    params.push(dateTo);
   }
 
-  const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
 
   const rows = db
     .prepare(
@@ -1417,7 +1413,7 @@ export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
       OFFSET ?
       `,
     )
-    .all(...params, limit, offset) as CashShiftVarianceRow[]
+    .all(...params, limit, offset) as CashShiftVarianceRow[];
 
   const totalRow = db
     .prepare(
@@ -1434,8 +1430,8 @@ export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
       `,
     )
     .get(...params) as {
-    total: number
-  }
+    total: number;
+  };
 
   /*
    * ده يفضل Global عشان المدير
@@ -1454,8 +1450,8 @@ export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
       `,
     )
     .get() as {
-    total: number
-  }
+    total: number;
+  };
 
   return {
     rows,
@@ -1466,28 +1462,28 @@ export function listCashShiftVariances(input?: CashShiftVarianceFilterInput) {
 
     limit,
     offset,
-  }
+  };
 }
 
 export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const varianceId = Number(input.variance_id || 0)
+  const varianceId = Number(input.variance_id || 0);
 
-  const resolvedBy = Number(input.resolved_by || 0)
+  const resolvedBy = Number(input.resolved_by || 0);
 
   const resolutionType = String(
     input.resolution_type || '',
-  ) as CashShiftVarianceResolutionType
+  ) as CashShiftVarianceResolutionType;
 
-  const resolutionNotes = String(input.resolution_notes || '').trim()
+  const resolutionNotes = String(input.resolution_notes || '').trim();
 
   if (!Number.isInteger(varianceId) || varianceId <= 0) {
-    throw new Error('رقم فرق الشفت غير صحيح')
+    throw new Error('رقم فرق الشفت غير صحيح');
   }
 
   if (!Number.isInteger(resolvedBy) || resolvedBy <= 0) {
-    throw new Error('المستخدم غير صحيح')
+    throw new Error('المستخدم غير صحيح');
   }
 
   if (
@@ -1495,11 +1491,11 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
       resolutionType,
     )
   ) {
-    throw new Error('نوع مراجعة فرق الشفت غير صحيح')
+    throw new Error('نوع مراجعة فرق الشفت غير صحيح');
   }
 
   if (!resolutionNotes) {
-    throw new Error('اكتب ملاحظات مراجعة فرق الشفت')
+    throw new Error('اكتب ملاحظات مراجعة فرق الشفت');
   }
 
   const actor = db
@@ -1519,66 +1515,66 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
     )
     .get(resolvedBy) as
     | {
-        id: number
-        role: string
-        is_active: number
+        id: number;
+        role: string;
+        is_active: number;
       }
-    | undefined
+    | undefined;
 
   if (!actor || Number(actor.is_active) !== 1 || actor.role !== 'admin') {
-    throw new Error('مراجعة فروق الشفتات متاحة لمدير النظام فقط')
+    throw new Error('مراجعة فروق الشفتات متاحة لمدير النظام فقط');
   }
 
-  const current = getCashShiftVarianceById(varianceId)
+  const current = getCashShiftVarianceById(varianceId);
 
   if (!current) {
-    throw new Error('فرق الشفت غير موجود')
+    throw new Error('فرق الشفت غير موجود');
   }
 
   if (current.status === 'resolved') {
-    throw new Error('تمت مراجعة فرق الشفت بالفعل')
+    throw new Error('تمت مراجعة فرق الشفت بالفعل');
   }
 
-  let openingShift: CashShiftRow | null = null
-  let correctedOpeningAmount: number | null = null
+  let openingShift: CashShiftRow | null = null;
+  let correctedOpeningAmount: number | null = null;
 
   if (resolutionType === 'corrected') {
     if (current.stage !== 'opening') {
-      throw new Error('تصحيح الجرد متاح لفروق افتتاح الشفت فقط')
+      throw new Error('تصحيح الجرد متاح لفروق افتتاح الشفت فقط');
     }
 
     if (
       input.corrected_opening_amount === null ||
       input.corrected_opening_amount === undefined
     ) {
-      throw new Error('اكتب الجرد الصحيح عند افتتاح الشفت')
+      throw new Error('اكتب الجرد الصحيح عند افتتاح الشفت');
     }
 
-    const rawCorrectedOpeningAmount = Number(input.corrected_opening_amount)
+    const rawCorrectedOpeningAmount = Number(input.corrected_opening_amount);
 
     if (
       !Number.isFinite(rawCorrectedOpeningAmount) ||
       rawCorrectedOpeningAmount < 0
     ) {
-      throw new Error('الجرد الصحيح عند افتتاح الشفت غير صحيح')
+      throw new Error('الجرد الصحيح عند افتتاح الشفت غير صحيح');
     }
 
-    correctedOpeningAmount = roundMoney(rawCorrectedOpeningAmount)
+    correctedOpeningAmount = roundMoney(rawCorrectedOpeningAmount);
 
-    openingShift = getCashShiftById(current.shift_id)
+    openingShift = getCashShiftById(current.shift_id);
 
     if (!openingShift) {
-      throw new Error('الشفت المرتبط بفرق الافتتاح غير موجود')
+      throw new Error('الشفت المرتبط بفرق الافتتاح غير موجود');
     }
 
     if (openingShift.status !== 'open') {
       throw new Error(
         'لا يمكن تصحيح جرد افتتاح شفت بعد إغلاقه، يمكن اعتماد الفرق فقط',
-      )
+      );
     }
 
     if (openingShift.expected_opening_amount === null) {
-      throw new Error('لا يوجد رصيد افتتاح متوقع لهذا الشفت')
+      throw new Error('لا يوجد رصيد افتتاح متوقع لهذا الشفت');
     }
 
     if (
@@ -1587,32 +1583,32 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
           roundMoney(Number(openingShift.opening_counted_amount || 0)),
       ) <= 0.01
     ) {
-      throw new Error('الجرد الصحيح يساوي الجرد المسجل بالفعل')
+      throw new Error('الجرد الصحيح يساوي الجرد المسجل بالفعل');
     }
   }
 
-  let reversalAccount: ReturnType<typeof resolveCashAccount> | null = null
+  let reversalAccount: ReturnType<typeof resolveCashAccount> | null = null;
 
   if (resolutionType === 'rejected') {
     if (current.stage !== 'closing') {
-      throw new Error('عدم اعتماد الفرق متاح حاليًا لفروق إغلاق الشفت فقط')
+      throw new Error('عدم اعتماد الفرق متاح حاليًا لفروق إغلاق الشفت فقط');
     }
 
-    const rawReversalAccount = String(input.reversal_account || '').trim()
+    const rawReversalAccount = String(input.reversal_account || '').trim();
 
     if (!rawReversalAccount) {
-      throw new Error('اختر الحساب الذي سيتم عكس فرق الإغلاق عليه')
+      throw new Error('اختر الحساب الذي سيتم عكس فرق الإغلاق عليه');
     }
 
-    reversalAccount = resolveCashAccount(rawReversalAccount)
+    reversalAccount = resolveCashAccount(rawReversalAccount);
 
     if (reversalAccount === 'store_cash') {
-      throw new Error('لا يمكن عكس فرق شفت مغلق على درج المحل')
+      throw new Error('لا يمكن عكس فرق شفت مغلق على درج المحل');
     }
   }
 
   const tx = db.transaction(() => {
-    const varianceAmount = roundMoney(Number(current.amount || 0))
+    const varianceAmount = roundMoney(Number(current.amount || 0));
 
     if (
       resolutionType === 'corrected' &&
@@ -1621,15 +1617,15 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
     ) {
       const previousOpeningCounted = roundMoney(
         Number(openingShift.opening_counted_amount || 0),
-      )
+      );
 
       const expectedOpeningAmount = roundMoney(
         Number(openingShift.expected_opening_amount || 0),
-      )
+      );
 
       const correctionAmount = roundMoney(
         correctedOpeningAmount - previousOpeningCounted,
-      )
+      );
 
       if (Math.abs(correctionAmount) > 0.01) {
         createCashMovement({
@@ -1652,12 +1648,12 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
           created_by: resolvedBy,
 
           shift_id: current.shift_id,
-        })
+        });
       }
 
       const newOpeningDifference = roundMoney(
         correctedOpeningAmount - expectedOpeningAmount,
-      )
+      );
 
       const shiftResult = db
         .prepare(
@@ -1672,10 +1668,10 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
             AND status = 'open'
           `,
         )
-        .run(correctedOpeningAmount, newOpeningDifference, current.shift_id)
+        .run(correctedOpeningAmount, newOpeningDifference, current.shift_id);
 
       if (Number(shiftResult.changes || 0) !== 1) {
-        throw new Error('تعذر تحديث جرد افتتاح الشفت')
+        throw new Error('تعذر تحديث جرد افتتاح الشفت');
       }
 
       if (Math.abs(newOpeningDifference) <= 0.01) {
@@ -1695,7 +1691,7 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
           WHERE id = ?
             AND status = 'pending'
           `,
-        ).run(current.kind, resolutionNotes, resolvedBy, varianceId)
+        ).run(current.kind, resolutionNotes, resolvedBy, varianceId);
       } else {
         db.prepare(
           `
@@ -1717,7 +1713,7 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
           newOpeningDifference < 0 ? 'shortage' : 'surplus',
           Math.abs(newOpeningDifference),
           varianceId,
-        )
+        );
       }
 
       createCriticalActivityLog({
@@ -1746,15 +1742,15 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
 
           notes: resolutionNotes,
         }),
-      })
+      });
 
-      const correctedVariance = getCashShiftVarianceById(varianceId)
+      const correctedVariance = getCashShiftVarianceById(varianceId);
 
       if (!correctedVariance) {
-        throw new Error('تعذر تحميل فرق الافتتاح بعد التصحيح')
+        throw new Error('تعذر تحميل فرق الافتتاح بعد التصحيح');
       }
 
-      return correctedVariance
+      return correctedVariance;
     }
 
     if (resolutionType === 'rejected' && reversalAccount) {
@@ -1765,10 +1761,10 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
               payment_method: reversalAccount,
             }).balance,
           ),
-        )
+        );
 
         if (accountBalance + 0.01 < varianceAmount) {
-          throw new Error('رصيد الحساب المختار غير كافٍ لعكس مبلغ الزيادة')
+          throw new Error('رصيد الحساب المختار غير كافٍ لعكس مبلغ الزيادة');
         }
       }
 
@@ -1793,7 +1789,7 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
         created_by: resolvedBy,
 
         shift_id: null,
-      })
+      });
     }
     const result = db
       .prepare(
@@ -1816,10 +1812,10 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
           AND status = 'pending'
         `,
       )
-      .run(resolutionType, resolutionNotes, resolvedBy, varianceId)
+      .run(resolutionType, resolutionNotes, resolvedBy, varianceId);
 
     if (Number(result.changes || 0) !== 1) {
-      throw new Error('تعذر مراجعة فرق الشفت')
+      throw new Error('تعذر مراجعة فرق الشفت');
     }
 
     createCriticalActivityLog({
@@ -1845,68 +1841,68 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
         resolution_notes: resolutionNotes,
         reversal_account: reversalAccount,
       }),
-    })
+    });
 
-    const resolved = getCashShiftVarianceById(varianceId)
+    const resolved = getCashShiftVarianceById(varianceId);
 
     if (!resolved) {
-      throw new Error('تعذر تحميل فرق الشفت بعد المراجعة')
+      throw new Error('تعذر تحميل فرق الشفت بعد المراجعة');
     }
 
-    return resolved
-  })
+    return resolved;
+  });
 
-  return tx()
+  return tx();
 }
 
 export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
-  const db = getDb()
+  const db = getDb();
 
-  const shiftId = Number(input.shift_id || 0)
-  const closedBy = Number(input.closed_by || 0)
+  const shiftId = Number(input.shift_id || 0);
+  const closedBy = Number(input.closed_by || 0);
 
-  const rawClosingCountedAmount = Number(input.closing_counted_amount)
+  const rawClosingCountedAmount = Number(input.closing_counted_amount);
 
-  const rawLeftForNextShift = Number(input.left_for_next_shift)
+  const rawLeftForNextShift = Number(input.left_for_next_shift);
 
   if (!Number.isInteger(shiftId) || shiftId <= 0) {
-    throw new Error('رقم الشفت غير صحيح')
+    throw new Error('رقم الشفت غير صحيح');
   }
 
   if (!Number.isInteger(closedBy) || closedBy <= 0) {
-    throw new Error('المستخدم غير صحيح')
+    throw new Error('المستخدم غير صحيح');
   }
 
   if (
     !Number.isFinite(rawClosingCountedAmount) ||
     rawClosingCountedAmount < 0
   ) {
-    throw new Error('قيمة جرد إغلاق الشفت غير صحيحة')
+    throw new Error('قيمة جرد إغلاق الشفت غير صحيحة');
   }
 
   if (!Number.isFinite(rawLeftForNextShift) || rawLeftForNextShift < 0) {
-    throw new Error('المبلغ المتروك للشفت التالي غير صحيح')
+    throw new Error('المبلغ المتروك للشفت التالي غير صحيح');
   }
 
-  const closingCountedAmount = roundMoney(rawClosingCountedAmount)
+  const closingCountedAmount = roundMoney(rawClosingCountedAmount);
 
-  const leftForNextShift = roundMoney(rawLeftForNextShift)
+  const leftForNextShift = roundMoney(rawLeftForNextShift);
 
   if (leftForNextShift > closingCountedAmount) {
     throw new Error(
       'المبلغ المتروك للشفت التالي أكبر من المبلغ الموجود فعليًا في الدرج',
-    )
+    );
   }
 
   const tx = db.transaction(() => {
-    const shift = getCashShiftById(shiftId)
+    const shift = getCashShiftById(shiftId);
 
     if (!shift) {
-      throw new Error('الشفت غير موجود')
+      throw new Error('الشفت غير موجود');
     }
 
     if (shift.status !== 'open') {
-      throw new Error('هذا الشفت مغلق بالفعل')
+      throw new Error('هذا الشفت مغلق بالفعل');
     }
 
     const actor = db
@@ -1926,37 +1922,37 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
       )
       .get(closedBy) as
       | {
-          id: number
-          role: string
-          is_active: number
+          id: number;
+          role: string;
+          is_active: number;
         }
-      | undefined
+      | undefined;
 
     if (!actor || Number(actor.is_active) !== 1) {
-      throw new Error('المستخدم غير موجود أو غير مفعل')
+      throw new Error('المستخدم غير موجود أو غير مفعل');
     }
 
-    const isAdmin = actor.role === 'admin'
+    const isAdmin = actor.role === 'admin';
 
-    const isShiftOwner = Number(shift.opened_by) === closedBy
+    const isShiftOwner = Number(shift.opened_by) === closedBy;
 
     if (!isAdmin && !isShiftOwner) {
-      throw new Error('لا يمكن إغلاق الشفت إلا بواسطة صاحب الشفت أو المدير')
+      throw new Error('لا يمكن إغلاق الشفت إلا بواسطة صاحب الشفت أو المدير');
     }
 
     if (isAdmin && !isShiftOwner && !input.close_reason?.trim()) {
-      throw new Error('سبب إغلاق المدير للشفت مطلوب')
+      throw new Error('سبب إغلاق المدير للشفت مطلوب');
     }
 
-    const preview = getCashShiftExpectedBalance(shift.id)
+    const preview = getCashShiftExpectedBalance(shift.id);
 
-    const expectedClosingAmount = roundMoney(preview.expected_closing_amount)
+    const expectedClosingAmount = roundMoney(preview.expected_closing_amount);
 
     const closingDifference = roundMoney(
       closingCountedAmount - expectedClosingAmount,
-    )
+    );
 
-    let closingVarianceId: number | null = null
+    let closingVarianceId: number | null = null;
 
     if (Math.abs(closingDifference) > 0.01) {
       const varianceResult = db
@@ -1985,9 +1981,9 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
           closingDifference < 0 ? 'shortage' : 'surplus',
 
           Math.abs(closingDifference),
-        )
+        );
 
-      closingVarianceId = Number(varianceResult.lastInsertRowid)
+      closingVarianceId = Number(varianceResult.lastInsertRowid);
 
       createCashMovement({
         type: 'shift_adjustment',
@@ -2009,12 +2005,12 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
 
         created_by: closedBy,
         shift_id: shift.id,
-      })
+      });
     }
 
     const safeTransferAmount = roundMoney(
       closingCountedAmount - leftForNextShift,
-    )
+    );
 
     if (safeTransferAmount > 0) {
       const outResult = createCashMovement({
@@ -2034,7 +2030,7 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
 
         created_by: closedBy,
         shift_id: shift.id,
-      })
+      });
 
       createCashMovement({
         type: 'transfer',
@@ -2053,7 +2049,7 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
 
         created_by: closedBy,
         shift_id: shift.id,
-      })
+      });
     }
 
     db.prepare(
@@ -2090,7 +2086,7 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
       input.close_reason?.trim() || null,
 
       shift.id,
-    )
+    );
 
     createCriticalActivityLog({
       user_id: closedBy,
@@ -2114,52 +2110,52 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
 
         closing_variance_id: closingVarianceId,
       }),
-    })
+    });
 
-    const closedShift = getCashShiftById(shift.id)
+    const closedShift = getCashShiftById(shift.id);
 
     if (!closedShift) {
-      throw new Error('تعذر تحميل الشفت بعد إغلاقه')
+      throw new Error('تعذر تحميل الشفت بعد إغلاقه');
     }
 
-    return closedShift
-  })
+    return closedShift;
+  });
 
-  return tx()
+  return tx();
 }
 
 export function forceCloseCashShift(
   input: ForceCloseCashShiftInput,
 ): CashShiftRow {
-  const db = getDb()
+  const db = getDb();
 
-  const shiftId = Number(input.shift_id || 0)
+  const shiftId = Number(input.shift_id || 0);
 
-  const closedBy = Number(input.closed_by || 0)
+  const closedBy = Number(input.closed_by || 0);
 
-  const reason = String(input.reason || '').trim()
+  const reason = String(input.reason || '').trim();
 
   if (!Number.isInteger(shiftId) || shiftId <= 0) {
-    throw new Error('رقم الشفت غير صحيح')
+    throw new Error('رقم الشفت غير صحيح');
   }
 
   if (!Number.isInteger(closedBy) || closedBy <= 0) {
-    throw new Error('المستخدم غير صحيح')
+    throw new Error('المستخدم غير صحيح');
   }
 
   if (!reason) {
-    throw new Error('سبب الإغلاق الطارئ مطلوب')
+    throw new Error('سبب الإغلاق الطارئ مطلوب');
   }
 
   const tx = db.transaction(() => {
-    const shift = getCashShiftById(shiftId)
+    const shift = getCashShiftById(shiftId);
 
     if (!shift) {
-      throw new Error('الشفت غير موجود')
+      throw new Error('الشفت غير موجود');
     }
 
     if (shift.status !== 'open') {
-      throw new Error('هذا الشفت مغلق بالفعل')
+      throw new Error('هذا الشفت مغلق بالفعل');
     }
 
     const actor = db
@@ -2179,21 +2175,21 @@ export function forceCloseCashShift(
       )
       .get(closedBy) as
       | {
-          id: number
-          role: string
-          is_active: number
+          id: number;
+          role: string;
+          is_active: number;
         }
-      | undefined
+      | undefined;
 
     if (!actor || Number(actor.is_active) !== 1 || actor.role !== 'admin') {
-      throw new Error('الإغلاق الطارئ متاح لمدير النظام فقط')
+      throw new Error('الإغلاق الطارئ متاح لمدير النظام فقط');
     }
 
-    const preview = getCashShiftExpectedBalance(shift.id)
+    const preview = getCashShiftExpectedBalance(shift.id);
 
     const expectedClosingAmount = roundMoney(
       Number(preview.expected_closing_amount || 0),
-    )
+    );
 
     /*
      * لا نسجل جردًا وهميًا.
@@ -2242,10 +2238,10 @@ export function forceCloseCashShift(
         `إغلاق طارئ بدون جرد: ${reason}`,
 
         shift.id,
-      )
+      );
 
     if (Number(result.changes || 0) !== 1) {
-      throw new Error('تعذر تنفيذ الإغلاق الطارئ للشفت')
+      throw new Error('تعذر تنفيذ الإغلاق الطارئ للشفت');
     }
 
     createCriticalActivityLog({
@@ -2272,16 +2268,16 @@ export function forceCloseCashShift(
 
         reason,
       }),
-    })
+    });
 
-    const closedShift = getCashShiftById(shift.id)
+    const closedShift = getCashShiftById(shift.id);
 
     if (!closedShift) {
-      throw new Error('تعذر تحميل الشفت بعد الإغلاق الطارئ')
+      throw new Error('تعذر تحميل الشفت بعد الإغلاق الطارئ');
     }
 
-    return closedShift
-  })
+    return closedShift;
+  });
 
-  return tx()
+  return tx();
 }

@@ -1,136 +1,139 @@
-import { useEffect, useState } from 'react'
-import { useAuthStore } from '../../store/auth.store'
+import { useEffect, useState } from 'react';
+import { useAuthStore } from '../../store/auth.store';
 import {
   CASH_ACCOUNT_OPTIONS,
   getPaymentMethodLabel,
-} from '../../utils/payment-method'
-import { useNavigate } from 'react-router-dom'
-import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
-import { formatMoney, roundMoney } from '../../../shared/money'
+} from '../../utils/payment-method';
+import { useNavigate } from 'react-router-dom';
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
+import { formatMoney, roundMoney } from '../../../shared/money';
 
 function hasRemainingAmount(value: number) {
-  return roundMoney(value) > 0
+  return roundMoney(value) > 0;
 }
 
 type PurchaseRow = {
-  id: number
-  supplier_id: number
-  supplier_name: string
-  supplier_phone?: string | null
-  total_amount: number
-  sub_total?: number
-  discount_type?: 'amount' | 'percent' | string
-  discount_input?: number
-  discount_value?: number
-  paid_amount: number
-  remaining_amount: number
-  payment_status: 'paid' | 'partial' | 'unpaid' | 'cancelled' | string
-  payment_method?: string | null
-  notes?: string | null
-  created_at: string
-  items_count: number
-  status?: 'active' | 'cancelled' | string
-  returned_amount?: number
-}
+  id: number;
+  supplier_id: number;
+  supplier_name: string;
+  supplier_phone?: string | null;
+  total_amount: number;
+  sub_total?: number;
+  discount_type?: 'amount' | 'percent' | string;
+  discount_input?: number;
+  discount_value?: number;
+  paid_amount: number;
+  remaining_amount: number;
+  payment_status: 'paid' | 'partial' | 'unpaid' | 'cancelled' | string;
+  payment_method?: string | null;
+  notes?: string | null;
+  created_at: string;
+  items_count: number;
+  status?: 'active' | 'cancelled' | string;
+  returned_amount?: number;
+};
 
 type PurchaseReturnRow = {
-  id: number
-  purchase_id: number
-  supplier_id: number
-  supplier_name: string
-  supplier_phone?: string | null
-  total_amount: number
-  notes?: string | null
-  created_at: string
-  items_count: number
-  cancelled_at?: string | null
-  replacement_return_id?: number | null
-  refund_mode?: string | null
-  refund_payment_method?: string | null
-  is_latest_active_return?: number
-}
+  id: number;
+  purchase_id: number;
+  supplier_id: number;
+  supplier_name: string;
+  supplier_phone?: string | null;
+  total_amount: number;
+  notes?: string | null;
+  created_at: string;
+  items_count: number;
+  cancelled_at?: string | null;
+  replacement_return_id?: number | null;
+  refund_mode?: string | null;
+  refund_payment_method?: string | null;
+  is_latest_active_return?: number;
+};
 
-type ActiveTab = 'purchases' | 'returns'
+type ActiveTab = 'purchases' | 'returns';
 
 export default function PurchaseHistoryPage() {
-  const currentUser = useAuthStore((s) => s.user)
-  const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<ActiveTab>('purchases')
-  const isAdmin = currentUser?.role === 'admin'
-  const [rows, setRows] = useState<PurchaseRow[]>([])
-  const [total, setTotal] = useState(0)
-  const [purchasePage, setPurchasePage] = useState(1)
+  const currentUser = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<ActiveTab>('purchases');
+  const isAdmin = currentUser?.role === 'admin';
+  const [rows, setRows] = useState<PurchaseRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [purchasePage, setPurchasePage] = useState(1);
 
-  const [returnRows, setReturnRows] = useState<PurchaseReturnRow[]>([])
-  const [returnTotal, setReturnTotal] = useState(0)
-  const [returnPage, setReturnPage] = useState(1)
+  const [returnRows, setReturnRows] = useState<PurchaseReturnRow[]>([]);
+  const [returnTotal, setReturnTotal] = useState(0);
+  const [returnPage, setReturnPage] = useState(1);
 
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState('');
 
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>(
     'all',
-  )
+  );
 
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
 
-  const [selectedPurchase, setSelectedPurchase] = useState<any | null>(null)
-  const [selectedReturn, setSelectedReturn] = useState<any | null>(null)
+  const [selectedPurchase, setSelectedPurchase] = useState<any | null>(null);
+  const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
 
   const [paymentPurchase, setPaymentPurchase] = useState<PurchaseRow | null>(
     null,
-  )
-  const [paymentAmount, setPaymentAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('store_cash')
-  const [paymentNotes, setPaymentNotes] = useState('')
-  const [savingPayment, setSavingPayment] = useState(false)
+  );
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('store_cash');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [savingPayment, setSavingPayment] = useState(false);
 
-  const [returnPurchase, setReturnPurchase] = useState<any | null>(null)
+  const [returnPurchase, setReturnPurchase] = useState<any | null>(null);
   const [returnQuantities, setReturnQuantities] = useState<
     Record<number, string>
-  >({})
-  const [returnNotes, setReturnNotes] = useState('')
-  const [returnRefundAccount, setReturnRefundAccount] = useState('store_cash')
+  >({});
+  const [returnNotes, setReturnNotes] = useState('');
+  const [returnRefundAccount, setReturnRefundAccount] = useState('store_cash');
   const [returnRefundMode, setReturnRefundMode] = useState<'cash' | 'credit'>(
     'cash',
-  )
-  const [savingReturn, setSavingReturn] = useState(false)
+  );
+  const [savingReturn, setSavingReturn] = useState(false);
 
-  const [editingReturnId, setEditingReturnId] = useState<number | null>(null)
+  const [editingReturnId, setEditingReturnId] = useState<number | null>(null);
 
   const [editingReturnOriginalQuantities, setEditingReturnOriginalQuantities] =
-    useState<Record<number, number>>({})
+    useState<Record<number, number>>({});
 
   const [
     editingReturnOriginalDebtReduction,
     setEditingReturnOriginalDebtReduction,
-  ] = useState(0)
+  ] = useState(0);
 
-  const [returnEditReason, setReturnEditReason] = useState('')
+  const [returnEditReason, setReturnEditReason] = useState('');
 
-  const [returnAdminPassword, setReturnAdminPassword] = useState('')
+  const [returnAdminPassword, setReturnAdminPassword] = useState('');
 
   const [cancelReturnTarget, setCancelReturnTarget] =
-    useState<PurchaseReturnRow | null>(null)
+    useState<PurchaseReturnRow | null>(null);
 
   const [cancelReturnReason, setCancelReturnReason] =
-    useState('إلغاء مرتجع شراء')
+    useState('إلغاء مرتجع شراء');
 
-  const [cancelReturnAdminPassword, setCancelReturnAdminPassword] = useState('')
+  const [cancelReturnAdminPassword, setCancelReturnAdminPassword] =
+    useState('');
 
-  const [cancellingReturn, setCancellingReturn] = useState(false)
+  const [cancellingReturn, setCancellingReturn] = useState(false);
 
   const [cancelPurchaseTarget, setCancelPurchaseTarget] =
-    useState<PurchaseRow | null>(null)
-  const [cancelReason, setCancelReason] = useState('')
-  const [cancelAdminPassword, setCancelAdminPassword] = useState('')
-  const [cancellingPurchase, setCancellingPurchase] = useState(false)
+    useState<PurchaseRow | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelAdminPassword, setCancelAdminPassword] = useState('');
+  const [cancellingPurchase, setCancellingPurchase] = useState(false);
 
-  const currentTotal = activeTab === 'purchases' ? total : returnTotal
+  const currentTotal = activeTab === 'purchases' ? total : returnTotal;
 
   function showMessage(text: string) {
-    setMessage(text)
-    setTimeout(() => setMessage(''), 2200)
+    setMessage(text);
+    setTimeout(() => setMessage(''), 2200);
   }
 
   function getErrorMessage(error: unknown, fallback: string) {
@@ -139,20 +142,20 @@ export default function PurchaseHistoryPage() {
         ? error.message
         : typeof error === 'string'
           ? error
-          : ''
+          : '';
 
     const match = raw.match(
       /Error invoking remote method '[^']+': Error: (.*)$/,
-    )
+    );
 
-    return match?.[1] || raw || fallback
+    return match?.[1] || raw || fallback;
   }
 
   async function loadPurchases(page = purchasePage) {
-    setLoading(true)
+    setLoading(true);
 
     try {
-      const safePage = Math.max(1, Number(page || 1))
+      const safePage = Math.max(1, Number(page || 1));
 
       const result = await window.api.listPurchaseInvoices({
         search,
@@ -162,89 +165,89 @@ export default function PurchaseHistoryPage() {
         limit: SYSTEM_PAGE_SIZE,
 
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
-      })
+      });
 
-      setRows(Array.isArray(result.rows) ? result.rows : [])
-      setTotal(Number(result.total || 0))
-      setPurchasePage(safePage)
+      setRows(Array.isArray(result.rows) ? result.rows : []);
+      setTotal(Number(result.total || 0));
+      setPurchasePage(safePage);
     } catch (error) {
-      console.error('Failed to load purchase invoices:', error)
-      showMessage('حدث خطأ أثناء تحميل فواتير الشراء')
-      setRows([])
-      setTotal(0)
+      console.error('Failed to load purchase invoices:', error);
+      showMessage('حدث خطأ أثناء تحميل فواتير الشراء');
+      setRows([]);
+      setTotal(0);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function loadReturns(page = returnPage) {
-    setLoading(true)
+    setLoading(true);
 
     try {
-      const safePage = Math.max(1, Number(page || 1))
+      const safePage = Math.max(1, Number(page || 1));
 
       const result = await window.api.listPurchaseReturns({
         search,
         limit: SYSTEM_PAGE_SIZE,
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
-      })
+      });
 
-      setReturnRows(Array.isArray(result.rows) ? result.rows : [])
-      setReturnTotal(Number(result.total || 0))
-      setReturnPage(safePage)
+      setReturnRows(Array.isArray(result.rows) ? result.rows : []);
+      setReturnTotal(Number(result.total || 0));
+      setReturnPage(safePage);
     } catch (error) {
-      console.error('Failed to load purchase returns:', error)
-      showMessage('حدث خطأ أثناء تحميل مرتجعات الشراء')
-      setReturnRows([])
-      setReturnTotal(0)
+      console.error('Failed to load purchase returns:', error);
+      showMessage('حدث خطأ أثناء تحميل مرتجعات الشراء');
+      setReturnRows([]);
+      setReturnTotal(0);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   useEffect(() => {
     const handle = setTimeout(() => {
       if (activeTab === 'returns') {
-        setReturnPage(1)
-        void loadReturns(1)
+        setReturnPage(1);
+        void loadReturns(1);
       } else {
-        setPurchasePage(1)
-        void loadPurchases(1)
+        setPurchasePage(1);
+        void loadPurchases(1);
       }
-    }, 250)
+    }, 250);
 
-    return () => clearTimeout(handle)
-  }, [search, activeTab, paymentFilter])
+    return () => clearTimeout(handle);
+  }, [search, activeTab, paymentFilter]);
 
   async function openDetails(purchaseId: number) {
     try {
-      const data = await window.api.getPurchaseInvoice(purchaseId)
-      setSelectedPurchase(data)
+      const data = await window.api.getPurchaseInvoice(purchaseId);
+      setSelectedPurchase(data);
     } catch (error) {
-      console.error('Failed to open purchase invoice:', error)
-      showMessage('حدث خطأ أثناء فتح تفاصيل الفاتورة')
+      console.error('Failed to open purchase invoice:', error);
+      showMessage('حدث خطأ أثناء فتح تفاصيل الفاتورة');
     }
   }
 
   async function openReturnDetails(returnId: number) {
     try {
-      const data = await window.api.getPurchaseReturn(returnId)
-      setSelectedReturn(data)
+      const data = await window.api.getPurchaseReturn(returnId);
+      setSelectedReturn(data);
     } catch (error) {
-      console.error('Failed to open purchase return:', error)
-      showMessage('حدث خطأ أثناء فتح تفاصيل المرتجع')
+      console.error('Failed to open purchase return:', error);
+      showMessage('حدث خطأ أثناء فتح تفاصيل المرتجع');
     }
   }
 
   async function openEditReturnModal(row: PurchaseReturnRow) {
     if (row.cancelled_at) {
-      showMessage('مرتجع الشراء ملغي بالفعل')
-      return
+      showMessage('مرتجع الشراء ملغي بالفعل');
+      return;
     }
 
     if (!Number(row.is_latest_active_return || 0)) {
-      showMessage('يجب تعديل آخر مرتجع فعال على الفاتورة أولًا')
-      return
+      showMessage('يجب تعديل آخر مرتجع فعال على الفاتورة أولًا');
+      return;
     }
 
     try {
@@ -252,85 +255,85 @@ export default function PurchaseHistoryPage() {
         window.api.getPurchaseInvoice(row.purchase_id),
 
         window.api.getPurchaseReturn(row.id),
-      ])
+      ]);
 
-      const quantities: Record<number, string> = {}
+      const quantities: Record<number, string> = {};
 
-      const originalQuantities: Record<number, number> = {}
+      const originalQuantities: Record<number, number> = {};
 
       for (const item of returnData.items ?? []) {
-        const purchaseItemId = Number(item.purchase_item_id)
+        const purchaseItemId = Number(item.purchase_item_id);
 
-        const quantity = Number(item.quantity || 0)
+        const quantity = Number(item.quantity || 0);
 
-        quantities[purchaseItemId] = String(quantity)
+        quantities[purchaseItemId] = String(quantity);
 
-        originalQuantities[purchaseItemId] = quantity
+        originalQuantities[purchaseItemId] = quantity;
       }
 
-      setReturnPurchase(purchaseData)
+      setReturnPurchase(purchaseData);
 
-      setReturnQuantities(quantities)
+      setReturnQuantities(quantities);
 
-      setEditingReturnOriginalQuantities(originalQuantities)
+      setEditingReturnOriginalQuantities(originalQuantities);
 
       setEditingReturnOriginalDebtReduction(
         Number(returnData.return?.debt_reduction_amount || 0),
-      )
+      );
 
-      setReturnNotes(returnData.return?.notes || '')
+      setReturnNotes(returnData.return?.notes || '');
 
       setReturnRefundMode(
         returnData.return?.refund_mode === 'credit' ? 'credit' : 'cash',
-      )
+      );
 
       setReturnRefundAccount(
         returnData.return?.refund_payment_method ||
           purchaseData.purchase?.payment_method ||
           'store_cash',
-      )
+      );
 
-      setEditingReturnId(row.id)
+      setEditingReturnId(row.id);
 
-      setReturnEditReason('')
-      setReturnAdminPassword('')
+      setReturnEditReason('');
+      setReturnAdminPassword('');
     } catch (error) {
-      console.error('Failed to open purchase return for editing:', error)
+      console.error('Failed to open purchase return for editing:', error);
 
-      showMessage(getErrorMessage(error, 'تعذر فتح المرتجع للتعديل'))
+      showMessage(getErrorMessage(error, 'تعذر فتح المرتجع للتعديل'));
     }
   }
 
   function openPayment(row: PurchaseRow) {
     if (row.status === 'cancelled' || row.payment_status === 'cancelled') {
-      showMessage('لا يمكن تسجيل دفعة على فاتورة ملغاة')
-      return
+      showMessage('لا يمكن تسجيل دفعة على فاتورة ملغاة');
+      return;
     }
 
-    const remaining = roundMoney(row.remaining_amount)
+    const remaining = roundMoney(row.remaining_amount);
 
     if (remaining <= 0) {
-      showMessage('الفاتورة مدفوعة بالكامل')
-      return
+      showMessage('الفاتورة مدفوعة بالكامل');
+      return;
     }
 
-    setPaymentPurchase(row)
-    setPaymentAmount(String(remaining))
-    setPaymentMethod(row.payment_method || 'store_cash')
-    setPaymentNotes('')
+    setPaymentPurchase(row);
+    setPaymentAmount(String(remaining));
+    setPaymentMethod(row.payment_method || 'store_cash');
+    setPaymentNotes('');
   }
 
   async function savePayment() {
-    if (!paymentPurchase || savingPayment) return
+    if (!paymentPurchase || savingPayment) return;
 
-    const amount = Number(paymentAmount || 0)
+    const amount = Number(paymentAmount || 0);
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      showMessage('اكتب مبلغ صحيح')
-      return
+      showMessage('اكتب مبلغ صحيح');
+      return;
     }
 
-    setSavingPayment(true)
+    setSavingPayment(true);
 
     try {
       const result = await window.api.recordSupplierPayment({
@@ -340,53 +343,53 @@ export default function PurchaseHistoryPage() {
         payment_method: paymentMethod,
         notes: paymentNotes.trim() || null,
         actor_id: currentUser?.id,
-      })
+      });
 
-      showMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`)
+      showMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`);
 
-      setPaymentPurchase(null)
-      setPaymentAmount('')
-      setPaymentNotes('')
+      setPaymentPurchase(null);
+      setPaymentAmount('');
+      setPaymentNotes('');
 
-      await loadPurchases(purchasePage)
+      await loadPurchases(purchasePage);
 
       if (selectedPurchase?.purchase?.id === paymentPurchase.id) {
-        const data = await window.api.getPurchaseInvoice(paymentPurchase.id)
-        setSelectedPurchase(data)
+        const data = await window.api.getPurchaseInvoice(paymentPurchase.id);
+        setSelectedPurchase(data);
       }
     } catch (error) {
-      console.error('Failed to record supplier payment:', error)
-      showMessage(getErrorMessage(error, 'حدث خطأ أثناء تسجيل الدفعة'))
+      console.error('Failed to record supplier payment:', error);
+      showMessage(getErrorMessage(error, 'حدث خطأ أثناء تسجيل الدفعة'));
     } finally {
-      setSavingPayment(false)
+      setSavingPayment(false);
     }
   }
 
   function openCancelPurchaseModal(row: PurchaseRow) {
     if (row.status === 'cancelled' || row.payment_status === 'cancelled') {
-      showMessage('فاتورة الشراء ملغاة بالفعل')
-      return
+      showMessage('فاتورة الشراء ملغاة بالفعل');
+      return;
     }
 
-    const hasReturns = Number(row.returned_amount || 0) > 0
+    const hasReturns = Number(row.returned_amount || 0) > 0;
 
     if (hasReturns) {
-      showMessage('لا يمكن إلغاء فاتورة تم عمل مرتجع عليها')
-      return
+      showMessage('لا يمكن إلغاء فاتورة تم عمل مرتجع عليها');
+      return;
     }
 
-    setCancelPurchaseTarget(row)
-    setCancelReason('إلغاء فاتورة شراء')
-    setCancelAdminPassword('')
+    setCancelPurchaseTarget(row);
+    setCancelReason('إلغاء فاتورة شراء');
+    setCancelAdminPassword('');
   }
 
   async function saveCancelPurchase() {
-    if (!cancelPurchaseTarget || cancellingPurchase) return
+    if (!cancelPurchaseTarget || cancellingPurchase) return;
     if (!cancelAdminPassword.trim()) {
-      showMessage('اكتب كلمة مرور المدير')
-      return
+      showMessage('اكتب كلمة مرور المدير');
+      return;
     }
-    setCancellingPurchase(true)
+    setCancellingPurchase(true);
 
     try {
       const result = await window.api.cancelPurchaseInvoice({
@@ -394,49 +397,51 @@ export default function PurchaseHistoryPage() {
         reason: cancelReason.trim() || 'إلغاء فاتورة شراء',
         actor_id: currentUser?.id,
         admin_password: cancelAdminPassword,
-      })
+      });
 
-      showMessage(`تم إلغاء الفاتورة وخصم ${result.items_count} صنف من المخزون`)
+      showMessage(
+        `تم إلغاء الفاتورة وخصم ${result.items_count} صنف من المخزون`,
+      );
 
-      const cancelledId = cancelPurchaseTarget.id
-      setCancelPurchaseTarget(null)
-      setCancelAdminPassword('')
-      setCancelReason('')
+      const cancelledId = cancelPurchaseTarget.id;
+      setCancelPurchaseTarget(null);
+      setCancelAdminPassword('');
+      setCancelReason('');
 
-      await loadPurchases(purchasePage)
+      await loadPurchases(purchasePage);
 
       if (selectedPurchase?.purchase?.id === cancelledId) {
-        setSelectedPurchase(null)
+        setSelectedPurchase(null);
       }
     } catch (error) {
-      console.error('Failed to cancel purchase invoice:', error)
-      showMessage(getErrorMessage(error, 'حدث خطأ أثناء إلغاء فاتورة الشراء'))
+      console.error('Failed to cancel purchase invoice:', error);
+      showMessage(getErrorMessage(error, 'حدث خطأ أثناء إلغاء فاتورة الشراء'));
     } finally {
-      setCancellingPurchase(false)
+      setCancellingPurchase(false);
     }
   }
 
   async function openReturnModal(row: PurchaseRow) {
-    setEditingReturnId(null)
-    setEditingReturnOriginalQuantities({})
-    setEditingReturnOriginalDebtReduction(0)
-    setReturnEditReason('')
-    setReturnAdminPassword('')
+    setEditingReturnId(null);
+    setEditingReturnOriginalQuantities({});
+    setEditingReturnOriginalDebtReduction(0);
+    setReturnEditReason('');
+    setReturnAdminPassword('');
     if (row.status === 'cancelled' || row.payment_status === 'cancelled') {
-      showMessage('لا يمكن عمل مرتجع على فاتورة ملغاة')
-      return
+      showMessage('لا يمكن عمل مرتجع على فاتورة ملغاة');
+      return;
     }
 
     try {
-      const data = await window.api.getPurchaseInvoice(row.id)
-      setReturnPurchase(data)
-      setReturnNotes('')
-      setReturnQuantities({})
-      setReturnRefundAccount(data.purchase?.payment_method || 'store_cash')
-      setReturnRefundMode('cash')
+      const data = await window.api.getPurchaseInvoice(row.id);
+      setReturnPurchase(data);
+      setReturnNotes('');
+      setReturnQuantities({});
+      setReturnRefundAccount(data.purchase?.payment_method || 'store_cash');
+      setReturnRefundMode('cash');
     } catch (error) {
-      console.error('Failed to open purchase return modal:', error)
-      showMessage('حدث خطأ أثناء تجهيز مرتجع الشراء')
+      console.error('Failed to open purchase return modal:', error);
+      showMessage('حدث خطأ أثناء تجهيز مرتجع الشراء');
     }
   }
 
@@ -444,84 +449,84 @@ export default function PurchaseHistoryPage() {
     setReturnQuantities((prev) => ({
       ...prev,
       [itemId]: value,
-    }))
+    }));
   }
 
   function resetReturnEditor() {
-    setReturnPurchase(null)
+    setReturnPurchase(null);
 
-    setReturnQuantities({})
+    setReturnQuantities({});
 
-    setReturnNotes('')
+    setReturnNotes('');
 
-    setReturnRefundAccount('store_cash')
+    setReturnRefundAccount('store_cash');
 
-    setReturnRefundMode('cash')
+    setReturnRefundMode('cash');
 
-    setEditingReturnId(null)
+    setEditingReturnId(null);
 
-    setEditingReturnOriginalQuantities({})
+    setEditingReturnOriginalQuantities({});
 
-    setEditingReturnOriginalDebtReduction(0)
+    setEditingReturnOriginalDebtReduction(0);
 
-    setReturnEditReason('')
+    setReturnEditReason('');
 
-    setReturnAdminPassword('')
+    setReturnAdminPassword('');
   }
 
   async function savePurchaseReturn() {
-    if (!returnPurchase || savingReturn) return
+    if (!returnPurchase || savingReturn) return;
 
     if (editingReturnId && !returnEditReason.trim()) {
-      showMessage('اكتب سبب تعديل المرتجع')
-      return
+      showMessage('اكتب سبب تعديل المرتجع');
+      return;
     }
 
     if (editingReturnId && !returnAdminPassword.trim()) {
-      showMessage('اكتب كلمة مرور المدير')
-      return
+      showMessage('اكتب كلمة مرور المدير');
+      return;
     }
 
     const items = (returnPurchase.items ?? [])
       .map((item: any) => {
-        const quantity = Number(returnQuantities[item.id] || 0)
+        const quantity = Number(returnQuantities[item.id] || 0);
 
         return {
           purchase_item_id: Number(item.id),
           variant_id: Number(item.variant_id),
           quantity,
-        }
+        };
       })
       .filter(
         (item: { quantity: number }) =>
           Number.isFinite(item.quantity) && item.quantity > 0,
-      )
+      );
 
     if (items.length === 0) {
-      showMessage('حدد كمية مرتجع لصنف واحد على الأقل')
-      return
+      showMessage('حدد كمية مرتجع لصنف واحد على الأقل');
+      return;
     }
 
     const invalidItem = (returnPurchase.items ?? []).find((item: any) => {
-      const quantity = Number(returnQuantities[item.id] || 0)
+      const quantity = Number(returnQuantities[item.id] || 0);
       const maxQuantity =
         Number(item.returnable_quantity ?? item.quantity ?? 0) +
-        Number(editingReturnOriginalQuantities[Number(item.id)] || 0)
+        Number(editingReturnOriginalQuantities[Number(item.id)] || 0);
 
-      return quantity > maxQuantity
-    })
+      return quantity > maxQuantity;
+    });
 
     if (invalidItem) {
       showMessage(
         `كمية المرتجع للصنف ${invalidItem.product_name} أكبر من المتاح`,
-      )
-      return
+      );
+      return;
     }
 
-    setSavingReturn(true)
+    setSavingReturn(true);
 
     try {
-      const purchaseId = Number(returnPurchase.purchase.id)
+      const purchaseId = Number(returnPurchase.purchase.id);
 
       const returnInput = {
         purchase_id: purchaseId,
@@ -533,7 +538,7 @@ export default function PurchaseHistoryPage() {
         refund_mode: returnRefundMode,
 
         items,
-      }
+      };
 
       const result = editingReturnId
         ? await window.api.updatePurchaseReturn({
@@ -555,31 +560,31 @@ export default function PurchaseHistoryPage() {
             ...returnInput,
 
             actor_id: currentUser?.id,
-          })
+          });
 
       showMessage(
         editingReturnId
           ? `تم تعديل مرتجع الشراء وإنشاء المرتجع #${result.return_id}`
           : `تم إنشاء مرتجع شراء بقيمة ${money(result.total_amount)}`,
-      )
+      );
 
-      resetReturnEditor()
+      resetReturnEditor();
 
-      setSelectedReturn(null)
+      setSelectedReturn(null);
 
-      await loadPurchases(purchasePage)
+      await loadPurchases(purchasePage);
 
       if (activeTab === 'returns') {
-        await loadReturns(returnPage)
+        await loadReturns(returnPage);
       }
 
       if (selectedPurchase?.purchase?.id === purchaseId) {
-        const data = await window.api.getPurchaseInvoice(purchaseId)
+        const data = await window.api.getPurchaseInvoice(purchaseId);
 
-        setSelectedPurchase(data)
+        setSelectedPurchase(data);
       }
     } catch (error) {
-      console.error('Failed to save purchase return:', error)
+      console.error('Failed to save purchase return:', error);
 
       showMessage(
         getErrorMessage(
@@ -588,21 +593,21 @@ export default function PurchaseHistoryPage() {
             ? 'حدث خطأ أثناء تعديل مرتجع الشراء'
             : 'حدث خطأ أثناء إنشاء مرتجع الشراء',
         ),
-      )
+      );
     } finally {
-      setSavingReturn(false)
+      setSavingReturn(false);
     }
   }
 
   const purchaseReturnTotal = returnPurchase
     ? roundMoney(
         (returnPurchase.items ?? []).reduce((sum: number, item: any) => {
-          const quantity = Number(returnQuantities[item.id] || 0)
+          const quantity = Number(returnQuantities[item.id] || 0);
 
-          return sum + roundMoney(quantity * Number(item.unit_cost || 0))
+          return sum + roundMoney(quantity * Number(item.unit_cost || 0));
         }, 0),
       )
-    : 0
+    : 0;
 
   const purchaseReturnDebtBase = returnPurchase
     ? roundMoney(
@@ -618,15 +623,15 @@ export default function PurchaseHistoryPage() {
             (editingReturnId ? editingReturnOriginalDebtReduction : 0),
         ),
       )
-    : 0
+    : 0;
 
   const purchaseReturnDebtReduction = returnPurchase
     ? roundMoney(Math.min(purchaseReturnTotal, purchaseReturnDebtBase))
-    : 0
+    : 0;
 
   const purchaseReturnCashRefund = roundMoney(
     Math.max(0, purchaseReturnTotal - purchaseReturnDebtReduction),
-  )
+  );
 
   return (
     <div
@@ -802,7 +807,7 @@ export default function PurchaseHistoryPage() {
             totalItems={total}
             loading={loading}
             onPageChange={(page) => {
-              void loadPurchases(page)
+              void loadPurchases(page);
             }}
           />
 
@@ -839,8 +844,8 @@ export default function PurchaseHistoryPage() {
                 rows.map((row) => {
                   const isCancelled =
                     row.status === 'cancelled' ||
-                    row.payment_status === 'cancelled'
-                  const hasReturns = Number(row.returned_amount || 0) > 0
+                    row.payment_status === 'cancelled';
+                  const hasReturns = Number(row.returned_amount || 0) > 0;
 
                   return (
                     <tr
@@ -1051,7 +1056,7 @@ export default function PurchaseHistoryPage() {
                         </div>
                       </td>
                     </tr>
-                  )
+                  );
                 })}
 
               {!loading && rows.length === 0 && (
@@ -1092,7 +1097,7 @@ export default function PurchaseHistoryPage() {
             totalItems={returnTotal}
             loading={loading}
             onPageChange={(page) => {
-              void loadReturns(page)
+              void loadReturns(page);
             }}
           />
 
@@ -1232,9 +1237,9 @@ export default function PurchaseHistoryPage() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setCancelReturnTarget(row)
-                                  setCancelReturnReason('إلغاء مرتجع شراء')
-                                  setCancelReturnAdminPassword('')
+                                  setCancelReturnTarget(row);
+                                  setCancelReturnReason('إلغاء مرتجع شراء');
+                                  setCancelReturnAdminPassword('');
                                 }}
                                 style={{
                                   ...smallButtonStyle,
@@ -1800,8 +1805,8 @@ export default function PurchaseHistoryPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setCancelPurchaseTarget(null)
-                  setCancelReason('')
+                  setCancelPurchaseTarget(null);
+                  setCancelReason('');
                 }}
                 style={secondaryButtonStyle}
               >
@@ -1977,7 +1982,7 @@ export default function PurchaseHistoryPage() {
                         Number(item.returnable_quantity ?? item.quantity ?? 0) +
                         Number(
                           editingReturnOriginalQuantities[Number(item.id)] || 0,
-                        )
+                        );
 
                       return (
                         <tr
@@ -2029,7 +2034,7 @@ export default function PurchaseHistoryPage() {
                           </td>
                           <td style={tdStyle}>{money(item.unit_cost)}</td>
                         </tr>
-                      )
+                      );
                     })}
                   </tbody>
                 </table>
@@ -2128,18 +2133,18 @@ export default function PurchaseHistoryPage() {
                 disabled={cancellingReturn}
                 onClick={async () => {
                   if (cancellingReturn) {
-                    return
+                    return;
                   }
 
                   if (!cancelReturnAdminPassword.trim()) {
-                    showMessage('اكتب كلمة مرور المدير')
-                    return
+                    showMessage('اكتب كلمة مرور المدير');
+                    return;
                   }
 
-                  setCancellingReturn(true)
+                  setCancellingReturn(true);
 
                   try {
-                    const target = cancelReturnTarget
+                    const target = cancelReturnTarget;
 
                     await window.api.cancelPurchaseReturn({
                       return_id: target.id,
@@ -2147,31 +2152,31 @@ export default function PurchaseHistoryPage() {
                       reason: cancelReturnReason.trim() || 'إلغاء مرتجع شراء',
 
                       admin_password: cancelReturnAdminPassword,
-                    })
+                    });
 
-                    showMessage('تم إلغاء مرتجع الشراء')
+                    showMessage('تم إلغاء مرتجع الشراء');
 
-                    setCancelReturnTarget(null)
+                    setCancelReturnTarget(null);
 
-                    setSelectedReturn(null)
+                    setSelectedReturn(null);
 
-                    await loadReturns(returnPage)
+                    await loadReturns(returnPage);
 
-                    await loadPurchases(purchasePage)
+                    await loadPurchases(purchasePage);
 
                     if (selectedPurchase?.purchase?.id === target.purchase_id) {
                       const data = await window.api.getPurchaseInvoice(
                         target.purchase_id,
-                      )
+                      );
 
-                      setSelectedPurchase(data)
+                      setSelectedPurchase(data);
                     }
                   } catch (error) {
                     showMessage(
                       getErrorMessage(error, 'تعذر إلغاء مرتجع الشراء'),
-                    )
+                    );
                   } finally {
-                    setCancellingReturn(false)
+                    setCancellingReturn(false);
                   }
                 }}
                 style={dangerSolidButtonStyle}
@@ -2287,7 +2292,7 @@ export default function PurchaseHistoryPage() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function InfoCard({ title, value }: { title: string; value: string }) {
@@ -2306,34 +2311,34 @@ function InfoCard({ title, value }: { title: string; value: string }) {
       <span style={{ color: '#94a3b8', fontWeight: 800 }}>{title}</span>
       <strong style={{ color: '#fff', fontSize: '18px' }}>{value}</strong>
     </div>
-  )
+  );
 }
 
 function PaymentStatusBadge({ status }: { status: string }) {
-  let text = 'غير مدفوعة'
-  let color = '#fca5a5'
-  let background = 'rgba(239,68,68,0.10)'
-  let border = 'rgba(239,68,68,0.25)'
+  let text = 'غير مدفوعة';
+  let color = '#fca5a5';
+  let background = 'rgba(239,68,68,0.10)';
+  let border = 'rgba(239,68,68,0.25)';
 
   if (status === 'paid') {
-    text = 'مدفوعة'
-    color = '#6ee7b7'
-    background = 'rgba(16,185,129,0.10)'
-    border = 'rgba(16,185,129,0.25)'
+    text = 'مدفوعة';
+    color = '#6ee7b7';
+    background = 'rgba(16,185,129,0.10)';
+    border = 'rgba(16,185,129,0.25)';
   }
 
   if (status === 'partial') {
-    text = 'جزئي'
-    color = '#fdba74'
-    background = 'rgba(249,115,22,0.10)'
-    border = 'rgba(249,115,22,0.25)'
+    text = 'جزئي';
+    color = '#fdba74';
+    background = 'rgba(249,115,22,0.10)';
+    border = 'rgba(249,115,22,0.25)';
   }
 
   if (status === 'cancelled') {
-    text = 'ملغاة'
-    color = '#cbd5e1'
-    background = 'rgba(148,163,184,0.12)'
-    border = 'rgba(148,163,184,0.28)'
+    text = 'ملغاة';
+    color = '#cbd5e1';
+    background = 'rgba(148,163,184,0.12)';
+    border = 'rgba(148,163,184,0.28)';
   }
 
   return (
@@ -2350,30 +2355,30 @@ function PaymentStatusBadge({ status }: { status: string }) {
     >
       {text}
     </span>
-  )
+  );
 }
 
 function paymentStatusName(status: string) {
-  if (status === 'paid') return 'مدفوعة'
-  if (status === 'partial') return 'مدفوعة جزئيًا'
-  if (status === 'cancelled') return 'ملغاة'
-  return 'غير مدفوعة'
+  if (status === 'paid') return 'مدفوعة';
+  if (status === 'partial') return 'مدفوعة جزئيًا';
+  if (status === 'cancelled') return 'ملغاة';
+  return 'غير مدفوعة';
 }
 
 function paymentMethodName(value?: string | null) {
-  return getPaymentMethodLabel(value)
+  return getPaymentMethodLabel(value);
 }
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 function formatDate(value?: string) {
-  if (!value) return '—'
+  if (!value) return '—';
 
   try {
-    const raw = String(value)
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
+    const raw = String(value);
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
 
     return new Date(normalized).toLocaleString('ar-EG', {
       year: 'numeric',
@@ -2381,9 +2386,9 @@ function formatDate(value?: string) {
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-    })
+    });
   } catch {
-    return value
+    return value;
   }
 }
 
@@ -2392,17 +2397,17 @@ const cardStyle: React.CSSProperties = {
   borderRadius: '16px',
   display: 'grid',
   gap: '10px',
-}
+};
 
 const fieldStyle: React.CSSProperties = {
   display: 'grid',
   gap: '8px',
-}
+};
 
 const labelStyle: React.CSSProperties = {
   color: '#cbd5e1',
   fontWeight: 800,
-}
+};
 
 const inputStyle: React.CSSProperties = {
   height: '40px',
@@ -2415,7 +2420,7 @@ const inputStyle: React.CSSProperties = {
   textAlign: 'right',
   direction: 'rtl',
   boxSizing: 'border-box',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(59,130,246,0.45)',
@@ -2426,7 +2431,7 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(148,163,184,0.28)',
@@ -2437,7 +2442,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const dangerSolidButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(239,68,68,0.55)',
@@ -2448,7 +2453,7 @@ const dangerSolidButtonStyle: React.CSSProperties = {
   fontWeight: 900,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const tabButtonStyle: React.CSSProperties = {
   ...secondaryButtonStyle,
@@ -2456,14 +2461,14 @@ const tabButtonStyle: React.CSSProperties = {
   height: '34px',
   padding: '0 10px',
   fontSize: '12px',
-}
+};
 
 const activeTabButtonStyle: React.CSSProperties = {
   ...tabButtonStyle,
   background: 'rgba(59,130,246,0.18)',
   color: '#dbeafe',
   borderColor: 'rgba(59,130,246,0.45)',
-}
+};
 
 const smallButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(148,163,184,0.30)',
@@ -2478,7 +2483,7 @@ const smallButtonStyle: React.CSSProperties = {
   textAlign: 'center',
   fontWeight: 700,
   fontSize: '12px',
-}
+};
 
 const closeButtonStyle: React.CSSProperties = {
   width: '34px',
@@ -2489,7 +2494,7 @@ const closeButtonStyle: React.CSSProperties = {
   color: '#fff',
   cursor: 'pointer',
   fontSize: '20px',
-}
+};
 
 const thStyle: React.CSSProperties = {
   padding: '7px 6px',
@@ -2497,7 +2502,7 @@ const thStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
   fontSize: '12px',
   borderBottom: '1px solid rgba(255,255,255,0.08)',
-}
+};
 
 const tdStyle: React.CSSProperties = {
   padding: '7px 6px',
@@ -2505,7 +2510,7 @@ const tdStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
   fontSize: '12px',
   verticalAlign: 'middle',
-}
+};
 
 const modalOverlayStyle: React.CSSProperties = {
   position: 'fixed',
@@ -2516,7 +2521,7 @@ const modalOverlayStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   padding: '20px',
-}
+};
 
 const modalStyle: React.CSSProperties = {
   width: '480px',
@@ -2529,4 +2534,4 @@ const modalStyle: React.CSSProperties = {
   padding: '22px',
   direction: 'rtl',
   boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
-}
+};

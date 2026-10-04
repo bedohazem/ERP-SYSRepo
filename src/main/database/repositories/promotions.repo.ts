@@ -1,53 +1,50 @@
-import { getDb } from '../db'
-import { roundMoney } from '../../../shared/money'
+import { getDb } from '../db';
+import { roundMoney } from '../../../shared/money';
 export type PromotionType =
-  | 'percent'
-  | 'fixed_per_item'
-  | 'fixed_invoice'
-  | 'buy_x_get_y'
+  'percent' | 'fixed_per_item' | 'fixed_invoice' | 'buy_x_get_y';
 
-export type PromotionScope = 'all' | 'category' | 'products'
+export type PromotionScope = 'all' | 'category' | 'products';
 
 export type PromotionInput = {
-  name: string
+  name: string;
 
-  type: PromotionType
-  value: number
-  buy_qty?: number | null
-  free_qty?: number | null
-  scope_type: PromotionScope
-  duration_hours?: number | null
-  category_id?: number | null
-  product_ids?: number[]
+  type: PromotionType;
+  value: number;
+  buy_qty?: number | null;
+  free_qty?: number | null;
+  scope_type: PromotionScope;
+  duration_hours?: number | null;
+  category_id?: number | null;
+  product_ids?: number[];
 
-  actor_id?: number | null
-}
+  actor_id?: number | null;
+};
 
 function normalizeProductIds(value?: number[]) {
   return Array.from(
     new Set(
       (value || []).map(Number).filter((id) => Number.isFinite(id) && id > 0),
     ),
-  )
+  );
 }
 
 function normalizePromotionDuration(value?: number | null): number | null {
   if (value === undefined || value === null) {
-    return null
+    return null;
   }
 
-  const hours = Number(value)
-  const endTime = Date.now() + hours * 60 * 60 * 1000
+  const hours = Number(value);
+  const endTime = Date.now() + hours * 60 * 60 * 1000;
 
   if (
     !Number.isFinite(hours) ||
     hours <= 0 ||
     !Number.isFinite(new Date(endTime).getTime())
   ) {
-    throw new Error('مدة العرض لازم تكون رقم أكبر من صفر')
+    throw new Error('مدة العرض لازم تكون رقم أكبر من صفر');
   }
 
-  return hours
+  return hours;
 }
 
 function expirePromotions() {
@@ -63,16 +60,16 @@ function expirePromotions() {
         AND ends_at <= ?
     `,
     )
-    .run(Date.now())
+    .run(Date.now());
 }
 
 function savePromotionDuration(promotionId: number, value?: number | null) {
-  if (value === undefined) return
+  if (value === undefined) return;
 
-  const hours = normalizePromotionDuration(value)
-  const db = getDb()
+  const hours = normalizePromotionDuration(value);
+  const db = getDb();
 
-  expirePromotions()
+  expirePromotions();
 
   const current = db
     .prepare(
@@ -83,22 +80,21 @@ function savePromotionDuration(promotionId: number, value?: number | null) {
     `,
     )
     .get(promotionId) as
-    | { duration_hours: number | null; is_active: number }
-    | undefined
+    { duration_hours: number | null; is_active: number } | undefined;
 
   if (!current) {
-    throw new Error('العرض غير موجود')
+    throw new Error('العرض غير موجود');
   }
 
   const previousHours =
-    current.duration_hours === null ? null : Number(current.duration_hours)
+    current.duration_hours === null ? null : Number(current.duration_hours);
 
-  if (hours === previousHours) return
+  if (hours === previousHours) return;
 
   const endsAt =
     current.is_active && hours !== null
       ? Math.round(Date.now() + hours * 60 * 60 * 1000)
-      : null
+      : null;
 
   db.prepare(
     `
@@ -109,15 +105,15 @@ function savePromotionDuration(promotionId: number, value?: number | null) {
       updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `,
-  ).run(hours, endsAt, promotionId)
+  ).run(hours, endsAt, promotionId);
 }
 
 function validatePromotion(input: PromotionInput) {
-  normalizePromotionDuration(input.duration_hours)
-  const name = String(input.name || '').trim()
+  normalizePromotionDuration(input.duration_hours);
+  const name = String(input.name || '').trim();
 
   if (!name) {
-    throw new Error('اسم العرض مطلوب')
+    throw new Error('اسم العرض مطلوب');
   }
 
   if (
@@ -125,45 +121,45 @@ function validatePromotion(input: PromotionInput) {
       input.type,
     )
   ) {
-    throw new Error('نوع العرض غير صحيح')
+    throw new Error('نوع العرض غير صحيح');
   }
 
   if (input.type === 'buy_x_get_y') {
-    const buyQty = Number(input.buy_qty)
+    const buyQty = Number(input.buy_qty);
 
-    const freeQty = Number(input.free_qty)
+    const freeQty = Number(input.free_qty);
 
     if (!Number.isInteger(buyQty) || buyQty <= 0) {
-      throw new Error('كمية الشراء في العرض غير صحيحة')
+      throw new Error('كمية الشراء في العرض غير صحيحة');
     }
 
     if (!Number.isInteger(freeQty) || freeQty <= 0) {
-      throw new Error('كمية الهدية في العرض غير صحيحة')
+      throw new Error('كمية الهدية في العرض غير صحيحة');
     }
   } else {
-    const value = Number(input.value)
+    const value = Number(input.value);
 
     if (!Number.isFinite(value) || value <= 0) {
-      throw new Error('قيمة العرض غير صحيحة')
+      throw new Error('قيمة العرض غير صحيحة');
     }
 
     if (input.type === 'percent' && value > 100) {
-      throw new Error('نسبة الخصم لا يمكن أن تتجاوز 100%')
+      throw new Error('نسبة الخصم لا يمكن أن تتجاوز 100%');
     }
 
     if (input.type !== 'percent' && roundMoney(value) <= 0) {
-      throw new Error('قيمة العرض غير صحيحة')
+      throw new Error('قيمة العرض غير صحيحة');
     }
   }
 
   if (!['all', 'category', 'products'].includes(input.scope_type)) {
-    throw new Error('نطاق العرض غير صحيح')
+    throw new Error('نطاق العرض غير صحيح');
   }
 
-  const db = getDb()
+  const db = getDb();
 
   if (input.scope_type === 'category') {
-    const categoryId = Number(input.category_id)
+    const categoryId = Number(input.category_id);
 
     const category = db
       .prepare(
@@ -175,21 +171,21 @@ function validatePromotion(input: PromotionInput) {
           LIMIT 1
           `,
       )
-      .get(categoryId)
+      .get(categoryId);
 
     if (!category) {
-      throw new Error('اختار تصنيف صحيح للعرض')
+      throw new Error('اختار تصنيف صحيح للعرض');
     }
   }
 
   if (input.scope_type === 'products') {
-    const productIds = normalizeProductIds(input.product_ids)
+    const productIds = normalizeProductIds(input.product_ids);
 
     if (productIds.length === 0) {
-      throw new Error('اختار منتج واحد على الأقل')
+      throw new Error('اختار منتج واحد على الأقل');
     }
 
-    const placeholders = productIds.map(() => '?').join(', ')
+    const placeholders = productIds.map(() => '?').join(', ');
 
     const row = db
       .prepare(
@@ -203,27 +199,27 @@ function validatePromotion(input: PromotionInput) {
           `,
       )
       .get(...productIds) as {
-      count: number
-    }
+      count: number;
+    };
 
     if (Number(row.count || 0) !== productIds.length) {
-      throw new Error('يوجد منتج غير صحيح أو غير فعال داخل العرض')
+      throw new Error('يوجد منتج غير صحيح أو غير فعال داخل العرض');
     }
   }
 }
 
 function replacePromotionProducts(promotionId: number, productIds: number[]) {
-  const db = getDb()
+  const db = getDb();
 
   db.prepare(
     `
     DELETE FROM promotion_products
     WHERE promotion_id = ?
     `,
-  ).run(promotionId)
+  ).run(promotionId);
 
   if (productIds.length === 0) {
-    return
+    return;
   }
 
   const insert = db.prepare(
@@ -234,21 +230,21 @@ function replacePromotionProducts(promotionId: number, productIds: number[]) {
       )
       VALUES (?, ?)
       `,
-  )
+  );
 
   for (const productId of productIds) {
-    insert.run(promotionId, productId)
+    insert.run(promotionId, productId);
   }
 }
 
 function hasProductInsideCategory(productIds: number[], categoryId: number) {
   if (productIds.length === 0 || !categoryId) {
-    return false
+    return false;
   }
 
-  const db = getDb()
+  const db = getDb();
 
-  const placeholders = productIds.map(() => '?').join(', ')
+  const placeholders = productIds.map(() => '?').join(', ');
 
   const row = db
     .prepare(
@@ -267,26 +263,26 @@ function hasProductInsideCategory(productIds: number[], categoryId: number) {
       LIMIT 1
       `,
     )
-    .get(...productIds, categoryId)
+    .get(...productIds, categoryId);
 
-  return Boolean(row)
+  return Boolean(row);
 }
 
 function promotionScopesOverlap(first: any, second: any) {
   if (first.scope_type === 'all' || second.scope_type === 'all') {
-    return true
+    return true;
   }
 
   if (first.scope_type === 'category' && second.scope_type === 'category') {
-    return Number(first.category_id) === Number(second.category_id)
+    return Number(first.category_id) === Number(second.category_id);
   }
 
   if (first.scope_type === 'products' && second.scope_type === 'products') {
-    const secondIds = new Set((second.product_ids || []).map(Number))
+    const secondIds = new Set((second.product_ids || []).map(Number));
 
     return (first.product_ids || []).some((id: number) =>
       secondIds.has(Number(id)),
-    )
+    );
   }
 
   if (first.scope_type === 'category' && second.scope_type === 'products') {
@@ -294,7 +290,7 @@ function promotionScopesOverlap(first: any, second: any) {
       (second.product_ids || []).map(Number),
 
       Number(first.category_id),
-    )
+    );
   }
 
   if (first.scope_type === 'products' && second.scope_type === 'category') {
@@ -302,19 +298,19 @@ function promotionScopesOverlap(first: any, second: any) {
       (first.product_ids || []).map(Number),
 
       Number(second.category_id),
-    )
+    );
   }
 
-  return false
+  return false;
 }
 
 function assertNoActivePromotionConflict(
   candidate: any,
   excludePromotionId = 0,
 ) {
-  expirePromotions()
+  expirePromotions();
 
-  const db = getDb()
+  const db = getDb();
 
   const activeRows = db
     .prepare(
@@ -330,41 +326,41 @@ function assertNoActivePromotionConflict(
       `,
     )
     .all(Number(excludePromotionId || 0)) as Array<{
-    id: number
-  }>
+    id: number;
+  }>;
 
   for (const row of activeRows) {
-    const activePromotion = getPromotion(row.id)
+    const activePromotion = getPromotion(row.id);
 
     if (!activePromotion) {
-      continue
+      continue;
     }
 
     if (promotionScopesOverlap(candidate, activePromotion)) {
       throw new Error(
         `لا يمكن تفعيل العرض لأنه يتداخل مع العرض: ${activePromotion.name}`,
-      )
+      );
     }
   }
 }
 
 type PromotionSaleItem = {
-  variant_id: number
-  quantity: number
-  unit_price: number
-}
+  variant_id: number;
+  quantity: number;
+  unit_price: number;
+};
 
 function calculatePromotionForSale(promotion: any, items: PromotionSaleItem[]) {
-  const db = getDb()
+  const db = getDb();
 
-  const itemDiscounts = items.map(() => 0)
-  const itemFreeQuantities = items.map(() => 0)
+  const itemDiscounts = items.map(() => 0);
+  const itemFreeQuantities = items.map(() => 0);
 
   const productIds = new Set<number>(
     Array.isArray(promotion.product_ids)
       ? promotion.product_ids.map(Number)
       : [],
-  )
+  );
 
   const getVariantScope = db.prepare(
     `
@@ -380,43 +376,43 @@ function calculatePromotionForSale(promotion: any, items: PromotionSaleItem[]) {
       WHERE pv.id = ?
       LIMIT 1
       `,
-  )
+  );
 
   const eligibleItems = items
     .map((item, index) => {
-      const qty = Math.max(0, Number(item.quantity || 0))
+      const qty = Math.max(0, Number(item.quantity || 0));
 
-      const unitPrice = Math.max(0, Number(item.unit_price || 0))
+      const unitPrice = Math.max(0, Number(item.unit_price || 0));
 
-      const lineTotal = roundMoney(qty * unitPrice)
+      const lineTotal = roundMoney(qty * unitPrice);
 
       const scope = getVariantScope.get(Number(item.variant_id)) as
         | {
-            product_id: number
-            category_id: number | null
+            product_id: number;
+            category_id: number | null;
           }
-        | undefined
+        | undefined;
 
       if (!scope) {
-        return null
+        return null;
       }
 
-      let eligible = false
+      let eligible = false;
 
       if (promotion.scope_type === 'all') {
-        eligible = true
+        eligible = true;
       }
 
       if (promotion.scope_type === 'category') {
-        eligible = Number(scope.category_id) === Number(promotion.category_id)
+        eligible = Number(scope.category_id) === Number(promotion.category_id);
       }
 
       if (promotion.scope_type === 'products') {
-        eligible = productIds.has(Number(scope.product_id))
+        eligible = productIds.has(Number(scope.product_id));
       }
 
       if (!eligible) {
-        return null
+        return null;
       }
 
       return {
@@ -424,16 +420,16 @@ function calculatePromotionForSale(promotion: any, items: PromotionSaleItem[]) {
         qty,
         unitPrice,
         lineTotal,
-      }
+      };
     })
     .filter(Boolean) as Array<{
-    index: number
-    qty: number
-    unitPrice: number
-    lineTotal: number
-  }>
+    index: number;
+    qty: number;
+    unitPrice: number;
+    lineTotal: number;
+  }>;
 
-  const eligibleItemIndexes = eligibleItems.map((item) => item.index)
+  const eligibleItemIndexes = eligibleItems.map((item) => item.index);
 
   if (eligibleItems.length === 0) {
     return {
@@ -442,15 +438,15 @@ function calculatePromotionForSale(promotion: any, items: PromotionSaleItem[]) {
       eligible_item_indexes: eligibleItemIndexes,
       item_discounts: itemDiscounts,
       item_free_quantities: itemFreeQuantities,
-    }
+    };
   }
 
-  const value = Math.max(0, Number(promotion.value || 0))
+  const value = Math.max(0, Number(promotion.value || 0));
 
   if (promotion.type === 'buy_x_get_y') {
-    const buyQty = Math.floor(Number(promotion.buy_qty || 0))
+    const buyQty = Math.floor(Number(promotion.buy_qty || 0));
 
-    const freeQty = Math.floor(Number(promotion.free_qty || 0))
+    const freeQty = Math.floor(Number(promotion.free_qty || 0));
 
     if (buyQty <= 0 || freeQty <= 0) {
       return {
@@ -459,89 +455,89 @@ function calculatePromotionForSale(promotion: any, items: PromotionSaleItem[]) {
         eligible_item_indexes: eligibleItemIndexes,
         item_discounts: itemDiscounts,
         item_free_quantities: itemFreeQuantities,
-      }
+      };
     }
 
-    const groupSize = buyQty + freeQty
+    const groupSize = buyQty + freeQty;
 
     const totalEligibleUnits = eligibleItems.reduce(
       (total, item) => total + Math.floor(item.qty),
       0,
-    )
+    );
 
     let remainingFreeUnits =
-      Math.floor(totalEligibleUnits / groupSize) * freeQty
+      Math.floor(totalEligibleUnits / groupSize) * freeQty;
 
     const cheapestFirst = [...eligibleItems].sort(
       (a, b) => a.unitPrice - b.unitPrice || a.index - b.index,
-    )
+    );
 
     for (const item of cheapestFirst) {
       if (remainingFreeUnits <= 0) {
-        break
+        break;
       }
 
-      const itemUnits = Math.floor(item.qty)
+      const itemUnits = Math.floor(item.qty);
 
-      const freeFromItem = Math.min(remainingFreeUnits, itemUnits)
+      const freeFromItem = Math.min(remainingFreeUnits, itemUnits);
 
-      itemFreeQuantities[item.index] = freeFromItem
+      itemFreeQuantities[item.index] = freeFromItem;
 
-      itemDiscounts[item.index] = roundMoney(freeFromItem * item.unitPrice)
+      itemDiscounts[item.index] = roundMoney(freeFromItem * item.unitPrice);
 
-      remainingFreeUnits -= freeFromItem
+      remainingFreeUnits -= freeFromItem;
     }
   }
 
   if (promotion.type === 'percent') {
-    const percent = Math.min(value, 100)
+    const percent = Math.min(value, 100);
 
     for (const item of eligibleItems) {
       itemDiscounts[item.index] = Math.min(
         item.lineTotal,
         roundMoney(item.lineTotal * (percent / 100)),
-      )
+      );
     }
   }
 
   if (promotion.type === 'fixed_per_item') {
     for (const item of eligibleItems) {
-      const discountPerItem = Math.min(item.unitPrice, value)
+      const discountPerItem = Math.min(item.unitPrice, value);
 
       itemDiscounts[item.index] = Math.min(
         item.lineTotal,
         roundMoney(discountPerItem * item.qty),
-      )
+      );
     }
   }
 
   if (promotion.type === 'fixed_invoice') {
     const eligibleSubtotal = roundMoney(
       eligibleItems.reduce((total, item) => total + item.lineTotal, 0),
-    )
+    );
 
-    const targetDiscount = Math.min(eligibleSubtotal, value)
+    const targetDiscount = Math.min(eligibleSubtotal, value);
 
-    let remaining = roundMoney(targetDiscount)
+    let remaining = roundMoney(targetDiscount);
 
     eligibleItems.forEach((item, index) => {
-      const isLast = index === eligibleItems.length - 1
+      const isLast = index === eligibleItems.length - 1;
 
       let discount = isLast
         ? remaining
-        : roundMoney(targetDiscount * (item.lineTotal / eligibleSubtotal))
+        : roundMoney(targetDiscount * (item.lineTotal / eligibleSubtotal));
 
-      discount = Math.min(item.lineTotal, discount)
+      discount = Math.min(item.lineTotal, discount);
 
-      itemDiscounts[item.index] = discount
+      itemDiscounts[item.index] = discount;
 
-      remaining = roundMoney(remaining - discount)
-    })
+      remaining = roundMoney(remaining - discount);
+    });
   }
 
   const totalDiscount = roundMoney(
     itemDiscounts.reduce((total, discount) => total + Number(discount || 0), 0),
-  )
+  );
 
   return {
     promotion,
@@ -549,41 +545,41 @@ function calculatePromotionForSale(promotion: any, items: PromotionSaleItem[]) {
     item_discounts: itemDiscounts,
     item_free_quantities: itemFreeQuantities,
     eligible_item_indexes: eligibleItemIndexes,
-  }
+  };
 }
 
 export function calculateActivePromotionsForSale(items: PromotionSaleItem[]) {
-  const activePromotions = getActivePromotions()
+  const activePromotions = getActivePromotions();
 
-  const itemDiscounts = items.map(() => 0)
+  const itemDiscounts = items.map(() => 0);
 
-  const itemFreeQuantities = items.map(() => 0)
+  const itemFreeQuantities = items.map(() => 0);
 
-  const itemPromotionIds: Array<number | null> = items.map(() => null)
+  const itemPromotionIds: Array<number | null> = items.map(() => null);
 
   const promotionResults = activePromotions.map((promotion) =>
     calculatePromotionForSale(promotion, items),
-  )
+  );
 
   for (const result of promotionResults) {
-    const promotionId = Number(result.promotion.id)
+    const promotionId = Number(result.promotion.id);
 
     for (const itemIndex of result.eligible_item_indexes) {
-      const previousPromotionId = itemPromotionIds[itemIndex]
+      const previousPromotionId = itemPromotionIds[itemIndex];
 
       if (previousPromotionId && previousPromotionId !== promotionId) {
-        throw new Error('يوجد تداخل بين العروض الفعالة على نفس الصنف')
+        throw new Error('يوجد تداخل بين العروض الفعالة على نفس الصنف');
       }
 
-      itemPromotionIds[itemIndex] = promotionId
+      itemPromotionIds[itemIndex] = promotionId;
 
       itemDiscounts[itemIndex] = roundMoney(
         Number(result.item_discounts[itemIndex] || 0),
-      )
+      );
 
       itemFreeQuantities[itemIndex] = Number(
         result.item_free_quantities[itemIndex] || 0,
-      )
+      );
     }
   }
 
@@ -593,11 +589,11 @@ export function calculateActivePromotionsForSale(items: PromotionSaleItem[]) {
 
       0,
     ),
-  )
+  );
 
   const appliedResults = promotionResults.filter(
     (result) => Number(result.promotion_discount_value || 0) > 0,
-  )
+  );
 
   return {
     active_promotions: activePromotions,
@@ -613,12 +609,12 @@ export function calculateActivePromotionsForSale(items: PromotionSaleItem[]) {
     item_free_quantities: itemFreeQuantities,
 
     item_promotion_ids: itemPromotionIds,
-  }
+  };
 }
 
 export function listPromotions() {
-  expirePromotions()
-  const db = getDb()
+  expirePromotions();
+  const db = getDb();
 
   return db
     .prepare(
@@ -659,12 +655,12 @@ export function listPromotions() {
         pr.id DESC
       `,
     )
-    .all()
+    .all();
 }
 
 export function getPromotion(promotionId: number) {
-  expirePromotions()
-  const db = getDb()
+  expirePromotions();
+  const db = getDb();
 
   const promotion = db
     .prepare(
@@ -683,10 +679,10 @@ export function getPromotion(promotionId: number) {
         LIMIT 1
         `,
     )
-    .get(Number(promotionId)) as any
+    .get(Number(promotionId)) as any;
 
   if (!promotion) {
-    return null
+    return null;
   }
 
   const productRows = db
@@ -699,20 +695,20 @@ export function getPromotion(promotionId: number) {
         `,
     )
     .all(Number(promotionId)) as Array<{
-    product_id: number
-  }>
+    product_id: number;
+  }>;
 
   return {
     ...promotion,
 
     product_ids: productRows.map((row) => Number(row.product_id)),
-  }
+  };
 }
 
 export function getActivePromotions() {
-  expirePromotions()
+  expirePromotions();
 
-  const db = getDb()
+  const db = getDb();
 
   const rows = db
     .prepare(
@@ -727,36 +723,36 @@ export function getActivePromotions() {
       `,
     )
     .all() as Array<{
-    id: number
-  }>
+    id: number;
+  }>;
 
-  return rows.map((row) => getPromotion(Number(row.id))).filter(Boolean)
+  return rows.map((row) => getPromotion(Number(row.id))).filter(Boolean);
 }
 
 export function createPromotion(input: PromotionInput) {
-  validatePromotion(input)
+  validatePromotion(input);
 
-  const db = getDb()
+  const db = getDb();
 
   const productIds =
     input.scope_type === 'products'
       ? normalizeProductIds(input.product_ids)
-      : []
+      : [];
 
   const categoryId =
-    input.scope_type === 'category' ? Number(input.category_id) : null
+    input.scope_type === 'category' ? Number(input.category_id) : null;
 
-  const isBuyXGetY = input.type === 'buy_x_get_y'
+  const isBuyXGetY = input.type === 'buy_x_get_y';
 
   const promotionValue = isBuyXGetY
     ? 0
     : input.type === 'percent'
       ? Number(input.value)
-      : roundMoney(input.value)
+      : roundMoney(input.value);
 
-  const buyQty = isBuyXGetY ? Number(input.buy_qty) : null
+  const buyQty = isBuyXGetY ? Number(input.buy_qty) : null;
 
-  const freeQty = isBuyXGetY ? Number(input.free_qty) : null
+  const freeQty = isBuyXGetY ? Number(input.free_qty) : null;
 
   const tx = db.transaction(() => {
     const result = db
@@ -794,45 +790,45 @@ export function createPromotion(input: PromotionInput) {
         categoryId,
 
         input.actor_id ?? null,
-      )
+      );
 
-    const promotionId = Number(result.lastInsertRowid)
+    const promotionId = Number(result.lastInsertRowid);
 
-    replacePromotionProducts(promotionId, productIds)
-    savePromotionDuration(promotionId, input.duration_hours)
-    return promotionId
-  })
+    replacePromotionProducts(promotionId, productIds);
+    savePromotionDuration(promotionId, input.duration_hours);
+    return promotionId;
+  });
 
-  const promotionId = tx()
+  const promotionId = tx();
 
   return {
     success: true,
     promotionId,
-  }
+  };
 }
 
 export function updatePromotion(
   input: PromotionInput & {
-    id: number
+    id: number;
   },
 ) {
-  validatePromotion(input)
+  validatePromotion(input);
 
-  const db = getDb()
+  const db = getDb();
 
-  const id = Number(input.id)
+  const id = Number(input.id);
 
-  const isBuyXGetY = input.type === 'buy_x_get_y'
+  const isBuyXGetY = input.type === 'buy_x_get_y';
 
   const promotionValue = isBuyXGetY
     ? 0
     : input.type === 'percent'
       ? Number(input.value)
-      : roundMoney(input.value)
+      : roundMoney(input.value);
 
-  const buyQty = isBuyXGetY ? Number(input.buy_qty) : null
+  const buyQty = isBuyXGetY ? Number(input.buy_qty) : null;
 
-  const freeQty = isBuyXGetY ? Number(input.free_qty) : null
+  const freeQty = isBuyXGetY ? Number(input.free_qty) : null;
 
   const existing = db
     .prepare(
@@ -850,22 +846,22 @@ export function updatePromotion(
     )
     .get(id) as
     | {
-        id: number
-        is_active: number
+        id: number;
+        is_active: number;
       }
-    | undefined
+    | undefined;
 
   if (!existing) {
-    throw new Error('العرض غير موجود')
+    throw new Error('العرض غير موجود');
   }
 
   const productIds =
     input.scope_type === 'products'
       ? normalizeProductIds(input.product_ids)
-      : []
+      : [];
 
   const categoryId =
-    input.scope_type === 'category' ? Number(input.category_id) : null
+    input.scope_type === 'category' ? Number(input.category_id) : null;
 
   if (Number(existing.is_active || 0) === 1) {
     assertNoActivePromotionConflict(
@@ -880,7 +876,7 @@ export function updatePromotion(
       },
 
       id,
-    )
+    );
   }
 
   const tx = db.transaction(() => {
@@ -915,26 +911,26 @@ export function updatePromotion(
       categoryId,
 
       id,
-    )
+    );
 
-    replacePromotionProducts(id, productIds)
-    savePromotionDuration(id, input.duration_hours)
-  })
+    replacePromotionProducts(id, productIds);
+    savePromotionDuration(id, input.duration_hours);
+  });
 
-  tx()
+  tx();
 
   return {
     success: true,
-  }
+  };
 }
 
 export function togglePromotion(promotionId: number, isActive: number) {
-  const db = getDb()
-  const id = Number(promotionId)
-  const nextActive = Number(isActive) ? 1 : 0
+  const db = getDb();
+  const id = Number(promotionId);
+  const nextActive = Number(isActive) ? 1 : 0;
 
   const tx = db.transaction(() => {
-    expirePromotions()
+    expirePromotions();
 
     const existing = db
       .prepare(
@@ -945,27 +941,27 @@ export function togglePromotion(promotionId: number, isActive: number) {
         LIMIT 1
       `,
       )
-      .get(id) as { id: number; duration_hours: number | null } | undefined
+      .get(id) as { id: number; duration_hours: number | null } | undefined;
 
     if (!existing) {
-      throw new Error('العرض غير موجود')
+      throw new Error('العرض غير موجود');
     }
 
-    const hours = normalizePromotionDuration(existing.duration_hours)
+    const hours = normalizePromotionDuration(existing.duration_hours);
 
     const endsAt =
       nextActive && hours !== null
         ? Math.round(Date.now() + hours * 60 * 60 * 1000)
-        : null
+        : null;
 
     if (nextActive) {
-      const promotion = getPromotion(id)
+      const promotion = getPromotion(id);
 
       if (!promotion) {
-        throw new Error('العرض غير موجود')
+        throw new Error('العرض غير موجود');
       }
 
-      assertNoActivePromotionConflict(promotion, id)
+      assertNoActivePromotionConflict(promotion, id);
     }
 
     db.prepare(
@@ -977,13 +973,13 @@ export function togglePromotion(promotionId: number, isActive: number) {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `,
-    ).run(nextActive, endsAt, id)
+    ).run(nextActive, endsAt, id);
 
     return {
       success: true,
       is_active: nextActive,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }

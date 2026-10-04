@@ -1,34 +1,34 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 
 import {
   createProduct,
   getVariantByBarcode,
-} from '../../src/main/database/repositories/product.repo'
+} from '../../src/main/database/repositories/product.repo';
 
-import { createSupplier } from '../../src/main/database/repositories/suppliers.repo'
+import { createSupplier } from '../../src/main/database/repositories/suppliers.repo';
 
-import { createSale } from '../../src/main/database/repositories/sales.repo'
+import { createSale } from '../../src/main/database/repositories/sales.repo';
 
-import { getVariantStock } from '../../src/main/database/repositories/inventory.repo'
+import { getVariantStock } from '../../src/main/database/repositories/inventory.repo';
 
-import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo'
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo';
 
 import {
   createPurchaseOrder,
   getPurchaseOrder,
   getSmartReorderSuggestions,
   receivePurchaseOrder,
-} from '../../src/main/database/repositories/purchase-orders.repo'
+} from '../../src/main/database/repositories/purchase-orders.repo';
 
 function seedVariant(input: {
-  name: string
-  barcode: string
-  openingQty: number
-  minStock: number
-  buyPrice?: number
-  sellPrice?: number
+  name: string;
+  barcode: string;
+  openingQty: number;
+  minStock: number;
+  buyPrice?: number;
+  sellPrice?: number;
 }) {
   createProduct({
     name: input.name,
@@ -56,31 +56,31 @@ function seedVariant(input: {
         opening_qty: input.openingQty,
       },
     ],
-  })
+  });
 
-  const variant = getVariantByBarcode(input.barcode) as any
+  const variant = getVariantByBarcode(input.barcode) as any;
 
   if (!variant) {
-    throw new Error('Failed to seed variant')
+    throw new Error('Failed to seed variant');
   }
 
-  return variant
+  return variant;
 }
 
 describe('purchase orders repository', () => {
   beforeEach(() => {
-    closeDb()
+    closeDb();
 
-    getDb()
+    getDb();
 
-    resetDatabaseData()
+    resetDatabaseData();
 
     openCashShift({
       opening_counted_amount: 0,
 
       opened_by: 1,
-    })
-  })
+    });
+  });
 
   it('builds smart reorder suggestions from stock and recent demand', () => {
     const mover = seedVariant({
@@ -91,7 +91,7 @@ describe('purchase orders repository', () => {
       openingQty: 10,
 
       minStock: 2,
-    })
+    });
 
     seedVariant({
       name: 'Low No Sales',
@@ -101,7 +101,7 @@ describe('purchase orders repository', () => {
       openingQty: 1,
 
       minStock: 5,
-    })
+    });
 
     createSale({
       user_id: 1,
@@ -135,39 +135,39 @@ describe('purchase orders repository', () => {
           unit_price: 150,
         },
       ],
-    })
+    });
 
     const rows = getSmartReorderSuggestions({
       targetDays: 30,
-    })
+    });
 
-    const fast = rows.find((row) => row.variant_id === mover.variant_id)
+    const fast = rows.find((row) => row.variant_id === mover.variant_id);
 
-    const low = rows.find((row) => row.barcode === 'PO-LOW')
+    const low = rows.find((row) => row.barcode === 'PO-LOW');
 
-    expect(fast).toBeTruthy()
+    expect(fast).toBeTruthy();
 
-    expect(fast?.current_stock).toBe(4)
+    expect(fast?.current_stock).toBe(4);
 
-    expect(fast?.sold_units_30d).toBe(6)
+    expect(fast?.sold_units_30d).toBe(6);
 
-    expect(fast?.target_stock).toBe(8)
+    expect(fast?.target_stock).toBe(8);
 
-    expect(fast?.suggested_quantity).toBe(4)
+    expect(fast?.suggested_quantity).toBe(4);
 
-    expect(low).toBeTruthy()
+    expect(low).toBeTruthy();
 
-    expect(low?.suggested_quantity).toBe(4)
+    expect(low?.suggested_quantity).toBe(4);
 
-    expect(low?.reason).toBe('low')
-  })
+    expect(low?.reason).toBe('low');
+  });
 
   it('converts purchase order into real purchase invoice and stock', () => {
     const supplier = createSupplier({
       name: 'PO Supplier',
 
       phone: '01055551111',
-    }) as any
+    }) as any;
 
     const variant = seedVariant({
       name: 'PO Product',
@@ -179,7 +179,7 @@ describe('purchase orders repository', () => {
       minStock: 2,
 
       buyPrice: 80,
-    })
+    });
 
     const order = createPurchaseOrder({
       supplier_id: supplier.id,
@@ -197,11 +197,11 @@ describe('purchase orders repository', () => {
           unit_cost: 90,
         },
       ],
-    })
+    });
 
-    expect(order.status).toBe('draft')
+    expect(order.status).toBe('draft');
 
-    expect(getVariantStock(variant.variant_id)).toBe(0)
+    expect(getVariantStock(variant.variant_id)).toBe(0);
 
     const received = receivePurchaseOrder({
       purchase_order_id: order.purchase_order_id,
@@ -209,21 +209,21 @@ describe('purchase orders repository', () => {
       actor_id: 1,
 
       paid_amount: 0,
-    })
+    });
 
-    expect(received.purchaseId).toBeGreaterThan(0)
+    expect(received.purchaseId).toBeGreaterThan(0);
 
-    expect(received.total_amount).toBe(450)
+    expect(received.total_amount).toBe(450);
 
-    expect(getVariantStock(variant.variant_id)).toBe(5)
+    expect(getVariantStock(variant.variant_id)).toBe(5);
 
-    const snapshot = getPurchaseOrder(order.purchase_order_id)
+    const snapshot = getPurchaseOrder(order.purchase_order_id);
 
-    expect(snapshot.order.status).toBe('received')
+    expect(snapshot.order.status).toBe('received');
 
-    expect(Number(snapshot.order.purchase_id)).toBe(received.purchaseId)
+    expect(Number(snapshot.order.purchase_id)).toBe(received.purchaseId);
 
-    const db = getDb()
+    const db = getDb();
 
     const supplierRow = db
       .prepare(
@@ -237,16 +237,16 @@ describe('purchase orders repository', () => {
             `,
       )
       .get(supplier.id) as {
-      balance: number
-    }
+      balance: number;
+    };
 
-    expect(Number(supplierRow.balance)).toBe(450)
-  })
+    expect(Number(supplierRow.balance)).toBe(450);
+  });
 
   it('stores purchase order costs as whole pounds', () => {
     const supplier = createSupplier({
       name: 'Rounded PO Supplier',
-    }) as any
+    }) as any;
 
     const variant = seedVariant({
       name: 'Rounded PO Product',
@@ -258,7 +258,7 @@ describe('purchase orders repository', () => {
       minStock: 1,
 
       buyPrice: 80,
-    })
+    });
 
     const order = createPurchaseOrder({
       supplier_id: supplier.id,
@@ -274,12 +274,12 @@ describe('purchase orders repository', () => {
           unit_cost: 90.5,
         },
       ],
-    })
+    });
 
-    const snapshot = getPurchaseOrder(order.purchase_order_id) as any
+    const snapshot = getPurchaseOrder(order.purchase_order_id) as any;
 
-    expect(snapshot.items[0].unit_cost).toBe(91)
+    expect(snapshot.items[0].unit_cost).toBe(91);
 
-    expect(snapshot.items[0].line_total).toBe(182)
-  })
-})
+    expect(snapshot.items[0].line_total).toBe(182);
+  });
+});

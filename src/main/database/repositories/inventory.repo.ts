@@ -1,10 +1,10 @@
-import { getDb } from '../db'
+import { getDb } from '../db';
 
 import {
   getInventoryCostState,
   issueStockAtAverageCost,
   receiveStockAtCost,
-} from '../inventory-cost'
+} from '../inventory-cost';
 
 const STOCK_SUM_SQL = `
   IFNULL(SUM(
@@ -14,31 +14,31 @@ const STOCK_SUM_SQL = `
       ELSE 0
     END
   ), 0)
-`
+`;
 
 export function getInventoryList(input?: {
-  search?: string
-  status?: 'all' | 'available' | 'low' | 'out' | 'inactive'
-  categoryId?: number | string | null
+  search?: string;
+  status?: 'all' | 'available' | 'low' | 'out' | 'inactive';
+  categoryId?: number | string | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const search = input?.search?.trim() || ''
-  const status = input?.status || 'all'
+  const search = input?.search?.trim() || '';
+  const status = input?.status || 'all';
 
-  const params: any[] = []
+  const params: any[] = [];
 
-  let categorySql = ''
-  const rawCategoryId = input?.categoryId
+  let categorySql = '';
+  const rawCategoryId = input?.categoryId;
   const categoryId =
-    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null
+    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null;
 
   if (categoryId && Number.isFinite(categoryId) && categoryId > 0) {
-    categorySql = `AND p.category_id = ?`
-    params.push(categoryId)
+    categorySql = `AND p.category_id = ?`;
+    params.push(categoryId);
   }
 
-  let searchSql = ''
+  let searchSql = '';
 
   if (search) {
     searchSql = `
@@ -48,20 +48,20 @@ export function getInventoryList(input?: {
         OR IFNULL(v.size, '') LIKE ?
         OR IFNULL(v.color, '') LIKE ?
       )
-    `
+    `;
 
-    const q = `%${search}%`
-    params.push(q, q, q, q)
+    const q = `%${search}%`;
+    params.push(q, q, q, q);
   }
 
-  let havingSql = ''
+  let havingSql = '';
 
   if (status === 'available') {
     havingSql = `
       HAVING p.is_active = 1
         AND v.is_active = 1
         AND stock > v.min_stock
-    `
+    `;
   }
 
   if (status === 'low') {
@@ -70,7 +70,7 @@ export function getInventoryList(input?: {
         AND v.is_active = 1
         AND stock > 0
         AND stock <= v.min_stock
-    `
+    `;
   }
 
   if (status === 'out') {
@@ -78,14 +78,14 @@ export function getInventoryList(input?: {
       HAVING p.is_active = 1
         AND v.is_active = 1
         AND stock = 0
-    `
+    `;
   }
 
   if (status === 'inactive') {
     havingSql = `
       HAVING p.is_active != 1
         OR v.is_active != 1
-    `
+    `;
   }
 
   return db
@@ -127,52 +127,52 @@ export function getInventoryList(input?: {
         p.name ASC
     `,
     )
-    .all(...params)
+    .all(...params);
 }
 
-export type InventoryPageStatus = 'available' | 'low' | 'out' | 'inactive'
+export type InventoryPageStatus = 'available' | 'low' | 'out' | 'inactive';
 
 export type InventoryPageInput = {
-  search?: string
+  search?: string;
 
-  status?: 'all' | InventoryPageStatus
+  status?: 'all' | InventoryPageStatus;
 
-  statuses?: InventoryPageStatus[]
+  statuses?: InventoryPageStatus[];
 
-  categoryId?: number | string | null
-  limit?: number
-  offset?: number
-}
+  categoryId?: number | string | null;
+  limit?: number;
+  offset?: number;
+};
 
 export function listInventoryPage(input?: InventoryPageInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const search = input?.search?.trim() || ''
+  const search = input?.search?.trim() || '';
   const selectedStatuses: InventoryPageStatus[] = Array.isArray(input?.statuses)
     ? Array.from(new Set(input.statuses))
     : input?.status && input.status !== 'all'
       ? [input.status]
-      : []
+      : [];
 
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
 
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
-  const params: any[] = []
+  const params: any[] = [];
 
-  let categorySql = ''
+  let categorySql = '';
 
-  const rawCategoryId = input?.categoryId
+  const rawCategoryId = input?.categoryId;
 
   const categoryId =
-    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null
+    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null;
 
   if (categoryId && Number.isFinite(categoryId) && categoryId > 0) {
-    categorySql = `AND p.category_id = ?`
-    params.push(categoryId)
+    categorySql = `AND p.category_id = ?`;
+    params.push(categoryId);
   }
 
-  let searchSql = ''
+  let searchSql = '';
 
   if (search) {
     searchSql = `
@@ -182,13 +182,13 @@ export function listInventoryPage(input?: InventoryPageInput) {
         OR IFNULL(v.size, '') LIKE ?
         OR IFNULL(v.color, '') LIKE ?
       )
-    `
+    `;
 
-    const q = `%${search}%`
-    params.push(q, q, q, q)
+    const q = `%${search}%`;
+    params.push(q, q, q, q);
   }
 
-  const havingConditions: string[] = []
+  const havingConditions: string[] = [];
 
   if (selectedStatuses.includes('available')) {
     havingConditions.push(`
@@ -197,7 +197,7 @@ export function listInventoryPage(input?: InventoryPageInput) {
         AND v.is_active = 1
         AND stock > v.min_stock
       )
-    `)
+    `);
   }
 
   if (selectedStatuses.includes('low')) {
@@ -208,7 +208,7 @@ export function listInventoryPage(input?: InventoryPageInput) {
         AND stock > 0
         AND stock <= v.min_stock
       )
-    `)
+    `);
   }
 
   if (selectedStatuses.includes('out')) {
@@ -218,7 +218,7 @@ export function listInventoryPage(input?: InventoryPageInput) {
         AND v.is_active = 1
         AND stock = 0
       )
-    `)
+    `);
   }
 
   if (selectedStatuses.includes('inactive')) {
@@ -227,11 +227,13 @@ export function listInventoryPage(input?: InventoryPageInput) {
         p.is_active != 1
         OR v.is_active != 1
       )
-    `)
+    `);
   }
 
   const havingSql =
-    havingConditions.length > 0 ? `HAVING ${havingConditions.join(' OR ')}` : ''
+    havingConditions.length > 0
+      ? `HAVING ${havingConditions.join(' OR ')}`
+      : '';
 
   const baseSql = `
     SELECT
@@ -260,7 +262,7 @@ export function listInventoryPage(input?: InventoryPageInput) {
       ${searchSql}
     GROUP BY v.id
     ${havingSql}
-  `
+  `;
 
   const rows = db
     .prepare(
@@ -282,7 +284,7 @@ export function listInventoryPage(input?: InventoryPageInput) {
       OFFSET ?
     `,
     )
-    .all(...params, limit, offset)
+    .all(...params, limit, offset);
 
   const summaryRow = db
     .prepare(
@@ -369,9 +371,9 @@ export function listInventoryPage(input?: InventoryPageInput) {
       ) inventory
     `,
     )
-    .get(...params) as any
+    .get(...params) as any;
 
-  const total = Number(summaryRow?.total || 0)
+  const total = Number(summaryRow?.total || 0);
 
   return {
     rows,
@@ -388,29 +390,29 @@ export function listInventoryPage(input?: InventoryPageInput) {
       totalSellValue: Number(summaryRow?.total_sell_value || 0),
       inactive: Number(summaryRow?.inactive || 0),
     },
-  }
+  };
 }
 
 export type InventoryAnalyticsInput = {
-  categoryId?: number | string | null
-}
+  categoryId?: number | string | null;
+};
 
 export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const rawCategoryId = input?.categoryId
+  const rawCategoryId = input?.categoryId;
 
   const categoryId =
-    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null
+    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null;
 
-  const params: any[] = []
+  const params: any[] = [];
 
-  let categorySql = ''
+  let categorySql = '';
 
   if (categoryId && Number.isFinite(categoryId) && categoryId > 0) {
-    categorySql = 'AND p.category_id = ?'
+    categorySql = 'AND p.category_id = ?';
 
-    params.push(categoryId)
+    params.push(categoryId);
   }
 
   const inventorySql = `
@@ -446,7 +448,7 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
       ${categorySql}
 
     GROUP BY v.id
-  `
+  `;
 
   /*
    * صافي حركة البيع:
@@ -584,7 +586,7 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
         os.type,
         'sale'
       ) = 'sale'
-  `
+  `;
 
   /*
    * آخر مرة خرج فيها الصنف
@@ -657,7 +659,7 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
     ) outbound
 
     GROUP BY variant_id
-  `
+  `;
 
   const summaryRow = db
     .prepare(
@@ -860,7 +862,7 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
           i.variant_id
       `,
     )
-    .get(...params) as any
+    .get(...params) as any;
 
   const topMover = db
     .prepare(
@@ -937,7 +939,7 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
       LIMIT 1
       `,
     )
-    .get(...params) as any
+    .get(...params) as any;
 
   return {
     stock_units: Number(summaryRow?.stock_units || 0),
@@ -969,11 +971,11 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
           sold_units_30d: Number(topMover.sold_units_30d || 0),
         }
       : null,
-  }
+  };
 }
 
 export function getVariantStock(variantId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const row = db
     .prepare(
@@ -990,28 +992,28 @@ export function getVariantStock(variantId: number) {
       WHERE variant_id = ?
     `,
     )
-    .get(variantId) as { stock: number } | undefined
+    .get(variantId) as { stock: number } | undefined;
 
-  return Number(row?.stock || 0)
+  return Number(row?.stock || 0);
 }
 
 export function adjustVariantStock(input: {
-  variant_id: number
-  target_stock: number
-  notes?: string | null
-  actor_id?: number | null
+  variant_id: number;
+  target_stock: number;
+  notes?: string | null;
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const variantId = Number(input.variant_id)
-  const targetStock = Number(input.target_stock)
+  const variantId = Number(input.variant_id);
+  const targetStock = Number(input.target_stock);
 
   if (!variantId) {
-    throw new Error('رقم الصنف مطلوب')
+    throw new Error('رقم الصنف مطلوب');
   }
 
   if (!Number.isFinite(targetStock) || targetStock < 0) {
-    throw new Error('المخزون الجديد غير صحيح')
+    throw new Error('المخزون الجديد غير صحيح');
   }
 
   const variant = db
@@ -1029,15 +1031,15 @@ export function adjustVariantStock(input: {
       LIMIT 1
     `,
     )
-    .get(variantId) as any
+    .get(variantId) as any;
 
   if (!variant) {
-    throw new Error('الصنف غير موجود')
+    throw new Error('الصنف غير موجود');
   }
 
   const tx = db.transaction(() => {
-    const oldStock = getVariantStock(variantId)
-    const diff = targetStock - oldStock
+    const oldStock = getVariantStock(variantId);
+    const diff = targetStock - oldStock;
 
     if (diff === 0) {
       return {
@@ -1046,14 +1048,14 @@ export function adjustVariantStock(input: {
         old_stock: oldStock,
         new_stock: targetStock,
         diff: 0,
-      }
+      };
     }
 
     if (diff > 0) {
-      const costState = getInventoryCostState(db, variantId)
+      const costState = getInventoryCostState(db, variantId);
 
       const inboundUnitCost =
-        oldStock > 0 ? costState.average_cost : Number(variant.buy_price || 0)
+        oldStock > 0 ? costState.average_cost : Number(variant.buy_price || 0);
 
       receiveStockAtCost(db, {
         variant_id: variantId,
@@ -1069,7 +1071,7 @@ export function adjustVariantStock(input: {
         notes:
           input.notes?.trim() ||
           `تسوية مخزون: من ${oldStock} إلى ${targetStock}`,
-      })
+      });
     } else {
       issueStockAtAverageCost(db, {
         variant_id: variantId,
@@ -1083,7 +1085,7 @@ export function adjustVariantStock(input: {
         notes:
           input.notes?.trim() ||
           `تسوية مخزون: من ${oldStock} إلى ${targetStock}`,
-      })
+      });
     }
 
     return {
@@ -1092,36 +1094,36 @@ export function adjustVariantStock(input: {
       old_stock: oldStock,
       new_stock: targetStock,
       diff,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function getStockMovements(
   input: {
-    variant_id?: number
-    search?: string
-    limit?: number
-    offset?: number
+    variant_id?: number;
+    search?: string;
+    limit?: number;
+    offset?: number;
   } = {},
 ) {
-  const db = getDb()
+  const db = getDb();
 
-  const variantId = input.variant_id ? Number(input.variant_id) : null
+  const variantId = input.variant_id ? Number(input.variant_id) : null;
 
-  const search = input.search?.trim() || ''
+  const search = input.search?.trim() || '';
 
-  const limit = Math.min(Math.max(Number(input.limit || 50), 1), 200)
+  const limit = Math.min(Math.max(Number(input.limit || 50), 1), 200);
 
-  const offset = Math.max(Number(input.offset || 0), 0)
+  const offset = Math.max(Number(input.offset || 0), 0);
 
-  const where: string[] = []
-  const params: any[] = []
+  const where: string[] = [];
+  const params: any[] = [];
 
   if (variantId) {
-    where.push(`sm.variant_id = ?`)
-    params.push(variantId)
+    where.push(`sm.variant_id = ?`);
+    params.push(variantId);
   }
 
   if (search) {
@@ -1134,14 +1136,14 @@ export function getStockMovements(
         OR IFNULL(sm.reference_type, '') LIKE ?
         OR IFNULL(sm.notes, '') LIKE ?
       )
-    `)
+    `);
 
-    const q = `%${search}%`
+    const q = `%${search}%`;
 
-    params.push(q, q, q, q, q, q)
+    params.push(q, q, q, q, q, q);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const rows = db
     .prepare(
@@ -1192,7 +1194,7 @@ export function getStockMovements(
       OFFSET ?
     `,
     )
-    .all(...params, limit, offset)
+    .all(...params, limit, offset);
 
   const totalRow = db
     .prepare(
@@ -1210,12 +1212,12 @@ export function getStockMovements(
       ${whereSql}
     `,
     )
-    .get(...params) as { total: number }
+    .get(...params) as { total: number };
 
   return {
     rows,
     total: Number(totalRow?.total || 0),
     limit,
     offset,
-  }
+  };
 }

@@ -1,42 +1,39 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react';
 
-import { useAuthStore } from '../../store/auth.store'
+import { useAuthStore } from '../../store/auth.store';
 
 type PromotionType =
-  | 'percent'
-  | 'fixed_per_item'
-  | 'fixed_invoice'
-  | 'buy_x_get_y'
+  'percent' | 'fixed_per_item' | 'fixed_invoice' | 'buy_x_get_y';
 
-type PromotionScope = 'all' | 'category' | 'products'
+type PromotionScope = 'all' | 'category' | 'products';
 
 type PromotionRow = {
-  id: number
-  name: string
-  type: PromotionType
-  value: number
-  buy_qty?: number | null
-  free_qty?: number | null
-  scope_type: PromotionScope
-  category_id?: number | null
-  category_name?: string | null
-  is_active: number
-  products_count?: number
-  products_names?: string | null
-  duration_hours?: number | null
-  ends_at?: number | null
-}
+  id: number;
+  name: string;
+  type: PromotionType;
+  value: number;
+  buy_qty?: number | null;
+  free_qty?: number | null;
+  scope_type: PromotionScope;
+  category_id?: number | null;
+  category_name?: string | null;
+  is_active: number;
+  products_count?: number;
+  products_names?: string | null;
+  duration_hours?: number | null;
+  ends_at?: number | null;
+};
 
 type Category = {
-  id: number
-  name: string
-}
+  id: number;
+  name: string;
+};
 
 type Product = {
-  id: number
-  name: string
-  category_name?: string | null
-}
+  id: number;
+  name: string;
+  category_name?: string | null;
+};
 
 const emptyForm = {
   id: null as number | null,
@@ -58,60 +55,60 @@ const emptyForm = {
   product_ids: [] as number[],
   duration_value: '',
   duration_unit: 'hours' as 'hours' | 'days',
-}
+};
 
 export default function PromotionsPage() {
-  const user = useAuthStore((state) => state.user)
+  const user = useAuthStore((state) => state.user);
 
-  const [promotions, setPromotions] = useState<PromotionRow[]>([])
+  const [promotions, setPromotions] = useState<PromotionRow[]>([]);
 
-  const [categories, setCategories] = useState<Category[]>([])
+  const [categories, setCategories] = useState<Category[]>([]);
 
-  const [products, setProducts] = useState<Product[]>([])
+  const [products, setProducts] = useState<Product[]>([]);
 
-  const [form, setForm] = useState(emptyForm)
+  const [form, setForm] = useState(emptyForm);
 
-  const [productSearch, setProductSearch] = useState('')
+  const [productSearch, setProductSearch] = useState('');
 
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false);
 
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving] = useState(false);
 
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
-    void loadData()
-  }, [])
+    void loadData();
+  }, []);
 
   useEffect(() => {
     const refreshExpired = () => {
-      const now = Date.now()
+      const now = Date.now();
 
       setPromotions((rows) => {
         const isExpired = (row: PromotionRow) =>
           Boolean(row.is_active) &&
           row.ends_at != null &&
-          Number(row.ends_at) <= now
+          Number(row.ends_at) <= now;
 
-        if (!rows.some(isExpired)) return rows
+        if (!rows.some(isExpired)) return rows;
 
         return rows.map((row) =>
           isExpired(row) ? { ...row, is_active: 0 } : row,
-        )
-      })
-    }
+        );
+      });
+    };
 
-    const timer = window.setInterval(refreshExpired, 1000)
-    window.addEventListener('focus', refreshExpired)
+    const timer = window.setInterval(refreshExpired, 1000);
+    window.addEventListener('focus', refreshExpired);
 
     return () => {
-      window.clearInterval(timer)
-      window.removeEventListener('focus', refreshExpired)
-    }
-  }, [])
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshExpired);
+    };
+  }, []);
 
   async function loadData() {
-    setLoading(true)
+    setLoading(true);
 
     try {
       const [promotionRows, categoryRows, productRows] = await Promise.all([
@@ -126,55 +123,55 @@ export default function PromotionsPage() {
           includeInactive: false,
           categoryId: null,
         }),
-      ])
+      ]);
 
-      setPromotions(Array.isArray(promotionRows) ? promotionRows : [])
+      setPromotions(Array.isArray(promotionRows) ? promotionRows : []);
 
-      setCategories(Array.isArray(categoryRows) ? categoryRows : [])
+      setCategories(Array.isArray(categoryRows) ? categoryRows : []);
 
-      setProducts(Array.isArray(productRows) ? productRows : [])
+      setProducts(Array.isArray(productRows) ? productRows : []);
     } catch (error) {
-      console.error('Failed to load promotions:', error)
+      console.error('Failed to load promotions:', error);
 
-      showMessage('تعذر تحميل العروض')
+      showMessage('تعذر تحميل العروض');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   function isErrorMessage(text: string) {
-    return /خطأ|تعذر|فشل|لا يمكن|غير صحيح|غير موجود|مطلوب/.test(text)
+    return /خطأ|تعذر|فشل|لا يمكن|غير صحيح|غير موجود|مطلوب/.test(text);
   }
 
   function showMessage(text: string) {
-    setMessage(text)
+    setMessage(text);
 
     window.setTimeout(
       () => setMessage(''),
 
       isErrorMessage(text) ? 4500 : 2200,
-    )
+    );
   }
 
   function resetForm() {
-    setForm(emptyForm)
-    setProductSearch('')
+    setForm(emptyForm);
+    setProductSearch('');
   }
 
   async function editPromotion(promotion: PromotionRow) {
     try {
-      const details = await window.api.getPromotion(promotion.id)
+      const details = await window.api.getPromotion(promotion.id);
 
       if (!details) {
-        showMessage('العرض غير موجود')
-        return
+        showMessage('العرض غير موجود');
+        return;
       }
 
       const durationHours =
-        details.duration_hours == null ? null : Number(details.duration_hours)
+        details.duration_hours == null ? null : Number(details.duration_hours);
 
       const durationUnit =
-        durationHours !== null && durationHours % 24 === 0 ? 'days' : 'hours'
+        durationHours !== null && durationHours % 24 === 0 ? 'days' : 'hours';
 
       setForm({
         id: Number(details.id),
@@ -203,22 +200,22 @@ export default function PromotionsPage() {
             : String(durationHours / (durationUnit === 'days' ? 24 : 1)),
 
         duration_unit: durationUnit,
-      })
+      });
 
       window.scrollTo({
         top: 0,
         behavior: 'smooth',
-      })
+      });
     } catch (error) {
-      console.error('Failed to load promotion:', error)
+      console.error('Failed to load promotion:', error);
 
-      showMessage('تعذر فتح العرض')
+      showMessage('تعذر فتح العرض');
     }
   }
 
   function toggleProduct(productId: number) {
     setForm((current) => {
-      const exists = current.product_ids.includes(productId)
+      const exists = current.product_ids.includes(productId);
 
       return {
         ...current,
@@ -226,28 +223,28 @@ export default function PromotionsPage() {
         product_ids: exists
           ? current.product_ids.filter((id) => id !== productId)
           : [...current.product_ids, productId],
-      }
-    })
+      };
+    });
   }
 
   async function savePromotion() {
     if (!form.name.trim()) {
-      showMessage('اكتب اسم العرض')
-      return
+      showMessage('اكتب اسم العرض');
+      return;
     }
 
-    const isBuyXGetY = form.type === 'buy_x_get_y'
+    const isBuyXGetY = form.type === 'buy_x_get_y';
 
-    const value = isBuyXGetY ? 0 : Number(form.value)
+    const value = isBuyXGetY ? 0 : Number(form.value);
 
     if (!isBuyXGetY && (!Number.isFinite(value) || value <= 0)) {
-      showMessage('اكتب قيمة عرض صحيحة')
-      return
+      showMessage('اكتب قيمة عرض صحيحة');
+      return;
     }
 
-    const buyQty = Number(form.buy_qty)
+    const buyQty = Number(form.buy_qty);
 
-    const freeQty = Number(form.free_qty)
+    const freeQty = Number(form.free_qty);
 
     if (
       isBuyXGetY &&
@@ -256,24 +253,25 @@ export default function PromotionsPage() {
         !Number.isInteger(freeQty) ||
         freeQty <= 0)
     ) {
-      showMessage('اكتب كميات الشراء والهدية بشكل صحيح')
-      return
+      showMessage('اكتب كميات الشراء والهدية بشكل صحيح');
+      return;
     }
 
     const durationHours =
       form.duration_value.trim() === ''
         ? null
-        : Number(form.duration_value) * (form.duration_unit === 'days' ? 24 : 1)
+        : Number(form.duration_value) *
+          (form.duration_unit === 'days' ? 24 : 1);
 
     if (
       durationHours !== null &&
       (!Number.isFinite(durationHours) || durationHours <= 0)
     ) {
-      showMessage('اكتب مدة أكبر من صفر أو سيبها فاضية')
-      return
+      showMessage('اكتب مدة أكبر من صفر أو سيبها فاضية');
+      return;
     }
 
-    setSaving(true)
+    setSaving(true);
 
     try {
       const payload = {
@@ -294,36 +292,36 @@ export default function PromotionsPage() {
 
         actor_id: user?.id,
         duration_hours: durationHours,
-      }
+      };
 
       const result = form.id
         ? await window.api.updatePromotion({
             id: form.id,
             ...payload,
           })
-        : await window.api.createPromotion(payload)
+        : await window.api.createPromotion(payload);
 
       if (result?.success === false) {
-        showMessage(result.message || 'تعذر حفظ العرض')
-        return
+        showMessage(result.message || 'تعذر حفظ العرض');
+        return;
       }
 
-      showMessage(form.id ? 'تم تعديل العرض' : 'تم إنشاء العرض')
+      showMessage(form.id ? 'تم تعديل العرض' : 'تم إنشاء العرض');
 
-      resetForm()
-      await loadData()
+      resetForm();
+      await loadData();
     } catch (error) {
-      console.error('Failed to save promotion:', error)
+      console.error('Failed to save promotion:', error);
 
-      showMessage('تعذر حفظ العرض')
+      showMessage('تعذر حفظ العرض');
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
   async function toggleActive(promotion: PromotionRow) {
     try {
-      const nextActive = promotion.is_active ? 0 : 1
+      const nextActive = promotion.is_active ? 0 : 1;
 
       const result = await window.api.togglePromotion({
         id: promotion.id,
@@ -331,28 +329,28 @@ export default function PromotionsPage() {
         is_active: nextActive,
 
         actor_id: user?.id,
-      })
+      });
 
       if (result?.success === false) {
-        showMessage(result.message || 'تعذر تغيير حالة العرض')
-        return
+        showMessage(result.message || 'تعذر تغيير حالة العرض');
+        return;
       }
 
-      showMessage(nextActive ? 'تم تفعيل العرض' : 'تم إيقاف العرض')
+      showMessage(nextActive ? 'تم تفعيل العرض' : 'تم إيقاف العرض');
 
-      await loadData()
+      await loadData();
     } catch (error) {
-      console.error('Failed to toggle promotion:', error)
+      console.error('Failed to toggle promotion:', error);
 
-      showMessage('تعذر تغيير حالة العرض')
+      showMessage('تعذر تغيير حالة العرض');
     }
   }
 
   const filteredProducts = useMemo(() => {
-    const query = productSearch.trim().toLowerCase()
+    const query = productSearch.trim().toLowerCase();
 
     if (!query) {
-      return products
+      return products;
     }
 
     return products.filter((product) =>
@@ -361,8 +359,8 @@ export default function PromotionsPage() {
         .join(' ')
         .toLowerCase()
         .includes(query),
-    )
-  }, [products, productSearch])
+    );
+  }, [products, productSearch]);
 
   function typeLabel(
     type: PromotionType,
@@ -371,32 +369,32 @@ export default function PromotionsPage() {
     freeQty = 0,
   ) {
     if (type === 'buy_x_get_y') {
-      return `اشتري ${buyQty} وخد ${freeQty} هدية`
+      return `اشتري ${buyQty} وخد ${freeQty} هدية`;
     }
 
     if (type === 'percent') {
-      return `خصم ${value}%`
+      return `خصم ${value}%`;
     }
 
     if (type === 'fixed_per_item') {
-      return `خصم ${value} ج لكل قطعة`
+      return `خصم ${value} ج لكل قطعة`;
     }
 
-    return `خصم ${value} ج على الفاتورة`
+    return `خصم ${value} ج على الفاتورة`;
   }
 
   function scopeLabel(promotion: PromotionRow) {
     if (promotion.scope_type === 'category') {
-      return promotion.category_name || 'تصنيف'
+      return promotion.category_name || 'تصنيف';
     }
 
     if (promotion.scope_type === 'products') {
       return (
         promotion.products_names || `${promotion.products_count || 0} منتجات`
-      )
+      );
     }
 
-    return 'كل المنتجات'
+    return 'كل المنتجات';
   }
 
   return (
@@ -905,7 +903,7 @@ export default function PromotionsPage() {
         )}
       </section>
     </div>
-  )
+  );
 }
 
 const cardStyle: React.CSSProperties = {
@@ -913,14 +911,14 @@ const cardStyle: React.CSSProperties = {
   borderRadius: '18px',
   background: 'rgba(17,24,39,0.78)',
   border: '1px solid rgba(255,255,255,0.08)',
-}
+};
 
 const fieldStyle: React.CSSProperties = {
   display: 'grid',
   gap: '7px',
   fontWeight: 800,
   color: '#cbd5e1',
-}
+};
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -932,7 +930,7 @@ const inputStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.05)',
   color: '#fff',
   outline: 'none',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   minHeight: '40px',
@@ -943,18 +941,18 @@ const primaryButtonStyle: React.CSSProperties = {
   color: '#fff',
   fontWeight: 900,
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   ...primaryButtonStyle,
   background: 'transparent',
   border: '1px solid rgba(124,58,237,0.65)',
   color: '#c4b5fd',
-}
+};
 
 const dangerButtonStyle: React.CSSProperties = {
   ...primaryButtonStyle,
   background: 'rgba(239,68,68,0.12)',
   border: '1px solid rgba(239,68,68,0.45)',
   color: '#fca5a5',
-}
+};

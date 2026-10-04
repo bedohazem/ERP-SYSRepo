@@ -5,332 +5,332 @@ import {
   useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
-} from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useAuthStore } from '../../store/auth.store'
+} from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuthStore } from '../../store/auth.store';
 import {
   CUSTOMER_PAYMENT_METHOD_OPTIONS,
   getPaymentMethodLabel,
   ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS,
-} from '../../utils/payment-method'
-import { printSaleReceiptHtml } from '../../utils/receiptPrint'
-import { roundMoney } from '../../../shared/money'
+} from '../../utils/payment-method';
+import { printSaleReceiptHtml } from '../../utils/receiptPrint';
+import { roundMoney } from '../../../shared/money';
 
 type SaleVariant = {
-  variant_id: number
-  product_id: number
-  product_name: string
-  category_id?: number | null
-  category_name?: string | null
-  barcode: string
-  size: string
-  color: string
-  sell_price: number
-  buy_price: number
-  stock: number
-  min_stock: number
-  is_active: number
-}
+  variant_id: number;
+  product_id: number;
+  product_name: string;
+  category_id?: number | null;
+  category_name?: string | null;
+  barcode: string;
+  size: string;
+  color: string;
+  sell_price: number;
+  buy_price: number;
+  stock: number;
+  min_stock: number;
+  is_active: number;
+};
 
 type Category = {
-  id: number
-  name: string
-  description?: string | null
-}
+  id: number;
+  name: string;
+  description?: string | null;
+};
 
 type CartItem = SaleVariant & {
-  quantity: number
-}
+  quantity: number;
+};
 
 type ActivePromotion = {
-  id: number
-  name: string
+  id: number;
+  name: string;
 
-  type: 'percent' | 'fixed_per_item' | 'fixed_invoice' | 'buy_x_get_y'
+  type: 'percent' | 'fixed_per_item' | 'fixed_invoice' | 'buy_x_get_y';
 
-  value: number
-  buy_qty?: number | null
+  value: number;
+  buy_qty?: number | null;
 
-  free_qty?: number | null
-  scope_type: 'all' | 'category' | 'products'
+  free_qty?: number | null;
+  scope_type: 'all' | 'category' | 'products';
 
-  category_id?: number | null
+  category_id?: number | null;
 
-  product_ids?: number[]
-  ends_at?: number | null
-}
+  product_ids?: number[];
+  ends_at?: number | null;
+};
 
 type CustomerOption = {
-  id: number
-  name: string
-  phone?: string | null
-  email?: string | null
-  address?: string | null
-  notes?: string | null
-  points_balance: number
-  total_spent?: number
-  sales_count?: number
-  last_sale_at?: string | null
-  balance?: number
+  id: number;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
+  points_balance: number;
+  total_spent?: number;
+  sales_count?: number;
+  last_sale_at?: string | null;
+  balance?: number;
 
-  credit_limit?: number | null
-}
+  credit_limit?: number | null;
+};
 
 type CreditLimitExceededDetails = {
-  customer_id: number
+  customer_id: number;
 
-  credit_limit: number
+  credit_limit: number;
 
-  current_debt: number
+  current_debt: number;
 
-  additional_debt: number
+  additional_debt: number;
 
-  projected_debt: number
+  projected_debt: number;
 
-  excess_amount: number
-}
+  excess_amount: number;
+};
 
 type LoyaltySettings = {
-  loyalty_enabled: boolean
-  loyalty_earn_amount: number
-  loyalty_earn_points: number
-  loyalty_point_value: number
-  loyalty_min_redeem_points: number
-}
+  loyalty_enabled: boolean;
+  loyalty_earn_amount: number;
+  loyalty_earn_points: number;
+  loyalty_point_value: number;
+  loyalty_min_redeem_points: number;
+};
 
 type SaleReceipt = {
   sale: {
-    id: number
-    customer_name?: string | null
-    customer_phone?: string | null
-    cashier_name?: string | null
-    sub_total: number
-    discount_value?: number
-    promotion_id?: number | null
-    promotion_name?: string | null
-    promotion_discount_value?: number
-    grand_total: number
-    paid?: number
-    remaining_amount?: number
-    payment_status?: string
-    change_amount?: number
-    payment_method?: string | null
-    notes?: string | null
-    loyalty_points_earned?: number
-    loyalty_points_redeemed?: number
-    loyalty_discount_value?: number
-    business_date?: string | null
-    created_at?: string | null
-  }
+    id: number;
+    customer_name?: string | null;
+    customer_phone?: string | null;
+    cashier_name?: string | null;
+    sub_total: number;
+    discount_value?: number;
+    promotion_id?: number | null;
+    promotion_name?: string | null;
+    promotion_discount_value?: number;
+    grand_total: number;
+    paid?: number;
+    remaining_amount?: number;
+    payment_status?: string;
+    change_amount?: number;
+    payment_method?: string | null;
+    notes?: string | null;
+    loyalty_points_earned?: number;
+    loyalty_points_redeemed?: number;
+    loyalty_discount_value?: number;
+    business_date?: string | null;
+    created_at?: string | null;
+  };
   items: Array<{
-    id: number
-    product_name: string
-    barcode?: string | null
-    size?: string | null
-    color?: string | null
-    quantity: number
-    unit_price: number
-    line_total: number
-  }>
+    id: number;
+    product_name: string;
+    barcode?: string | null;
+    size?: string | null;
+    color?: string | null;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }>;
   payments?: Array<{
-    id: number
-    sale_id: number
-    payment_method: string
-    amount: number
-  }>
+    id: number;
+    sale_id: number;
+    payment_method: string;
+    amount: number;
+  }>;
   loyalty: Array<{
-    id: number
-    type: 'earn' | 'redeem' | 'adjust' | string
-    points: number
-    amount?: number
-    notes?: string | null
-    created_at?: string | null
-  }>
-}
+    id: number;
+    type: 'earn' | 'redeem' | 'adjust' | string;
+    points: number;
+    amount?: number;
+    notes?: string | null;
+    created_at?: string | null;
+  }>;
+};
 
 type SaveSaleResult = {
-  success?: boolean
-  message?: string
-  code?: 'CREDIT_LIMIT_EXCEEDED'
+  success?: boolean;
+  message?: string;
+  code?: 'CREDIT_LIMIT_EXCEEDED';
 
-  credit?: CreditLimitExceededDetails
-  saleId?: number
+  credit?: CreditLimitExceededDetails;
+  saleId?: number;
 
-  loyalty_points_earned?: number
-  loyalty_points_redeemed?: number
-  loyalty_discount_value?: number
+  loyalty_points_earned?: number;
+  loyalty_points_redeemed?: number;
+  loyalty_discount_value?: number;
 
-  promotion_id?: number | null
-  promotion_name?: string | null
-  promotion_discount_value?: number
+  promotion_id?: number | null;
+  promotion_name?: string | null;
+  promotion_discount_value?: number;
 
-  grand_total?: number
-  paid_amount?: number
-  remaining_amount?: number
-  payment_status?: string
+  grand_total?: number;
+  paid_amount?: number;
+  remaining_amount?: number;
+  payment_status?: string;
 
-  shift_id?: number | null
+  shift_id?: number | null;
 
-  edited?: boolean
-}
+  edited?: boolean;
+};
 
 type StoreReceiptInfo = {
-  app_name?: string
-  app_logo_url?: string
-  store_phone?: string
-  store_address?: string
-  store_qr_enabled?: boolean
-  store_qr_title?: string
-  store_qr_primary_url?: string
-}
+  app_name?: string;
+  app_logo_url?: string;
+  store_phone?: string;
+  store_address?: string;
+  store_qr_enabled?: boolean;
+  store_qr_title?: string;
+  store_qr_primary_url?: string;
+};
 
 type InvoiceTab = {
-  id: number
-  title: string
-  cart: CartItem[]
-  barcodeDraft: string
-  productDraft: string
-  customer: CustomerOption | null
-  loyaltyPointsDraft: string
-  paidDraft: string
-  paymentMethod: string
-  businessDateDraft: string
-  discountType: 'amount' | 'percent'
-  discountDraft: string
-  notesDraft: string
-}
+  id: number;
+  title: string;
+  cart: CartItem[];
+  barcodeDraft: string;
+  productDraft: string;
+  customer: CustomerOption | null;
+  loyaltyPointsDraft: string;
+  paidDraft: string;
+  paymentMethod: string;
+  businessDateDraft: string;
+  discountType: 'amount' | 'percent';
+  discountDraft: string;
+  notesDraft: string;
+};
 
 type HeldSaleListRow = {
-  id: number
+  id: number;
 
-  user_id: number
+  user_id: number;
 
-  cashier_name: string
+  cashier_name: string;
 
-  customer_id: number | null
+  customer_id: number | null;
 
-  customer_name?: string | null
+  customer_name?: string | null;
 
-  customer_phone?: string | null
+  customer_phone?: string | null;
 
-  title: string
+  title: string;
 
-  discount_type: 'amount' | 'percent'
+  discount_type: 'amount' | 'percent';
 
-  discount_value: number
+  discount_value: number;
 
-  notes?: string | null
+  notes?: string | null;
 
-  created_at: string
+  created_at: string;
 
-  updated_at: string
+  updated_at: string;
 
-  items_count: number
+  items_count: number;
 
-  total_quantity: number
+  total_quantity: number;
 
-  estimated_sub_total: number
-}
+  estimated_sub_total: number;
+};
 
 function getPromotionDiscountForCart(
   promotion: ActivePromotion | null,
   cart: CartItem[],
 ) {
   if (!promotion) {
-    return 0
+    return 0;
   }
 
-  const productIds = new Set((promotion.product_ids || []).map(Number))
+  const productIds = new Set((promotion.product_ids || []).map(Number));
 
   const eligibleItems = cart
     .map((item) => {
-      let eligible = false
+      let eligible = false;
 
       if (promotion.scope_type === 'all') {
-        eligible = true
+        eligible = true;
       }
 
       if (promotion.scope_type === 'category') {
-        eligible = Number(item.category_id) === Number(promotion.category_id)
+        eligible = Number(item.category_id) === Number(promotion.category_id);
       }
 
       if (promotion.scope_type === 'products') {
-        eligible = productIds.has(Number(item.product_id))
+        eligible = productIds.has(Number(item.product_id));
       }
 
       if (!eligible) {
-        return null
+        return null;
       }
 
-      const qty = Math.max(0, Number(item.quantity || 0))
+      const qty = Math.max(0, Number(item.quantity || 0));
 
-      const unitPrice = Math.max(0, Number(item.sell_price || 0))
+      const unitPrice = Math.max(0, Number(item.sell_price || 0));
 
       return {
         qty,
         unitPrice,
 
         lineTotal: roundMoney(qty * unitPrice),
-      }
+      };
     })
     .filter(Boolean) as Array<{
-    qty: number
-    unitPrice: number
-    lineTotal: number
-  }>
+    qty: number;
+    unitPrice: number;
+    lineTotal: number;
+  }>;
 
   if (eligibleItems.length === 0) {
-    return 0
+    return 0;
   }
 
-  const value = Math.max(0, Number(promotion.value || 0))
+  const value = Math.max(0, Number(promotion.value || 0));
 
   if (promotion.type === 'buy_x_get_y') {
-    const buyQty = Math.floor(Number(promotion.buy_qty || 0))
+    const buyQty = Math.floor(Number(promotion.buy_qty || 0));
 
-    const freeQty = Math.floor(Number(promotion.free_qty || 0))
+    const freeQty = Math.floor(Number(promotion.free_qty || 0));
 
     if (buyQty <= 0 || freeQty <= 0) {
-      return 0
+      return 0;
     }
 
-    const groupSize = buyQty + freeQty
+    const groupSize = buyQty + freeQty;
 
     const totalEligibleUnits = eligibleItems.reduce(
       (total, item) => total + Math.floor(item.qty),
       0,
-    )
+    );
 
     let remainingFreeUnits =
-      Math.floor(totalEligibleUnits / groupSize) * freeQty
+      Math.floor(totalEligibleUnits / groupSize) * freeQty;
 
     const cheapestFirst = [...eligibleItems].sort(
       (a, b) => a.unitPrice - b.unitPrice,
-    )
+    );
 
-    let discount = 0
+    let discount = 0;
 
     for (const item of cheapestFirst) {
       if (remainingFreeUnits <= 0) {
-        break
+        break;
       }
 
       const freeFromItem = Math.min(
         remainingFreeUnits,
 
         Math.floor(item.qty),
-      )
+      );
 
-      discount += freeFromItem * item.unitPrice
+      discount += freeFromItem * item.unitPrice;
 
-      remainingFreeUnits -= freeFromItem
+      remainingFreeUnits -= freeFromItem;
     }
 
-    return roundMoney(discount)
+    return roundMoney(discount);
   }
 
   if (promotion.type === 'percent') {
-    const percent = Math.min(value, 100)
+    const percent = Math.min(value, 100);
 
     return roundMoney(
       eligibleItems.reduce((total, item) => {
@@ -338,34 +338,34 @@ function getPromotionDiscountForCart(
           item.lineTotal,
 
           roundMoney(item.lineTotal * (percent / 100)),
-        )
+        );
 
-        return total + discount
+        return total + discount;
       }, 0),
-    )
+    );
   }
 
   if (promotion.type === 'fixed_per_item') {
     return roundMoney(
       eligibleItems.reduce((total, item) => {
-        const discountPerItem = Math.min(item.unitPrice, value)
+        const discountPerItem = Math.min(item.unitPrice, value);
 
         const discount = Math.min(
           item.lineTotal,
 
           roundMoney(discountPerItem * item.qty),
-        )
+        );
 
-        return total + discount
+        return total + discount;
       }, 0),
-    )
+    );
   }
 
   const eligibleSubtotal = roundMoney(
     eligibleItems.reduce((total, item) => total + item.lineTotal, 0),
-  )
+  );
 
-  return roundMoney(Math.min(eligibleSubtotal, value))
+  return roundMoney(Math.min(eligibleSubtotal, value));
 }
 
 function getPromotionsDiscountForCart(
@@ -379,14 +379,14 @@ function getPromotionsDiscountForCart(
 
       0,
     ),
-  )
+  );
 }
 
 type DropdownRect = {
-  top: number
-  left: number
-  width: number
-}
+  top: number;
+  left: number;
+  width: number;
+};
 
 const defaultLoyaltySettings: LoyaltySettings = {
   loyalty_enabled: true,
@@ -394,9 +394,9 @@ const defaultLoyaltySettings: LoyaltySettings = {
   loyalty_earn_points: 10,
   loyalty_point_value: 10,
   loyalty_min_redeem_points: 2,
-}
+};
 
-const SALES_DRAFT_STORAGE_KEY = 'fony_sales_invoice_draft_v1'
+const SALES_DRAFT_STORAGE_KEY = 'fony_sales_invoice_draft_v1';
 
 const createInvoice = (id: number): InvoiceTab => ({
   id,
@@ -412,7 +412,7 @@ const createInvoice = (id: number): InvoiceTab => ({
   discountType: 'amount',
   discountDraft: '',
   notesDraft: '',
-})
+});
 
 function normalizeCustomer(customer: any): CustomerOption {
   return {
@@ -430,17 +430,17 @@ function normalizeCustomer(customer: any): CustomerOption {
     total_spent: Number(customer.total_spent ?? 0),
     sales_count: Number(customer.sales_count ?? 0),
     last_sale_at: customer.last_sale_at ?? null,
-  }
+  };
 }
 
 function normalizePositiveInt(value: string | number): number {
-  const n = Math.floor(Number(value))
-  return Number.isFinite(n) && n > 0 ? n : 0
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
-  const id = Number(raw?.id || fallbackId)
-  const base = createInvoice(id)
+  const id = Number(raw?.id || fallbackId);
+  const base = createInvoice(id);
 
   const cart = Array.isArray(raw?.cart)
     ? raw.cart
@@ -476,9 +476,9 @@ function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
           (item: CartItem) =>
             Number.isFinite(item.variant_id) && item.variant_id > 0,
         )
-    : []
+    : [];
 
-  const customer = raw?.customer?.id ? normalizeCustomer(raw.customer) : null
+  const customer = raw?.customer?.id ? normalizeCustomer(raw.customer) : null;
 
   return {
     ...base,
@@ -496,7 +496,7 @@ function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
 
     discountDraft: String(raw?.discountDraft || ''),
     notesDraft: String(raw?.notesDraft || ''),
-  }
+  };
 }
 
 function serializeInvoiceDraft(invoice: InvoiceTab): InvoiceTab {
@@ -510,11 +510,11 @@ function serializeInvoiceDraft(invoice: InvoiceTab): InvoiceTab {
 
     discountDraft: invoice.discountDraft,
     notesDraft: invoice.notesDraft,
-  }
+  };
 }
 
 function money(value: number | string | null | undefined): string {
-  return String(roundMoney(value))
+  return String(roundMoney(value));
 }
 
 function escapeHtml(value: unknown) {
@@ -523,258 +523,258 @@ function escapeHtml(value: unknown) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+    .replace(/'/g, '&#039;');
 }
 
 const ENGINEER_FOOTER =
-  'برمجة وتصميم: بشمهندس عبدالرحمن حازم - 01155559287/01068377869'
+  'برمجة وتصميم: بشمهندس عبدالرحمن حازم - 01155559287/01068377869';
 
 function getPaymentStatusLabel(status?: string | null) {
-  if (status === 'paid') return 'مدفوعة'
-  if (status === 'partial') return 'مدفوعة جزئيًا'
-  if (status === 'unpaid') return 'غير مدفوعة'
-  return status || '—'
+  if (status === 'paid') return 'مدفوعة';
+  if (status === 'partial') return 'مدفوعة جزئيًا';
+  if (status === 'unpaid') return 'غير مدفوعة';
+  return status || '—';
 }
 
 function formatReceiptDate(
   value?: string | null,
   businessDate?: string | null,
 ): string {
-  if (!value) return '—'
+  if (!value) return '—';
 
   try {
-    const raw = String(value)
-    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z'
+    const raw = String(value);
+    const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z';
 
-    const date = new Date(normalized)
+    const date = new Date(normalized);
 
     let datePart = date.toLocaleDateString('en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
-    })
+    });
 
     if (businessDate && /^\d{4}-\d{2}-\d{2}$/.test(String(businessDate))) {
-      const [year, month, day] = String(businessDate).split('-')
-      datePart = `${day}/${month}/${year}`
+      const [year, month, day] = String(businessDate).split('-');
+      datePart = `${day}/${month}/${year}`;
     }
 
     const timePart = date.toLocaleTimeString('en-GB', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
-    })
+    });
 
-    return `${datePart}  ${timePart}`
+    return `${datePart}  ${timePart}`;
   } catch {
-    return value
+    return value;
   }
 }
 
 function getEditablePaymentMethod(value?: string | null) {
   switch (value) {
     case 'store_cash':
-      return 'cash'
+      return 'cash';
 
     case 'fawry_machine':
-      return 'card'
+      return 'card';
 
     case 'owner_vodafone':
-      return 'wallet'
+      return 'wallet';
 
     case 'owner_bank':
-      return 'bank_transfer'
+      return 'bank_transfer';
 
     case 'store_safe':
-      return 'store_safe'
+      return 'store_safe';
 
     case 'owner_cash':
-      return 'owner_cash'
+      return 'owner_cash';
 
     default:
-      return value || 'cash'
+      return value || 'cash';
   }
 }
 
 export default function SalesPage() {
-  const user = useAuthStore((s) => s.user)
-  const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
 
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const requestedEditSaleId = Number(searchParams.get('edit') || 0)
+  const requestedEditSaleId = Number(searchParams.get('edit') || 0);
 
-  const [editingSaleId, setEditingSaleId] = useState<number | null>(null)
+  const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
 
-  const [editLoading, setEditLoading] = useState(false)
+  const [editLoading, setEditLoading] = useState(false);
 
-  const [editReason, setEditReason] = useState('')
+  const [editReason, setEditReason] = useState('');
 
-  const [editAdminPassword, setEditAdminPassword] = useState('')
-  const [editAdminUsername, setEditAdminUsername] = useState('')
-  const [receiptWasEdit, setReceiptWasEdit] = useState(false)
+  const [editAdminPassword, setEditAdminPassword] = useState('');
+  const [editAdminUsername, setEditAdminUsername] = useState('');
+  const [receiptWasEdit, setReceiptWasEdit] = useState(false);
 
   function clearInvoiceEditState() {
-    setEditingSaleId(null)
-    setEditReason('')
-    setEditAdminPassword('')
-    setEditAdminUsername('')
-    setReceiptWasEdit(false)
+    setEditingSaleId(null);
+    setEditReason('');
+    setEditAdminPassword('');
+    setEditAdminUsername('');
+    setReceiptWasEdit(false);
 
-    setSearchParams({}, { replace: true })
+    setSearchParams({}, { replace: true });
   }
 
   function closeCreditOverride() {
     if (saving) {
-      return
+      return;
     }
 
-    setCreditOverride(null)
+    setCreditOverride(null);
 
-    setCreditOverrideAdminUsername('')
+    setCreditOverrideAdminUsername('');
 
-    setCreditOverrideAdminPassword('')
+    setCreditOverrideAdminPassword('');
   }
 
-  const [isCompact, setIsCompact] = useState(false)
+  const [isCompact, setIsCompact] = useState(false);
 
-  const [invoices, setInvoices] = useState<InvoiceTab[]>([createInvoice(1)])
-  const [activeInvoiceId, setActiveInvoiceId] = useState(1)
-  const [nextInvoiceId, setNextInvoiceId] = useState(2)
+  const [invoices, setInvoices] = useState<InvoiceTab[]>([createInvoice(1)]);
+  const [activeInvoiceId, setActiveInvoiceId] = useState(1);
+  const [nextInvoiceId, setNextInvoiceId] = useState(2);
 
-  const [productResults, setProductResults] = useState<SaleVariant[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [saleCategoryFilter, setSaleCategoryFilter] = useState('all')
-  const [saving, setSaving] = useState(false)
-  const [openingCashDrawer, setOpeningCashDrawer] = useState(false)
-  const [cashDrawerAutoOpen, setCashDrawerAutoOpen] = useState(true)
-  const [barcodeMode, setBarcodeMode] = useState(true)
-  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [productResults, setProductResults] = useState<SaleVariant[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [saleCategoryFilter, setSaleCategoryFilter] = useState('all');
+  const [saving, setSaving] = useState(false);
+  const [openingCashDrawer, setOpeningCashDrawer] = useState(false);
+  const [cashDrawerAutoOpen, setCashDrawerAutoOpen] = useState(true);
+  const [barcodeMode, setBarcodeMode] = useState(true);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [creditOverride, setCreditOverride] =
-    useState<CreditLimitExceededDetails | null>(null)
+    useState<CreditLimitExceededDetails | null>(null);
 
   const [creditOverrideAdminUsername, setCreditOverrideAdminUsername] =
-    useState('')
+    useState('');
 
   const [creditOverrideAdminPassword, setCreditOverrideAdminPassword] =
-    useState('')
-  const [splitPaymentEnabled, setSplitPaymentEnabled] = useState(false)
+    useState('');
+  const [splitPaymentEnabled, setSplitPaymentEnabled] = useState(false);
 
   const [splitPaymentDrafts, setSplitPaymentDrafts] = useState<
     Record<string, string>
-  >({})
+  >({});
   const [activePromotions, setActivePromotions] = useState<ActivePromotion[]>(
     [],
-  )
-  const [customers, setCustomers] = useState<CustomerOption[]>([])
-  const [loadingCustomers, setLoadingCustomers] = useState(false)
-  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false)
-  const [customerSearch, setCustomerSearch] = useState('')
+  );
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState('');
 
-  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false)
-  const [savingNewCustomer, setSavingNewCustomer] = useState(false)
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [savingNewCustomer, setSavingNewCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
     name: '',
     phone: '',
-  })
+  });
 
   const [storeInfo, setStoreInfo] = useState({
     name: '',
     address: '',
     phone: '',
-  })
+  });
 
   const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettings>(
     defaultLoyaltySettings,
-  )
+  );
 
   const [pageMessage, setPageMessage] = useState<{
-    type: 'error' | 'success'
-    text: string
-  } | null>(null)
+    type: 'error' | 'success';
+    text: string;
+  } | null>(null);
 
-  const [receiptData, setReceiptData] = useState<SaleReceipt | null>(null)
-  const [printingReceipt, setPrintingReceipt] = useState(false)
-  const [salesDraftHydrated, setSalesDraftHydrated] = useState(false)
-  const [heldSales, setHeldSales] = useState<HeldSaleListRow[]>([])
+  const [receiptData, setReceiptData] = useState<SaleReceipt | null>(null);
+  const [printingReceipt, setPrintingReceipt] = useState(false);
+  const [salesDraftHydrated, setSalesDraftHydrated] = useState(false);
+  const [heldSales, setHeldSales] = useState<HeldSaleListRow[]>([]);
 
-  const [loadingHeldSales, setLoadingHeldSales] = useState(false)
+  const [loadingHeldSales, setLoadingHeldSales] = useState(false);
 
-  const [showHeldSalesModal, setShowHeldSalesModal] = useState(false)
+  const [showHeldSalesModal, setShowHeldSalesModal] = useState(false);
 
-  const [showHoldSaleModal, setShowHoldSaleModal] = useState(false)
+  const [showHoldSaleModal, setShowHoldSaleModal] = useState(false);
 
-  const [holdTitleDraft, setHoldTitleDraft] = useState('')
+  const [holdTitleDraft, setHoldTitleDraft] = useState('');
 
-  const [holdingSale, setHoldingSale] = useState(false)
+  const [holdingSale, setHoldingSale] = useState(false);
 
   const [resumingHeldSaleId, setResumingHeldSaleId] = useState<number | null>(
     null,
-  )
+  );
 
   const [deletingHeldSaleId, setDeletingHeldSaleId] = useState<number | null>(
     null,
-  )
+  );
 
   const [pendingDeleteHeldSaleId, setPendingDeleteHeldSaleId] = useState<
     number | null
-  >(null)
+  >(null);
 
-  const [dropdownRect, setDropdownRect] = useState<DropdownRect | null>(null)
+  const [dropdownRect, setDropdownRect] = useState<DropdownRect | null>(null);
 
-  const barcodeInputRef = useRef<HTMLInputElement | null>(null)
-  const productInputRef = useRef<HTMLInputElement | null>(null)
-  const firstQtyInputRef = useRef<HTMLInputElement | null>(null)
-  const customerWrapperRef = useRef<HTMLDivElement | null>(null)
-  const pageRef = useRef<HTMLDivElement | null>(null)
+  const barcodeInputRef = useRef<HTMLInputElement | null>(null);
+  const productInputRef = useRef<HTMLInputElement | null>(null);
+  const firstQtyInputRef = useRef<HTMLInputElement | null>(null);
+  const customerWrapperRef = useRef<HTMLDivElement | null>(null);
+  const pageRef = useRef<HTMLDivElement | null>(null);
 
   const pendingDeleteHeldSale = pendingDeleteHeldSaleId
     ? (heldSales.find(
         (row) => Number(row.id) === Number(pendingDeleteHeldSaleId),
       ) ?? null)
-    : null
+    : null;
 
   useEffect(() => {
     if (!requestedEditSaleId || !user?.id) {
-      return
+      return;
     }
 
-    let cancelled = false
+    let cancelled = false;
 
     async function loadSaleForEdit() {
-      setEditLoading(true)
+      setEditLoading(true);
 
       try {
-        const receipt = await window.api.getSaleReceipt(requestedEditSaleId)
+        const receipt = await window.api.getSaleReceipt(requestedEditSaleId);
 
-        if (cancelled) return
+        if (cancelled) return;
 
         if (receipt.sale?.cancelled_at) {
-          throw new Error('لا يمكن تعديل فاتورة ملغاة')
+          throw new Error('لا يمكن تعديل فاتورة ملغاة');
         }
 
         if (
           Number(receipt.sale?.promotion_id || 0) > 0 ||
           Number(receipt.sale?.promotion_discount_value || 0) > 0
         ) {
-          throw new Error('لا يمكن تعديل فاتورة تم إنشاؤها بعرض')
+          throw new Error('لا يمكن تعديل فاتورة تم إنشاؤها بعرض');
         }
 
-        const groupedItems = new Map<number, CartItem>()
+        const groupedItems = new Map<number, CartItem>();
 
         for (const item of receipt.items || []) {
-          const variantId = Number(item.variant_id || 0)
+          const variantId = Number(item.variant_id || 0);
 
-          if (!variantId) continue
+          if (!variantId) continue;
 
-          const qty = Number(item.quantity || 0)
+          const qty = Number(item.quantity || 0);
 
-          const existing = groupedItems.get(variantId)
+          const existing = groupedItems.get(variantId);
 
           if (existing) {
-            existing.quantity += qty
+            existing.quantity += qty;
 
-            continue
+            continue;
           }
 
           groupedItems.set(variantId, {
@@ -818,10 +818,10 @@ export default function SalesPage() {
             is_active: Number(item.is_active ?? 1),
 
             quantity: qty,
-          })
+          });
         }
 
-        const cart = Array.from(groupedItems.values())
+        const cart = Array.from(groupedItems.values());
 
         /*
          * لو نفس الصنف كان متقسم
@@ -837,9 +837,9 @@ export default function SalesPage() {
             .reduce(
               (total: number, row: any) => total + Number(row.quantity || 0),
               0,
-            )
+            );
 
-          item.quantity = totalOldQty
+          item.quantity = totalOldQty;
 
           item.stock =
             Number(
@@ -847,18 +847,18 @@ export default function SalesPage() {
                 (row: any) =>
                   Number(row.variant_id) === Number(item.variant_id),
               )?.current_stock || 0,
-            ) + totalOldQty
+            ) + totalOldQty;
         }
 
-        let customer: CustomerOption | null = null
+        let customer: CustomerOption | null = null;
 
-        const customerId = Number(receipt.sale?.customer_id || 0)
+        const customerId = Number(receipt.sale?.customer_id || 0);
 
         if (customerId > 0) {
-          const rawCustomer = await window.api.getCustomerById(customerId)
+          const rawCustomer = await window.api.getCustomerById(customerId);
 
           if (rawCustomer) {
-            customer = normalizeCustomer(rawCustomer)
+            customer = normalizeCustomer(rawCustomer);
 
             /*
              * updateSaleInvoice
@@ -871,7 +871,7 @@ export default function SalesPage() {
               Number(customer.points_balance || 0) +
                 Number(receipt.sale?.loyalty_points_redeemed || 0) -
                 Number(receipt.sale?.loyalty_points_earned || 0),
-            )
+            );
           }
         }
 
@@ -881,22 +881,22 @@ export default function SalesPage() {
                 payment.payment_method !== 'split' &&
                 Number(payment.amount || 0) > 0,
             )
-          : []
+          : [];
 
-        const isSplit = payments.length > 1
+        const isSplit = payments.length > 1;
 
-        const drafts: Record<string, string> = {}
+        const drafts: Record<string, string> = {};
 
         for (const payment of payments) {
-          const method = getEditablePaymentMethod(payment.payment_method)
+          const method = getEditablePaymentMethod(payment.payment_method);
 
-          drafts[method] = String(Number(payment.amount || 0))
+          drafts[method] = String(Number(payment.amount || 0));
         }
 
         const singleMethod =
           payments.length === 1
             ? getEditablePaymentMethod(payments[0].payment_method)
-            : getEditablePaymentMethod(receipt.sale?.payment_method)
+            : getEditablePaymentMethod(receipt.sale?.payment_method);
 
         const editInvoice: InvoiceTab = {
           ...createInvoice(1),
@@ -928,37 +928,37 @@ export default function SalesPage() {
               : '',
 
           notesDraft: String(receipt.sale?.notes || ''),
-        }
+        };
 
-        localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
+        localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
 
-        setInvoices([editInvoice])
+        setInvoices([editInvoice]);
 
-        setActiveInvoiceId(1)
+        setActiveInvoiceId(1);
 
-        setNextInvoiceId(2)
+        setNextInvoiceId(2);
 
-        setEditingSaleId(requestedEditSaleId)
+        setEditingSaleId(requestedEditSaleId);
 
-        setEditReason(`تعديل فاتورة بيع #${requestedEditSaleId}`)
+        setEditReason(`تعديل فاتورة بيع #${requestedEditSaleId}`);
 
-        setEditAdminPassword('')
+        setEditAdminPassword('');
 
-        setSplitPaymentEnabled(isSplit)
+        setSplitPaymentEnabled(isSplit);
 
-        setSplitPaymentDrafts(isSplit ? drafts : {})
+        setSplitPaymentDrafts(isSplit ? drafts : {});
 
-        setProductResults([])
+        setProductResults([]);
 
-        setDropdownRect(null)
+        setDropdownRect(null);
 
-        setCustomerSearch('')
+        setCustomerSearch('');
 
-        setShowPaymentModal(false)
+        setShowPaymentModal(false);
 
-        setReceiptData(null)
+        setReceiptData(null);
       } catch (error) {
-        console.error('Failed to load sale for edit:', error)
+        console.error('Failed to load sale for edit:', error);
 
         showMessage(
           'error',
@@ -966,43 +966,43 @@ export default function SalesPage() {
             ? error.message
             : 'تعذر تحميل الفاتورة للتعديل',
           false,
-        )
+        );
       } finally {
         if (!cancelled) {
-          setEditLoading(false)
+          setEditLoading(false);
         }
       }
     }
 
-    void loadSaleForEdit()
+    void loadSaleForEdit();
 
     return () => {
-      cancelled = true
-    }
-  }, [requestedEditSaleId, user?.id])
+      cancelled = true;
+    };
+  }, [requestedEditSaleId, user?.id]);
 
   useEffect(() => {
-    let mounted = true
+    let mounted = true;
 
     window.api
       .getCashDrawerSettings()
       .then((settings) => {
-        if (!mounted) return
-        setCashDrawerAutoOpen(Boolean(settings.auto_open_cash_sale))
+        if (!mounted) return;
+        setCashDrawerAutoOpen(Boolean(settings.auto_open_cash_sale));
       })
       .catch((error) => {
-        console.error('Failed to load cash drawer settings:', error)
-      })
+        console.error('Failed to load cash drawer settings:', error);
+      });
 
     return () => {
-      mounted = false
-    }
-  }, [])
+      mounted = false;
+    };
+  }, []);
 
   const activeInvoice =
-    invoices.find((x) => x.id === activeInvoiceId) ?? invoices[0]
+    invoices.find((x) => x.id === activeInvoiceId) ?? invoices[0];
 
-  const effectivePromotions = editingSaleId ? [] : activePromotions
+  const effectivePromotions = editingSaleId ? [] : activePromotions;
 
   const subTotal = useMemo(
     () =>
@@ -1011,76 +1011,76 @@ export default function SalesPage() {
         0,
       ),
     [activeInvoice.cart],
-  )
+  );
 
   const promotionDiscountValue = useMemo(
     () => getPromotionsDiscountForCart(effectivePromotions, activeInvoice.cart),
 
     [effectivePromotions, activeInvoice.cart],
-  )
+  );
 
-  const totalAfterPromotion = Math.max(0, subTotal - promotionDiscountValue)
+  const totalAfterPromotion = Math.max(0, subTotal - promotionDiscountValue);
 
   const normalDiscountValue = useMemo(() => {
-    const discountNumber = Number(activeInvoice.discountDraft || 0)
+    const discountNumber = Number(activeInvoice.discountDraft || 0);
     const value = Number.isFinite(discountNumber)
       ? Math.max(0, discountNumber)
-      : 0
+      : 0;
 
     if (activeInvoice.discountType === 'percent') {
-      const percent = Math.min(value, 100)
+      const percent = Math.min(value, 100);
       return Math.min(
         totalAfterPromotion,
         (totalAfterPromotion * percent) / 100,
-      )
+      );
     }
 
-    return Math.min(totalAfterPromotion, value)
+    return Math.min(totalAfterPromotion, value);
   }, [
     activeInvoice.discountDraft,
     activeInvoice.discountType,
     totalAfterPromotion,
-  ])
+  ]);
 
   const totalAfterNormalDiscount = Math.max(
     0,
     totalAfterPromotion - normalDiscountValue,
-  )
+  );
 
   const selectedCustomerPoints = Number(
     activeInvoice.customer?.points_balance ?? 0,
-  )
+  );
 
   const loyaltyEnabled =
-    Boolean(loyaltySettings.loyalty_enabled) && Boolean(activeInvoice.customer)
+    Boolean(loyaltySettings.loyalty_enabled) && Boolean(activeInvoice.customer);
 
   const pointValue = Math.max(
     0,
     Number(loyaltySettings.loyalty_point_value || 0),
-  )
+  );
 
   const requestedRedeemPoints = normalizePositiveInt(
     activeInvoice.loyaltyPointsDraft,
-  )
+  );
 
   const maxRedeemByTotal =
-    pointValue > 0 ? Math.floor(totalAfterNormalDiscount / pointValue) : 0
+    pointValue > 0 ? Math.floor(totalAfterNormalDiscount / pointValue) : 0;
 
   const maxRedeemPoints = loyaltyEnabled
     ? Math.max(0, Math.min(selectedCustomerPoints, maxRedeemByTotal))
-    : 0
+    : 0;
 
-  const redeemPoints = Math.min(requestedRedeemPoints, maxRedeemPoints)
-  const loyaltyDiscountValue = redeemPoints * pointValue
+  const redeemPoints = Math.min(requestedRedeemPoints, maxRedeemPoints);
+  const loyaltyDiscountValue = redeemPoints * pointValue;
   const grandTotal = Math.max(
     0,
     totalAfterNormalDiscount - loyaltyDiscountValue,
-  )
+  );
 
   const paymentOptions =
     user?.role === 'admin'
       ? ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS
-      : CUSTOMER_PAYMENT_METHOD_OPTIONS
+      : CUSTOMER_PAYMENT_METHOD_OPTIONS;
 
   const splitPayments = paymentOptions
     .map((option) => ({
@@ -1088,66 +1088,69 @@ export default function SalesPage() {
 
       amount: Math.max(0, Number(splitPaymentDrafts[option.value] || 0)),
     }))
-    .filter((payment) => Number.isFinite(payment.amount) && payment.amount > 0)
+    .filter((payment) => Number.isFinite(payment.amount) && payment.amount > 0);
 
   const splitPaidReceived = roundMoney(
     splitPayments.reduce((total, payment) => total + payment.amount, 0),
-  )
+  );
 
   const paidReceivedRaw = splitPaymentEnabled
     ? splitPaidReceived
     : activeInvoice.paidDraft.trim() === ''
       ? grandTotal
-      : Number(activeInvoice.paidDraft || 0)
+      : Number(activeInvoice.paidDraft || 0);
 
   const paidReceived = Number.isFinite(paidReceivedRaw)
     ? Math.max(0, paidReceivedRaw)
-    : 0
+    : 0;
 
-  const paidAmount = Math.min(paidReceived, grandTotal)
+  const paidAmount = Math.min(paidReceived, grandTotal);
   const changeAmount = splitPaymentEnabled
     ? 0
-    : Math.max(0, paidReceived - grandTotal)
-  const remainingAmount = Math.max(0, grandTotal - paidReceived)
+    : Math.max(0, paidReceived - grandTotal);
+  const remainingAmount = Math.max(0, grandTotal - paidReceived);
 
   const paymentStatus =
-    remainingAmount === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid'
+    remainingAmount === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
 
   async function openPaymentModal() {
     if (!user?.id) {
-      showMessage('error', 'المستخدم غير مسجل')
-      return
+      showMessage('error', 'المستخدم غير مسجل');
+      return;
     }
 
     if (activeInvoice.cart.length === 0) {
-      showMessage('error', 'لا توجد أصناف في الفاتورة')
-      return
+      showMessage('error', 'لا توجد أصناف في الفاتورة');
+      return;
     }
 
     let latestPromotions: ActivePromotion[] = editingSaleId
       ? []
-      : activePromotions
+      : activePromotions;
 
     if (!editingSaleId) {
       try {
-        latestPromotions = await window.api.getActivePromotions()
+        latestPromotions = await window.api.getActivePromotions();
 
         setActivePromotions(
           Array.isArray(latestPromotions) ? latestPromotions : [],
-        )
+        );
       } catch (error) {
-        console.error('Failed to refresh promotion:', error)
+        console.error('Failed to refresh promotion:', error);
       }
     }
 
     const nextPromotionDiscount = getPromotionsDiscountForCart(
       latestPromotions,
       activeInvoice.cart,
-    )
+    );
 
-    const nextAfterPromotion = Math.max(0, subTotal - nextPromotionDiscount)
+    const nextAfterPromotion = Math.max(0, subTotal - nextPromotionDiscount);
 
-    const discountNumber = Math.max(0, Number(activeInvoice.discountDraft || 0))
+    const discountNumber = Math.max(
+      0,
+      Number(activeInvoice.discountDraft || 0),
+    );
 
     const nextNormalDiscount =
       activeInvoice.discountType === 'percent'
@@ -1155,26 +1158,29 @@ export default function SalesPage() {
             nextAfterPromotion,
             nextAfterPromotion * (Math.min(discountNumber, 100) / 100),
           )
-        : Math.min(nextAfterPromotion, discountNumber)
+        : Math.min(nextAfterPromotion, discountNumber);
 
-    const nextAfterNormal = Math.max(0, nextAfterPromotion - nextNormalDiscount)
+    const nextAfterNormal = Math.max(
+      0,
+      nextAfterPromotion - nextNormalDiscount,
+    );
 
     const nextMaxRedeemByTotal =
-      pointValue > 0 ? Math.floor(nextAfterNormal / pointValue) : 0
+      pointValue > 0 ? Math.floor(nextAfterNormal / pointValue) : 0;
 
     const nextMaxRedeemPoints = loyaltyEnabled
       ? Math.min(selectedCustomerPoints, nextMaxRedeemByTotal)
-      : 0
+      : 0;
 
     const nextRedeemPoints = Math.min(
       requestedRedeemPoints,
       nextMaxRedeemPoints,
-    )
+    );
 
     const nextGrandTotal = Math.max(
       0,
       nextAfterNormal - nextRedeemPoints * pointValue,
-    )
+    );
 
     /*
      * في البيع الجديد:
@@ -1188,37 +1194,37 @@ export default function SalesPage() {
       if (!splitPaymentEnabled && activeInvoice.paidDraft.trim() === '') {
         updateActiveInvoice({
           paidDraft: String(roundMoney(nextGrandTotal)),
-        })
+        });
       }
     } else {
       updateActiveInvoice({
         paidDraft: String(roundMoney(nextGrandTotal)),
-      })
+      });
 
-      setSplitPaymentEnabled(false)
+      setSplitPaymentEnabled(false);
 
       setSplitPaymentDrafts({
         cash: String(roundMoney(nextGrandTotal)),
-      })
+      });
     }
 
-    setShowPaymentModal(true)
+    setShowPaymentModal(true);
   }
 
   const estimatedEarnedPoints = useMemo(() => {
-    if (!loyaltyEnabled) return 0
+    if (!loyaltyEnabled) return 0;
 
     const earnAmount = Math.max(
       1,
       Number(loyaltySettings.loyalty_earn_amount || 1),
-    )
+    );
     const earnPoints = Math.max(
       1,
       Number(loyaltySettings.loyalty_earn_points || 1),
-    )
+    );
 
-    return Math.floor(grandTotal / earnAmount) * earnPoints
-  }, [grandTotal, loyaltyEnabled, loyaltySettings])
+    return Math.floor(grandTotal / earnAmount) * earnPoints;
+  }, [grandTotal, loyaltyEnabled, loyaltySettings]);
 
   const salesGridColumns = isCompact
     ? barcodeMode
@@ -1226,7 +1232,7 @@ export default function SalesPage() {
       : '40px minmax(260px, 1fr) 82px 90px 105px'
     : barcodeMode
       ? '44px 160px minmax(320px, 1fr) 110px 120px 130px'
-      : '44px minmax(420px, 1fr) 110px 120px 130px'
+      : '44px minmax(420px, 1fr) 110px 120px 130px';
 
   const tableHeaderStyle: CSSProperties = {
     display: 'grid',
@@ -1237,7 +1243,7 @@ export default function SalesPage() {
     borderBottom: '1px solid rgba(255,255,255,0.08)',
     fontWeight: 800,
     alignItems: 'center',
-  }
+  };
 
   const tableRowStyle: CSSProperties = {
     display: 'grid',
@@ -1246,18 +1252,18 @@ export default function SalesPage() {
     alignItems: 'center',
     padding: '10px 14px',
     borderBottom: '1px solid rgba(255,255,255,0.06)',
-  }
+  };
 
   function updateActiveInvoice(patch: Partial<InvoiceTab>) {
     setInvoices((prev) =>
       prev.map((invoice) =>
         invoice.id === activeInvoiceId ? { ...invoice, ...patch } : invoice,
       ),
-    )
+    );
   }
 
   function setActiveCart(cart: CartItem[]) {
-    updateActiveInvoice({ cart })
+    updateActiveInvoice({ cart });
   }
 
   function focusMainInput() {
@@ -1270,40 +1276,40 @@ export default function SalesPage() {
         creditOverride ||
         receiptData
       ) {
-        return
+        return;
       }
 
       if (barcodeMode) {
-        barcodeInputRef.current?.focus()
-        barcodeInputRef.current?.select()
+        barcodeInputRef.current?.focus();
+        barcodeInputRef.current?.select();
       } else {
-        productInputRef.current?.focus()
-        productInputRef.current?.select()
+        productInputRef.current?.focus();
+        productInputRef.current?.select();
       }
-    })
+    });
   }
 
   function forceBarcodeFocus() {
-    window.focus()
+    window.focus();
 
-    setBarcodeMode(true)
-    setProductResults([])
-    setDropdownRect(null)
-    setCustomerDropdownOpen(false)
+    setBarcodeMode(true);
+    setProductResults([]);
+    setDropdownRect(null);
+    setCustomerDropdownOpen(false);
 
     const focus = () => {
-      const input = barcodeInputRef.current
+      const input = barcodeInputRef.current;
 
       if (input) {
-        input.focus()
-        input.select()
+        input.focus();
+        input.select();
       }
-    }
+    };
 
-    requestAnimationFrame(focus)
-    setTimeout(focus, 0)
-    setTimeout(focus, 80)
-    setTimeout(focus, 180)
+    requestAnimationFrame(focus);
+    setTimeout(focus, 0);
+    setTimeout(focus, 80);
+    setTimeout(focus, 180);
   }
 
   useEffect(() => {
@@ -1316,17 +1322,20 @@ export default function SalesPage() {
         creditOverride ||
         receiptData
       ) {
-        return
+        return;
       }
 
-      forceBarcodeFocus()
+      forceBarcodeFocus();
     }
 
-    window.addEventListener('sales-focus-barcode', handleSalesFocusBarcode)
+    window.addEventListener('sales-focus-barcode', handleSalesFocusBarcode);
 
     return () => {
-      window.removeEventListener('sales-focus-barcode', handleSalesFocusBarcode)
-    }
+      window.removeEventListener(
+        'sales-focus-barcode',
+        handleSalesFocusBarcode,
+      );
+    };
   }, [
     showAddCustomerModal,
     showPaymentModal,
@@ -1334,7 +1343,7 @@ export default function SalesPage() {
     showHeldSalesModal,
     creditOverride,
     receiptData,
-  ])
+  ]);
 
   function handlePageMouseDown(e: ReactMouseEvent<HTMLDivElement>) {
     if (
@@ -1345,23 +1354,23 @@ export default function SalesPage() {
       creditOverride ||
       receiptData
     ) {
-      return
+      return;
     }
 
-    const target = e.target as HTMLElement | null
+    const target = e.target as HTMLElement | null;
 
-    if (!target) return
+    if (!target) return;
 
     const isInteractive = Boolean(
       target.closest(
         'input, textarea, select, button, a, [contenteditable="true"], .theme-popover, .theme-dropdown',
       ),
-    )
+    );
 
-    if (isInteractive) return
+    if (isInteractive) return;
 
-    e.preventDefault()
-    forceBarcodeFocus()
+    e.preventDefault();
+    forceBarcodeFocus();
   }
 
   useEffect(() => {
@@ -1374,30 +1383,34 @@ export default function SalesPage() {
         creditOverride ||
         receiptData
       ) {
-        return
+        return;
       }
 
-      const target = e.target as HTMLElement | null
+      const target = e.target as HTMLElement | null;
 
-      if (!target) return
+      if (!target) return;
 
       const isInteractive = Boolean(
         target.closest(
           'input, textarea, select, button, a, [contenteditable="true"], .theme-popover, .theme-dropdown, .theme-modal-overlay',
         ),
-      )
+      );
 
-      if (isInteractive) return
+      if (isInteractive) return;
 
-      e.preventDefault()
-      forceBarcodeFocus()
+      e.preventDefault();
+      forceBarcodeFocus();
     }
 
-    document.addEventListener('pointerdown', handleGlobalPointerDown, true)
+    document.addEventListener('pointerdown', handleGlobalPointerDown, true);
 
     return () => {
-      document.removeEventListener('pointerdown', handleGlobalPointerDown, true)
-    }
+      document.removeEventListener(
+        'pointerdown',
+        handleGlobalPointerDown,
+        true,
+      );
+    };
   }, [
     showAddCustomerModal,
     showPaymentModal,
@@ -1406,136 +1419,136 @@ export default function SalesPage() {
     creditOverride,
     receiptData,
     barcodeMode,
-  ])
+  ]);
 
   function showMessage(
     type: 'error' | 'success',
     text: string,
     focusAfterMessage = true,
   ) {
-    setPageMessage({ type, text })
+    setPageMessage({ type, text });
 
     if (focusAfterMessage) {
-      focusMainInput()
+      focusMainInput();
     }
 
     setTimeout(() => {
-      setPageMessage(null)
+      setPageMessage(null);
       if (focusAfterMessage) {
-        focusMainInput()
+        focusMainInput();
       }
-    }, 1800)
+    }, 1800);
   }
 
   function updateDropdownPosition() {
-    const el = productInputRef.current
-    if (!el) return
+    const el = productInputRef.current;
+    if (!el) return;
 
-    const rect = el.getBoundingClientRect()
+    const rect = el.getBoundingClientRect();
 
     setDropdownRect({
       top: rect.bottom + 6,
       left: rect.left,
       width: rect.width,
-    })
+    });
   }
 
   async function loadCustomers(searchValue = customerSearch) {
-    setLoadingCustomers(true)
+    setLoadingCustomers(true);
 
     try {
-      const q = searchValue.trim()
-      const data = await window.api.searchCustomers(q)
+      const q = searchValue.trim();
+      const data = await window.api.searchCustomers(q);
 
-      setCustomers(Array.isArray(data) ? data.map(normalizeCustomer) : [])
+      setCustomers(Array.isArray(data) ? data.map(normalizeCustomer) : []);
     } catch (error) {
-      console.error('Failed to load customers:', error)
-      setCustomers([])
-      showMessage('error', 'حدث خطأ أثناء تحميل العملاء', false)
+      console.error('Failed to load customers:', error);
+      setCustomers([]);
+      showMessage('error', 'حدث خطأ أثناء تحميل العملاء', false);
     } finally {
-      setLoadingCustomers(false)
+      setLoadingCustomers(false);
     }
   }
 
   async function loadLoyaltySettings() {
     try {
-      const settings = await window.api.getLoyaltySettings()
-      setLoyaltySettings(settings ?? defaultLoyaltySettings)
+      const settings = await window.api.getLoyaltySettings();
+      setLoyaltySettings(settings ?? defaultLoyaltySettings);
     } catch (error) {
-      console.error('Failed to load loyalty settings:', error)
-      setLoyaltySettings(defaultLoyaltySettings)
+      console.error('Failed to load loyalty settings:', error);
+      setLoyaltySettings(defaultLoyaltySettings);
     }
   }
 
   async function loadHeldSales(showError = false) {
-    setLoadingHeldSales(true)
+    setLoadingHeldSales(true);
 
     try {
-      const rows = await window.api.listHeldSales()
+      const rows = await window.api.listHeldSales();
 
-      setHeldSales(Array.isArray(rows) ? rows : [])
+      setHeldSales(Array.isArray(rows) ? rows : []);
     } catch (error) {
-      console.error('Failed to load held sales:', error)
+      console.error('Failed to load held sales:', error);
 
-      setHeldSales([])
+      setHeldSales([]);
 
       if (showError) {
-        showMessage('error', 'تعذر تحميل الفواتير المعلقة', false)
+        showMessage('error', 'تعذر تحميل الفواتير المعلقة', false);
       }
     } finally {
-      setLoadingHeldSales(false)
+      setLoadingHeldSales(false);
     }
   }
 
   function openHoldSaleModal() {
     if (editingSaleId) {
-      showMessage('error', 'لا يمكن تعليق فاتورة أثناء تعديل فاتورة محفوظة')
+      showMessage('error', 'لا يمكن تعليق فاتورة أثناء تعديل فاتورة محفوظة');
 
-      return
+      return;
     }
 
     if (activeInvoice.cart.length === 0) {
-      showMessage('error', 'لا يمكن تعليق فاتورة فارغة')
+      showMessage('error', 'لا يمكن تعليق فاتورة فارغة');
 
-      return
+      return;
     }
 
-    const customerName = String(activeInvoice.customer?.name || '').trim()
+    const customerName = String(activeInvoice.customer?.name || '').trim();
 
-    setHoldTitleDraft(customerName || activeInvoice.title || 'فاتورة معلقة')
+    setHoldTitleDraft(customerName || activeInvoice.title || 'فاتورة معلقة');
 
-    setShowHoldSaleModal(true)
+    setShowHoldSaleModal(true);
 
-    setCustomerDropdownOpen(false)
+    setCustomerDropdownOpen(false);
 
-    setProductResults([])
+    setProductResults([]);
 
-    setDropdownRect(null)
+    setDropdownRect(null);
   }
 
   async function holdActiveInvoice() {
     if (holdingSale || editingSaleId) {
-      return
+      return;
     }
 
     if (activeInvoice.cart.length === 0) {
-      showMessage('error', 'لا يمكن تعليق فاتورة فارغة', false)
+      showMessage('error', 'لا يمكن تعليق فاتورة فارغة', false);
 
-      return
+      return;
     }
 
-    const rawDiscount = Number(activeInvoice.discountDraft || 0)
+    const rawDiscount = Number(activeInvoice.discountDraft || 0);
 
     const safeDiscount = Number.isFinite(rawDiscount)
       ? Math.max(0, rawDiscount)
-      : 0
+      : 0;
 
     const heldDiscount =
       activeInvoice.discountType === 'percent'
         ? Math.min(safeDiscount, 100)
-        : safeDiscount
+        : safeDiscount;
 
-    setHoldingSale(true)
+    setHoldingSale(true);
 
     try {
       await window.api.holdSale({
@@ -1554,123 +1567,123 @@ export default function SalesPage() {
 
           quantity: item.quantity,
         })),
-      })
+      });
 
       if (invoices.length === 1) {
-        const freshInvoice = createInvoice(activeInvoiceId)
+        const freshInvoice = createInvoice(activeInvoiceId);
 
-        setInvoices([freshInvoice])
+        setInvoices([freshInvoice]);
 
-        setActiveInvoiceId(freshInvoice.id)
+        setActiveInvoiceId(freshInvoice.id);
       } else {
         const currentIndex = invoices.findIndex(
           (invoice) => invoice.id === activeInvoiceId,
-        )
+        );
 
         const remaining = invoices.filter(
           (invoice) => invoice.id !== activeInvoiceId,
-        )
+        );
 
         const nextIndex = Math.min(
           Math.max(currentIndex, 0),
 
           remaining.length - 1,
-        )
+        );
 
-        setInvoices(remaining)
+        setInvoices(remaining);
 
-        setActiveInvoiceId(remaining[nextIndex]?.id ?? remaining[0].id)
+        setActiveInvoiceId(remaining[nextIndex]?.id ?? remaining[0].id);
       }
 
-      setSplitPaymentEnabled(false)
+      setSplitPaymentEnabled(false);
 
-      setSplitPaymentDrafts({})
+      setSplitPaymentDrafts({});
 
-      setProductResults([])
+      setProductResults([]);
 
-      setDropdownRect(null)
+      setDropdownRect(null);
 
-      setCustomerSearch('')
+      setCustomerSearch('');
 
-      setCustomerDropdownOpen(false)
+      setCustomerDropdownOpen(false);
 
-      setShowPaymentModal(false)
+      setShowPaymentModal(false);
 
-      setShowHoldSaleModal(false)
+      setShowHoldSaleModal(false);
 
-      setHoldTitleDraft('')
+      setHoldTitleDraft('');
 
-      await loadHeldSales()
+      await loadHeldSales();
 
-      showMessage('success', 'تم تعليق الفاتورة بنجاح', false)
+      showMessage('success', 'تم تعليق الفاتورة بنجاح', false);
 
-      setTimeout(forceBarcodeFocus, 0)
+      setTimeout(forceBarcodeFocus, 0);
     } catch (error) {
-      console.error('Failed to hold sale:', error)
+      console.error('Failed to hold sale:', error);
 
       showMessage(
         'error',
         error instanceof Error ? error.message : 'تعذر تعليق الفاتورة',
         false,
-      )
+      );
     } finally {
-      setHoldingSale(false)
+      setHoldingSale(false);
     }
   }
 
   async function openHeldSalesModal() {
     if (editingSaleId) {
-      showMessage('error', 'أنهِ تعديل الفاتورة الحالية أولًا')
+      showMessage('error', 'أنهِ تعديل الفاتورة الحالية أولًا');
 
-      return
+      return;
     }
 
-    setShowHeldSalesModal(true)
+    setShowHeldSalesModal(true);
 
-    setCustomerDropdownOpen(false)
+    setCustomerDropdownOpen(false);
 
-    setProductResults([])
+    setProductResults([]);
 
-    setDropdownRect(null)
+    setDropdownRect(null);
 
-    await loadHeldSales(true)
+    await loadHeldSales(true);
   }
 
   async function resumeHeldSale(heldSaleId: number) {
     if (resumingHeldSaleId || editingSaleId) {
-      return
+      return;
     }
 
-    setResumingHeldSaleId(heldSaleId)
+    setResumingHeldSaleId(heldSaleId);
 
     try {
-      const held = await window.api.getHeldSale(heldSaleId)
+      const held = await window.api.getHeldSale(heldSaleId);
 
       if (!Array.isArray(held.items) || held.items.length === 0) {
-        throw new Error('الفاتورة المعلقة لا تحتوي على أصناف')
+        throw new Error('الفاتورة المعلقة لا تحتوي على أصناف');
       }
 
       const unavailable = held.items.find(
         (item) => Number(item.is_active) !== 1 || Number(item.stock || 0) <= 0,
-      )
+      );
 
       if (unavailable) {
         throw new Error(
           `الصنف "${unavailable.product_name}" غير متاح حاليًا ولا يمكن استكمال الفاتورة`,
-        )
+        );
       }
 
-      let quantityAdjusted = false
+      let quantityAdjusted = false;
 
       const cart: CartItem[] = held.items.map((item) => {
-        const stock = Math.max(0, Number(item.stock || 0))
+        const stock = Math.max(0, Number(item.stock || 0));
 
-        const savedQty = Math.max(1, Number(item.quantity || 1))
+        const savedQty = Math.max(1, Number(item.quantity || 1));
 
-        const quantity = Math.min(savedQty, stock)
+        const quantity = Math.min(savedQty, stock);
 
         if (quantity < savedQty) {
-          quantityAdjusted = true
+          quantityAdjusted = true;
         }
 
         return {
@@ -1702,8 +1715,8 @@ export default function SalesPage() {
           is_active: Number(item.is_active ?? 1),
 
           quantity,
-        }
-      })
+        };
+      });
 
       const customer: CustomerOption | null = held.customer_id
         ? {
@@ -1727,9 +1740,9 @@ export default function SalesPage() {
 
             last_sale_at: null,
           }
-        : null
+        : null;
 
-      const invoiceId = nextInvoiceId
+      const invoiceId = nextInvoiceId;
 
       const resumedInvoice: InvoiceTab = {
         ...createInvoice(invoiceId),
@@ -1750,35 +1763,35 @@ export default function SalesPage() {
             : '',
 
         notesDraft: String(held.notes || ''),
-      }
+      };
 
       await window.api.deleteHeldSale({
         held_sale_id: heldSaleId,
 
         mode: 'resumed',
-      })
+      });
 
-      setInvoices((prev) => [...prev, resumedInvoice])
+      setInvoices((prev) => [...prev, resumedInvoice]);
 
-      setActiveInvoiceId(invoiceId)
+      setActiveInvoiceId(invoiceId);
 
-      setNextInvoiceId((prev) => Math.max(prev + 1, invoiceId + 1))
+      setNextInvoiceId((prev) => Math.max(prev + 1, invoiceId + 1));
 
-      setSplitPaymentEnabled(false)
+      setSplitPaymentEnabled(false);
 
-      setSplitPaymentDrafts({})
+      setSplitPaymentDrafts({});
 
-      setCustomerSearch('')
+      setCustomerSearch('');
 
-      setCustomerDropdownOpen(false)
+      setCustomerDropdownOpen(false);
 
-      setProductResults([])
+      setProductResults([]);
 
-      setDropdownRect(null)
+      setDropdownRect(null);
 
-      setShowHeldSalesModal(false)
+      setShowHeldSalesModal(false);
 
-      await loadHeldSales()
+      await loadHeldSales();
 
       showMessage(
         'success',
@@ -1786,11 +1799,11 @@ export default function SalesPage() {
           ? 'تم استكمال الفاتورة، وتم تخفيض بعض الكميات حسب المخزون الحالي'
           : 'تم استكمال الفاتورة المعلقة',
         false,
-      )
+      );
 
-      setTimeout(forceBarcodeFocus, 0)
+      setTimeout(forceBarcodeFocus, 0);
     } catch (error) {
-      console.error('Failed to resume held sale:', error)
+      console.error('Failed to resume held sale:', error);
 
       showMessage(
         'error',
@@ -1798,90 +1811,90 @@ export default function SalesPage() {
           ? error.message
           : 'تعذر استكمال الفاتورة المعلقة',
         false,
-      )
+      );
     } finally {
-      setResumingHeldSaleId(null)
+      setResumingHeldSaleId(null);
     }
   }
 
   async function discardHeldSale(heldSaleId: number) {
     if (deletingHeldSaleId) {
-      return
+      return;
     }
 
-    setDeletingHeldSaleId(heldSaleId)
+    setDeletingHeldSaleId(heldSaleId);
 
     try {
       await window.api.deleteHeldSale({
         held_sale_id: heldSaleId,
 
         mode: 'discarded',
-      })
+      });
 
       setHeldSales((prev) =>
         prev.filter((row) => Number(row.id) !== Number(heldSaleId)),
-      )
+      );
 
-      setPendingDeleteHeldSaleId(null)
+      setPendingDeleteHeldSaleId(null);
 
-      showMessage('success', 'تم حذف الفاتورة المعلقة', false)
+      showMessage('success', 'تم حذف الفاتورة المعلقة', false);
     } catch (error) {
-      console.error('Failed to discard held sale:', error)
+      console.error('Failed to discard held sale:', error);
 
       showMessage(
         'error',
         error instanceof Error ? error.message : 'تعذر حذف الفاتورة المعلقة',
         false,
-      )
+      );
     } finally {
-      setDeletingHeldSaleId(null)
+      setDeletingHeldSaleId(null);
     }
   }
 
   function addInvoice() {
     if (editingSaleId) {
-      return
+      return;
     }
 
-    const newInvoice = createInvoice(nextInvoiceId)
+    const newInvoice = createInvoice(nextInvoiceId);
 
-    setInvoices((prev) => [...prev, newInvoice])
-    setActiveInvoiceId(newInvoice.id)
-    setNextInvoiceId((prev) => prev + 1)
-    setProductResults([])
-    setDropdownRect(null)
-    setCustomerSearch('')
+    setInvoices((prev) => [...prev, newInvoice]);
+    setActiveInvoiceId(newInvoice.id);
+    setNextInvoiceId((prev) => prev + 1);
+    setProductResults([]);
+    setDropdownRect(null);
+    setCustomerSearch('');
 
-    setTimeout(focusMainInput, 0)
+    setTimeout(focusMainInput, 0);
   }
 
   function closeInvoice(id: number) {
     if (editingSaleId) {
-      return
+      return;
     }
 
     if (invoices.length === 1) {
-      return
+      return;
     }
 
-    const filtered = invoices.filter((invoice) => invoice.id !== id)
+    const filtered = invoices.filter((invoice) => invoice.id !== id);
 
-    setInvoices(filtered)
+    setInvoices(filtered);
 
-    setProductResults([])
-    setDropdownRect(null)
+    setProductResults([]);
+    setDropdownRect(null);
 
     if (activeInvoiceId === id) {
-      setActiveInvoiceId(filtered[0].id)
+      setActiveInvoiceId(filtered[0].id);
     }
 
-    setTimeout(focusMainInput, 0)
+    setTimeout(focusMainInput, 0);
   }
 
   function addToCart(item: SaleVariant) {
     const existing = activeInvoice.cart.find(
       (x) => x.variant_id === item.variant_id,
-    )
+    );
 
     const nextCart: CartItem[] = existing
       ? activeInvoice.cart.map((x) =>
@@ -1889,15 +1902,15 @@ export default function SalesPage() {
             ? { ...x, quantity: Math.min(x.quantity + 1, Number(x.stock)) }
             : x,
         )
-      : [...activeInvoice.cart, { ...item, quantity: 1 }]
+      : [...activeInvoice.cart, { ...item, quantity: 1 }];
 
-    setActiveCart(nextCart)
+    setActiveCart(nextCart);
 
     if (editingSaleId) {
       updateActiveInvoice({
         barcodeDraft: '',
         productDraft: '',
-      })
+      });
     } else {
       updateActiveInvoice({
         barcodeDraft: '',
@@ -1906,11 +1919,11 @@ export default function SalesPage() {
         discountDraft: '',
         discountType: 'amount',
         paymentMethod: 'cash',
-      })
+      });
     }
-    setProductResults([])
-    setDropdownRect(null)
-    focusMainInput()
+    setProductResults([]);
+    setDropdownRect(null);
+    focusMainInput();
   }
 
   function updateQty(variantId: number, qty: number) {
@@ -1921,9 +1934,9 @@ export default function SalesPage() {
             quantity: Math.max(1, Math.min(qty, Number(item.stock))),
           }
         : item,
-    )
+    );
 
-    setActiveCart(nextCart)
+    setActiveCart(nextCart);
 
     if (!editingSaleId) {
       updateActiveInvoice({
@@ -1931,14 +1944,14 @@ export default function SalesPage() {
         discountDraft: '',
         discountType: 'amount',
         paymentMethod: 'cash',
-      })
+      });
     }
   }
 
   function removeLine(variantId: number) {
     setActiveCart(
       activeInvoice.cart.filter((item) => item.variant_id !== variantId),
-    )
+    );
 
     if (!editingSaleId) {
       updateActiveInvoice({
@@ -1946,108 +1959,108 @@ export default function SalesPage() {
         discountDraft: '',
         discountType: 'amount',
         paymentMethod: 'cash',
-      })
+      });
     }
 
-    focusMainInput()
+    focusMainInput();
   }
 
   async function handleBarcodeEnter() {
-    const barcode = activeInvoice.barcodeDraft.trim()
-    if (!barcode) return
+    const barcode = activeInvoice.barcodeDraft.trim();
+    if (!barcode) return;
 
     try {
-      const variant = await window.api.getVariantByBarcode(barcode)
+      const variant = await window.api.getVariantByBarcode(barcode);
 
       if (!variant) {
-        showMessage('error', 'الباركود غير موجود')
-        return
+        showMessage('error', 'الباركود غير موجود');
+        return;
       }
 
       if (Number(variant.stock) <= 0) {
-        showMessage('error', 'الصنف غير متاح في المخزون')
-        return
+        showMessage('error', 'الصنف غير متاح في المخزون');
+        return;
       }
 
-      addToCart(variant)
+      addToCart(variant);
     } catch (error) {
-      console.error(error)
-      showMessage('error', 'حدث خطأ أثناء قراءة الباركود')
+      console.error(error);
+      showMessage('error', 'حدث خطأ أثناء قراءة الباركود');
     }
   }
 
   function selectCustomer(customer: CustomerOption) {
-    updateActiveInvoice({ customer, loyaltyPointsDraft: '' })
-    setCustomerSearch('')
-    setCustomerDropdownOpen(false)
-    forceBarcodeFocus()
+    updateActiveInvoice({ customer, loyaltyPointsDraft: '' });
+    setCustomerSearch('');
+    setCustomerDropdownOpen(false);
+    forceBarcodeFocus();
   }
 
   function clearCustomer() {
-    updateActiveInvoice({ customer: null, loyaltyPointsDraft: '' })
-    setCustomerSearch('')
-    setCustomerDropdownOpen(false)
-    forceBarcodeFocus()
+    updateActiveInvoice({ customer: null, loyaltyPointsDraft: '' });
+    setCustomerSearch('');
+    setCustomerDropdownOpen(false);
+    forceBarcodeFocus();
   }
 
   function openAddCustomerModal() {
-    setNewCustomer({ name: '', phone: '' })
-    setCustomerDropdownOpen(false)
-    setShowAddCustomerModal(true)
+    setNewCustomer({ name: '', phone: '' });
+    setCustomerDropdownOpen(false);
+    setShowAddCustomerModal(true);
   }
 
   async function saveNewCustomer() {
-    if (savingNewCustomer) return
+    if (savingNewCustomer) return;
 
-    const name = newCustomer.name.trim()
-    const phone = newCustomer.phone.trim()
+    const name = newCustomer.name.trim();
+    const phone = newCustomer.phone.trim();
 
     if (!name) {
-      showMessage('error', 'اسم العميل مطلوب', false)
-      return
+      showMessage('error', 'اسم العميل مطلوب', false);
+      return;
     }
 
-    setSavingNewCustomer(true)
+    setSavingNewCustomer(true);
 
     try {
       const created = await window.api.createCustomer({
         name,
         phone: phone || null,
-      })
+      });
 
-      const createdCustomer = normalizeCustomer(created)
+      const createdCustomer = normalizeCustomer(created);
 
       setCustomers((prev) => [
         createdCustomer,
         ...prev.filter((customer) => customer.id !== createdCustomer.id),
-      ])
+      ]);
 
       updateActiveInvoice({
         customer: createdCustomer,
         loyaltyPointsDraft: '',
-      })
+      });
 
-      setShowAddCustomerModal(false)
-      setCustomerSearch('')
-      setCustomerDropdownOpen(false)
-      showMessage('success', 'تم إضافة العميل', false)
-      forceBarcodeFocus()
+      setShowAddCustomerModal(false);
+      setCustomerSearch('');
+      setCustomerDropdownOpen(false);
+      showMessage('success', 'تم إضافة العميل', false);
+      forceBarcodeFocus();
     } catch (error) {
-      console.error('Failed to create customer:', error)
+      console.error('Failed to create customer:', error);
       showMessage(
         'error',
         'حدث خطأ أثناء إضافة العميل، تأكد أن رقم الهاتف غير مكرر',
         false,
-      )
+      );
     } finally {
-      setSavingNewCustomer(false)
+      setSavingNewCustomer(false);
     }
   }
 
   async function printReceipt() {
-    if (!receiptData || printingReceipt) return
+    if (!receiptData || printingReceipt) return;
 
-    setPrintingReceipt(true)
+    setPrintingReceipt(true);
 
     try {
       await printSaleReceiptHtml({
@@ -2058,9 +2071,9 @@ export default function SalesPage() {
 
         onError: (message) =>
           showMessage('error', message || 'فشل طباعة الفاتورة', false),
-      })
+      });
     } finally {
-      setPrintingReceipt(false)
+      setPrintingReceipt(false);
     }
   }
 
@@ -2069,10 +2082,10 @@ export default function SalesPage() {
     saleId: number | null = null,
     showSuccess = true,
   ) {
-    if (reason === 'manual' && openingCashDrawer) return false
+    if (reason === 'manual' && openingCashDrawer) return false;
 
     if (reason === 'manual') {
-      setOpeningCashDrawer(true)
+      setOpeningCashDrawer(true);
     }
 
     try {
@@ -2080,10 +2093,10 @@ export default function SalesPage() {
         actor_id: user?.id,
         reason,
         sale_id: saleId,
-      })
+      });
 
       if (!result.success) {
-        console.warn('Cash drawer failed:', result.message)
+        console.warn('Cash drawer failed:', result.message);
 
         // مهم: في الفتح التلقائي بعد البيع مانطلعش رسالة حمراء
         if (showSuccess) {
@@ -2091,19 +2104,19 @@ export default function SalesPage() {
             'error',
             'تعذر فتح درج الكاشير، تأكد من توصيل الدرج والطابعة',
             false,
-          )
+          );
         }
 
-        return false
+        return false;
       }
 
       if (showSuccess) {
-        showMessage('success', 'تم إرسال أمر فتح درج الكاشير', false)
+        showMessage('success', 'تم إرسال أمر فتح درج الكاشير', false);
       }
 
-      return true
+      return true;
     } catch (error) {
-      console.error('Failed to open cash drawer:', error)
+      console.error('Failed to open cash drawer:', error);
 
       // مهم: في الفتح التلقائي بعد البيع مانطلعش رسالة حمراء
       if (showSuccess) {
@@ -2111,78 +2124,78 @@ export default function SalesPage() {
           'error',
           'تعذر فتح درج الكاشير، تأكد من توصيل الدرج والطابعة',
           false,
-        )
+        );
       }
 
-      return false
+      return false;
     } finally {
       if (reason === 'manual') {
-        setOpeningCashDrawer(false)
+        setOpeningCashDrawer(false);
       }
     }
   }
 
   async function saveSale(creditOverrideRequested = false) {
-    if (saving) return
+    if (saving) return;
 
     if (!user?.id) {
-      showMessage('error', 'المستخدم غير مسجل')
-      return
+      showMessage('error', 'المستخدم غير مسجل');
+      return;
     }
 
     if (activeInvoice.cart.length === 0) {
-      showMessage('error', 'لا توجد أصناف في الفاتورة')
-      return
+      showMessage('error', 'لا توجد أصناف في الفاتورة');
+      return;
     }
 
     if (requestedRedeemPoints > 0 && !activeInvoice.customer) {
-      showMessage('error', 'اختار عميل قبل استخدام نقاط الولاء')
-      return
+      showMessage('error', 'اختار عميل قبل استخدام نقاط الولاء');
+      return;
     }
 
     if (requestedRedeemPoints > maxRedeemPoints && maxRedeemPoints > 0) {
-      updateActiveInvoice({ loyaltyPointsDraft: String(maxRedeemPoints) })
+      updateActiveInvoice({ loyaltyPointsDraft: String(maxRedeemPoints) });
     }
 
     if (remainingAmount > 0 && !activeInvoice.customer) {
-      showMessage('error', 'لا يمكن تسجيل مديونية بدون اختيار عميل')
-      return
+      showMessage('error', 'لا يمكن تسجيل مديونية بدون اختيار عميل');
+      return;
     }
 
     if (splitPaymentEnabled && splitPaidReceived > grandTotal + 0.01) {
-      showMessage('error', 'إجمالي وسائل الدفع أكبر من إجمالي الفاتورة')
+      showMessage('error', 'إجمالي وسائل الدفع أكبر من إجمالي الفاتورة');
 
-      return
+      return;
     }
 
     if (splitPaymentEnabled && splitPayments.length === 0 && grandTotal > 0) {
       if (!activeInvoice.customer) {
-        showMessage('error', 'اكتب مبلغ في وسيلة دفع واحدة على الأقل')
-        return
+        showMessage('error', 'اكتب مبلغ في وسيلة دفع واحدة على الأقل');
+        return;
       }
     }
 
     if (editingSaleId && !editReason.trim()) {
-      showMessage('error', 'اكتب سبب تعديل الفاتورة')
+      showMessage('error', 'اكتب سبب تعديل الفاتورة');
 
-      return
+      return;
     }
 
     if (creditOverrideRequested) {
       if (user.role !== 'admin' && !creditOverrideAdminUsername.trim()) {
-        showMessage('error', 'اكتب اسم مستخدم المدير', false)
+        showMessage('error', 'اكتب اسم مستخدم المدير', false);
 
-        return
+        return;
       }
 
       if (!creditOverrideAdminPassword) {
-        showMessage('error', 'اكتب كلمة مرور المدير', false)
+        showMessage('error', 'اكتب كلمة مرور المدير', false);
 
-        return
+        return;
       }
     }
 
-    setSaving(true)
+    setSaving(true);
 
     try {
       const salePayload = {
@@ -2237,9 +2250,9 @@ export default function SalesPage() {
 
           unit_price: Number(item.sell_price),
         })),
-      }
+      };
 
-      const wasEditing = Boolean(editingSaleId)
+      const wasEditing = Boolean(editingSaleId);
 
       const result: SaveSaleResult = editingSaleId
         ? await window.api.updateSaleInvoice({
@@ -2278,68 +2291,68 @@ export default function SalesPage() {
             admin_password: creditOverrideRequested
               ? creditOverrideAdminPassword || undefined
               : undefined,
-          })
+          });
 
       if (!result.success) {
         if (result.code === 'CREDIT_LIMIT_EXCEEDED' && result.credit) {
-          setCreditOverride(result.credit)
+          setCreditOverride(result.credit);
 
-          setCreditOverrideAdminUsername('')
+          setCreditOverrideAdminUsername('');
 
-          setCreditOverrideAdminPassword('')
+          setCreditOverrideAdminPassword('');
 
-          return
+          return;
         }
 
         throw new Error(
           result.message ||
             (wasEditing ? 'تعذر تعديل الفاتورة' : 'تعذر حفظ الفاتورة'),
-        )
+        );
       }
 
-      setCreditOverride(null)
+      setCreditOverride(null);
 
-      setCreditOverrideAdminUsername('')
+      setCreditOverrideAdminUsername('');
 
-      setCreditOverrideAdminPassword('')
+      setCreditOverrideAdminPassword('');
 
       if (wasEditing) {
-        clearInvoiceEditState()
+        clearInvoiceEditState();
       }
 
-      const savedSaleId = Number(result.saleId)
+      const savedSaleId = Number(result.saleId);
       const usesCashDrawer = splitPaymentEnabled
         ? splitPayments.some(
             (payment) =>
               payment.payment_method === 'cash' ||
               payment.payment_method === 'store_cash',
           )
-        : activeInvoice.paymentMethod === 'cash'
+        : activeInvoice.paymentMethod === 'cash';
 
       if (!wasEditing && usesCashDrawer && cashDrawerAutoOpen) {
-        void handleOpenCashDrawer('sale', savedSaleId, false)
+        void handleOpenCashDrawer('sale', savedSaleId, false);
       }
 
       try {
-        const savedSaleId = Number(result.saleId || editingSaleId)
-        const receipt = await window.api.getSaleReceipt(Number(savedSaleId))
-        setShowPaymentModal(false)
-        setReceiptData(receipt)
+        const savedSaleId = Number(result.saleId || editingSaleId);
+        const receipt = await window.api.getSaleReceipt(Number(savedSaleId));
+        setShowPaymentModal(false);
+        setReceiptData(receipt);
 
-        setReceiptWasEdit(wasEditing)
+        setReceiptWasEdit(wasEditing);
       } catch (receiptError) {
-        console.error('Failed to load receipt:', receiptError)
+        console.error('Failed to load receipt:', receiptError);
 
-        const earned = Number(result?.loyalty_points_earned || 0)
+        const earned = Number(result?.loyalty_points_earned || 0);
         const successText =
           earned > 0
             ? `تم حفظ الفاتورة رقم ${savedSaleId} وكسب العميل ${earned} نقطة`
-            : `تم حفظ الفاتورة رقم ${savedSaleId}`
+            : `تم حفظ الفاتورة رقم ${savedSaleId}`;
 
-        setShowPaymentModal(false)
-        showMessage('success', successText)
-        setSplitPaymentEnabled(false)
-        setSplitPaymentDrafts({})
+        setShowPaymentModal(false);
+        showMessage('success', successText);
+        setSplitPaymentEnabled(false);
+        setSplitPaymentDrafts({});
       }
 
       updateActiveInvoice({
@@ -2354,7 +2367,7 @@ export default function SalesPage() {
         discountType: 'amount',
         discountDraft: '',
         notesDraft: '',
-      })
+      });
 
       if (invoices.length === 1) {
         updateActiveInvoice({
@@ -2369,69 +2382,69 @@ export default function SalesPage() {
           discountType: 'amount',
           discountDraft: '',
           notesDraft: '',
-        })
+        });
 
-        localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
+        localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
       } else {
         const remainingInvoices = invoices.filter(
           (invoice) => invoice.id !== activeInvoiceId,
-        )
+        );
 
-        setInvoices(remainingInvoices)
-        setActiveInvoiceId(remainingInvoices[0].id)
+        setInvoices(remainingInvoices);
+        setActiveInvoiceId(remainingInvoices[0].id);
       }
 
       if (wasEditing) {
-        const freshInvoice = createInvoice(nextInvoiceId)
+        const freshInvoice = createInvoice(nextInvoiceId);
 
-        setInvoices([freshInvoice])
+        setInvoices([freshInvoice]);
 
-        setActiveInvoiceId(freshInvoice.id)
+        setActiveInvoiceId(freshInvoice.id);
 
-        setNextInvoiceId((prev) => prev + 1)
+        setNextInvoiceId((prev) => prev + 1);
 
-        setSplitPaymentEnabled(false)
+        setSplitPaymentEnabled(false);
 
-        setSplitPaymentDrafts({})
+        setSplitPaymentDrafts({});
 
-        localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
+        localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
       }
 
-      const licenseData = await window.api.getLicenseStatus()
+      const licenseData = await window.api.getLicenseStatus();
 
       setStoreInfo({
         name: licenseData.app_name || 'اسم المحل',
         address: '',
         phone: '',
-      })
+      });
 
-      setProductResults([])
-      setDropdownRect(null)
-      setCustomerSearch('')
-      void loadCustomers('')
-      setTimeout(focusMainInput, 0)
+      setProductResults([]);
+      setDropdownRect(null);
+      setCustomerSearch('');
+      void loadCustomers('');
+      setTimeout(focusMainInput, 0);
     } catch (error) {
-      console.error(error)
+      console.error(error);
       const message =
         error instanceof Error && error.message
           ? error.message
-          : 'حدث خطأ أثناء حفظ الفاتورة'
-      showMessage('error', message)
+          : 'حدث خطأ أثناء حفظ الفاتورة';
+      showMessage('error', message);
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
   useEffect(() => {
-    const q = activeInvoice.productDraft.trim()
+    const q = activeInvoice.productDraft.trim();
 
     if (!q) {
-      setProductResults([])
-      setDropdownRect(null)
-      return
+      setProductResults([]);
+      setDropdownRect(null);
+      return;
     }
 
-    updateDropdownPosition()
+    updateDropdownPosition();
 
     const handle = setTimeout(() => {
       void window.api
@@ -2440,36 +2453,36 @@ export default function SalesPage() {
           categoryId: saleCategoryFilter,
         })
         .then((results) => {
-          setProductResults(results)
-          updateDropdownPosition()
+          setProductResults(results);
+          updateDropdownPosition();
         })
         .catch((error) => {
-          console.error('Search failed:', error)
-          setProductResults([])
-          setDropdownRect(null)
-        })
-    }, 200)
+          console.error('Search failed:', error);
+          setProductResults([]);
+          setDropdownRect(null);
+        });
+    }, 200);
 
-    return () => clearTimeout(handle)
-  }, [activeInvoice.productDraft, activeInvoiceId, saleCategoryFilter])
+    return () => clearTimeout(handle);
+  }, [activeInvoice.productDraft, activeInvoiceId, saleCategoryFilter]);
 
   useEffect(() => {
     function handleReposition() {
-      if (productResults.length > 0) updateDropdownPosition()
+      if (productResults.length > 0) updateDropdownPosition();
     }
 
-    window.addEventListener('resize', handleReposition)
-    window.addEventListener('scroll', handleReposition, true)
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
 
     return () => {
-      window.removeEventListener('resize', handleReposition)
-      window.removeEventListener('scroll', handleReposition, true)
-    }
-  }, [productResults.length])
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+    };
+  }, [productResults.length]);
 
   useEffect(() => {
     function handleEscapeDropdowns(event: KeyboardEvent) {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape') return;
 
       // الـModals لها أولوية.
       if (
@@ -2480,25 +2493,25 @@ export default function SalesPage() {
         creditOverride ||
         receiptData
       ) {
-        return
+        return;
       }
 
       if (!customerDropdownOpen && productResults.length === 0) {
-        return
+        return;
       }
 
-      event.preventDefault()
+      event.preventDefault();
 
-      setCustomerDropdownOpen(false)
-      setProductResults([])
-      setDropdownRect(null)
+      setCustomerDropdownOpen(false);
+      setProductResults([]);
+      setDropdownRect(null);
     }
 
-    document.addEventListener('keydown', handleEscapeDropdowns)
+    document.addEventListener('keydown', handleEscapeDropdowns);
 
     return () => {
-      document.removeEventListener('keydown', handleEscapeDropdowns)
-    }
+      document.removeEventListener('keydown', handleEscapeDropdowns);
+    };
   }, [
     customerDropdownOpen,
     productResults.length,
@@ -2508,130 +2521,130 @@ export default function SalesPage() {
     showHeldSalesModal,
     creditOverride,
     receiptData,
-  ])
+  ]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'F12' && receiptData) {
-        e.preventDefault()
-        e.stopPropagation()
+        e.preventDefault();
+        e.stopPropagation();
 
         if (!printingReceipt) {
-          void printReceipt()
+          void printReceipt();
         }
 
-        return
+        return;
       }
 
       if (creditOverride) {
         if (e.key === 'Escape') {
-          e.preventDefault()
+          e.preventDefault();
 
-          closeCreditOverride()
+          closeCreditOverride();
         }
 
-        return
+        return;
       }
 
       if (showHoldSaleModal) {
         if (e.key === 'Escape') {
-          e.preventDefault()
+          e.preventDefault();
 
-          setShowHoldSaleModal(false)
+          setShowHoldSaleModal(false);
 
-          setHoldTitleDraft('')
+          setHoldTitleDraft('');
 
-          setTimeout(focusMainInput, 0)
+          setTimeout(focusMainInput, 0);
         }
 
-        return
+        return;
       }
 
       if (showHeldSalesModal) {
         if (e.key === 'Escape') {
-          e.preventDefault()
+          e.preventDefault();
 
           if (pendingDeleteHeldSaleId !== null) {
-            setPendingDeleteHeldSaleId(null)
+            setPendingDeleteHeldSaleId(null);
 
-            return
+            return;
           }
 
-          setShowHeldSalesModal(false)
+          setShowHeldSalesModal(false);
 
-          setTimeout(focusMainInput, 0)
+          setTimeout(focusMainInput, 0);
         }
 
-        return
+        return;
       }
 
-      if (showAddCustomerModal || receiptData) return
+      if (showAddCustomerModal || receiptData) return;
 
       if (e.key === 'F8') {
-        e.preventDefault()
+        e.preventDefault();
 
         if (!editingSaleId && !saving && !openingCashDrawer) {
-          void handleOpenCashDrawer('manual', null, true)
+          void handleOpenCashDrawer('manual', null, true);
         }
 
-        return
+        return;
       }
 
       if (showPaymentModal) {
         if (e.key === 'Escape') {
-          e.preventDefault()
-          setShowPaymentModal(false)
-          return
+          e.preventDefault();
+          setShowPaymentModal(false);
+          return;
         }
 
         if (e.key === 'F12') {
-          e.preventDefault()
-          if (!saving) void saveSale()
-          return
+          e.preventDefault();
+          if (!saving) void saveSale();
+          return;
         }
 
-        return
+        return;
       }
 
       if (e.key === 'F5') {
-        e.preventDefault()
-        firstQtyInputRef.current?.focus()
-        firstQtyInputRef.current?.select()
-        return
+        e.preventDefault();
+        firstQtyInputRef.current?.focus();
+        firstQtyInputRef.current?.select();
+        return;
       }
 
       if (e.key === 'F6') {
-        e.preventDefault()
+        e.preventDefault();
 
         if (barcodeMode) {
-          barcodeInputRef.current?.focus()
-          barcodeInputRef.current?.select()
+          barcodeInputRef.current?.focus();
+          barcodeInputRef.current?.select();
         } else {
-          productInputRef.current?.focus()
-          productInputRef.current?.select()
+          productInputRef.current?.focus();
+          productInputRef.current?.select();
         }
 
-        return
+        return;
       }
 
       if (e.key === 'F9') {
-        e.preventDefault()
+        e.preventDefault();
 
         if (!editingSaleId) {
-          addInvoice()
+          addInvoice();
         }
 
-        return
+        return;
       }
 
       if (e.key === 'F12') {
-        e.preventDefault()
-        if (!saving) void openPaymentModal()
+        e.preventDefault();
+        if (!saving) void openPaymentModal();
       }
     }
 
-    document.addEventListener('keydown', handleKeyDown, true)
-    return () => document.removeEventListener('keydown', handleKeyDown, true)
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
   }, [
     activeInvoiceId,
     activeInvoice,
@@ -2658,65 +2671,67 @@ export default function SalesPage() {
     showHeldSalesModal,
     pendingDeleteHeldSaleId,
     creditOverride,
-  ])
+  ]);
 
   useEffect(() => {
     if (requestedEditSaleId > 0) {
-      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
+      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
 
-      setSalesDraftHydrated(true)
+      setSalesDraftHydrated(true);
 
-      return
+      return;
     }
     try {
-      const raw = localStorage.getItem(SALES_DRAFT_STORAGE_KEY)
+      const raw = localStorage.getItem(SALES_DRAFT_STORAGE_KEY);
 
       if (!raw) {
-        setSalesDraftHydrated(true)
-        return
+        setSalesDraftHydrated(true);
+        return;
       }
 
-      const parsed = JSON.parse(raw)
+      const parsed = JSON.parse(raw);
       const loadedInvoices = Array.isArray(parsed?.invoices)
         ? parsed.invoices
             .map((invoice: any, index: number) =>
               normalizeInvoiceDraft(invoice, index + 1),
             )
             .filter((invoice: InvoiceTab) => invoice.id > 0)
-        : []
+        : [];
 
       if (loadedInvoices.length > 0) {
-        const validIds = loadedInvoices.map((invoice: InvoiceTab) => invoice.id)
+        const validIds = loadedInvoices.map(
+          (invoice: InvoiceTab) => invoice.id,
+        );
         const requestedActiveId = Number(
           parsed?.activeInvoiceId || loadedInvoices[0].id,
-        )
-        const nextIdFromDraft = Number(parsed?.nextInvoiceId || 0)
-        const maxId = Math.max(...validIds)
+        );
+        const nextIdFromDraft = Number(parsed?.nextInvoiceId || 0);
+        const maxId = Math.max(...validIds);
 
-        setInvoices(loadedInvoices)
+        setInvoices(loadedInvoices);
         setActiveInvoiceId(
           validIds.includes(requestedActiveId)
             ? requestedActiveId
             : loadedInvoices[0].id,
-        )
-        setNextInvoiceId(Math.max(nextIdFromDraft, maxId + 1, 2))
-        setBarcodeMode(parsed?.barcodeMode === false ? false : true)
+        );
+        setNextInvoiceId(Math.max(nextIdFromDraft, maxId + 1, 2));
+        setBarcodeMode(parsed?.barcodeMode === false ? false : true);
       }
     } catch (error) {
-      console.error('Failed to restore sales draft:', error)
-      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
+      console.error('Failed to restore sales draft:', error);
+      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
     } finally {
-      setSalesDraftHydrated(true)
+      setSalesDraftHydrated(true);
     }
-  }, [requestedEditSaleId])
+  }, [requestedEditSaleId]);
 
   useEffect(() => {
-    if (!salesDraftHydrated) return
+    if (!salesDraftHydrated) return;
 
     if (editingSaleId) {
-      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
+      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
 
-      return
+      return;
     }
 
     const hasDraft =
@@ -2727,11 +2742,11 @@ export default function SalesPage() {
           invoice.customer ||
           invoice.barcodeDraft.trim() ||
           invoice.productDraft.trim(),
-      )
+      );
 
     if (!hasDraft) {
-      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
-      return
+      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
+      return;
     }
 
     localStorage.setItem(
@@ -2744,7 +2759,7 @@ export default function SalesPage() {
         barcodeMode,
         savedAt: new Date().toISOString(),
       }),
-    )
+    );
   }, [
     salesDraftHydrated,
     invoices,
@@ -2752,117 +2767,117 @@ export default function SalesPage() {
     nextInvoiceId,
     barcodeMode,
     editingSaleId,
-  ])
+  ]);
 
   useEffect(() => {
     const timedPromotions = activePromotions.filter(
       (promotion) => promotion.ends_at != null,
-    )
+    );
 
     if (timedPromotions.length === 0) {
-      return
+      return;
     }
 
     const checkExpiry = async () => {
       const expired = timedPromotions.some(
         (promotion) => Number(promotion.ends_at) <= Date.now(),
-      )
+      );
 
       if (!expired) {
-        return
+        return;
       }
 
       try {
-        const fresh = await window.api.getActivePromotions()
+        const fresh = await window.api.getActivePromotions();
 
-        setActivePromotions(Array.isArray(fresh) ? fresh : [])
+        setActivePromotions(Array.isArray(fresh) ? fresh : []);
       } catch {
-        setActivePromotions([])
+        setActivePromotions([]);
       }
 
-      setShowPaymentModal(false)
+      setShowPaymentModal(false);
 
       showMessage(
         'error',
         'انتهت مدة أحد العروض. راجع الإجمالي وافتح الدفع مرة أخرى',
-      )
-    }
+      );
+    };
 
-    void checkExpiry()
+    void checkExpiry();
 
     const timer = window.setInterval(() => {
-      void checkExpiry()
-    }, 1000)
+      void checkExpiry();
+    }, 1000);
 
-    window.addEventListener('focus', checkExpiry)
+    window.addEventListener('focus', checkExpiry);
 
     return () => {
-      window.clearInterval(timer)
+      window.clearInterval(timer);
 
-      window.removeEventListener('focus', checkExpiry)
-    }
-  }, [activePromotions])
+      window.removeEventListener('focus', checkExpiry);
+    };
+  }, [activePromotions]);
 
   useEffect(() => {
-    window.focus()
-    void loadCustomers('')
-    void loadLoyaltySettings()
-    void loadHeldSales()
+    window.focus();
+    void loadCustomers('');
+    void loadLoyaltySettings();
+    void loadHeldSales();
 
     void window.api
       .getActivePromotions()
       .then((promotions) => {
-        setActivePromotions(Array.isArray(promotions) ? promotions : [])
+        setActivePromotions(Array.isArray(promotions) ? promotions : []);
       })
       .catch((error) => {
-        console.error('Failed to load active promotions:', error)
+        console.error('Failed to load active promotions:', error);
 
-        setActivePromotions([])
-      })
+        setActivePromotions([]);
+      });
 
     void window.api
       .getCategories()
       .then((data) => setCategories(Array.isArray(data) ? data : []))
       .catch((error) => {
-        console.error('Failed to load categories:', error)
-        setCategories([])
-      })
+        console.error('Failed to load categories:', error);
+        setCategories([]);
+      });
 
-    setTimeout(focusMainInput, 100)
-  }, [])
+    setTimeout(focusMainInput, 100);
+  }, []);
 
   useEffect(() => {
-    const element = pageRef.current
+    const element = pageRef.current;
 
-    if (!element) return
+    if (!element) return;
 
     function updateCompact(width: number) {
-      setIsCompact(width <= 980)
+      setIsCompact(width <= 980);
     }
 
-    updateCompact(element.getBoundingClientRect().width)
+    updateCompact(element.getBoundingClientRect().width);
 
     const observer = new ResizeObserver((entries) => {
-      const entry = entries[0]
+      const entry = entries[0];
       if (entry) {
-        updateCompact(entry.contentRect.width)
+        updateCompact(entry.contentRect.width);
       }
-    })
+    });
 
-    observer.observe(element)
+    observer.observe(element);
 
-    return () => observer.disconnect()
-  }, [])
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
-    if (!customerDropdownOpen) return
+    if (!customerDropdownOpen) return;
 
     const handle = setTimeout(() => {
-      void loadCustomers(customerSearch)
-    }, 220)
+      void loadCustomers(customerSearch);
+    }, 220);
 
-    return () => clearTimeout(handle)
-  }, [customerSearch, customerDropdownOpen])
+    return () => clearTimeout(handle);
+  }, [customerSearch, customerDropdownOpen]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -2870,68 +2885,68 @@ export default function SalesPage() {
         customerWrapperRef.current &&
         !customerWrapperRef.current.contains(e.target as Node)
       ) {
-        setCustomerDropdownOpen(false)
+        setCustomerDropdownOpen(false);
       }
     }
 
-    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('mousedown', handleClickOutside);
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [])
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   function updateDiscountDraft(value: string) {
-    const raw = Number(value || 0)
-    const discountNumber = Number.isFinite(raw) ? Math.max(0, raw) : 0
+    const raw = Number(value || 0);
+    const discountNumber = Number.isFinite(raw) ? Math.max(0, raw) : 0;
 
-    let nextDiscountValue = 0
+    let nextDiscountValue = 0;
 
     if (activeInvoice.discountType === 'percent') {
-      const percent = Math.min(discountNumber, 100)
+      const percent = Math.min(discountNumber, 100);
       nextDiscountValue = Math.min(
         totalAfterPromotion,
         (totalAfterPromotion * percent) / 100,
-      )
+      );
     } else {
-      nextDiscountValue = Math.min(totalAfterPromotion, discountNumber)
+      nextDiscountValue = Math.min(totalAfterPromotion, discountNumber);
     }
 
     const nextGrandTotal = Math.max(
       0,
       totalAfterPromotion - nextDiscountValue - loyaltyDiscountValue,
-    )
+    );
 
     updateActiveInvoice({
       discountDraft: value,
       paidDraft: String(roundMoney(nextGrandTotal)),
-    })
+    });
   }
 
   function changeDiscountType(type: 'amount' | 'percent') {
-    const raw = Number(activeInvoice.discountDraft || 0)
-    const value = Number.isFinite(raw) ? Math.max(0, raw) : 0
+    const raw = Number(activeInvoice.discountDraft || 0);
+    const value = Number.isFinite(raw) ? Math.max(0, raw) : 0;
 
-    let nextDiscountValue = 0
+    let nextDiscountValue = 0;
 
     if (type === 'percent') {
       nextDiscountValue = Math.min(
         totalAfterPromotion,
         (totalAfterPromotion * Math.min(value, 100)) / 100,
-      )
+      );
     } else {
-      nextDiscountValue = Math.min(totalAfterPromotion, value)
+      nextDiscountValue = Math.min(totalAfterPromotion, value);
     }
 
     const nextGrandTotal = Math.max(
       0,
       totalAfterPromotion - nextDiscountValue - loyaltyDiscountValue,
-    )
+    );
 
     updateActiveInvoice({
       discountType: type,
       paidDraft: String(roundMoney(nextGrandTotal)),
-    })
+    });
   }
 
   return (
@@ -3139,34 +3154,34 @@ export default function SalesPage() {
           <button
             type="button"
             onClick={() => {
-              const freshInvoice = createInvoice(1)
+              const freshInvoice = createInvoice(1);
 
               /*
                * مهم:
                * نصفر فاتورة التعديل نفسها قبل إنهاء edit mode،
                * عشان ما تتحفظش كـ draft بيع عادي.
                */
-              setInvoices([freshInvoice])
+              setInvoices([freshInvoice]);
 
-              setActiveInvoiceId(freshInvoice.id)
+              setActiveInvoiceId(freshInvoice.id);
 
-              setNextInvoiceId(2)
+              setNextInvoiceId(2);
 
-              setProductResults([])
-              setDropdownRect(null)
-              setCustomerSearch('')
+              setProductResults([]);
+              setDropdownRect(null);
+              setCustomerSearch('');
 
-              setSplitPaymentEnabled(false)
-              setSplitPaymentDrafts({})
+              setSplitPaymentEnabled(false);
+              setSplitPaymentDrafts({});
 
-              setShowPaymentModal(false)
-              setReceiptData(null)
+              setShowPaymentModal(false);
+              setReceiptData(null);
 
-              clearInvoiceEditState()
+              clearInvoiceEditState();
 
-              localStorage.removeItem(SALES_DRAFT_STORAGE_KEY)
+              localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
 
-              navigate('/invoices')
+              navigate('/invoices');
             }}
             style={{
               ...secondaryOutlineButtonStyle,
@@ -3303,21 +3318,21 @@ export default function SalesPage() {
           }}
         >
           {invoices.map((invoice) => {
-            const active = invoice.id === activeInvoiceId
+            const active = invoice.id === activeInvoiceId;
 
             return (
               <div
                 key={invoice.id}
                 onClick={() => {
                   if (editingSaleId) {
-                    return
+                    return;
                   }
 
-                  setActiveInvoiceId(invoice.id)
-                  setProductResults([])
-                  setDropdownRect(null)
-                  setCustomerSearch('')
-                  setTimeout(focusMainInput, 0)
+                  setActiveInvoiceId(invoice.id);
+                  setProductResults([]);
+                  setDropdownRect(null);
+                  setCustomerSearch('');
+                  setTimeout(focusMainInput, 0);
                 }}
                 style={{
                   minWidth: '130px',
@@ -3345,8 +3360,8 @@ export default function SalesPage() {
                     type="button"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={(e) => {
-                      e.stopPropagation()
-                      closeInvoice(invoice.id)
+                      e.stopPropagation();
+                      closeInvoice(invoice.id);
                     }}
                     style={miniCloseButtonStyle}
                   >
@@ -3354,7 +3369,7 @@ export default function SalesPage() {
                   </button>
                 )}
               </div>
-            )
+            );
           })}
         </div>
       </div>
@@ -3530,8 +3545,8 @@ export default function SalesPage() {
                 value={customerSearch || activeInvoice.customer?.name || ''}
                 onFocus={() => setCustomerDropdownOpen(true)}
                 onChange={(e) => {
-                  setCustomerSearch(e.target.value)
-                  setCustomerDropdownOpen(true)
+                  setCustomerSearch(e.target.value);
+                  setCustomerDropdownOpen(true);
                 }}
                 style={{
                   flex: 1,
@@ -3657,10 +3672,10 @@ export default function SalesPage() {
               aria-checked={barcodeMode}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
-                setBarcodeMode((prev) => !prev)
-                setProductResults([])
-                setDropdownRect(null)
-                setTimeout(focusMainInput, 0)
+                setBarcodeMode((prev) => !prev);
+                setProductResults([]);
+                setDropdownRect(null);
+                setTimeout(focusMainInput, 0);
               }}
               style={{
                 width: '48px',
@@ -3801,10 +3816,10 @@ export default function SalesPage() {
           <select
             value={saleCategoryFilter}
             onChange={(e) => {
-              setSaleCategoryFilter(e.target.value)
-              setProductResults([])
-              setDropdownRect(null)
-              setTimeout(focusMainInput, 0)
+              setSaleCategoryFilter(e.target.value);
+              setProductResults([]);
+              setDropdownRect(null);
+              setTimeout(focusMainInput, 0);
             }}
             style={{
               ...tableInputStyle,
@@ -3935,8 +3950,8 @@ export default function SalesPage() {
                   }
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      e.preventDefault()
-                      void handleBarcodeEnter()
+                      e.preventDefault();
+                      void handleBarcodeEnter();
                     }
                   }}
                   placeholder="باركود"
@@ -3950,8 +3965,8 @@ export default function SalesPage() {
                 value={activeInvoice.productDraft}
                 onFocus={updateDropdownPosition}
                 onChange={(e) => {
-                  updateActiveInvoice({ productDraft: e.target.value })
-                  updateDropdownPosition()
+                  updateActiveInvoice({ productDraft: e.target.value });
+                  updateDropdownPosition();
                 }}
                 placeholder="اختر منتج"
                 style={{
@@ -4150,9 +4165,9 @@ export default function SalesPage() {
                 onChange={(e) => setHoldTitleDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    e.preventDefault()
+                    e.preventDefault();
 
-                    void holdActiveInvoice()
+                    void holdActiveInvoice();
                   }
                 }}
                 placeholder="مثال: أحمد - راجع بعد قليل"
@@ -4217,11 +4232,11 @@ export default function SalesPage() {
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
-                  setShowHoldSaleModal(false)
+                  setShowHoldSaleModal(false);
 
-                  setHoldTitleDraft('')
+                  setHoldTitleDraft('');
 
-                  setTimeout(focusMainInput, 0)
+                  setTimeout(focusMainInput, 0);
                 }}
                 disabled={holdingSale}
                 style={secondaryOutlineButtonStyle}
@@ -4348,11 +4363,11 @@ export default function SalesPage() {
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
-                    setPendingDeleteHeldSaleId(null)
+                    setPendingDeleteHeldSaleId(null);
 
-                    setShowHeldSalesModal(false)
+                    setShowHeldSalesModal(false);
 
-                    setTimeout(focusMainInput, 0)
+                    setTimeout(focusMainInput, 0);
                   }}
                   style={miniCloseButtonStyle}
                 >
@@ -4523,10 +4538,10 @@ export default function SalesPage() {
                             deletingHeldSaleId !== null ||
                             resumingHeldSaleId !== null
                           ) {
-                            return
+                            return;
                           }
 
-                          setPendingDeleteHeldSaleId(held.id)
+                          setPendingDeleteHeldSaleId(held.id);
                         }}
                         disabled={
                           resumingHeldSaleId !== null ||
@@ -4669,9 +4684,9 @@ export default function SalesPage() {
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
-                  setReceiptData(null)
-                  setReceiptWasEdit(false)
-                  setTimeout(focusMainInput, 0)
+                  setReceiptData(null);
+                  setReceiptWasEdit(false);
+                  setTimeout(focusMainInput, 0);
                 }}
                 style={miniCloseButtonStyle}
               >
@@ -4861,8 +4876,8 @@ export default function SalesPage() {
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
-                  setReceiptData(null)
-                  forceBarcodeFocus()
+                  setReceiptData(null);
+                  forceBarcodeFocus();
                 }}
                 style={secondaryOutlineButtonStyle}
               >
@@ -4927,8 +4942,8 @@ export default function SalesPage() {
                 }
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    e.preventDefault()
-                    void saveNewCustomer()
+                    e.preventDefault();
+                    void saveNewCustomer();
                   }
                 }}
                 style={{
@@ -4954,8 +4969,8 @@ export default function SalesPage() {
                 disabled={savingNewCustomer}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    e.preventDefault()
-                    void saveNewCustomer()
+                    e.preventDefault();
+                    void saveNewCustomer();
                   }
                 }}
                 style={{
@@ -4971,8 +4986,8 @@ export default function SalesPage() {
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
-                  setShowAddCustomerModal(false)
-                  forceBarcodeFocus()
+                  setShowAddCustomerModal(false);
+                  forceBarcodeFocus();
                 }}
                 style={secondaryOutlineButtonStyle}
               >
@@ -5149,15 +5164,15 @@ export default function SalesPage() {
                 onChange={(e) => setCreditOverrideAdminPassword(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    e.preventDefault()
+                    e.preventDefault();
 
-                    void saveSale(true)
+                    void saveSale(true);
                   }
 
                   if (e.key === 'Escape') {
-                    e.preventDefault()
+                    e.preventDefault();
 
-                    closeCreditOverride()
+                    closeCreditOverride();
                   }
                 }}
                 style={paymentInputStyle}
@@ -5454,14 +5469,14 @@ export default function SalesPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const next = !splitPaymentEnabled
+                    const next = !splitPaymentEnabled;
 
-                    setSplitPaymentEnabled(next)
+                    setSplitPaymentEnabled(next);
 
                     if (next) {
                       setSplitPaymentDrafts({
                         cash: String(roundMoney(grandTotal)),
-                      })
+                      });
                     }
                   }}
                   style={{
@@ -5507,11 +5522,11 @@ export default function SalesPage() {
                         }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
-                            void saveSale()
+                            void saveSale();
                           }
 
                           if (e.key === 'Escape') {
-                            setShowPaymentModal(false)
+                            setShowPaymentModal(false);
                           }
                         }}
                       />
@@ -5529,7 +5544,7 @@ export default function SalesPage() {
                       >
                         {paymentOptions.map((option) => {
                           const active =
-                            activeInvoice.paymentMethod === option.value
+                            activeInvoice.paymentMethod === option.value;
 
                           return (
                             <button
@@ -5574,7 +5589,7 @@ export default function SalesPage() {
                             >
                               {option.label}
                             </button>
-                          )
+                          );
                         })}
                       </div>
                     </label>
@@ -6027,7 +6042,7 @@ export default function SalesPage() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 const tableInputStyle: CSSProperties = {
@@ -6040,7 +6055,7 @@ const tableInputStyle: CSSProperties = {
   padding: '0 10px',
   outline: 'none',
   boxSizing: 'border-box',
-}
+};
 
 const primaryButtonStyle: CSSProperties = {
   border: 'none',
@@ -6051,7 +6066,7 @@ const primaryButtonStyle: CSSProperties = {
   fontWeight: 800,
   padding: '0 20px',
   cursor: 'pointer',
-}
+};
 
 const secondaryOutlineButtonStyle: CSSProperties = {
   border: '1px solid #7c3aed',
@@ -6062,7 +6077,7 @@ const secondaryOutlineButtonStyle: CSSProperties = {
   fontWeight: 800,
   padding: '0 24px',
   cursor: 'pointer',
-}
+};
 
 const miniCloseButtonStyle: CSSProperties = {
   border: 'none',
@@ -6070,7 +6085,7 @@ const miniCloseButtonStyle: CSSProperties = {
   color: '#cbd5e1',
   fontSize: '16px',
   cursor: 'pointer',
-}
+};
 
 const removeButtonStyle: CSSProperties = {
   width: '32px',
@@ -6081,7 +6096,7 @@ const removeButtonStyle: CSSProperties = {
   color: '#f43f5e',
   fontSize: '20px',
   cursor: 'pointer',
-}
+};
 
 const roundAddButtonStyle: CSSProperties = {
   width: '24px',
@@ -6098,7 +6113,7 @@ const roundAddButtonStyle: CSSProperties = {
   justifyContent: 'center',
   cursor: 'pointer',
   lineHeight: 1,
-}
+};
 
 const clearButtonStyle: CSSProperties = {
   width: '28px',
@@ -6108,14 +6123,14 @@ const clearButtonStyle: CSSProperties = {
   color: '#94a3b8',
   cursor: 'pointer',
   fontSize: '18px',
-}
+};
 
 const emptyDropdownStyle: CSSProperties = {
   padding: '14px',
   textAlign: 'center',
   color: '#94a3b8',
   fontWeight: 700,
-}
+};
 
 const summaryStyle: CSSProperties = {
   background: 'rgba(255,255,255,0.03)',
@@ -6126,7 +6141,7 @@ const summaryStyle: CSSProperties = {
   fontWeight: 800,
   gap: '12px',
   direction: 'rtl',
-}
+};
 
 const receiptInfoCardStyle: CSSProperties = {
   borderRadius: '12px',
@@ -6136,7 +6151,7 @@ const receiptInfoCardStyle: CSSProperties = {
   display: 'grid',
   gap: '6px',
   color: '#cbd5e1',
-}
+};
 
 const receiptTableHeaderStyle: CSSProperties = {
   display: 'grid',
@@ -6146,7 +6161,7 @@ const receiptTableHeaderStyle: CSSProperties = {
   background: 'rgba(255,255,255,0.05)',
   color: '#cbd5e1',
   fontWeight: 800,
-}
+};
 
 const receiptTableRowStyle: CSSProperties = {
   display: 'grid',
@@ -6156,7 +6171,7 @@ const receiptTableRowStyle: CSSProperties = {
   borderTop: '1px solid rgba(255,255,255,0.06)',
   alignItems: 'center',
   color: '#e5e7eb',
-}
+};
 
 const loyaltyPanelStyle: CSSProperties = {
   borderRadius: '14px',
@@ -6170,7 +6185,7 @@ const loyaltyPanelStyle: CSSProperties = {
   gap: '14px',
   flexWrap: 'wrap',
   direction: 'rtl',
-}
+};
 
 const paymentInputStyle: React.CSSProperties = {
   height: '48px',
@@ -6185,14 +6200,14 @@ const paymentInputStyle: React.CSSProperties = {
   fontWeight: 900,
   boxSizing: 'border-box',
   colorScheme: 'dark',
-}
+};
 
 const paymentLabelStyle: React.CSSProperties = {
   display: 'grid',
   gap: '6px',
   color: '#cbd5e1',
   fontWeight: 900,
-}
+};
 
 const paymentToggleButtonStyle: React.CSSProperties = {
   height: '38px',
@@ -6202,4 +6217,4 @@ const paymentToggleButtonStyle: React.CSSProperties = {
   color: '#111827',
   fontWeight: 900,
   cursor: 'pointer',
-}
+};

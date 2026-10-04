@@ -1,16 +1,16 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 
 import {
   createHeldSale,
   deleteHeldSale,
   getHeldSale,
   listHeldSales,
-} from '../../src/main/database/repositories/held-sales.repo'
+} from '../../src/main/database/repositories/held-sales.repo';
 
 function createCashier(username: string) {
-  const db = getDb()
+  const db = getDb();
 
   return Number(
     db
@@ -34,11 +34,11 @@ function createCashier(username: string) {
       `,
       )
       .run(username, username).lastInsertRowid,
-  )
+  );
 }
 
 function createVariant() {
-  const db = getDb()
+  const db = getDb();
 
   const productId = Number(
     db
@@ -56,7 +56,7 @@ function createVariant() {
         `,
       )
       .run().lastInsertRowid,
-  )
+  );
 
   const variantId = Number(
     db
@@ -86,27 +86,27 @@ function createVariant() {
         `,
       )
       .run(productId).lastInsertRowid,
-  )
+  );
 
   return {
     productId,
     variantId,
-  }
+  };
 }
 
 describe('held sales repository', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
-  })
+    closeDb();
+    getDb();
+    resetDatabaseData();
+  });
 
   it('holds a sale without affecting accounting or stock', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const cashierId = createCashier('held_cashier')
+    const cashierId = createCashier('held_cashier');
 
-    const { variantId } = createVariant()
+    const { variantId } = createVariant();
 
     const beforeSales = Number(
       (
@@ -119,10 +119,10 @@ describe('held sales repository', () => {
                 `,
           )
           .get() as {
-          count: number
+          count: number;
         }
       ).count,
-    )
+    );
 
     const beforeMovements = Number(
       (
@@ -135,10 +135,10 @@ describe('held sales repository', () => {
                 `,
           )
           .get() as {
-          count: number
+          count: number;
         }
       ).count,
-    )
+    );
 
     const beforeCash = Number(
       (
@@ -151,10 +151,10 @@ describe('held sales repository', () => {
                 `,
           )
           .get() as {
-          count: number
+          count: number;
         }
       ).count,
-    )
+    );
 
     const held = createHeldSale({
       user_id: cashierId,
@@ -174,9 +174,9 @@ describe('held sales repository', () => {
           quantity: 2,
         },
       ],
-    })
+    });
 
-    expect(held.heldSaleId).toBeGreaterThan(0)
+    expect(held.heldSaleId).toBeGreaterThan(0);
 
     expect(
       (
@@ -189,10 +189,10 @@ describe('held sales repository', () => {
               `,
           )
           .get() as {
-          count: number
+          count: number;
         }
       ).count,
-    ).toBe(beforeSales)
+    ).toBe(beforeSales);
 
     expect(
       (
@@ -205,10 +205,10 @@ describe('held sales repository', () => {
               `,
           )
           .get() as {
-          count: number
+          count: number;
         }
       ).count,
-    ).toBe(beforeMovements)
+    ).toBe(beforeMovements);
 
     expect(
       (
@@ -221,10 +221,10 @@ describe('held sales repository', () => {
               `,
           )
           .get() as {
-          count: number
+          count: number;
         }
       ).count,
-    ).toBe(beforeCash)
+    ).toBe(beforeCash);
 
     const saved = getHeldSale({
       held_sale_id: held.heldSaleId,
@@ -232,15 +232,15 @@ describe('held sales repository', () => {
       actor_id: cashierId,
 
       is_admin: false,
-    })
+    });
 
-    expect(saved.title).toBe('عميل منتظر')
+    expect(saved.title).toBe('عميل منتظر');
 
-    expect(saved.items).toHaveLength(1)
+    expect(saved.items).toHaveLength(1);
 
-    expect(Number(saved.items[0].quantity)).toBe(2)
+    expect(Number(saved.items[0].quantity)).toBe(2);
 
-    expect(Number(saved.items[0].sell_price)).toBe(100)
+    expect(Number(saved.items[0].sell_price)).toBe(100);
 
     db.prepare(
       `
@@ -250,7 +250,7 @@ describe('held sales repository', () => {
 
           WHERE id = ?
           `,
-    ).run(variantId)
+    ).run(variantId);
 
     const refreshed = getHeldSale({
       held_sale_id: held.heldSaleId,
@@ -258,17 +258,17 @@ describe('held sales repository', () => {
       actor_id: cashierId,
 
       is_admin: false,
-    })
+    });
 
-    expect(Number(refreshed.items[0].sell_price)).toBe(120)
-  })
+    expect(Number(refreshed.items[0].sell_price)).toBe(120);
+  });
 
   it('keeps cashier holds private while admin can access them', () => {
-    const cashierA = createCashier('cashier_a')
+    const cashierA = createCashier('cashier_a');
 
-    const cashierB = createCashier('cashier_b')
+    const cashierB = createCashier('cashier_b');
 
-    const { variantId } = createVariant()
+    const { variantId } = createVariant();
 
     const held = createHeldSale({
       user_id: cashierA,
@@ -280,7 +280,7 @@ describe('held sales repository', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
     expect(
       listHeldSales({
@@ -288,7 +288,7 @@ describe('held sales repository', () => {
 
         is_admin: false,
       }),
-    ).toHaveLength(1)
+    ).toHaveLength(1);
 
     expect(
       listHeldSales({
@@ -296,7 +296,7 @@ describe('held sales repository', () => {
 
         is_admin: false,
       }),
-    ).toHaveLength(0)
+    ).toHaveLength(0);
 
     expect(() =>
       getHeldSale({
@@ -306,7 +306,7 @@ describe('held sales repository', () => {
 
         is_admin: false,
       }),
-    ).toThrow('غير موجودة أو غير متاحة')
+    ).toThrow('غير موجودة أو غير متاحة');
 
     const adminView = getHeldSale({
       held_sale_id: held.heldSaleId,
@@ -314,9 +314,9 @@ describe('held sales repository', () => {
       actor_id: 1,
 
       is_admin: true,
-    })
+    });
 
-    expect(Number(adminView.user_id)).toBe(cashierA)
+    expect(Number(adminView.user_id)).toBe(cashierA);
 
     expect(() =>
       deleteHeldSale({
@@ -326,7 +326,7 @@ describe('held sales repository', () => {
 
         is_admin: false,
       }),
-    ).toThrow('غير موجودة أو غير متاحة')
+    ).toThrow('غير موجودة أو غير متاحة');
 
     const deleted = deleteHeldSale({
       held_sale_id: held.heldSaleId,
@@ -334,9 +334,9 @@ describe('held sales repository', () => {
       actor_id: 1,
 
       is_admin: true,
-    })
+    });
 
-    expect(deleted.success).toBe(true)
+    expect(deleted.success).toBe(true);
 
     expect(
       listHeldSales({
@@ -344,6 +344,6 @@ describe('held sales repository', () => {
 
         is_admin: true,
       }),
-    ).toHaveLength(0)
-  })
-})
+    ).toHaveLength(0);
+  });
+});

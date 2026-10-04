@@ -1,113 +1,113 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react';
 import {
   CASH_ACCOUNT_OPTIONS,
   ADMIN_CASH_ACCOUNT_OPTIONS,
-} from '../utils/payment-method'
+} from '../utils/payment-method';
 import {
   getPromotionRulesText,
   getPromotionScopeLabel,
   getPromotionTypeLabel,
-} from '../utils/promotion-display'
-import { formatMoney, roundMoney } from '../../shared/money'
+} from '../utils/promotion-display';
+import { formatMoney, roundMoney } from '../../shared/money';
 
 type ExchangeUnit = {
-  id: number
-  promotion_group_id: string
+  id: number;
+  promotion_group_id: string;
 
-  original_sale_item_id: number
+  original_sale_item_id: number;
 
-  current_variant_id: number
-  current_unit_price: number
-  current_is_gift: number
+  current_variant_id: number;
+  current_unit_price: number;
+  current_is_gift: number;
 
-  is_returned: number
+  is_returned: number;
 
-  current_product_id: number
-  current_product_name: string
-  current_category_id: number | null
+  current_product_id: number;
+  current_product_name: string;
+  current_category_id: number | null;
 
-  current_barcode?: string | null
-  current_size?: string | null
-  current_color?: string | null
-}
+  current_barcode?: string | null;
+  current_size?: string | null;
+  current_color?: string | null;
+};
 
 type PromotionSnapshot = {
-  promotion_id: number
+  promotion_id: number;
 
-  promotion_type: string
-  promotion_name: string
-  promotion_value: number
+  promotion_type: string;
+  promotion_name: string;
+  promotion_value: number;
 
-  buy_qty: number | null
+  buy_qty: number | null;
 
-  free_qty: number | null
+  free_qty: number | null;
 
-  scope_type: string
+  scope_type: string;
 
-  category_id: number | null
+  category_id: number | null;
 
-  product_ids: number[]
-}
+  product_ids: number[];
+};
 
 type ExchangeGroup = {
-  promotion_group_id: string
+  promotion_group_id: string;
 
-  group_kind: 'promotion' | 'regular'
-  promotion_id?: number | null
+  group_kind: 'promotion' | 'regular';
+  promotion_id?: number | null;
 
-  promotion_snapshot?: PromotionSnapshot | null
-  units: ExchangeUnit[]
-}
+  promotion_snapshot?: PromotionSnapshot | null;
+  units: ExchangeUnit[];
+};
 
 type ExchangeState = {
-  sale: any
+  sale: any;
   payments: Array<{
-    payment_method: string
-    amount: number
-  }>
-  snapshot: PromotionSnapshot | null
+    payment_method: string;
+    amount: number;
+  }>;
+  snapshot: PromotionSnapshot | null;
 
-  snapshots: PromotionSnapshot[]
+  snapshots: PromotionSnapshot[];
 
-  groups: ExchangeGroup[]
+  groups: ExchangeGroup[];
   financials: {
-    original_normal_discount_value: number
-    original_loyalty_discount_value: number
+    original_normal_discount_value: number;
+    original_loyalty_discount_value: number;
 
-    current_sub_total: number
-    current_promotion_discount_value: number
+    current_sub_total: number;
+    current_promotion_discount_value: number;
 
-    current_grand_total: number
+    current_grand_total: number;
 
-    total_return_value: number
-    net_grand_total: number
-  }
-}
+    total_return_value: number;
+    net_grand_total: number;
+  };
+};
 
 type ExchangeDraft = {
-  promotion_unit_id: number
+  promotion_unit_id: number;
 
-  current_variant_id: number
-  current_product_name: string
-  current_size?: string | null
-  current_color?: string | null
-  current_unit_price: number
+  current_variant_id: number;
+  current_product_name: string;
+  current_size?: string | null;
+  current_color?: string | null;
+  current_unit_price: number;
 
-  query: string
-  results: any[]
-  new_variant: any | null
-}
+  query: string;
+  results: any[];
+  new_variant: any | null;
+};
 
 type Props = {
-  saleId: number | null
-  userId: number | null
-  isAdmin?: boolean
-  onClose: () => void
-  onSuccess: (message: string) => void
-}
+  saleId: number | null;
+  userId: number | null;
+  isAdmin?: boolean;
+  onClose: () => void;
+  onSuccess: (message: string) => void;
+};
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 function resolveCashAccount(method?: string | null) {
@@ -118,23 +118,23 @@ function resolveCashAccount(method?: string | null) {
     case 'owner_bank':
     case 'owner_vodafone':
     case 'fawry_machine':
-      return method
+      return method;
 
     case 'cash':
-      return 'store_cash'
+      return 'store_cash';
 
     case 'card':
-      return 'fawry_machine'
+      return 'fawry_machine';
 
     case 'wallet':
-      return 'owner_vodafone'
+      return 'owner_vodafone';
 
     case 'bank':
     case 'bank_transfer':
-      return 'owner_bank'
+      return 'owner_bank';
 
     default:
-      return 'store_cash'
+      return 'store_cash';
   }
 }
 
@@ -144,11 +144,11 @@ function getErrorMessage(error: unknown, fallback: string) {
       ? error.message
       : typeof error === 'string'
         ? error
-        : ''
+        : '';
 
-  const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/)
+  const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/);
 
-  return match?.[1] || raw || fallback
+  return match?.[1] || raw || fallback;
 }
 
 function createDraft(unit: ExchangeUnit): ExchangeDraft {
@@ -164,7 +164,7 @@ function createDraft(unit: ExchangeUnit): ExchangeDraft {
     query: '',
     results: [],
     new_variant: null,
-  }
+  };
 }
 
 export default function SaleExchangeModal({
@@ -174,53 +174,53 @@ export default function SaleExchangeModal({
   onClose,
   onSuccess,
 }: Props) {
-  const [state, setState] = useState<ExchangeState | null>(null)
+  const [state, setState] = useState<ExchangeState | null>(null);
 
-  const [groupId, setGroupId] = useState('')
+  const [groupId, setGroupId] = useState('');
 
-  const [drafts, setDrafts] = useState<ExchangeDraft[]>([])
+  const [drafts, setDrafts] = useState<ExchangeDraft[]>([]);
 
-  const [paymentAccount, setPaymentAccount] = useState('')
+  const [paymentAccount, setPaymentAccount] = useState('');
 
-  const [reason, setReason] = useState('')
+  const [reason, setReason] = useState('');
 
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const [error, setError] = useState('')
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!saleId) {
-      setState(null)
-      setGroupId('')
-      setDrafts([])
-      setReason('')
-      setError('')
-      return
+      setState(null);
+      setGroupId('');
+      setDrafts([]);
+      setReason('');
+      setError('');
+      return;
     }
 
-    let cancelled = false
+    let cancelled = false;
 
     async function load() {
-      setLoading(true)
-      setError('')
-      setDrafts([])
+      setLoading(true);
+      setError('');
+      setDrafts([]);
 
       try {
-        const result = await window.api.getSaleExchangeState(Number(saleId))
+        const result = await window.api.getSaleExchangeState(Number(saleId));
 
         if (cancelled) {
-          return
+          return;
         }
 
         const activeGroups = (result.groups || []).filter(
           (group) =>
             group.units.length > 0 &&
             group.units.every((unit) => Number(unit.is_returned || 0) === 0),
-        )
+        );
 
         if (activeGroups.length === 0) {
-          throw new Error('لا توجد قطع متاحة للاستبدال في هذه الفاتورة')
+          throw new Error('لا توجد قطع متاحة للاستبدال في هذه الفاتورة');
         }
 
         const nextState: ExchangeState = {
@@ -232,81 +232,81 @@ export default function SaleExchangeModal({
           groups: activeGroups,
 
           financials: result.financials,
-        }
+        };
 
-        setState(nextState)
+        setState(nextState);
 
-        setGroupId(String(activeGroups[0].promotion_group_id))
+        setGroupId(String(activeGroups[0].promotion_group_id));
 
         const originalPayments = Array.isArray(result.payments)
           ? result.payments.filter(
               (payment: any) => Number(payment.amount || 0) > 0,
             )
-          : []
+          : [];
 
         if (originalPayments.length > 1) {
-          setPaymentAccount('')
+          setPaymentAccount('');
         } else if (originalPayments.length === 1) {
           setPaymentAccount(
             resolveCashAccount(originalPayments[0].payment_method),
-          )
+          );
         } else {
-          setPaymentAccount(resolveCashAccount(result.sale?.payment_method))
+          setPaymentAccount(resolveCashAccount(result.sale?.payment_method));
         }
       } catch (loadError) {
         if (!cancelled) {
-          setError(getErrorMessage(loadError, 'تعذر تحميل بيانات الاستبدال'))
+          setError(getErrorMessage(loadError, 'تعذر تحميل بيانات الاستبدال'));
         }
       } finally {
         if (!cancelled) {
-          setLoading(false)
+          setLoading(false);
         }
       }
     }
 
-    void load()
+    void load();
 
     return () => {
-      cancelled = true
-    }
-  }, [saleId])
+      cancelled = true;
+    };
+  }, [saleId]);
 
   const selectedGroup = useMemo(() => {
     return (
       state?.groups.find(
         (group) => String(group.promotion_group_id) === String(groupId),
       ) || null
-    )
-  }, [state, groupId])
+    );
+  }, [state, groupId]);
 
-  const selectedPromotionSnapshot = selectedGroup?.promotion_snapshot || null
+  const selectedPromotionSnapshot = selectedGroup?.promotion_snapshot || null;
 
   const selectedIsPromotion = Boolean(
     selectedGroup?.group_kind === 'promotion' &&
     selectedPromotionSnapshot?.promotion_type === 'buy_x_get_y',
-  )
+  );
 
   const recordedPromotionDiscount = Number(
     state?.sale?.promotion_discount_value || 0,
-  )
+  );
 
   const hasRecordedPromotion =
     recordedPromotionDiscount > 0 &&
-    Boolean(state?.sale?.promotion_id || state?.sale?.promotion_name)
+    Boolean(state?.sale?.promotion_id || state?.sale?.promotion_name);
 
-  const promotionName = String(state?.sale?.promotion_name || 'عرض')
+  const promotionName = String(state?.sale?.promotion_name || 'عرض');
 
   const historicalPromotionName = String(
     selectedPromotionSnapshot?.promotion_name || promotionName,
-  )
+  );
 
   const promotionTypeLabel = getPromotionTypeLabel(
     selectedPromotionSnapshot?.promotion_type,
-  )
+  );
 
-  const promotionRulesText = getPromotionRulesText(selectedPromotionSnapshot)
+  const promotionRulesText = getPromotionRulesText(selectedPromotionSnapshot);
 
-  const promotionScopeLabel = getPromotionScopeLabel(selectedPromotionSnapshot)
+  const promotionScopeLabel = getPromotionScopeLabel(selectedPromotionSnapshot);
 
   const preview = useMemo(() => {
     if (!state || !selectedGroup) {
@@ -323,7 +323,7 @@ export default function SaleExchangeModal({
 
         currentInvoiceNet: 0,
         nextInvoiceNet: 0,
-      }
+      };
     }
 
     const oldUnits = selectedGroup.units.map((unit) => ({
@@ -332,11 +332,11 @@ export default function SaleExchangeModal({
       price: Number(unit.current_unit_price || 0),
 
       isGift: Number(unit.current_is_gift || 0) === 1,
-    }))
+    }));
 
     const oldGroupGross = roundMoney(
       oldUnits.reduce((sum, unit) => sum + unit.price, 0),
-    )
+    );
 
     const oldGroupPromotionDiscount = selectedIsPromotion
       ? roundMoney(
@@ -345,14 +345,14 @@ export default function SaleExchangeModal({
             0,
           ),
         )
-      : 0
+      : 0;
 
-    const oldTotal = roundMoney(oldGroupGross - oldGroupPromotionDiscount)
+    const oldTotal = roundMoney(oldGroupGross - oldGroupPromotionDiscount);
 
     const nextUnits = selectedGroup.units.map((unit) => {
       const draft = drafts.find(
         (item) => Number(item.promotion_unit_id) === Number(unit.id),
-      )
+      );
 
       return {
         id: Number(unit.id),
@@ -360,15 +360,15 @@ export default function SaleExchangeModal({
         price: Number(
           draft?.new_variant?.sell_price ?? unit.current_unit_price ?? 0,
         ),
-      }
-    })
+      };
+    });
 
     const freeQty = selectedIsPromotion
       ? Math.max(
           0,
           Math.floor(Number(selectedPromotionSnapshot?.free_qty || 0)),
         )
-      : 0
+      : 0;
 
     const giftIds = selectedIsPromotion
       ? new Set(
@@ -377,20 +377,20 @@ export default function SaleExchangeModal({
             .slice(0, freeQty)
             .map((unit) => unit.id),
         )
-      : new Set<number>()
+      : new Set<number>();
 
     const newGroupGross = roundMoney(
       nextUnits.reduce((sum, unit) => sum + unit.price, 0),
-    )
+    );
 
     const newGroupPromotionDiscount = roundMoney(
       nextUnits.reduce(
         (sum, unit) => sum + (giftIds.has(unit.id) ? unit.price : 0),
         0,
       ),
-    )
+    );
 
-    const newTotal = roundMoney(newGroupGross - newGroupPromotionDiscount)
+    const newTotal = roundMoney(newGroupGross - newGroupPromotionDiscount);
 
     /*
      * Recalculate the whole invoice exactly
@@ -400,7 +400,7 @@ export default function SaleExchangeModal({
       Number(state.financials.current_sub_total || 0) -
         oldGroupGross +
         newGroupGross,
-    )
+    );
 
     const nextPromotionDiscount = Math.max(
       0,
@@ -409,12 +409,12 @@ export default function SaleExchangeModal({
           oldGroupPromotionDiscount +
           newGroupPromotionDiscount,
       ),
-    )
+    );
 
     const afterPromotion = Math.max(
       0,
       roundMoney(nextSubTotal - nextPromotionDiscount),
-    )
+    );
 
     const normalDiscount = roundMoney(
       Math.min(
@@ -422,9 +422,12 @@ export default function SaleExchangeModal({
 
         afterPromotion,
       ),
-    )
+    );
 
-    const afterNormal = Math.max(0, roundMoney(afterPromotion - normalDiscount))
+    const afterNormal = Math.max(
+      0,
+      roundMoney(afterPromotion - normalDiscount),
+    );
 
     const loyaltyDiscount = roundMoney(
       Math.min(
@@ -432,45 +435,45 @@ export default function SaleExchangeModal({
 
         afterNormal,
       ),
-    )
+    );
 
     const nextGrandTotal = Math.max(
       0,
       roundMoney(afterNormal - loyaltyDiscount),
-    )
+    );
 
     const nextInvoiceNet = Math.max(
       0,
       roundMoney(
         nextGrandTotal - Number(state.financials.total_return_value || 0),
       ),
-    )
+    );
 
-    const currentInvoiceNet = Number(state.financials.net_grand_total || 0)
+    const currentInvoiceNet = Number(state.financials.net_grand_total || 0);
 
-    const difference = roundMoney(nextInvoiceNet - currentInvoiceNet)
+    const difference = roundMoney(nextInvoiceNet - currentInvoiceNet);
 
     const currentDebt = state.sale?.customer_id
       ? Math.max(0, Number(state.sale?.remaining_amount || 0))
-      : 0
+      : 0;
 
-    let debtReduction = 0
-    let cashRefund = 0
-    let cashCollection = 0
+    let debtReduction = 0;
+    let cashRefund = 0;
+    let cashCollection = 0;
 
     if (difference > 0) {
-      cashCollection = difference
+      cashCollection = difference;
     }
 
     if (difference < 0) {
-      const customerCredit = Math.abs(difference)
+      const customerCredit = Math.abs(difference);
 
-      debtReduction = Math.min(customerCredit, currentDebt)
+      debtReduction = Math.min(customerCredit, currentDebt);
 
-      cashRefund = roundMoney(customerCredit - debtReduction)
+      cashRefund = roundMoney(customerCredit - debtReduction);
     }
 
-    const cashDifference = roundMoney(cashCollection - cashRefund)
+    const cashDifference = roundMoney(cashCollection - cashRefund);
 
     return {
       oldTotal,
@@ -485,12 +488,12 @@ export default function SaleExchangeModal({
 
       currentInvoiceNet,
       nextInvoiceNet,
-    }
-  }, [state, selectedGroup, selectedIsPromotion, drafts])
+    };
+  }, [state, selectedGroup, selectedIsPromotion, drafts]);
 
   function isEligibleVariant(variant: any) {
     if (!state || !selectedGroup) {
-      return false
+      return false;
     }
 
     /*
@@ -498,46 +501,46 @@ export default function SaleExchangeModal({
      * أي Variant فعال مسموح.
      */
     if (selectedGroup.group_kind === 'regular') {
-      return true
+      return true;
     }
 
-    const snapshot = selectedGroup.promotion_snapshot
+    const snapshot = selectedGroup.promotion_snapshot;
 
     if (!snapshot) {
-      return false
+      return false;
     }
 
     if (snapshot.scope_type === 'all') {
-      return true
+      return true;
     }
 
     if (snapshot.scope_type === 'category') {
-      return Number(variant.category_id) === Number(snapshot.category_id)
+      return Number(variant.category_id) === Number(snapshot.category_id);
     }
 
     if (snapshot.scope_type === 'products') {
       return (snapshot.product_ids || [])
         .map(Number)
-        .includes(Number(variant.product_id))
+        .includes(Number(variant.product_id));
     }
 
-    return false
+    return false;
   }
 
   function startSingleExchange(group: ExchangeGroup, unit: ExchangeUnit) {
-    setGroupId(String(group.promotion_group_id))
+    setGroupId(String(group.promotion_group_id));
 
-    setDrafts([createDraft(unit)])
+    setDrafts([createDraft(unit)]);
 
-    setError('')
+    setError('');
   }
 
   function startWholeGroupExchange(group: ExchangeGroup) {
-    setGroupId(String(group.promotion_group_id))
+    setGroupId(String(group.promotion_group_id));
 
-    setDrafts(group.units.map(createDraft))
+    setDrafts(group.units.map(createDraft));
 
-    setError('')
+    setError('');
   }
 
   function updateDraftQuery(promotionUnitId: number, query: string) {
@@ -552,31 +555,31 @@ export default function SaleExchangeModal({
             }
           : draft,
       ),
-    )
+    );
   }
 
   async function searchReplacement(promotionUnitId: number) {
     if (!state) {
-      return
+      return;
     }
 
     const draft = drafts.find(
       (item) => item.promotion_unit_id === promotionUnitId,
-    )
+    );
 
     if (!draft) {
-      return
+      return;
     }
 
-    const query = draft.query.trim()
+    const query = draft.query.trim();
 
     if (!query) {
-      setError('اكتب اسم أو باركود الصنف البديل')
-      return
+      setError('اكتب اسم أو باركود الصنف البديل');
+      return;
     }
 
     try {
-      setError('')
+      setError('');
 
       const results = await window.api.searchSaleVariants({
         query,
@@ -588,13 +591,13 @@ export default function SaleExchangeModal({
             : null,
 
         limit: 30,
-      })
+      });
 
       const eligible = (results || []).filter(
         (variant: any) =>
           Number(variant.variant_id) !== Number(draft.current_variant_id) &&
           isEligibleVariant(variant),
-      )
+      );
 
       setDrafts((previous) =>
         previous.map((item) =>
@@ -606,17 +609,17 @@ export default function SaleExchangeModal({
               }
             : item,
         ),
-      )
+      );
 
       if (eligible.length === 0) {
         setError(
           selectedGroup?.group_kind === 'promotion'
             ? 'لم يتم العثور على صنف بديل مؤهل لنفس العرض الأصلي'
             : 'لم يتم العثور على صنف بديل متاح',
-        )
+        );
       }
     } catch (searchError) {
-      setError(getErrorMessage(searchError, 'تعذر البحث عن الصنف البديل'))
+      setError(getErrorMessage(searchError, 'تعذر البحث عن الصنف البديل'));
     }
   }
 
@@ -624,57 +627,57 @@ export default function SaleExchangeModal({
     setDrafts((previous) =>
       previous.map((draft) => {
         if (draft.promotion_unit_id !== promotionUnitId) {
-          return draft
+          return draft;
         }
 
         const variant = draft.results.find(
           (item: any) => Number(item.variant_id) === Number(variantId),
-        )
+        );
 
         return {
           ...draft,
           new_variant: variant || null,
-        }
+        };
       }),
-    )
+    );
   }
 
   async function submitExchange() {
     if (saving) {
-      return
+      return;
     }
 
     if (!saleId || !userId) {
-      setError('المستخدم أو الفاتورة غير صحيحة')
-      return
+      setError('المستخدم أو الفاتورة غير صحيحة');
+      return;
     }
 
     if (!selectedGroup) {
-      setError('اختار القطعة أو العرض المطلوب استبداله')
-      return
+      setError('اختار القطعة أو العرض المطلوب استبداله');
+      return;
     }
 
     if (drafts.length === 0) {
-      setError('اختار القطعة المطلوب استبدالها')
-      return
+      setError('اختار القطعة المطلوب استبدالها');
+      return;
     }
 
     if (drafts.some((draft) => !draft.new_variant)) {
-      setError('اختار الصنف البديل لكل قطعة محددة')
-      return
+      setError('اختار الصنف البديل لكل قطعة محددة');
+      return;
     }
 
     if (
       (preview.cashCollection > 0 || preview.cashRefund > 0) &&
       !paymentAccount
     ) {
-      setError('اختر الحساب المالي لتسوية فرق الاستبدال')
+      setError('اختر الحساب المالي لتسوية فرق الاستبدال');
 
-      return
+      return;
     }
 
-    setSaving(true)
-    setError('')
+    setSaving(true);
+    setError('');
 
     try {
       const result = await window.api.createSaleExchange({
@@ -691,40 +694,40 @@ export default function SaleExchangeModal({
 
           new_variant_id: Number(draft.new_variant.variant_id),
         })),
-      })
+      });
 
-      let settlement = 'بدون فرق مالي'
+      let settlement = 'بدون فرق مالي';
 
       if (Number(result.amount_to_collect || 0) > 0) {
-        settlement = `تم تحصيل ${money(result.amount_to_collect)}`
+        settlement = `تم تحصيل ${money(result.amount_to_collect)}`;
       } else if (Number(result.difference_amount || 0) < 0) {
-        const parts: string[] = []
+        const parts: string[] = [];
 
         if (Number(result.debt_reduction_amount || 0) > 0) {
-          parts.push(`خصم من المديونية ${money(result.debt_reduction_amount)}`)
+          parts.push(`خصم من المديونية ${money(result.debt_reduction_amount)}`);
         }
 
         if (Number(result.amount_to_refund || 0) > 0) {
-          parts.push(`رد للعميل ${money(result.amount_to_refund)}`)
+          parts.push(`رد للعميل ${money(result.amount_to_refund)}`);
         }
 
-        settlement = parts.join(' — ') || 'تم تسوية فرق الاستبدال'
+        settlement = parts.join(' — ') || 'تم تسوية فرق الاستبدال';
       }
 
-      onSuccess(`تم الاستبدال ${result.exchangeCode} — ${settlement}`)
+      onSuccess(`تم الاستبدال ${result.exchangeCode} — ${settlement}`);
     } catch (submitError) {
-      setError(getErrorMessage(submitError, 'تعذر حفظ الاستبدال'))
+      setError(getErrorMessage(submitError, 'تعذر حفظ الاستبدال'));
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
   if (!saleId) {
-    return null
+    return null;
   }
 
   const readyToSave =
-    drafts.length > 0 && drafts.every((draft) => Boolean(draft.new_variant))
+    drafts.length > 0 && drafts.every((draft) => Boolean(draft.new_variant));
 
   return (
     <div
@@ -950,11 +953,11 @@ export default function SaleExchangeModal({
                 {state.groups.map((group, groupIndex) => {
                   const isPromotionGroup =
                     group.group_kind === 'promotion' &&
-                    group.promotion_snapshot?.promotion_type === 'buy_x_get_y'
+                    group.promotion_snapshot?.promotion_type === 'buy_x_get_y';
 
                   const isSelected =
                     String(groupId) === String(group.promotion_group_id) &&
-                    drafts.length > 0
+                    drafts.length > 0;
 
                   if (isPromotionGroup) {
                     return (
@@ -1089,13 +1092,13 @@ export default function SaleExchangeModal({
                           </div>
                         ))}
                       </div>
-                    )
+                    );
                   }
 
-                  const unit = group.units[0]
+                  const unit = group.units[0];
 
                   if (!unit) {
-                    return null
+                    return null;
                   }
 
                   return (
@@ -1219,7 +1222,7 @@ export default function SaleExchangeModal({
                         </button>
                       </div>
                     </div>
-                  )
+                  );
                 })}
               </div>
             </div>
@@ -1276,9 +1279,9 @@ export default function SaleExchangeModal({
                         }
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') {
-                            event.preventDefault()
+                            event.preventDefault();
 
-                            void searchReplacement(draft.promotion_unit_id)
+                            void searchReplacement(draft.promotion_unit_id);
                           }
                         }}
                         style={inputStyle}
@@ -1552,7 +1555,7 @@ export default function SaleExchangeModal({
         )}
       </div>
     </div>
-  )
+  );
 }
 
 const inputStyle: React.CSSProperties = {
@@ -1566,7 +1569,7 @@ const inputStyle: React.CSSProperties = {
   textAlign: 'right',
   direction: 'rtl',
   boxSizing: 'border-box',
-}
+};
 
 const smallButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(124,58,237,0.55)',
@@ -1576,7 +1579,7 @@ const smallButtonStyle: React.CSSProperties = {
   padding: '8px 10px',
   cursor: 'pointer',
   fontWeight: 700,
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -1587,7 +1590,7 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: '1px solid #7c3aed',
@@ -1598,7 +1601,7 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontWeight: 800,
   padding: '0 14px',
   cursor: 'pointer',
-}
+};
 
 const summaryCardStyle: React.CSSProperties = {
   display: 'grid',
@@ -1608,4 +1611,4 @@ const summaryCardStyle: React.CSSProperties = {
   background: 'rgba(255,255,255,0.04)',
   border: '1px solid rgba(255,255,255,0.08)',
   color: '#94a3b8',
-}
+};

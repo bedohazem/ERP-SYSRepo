@@ -1,36 +1,36 @@
-import { getDb } from '../db'
+import { getDb } from '../db';
 
-import { createPurchaseInvoice } from './purchases.repo'
-import { roundMoney } from '../../../shared/money'
+import { createPurchaseInvoice } from './purchases.repo';
+import { roundMoney } from '../../../shared/money';
 
 export type SmartReorderInput = {
-  categoryId?: number | string | null
+  categoryId?: number | string | null;
 
-  targetDays?: number
-}
+  targetDays?: number;
+};
 
 export function getSmartReorderSuggestions(input?: SmartReorderInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const rawCategoryId = input?.categoryId
+  const rawCategoryId = input?.categoryId;
 
   const categoryId =
-    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null
+    rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null;
 
-  const rawTargetDays = Number(input?.targetDays || 30)
+  const rawTargetDays = Number(input?.targetDays || 30);
 
   const targetDays = Number.isFinite(rawTargetDays)
     ? Math.min(Math.max(Math.round(rawTargetDays), 7), 90)
-    : 30
+    : 30;
 
-  const params: any[] = []
+  const params: any[] = [];
 
-  let categorySql = ''
+  let categorySql = '';
 
   if (categoryId && Number.isFinite(categoryId) && categoryId > 0) {
-    categorySql = 'AND p.category_id = ?'
+    categorySql = 'AND p.category_id = ?';
 
-    params.push(categoryId)
+    params.push(categoryId);
   }
 
   const rows = db
@@ -252,19 +252,19 @@ export function getSmartReorderSuggestions(input?: SmartReorderInput) {
         i.variant_id ASC
       `,
     )
-    .all(...params) as any[]
+    .all(...params) as any[];
 
   return rows
     .map((row) => {
-      const stock = Number(row.current_stock || 0)
+      const stock = Number(row.current_stock || 0);
 
-      const minStock = Math.max(0, Number(row.min_stock || 0))
+      const minStock = Math.max(0, Number(row.min_stock || 0));
 
-      const sold30 = Math.max(0, Number(row.sold_units_30d || 0))
+      const sold30 = Math.max(0, Number(row.sold_units_30d || 0));
 
-      const averageDailySales = sold30 / 30
+      const averageDailySales = sold30 / 30;
 
-      const demandTarget = Math.ceil(averageDailySales * targetDays)
+      const demandTarget = Math.ceil(averageDailySales * targetDays);
 
       /*
        * Minimum stock يفضل
@@ -275,27 +275,27 @@ export function getSmartReorderSuggestions(input?: SmartReorderInput) {
         minStock,
 
         demandTarget + minStock,
-      )
+      );
 
       const suggestedQuantity = Math.max(
         0,
 
         Math.ceil(targetStock - stock),
-      )
+      );
 
-      const unitCost = Math.max(0, Number(row.buy_price || 0))
+      const unitCost = Math.max(0, Number(row.buy_price || 0));
 
       const coverageDays =
-        averageDailySales > 0 ? Math.max(0, stock) / averageDailySales : null
+        averageDailySales > 0 ? Math.max(0, stock) / averageDailySales : null;
 
-      let reason: 'out' | 'low' | 'demand'
+      let reason: 'out' | 'low' | 'demand';
 
       if (stock <= 0) {
-        reason = 'out'
+        reason = 'out';
       } else if (stock <= minStock) {
-        reason = 'low'
+        reason = 'low';
       } else {
-        reason = 'demand'
+        reason = 'demand';
       }
 
       return {
@@ -335,7 +335,7 @@ export function getSmartReorderSuggestions(input?: SmartReorderInput) {
         estimated_cost: roundMoney(suggestedQuantity * unitCost),
 
         reason,
-      }
+      };
     })
     .filter((row) => row.suggested_quantity > 0)
     .sort(
@@ -343,30 +343,30 @@ export function getSmartReorderSuggestions(input?: SmartReorderInput) {
         b.suggested_quantity - a.suggested_quantity ||
         b.sold_units_30d - a.sold_units_30d ||
         a.product_name.localeCompare(b.product_name),
-    )
+    );
 }
 
 export type PurchaseOrderItemInput = {
-  variant_id: number
-  quantity: number
-  unit_cost?: number
-}
+  variant_id: number;
+  quantity: number;
+  unit_cost?: number;
+};
 
 export type CreatePurchaseOrderInput = {
-  supplier_id: number
+  supplier_id: number;
 
-  notes?: string | null
+  notes?: string | null;
 
-  actor_id?: number | null
+  actor_id?: number | null;
 
-  items: PurchaseOrderItemInput[]
-}
+  items: PurchaseOrderItemInput[];
+};
 
 function preparePurchaseOrderItems(input: PurchaseOrderItemInput[]) {
-  const db = getDb()
+  const db = getDb();
 
   if (!Array.isArray(input) || input.length === 0) {
-    throw new Error('أضف صنفًا واحدًا على الأقل لأمر الشراء')
+    throw new Error('أضف صنفًا واحدًا على الأقل لأمر الشراء');
   }
 
   const getVariant = db.prepare(
@@ -399,48 +399,48 @@ function preparePurchaseOrderItems(input: PurchaseOrderItemInput[]) {
 
       LIMIT 1
       `,
-  )
+  );
 
-  const seen = new Set<number>()
+  const seen = new Set<number>();
 
   return input.map((item) => {
-    const variantId = Number(item.variant_id)
+    const variantId = Number(item.variant_id);
 
     if (!variantId || seen.has(variantId)) {
-      throw new Error('يوجد صنف مكرر أو غير صحيح في أمر الشراء')
+      throw new Error('يوجد صنف مكرر أو غير صحيح في أمر الشراء');
     }
 
-    seen.add(variantId)
+    seen.add(variantId);
 
-    const variant = getVariant.get(variantId) as any
+    const variant = getVariant.get(variantId) as any;
 
     if (!variant) {
-      throw new Error('الصنف غير موجود')
+      throw new Error('الصنف غير موجود');
     }
 
     if (
       Number(variant.is_active) !== 1 ||
       Number(variant.product_is_active) !== 1
     ) {
-      throw new Error(`الصنف ${variant.product_name} متعطل`)
+      throw new Error(`الصنف ${variant.product_name} متعطل`);
     }
 
-    const quantity = Number(item.quantity)
+    const quantity = Number(item.quantity);
 
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      throw new Error(`كمية غير صحيحة للصنف ${variant.product_name}`)
+      throw new Error(`كمية غير صحيحة للصنف ${variant.product_name}`);
     }
 
     const inputCost =
       item.unit_cost == null
         ? Number(variant.buy_price || 0)
-        : Number(item.unit_cost)
+        : Number(item.unit_cost);
 
     if (!Number.isFinite(inputCost) || inputCost < 0) {
-      throw new Error(`تكلفة غير صحيحة للصنف ${variant.product_name}`)
+      throw new Error(`تكلفة غير صحيحة للصنف ${variant.product_name}`);
     }
 
-    const unitCost = roundMoney(inputCost)
+    const unitCost = roundMoney(inputCost);
 
     return {
       variant_id: variantId,
@@ -458,14 +458,14 @@ function preparePurchaseOrderItems(input: PurchaseOrderItemInput[]) {
       unit_cost: unitCost,
 
       line_total: roundMoney(quantity * unitCost),
-    }
-  })
+    };
+  });
 }
 
 export function createPurchaseOrder(input: CreatePurchaseOrderInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const supplierId = Number(input.supplier_id)
+  const supplierId = Number(input.supplier_id);
 
   const supplier = db
     .prepare(
@@ -482,13 +482,13 @@ export function createPurchaseOrder(input: CreatePurchaseOrderInput) {
       LIMIT 1
       `,
     )
-    .get(supplierId)
+    .get(supplierId);
 
   if (!supplier) {
-    throw new Error('المورد غير موجود أو متعطل')
+    throw new Error('المورد غير موجود أو متعطل');
   }
 
-  const items = preparePurchaseOrderItems(input.items)
+  const items = preparePurchaseOrderItems(input.items);
 
   const tx = db.transaction(() => {
     const result = db
@@ -519,9 +519,9 @@ export function createPurchaseOrder(input: CreatePurchaseOrderInput) {
         input.notes?.trim() || null,
 
         input.actor_id ?? null,
-      )
+      );
 
-    const orderId = Number(result.lastInsertRowid)
+    const orderId = Number(result.lastInsertRowid);
 
     const insertItem = db.prepare(
       `
@@ -549,7 +549,7 @@ export function createPurchaseOrder(input: CreatePurchaseOrderInput) {
             ?, ?, ?
           )
           `,
-    )
+    );
 
     for (const item of items) {
       insertItem.run(
@@ -568,7 +568,7 @@ export function createPurchaseOrder(input: CreatePurchaseOrderInput) {
         item.unit_cost,
 
         item.line_total,
-      )
+      );
     }
 
     return {
@@ -585,16 +585,16 @@ export function createPurchaseOrder(input: CreatePurchaseOrderInput) {
       ),
 
       items_count: items.length,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function getPurchaseOrder(orderIdInput: number) {
-  const db = getDb()
+  const db = getDb();
 
-  const orderId = Number(orderIdInput)
+  const orderId = Number(orderIdInput);
 
   const order = db
     .prepare(
@@ -651,10 +651,10 @@ export function getPurchaseOrder(orderIdInput: number) {
       LIMIT 1
       `,
     )
-    .get(orderId) as any
+    .get(orderId) as any;
 
   if (!order) {
-    throw new Error('أمر الشراء غير موجود')
+    throw new Error('أمر الشراء غير موجود');
   }
 
   const items = db
@@ -670,7 +670,7 @@ export function getPurchaseOrder(orderIdInput: number) {
       ORDER BY id ASC
       `,
     )
-    .all(orderId)
+    .all(orderId);
 
   return {
     order: {
@@ -682,36 +682,36 @@ export function getPurchaseOrder(orderIdInput: number) {
     },
 
     items,
-  }
+  };
 }
 
 export function listPurchaseOrders(input?: {
-  status?: string
-  supplier_id?: number
+  status?: string;
+  supplier_id?: number;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const where: string[] = []
+  const where: string[] = [];
 
-  const params: any[] = []
+  const params: any[] = [];
 
-  const status = String(input?.status || '').trim()
+  const status = String(input?.status || '').trim();
 
   if (status && status !== 'all') {
-    where.push('po.status = ?')
+    where.push('po.status = ?');
 
-    params.push(status)
+    params.push(status);
   }
 
-  const supplierId = Number(input?.supplier_id || 0)
+  const supplierId = Number(input?.supplier_id || 0);
 
   if (supplierId > 0) {
-    where.push('po.supplier_id = ?')
+    where.push('po.supplier_id = ?');
 
-    params.push(supplierId)
+    params.push(supplierId);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   return db
     .prepare(
@@ -758,29 +758,29 @@ export function listPurchaseOrders(input?: {
       ORDER BY po.id DESC
       `,
     )
-    .all(...params)
+    .all(...params);
 }
 
 export function updatePurchaseOrder(input: {
-  purchase_order_id: number
+  purchase_order_id: number;
 
-  supplier_id: number
+  supplier_id: number;
 
-  notes?: string | null
+  notes?: string | null;
 
-  items: PurchaseOrderItemInput[]
+  items: PurchaseOrderItemInput[];
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const orderId = Number(input.purchase_order_id)
+  const orderId = Number(input.purchase_order_id);
 
-  const current = getPurchaseOrder(orderId).order
+  const current = getPurchaseOrder(orderId).order;
 
   if (current.status !== 'draft') {
-    throw new Error('لا يمكن تعديل أمر شراء بعد اعتماده')
+    throw new Error('لا يمكن تعديل أمر شراء بعد اعتماده');
   }
 
-  const supplierId = Number(input.supplier_id)
+  const supplierId = Number(input.supplier_id);
 
   const supplier = db
     .prepare(
@@ -797,13 +797,13 @@ export function updatePurchaseOrder(input: {
       LIMIT 1
       `,
     )
-    .get(supplierId)
+    .get(supplierId);
 
   if (!supplier) {
-    throw new Error('المورد غير موجود أو متعطل')
+    throw new Error('المورد غير موجود أو متعطل');
   }
 
-  const items = preparePurchaseOrderItems(input.items)
+  const items = preparePurchaseOrderItems(input.items);
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -826,7 +826,7 @@ export function updatePurchaseOrder(input: {
       input.notes?.trim() || null,
 
       orderId,
-    )
+    );
 
     db.prepare(
       `
@@ -836,7 +836,7 @@ export function updatePurchaseOrder(input: {
         WHERE
           purchase_order_id = ?
         `,
-    ).run(orderId)
+    ).run(orderId);
 
     const insertItem = db.prepare(
       `
@@ -864,7 +864,7 @@ export function updatePurchaseOrder(input: {
             ?, ?, ?
           )
           `,
-    )
+    );
 
     for (const item of items) {
       insertItem.run(
@@ -883,28 +883,28 @@ export function updatePurchaseOrder(input: {
         item.unit_cost,
 
         item.line_total,
-      )
+      );
     }
-  })
+  });
 
-  tx()
+  tx();
 
-  return getPurchaseOrder(orderId)
+  return getPurchaseOrder(orderId);
 }
 
 export function markPurchaseOrderOrdered(input: {
-  purchase_order_id: number
+  purchase_order_id: number;
 
-  actor_id?: number | null
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const orderId = Number(input.purchase_order_id)
+  const orderId = Number(input.purchase_order_id);
 
-  const current = getPurchaseOrder(orderId).order
+  const current = getPurchaseOrder(orderId).order;
 
   if (current.status !== 'draft') {
-    throw new Error('يمكن اعتماد أمر الشراء من المسودة فقط')
+    throw new Error('يمكن اعتماد أمر الشراء من المسودة فقط');
   }
 
   db.prepare(
@@ -928,33 +928,33 @@ export function markPurchaseOrderOrdered(input: {
     input.actor_id ?? null,
 
     orderId,
-  )
+  );
 
-  return getPurchaseOrder(orderId)
+  return getPurchaseOrder(orderId);
 }
 
 export function cancelPurchaseOrder(input: {
-  purchase_order_id: number
+  purchase_order_id: number;
 
-  reason?: string | null
+  reason?: string | null;
 
-  actor_id?: number | null
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const orderId = Number(input.purchase_order_id)
+  const orderId = Number(input.purchase_order_id);
 
-  const current = getPurchaseOrder(orderId).order
+  const current = getPurchaseOrder(orderId).order;
 
   if (current.status === 'received') {
-    throw new Error('لا يمكن إلغاء أمر شراء تم استلامه')
+    throw new Error('لا يمكن إلغاء أمر شراء تم استلامه');
   }
 
   if (current.status === 'cancelled') {
-    throw new Error('أمر الشراء ملغى بالفعل')
+    throw new Error('أمر الشراء ملغى بالفعل');
   }
 
-  const reason = String(input.reason || '').trim() || 'إلغاء أمر الشراء'
+  const reason = String(input.reason || '').trim() || 'إلغاء أمر الشراء';
 
   db.prepare(
     `
@@ -982,7 +982,7 @@ export function cancelPurchaseOrder(input: {
     reason,
 
     orderId,
-  )
+  );
 
   return {
     success: true,
@@ -990,45 +990,45 @@ export function cancelPurchaseOrder(input: {
     purchase_order_id: orderId,
 
     reason,
-  }
+  };
 }
 
 export function receivePurchaseOrder(input: {
-  purchase_order_id: number
+  purchase_order_id: number;
 
-  actor_id: number
+  actor_id: number;
 
-  paid_amount?: number
+  paid_amount?: number;
 
-  payment_method?: string
+  payment_method?: string;
 
-  discount_type?: 'amount' | 'percent'
+  discount_type?: 'amount' | 'percent';
 
-  discount_input?: number
+  discount_input?: number;
 
-  discount_value?: number
+  discount_value?: number;
 
-  notes?: string | null
+  notes?: string | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const orderId = Number(input.purchase_order_id)
+  const orderId = Number(input.purchase_order_id);
 
-  const snapshot = getPurchaseOrder(orderId)
+  const snapshot = getPurchaseOrder(orderId);
 
   if (snapshot.order.status === 'received') {
-    throw new Error('أمر الشراء تم استلامه بالفعل')
+    throw new Error('أمر الشراء تم استلامه بالفعل');
   }
 
   if (snapshot.order.status === 'cancelled') {
-    throw new Error('لا يمكن استلام أمر شراء ملغى')
+    throw new Error('لا يمكن استلام أمر شراء ملغى');
   }
 
   const items = snapshot.items.map((item: any) => {
-    const unitCost = Number(item.unit_cost || 0)
+    const unitCost = Number(item.unit_cost || 0);
 
     if (!Number.isFinite(unitCost) || unitCost <= 0) {
-      throw new Error(`حدد تكلفة شراء صحيحة للصنف ${item.product_name}`)
+      throw new Error(`حدد تكلفة شراء صحيحة للصنف ${item.product_name}`);
     }
 
     return {
@@ -1037,8 +1037,8 @@ export function receivePurchaseOrder(input: {
       quantity: Number(item.quantity),
 
       unit_cost: unitCost,
-    }
-  })
+    };
+  });
 
   const tx = db.transaction(() => {
     const purchase = createPurchaseInvoice({
@@ -1059,7 +1059,7 @@ export function receivePurchaseOrder(input: {
       notes: input.notes?.trim() || `استلام أمر شراء #${orderId}`,
 
       items,
-    })
+    });
 
     db.prepare(
       `
@@ -1087,14 +1087,14 @@ export function receivePurchaseOrder(input: {
       input.actor_id,
 
       orderId,
-    )
+    );
 
     return {
       ...purchase,
 
       purchase_order_id: orderId,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }

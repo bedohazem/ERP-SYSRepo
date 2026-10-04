@@ -1,5 +1,5 @@
-import { getPaymentMethodLabel } from './payment-method'
-import { formatMoney } from '../../shared/money'
+import { getPaymentMethodLabel } from './payment-method';
+import { formatMoney } from '../../shared/money';
 
 export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   auth_login_succeeded: 'تسجيل دخول',
@@ -141,14 +141,14 @@ export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   cash_drawer_opened: 'فتح درج الكاشير',
 
   cash_drawer_open_failed: 'فشل فتح درج الكاشير',
-}
+};
 
 export const ACTIVITY_ACTION_OPTIONS = Object.entries(
   ACTIVITY_ACTION_LABELS,
 ).map(([value, label]) => ({
   value,
   label,
-}))
+}));
 
 export const ACTIVITY_ENTITY_LABELS: Record<string, string> = {
   auth: 'الدخول والأمان',
@@ -194,33 +194,33 @@ export const ACTIVITY_ENTITY_LABELS: Record<string, string> = {
   store_liability_payments: 'دفعات الالتزامات',
 
   settings: 'الإعدادات',
-}
+};
 
 export const ACTIVITY_ENTITY_OPTIONS = Object.entries(ACTIVITY_ENTITY_LABELS)
   .filter(([value]) => value !== 'sale')
   .map(([value, label]) => ({
     value,
     label,
-  }))
+  }));
 
 export function getActivityActionLabel(action?: string | null) {
-  const key = String(action || '').trim()
+  const key = String(action || '').trim();
 
   if (!key) {
-    return '—'
+    return '—';
   }
 
-  return ACTIVITY_ACTION_LABELS[key] || 'عملية أخرى بالنظام'
+  return ACTIVITY_ACTION_LABELS[key] || 'عملية أخرى بالنظام';
 }
 
 export function getActivityEntityLabel(entity?: string | null) {
-  const key = String(entity || '').trim()
+  const key = String(entity || '').trim();
 
   if (!key) {
-    return '—'
+    return '—';
   }
 
-  return ACTIVITY_ENTITY_LABELS[key] || 'قسم آخر'
+  return ACTIVITY_ENTITY_LABELS[key] || 'قسم آخر';
 }
 
 const DETAIL_LABELS: Record<string, string> = {
@@ -423,7 +423,7 @@ const DETAIL_LABELS: Record<string, string> = {
   closed_by: 'تم الإغلاق بواسطة',
   closed_at: 'تاريخ الإغلاق',
   close_reason: 'سبب الإغلاق',
-}
+};
 
 const MONEY_KEYS = new Set([
   'amount',
@@ -469,7 +469,7 @@ const MONEY_KEYS = new Set([
   'closed_by',
   'closed_at',
   'close_reason',
-])
+]);
 
 const STATUS_LABELS: Record<string, string> = {
   open: 'مفتوح',
@@ -484,7 +484,7 @@ const STATUS_LABELS: Record<string, string> = {
   closed: 'مغلق',
   pending: 'قيد المراجعة',
   resolved: 'تمت المعالجة',
-}
+};
 
 const TYPE_LABELS: Record<string, string> = {
   sale: 'بيع',
@@ -508,13 +508,13 @@ const TYPE_LABELS: Record<string, string> = {
   amount: 'مبلغ ثابت',
 
   buy_x_get_y: 'اشتري وخد',
-}
+};
 
 const SCOPE_LABELS: Record<string, string> = {
   all: 'الكل',
   category: 'تصنيف',
   products: 'منتجات محددة',
-}
+};
 
 const REASON_LABELS: Record<string, string> = {
   manual: 'يدوي',
@@ -523,7 +523,7 @@ const REASON_LABELS: Record<string, string> = {
   startup: 'عند تشغيل البرنامج',
   hourly: 'نسخ دوري',
   shutdown: 'عند إغلاق البرنامج',
-}
+};
 
 const SOURCE_LABELS: Record<string, string> = {
   exact: 'محفوظ من وقت العملية',
@@ -531,27 +531,27 @@ const SOURCE_LABELS: Record<string, string> = {
   startup: 'تشغيل البرنامج',
   hourly: 'نسخ دوري',
   shutdown: 'إغلاق البرنامج',
-}
+};
 
 export function formatActivityDetails(value?: string | null) {
   if (!value) {
-    return '—'
+    return '—';
   }
 
   try {
-    const parsed = JSON.parse(value)
+    const parsed = JSON.parse(value);
 
     if (Array.isArray(parsed)) {
-      return `${parsed.length} عنصر`
+      return `${parsed.length} عنصر`;
     }
 
     if (!parsed || typeof parsed !== 'object') {
-      return String(parsed ?? value)
+      return String(parsed ?? value);
     }
 
-    return formatDetailObject(parsed as Record<string, unknown>)
+    return formatDetailObject(parsed as Record<string, unknown>);
   } catch {
-    return String(value)
+    return String(value);
   }
 }
 
@@ -561,32 +561,32 @@ function formatDetailObject(parsed: Record<string, unknown>) {
       ([, value]) => value !== null && value !== undefined && value !== '',
     )
     .map(([key, value]) => {
-      const label = DETAIL_LABELS[key] || 'بيان إضافي'
+      const label = DETAIL_LABELS[key] || 'بيان إضافي';
 
-      return `${label}: ${formatDetailValue(key, value)}`
-    })
+      return `${label}: ${formatDetailValue(key, value)}`;
+    });
 
-  return parts.join(' • ') || '—'
+  return parts.join(' • ') || '—';
 }
 
 function formatDetailValue(key: string, value: unknown): string {
   if (Array.isArray(value)) {
-    return value.length > 0 ? `${value.length} عنصر` : 'لا يوجد'
+    return value.length > 0 ? `${value.length} عنصر` : 'لا يوجد';
   }
 
   if (value && typeof value === 'object') {
-    return formatDetailObject(value as Record<string, unknown>)
+    return formatDetailObject(value as Record<string, unknown>);
   }
 
   if (typeof value === 'boolean') {
-    return value ? 'نعم' : 'لا'
+    return value ? 'نعم' : 'لا';
   }
 
   if (MONEY_KEYS.has(key)) {
-    return moneyValue(value)
+    return moneyValue(value);
   }
 
-  const text = String(value ?? '')
+  const text = String(value ?? '');
 
   if (
     key === 'payment_method' ||
@@ -594,90 +594,90 @@ function formatDetailValue(key: string, value: unknown): string {
     key === 'to_account' ||
     key === 'target_account'
   ) {
-    return getPaymentMethodLabel(text)
+    return getPaymentMethodLabel(text);
   }
 
   if (key === 'action') {
-    return getActivityActionLabel(text)
+    return getActivityActionLabel(text);
   }
 
   if (key === 'entity') {
-    return getActivityEntityLabel(text)
+    return getActivityEntityLabel(text);
   }
 
   if (key === 'role') {
     if (text === 'admin') {
-      return 'مدير'
+      return 'مدير';
     }
 
     if (text === 'cashier') {
-      return 'كاشير'
+      return 'كاشير';
     }
   }
 
   if (key === 'direction') {
     if (text === 'in') {
-      return 'داخل'
+      return 'داخل';
     }
 
     if (text === 'out') {
-      return 'خارج'
+      return 'خارج';
     }
   }
 
   if (key === 'status' || key === 'payment_status') {
-    return STATUS_LABELS[text] || text
+    return STATUS_LABELS[text] || text;
   }
 
   if (key === 'type') {
-    return TYPE_LABELS[text] || 'نوع آخر'
+    return TYPE_LABELS[text] || 'نوع آخر';
   }
 
   if (key === 'scope_type') {
-    return SCOPE_LABELS[text] || 'نطاق آخر'
+    return SCOPE_LABELS[text] || 'نطاق آخر';
   }
 
   if (key === 'reason') {
-    return REASON_LABELS[text] || text
+    return REASON_LABELS[text] || text;
   }
 
   if (key === 'source') {
-    return SOURCE_LABELS[text] || 'مصدر آخر'
+    return SOURCE_LABELS[text] || 'مصدر آخر';
   }
 
   if (key === 'discount_type') {
     if (text === 'percent') {
-      return 'نسبة مئوية'
+      return 'نسبة مئوية';
     }
 
     if (text === 'amount') {
-      return 'مبلغ ثابت'
+      return 'مبلغ ثابت';
     }
   }
 
   if (key === 'theme') {
     if (text === 'dark') {
-      return 'داكن'
+      return 'داكن';
     }
 
     if (text === 'light') {
-      return 'فاتح'
+      return 'فاتح';
     }
   }
 
   if (key === 'is_active' || key === 'enabled' || key.endsWith('_enabled')) {
     if (text === '1') {
-      return 'نعم'
+      return 'نعم';
     }
 
     if (text === '0') {
-      return 'لا'
+      return 'لا';
     }
   }
 
-  return text
+  return text;
 }
 
 function moneyValue(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }

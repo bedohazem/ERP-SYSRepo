@@ -10,9 +10,9 @@ import {
   openReceiptPrintWindow,
   type ReceiptPrintSettings,
   type StoreReceiptInfo,
-} from './receiptPrint'
+} from './receiptPrint';
 
-import { getPaymentMethodShortLabel } from './payment-method'
+import { getPaymentMethodShortLabel } from './payment-method';
 
 export function buildSaleExchangeReceiptHtml(
   exchange: any,
@@ -20,25 +20,25 @@ export function buildSaleExchangeReceiptHtml(
   qrDataUrl = '',
   printSettings: ReceiptPrintSettings = DEFAULT_RECEIPT_PRINT_SETTINGS,
 ) {
-  const code = exchange.code || `EXC-${String(exchange.id).padStart(5, '0')}`
+  const code = exchange.code || `EXC-${String(exchange.id).padStart(5, '0')}`;
 
-  const storeName = String(storeInfo.app_name || 'ERP Store').trim()
+  const storeName = String(storeInfo.app_name || 'ERP Store').trim();
 
-  const storePhone = String(storeInfo.store_phone || '').trim()
+  const storePhone = String(storeInfo.store_phone || '').trim();
 
-  const storeAddress = String(storeInfo.store_address || '').trim()
+  const storeAddress = String(storeInfo.store_address || '').trim();
 
-  const logo = String(storeInfo.app_logo_url || '').trim()
+  const logo = String(storeInfo.app_logo_url || '').trim();
 
   const rows = (Array.isArray(exchange.items) ? exchange.items : [])
     .map((item: any) => {
       const oldDetails = [item.old_size, item.old_color]
         .filter(Boolean)
-        .join(' / ')
+        .join(' / ');
 
       const newDetails = [item.new_size, item.new_color]
         .filter(Boolean)
-        .join(' / ')
+        .join(' / ');
 
       return `
             <tr>
@@ -72,13 +72,13 @@ export function buildSaleExchangeReceiptHtml(
                 </div>
               </td>
             </tr>
-          `
+          `;
     })
-    .join('')
+    .join('');
 
-  const difference = Number(exchange.difference_amount || 0)
+  const difference = Number(exchange.difference_amount || 0);
 
-  const statusText = exchange.cancelled_at ? 'ملغي' : 'فعال'
+  const statusText = exchange.cancelled_at ? 'ملغي' : 'فعال';
 
   return `
     <!doctype html>
@@ -548,21 +548,21 @@ export function buildSaleExchangeReceiptHtml(
       </body>
 
     </html>
-  `
+  `;
 }
 
 export async function printSaleExchangeReceiptHtml(options: {
-  exchange: any
+  exchange: any;
 
-  onBlocked?: () => void
+  onBlocked?: () => void;
 
-  onError?: (message: string) => void
+  onError?: (message: string) => void;
 }) {
-  const storeInfo = await loadReceiptStoreInfo()
+  const storeInfo = await loadReceiptStoreInfo();
 
-  const printSettings = await loadReceiptPrintSettings()
+  const printSettings = await loadReceiptPrintSettings();
 
-  const qrDataUrl = await buildReceiptQrDataUrl(storeInfo)
+  const qrDataUrl = await buildReceiptQrDataUrl(storeInfo);
 
   const html = buildSaleExchangeReceiptHtml(
     options.exchange,
@@ -572,35 +572,35 @@ export async function printSaleExchangeReceiptHtml(options: {
     qrDataUrl,
 
     printSettings,
-  )
+  );
 
   if (printSettings.receipt_silent_print) {
     try {
       const result = await window.api.printHtmlSilent({
         html,
-      })
+      });
 
       if (!result?.ok) {
-        options.onError?.(result?.message || 'فشل طباعة إيصال الاستبدال')
+        options.onError?.(result?.message || 'فشل طباعة إيصال الاستبدال');
 
-        return false
+        return false;
       }
 
-      return true
+      return true;
     } catch (error) {
       options.onError?.(
         error instanceof Error ? error.message : 'فشل طباعة إيصال الاستبدال',
-      )
+      );
 
-      return false
+      return false;
     }
   }
 
-  const opened = await openReceiptPrintWindow(html)
+  const opened = await openReceiptPrintWindow(html);
 
   if (!opened) {
-    options.onBlocked?.()
+    options.onBlocked?.();
   }
 
-  return opened
+  return opened;
 }

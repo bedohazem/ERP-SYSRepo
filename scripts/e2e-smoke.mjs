@@ -1,37 +1,37 @@
-import { spawn } from 'node:child_process'
+import { spawn } from 'node:child_process';
 
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises';
 
-import os from 'node:os'
+import os from 'node:os';
 
-import path from 'node:path'
+import path from 'node:path';
 
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath } from 'node:url';
 
-import electronPath from 'electron'
+import electronPath from 'electron';
 
-const currentFile = fileURLToPath(import.meta.url)
+const currentFile = fileURLToPath(import.meta.url);
 
-const scriptsDir = path.dirname(currentFile)
+const scriptsDir = path.dirname(currentFile);
 
-const projectRoot = path.resolve(scriptsDir, '..')
+const projectRoot = path.resolve(scriptsDir, '..');
 
-const userDataDir = await mkdtemp(path.join(os.tmpdir(), 'erp-e2e-'))
+const userDataDir = await mkdtemp(path.join(os.tmpdir(), 'erp-e2e-'));
 
-let child = null
+let child = null;
 
-let output = ''
+let output = '';
 
 function appendOutput(chunk) {
-  const text = String(chunk || '')
+  const text = String(chunk || '');
 
-  output += text
+  output += text;
 
-  process.stdout.write(text)
+  process.stdout.write(text);
 }
 
 try {
-  console.log('Starting ERP Electron E2E smoke...')
+  console.log('Starting ERP Electron E2E smoke...');
 
   child = spawn(electronPath, ['.'], {
     cwd: projectRoot,
@@ -51,40 +51,40 @@ try {
     },
 
     stdio: ['ignore', 'pipe', 'pipe'],
-  })
+  });
 
-  child.stdout?.setEncoding('utf8')
+  child.stdout?.setEncoding('utf8');
 
-  child.stderr?.setEncoding('utf8')
+  child.stderr?.setEncoding('utf8');
 
-  child.stdout?.on('data', appendOutput)
+  child.stdout?.on('data', appendOutput);
 
-  child.stderr?.on('data', appendOutput)
+  child.stderr?.on('data', appendOutput);
 
   const exitResult = await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       if (child && child.exitCode === null) {
-        child.kill()
+        child.kill();
       }
 
-      reject(new Error(['ERP E2E smoke timed out.', '', output].join('\n')))
-    }, 30_000)
+      reject(new Error(['ERP E2E smoke timed out.', '', output].join('\n')));
+    }, 30_000);
 
     child.on('error', (error) => {
-      clearTimeout(timeout)
+      clearTimeout(timeout);
 
-      reject(error)
-    })
+      reject(error);
+    });
 
     child.on('exit', (code, signal) => {
-      clearTimeout(timeout)
+      clearTimeout(timeout);
 
       resolve({
         code,
         signal,
-      })
-    })
-  })
+      });
+    });
+  });
 
   if (exitResult.code !== 0) {
     throw new Error(
@@ -94,23 +94,23 @@ try {
         '',
         output,
       ].join('\n'),
-    )
+    );
   }
 
   if (!output.includes('ERP_E2E_SMOKE_READY')) {
     throw new Error(
       ['Electron exited without the E2E ready marker.', '', output].join('\n'),
-    )
+    );
   }
 
-  console.log('ERP Electron E2E smoke passed.')
+  console.log('ERP Electron E2E smoke passed.');
 } finally {
   if (child && child.exitCode === null) {
-    child.kill()
+    child.kill();
   }
 
   await rm(userDataDir, {
     recursive: true,
     force: true,
-  })
+  });
 }

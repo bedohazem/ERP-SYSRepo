@@ -1,53 +1,53 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db'
+import { beforeEach, describe, expect, it } from 'vitest';
+import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 import {
   createCategory,
   createProduct,
   getVariantByBarcode,
-} from '../../src/main/database/repositories/product.repo'
+} from '../../src/main/database/repositories/product.repo';
 import {
   createPromotion,
   togglePromotion,
   updatePromotion,
-} from '../../src/main/database/repositories/promotions.repo'
+} from '../../src/main/database/repositories/promotions.repo';
 import {
   cancelSaleReturn,
   createSale,
   createSaleReturn,
-} from '../../src/main/database/repositories/sales.repo'
+} from '../../src/main/database/repositories/sales.repo';
 import {
   createSaleExchange,
   getSaleExchangeState,
   cancelSaleExchange,
   listSaleExchanges,
-} from '../../src/main/database/repositories/sales-exchange.repo'
+} from '../../src/main/database/repositories/sales-exchange.repo';
 import {
   closeCashShift,
   getOpenCashShift,
   openCashShift,
-} from '../../src/main/database/repositories/cash-shifts.repo'
-import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo'
-import { getInventoryCostState } from '../../src/main/database/inventory-cost'
+} from '../../src/main/database/repositories/cash-shifts.repo';
+import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo';
+import { getInventoryCostState } from '../../src/main/database/inventory-cost';
 
 type TestVariant = {
-  variant_id: number
-  product_id: number
-  product_name: string
-  barcode: string
-  size: string
-  color: string
-  sell_price: number
-  stock: number
-}
+  variant_id: number;
+  product_id: number;
+  product_name: string;
+  barcode: string;
+  size: string;
+  color: string;
+  sell_price: number;
+  stock: number;
+};
 
 function seedExchangeCatalog() {
   const promoCategory = createCategory({
     name: 'Exchange Promo Category',
-  })
+  });
 
   const otherCategory = createCategory({
     name: 'Exchange Other Category',
-  })
+  });
 
   createProduct({
     name: 'Exchange Promo Product',
@@ -101,7 +101,7 @@ function seedExchangeCatalog() {
         opening_qty: 20,
       },
     ],
-  })
+  });
 
   createProduct({
     name: 'Outside Promotion Product',
@@ -119,7 +119,7 @@ function seedExchangeCatalog() {
         opening_qty: 20,
       },
     ],
-  })
+  });
 
   const variants = {
     EX150: getVariantByBarcode('EX150') as TestVariant,
@@ -128,19 +128,19 @@ function seedExchangeCatalog() {
     EX300: getVariantByBarcode('EX300') as TestVariant,
     EX350: getVariantByBarcode('EX350') as TestVariant,
     OUT999: getVariantByBarcode('OUT999') as TestVariant,
-  }
+  };
 
   return {
     promoCategoryId: Number(promoCategory.id),
     otherCategoryId: Number(otherCategory.id),
     variants,
-  }
+  };
 }
 
 function createPromotionSale(
   barcodes: Array<'EX150' | 'EX200' | 'EX250' | 'EX300' | 'EX350'>,
 ) {
-  const catalog = seedExchangeCatalog()
+  const catalog = seedExchangeCatalog();
 
   const promotion = createPromotion({
     name: 'Original Buy 2 Get 1',
@@ -152,12 +152,12 @@ function createPromotionSale(
     category_id: catalog.promoCategoryId,
     product_ids: [],
     actor_id: 1,
-  })
+  });
 
-  togglePromotion(promotion.promotionId, 1)
+  togglePromotion(promotion.promotionId, 1);
 
   const saleItems = barcodes.map((barcode) => {
-    const variant = catalog.variants[barcode]
+    const variant = catalog.variants[barcode];
 
     return {
       variant_id: variant.variant_id,
@@ -167,14 +167,14 @@ function createPromotionSale(
       color: variant.color,
       quantity: 1,
       unit_price: variant.sell_price,
-    }
-  })
+    };
+  });
 
-  const subTotal = saleItems.reduce((sum, item) => sum + item.unit_price, 0)
+  const subTotal = saleItems.reduce((sum, item) => sum + item.unit_price, 0);
 
-  const cheapest = Math.min(...saleItems.map((item) => item.unit_price))
+  const cheapest = Math.min(...saleItems.map((item) => item.unit_price));
 
-  const grandTotal = subTotal - cheapest
+  const grandTotal = subTotal - cheapest;
 
   const sale = createSale({
     user_id: 1,
@@ -187,13 +187,13 @@ function createPromotionSale(
     payment_method: 'cash',
     paid: grandTotal,
     items: saleItems,
-  })
+  });
 
   return {
     ...catalog,
     promotionId: promotion.promotionId,
     sale,
-  }
+  };
 }
 
 function getPromotionUnits(saleId: number) {
@@ -206,17 +206,17 @@ function getPromotionUnits(saleId: number) {
       ORDER BY id ASC
       `,
     )
-    .all(saleId) as any[]
+    .all(saleId) as any[];
 }
 
 function getUnitByPrice(saleId: number, price: number) {
   return getPromotionUnits(saleId).find(
     (unit) => Number(unit.current_unit_price) === price,
-  )
+  );
 }
 
 function getStock(barcode: string) {
-  return Number((getVariantByBarcode(barcode) as TestVariant)?.stock || 0)
+  return Number((getVariantByBarcode(barcode) as TestVariant)?.stock || 0);
 }
 
 function getFullReturnInput(saleId: number) {
@@ -238,13 +238,13 @@ function getFullReturnInput(saleId: number) {
       sale_item_id: Number(item.id),
       variant_id: Number(item.variant_id),
       quantity: Number(item.quantity),
-    }))
+    }));
 }
 
 function createRegularExchangeSale() {
   const category = createCategory({
     name: 'Regular Exchange Category',
-  })
+  });
 
   createProduct({
     name: 'Regular Exchange Product',
@@ -281,11 +281,11 @@ function createRegularExchangeSale() {
         opening_qty: 20,
       },
     ],
-  })
+  });
 
-  const oldVariant = getVariantByBarcode('REG100') as TestVariant
+  const oldVariant = getVariantByBarcode('REG100') as TestVariant;
 
-  const newVariant = getVariantByBarcode('REG150') as TestVariant
+  const newVariant = getVariantByBarcode('REG150') as TestVariant;
 
   const sale = createSale({
     user_id: 1,
@@ -323,7 +323,7 @@ function createRegularExchangeSale() {
         unit_price: 100,
       },
     ],
-  })
+  });
 
   const saleItem = getDb()
     .prepare(
@@ -334,35 +334,35 @@ function createRegularExchangeSale() {
         LIMIT 1
         `,
     )
-    .get(sale.saleId) as any
+    .get(sale.saleId) as any;
 
   return {
     sale,
     saleItem,
     oldVariant,
     newVariant,
-  }
+  };
 }
 
 describe('sale promotion exchanges', () => {
   beforeEach(() => {
-    closeDb()
-    getDb()
-    resetDatabaseData()
+    closeDb();
+    getDb();
+    resetDatabaseData();
 
     openCashShift({
       opening_counted_amount: 0,
       opened_by: 1,
-    })
-  })
+    });
+  });
 
   it('exchanges one gift unit and makes the new cheapest unit the gift', () => {
-    const result = createPromotionSale(['EX250', 'EX200', 'EX150'])
+    const result = createPromotionSale(['EX250', 'EX200', 'EX150']);
 
-    const giftUnit = getUnitByPrice(result.sale.saleId, 150)
+    const giftUnit = getUnitByPrice(result.sale.saleId, 150);
 
-    expect(giftUnit).toBeTruthy()
-    expect(Number(giftUnit.current_is_gift)).toBe(1)
+    expect(giftUnit).toBeTruthy();
+    expect(Number(giftUnit.current_is_gift)).toBe(1);
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -375,28 +375,30 @@ describe('sale promotion exchanges', () => {
           new_variant_id: result.variants.EX300.variant_id,
         },
       ],
-    })
+    });
 
-    expect(exchange.old_group_total).toBe(450)
-    expect(exchange.new_group_total).toBe(550)
-    expect(exchange.difference_amount).toBe(100)
-    expect(exchange.amount_to_collect).toBe(100)
-    expect(exchange.amount_to_refund).toBe(0)
+    expect(exchange.old_group_total).toBe(450);
+    expect(exchange.new_group_total).toBe(550);
+    expect(exchange.difference_amount).toBe(100);
+    expect(exchange.amount_to_collect).toBe(100);
+    expect(exchange.amount_to_refund).toBe(0);
 
-    const units = getPromotionUnits(result.sale.saleId)
+    const units = getPromotionUnits(result.sale.saleId);
 
     expect(
       units
         .map((unit) => Number(unit.current_unit_price))
         .sort((a, b) => a - b),
-    ).toEqual([200, 250, 300])
+    ).toEqual([200, 250, 300]);
 
-    const currentGift = units.find((unit) => Number(unit.current_is_gift) === 1)
+    const currentGift = units.find(
+      (unit) => Number(unit.current_is_gift) === 1,
+    );
 
-    expect(Number(currentGift.current_unit_price)).toBe(200)
+    expect(Number(currentGift.current_unit_price)).toBe(200);
 
-    expect(getStock('EX150')).toBe(20)
-    expect(getStock('EX300')).toBe(19)
+    expect(getStock('EX150')).toBe(20);
+    expect(getStock('EX300')).toBe(19);
 
     const cashMovement = getDb()
       .prepare(
@@ -408,44 +410,44 @@ describe('sale promotion exchanges', () => {
         LIMIT 1
         `,
       )
-      .get(exchange.exchangeId) as any
+      .get(exchange.exchangeId) as any;
 
-    expect(cashMovement.direction).toBe('in')
-    expect(Number(cashMovement.amount)).toBe(100)
+    expect(cashMovement.direction).toBe('in');
+    expect(Number(cashMovement.amount)).toBe(100);
     const storeCashExchanges = listSaleExchanges({
       payment_method: 'store_cash',
-    })
+    });
 
-    expect(storeCashExchanges.total).toBe(1)
-    expect(Number(storeCashExchanges.rows[0].id)).toBe(exchange.exchangeId)
+    expect(storeCashExchanges.total).toBe(1);
+    expect(Number(storeCashExchanges.rows[0].id)).toBe(exchange.exchangeId);
 
     const bankExchanges = listSaleExchanges({
       payment_method: 'owner_bank',
-    })
+    });
 
-    expect(bankExchanges.total).toBe(0)
-  })
+    expect(bankExchanges.total).toBe(0);
+  });
 
   it('exchanges a regular invoice item without a promotion', () => {
-    const result = createRegularExchangeSale()
+    const result = createRegularExchangeSale();
 
-    const state = getSaleExchangeState(result.sale.saleId)
+    const state = getSaleExchangeState(result.sale.saleId);
 
-    expect(state.snapshot).toBeNull()
+    expect(state.snapshot).toBeNull();
 
     const regularGroup = state.groups.find(
       (group: any) => group.group_kind === 'regular',
-    )
+    );
 
-    expect(regularGroup).toBeTruthy()
+    expect(regularGroup).toBeTruthy();
 
     if (!regularGroup) {
-      throw new Error('Regular exchange group was not created')
+      throw new Error('Regular exchange group was not created');
     }
 
-    expect(regularGroup.units).toHaveLength(1)
+    expect(regularGroup.units).toHaveLength(1);
 
-    const unit = regularGroup.units[0]
+    const unit = regularGroup.units[0];
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -463,24 +465,24 @@ describe('sale promotion exchanges', () => {
           new_variant_id: result.newVariant.variant_id,
         },
       ],
-    })
+    });
 
-    expect(exchange.difference_amount).toBe(50)
+    expect(exchange.difference_amount).toBe(50);
 
-    expect(exchange.amount_to_collect).toBe(50)
+    expect(exchange.amount_to_collect).toBe(50);
 
-    expect(getStock('REG100')).toBe(20)
+    expect(getStock('REG100')).toBe(20);
 
-    expect(getStock('REG150')).toBe(19)
+    expect(getStock('REG150')).toBe(19);
 
-    const current = getSaleCurrentState(result.sale.saleId)
+    const current = getSaleCurrentState(result.sale.saleId);
 
     expect(
       current.current_receipt.items.some(
         (item: any) =>
           Number(item.variant_id) === Number(result.newVariant.variant_id),
       ),
-    ).toBe(true)
+    ).toBe(true);
 
     const cashMovement = getDb()
       .prepare(
@@ -496,27 +498,27 @@ describe('sale promotion exchanges', () => {
           LIMIT 1
           `,
       )
-      .get(exchange.exchangeId) as any
+      .get(exchange.exchangeId) as any;
 
-    expect(cashMovement.direction).toBe('in')
+    expect(cashMovement.direction).toBe('in');
 
-    expect(Number(cashMovement.amount)).toBe(50)
-  })
+    expect(Number(cashMovement.amount)).toBe(50);
+  });
 
   it('preserves inventory values through a regular exchange and its cancellation', () => {
-    const result = createRegularExchangeSale()
+    const result = createRegularExchangeSale();
 
-    const state = getSaleExchangeState(result.sale.saleId)
+    const state = getSaleExchangeState(result.sale.saleId);
 
     const regularGroup = state.groups.find(
       (group: any) => group.group_kind === 'regular',
-    )
+    );
 
     if (!regularGroup) {
-      throw new Error('Regular exchange group was not created')
+      throw new Error('Regular exchange group was not created');
     }
 
-    const unit = regularGroup.units[0]
+    const unit = regularGroup.units[0];
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -534,9 +536,9 @@ describe('sale promotion exchanges', () => {
           new_variant_id: result.newVariant.variant_id,
         },
       ],
-    })
+    });
 
-    const db = getDb()
+    const db = getDb();
 
     const exchangeItem = db
       .prepare(
@@ -550,15 +552,15 @@ describe('sale promotion exchanges', () => {
       LIMIT 1
       `,
       )
-      .get(exchange.exchangeId) as any
+      .get(exchange.exchangeId) as any;
 
-    expect(Number(exchangeItem.old_unit_cost)).toBe(50)
+    expect(Number(exchangeItem.old_unit_cost)).toBe(50);
 
-    expect(Number(exchangeItem.new_unit_cost)).toBe(70)
+    expect(Number(exchangeItem.new_unit_cost)).toBe(70);
 
-    let oldState = getInventoryCostState(db, result.oldVariant.variant_id)
+    let oldState = getInventoryCostState(db, result.oldVariant.variant_id);
 
-    let newState = getInventoryCostState(db, result.newVariant.variant_id)
+    let newState = getInventoryCostState(db, result.newVariant.variant_id);
 
     /*
      * REG100:
@@ -566,18 +568,18 @@ describe('sale promotion exchanges', () => {
      * البيع خرج 1
      * الاستبدال رجعه
      */
-    expect(oldState.stock).toBe(20)
+    expect(oldState.stock).toBe(20);
 
-    expect(oldState.inventory_value).toBe(1000)
+    expect(oldState.inventory_value).toBe(1000);
 
     /*
      * REG150:
      * بدأ 20×70
      * الاستبدال خرج 1
      */
-    expect(newState.stock).toBe(19)
+    expect(newState.stock).toBe(19);
 
-    expect(newState.inventory_value).toBe(1330)
+    expect(newState.inventory_value).toBe(1330);
 
     cancelSaleExchange({
       exchange_id: exchange.exchangeId,
@@ -585,43 +587,43 @@ describe('sale promotion exchanges', () => {
       actor_id: 1,
 
       reason: 'Undo cost test',
-    })
+    });
 
-    oldState = getInventoryCostState(db, result.oldVariant.variant_id)
+    oldState = getInventoryCostState(db, result.oldVariant.variant_id);
 
-    newState = getInventoryCostState(db, result.newVariant.variant_id)
+    newState = getInventoryCostState(db, result.newVariant.variant_id);
 
     /*
      * رجعنا بالضبط للحالة
      * التي كانت بعد البيع وقبل الاستبدال.
      */
-    expect(oldState.stock).toBe(19)
+    expect(oldState.stock).toBe(19);
 
-    expect(oldState.inventory_value).toBe(950)
+    expect(oldState.inventory_value).toBe(950);
 
-    expect(oldState.average_cost).toBe(50)
+    expect(oldState.average_cost).toBe(50);
 
-    expect(newState.stock).toBe(20)
+    expect(newState.stock).toBe(20);
 
-    expect(newState.inventory_value).toBe(1400)
+    expect(newState.inventory_value).toBe(1400);
 
-    expect(newState.average_cost).toBe(70)
-  })
+    expect(newState.average_cost).toBe(70);
+  });
 
   it('returns the current replacement item after a regular exchange', () => {
-    const result = createRegularExchangeSale()
+    const result = createRegularExchangeSale();
 
-    const state = getSaleExchangeState(result.sale.saleId)
+    const state = getSaleExchangeState(result.sale.saleId);
 
     const regularGroup = state.groups.find(
       (group: any) => group.group_kind === 'regular',
-    )
+    );
 
     if (!regularGroup) {
-      throw new Error('Regular exchange group was not created')
+      throw new Error('Regular exchange group was not created');
     }
 
-    const unit = regularGroup.units[0]
+    const unit = regularGroup.units[0];
 
     createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -637,7 +639,7 @@ describe('sale promotion exchanges', () => {
           new_variant_id: result.newVariant.variant_id,
         },
       ],
-    })
+    });
 
     const saleReturn = createSaleReturn({
       original_sale_id: result.sale.saleId,
@@ -657,13 +659,13 @@ describe('sale promotion exchanges', () => {
           quantity: 1,
         },
       ],
-    })
+    });
 
-    expect(saleReturn.return_value).toBe(150)
+    expect(saleReturn.return_value).toBe(150);
 
-    expect(getStock('REG100')).toBe(20)
+    expect(getStock('REG100')).toBe(20);
 
-    expect(getStock('REG150')).toBe(20)
+    expect(getStock('REG150')).toBe(20);
 
     const returnItem = getDb()
       .prepare(
@@ -674,30 +676,30 @@ describe('sale promotion exchanges', () => {
           LIMIT 1
           `,
       )
-      .get(saleReturn.returnId) as any
+      .get(saleReturn.returnId) as any;
 
-    expect(Number(returnItem.variant_id)).toBe(result.newVariant.variant_id)
+    expect(Number(returnItem.variant_id)).toBe(result.newVariant.variant_id);
 
-    expect(Number(returnItem.promotion_unit_id)).toBeGreaterThan(0)
-  })
+    expect(Number(returnItem.promotion_unit_id)).toBeGreaterThan(0);
+  });
 
   it('requires an open shift and links exchange cash movement to the current shift', () => {
-    const db = getDb()
+    const db = getDb();
 
-    const result = createPromotionSale(['EX250', 'EX200', 'EX150'])
+    const result = createPromotionSale(['EX250', 'EX200', 'EX150']);
 
-    const originalShift = getOpenCashShift()
+    const originalShift = getOpenCashShift();
 
-    expect(originalShift).toBeTruthy()
+    expect(originalShift).toBeTruthy();
 
     closeCashShift({
       shift_id: originalShift!.id,
       closing_counted_amount: 450,
       left_for_next_shift: 450,
       closed_by: 1,
-    })
+    });
 
-    const giftUnit = getUnitByPrice(result.sale.saleId, 150)
+    const giftUnit = getUnitByPrice(result.sale.saleId, 150);
 
     expect(() =>
       createSaleExchange({
@@ -711,12 +713,12 @@ describe('sale promotion exchanges', () => {
           },
         ],
       }),
-    ).toThrow('لا يمكن تسجيل استبدال بدون شفت مفتوح')
+    ).toThrow('لا يمكن تسجيل استبدال بدون شفت مفتوح');
 
     const currentShift = openCashShift({
       opening_counted_amount: 450,
       opened_by: 1,
-    })
+    });
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -734,11 +736,11 @@ describe('sale promotion exchanges', () => {
           new_variant_id: result.variants.EX300.variant_id,
         },
       ],
-    })
+    });
 
-    expect(exchange.shift_id).toBe(currentShift.id)
+    expect(exchange.shift_id).toBe(currentShift.id);
 
-    expect(exchange.shift_id).not.toBe(originalShift!.id)
+    expect(exchange.shift_id).not.toBe(originalShift!.id);
 
     const exchangeRow = db
       .prepare(
@@ -749,10 +751,10 @@ describe('sale promotion exchanges', () => {
       `,
       )
       .get(exchange.exchangeId) as {
-      shift_id: number
-    }
+      shift_id: number;
+    };
 
-    expect(exchangeRow.shift_id).toBe(currentShift.id)
+    expect(exchangeRow.shift_id).toBe(currentShift.id);
 
     const cashMovement = db
       .prepare(
@@ -766,14 +768,14 @@ describe('sale promotion exchanges', () => {
       `,
       )
       .get(exchange.exchangeId) as {
-      shift_id: number
-    }
+      shift_id: number;
+    };
 
-    expect(cashMovement.shift_id).toBe(currentShift.id)
-  })
+    expect(cashMovement.shift_id).toBe(currentShift.id);
+  });
 
   it('uses the original promotion scope even after the live promotion changes', () => {
-    const result = createPromotionSale(['EX250', 'EX200', 'EX150'])
+    const result = createPromotionSale(['EX250', 'EX200', 'EX150']);
 
     updatePromotion({
       id: result.promotionId,
@@ -786,9 +788,9 @@ describe('sale promotion exchanges', () => {
       category_id: result.otherCategoryId,
       product_ids: [],
       actor_id: 1,
-    })
+    });
 
-    const giftUnit = getUnitByPrice(result.sale.saleId, 150)
+    const giftUnit = getUnitByPrice(result.sale.saleId, 150);
 
     expect(() =>
       createSaleExchange({
@@ -801,7 +803,7 @@ describe('sale promotion exchanges', () => {
           },
         ],
       }),
-    ).toThrow('الصنف البديل خارج نطاق العرض الأصلي')
+    ).toThrow('الصنف البديل خارج نطاق العرض الأصلي');
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -812,15 +814,15 @@ describe('sale promotion exchanges', () => {
           new_variant_id: result.variants.EX300.variant_id,
         },
       ],
-    })
+    });
 
-    expect(exchange.difference_amount).toBe(100)
-  })
+    expect(exchange.difference_amount).toBe(100);
+  });
 
   it('supports exchanging the same promotion unit more than once', () => {
-    const result = createPromotionSale(['EX250', 'EX200', 'EX150'])
+    const result = createPromotionSale(['EX250', 'EX200', 'EX150']);
 
-    const giftUnit = getUnitByPrice(result.sale.saleId, 150)
+    const giftUnit = getUnitByPrice(result.sale.saleId, 150);
 
     const firstExchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -831,9 +833,9 @@ describe('sale promotion exchanges', () => {
           new_variant_id: result.variants.EX300.variant_id,
         },
       ],
-    })
+    });
 
-    expect(firstExchange.difference_amount).toBe(100)
+    expect(firstExchange.difference_amount).toBe(100);
 
     const secondExchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -844,19 +846,19 @@ describe('sale promotion exchanges', () => {
           new_variant_id: result.variants.EX350.variant_id,
         },
       ],
-    })
+    });
 
-    expect(secondExchange.old_group_total).toBe(550)
-    expect(secondExchange.new_group_total).toBe(600)
-    expect(secondExchange.difference_amount).toBe(50)
+    expect(secondExchange.old_group_total).toBe(550);
+    expect(secondExchange.new_group_total).toBe(600);
+    expect(secondExchange.difference_amount).toBe(50);
 
     const currentUnit = getPromotionUnits(result.sale.saleId).find(
       (unit) => Number(unit.id) === Number(giftUnit.id),
-    )
+    );
 
     expect(Number(currentUnit.current_variant_id)).toBe(
       result.variants.EX350.variant_id,
-    )
+    );
 
     const exchangeCount = getDb()
       .prepare(
@@ -866,17 +868,17 @@ describe('sale promotion exchanges', () => {
         WHERE original_sale_id = ?
         `,
       )
-      .get(result.sale.saleId) as any
+      .get(result.sale.saleId) as any;
 
-    expect(Number(exchangeCount.count)).toBe(2)
-  })
+    expect(Number(exchangeCount.count)).toBe(2);
+  });
 
   it('allows one unit or the whole bundle but rejects two units', () => {
-    const result = createPromotionSale(['EX250', 'EX200', 'EX150'])
+    const result = createPromotionSale(['EX250', 'EX200', 'EX150']);
 
-    const units = getPromotionUnits(result.sale.saleId)
+    const units = getPromotionUnits(result.sale.saleId);
 
-    expect(units).toHaveLength(3)
+    expect(units).toHaveLength(3);
 
     expect(() =>
       createSaleExchange({
@@ -893,42 +895,42 @@ describe('sale promotion exchanges', () => {
           },
         ],
       }),
-    ).toThrow('الاستبدال داخل العرض مسموح لقطعة واحدة أو العرض كاملًا فقط')
+    ).toThrow('الاستبدال داخل العرض مسموح لقطعة واحدة أو العرض كاملًا فقط');
 
     const wholeBundleItems = units.map((unit) => {
-      const price = Number(unit.current_unit_price)
+      const price = Number(unit.current_unit_price);
 
-      let newVariantId = result.variants.EX300.variant_id
+      let newVariantId = result.variants.EX300.variant_id;
 
       if (price === 200) {
-        newVariantId = result.variants.EX350.variant_id
+        newVariantId = result.variants.EX350.variant_id;
       }
 
       if (price === 150) {
-        newVariantId = result.variants.EX250.variant_id
+        newVariantId = result.variants.EX250.variant_id;
       }
 
       return {
         promotion_unit_id: Number(unit.id),
         new_variant_id: newVariantId,
-      }
-    })
+      };
+    });
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
       user_id: 1,
       items: wholeBundleItems,
-    })
+    });
 
-    expect(exchange.old_group_total).toBe(450)
-    expect(exchange.new_group_total).toBe(650)
-    expect(exchange.difference_amount).toBe(200)
-  })
+    expect(exchange.old_group_total).toBe(450);
+    expect(exchange.new_group_total).toBe(650);
+    expect(exchange.difference_amount).toBe(200);
+  });
 
   it('refunds the difference when the recalculated bundle becomes cheaper', () => {
-    const result = createPromotionSale(['EX300', 'EX250', 'EX200'])
+    const result = createPromotionSale(['EX300', 'EX250', 'EX200']);
 
-    const unit300 = getUnitByPrice(result.sale.saleId, 300)
+    const unit300 = getUnitByPrice(result.sale.saleId, 300);
 
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -940,13 +942,13 @@ describe('sale promotion exchanges', () => {
           new_variant_id: result.variants.EX150.variant_id,
         },
       ],
-    })
+    });
 
-    expect(exchange.old_group_total).toBe(550)
-    expect(exchange.new_group_total).toBe(450)
-    expect(exchange.difference_amount).toBe(-100)
-    expect(exchange.amount_to_collect).toBe(0)
-    expect(exchange.amount_to_refund).toBe(100)
+    expect(exchange.old_group_total).toBe(550);
+    expect(exchange.new_group_total).toBe(450);
+    expect(exchange.difference_amount).toBe(-100);
+    expect(exchange.amount_to_collect).toBe(0);
+    expect(exchange.amount_to_refund).toBe(100);
 
     const cashMovement = getDb()
       .prepare(
@@ -958,16 +960,16 @@ describe('sale promotion exchanges', () => {
         LIMIT 1
         `,
       )
-      .get(exchange.exchangeId) as any
+      .get(exchange.exchangeId) as any;
 
-    expect(cashMovement.direction).toBe('out')
-    expect(Number(cashMovement.amount)).toBe(100)
-  })
+    expect(cashMovement.direction).toBe('out');
+    expect(Number(cashMovement.amount)).toBe(100);
+  });
 
   it('returns the current bundle after an exchange and restores its state when the return is cancelled', () => {
-    const result = createPromotionSale(['EX250', 'EX200', 'EX150'])
+    const result = createPromotionSale(['EX250', 'EX200', 'EX150']);
 
-    const giftUnit = getUnitByPrice(result.sale.saleId, 150)
+    const giftUnit = getUnitByPrice(result.sale.saleId, 150);
 
     createSaleExchange({
       original_sale_id: result.sale.saleId,
@@ -978,22 +980,22 @@ describe('sale promotion exchanges', () => {
           new_variant_id: result.variants.EX300.variant_id,
         },
       ],
-    })
+    });
 
     const saleReturn = createSaleReturn({
       original_sale_id: result.sale.saleId,
       user_id: 1,
       refund_payment_method: 'store_cash',
       items: getFullReturnInput(result.sale.saleId),
-    })
+    });
 
-    expect(saleReturn.return_value).toBe(550)
+    expect(saleReturn.return_value).toBe(550);
 
-    const returnedUnits = getPromotionUnits(result.sale.saleId)
+    const returnedUnits = getPromotionUnits(result.sale.saleId);
 
     expect(returnedUnits.every((unit) => Number(unit.is_returned) === 1)).toBe(
       true,
-    )
+    );
 
     const returnItems = getDb()
       .prepare(
@@ -1004,55 +1006,55 @@ describe('sale promotion exchanges', () => {
         ORDER BY id ASC
         `,
       )
-      .all(saleReturn.returnId) as any[]
+      .all(saleReturn.returnId) as any[];
 
-    expect(returnItems).toHaveLength(3)
+    expect(returnItems).toHaveLength(3);
 
     expect(
       returnItems.every((item) => Number(item.promotion_unit_id) > 0),
-    ).toBe(true)
+    ).toBe(true);
 
     expect(
       returnItems.map((item) => Number(item.unit_price)).sort((a, b) => a - b),
-    ).toEqual([200, 250, 300])
+    ).toEqual([200, 250, 300]);
 
-    expect(getStock('EX150')).toBe(20)
-    expect(getStock('EX200')).toBe(20)
-    expect(getStock('EX250')).toBe(20)
-    expect(getStock('EX300')).toBe(20)
+    expect(getStock('EX150')).toBe(20);
+    expect(getStock('EX200')).toBe(20);
+    expect(getStock('EX250')).toBe(20);
+    expect(getStock('EX300')).toBe(20);
 
     cancelSaleReturn({
       return_id: saleReturn.returnId,
       reason: 'اختبار إلغاء المرتجع',
       actor_id: 1,
-    })
+    });
 
-    const restoredUnits = getPromotionUnits(result.sale.saleId)
+    const restoredUnits = getPromotionUnits(result.sale.saleId);
 
     expect(restoredUnits.every((unit) => Number(unit.is_returned) === 0)).toBe(
       true,
-    )
+    );
 
-    expect(getStock('EX150')).toBe(20)
-    expect(getStock('EX200')).toBe(19)
-    expect(getStock('EX250')).toBe(19)
-    expect(getStock('EX300')).toBe(19)
-  })
+    expect(getStock('EX150')).toBe(20);
+    expect(getStock('EX200')).toBe(19);
+    expect(getStock('EX250')).toBe(19);
+    expect(getStock('EX300')).toBe(19);
+  });
 
   it('exposes the current exchange state for the future UI', () => {
-    const result = createPromotionSale(['EX250', 'EX200', 'EX150'])
+    const result = createPromotionSale(['EX250', 'EX200', 'EX150']);
 
-    const state = getSaleExchangeState(result.sale.saleId)
+    const state = getSaleExchangeState(result.sale.saleId);
 
-    expect(state.snapshot).toBeTruthy()
+    expect(state.snapshot).toBeTruthy();
 
     if (!state.snapshot) {
-      throw new Error('Promotion snapshot is missing')
+      throw new Error('Promotion snapshot is missing');
     }
 
-    expect(state.snapshot.promotion_type).toBe('buy_x_get_y')
+    expect(state.snapshot.promotion_type).toBe('buy_x_get_y');
 
-    expect(state.groups).toHaveLength(1)
-    expect(state.groups[0].units).toHaveLength(3)
-  })
-})
+    expect(state.groups).toHaveLength(1);
+    expect(state.groups[0].units).toHaveLength(3);
+  });
+});

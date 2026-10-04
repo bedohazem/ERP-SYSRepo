@@ -4,73 +4,73 @@ export type CashAccountKey =
   | 'owner_bank'
   | 'owner_vodafone'
   | 'fawry_machine'
-  | 'store_safe'
+  | 'store_safe';
 
 export const CASH_ACCOUNT_OPTIONS: Array<{
-  value: CashAccountKey
-  label: string
+  value: CashAccountKey;
+  label: string;
 }> = [
   { value: 'store_cash', label: 'كاش درج المحل' },
   { value: 'owner_cash', label: 'كاش مع المالك' },
   { value: 'owner_bank', label: 'حساب بنك / فيزا المالك' },
   { value: 'owner_vodafone', label: 'فودافون كاش المالك' },
   { value: 'fawry_machine', label: 'ماكينة فوري' },
-]
+];
 
 export const CUSTOMER_PAYMENT_METHOD_OPTIONS = [
   { value: 'cash', label: 'كاش' },
   { value: 'card', label: 'كارت / فيزا' },
   { value: 'wallet', label: 'محفظة / فودافون كاش' },
   { value: 'bank_transfer', label: 'تحويل بنكي / انستا باي' },
-]
+];
 
 export const ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS = [
   ...CUSTOMER_PAYMENT_METHOD_OPTIONS,
   { value: 'store_safe', label: 'الخزنة الآمنة' },
-]
+];
 
 export const ADMIN_CASH_ACCOUNT_OPTIONS = [
   ...CASH_ACCOUNT_OPTIONS,
   { value: 'store_safe' as const, label: 'الخزنة الآمنة' },
-]
+];
 
 export function getPaymentMethodLabel(value?: string | null) {
   switch (value) {
     case 'cash':
-      return 'كاش'
+      return 'كاش';
 
     case 'card':
-      return 'كارت / فيزا'
+      return 'كارت / فيزا';
 
     case 'wallet':
-      return 'محفظة'
+      return 'محفظة';
 
     case 'bank':
     case 'bank_transfer':
-      return 'تحويل بنكي / انستا باي'
+      return 'تحويل بنكي / انستا باي';
 
     case 'store_cash':
-      return 'كاش درج المحل'
+      return 'كاش درج المحل';
 
     case 'store_safe':
-      return 'الخزنة الآمنة'
+      return 'الخزنة الآمنة';
 
     case 'owner_cash':
-      return 'كاش مع المالك'
+      return 'كاش مع المالك';
 
     case 'owner_bank':
-      return 'حساب بنك / فيزا المالك'
+      return 'حساب بنك / فيزا المالك';
 
     case 'owner_vodafone':
-      return 'فودافون كاش المالك'
+      return 'فودافون كاش المالك';
 
     case 'fawry_machine':
-      return 'ماكينة فوري'
+      return 'ماكينة فوري';
     case 'split':
-      return 'دفع متعدد'
+      return 'دفع متعدد';
 
     default:
-      return value || '—'
+      return value || '—';
   }
 }
 
@@ -78,35 +78,35 @@ export function getPaymentMethodShortLabel(value?: string | null) {
   switch (value) {
     case 'cash':
     case 'store_cash':
-      return 'كاش'
+      return 'كاش';
 
     case 'card':
     case 'fawry_machine':
-      return 'فيزا'
+      return 'فيزا';
 
     case 'wallet':
     case 'owner_vodafone':
-      return 'فودافون كاش'
+      return 'فودافون كاش';
 
     case 'bank':
     case 'bank_transfer':
     case 'owner_bank':
-      return 'انستا'
+      return 'انستا';
 
     case 'owner_cash':
-      return 'كاش المالك'
+      return 'كاش المالك';
 
     case 'store_safe':
-      return 'الخزنة'
+      return 'الخزنة';
 
     case 'split':
-      return ''
+      return '';
 
     default:
-      return value || '—'
+      return value || '—';
   }
 }
 
 export function getCashAccountLabel(value?: string | null) {
-  return getPaymentMethodLabel(value)
+  return getPaymentMethodLabel(value);
 }

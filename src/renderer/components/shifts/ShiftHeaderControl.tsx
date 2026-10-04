@@ -1,112 +1,114 @@
-import { useEffect, useMemo, useState } from 'react'
-import { printShiftCloseReceipt } from '../../utils/shiftReceiptPrint'
-import { formatMoney } from '../../../shared/money'
+import { useEffect, useMemo, useState } from 'react';
+import { printShiftCloseReceipt } from '../../utils/shiftReceiptPrint';
+import { formatMoney } from '../../../shared/money';
 
 type ShiftUser = {
-  id: number
-  name: string
-  role: string
-}
+  id: number;
+  name: string;
+  role: string;
+};
 
 type CashShift = {
-  id: number
-  status: 'open' | 'closed'
+  id: number;
+  status: 'open' | 'closed';
 
-  opened_by: number
-  opened_by_name?: string | null
-  opened_at: string
-  closed_at?: string | null
-  opening_counted_amount: number
-  opening_difference: number
+  opened_by: number;
+  opened_by_name?: string | null;
+  opened_at: string;
+  closed_at?: string | null;
+  opening_counted_amount: number;
+  opening_difference: number;
 
-  expected_closing_amount?: number | null
-  closing_counted_amount?: number | null
-  closing_difference?: number | null
+  expected_closing_amount?: number | null;
+  closing_counted_amount?: number | null;
+  closing_difference?: number | null;
 
-  left_for_next_shift?: number | null
-  safe_transfer_amount?: number | null
-}
+  left_for_next_shift?: number | null;
+  safe_transfer_amount?: number | null;
+};
 
 type ClosingPreview = {
-  shift_id: number
-  opening_counted_amount: number
-  cash_in: number
-  cash_out: number
-  expected_closing_amount: number
+  shift_id: number;
+  opening_counted_amount: number;
+  cash_in: number;
+  cash_out: number;
+  expected_closing_amount: number;
 
   breakdown: Array<{
-    type: string
-    direction: 'in' | 'out'
-    total: number
-  }>
-}
+    type: string;
+    direction: 'in' | 'out';
+    total: number;
+  }>;
+};
 
 type OpeningPreview = {
-  can_open: boolean
-  open_shift: CashShift | null
-  previous_shift_id: number | null
-  expected_opening_amount: number | null
-  previous_closed_at?: string | null
-}
+  can_open: boolean;
+  open_shift: CashShift | null;
+  previous_shift_id: number | null;
+  expected_opening_amount: number | null;
+  previous_closed_at?: string | null;
+};
 
 type Props = {
-  user: ShiftUser | null
-  isLight: boolean
-  isMobile: boolean
-}
+  user: ShiftUser | null;
+  isLight: boolean;
+  isMobile: boolean;
+};
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 function formatShiftTime(value?: string | null) {
   if (!value) {
-    return ''
+    return '';
   }
 
-  const normalized = value.includes('T') ? value : `${value.replace(' ', 'T')}Z`
+  const normalized = value.includes('T')
+    ? value
+    : `${value.replace(' ', 'T')}Z`;
 
-  const date = new Date(normalized)
+  const date = new Date(normalized);
 
   if (Number.isNaN(date.getTime())) {
-    return value
+    return value;
   }
 
   return date.toLocaleTimeString('ar-EG', {
     hour: '2-digit',
     minute: '2-digit',
-  })
+  });
 }
 
 export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
-  const [openShift, setOpenShift] = useState<CashShift | null>(null)
+  const [openShift, setOpenShift] = useState<CashShift | null>(null);
 
-  const [modal, setModal] = useState<'open' | 'close' | null>(null)
+  const [modal, setModal] = useState<'open' | 'close' | null>(null);
 
   const [openingPreview, setOpeningPreview] = useState<OpeningPreview | null>(
     null,
-  )
+  );
 
   const [closingPreview, setClosingPreview] = useState<ClosingPreview | null>(
     null,
-  )
+  );
 
-  const [openingAmount, setOpeningAmount] = useState('')
+  const [openingAmount, setOpeningAmount] = useState('');
 
-  const [closingAmount, setClosingAmount] = useState('')
+  const [closingAmount, setClosingAmount] = useState('');
 
-  const [leftForNextShift, setLeftForNextShift] = useState('')
+  const [leftForNextShift, setLeftForNextShift] = useState('');
 
-  const [closeReason, setCloseReason] = useState('')
+  const [closeReason, setCloseReason] = useState('');
 
-  const [adminPassword, setAdminPassword] = useState('')
+  const [adminPassword, setAdminPassword] = useState('');
 
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{
-    id: number
-    type: 'success' | 'error'
-    message: string
-  } | null>(null)
+    id: number;
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   function showToast(
     type: 'success' | 'error',
@@ -120,49 +122,49 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
 
       type,
       message,
-    }
+    };
 
-    setToast(nextToast)
+    setToast(nextToast);
 
     window.setTimeout(() => {
-      setToast((current) => (current?.id === nextToast.id ? null : current))
-    }, duration)
+      setToast((current) => (current?.id === nextToast.id ? null : current));
+    }, duration);
   }
 
   async function refreshShift() {
     try {
-      const shift = await window.api.getOpenCashShift()
+      const shift = await window.api.getOpenCashShift();
 
-      setOpenShift(shift || null)
+      setOpenShift(shift || null);
     } catch (err) {
-      console.error('Failed to load open cash shift:', err)
+      console.error('Failed to load open cash shift:', err);
     }
   }
 
   useEffect(() => {
     if (!user?.id) {
-      setOpenShift(null)
-      return
+      setOpenShift(null);
+      return;
     }
 
-    void refreshShift()
-  }, [user?.id])
+    void refreshShift();
+  }, [user?.id]);
 
   const canCloseShift = useMemo(() => {
     if (!openShift || !user) {
-      return false
+      return false;
     }
 
     return (
       user.role === 'admin' || Number(openShift.opened_by) === Number(user.id)
-    )
-  }, [openShift, user])
+    );
+  }, [openShift, user]);
 
   const adminClosingOtherShift = Boolean(
     openShift &&
     user?.role === 'admin' &&
     Number(openShift.opened_by) !== Number(user.id),
-  )
+  );
 
   const closingDifference =
     user?.role === 'admin' &&
@@ -170,7 +172,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
     closingAmount.trim() !== '' &&
     Number.isFinite(Number(closingAmount))
       ? Number(closingAmount) - Number(closingPreview.expected_closing_amount)
-      : null
+      : null;
 
   const safeTransferAmount =
     closingAmount.trim() !== '' &&
@@ -178,36 +180,36 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
     Number.isFinite(Number(closingAmount)) &&
     Number.isFinite(Number(leftForNextShift))
       ? Number(closingAmount) - Number(leftForNextShift)
-      : null
+      : null;
 
   async function openOpeningModal() {
-    setBusy(true)
+    setBusy(true);
 
     try {
-      const preview = await window.api.getCashShiftOpeningPreview()
+      const preview = await window.api.getCashShiftOpeningPreview();
 
       if (!preview.can_open) {
-        setOpenShift(preview.open_shift || null)
+        setOpenShift(preview.open_shift || null);
 
-        return
+        return;
       }
 
-      setOpeningPreview(preview)
-      setOpeningAmount('')
-      setModal('open')
+      setOpeningPreview(preview);
+      setOpeningAmount('');
+      setModal('open');
     } catch (err) {
-      showToast('error', 'تعذر تحميل بيانات فتح الشفت')
+      showToast('error', 'تعذر تحميل بيانات فتح الشفت');
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
   async function openClosingModal() {
     if (!openShift) {
-      return
+      return;
     }
 
-    setBusy(true)
+    setBusy(true);
 
     try {
       /*
@@ -219,55 +221,55 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
       if (user?.role === 'admin') {
         const preview = await window.api.getCashShiftExpectedBalance(
           openShift.id,
-        )
+        );
 
-        setClosingPreview(preview)
+        setClosingPreview(preview);
       } else {
-        setClosingPreview(null)
+        setClosingPreview(null);
       }
 
-      setClosingAmount('')
-      setLeftForNextShift('')
-      setCloseReason('')
-      setAdminPassword('')
+      setClosingAmount('');
+      setLeftForNextShift('');
+      setCloseReason('');
+      setAdminPassword('');
 
-      setModal('close')
+      setModal('close');
     } catch (err) {
       showToast(
         'error',
         err instanceof Error ? err.message : 'تعذر تحميل بيانات إغلاق الشفت',
-      )
+      );
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
   async function submitOpenShift() {
-    const amount = Number(openingAmount)
+    const amount = Number(openingAmount);
 
     if (openingAmount.trim() === '' || !Number.isFinite(amount) || amount < 0) {
-      showToast('error', 'اكتب المبلغ الموجود فعليًا في الدرج')
+      showToast('error', 'اكتب المبلغ الموجود فعليًا في الدرج');
 
-      return
+      return;
     }
 
-    setBusy(true)
+    setBusy(true);
 
     try {
       const shift = await window.api.openCashShift({
         opening_counted_amount: amount,
-      })
+      });
 
-      setOpenShift(shift)
-      setModal(null)
+      setOpenShift(shift);
+      setModal(null);
 
       window.dispatchEvent(
         new CustomEvent('cash-shift-changed', {
           detail: shift,
         }),
-      )
+      );
 
-      showToast('success', 'تم فتح الشفت وتسجيل جرد الافتتاح')
+      showToast('success', 'تم فتح الشفت وتسجيل جرد الافتتاح');
     } catch (err) {
       showToast(
         'error',
@@ -277,29 +279,29 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
           : 'تعذر فتح الشفت. لم يتم تطبيق أي تغييرات.',
 
         4500,
-      )
+      );
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
   async function submitCloseShift() {
     if (!openShift) {
-      return
+      return;
     }
 
-    const counted = Number(closingAmount)
+    const counted = Number(closingAmount);
 
-    const leftAmount = Number(leftForNextShift)
+    const leftAmount = Number(leftForNextShift);
 
     if (
       closingAmount.trim() === '' ||
       !Number.isFinite(counted) ||
       counted < 0
     ) {
-      showToast('error', 'اكتب المبلغ الفعلي بعد عد الدرج')
+      showToast('error', 'اكتب المبلغ الفعلي بعد عد الدرج');
 
-      return
+      return;
     }
 
     if (
@@ -307,30 +309,30 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
       !Number.isFinite(leftAmount) ||
       leftAmount < 0
     ) {
-      showToast('error', 'اكتب المبلغ المتروك للشفت التالي')
+      showToast('error', 'اكتب المبلغ المتروك للشفت التالي');
 
-      return
+      return;
     }
 
     if (leftAmount > counted) {
-      showToast('error', 'المبلغ المتروك أكبر من الموجود في الدرج')
+      showToast('error', 'المبلغ المتروك أكبر من الموجود في الدرج');
 
-      return
+      return;
     }
 
     if (adminClosingOtherShift && !closeReason.trim()) {
-      showToast('error', 'اكتب سبب إغلاق المدير للشفت')
+      showToast('error', 'اكتب سبب إغلاق المدير للشفت');
 
-      return
+      return;
     }
 
     if (adminClosingOtherShift && !adminPassword.trim()) {
-      showToast('error', 'اكتب كلمة مرور المدير')
+      showToast('error', 'اكتب كلمة مرور المدير');
 
-      return
+      return;
     }
 
-    setBusy(true)
+    setBusy(true);
 
     try {
       const closedShift = await window.api.closeCashShift({
@@ -342,16 +344,16 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
 
         close_reason: closeReason.trim() || null,
         admin_password: adminClosingOtherShift ? adminPassword : undefined,
-      })
+      });
 
-      setOpenShift(null)
-      setModal(null)
+      setOpenShift(null);
+      setModal(null);
 
       window.dispatchEvent(
         new CustomEvent('cash-shift-changed', {
           detail: null,
         }),
-      )
+      );
 
       if (user?.role === 'cashier') {
         const printResult = await printShiftCloseReceipt({
@@ -366,18 +368,18 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
           closing_counted_amount: counted,
 
           left_for_next_shift: leftAmount,
-        })
+        });
 
         if (printResult.ok) {
-          showToast('success', 'تم إغلاق الشفت وطباعة إيصال الإغلاق')
+          showToast('success', 'تم إغلاق الشفت وطباعة إيصال الإغلاق');
         } else {
           showToast(
             'error',
             `تم إغلاق الشفت لكن ${printResult.message || 'تعذر طباعة الإيصال'}`,
-          )
+          );
         }
       } else {
-        showToast('success', 'تم إغلاق الشفت وتسجيل نتيجة الجرد')
+        showToast('success', 'تم إغلاق الشفت وتسجيل نتيجة الجرد');
       }
     } catch (err) {
       showToast(
@@ -388,30 +390,30 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
           : 'تعذر إغلاق الشفت. لم يتم تطبيق أي تغييرات.',
 
         4500,
-      )
+      );
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
   async function submitEmergencyForceClose() {
     if (!openShift || !adminClosingOtherShift) {
-      return
+      return;
     }
 
     if (!closeReason.trim()) {
-      showToast('error', 'اكتب سبب الإغلاق الطارئ')
+      showToast('error', 'اكتب سبب الإغلاق الطارئ');
 
-      return
+      return;
     }
 
     if (!adminPassword.trim()) {
-      showToast('error', 'اكتب كلمة مرور المدير')
+      showToast('error', 'اكتب كلمة مرور المدير');
 
-      return
+      return;
     }
 
-    setBusy(true)
+    setBusy(true);
 
     try {
       await window.api.forceCloseCashShift({
@@ -420,23 +422,23 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
         reason: closeReason.trim(),
 
         admin_password: adminPassword,
-      })
+      });
 
-      setOpenShift(null)
+      setOpenShift(null);
 
-      setModal(null)
+      setModal(null);
 
       window.dispatchEvent(
         new CustomEvent('cash-shift-changed', {
           detail: null,
         }),
-      )
+      );
 
       showToast(
         'success',
         'تم الإغلاق الطارئ بدون تسجيل جرد وهمي. أي فرق فعلي سيظهر عند افتتاح الشفت التالي.',
         4500,
-      )
+      );
     } catch (err) {
       showToast(
         'error',
@@ -446,17 +448,17 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
           : 'تعذر تنفيذ الإغلاق الطارئ. لم يتم تطبيق أي تغييرات.',
 
         4500,
-      )
+      );
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
-  const panelBackground = isLight ? '#ffffff' : '#111827'
+  const panelBackground = isLight ? '#ffffff' : '#111827';
 
-  const textColor = isLight ? '#0f172a' : '#f8fafc'
+  const textColor = isLight ? '#0f172a' : '#f8fafc';
 
-  const mutedColor = isLight ? '#64748b' : '#94a3b8'
+  const mutedColor = isLight ? '#64748b' : '#94a3b8';
 
   const inputStyle: React.CSSProperties = {
     width: '100%',
@@ -469,7 +471,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
     padding: '0 12px',
     fontSize: '16px',
     outline: 'none',
-  }
+  };
 
   const secondaryButtonStyle: React.CSSProperties = {
     minHeight: '42px',
@@ -480,7 +482,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
     color: textColor,
     fontWeight: 800,
     cursor: 'pointer',
-  }
+  };
 
   const primaryButtonStyle: React.CSSProperties = {
     minHeight: '42px',
@@ -491,7 +493,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
     color: '#ffffff',
     fontWeight: 900,
     cursor: 'pointer',
-  }
+  };
 
   return (
     <>
@@ -678,7 +680,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                 type="button"
                 data-escape-close="true"
                 onClick={() => {
-                  setModal(null)
+                  setModal(null);
                 }}
                 style={{
                   ...secondaryButtonStyle,
@@ -862,7 +864,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                 type="button"
                 data-escape-close="true"
                 onClick={() => {
-                  setModal(null)
+                  setModal(null);
                 }}
                 style={{
                   ...secondaryButtonStyle,
@@ -1149,7 +1151,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
         </div>
       )}
     </>
-  )
+  );
 }
 
 function SummaryBox({
@@ -1157,9 +1159,9 @@ function SummaryBox({
   value,
   isLight,
 }: {
-  label: string
-  value: string
-  isLight: boolean
+  label: string;
+  value: string;
+  isLight: boolean;
 }) {
   return (
     <div
@@ -1187,5 +1189,5 @@ function SummaryBox({
         {value}
       </strong>
     </div>
-  )
+  );
 }

@@ -1,83 +1,83 @@
-import { getDb } from '../db'
+import { getDb } from '../db';
 
 export const CRITICAL_AUDIT_ERROR_MESSAGE =
-  'تعذر تسجيل سجل المراجعة. لم يتم تطبيق أي تغييرات.'
+  'تعذر تسجيل سجل المراجعة. لم يتم تطبيق أي تغييرات.';
 
 export type ActivityLogInput = {
-  user_id?: number | null
+  user_id?: number | null;
 
-  approved_by?: number | null
+  approved_by?: number | null;
 
-  action: string
+  action: string;
 
-  entity?: string | null
+  entity?: string | null;
 
-  entity_id?: number | null
+  entity_id?: number | null;
 
-  details?: string | null
-}
+  details?: string | null;
+};
 
 export type ActivityLogFilter = {
-  search?: string
-  action?: string
-  actions?: string[]
-  entity?: string
-  entities?: string[]
-  user_id?: number | null
-  date_from?: string
-  date_to?: string
-  limit?: number
-  offset?: number
-}
+  search?: string;
+  action?: string;
+  actions?: string[];
+  entity?: string;
+  entities?: string[];
+  user_id?: number | null;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+  offset?: number;
+};
 
-export type CashDrawerNoSaleStatusFilter = 'all' | 'success' | 'failed'
+export type CashDrawerNoSaleStatusFilter = 'all' | 'success' | 'failed';
 
 export type CashDrawerNoSaleFilter = {
-  shift_id?: number | null
+  shift_id?: number | null;
 
-  user_id?: number | null
+  user_id?: number | null;
 
-  status?: CashDrawerNoSaleStatusFilter
+  status?: CashDrawerNoSaleStatusFilter;
 
-  date_from?: string | null
+  date_from?: string | null;
 
-  date_to?: string | null
+  date_to?: string | null;
 
-  limit?: number
+  limit?: number;
 
-  offset?: number
-}
+  offset?: number;
+};
 
 export type CashDrawerNoSaleRow = {
-  id: number
+  id: number;
 
-  action: 'cash_drawer_opened' | 'cash_drawer_open_failed'
+  action: 'cash_drawer_opened' | 'cash_drawer_open_failed';
 
-  status: 'success' | 'failed'
+  status: 'success' | 'failed';
 
-  shift_id: number
+  shift_id: number;
 
-  shift_opened_by: number | null
+  shift_opened_by: number | null;
 
-  shift_opened_by_name: string | null
+  shift_opened_by_name: string | null;
 
-  user_id: number | null
+  user_id: number | null;
 
-  user_name: string | null
+  user_name: string | null;
 
-  username: string | null
+  username: string | null;
 
-  reason: string
+  reason: string;
 
-  printer_name: string
+  printer_name: string;
 
-  error: string | null
+  error: string | null;
 
-  created_at: string
-}
+  created_at: string;
+};
 
 export function createActivityLog(input: ActivityLogInput) {
-  const db = getDb()
+  const db = getDb();
 
   return db
     .prepare(
@@ -106,46 +106,46 @@ export function createActivityLog(input: ActivityLogInput) {
       input.entity_id ?? null,
 
       input.details ?? null,
-    )
+    );
 }
 
 export function createCriticalActivityLog(input: ActivityLogInput) {
   try {
-    return createActivityLog(input)
+    return createActivityLog(input);
   } catch (error) {
-    console.error('Failed to create critical activity log:', error)
+    console.error('Failed to create critical activity log:', error);
 
-    throw new Error(CRITICAL_AUDIT_ERROR_MESSAGE)
+    throw new Error(CRITICAL_AUDIT_ERROR_MESSAGE);
   }
 }
 
 export function safeCreateActivityLog(input: ActivityLogInput) {
   try {
-    return createActivityLog(input)
+    return createActivityLog(input);
   } catch (error) {
-    console.error('Failed to create activity log:', error)
-    return null
+    console.error('Failed to create activity log:', error);
+    return null;
   }
 }
 
 export function listActivityLogs(input?: ActivityLogFilter) {
-  const db = getDb()
+  const db = getDb();
 
-  const where: string[] = []
-  const params: any[] = []
+  const where: string[] = [];
+  const params: any[] = [];
 
-  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200)
+  const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
 
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
   if (input?.date_from) {
-    where.push(`datetime(al.created_at, 'localtime') >= datetime(?)`)
-    params.push(`${input.date_from} 00:00:00`)
+    where.push(`datetime(al.created_at, 'localtime') >= datetime(?)`);
+    params.push(`${input.date_from} 00:00:00`);
   }
 
   if (input?.date_to) {
-    where.push(`datetime(al.created_at, 'localtime') <= datetime(?)`)
-    params.push(`${input.date_to} 23:59:59`)
+    where.push(`datetime(al.created_at, 'localtime') <= datetime(?)`);
+    params.push(`${input.date_to} 23:59:59`);
   }
 
   const selectedActions = Array.from(
@@ -156,17 +156,17 @@ export function listActivityLogs(input?: ActivityLogFilter) {
             .filter((value) => Boolean(value) && value !== 'all')
         : [],
     ),
-  )
+  );
 
   if (selectedActions.length > 0) {
-    const placeholders = selectedActions.map(() => '?').join(', ')
+    const placeholders = selectedActions.map(() => '?').join(', ');
 
-    where.push(`al.action IN (${placeholders})`)
+    where.push(`al.action IN (${placeholders})`);
 
-    params.push(...selectedActions)
+    params.push(...selectedActions);
   } else if (input?.action && input.action !== 'all') {
-    where.push(`al.action = ?`)
-    params.push(input.action)
+    where.push(`al.action = ?`);
+    params.push(input.action);
   }
 
   const selectedEntities = Array.from(
@@ -177,26 +177,26 @@ export function listActivityLogs(input?: ActivityLogFilter) {
             .filter((value) => Boolean(value) && value !== 'all')
         : [],
     ),
-  )
+  );
 
   if (selectedEntities.length > 0) {
-    const placeholders = selectedEntities.map(() => '?').join(', ')
+    const placeholders = selectedEntities.map(() => '?').join(', ');
 
-    where.push(`al.entity IN (${placeholders})`)
+    where.push(`al.entity IN (${placeholders})`);
 
-    params.push(...selectedEntities)
+    params.push(...selectedEntities);
   } else if (input?.entity && input.entity !== 'all') {
-    where.push(`al.entity = ?`)
-    params.push(input.entity)
+    where.push(`al.entity = ?`);
+    params.push(input.entity);
   }
 
   if (input?.user_id) {
-    where.push(`al.user_id = ?`)
-    params.push(Number(input.user_id))
+    where.push(`al.user_id = ?`);
+    params.push(Number(input.user_id));
   }
 
   if (input?.search?.trim()) {
-    const q = `%${input.search.trim()}%`
+    const q = `%${input.search.trim()}%`;
 
     where.push(`
       (
@@ -208,12 +208,12 @@ export function listActivityLogs(input?: ActivityLogFilter) {
         OR approver.name LIKE ?
         OR approver.username LIKE ?
       )
-    `)
+    `);
 
-    params.push(q, q, q, q, q, q, q)
+    params.push(q, q, q, q, q, q, q);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const rows = db
     .prepare(
@@ -245,7 +245,7 @@ export function listActivityLogs(input?: ActivityLogFilter) {
     OFFSET ?
     `,
     )
-    .all(...params, limit, offset)
+    .all(...params, limit, offset);
 
   const totalRow = db
     .prepare(
@@ -261,34 +261,34 @@ export function listActivityLogs(input?: ActivityLogFilter) {
     ${whereSql}
     `,
     )
-    .get(...params) as { total: number }
+    .get(...params) as { total: number };
 
   return {
     rows,
     total: Number(totalRow?.total || 0),
     limit,
     offset,
-  }
+  };
 }
 
 function parseCashDrawerActivityDetails(
   value?: string | null,
 ): Record<string, unknown> {
   try {
-    const parsed = JSON.parse(String(value || '{}'))
+    const parsed = JSON.parse(String(value || '{}'));
 
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>
+      return parsed as Record<string, unknown>;
     }
   } catch {
     // سجل قديم أو تفاصيل غير JSON.
   }
 
-  return {}
+  return {};
 }
 
 export function listCashDrawerNoSaleEvents(input?: CashDrawerNoSaleFilter) {
-  const db = getDb()
+  const db = getDb();
 
   const baseWhere: string[] = [
     `al.entity = 'cash_shifts'`,
@@ -296,24 +296,24 @@ export function listCashDrawerNoSaleEvents(input?: CashDrawerNoSaleFilter) {
       'cash_drawer_opened',
       'cash_drawer_open_failed'
     )`,
-  ]
+  ];
 
-  const baseParams: any[] = []
+  const baseParams: any[] = [];
 
-  const shiftId = Number(input?.shift_id || 0)
+  const shiftId = Number(input?.shift_id || 0);
 
   if (Number.isInteger(shiftId) && shiftId > 0) {
-    baseWhere.push(`al.entity_id = ?`)
+    baseWhere.push(`al.entity_id = ?`);
 
-    baseParams.push(shiftId)
+    baseParams.push(shiftId);
   }
 
-  const userId = Number(input?.user_id || 0)
+  const userId = Number(input?.user_id || 0);
 
   if (Number.isInteger(userId) && userId > 0) {
-    baseWhere.push(`al.user_id = ?`)
+    baseWhere.push(`al.user_id = ?`);
 
-    baseParams.push(userId)
+    baseParams.push(userId);
   }
 
   if (input?.date_from) {
@@ -322,9 +322,9 @@ export function listCashDrawerNoSaleEvents(input?: CashDrawerNoSaleFilter) {
         al.created_at,
         'localtime'
       ) >= datetime(?)
-    `)
+    `);
 
-    baseParams.push(`${input.date_from} 00:00:00`)
+    baseParams.push(`${input.date_from} 00:00:00`);
   }
 
   if (input?.date_to) {
@@ -333,45 +333,45 @@ export function listCashDrawerNoSaleEvents(input?: CashDrawerNoSaleFilter) {
         al.created_at,
         'localtime'
       ) <= datetime(?)
-    `)
+    `);
 
-    baseParams.push(`${input.date_to} 23:59:59`)
+    baseParams.push(`${input.date_to} 23:59:59`);
   }
 
-  const rowWhere = [...baseWhere]
+  const rowWhere = [...baseWhere];
 
-  const rowParams = [...baseParams]
+  const rowParams = [...baseParams];
 
   const status =
     input?.status === 'success' || input?.status === 'failed'
       ? input.status
-      : 'all'
+      : 'all';
 
   if (status === 'success') {
-    rowWhere.push(`al.action = 'cash_drawer_opened'`)
+    rowWhere.push(`al.action = 'cash_drawer_opened'`);
   }
 
   if (status === 'failed') {
-    rowWhere.push(`al.action = 'cash_drawer_open_failed'`)
+    rowWhere.push(`al.action = 'cash_drawer_open_failed'`);
   }
 
-  const rawLimit = Number(input?.limit ?? 50)
+  const rawLimit = Number(input?.limit ?? 50);
 
-  const rawOffset = Number(input?.offset ?? 0)
+  const rawOffset = Number(input?.offset ?? 0);
 
   const limit = Math.min(
     Math.max(Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 50, 1),
     200,
-  )
+  );
 
   const offset = Math.max(
     Number.isFinite(rawOffset) ? Math.floor(rawOffset) : 0,
     0,
-  )
+  );
 
-  const rowWhereSql = `WHERE ${rowWhere.join(' AND ')}`
+  const rowWhereSql = `WHERE ${rowWhere.join(' AND ')}`;
 
-  const baseWhereSql = `WHERE ${baseWhere.join(' AND ')}`
+  const baseWhereSql = `WHERE ${baseWhere.join(' AND ')}`;
 
   const rawRows = db
     .prepare(
@@ -418,26 +418,26 @@ export function listCashDrawerNoSaleEvents(input?: CashDrawerNoSaleFilter) {
       `,
     )
     .all(...rowParams, limit, offset) as Array<{
-    id: number
+    id: number;
 
-    action: string
+    action: string;
 
-    shift_id: number
+    shift_id: number;
 
-    details: string | null
+    details: string | null;
 
-    created_at: string
+    created_at: string;
 
-    user_id: number | null
+    user_id: number | null;
 
-    user_name: string | null
+    user_name: string | null;
 
-    username: string | null
+    username: string | null;
 
-    shift_opened_by: number | null
+    shift_opened_by: number | null;
 
-    shift_opened_by_name: string | null
-  }>
+    shift_opened_by_name: string | null;
+  }>;
 
   const totalRow = db
     .prepare(
@@ -451,8 +451,8 @@ export function listCashDrawerNoSaleEvents(input?: CashDrawerNoSaleFilter) {
       `,
     )
     .get(...rowParams) as {
-    total: number
-  }
+    total: number;
+  };
 
   const summaryRow = db
     .prepare(
@@ -484,15 +484,15 @@ export function listCashDrawerNoSaleEvents(input?: CashDrawerNoSaleFilter) {
       `,
     )
     .get(...baseParams) as {
-    total: number
+    total: number;
 
-    success_count: number | null
+    success_count: number | null;
 
-    failed_count: number | null
-  }
+    failed_count: number | null;
+  };
 
   const rows: CashDrawerNoSaleRow[] = rawRows.map((row) => {
-    const details = parseCashDrawerActivityDetails(row.details)
+    const details = parseCashDrawerActivityDetails(row.details);
 
     return {
       id: Number(row.id),
@@ -524,8 +524,8 @@ export function listCashDrawerNoSaleEvents(input?: CashDrawerNoSaleFilter) {
       error: details.error ? String(details.error) : null,
 
       created_at: row.created_at,
-    }
-  })
+    };
+  });
 
   return {
     rows,
@@ -539,5 +539,5 @@ export function listCashDrawerNoSaleEvents(input?: CashDrawerNoSaleFilter) {
     limit,
 
     offset,
-  }
+  };
 }

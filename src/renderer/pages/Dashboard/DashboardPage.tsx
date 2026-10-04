@@ -1,133 +1,133 @@
-import { useEffect, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { getPaymentMethodLabel } from '../../utils/payment-method'
-import { useAuthStore } from '../../store/auth.store'
-import { formatMoney, roundMoney } from '../../../shared/money'
+import { useEffect, useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { getPaymentMethodLabel } from '../../utils/payment-method';
+import { useAuthStore } from '../../store/auth.store';
+import { formatMoney, roundMoney } from '../../../shared/money';
 
 type ReportsData = {
   summary: {
-    sales_count: number
-    returns_count: number
-    gross_sales: number
-    total_returns: number
-    normal_discounts: number
-    loyalty_discounts: number
-    total_discounts: number
-    net_sales: number
-    gross_profit_before_discounts: number
-    net_profit_after_discounts: number
-    total_expenses: number
-    total_liability_payments: number
-    final_net_profit: number
-    cancelled_sales_count: number
-    cancelled_returns_count: number
-    exchange_count: number
-    exchange_adjustment: number
-    exchange_cash_collection: number
-    exchange_cash_refund: number
-    exchange_debt_reduction: number
-    exchange_discount_adjustment: number
-  }
+    sales_count: number;
+    returns_count: number;
+    gross_sales: number;
+    total_returns: number;
+    normal_discounts: number;
+    loyalty_discounts: number;
+    total_discounts: number;
+    net_sales: number;
+    gross_profit_before_discounts: number;
+    net_profit_after_discounts: number;
+    total_expenses: number;
+    total_liability_payments: number;
+    final_net_profit: number;
+    cancelled_sales_count: number;
+    cancelled_returns_count: number;
+    exchange_count: number;
+    exchange_adjustment: number;
+    exchange_cash_collection: number;
+    exchange_cash_refund: number;
+    exchange_debt_reduction: number;
+    exchange_discount_adjustment: number;
+  };
   cashAccounts: Array<{
-    payment_method: string
-    label: string
-    total_in: number
-    total_out: number
-    balance: number
-  }>
-  cashAccountsTotalBalance: number
-  topProducts: any[]
-  dailySales: any[]
-  paymentMethods: any[]
-  lowStock: any[]
-  topCustomers: any[]
-}
+    payment_method: string;
+    label: string;
+    total_in: number;
+    total_out: number;
+    balance: number;
+  }>;
+  cashAccountsTotalBalance: number;
+  topProducts: any[];
+  dailySales: any[];
+  paymentMethods: any[];
+  lowStock: any[];
+  topCustomers: any[];
+};
 
 type DashboardState = {
-  today: ReportsData
-  month: ReportsData
-  overview: ReportsData
-}
+  today: ReportsData;
+  month: ReportsData;
+  overview: ReportsData;
+};
 
 type DashboardDueSummary = {
-  overdue: number
-  due_today: number
-  due_soon: number
-  without_due_date: number
-  total_open: number
-}
+  overdue: number;
+  due_today: number;
+  due_soon: number;
+  without_due_date: number;
+  total_open: number;
+};
 
 type AdminCashFlowAlerts = {
-  customers: DashboardDueSummary
+  customers: DashboardDueSummary;
 
-  suppliers: DashboardDueSummary
+  suppliers: DashboardDueSummary;
 
   near_term: {
-    customer_receivables: number
-    supplier_payables: number
-    net: number
-  }
-}
+    customer_receivables: number;
+    supplier_payables: number;
+    net: number;
+  };
+};
 
 type CashierDashboardSummary = {
-  date: string
+  date: string;
 
   shift: {
-    id: number
+    id: number;
 
-    status: 'open' | 'closed'
+    status: 'open' | 'closed';
 
-    opening_counted_amount: number
+    opening_counted_amount: number;
 
-    opened_at: string
+    opened_at: string;
 
-    closed_at: string | null
-  } | null
+    closed_at: string | null;
+  } | null;
 
   sales: {
-    invoices_count: number
-    cancelled_invoices_count: number
+    invoices_count: number;
+    cancelled_invoices_count: number;
 
-    invoice_sales: number
-    paid_sales_total: number
-    outstanding_debt_total: number
-    outstanding_debt_invoices_count: number
-    returns_count: number
-    cancelled_returns_count: number
-    returns_total: number
+    invoice_sales: number;
+    paid_sales_total: number;
+    outstanding_debt_total: number;
+    outstanding_debt_invoices_count: number;
+    returns_count: number;
+    cancelled_returns_count: number;
+    returns_total: number;
 
-    exchanges_count: number
-    cancelled_exchanges_count: number
-    exchange_adjustment: number
-    exchange_cash_collection: number
-    exchange_cash_refund: number
+    exchanges_count: number;
+    cancelled_exchanges_count: number;
+    exchange_adjustment: number;
+    exchange_cash_collection: number;
+    exchange_cash_refund: number;
 
-    exchange_cash_difference: number
+    exchange_cash_difference: number;
 
-    exchange_debt_reduction: number
-    net_sales: number
-  }
+    exchange_debt_reduction: number;
+    net_sales: number;
+  };
 
   discounts: {
-    normal: number
-    promotion: number
-    loyalty: number
-    total: number
-  }
+    normal: number;
+    promotion: number;
+    loyalty: number;
+    total: number;
+  };
 
   operations: {
-    customer_payments_count: number
-    customer_payments_total: number
-    cancelled_customer_payments_count: number
+    customer_payments_count: number;
+    customer_payments_total: number;
+    cancelled_customer_payments_count: number;
 
-    expenses_count: number
-    cancelled_expenses_count: number
-    expenses_total: number
+    expenses_count: number;
+    cancelled_expenses_count: number;
+    expenses_total: number;
 
-    stock_count_sessions_count: number
-  }
-}
+    stock_count_sessions_count: number;
+  };
+};
 
 const emptyCashierDashboard: CashierDashboardSummary = {
   date: '',
@@ -174,7 +174,7 @@ const emptyCashierDashboard: CashierDashboardSummary = {
 
     stock_count_sessions_count: 0,
   },
-}
+};
 
 const emptyReports: ReportsData = {
   summary: {
@@ -207,13 +207,13 @@ const emptyReports: ReportsData = {
   paymentMethods: [],
   lowStock: [],
   topCustomers: [],
-}
+};
 
 const emptyDashboard: DashboardState = {
   today: emptyReports,
   month: emptyReports,
   overview: emptyReports,
-}
+};
 
 const emptyDueSummary: DashboardDueSummary = {
   overdue: 0,
@@ -221,7 +221,7 @@ const emptyDueSummary: DashboardDueSummary = {
   due_soon: 0,
   without_due_date: 0,
   total_open: 0,
-}
+};
 
 const emptyAdminCashFlowAlerts: AdminCashFlowAlerts = {
   customers: {
@@ -237,42 +237,42 @@ const emptyAdminCashFlowAlerts: AdminCashFlowAlerts = {
     supplier_payables: 0,
     net: 0,
   },
-}
+};
 
 export default function DashboardPage() {
-  const navigate = useNavigate()
-  const user = useAuthStore((s) => s.user)
-  const isCashier = user?.role !== 'admin'
-  const [data, setData] = useState<DashboardState>(emptyDashboard)
+  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const isCashier = user?.role !== 'admin';
+  const [data, setData] = useState<DashboardState>(emptyDashboard);
 
   const [cashFlowAlerts, setCashFlowAlerts] = useState<AdminCashFlowAlerts>(
     emptyAdminCashFlowAlerts,
-  )
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
-  const [lastUpdated, setLastUpdated] = useState('')
+  );
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [lastUpdated, setLastUpdated] = useState('');
 
   const [cashierSummary, setCashierSummary] = useState<CashierDashboardSummary>(
     emptyCashierDashboard,
-  )
+  );
 
-  const [todayKey, setTodayKey] = useState(() => getLocalDateKey(new Date()))
+  const [todayKey, setTodayKey] = useState(() => getLocalDateKey(new Date()));
 
   const [monthStartKey, setMonthStartKey] = useState(() =>
     getMonthStartKey(new Date()),
-  )
+  );
 
   async function loadDashboard(silent = false) {
     if (!silent) {
-      setLoading(true)
+      setLoading(true);
     }
-    setMessage('')
+    setMessage('');
 
     try {
       if (isCashier) {
-        const result = await window.api.getCashierDashboardSummary()
+        const result = await window.api.getCashierDashboardSummary();
 
-        setCashierSummary(result)
+        setCashierSummary(result);
       } else {
         const [today, month, overview, alerts] = await Promise.all([
           window.api.getReportsSummary({
@@ -290,15 +290,15 @@ export default function DashboardPage() {
           window.api.getReportsSummary(),
 
           window.api.getAdminCashFlowAlerts(),
-        ])
+        ]);
 
         setData({
           today,
           month,
           overview,
-        })
+        });
 
-        setCashFlowAlerts(alerts)
+        setCashFlowAlerts(alerts);
       }
 
       setLastUpdated(
@@ -307,45 +307,45 @@ export default function DashboardPage() {
 
           minute: '2-digit',
         }),
-      )
+      );
     } catch (error) {
-      console.error('Failed to load dashboard:', error)
+      console.error('Failed to load dashboard:', error);
 
       if (isCashier) {
-        setCashierSummary(emptyCashierDashboard)
+        setCashierSummary(emptyCashierDashboard);
       } else {
-        setData(emptyDashboard)
+        setData(emptyDashboard);
 
-        setCashFlowAlerts(emptyAdminCashFlowAlerts)
+        setCashFlowAlerts(emptyAdminCashFlowAlerts);
       }
 
-      setMessage('حدث خطأ أثناء تحميل لوحة التحكم')
+      setMessage('حدث خطأ أثناء تحميل لوحة التحكم');
     } finally {
       if (!silent) {
-        setLoading(false)
+        setLoading(false);
       }
     }
   }
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      const now = new Date()
+      const now = new Date();
 
-      setTodayKey(getLocalDateKey(now))
-      setMonthStartKey(getMonthStartKey(now))
-    }, 60_000)
+      setTodayKey(getLocalDateKey(now));
+      setMonthStartKey(getMonthStartKey(now));
+    }, 60_000);
 
     return () => {
-      window.clearInterval(timer)
-    }
-  }, [])
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user?.id || !isCashier) {
-      return
+      return;
     }
 
-    void loadDashboard()
+    void loadDashboard();
 
     /*
      * لو تم قفل الشفت وفتح
@@ -354,23 +354,23 @@ export default function DashboardPage() {
      * فضل واقف على الـDashboard.
      */
     const timer = window.setInterval(() => {
-      void loadDashboard(true)
-    }, 15_000)
+      void loadDashboard(true);
+    }, 15_000);
 
     return () => {
-      window.clearInterval(timer)
-    }
-  }, [user?.id, isCashier])
+      window.clearInterval(timer);
+    };
+  }, [user?.id, isCashier]);
 
   useEffect(() => {
-    if (!user?.id || isCashier) return
+    if (!user?.id || isCashier) return;
 
-    void loadDashboard()
-  }, [user?.id, isCashier, todayKey])
+    void loadDashboard();
+  }, [user?.id, isCashier, todayKey]);
 
-  const bestProduct = data.month.topProducts[0]
-  const bestCustomer = data.month.topCustomers[0]
-  const lowStockCount = data.overview.lowStock.length
+  const bestProduct = data.month.topProducts[0];
+  const bestCustomer = data.month.topCustomers[0];
+  const lowStockCount = data.overview.lowStock.length;
 
   if (isCashier) {
     return (
@@ -385,7 +385,7 @@ export default function DashboardPage() {
         onExpenses={() => navigate('/expenses')}
         onStockCount={() => navigate('/stock-count')}
       />
-    )
+    );
   }
 
   return (
@@ -423,7 +423,7 @@ export default function DashboardPage() {
           <button
             type="button"
             onClick={() => {
-              void loadDashboard()
+              void loadDashboard();
             }}
             style={primaryButtonStyle}
           >
@@ -740,7 +740,7 @@ export default function DashboardPage() {
         </div>
       </section>
     </div>
-  )
+  );
 }
 
 function StatCard({
@@ -751,14 +751,14 @@ function StatCard({
   tone,
   onClick,
 }: {
-  icon: string
-  title: string
-  value: string
-  subtitle: string
-  tone: 'blue' | 'violet' | 'green' | 'red' | 'amber' | 'slate'
-  onClick?: () => void
+  icon: string;
+  title: string;
+  value: string;
+  subtitle: string;
+  tone: 'blue' | 'violet' | 'green' | 'red' | 'amber' | 'slate';
+  onClick?: () => void;
 }) {
-  const toneStyle = toneStyles[tone]
+  const toneStyle = toneStyles[tone];
 
   return (
     <div
@@ -772,9 +772,9 @@ function StatCard({
         onClick
           ? (event) => {
               if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
+                event.preventDefault();
 
-                onClick()
+                onClick();
               }
             }
           : undefined
@@ -800,7 +800,7 @@ function StatCard({
         {subtitle}
       </div>
     </div>
-  )
+  );
 }
 
 function SectionHeader({
@@ -808,9 +808,9 @@ function SectionHeader({
   subtitle,
   action,
 }: {
-  title: string
-  subtitle?: string
-  action?: ReactNode
+  title: string;
+  subtitle?: string;
+  action?: ReactNode;
 }) {
   return (
     <div
@@ -834,25 +834,25 @@ function SectionHeader({
 
       {action}
     </div>
-  )
+  );
 }
 
 function DailySalesChart({ rows }: { rows: any[] }) {
-  const visibleRows = rows.slice(-14)
+  const visibleRows = rows.slice(-14);
   const maxValue = Math.max(
     ...visibleRows.map((row) => Number(row.total || 0)),
     0,
-  )
+  );
 
   if (!visibleRows.length) {
-    return <EmptyState text="لا توجد مبيعات مسجلة خلال الشهر الحالي" />
+    return <EmptyState text="لا توجد مبيعات مسجلة خلال الشهر الحالي" />;
   }
 
   return (
     <div style={{ display: 'grid', gap: '12px' }}>
       {visibleRows.map((row) => {
-        const total = Number(row.total || 0)
-        const width = maxValue > 0 ? Math.max((total / maxValue) * 100, 4) : 4
+        const total = Number(row.total || 0);
+        const width = maxValue > 0 ? Math.max((total / maxValue) * 100, 4) : 4;
 
         return (
           <div key={row.day} style={{ display: 'grid', gap: '7px' }}>
@@ -874,10 +874,10 @@ function DailySalesChart({ rows }: { rows: any[] }) {
               <div style={{ ...barFillStyle, width: `${width}%` }} />
             </div>
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
 
 function InsightCard({
@@ -886,10 +886,10 @@ function InsightCard({
   value,
   meta,
 }: {
-  icon: string
-  title: string
-  value: string
-  meta: string
+  icon: string;
+  title: string;
+  value: string;
+  meta: string;
 }) {
   return (
     <div style={insightStyle}>
@@ -923,15 +923,15 @@ function InsightCard({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function PaymentBreakdown({ rows }: { rows: any[] }) {
   if (!rows.length) {
-    return <EmptyState text="لا توجد بيانات طرق دفع حتى الآن" />
+    return <EmptyState text="لا توجد بيانات طرق دفع حتى الآن" />;
   }
 
-  const total = rows.reduce((sum, row) => sum + Number(row.total || 0), 0)
+  const total = rows.reduce((sum, row) => sum + Number(row.total || 0), 0);
 
   return (
     <div style={{ display: 'grid', gap: '10px' }}>
@@ -940,8 +940,8 @@ function PaymentBreakdown({ rows }: { rows: any[] }) {
       </h4>
 
       {rows.map((row) => {
-        const rowTotal = Number(row.total || 0)
-        const percent = total > 0 ? Math.round((rowTotal / total) * 100) : 0
+        const rowTotal = Number(row.total || 0);
+        const percent = total > 0 ? Math.round((rowTotal / total) * 100) : 0;
 
         return (
           <div key={row.payment_method} style={paymentRowStyle}>
@@ -949,10 +949,10 @@ function PaymentBreakdown({ rows }: { rows: any[] }) {
             <strong>{money(rowTotal)}</strong>
             <span style={{ color: '#94a3b8' }}>{percent}%</span>
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
 
 function DashboardTable({
@@ -963,12 +963,12 @@ function DashboardTable({
   actionLabel,
   onAction,
 }: {
-  title: string
-  columns: string[]
-  rows: any[][]
-  emptyText: string
-  actionLabel?: string
-  onAction?: () => void
+  title: string;
+  columns: string[];
+  rows: any[][];
+  emptyText: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
   return (
     <div className="glass-card" style={cardStyle}>
@@ -1034,7 +1034,7 @@ function DashboardTable({
         </table>
       </div>
     </div>
-  )
+  );
 }
 
 function QuickAction({
@@ -1043,10 +1043,10 @@ function QuickAction({
   subtitle,
   onClick,
 }: {
-  icon: string
-  title: string
-  subtitle: string
-  onClick: () => void
+  icon: string;
+  title: string;
+  subtitle: string;
+  onClick: () => void;
 }) {
   return (
     <button type="button" onClick={onClick} style={quickActionStyle}>
@@ -1059,11 +1059,11 @@ function QuickAction({
         </span>
       </span>
     </button>
-  )
+  );
 }
 
 function Toast({ children }: { children: ReactNode }) {
-  return <div style={toastStyle}>{children}</div>
+  return <div style={toastStyle}>{children}</div>;
 }
 
 function EmptyState({ text }: { text: string }) {
@@ -1078,70 +1078,70 @@ function EmptyState({ text }: { text: string }) {
     >
       {text}
     </div>
-  )
+  );
 }
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 function formatShiftTime(value?: string | null) {
   if (!value) {
-    return '—'
+    return '—';
   }
 
   try {
-    const raw = String(value)
+    const raw = String(value);
 
-    const hasTimezone = /Z$|[+-]\d{2}:\d{2}$/.test(raw)
+    const hasTimezone = /Z$|[+-]\d{2}:\d{2}$/.test(raw);
 
-    const normalized = hasTimezone ? raw : `${raw.replace(' ', 'T')}Z`
+    const normalized = hasTimezone ? raw : `${raw.replace(' ', 'T')}Z`;
 
-    const date = new Date(normalized)
+    const date = new Date(normalized);
 
     if (Number.isNaN(date.getTime())) {
-      return raw
+      return raw;
     }
 
     return date.toLocaleTimeString('ar-EG', {
       hour: '2-digit',
 
       minute: '2-digit',
-    })
+    });
   } catch {
-    return String(value)
+    return String(value);
   }
 }
 
 function formatDateOnly(value?: string) {
-  if (!value) return '—'
+  if (!value) return '—';
 
   try {
-    const raw = String(value)
-    const normalized = raw.includes('T') ? raw : `${raw}T00:00:00`
+    const raw = String(value);
+    const normalized = raw.includes('T') ? raw : `${raw}T00:00:00`;
 
     return new Date(normalized).toLocaleDateString('ar-EG', {
       month: 'short',
       day: '2-digit',
-    })
+    });
   } catch {
-    return value
+    return value;
   }
 }
 
 function getLocalDateKey(date: Date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
 
-  return `${year}-${month}-${day}`
+  return `${year}-${month}-${day}`;
 }
 
 function getMonthStartKey(date: Date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
 
-  return `${year}-${month}-01`
+  return `${year}-${month}-01`;
 }
 
 const toneStyles = {
@@ -1151,7 +1151,7 @@ const toneStyles = {
   red: { background: 'rgba(239,68,68,0.16)', color: '#fca5a5' },
   amber: { background: 'rgba(245,158,11,0.16)', color: '#fcd34d' },
   slate: { background: 'rgba(148,163,184,0.12)', color: '#cbd5e1' },
-}
+};
 
 const heroStyle: CSSProperties = {
   padding: '22px',
@@ -1162,39 +1162,39 @@ const heroStyle: CSSProperties = {
   alignItems: 'center',
   background:
     'linear-gradient(135deg, rgba(37,99,235,0.22), rgba(139,92,246,0.12)), rgba(17,24,39,0.78)',
-}
+};
 
 const heroActionsStyle: CSSProperties = {
   display: 'flex',
   gap: '10px',
   flexWrap: 'wrap',
   justifyContent: 'flex-end',
-}
+};
 
 const statsGridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
   gap: '14px',
-}
+};
 
 const mainGridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
   gap: '18px',
-}
+};
 
 const bottomGridStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
   gap: '18px',
-}
+};
 
 const cardStyle: CSSProperties = {
   padding: '18px',
   borderRadius: '20px',
   display: 'grid',
   gap: '16px',
-}
+};
 
 const statCardStyle: CSSProperties = {
   padding: '18px',
@@ -1202,7 +1202,7 @@ const statCardStyle: CSSProperties = {
   display: 'grid',
   gap: '9px',
   minHeight: '154px',
-}
+};
 
 const iconBoxStyle: CSSProperties = {
   width: '42px',
@@ -1211,7 +1211,7 @@ const iconBoxStyle: CSSProperties = {
   display: 'grid',
   placeItems: 'center',
   fontSize: '20px',
-}
+};
 
 const smallIconStyle: CSSProperties = {
   width: '42px',
@@ -1222,7 +1222,7 @@ const smallIconStyle: CSSProperties = {
   background: 'rgba(255,255,255,0.06)',
   border: '1px solid rgba(255,255,255,0.08)',
   flexShrink: 0,
-}
+};
 
 const primaryButtonStyle: CSSProperties = {
   border: 'none',
@@ -1233,7 +1233,7 @@ const primaryButtonStyle: CSSProperties = {
   fontWeight: 900,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const secondaryButtonStyle: CSSProperties = {
   border: '1px solid rgba(255,255,255,0.12)',
@@ -1244,7 +1244,7 @@ const secondaryButtonStyle: CSSProperties = {
   fontWeight: 900,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const ghostButtonStyle: CSSProperties = {
   border: '1px solid rgba(96,165,250,0.28)',
@@ -1255,7 +1255,7 @@ const ghostButtonStyle: CSSProperties = {
   fontWeight: 900,
   padding: '0 14px',
   cursor: 'pointer',
-}
+};
 
 const insightStyle: CSSProperties = {
   display: 'grid',
@@ -1266,7 +1266,7 @@ const insightStyle: CSSProperties = {
   borderRadius: '16px',
   background: 'rgba(255,255,255,0.04)',
   border: '1px solid rgba(255,255,255,0.06)',
-}
+};
 
 const paymentRowStyle: CSSProperties = {
   display: 'grid',
@@ -1278,7 +1278,7 @@ const paymentRowStyle: CSSProperties = {
   background: 'rgba(255,255,255,0.04)',
   border: '1px solid rgba(255,255,255,0.06)',
   fontWeight: 800,
-}
+};
 
 const quickActionStyle: CSSProperties = {
   display: 'grid',
@@ -1292,33 +1292,33 @@ const quickActionStyle: CSSProperties = {
   background: 'rgba(255,255,255,0.04)',
   color: '#fff',
   cursor: 'pointer',
-}
+};
 
 const barTrackStyle: CSSProperties = {
   height: '12px',
   borderRadius: '999px',
   background: 'rgba(255,255,255,0.06)',
   overflow: 'hidden',
-}
+};
 
 const barFillStyle: CSSProperties = {
   height: '100%',
   borderRadius: '999px',
   background: 'linear-gradient(90deg, #2563eb, #8b5cf6)',
   transition: 'width 0.25s ease',
-}
+};
 
 const thStyle: CSSProperties = {
   padding: '12px',
   fontWeight: 900,
   whiteSpace: 'nowrap',
-}
+};
 
 const tdStyle: CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
-}
+};
 
 const toastStyle: CSSProperties = {
   position: 'fixed',
@@ -1333,7 +1333,7 @@ const toastStyle: CSSProperties = {
   fontWeight: 900,
   boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
   pointerEvents: 'none',
-}
+};
 
 function CashierRevenueView({
   cashierName,
@@ -1346,18 +1346,18 @@ function CashierRevenueView({
   onExpenses,
   onStockCount,
 }: {
-  cashierName: string
+  cashierName: string;
 
-  summary: CashierDashboardSummary
+  summary: CashierDashboardSummary;
 
-  lastUpdated: string
-  loading: boolean
+  lastUpdated: string;
+  loading: boolean;
 
-  onNewSale: () => void
-  onInvoices: () => void
-  onCustomers: () => void
-  onExpenses: () => void
-  onStockCount: () => void
+  onNewSale: () => void;
+  onInvoices: () => void;
+  onCustomers: () => void;
+  onExpenses: () => void;
+  onStockCount: () => void;
 }) {
   return (
     <div
@@ -1791,7 +1791,7 @@ function CashierRevenueView({
         </div>
       </section>
     </div>
-  )
+  );
 }
 
 function ReconciliationCard({
@@ -1799,9 +1799,9 @@ function ReconciliationCard({
   value,
   strong,
 }: {
-  title: string
-  value: string
-  strong?: boolean
+  title: string;
+  value: string;
+  strong?: boolean;
 }) {
   return (
     <div
@@ -1845,13 +1845,13 @@ function ReconciliationCard({
         {value}
       </strong>
     </div>
-  )
+  );
 }
 
 function signedMoney(value: unknown) {
-  const amount = roundMoney(value)
+  const amount = roundMoney(value);
 
-  return `${amount > 0 ? '+' : ''}${amount} ج.م`
+  return `${amount > 0 ? '+' : ''}${amount} ج.م`;
 }
 
 function CashierMiniCard({
@@ -1860,10 +1860,10 @@ function CashierMiniCard({
   subtitle,
   tone = 'blue',
 }: {
-  title: string
-  value: string
-  subtitle: string
-  tone?: 'green' | 'red' | 'violet' | 'amber' | 'blue'
+  title: string;
+  value: string;
+  subtitle: string;
+  tone?: 'green' | 'red' | 'violet' | 'amber' | 'blue';
 }) {
   const tones = {
     green: {
@@ -1895,9 +1895,9 @@ function CashierMiniCard({
       border: 'rgba(59,130,246,0.25)',
       value: '#93c5fd',
     },
-  }
+  };
 
-  const selected = tones[tone]
+  const selected = tones[tone];
 
   return (
     <div
@@ -1951,5 +1951,5 @@ function CashierMiniCard({
         {subtitle}
       </div>
     </div>
-  )
+  );
 }

@@ -41,7 +41,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
   function applyAppTheme(theme?: 'dark' | 'light') {
     document.documentElement.setAttribute(
       'data-theme',
-      theme === 'light' ? 'light' : 'dark'
+      theme === 'light' ? 'light' : 'dark',
     );
   }
 
@@ -112,7 +112,10 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
     window.addEventListener('license-status-changed', handleLicenseChanged);
 
     return () => {
-      window.removeEventListener('license-status-changed', handleLicenseChanged);
+      window.removeEventListener(
+        'license-status-changed',
+        handleLicenseChanged,
+      );
     };
   }, []);
 
@@ -171,7 +174,6 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-
   function clearLicenseTimer() {
     if (licenseTimerRef.current) {
       window.clearTimeout(licenseTimerRef.current);
@@ -194,9 +196,12 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
       return;
     }
 
-    licenseTimerRef.current = window.setTimeout(() => {
-      void loadLicenseStatus();
-    }, Math.min(delay + 1000, 2147483647));
+    licenseTimerRef.current = window.setTimeout(
+      () => {
+        void loadLicenseStatus();
+      },
+      Math.min(delay + 1000, 2147483647),
+    );
   }
 
   return (
@@ -212,7 +217,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
               borderRadius: '24px',
               objectFit: 'cover',
               margin: '0 auto 8px',
-              background: 'rgba(255,255,255,0.08)'
+              background: 'rgba(255,255,255,0.08)',
             }}
           />
         ) : (
@@ -225,7 +230,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
               placeItems: 'center',
               margin: '0 auto 8px',
               fontSize: '38px',
-              background: 'linear-gradient(135deg, #2563eb, #7c3aed)'
+              background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
             }}
           >
             👕
@@ -234,7 +239,14 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
 
         <h2 style={{ margin: 0, textAlign: 'center' }}>انتهت فترة التجربة</h2>
 
-        <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.8, textAlign: 'center' }}>
+        <p
+          style={{
+            margin: 0,
+            color: '#94a3b8',
+            lineHeight: 1.8,
+            textAlign: 'center',
+          }}
+        >
           انتهت فترة التجربة المجانية. أدخل كود التفعيل للمتابعة.
         </p>
 
@@ -245,7 +257,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
               color: '#fca5a5',
               lineHeight: 1.8,
               textAlign: 'center',
-              fontWeight: 800
+              fontWeight: 800,
             }}
           >
             {status.message}
@@ -261,12 +273,10 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
               border: '1px solid rgba(255,255,255,0.10)',
               textAlign: 'center',
               display: 'grid',
-              gap: '8px'
+              gap: '8px',
             }}
           >
-            <div style={{ color: '#94a3b8', fontWeight: 800 }}>
-              كود الجهاز
-            </div>
+            <div style={{ color: '#94a3b8', fontWeight: 800 }}>كود الجهاز</div>
 
             <strong
               dir="ltr"
@@ -275,7 +285,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
                 fontSize: '20px',
                 letterSpacing: '1px',
                 direction: 'ltr',
-                unicodeBidi: 'bidi-override'
+                unicodeBidi: 'bidi-override',
               }}
             >
               {status.device_code}
@@ -283,14 +293,16 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
 
             <button
               type="button"
-              onClick={() => navigator.clipboard?.writeText(status.device_code || '')}
+              onClick={() =>
+                navigator.clipboard?.writeText(status.device_code || '')
+              }
               style={contactButtonStyle}
             >
               نسخ كود الجهاز
             </button>
           </div>
         )}
-        
+
         <div
           style={{
             padding: '14px',
@@ -299,7 +311,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
             border: '1px solid rgba(37,99,235,0.25)',
             display: 'grid',
             gap: '10px',
-            textAlign: 'center'
+            textAlign: 'center',
           }}
         >
           <div style={{ color: '#bfdbfe', fontWeight: 900 }}>
@@ -317,7 +329,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
             style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
-              gap: '10px'
+              gap: '10px',
             }}
           >
             <button
@@ -339,7 +351,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
                 ...contactButtonStyle,
                 background: 'rgba(16,185,129,0.16)',
                 border: '1px solid rgba(16,185,129,0.35)',
-                color: '#6ee7b7'
+                color: '#6ee7b7',
               }}
             >
               واتساب
@@ -368,7 +380,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
               border: '1px solid rgba(239,68,68,0.25)',
               color: '#fca5a5',
               fontWeight: 800,
-              textAlign: 'center'
+              textAlign: 'center',
             }}
           >
             {message}
@@ -387,7 +399,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
             color: '#fff',
             fontWeight: 900,
             cursor: activating ? 'not-allowed' : 'pointer',
-            opacity: activating ? 0.6 : 1
+            opacity: activating ? 0.6 : 1,
           }}
         >
           {activating ? 'جاري التفعيل...' : 'تفعيل البرنامج'}
@@ -405,7 +417,7 @@ const pageStyle: React.CSSProperties = {
   background:
     'radial-gradient(circle at top right, rgba(37,99,235,0.20), transparent 28%), radial-gradient(circle at bottom left, rgba(139,92,246,0.18), transparent 26%), #08152f',
   color: '#fff',
-  direction: 'rtl'
+  direction: 'rtl',
 };
 
 const cardStyle: React.CSSProperties = {
@@ -416,7 +428,7 @@ const cardStyle: React.CSSProperties = {
   gap: '16px',
   background: 'rgba(15,23,42,0.96)',
   border: '1px solid rgba(255,255,255,0.10)',
-  boxShadow: '0 24px 70px rgba(0,0,0,0.40)'
+  boxShadow: '0 24px 70px rgba(0,0,0,0.40)',
 };
 
 const inputStyle: React.CSSProperties = {
@@ -428,7 +440,7 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
   padding: '0 14px',
   textAlign: 'right',
-  fontWeight: 800
+  fontWeight: 800,
 };
 
 const contactButtonStyle: React.CSSProperties = {
@@ -438,5 +450,5 @@ const contactButtonStyle: React.CSSProperties = {
   background: 'rgba(37,99,235,0.16)',
   color: '#bfdbfe',
   fontWeight: 900,
-  cursor: 'pointer'
+  cursor: 'pointer',
 };

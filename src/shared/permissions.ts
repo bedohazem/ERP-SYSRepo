@@ -136,13 +136,13 @@ export const PERMISSION_DEFINITIONS = [
     label: 'عرض صفحة الدعم',
     group: 'عام',
   },
-] as const
+] as const;
 
-export type PermissionKey = (typeof PERMISSION_DEFINITIONS)[number]['key']
+export type PermissionKey = (typeof PERMISSION_DEFINITIONS)[number]['key'];
 
 export const PERMISSION_KEYS: PermissionKey[] = PERMISSION_DEFINITIONS.map(
   (item) => item.key,
-)
+);
 
 export const PERMISSION_DEPENDENCIES: Partial<
   Record<PermissionKey, PermissionKey[]>
@@ -170,7 +170,7 @@ export const PERMISSION_DEPENDENCIES: Partial<
   'reports.view': ['costs.view'],
 
   'activity.view': ['costs.view'],
-}
+};
 
 export function normalizePermissions(
   values: readonly string[],
@@ -180,33 +180,33 @@ export function normalizePermissions(
    * المستخدم لازم يقدر يدخل
    * للنظام بعد Login دائمًا.
    */
-  const result = new Set<PermissionKey>(['dashboard.view'])
+  const result = new Set<PermissionKey>(['dashboard.view']);
 
   for (const value of values) {
     if (isPermissionKey(value)) {
-      result.add(value)
+      result.add(value);
     }
   }
 
-  let changed = true
+  let changed = true;
 
   while (changed) {
-    changed = false
+    changed = false;
 
     for (const permission of [...result]) {
-      const dependencies = PERMISSION_DEPENDENCIES[permission] ?? []
+      const dependencies = PERMISSION_DEPENDENCIES[permission] ?? [];
 
       for (const dependency of dependencies) {
         if (!result.has(dependency)) {
-          result.add(dependency)
+          result.add(dependency);
 
-          changed = true
+          changed = true;
         }
       }
     }
   }
 
-  return [...result]
+  return [...result];
 }
 
 export const CASHIER_DEFAULT_PERMISSIONS: PermissionKey[] = [
@@ -230,16 +230,16 @@ export const CASHIER_DEFAULT_PERMISSIONS: PermissionKey[] = [
   'shifts.operate_own',
 
   'about.view',
-]
+];
 
 export function isPermissionKey(value: string): value is PermissionKey {
-  return PERMISSION_KEYS.includes(value as PermissionKey)
+  return PERMISSION_KEYS.includes(value as PermissionKey);
 }
 
 export function getRoleDefaultPermissions(role: string): PermissionKey[] {
   if (role === 'admin') {
-    return [...PERMISSION_KEYS]
+    return [...PERMISSION_KEYS];
   }
 
-  return [...CASHIER_DEFAULT_PERMISSIONS]
+  return [...CASHIER_DEFAULT_PERMISSIONS];
 }

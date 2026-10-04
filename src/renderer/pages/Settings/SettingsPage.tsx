@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react';
 
-import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../../store/auth.store'
+import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../store/auth.store';
 
 type BarcodeItemPosition =
   | 'top'
@@ -12,54 +12,54 @@ type BarcodeItemPosition =
   | 'bottom'
   | 'bottom-left'
   | 'bottom-right'
-  | 'hidden'
+  | 'hidden';
 
-type BarcodeItemAlign = 'left' | 'center' | 'right'
+type BarcodeItemAlign = 'left' | 'center' | 'right';
 
 type BarcodePrintSettings = {
-  barcode_label_width_mm: number
-  barcode_label_height_mm: number
-  barcode_copies: number
-  barcode_auto_print_after_save: boolean
+  barcode_label_width_mm: number;
+  barcode_label_height_mm: number;
+  barcode_copies: number;
+  barcode_auto_print_after_save: boolean;
 
-  barcode_content_offset_x_mm: number
-  barcode_content_offset_y_mm: number
+  barcode_content_offset_x_mm: number;
+  barcode_content_offset_y_mm: number;
 
-  barcode_name_font_size: number
-  barcode_name_position: BarcodeItemPosition
-  barcode_name_align: BarcodeItemAlign
+  barcode_name_font_size: number;
+  barcode_name_position: BarcodeItemPosition;
+  barcode_name_align: BarcodeItemAlign;
 
-  barcode_price_font_size: number
-  barcode_price_position: BarcodeItemPosition
-  barcode_price_align: BarcodeItemAlign
+  barcode_price_font_size: number;
+  barcode_price_position: BarcodeItemPosition;
+  barcode_price_align: BarcodeItemAlign;
 
-  barcode_size_font_size: number
-  barcode_size_position: BarcodeItemPosition
-  barcode_size_align: BarcodeItemAlign
+  barcode_size_font_size: number;
+  barcode_size_position: BarcodeItemPosition;
+  barcode_size_align: BarcodeItemAlign;
 
-  barcode_color_font_size: number
-  barcode_color_position: BarcodeItemPosition
-  barcode_color_align: BarcodeItemAlign
+  barcode_color_font_size: number;
+  barcode_color_position: BarcodeItemPosition;
+  barcode_color_align: BarcodeItemAlign;
 
-  barcode_value_font_size: number
-  barcode_value_position: BarcodeItemPosition
-  barcode_value_align: BarcodeItemAlign
+  barcode_value_font_size: number;
+  barcode_value_position: BarcodeItemPosition;
+  barcode_value_align: BarcodeItemAlign;
 
-  barcode_svg_height: number
-}
+  barcode_svg_height: number;
+};
 
-type ReceiptPaperSize = '80mm' | '58mm' | 'custom'
+type ReceiptPaperSize = '80mm' | '58mm' | 'custom';
 
 type ReceiptPrintSettings = {
-  receipt_silent_print: boolean
-  receipt_paper_size: ReceiptPaperSize
-  receipt_width_px: number
-  receipt_padding_top_px: number
-  receipt_padding_right_px: number
-  receipt_padding_bottom_px: number
-  receipt_padding_left_px: number
-  receipt_font_size_px: number
-}
+  receipt_silent_print: boolean;
+  receipt_paper_size: ReceiptPaperSize;
+  receipt_width_px: number;
+  receipt_padding_top_px: number;
+  receipt_padding_right_px: number;
+  receipt_padding_bottom_px: number;
+  receipt_padding_left_px: number;
+  receipt_font_size_px: number;
+};
 
 const defaultReceiptPrintSettings: ReceiptPrintSettings = {
   receipt_silent_print: false,
@@ -70,7 +70,7 @@ const defaultReceiptPrintSettings: ReceiptPrintSettings = {
   receipt_padding_bottom_px: 10,
   receipt_padding_left_px: 18,
   receipt_font_size_px: 12,
-}
+};
 
 const defaultSettings: BarcodePrintSettings = {
   barcode_label_width_mm: 35,
@@ -102,135 +102,130 @@ const defaultSettings: BarcodePrintSettings = {
   barcode_value_align: 'center',
 
   barcode_svg_height: 22,
-}
+};
 
 type AppLicenseStatus = {
-  activated: boolean
-  trial_started_at: string
-  trial_days: number
-  trial_expires_at: string
-  days_left: number
-  expired: boolean
-  blocked?: boolean
-  message?: string
-  device_code?: string
-  app_logo_url: string
-  app_name?: string
-  store_phone?: string
-  store_address?: string
-  store_qr_enabled?: boolean
-  store_qr_title?: string
-  store_qr_primary_url?: string
-  app_theme?: 'dark' | 'light'
-}
+  activated: boolean;
+  trial_started_at: string;
+  trial_days: number;
+  trial_expires_at: string;
+  days_left: number;
+  expired: boolean;
+  blocked?: boolean;
+  message?: string;
+  device_code?: string;
+  app_logo_url: string;
+  app_name?: string;
+  store_phone?: string;
+  store_address?: string;
+  store_qr_enabled?: boolean;
+  store_qr_title?: string;
+  store_qr_primary_url?: string;
+  app_theme?: 'dark' | 'light';
+};
 
 type CashDrawerPrinter = {
-  name: string
-  displayName: string
-  description?: string
-  status?: number
-  isDefault: boolean
-}
+  name: string;
+  displayName: string;
+  description?: string;
+  status?: number;
+  isDefault: boolean;
+};
 
 type CashDrawerSettings = {
-  printer_name: string
-  auto_open_cash_sale: boolean
-}
+  printer_name: string;
+  auto_open_cash_sale: boolean;
+};
 
 type SettingsTab =
-  | 'store'
-  | 'backup'
-  | 'loyalty'
-  | 'barcode'
-  | 'receiptPrint'
-  | 'cashDrawer'
+  'store' | 'backup' | 'loyalty' | 'barcode' | 'receiptPrint' | 'cashDrawer';
 
 export default function SettingsPage() {
   const [settings, setSettings] =
-    useState<BarcodePrintSettings>(defaultSettings)
+    useState<BarcodePrintSettings>(defaultSettings);
 
   const [receiptPrintSettings, setReceiptPrintSettings] =
-    useState<ReceiptPrintSettings>(defaultReceiptPrintSettings)
+    useState<ReceiptPrintSettings>(defaultReceiptPrintSettings);
 
-  const [savingReceiptPrint, setSavingReceiptPrint] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [backupLoading, setBackupLoading] = useState(false)
-  const [restoreLoading, setRestoreLoading] = useState(false)
-  const [resetLoading, setResetLoading] = useState(false)
-  const [showDeactivateModal, setShowDeactivateModal] = useState(false)
+  const [savingReceiptPrint, setSavingReceiptPrint] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
 
   const [licenseStatus, setLicenseStatus] = useState<AppLicenseStatus | null>(
     null,
-  )
-  const [activationCode, setActivationCode] = useState('')
-  const [appLogoUrl, setAppLogoUrl] = useState('')
-  const [savingActivation, setSavingActivation] = useState(false)
-  const [savingLogo, setSavingLogo] = useState(false)
+  );
+  const [activationCode, setActivationCode] = useState('');
+  const [appLogoUrl, setAppLogoUrl] = useState('');
+  const [savingActivation, setSavingActivation] = useState(false);
+  const [savingLogo, setSavingLogo] = useState(false);
 
-  const [deactivatingApp, setDeactivatingApp] = useState(false)
-  const [confirmDeactivateApp, setConfirmDeactivateApp] = useState(false)
+  const [deactivatingApp, setDeactivatingApp] = useState(false);
+  const [confirmDeactivateApp, setConfirmDeactivateApp] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<SettingsTab>('store')
+  const [activeTab, setActiveTab] = useState<SettingsTab>('store');
 
-  const [appName, setAppName] = useState('')
-  const [savingAppName, setSavingAppName] = useState(false)
-  const [storePhone, setStorePhone] = useState('')
-  const [storeAddress, setStoreAddress] = useState('')
+  const [appName, setAppName] = useState('');
+  const [savingAppName, setSavingAppName] = useState(false);
+  const [storePhone, setStorePhone] = useState('');
+  const [storeAddress, setStoreAddress] = useState('');
 
-  const [storeQrEnabled, setStoreQrEnabled] = useState(false)
-  const [storeQrTitle, setStoreQrTitle] = useState('امسح الكود للتواصل معنا')
-  const [storeQrPrimaryUrl, setStoreQrPrimaryUrl] = useState('')
-  const [savingStoreQr, setSavingStoreQr] = useState(false)
-  const [savingStoreContact, setSavingStoreContact] = useState(false)
-  const currentUser = useAuthStore((s) => s.user)
+  const [storeQrEnabled, setStoreQrEnabled] = useState(false);
+  const [storeQrTitle, setStoreQrTitle] = useState('امسح الكود للتواصل معنا');
+  const [storeQrPrimaryUrl, setStoreQrPrimaryUrl] = useState('');
+  const [savingStoreQr, setSavingStoreQr] = useState(false);
+  const [savingStoreContact, setSavingStoreContact] = useState(false);
+  const currentUser = useAuthStore((s) => s.user);
 
-  const clearLocalSession = useAuthStore((s) => s.clearLocalSession)
+  const clearLocalSession = useAuthStore((s) => s.clearLocalSession);
 
-  const navigate = useNavigate()
+  const navigate = useNavigate();
 
   const [autoBackupInfo, setAutoBackupInfo] = useState<{
-    dir: string
+    dir: string;
 
-    maxBackups: number
+    maxBackups: number;
 
     retention: {
-      recent: number
-      daily: number
-      weekly: number
-      manual: number
-    }
+      recent: number;
+      daily: number;
+      weekly: number;
+      manual: number;
+    };
 
     files: Array<{
-      file: string
-      fullPath: string
-      size: number
-      createdAt: string
+      file: string;
+      fullPath: string;
+      size: number;
+      createdAt: string;
 
-      reason: 'startup' | 'hourly' | 'shutdown' | 'manual' | 'unknown'
-    }>
-  } | null>(null)
+      reason: 'startup' | 'hourly' | 'shutdown' | 'manual' | 'unknown';
+    }>;
+  } | null>(null);
 
-  const [choosingBackupDir, setChoosingBackupDir] = useState(false)
-  const [runningAutoBackup, setRunningAutoBackup] = useState(false)
+  const [choosingBackupDir, setChoosingBackupDir] = useState(false);
+  const [runningAutoBackup, setRunningAutoBackup] = useState(false);
 
   const [cashDrawerSettings, setCashDrawerSettings] =
     useState<CashDrawerSettings>({
       printer_name: '',
       auto_open_cash_sale: true,
-    })
+    });
 
   const [cashDrawerPrinters, setCashDrawerPrinters] = useState<
     CashDrawerPrinter[]
-  >([])
-  const [savingCashDrawer, setSavingCashDrawer] = useState(false)
-  const [testingCashDrawer, setTestingCashDrawer] = useState(false)
+  >([]);
+  const [savingCashDrawer, setSavingCashDrawer] = useState(false);
+  const [testingCashDrawer, setTestingCashDrawer] = useState(false);
   const [loadingCashDrawerPrinters, setLoadingCashDrawerPrinters] =
-    useState(false)
+    useState(false);
 
   useEffect(() => {
-    void loadSettings()
-  }, [])
+    void loadSettings();
+  }, []);
 
   function showMessage(
     type: 'success' | 'error',
@@ -242,11 +237,11 @@ export default function SettingsPage() {
     setPageMessage({
       type,
       text,
-    })
+    });
 
     setTimeout(() => {
-      setPageMessage(null)
-    }, duration)
+      setPageMessage(null);
+    }, duration);
   }
 
   async function loadSettings() {
@@ -267,35 +262,35 @@ export default function SettingsPage() {
         window.api.getAutoBackupInfo(),
         window.api.getCashDrawerSettings(),
         window.api.getCashDrawerPrinters().catch(() => []),
-      ])
-      setSettings(barcodeData)
-      setReceiptPrintSettings(receiptPrintData)
-      setLoyaltySettings(loyaltyData)
-      setLicenseStatus(licenseData)
-      setAppLogoUrl(licenseData.app_logo_url || '')
-      setAppName(licenseData.app_name || 'ERP Store')
-      setStorePhone(licenseData.store_phone || '')
-      setStoreAddress(licenseData.store_address || '')
-      setStoreQrEnabled(Boolean(licenseData.store_qr_enabled))
-      setStoreQrTitle(licenseData.store_qr_title || 'امسح الكود للتواصل معنا')
-      setStoreQrPrimaryUrl(licenseData.store_qr_primary_url || '')
-      setAutoBackupInfo(autoBackupData)
-      setCashDrawerSettings(cashDrawerData)
-      setCashDrawerPrinters(cashDrawerPrintersData)
-      const loadedTheme = licenseData.app_theme === 'light' ? 'light' : 'dark'
-      document.documentElement.setAttribute('data-theme', loadedTheme)
+      ]);
+      setSettings(barcodeData);
+      setReceiptPrintSettings(receiptPrintData);
+      setLoyaltySettings(loyaltyData);
+      setLicenseStatus(licenseData);
+      setAppLogoUrl(licenseData.app_logo_url || '');
+      setAppName(licenseData.app_name || 'ERP Store');
+      setStorePhone(licenseData.store_phone || '');
+      setStoreAddress(licenseData.store_address || '');
+      setStoreQrEnabled(Boolean(licenseData.store_qr_enabled));
+      setStoreQrTitle(licenseData.store_qr_title || 'امسح الكود للتواصل معنا');
+      setStoreQrPrimaryUrl(licenseData.store_qr_primary_url || '');
+      setAutoBackupInfo(autoBackupData);
+      setCashDrawerSettings(cashDrawerData);
+      setCashDrawerPrinters(cashDrawerPrintersData);
+      const loadedTheme = licenseData.app_theme === 'light' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', loadedTheme);
     } catch (error) {
-      console.error('Failed to load settings:', error)
-      showMessage('error', 'حدث خطأ أثناء تحميل الإعدادات')
+      console.error('Failed to load settings:', error);
+      showMessage('error', 'حدث خطأ أثناء تحميل الإعدادات');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function handleSaveStoreQrSettings() {
-    if (savingStoreQr) return
+    if (savingStoreQr) return;
 
-    setSavingStoreQr(true)
+    setSavingStoreQr(true);
 
     try {
       const result = await window.api.saveStoreQrSettings({
@@ -303,189 +298,192 @@ export default function SettingsPage() {
         store_qr_title: storeQrTitle,
         store_qr_primary_url: storeQrPrimaryUrl,
         actor_id: currentUser?.id,
-      })
+      });
 
       if (!result?.success) {
-        showMessage('error', result?.message || 'فشل حفظ إعدادات QR')
-        return
+        showMessage('error', result?.message || 'فشل حفظ إعدادات QR');
+        return;
       }
 
-      const nextStatus = result.status
+      const nextStatus = result.status;
 
       if (!nextStatus) {
-        showMessage('error', 'تم الحفظ لكن لم يتم تحديث بيانات QR')
-        return
+        showMessage('error', 'تم الحفظ لكن لم يتم تحديث بيانات QR');
+        return;
       }
 
-      setLicenseStatus(nextStatus)
+      setLicenseStatus(nextStatus);
 
       window.dispatchEvent(
         new CustomEvent('license-status-changed', {
           detail: nextStatus,
         }),
-      )
+      );
 
-      showMessage('success', 'تم حفظ إعدادات QR الفاتورة')
+      showMessage('success', 'تم حفظ إعدادات QR الفاتورة');
     } catch (error) {
-      console.error('FAILED SAVE STORE QR SETTINGS:', error)
-      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات QR')
+      console.error('FAILED SAVE STORE QR SETTINGS:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات QR');
     } finally {
-      setSavingStoreQr(false)
+      setSavingStoreQr(false);
     }
   }
 
   async function chooseAutoBackupDir() {
-    if (choosingBackupDir) return
+    if (choosingBackupDir) return;
 
-    setChoosingBackupDir(true)
+    setChoosingBackupDir(true);
 
     try {
       const result = await window.api.chooseAutoBackupDir({
         actor_id: currentUser?.id,
-      })
+      });
 
-      if (result.canceled) return
+      if (result.canceled) return;
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل اختيار مكان النسخ التلقائي')
-        return
+        showMessage(
+          'error',
+          result.message || 'فشل اختيار مكان النسخ التلقائي',
+        );
+        return;
       }
 
       if (result.info) {
-        setAutoBackupInfo(result.info)
+        setAutoBackupInfo(result.info);
       } else {
-        setAutoBackupInfo(await window.api.getAutoBackupInfo())
+        setAutoBackupInfo(await window.api.getAutoBackupInfo());
       }
 
-      showMessage('success', 'تم اختيار مكان النسخ التلقائي')
+      showMessage('success', 'تم اختيار مكان النسخ التلقائي');
     } catch (error) {
-      console.error('Failed to choose auto backup dir:', error)
-      showMessage('error', 'حدث خطأ أثناء اختيار مكان النسخ التلقائي')
+      console.error('Failed to choose auto backup dir:', error);
+      showMessage('error', 'حدث خطأ أثناء اختيار مكان النسخ التلقائي');
     } finally {
-      setChoosingBackupDir(false)
+      setChoosingBackupDir(false);
     }
   }
 
   async function runAutoBackupNow() {
-    if (runningAutoBackup) return
+    if (runningAutoBackup) return;
 
-    setRunningAutoBackup(true)
+    setRunningAutoBackup(true);
 
     try {
       const result = await window.api.runAutoBackupNow({
         actor_id: currentUser?.id,
-      })
+      });
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل إنشاء النسخة التلقائية')
-        return
+        showMessage('error', result.message || 'فشل إنشاء النسخة التلقائية');
+        return;
       }
 
       if (result.info) {
-        setAutoBackupInfo(result.info)
+        setAutoBackupInfo(result.info);
       } else {
-        setAutoBackupInfo(await window.api.getAutoBackupInfo())
+        setAutoBackupInfo(await window.api.getAutoBackupInfo());
       }
 
-      showMessage('success', 'تم إنشاء نسخة تلقائية الآن')
+      showMessage('success', 'تم إنشاء نسخة تلقائية الآن');
     } catch (error) {
-      console.error('Failed to run auto backup:', error)
-      showMessage('error', 'حدث خطأ أثناء إنشاء النسخة التلقائية')
+      console.error('Failed to run auto backup:', error);
+      showMessage('error', 'حدث خطأ أثناء إنشاء النسخة التلقائية');
     } finally {
-      setRunningAutoBackup(false)
+      setRunningAutoBackup(false);
     }
   }
 
   async function reloadCashDrawerPrinters() {
-    if (loadingCashDrawerPrinters) return
+    if (loadingCashDrawerPrinters) return;
 
-    setLoadingCashDrawerPrinters(true)
+    setLoadingCashDrawerPrinters(true);
 
     try {
-      const printers = await window.api.getCashDrawerPrinters()
-      setCashDrawerPrinters(printers)
-      showMessage('success', 'تم تحديث قائمة الطابعات')
+      const printers = await window.api.getCashDrawerPrinters();
+      setCashDrawerPrinters(printers);
+      showMessage('success', 'تم تحديث قائمة الطابعات');
     } catch (error) {
-      console.error('Failed to load cash drawer printers:', error)
-      showMessage('error', 'فشل تحميل الطابعات')
+      console.error('Failed to load cash drawer printers:', error);
+      showMessage('error', 'فشل تحميل الطابعات');
     } finally {
-      setLoadingCashDrawerPrinters(false)
+      setLoadingCashDrawerPrinters(false);
     }
   }
 
   async function saveCashDrawerSettings() {
-    if (savingCashDrawer) return
+    if (savingCashDrawer) return;
 
     if (!cashDrawerSettings.printer_name.trim()) {
-      showMessage('error', 'اختار طابعة درج الكاشير أولًا')
-      return
+      showMessage('error', 'اختار طابعة درج الكاشير أولًا');
+      return;
     }
 
-    setSavingCashDrawer(true)
+    setSavingCashDrawer(true);
 
     try {
       const result = await window.api.saveCashDrawerSettings({
         printer_name: cashDrawerSettings.printer_name,
         auto_open_cash_sale: cashDrawerSettings.auto_open_cash_sale,
         actor_id: currentUser?.id,
-      })
+      });
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل حفظ إعدادات درج الكاشير')
-        return
+        showMessage('error', result.message || 'فشل حفظ إعدادات درج الكاشير');
+        return;
       }
 
-      setCashDrawerSettings(result.settings)
-      showMessage('success', 'تم حفظ إعدادات درج الكاشير')
+      setCashDrawerSettings(result.settings);
+      showMessage('success', 'تم حفظ إعدادات درج الكاشير');
     } catch (error) {
-      console.error('Failed to save cash drawer settings:', error)
-      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات درج الكاشير')
+      console.error('Failed to save cash drawer settings:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات درج الكاشير');
     } finally {
-      setSavingCashDrawer(false)
+      setSavingCashDrawer(false);
     }
   }
 
   async function testOpenCashDrawer() {
-    if (testingCashDrawer) return
+    if (testingCashDrawer) return;
 
     if (!cashDrawerSettings.printer_name.trim()) {
-      showMessage('error', 'اختار طابعة درج الكاشير أولًا')
-      return
+      showMessage('error', 'اختار طابعة درج الكاشير أولًا');
+      return;
     }
 
-    setTestingCashDrawer(true)
+    setTestingCashDrawer(true);
 
     try {
       const result = await window.api.openCashDrawer({
         actor_id: currentUser?.id,
         reason: 'test',
-      })
+      });
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل فتح درج الكاشير')
-        return
+        showMessage('error', result.message || 'فشل فتح درج الكاشير');
+        return;
       }
 
-      showMessage('success', 'تم إرسال أمر فتح درج الكاشير')
+      showMessage('success', 'تم إرسال أمر فتح درج الكاشير');
     } catch (error) {
-      console.error('Failed to open cash drawer:', error)
-      showMessage('error', 'حدث خطأ أثناء فتح درج الكاشير')
+      console.error('Failed to open cash drawer:', error);
+      showMessage('error', 'حدث خطأ أثناء فتح درج الكاشير');
     } finally {
-      setTestingCashDrawer(false)
+      setTestingCashDrawer(false);
     }
   }
 
   async function saveSettings() {
-    setSaving(true)
+    setSaving(true);
 
     try {
-      await window.api.saveBarcodePrintSettings(settings)
-      showMessage('success', 'تم حفظ إعدادات الطباعة بنجاح')
+      await window.api.saveBarcodePrintSettings(settings);
+      showMessage('success', 'تم حفظ إعدادات الطباعة بنجاح');
     } catch (error) {
-      console.error('Failed to save barcode print settings:', error)
-      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات الطباعة')
+      console.error('Failed to save barcode print settings:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات الطباعة');
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
   }
 
@@ -496,7 +494,7 @@ export default function SettingsPage() {
     setSettings((prev) => ({
       ...prev,
       [key]: value,
-    }))
+    }));
   }
 
   function setReceiptPrintField<K extends keyof ReceiptPrintSettings>(
@@ -514,7 +512,7 @@ export default function SettingsPage() {
             : 'custom',
 
       [key]: value,
-    }))
+    }));
   }
 
   function applyReceiptPrintPreset(paperSize: ReceiptPaperSize) {
@@ -528,9 +526,9 @@ export default function SettingsPage() {
         receipt_padding_bottom_px: 8,
         receipt_padding_left_px: 10,
         receipt_font_size_px: 11,
-      }))
+      }));
 
-      return
+      return;
     }
 
     setReceiptPrintSettings((prev) => ({
@@ -542,33 +540,33 @@ export default function SettingsPage() {
       receipt_padding_bottom_px: 10,
       receipt_padding_left_px: 18,
       receipt_font_size_px: 12,
-    }))
+    }));
   }
 
   async function handleSaveReceiptPrintSettings() {
-    if (savingReceiptPrint) return
+    if (savingReceiptPrint) return;
 
-    setSavingReceiptPrint(true)
+    setSavingReceiptPrint(true);
 
     try {
       const saved =
-        await window.api.saveReceiptPrintSettings(receiptPrintSettings)
+        await window.api.saveReceiptPrintSettings(receiptPrintSettings);
 
-      setReceiptPrintSettings(saved)
-      showMessage('success', 'تم حفظ إعدادات طباعة الفاتورة')
+      setReceiptPrintSettings(saved);
+      showMessage('success', 'تم حفظ إعدادات طباعة الفاتورة');
     } catch (error) {
-      console.error('Failed to save receipt print settings:', error)
-      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات طباعة الفاتورة')
+      console.error('Failed to save receipt print settings:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات طباعة الفاتورة');
     } finally {
-      setSavingReceiptPrint(false)
+      setSavingReceiptPrint(false);
     }
   }
 
-  const [savingLoyalty, setSavingLoyalty] = useState(false)
+  const [savingLoyalty, setSavingLoyalty] = useState(false);
   const [pageMessage, setPageMessage] = useState<{
-    type: 'success' | 'error'
-    text: string
-  } | null>(null)
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const [loyaltySettings, setLoyaltySettings] = useState({
     loyalty_enabled: true,
@@ -576,12 +574,12 @@ export default function SettingsPage() {
     loyalty_earn_points: 1,
     loyalty_point_value: 1,
     loyalty_min_redeem_points: 1,
-  })
+  });
 
   async function saveLoyaltySettings() {
-    if (savingLoyalty) return
+    if (savingLoyalty) return;
 
-    setSavingLoyalty(true)
+    setSavingLoyalty(true);
 
     try {
       const saved = await window.api.saveLoyaltySettings({
@@ -602,111 +600,111 @@ export default function SettingsPage() {
           1,
           Number(loyaltySettings.loyalty_min_redeem_points || 1),
         ),
-      })
+      });
 
-      setLoyaltySettings(saved)
-      showMessage('success', 'تم حفظ إعدادات نقاط الولاء')
+      setLoyaltySettings(saved);
+      showMessage('success', 'تم حفظ إعدادات نقاط الولاء');
     } catch (error) {
-      console.error('Failed to save loyalty settings:', error)
-      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات النقاط')
+      console.error('Failed to save loyalty settings:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ إعدادات النقاط');
     } finally {
-      setSavingLoyalty(false)
+      setSavingLoyalty(false);
     }
   }
 
   async function backupDatabase() {
-    if (backupLoading) return
+    if (backupLoading) return;
 
-    setBackupLoading(true)
+    setBackupLoading(true);
 
     try {
       const result = await window.api.backupDatabase({
         actor_id: currentUser?.id,
-      })
+      });
 
       if (result.canceled) {
-        return
+        return;
       }
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل حفظ النسخة الاحتياطية')
-        return
+        showMessage('error', result.message || 'فشل حفظ النسخة الاحتياطية');
+        return;
       }
 
-      showMessage('success', 'تم حفظ النسخة الاحتياطية بنجاح')
+      showMessage('success', 'تم حفظ النسخة الاحتياطية بنجاح');
     } catch (error) {
-      console.error('Failed to backup database:', error)
-      showMessage('error', 'حدث خطأ أثناء حفظ النسخة الاحتياطية')
+      console.error('Failed to backup database:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ النسخة الاحتياطية');
     } finally {
-      setBackupLoading(false)
+      setBackupLoading(false);
     }
   }
 
   async function restoreDatabase() {
-    if (restoreLoading) return
+    if (restoreLoading) return;
 
-    setRestoreLoading(true)
+    setRestoreLoading(true);
 
     try {
       const result = await window.api.restoreDatabase({
         actor_id: currentUser?.id,
-      })
+      });
 
       if (result.canceled) {
-        return
+        return;
       }
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل استرجاع النسخة الاحتياطية')
-        return
+        showMessage('error', result.message || 'فشل استرجاع النسخة الاحتياطية');
+        return;
       }
 
-      clearLocalSession()
+      clearLocalSession();
 
       navigate('/', {
         replace: true,
-      })
+      });
 
-      return
+      return;
     } catch (error) {
-      console.error('Failed to restore database:', error)
-      showMessage('error', 'حدث خطأ أثناء استرجاع النسخة الاحتياطية')
+      console.error('Failed to restore database:', error);
+      showMessage('error', 'حدث خطأ أثناء استرجاع النسخة الاحتياطية');
     } finally {
-      setRestoreLoading(false)
+      setRestoreLoading(false);
     }
   }
 
   async function resetDatabase() {
-    if (resetLoading) return
+    if (resetLoading) return;
 
-    setResetLoading(true)
+    setResetLoading(true);
 
     try {
       const result = await window.api.resetDatabase({
         actor_id: currentUser?.id,
-      })
+      });
 
       if (result.canceled) {
-        return
+        return;
       }
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل تصفير البرنامج')
-        return
+        showMessage('error', result.message || 'فشل تصفير البرنامج');
+        return;
       }
 
-      clearLocalSession()
+      clearLocalSession();
 
       navigate('/', {
         replace: true,
-      })
+      });
 
-      return
+      return;
     } catch (error) {
-      console.error('Failed to reset database:', error)
-      showMessage('error', 'حدث خطأ أثناء تصفير البرنامج')
+      console.error('Failed to reset database:', error);
+      showMessage('error', 'حدث خطأ أثناء تصفير البرنامج');
     } finally {
-      setResetLoading(false)
+      setResetLoading(false);
     }
   }
   if (loading) {
@@ -717,231 +715,231 @@ export default function SettingsPage() {
       >
         جاري تحميل الإعدادات...
       </div>
-    )
+    );
   }
 
   async function handleActivateApp() {
-    if (savingActivation) return
+    if (savingActivation) return;
 
-    const code = activationCode.trim()
+    const code = activationCode.trim();
 
     if (!code) {
-      showMessage('error', 'اكتب كود التفعيل')
-      return
+      showMessage('error', 'اكتب كود التفعيل');
+      return;
     }
 
-    setSavingActivation(true)
+    setSavingActivation(true);
 
     try {
-      const result = await window.api.activateApp(code)
+      const result = await window.api.activateApp(code);
 
       if (!result.success) {
-        showMessage('error', result.message || 'كود التفعيل غير صحيح')
-        return
+        showMessage('error', result.message || 'كود التفعيل غير صحيح');
+        return;
       }
 
       if (result.status) {
-        setLicenseStatus(result.status)
+        setLicenseStatus(result.status);
 
         window.dispatchEvent(
           new CustomEvent('license-status-changed', {
             detail: result.status,
           }),
-        )
+        );
       }
 
-      setActivationCode('')
-      showMessage('success', 'تم تفعيل البرنامج بنجاح')
+      setActivationCode('');
+      showMessage('success', 'تم تفعيل البرنامج بنجاح');
     } catch (error) {
-      console.error('Failed to activate app:', error)
-      showMessage('error', 'حدث خطأ أثناء تفعيل البرنامج')
+      console.error('Failed to activate app:', error);
+      showMessage('error', 'حدث خطأ أثناء تفعيل البرنامج');
     } finally {
-      setSavingActivation(false)
+      setSavingActivation(false);
     }
   }
 
   async function handleSaveAppLogoUrl() {
-    if (savingLogo) return
+    if (savingLogo) return;
 
-    setSavingLogo(true)
+    setSavingLogo(true);
 
     try {
       const result = await window.api.saveAppLogoUrl(appLogoUrl.trim(), {
         actor_id: currentUser?.id,
-      })
-      setLicenseStatus(result.status)
-      showMessage('success', 'تم حفظ رابط صورة التطبيق')
+      });
+      setLicenseStatus(result.status);
+      showMessage('success', 'تم حفظ رابط صورة التطبيق');
     } catch (error) {
-      console.error('Failed to save app logo url:', error)
-      showMessage('error', 'حدث خطأ أثناء حفظ رابط الصورة')
+      console.error('Failed to save app logo url:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ رابط الصورة');
     } finally {
-      setSavingLogo(false)
+      setSavingLogo(false);
     }
   }
 
   async function handleChooseAppLogo() {
-    if (savingLogo) return
+    if (savingLogo) return;
 
-    setSavingLogo(true)
+    setSavingLogo(true);
 
     try {
       const result = await window.api.chooseAppLogo({
         actor_id: currentUser?.id,
-      })
+      });
 
       if (result.canceled) {
-        return
+        return;
       }
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل اختيار صورة التطبيق')
-        return
+        showMessage('error', result.message || 'فشل اختيار صورة التطبيق');
+        return;
       }
 
       if (result.logoUrl) {
-        setAppLogoUrl(result.logoUrl)
+        setAppLogoUrl(result.logoUrl);
       }
 
       if (result.status) {
-        setLicenseStatus(result.status)
+        setLicenseStatus(result.status);
       }
 
-      showMessage('success', 'تم اختيار صورة التطبيق بنجاح')
+      showMessage('success', 'تم اختيار صورة التطبيق بنجاح');
     } catch (error) {
-      console.error('Failed to choose app logo:', error)
-      showMessage('error', 'حدث خطأ أثناء اختيار صورة التطبيق')
+      console.error('Failed to choose app logo:', error);
+      showMessage('error', 'حدث خطأ أثناء اختيار صورة التطبيق');
     } finally {
-      setSavingLogo(false)
+      setSavingLogo(false);
     }
   }
 
   async function handleDeactivateApp() {
-    if (deactivatingApp) return
+    if (deactivatingApp) return;
 
-    setDeactivatingApp(true)
+    setDeactivatingApp(true);
 
     try {
-      const result = await window.api.deactivateApp()
+      const result = await window.api.deactivateApp();
 
       if (!result.success) {
-        showMessage('error', result.message || 'فشل إلغاء التفعيل')
-        return
+        showMessage('error', result.message || 'فشل إلغاء التفعيل');
+        return;
       }
 
-      const freshStatus = await window.api.getLicenseStatus()
-      console.log('FRESH STATUS IN RENDERER:', freshStatus)
+      const freshStatus = await window.api.getLicenseStatus();
+      console.log('FRESH STATUS IN RENDERER:', freshStatus);
 
-      setLicenseStatus(freshStatus)
+      setLicenseStatus(freshStatus);
 
       window.dispatchEvent(
         new CustomEvent('license-status-changed', {
           detail: freshStatus,
         }),
-      )
+      );
 
-      setShowDeactivateModal(false)
-      setConfirmDeactivateApp(false)
-      showMessage('success', 'تم إلغاء تفعيل البرنامج')
+      setShowDeactivateModal(false);
+      setConfirmDeactivateApp(false);
+      showMessage('success', 'تم إلغاء تفعيل البرنامج');
     } catch (error) {
-      console.error('Failed to deactivate app:', error)
-      showMessage('error', 'حدث خطأ أثناء إلغاء التفعيل')
+      console.error('Failed to deactivate app:', error);
+      showMessage('error', 'حدث خطأ أثناء إلغاء التفعيل');
     } finally {
-      setDeactivatingApp(false)
+      setDeactivatingApp(false);
     }
   }
 
   async function copyDeviceCode() {
-    const code = licenseStatus?.device_code || ''
+    const code = licenseStatus?.device_code || '';
 
     if (!code) {
-      showMessage('error', 'كود الجهاز غير متاح')
-      return
+      showMessage('error', 'كود الجهاز غير متاح');
+      return;
     }
 
     try {
-      await navigator.clipboard.writeText(code)
-      showMessage('success', 'تم نسخ كود الجهاز')
+      await navigator.clipboard.writeText(code);
+      showMessage('success', 'تم نسخ كود الجهاز');
     } catch {
-      showMessage('error', 'تعذر نسخ كود الجهاز')
+      showMessage('error', 'تعذر نسخ كود الجهاز');
     }
   }
 
   async function handleSaveAppName() {
-    if (savingAppName) return
+    if (savingAppName) return;
 
-    const cleanName = appName.trim()
+    const cleanName = appName.trim();
 
     if (!cleanName) {
-      showMessage('error', 'اكتب اسم المحل')
-      return
+      showMessage('error', 'اكتب اسم المحل');
+      return;
     }
 
-    setSavingAppName(true)
+    setSavingAppName(true);
 
     try {
       const result = await window.api.saveAppName(cleanName, {
         actor_id: currentUser?.id,
-      })
+      });
 
-      setLicenseStatus(result.status)
-      setAppName(result.status.app_name || cleanName)
-      document.title = result.status.app_name || 'ERP Store'
+      setLicenseStatus(result.status);
+      setAppName(result.status.app_name || cleanName);
+      document.title = result.status.app_name || 'ERP Store';
 
       window.dispatchEvent(
         new CustomEvent('license-status-changed', {
           detail: result.status,
         }),
-      )
+      );
 
-      showMessage('success', 'تم حفظ اسم المحل')
+      showMessage('success', 'تم حفظ اسم المحل');
     } catch (error) {
-      console.error('Failed to save app name:', error)
-      showMessage('error', 'حدث خطأ أثناء حفظ اسم المحل')
+      console.error('Failed to save app name:', error);
+      showMessage('error', 'حدث خطأ أثناء حفظ اسم المحل');
     } finally {
-      setSavingAppName(false)
+      setSavingAppName(false);
     }
   }
 
   async function handleSaveStoreContactInfo() {
-    if (savingStoreContact) return
+    if (savingStoreContact) return;
 
-    setSavingStoreContact(true)
+    setSavingStoreContact(true);
 
     try {
       const result = await window.api.saveStoreContactInfo(
         storePhone.trim(),
         storeAddress.trim(),
         { actor_id: currentUser?.id },
-      )
+      );
 
-      console.log('SAVE STORE CONTACT RESULT:', result)
+      console.log('SAVE STORE CONTACT RESULT:', result);
 
       if (!result?.success) {
-        showMessage('error', result?.message || 'فشل حفظ بيانات الفاتورة')
-        return
+        showMessage('error', result?.message || 'فشل حفظ بيانات الفاتورة');
+        return;
       }
 
-      setLicenseStatus(result.status)
-      setStorePhone(result.status?.store_phone || '')
-      setStoreAddress(result.status?.store_address || '')
+      setLicenseStatus(result.status);
+      setStorePhone(result.status?.store_phone || '');
+      setStoreAddress(result.status?.store_address || '');
 
       window.dispatchEvent(
         new CustomEvent('license-status-changed', {
           detail: result.status,
         }),
-      )
+      );
 
-      showMessage('success', 'تم حفظ بيانات الفاتورة')
+      showMessage('success', 'تم حفظ بيانات الفاتورة');
     } catch (error) {
-      console.error('FAILED SAVE STORE CONTACT INFO:', error)
+      console.error('FAILED SAVE STORE CONTACT INFO:', error);
       showMessage(
         'error',
         error instanceof Error
           ? error.message
           : 'حدث خطأ أثناء حفظ بيانات الفاتورة',
-      )
+      );
     } finally {
-      setSavingStoreContact(false)
+      setSavingStoreContact(false);
     }
   }
 
@@ -1659,10 +1657,10 @@ export default function SettingsPage() {
                     background: 'rgba(255,255,255,0.08)',
                   }}
                   onLoad={(e) => {
-                    e.currentTarget.style.display = 'block'
+                    e.currentTarget.style.display = 'block';
                   }}
                   onError={(e) => {
-                    e.currentTarget.style.display = 'none'
+                    e.currentTarget.style.display = 'none';
                   }}
                 />
 
@@ -2109,14 +2107,14 @@ export default function SettingsPage() {
                 <select
                   value={receiptPrintSettings.receipt_paper_size}
                   onChange={(e) => {
-                    const value = e.target.value as ReceiptPaperSize
+                    const value = e.target.value as ReceiptPaperSize;
 
                     if (value === '80mm' || value === '58mm') {
-                      applyReceiptPrintPreset(value)
-                      return
+                      applyReceiptPrintPreset(value);
+                      return;
                     }
 
-                    setReceiptPrintField('receipt_paper_size', value)
+                    setReceiptPrintField('receipt_paper_size', value);
                   }}
                   style={inputStyle}
                 >
@@ -2513,17 +2511,17 @@ export default function SettingsPage() {
         )}
       </div>
     </div>
-  )
+  );
 }
 
 function BarcodeItemEditor(props: {
-  title: string
-  fontSize: number
-  position: BarcodeItemPosition
-  align: BarcodeItemAlign
-  onFontSizeChange: (value: number) => void
-  onPositionChange: (value: BarcodeItemPosition) => void
-  onAlignChange: (value: BarcodeItemAlign) => void
+  title: string;
+  fontSize: number;
+  position: BarcodeItemPosition;
+  align: BarcodeItemAlign;
+  onFontSizeChange: (value: number) => void;
+  onPositionChange: (value: BarcodeItemPosition) => void;
+  onAlignChange: (value: BarcodeItemAlign) => void;
 }) {
   return (
     <div
@@ -2591,7 +2589,7 @@ function BarcodeItemEditor(props: {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 const labelStyle: React.CSSProperties = {
@@ -2599,14 +2597,14 @@ const labelStyle: React.CSSProperties = {
   marginBottom: '8px',
   color: '#cbd5e1',
   fontSize: '14px',
-}
+};
 
 const checkboxRowStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '10px',
   color: '#e5e7eb',
-}
+};
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -2617,7 +2615,7 @@ const inputStyle: React.CSSProperties = {
   color: '#fff',
   padding: '0 14px',
   outline: 'none',
-}
+};
 
 const primaryButtonStyle: React.CSSProperties = {
   border: 'none',
@@ -2628,7 +2626,7 @@ const primaryButtonStyle: React.CSSProperties = {
   fontWeight: 700,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const loyaltyFieldStyle: React.CSSProperties = {
   display: 'grid',
@@ -2637,13 +2635,13 @@ const loyaltyFieldStyle: React.CSSProperties = {
   borderRadius: '14px',
   background: 'rgba(255,255,255,0.035)',
   border: '1px solid rgba(255,255,255,0.08)',
-}
+};
 
 const hintStyle: React.CSSProperties = {
   color: '#94a3b8',
   fontSize: '12px',
   lineHeight: 1.6,
-}
+};
 
 const dangerButtonStyle: React.CSSProperties = {
   border: '1px solid rgba(239,68,68,0.35)',
@@ -2654,7 +2652,7 @@ const dangerButtonStyle: React.CSSProperties = {
   fontWeight: 700,
   padding: '0 18px',
   cursor: 'pointer',
-}
+};
 
 const statCardStyle: React.CSSProperties = {
   display: 'grid',
@@ -2665,7 +2663,7 @@ const statCardStyle: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.08)',
   color: '#94a3b8',
   fontWeight: 800,
-}
+};
 
 function tabButtonStyle(active: boolean): React.CSSProperties {
   return {
@@ -2682,5 +2680,5 @@ function tabButtonStyle(active: boolean): React.CSSProperties {
     padding: '0 18px',
     cursor: 'pointer',
     boxShadow: active ? '0 12px 26px rgba(37,99,235,0.22)' : 'none',
-  }
+  };
 }

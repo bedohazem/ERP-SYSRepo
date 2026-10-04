@@ -1,17 +1,17 @@
-import { getDb } from '../db'
+import { getDb } from '../db';
 import {
   getSupplierAgingSummary,
   getSupplierDueSummary,
-} from './suppliers.repo'
-import { createCashMovement, resolveCashAccount } from './cash.repo'
-import { roundMoney } from '../../../shared/money'
+} from './suppliers.repo';
+import { createCashMovement, resolveCashAccount } from './cash.repo';
+import { roundMoney } from '../../../shared/money';
 import {
   getOpenCashShift,
   resolveFinancialOperationShift,
-} from './cash-shifts.repo'
+} from './cash-shifts.repo';
 
-import { getShiftBusinessDate } from '../shift-business-date'
-import { issueStockAtCost, receiveStockAtCost } from '../inventory-cost'
+import { getShiftBusinessDate } from '../shift-business-date';
+import { issueStockAtCost, receiveStockAtCost } from '../inventory-cost';
 
 function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
   const row = db
@@ -23,10 +23,10 @@ function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
       `,
     )
     .get() as {
-    business_date: string
-  }
+    business_date: string;
+  };
 
-  return String(row?.business_date || '')
+  return String(row?.business_date || '');
 }
 
 function calculatePurchaseDueDate(
@@ -35,13 +35,13 @@ function calculatePurchaseDueDate(
   creditDays: number | null,
 ) {
   if (creditDays === null) {
-    return null
+    return null;
   }
 
-  const days = Number(creditDays)
+  const days = Number(creditDays);
 
   if (!Number.isInteger(days) || days < 0) {
-    throw new Error('مدة ائتمان المورد غير صحيحة')
+    throw new Error('مدة ائتمان المورد غير صحيحة');
   }
 
   const row = db
@@ -59,101 +59,101 @@ function calculatePurchaseDueDate(
     )
     .get(businessDate, days) as
     | {
-        due_date: string | null
+        due_date: string | null;
       }
-    | undefined
+    | undefined;
 
-  const dueDate = String(row?.due_date || '').trim()
+  const dueDate = String(row?.due_date || '').trim();
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
-    throw new Error('تعذر حساب تاريخ استحقاق فاتورة الشراء')
+    throw new Error('تعذر حساب تاريخ استحقاق فاتورة الشراء');
   }
 
-  return dueDate
+  return dueDate;
 }
 
 export type CreatePurchaseInput = {
-  actor_id?: number | null
-  supplier_id: number
-  paid_amount?: number
-  sub_total?: number
-  discount_type?: 'amount' | 'percent' | string
-  discount_input?: number
-  discount_value?: number
-  payment_method?: string
-  notes?: string | null
+  actor_id?: number | null;
+  supplier_id: number;
+  paid_amount?: number;
+  sub_total?: number;
+  discount_type?: 'amount' | 'percent' | string;
+  discount_input?: number;
+  discount_value?: number;
+  payment_method?: string;
+  notes?: string | null;
   items: Array<{
-    variant_id: number
-    quantity: number
-    unit_cost: number
-  }>
-}
+    variant_id: number;
+    quantity: number;
+    unit_cost: number;
+  }>;
+};
 
 export type CancelPurchaseInput = {
-  purchase_id: number
-  reason?: string
-  actor_id?: number | null
-}
+  purchase_id: number;
+  reason?: string;
+  actor_id?: number | null;
+};
 
 export type CreatePurchaseReturnInput = {
-  purchase_id: number
-  notes?: string | null
-  refund_payment_method?: string | null
-  refund_mode?: 'cash' | 'credit' | string
-  actor_id?: number | null
+  purchase_id: number;
+  notes?: string | null;
+  refund_payment_method?: string | null;
+  refund_mode?: 'cash' | 'credit' | string;
+  actor_id?: number | null;
   items: Array<{
-    purchase_item_id?: number
-    variant_id?: number
-    quantity: number
-  }>
-}
+    purchase_item_id?: number;
+    variant_id?: number;
+    quantity: number;
+  }>;
+};
 
 export type UpdatePurchaseInput = {
-  purchase_id: number
-  actor_id: number
-  reason?: string | null
+  purchase_id: number;
+  actor_id: number;
+  reason?: string | null;
 
-  supplier_id: number
+  supplier_id: number;
 
-  paid_amount?: number
-  sub_total?: number
+  paid_amount?: number;
+  sub_total?: number;
 
-  discount_type?: 'amount' | 'percent' | string
-  discount_input?: number
-  discount_value?: number
+  discount_type?: 'amount' | 'percent' | string;
+  discount_input?: number;
+  discount_value?: number;
 
-  payment_method?: string
-  notes?: string | null
+  payment_method?: string;
+  notes?: string | null;
 
   items: Array<{
-    variant_id: number
-    quantity: number
-    unit_cost: number
-  }>
-}
+    variant_id: number;
+    quantity: number;
+    unit_cost: number;
+  }>;
+};
 
 export type CancelPurchaseReturnInput = {
-  return_id: number
-  reason?: string | null
-  actor_id?: number | null
-}
+  return_id: number;
+  reason?: string | null;
+  actor_id?: number | null;
+};
 
 export type UpdatePurchaseReturnInput = {
-  return_id: number
-  reason?: string | null
-  actor_id?: number | null
+  return_id: number;
+  reason?: string | null;
+  actor_id?: number | null;
 
-  notes?: string | null
+  notes?: string | null;
 
-  refund_payment_method?: string | null
-  refund_mode?: 'cash' | 'credit' | string
+  refund_payment_method?: string | null;
+  refund_mode?: 'cash' | 'credit' | string;
 
   items: Array<{
-    purchase_item_id?: number
-    variant_id?: number
-    quantity: number
-  }>
-}
+    purchase_item_id?: number;
+    variant_id?: number;
+    quantity: number;
+  }>;
+};
 
 function getCurrentVariantStock(
   db: ReturnType<typeof getDb>,
@@ -174,9 +174,9 @@ function getCurrentVariantStock(
       WHERE variant_id = ?
     `,
     )
-    .get(Number(variantId)) as { stock: number } | undefined
+    .get(Number(variantId)) as { stock: number } | undefined;
 
-  return Number(row?.stock || 0)
+  return Number(row?.stock || 0);
 }
 
 function getReturnedQuantityForPurchaseItem(
@@ -193,9 +193,9 @@ function getReturnedQuantityForPurchaseItem(
         AND pr.cancelled_at IS NULL
     `,
     )
-    .get(Number(purchaseItemId)) as { quantity: number } | undefined
+    .get(Number(purchaseItemId)) as { quantity: number } | undefined;
 
-  return Number(row?.quantity || 0)
+  return Number(row?.quantity || 0);
 }
 
 function normalizePaymentStatus(
@@ -203,20 +203,20 @@ function normalizePaymentStatus(
   paidAmount: number,
   remainingAmount: number,
 ) {
-  if (remainingAmount <= 0) return 'paid'
-  if (paidAmount > 0 && paidAmount < totalAmount) return 'partial'
-  return 'unpaid'
+  if (remainingAmount <= 0) return 'paid';
+  if (paidAmount > 0 && paidAmount < totalAmount) return 'partial';
+  return 'unpaid';
 }
 
 export function createPurchaseInvoice(input: CreatePurchaseInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const supplierId = Number(input.supplier_id)
-  const paidAmountInput = Number(input.paid_amount || 0)
+  const supplierId = Number(input.supplier_id);
+  const paidAmountInput = Number(input.paid_amount || 0);
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
-  const paymentMethod = resolveCashAccount(input.payment_method || 'cash')
+  const paymentMethod = resolveCashAccount(input.payment_method || 'cash');
 
   const openShift =
     paidAmountInput > 0
@@ -225,27 +225,27 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
           [paymentMethod],
           'لا يمكن دفع فاتورة شراء من درج المحل بدون شفت مفتوح',
         )
-      : null
+      : null;
 
   const businessDate = openShift
     ? getShiftBusinessDate(openShift.id)
-    : getCurrentBusinessDate(db)
+    : getCurrentBusinessDate(db);
 
   if (!supplierId) {
-    throw new Error('اختار المورد')
+    throw new Error('اختار المورد');
   }
 
   if (!input.items?.length) {
-    throw new Error('لا توجد أصناف في فاتورة الشراء')
+    throw new Error('لا توجد أصناف في فاتورة الشراء');
   }
 
   const tx = db.transaction(() => {
     const supplier = db
       .prepare(`SELECT * FROM suppliers WHERE id = ? AND is_active = 1 LIMIT 1`)
-      .get(supplierId) as any
+      .get(supplierId) as any;
 
     if (!supplier) {
-      throw new Error('المورد غير موجود')
+      throw new Error('المورد غير موجود');
     }
 
     const getVariant = db.prepare(`
@@ -260,34 +260,34 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       JOIN products p ON p.id = v.product_id
       WHERE v.id = ?
       LIMIT 1
-    `)
+    `);
 
-    const seenVariantIds = new Set<number>()
+    const seenVariantIds = new Set<number>();
 
     const preparedItems = input.items.map((item) => {
-      const variantId = Number(item.variant_id)
+      const variantId = Number(item.variant_id);
 
       if (!variantId || seenVariantIds.has(variantId)) {
-        throw new Error('يوجد صنف مكرر أو غير صحيح داخل فاتورة الشراء')
+        throw new Error('يوجد صنف مكرر أو غير صحيح داخل فاتورة الشراء');
       }
 
-      seenVariantIds.add(variantId)
+      seenVariantIds.add(variantId);
 
-      const variant = getVariant.get(variantId) as any
+      const variant = getVariant.get(variantId) as any;
 
       if (!variant) {
-        throw new Error('الصنف غير موجود')
+        throw new Error('الصنف غير موجود');
       }
 
-      const quantity = Number(item.quantity || 0)
-      const unitCost = Number(item.unit_cost || 0)
+      const quantity = Number(item.quantity || 0);
+      const unitCost = Number(item.unit_cost || 0);
 
       if (!Number.isFinite(quantity) || quantity <= 0) {
-        throw new Error(`كمية غير صحيحة للصنف ${variant.product_name}`)
+        throw new Error(`كمية غير صحيحة للصنف ${variant.product_name}`);
       }
 
       if (!Number.isFinite(unitCost) || unitCost <= 0) {
-        throw new Error(`سعر شراء غير صحيح للصنف ${variant.product_name}`)
+        throw new Error(`سعر شراء غير صحيح للصنف ${variant.product_name}`);
       }
 
       return {
@@ -295,43 +295,43 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         quantity,
         unitCost,
         lineTotal: roundMoney(quantity * unitCost),
-      }
-    })
+      };
+    });
 
     const itemsTotal = roundMoney(
       preparedItems.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0),
-    )
+    );
 
-    const discountValueInput = Number(input.discount_value || 0)
+    const discountValueInput = Number(input.discount_value || 0);
 
     const rawDiscountValue = Number.isFinite(discountValueInput)
       ? Math.max(0, discountValueInput)
-      : 0
+      : 0;
 
-    const subTotalInput = Number(input.sub_total || 0)
+    const subTotalInput = Number(input.sub_total || 0);
 
     const subTotal =
       Number.isFinite(subTotalInput) && subTotalInput > 0
         ? roundMoney(subTotalInput)
-        : roundMoney(itemsTotal + rawDiscountValue)
+        : roundMoney(itemsTotal + rawDiscountValue);
 
-    const discountValue = roundMoney(Math.min(subTotal, rawDiscountValue))
+    const discountValue = roundMoney(Math.min(subTotal, rawDiscountValue));
 
-    const totalAmount = roundMoney(Math.max(0, subTotal - discountValue))
+    const totalAmount = roundMoney(Math.max(0, subTotal - discountValue));
 
-    const discountInput = Number(input.discount_input || 0)
+    const discountInput = Number(input.discount_input || 0);
 
     const discountType =
-      input.discount_type === 'percent' ? 'percent' : 'amount'
+      input.discount_type === 'percent' ? 'percent' : 'amount';
 
     const paidAmount = roundMoney(
       Math.min(Math.max(paidAmountInput, 0), totalAmount),
-    )
+    );
 
-    const remainingAmount = roundMoney(Math.max(0, totalAmount - paidAmount))
+    const remainingAmount = roundMoney(Math.max(0, totalAmount - paidAmount));
 
     const paymentStatus =
-      remainingAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid'
+      remainingAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
 
     const dueDate =
       remainingAmount > 0
@@ -340,7 +340,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
             businessDate,
             supplier.credit_days == null ? null : Number(supplier.credit_days),
           )
-        : null
+        : null;
 
     const purchaseResult = db
       .prepare(
@@ -378,9 +378,9 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         input.notes?.trim() || null,
         businessDate,
         openShift?.id ?? null,
-      )
+      );
 
-    const purchaseId = Number(purchaseResult.lastInsertRowid)
+    const purchaseId = Number(purchaseResult.lastInsertRowid);
 
     db.prepare(
       `
@@ -390,7 +390,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
 
       WHERE id = ?
       `,
-    ).run(dueDate, purchaseId)
+    ).run(dueDate, purchaseId);
 
     const insertItem = db.prepare(`
       INSERT INTO purchase_items (
@@ -406,13 +406,13 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         line_total
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
+    `);
 
     const updateVariantCost = db.prepare(`
       UPDATE product_variants
       SET buy_price = ?
       WHERE id = ?
-    `)
+    `);
 
     for (const item of preparedItems) {
       insertItem.run(
@@ -426,7 +426,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         item.unitCost,
         Number(item.variant.buy_price || 0),
         item.lineTotal,
-      )
+      );
 
       receiveStockAtCost(db, {
         variant_id: Number(item.variant.id),
@@ -440,9 +440,9 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         reference_type: 'purchase',
 
         notes: `دخول مخزون من فاتورة شراء رقم ${purchaseId}`,
-      })
+      });
 
-      updateVariantCost.run(item.unitCost, item.variant.id)
+      updateVariantCost.run(item.unitCost, item.variant.id);
     }
 
     db.prepare(
@@ -454,7 +454,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `,
-    ).run(totalAmount, remainingAmount, supplierId)
+    ).run(totalAmount, remainingAmount, supplierId);
 
     if (paidAmount > 0) {
       db.prepare(
@@ -474,7 +474,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         paidAmount,
         paymentMethod,
         `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}`,
-      )
+      );
 
       createCashMovement({
         type: 'supplier_payment',
@@ -492,7 +492,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         created_by: actorId,
 
         shift_id: openShift?.id ?? null,
-      })
+      });
     }
 
     return {
@@ -503,10 +503,10 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       payment_status: paymentStatus,
       due_date: dueDate,
       shift_id: openShift?.id ?? null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 function getPreviousBuyPriceForPurchaseEdit(
@@ -515,14 +515,14 @@ function getPreviousBuyPriceForPurchaseEdit(
   purchaseIdInput: number,
   oldPreviousBuyPrice?: number | null,
 ) {
-  const variantId = Number(variantIdInput)
-  const purchaseId = Number(purchaseIdInput)
+  const variantId = Number(variantIdInput);
+  const purchaseId = Number(purchaseIdInput);
 
   if (oldPreviousBuyPrice !== null && oldPreviousBuyPrice !== undefined) {
-    const oldValue = Number(oldPreviousBuyPrice)
+    const oldValue = Number(oldPreviousBuyPrice);
 
     if (Number.isFinite(oldValue) && oldValue >= 0) {
-      return roundMoney(oldValue)
+      return roundMoney(oldValue);
     }
   }
 
@@ -555,12 +555,12 @@ function getPreviousBuyPriceForPurchaseEdit(
     )
     .get(variantId, purchaseId) as
     | {
-        unit_cost: number
+        unit_cost: number;
       }
-    | undefined
+    | undefined;
 
   if (previousActivePurchase) {
-    return roundMoney(Number(previousActivePurchase.unit_cost))
+    return roundMoney(Number(previousActivePurchase.unit_cost));
   }
 
   /*
@@ -591,15 +591,15 @@ function getPreviousBuyPriceForPurchaseEdit(
     )
     .get(variantId, purchaseId) as
     | {
-        previous_buy_price: number
+        previous_buy_price: number;
       }
-    | undefined
+    | undefined;
 
   if (nextPurchaseSnapshot) {
-    const value = Number(nextPurchaseSnapshot.previous_buy_price)
+    const value = Number(nextPurchaseSnapshot.previous_buy_price);
 
     if (Number.isFinite(value) && value >= 0) {
-      return roundMoney(value)
+      return roundMoney(value);
     }
   }
 
@@ -617,17 +617,17 @@ function getPreviousBuyPriceForPurchaseEdit(
     )
     .get(variantId) as
     | {
-        buy_price: number
+        buy_price: number;
       }
-    | undefined
+    | undefined;
 
-  const value = Number(variant?.buy_price)
+  const value = Number(variant?.buy_price);
 
   if (!Number.isFinite(value) || value < 0) {
-    throw new Error('تعذر تحديد سعر الشراء السابق للصنف')
+    throw new Error('تعذر تحديد سعر الشراء السابق للصنف');
   }
 
-  return roundMoney(value)
+  return roundMoney(value);
 }
 
 function recalculateVariantBuyPrice(
@@ -635,10 +635,10 @@ function recalculateVariantBuyPrice(
   variantIdInput: number,
   fallbackPreviousBuyPrice?: number | null,
 ) {
-  const variantId = Number(variantIdInput)
+  const variantId = Number(variantIdInput);
 
   if (!variantId) {
-    throw new Error('رقم الصنف غير صحيح')
+    throw new Error('رقم الصنف غير صحيح');
   }
 
   const latestActivePurchase = db
@@ -668,20 +668,20 @@ function recalculateVariantBuyPrice(
     )
     .get(variantId) as
     | {
-        unit_cost: number
+        unit_cost: number;
       }
-    | undefined
+    | undefined;
 
-  let nextBuyPrice: number | null = null
+  let nextBuyPrice: number | null = null;
 
   if (latestActivePurchase) {
-    nextBuyPrice = Number(latestActivePurchase.unit_cost)
+    nextBuyPrice = Number(latestActivePurchase.unit_cost);
   } else if (
     fallbackPreviousBuyPrice !== null &&
     fallbackPreviousBuyPrice !== undefined &&
     Number.isFinite(Number(fallbackPreviousBuyPrice))
   ) {
-    nextBuyPrice = Number(fallbackPreviousBuyPrice)
+    nextBuyPrice = Number(fallbackPreviousBuyPrice);
   } else {
     const firstPurchase = db
       .prepare(
@@ -702,9 +702,9 @@ function recalculateVariantBuyPrice(
       )
       .get(variantId) as
       | {
-          previous_buy_price: number | null
+          previous_buy_price: number | null;
         }
-      | undefined
+      | undefined;
 
     if (
       firstPurchase?.previous_buy_price === null ||
@@ -712,14 +712,14 @@ function recalculateVariantBuyPrice(
     ) {
       throw new Error(
         'تعذر استرجاع سعر الشراء السابق لهذا الصنف لأن الفاتورة قديمة ولا تحتوي على سجل للتكلفة السابقة',
-      )
+      );
     }
 
-    nextBuyPrice = Number(firstPurchase.previous_buy_price)
+    nextBuyPrice = Number(firstPurchase.previous_buy_price);
   }
 
   if (!Number.isFinite(nextBuyPrice) || Number(nextBuyPrice) < 0) {
-    throw new Error('سعر الشراء السابق للصنف غير صحيح')
+    throw new Error('سعر الشراء السابق للصنف غير صحيح');
   }
 
   db.prepare(
@@ -730,32 +730,32 @@ function recalculateVariantBuyPrice(
 
     WHERE id = ?
     `,
-  ).run(roundMoney(Number(nextBuyPrice)), variantId)
+  ).run(roundMoney(Number(nextBuyPrice)), variantId);
 }
 
 export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const purchaseId = Number(input.purchase_id || 0)
+  const purchaseId = Number(input.purchase_id || 0);
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
-  const reason = String(input.reason || '').trim()
+  const reason = String(input.reason || '').trim();
 
   if (!purchaseId) {
-    throw new Error('رقم فاتورة الشراء غير صحيح')
+    throw new Error('رقم فاتورة الشراء غير صحيح');
   }
 
   if (!actorId) {
-    throw new Error('المستخدم غير صحيح')
+    throw new Error('المستخدم غير صحيح');
   }
 
   if (!reason) {
-    throw new Error('اكتب سبب تعديل فاتورة الشراء')
+    throw new Error('اكتب سبب تعديل فاتورة الشراء');
   }
 
   if (!input.items?.length) {
-    throw new Error('لا توجد أصناف في فاتورة الشراء')
+    throw new Error('لا توجد أصناف في فاتورة الشراء');
   }
 
   const tx = db.transaction(() => {
@@ -777,14 +777,14 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         LIMIT 1
         `,
       )
-      .get(purchaseId) as any
+      .get(purchaseId) as any;
 
     if (!purchase) {
-      throw new Error('فاتورة الشراء غير موجودة')
+      throw new Error('فاتورة الشراء غير موجودة');
     }
 
     if (purchase.safe_status === 'cancelled') {
-      throw new Error('لا يمكن تعديل فاتورة شراء ملغاة')
+      throw new Error('لا يمكن تعديل فاتورة شراء ملغاة');
     }
 
     /*
@@ -803,11 +803,11 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         `,
       )
       .get(purchaseId) as {
-      count: number
-    }
+      count: number;
+    };
 
     if (Number(returnHistory?.count || 0) > 0) {
-      throw new Error('لا يمكن تعديل فاتورة لها سجل مرتجعات شراء سابق')
+      throw new Error('لا يمكن تعديل فاتورة لها سجل مرتجعات شراء سابق');
     }
 
     /*
@@ -838,13 +838,13 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         `,
       )
       .get(purchaseId, `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}%`) as {
-      count: number
-    }
+      count: number;
+    };
 
     if (Number(laterPayments?.count || 0) > 0) {
       throw new Error(
         'لا يمكن تعديل فاتورة الشراء لأنها تحتوي على سجل دفعات مورد لاحقة',
-      )
+      );
     }
 
     const businessDateRow = db
@@ -859,12 +859,12 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         `,
       )
       .get(purchase.business_date, purchase.created_at) as {
-      business_date: string
-    }
+      business_date: string;
+    };
 
     const businessDate = String(
       businessDateRow?.business_date || getCurrentBusinessDate(db),
-    )
+    );
 
     const closedDay = db
       .prepare(
@@ -878,30 +878,30 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         LIMIT 1
         `,
       )
-      .get(businessDate)
+      .get(businessDate);
 
     if (closedDay) {
       throw new Error(
         `لا يمكن تعديل الفاتورة لأن يوم ${businessDate} تم تقفيله`,
-      )
+      );
     }
 
-    const originalShiftId = Number(purchase.shift_id || 0)
+    const originalShiftId = Number(purchase.shift_id || 0);
 
     if (originalShiftId > 0) {
-      const currentShift = getOpenCashShift()
+      const currentShift = getOpenCashShift();
 
       if (!currentShift || Number(currentShift.id) !== originalShiftId) {
-        throw new Error('لا يمكن تعديل فاتورة شراء من شفت تم إغلاقه')
+        throw new Error('لا يمكن تعديل فاتورة شراء من شفت تم إغلاقه');
       }
     }
 
-    const oldSupplierId = Number(purchase.supplier_id)
+    const oldSupplierId = Number(purchase.supplier_id);
 
-    const nextSupplierId = Number(input.supplier_id)
+    const nextSupplierId = Number(input.supplier_id);
 
     if (!nextSupplierId) {
-      throw new Error('اختار المورد')
+      throw new Error('اختار المورد');
     }
 
     const nextSupplier = db
@@ -916,17 +916,17 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         LIMIT 1
         `,
       )
-      .get(nextSupplierId) as any
+      .get(nextSupplierId) as any;
 
     if (!nextSupplier) {
-      throw new Error('المورد غير موجود')
+      throw new Error('المورد غير موجود');
     }
 
     if (
       nextSupplierId !== oldSupplierId &&
       Number(nextSupplier.is_active) !== 1
     ) {
-      throw new Error('لا يمكن نقل الفاتورة إلى مورد غير مفعل')
+      throw new Error('لا يمكن نقل الفاتورة إلى مورد غير مفعل');
     }
 
     const oldItems = db
@@ -941,31 +941,31 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         ORDER BY id ASC
         `,
       )
-      .all(purchaseId) as any[]
+      .all(purchaseId) as any[];
 
     if (oldItems.length === 0) {
-      throw new Error('لا توجد أصناف داخل فاتورة الشراء')
+      throw new Error('لا توجد أصناف داخل فاتورة الشراء');
     }
 
-    const oldItemByVariant = new Map<number, any>()
+    const oldItemByVariant = new Map<number, any>();
 
-    const oldItemsByVariant = new Map<number, any[]>()
+    const oldItemsByVariant = new Map<number, any[]>();
 
     for (const item of oldItems) {
-      const variantId = Number(item.variant_id)
+      const variantId = Number(item.variant_id);
 
       if (!oldItemByVariant.has(variantId)) {
-        oldItemByVariant.set(variantId, item)
+        oldItemByVariant.set(variantId, item);
       }
 
-      const variantItems = oldItemsByVariant.get(variantId) ?? []
+      const variantItems = oldItemsByVariant.get(variantId) ?? [];
 
-      variantItems.push(item)
+      variantItems.push(item);
 
-      oldItemsByVariant.set(variantId, variantItems)
+      oldItemsByVariant.set(variantId, variantItems);
     }
 
-    const seenVariants = new Set<number>()
+    const seenVariants = new Set<number>();
 
     const getVariant = db.prepare(
       `
@@ -988,36 +988,36 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       LIMIT 1
       `,
-    )
+    );
 
     const preparedItems = input.items.map((rawItem) => {
-      const variantId = Number(rawItem.variant_id)
+      const variantId = Number(rawItem.variant_id);
 
       if (!variantId || seenVariants.has(variantId)) {
-        throw new Error('يوجد صنف مكرر أو غير صحيح داخل الفاتورة')
+        throw new Error('يوجد صنف مكرر أو غير صحيح داخل الفاتورة');
       }
 
-      seenVariants.add(variantId)
+      seenVariants.add(variantId);
 
-      const variant = getVariant.get(variantId) as any
+      const variant = getVariant.get(variantId) as any;
 
       if (!variant) {
-        throw new Error('الصنف غير موجود')
+        throw new Error('الصنف غير موجود');
       }
 
-      const quantity = Number(rawItem.quantity || 0)
+      const quantity = Number(rawItem.quantity || 0);
 
-      const unitCost = Number(rawItem.unit_cost || 0)
+      const unitCost = Number(rawItem.unit_cost || 0);
 
       if (!Number.isFinite(quantity) || quantity <= 0) {
-        throw new Error(`كمية غير صحيحة للصنف ${variant.product_name}`)
+        throw new Error(`كمية غير صحيحة للصنف ${variant.product_name}`);
       }
 
       if (!Number.isFinite(unitCost) || unitCost <= 0) {
-        throw new Error(`سعر شراء غير صحيح للصنف ${variant.product_name}`)
+        throw new Error(`سعر شراء غير صحيح للصنف ${variant.product_name}`);
       }
 
-      const oldItem = oldItemByVariant.get(variantId)
+      const oldItem = oldItemByVariant.get(variantId);
 
       return {
         variant,
@@ -1032,74 +1032,74 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
           purchaseId,
           oldItem?.previous_buy_price,
         ),
-      }
-    })
+      };
+    });
 
     const itemsTotal = roundMoney(
       preparedItems.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0),
-    )
+    );
 
-    const discountValueInput = Number(input.discount_value || 0)
+    const discountValueInput = Number(input.discount_value || 0);
 
     const rawDiscountValue = Number.isFinite(discountValueInput)
       ? Math.max(0, discountValueInput)
-      : 0
+      : 0;
 
-    const subTotalInput = Number(input.sub_total || 0)
+    const subTotalInput = Number(input.sub_total || 0);
 
     const subTotal =
       Number.isFinite(subTotalInput) && subTotalInput > 0
         ? roundMoney(subTotalInput)
-        : roundMoney(itemsTotal + rawDiscountValue)
+        : roundMoney(itemsTotal + rawDiscountValue);
 
-    const discountValue = roundMoney(Math.min(subTotal, rawDiscountValue))
+    const discountValue = roundMoney(Math.min(subTotal, rawDiscountValue));
 
-    const totalAmount = roundMoney(Math.max(0, subTotal - discountValue))
+    const totalAmount = roundMoney(Math.max(0, subTotal - discountValue));
 
-    const rawPaidAmount = Number(input.paid_amount || 0)
+    const rawPaidAmount = Number(input.paid_amount || 0);
 
     if (!Number.isFinite(rawPaidAmount) || rawPaidAmount < 0) {
-      throw new Error('المبلغ المدفوع غير صحيح')
+      throw new Error('المبلغ المدفوع غير صحيح');
     }
 
-    const paidAmount = roundMoney(Math.min(rawPaidAmount, totalAmount))
+    const paidAmount = roundMoney(Math.min(rawPaidAmount, totalAmount));
 
-    const remainingAmount = roundMoney(Math.max(0, totalAmount - paidAmount))
+    const remainingAmount = roundMoney(Math.max(0, totalAmount - paidAmount));
 
     const paymentStatus = normalizePaymentStatus(
       totalAmount,
       paidAmount,
       remainingAmount,
-    )
+    );
 
-    const discountInputRaw = Number(input.discount_input || 0)
+    const discountInputRaw = Number(input.discount_input || 0);
 
     const discountInput = Number.isFinite(discountInputRaw)
       ? Math.max(0, discountInputRaw)
-      : 0
+      : 0;
 
     const discountType =
-      input.discount_type === 'percent' ? 'percent' : 'amount'
+      input.discount_type === 'percent' ? 'percent' : 'amount';
 
-    const oldPaidAmount = roundMoney(Number(purchase.paid_amount || 0))
+    const oldPaidAmount = roundMoney(Number(purchase.paid_amount || 0));
 
     const oldRemainingAmount = roundMoney(
       Number(purchase.remaining_amount || 0),
-    )
+    );
 
     const preserveDueDate =
-      oldRemainingAmount > 0 && oldSupplierId === nextSupplierId
+      oldRemainingAmount > 0 && oldSupplierId === nextSupplierId;
 
-    let dueDate: string | null = null
+    let dueDate: string | null = null;
 
     if (preserveDueDate) {
-      const storedDueDate = String(purchase.due_date || '').trim()
+      const storedDueDate = String(purchase.due_date || '').trim();
 
       if (storedDueDate && !/^\d{4}-\d{2}-\d{2}$/.test(storedDueDate)) {
-        throw new Error('تاريخ استحقاق فاتورة الشراء المحفوظ غير صحيح')
+        throw new Error('تاريخ استحقاق فاتورة الشراء المحفوظ غير صحيح');
       }
 
-      dueDate = storedDueDate || null
+      dueDate = storedDueDate || null;
     } else if (remainingAmount > 0) {
       dueDate = calculatePurchaseDueDate(
         db,
@@ -1107,18 +1107,18 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         nextSupplier.credit_days == null
           ? null
           : Number(nextSupplier.credit_days),
-      )
+      );
     }
 
-    const oldTotalAmount = roundMoney(Number(purchase.total_amount || 0))
+    const oldTotalAmount = roundMoney(Number(purchase.total_amount || 0));
 
     const oldPaymentMethod = resolveCashAccount(
       purchase.payment_method || 'cash',
-    )
+    );
 
     const newPaymentMethod = resolveCashAccount(
       input.payment_method || purchase.payment_method || 'cash',
-    )
+    );
 
     const oldFinancialShift =
       oldPaidAmount > 0
@@ -1127,7 +1127,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
             [oldPaymentMethod],
             'لا يمكن تعديل فاتورة شراء تمس درج المحل بدون شفت مفتوح',
           )
-        : null
+        : null;
 
     const newFinancialShift =
       paidAmount > 0
@@ -1136,10 +1136,10 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
             [newPaymentMethod],
             'لا يمكن تعديل فاتورة شراء تمس درج المحل بدون شفت مفتوح',
           )
-        : null
+        : null;
 
     const nextShiftId =
-      originalShiftId > 0 ? originalShiftId : (newFinancialShift?.id ?? null)
+      originalShiftId > 0 ? originalShiftId : (newFinancialShift?.id ?? null);
 
     const oldInitialPayment = db
       .prepare(
@@ -1166,47 +1166,47 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       )
       .get(purchaseId, `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}%`) as
       | {
-          id: number
-          created_at: string
+          id: number;
+          created_at: string;
         }
-      | undefined
+      | undefined;
 
-    const oldQuantityByVariant = new Map<number, number>()
+    const oldQuantityByVariant = new Map<number, number>();
 
-    const oldFallbackByVariant = new Map<number, number | null>()
+    const oldFallbackByVariant = new Map<number, number | null>();
 
     for (const item of oldItems) {
-      const variantId = Number(item.variant_id)
+      const variantId = Number(item.variant_id);
 
       oldQuantityByVariant.set(
         variantId,
 
         Number(oldQuantityByVariant.get(variantId) || 0) +
           Number(item.quantity || 0),
-      )
+      );
 
       if (!oldFallbackByVariant.has(variantId)) {
-        oldFallbackByVariant.set(variantId, item.previous_buy_price ?? null)
+        oldFallbackByVariant.set(variantId, item.previous_buy_price ?? null);
       }
     }
 
-    const newQuantityByVariant = new Map<number, number>()
+    const newQuantityByVariant = new Map<number, number>();
 
     for (const item of preparedItems) {
-      newQuantityByVariant.set(Number(item.variant.id), Number(item.quantity))
+      newQuantityByVariant.set(Number(item.variant.id), Number(item.quantity));
     }
 
     const affectedVariantIds = Array.from(
       new Set([...oldQuantityByVariant.keys(), ...newQuantityByVariant.keys()]),
-    )
+    );
 
     const preparedItemByVariant = new Map<
       number,
       (typeof preparedItems)[number]
-    >()
+    >();
 
     for (const item of preparedItems) {
-      preparedItemByVariant.set(Number(item.variant.id), item)
+      preparedItemByVariant.set(Number(item.variant.id), item);
     }
 
     /*
@@ -1234,7 +1234,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         business_date: businessDate,
 
         shift_id: oldFinancialShift?.id ?? null,
-      })
+      });
     }
 
     /*
@@ -1244,30 +1244,30 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
      * بـ Cost Snapshot الخاص بها.
      */
     for (const variantId of affectedVariantIds) {
-      const oldVariantItems = oldItemsByVariant.get(variantId) ?? []
+      const oldVariantItems = oldItemsByVariant.get(variantId) ?? [];
 
-      const newItem = preparedItemByVariant.get(variantId)
+      const newItem = preparedItemByVariant.get(variantId);
 
       const oldQuantity = oldVariantItems.reduce(
         (sum, item) => sum + Number(item.quantity || 0),
         0,
-      )
+      );
 
       const oldCostValue = oldVariantItems.reduce(
         (sum, item) =>
           sum + Number(item.quantity || 0) * Number(item.unit_cost || 0),
         0,
-      )
+      );
 
-      const newQuantity = Number(newItem?.quantity || 0)
+      const newQuantity = Number(newItem?.quantity || 0);
 
-      const newUnitCost = Number(newItem?.unitCost || 0)
+      const newUnitCost = Number(newItem?.unitCost || 0);
 
-      const newCostValue = newQuantity * newUnitCost
+      const newCostValue = newQuantity * newUnitCost;
 
-      const sameQuantity = Math.abs(oldQuantity - newQuantity) <= 0.0001
+      const sameQuantity = Math.abs(oldQuantity - newQuantity) <= 0.0001;
 
-      const sameCostValue = Math.abs(oldCostValue - newCostValue) <= 0.0001
+      const sameCostValue = Math.abs(oldCostValue - newCostValue) <= 0.0001;
 
       if (
         oldVariantItems.length > 0 &&
@@ -1275,7 +1275,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         sameQuantity &&
         sameCostValue
       ) {
-        continue
+        continue;
       }
 
       /*
@@ -1299,7 +1299,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
           reference_type: 'purchase_edit',
 
           notes: `تطبيق تكلفة الصنف بعد تعديل فاتورة شراء #${purchaseId}`,
-        })
+        });
       }
 
       for (const oldItem of oldVariantItems) {
@@ -1315,7 +1315,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
           reference_type: 'purchase_edit_reversal',
 
           notes: `عكس تكلفة الصنف قبل تعديل فاتورة شراء #${purchaseId}`,
-        })
+        });
       }
     }
     /*
@@ -1351,7 +1351,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       WHERE id = ?
       `,
-    ).run(oldTotalAmount, oldRemainingAmount, oldSupplierId)
+    ).run(oldTotalAmount, oldRemainingAmount, oldSupplierId);
 
     db.prepare(
       `
@@ -1366,7 +1366,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
           ''
         ) LIKE ?
       `,
-    ).run(purchaseId, `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}%`)
+    ).run(purchaseId, `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}%`);
 
     db.prepare(
       `
@@ -1374,7 +1374,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       WHERE purchase_id = ?
       `,
-    ).run(purchaseId)
+    ).run(purchaseId);
 
     db.prepare(
       `
@@ -1423,7 +1423,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       nextShiftId,
 
       purchaseId,
-    )
+    );
 
     db.prepare(
       `
@@ -1433,7 +1433,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       WHERE id = ?
       `,
-    ).run(dueDate, purchaseId)
+    ).run(dueDate, purchaseId);
 
     const insertItem = db.prepare(
       `
@@ -1459,7 +1459,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
           ?, ?, ?, ?
         )
         `,
-    )
+    );
 
     for (const item of preparedItems) {
       insertItem.run(
@@ -1478,7 +1478,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         item.previousBuyPrice,
 
         item.lineTotal,
-      )
+      );
     }
 
     /*
@@ -1511,7 +1511,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       WHERE id = ?
       `,
-    ).run(totalAmount, remainingAmount, nextSupplierId)
+    ).run(totalAmount, remainingAmount, nextSupplierId);
 
     if (paidAmount > 0) {
       db.prepare(
@@ -1542,7 +1542,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}`,
 
         oldInitialPayment?.created_at ?? purchase.created_at ?? null,
-      )
+      );
 
       createCashMovement({
         type: 'supplier_payment',
@@ -1564,7 +1564,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         business_date: businessDate,
 
         shift_id: newFinancialShift?.id ?? null,
-      })
+      });
     }
 
     /*
@@ -1579,7 +1579,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         variantId,
 
         oldFallbackByVariant.get(variantId),
-      )
+      );
     }
 
     return {
@@ -1604,18 +1604,18 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       shift_id: nextShiftId,
 
       edited: true,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
-  const db = getDb()
-  const purchaseId = Number(input.purchase_id)
-  const actorId = Number(input.actor_id || 0)
+  const db = getDb();
+  const purchaseId = Number(input.purchase_id);
+  const actorId = Number(input.actor_id || 0);
   if (!purchaseId) {
-    throw new Error('رقم فاتورة الشراء غير صحيح')
+    throw new Error('رقم فاتورة الشراء غير صحيح');
   }
 
   const tx = db.transaction(() => {
@@ -1630,14 +1630,14 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
         LIMIT 1
       `,
       )
-      .get(purchaseId) as any
+      .get(purchaseId) as any;
 
     if (!purchase) {
-      throw new Error('فاتورة الشراء غير موجودة')
+      throw new Error('فاتورة الشراء غير موجودة');
     }
 
     if (purchase.safe_status === 'cancelled') {
-      throw new Error('فاتورة الشراء ملغاة بالفعل')
+      throw new Error('فاتورة الشراء ملغاة بالفعل');
     }
 
     const returnsCountRow = db
@@ -1649,10 +1649,10 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
           AND cancelled_at IS NULL
       `,
       )
-      .get(purchaseId) as { count: number }
+      .get(purchaseId) as { count: number };
 
     if (Number(returnsCountRow?.count || 0) > 0) {
-      throw new Error('لا يمكن إلغاء فاتورة تم عمل مرتجع عليها')
+      throw new Error('لا يمكن إلغاء فاتورة تم عمل مرتجع عليها');
     }
 
     const laterPaymentRow = db
@@ -1682,13 +1682,13 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
         `,
       )
       .get(purchaseId) as {
-      count: number
-    }
+      count: number;
+    };
 
     if (Number(laterPaymentRow?.count || 0) > 0) {
       throw new Error(
         'لا يمكن إلغاء فاتورة الشراء لأنها تحتوي على دفعة مورد لاحقة',
-      )
+      );
     }
 
     const items = db
@@ -1700,20 +1700,20 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
         ORDER BY id ASC
       `,
       )
-      .all(purchaseId) as any[]
+      .all(purchaseId) as any[];
 
     if (items.length === 0) {
-      throw new Error('لا توجد أصناف داخل فاتورة الشراء')
+      throw new Error('لا توجد أصناف داخل فاتورة الشراء');
     }
 
     for (const item of items) {
-      const currentStock = getCurrentVariantStock(db, Number(item.variant_id))
-      const quantity = Number(item.quantity || 0)
+      const currentStock = getCurrentVariantStock(db, Number(item.variant_id));
+      const quantity = Number(item.quantity || 0);
 
       if (currentStock < quantity) {
         throw new Error(
           `لا يمكن إلغاء الفاتورة لأن مخزون الصنف "${item.product_name}" أقل من كمية الفاتورة`,
-        )
+        );
       }
     }
 
@@ -1734,13 +1734,13 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
         reference_type: 'purchase_cancel',
 
         notes: `خروج مخزون بسبب إلغاء فاتورة شراء رقم ${purchaseId}`,
-      })
+      });
     }
 
-    const totalAmount = Number(purchase.total_amount || 0)
-    const paidAmount = Number(purchase.paid_amount || 0)
+    const totalAmount = Number(purchase.total_amount || 0);
+    const paidAmount = Number(purchase.paid_amount || 0);
 
-    const paymentMethod = resolveCashAccount(purchase.payment_method || 'cash')
+    const paymentMethod = resolveCashAccount(purchase.payment_method || 'cash');
 
     const openShift =
       paidAmount > 0
@@ -1749,9 +1749,9 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
             [paymentMethod],
             'لا يمكن إلغاء فاتورة شراء وإرجاع كاش للدرج بدون شفت مفتوح',
           )
-        : null
+        : null;
 
-    const remainingAmount = Number(purchase.remaining_amount || 0)
+    const remainingAmount = Number(purchase.remaining_amount || 0);
 
     db.prepare(
       `
@@ -1771,14 +1771,14 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       openShift?.id ?? null,
       input.reason?.trim() || null,
       purchaseId,
-    )
+    );
 
     const affectedVariantIds = Array.from(
       new Set(items.map((item) => Number(item.variant_id))),
-    )
+    );
 
     for (const variantId of affectedVariantIds) {
-      recalculateVariantBuyPrice(db, variantId)
+      recalculateVariantBuyPrice(db, variantId);
     }
     db.prepare(
       `
@@ -1789,7 +1789,7 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `,
-    ).run(totalAmount, remainingAmount, Number(purchase.supplier_id))
+    ).run(totalAmount, remainingAmount, Number(purchase.supplier_id));
 
     if (paidAmount > 0) {
       createCashMovement({
@@ -1811,7 +1811,7 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
         business_date: getCurrentBusinessDate(db),
 
         shift_id: openShift?.id ?? null,
-      })
+      });
     }
 
     return {
@@ -1823,22 +1823,22 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       reversed_remaining: remainingAmount,
       items_count: items.length,
       cancelled_shift_id: openShift?.id ?? null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
-  const db = getDb()
-  const purchaseId = Number(input.purchase_id)
+  const db = getDb();
+  const purchaseId = Number(input.purchase_id);
 
   if (!purchaseId) {
-    throw new Error('رقم فاتورة الشراء غير صحيح')
+    throw new Error('رقم فاتورة الشراء غير صحيح');
   }
 
   if (!input.items?.length) {
-    throw new Error('لا توجد أصناف في المرتجع')
+    throw new Error('لا توجد أصناف في المرتجع');
   }
 
   const tx = db.transaction(() => {
@@ -1853,25 +1853,25 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         LIMIT 1
       `,
       )
-      .get(purchaseId) as any
+      .get(purchaseId) as any;
 
     if (!purchase) {
-      throw new Error('فاتورة الشراء غير موجودة')
+      throw new Error('فاتورة الشراء غير موجودة');
     }
 
     if (purchase.safe_status === 'cancelled') {
-      throw new Error('لا يمكن عمل مرتجع على فاتورة ملغاة')
+      throw new Error('لا يمكن عمل مرتجع على فاتورة ملغاة');
     }
 
-    const seenPurchaseItemIds = new Set<number>()
+    const seenPurchaseItemIds = new Set<number>();
     const preparedItems = input.items.map((rawItem) => {
-      const quantity = Number(rawItem.quantity || 0)
+      const quantity = Number(rawItem.quantity || 0);
 
       if (!Number.isFinite(quantity) || quantity <= 0) {
-        throw new Error('كمية المرتجع غير صحيحة')
+        throw new Error('كمية المرتجع غير صحيحة');
       }
 
-      let purchaseItem: any
+      let purchaseItem: any;
 
       if (rawItem.purchase_item_id) {
         purchaseItem = db
@@ -1884,7 +1884,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
             LIMIT 1
           `,
           )
-          .get(Number(rawItem.purchase_item_id), purchaseId)
+          .get(Number(rawItem.purchase_item_id), purchaseId);
       } else if (rawItem.variant_id) {
         purchaseItem = db
           .prepare(
@@ -1896,82 +1896,82 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
             LIMIT 1
           `,
           )
-          .get(Number(rawItem.variant_id), purchaseId)
+          .get(Number(rawItem.variant_id), purchaseId);
       }
 
       if (!purchaseItem) {
-        throw new Error('الصنف غير موجود داخل فاتورة الشراء')
+        throw new Error('الصنف غير موجود داخل فاتورة الشراء');
       }
 
-      const purchaseItemId = Number(purchaseItem.id)
+      const purchaseItemId = Number(purchaseItem.id);
 
       if (seenPurchaseItemIds.has(purchaseItemId)) {
         throw new Error(
           `الصنف "${purchaseItem.product_name}" مكرر داخل المرتجع`,
-        )
+        );
       }
 
-      seenPurchaseItemIds.add(purchaseItemId)
+      seenPurchaseItemIds.add(purchaseItemId);
 
       const alreadyReturned = getReturnedQuantityForPurchaseItem(
         db,
         Number(purchaseItem.id),
-      )
+      );
 
-      const originalQuantity = Number(purchaseItem.quantity || 0)
-      const availableToReturn = Math.max(0, originalQuantity - alreadyReturned)
+      const originalQuantity = Number(purchaseItem.quantity || 0);
+      const availableToReturn = Math.max(0, originalQuantity - alreadyReturned);
 
       if (quantity > availableToReturn) {
         throw new Error(
           `كمية المرتجع للصنف "${purchaseItem.product_name}" أكبر من الكمية المتاحة للمرتجع`,
-        )
+        );
       }
 
       const currentStock = getCurrentVariantStock(
         db,
         Number(purchaseItem.variant_id),
-      )
+      );
 
       if (currentStock < quantity) {
         throw new Error(
           `لا يمكن عمل مرتجع للصنف "${purchaseItem.product_name}" لأن المخزون الحالي غير كافٍ`,
-        )
+        );
       }
 
-      const unitCost = Number(purchaseItem.unit_cost || 0)
+      const unitCost = Number(purchaseItem.unit_cost || 0);
 
       return {
         purchaseItem,
         quantity,
         unitCost,
         lineTotal: roundMoney(quantity * unitCost),
-      }
-    })
+      };
+    });
 
     const totalAmount = roundMoney(
       preparedItems.reduce((sum, item) => sum + item.lineTotal, 0),
-    )
+    );
 
     if (totalAmount <= 0) {
-      throw new Error('قيمة المرتجع غير صحيحة')
+      throw new Error('قيمة المرتجع غير صحيحة');
     }
 
-    const oldRemaining = roundMoney(Number(purchase.remaining_amount || 0))
+    const oldRemaining = roundMoney(Number(purchase.remaining_amount || 0));
 
-    const debtReductionAmount = roundMoney(Math.min(totalAmount, oldRemaining))
+    const debtReductionAmount = roundMoney(Math.min(totalAmount, oldRemaining));
 
     const cashRefundAmount = roundMoney(
       Math.max(0, totalAmount - debtReductionAmount),
-    )
-    const refundMode = input.refund_mode === 'credit' ? 'credit' : 'cash'
+    );
+    const refundMode = input.refund_mode === 'credit' ? 'credit' : 'cash';
     const refundPaymentMethod =
       input.refund_payment_method?.trim() ||
       purchase.payment_method ||
-      'store_cash'
+      'store_cash';
 
-    const actorId = Number(input.actor_id || 0)
+    const actorId = Number(input.actor_id || 0);
 
-    const resolvedRefundAccount = resolveCashAccount(refundPaymentMethod)
+    const resolvedRefundAccount = resolveCashAccount(refundPaymentMethod);
 
     const openShift =
       refundMode === 'cash' && cashRefundAmount > 0
@@ -1980,11 +1980,11 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
             [resolvedRefundAccount],
             'لا يمكن استلام كاش مرتجع شراء في درج المحل بدون شفت مفتوح',
           )
-        : null
+        : null;
 
     const supplierBalanceReduction = roundMoney(
       debtReductionAmount + (refundMode === 'credit' ? cashRefundAmount : 0),
-    )
+    );
 
     const returnResult = db
       .prepare(
@@ -2015,9 +2015,9 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         input.notes?.trim() || null,
         input.actor_id ?? null,
         openShift?.id ?? null,
-      )
+      );
 
-    const returnId = Number(returnResult.lastInsertRowid)
+    const returnId = Number(returnResult.lastInsertRowid);
 
     const insertReturnItem = db.prepare(`
       INSERT INTO purchase_return_items (
@@ -2033,7 +2033,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         line_total
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
+    `);
 
     for (const item of preparedItems) {
       insertReturnItem.run(
@@ -2047,7 +2047,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         item.quantity,
         item.unitCost,
         item.lineTotal,
-      )
+      );
 
       issueStockAtCost(db, {
         variant_id: Number(item.purchaseItem.variant_id),
@@ -2065,21 +2065,21 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         reference_type: 'purchase_return',
 
         notes: `خروج مخزون بسبب مرتجع شراء رقم ${returnId} من فاتورة ${purchaseId}`,
-      })
+      });
     }
 
-    const oldPaid = roundMoney(Number(purchase.paid_amount || 0))
+    const oldPaid = roundMoney(Number(purchase.paid_amount || 0));
 
-    const oldTotal = roundMoney(Number(purchase.total_amount || 0))
+    const oldTotal = roundMoney(Number(purchase.total_amount || 0));
 
     const newRemaining = roundMoney(
       Math.max(0, oldRemaining - debtReductionAmount),
-    )
+    );
     const newPaymentStatus = normalizePaymentStatus(
       oldTotal,
       oldPaid,
       newRemaining,
-    )
+    );
 
     db.prepare(
       `
@@ -2089,7 +2089,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         payment_status = ?
       WHERE id = ?
     `,
-    ).run(newRemaining, newPaymentStatus, purchaseId)
+    ).run(newRemaining, newPaymentStatus, purchaseId);
 
     db.prepare(
       `
@@ -2106,7 +2106,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `,
-    ).run(totalAmount, supplierBalanceReduction, Number(purchase.supplier_id))
+    ).run(totalAmount, supplierBalanceReduction, Number(purchase.supplier_id));
 
     if (refundMode === 'cash' && cashRefundAmount > 0) {
       createCashMovement({
@@ -2128,7 +2128,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         business_date: getCurrentBusinessDate(db),
 
         shift_id: openShift?.id ?? null,
-      })
+      });
     }
 
     return {
@@ -2143,19 +2143,19 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       refund_payment_method: refundMode === 'cash' ? refundPaymentMethod : null,
       items_count: preparedItems.length,
       shift_id: openShift?.id ?? null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 function getPurchaseReturnMutationContext(returnIdInput: number) {
-  const db = getDb()
+  const db = getDb();
 
-  const returnId = Number(returnIdInput || 0)
+  const returnId = Number(returnIdInput || 0);
 
   if (!returnId) {
-    throw new Error('رقم مرتجع الشراء غير صحيح')
+    throw new Error('رقم مرتجع الشراء غير صحيح');
   }
 
   const purchaseReturn = db
@@ -2192,20 +2192,20 @@ function getPurchaseReturnMutationContext(returnIdInput: number) {
       LIMIT 1
       `,
     )
-    .get(returnId) as any
+    .get(returnId) as any;
 
   if (!purchaseReturn) {
-    throw new Error('مرتجع الشراء غير موجود')
+    throw new Error('مرتجع الشراء غير موجود');
   }
 
   if (purchaseReturn.cancelled_at) {
-    throw new Error('مرتجع الشراء ملغي بالفعل')
+    throw new Error('مرتجع الشراء ملغي بالفعل');
   }
 
   if (purchaseReturn.purchase_status === 'cancelled') {
     throw new Error(
       'لا يمكن تعديل أو إلغاء المرتجع لأن فاتورة الشراء الأصلية ملغاة',
-    )
+    );
   }
 
   const latestActiveReturn = db
@@ -2226,12 +2226,14 @@ function getPurchaseReturnMutationContext(returnIdInput: number) {
     )
     .get(Number(purchaseReturn.purchase_id)) as
     | {
-        id: number
+        id: number;
       }
-    | undefined
+    | undefined;
 
   if (Number(latestActiveReturn?.id || 0) !== returnId) {
-    throw new Error('يجب تعديل أو إلغاء آخر مرتجع شراء فعال على الفاتورة أولًا')
+    throw new Error(
+      'يجب تعديل أو إلغاء آخر مرتجع شراء فعال على الفاتورة أولًا',
+    );
   }
 
   const items = db
@@ -2246,42 +2248,43 @@ function getPurchaseReturnMutationContext(returnIdInput: number) {
       ORDER BY id ASC
       `,
     )
-    .all(returnId) as any[]
+    .all(returnId) as any[];
 
   if (items.length === 0) {
-    throw new Error('لا توجد أصناف داخل مرتجع الشراء')
+    throw new Error('لا توجد أصناف داخل مرتجع الشراء');
   }
 
   return {
     db,
     purchaseReturn,
     items,
-  }
+  };
 }
 
 export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
-  const returnId = Number(input.return_id || 0)
+  const returnId = Number(input.return_id || 0);
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
   if (!actorId) {
-    throw new Error('المستخدم غير صحيح')
+    throw new Error('المستخدم غير صحيح');
   }
 
   const { db, purchaseReturn, items } =
-    getPurchaseReturnMutationContext(returnId)
+    getPurchaseReturnMutationContext(returnId);
 
-  const totalAmount = roundMoney(Number(purchaseReturn.total_amount || 0))
+  const totalAmount = roundMoney(Number(purchaseReturn.total_amount || 0));
 
   const debtReductionAmount = roundMoney(
     Number(purchaseReturn.debt_reduction_amount || 0),
-  )
+  );
 
-  const refundMode = purchaseReturn.refund_mode === 'credit' ? 'credit' : 'cash'
+  const refundMode =
+    purchaseReturn.refund_mode === 'credit' ? 'credit' : 'cash';
 
   const derivedCashRefund = roundMoney(
     Math.max(0, totalAmount - debtReductionAmount),
-  )
+  );
 
   const cashRefundAmount =
     refundMode === 'cash'
@@ -2291,13 +2294,13 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
             derivedCashRefund,
           ),
         )
-      : 0
+      : 0;
 
   const refundAccount = resolveCashAccount(
     purchaseReturn.refund_payment_method ||
       purchaseReturn.purchase_payment_method ||
       'store_cash',
-  )
+  );
 
   const openShift =
     cashRefundAmount > 0
@@ -2307,11 +2310,11 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
 
           'لا يمكن إلغاء مرتجع شراء يؤثر على درج المحل بدون شفت مفتوح',
         )
-      : null
+      : null;
 
-  const cancellationBusinessDate = getCurrentBusinessDate(db)
+  const cancellationBusinessDate = getCurrentBusinessDate(db);
 
-  const reason = String(input.reason || '').trim() || 'إلغاء مرتجع شراء'
+  const reason = String(input.reason || '').trim() || 'إلغاء مرتجع شراء';
 
   const tx = db.transaction(() => {
     /*
@@ -2336,7 +2339,7 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
         reference_type: 'purchase_return_cancel',
 
         notes: `عكس مخزون مرتجع شراء ملغي #${returnId}`,
-      })
+      });
     }
 
     /*
@@ -2365,22 +2368,22 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
         business_date: cancellationBusinessDate,
 
         shift_id: openShift?.id ?? null,
-      })
+      });
     }
 
     const purchaseTotal = roundMoney(
       Number(purchaseReturn.purchase_total_amount || 0),
-    )
+    );
 
     const purchasePaid = roundMoney(
       Number(purchaseReturn.purchase_paid_amount || 0),
-    )
+    );
 
     const currentRemaining = roundMoney(
       Number(purchaseReturn.purchase_remaining_amount || 0),
-    )
+    );
 
-    const maxRemaining = roundMoney(Math.max(0, purchaseTotal - purchasePaid))
+    const maxRemaining = roundMoney(Math.max(0, purchaseTotal - purchasePaid));
 
     const newRemaining = roundMoney(
       Math.min(
@@ -2388,13 +2391,13 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
 
         currentRemaining + debtReductionAmount,
       ),
-    )
+    );
 
     const newPaymentStatus = normalizePaymentStatus(
       purchaseTotal,
       purchasePaid,
       newRemaining,
-    )
+    );
 
     db.prepare(
       `
@@ -2411,7 +2414,7 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
       newPaymentStatus,
 
       Number(purchaseReturn.purchase_id),
-    )
+    );
 
     /*
      * Cash mode:
@@ -2422,7 +2425,7 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
      * من حساب المورد.
      */
     const balanceRestore =
-      refundMode === 'credit' ? totalAmount : debtReductionAmount
+      refundMode === 'credit' ? totalAmount : debtReductionAmount;
 
     db.prepare(
       `
@@ -2455,7 +2458,7 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
       balanceRestore,
 
       Number(purchaseReturn.supplier_id),
-    )
+    );
 
     db.prepare(
       `
@@ -2481,7 +2484,7 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
       reason,
 
       returnId,
-    )
+    );
 
     return {
       ok: true,
@@ -2501,44 +2504,44 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
       items_count: items.length,
 
       cancelled_shift_id: openShift?.id ?? null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function updatePurchaseReturn(input: UpdatePurchaseReturnInput) {
-  const db = getDb()
+  const db = getDb();
 
-  const returnId = Number(input.return_id || 0)
+  const returnId = Number(input.return_id || 0);
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
-  const reason = String(input.reason || '').trim()
+  const reason = String(input.reason || '').trim();
 
   if (!returnId) {
-    throw new Error('رقم مرتجع الشراء غير صحيح')
+    throw new Error('رقم مرتجع الشراء غير صحيح');
   }
 
   if (!actorId) {
-    throw new Error('المستخدم غير صحيح')
+    throw new Error('المستخدم غير صحيح');
   }
 
   if (!reason) {
-    throw new Error('اكتب سبب تعديل مرتجع الشراء')
+    throw new Error('اكتب سبب تعديل مرتجع الشراء');
   }
 
   if (!input.items?.length) {
-    throw new Error('لا توجد أصناف في المرتجع المعدل')
+    throw new Error('لا توجد أصناف في المرتجع المعدل');
   }
 
-  const existing = getPurchaseReturn(returnId) as any
+  const existing = getPurchaseReturn(returnId) as any;
 
   if (existing.return?.cancelled_at) {
-    throw new Error('مرتجع الشراء ملغي بالفعل')
+    throw new Error('مرتجع الشراء ملغي بالفعل');
   }
 
-  const purchaseId = Number(existing.return?.purchase_id || 0)
+  const purchaseId = Number(existing.return?.purchase_id || 0);
 
   const tx = db.transaction(() => {
     const cancelled = cancelPurchaseReturn({
@@ -2547,7 +2550,7 @@ export function updatePurchaseReturn(input: UpdatePurchaseReturnInput) {
       reason: `تم تعديل مرتجع الشراء: ${reason}`,
 
       actor_id: actorId,
-    })
+    });
 
     const created = createPurchaseReturn({
       purchase_id: purchaseId,
@@ -2561,7 +2564,7 @@ export function updatePurchaseReturn(input: UpdatePurchaseReturnInput) {
       actor_id: actorId,
 
       items: input.items,
-    })
+    });
 
     db.prepare(
       `
@@ -2571,7 +2574,7 @@ export function updatePurchaseReturn(input: UpdatePurchaseReturnInput) {
 
       WHERE id = ?
       `,
-    ).run(created.return_id, returnId)
+    ).run(created.return_id, returnId);
 
     return {
       ...created,
@@ -2581,34 +2584,34 @@ export function updatePurchaseReturn(input: UpdatePurchaseReturnInput) {
       cancellation_shift_id: cancelled.cancelled_shift_id ?? null,
 
       edited: true,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function listPurchaseInvoices(input?: {
-  search?: string
-  payment_filter?: 'all' | 'paid' | 'unpaid'
-  limit?: number
-  offset?: number
+  search?: string;
+  payment_filter?: 'all' | 'paid' | 'unpaid';
+  limit?: number;
+  offset?: number;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const search = input?.search?.trim() || ''
-  const paymentFilter = input?.payment_filter ?? 'all'
-  const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 300)
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const search = input?.search?.trim() || '';
+  const paymentFilter = input?.payment_filter ?? 'all';
+  const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 300);
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
-  const where: string[] = []
-  const params: any[] = []
+  const where: string[] = [];
+  const params: any[] = [];
 
-  const invoiceNumberMatch = search.match(/^#\s*(\d+)$/)
+  const invoiceNumberMatch = search.match(/^#\s*(\d+)$/);
 
   if (invoiceNumberMatch) {
-    where.push(`pi.id = ?`)
+    where.push(`pi.id = ?`);
 
-    params.push(Number(invoiceNumberMatch[1]))
+    params.push(Number(invoiceNumberMatch[1]));
   } else if (search) {
     where.push(`
     (
@@ -2616,10 +2619,10 @@ export function listPurchaseInvoices(input?: {
       OR s.name LIKE ?
       OR IFNULL(s.phone, '') LIKE ?
     )
-  `)
+  `);
 
-    const q = `%${search}%`
-    params.push(q, q, q)
+    const q = `%${search}%`;
+    params.push(q, q, q);
   }
 
   if (paymentFilter === 'paid') {
@@ -2631,7 +2634,7 @@ export function listPurchaseInvoices(input?: {
         2
       ) <= 0
     )
-  `)
+  `);
   } else if (paymentFilter === 'unpaid') {
     where.push(`
     (
@@ -2641,10 +2644,10 @@ export function listPurchaseInvoices(input?: {
         2
       ) > 0
     )
-  `)
+  `);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const rows = db
     .prepare(
@@ -2671,7 +2674,7 @@ export function listPurchaseInvoices(input?: {
       OFFSET ?
     `,
     )
-    .all(...params, limit, offset)
+    .all(...params, limit, offset);
 
   const totalRow = db
     .prepare(
@@ -2682,29 +2685,29 @@ export function listPurchaseInvoices(input?: {
       ${whereSql}
     `,
     )
-    .get(...params) as { total: number }
+    .get(...params) as { total: number };
 
   return {
     rows,
     total: Number(totalRow?.total || 0),
     limit,
     offset,
-  }
+  };
 }
 
 export function listPurchaseReturns(input?: {
-  search?: string
-  limit?: number
-  offset?: number
+  search?: string;
+  limit?: number;
+  offset?: number;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const search = input?.search?.trim() || ''
-  const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 300)
-  const offset = Math.max(Number(input?.offset || 0), 0)
+  const search = input?.search?.trim() || '';
+  const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 300);
+  const offset = Math.max(Number(input?.offset || 0), 0);
 
-  const where: string[] = []
-  const params: any[] = []
+  const where: string[] = [];
+  const params: any[] = [];
 
   if (search) {
     where.push(`
@@ -2714,13 +2717,13 @@ export function listPurchaseReturns(input?: {
         OR s.name LIKE ?
         OR IFNULL(s.phone, '') LIKE ?
       )
-    `)
+    `);
 
-    const q = `%${search}%`
-    params.push(q, q, q, q)
+    const q = `%${search}%`;
+    params.push(q, q, q, q);
   }
 
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
   const rows = db
     .prepare(
@@ -2762,7 +2765,7 @@ export function listPurchaseReturns(input?: {
       OFFSET ?
     `,
     )
-    .all(...params, limit, offset)
+    .all(...params, limit, offset);
 
   const totalRow = db
     .prepare(
@@ -2773,18 +2776,18 @@ export function listPurchaseReturns(input?: {
       ${whereSql}
     `,
     )
-    .get(...params) as { total: number }
+    .get(...params) as { total: number };
 
   return {
     rows,
     total: Number(totalRow?.total || 0),
     limit,
     offset,
-  }
+  };
 }
 
 export function getPurchaseInvoice(purchaseId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const purchase = db
     .prepare(
@@ -2806,10 +2809,10 @@ export function getPurchaseInvoice(purchaseId: number) {
       LIMIT 1
     `,
     )
-    .get(Number(purchaseId))
+    .get(Number(purchaseId));
 
   if (!purchase) {
-    throw new Error('فاتورة الشراء غير موجودة')
+    throw new Error('فاتورة الشراء غير موجودة');
   }
 
   const items = db
@@ -2861,7 +2864,7 @@ export function getPurchaseInvoice(purchaseId: number) {
       ORDER BY pii.id ASC
     `,
     )
-    .all(Number(purchaseId))
+    .all(Number(purchaseId));
 
   const payments = db
     .prepare(
@@ -2872,7 +2875,7 @@ export function getPurchaseInvoice(purchaseId: number) {
       ORDER BY id ASC
     `,
     )
-    .all(Number(purchaseId))
+    .all(Number(purchaseId));
 
   const returns = db
     .prepare(
@@ -2883,18 +2886,18 @@ export function getPurchaseInvoice(purchaseId: number) {
       ORDER BY id DESC
     `,
     )
-    .all(Number(purchaseId))
+    .all(Number(purchaseId));
 
   return {
     purchase,
     items,
     payments,
     returns,
-  }
+  };
 }
 
 export function getPurchaseReturn(returnId: number) {
-  const db = getDb()
+  const db = getDb();
 
   const purchaseReturn = db
     .prepare(
@@ -2912,10 +2915,10 @@ export function getPurchaseReturn(returnId: number) {
       LIMIT 1
     `,
     )
-    .get(Number(returnId))
+    .get(Number(returnId));
 
   if (!purchaseReturn) {
-    throw new Error('مرتجع الشراء غير موجود')
+    throw new Error('مرتجع الشراء غير موجود');
   }
 
   const items = db
@@ -2927,63 +2930,63 @@ export function getPurchaseReturn(returnId: number) {
       ORDER BY id ASC
     `,
     )
-    .all(Number(returnId))
+    .all(Number(returnId));
 
   return {
     return: purchaseReturn,
     items,
-  }
+  };
 }
 
 export function recordSupplierPayment(input: {
-  supplier_id: number
-  purchase_id?: number | null
-  amount: number
-  payment_method?: string
-  notes?: string | null
-  actor_id?: number | null
+  supplier_id: number;
+  purchase_id?: number | null;
+  amount: number;
+  payment_method?: string;
+  notes?: string | null;
+  actor_id?: number | null;
 }) {
-  const db = getDb()
+  const db = getDb();
 
-  const supplierId = Number(input.supplier_id)
-  const purchaseId = input.purchase_id ? Number(input.purchase_id) : null
-  const amountInput = roundMoney(Number(input.amount || 0))
+  const supplierId = Number(input.supplier_id);
+  const purchaseId = input.purchase_id ? Number(input.purchase_id) : null;
+  const amountInput = roundMoney(Number(input.amount || 0));
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
-  const paymentMethod = resolveCashAccount(input.payment_method || 'cash')
+  const paymentMethod = resolveCashAccount(input.payment_method || 'cash');
 
   const openShift = resolveFinancialOperationShift(
     actorId,
     [paymentMethod],
     'لا يمكن تسجيل دفعة مورد من درج المحل بدون شفت مفتوح',
-  )
+  );
 
   if (!supplierId) {
-    throw new Error('Supplier ID is required')
+    throw new Error('Supplier ID is required');
   }
 
   if (!Number.isFinite(amountInput) || amountInput <= 0) {
-    throw new Error('مبلغ الدفعة غير صحيح')
+    throw new Error('مبلغ الدفعة غير صحيح');
   }
 
   const tx = db.transaction(() => {
     const supplier = db
       .prepare(`SELECT * FROM suppliers WHERE id = ? AND is_active = 1 LIMIT 1`)
-      .get(supplierId) as any
+      .get(supplierId) as any;
 
     if (!supplier) {
-      throw new Error('المورد غير موجود')
+      throw new Error('المورد غير موجود');
     }
 
-    const supplierBalance = roundMoney(Number(supplier.balance || 0))
+    const supplierBalance = roundMoney(Number(supplier.balance || 0));
 
     if (supplierBalance <= 0) {
-      throw new Error('لا يوجد رصيد مستحق على المورد')
+      throw new Error('لا يوجد رصيد مستحق على المورد');
     }
 
     if (amountInput > supplierBalance) {
-      throw new Error('قيمة الدفع أكبر من رصيد المورد')
+      throw new Error('قيمة الدفع أكبر من رصيد المورد');
     }
 
     const businessDateRow = db
@@ -2993,10 +2996,10 @@ export function recordSupplierPayment(input: {
     `,
       )
       .get() as {
-      business_date: string
-    }
+      business_date: string;
+    };
 
-    const businessDate = String(businessDateRow?.business_date || '')
+    const businessDate = String(businessDateRow?.business_date || '');
 
     const batchResult = db
       .prepare(
@@ -3022,9 +3025,9 @@ export function recordSupplierPayment(input: {
         input.actor_id ?? null,
         businessDate,
         openShift?.id ?? null,
-      )
+      );
 
-    const paymentBatchId = Number(batchResult.lastInsertRowid)
+    const paymentBatchId = Number(batchResult.lastInsertRowid);
 
     const insertPayment = db.prepare(`
       INSERT INTO supplier_payments (
@@ -3036,7 +3039,7 @@ export function recordSupplierPayment(input: {
         notes
       )
       VALUES (?, ?, ?, ?, ?, ?)
-    `)
+    `);
 
     const updatePurchase = db.prepare(`
       UPDATE purchase_invoices
@@ -3045,13 +3048,13 @@ export function recordSupplierPayment(input: {
         remaining_amount = ?,
         payment_status = ?
       WHERE id = ?
-    `)
+    `);
 
-    let totalPaid = 0
+    let totalPaid = 0;
     const allocations: Array<{
-      purchase_id: number | null
-      amount: number
-    }> = []
+      purchase_id: number | null;
+      amount: number;
+    }> = [];
 
     if (purchaseId) {
       const purchase = db
@@ -3065,30 +3068,30 @@ export function recordSupplierPayment(input: {
           LIMIT 1
         `,
         )
-        .get(purchaseId, supplierId) as any
+        .get(purchaseId, supplierId) as any;
 
       if (!purchase) {
-        throw new Error('فاتورة الشراء غير موجودة أو ملغاة')
+        throw new Error('فاتورة الشراء غير موجودة أو ملغاة');
       }
 
-      const remaining = roundMoney(Number(purchase.remaining_amount || 0))
+      const remaining = roundMoney(Number(purchase.remaining_amount || 0));
 
       if (remaining <= 0) {
-        throw new Error('الفاتورة مدفوعة بالكامل بالفعل')
+        throw new Error('الفاتورة مدفوعة بالكامل بالفعل');
       }
 
-      const finalAmount = roundMoney(Math.min(amountInput, remaining))
+      const finalAmount = roundMoney(Math.min(amountInput, remaining));
 
       const newPaid = roundMoney(
         Number(purchase.paid_amount || 0) + finalAmount,
-      )
+      );
 
-      const newRemaining = roundMoney(Math.max(0, remaining - finalAmount))
+      const newRemaining = roundMoney(Math.max(0, remaining - finalAmount));
 
       const newStatus =
-        newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
+        newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
 
-      updatePurchase.run(newPaid, newRemaining, newStatus, purchaseId)
+      updatePurchase.run(newPaid, newRemaining, newStatus, purchaseId);
 
       insertPayment.run(
         supplierId,
@@ -3097,15 +3100,15 @@ export function recordSupplierPayment(input: {
         finalAmount,
         paymentMethod,
         input.notes?.trim() || `دفعة على فاتورة شراء رقم ${purchaseId}`,
-      )
+      );
 
-      totalPaid = finalAmount
+      totalPaid = finalAmount;
       allocations.push({
         purchase_id: purchaseId,
         amount: finalAmount,
-      })
+      });
     } else {
-      let remainingPayment = roundMoney(Math.min(amountInput, supplierBalance))
+      let remainingPayment = roundMoney(Math.min(amountInput, supplierBalance));
 
       const openPurchases = db
         .prepare(
@@ -3118,29 +3121,33 @@ export function recordSupplierPayment(input: {
           ORDER BY id ASC
         `,
         )
-        .all(supplierId) as any[]
+        .all(supplierId) as any[];
 
       if (openPurchases.length === 0) {
-        throw new Error('لا توجد فواتير مفتوحة لهذا المورد')
+        throw new Error('لا توجد فواتير مفتوحة لهذا المورد');
       }
 
       for (const purchase of openPurchases) {
-        if (remainingPayment <= 0) break
+        if (remainingPayment <= 0) break;
 
         const purchaseRemaining = roundMoney(
           Number(purchase.remaining_amount || 0),
-        )
+        );
 
-        const payNow = roundMoney(Math.min(remainingPayment, purchaseRemaining))
+        const payNow = roundMoney(
+          Math.min(remainingPayment, purchaseRemaining),
+        );
 
-        const newPaid = roundMoney(Number(purchase.paid_amount || 0) + payNow)
+        const newPaid = roundMoney(Number(purchase.paid_amount || 0) + payNow);
 
-        const newRemaining = roundMoney(Math.max(0, purchaseRemaining - payNow))
+        const newRemaining = roundMoney(
+          Math.max(0, purchaseRemaining - payNow),
+        );
 
         const newStatus =
-          newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
+          newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
 
-        updatePurchase.run(newPaid, newRemaining, newStatus, purchase.id)
+        updatePurchase.run(newPaid, newRemaining, newStatus, purchase.id);
 
         insertPayment.run(
           supplierId,
@@ -3150,21 +3157,21 @@ export function recordSupplierPayment(input: {
           paymentMethod,
           input.notes?.trim() ||
             `دفعة عامة موزعة على فاتورة شراء رقم ${purchase.id}`,
-        )
+        );
 
-        totalPaid = roundMoney(totalPaid + payNow)
+        totalPaid = roundMoney(totalPaid + payNow);
 
-        remainingPayment = roundMoney(remainingPayment - payNow)
+        remainingPayment = roundMoney(remainingPayment - payNow);
 
         allocations.push({
           purchase_id: purchase.id,
           amount: payNow,
-        })
+        });
       }
     }
 
     if (totalPaid <= 0) {
-      throw new Error('لم يتم تسجيل أي دفعة')
+      throw new Error('لم يتم تسجيل أي دفعة');
     }
 
     db.prepare(
@@ -3173,7 +3180,7 @@ export function recordSupplierPayment(input: {
   SET amount = ?
   WHERE id = ?
   `,
-    ).run(totalPaid, paymentBatchId)
+    ).run(totalPaid, paymentBatchId);
 
     db.prepare(
       `
@@ -3186,7 +3193,7 @@ export function recordSupplierPayment(input: {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `,
-    ).run(totalPaid, supplierId)
+    ).run(totalPaid, supplierId);
 
     createCashMovement({
       type: 'supplier_payment',
@@ -3205,7 +3212,7 @@ export function recordSupplierPayment(input: {
 
       business_date: businessDate,
       shift_id: openShift?.id ?? null,
-    })
+    });
 
     return {
       ok: true,
@@ -3218,17 +3225,17 @@ export function recordSupplierPayment(input: {
 
       allocations,
       shift_id: openShift?.id ?? null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 function getSupplierPaymentBatchMutationContext(batchId: number) {
-  const db = getDb()
+  const db = getDb();
 
   if (!batchId) {
-    throw new Error('رقم دفعة المورد غير صحيح')
+    throw new Error('رقم دفعة المورد غير صحيح');
   }
 
   const batch = db
@@ -3249,14 +3256,14 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
       LIMIT 1
       `,
     )
-    .get(batchId) as any
+    .get(batchId) as any;
 
   if (!batch) {
-    throw new Error('دفعة المورد غير موجودة')
+    throw new Error('دفعة المورد غير موجودة');
   }
 
   if (batch.cancelled_at) {
-    throw new Error('دفعة المورد ملغاة بالفعل')
+    throw new Error('دفعة المورد ملغاة بالفعل');
   }
 
   const latestBatch = db
@@ -3278,12 +3285,12 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
     )
     .get(Number(batch.supplier_id)) as
     | {
-        id: number
+        id: number;
       }
-    | undefined
+    | undefined;
 
   if (Number(latestBatch?.id || 0) !== batchId) {
-    throw new Error('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للمورد')
+    throw new Error('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للمورد');
   }
 
   const allocations = db
@@ -3312,15 +3319,15 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
       ORDER BY sp.id ASC
       `,
     )
-    .all(batchId) as any[]
+    .all(batchId) as any[];
 
   if (allocations.length === 0) {
-    throw new Error('لا توجد توزيعات مرتبطة بدفعة المورد')
+    throw new Error('لا توجد توزيعات مرتبطة بدفعة المورد');
   }
 
   const latestAllocationId = Math.max(
     ...allocations.map((allocation) => Number(allocation.id || 0)),
-  )
+  );
 
   const newerPayment = db
     .prepare(
@@ -3344,10 +3351,10 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
     LIMIT 1
     `,
     )
-    .get(Number(batch.supplier_id), latestAllocationId)
+    .get(Number(batch.supplier_id), latestAllocationId);
 
   if (newerPayment) {
-    throw new Error('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للمورد')
+    throw new Error('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للمورد');
   }
 
   if (
@@ -3355,7 +3362,7 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
   ) {
     throw new Error(
       'لا يمكن تعديل أو إلغاء الدفعة لأن إحدى فواتير الشراء المرتبطة بها ملغاة',
-    )
+    );
   }
 
   const laterReturn = db
@@ -3379,12 +3386,12 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
       LIMIT 1
       `,
     )
-    .get(batchId, batch.created_at)
+    .get(batchId, batch.created_at);
 
   if (laterReturn) {
     throw new Error(
       'لا يمكن تعديل أو إلغاء الدفعة لوجود مرتجع شراء أحدث مرتبط بها',
-    )
+    );
   }
 
   const allocationTotal = roundMoney(
@@ -3392,10 +3399,10 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
       (sum, allocation) => sum + Number(allocation.amount || 0),
       0,
     ),
-  )
+  );
 
   if (Math.abs(allocationTotal - Number(batch.amount || 0)) > 0.01) {
-    throw new Error('بيانات دفعة المورد غير متطابقة')
+    throw new Error('بيانات دفعة المورد غير متطابقة');
   }
 
   const cashMovement = db
@@ -3416,21 +3423,21 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
       LIMIT 1
       `,
     )
-    .get(batchId) as any
+    .get(batchId) as any;
 
   if (!cashMovement) {
-    throw new Error('حركة حساب الدفع الخاصة بدفعة المورد غير موجودة')
+    throw new Error('حركة حساب الدفع الخاصة بدفعة المورد غير موجودة');
   }
 
   if (cashMovement.cancelled_at) {
-    throw new Error('حركة حساب الدفع الخاصة بالدفعة ملغاة بالفعل')
+    throw new Error('حركة حساب الدفع الخاصة بالدفعة ملغاة بالفعل');
   }
 
   if (
     Math.abs(roundMoney(Number(cashMovement.amount || 0)) - allocationTotal) >
     0.01
   ) {
-    throw new Error('قيمة حركة حساب الدفع لا تطابق قيمة دفعة المورد')
+    throw new Error('قيمة حركة حساب الدفع لا تطابق قيمة دفعة المورد');
   }
 
   return {
@@ -3439,16 +3446,16 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
     allocations,
     allocationTotal,
     cashMovement,
-  }
+  };
 }
 
 export function getSupplierPaymentBatchAccess(
   batchId: number,
   actorId?: number | null,
 ) {
-  const context = getSupplierPaymentBatchMutationContext(Number(batchId))
+  const context = getSupplierPaymentBatchMutationContext(Number(batchId));
 
-  const batch = context.batch
+  const batch = context.batch;
 
   const row = context.db
     .prepare(
@@ -3473,8 +3480,8 @@ export function getSupplierPaymentBatchAccess(
       Number(actorId || 0),
       batch.created_at,
     ) as {
-    requires_admin_password: number
-  }
+    requires_admin_password: number;
+  };
 
   return {
     batch_id: Number(batch.id),
@@ -3484,39 +3491,39 @@ export function getSupplierPaymentBatchAccess(
     created_by: batch.created_by == null ? null : Number(batch.created_by),
 
     requires_admin_password: Number(row.requires_admin_password || 0) === 1,
-  }
+  };
 }
 
 export function cancelSupplierPaymentBatch(input: {
-  batch_id: number
-  reason?: string | null
-  actor_id?: number | null
+  batch_id: number;
+  reason?: string | null;
+  actor_id?: number | null;
 }) {
-  const batchId = Number(input.batch_id || 0)
+  const batchId = Number(input.batch_id || 0);
 
-  const context = getSupplierPaymentBatchMutationContext(batchId)
+  const context = getSupplierPaymentBatchMutationContext(batchId);
 
-  const { db, batch, allocations, allocationTotal, cashMovement } = context
+  const { db, batch, allocations, allocationTotal, cashMovement } = context;
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
   const openShift = resolveFinancialOperationShift(
     actorId,
     [cashMovement.payment_method],
     'لا يمكن إلغاء دفعة مورد تؤثر على درج المحل بدون شفت مفتوح',
-  )
+  );
 
-  const cancellationBusinessDate = getCurrentBusinessDate(db)
+  const cancellationBusinessDate = getCurrentBusinessDate(db);
 
-  const reason = String(input.reason || '').trim() || 'إلغاء دفعة مورد'
+  const reason = String(input.reason || '').trim() || 'إلغاء دفعة مورد';
 
   const tx = db.transaction(() => {
     for (const allocation of allocations) {
-      const amount = roundMoney(Number(allocation.amount || 0))
+      const amount = roundMoney(Number(allocation.amount || 0));
 
       const nextPaid = roundMoney(
         Math.max(0, Number(allocation.paid_amount || 0) - amount),
-      )
+      );
 
       const nextRemaining = roundMoney(
         Math.min(
@@ -3524,13 +3531,13 @@ export function cancelSupplierPaymentBatch(input: {
 
           Math.max(0, Number(allocation.remaining_amount || 0) + amount),
         ),
-      )
+      );
 
       const nextStatus = normalizePaymentStatus(
         Number(allocation.total_amount || 0),
         nextPaid,
         nextRemaining,
-      )
+      );
 
       db.prepare(
         `
@@ -3543,7 +3550,12 @@ export function cancelSupplierPaymentBatch(input: {
 
         WHERE id = ?
         `,
-      ).run(nextPaid, nextRemaining, nextStatus, Number(allocation.purchase_id))
+      ).run(
+        nextPaid,
+        nextRemaining,
+        nextStatus,
+        Number(allocation.purchase_id),
+      );
     }
 
     db.prepare(
@@ -3561,7 +3573,7 @@ export function cancelSupplierPaymentBatch(input: {
 
       WHERE id = ?
       `,
-    ).run(allocationTotal, Number(batch.supplier_id))
+    ).run(allocationTotal, Number(batch.supplier_id));
 
     db.prepare(
       `
@@ -3577,7 +3589,7 @@ export function cancelSupplierPaymentBatch(input: {
 
       WHERE id = ?
       `,
-    ).run(actorId, openShift?.id ?? null, reason, batchId)
+    ).run(actorId, openShift?.id ?? null, reason, batchId);
 
     createCashMovement({
       type: 'supplier_payment',
@@ -3599,7 +3611,7 @@ export function cancelSupplierPaymentBatch(input: {
       business_date: cancellationBusinessDate,
 
       shift_id: openShift?.id ?? null,
-    })
+    });
 
     return {
       success: true,
@@ -3617,32 +3629,32 @@ export function cancelSupplierPaymentBatch(input: {
 
         amount: Number(allocation.amount || 0),
       })),
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function updateSupplierPaymentBatch(input: {
-  batch_id: number
-  amount: number
-  payment_method?: string
-  notes?: string | null
-  actor_id?: number | null
+  batch_id: number;
+  amount: number;
+  payment_method?: string;
+  notes?: string | null;
+  actor_id?: number | null;
 }) {
-  const batchId = Number(input.batch_id || 0)
+  const batchId = Number(input.batch_id || 0);
 
-  const amountInput = roundMoney(Number(input.amount || 0))
+  const amountInput = roundMoney(Number(input.amount || 0));
 
   if (!batchId) {
-    throw new Error('رقم دفعة المورد غير صحيح')
+    throw new Error('رقم دفعة المورد غير صحيح');
   }
 
   if (!Number.isFinite(amountInput) || amountInput <= 0) {
-    throw new Error('مبلغ الدفعة المعدل غير صحيح')
+    throw new Error('مبلغ الدفعة المعدل غير صحيح');
   }
 
-  const context = getSupplierPaymentBatchMutationContext(batchId)
+  const context = getSupplierPaymentBatchMutationContext(batchId);
 
   const {
     db,
@@ -3650,7 +3662,7 @@ export function updateSupplierPaymentBatch(input: {
     allocations,
     allocationTotal: oldTotal,
     cashMovement,
-  } = context
+  } = context;
 
   const supplier = db
     .prepare(
@@ -3664,27 +3676,27 @@ export function updateSupplierPaymentBatch(input: {
       LIMIT 1
       `,
     )
-    .get(Number(batch.supplier_id)) as any
+    .get(Number(batch.supplier_id)) as any;
 
   if (!supplier) {
-    throw new Error('المورد غير موجود')
+    throw new Error('المورد غير موجود');
   }
 
-  const specificPurchaseId = Number(batch.purchase_id || 0)
+  const specificPurchaseId = Number(batch.purchase_id || 0);
 
   const availableAfterReverse = roundMoney(
     Number(supplier.balance || 0) + oldTotal,
-  )
+  );
 
-  let availableForNewPayment = availableAfterReverse
+  let availableForNewPayment = availableAfterReverse;
 
   if (specificPurchaseId) {
     const targetPurchase = allocations.find(
       (allocation) => Number(allocation.purchase_id) === specificPurchaseId,
-    )
+    );
 
     if (!targetPurchase) {
-      throw new Error('فاتورة الشراء المرتبطة بالدفعة غير موجودة')
+      throw new Error('فاتورة الشراء المرتبطة بالدفعة غير موجودة');
     }
 
     const oldAllocationOnPurchase = roundMoney(
@@ -3695,7 +3707,7 @@ export function updateSupplierPaymentBatch(input: {
             : sum,
         0,
       ),
-    )
+    );
 
     availableForNewPayment = roundMoney(
       Math.min(
@@ -3703,38 +3715,38 @@ export function updateSupplierPaymentBatch(input: {
 
         Number(targetPurchase.remaining_amount || 0) + oldAllocationOnPurchase,
       ),
-    )
+    );
   }
 
   if (amountInput > availableForNewPayment + 0.0001) {
     throw new Error(
       `مبلغ الدفعة المعدل أكبر من المديونية المتاحة وهي ${availableForNewPayment.toFixed(2)} ج.م`,
-    )
+    );
   }
 
   const newPaymentMethod = resolveCashAccount(
     input.payment_method || batch.payment_method || 'cash',
-  )
+  );
 
-  const actorId = Number(input.actor_id || 0)
+  const actorId = Number(input.actor_id || 0);
 
   const openShift = resolveFinancialOperationShift(
     actorId,
     [cashMovement.payment_method, newPaymentMethod],
     'لا يمكن تعديل دفعة مورد تؤثر على درج المحل بدون شفت مفتوح',
-  )
+  );
 
-  const correctionBusinessDate = getCurrentBusinessDate(db)
+  const correctionBusinessDate = getCurrentBusinessDate(db);
 
   const newNotes =
     input.notes === undefined
       ? (batch.notes ?? null)
-      : input.notes?.trim() || null
+      : input.notes?.trim() || null;
 
   const tx = db.transaction(() => {
     // عكس تأثير الدفعة القديمة
     for (const allocation of allocations) {
-      const amount = roundMoney(Number(allocation.amount || 0))
+      const amount = roundMoney(Number(allocation.amount || 0));
 
       const nextPaid = roundMoney(
         Math.max(
@@ -3742,7 +3754,7 @@ export function updateSupplierPaymentBatch(input: {
 
           Number(allocation.paid_amount || 0) - amount,
         ),
-      )
+      );
 
       const nextRemaining = roundMoney(
         Math.min(
@@ -3754,13 +3766,13 @@ export function updateSupplierPaymentBatch(input: {
             Number(allocation.remaining_amount || 0) + amount,
           ),
         ),
-      )
+      );
 
       const nextStatus = normalizePaymentStatus(
         Number(allocation.total_amount || 0),
         nextPaid,
         nextRemaining,
-      )
+      );
 
       db.prepare(
         `
@@ -3773,7 +3785,12 @@ export function updateSupplierPaymentBatch(input: {
 
         WHERE id = ?
         `,
-      ).run(nextPaid, nextRemaining, nextStatus, Number(allocation.purchase_id))
+      ).run(
+        nextPaid,
+        nextRemaining,
+        nextStatus,
+        Number(allocation.purchase_id),
+      );
     }
 
     // إعادة مديونية الدفعة القديمة
@@ -3792,7 +3809,7 @@ export function updateSupplierPaymentBatch(input: {
 
       WHERE id = ?
       `,
-    ).run(oldTotal, Number(batch.supplier_id))
+    ).run(oldTotal, Number(batch.supplier_id));
 
     // إنشاء Batch بديل
     const newBatchResult = db
@@ -3829,9 +3846,9 @@ export function updateSupplierPaymentBatch(input: {
         openShift?.id ?? null,
 
         batch.created_at,
-      )
+      );
 
-    const newBatchId = Number(newBatchResult.lastInsertRowid)
+    const newBatchId = Number(newBatchResult.lastInsertRowid);
 
     // القديمة أصبحت مستبدلة
     db.prepare(
@@ -3850,7 +3867,7 @@ export function updateSupplierPaymentBatch(input: {
 
       WHERE id = ?
       `,
-    ).run(actorId, openShift?.id ?? null, newBatchId, batchId)
+    ).run(actorId, openShift?.id ?? null, newBatchId, batchId);
 
     createCashMovement({
       type: 'supplier_payment',
@@ -3872,7 +3889,7 @@ export function updateSupplierPaymentBatch(input: {
       business_date: correctionBusinessDate,
 
       shift_id: openShift?.id ?? null,
-    })
+    });
 
     const insertPayment = db.prepare(
       `
@@ -3887,7 +3904,7 @@ export function updateSupplierPaymentBatch(input: {
 
         VALUES (?, ?, ?, ?, ?, ?)
         `,
-    )
+    );
 
     const updatePurchase = db.prepare(
       `
@@ -3900,14 +3917,14 @@ export function updateSupplierPaymentBatch(input: {
 
         WHERE id = ?
         `,
-    )
+    );
 
-    let totalPaid = 0
+    let totalPaid = 0;
 
     const newAllocations: Array<{
-      purchase_id: number
-      amount: number
-    }> = []
+      purchase_id: number;
+      amount: number;
+    }> = [];
 
     if (specificPurchaseId) {
       const purchase = db
@@ -3927,31 +3944,31 @@ export function updateSupplierPaymentBatch(input: {
           LIMIT 1
           `,
         )
-        .get(specificPurchaseId, Number(batch.supplier_id)) as any
+        .get(specificPurchaseId, Number(batch.supplier_id)) as any;
 
       if (!purchase) {
-        throw new Error('فاتورة الشراء المرتبطة بالدفعة غير موجودة')
+        throw new Error('فاتورة الشراء المرتبطة بالدفعة غير موجودة');
       }
 
-      const remaining = roundMoney(Number(purchase.remaining_amount || 0))
+      const remaining = roundMoney(Number(purchase.remaining_amount || 0));
 
       if (amountInput > remaining + 0.0001) {
-        throw new Error('مبلغ الدفعة المعدل أكبر من المتبقي على فاتورة الشراء')
+        throw new Error('مبلغ الدفعة المعدل أكبر من المتبقي على فاتورة الشراء');
       }
 
       const newPaid = roundMoney(
         Number(purchase.paid_amount || 0) + amountInput,
-      )
+      );
 
-      const newRemaining = roundMoney(Math.max(0, remaining - amountInput))
+      const newRemaining = roundMoney(Math.max(0, remaining - amountInput));
 
       const newStatus = normalizePaymentStatus(
         Number(purchase.total_amount || 0),
         newPaid,
         newRemaining,
-      )
+      );
 
-      updatePurchase.run(newPaid, newRemaining, newStatus, specificPurchaseId)
+      updatePurchase.run(newPaid, newRemaining, newStatus, specificPurchaseId);
 
       insertPayment.run(
         Number(batch.supplier_id),
@@ -3965,17 +3982,17 @@ export function updateSupplierPaymentBatch(input: {
         newPaymentMethod,
 
         newNotes || `دفعة مورد معدلة على فاتورة شراء رقم ${specificPurchaseId}`,
-      )
+      );
 
-      totalPaid = amountInput
+      totalPaid = amountInput;
 
       newAllocations.push({
         purchase_id: specificPurchaseId,
 
         amount: amountInput,
-      })
+      });
     } else {
-      let remainingPayment = amountInput
+      let remainingPayment = amountInput;
 
       const openPurchases = db
         .prepare(
@@ -3996,39 +4013,43 @@ export function updateSupplierPaymentBatch(input: {
           ORDER BY id ASC
           `,
         )
-        .all(Number(batch.supplier_id)) as any[]
+        .all(Number(batch.supplier_id)) as any[];
 
       for (const purchase of openPurchases) {
         if (remainingPayment <= 0.0001) {
-          break
+          break;
         }
 
         const purchaseRemaining = roundMoney(
           Number(purchase.remaining_amount || 0),
-        )
+        );
 
-        const payNow = roundMoney(Math.min(remainingPayment, purchaseRemaining))
+        const payNow = roundMoney(
+          Math.min(remainingPayment, purchaseRemaining),
+        );
 
         if (payNow <= 0) {
-          continue
+          continue;
         }
 
-        const newPaid = roundMoney(Number(purchase.paid_amount || 0) + payNow)
+        const newPaid = roundMoney(Number(purchase.paid_amount || 0) + payNow);
 
-        const newRemaining = roundMoney(Math.max(0, purchaseRemaining - payNow))
+        const newRemaining = roundMoney(
+          Math.max(0, purchaseRemaining - payNow),
+        );
 
         const newStatus = normalizePaymentStatus(
           Number(purchase.total_amount || 0),
           newPaid,
           newRemaining,
-        )
+        );
 
         updatePurchase.run(
           newPaid,
           newRemaining,
           newStatus,
           Number(purchase.id),
-        )
+        );
 
         insertPayment.run(
           Number(batch.supplier_id),
@@ -4043,26 +4064,26 @@ export function updateSupplierPaymentBatch(input: {
 
           newNotes ||
             `دفعة مورد معدلة موزعة على فاتورة شراء رقم ${purchase.id}`,
-        )
+        );
 
-        totalPaid = roundMoney(totalPaid + payNow)
+        totalPaid = roundMoney(totalPaid + payNow);
 
-        remainingPayment = roundMoney(remainingPayment - payNow)
+        remainingPayment = roundMoney(remainingPayment - payNow);
 
         newAllocations.push({
           purchase_id: Number(purchase.id),
 
           amount: payNow,
-        })
+        });
       }
 
       if (remainingPayment > 0.0001) {
-        throw new Error('تعذر توزيع كامل مبلغ الدفعة المعدلة')
+        throw new Error('تعذر توزيع كامل مبلغ الدفعة المعدلة');
       }
     }
 
     if (Math.abs(totalPaid - amountInput) > 0.01) {
-      throw new Error('تعذر تسجيل مبلغ دفعة المورد المعدل بالكامل')
+      throw new Error('تعذر تسجيل مبلغ دفعة المورد المعدل بالكامل');
     }
 
     db.prepare(
@@ -4073,7 +4094,7 @@ export function updateSupplierPaymentBatch(input: {
 
       WHERE id = ?
       `,
-    ).run(totalPaid, newBatchId)
+    ).run(totalPaid, newBatchId);
 
     db.prepare(
       `
@@ -4093,7 +4114,7 @@ export function updateSupplierPaymentBatch(input: {
 
       WHERE id = ?
       `,
-    ).run(totalPaid, Number(batch.supplier_id))
+    ).run(totalPaid, Number(batch.supplier_id));
 
     /*
       حركة الدفع الجديدة.
@@ -4121,7 +4142,7 @@ export function updateSupplierPaymentBatch(input: {
       business_date: correctionBusinessDate,
 
       shift_id: openShift?.id ?? null,
-    })
+    });
 
     return {
       success: true,
@@ -4141,21 +4162,21 @@ export function updateSupplierPaymentBatch(input: {
       allocations: newAllocations,
 
       shift_id: openShift?.id ?? null,
-    }
-  })
+    };
+  });
 
-  return tx()
+  return tx();
 }
 
 export function getSupplierStatement(
   supplierId: number,
   actorId?: number | null,
 ) {
-  const db = getDb()
-  const id = Number(supplierId)
+  const db = getDb();
+  const id = Number(supplierId);
 
   if (!id) {
-    throw new Error('Supplier ID is required')
+    throw new Error('Supplier ID is required');
   }
 
   const supplier = db
@@ -4170,10 +4191,10 @@ export function getSupplierStatement(
       LIMIT 1
       `,
     )
-    .get(id) as any
+    .get(id) as any;
 
   if (!supplier) {
-    throw new Error('المورد غير موجود')
+    throw new Error('المورد غير موجود');
   }
 
   const purchases = db
@@ -4195,7 +4216,7 @@ export function getSupplierStatement(
         id DESC
       `,
     )
-    .all(id) as any[]
+    .all(id) as any[];
 
   const payments = db
     .prepare(
@@ -4343,7 +4364,7 @@ export function getSupplierStatement(
         sp.id DESC
       `,
     )
-    .all(Number(actorId || 0), id) as any[]
+    .all(Number(actorId || 0), id) as any[];
 
   const returns = db
     .prepare(
@@ -4359,51 +4380,51 @@ export function getSupplierStatement(
         id DESC
       `,
     )
-    .all(id) as any[]
+    .all(id) as any[];
 
-  const batchPayments = new Map<number, any[]>()
+  const batchPayments = new Map<number, any[]>();
 
-  const standalonePayments: any[] = []
+  const standalonePayments: any[] = [];
 
   for (const payment of payments) {
-    const batchId = Number(payment.batch_id || 0)
+    const batchId = Number(payment.batch_id || 0);
 
     if (!batchId) {
-      standalonePayments.push(payment)
+      standalonePayments.push(payment);
 
-      continue
+      continue;
     }
 
-    const current = batchPayments.get(batchId) || []
+    const current = batchPayments.get(batchId) || [];
 
-    current.push(payment)
+    current.push(payment);
 
-    batchPayments.set(batchId, current)
+    batchPayments.set(batchId, current);
   }
 
   const batchPaymentEntries = Array.from(batchPayments.entries()).map(
     ([batchId, rows]) => {
-      const first = rows[0]
+      const first = rows[0];
 
-      const cancelled = Boolean(first.batch_cancelled_at)
+      const cancelled = Boolean(first.batch_cancelled_at);
 
-      const replaced = Boolean(first.replacement_batch_id)
+      const replaced = Boolean(first.replacement_batch_id);
 
-      const batchPurchaseId = Number(first.batch_purchase_id || 0)
+      const batchPurchaseId = Number(first.batch_purchase_id || 0);
 
       const allocations = rows.map((row) => ({
         purchase_id: Number(row.purchase_id),
 
         amount: Number(row.amount || 0),
-      }))
+      }));
 
       const totalAmount =
         Number(first.batch_amount || 0) ||
-        allocations.reduce((sum, item) => sum + item.amount, 0)
+        allocations.reduce((sum, item) => sum + item.amount, 0);
 
       const allocationsText = allocations
         .map((item) => `#${item.purchase_id}: ${item.amount.toFixed(2)} ج.م`)
-        .join('، ')
+        .join('، ');
 
       return {
         id: `payment-batch-${batchId}`,
@@ -4450,14 +4471,14 @@ export function getSupplierStatement(
         cancelled_at: first.batch_cancelled_at ?? null,
 
         created_at: first.batch_created_at || first.created_at,
-      }
+      };
     },
-  )
+  );
 
   const standalonePaymentEntries = standalonePayments.map((payment) => {
     const initialPayment = String(payment.notes || '').startsWith(
       'دفعة عند إنشاء فاتورة شراء رقم ',
-    )
+    );
 
     return {
       id: `payment-${payment.id}`,
@@ -4487,10 +4508,10 @@ export function getSupplierStatement(
       cancelled_at: null,
 
       created_at: payment.created_at,
-    }
-  })
+    };
+  });
 
-  const paymentEntries = [...batchPaymentEntries, ...standalonePaymentEntries]
+  const paymentEntries = [...batchPaymentEntries, ...standalonePaymentEntries];
 
   const entries = [
     ...purchases.map((purchase) => ({
@@ -4514,9 +4535,9 @@ export function getSupplierStatement(
     })),
 
     ...returns.map((purchaseReturn) => {
-      const cancelled = Boolean(purchaseReturn.cancelled_at)
+      const cancelled = Boolean(purchaseReturn.cancelled_at);
 
-      const replaced = Boolean(purchaseReturn.replacement_return_id)
+      const replaced = Boolean(purchaseReturn.replacement_return_id);
 
       return {
         id: `purchase-return-${purchaseReturn.id}`,
@@ -4548,27 +4569,27 @@ export function getSupplierStatement(
           : purchaseReturn.notes,
 
         created_at: purchaseReturn.created_at,
-      }
+      };
     }),
 
     ...paymentEntries,
   ].sort((a, b) => {
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  })
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
 
   const totalPaid = roundMoney(
     payments.reduce((sum, payment) => {
       if (payment.batch_id && payment.batch_cancelled_at) {
-        return sum
+        return sum;
       }
 
-      return sum + Number(payment.amount || 0)
+      return sum + Number(payment.amount || 0);
     }, 0),
-  )
+  );
 
-  const aging = getSupplierAgingSummary(id)
+  const aging = getSupplierAgingSummary(id);
 
-  const due = getSupplierDueSummary(id)
+  const due = getSupplierDueSummary(id);
 
   return {
     supplier,
@@ -4601,5 +4622,5 @@ export function getSupplierStatement(
       aging,
       due,
     },
-  }
+  };
 }

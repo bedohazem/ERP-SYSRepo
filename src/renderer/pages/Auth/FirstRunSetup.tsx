@@ -1,70 +1,70 @@
-import { useState } from 'react'
+import { useState } from 'react';
 
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom';
 
-import { useAuthStore } from '../../store/auth.store'
+import { useAuthStore } from '../../store/auth.store';
 
-import { getPasswordPolicyError } from '../../../shared/password-policy'
+import { getPasswordPolicyError } from '../../../shared/password-policy';
 
 type Props = {
-  appName: string
-  appLogoUrl: string
-  appTheme: 'dark' | 'light'
-}
+  appName: string;
+  appLogoUrl: string;
+  appTheme: 'dark' | 'light';
+};
 
 export default function FirstRunSetup({
   appName,
   appLogoUrl,
   appTheme,
 }: Props) {
-  const navigate = useNavigate()
+  const navigate = useNavigate();
 
-  const login = useAuthStore((state) => state.login)
+  const login = useAuthStore((state) => state.login);
 
-  const [name, setName] = useState('')
+  const [name, setName] = useState('');
 
-  const [username, setUsername] = useState('admin')
+  const [username, setUsername] = useState('admin');
 
-  const [password, setPassword] = useState('')
+  const [password, setPassword] = useState('');
 
-  const [confirmPassword, setConfirmPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('');
 
-  const [error, setError] = useState('')
+  const [error, setError] = useState('');
 
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false);
 
-  const isLight = appTheme === 'light'
+  const isLight = appTheme === 'light';
 
   async function submit() {
     if (loading) {
-      return
+      return;
     }
 
-    setError('')
+    setError('');
 
     if (!name.trim()) {
-      setError('اكتب اسم مدير النظام')
-      return
+      setError('اكتب اسم مدير النظام');
+      return;
     }
 
     if (!username.trim()) {
-      setError('اكتب اسم الدخول')
-      return
+      setError('اكتب اسم الدخول');
+      return;
     }
 
-    const passwordError = getPasswordPolicyError(password)
+    const passwordError = getPasswordPolicyError(password);
 
     if (passwordError) {
-      setError(passwordError)
-      return
+      setError(passwordError);
+      return;
     }
 
     if (password !== confirmPassword) {
-      setError('كلمة المرور وتأكيدها غير متطابقين')
-      return
+      setError('كلمة المرور وتأكيدها غير متطابقين');
+      return;
     }
 
-    setLoading(true)
+    setLoading(true);
 
     try {
       const result = await window.api.bootstrapInitialAdmin({
@@ -73,24 +73,24 @@ export default function FirstRunSetup({
         username: username.trim(),
 
         password,
-      })
+      });
 
       if (!result.success || !result.user) {
-        setError(result.message || 'تعذر إنشاء حساب المدير')
-        return
+        setError(result.message || 'تعذر إنشاء حساب المدير');
+        return;
       }
 
-      login(result.user)
+      login(result.user);
 
       navigate('/dashboard', {
         replace: true,
-      })
+      });
     } catch (error) {
-      console.error('Bootstrap admin failed:', error)
+      console.error('Bootstrap admin failed:', error);
 
-      setError('تعذر إنشاء حساب المدير')
+      setError('تعذر إنشاء حساب المدير');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -309,7 +309,7 @@ export default function FirstRunSetup({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 const inputStyle: React.CSSProperties = {
@@ -329,4 +329,4 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
 
   outline: 'none',
-}
+};

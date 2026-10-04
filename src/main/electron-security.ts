@@ -1,12 +1,12 @@
-import type { BrowserWindow, Session, WebPreferences } from 'electron'
-import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import type { BrowserWindow, Session, WebPreferences } from 'electron';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 export type RuntimeSecurityOptions = {
-  appRoot: string
-  isPackaged: boolean
-  openExternal: (url: string) => Promise<void>
-}
+  appRoot: string;
+  isPackaged: boolean;
+  openExternal: (url: string) => Promise<void>;
+};
 
 export function getSecureWebPreferences(isPackaged: boolean): WebPreferences {
   return {
@@ -17,7 +17,7 @@ export function getSecureWebPreferences(isPackaged: boolean): WebPreferences {
     webSecurity: true,
     allowRunningInsecureContent: false,
     devTools: !isPackaged,
-  }
+  };
 }
 
 export function clampWindowDimension(
@@ -26,19 +26,19 @@ export function clampWindowDimension(
   min: number,
   max: number,
 ): number {
-  const numericValue = Number(value)
+  const numericValue = Number(value);
 
   if (!Number.isFinite(numericValue)) {
-    return fallback
+    return fallback;
   }
 
-  return Math.min(max, Math.max(min, Math.round(numericValue)))
+  return Math.min(max, Math.max(min, Math.round(numericValue)));
 }
 
 function getProductionRendererUrl(appRoot: string) {
   return pathToFileURL(
     path.join(appRoot, 'dist', 'renderer', 'index.html'),
-  ).toString()
+  ).toString();
 }
 
 export function isTrustedRendererUrl(
@@ -46,7 +46,7 @@ export function isTrustedRendererUrl(
   options: Pick<RuntimeSecurityOptions, 'appRoot' | 'isPackaged'>,
 ): boolean {
   try {
-    const url = new URL(rawUrl)
+    const url = new URL(rawUrl);
 
     if (!options.isPackaged) {
       return (
@@ -55,35 +55,35 @@ export function isTrustedRendererUrl(
         url.port === '3000' &&
         url.pathname === '/' &&
         url.search === ''
-      )
+      );
     }
 
     if (url.search) {
-      return false
+      return false;
     }
 
-    url.hash = ''
+    url.hash = '';
 
-    return url.toString() === getProductionRendererUrl(options.appRoot)
+    return url.toString() === getProductionRendererUrl(options.appRoot);
   } catch {
-    return false
+    return false;
   }
 }
 
 export function isAllowedExternalUrl(rawUrl: string): boolean {
   try {
-    const url = new URL(rawUrl)
+    const url = new URL(rawUrl);
 
     if (url.protocol === 'tel:') {
       return (
         url.search === '' &&
         url.hash === '' &&
         /^\+?\d{7,15}$/.test(url.pathname)
-      )
+      );
     }
 
     if (url.protocol !== 'https:') {
-      return false
+      return false;
     }
 
     return (
@@ -94,9 +94,9 @@ export function isAllowedExternalUrl(rawUrl: string): boolean {
       url.search === '' &&
       url.hash === '' &&
       /^\/\d{7,15}$/.test(url.pathname)
-    )
+    );
   } catch {
-    return false
+    return false;
   }
 }
 
@@ -106,12 +106,12 @@ function getRequestingUrl(details: unknown): string {
     typeof details !== 'object' ||
     !('requestingUrl' in details)
   ) {
-    return ''
+    return '';
   }
 
-  const requestingUrl = (details as { requestingUrl?: unknown }).requestingUrl
+  const requestingUrl = (details as { requestingUrl?: unknown }).requestingUrl;
 
-  return typeof requestingUrl === 'string' ? requestingUrl : ''
+  return typeof requestingUrl === 'string' ? requestingUrl : '';
 }
 
 export function isAllowedPermission(
@@ -122,7 +122,7 @@ export function isAllowedPermission(
   return (
     permission === 'clipboard-sanitized-write' &&
     isTrustedRendererUrl(requestingUrl, options)
-  )
+  );
 }
 
 export function configureSessionPermissions(
@@ -133,35 +133,35 @@ export function configureSessionPermissions(
     (_webContents, permission, callback, details) => {
       callback(
         isAllowedPermission(permission, getRequestingUrl(details), options),
-      )
+      );
     },
-  )
+  );
 
   electronSession.setPermissionCheckHandler(
     (_webContents, permission, requestingOrigin, details) => {
       const requestingUrl =
-        getRequestingUrl(details) || String(requestingOrigin || '')
+        getRequestingUrl(details) || String(requestingOrigin || '');
 
-      return isAllowedPermission(permission, requestingUrl, options)
+      return isAllowedPermission(permission, requestingUrl, options);
     },
-  )
+  );
 }
 
 export function hardenAuxiliaryWindow(window: BrowserWindow): void {
-  window.setMenu(null)
-  window.setMenuBarVisibility(false)
+  window.setMenu(null);
+  window.setMenuBarVisibility(false);
 
   window.webContents.setWindowOpenHandler(() => ({
     action: 'deny',
-  }))
+  }));
 
   window.webContents.on('will-frame-navigate', (event) => {
-    event.preventDefault()
-  })
+    event.preventDefault();
+  });
 
   window.webContents.on('will-redirect', (event) => {
-    event.preventDefault()
-  })
+    event.preventDefault();
+  });
 }
 
 export function configureMainWindowSecurity(
@@ -170,25 +170,25 @@ export function configureMainWindowSecurity(
 ): void {
   window.webContents.on('will-frame-navigate', (event) => {
     if (!event.isMainFrame || !isTrustedRendererUrl(event.url, options)) {
-      event.preventDefault()
+      event.preventDefault();
     }
-  })
+  });
 
   window.webContents.on('will-redirect', (event) => {
     if (!event.isMainFrame || !isTrustedRendererUrl(event.url, options)) {
-      event.preventDefault()
+      event.preventDefault();
     }
-  })
+  });
 
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (isAllowedExternalUrl(url)) {
       void options.openExternal(url).catch((error) => {
-        console.error('Failed to open external URL:', error)
-      })
+        console.error('Failed to open external URL:', error);
+      });
     }
 
     return {
       action: 'deny',
-    }
-  })
+    };
+  });
 }

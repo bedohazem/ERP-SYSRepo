@@ -1,124 +1,124 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react';
 
-import type { CSSProperties } from 'react'
+import type { CSSProperties } from 'react';
 
-import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method'
-import { formatMoney } from '../../../shared/money'
+import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
+import { formatMoney } from '../../../shared/money';
 
 type Supplier = {
-  id: number
-  name: string
-  phone?: string | null
-  balance?: number
-}
+  id: number;
+  name: string;
+  phone?: string | null;
+  balance?: number;
+};
 
 type Category = {
-  id: number
-  name: string
-}
+  id: number;
+  name: string;
+};
 
 type ReorderSuggestion = {
-  variant_id: number
+  variant_id: number;
 
-  product_id: number
+  product_id: number;
 
-  product_name: string
+  product_name: string;
 
-  category_id: number | null
+  category_id: number | null;
 
-  barcode?: string | null
+  barcode?: string | null;
 
-  size?: string | null
+  size?: string | null;
 
-  color?: string | null
+  color?: string | null;
 
-  current_stock: number
+  current_stock: number;
 
-  min_stock: number
+  min_stock: number;
 
-  sold_units_30d: number
+  sold_units_30d: number;
 
-  average_daily_sales: number
+  average_daily_sales: number;
 
-  target_days: number
+  target_days: number;
 
-  target_stock: number
+  target_stock: number;
 
-  suggested_quantity: number
+  suggested_quantity: number;
 
-  coverage_days: number | null
+  coverage_days: number | null;
 
-  unit_cost: number
+  unit_cost: number;
 
-  estimated_cost: number
+  estimated_cost: number;
 
-  reason: 'out' | 'low' | 'demand'
-}
+  reason: 'out' | 'low' | 'demand';
+};
 
 type PurchaseOrderRow = {
-  id: number
+  id: number;
 
-  supplier_id: number
+  supplier_id: number;
 
-  supplier_name: string
+  supplier_name: string;
 
-  status: 'draft' | 'ordered' | 'received' | 'cancelled'
+  status: 'draft' | 'ordered' | 'received' | 'cancelled';
 
-  notes?: string | null
+  notes?: string | null;
 
-  purchase_id?: number | null
+  purchase_id?: number | null;
 
-  items_count: number
+  items_count: number;
 
-  total_amount: number
+  total_amount: number;
 
-  created_at: string
+  created_at: string;
 
-  ordered_at?: string | null
+  ordered_at?: string | null;
 
-  received_at?: string | null
+  received_at?: string | null;
 
-  cancelled_at?: string | null
+  cancelled_at?: string | null;
 
-  cancel_reason?: string | null
-}
+  cancel_reason?: string | null;
+};
 
 type PurchaseOrderItem = {
-  id?: number
+  id?: number;
 
-  variant_id: number
+  variant_id: number;
 
-  product_name: string
+  product_name: string;
 
-  barcode?: string | null
+  barcode?: string | null;
 
-  size?: string | null
+  size?: string | null;
 
-  color?: string | null
+  color?: string | null;
 
-  quantity: number
+  quantity: number;
 
-  unit_cost: number
+  unit_cost: number;
 
-  line_total: number
-}
+  line_total: number;
+};
 
 type PurchaseOrderSnapshot = {
-  order: PurchaseOrderRow
+  order: PurchaseOrderRow;
 
-  items: PurchaseOrderItem[]
-}
+  items: PurchaseOrderItem[];
+};
 
 type Props = {
-  open: boolean
+  open: boolean;
 
-  onClose: () => void
+  onClose: () => void;
 
-  onPurchaseReceived?: () => void
-}
+  onPurchaseReceived?: () => void;
+};
 
 function money(value: unknown) {
-  return formatMoney(value)
+  return formatMoney(value);
 }
 
 function getErrorMessage(
@@ -131,61 +131,61 @@ function getErrorMessage(
       ? error.message
       : typeof error === 'string'
         ? error
-        : ''
+        : '';
 
-  const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/)
+  const match = raw.match(/Error invoking remote method '[^']+': Error: (.*)$/);
 
-  return match?.[1] || raw || fallback
+  return match?.[1] || raw || fallback;
 }
 
 function statusLabel(status: string) {
   switch (status) {
     case 'draft':
-      return 'مسودة'
+      return 'مسودة';
 
     case 'ordered':
-      return 'تم الطلب'
+      return 'تم الطلب';
 
     case 'received':
-      return 'تم الاستلام'
+      return 'تم الاستلام';
 
     case 'cancelled':
-      return 'ملغى'
+      return 'ملغى';
 
     default:
-      return status
+      return status;
   }
 }
 
 function statusColor(status: string) {
   switch (status) {
     case 'draft':
-      return '#93c5fd'
+      return '#93c5fd';
 
     case 'ordered':
-      return '#fbbf24'
+      return '#fbbf24';
 
     case 'received':
-      return '#6ee7b7'
+      return '#6ee7b7';
 
     case 'cancelled':
-      return '#fca5a5'
+      return '#fca5a5';
 
     default:
-      return '#cbd5e1'
+      return '#cbd5e1';
   }
 }
 
 function reasonLabel(reason: ReorderSuggestion['reason']) {
   if (reason === 'out') {
-    return 'نافد'
+    return 'نافد';
   }
 
   if (reason === 'low') {
-    return 'مخزون منخفض'
+    return 'مخزون منخفض';
   }
 
-  return 'طلب متوقع'
+  return 'طلب متوقع';
 }
 
 export default function PurchaseOrdersPanel({
@@ -195,60 +195,61 @@ export default function PurchaseOrdersPanel({
 
   onPurchaseReceived,
 }: Props) {
-  const [tab, setTab] = useState<'reorder' | 'orders'>('reorder')
+  const [tab, setTab] = useState<'reorder' | 'orders'>('reorder');
 
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState('');
 
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false);
 
-  const [actionLoading, setActionLoading] = useState(false)
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
-  const [supplierSearch, setSupplierSearch] = useState('')
+  const [supplierSearch, setSupplierSearch] = useState('');
 
-  const [supplierId, setSupplierId] = useState<number | ''>('')
+  const [supplierId, setSupplierId] = useState<number | ''>('');
 
-  const [categories, setCategories] = useState<Category[]>([])
+  const [categories, setCategories] = useState<Category[]>([]);
 
-  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState('all');
 
-  const [targetDays, setTargetDays] = useState('30')
+  const [targetDays, setTargetDays] = useState('30');
 
-  const [suggestions, setSuggestions] = useState<ReorderSuggestion[]>([])
+  const [suggestions, setSuggestions] = useState<ReorderSuggestion[]>([]);
 
-  const [selected, setSelected] = useState<Record<number, boolean>>({})
+  const [selected, setSelected] = useState<Record<number, boolean>>({});
 
-  const [quantities, setQuantities] = useState<Record<number, string>>({})
+  const [quantities, setQuantities] = useState<Record<number, string>>({});
 
-  const [costs, setCosts] = useState<Record<number, string>>({})
+  const [costs, setCosts] = useState<Record<number, string>>({});
 
-  const [orderNotes, setOrderNotes] = useState('')
+  const [orderNotes, setOrderNotes] = useState('');
 
-  const [orders, setOrders] = useState<PurchaseOrderRow[]>([])
+  const [orders, setOrders] = useState<PurchaseOrderRow[]>([]);
 
-  const [orderStatus, setOrderStatus] = useState('all')
+  const [orderStatus, setOrderStatus] = useState('all');
 
-  const [detail, setDetail] = useState<PurchaseOrderSnapshot | null>(null)
+  const [detail, setDetail] = useState<PurchaseOrderSnapshot | null>(null);
 
-  const [detailItems, setDetailItems] = useState<PurchaseOrderItem[]>([])
+  const [detailItems, setDetailItems] = useState<PurchaseOrderItem[]>([]);
 
-  const [detailNotes, setDetailNotes] = useState('')
+  const [detailNotes, setDetailNotes] = useState('');
 
-  const [cancelReason, setCancelReason] = useState('')
+  const [cancelReason, setCancelReason] = useState('');
 
-  const [receivePaid, setReceivePaid] = useState('0')
+  const [receivePaid, setReceivePaid] = useState('0');
 
-  const [receivePaymentMethod, setReceivePaymentMethod] = useState('store_cash')
+  const [receivePaymentMethod, setReceivePaymentMethod] =
+    useState('store_cash');
 
-  const [receiveNotes, setReceiveNotes] = useState('')
+  const [receiveNotes, setReceiveNotes] = useState('');
 
   function showMessage(text: string) {
-    setMessage(text)
+    setMessage(text);
 
     window.setTimeout(() => {
-      setMessage('')
-    }, 4000)
+      setMessage('');
+    }, 4000);
   }
 
   async function loadSuppliers(search = supplierSearch) {
@@ -259,47 +260,47 @@ export default function PurchaseOrdersPanel({
         limit: 50,
 
         offset: 0,
-      })
+      });
 
-      setSuppliers(Array.isArray(result?.rows) ? result.rows : [])
+      setSuppliers(Array.isArray(result?.rows) ? result.rows : []);
     } catch (error) {
-      console.error(error)
+      console.error(error);
 
-      setSuppliers([])
+      setSuppliers([]);
     }
   }
 
   async function loadSuggestions() {
-    setLoading(true)
+    setLoading(true);
 
     try {
       const result = await window.api.getPurchaseReorderSuggestions({
         categoryId: categoryFilter,
 
         targetDays: Number(targetDays || 30),
-      })
+      });
 
-      const rows = Array.isArray(result) ? result : []
+      const rows = Array.isArray(result) ? result : [];
 
-      setSuggestions(rows)
+      setSuggestions(rows);
 
-      const nextQty: Record<number, string> = {}
+      const nextQty: Record<number, string> = {};
 
-      const nextCosts: Record<number, string> = {}
+      const nextCosts: Record<number, string> = {};
 
       for (const row of rows) {
-        nextQty[row.variant_id] = String(row.suggested_quantity)
+        nextQty[row.variant_id] = String(row.suggested_quantity);
 
-        nextCosts[row.variant_id] = String(row.unit_cost || 0)
+        nextCosts[row.variant_id] = String(row.unit_cost || 0);
       }
 
-      setQuantities(nextQty)
+      setQuantities(nextQty);
 
-      setCosts(nextCosts)
+      setCosts(nextCosts);
 
-      setSelected({})
+      setSelected({});
     } catch (error) {
-      console.error(error)
+      console.error(error);
 
       showMessage(
         getErrorMessage(
@@ -307,25 +308,25 @@ export default function PurchaseOrdersPanel({
 
           'تعذر تحميل اقتراحات إعادة الطلب',
         ),
-      )
+      );
 
-      setSuggestions([])
+      setSuggestions([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function loadOrders() {
-    setLoading(true)
+    setLoading(true);
 
     try {
       const result = await window.api.listPurchaseOrders({
         status: orderStatus,
-      })
+      });
 
-      setOrders(Array.isArray(result) ? result : [])
+      setOrders(Array.isArray(result) ? result : []);
     } catch (error) {
-      console.error(error)
+      console.error(error);
 
       showMessage(
         getErrorMessage(
@@ -333,21 +334,21 @@ export default function PurchaseOrdersPanel({
 
           'تعذر تحميل أوامر الشراء',
         ),
-      )
+      );
 
-      setOrders([])
+      setOrders([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   async function openOrder(orderId: number) {
-    setActionLoading(true)
+    setActionLoading(true);
 
     try {
-      const result = await window.api.getPurchaseOrder(orderId)
+      const result = await window.api.getPurchaseOrder(orderId);
 
-      setDetail(result)
+      setDetail(result);
 
       setDetailItems(
         (result.items || []).map((item: any) => ({
@@ -359,19 +360,19 @@ export default function PurchaseOrdersPanel({
 
           line_total: Number(item.line_total || 0),
         })),
-      )
+      );
 
-      setDetailNotes(result.order.notes || '')
+      setDetailNotes(result.order.notes || '');
 
-      setCancelReason('')
+      setCancelReason('');
 
-      setReceivePaid('0')
+      setReceivePaid('0');
 
-      setReceivePaymentMethod('store_cash')
+      setReceivePaymentMethod('store_cash');
 
-      setReceiveNotes('')
+      setReceiveNotes('');
     } catch (error) {
-      console.error(error)
+      console.error(error);
 
       showMessage(
         getErrorMessage(
@@ -379,128 +380,128 @@ export default function PurchaseOrdersPanel({
 
           'تعذر فتح أمر الشراء',
         ),
-      )
+      );
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
   }
 
   useEffect(() => {
     if (!open) {
-      return
+      return;
     }
 
-    void loadSuppliers('')
+    void loadSuppliers('');
 
     window.api
       .getCategories()
       .then((result) => {
-        setCategories(Array.isArray(result) ? result : [])
+        setCategories(Array.isArray(result) ? result : []);
       })
       .catch((error) => {
-        console.error(error)
+        console.error(error);
 
-        setCategories([])
-      })
+        setCategories([]);
+      });
 
     if (tab === 'reorder') {
-      void loadSuggestions()
+      void loadSuggestions();
     } else {
-      void loadOrders()
+      void loadOrders();
     }
-  }, [open])
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
-      return
+      return;
     }
 
     const handle = window.setTimeout(() => {
-      void loadSuppliers(supplierSearch)
-    }, 250)
+      void loadSuppliers(supplierSearch);
+    }, 250);
 
     return () => {
-      window.clearTimeout(handle)
-    }
-  }, [open, supplierSearch])
+      window.clearTimeout(handle);
+    };
+  }, [open, supplierSearch]);
 
   useEffect(() => {
     if (!open) {
-      return
+      return;
     }
 
     if (tab === 'orders') {
-      void loadOrders()
+      void loadOrders();
     }
-  }, [open, tab, orderStatus])
+  }, [open, tab, orderStatus]);
 
   useEffect(() => {
     if (!open) {
-      return
+      return;
     }
 
     function handleEscape(event: KeyboardEvent) {
       if (event.key !== 'Escape') {
-        return
+        return;
       }
 
       if (detail) {
-        setDetail(null)
-        return
+        setDetail(null);
+        return;
       }
 
-      onClose()
+      onClose();
     }
 
-    document.addEventListener('keydown', handleEscape)
+    document.addEventListener('keydown', handleEscape);
 
     return () => {
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [open, detail, onClose])
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [open, detail, onClose]);
 
   const selectedSuggestions = useMemo(
     () => suggestions.filter((row) => Boolean(selected[row.variant_id])),
     [suggestions, selected],
-  )
+  );
 
   const selectedEstimatedCost = useMemo(
     () =>
       selectedSuggestions.reduce((sum, row) => {
-        const quantity = Math.max(0, Number(quantities[row.variant_id] || 0))
+        const quantity = Math.max(0, Number(quantities[row.variant_id] || 0));
 
-        const cost = Math.max(0, Number(costs[row.variant_id] || 0))
+        const cost = Math.max(0, Number(costs[row.variant_id] || 0));
 
-        return sum + quantity * cost
+        return sum + quantity * cost;
       }, 0),
     [selectedSuggestions, quantities, costs],
-  )
+  );
 
   function toggleAllSuggestions() {
     const allSelected =
       suggestions.length > 0 &&
-      suggestions.every((row) => Boolean(selected[row.variant_id]))
+      suggestions.every((row) => Boolean(selected[row.variant_id]));
 
-    const next: Record<number, boolean> = {}
+    const next: Record<number, boolean> = {};
 
     for (const row of suggestions) {
-      next[row.variant_id] = !allSelected
+      next[row.variant_id] = !allSelected;
     }
 
-    setSelected(next)
+    setSelected(next);
   }
 
   async function createOrderFromSuggestions() {
     if (!supplierId) {
-      showMessage('اختار المورد أولًا')
+      showMessage('اختار المورد أولًا');
 
-      return
+      return;
     }
 
     if (selectedSuggestions.length === 0) {
-      showMessage('اختار صنفًا واحدًا على الأقل')
+      showMessage('اختار صنفًا واحدًا على الأقل');
 
-      return
+      return;
     }
 
     const items = selectedSuggestions.map((row) => ({
@@ -509,16 +510,16 @@ export default function PurchaseOrdersPanel({
       quantity: Number(quantities[row.variant_id] || 0),
 
       unit_cost: Number(costs[row.variant_id] || 0),
-    }))
+    }));
 
     if (
       items.some(
         (item) => !Number.isFinite(item.quantity) || item.quantity <= 0,
       )
     ) {
-      showMessage('راجع الكميات المختارة')
+      showMessage('راجع الكميات المختارة');
 
-      return
+      return;
     }
 
     if (
@@ -526,12 +527,12 @@ export default function PurchaseOrdersPanel({
         (item) => !Number.isFinite(item.unit_cost) || item.unit_cost < 0,
       )
     ) {
-      showMessage('راجع أسعار الشراء')
+      showMessage('راجع أسعار الشراء');
 
-      return
+      return;
     }
 
-    setActionLoading(true)
+    setActionLoading(true);
 
     try {
       const result = await window.api.createPurchaseOrder({
@@ -540,23 +541,23 @@ export default function PurchaseOrdersPanel({
         notes: orderNotes.trim() || null,
 
         items,
-      })
+      });
 
-      showMessage(`تم إنشاء أمر الشراء #${result.purchase_order_id}`)
+      showMessage(`تم إنشاء أمر الشراء #${result.purchase_order_id}`);
 
-      setOrderNotes('')
+      setOrderNotes('');
 
-      setSelected({})
+      setSelected({});
 
-      setTab('orders')
+      setTab('orders');
 
-      setOrderStatus('all')
+      setOrderStatus('all');
 
-      await loadOrders()
+      await loadOrders();
 
-      await openOrder(Number(result.purchase_order_id))
+      await openOrder(Number(result.purchase_order_id));
     } catch (error) {
-      console.error(error)
+      console.error(error);
 
       showMessage(
         getErrorMessage(
@@ -564,9 +565,9 @@ export default function PurchaseOrdersPanel({
 
           'تعذر إنشاء أمر الشراء',
         ),
-      )
+      );
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
   }
 
@@ -584,12 +585,12 @@ export default function PurchaseOrdersPanel({
             }
           : item,
       ),
-    )
+    );
   }
 
   async function saveDraftOrder(): Promise<boolean> {
     if (!detail) {
-      return false
+      return false;
     }
 
     const items = detailItems.map((item) => ({
@@ -598,16 +599,16 @@ export default function PurchaseOrdersPanel({
       quantity: Number(item.quantity || 0),
 
       unit_cost: Number(item.unit_cost || 0),
-    }))
+    }));
 
     if (
       items.some(
         (item) => !Number.isFinite(item.quantity) || item.quantity <= 0,
       )
     ) {
-      showMessage('راجع كميات أمر الشراء')
+      showMessage('راجع كميات أمر الشراء');
 
-      return false
+      return false;
     }
 
     if (
@@ -615,12 +616,12 @@ export default function PurchaseOrdersPanel({
         (item) => !Number.isFinite(item.unit_cost) || item.unit_cost < 0,
       )
     ) {
-      showMessage('راجع أسعار الشراء')
+      showMessage('راجع أسعار الشراء');
 
-      return false
+      return false;
     }
 
-    setActionLoading(true)
+    setActionLoading(true);
 
     try {
       const result = await window.api.updatePurchaseOrder({
@@ -631,21 +632,21 @@ export default function PurchaseOrdersPanel({
         notes: detailNotes.trim() || null,
 
         items,
-      })
+      });
 
-      setDetail(result)
+      setDetail(result);
 
-      setDetailItems(result.items || [])
+      setDetailItems(result.items || []);
 
-      setDetailNotes(result.order.notes || '')
+      setDetailNotes(result.order.notes || '');
 
-      showMessage('تم حفظ تعديل أمر الشراء')
+      showMessage('تم حفظ تعديل أمر الشراء');
 
-      await loadOrders()
+      await loadOrders();
 
-      return true
+      return true;
     } catch (error) {
-      console.error(error)
+      console.error(error);
 
       showMessage(
         getErrorMessage(
@@ -653,35 +654,35 @@ export default function PurchaseOrdersPanel({
 
           'تعذر تعديل أمر الشراء',
         ),
-      )
+      );
 
-      return false
+      return false;
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
   }
 
   async function markOrdered() {
     if (!detail) {
-      return
+      return;
     }
 
-    setActionLoading(true)
+    setActionLoading(true);
 
     try {
       const result = await window.api.markPurchaseOrderOrdered({
         purchase_order_id: detail.order.id,
-      })
+      });
 
-      setDetail(result)
+      setDetail(result);
 
-      setDetailItems(result.items || [])
+      setDetailItems(result.items || []);
 
-      showMessage('تم اعتماد أمر الشراء وإرساله للمورد')
+      showMessage('تم اعتماد أمر الشراء وإرساله للمورد');
 
-      await loadOrders()
+      await loadOrders();
     } catch (error) {
-      console.error(error)
+      console.error(error);
 
       showMessage(
         getErrorMessage(
@@ -689,33 +690,33 @@ export default function PurchaseOrdersPanel({
 
           'تعذر اعتماد أمر الشراء',
         ),
-      )
+      );
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
   }
 
   async function cancelOrder() {
     if (!detail) {
-      return
+      return;
     }
 
-    setActionLoading(true)
+    setActionLoading(true);
 
     try {
       await window.api.cancelPurchaseOrder({
         purchase_order_id: detail.order.id,
 
         reason: cancelReason.trim() || 'إلغاء أمر الشراء',
-      })
+      });
 
-      showMessage('تم إلغاء أمر الشراء')
+      showMessage('تم إلغاء أمر الشراء');
 
-      await openOrder(detail.order.id)
+      await openOrder(detail.order.id);
 
-      await loadOrders()
+      await loadOrders();
     } catch (error) {
-      console.error(error)
+      console.error(error);
 
       showMessage(
         getErrorMessage(
@@ -723,29 +724,29 @@ export default function PurchaseOrdersPanel({
 
           'تعذر إلغاء أمر الشراء',
         ),
-      )
+      );
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
   }
 
   async function receiveOrder() {
     if (!detail) {
-      return
+      return;
     }
 
     if (detailItems.some((item) => Number(item.unit_cost || 0) <= 0)) {
-      showMessage('حدد سعر شراء صحيح لكل الأصناف قبل الاستلام')
+      showMessage('حدد سعر شراء صحيح لكل الأصناف قبل الاستلام');
 
-      return
+      return;
     }
 
-    const paid = Number(receivePaid || 0)
+    const paid = Number(receivePaid || 0);
 
     if (!Number.isFinite(paid) || paid < 0) {
-      showMessage('قيمة المدفوع غير صحيحة')
+      showMessage('قيمة المدفوع غير صحيحة');
 
-      return
+      return;
     }
 
     /*
@@ -754,14 +755,14 @@ export default function PurchaseOrdersPanel({
      * الكميات والأسعار أولًا.
      */
     if (detail.order.status === 'draft') {
-      const saved = await saveDraftOrder()
+      const saved = await saveDraftOrder();
 
       if (!saved) {
-        return
+        return;
       }
     }
 
-    setActionLoading(true)
+    setActionLoading(true);
 
     try {
       const result = await window.api.receivePurchaseOrder({
@@ -772,19 +773,19 @@ export default function PurchaseOrdersPanel({
         payment_method: receivePaymentMethod,
 
         notes: receiveNotes.trim() || `استلام أمر شراء #${detail.order.id}`,
-      })
+      });
 
       showMessage(
         `تم استلام أمر الشراء وإنشاء فاتورة شراء #${result.purchaseId}`,
-      )
+      );
 
-      onPurchaseReceived?.()
+      onPurchaseReceived?.();
 
-      await openOrder(detail.order.id)
+      await openOrder(detail.order.id);
 
-      await loadOrders()
+      await loadOrders();
     } catch (error) {
-      console.error(error)
+      console.error(error);
 
       showMessage(
         getErrorMessage(
@@ -792,14 +793,14 @@ export default function PurchaseOrdersPanel({
 
           'تعذر استلام أمر الشراء. لم يتم تطبيق أي تغييرات.',
         ),
-      )
+      );
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
   }
 
   if (!open) {
-    return null
+    return null;
   }
 
   return (
@@ -861,11 +862,11 @@ export default function PurchaseOrdersPanel({
           <button
             type="button"
             onClick={() => {
-              setTab('reorder')
+              setTab('reorder');
 
-              setDetail(null)
+              setDetail(null);
 
-              void loadSuggestions()
+              void loadSuggestions();
             }}
             style={tabButtonStyle(tab === 'reorder')}
           >
@@ -875,9 +876,9 @@ export default function PurchaseOrdersPanel({
           <button
             type="button"
             onClick={() => {
-              setTab('orders')
+              setTab('orders');
 
-              setDetail(null)
+              setDetail(null);
             }}
             style={tabButtonStyle(tab === 'orders')}
           >
@@ -1075,9 +1076,9 @@ export default function PurchaseOrdersPanel({
 
                 <tbody>
                   {suggestions.map((row) => {
-                    const quantity = Number(quantities[row.variant_id] || 0)
+                    const quantity = Number(quantities[row.variant_id] || 0);
 
-                    const cost = Number(costs[row.variant_id] || 0)
+                    const cost = Number(costs[row.variant_id] || 0);
 
                     return (
                       <tr key={row.variant_id}>
@@ -1162,7 +1163,7 @@ export default function PurchaseOrdersPanel({
                           {money(quantity * cost)}
                         </td>
                       </tr>
-                    )
+                    );
                   })}
 
                   {!loading && suggestions.length === 0 && (
@@ -1695,7 +1696,7 @@ export default function PurchaseOrdersPanel({
         )}
       </div>
     </div>
-  )
+  );
 }
 
 const overlayStyle: CSSProperties = {
@@ -1712,7 +1713,7 @@ const overlayStyle: CSSProperties = {
   placeItems: 'center',
 
   padding: '18px',
-}
+};
 
 const panelStyle: CSSProperties = {
   width: 'min(1500px, 98vw)',
@@ -1732,7 +1733,7 @@ const panelStyle: CSSProperties = {
   gap: '14px',
 
   direction: 'rtl',
-}
+};
 
 const messageStyle: CSSProperties = {
   position: 'fixed',
@@ -1756,7 +1757,7 @@ const messageStyle: CSSProperties = {
   fontWeight: 900,
 
   boxShadow: '0 18px 45px rgba(0,0,0,0.45)',
-}
+};
 
 const filtersStyle: CSSProperties = {
   display: 'grid',
@@ -1768,13 +1769,13 @@ const filtersStyle: CSSProperties = {
   alignItems: 'end',
 
   direction: 'rtl',
-}
+};
 
 const fieldStyle: CSSProperties = {
   display: 'grid',
 
   gap: '6px',
-}
+};
 
 const labelStyle: CSSProperties = {
   color: '#cbd5e1',
@@ -1784,7 +1785,7 @@ const labelStyle: CSSProperties = {
   fontWeight: 800,
 
   textAlign: 'right',
-}
+};
 
 const inputStyle: CSSProperties = {
   width: '100%',
@@ -1804,7 +1805,7 @@ const inputStyle: CSSProperties = {
   outline: 'none',
 
   boxSizing: 'border-box',
-}
+};
 
 const numberInputStyle: CSSProperties = {
   ...inputStyle,
@@ -1812,7 +1813,7 @@ const numberInputStyle: CSSProperties = {
   width: '105px',
 
   textAlign: 'center',
-}
+};
 
 const tableWrapStyle: CSSProperties = {
   overflowX: 'auto',
@@ -1820,7 +1821,7 @@ const tableWrapStyle: CSSProperties = {
   border: '1px solid rgba(255,255,255,0.07)',
 
   borderRadius: '14px',
-}
+};
 
 const tableStyle: CSSProperties = {
   width: '100%',
@@ -1830,7 +1831,7 @@ const tableStyle: CSSProperties = {
   borderCollapse: 'collapse',
 
   direction: 'rtl',
-}
+};
 
 const thStyle: CSSProperties = {
   padding: '11px',
@@ -1842,7 +1843,7 @@ const thStyle: CSSProperties = {
   borderBottom: '1px solid rgba(255,255,255,0.10)',
 
   fontSize: '12px',
-}
+};
 
 const tdStyle: CSSProperties = {
   padding: '11px',
@@ -1852,7 +1853,7 @@ const tdStyle: CSSProperties = {
   textAlign: 'right',
 
   color: '#e5e7eb',
-}
+};
 
 const mutedStyle: CSSProperties = {
   color: '#94a3b8',
@@ -1860,7 +1861,7 @@ const mutedStyle: CSSProperties = {
   fontSize: '11px',
 
   marginTop: '3px',
-}
+};
 
 const primaryButtonStyle: CSSProperties = {
   border: 'none',
@@ -1876,13 +1877,13 @@ const primaryButtonStyle: CSSProperties = {
   fontWeight: 900,
 
   cursor: 'pointer',
-}
+};
 
 const successButtonStyle: CSSProperties = {
   ...primaryButtonStyle,
 
   background: 'linear-gradient(135deg, #059669, #16a34a)',
-}
+};
 
 const secondaryButtonStyle: CSSProperties = {
   border: '1px solid rgba(255,255,255,0.12)',
@@ -1898,7 +1899,7 @@ const secondaryButtonStyle: CSSProperties = {
   fontWeight: 800,
 
   cursor: 'pointer',
-}
+};
 
 const dangerButtonStyle: CSSProperties = {
   ...secondaryButtonStyle,
@@ -1908,7 +1909,7 @@ const dangerButtonStyle: CSSProperties = {
   border: '1px solid rgba(239,68,68,0.35)',
 
   background: 'rgba(239,68,68,0.08)',
-}
+};
 
 const closeButtonStyle: CSSProperties = {
   border: 'none',
@@ -1926,7 +1927,7 @@ const closeButtonStyle: CSSProperties = {
   fontSize: '24px',
 
   cursor: 'pointer',
-}
+};
 
 function tabButtonStyle(active: boolean): CSSProperties {
   return {
@@ -1939,5 +1940,5 @@ function tabButtonStyle(active: boolean): CSSProperties {
     border: active
       ? '1px solid rgba(59,130,246,0.45)'
       : '1px solid rgba(255,255,255,0.10)',
-  }
+  };
 }

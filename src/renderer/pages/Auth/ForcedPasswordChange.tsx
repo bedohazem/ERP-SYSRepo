@@ -1,81 +1,81 @@
-import { useState } from 'react'
+import { useState } from 'react';
 
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom';
 
-import { useAuthStore } from '../../store/auth.store'
+import { useAuthStore } from '../../store/auth.store';
 
-import { getPasswordPolicyError } from '../../../shared/password-policy'
-import type { PermissionKey } from '../../../shared/permissions'
+import { getPasswordPolicyError } from '../../../shared/password-policy';
+import type { PermissionKey } from '../../../shared/permissions';
 
 type Props = {
   user: {
-    id: number
-    name: string
-    username: string
-    role: string
-    permissions?: PermissionKey[]
-  }
+    id: number;
+    name: string;
+    username: string;
+    role: string;
+    permissions?: PermissionKey[];
+  };
 
-  appTheme: 'dark' | 'light'
-}
+  appTheme: 'dark' | 'light';
+};
 
 export default function ForcedPasswordChange({ user, appTheme }: Props) {
-  const navigate = useNavigate()
+  const navigate = useNavigate();
 
-  const login = useAuthStore((state) => state.login)
+  const login = useAuthStore((state) => state.login);
 
-  const [password, setPassword] = useState('')
+  const [password, setPassword] = useState('');
 
-  const [confirmPassword, setConfirmPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('');
 
-  const [error, setError] = useState('')
+  const [error, setError] = useState('');
 
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false);
 
-  const isLight = appTheme === 'light'
+  const isLight = appTheme === 'light';
 
   async function submit() {
     if (loading) {
-      return
+      return;
     }
 
-    setError('')
+    setError('');
 
-    const policyError = getPasswordPolicyError(password)
+    const policyError = getPasswordPolicyError(password);
 
     if (policyError) {
-      setError(policyError)
-      return
+      setError(policyError);
+      return;
     }
 
     if (password !== confirmPassword) {
-      setError('كلمة المرور وتأكيدها غير متطابقين')
-      return
+      setError('كلمة المرور وتأكيدها غير متطابقين');
+      return;
     }
 
-    setLoading(true)
+    setLoading(true);
 
     try {
       const result = await window.api.changeOwnPassword({
         password,
-      })
+      });
 
       if (!result.success || !result.user) {
-        setError(result.message || 'تعذر تغيير كلمة المرور')
-        return
+        setError(result.message || 'تعذر تغيير كلمة المرور');
+        return;
       }
 
-      login(result.user)
+      login(result.user);
 
       navigate('/dashboard', {
         replace: true,
-      })
+      });
     } catch (error) {
-      console.error('Password change failed:', error)
+      console.error('Password change failed:', error);
 
-      setError('تعذر تغيير كلمة المرور')
+      setError('تعذر تغيير كلمة المرور');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -211,7 +211,7 @@ export default function ForcedPasswordChange({ user, appTheme }: Props) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 const inputStyle: React.CSSProperties = {
@@ -231,4 +231,4 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
 
   outline: 'none',
-}
+};

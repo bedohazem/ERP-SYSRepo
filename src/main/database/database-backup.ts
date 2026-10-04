@@ -1,16 +1,16 @@
-import fs from 'node:fs'
-import path from 'node:path'
+import fs from 'node:fs';
+import path from 'node:path';
 
-import { closeDb, getDb, getDbPath } from './db'
+import { closeDb, getDb, getDbPath } from './db';
 
-import { validateErpDatabaseFile } from './backup-integrity'
+import { validateErpDatabaseFile } from './backup-integrity';
 
 function removeIfExists(filePath: string) {
   try {
     if (fs.existsSync(filePath)) {
       fs.rmSync(filePath, {
         force: true,
-      })
+      });
     }
   } catch {
     // ignore cleanup error
@@ -18,74 +18,76 @@ function removeIfExists(filePath: string) {
 }
 
 export async function createVerifiedDatabaseBackup(destinationPath: string) {
-  const cleanPath = String(destinationPath || '').trim()
+  const cleanPath = String(destinationPath || '').trim();
 
   if (!cleanPath) {
-    throw new Error('مسار النسخة الاحتياطية غير صحيح')
+    throw new Error('مسار النسخة الاحتياطية غير صحيح');
   }
 
-  const currentDbPath = getDbPath()
+  const currentDbPath = getDbPath();
 
   if (path.resolve(cleanPath) === path.resolve(currentDbPath)) {
     throw new Error(
       'لا يمكن حفظ النسخة الاحتياطية فوق قاعدة بيانات التشغيل الحالية',
-    )
+    );
   }
 
   fs.mkdirSync(path.dirname(cleanPath), {
     recursive: true,
-  })
+  });
 
   /*
    * backup() من SQLite يضمن
    * Snapshot متسقة حتى مع WAL.
    */
-  await getDb().backup(cleanPath)
+  await getDb().backup(cleanPath);
 
   try {
-    const validation = validateErpDatabaseFile(cleanPath)
+    const validation = validateErpDatabaseFile(cleanPath);
 
-    return validation
+    return validation;
   } catch (error) {
     /*
      * ما نسيبش Backup تالفة
      * ونقول للمستخدم إنها نجحت.
      */
-    removeIfExists(cleanPath)
+    removeIfExists(cleanPath);
 
-    throw error
+    throw error;
   }
 }
 
 export async function restoreVerifiedDatabase(sourcePathInput: string) {
-  const sourcePath = String(sourcePathInput || '').trim()
+  const sourcePath = String(sourcePathInput || '').trim();
 
   /*
    * أول حماية:
    * لا نلمس قاعدة البرنامج قبل
    * التأكد من الملف المختار.
    */
-  const sourceValidation = validateErpDatabaseFile(sourcePath)
+  const sourceValidation = validateErpDatabaseFile(sourcePath);
 
-  const targetPath = getDbPath()
+  const targetPath = getDbPath();
 
   if (path.resolve(sourcePath) === path.resolve(targetPath)) {
-    throw new Error('اختر نسخة احتياطية منفصلة عن قاعدة بيانات التشغيل الحالية')
+    throw new Error(
+      'اختر نسخة احتياطية منفصلة عن قاعدة بيانات التشغيل الحالية',
+    );
   }
 
-  const targetDir = path.dirname(targetPath)
+  const targetDir = path.dirname(targetPath);
 
   fs.mkdirSync(targetDir, {
     recursive: true,
-  })
+  });
 
-  const stamp = Date.now()
+  const stamp = Date.now();
 
-  const safetyBackupPath = `${targetPath}.before-restore-${stamp}.bak`
+  const safetyBackupPath = `${targetPath}.before-restore-${stamp}.bak`;
 
-  const stagingPath = `${targetPath}.restore-${stamp}.tmp`
+  const stagingPath = `${targetPath}.restore-${stamp}.tmp`;
 
-  let safetyBackupCreated = false
+  let safetyBackupCreated = false;
 
   /*
    * نفعّله قبل أول تعديل
@@ -95,7 +97,7 @@ export async function restoreVerifiedDatabase(sourcePathInput: string) {
    * ممكن حذف Target ينجح
    * ثم rename يفشل.
    */
-  let targetMutationStarted = false
+  let targetMutationStarted = false;
 
   try {
     /*
@@ -103,48 +105,48 @@ export async function restoreVerifiedDatabase(sourcePathInput: string) {
      * وليس copyFile على DB مفتوحة.
      */
     if (fs.existsSync(targetPath)) {
-      await createVerifiedDatabaseBackup(safetyBackupPath)
+      await createVerifiedDatabaseBackup(safetyBackupPath);
 
-      safetyBackupCreated = true
+      safetyBackupCreated = true;
     }
 
     /*
      * نقفل Connection قبل
      * استبدال ملف القاعدة.
      */
-    closeDb()
+    closeDb();
 
-    fs.copyFileSync(sourcePath, stagingPath)
+    fs.copyFileSync(sourcePath, stagingPath);
 
     /*
      * فحص النسخة الـstaged نفسها
      * قبل أن تحل محل ERP DB.
      */
-    validateErpDatabaseFile(stagingPath)
+    validateErpDatabaseFile(stagingPath);
 
-    targetMutationStarted = true
+    targetMutationStarted = true;
 
-    removeIfExists(targetPath)
+    removeIfExists(targetPath);
 
-    fs.renameSync(stagingPath, targetPath)
+    fs.renameSync(stagingPath, targetPath);
 
     /*
      * فحص الملف في مكانه النهائي
      * قبل فتح Repository layer.
      */
-    validateErpDatabaseFile(targetPath)
+    validateErpDatabaseFile(targetPath);
 
     /*
      * getDb() يشغل initialization /
      * migrations الحالية.
      */
-    getDb()
+    getDb();
 
     /*
      * وبعد فتحه نتأكد إن الملف
      * مازال سليمًا.
      */
-    validateErpDatabaseFile(targetPath)
+    validateErpDatabaseFile(targetPath);
 
     return {
       source: sourceValidation,
@@ -152,19 +154,19 @@ export async function restoreVerifiedDatabase(sourcePathInput: string) {
       path: sourcePath,
 
       safetyBackupPath: safetyBackupCreated ? safetyBackupPath : null,
-    }
+    };
   } catch (restoreError) {
     /*
      * Rollback تلقائي لو حصل
      * أي Failure بعد بدء الاستبدال.
      */
     try {
-      closeDb()
+      closeDb();
     } catch {
       // ignore
     }
 
-    removeIfExists(stagingPath)
+    removeIfExists(stagingPath);
 
     if (
       targetMutationStarted &&
@@ -172,22 +174,22 @@ export async function restoreVerifiedDatabase(sourcePathInput: string) {
       fs.existsSync(safetyBackupPath)
     ) {
       try {
-        removeIfExists(targetPath)
+        removeIfExists(targetPath);
 
-        fs.copyFileSync(safetyBackupPath, targetPath)
+        fs.copyFileSync(safetyBackupPath, targetPath);
 
-        validateErpDatabaseFile(targetPath)
+        validateErpDatabaseFile(targetPath);
 
-        getDb()
+        getDb();
       } catch (rollbackError) {
         console.error(
           'CRITICAL: database restore rollback failed:',
           rollbackError,
-        )
+        );
 
         throw new Error(
           'فشل الاسترجاع وفشل أيضًا الرجوع التلقائي لقاعدة البيانات السابقة. نسخة الأمان مازالت محفوظة.',
-        )
+        );
       }
     } else {
       /*
@@ -195,14 +197,14 @@ export async function restoreVerifiedDatabase(sourcePathInput: string) {
        * فقط نعيد فتح الحالية.
        */
       try {
-        getDb()
+        getDb();
       } catch {
         // keep original error
       }
     }
 
-    throw restoreError
+    throw restoreError;
   } finally {
-    removeIfExists(stagingPath)
+    removeIfExists(stagingPath);
   }
 }
