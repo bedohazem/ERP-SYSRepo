@@ -1,5 +1,6 @@
 import { getDb } from '../db'
 import { createCriticalActivityLog } from './activity.repo'
+import { roundMoney } from '../../../shared/money'
 import {
   createCashMovement,
   getCashSummary,
@@ -147,10 +148,6 @@ export type ResolveCashShiftVarianceInput = {
   resolved_by: number
   reversal_account?: string | null
   corrected_opening_amount?: number | null
-}
-
-function roundMoney(value: number) {
-  return Number(value.toFixed(2))
 }
 
 function normalizeShiftBusinessDate(value?: string | null) {

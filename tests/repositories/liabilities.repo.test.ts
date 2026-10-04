@@ -179,6 +179,52 @@ describe('liabilities repository', () => {
     expect(getActivityLogsCount()).toBe(1)
   })
 
+  it('stores liability money as whole pounds', () => {
+    const result = createLiability({
+      party_name: 'Rounded Party',
+
+      title: 'Rounded Liability',
+
+      total_amount: 1000.5,
+
+      paid_amount: 100.49,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    let liability = getLiabilityById(result.liability_id)
+
+    expect(liability.total_amount).toBe(1001)
+
+    expect(liability.paid_amount).toBe(100)
+
+    expect(liability.remaining_amount).toBe(901)
+
+    const payment = recordLiabilityPayment({
+      liability_id: result.liability_id,
+
+      amount: 200.5,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    })
+
+    expect(payment.paid_amount).toBe(301)
+
+    expect(payment.remaining_amount).toBe(700)
+
+    liability = getLiabilityById(result.liability_id)
+
+    expect(liability.paid_amount).toBe(301)
+
+    expect(liability.remaining_amount).toBe(700)
+
+    expect(getCashMovementTotal('out')).toBe(301)
+  })
+
   it('rejects liability with empty party name', () => {
     expect(() =>
       createLiability({
@@ -712,7 +758,7 @@ describe('liabilities repository', () => {
 
         actor_id: 1,
       }),
-    ).toThrow('لا يمكن جعل قيمة الالتزام أقل من إجمالي المدفوع وهو 400.00 ج.م')
+    ).toThrow('لا يمكن جعل قيمة الالتزام أقل من إجمالي المدفوع وهو 400 ج.م')
   })
 
   it('updates liability payment and replaces its financial effects', () => {
@@ -1106,6 +1152,6 @@ describe('liabilities repository', () => {
 
         actor_id: 1,
       }),
-    ).toThrow('مبلغ الدفعة المعدل أكبر من المتاح وهو 600.00 ج.م')
+    ).toThrow('مبلغ الدفعة المعدل أكبر من المتاح وهو 600 ج.م')
   })
 })

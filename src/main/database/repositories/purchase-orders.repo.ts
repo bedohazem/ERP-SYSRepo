@@ -1,16 +1,7 @@
 import { getDb } from '../db'
 
 import { createPurchaseInvoice } from './purchases.repo'
-
-function roundMoney(value: unknown) {
-  const amount = Number(value || 0)
-
-  if (!Number.isFinite(amount)) {
-    return 0
-  }
-
-  return Math.round((amount + Number.EPSILON) * 100) / 100
-}
+import { roundMoney } from '../../../shared/money'
 
 export type SmartReorderInput = {
   categoryId?: number | string | null

@@ -14,6 +14,7 @@ import {
   ADMIN_CUSTOMER_PAYMENT_METHOD_OPTIONS,
 } from '../../utils/payment-method'
 import { printSaleReceiptHtml } from '../../utils/receiptPrint'
+import { roundMoney } from '../../../shared/money'
 
 type SaleVariant = {
   variant_id: number
@@ -229,10 +230,6 @@ type HeldSaleListRow = {
   total_quantity: number
 
   estimated_sub_total: number
-}
-
-function roundMoney(value: number) {
-  return Number(Number(value || 0).toFixed(2))
 }
 
 function getPromotionDiscountForCart(
@@ -517,8 +514,7 @@ function serializeInvoiceDraft(invoice: InvoiceTab): InvoiceTab {
 }
 
 function money(value: number | string | null | undefined): string {
-  const n = Number(value || 0)
-  return Number.isFinite(n) ? n.toFixed(2) : '0.00'
+  return String(roundMoney(value))
 }
 
 function escapeHtml(value: unknown) {
@@ -1191,18 +1187,18 @@ export default function SalesPage() {
     if (editingSaleId) {
       if (!splitPaymentEnabled && activeInvoice.paidDraft.trim() === '') {
         updateActiveInvoice({
-          paidDraft: nextGrandTotal.toFixed(2),
+          paidDraft: String(roundMoney(nextGrandTotal)),
         })
       }
     } else {
       updateActiveInvoice({
-        paidDraft: nextGrandTotal.toFixed(2),
+        paidDraft: String(roundMoney(nextGrandTotal)),
       })
 
       setSplitPaymentEnabled(false)
 
       setSplitPaymentDrafts({
-        cash: nextGrandTotal.toFixed(2),
+        cash: String(roundMoney(nextGrandTotal)),
       })
     }
 
@@ -2908,7 +2904,7 @@ export default function SalesPage() {
 
     updateActiveInvoice({
       discountDraft: value,
-      paidDraft: nextGrandTotal.toFixed(2),
+      paidDraft: String(roundMoney(nextGrandTotal)),
     })
   }
 
@@ -2934,7 +2930,7 @@ export default function SalesPage() {
 
     updateActiveInvoice({
       discountType: type,
-      paidDraft: nextGrandTotal.toFixed(2),
+      paidDraft: String(roundMoney(nextGrandTotal)),
     })
   }
 
@@ -3721,7 +3717,7 @@ export default function SalesPage() {
               textOverflow: 'ellipsis',
             }}
           >
-            الإجمالي قبل الخصم | <span>{subTotal.toFixed(2)} ج.م</span>
+            الإجمالي قبل الخصم | <span>{money(subTotal)} ج.م</span>
           </div>
           <div
             style={{
@@ -3730,7 +3726,7 @@ export default function SalesPage() {
               textOverflow: 'ellipsis',
             }}
           >
-            خصم النقاط | <span>{loyaltyDiscountValue.toFixed(2)} ج.م</span>
+            خصم النقاط | <span>{money(loyaltyDiscountValue)} ج.م</span>
           </div>
           <div
             style={{
@@ -3739,7 +3735,7 @@ export default function SalesPage() {
               textOverflow: 'ellipsis',
             }}
           >
-            المطلوب دفعه | <span>{grandTotal.toFixed(2)} ج.م</span>
+            المطلوب دفعه | <span>{money(grandTotal)} ج.م</span>
           </div>
         </div>
 
@@ -3781,7 +3777,7 @@ export default function SalesPage() {
               />
 
               <div style={{ color: '#bfdbfe', fontWeight: 800 }}>
-                الخصم الحالي: {loyaltyDiscountValue.toFixed(2)} ج.م
+                الخصم الحالي: {money(loyaltyDiscountValue)} ج.م
               </div>
             </div>
           </div>
@@ -3906,7 +3902,7 @@ export default function SalesPage() {
                 />
 
                 <strong style={{ textAlign: 'left' }}>
-                  {(item.quantity * Number(item.sell_price)).toFixed(2)}
+                  {money(item.quantity * Number(item.sell_price))}
                 </strong>
               </div>
             ))}
@@ -5464,7 +5460,7 @@ export default function SalesPage() {
 
                     if (next) {
                       setSplitPaymentDrafts({
-                        cash: grandTotal.toFixed(2),
+                        cash: String(roundMoney(grandTotal)),
                       })
                     }
                   }}

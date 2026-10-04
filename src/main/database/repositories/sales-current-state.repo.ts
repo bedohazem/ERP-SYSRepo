@@ -1,8 +1,5 @@
 import { getDb } from '../db'
-
-function roundMoney(value: number) {
-  return Number(Number(value || 0).toFixed(2))
-}
+import { roundMoney } from '../../../shared/money'
 
 function positive(value: unknown) {
   return Math.max(0, Number(value || 0))

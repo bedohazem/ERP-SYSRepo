@@ -526,4 +526,52 @@ describe('financial IPC session scope', () => {
       expect(Object.keys(user).sort()).toEqual(['id', 'name', 'role'])
     }
   })
+
+  it('rejects malformed cash and shift inputs before repository coercion', async () => {
+    const admin = findUserByUsername('admin')!
+
+    const { event } = makeClient()
+
+    startAuthSession(event, admin.id)
+
+    /*
+     * Number(true) = 1.
+     * الـIPC يجب ألا يسمح
+     * بتحويل Boolean إلى مبلغ.
+     */
+    await expect(
+      invoke(event, 'cash:create-movement', {
+        type: 'deposit',
+
+        amount: true,
+
+        payment_method: 'owner_cash',
+      }),
+    ).rejects.toThrow('مبلغ حركة الخزنة غير صحيح')
+
+    /*
+     * resolveCashAccount القديم
+     * كان يحول أي قيمة مجهولة
+     * إلى store_cash.
+     */
+    await expect(
+      invoke(event, 'cash:transfer', {
+        from_account: 'not_a_real_account',
+
+        to_account: 'owner_bank',
+
+        amount: 10,
+      }),
+    ).rejects.toThrow('حساب التحويل المصدر غير صحيح')
+
+    /*
+     * Number(true) = 1 كذلك،
+     * فلا نقبل Boolean كجرد افتتاح.
+     */
+    await expect(
+      invoke(event, 'cash-shifts:open', {
+        opening_counted_amount: true,
+      }),
+    ).rejects.toThrow('رصيد افتتاح الشفت غير صحيح')
+  })
 })

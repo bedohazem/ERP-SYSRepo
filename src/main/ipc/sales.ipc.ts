@@ -33,6 +33,25 @@ import {
   listSaleExchanges,
 } from '../database/repositories/sales-exchange.repo'
 import { requireAdmin, requireAdminApprovalForActor } from './permission-helper'
+import {
+  optionalBooleanValue,
+  optionalEnumValue,
+  optionalNonNegativeInteger,
+  optionalNonNegativeNumber,
+  optionalPositiveInteger,
+  optionalStringValue,
+  optionalTrimmedString,
+  requireArrayInput,
+  requireEnumValue,
+  requireNonNegativeNumber,
+  requireObjectInput,
+  requirePositiveInteger,
+  requirePositiveNumber,
+  requireTrimmedString,
+  optionalNonNegativeMoney,
+  requireNonNegativeMoney,
+  requirePositiveMoney,
+} from './input-validation'
 import { getSaleCurrentState } from '../database/repositories/sales-current-state.repo'
 import {
   createHeldSale,
@@ -106,6 +125,470 @@ function protectSalesCostData<T>(
   return redactSalesCostData(value)
 }
 
+const SALE_PAYMENT_METHOD_VALUES = [
+  'cash',
+  'card',
+  'wallet',
+  'bank',
+  'bank_transfer',
+
+  'store_cash',
+  'store_safe',
+  'owner_cash',
+  'owner_bank',
+  'owner_vodafone',
+  'fawry_machine',
+
+  'split',
+] as const
+
+const SALE_PAYMENT_ENTRY_METHOD_VALUES = [
+  'cash',
+  'card',
+  'wallet',
+  'bank',
+  'bank_transfer',
+
+  'store_cash',
+  'store_safe',
+  'owner_cash',
+  'owner_bank',
+  'owner_vodafone',
+  'fawry_machine',
+] as const
+
+const SALE_PAYMENT_STATUS_VALUES = ['paid', 'partial', 'unpaid'] as const
+
+const HELD_SALE_DISCOUNT_TYPES = ['amount', 'percent'] as const
+
+const HELD_SALE_DELETE_MODES = ['resumed', 'discarded'] as const
+
+function optionalSaleDate(value: unknown): string | null | undefined {
+  if (value === undefined) {
+    return undefined
+  }
+
+  if (value === null || value === '') {
+    return null
+  }
+
+  if (typeof value !== 'string') {
+    throw new Error('تاريخ البيع غير صحيح')
+  }
+
+  const date = value.trim()
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error('تاريخ البيع غير صحيح')
+  }
+
+  return date
+}
+
+function normalizeSaleWriteInput(input: unknown) {
+  const payload = requireObjectInput(input, 'بيانات فاتورة البيع')
+
+  const rawItems = requireArrayInput(payload.items, 'أصناف فاتورة البيع', 500)
+
+  if (rawItems.length === 0) {
+    throw new Error('أصناف فاتورة البيع مطلوبة')
+  }
+
+  const items = rawItems.map((rawItem) => {
+    const item = requireObjectInput(rawItem, 'بيانات صنف البيع')
+
+    return {
+      variant_id: requirePositiveInteger(item.variant_id, 'رقم صنف البيع'),
+
+      product_name: requireTrimmedString(
+        item.product_name,
+        'اسم صنف البيع',
+        300,
+      ),
+
+      barcode: optionalStringValue(item.barcode, 'باركود صنف البيع', 200),
+
+      size: optionalStringValue(item.size, 'مقاس صنف البيع', 100),
+
+      color: optionalStringValue(item.color, 'لون صنف البيع', 100),
+
+      quantity: requirePositiveNumber(item.quantity, 'كمية صنف البيع'),
+
+      unit_price: requireNonNegativeMoney(item.unit_price, 'سعر صنف البيع'),
+    }
+  })
+
+  const paymentMethod = requireEnumValue(
+    payload.payment_method === undefined ||
+      payload.payment_method === null ||
+      payload.payment_method === ''
+      ? 'cash'
+      : payload.payment_method,
+
+    SALE_PAYMENT_METHOD_VALUES,
+
+    'طريقة دفع فاتورة البيع',
+  )
+
+  const payments =
+    payload.payments === undefined || payload.payments === null
+      ? undefined
+      : requireArrayInput(payload.payments, 'وسائل دفع فاتورة البيع', 10).map(
+          (rawPayment) => {
+            const payment = requireObjectInput(rawPayment, 'بيانات وسيلة الدفع')
+
+            return {
+              payment_method: requireEnumValue(
+                payment.payment_method,
+                SALE_PAYMENT_ENTRY_METHOD_VALUES,
+                'طريقة الدفع',
+              ),
+
+              amount: requirePositiveMoney(payment.amount, 'مبلغ وسيلة الدفع'),
+            }
+          },
+        )
+
+  if (paymentMethod === 'split' && (!payments || payments.length < 2)) {
+    throw new Error('الدفع المتعدد يحتاج وسيلتي دفع على الأقل')
+  }
+
+  const promotionIds =
+    payload.promotion_ids === undefined || payload.promotion_ids === null
+      ? undefined
+      : requireArrayInput(payload.promotion_ids, 'العروض', 100).map((id) =>
+          requirePositiveInteger(id, 'رقم العرض'),
+        )
+
+  return {
+    customer_id: optionalPositiveInteger(payload.customer_id, 'رقم العميل'),
+
+    business_date: optionalSaleDate(payload.business_date),
+
+    promotion_id: optionalPositiveInteger(payload.promotion_id, 'رقم العرض'),
+
+    promotion_ids: promotionIds,
+
+    sub_total:
+      optionalNonNegativeMoney(
+        payload.sub_total,
+        'إجمالي الفاتورة قبل الخصم',
+      ) ?? 0,
+
+    discount_value:
+      optionalNonNegativeMoney(payload.discount_value, 'قيمة الخصم') ?? 0,
+
+    grand_total:
+      optionalNonNegativeMoney(payload.grand_total, 'إجمالي فاتورة البيع') ?? 0,
+
+    change_amount:
+      optionalNonNegativeMoney(payload.change_amount, 'الباقي للعميل') ?? 0,
+
+    payment_method: paymentMethod,
+
+    payments,
+
+    notes: optionalTrimmedString(payload.notes, 'ملاحظات فاتورة البيع', 2000),
+
+    loyalty_points_redeemed: optionalNonNegativeInteger(
+      payload.loyalty_points_redeemed,
+      'نقاط الولاء المستخدمة',
+    ),
+
+    loyalty_discount_value: optionalNonNegativeMoney(
+      payload.loyalty_discount_value,
+      'خصم نقاط الولاء',
+    ),
+
+    paid: optionalNonNegativeMoney(payload.paid, 'المبلغ المدفوع'),
+
+    remaining_amount: optionalNonNegativeMoney(
+      payload.remaining_amount,
+      'المبلغ المتبقي',
+    ),
+
+    payment_status: optionalEnumValue(
+      payload.payment_status,
+      SALE_PAYMENT_STATUS_VALUES,
+      'حالة دفع الفاتورة',
+    ),
+
+    items,
+
+    credit_limit_override_requested: optionalBooleanValue(
+      payload.credit_limit_override_requested,
+      'طلب تجاوز الحد الائتماني',
+    ),
+
+    admin_username: optionalStringValue(
+      payload.admin_username,
+      'اسم مستخدم المدير',
+      128,
+    ),
+
+    admin_password: optionalStringValue(
+      payload.admin_password,
+      'كلمة مرور المدير',
+      256,
+    ),
+  }
+}
+
+function normalizeSaleUpdateInput(input: unknown) {
+  const payload = requireObjectInput(input, 'بيانات تعديل فاتورة البيع')
+
+  return {
+    ...normalizeSaleWriteInput(payload),
+
+    sale_id: requirePositiveInteger(payload.sale_id, 'رقم فاتورة البيع'),
+
+    reason: requireTrimmedString(payload.reason, 'سبب تعديل فاتورة البيع', 500),
+  }
+}
+
+function normalizeHeldSaleInput(input: unknown) {
+  const payload = requireObjectInput(input, 'بيانات الفاتورة المعلقة')
+
+  const rawItems = requireArrayInput(
+    payload.items,
+    'أصناف الفاتورة المعلقة',
+    500,
+  )
+
+  if (rawItems.length === 0) {
+    throw new Error('لا يمكن تعليق فاتورة فارغة')
+  }
+
+  const discountType =
+    payload.discount_type === undefined ||
+    payload.discount_type === null ||
+    payload.discount_type === ''
+      ? 'amount'
+      : requireEnumValue(
+          payload.discount_type,
+          HELD_SALE_DISCOUNT_TYPES,
+          'نوع خصم الفاتورة المعلقة',
+        )
+
+  const discountValue =
+    discountType === 'amount'
+      ? (optionalNonNegativeMoney(
+          payload.discount_value,
+          'قيمة خصم الفاتورة المعلقة',
+        ) ?? 0)
+      : (optionalNonNegativeNumber(
+          payload.discount_value,
+          'نسبة خصم الفاتورة المعلقة',
+        ) ?? 0)
+
+  if (discountType === 'percent' && discountValue > 100) {
+    throw new Error('نسبة الخصم لا يمكن أن تتجاوز 100%')
+  }
+
+  return {
+    customer_id: optionalPositiveInteger(payload.customer_id, 'رقم العميل'),
+
+    title: optionalTrimmedString(payload.title, 'اسم الفاتورة المعلقة', 200),
+
+    discount_type: discountType,
+
+    discount_value: discountValue,
+
+    notes: optionalTrimmedString(
+      payload.notes,
+      'ملاحظات الفاتورة المعلقة',
+      2000,
+    ),
+
+    items: rawItems.map((rawItem) => {
+      const item = requireObjectInput(rawItem, 'بيانات صنف الفاتورة المعلقة')
+
+      return {
+        variant_id: requirePositiveInteger(
+          item.variant_id,
+          'رقم صنف الفاتورة المعلقة',
+        ),
+
+        quantity: requirePositiveNumber(
+          item.quantity,
+          'كمية صنف الفاتورة المعلقة',
+        ),
+      }
+    }),
+  }
+}
+
+function normalizeHeldSaleDeleteInput(input: unknown) {
+  const payload = requireObjectInput(input, 'بيانات حذف الفاتورة المعلقة')
+
+  return {
+    held_sale_id: requirePositiveInteger(
+      payload.held_sale_id,
+      'رقم الفاتورة المعلقة',
+    ),
+
+    mode: requireEnumValue(
+      payload.mode,
+      HELD_SALE_DELETE_MODES,
+      'وضع حذف الفاتورة المعلقة',
+    ),
+  }
+}
+
+function normalizeSaleReturnInput(input: unknown) {
+  const payload = requireObjectInput(input, 'بيانات مرتجع البيع')
+
+  const rawItems = requireArrayInput(payload.items, 'أصناف مرتجع البيع', 500)
+
+  if (rawItems.length === 0) {
+    throw new Error('لا توجد أصناف للمرتجع')
+  }
+
+  return {
+    original_sale_id: requirePositiveInteger(
+      payload.original_sale_id,
+      'رقم الفاتورة الأصلية',
+    ),
+
+    reason: optionalTrimmedString(payload.reason, 'سبب المرتجع', 500),
+
+    refund_payment_method: optionalEnumValue(
+      payload.refund_payment_method,
+      SALE_PAYMENT_ENTRY_METHOD_VALUES,
+      'طريقة رد قيمة المرتجع',
+    ),
+
+    items: rawItems.map((rawItem) => {
+      const item = requireObjectInput(rawItem, 'بيانات صنف المرتجع')
+
+      return {
+        sale_item_id: requirePositiveInteger(
+          item.sale_item_id,
+          'رقم بند الفاتورة',
+        ),
+
+        variant_id: requirePositiveInteger(item.variant_id, 'رقم صنف المرتجع'),
+
+        quantity: requirePositiveNumber(item.quantity, 'كمية المرتجع'),
+      }
+    }),
+  }
+}
+
+function normalizeSaleExchangeInput(input: unknown) {
+  const payload = requireObjectInput(input, 'بيانات استبدال البيع')
+
+  const rawItems = requireArrayInput(payload.items, 'أصناف الاستبدال', 500)
+
+  if (rawItems.length === 0) {
+    throw new Error('لا توجد أصناف للاستبدال')
+  }
+
+  return {
+    original_sale_id: requirePositiveInteger(
+      payload.original_sale_id,
+      'رقم الفاتورة الأصلية',
+    ),
+
+    payment_method: optionalEnumValue(
+      payload.payment_method,
+      SALE_PAYMENT_ENTRY_METHOD_VALUES,
+      'طريقة دفع فرق الاستبدال',
+    ),
+
+    reason: optionalTrimmedString(payload.reason, 'سبب الاستبدال', 500),
+
+    items: rawItems.map((rawItem) => {
+      const item = requireObjectInput(rawItem, 'بيانات صنف الاستبدال')
+
+      return {
+        promotion_unit_id: requirePositiveInteger(
+          item.promotion_unit_id,
+          'رقم قطعة الاستبدال',
+        ),
+
+        new_variant_id: requirePositiveInteger(
+          item.new_variant_id,
+          'رقم الصنف البديل',
+        ),
+      }
+    }),
+  }
+}
+
+function normalizeSaleCancellationInput(input: unknown) {
+  const payload = requireObjectInput(input, 'بيانات إلغاء فاتورة البيع')
+
+  return {
+    sale_id: requirePositiveInteger(payload.sale_id, 'رقم فاتورة البيع'),
+
+    reason: optionalTrimmedString(
+      payload.reason,
+      'سبب إلغاء فاتورة البيع',
+      500,
+    ),
+
+    admin_username: optionalStringValue(
+      payload.admin_username,
+      'اسم مستخدم المدير',
+      128,
+    ),
+
+    admin_password: optionalStringValue(
+      payload.admin_password,
+      'كلمة مرور المدير',
+      256,
+    ),
+  }
+}
+
+function normalizeSaleReturnCancellationInput(input: unknown) {
+  const payload = requireObjectInput(input, 'بيانات إلغاء مرتجع البيع')
+
+  return {
+    return_id: requirePositiveInteger(payload.return_id, 'رقم مرتجع البيع'),
+
+    reason: optionalTrimmedString(payload.reason, 'سبب إلغاء مرتجع البيع', 500),
+
+    admin_username: optionalStringValue(
+      payload.admin_username,
+      'اسم مستخدم المدير',
+      128,
+    ),
+
+    admin_password: optionalStringValue(
+      payload.admin_password,
+      'كلمة مرور المدير',
+      256,
+    ),
+  }
+}
+
+function normalizeSaleExchangeCancellationInput(input: unknown) {
+  const payload = requireObjectInput(input, 'بيانات إلغاء الاستبدال')
+
+  return {
+    exchange_id: requirePositiveInteger(
+      payload.exchange_id,
+      'رقم عملية الاستبدال',
+    ),
+
+    reason: optionalTrimmedString(payload.reason, 'سبب إلغاء الاستبدال', 500),
+
+    admin_username: optionalStringValue(
+      payload.admin_username,
+      'اسم مستخدم المدير',
+      128,
+    ),
+
+    admin_password: optionalStringValue(
+      payload.admin_password,
+      'كلمة مرور المدير',
+      256,
+    ),
+  }
+}
+
 export function registerSalesIpc(): void {
   ipcMain.handle(
     'sales:search-variants',
@@ -141,6 +624,8 @@ export function registerSalesIpc(): void {
 
   ipcMain.handle('sales:create', (event, input) => {
     const actor = requirePermission(event, 'sales.use')
+
+    input = normalizeSaleWriteInput(input)
 
     const runCreate = (approvedBy: number | null) =>
       createSale({
@@ -267,6 +752,8 @@ export function registerSalesIpc(): void {
   ipcMain.handle('sales:hold', (event, input) => {
     const actor = requirePermission(event, 'sales.use')
 
+    input = normalizeHeldSaleInput(input)
+
     const result = createHeldSale({
       ...input,
 
@@ -308,7 +795,7 @@ export function registerSalesIpc(): void {
     const actor = requirePermission(event, 'sales.use')
 
     const result = getHeldSale({
-      held_sale_id: Number(heldSaleId),
+      held_sale_id: requirePositiveInteger(heldSaleId, 'رقم الفاتورة المعلقة'),
 
       actor_id: actor.id,
 
@@ -320,7 +807,7 @@ export function registerSalesIpc(): void {
 
   ipcMain.handle('sales:delete-held', (event, input) => {
     const actor = requirePermission(event, 'sales.use')
-
+    input = normalizeHeldSaleDeleteInput(input)
     const mode = input?.mode === 'resumed' ? 'resumed' : 'discarded'
 
     const result = deleteHeldSale({
@@ -358,7 +845,9 @@ export function registerSalesIpc(): void {
     let approvedBy: number | null = null
 
     try {
-      const saleId = Number(input?.sale_id || 0)
+      input = normalizeSaleUpdateInput(input)
+
+      const saleId = input.sale_id
 
       const access = getSaleEditAccess(saleId, actorId)
 
@@ -530,7 +1019,9 @@ export function registerSalesIpc(): void {
   ipcMain.handle('sales:get-receipt', (event, saleId: number) => {
     const actor = requirePermission(event, 'sales.history')
 
-    const result = getSaleReceipt(Number(saleId))
+    const result = getSaleReceipt(
+      requirePositiveInteger(saleId, 'رقم فاتورة البيع'),
+    )
 
     return protectSalesCostData(actor, result)
   })
@@ -538,7 +1029,9 @@ export function registerSalesIpc(): void {
   ipcMain.handle('sales:current-state', (event, saleId: number) => {
     const actor = requirePermission(event, 'sales.history')
 
-    const result = getSaleCurrentState(Number(saleId))
+    const result = getSaleCurrentState(
+      requirePositiveInteger(saleId, 'رقم فاتورة البيع'),
+    )
 
     return protectSalesCostData(actor, result)
   })
@@ -546,19 +1039,31 @@ export function registerSalesIpc(): void {
   ipcMain.handle('sales:return-history', (event, saleId: number) => {
     requirePermission(event, 'sales.history')
 
-    return getSaleReturnHistory(Number(saleId))
+    return getSaleReturnHistory(
+      requirePositiveInteger(saleId, 'رقم فاتورة البيع'),
+    )
   })
 
   ipcMain.handle('sales:exchange-state', (event, saleId: number) => {
     const actor = requirePermission(event, 'sales.history')
 
-    const result = getSaleExchangeState(Number(saleId))
+    const result = getSaleExchangeState(
+      requirePositiveInteger(saleId, 'رقم فاتورة البيع'),
+    )
 
     return protectSalesCostData(actor, result)
   })
 
   ipcMain.handle('sales:exchange', (event, input) => {
-    const actorId = requirePermission(event, 'sales.exchanges').id
+    const actor = requirePermission(event, 'sales.exchanges')
+
+    input = normalizeSaleExchangeInput(input)
+
+    if (actor.role !== 'admin' && input.payment_method === 'store_safe') {
+      throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط')
+    }
+
+    const actorId = actor.id
 
     const result = runCriticalActionWithAudit(
       () =>
@@ -623,8 +1128,9 @@ export function registerSalesIpc(): void {
     let approvedBy: number | null = null
 
     try {
+      input = normalizeSaleExchangeCancellationInput(input)
       const access = getSaleExchangeCancellationAccess(
-        Number(input?.exchange_id),
+        input.exchange_id,
 
         actorId,
       )
@@ -648,9 +1154,9 @@ export function registerSalesIpc(): void {
       const result = runCriticalActionWithAudit(
         () =>
           cancelSaleExchange({
-            exchange_id: Number(input?.exchange_id),
+            exchange_id: input.exchange_id,
 
-            reason: input?.reason,
+            reason: input.reason,
 
             actor_id: actorId,
           }),
@@ -664,7 +1170,7 @@ export function registerSalesIpc(): void {
 
           entity: 'sale_exchanges',
 
-          entity_id: Number(input?.exchange_id),
+          entity_id: input.exchange_id,
 
           details: {
             reason: input?.reason,
@@ -712,7 +1218,18 @@ export function registerSalesIpc(): void {
   })
 
   ipcMain.handle('sales:return', (event, input) => {
-    const actorId = requirePermission(event, 'sales.returns').id
+    const actor = requirePermission(event, 'sales.returns')
+
+    input = normalizeSaleReturnInput(input)
+
+    if (
+      actor.role !== 'admin' &&
+      input.refund_payment_method === 'store_safe'
+    ) {
+      throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط')
+    }
+
+    const actorId = actor.id
 
     const result = runCriticalActionWithAudit(
       () =>
@@ -758,7 +1275,8 @@ export function registerSalesIpc(): void {
     let approvedBy: number | null = null
 
     try {
-      const access = getSaleCancellationAccess(Number(input?.sale_id), actorId)
+      input = normalizeSaleCancellationInput(input)
+      const access = getSaleCancellationAccess(input.sale_id, actorId)
 
       if (Number(access.user_id || 0) !== Number(actorId || 0)) {
         requireAdmin(actorId)
@@ -779,9 +1297,9 @@ export function registerSalesIpc(): void {
       const result = runCriticalActionWithAudit(
         () =>
           cancelSaleInvoice({
-            sale_id: Number(input?.sale_id),
+            sale_id: input.sale_id,
 
-            reason: input?.reason,
+            reason: input.reason,
 
             actor_id: actorId,
           }),
@@ -795,7 +1313,7 @@ export function registerSalesIpc(): void {
 
           entity: 'sales',
 
-          entity_id: Number(input?.sale_id),
+          entity_id: input.sale_id,
 
           details: {
             reason: input?.reason,
@@ -831,10 +1349,8 @@ export function registerSalesIpc(): void {
     let approvedBy: number | null = null
 
     try {
-      const access = getSaleReturnCancellationAccess(
-        Number(input?.return_id),
-        actorId,
-      )
+      input = normalizeSaleReturnCancellationInput(input)
+      const access = getSaleReturnCancellationAccess(input.return_id, actorId)
 
       if (Number(access.user_id || 0) !== Number(actorId || 0)) {
         requireAdmin(actorId)
@@ -855,9 +1371,9 @@ export function registerSalesIpc(): void {
       const result = runCriticalActionWithAudit(
         () =>
           cancelSaleReturn({
-            return_id: Number(input?.return_id),
+            return_id: input.return_id,
 
-            reason: input?.reason,
+            reason: input.reason,
 
             actor_id: actorId,
           }),
@@ -871,7 +1387,7 @@ export function registerSalesIpc(): void {
 
           entity: 'sale_returns',
 
-          entity_id: Number(input?.return_id),
+          entity_id: input.return_id,
 
           details: {
             reason: input?.reason,

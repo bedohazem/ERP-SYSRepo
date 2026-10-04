@@ -21,6 +21,7 @@ import {
   getPromotionScopeLabel,
   getPromotionTypeLabel,
 } from '../../utils/promotion-display'
+import { formatMoney, roundMoney } from '../../../shared/money'
 
 type SaleRow = {
   id: number
@@ -274,10 +275,6 @@ type ReturnDraftItem = {
 }
 
 const INVOICE_PAGE_SIZE = 50
-
-function roundMoney(value: number) {
-  return Number(Number(value || 0).toFixed(2))
-}
 
 async function loadCurrentReceiptData(saleId: number): Promise<ReceiptData> {
   const state = await window.api.getSaleCurrentState(saleId)
@@ -4583,7 +4580,7 @@ function SummaryLine({
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
+  return formatMoney(value)
 }
 
 function formatDate(value?: string) {

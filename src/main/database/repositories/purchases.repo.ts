@@ -4,7 +4,7 @@ import {
   getSupplierDueSummary,
 } from './suppliers.repo'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
-
+import { roundMoney } from '../../../shared/money'
 import {
   getOpenCashShift,
   resolveFinancialOperationShift,
@@ -12,16 +12,6 @@ import {
 
 import { getShiftBusinessDate } from '../shift-business-date'
 import { issueStockAtCost, receiveStockAtCost } from '../inventory-cost'
-
-function roundMoney(value: number) {
-  const amount = Number(value || 0)
-
-  if (!Number.isFinite(amount)) {
-    return 0
-  }
-
-  return Math.round((amount + Number.EPSILON) * 100) / 100
-}
 
 function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
   const row = db

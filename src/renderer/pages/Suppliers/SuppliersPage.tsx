@@ -3,16 +3,7 @@ import { useAuthStore } from '../../store/auth.store'
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 import { hasUserPermission } from '../../utils/permissions'
-
-function roundMoney(value: number) {
-  const amount = Number(value || 0)
-
-  if (!Number.isFinite(amount)) {
-    return 0
-  }
-
-  return Math.round((amount + Number.EPSILON) * 100) / 100
-}
+import { formatMoney, roundMoney } from '../../../shared/money'
 
 function hasRemainingAmount(value: number) {
   return roundMoney(value) > 0
@@ -730,7 +721,7 @@ export default function SuppliersPage() {
 
   function openSupplierPayment(supplier: Supplier) {
     setPaymentSupplier(supplier)
-    setPaymentAmount(roundMoney(supplier.balance).toFixed(2))
+    setPaymentAmount(String(roundMoney(supplier.balance)))
     setPaymentMethod('store_cash')
     setPaymentNotes('')
   }
@@ -2246,7 +2237,7 @@ function Input({
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
+  return formatMoney(value)
 }
 
 const cardStyle: React.CSSProperties = {

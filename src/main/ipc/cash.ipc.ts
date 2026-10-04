@@ -26,6 +26,21 @@ import {
 } from '../database/repositories/cash-shifts.repo'
 import { requireAdminPassword } from './permission-helper'
 import {
+  optionalEnumValue,
+  optionalNonNegativeNumber,
+  optionalStringValue,
+  optionalTrimmedString,
+  requireEnumValue,
+  requireNonNegativeNumber,
+  requireObjectInput,
+  requirePositiveInteger,
+  requirePositiveNumber,
+  requireTrimmedString,
+  optionalNonNegativeMoney,
+  requireNonNegativeMoney,
+  requirePositiveMoney,
+} from './input-validation'
+import {
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
   requirePermission,
@@ -34,6 +49,35 @@ import {
   listUsers,
   userHasPermission,
 } from '../database/repositories/user.repo'
+
+const CASH_ACCOUNT_INPUT_VALUES = [
+  'store_cash',
+  'store_safe',
+  'owner_cash',
+  'owner_bank',
+  'owner_vodafone',
+  'fawry_machine',
+
+  /*
+   * Legacy aliases التي ما زال
+   * النظام يدعمها.
+   */
+  'cash',
+  'card',
+  'wallet',
+  'bank',
+  'bank_transfer',
+] as const
+
+const CASH_MOVEMENT_TYPES = ['deposit', 'withdraw'] as const
+
+const SHIFT_VARIANCE_RESOLUTION_TYPES = [
+  'approved',
+  'rejected',
+  'corrected',
+  'explained',
+  'other',
+] as const
 
 function getCashierShiftView(shift: any) {
   if (!shift) {
@@ -79,14 +123,35 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash:transfer', (event, input) => {
     const actorId = requirePermission(event, 'cash.manage').id
 
+    const payload = requireObjectInput(input, 'بيانات التحويل')
+
+    const fromAccount = requireEnumValue(
+      payload.from_account,
+      CASH_ACCOUNT_INPUT_VALUES,
+      'حساب التحويل المصدر',
+    )
+
+    const toAccount = requireEnumValue(
+      payload.to_account,
+      CASH_ACCOUNT_INPUT_VALUES,
+      'حساب التحويل المستلم',
+    )
+
+    const amount = requirePositiveMoney(payload.amount, 'مبلغ التحويل')
+
+    const notes = optionalTrimmedString(payload.notes, 'ملاحظات التحويل')
+
     const openShift = resolveFinancialOperationShift(
       actorId,
-      [input?.from_account, input?.to_account],
+      [fromAccount, toAccount],
       'لا يمكن تنفيذ تحويل يؤثر على درج المحل بدون شفت مفتوح',
     )
 
     return createCashTransfer({
-      ...input,
+      from_account: fromAccount,
+      to_account: toAccount,
+      amount,
+      notes,
       created_by: actorId,
       shift_id: openShift?.id ?? null,
     })
@@ -108,20 +173,32 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash:create-movement', (event, input) => {
     const actorId = requirePermission(event, 'cash.manage').id
 
-    const type =
-      input?.type === 'deposit'
-        ? 'deposit'
-        : input?.type === 'withdraw'
-          ? 'withdraw'
-          : null
+    const payload = requireObjectInput(input, 'بيانات حركة الخزنة')
 
-    if (!type) {
-      throw new Error('نوع حركة الخزنة اليدوية غير صحيح')
-    }
+    const type = requireEnumValue(
+      payload.type,
+      CASH_MOVEMENT_TYPES,
+      'نوع حركة الخزنة اليدوية',
+    )
 
     const direction: 'in' | 'out' = type === 'deposit' ? 'in' : 'out'
 
-    const paymentMethod = input?.payment_method || 'store_cash'
+    const rawPaymentMethod =
+      payload.payment_method === undefined ||
+      payload.payment_method === null ||
+      payload.payment_method === ''
+        ? 'store_cash'
+        : payload.payment_method
+
+    const paymentMethod = requireEnumValue(
+      rawPaymentMethod,
+      CASH_ACCOUNT_INPUT_VALUES,
+      'حساب حركة الخزنة',
+    )
+
+    const amount = requirePositiveMoney(payload.amount, 'مبلغ حركة الخزنة')
+
+    const notes = optionalTrimmedString(payload.notes, 'ملاحظات حركة الخزنة')
 
     const openShift = resolveFinancialOperationShift(
       actorId,
@@ -132,11 +209,11 @@ export function registerCashIpc(): void {
     return createCashMovement({
       type,
       direction,
-      amount: Number(input?.amount),
+      amount,
       payment_method: paymentMethod,
       reference_id: null,
       reference_type: 'manual',
-      notes: input?.notes,
+      notes,
       created_by: actorId,
       shift_id: openShift?.id ?? null,
     })
@@ -146,29 +223,61 @@ export function registerCashIpc(): void {
     try {
       const actorId = requireAuthenticatedUser(event).id
 
-      const approval = requireAdminPassword(
-        actorId,
+      const payload = requireObjectInput(input, 'بيانات تعديل حركة الخزنة')
 
-        input?.admin_password,
+      const adminPassword = optionalStringValue(
+        payload.admin_password,
+        'كلمة مرور المدير',
+        256,
       )
 
-      const movementId = Number(input?.id)
+      const approval = requireAdminPassword(actorId, adminPassword)
+
+      const movementId = requirePositiveInteger(payload.id, 'رقم حركة الخزنة')
+
+      const amount = requirePositiveMoney(payload.amount, 'مبلغ حركة الخزنة')
+
+      const type = optionalEnumValue(
+        payload.type,
+        CASH_MOVEMENT_TYPES,
+        'نوع حركة الخزنة',
+      )
+
+      const paymentMethod = optionalEnumValue(
+        payload.payment_method,
+        CASH_ACCOUNT_INPUT_VALUES,
+        'حساب حركة الخزنة',
+      )
+
+      const fromAccount = optionalEnumValue(
+        payload.from_account,
+        CASH_ACCOUNT_INPUT_VALUES,
+        'حساب التحويل المصدر',
+      )
+
+      const toAccount = optionalEnumValue(
+        payload.to_account,
+        CASH_ACCOUNT_INPUT_VALUES,
+        'حساب التحويل المستلم',
+      )
+
+      const notes = optionalTrimmedString(payload.notes, 'ملاحظات حركة الخزنة')
 
       const mutationContext = getCashMovementMutationContext(movementId)
 
       const requestedAccounts: string[] = []
 
       if (mutationContext.kind === 'manual') {
-        if (input?.payment_method) {
-          requestedAccounts.push(String(input.payment_method))
+        if (paymentMethod) {
+          requestedAccounts.push(paymentMethod)
         }
       } else {
-        if (input?.from_account) {
-          requestedAccounts.push(String(input.from_account))
+        if (fromAccount) {
+          requestedAccounts.push(fromAccount)
         }
 
-        if (input?.to_account) {
-          requestedAccounts.push(String(input.to_account))
+        if (toAccount) {
+          requestedAccounts.push(toAccount)
         }
       }
 
@@ -181,17 +290,19 @@ export function registerCashIpc(): void {
       return updateCashMovement({
         id: movementId,
 
-        type: input?.type,
+        type,
+
         approved_by: approval.id,
-        amount: Number(input?.amount),
 
-        payment_method: input?.payment_method,
+        amount,
 
-        from_account: input?.from_account,
+        payment_method: paymentMethod,
 
-        to_account: input?.to_account,
+        from_account: fromAccount,
 
-        notes: input?.notes,
+        to_account: toAccount,
+
+        notes,
 
         actor_id: actorId,
 
@@ -211,13 +322,23 @@ export function registerCashIpc(): void {
     try {
       const actorId = requireAuthenticatedUser(event).id
 
-      const approval = requireAdminPassword(
-        actorId,
+      const payload = requireObjectInput(input, 'بيانات إلغاء حركة الخزنة')
 
-        input?.admin_password,
+      const adminPassword = optionalStringValue(
+        payload.admin_password,
+        'كلمة مرور المدير',
+        256,
       )
 
-      const movementId = Number(input?.id)
+      const approval = requireAdminPassword(actorId, adminPassword)
+
+      const movementId = requirePositiveInteger(payload.id, 'رقم حركة الخزنة')
+
+      const reason = optionalTrimmedString(
+        payload.reason,
+        'سبب إلغاء حركة الخزنة',
+        500,
+      )
 
       const mutationContext = getCashMovementMutationContext(movementId)
 
@@ -230,8 +351,10 @@ export function registerCashIpc(): void {
       return cancelCashMovement({
         id: movementId,
 
-        reason: input?.reason,
+        reason,
+
         approved_by: approval.id,
+
         actor_id: actorId,
 
         shift_id: openShift?.id ?? null,
@@ -314,27 +437,57 @@ export function registerCashIpc(): void {
     try {
       const actor = requireAuthenticatedUser(event)
 
-      const approval = requireAdminPassword(
-        actor.id,
+      const payload = requireObjectInput(input, 'بيانات مراجعة فرق الشفت')
 
-        input?.admin_password,
+      const adminPassword = optionalStringValue(
+        payload.admin_password,
+        'كلمة مرور المدير',
+        256,
+      )
+
+      const approval = requireAdminPassword(actor.id, adminPassword)
+
+      const varianceId = requirePositiveInteger(
+        payload.variance_id,
+        'رقم فرق الشفت',
+      )
+
+      const resolutionType = requireEnumValue(
+        payload.resolution_type,
+        SHIFT_VARIANCE_RESOLUTION_TYPES,
+        'نوع مراجعة فرق الشفت',
+      )
+
+      const resolutionNotes = requireTrimmedString(
+        payload.resolution_notes,
+        'ملاحظات مراجعة فرق الشفت',
+        1000,
+      )
+
+      const reversalAccount = optionalEnumValue(
+        payload.reversal_account,
+        CASH_ACCOUNT_INPUT_VALUES,
+        'حساب عكس فرق الشفت',
+      )
+
+      const correctedOpeningAmount = optionalNonNegativeMoney(
+        payload.corrected_opening_amount,
+        'الجرد الصحيح عند افتتاح الشفت',
       )
 
       const variance = resolveCashShiftVariance({
-        variance_id: Number(input?.variance_id),
+        variance_id: varianceId,
 
-        resolution_type: input?.resolution_type,
+        resolution_type: resolutionType,
+
         approved_by: approval.id,
-        resolution_notes: String(input?.resolution_notes || ''),
-        reversal_account: input?.reversal_account
-          ? String(input.reversal_account)
-          : null,
 
-        corrected_opening_amount:
-          input?.corrected_opening_amount === null ||
-          input?.corrected_opening_amount === undefined
-            ? null
-            : Number(input.corrected_opening_amount),
+        resolution_notes: resolutionNotes,
+
+        reversal_account: reversalAccount ?? null,
+
+        corrected_opening_amount: correctedOpeningAmount ?? null,
+
         resolved_by: actor.id,
       })
 
@@ -400,8 +553,15 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash-shifts:open', (event, input) => {
     const actor = requirePermission(event, 'shifts.operate_own')
 
+    const payload = requireObjectInput(input, 'بيانات فتح الشفت')
+
+    const openingCountedAmount = requireNonNegativeMoney(
+      payload.opening_counted_amount,
+      'رصيد افتتاح الشفت',
+    )
+
     const shift = openCashShift({
-      opening_counted_amount: Number(input?.opening_counted_amount),
+      opening_counted_amount: openingCountedAmount,
 
       opened_by: actor.id,
     })
@@ -419,7 +579,9 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash-shifts:preview', (event, shiftId) => {
     requirePermission(event, 'shifts.manage')
 
-    const shift = getCashShiftById(Number(shiftId))
+    const safeShiftId = requirePositiveInteger(shiftId, 'رقم الشفت')
+
+    const shift = getCashShiftById(safeShiftId)
 
     if (!shift) {
       throw new Error('الشفت غير موجود')
@@ -431,7 +593,31 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash-shifts:close', (event, input) => {
     const actor = requirePermission(event, 'shifts.operate_own')
 
-    const shiftId = Number(input?.shift_id)
+    const payload = requireObjectInput(input, 'بيانات إغلاق الشفت')
+
+    const shiftId = requirePositiveInteger(payload.shift_id, 'رقم الشفت')
+
+    const closingCountedAmount = requireNonNegativeMoney(
+      payload.closing_counted_amount,
+      'الجرد الفعلي عند إغلاق الشفت',
+    )
+
+    const leftForNextShift = requireNonNegativeMoney(
+      payload.left_for_next_shift,
+      'المبلغ المتروك للشفت التالي',
+    )
+
+    const closeReason = optionalTrimmedString(
+      payload.close_reason,
+      'سبب إغلاق الشفت',
+      500,
+    )
+
+    const adminPassword = optionalStringValue(
+      payload.admin_password,
+      'كلمة مرور المدير',
+      256,
+    )
 
     const shift = getCashShiftById(shiftId)
 
@@ -449,21 +635,19 @@ export function registerCashIpc(): void {
     let approvedBy: number | null = null
 
     if (isAdminClosingOtherShift) {
-      approvedBy = requireAdminPassword(
-        actor.id,
-
-        input?.admin_password,
-      ).id
+      approvedBy = requireAdminPassword(actor.id, adminPassword).id
     }
 
     const closedShift = closeCashShift({
       shift_id: shiftId,
+
       approved_by: approvedBy,
-      closing_counted_amount: Number(input?.closing_counted_amount),
 
-      left_for_next_shift: Number(input?.left_for_next_shift),
+      closing_counted_amount: closingCountedAmount,
 
-      close_reason: input?.close_reason,
+      left_for_next_shift: leftForNextShift,
+
+      close_reason: closeReason,
 
       closed_by: actor.id,
     })
@@ -481,20 +665,32 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash-shifts:force-close', (event, input) => {
     const actorId = requireAuthenticatedAdmin(event)
 
-    const approval = requireAdminPassword(
-      actorId,
+    const payload = requireObjectInput(input, 'بيانات الإغلاق الطارئ للشفت')
 
-      input?.admin_password,
+    const adminPassword = optionalStringValue(
+      payload.admin_password,
+      'كلمة مرور المدير',
+      256,
+    )
+
+    const approval = requireAdminPassword(actorId, adminPassword)
+
+    const shiftId = requirePositiveInteger(payload.shift_id, 'رقم الشفت')
+
+    const reason = requireTrimmedString(
+      payload.reason,
+      'سبب الإغلاق الطارئ',
+      500,
     )
 
     return forceCloseCashShift({
-      shift_id: Number(input?.shift_id),
+      shift_id: shiftId,
 
       closed_by: actorId,
 
       approved_by: approval.id,
 
-      reason: String(input?.reason || ''),
+      reason,
     })
   })
 }

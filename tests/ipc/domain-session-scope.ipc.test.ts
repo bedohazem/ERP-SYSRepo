@@ -327,6 +327,167 @@ describe('domain IPC session scope', () => {
     ).rejects.toThrow('سجل الدخول أولًا')
   })
 
+  it('rejects malformed sales payloads before repository coercion', async () => {
+    const admin = findUserByUsername('admin')!
+
+    const { event } = makeClient()
+
+    startAuthSession(event, admin.id)
+
+    await expect(
+      invoke(event, 'sales:create', {
+        payment_method: 'unknown_method',
+
+        items: [
+          {
+            variant_id: 1,
+
+            product_name: 'Invalid Sale Item',
+
+            quantity: 1,
+
+            unit_price: 10,
+          },
+        ],
+      }),
+    ).rejects.toThrow('طريقة دفع فاتورة البيع غير صحيح')
+
+    /*
+     * Number(true) = 1
+     * فلا نسمح للـBoolean
+     * أن يتحول إلى كمية بيع.
+     */
+    await expect(
+      invoke(event, 'sales:create', {
+        payment_method: 'cash',
+
+        items: [
+          {
+            variant_id: 1,
+
+            product_name: 'Invalid Quantity',
+
+            quantity: true,
+
+            unit_price: 10,
+          },
+        ],
+      }),
+    ).rejects.toThrow('كمية صنف البيع غير صحيح')
+
+    await expect(
+      invoke(event, 'sales:hold', {
+        items: [
+          {
+            variant_id: true,
+
+            quantity: 1,
+          },
+        ],
+      }),
+    ).rejects.toThrow('رقم صنف الفاتورة المعلقة غير صحيح')
+
+    await expect(
+      invoke(event, 'sales:delete-held', {
+        held_sale_id: 1,
+
+        mode: 'invalid-mode',
+      }),
+    ).rejects.toThrow('وضع حذف الفاتورة المعلقة غير صحيح')
+
+    await expect(invoke(event, 'sales:get-receipt', true)).rejects.toThrow(
+      'رقم فاتورة البيع غير صحيح',
+    )
+  })
+
+  it('rejects malformed return and exchange payloads before repository coercion', async () => {
+    const admin = findUserByUsername('admin')!
+
+    const { event } = makeClient()
+
+    startAuthSession(event, admin.id)
+
+    /*
+     * Number(true) = 1
+     * فلا نقبل Boolean كرقم فاتورة.
+     */
+    await expect(
+      invoke(event, 'sales:return', {
+        original_sale_id: true,
+
+        refund_payment_method: 'cash',
+
+        items: [
+          {
+            sale_item_id: 1,
+
+            variant_id: 1,
+
+            quantity: 1,
+          },
+        ],
+      }),
+    ).rejects.toThrow('رقم الفاتورة الأصلية غير صحيح')
+
+    /*
+     * طريقة رد مجهولة لا تتحول
+     * بصمت إلى store_cash.
+     */
+    await expect(
+      invoke(event, 'sales:return', {
+        original_sale_id: 1,
+
+        refund_payment_method: 'fake_refund_account',
+
+        items: [
+          {
+            sale_item_id: 1,
+
+            variant_id: 1,
+
+            quantity: 1,
+          },
+        ],
+      }),
+    ).rejects.toThrow('طريقة رد قيمة المرتجع غير صحيح')
+
+    /*
+     * Number(true) = 1
+     * كذلك في وحدات الاستبدال.
+     */
+    await expect(
+      invoke(event, 'sales:exchange', {
+        original_sale_id: 1,
+
+        payment_method: 'cash',
+
+        items: [
+          {
+            promotion_unit_id: true,
+
+            new_variant_id: 1,
+          },
+        ],
+      }),
+    ).rejects.toThrow('رقم قطعة الاستبدال غير صحيح')
+
+    await expect(
+      invoke(event, 'sales:exchange', {
+        original_sale_id: 1,
+
+        payment_method: 'fake_exchange_account',
+
+        items: [
+          {
+            promotion_unit_id: 1,
+
+            new_variant_id: 1,
+          },
+        ],
+      }),
+    ).rejects.toThrow('طريقة دفع فرق الاستبدال غير صحيح')
+  })
+
   it('hides product cost from cashier sales reads but keeps it for admins', async () => {
     createProduct({
       name: 'Cost Protected Product',

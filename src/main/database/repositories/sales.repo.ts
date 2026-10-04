@@ -17,6 +17,7 @@ import {
   issueStockAtCost,
   receiveStockAtCost,
 } from '../inventory-cost'
+import { roundMoney } from '../../../shared/money'
 
 export type CreateSaleLineInput = {
   variant_id: number
@@ -108,10 +109,6 @@ function getLoyaltySettingsForSale() {
     pointValue: Number(getSetting('loyalty_point_value', '1')),
     minRedeemPoints: Number(getSetting('loyalty_min_redeem_points', '1')),
   }
-}
-
-function roundMoney(value: number) {
-  return Number(Number(value || 0).toFixed(2))
 }
 
 function calculateSaleDueDate(

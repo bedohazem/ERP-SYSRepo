@@ -1,5 +1,5 @@
 import { getDb } from '../db'
-
+import { roundMoney } from '../../../shared/money'
 export type PromotionType =
   | 'percent'
   | 'fixed_per_item'
@@ -149,6 +149,10 @@ function validatePromotion(input: PromotionInput) {
 
     if (input.type === 'percent' && value > 100) {
       throw new Error('نسبة الخصم لا يمكن أن تتجاوز 100%')
+    }
+
+    if (input.type !== 'percent' && roundMoney(value) <= 0) {
+      throw new Error('قيمة العرض غير صحيحة')
     }
   }
 
@@ -348,10 +352,6 @@ type PromotionSaleItem = {
   variant_id: number
   quantity: number
   unit_price: number
-}
-
-function roundMoney(value: number) {
-  return Number(Number(value || 0).toFixed(2))
 }
 
 function calculatePromotionForSale(promotion: any, items: PromotionSaleItem[]) {
@@ -748,7 +748,11 @@ export function createPromotion(input: PromotionInput) {
 
   const isBuyXGetY = input.type === 'buy_x_get_y'
 
-  const promotionValue = isBuyXGetY ? 0 : Number(input.value)
+  const promotionValue = isBuyXGetY
+    ? 0
+    : input.type === 'percent'
+      ? Number(input.value)
+      : roundMoney(input.value)
 
   const buyQty = isBuyXGetY ? Number(input.buy_qty) : null
 
@@ -820,7 +824,11 @@ export function updatePromotion(
 
   const isBuyXGetY = input.type === 'buy_x_get_y'
 
-  const promotionValue = isBuyXGetY ? 0 : Number(input.value)
+  const promotionValue = isBuyXGetY
+    ? 0
+    : input.type === 'percent'
+      ? Number(input.value)
+      : roundMoney(input.value)
 
   const buyQty = isBuyXGetY ? Number(input.buy_qty) : null
 

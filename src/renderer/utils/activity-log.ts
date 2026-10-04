@@ -1,4 +1,5 @@
 import { getPaymentMethodLabel } from './payment-method'
+import { formatMoney } from '../../shared/money'
 
 export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   auth_login_succeeded: 'تسجيل دخول',
@@ -678,5 +679,5 @@ function formatDetailValue(key: string, value: unknown): string {
 }
 
 function moneyValue(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
+  return formatMoney(value)
 }

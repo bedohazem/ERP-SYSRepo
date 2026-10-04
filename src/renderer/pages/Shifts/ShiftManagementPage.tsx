@@ -11,6 +11,7 @@ import ShiftHistorySection from './ShiftHistorySection'
 import CashDrawerHistorySection from './CashDrawerHistorySection'
 import { useAuthStore } from '../../store/auth.store'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
+import { formatMoney } from '../../../shared/money'
 
 type CashShift = {
   id: number
@@ -1131,8 +1132,8 @@ function getFilterLabel(filter: VarianceStatusFilter) {
   }
 }
 
-function money(value?: number | null) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
+function money(value: unknown) {
+  return formatMoney(value)
 }
 
 function formatDate(value?: string | null) {

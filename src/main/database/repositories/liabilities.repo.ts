@@ -2,6 +2,7 @@ import { getDb } from '../db'
 import { createCashMovement, resolveCashAccount } from './cash.repo'
 import { createCriticalActivityLog } from './activity.repo'
 import { resolveFinancialOperationShift } from './cash-shifts.repo'
+import { roundMoney } from '../../../shared/money'
 
 export type CreateLiabilityInput = {
   party_name: string
@@ -66,16 +67,6 @@ function getStatus(remaining: number) {
   return remaining <= 0 ? 'paid' : 'open'
 }
 
-function roundMoney(value: number) {
-  const amount = Number(value || 0)
-
-  if (!Number.isFinite(amount)) {
-    return 0
-  }
-
-  return Math.round((amount + Number.EPSILON) * 100) / 100
-}
-
 function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
   const row = db
     .prepare(
@@ -97,9 +88,10 @@ export function createLiability(input: CreateLiabilityInput) {
 
   const partyName = cleanText(input.party_name)
   const title = cleanText(input.title)
-  const totalAmount = Number(input.total_amount || 0)
+  const totalAmount = roundMoney(input.total_amount)
+
   const initialPaid = Math.min(
-    Math.max(Number(input.paid_amount || 0), 0),
+    Math.max(roundMoney(input.paid_amount ?? 0), 0),
     totalAmount,
   )
 
@@ -191,7 +183,7 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
 
   const liability = getLiabilityByIdOrThrow(Number(input.liability_id))
 
-  const amount = Number(input.amount || 0)
+  const amount = roundMoney(input.amount)
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error('مبلغ الدفعة غير صحيح')
@@ -201,7 +193,7 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
     throw new Error('لا يمكن تسجيل دفعة على التزام ملغي')
   }
 
-  const remainingBefore = Number(liability.remaining_amount || 0)
+  const remainingBefore = roundMoney(liability.remaining_amount)
 
   if (amount > remainingBefore) {
     throw new Error('مبلغ الدفعة أكبر من المتبقي')
@@ -548,7 +540,7 @@ export function updateLiability(input: UpdateLiabilityInput) {
 
   if (totalAmount + 0.0001 < activePaid) {
     throw new Error(
-      `لا يمكن جعل قيمة الالتزام أقل من إجمالي المدفوع وهو ${activePaid.toFixed(2)} ج.م`,
+      `لا يمكن جعل قيمة الالتزام أقل من إجمالي المدفوع وهو ${activePaid} ج.م`,
     )
   }
 
@@ -799,10 +791,13 @@ export function getLiabilitiesSummary(input?: {
     .get() as any
 
   return {
-    paid_in_period: Number(paidRow.paid_total || 0),
-    total_liabilities: Number(totalsRow.total_liabilities || 0),
-    total_paid: Number(totalsRow.total_paid || 0),
-    total_remaining: Number(totalsRow.total_remaining || 0),
+    paid_in_period: roundMoney(paidRow.paid_total),
+
+    total_liabilities: roundMoney(totalsRow.total_liabilities),
+
+    total_paid: roundMoney(totalsRow.total_paid),
+
+    total_remaining: roundMoney(totalsRow.total_remaining),
     count: Number(totalsRow.count || 0),
     open_count: Number(totalsRow.open_count || 0),
     paid_count: Number(totalsRow.paid_count || 0),
@@ -967,7 +962,7 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
 
   if (amount > maximumAmount + 0.0001) {
     throw new Error(
-      `مبلغ الدفعة المعدل أكبر من المتاح وهو ${maximumAmount.toFixed(2)} ج.م`,
+      `مبلغ الدفعة المعدل أكبر من المتاح وهو ${maximumAmount} ج.م`,
     )
   }
 

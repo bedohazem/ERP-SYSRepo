@@ -1,5 +1,6 @@
 import { getDb } from '../db'
 import { receiveStockAtCost } from '../inventory-cost'
+import { roundMoney } from '../../../shared/money'
 
 export type CategoryRow = {
   id: number
@@ -301,22 +302,32 @@ function ensureInputBarcodesAreUnique(variants: ProductVariantInput[]) {
 function validateVariantNumbers(
   variant: ProductVariantInput | AddProductVariantInput | UpdateVariantInput,
 ) {
-  const buyPrice = Number(variant.buy_price)
-  const sellPrice = Number(variant.sell_price)
+  const rawBuyPrice = Number(variant.buy_price)
+
+  const rawSellPrice = Number(variant.sell_price)
+
   const minStock = Number(variant.min_stock)
 
-  if (!Number.isFinite(buyPrice) || buyPrice < 0) {
+  if (!Number.isFinite(rawBuyPrice) || rawBuyPrice < 0) {
     throw new Error('سعر الشراء غير صحيح')
   }
 
-  if (!Number.isFinite(sellPrice) || sellPrice < 0) {
+  if (!Number.isFinite(rawSellPrice) || rawSellPrice < 0) {
     throw new Error('سعر البيع غير صحيح')
   }
 
-  if (variant.discount_price !== null && variant.discount_price !== undefined) {
-    const discountPrice = Number(variant.discount_price)
+  const sellPrice = roundMoney(rawSellPrice)
 
-    if (!Number.isFinite(discountPrice) || discountPrice <= 0) {
+  if (variant.discount_price !== null && variant.discount_price !== undefined) {
+    const rawDiscountPrice = Number(variant.discount_price)
+
+    if (!Number.isFinite(rawDiscountPrice) || rawDiscountPrice <= 0) {
+      throw new Error('السعر بعد الخصم غير صحيح')
+    }
+
+    const discountPrice = roundMoney(rawDiscountPrice)
+
+    if (discountPrice <= 0) {
       throw new Error('السعر بعد الخصم غير صحيح')
     }
 
@@ -787,9 +798,11 @@ export function createProduct(input: CreateProductInput) {
         variant.barcode.trim(),
         variant.size.trim(),
         variant.color.trim(),
-        variant.buy_price,
-        variant.sell_price,
-        variant.discount_price ?? null,
+        roundMoney(variant.buy_price),
+        roundMoney(variant.sell_price),
+        variant.discount_price == null
+          ? null
+          : roundMoney(variant.discount_price),
         variant.min_stock,
       )
 
@@ -806,7 +819,7 @@ export function createProduct(input: CreateProductInput) {
 
           quantity: openingQty,
 
-          unit_cost: Number(variant.buy_price || 0),
+          unit_cost: roundMoney(variant.buy_price),
           created_by: input.actor_id ?? null,
           reference_id: productId,
 
@@ -878,9 +891,11 @@ export function addProductVariant(input: AddProductVariantInput) {
         cleanBarcode,
         input.size.trim(),
         input.color.trim(),
-        input.buy_price,
-        input.sell_price,
-        input.discount_price ?? null,
+        roundMoney(input.buy_price),
+
+        roundMoney(input.sell_price),
+
+        input.discount_price == null ? null : roundMoney(input.discount_price),
         input.min_stock,
       )
 
@@ -897,7 +912,7 @@ export function addProductVariant(input: AddProductVariantInput) {
 
         quantity: openingQty,
 
-        unit_cost: Number(input.buy_price || 0),
+        unit_cost: roundMoney(input.buy_price),
         created_by: input.actor_id ?? null,
         reference_id: input.product_id,
 
@@ -1008,9 +1023,11 @@ function updateVariantInsideTransaction(
     cleanBarcode,
     input.size.trim(),
     input.color.trim(),
-    input.buy_price,
-    input.sell_price,
-    input.discount_price ?? null,
+    roundMoney(input.buy_price),
+
+    roundMoney(input.sell_price),
+
+    input.discount_price == null ? null : roundMoney(input.discount_price),
     input.min_stock,
     nextActive,
     variantId,

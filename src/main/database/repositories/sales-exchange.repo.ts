@@ -13,6 +13,7 @@ import {
   issueStockAtCost,
   receiveStockAtCost,
 } from '../inventory-cost'
+import { roundMoney } from '../../../shared/money'
 
 export type CreateSaleExchangeInput = {
   original_sale_id: number
@@ -105,10 +106,6 @@ type ExchangeVariantRow = {
   buy_price: number
   average_cost: number
   sell_price: number
-}
-
-function roundMoney(value: number) {
-  return Number(Number(value || 0).toFixed(2))
 }
 
 function parseProductIds(value: string) {

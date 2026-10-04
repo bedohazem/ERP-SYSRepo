@@ -238,6 +238,8 @@ describe('sales repository', () => {
 
       unit_cost: 200,
 
+      created_by: 1,
+
       reference_id: null,
 
       reference_type: 'test_purchase',
@@ -1522,8 +1524,9 @@ describe('sales repository', () => {
       ],
     })
 
-    expect(firstReturn.return_value).toBe(333)
-    expect(firstReturn.refundAmount).toBe(333)
+    expect(firstReturn.return_value).toBe(332)
+
+    expect(firstReturn.refundAmount).toBe(332)
 
     const secondReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1538,8 +1541,9 @@ describe('sales repository', () => {
       ],
     })
 
-    expect(secondReturn.return_value).toBe(332)
-    expect(secondReturn.refundAmount).toBe(332)
+    expect(secondReturn.return_value).toBe(333)
+
+    expect(secondReturn.refundAmount).toBe(333)
 
     const thirdReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1574,7 +1578,7 @@ describe('sales repository', () => {
     }>
 
     expect(rows.map((row) => Number(row.refund_amount))).toEqual([
-      333, 332, 285,
+      332, 333, 285,
     ])
 
     expect(
@@ -1582,7 +1586,7 @@ describe('sales repository', () => {
     ).toBe(true)
   })
 
-  it('allows a later return to be zero when previous rounding already covered its value', () => {
+  it('preserves the whole-pound invoice value across small partial returns', () => {
     const variant = seedProduct()
 
     const sale = createSale({
@@ -1641,7 +1645,7 @@ describe('sales repository', () => {
       ],
     })
 
-    expect(firstReturn.return_value).toBe(1)
+    expect(firstReturn.return_value).toBe(0)
 
     const secondReturn = createSaleReturn({
       original_sale_id: sale.saleId,
@@ -1655,12 +1659,12 @@ describe('sales repository', () => {
       ],
     })
 
-    expect(secondReturn.return_value).toBe(0)
+    expect(secondReturn.return_value).toBe(1)
 
     expect(getCashMovementTotal('out')).toBe(1)
   })
 
-  it('allows fractional debt settlement and restores it on return cancellation', () => {
+  it('rounds debt settlement to whole pounds and restores it on return cancellation', () => {
     const variant = seedProduct()
     const customerId = createTestCustomer()
 
@@ -1686,7 +1690,7 @@ describe('sales repository', () => {
       ],
     })
 
-    expect(sale.remaining_amount).toBe(50.5)
+    expect(sale.remaining_amount).toBe(51)
 
     const receipt = getSaleReceipt(sale.saleId) as any
 
@@ -1712,9 +1716,12 @@ describe('sales repository', () => {
     })
 
     expect(result.return_value).toBe(101)
-    expect(result.debt_reduction_amount).toBe(50.5)
-    expect(result.refundAmount).toBe(50.5)
-    expect(getCashMovementTotal('out')).toBe(50.5)
+
+    expect(result.debt_reduction_amount).toBe(51)
+
+    expect(result.refundAmount).toBe(50)
+
+    expect(getCashMovementTotal('out')).toBe(50)
 
     const afterReturn = getSaleReceipt(sale.saleId) as any
     expect(afterReturn.sale.remaining_amount).toBe(0)
@@ -1726,7 +1733,7 @@ describe('sales repository', () => {
     })
 
     const afterCancellation = getSaleReceipt(sale.saleId) as any
-    expect(afterCancellation.sale.remaining_amount).toBe(50.5)
+    expect(afterCancellation.sale.remaining_amount).toBe(51)
 
     const customer = getDb()
       .prepare(
@@ -1741,8 +1748,9 @@ describe('sales repository', () => {
       total_spent: number
     }
 
-    expect(customer.balance).toBe(50.5)
-    expect(customer.total_spent).toBe(100.5)
+    expect(customer.balance).toBe(51)
+
+    expect(customer.total_spent).toBe(101)
   })
 
   it('calculates sale return value proportionally when original sale has loyalty discount', () => {
@@ -2077,15 +2085,15 @@ describe('sales repository', () => {
       ],
     })
 
-    expect(sale.promotion_discount_value).toBe(37.5)
+    expect(sale.promotion_discount_value).toBe(38)
 
-    expect(sale.grand_total).toBe(102.5)
+    expect(sale.grand_total).toBe(102)
 
     const receipt = getSaleReceipt(sale.saleId) as any
 
-    expect(receipt.sale.promotion_discount_value).toBe(37.5)
+    expect(receipt.sale.promotion_discount_value).toBe(38)
 
-    expect(receipt.items[0].promotion_discount_value).toBe(37.5)
+    expect(receipt.items[0].promotion_discount_value).toBe(38)
 
     createCashMovement({
       type: 'deposit',
@@ -2112,8 +2120,9 @@ describe('sales repository', () => {
       ],
     })
 
-    expect(result.return_value).toBe(103)
-    expect(result.refundAmount).toBe(103)
+    expect(result.return_value).toBe(102)
+
+    expect(result.refundAmount).toBe(102)
 
     const db = getDb()
 
@@ -2132,9 +2141,9 @@ describe('sales repository', () => {
       )
       .get(sale.saleId) as any
 
-    expect(Number(returnRow.promotion_discount_value)).toBe(37.5)
+    expect(Number(returnRow.promotion_discount_value)).toBe(38)
 
-    expect(Number(returnRow.refund_amount)).toBe(103)
+    expect(Number(returnRow.refund_amount)).toBe(102)
   })
 
   it('applies buy 2 get 1 promotion', () => {

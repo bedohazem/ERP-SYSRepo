@@ -7,6 +7,7 @@ import {
   getPaymentMethodLabel,
 } from '../../utils/payment-method'
 import FinancialCancelModal from '../../components/FinancialCancelModal'
+import { formatMoney } from '../../../shared/money'
 
 type Liability = {
   id: number
@@ -53,7 +54,7 @@ const emptyForm = {
 const LIABILITY_STATEMENT_PAGE_SIZE = 20
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
+  return formatMoney(value)
 }
 
 function formatDate(value?: string | null) {

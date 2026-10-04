@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-
+import { formatMoney, roundMoney } from '../../../shared/money'
 import {
   formatCashShiftDuration,
   getCashShiftStatusLabel,
@@ -1339,12 +1339,12 @@ function getMovementTypeLabel(type: string) {
   }
 }
 
-function money(value?: number | null) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
+function money(value: unknown) {
+  return formatMoney(value)
 }
 
 function tableMoney(value?: number | null) {
-  return Number(value || 0).toFixed(2)
+  return String(roundMoney(value))
 }
 
 function formatDate(value?: string | null) {

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method'
+import { formatMoney } from '../../../shared/money'
 
 type Supplier = {
   id: number
@@ -117,7 +118,7 @@ type Props = {
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
+  return formatMoney(value)
 }
 
 function getErrorMessage(

@@ -3,6 +3,7 @@ import {
   getPaymentMethodLabel,
   getPaymentMethodShortLabel,
 } from './payment-method'
+import { roundMoney } from '../../shared/money'
 
 export type SaleReceiptData = {
   sale: any
@@ -52,8 +53,7 @@ export const ENGINEER_FOOTER =
   'برمجة وتصميم: بشمهندس عبدالرحمن حازم   01155559287-01068377869'
 
 export function money(value: number | string | null | undefined): string {
-  const n = Number(value || 0)
-  return Number.isFinite(n) ? n.toFixed(2) : '0.00'
+  return String(roundMoney(value))
 }
 
 export function escapeHtml(value: unknown) {
@@ -235,7 +235,7 @@ export function buildSaleReceiptHtml(
             (payment) =>
               `${getPaymentMethodShortLabel(
                 payment.payment_method,
-              )} ${Number(payment.amount || 0).toFixed(2)}`,
+              )} ${money(payment.amount)}`,
           )
           .join(' + ')
       : getPaymentMethodShortLabel(sale.payment_method) || '—'
@@ -294,8 +294,8 @@ export function buildSaleReceiptHtml(
         </td>
 
         <td>${netQty}</td>
-        <td>${unitPrice.toFixed(2)}</td>
-        <td class="line-total">${netLineTotal.toFixed(2)}</td>
+        <td>${money(unitPrice)}</td>
+        <td class="line-total">${money(netLineTotal)}</td>
       </tr>
     `
     })
@@ -878,7 +878,7 @@ export function buildSaleReceiptHtml(
             <div class="summary-row">
               <span>قبل الخصم</span>
               <strong>
-                ${Number(sale.sub_total || 0).toFixed(2)}
+                ${money(sale.sub_total)}
               </strong>
             </div>
 
@@ -888,7 +888,7 @@ export function buildSaleReceiptHtml(
                   <div class="summary-row discount">
                     <span>الخصم</span>
                     <strong>
-                      -${Number(sale.discount_value || 0).toFixed(2)}
+                      -${money(sale.discount_value)}
                     </strong>
                   </div>
                 `
@@ -904,7 +904,7 @@ export function buildSaleReceiptHtml(
                     </span>
 
                     <strong>
-                      -${Number(sale.promotion_discount_value || 0).toFixed(2)}
+                      -${money(sale.promotion_discount_value)}
                     </strong>
                   </div>
                 `
@@ -917,7 +917,7 @@ export function buildSaleReceiptHtml(
                   <div class="summary-row discount">
                     <span>خصم النقاط</span>
                     <strong>
-                      -${Number(sale.loyalty_discount_value || 0).toFixed(2)}
+                      -${money(sale.loyalty_discount_value)}
                     </strong>
                   </div>
                 `
@@ -932,7 +932,7 @@ export function buildSaleReceiptHtml(
                       المرتجعات
                     </span>
                     <strong>
-                      -${finance.totalReturns.toFixed(2)}
+                      -${money(finance.totalReturns)}
                     </strong>
                   </div>
                 `
@@ -949,7 +949,7 @@ export function buildSaleReceiptHtml(
               </span>
 
               <strong>
-                ${finance.netTotal.toFixed(2)}
+                ${money(finance.netTotal)}
                 ج.م
               </strong>
             </div>
@@ -957,7 +957,7 @@ export function buildSaleReceiptHtml(
             <div class="summary-row paid">
               <span>المدفوع</span>
               <strong>
-                ${finance.receivedAmount.toFixed(2)}
+                ${money(finance.receivedAmount)}
                 ج.م
               </strong>
             </div>
@@ -969,7 +969,7 @@ export function buildSaleReceiptHtml(
                     <span>الباقي للعميل</span>
 
                     <strong class="remaining-zero">
-                      ${finance.changeAmount.toFixed(2)}
+                      ${money(finance.changeAmount)}
                       ج.م
                     </strong>
                   </div>
@@ -984,7 +984,7 @@ export function buildSaleReceiptHtml(
                     <span>المديونية</span>
 
                     <strong class="remaining-debt">
-                      ${finance.remainingAmount.toFixed(2)}
+                      ${money(finance.remainingAmount)}
                       ج.م
                     </strong>
                   </div>

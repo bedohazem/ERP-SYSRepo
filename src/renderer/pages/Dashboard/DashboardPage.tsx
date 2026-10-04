@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getPaymentMethodLabel } from '../../utils/payment-method'
 import { useAuthStore } from '../../store/auth.store'
+import { formatMoney, roundMoney } from '../../../shared/money'
 
 type ReportsData = {
   summary: {
@@ -1081,7 +1082,7 @@ function EmptyState({ text }: { text: string }) {
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
+  return formatMoney(value)
 }
 
 function formatShiftTime(value?: string | null) {
@@ -1848,9 +1849,9 @@ function ReconciliationCard({
 }
 
 function signedMoney(value: unknown) {
-  const amount = Number(value || 0)
+  const amount = roundMoney(value)
 
-  return `${amount > 0 ? '+' : ''}${amount.toFixed(2)} ج.م`
+  return `${amount > 0 ? '+' : ''}${amount} ج.م`
 }
 
 function CashierMiniCard({

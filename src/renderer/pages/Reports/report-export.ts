@@ -1,4 +1,5 @@
 import { getPaymentMethodLabel } from '../../utils/payment-method'
+import { roundMoney } from '../../../shared/money'
 
 export type ReportsExportData = {
   summary: Record<string, number>
@@ -28,7 +29,7 @@ type ExportSection = {
 }
 
 function numberValue(value: unknown) {
-  return Number(value || 0).toFixed(2)
+  return String(roundMoney(value))
 }
 
 function escapeHtml(value: unknown) {

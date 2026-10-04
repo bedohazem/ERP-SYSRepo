@@ -732,6 +732,44 @@ describe('customers repository', () => {
     expect(getCashMovementTotal('in')).toBe(250)
   })
 
+  it('rounds customer payments to whole pounds', () => {
+    const customer = createTestCustomer('01090909090')
+
+    const sale = createPartialSale(customer.id, 100)
+
+    const payment = recordCustomerPayment({
+      customer_id: customer.id,
+
+      actor_id: 1,
+
+      sale_id: sale.saleId,
+
+      amount: 10.5,
+
+      payment_method: 'cash',
+    })
+
+    expect(payment.paid_amount).toBe(11)
+
+    expect(payment.allocations[0].amount).toBe(11)
+
+    const receipt = getSaleReceipt(sale.saleId) as any
+
+    expect(receipt.sale.paid).toBe(111)
+
+    expect(receipt.sale.remaining_amount).toBe(189)
+
+    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow
+
+    expect(updatedCustomer.balance).toBe(189)
+
+    /*
+     * 100 من البيع
+     * + 11 دفعة العميل.
+     */
+    expect(getCashMovementTotal('in')).toBe(111)
+  })
+
   it('cancels customer payment batch and restores debt and sale balance', () => {
     const customer = createTestCustomer()
 

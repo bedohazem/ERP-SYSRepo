@@ -7,6 +7,7 @@ import {
 } from '../../utils/payment-method'
 import { hasUserPermission } from '../../utils/permissions'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
+import { formatMoney } from '../../../shared/money'
 
 type CustomerRow = {
   id: number
@@ -838,7 +839,7 @@ export default function CustomersPage() {
   }
 
   function money(value: unknown) {
-    return `${Number(value || 0).toFixed(2)} ج.م`
+    return formatMoney(value)
   }
 
   function InfoCard({ title, value }: { title: string; value: string }) {
@@ -1259,9 +1260,7 @@ export default function CustomersPage() {
                 <td style={tdStyle}>{customer.name}</td>
                 <td style={tdStyle}>{customer.phone || '—'}</td>
                 <td style={tdStyle}>{customer.points_balance || 0}</td>
-                <td style={tdStyle}>
-                  {Number(customer.total_spent || 0).toFixed(2)} ج.م
-                </td>
+                <td style={tdStyle}>{money(customer.total_spent)}</td>
                 <td
                   style={{
                     ...tdStyle,
@@ -1507,7 +1506,7 @@ export default function CustomersPage() {
                       )}
                     </strong>
 
-                    <span>{Number(sale.grand_total || 0).toFixed(2)} ج.م</span>
+                    <span>{money(sale.grand_total)}</span>
 
                     <span>+{sale.loyalty_points_earned || 0} نقطة</span>
 

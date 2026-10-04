@@ -8,6 +8,7 @@ import {
 } from '../../utils/payment-method'
 import FinancialCancelModal from '../../components/FinancialCancelModal'
 import { hasUserPermission } from '../../utils/permissions'
+import { formatMoney } from '../../../shared/money'
 
 type Expense = {
   id: number
@@ -316,7 +317,7 @@ export default function ExpensesPage() {
   const [totalExpenses, setTotalExpenses] = useState(0)
 
   function money(value: unknown) {
-    return `${Number(value || 0).toFixed(2)} ج.م`
+    return formatMoney(value)
   }
 
   function formatDate(value?: string) {

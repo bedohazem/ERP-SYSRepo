@@ -6,6 +6,7 @@ import {
 } from './cash-shifts.repo'
 
 import { getShiftBusinessDate } from '../shift-business-date'
+import { roundMoney } from '../../../shared/money'
 
 function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
   const row = db
@@ -32,7 +33,7 @@ function normalizeCreditLimit(value: unknown): number | null {
     throw new Error('الحد الائتماني يجب أن يكون صفر أو رقمًا موجبًا')
   }
 
-  return Number(amount.toFixed(2))
+  return roundMoney(amount)
 }
 
 function normalizeCreditDays(value: unknown): number | null {
@@ -1012,7 +1013,7 @@ export function recordCustomerPayment(input: {
 
   const customerId = Number(input.customer_id)
   const saleId = input.sale_id ? Number(input.sale_id) : null
-  const amountInput = Number(input.amount || 0)
+  const amountInput = roundMoney(input.amount)
 
   const actorId = Number(input.actor_id || 0)
 
@@ -1120,20 +1121,23 @@ export function recordCustomerPayment(input: {
         throw new Error('الفاتورة غير موجودة')
       }
 
-      const remaining = Number(sale.remaining_amount || 0)
+      const remaining = roundMoney(sale.remaining_amount)
 
       if (remaining <= 0) {
         throw new Error('الفاتورة مدفوعة بالكامل بالفعل')
       }
 
-      const finalAmount = Math.min(amountInput, remaining)
+      const finalAmount = roundMoney(Math.min(amountInput, remaining))
 
-      const newPaid = Math.min(
-        Number(sale.grand_total || 0),
-        Number(sale.paid || 0) + finalAmount,
+      const newPaid = roundMoney(
+        Math.min(
+          roundMoney(sale.grand_total),
+
+          roundMoney(sale.paid) + finalAmount,
+        ),
       )
 
-      const newRemaining = Math.max(0, remaining - finalAmount)
+      const newRemaining = roundMoney(Math.max(0, remaining - finalAmount))
 
       const newStatus =
         newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid'
@@ -1157,7 +1161,7 @@ export function recordCustomerPayment(input: {
       })
     } else {
       // دفعة عامة للعميل: تتوزع على أقدم فواتير مفتوحة
-      const customerBalance = Number(customer.balance || 0)
+      const customerBalance = roundMoney(customer.balance)
       let remainingPayment = Math.min(amountInput, customerBalance)
 
       if (remainingPayment <= 0) {
@@ -1185,8 +1189,9 @@ export function recordCustomerPayment(input: {
       for (const sale of openSales) {
         if (remainingPayment <= 0) break
 
-        const saleRemaining = Number(sale.remaining_amount || 0)
-        const payNow = Math.min(remainingPayment, saleRemaining)
+        const saleRemaining = roundMoney(sale.remaining_amount)
+
+        const payNow = roundMoney(Math.min(remainingPayment, saleRemaining))
 
         const newPaid = Math.min(
           Number(sale.grand_total || 0),
@@ -1209,8 +1214,9 @@ export function recordCustomerPayment(input: {
             `دفعة عامة موزعة على فاتورة بيع رقم ${sale.id}`,
         )
 
-        totalPaid += payNow
-        remainingPayment -= payNow
+        totalPaid = roundMoney(totalPaid + payNow)
+
+        remainingPayment = roundMoney(remainingPayment - payNow)
 
         allocations.push({
           sale_id: sale.id,
@@ -1600,7 +1606,7 @@ export function updateCustomerPaymentBatch(input: {
   const db = getDb()
 
   const batchId = Number(input.batch_id || 0)
-  const amountInput = Number(input.amount || 0)
+  const amountInput = roundMoney(input.amount)
 
   const actorId = Number(input.actor_id || 0)
 

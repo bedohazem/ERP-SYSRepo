@@ -3,6 +3,7 @@ import BarcodePreview from '../../components/products/BarcodePreview'
 import { useAuthStore } from '../../store/auth.store'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 import JsBarcode from 'jsbarcode'
+import { roundMoney } from '../../../shared/money'
 
 type Category = {
   id: number
@@ -115,8 +116,7 @@ function escapeHtml(value: string) {
 }
 
 function money(value: unknown) {
-  const n = Number(value || 0)
-  return Number.isFinite(n) ? n.toFixed(2) : '0.00'
+  return String(roundMoney(value))
 }
 
 type ProductsTab = 'list' | 'create' | 'edit'

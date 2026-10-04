@@ -72,6 +72,70 @@ describe('product repository', () => {
     expect(variants[0].stock).toBe(10)
   })
 
+  it('stores product prices as whole pounds', () => {
+    const result = createProduct({
+      name: 'Rounded Prices',
+
+      category_id: null,
+
+      variants: [
+        {
+          barcode: 'ROUNDPRICE001',
+
+          size: 'M',
+
+          color: 'Black',
+
+          buy_price: 100.49,
+
+          sell_price: 150.5,
+
+          discount_price: 120.5,
+
+          min_stock: 5,
+
+          opening_qty: 1,
+        },
+      ],
+    })
+
+    let variants = getProductVariants(
+      result.productId,
+    ) as ProductVariantTestRow[]
+
+    expect(variants[0].buy_price).toBe(100)
+
+    expect(variants[0].sell_price).toBe(151)
+
+    expect(variants[0].discount_price).toBe(121)
+
+    updateVariant({
+      id: variants[0].id,
+
+      barcode: 'ROUNDPRICE001',
+
+      size: 'M',
+
+      color: 'Black',
+
+      buy_price: 110.5,
+
+      sell_price: 160.49,
+
+      discount_price: 130.5,
+
+      min_stock: 5,
+    })
+
+    variants = getProductVariants(result.productId) as ProductVariantTestRow[]
+
+    expect(variants[0].buy_price).toBe(111)
+
+    expect(variants[0].sell_price).toBe(160)
+
+    expect(variants[0].discount_price).toBe(131)
+  })
+
   it('rejects empty product name', () => {
     expect(() =>
       createProduct({

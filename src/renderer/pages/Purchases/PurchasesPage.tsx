@@ -5,16 +5,7 @@ import { hasUserPermission } from '../../utils/permissions'
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import PurchaseOrdersPanel from './PurchaseOrdersPanel'
-
-function roundMoney(value: number) {
-  const amount = Number(value || 0)
-
-  if (!Number.isFinite(amount)) {
-    return 0
-  }
-
-  return Math.round((amount + Number.EPSILON) * 100) / 100
-}
+import { formatMoney, roundMoney } from '../../../shared/money'
 
 const PURCHASE_DRAFT_KEY = 'fony_purchase_invoice_draft_v1'
 
@@ -1055,8 +1046,7 @@ export default function PurchasesPage() {
                 <option value="">اختار مورد</option>
                 {suppliers.map((supplier) => (
                   <option key={supplier.id} value={supplier.id}>
-                    {supplier.name} - رصيد:{' '}
-                    {Number(supplier.balance || 0).toFixed(2)}
+                    {supplier.name} - رصيد: {roundMoney(supplier.balance)}
                   </option>
                 ))}
               </select>
@@ -1773,7 +1763,7 @@ export default function PurchasesPage() {
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
+  return formatMoney(value)
 }
 
 const cardStyle: CSSProperties = {

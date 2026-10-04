@@ -242,4 +242,44 @@ describe('purchase orders repository', () => {
 
     expect(Number(supplierRow.balance)).toBe(450)
   })
+
+  it('stores purchase order costs as whole pounds', () => {
+    const supplier = createSupplier({
+      name: 'Rounded PO Supplier',
+    }) as any
+
+    const variant = seedVariant({
+      name: 'Rounded PO Product',
+
+      barcode: 'PO-ROUND-MONEY',
+
+      openingQty: 0,
+
+      minStock: 1,
+
+      buyPrice: 80,
+    })
+
+    const order = createPurchaseOrder({
+      supplier_id: supplier.id,
+
+      actor_id: 1,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 2,
+
+          unit_cost: 90.5,
+        },
+      ],
+    })
+
+    const snapshot = getPurchaseOrder(order.purchase_order_id) as any
+
+    expect(snapshot.items[0].unit_cost).toBe(91)
+
+    expect(snapshot.items[0].line_total).toBe(182)
+  })
 })

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { printShiftCloseReceipt } from '../../utils/shiftReceiptPrint'
+import { formatMoney } from '../../../shared/money'
+
 type ShiftUser = {
   id: number
   name: string
@@ -53,8 +55,8 @@ type Props = {
   isMobile: boolean
 }
 
-function money(value?: number | null) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
+function money(value: unknown) {
+  return formatMoney(value)
 }
 
 function formatShiftTime(value?: string | null) {
@@ -742,7 +744,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
               autoFocus
               type="number"
               min="0"
-              step="0.01"
+              step="1"
               value={openingAmount}
               onChange={(event) => setOpeningAmount(event.target.value)}
               style={{
@@ -966,7 +968,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
               autoFocus
               type="number"
               min="0"
-              step="0.01"
+              step="1"
               value={closingAmount}
               onChange={(event) => setClosingAmount(event.target.value)}
               style={{
@@ -988,7 +990,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
             <input
               type="number"
               min="0"
-              step="0.01"
+              step="1"
               value={leftForNextShift}
               onChange={(event) => setLeftForNextShift(event.target.value)}
               style={{

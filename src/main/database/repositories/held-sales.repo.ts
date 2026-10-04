@@ -1,5 +1,5 @@
 import { getDb } from '../db'
-
+import { roundMoney } from '../../../shared/money'
 export type CreateHeldSaleInput = {
   user_id: number
 
@@ -25,10 +25,6 @@ type HeldSaleAccessInput = {
   actor_id: number
 
   is_admin: boolean
-}
-
-function roundMoney(value: number) {
-  return Number(Number(value || 0).toFixed(2))
 }
 
 function getHeldSaleHeaderForAccess(input: HeldSaleAccessInput) {
@@ -260,7 +256,7 @@ export function createHeldSale(input: CreateHeldSaleInput) {
 
         discountType,
 
-        roundMoney(discountValue),
+        discountType === 'amount' ? roundMoney(discountValue) : discountValue,
 
         notes || null,
       )

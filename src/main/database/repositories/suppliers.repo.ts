@@ -1,4 +1,5 @@
 import { getDb } from '../db'
+import { roundMoney } from '../../../shared/money'
 
 export type SupplierInput = {
   name: string
@@ -221,15 +222,15 @@ export function getSupplierAgingSummary(
     .get(...params) as any
 
   return {
-    days_0_30: Number(Number(row?.days_0_30 || 0).toFixed(2)),
+    days_0_30: roundMoney(row?.days_0_30),
 
-    days_31_60: Number(Number(row?.days_31_60 || 0).toFixed(2)),
+    days_31_60: roundMoney(row?.days_31_60),
 
-    days_61_90: Number(Number(row?.days_61_90 || 0).toFixed(2)),
+    days_61_90: roundMoney(row?.days_61_90),
 
-    days_90_plus: Number(Number(row?.days_90_plus || 0).toFixed(2)),
+    days_90_plus: roundMoney(row?.days_90_plus),
 
-    total: Number(Number(row?.total || 0).toFixed(2)),
+    total: roundMoney(row?.total),
   }
 }
 
@@ -412,15 +413,15 @@ export function getSupplierDueSummary(
     .get(...params) as any
 
   return {
-    overdue: Number(Number(row?.overdue || 0).toFixed(2)),
+    overdue: roundMoney(row?.overdue),
 
-    due_today: Number(Number(row?.due_today || 0).toFixed(2)),
+    due_today: roundMoney(row?.due_today),
 
-    due_soon: Number(Number(row?.due_soon || 0).toFixed(2)),
+    due_soon: roundMoney(row?.due_soon),
 
-    without_due_date: Number(Number(row?.without_due_date || 0).toFixed(2)),
+    without_due_date: roundMoney(row?.without_due_date),
 
-    total_open: Number(Number(row?.total_open || 0).toFixed(2)),
+    total_open: roundMoney(row?.total_open),
   }
 }
 
@@ -742,22 +743,21 @@ export function deleteSupplier(id: number) {
       }
     | undefined
 
-  const supplierBalance = Number(Number(supplier.balance || 0).toFixed(2))
+  const supplierBalance = roundMoney(supplier.balance)
 
   if (supplierBalance < 0) {
     throw new Error(
-      `لا يمكن حذف المورد لأن له رصيدًا ماليًا غير مسوّى بقيمة ${Math.abs(supplierBalance).toFixed(2)} ج.م`,
+      `لا يمكن حذف المورد لأن له رصيدًا ماليًا غير مسوّى بقيمة ${Math.abs(supplierBalance)} ج.م`,
     )
   }
 
-  const outstandingAmount = Math.max(
-    supplierBalance,
-    Number(openDebtRow?.open_debt || 0),
+  const outstandingAmount = roundMoney(
+    Math.max(supplierBalance, Number(openDebtRow?.open_debt || 0)),
   )
 
-  if (Number(outstandingAmount.toFixed(2)) > 0) {
+  if (outstandingAmount > 0) {
     throw new Error(
-      `لا يمكن حذف المورد لأن له مستحقات بقيمة ${outstandingAmount.toFixed(2)} ج.م`,
+      `لا يمكن حذف المورد لأن له مستحقات بقيمة ${outstandingAmount} ج.م`,
     )
   }
 

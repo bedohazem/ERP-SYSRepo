@@ -7,6 +7,7 @@ import {
 import FinancialCancelModal from '../../components/FinancialCancelModal'
 import MultiSelectFilter from '../../components/MultiSelectFilter'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
+import { formatMoney } from '../../../shared/money'
 
 type CashSummary = {
   total_in: number
@@ -625,7 +626,7 @@ export default function CashPage() {
   }
 
   function money(value: unknown) {
-    return `${Number(value || 0).toFixed(2)} ج.م`
+    return formatMoney(value)
   }
 
   function getLocalDateKey(date: Date) {

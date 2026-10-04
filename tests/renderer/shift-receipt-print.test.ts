@@ -42,14 +42,17 @@ describe('shift close thermal receipt', () => {
 
     expect(html).toContain('Test Cashier')
 
-    expect(html).toContain('500.00')
-
-    expect(html).toContain('100.00')
+    expect(html).toContain('500')
+    expect(html).toContain('100')
 
     /*
      * 500 - 100
      */
-    expect(html).toContain('400.00')
+    expect(html).toContain('400')
+
+    expect(html).not.toContain('500.00')
+    expect(html).not.toContain('100.00')
+    expect(html).not.toContain('400.00')
 
     expect(html).toContain('width:\n              245px')
 

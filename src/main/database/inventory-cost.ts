@@ -1,22 +1,13 @@
 import type Database from 'better-sqlite3'
+import { roundMoney } from '../../shared/money'
 
 type Db = Database.Database
 
 const STOCK_EPSILON = 0.000001
 const VALUE_EPSILON = 0.01
 
-function roundCost(value: number) {
-  const amount = Number(value || 0)
-
-  if (!Number.isFinite(amount)) {
-    return 0
-  }
-
-  return Number(amount.toFixed(4))
-}
-
-function roundValue(value: number) {
-  const amount = Number(value || 0)
+function roundAverageCost(value: unknown): number {
+  const amount = Number(value ?? 0)
 
   if (!Number.isFinite(amount)) {
     return 0
@@ -137,11 +128,11 @@ export function getInventoryCostState(
 
     stock: Number(row.stock || 0),
 
-    buy_price: roundCost(Number(row.buy_price || 0)),
+    buy_price: roundMoney(Number(row.buy_price || 0)),
 
-    average_cost: roundCost(Number(row.average_cost || 0)),
+    average_cost: roundAverageCost(row.average_cost),
 
-    inventory_value: roundValue(Number(row.inventory_value || 0)),
+    inventory_value: roundMoney(Number(row.inventory_value || 0)),
   }
 }
 
@@ -164,9 +155,9 @@ function updateCostState(
       `,
     )
     .run(
-      roundCost(averageCost),
+      roundAverageCost(averageCost),
 
-      roundValue(inventoryValue),
+      roundMoney(inventoryValue),
 
       variantId,
     )
@@ -225,9 +216,9 @@ function insertCostedMovement(
       input.type,
       input.quantity,
 
-      roundCost(input.unit_cost),
+      roundMoney(input.unit_cost),
 
-      roundValue(input.cost_value),
+      roundMoney(input.cost_value),
 
       input.reference_id ?? null,
 
@@ -263,14 +254,16 @@ export function receiveStockAtCost(
     )
   }
 
-  const movementValue = roundValue(quantity * unitCost)
+  const movementValue = roundMoney(quantity * unitCost)
 
   const nextStock = state.stock + quantity
 
-  const nextInventoryValue = roundValue(state.inventory_value + movementValue)
+  const nextInventoryValue = roundMoney(state.inventory_value + movementValue)
 
   const nextAverageCost =
-    nextStock > STOCK_EPSILON ? roundCost(nextInventoryValue / nextStock) : 0
+    nextStock > STOCK_EPSILON
+      ? roundAverageCost(nextInventoryValue / nextStock)
+      : 0
 
   insertCostedMovement(database, {
     variant_id: variantId,
@@ -293,7 +286,7 @@ export function receiveStockAtCost(
   updateCostState(database, variantId, nextAverageCost, nextInventoryValue)
 
   return {
-    unit_cost: roundCost(unitCost),
+    unit_cost: roundMoney(unitCost),
 
     cost_value: movementValue,
 
@@ -325,11 +318,11 @@ export function issueStockAtAverageCost(
 
   const unitCost = state.average_cost
 
-  const movementValue = roundValue(quantity * unitCost)
+  const movementValue = roundMoney(quantity * unitCost)
 
   const nextStock = state.stock - quantity
 
-  let nextInventoryValue = roundValue(state.inventory_value - movementValue)
+  let nextInventoryValue = roundMoney(state.inventory_value - movementValue)
 
   if (Math.abs(nextInventoryValue) <= VALUE_EPSILON) {
     nextInventoryValue = 0
@@ -340,7 +333,9 @@ export function issueStockAtAverageCost(
   }
 
   const nextAverageCost =
-    nextStock > STOCK_EPSILON ? roundCost(nextInventoryValue / nextStock) : 0
+    nextStock > STOCK_EPSILON
+      ? roundAverageCost(nextInventoryValue / nextStock)
+      : 0
 
   insertCostedMovement(database, {
     variant_id: variantId,
@@ -404,11 +399,11 @@ export function issueStockAtCost(
     throw new Error(`المخزون غير كافي. المتاح: ${state.stock}`)
   }
 
-  const movementValue = roundValue(quantity * unitCost)
+  const movementValue = roundMoney(quantity * unitCost)
 
   const nextStock = state.stock - quantity
 
-  let nextInventoryValue = roundValue(state.inventory_value - movementValue)
+  let nextInventoryValue = roundMoney(state.inventory_value - movementValue)
 
   if (Math.abs(nextInventoryValue) <= VALUE_EPSILON) {
     nextInventoryValue = 0
@@ -428,7 +423,9 @@ export function issueStockAtCost(
   }
 
   const nextAverageCost =
-    nextStock > STOCK_EPSILON ? roundCost(nextInventoryValue / nextStock) : 0
+    nextStock > STOCK_EPSILON
+      ? roundAverageCost(nextInventoryValue / nextStock)
+      : 0
 
   insertCostedMovement(database, {
     variant_id: variantId,
@@ -456,7 +453,7 @@ export function issueStockAtCost(
   )
 
   return {
-    unit_cost: roundCost(unitCost),
+    unit_cost: roundMoney(unitCost),
 
     cost_value: movementValue,
 

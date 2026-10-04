@@ -6,16 +6,7 @@ import {
 } from '../../utils/payment-method'
 import { useNavigate } from 'react-router-dom'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
-
-function roundMoney(value: number) {
-  const amount = Number(value || 0)
-
-  if (!Number.isFinite(amount)) {
-    return 0
-  }
-
-  return Math.round((amount + Number.EPSILON) * 100) / 100
-}
+import { formatMoney, roundMoney } from '../../../shared/money'
 
 function hasRemainingAmount(value: number) {
   return roundMoney(value) > 0
@@ -324,7 +315,7 @@ export default function PurchaseHistoryPage() {
     }
 
     setPaymentPurchase(row)
-    setPaymentAmount(remaining.toFixed(2))
+    setPaymentAmount(String(remaining))
     setPaymentMethod(row.payment_method || 'store_cash')
     setPaymentNotes('')
   }
@@ -2374,7 +2365,7 @@ function paymentMethodName(value?: string | null) {
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
+  return formatMoney(value)
 }
 
 function formatDate(value?: string) {

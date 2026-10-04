@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import PaginationBar, { SYSTEM_PAGE_SIZE } from '../../components/PaginationBar'
 import { useAuthStore } from '../../store/auth.store'
 import { hasUserPermission } from '../../utils/permissions'
+import { formatMoney } from '../../../shared/money'
 
 type InventoryRow = {
   variant_id: number
@@ -1601,7 +1602,7 @@ function movementTypeName(movement: MovementRow) {
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
+  return formatMoney(value)
 }
 
 function formatDate(value?: string) {

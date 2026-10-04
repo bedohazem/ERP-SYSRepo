@@ -1,6 +1,7 @@
 import { getDb } from '../db'
 import { createCriticalActivityLog } from './activity.repo'
 import { getShiftBusinessDate } from '../shift-business-date'
+import { roundMoney } from '../../../shared/money'
 export type CashMovementInput = {
   type:
     | 'sale'
@@ -145,7 +146,7 @@ function getAccountBalance(account: string) {
     )
     .get(safeAccount) as { total_in: number; total_out: number } | undefined
 
-  return Number(row?.total_in || 0) - Number(row?.total_out || 0)
+  return roundMoney(Number(row?.total_in || 0) - Number(row?.total_out || 0))
 }
 
 function getAccountLabel(account: CashAccountKey) {
@@ -317,7 +318,7 @@ function buildCashWhere(
 export function createCashMovement(input: CashMovementInput) {
   const db = getDb()
 
-  const amount = Number(input.amount || 0)
+  const amount = roundMoney(input.amount)
   const type = String(input.type || '').trim()
   const direction = input.direction
   const account = resolveCashAccount(input.payment_method || 'store_cash')
@@ -348,7 +349,7 @@ export function createCashMovement(input: CashMovementInput) {
 
     if (amount > currentBalance) {
       throw new Error(
-        `لا يمكن إتمام العملية: رصيد ${getAccountLabel(account)} غير كافٍ. الرصيد الحالي ${currentBalance.toFixed(2)} ج.م والمطلوب ${amount.toFixed(2)} ج.م`,
+        `لا يمكن إتمام العملية: رصيد ${getAccountLabel(account)} غير كافٍ. الرصيد الحالي ${roundMoney(currentBalance)} ج.م والمطلوب ${amount} ج.م`,
       )
     }
   }
@@ -538,7 +539,7 @@ export function createCashTransfer(input: CashTransferInput) {
   const db = getDb()
   normalizeLegacyCashMovementAccounts()
 
-  const amount = Number(input.amount || 0)
+  const amount = roundMoney(input.amount)
   const fromAccount = resolveCashAccount(input.from_account)
   const toAccount = resolveCashAccount(input.to_account)
 
@@ -593,16 +594,6 @@ export function createCashTransfer(input: CashTransferInput) {
   })
 
   return tx()
-}
-
-function roundMoney(value: number) {
-  const amount = Number(value || 0)
-
-  if (!Number.isFinite(amount)) {
-    return 0
-  }
-
-  return Math.round((amount + Number.EPSILON) * 100) / 100
 }
 
 function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {

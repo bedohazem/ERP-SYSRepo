@@ -178,6 +178,26 @@ describe('expense repository', () => {
     expect(lastLog.entity).toBe('cash_movements')
   })
 
+  it('rounds expense money to whole pounds before storing it and moving cash', () => {
+    const result = createExpense({
+      title: 'Rounded Expense',
+
+      amount: 10.5,
+
+      payment_method: 'cash',
+
+      created_by: 1,
+    })
+
+    expect(result.success).toBe(true)
+
+    const expenses = listExpenses() as ExpenseTestRow[]
+
+    expect(expenses[0].amount).toBe(11)
+
+    expect(getCashMovementTotal('out')).toBe(11)
+  })
+
   it('uses cash as default payment method', () => {
     createExpense({
       title: 'Office Supplies',

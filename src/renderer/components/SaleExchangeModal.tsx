@@ -8,6 +8,7 @@ import {
   getPromotionScopeLabel,
   getPromotionTypeLabel,
 } from '../utils/promotion-display'
+import { formatMoney, roundMoney } from '../../shared/money'
 
 type ExchangeUnit = {
   id: number
@@ -106,11 +107,7 @@ type Props = {
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
-}
-
-function roundMoney(value: number) {
-  return Number(Number(value || 0).toFixed(2))
+  return formatMoney(value)
 }
 
 function resolveCashAccount(method?: string | null) {

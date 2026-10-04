@@ -263,4 +263,38 @@ describe('promotions repository', () => {
       }),
     ).toThrow('نسبة الخصم لا يمكن أن تتجاوز 100%')
   })
+
+  it('rounds fixed promotion money but preserves fractional percentages', () => {
+    const fixed = createPromotion({
+      name: 'Rounded Fixed',
+
+      type: 'fixed_invoice',
+
+      value: 12.5,
+
+      scope_type: 'all',
+    })
+
+    const percent = createPromotion({
+      name: 'Fractional Percent',
+
+      type: 'percent',
+
+      value: 12.5,
+
+      scope_type: 'all',
+    })
+
+    const rows = listPromotions() as any[]
+
+    const fixedRow = rows.find((row) => Number(row.id) === fixed.promotionId)
+
+    const percentRow = rows.find(
+      (row) => Number(row.id) === percent.promotionId,
+    )
+
+    expect(Number(fixedRow.value)).toBe(13)
+
+    expect(Number(percentRow.value)).toBe(12.5)
+  })
 })

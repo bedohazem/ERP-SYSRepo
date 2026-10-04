@@ -3,6 +3,7 @@ import { createCashMovement, resolveCashAccount } from './cash.repo'
 import { createCriticalActivityLog } from './activity.repo'
 import { resolveFinancialOperationShift } from './cash-shifts.repo'
 import { getShiftBusinessDate } from '../shift-business-date'
+import { roundMoney } from '../../../shared/money'
 
 export type CreateExpenseInput = {
   title: string
@@ -78,7 +79,7 @@ export function createExpense(input: CreateExpenseInput) {
     throw new Error('عنوان المصروف مطلوب')
   }
 
-  const amount = Number(input.amount || 0)
+  const amount = roundMoney(input.amount)
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error('قيمة المصروف غير صحيحة')
@@ -308,7 +309,7 @@ export function listExpensesPage(input?: {
   return {
     rows,
     total: Number(totalRow?.total || 0),
-    total_amount: Number(summary?.total_amount || 0),
+    total_amount: roundMoney(summary?.total_amount),
     limit,
     offset,
   }
@@ -329,7 +330,7 @@ export function updateExpense(input: UpdateExpenseInput) {
     throw new Error('عنوان المصروف مطلوب')
   }
 
-  const amount = Number(input.amount || 0)
+  const amount = roundMoney(input.amount)
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error('قيمة المصروف غير صحيحة')

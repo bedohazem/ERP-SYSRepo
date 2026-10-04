@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getPaymentMethodLabel } from '../../utils/payment-method'
 import { buildReportsCsv, buildReportsPdfHtml } from './report-export'
+import { formatMoney } from '../../../shared/money'
 
 type ReportsData = {
   summary: {
@@ -1091,7 +1092,7 @@ function ReportTable({
 }
 
 function money(value: unknown) {
-  return `${Number(value || 0).toFixed(2)} ج.م`
+  return formatMoney(value)
 }
 
 function formatDateOnly(value?: string) {
