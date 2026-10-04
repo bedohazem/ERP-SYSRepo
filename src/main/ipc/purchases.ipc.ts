@@ -596,13 +596,43 @@ export function registerPurchasesIpc(): void {
       'رقم مرتجع الشراء',
     );
 
+    const rawItems = requireArrayInput(
+      payload.items,
+      'أصناف مرتجع الشراء',
+      500,
+    );
+
+    if (rawItems.length === 0) {
+      throw new Error('لا توجد أصناف في المرتجع');
+    }
+
+    const items = rawItems.map((rawItem) => {
+      const item = requireObjectInput(rawItem, 'بيانات صنف مرتجع الشراء');
+
+      const purchaseItemId = optionalPositiveInteger(
+        item.purchase_item_id,
+        'رقم بند فاتورة الشراء',
+      );
+
+      const variantId = optionalPositiveInteger(
+        item.variant_id,
+        'رقم صنف مرتجع الشراء',
+      );
+
+      if (!purchaseItemId && !variantId) {
+        throw new Error('صنف مرتجع الشراء غير صحيح');
+      }
+
+      return {
+        purchase_item_id: purchaseItemId,
+
+        variant_id: variantId,
+
+        quantity: requirePositiveNumber(item.quantity, 'كمية مرتجع الشراء'),
+      };
+    });
+
     input = {
-      ...normalizePurchaseReturnInput({
-        ...payload,
-
-        purchase_id: payload.purchase_id ?? 1,
-      }),
-
       return_id: returnId,
 
       reason: optionalTrimmedString(
@@ -610,13 +640,24 @@ export function registerPurchasesIpc(): void {
         'سبب تعديل مرتجع الشراء',
         500,
       ),
-    };
 
-    delete (
-      input as {
-        purchase_id?: number;
-      }
-    ).purchase_id;
+      notes: optionalTrimmedString(payload.notes, 'ملاحظات مرتجع الشراء', 2000),
+
+      refund_mode:
+        optionalEnumValue(
+          payload.refund_mode,
+          PURCHASE_RETURN_MODES,
+          'طريقة تسوية مرتجع الشراء',
+        ) ?? 'cash',
+
+      refund_payment_method: optionalEnumValue(
+        payload.refund_payment_method,
+        PURCHASE_PAYMENT_METHODS,
+        'حساب رد مرتجع الشراء',
+      ),
+
+      items,
+    };
 
     const approval = requireAdminPassword(actorId, adminPassword);
 
@@ -755,6 +796,18 @@ export function registerPurchasesIpc(): void {
         'رقم دفعة المورد',
       );
 
+      const reason = optionalTrimmedString(
+        payload.reason,
+        'سبب إلغاء دفعة المورد',
+        500,
+      );
+
+      const adminPassword = optionalStringValue(
+        payload.admin_password,
+        'كلمة مرور المدير',
+        256,
+      );
+
       const access = getSupplierPaymentBatchAccess(batchId, actorId);
 
       let approvedBy: number | null = null;
@@ -763,7 +816,7 @@ export function registerPurchasesIpc(): void {
         approvedBy = requireAdminPassword(
           actorId,
 
-          input?.admin_password,
+          adminPassword,
         ).id;
       }
 
@@ -772,7 +825,7 @@ export function registerPurchasesIpc(): void {
           cancelSupplierPaymentBatch({
             batch_id: batchId,
 
-            reason: input?.reason,
+            reason,
 
             actor_id: actorId,
           }),
@@ -793,11 +846,7 @@ export function registerPurchasesIpc(): void {
 
             amount: result.cancelled_amount,
 
-            reason: optionalTrimmedString(
-              payload.reason,
-              'سبب إلغاء دفعة المورد',
-              500,
-            ),
+            reason,
 
             shift_id: result.cancelled_shift_id,
           },
@@ -826,6 +875,12 @@ export function registerPurchasesIpc(): void {
         'رقم دفعة المورد',
       );
 
+      const adminPassword = optionalStringValue(
+        payload.admin_password,
+        'كلمة مرور المدير',
+        256,
+      );
+
       const access = getSupplierPaymentBatchAccess(batchId, actorId);
 
       let approvedBy: number | null = null;
@@ -834,7 +889,7 @@ export function registerPurchasesIpc(): void {
         approvedBy = requireAdminPassword(
           actorId,
 
-          input?.admin_password,
+          adminPassword,
         ).id;
       }
 
@@ -913,10 +968,28 @@ export function registerPurchasesIpc(): void {
     return getSmartReorderSuggestions(input);
   });
 
-  ipcMain.handle('purchases:orders:list', (event, input) => {
+  ipcMain.handle('purchases:orders:list', (event, input?: unknown) => {
     requirePermission(event, 'purchases.manage');
 
-    return listPurchaseOrders(input);
+    const payload = requireObjectInput(input ?? {}, 'فلتر أوامر الشراء');
+
+    const status =
+      optionalEnumValue(
+        payload.status,
+        PURCHASE_ORDER_STATUSES,
+        'حالة أمر الشراء',
+      ) ?? 'all';
+
+    const supplierId = optionalPositiveInteger(
+      payload.supplier_id,
+      'رقم المورد',
+    );
+
+    return listPurchaseOrders({
+      status,
+
+      supplier_id: supplierId ?? undefined,
+    });
   });
 
   ipcMain.handle('purchases:orders:get', (event, purchaseOrderId: number) => {
@@ -1046,7 +1119,7 @@ export function registerPurchasesIpc(): void {
   ipcMain.handle('purchases:orders:cancel', (event, input) => {
     const actorId = requirePermission(event, 'purchases.manage').id;
 
-    const payload = requireObjectInput(input, 'بيانات اعتماد أمر الشراء');
+    const payload = requireObjectInput(input, 'بيانات إلغاء أمر الشراء');
 
     const orderId = requirePositiveInteger(
       payload.purchase_order_id,

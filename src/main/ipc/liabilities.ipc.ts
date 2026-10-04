@@ -210,11 +210,6 @@ export function registerLiabilitiesIpc(): void {
 
         actor_id: actorId,
       });
-
-      return recordLiabilityPayment({
-        ...input,
-        actor_id: actorId,
-      });
     } catch (error) {
       return {
         success: false,

@@ -26,6 +26,7 @@ import {
 import { userHasPermission } from '../database/repositories/user.repo';
 import {
   optionalBooleanValue,
+  optionalNonNegativeInteger,
   optionalNonNegativeNumber,
   optionalPositiveInteger,
   optionalPositiveMoney,
@@ -120,23 +121,28 @@ function normalizeCategoryFilter(value: unknown) {
 }
 
 export function registerProductsIpc(): void {
-  ipcMain.handle(
-    'products:get-categories',
-    (event, input?: { includeInactive?: boolean }) => {
-      const actor = requireAuthenticatedUser(event);
+  ipcMain.handle('products:get-categories', (event, input?: unknown) => {
+    const actor = requireAuthenticatedUser(event);
 
-      /*
-       * الكاشير يحتاج التصنيفات في شاشة البيع والجرد،
-       * لكن لا يحتاج رؤية التصنيفات المعطلة.
-       */
-      const includeInactive =
-        actor.role === 'admin' || userHasPermission(actor.id, 'products.manage')
-          ? Boolean(input?.includeInactive)
-          : false;
+    const payload = requireObjectInput(input ?? {}, 'فلتر التصنيفات');
 
-      return getCategories(includeInactive);
-    },
-  );
+    const requestedIncludeInactive =
+      optionalBooleanValue(
+        payload.includeInactive,
+        'إظهار التصنيفات المعطلة',
+      ) ?? false;
+
+    /*
+     * الكاشير يحتاج التصنيفات في شاشة البيع والجرد،
+     * لكن لا يحتاج رؤية التصنيفات المعطلة.
+     */
+    const includeInactive =
+      actor.role === 'admin' || userHasPermission(actor.id, 'products.manage')
+        ? requestedIncludeInactive
+        : false;
+
+    return getCategories(includeInactive);
+  });
 
   ipcMain.handle('products:create-category', (event, input) => {
     try {
@@ -261,39 +267,57 @@ export function registerProductsIpc(): void {
     },
   );
 
-  ipcMain.handle(
-    'products:list',
-    (
-      event,
-      payload?: {
-        search?: string;
-        includeInactive?: boolean;
-        categoryId?: number | string | null;
-      },
-    ) => {
-      const actor = requireAnyPermission(event, [
-        'products.manage',
-        'promotions.manage',
-      ]);
+  ipcMain.handle('products:list', (event, input?: unknown) => {
+    const actor = requireAnyPermission(event, [
+      'products.manage',
+      'promotions.manage',
+    ]);
 
-      const canManageProducts =
-        actor.role === 'admin' ||
-        userHasPermission(actor.id, 'products.manage');
+    const payload = requireObjectInput(input ?? {}, 'فلتر المنتجات');
 
-      return getProducts(
-        payload?.search ?? '',
+    const search =
+      optionalTrimmedString(payload.search, 'بحث المنتجات', 500) ?? '';
 
-        canManageProducts ? (payload?.includeInactive ?? false) : false,
+    const requestedIncludeInactive =
+      optionalBooleanValue(payload.includeInactive, 'إظهار المنتجات المعطلة') ??
+      false;
 
-        payload?.categoryId ?? null,
-      );
-    },
-  );
+    const categoryId = normalizeCategoryFilter(payload.categoryId);
 
-  ipcMain.handle('products:list-page', (event, input) => {
+    const canManageProducts =
+      actor.role === 'admin' || userHasPermission(actor.id, 'products.manage');
+
+    return getProducts(
+      search,
+
+      canManageProducts ? requestedIncludeInactive : false,
+
+      categoryId,
+    );
+  });
+
+  ipcMain.handle('products:list-page', (event, input?: unknown) => {
     requirePermission(event, 'products.manage');
 
-    return listProductsPage(input);
+    const payload = requireObjectInput(input ?? {}, 'فلتر المنتجات');
+
+    return listProductsPage({
+      search: optionalTrimmedString(payload.search, 'بحث المنتجات', 500) ?? '',
+
+      includeInactive:
+        optionalBooleanValue(
+          payload.includeInactive,
+          'إظهار المنتجات المعطلة',
+        ) ?? false,
+
+      categoryId: normalizeCategoryFilter(payload.categoryId),
+
+      limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
+
+      offset:
+        optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ??
+        undefined,
+    });
   });
 
   ipcMain.handle(

@@ -630,6 +630,30 @@ describe('domain IPC session scope', () => {
     expect(badToggle).toMatchObject({
       success: false,
     });
+
+    await expect(
+      invoke(event, 'products:get-categories', {
+        includeInactive: 'yes',
+      }),
+    ).rejects.toThrow('إظهار التصنيفات المعطلة غير صحيحة');
+
+    await expect(
+      invoke(event, 'products:list', {
+        categoryId: true,
+      }),
+    ).rejects.toThrow('رقم التصنيف غير صحيح');
+
+    await expect(
+      invoke(event, 'products:list-page', {
+        offset: true,
+      }),
+    ).rejects.toThrow('بداية النتائج غير صحيح');
+
+    await expect(
+      invoke(event, 'purchases:orders:list', {
+        status: 'fake-status',
+      }),
+    ).rejects.toThrow('حالة أمر الشراء غير صحيح');
   });
 
   it('hides product cost from cashier sales reads but keeps it for admins', async () => {
