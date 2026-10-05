@@ -39,8 +39,13 @@ import {
   createVerifiedDatabaseBackup,
   restoreVerifiedDatabase,
 } from '../database/database-backup';
-
 import { validateErpDatabaseFile } from '../database/backup-integrity';
+import {
+  optionalBooleanValue,
+  requireObjectInput,
+  requirePositiveInteger,
+  requirePositiveMoney,
+} from './input-validation';
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -169,8 +174,43 @@ export function registerSettingsIpc(): void {
   ipcMain.handle('settings:save-loyalty', (event, input) => {
     const actorId = requireAuthenticatedAdmin(event);
 
+    const payload = requireObjectInput(input, 'إعدادات نقاط الولاء');
+
+    const loyaltyEnabled = optionalBooleanValue(
+      payload.loyalty_enabled,
+      'حالة تفعيل نقاط الولاء',
+    );
+
+    if (loyaltyEnabled === undefined) {
+      throw new Error('حالة تفعيل نقاط الولاء مطلوبة');
+    }
+
+    const settings = {
+      loyalty_enabled: loyaltyEnabled,
+
+      loyalty_earn_amount: requirePositiveMoney(
+        payload.loyalty_earn_amount,
+        'قيمة كسب النقاط',
+      ),
+
+      loyalty_earn_points: requirePositiveInteger(
+        payload.loyalty_earn_points,
+        'عدد النقاط المكتسبة',
+      ),
+
+      loyalty_point_value: requirePositiveMoney(
+        payload.loyalty_point_value,
+        'قيمة النقطة',
+      ),
+
+      loyalty_min_redeem_points: requirePositiveInteger(
+        payload.loyalty_min_redeem_points,
+        'الحد الأدنى لاستخدام النقاط',
+      ),
+    };
+
     return runCriticalActionWithAudit(
-      () => saveLoyaltySettings(input),
+      () => saveLoyaltySettings(settings),
 
       () => ({
         actor_id: actorId,

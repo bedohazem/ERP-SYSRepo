@@ -14,6 +14,14 @@ import {
   requirePermission,
 } from '../auth-session';
 
+import {
+  optionalDateOnly,
+  optionalEnumValue,
+  optionalNonNegativeInteger,
+  optionalPositiveInteger,
+  requireObjectInput,
+} from './input-validation';
+
 const execFileAsync = promisify(execFile);
 
 type CashDrawerSettings = {
@@ -37,6 +45,10 @@ const DEFAULT_SETTINGS: CashDrawerSettings = {
   printer_name: '',
   auto_open_cash_sale: true,
 };
+
+const CASH_DRAWER_EVENT_STATUSES = ['all', 'success', 'failed'] as const;
+
+const CASH_DRAWER_REASONS = ['manual', 'sale', 'test'] as const;
 
 function getSetting(key: string, fallback: string) {
   const db = getDb();
@@ -312,126 +324,137 @@ export function registerCashDrawerIpc(): void {
   ipcMain.handle('cash-drawer:list-no-sale-events', (event, input) => {
     requirePermission(event, 'shifts.manage');
 
+    const payload = requireObjectInput(input ?? {}, 'فلتر فتح درج الكاشير');
+
     return listCashDrawerNoSaleEvents({
-      shift_id: input?.shift_id ?? null,
+      shift_id: optionalPositiveInteger(payload.shift_id, 'رقم الشفت') ?? null,
 
-      user_id: input?.user_id ?? null,
+      user_id: optionalPositiveInteger(payload.user_id, 'رقم المستخدم') ?? null,
 
-      status: input?.status || 'all',
+      status:
+        optionalEnumValue(
+          payload.status,
+          CASH_DRAWER_EVENT_STATUSES,
+          'حالة فتح درج الكاشير',
+        ) ?? 'all',
 
-      date_from: input?.date_from || null,
+      date_from: optionalDateOnly(payload.date_from, 'تاريخ البداية') ?? null,
 
-      date_to: input?.date_to || null,
+      date_to: optionalDateOnly(payload.date_to, 'تاريخ النهاية') ?? null,
 
-      limit: Number(input?.limit || 50),
+      limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? 50,
 
-      offset: Number(input?.offset || 0),
+      offset: optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ?? 0,
     });
   });
 
-  ipcMain.handle(
-    'cash-drawer:open',
-    async (event, input?: OpenCashDrawerInput) => {
-      const actor = requireAuthenticatedUser(event);
+  ipcMain.handle('cash-drawer:open', async (event, input?: unknown) => {
+    const actor = requireAuthenticatedUser(event);
 
-      const actorId = actor.id;
+    const actorId = actor.id;
 
-      const settings = getCashDrawerSettings();
+    const settings = getCashDrawerSettings();
 
-      const rawSaleId = Number(input?.sale_id || 0);
+    const payload = requireObjectInput(input ?? {}, 'بيانات فتح درج الكاشير');
 
-      const saleId =
-        Number.isInteger(rawSaleId) && rawSaleId > 0 ? rawSaleId : null;
+    const saleId =
+      optionalPositiveInteger(payload.sale_id, 'رقم فاتورة البيع') ?? null;
 
-      const reason: 'manual' | 'sale' | 'test' = saleId
-        ? 'sale'
-        : input?.reason === 'test'
-          ? 'test'
-          : 'manual';
+    const requestedReason =
+      optionalEnumValue(
+        payload.reason,
+        CASH_DRAWER_REASONS,
+        'سبب فتح درج الكاشير',
+      ) ?? 'manual';
 
-      let shiftId: number | null = null;
+    const reason: 'manual' | 'sale' | 'test' = saleId
+      ? 'sale'
+      : requestedReason === 'test'
+        ? 'test'
+        : 'manual';
 
-      try {
-        /*
-         * الفتح اليدوي للدرج
-         * حركة تشغيلية على درج المحل،
-         * لذلك لازم يكون مرتبط
-         * بشفت مفتوح.
-         */
-        if (reason === 'manual') {
-          const shift = requireOperationalCashShift(
-            actorId,
-            'لا يمكن فتح درج الكاشير بدون شفت مفتوح',
-          );
+    let shiftId: number | null = null;
 
-          shiftId = Number(shift.id);
-        }
+    try {
+      /*
+       * الفتح اليدوي للدرج
+       * حركة تشغيلية على درج المحل،
+       * لذلك لازم يكون مرتبط
+       * بشفت مفتوح.
+       */
+      if (reason === 'manual') {
+        const shift = requireOperationalCashShift(
+          actorId,
+          'لا يمكن فتح درج الكاشير بدون شفت مفتوح',
+        );
 
-        /*
-         * اختبار الدرج من الإعدادات
-         * إجراء إداري وليس No-Sale
-         * تشغيلي، لذلك لا يدخل
-         * تقرير الشفتات.
-         */
-        if (reason === 'test' && actor.role !== 'admin') {
-          throw new Error('اختبار درج الكاشير متاح لمدير النظام فقط');
-        }
-
-        await sendCashDrawerPulse(settings.printer_name);
-
-        logAction({
-          actor_id: actorId,
-
-          action: 'cash_drawer_opened',
-
-          entity: saleId ? 'sales' : shiftId ? 'cash_shifts' : 'cash_drawer',
-
-          entity_id: saleId ?? shiftId ?? null,
-
-          details: {
-            reason,
-
-            shift_id: shiftId,
-
-            printer_name: settings.printer_name,
-          },
-        });
-
-        return {
-          success: true,
-
-          message: 'تم إرسال أمر فتح درج الكاشير',
-        };
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'فشل فتح درج الكاشير';
-
-        logAction({
-          actor_id: actorId,
-
-          action: 'cash_drawer_open_failed',
-
-          entity: saleId ? 'sales' : shiftId ? 'cash_shifts' : 'cash_drawer',
-
-          entity_id: saleId ?? shiftId ?? null,
-
-          details: {
-            reason,
-
-            shift_id: shiftId,
-
-            printer_name: settings.printer_name,
-
-            error: message,
-          },
-        });
-
-        return {
-          success: false,
-
-          message,
-        };
+        shiftId = Number(shift.id);
       }
-    },
-  );
+
+      /*
+       * اختبار الدرج من الإعدادات
+       * إجراء إداري وليس No-Sale
+       * تشغيلي، لذلك لا يدخل
+       * تقرير الشفتات.
+       */
+      if (reason === 'test' && actor.role !== 'admin') {
+        throw new Error('اختبار درج الكاشير متاح لمدير النظام فقط');
+      }
+
+      await sendCashDrawerPulse(settings.printer_name);
+
+      logAction({
+        actor_id: actorId,
+
+        action: 'cash_drawer_opened',
+
+        entity: saleId ? 'sales' : shiftId ? 'cash_shifts' : 'cash_drawer',
+
+        entity_id: saleId ?? shiftId ?? null,
+
+        details: {
+          reason,
+
+          shift_id: shiftId,
+
+          printer_name: settings.printer_name,
+        },
+      });
+
+      return {
+        success: true,
+
+        message: 'تم إرسال أمر فتح درج الكاشير',
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'فشل فتح درج الكاشير';
+
+      logAction({
+        actor_id: actorId,
+
+        action: 'cash_drawer_open_failed',
+
+        entity: saleId ? 'sales' : shiftId ? 'cash_shifts' : 'cash_drawer',
+
+        entity_id: saleId ?? shiftId ?? null,
+
+        details: {
+          reason,
+
+          shift_id: shiftId,
+
+          printer_name: settings.printer_name,
+
+          error: message,
+        },
+      });
+
+      return {
+        success: false,
+
+        message,
+      };
+    }
+  });
 }

@@ -63,7 +63,7 @@ export function getSupplierAgingSummary(
         pi.remaining_amount,
         0
       ),
-      2
+      0
     ) > 0
     `,
   ];
@@ -176,7 +176,7 @@ export function getSupplierAgingSummary(
               pi.remaining_amount,
               0
             ),
-            2
+            0
           ) AS remaining_amount,
 
           MAX(
@@ -263,7 +263,7 @@ export function getSupplierDueSummary(
         pi.remaining_amount,
         0
       ),
-      2
+      0
     ) > 0
     `,
   ];
@@ -384,7 +384,7 @@ export function getSupplierDueSummary(
               pi.remaining_amount,
               0
             ),
-            2
+            0
           ) AS remaining_amount,
 
           date(

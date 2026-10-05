@@ -79,7 +79,7 @@ function getAgingSummaryForCustomer(
         s.remaining_amount,
         0
       ),
-      2
+      0
     ) > 0
     `,
   ];
@@ -192,7 +192,7 @@ function getAgingSummaryForCustomer(
               s.remaining_amount,
               0
             ),
-            2
+            0
           ) AS remaining_amount,
 
           MAX(
@@ -238,15 +238,15 @@ function getAgingSummaryForCustomer(
     .get(...params) as any;
 
   return {
-    days_0_30: Number(Number(row?.days_0_30 || 0).toFixed(2)),
+    days_0_30: roundMoney(row?.days_0_30),
 
-    days_31_60: Number(Number(row?.days_31_60 || 0).toFixed(2)),
+    days_31_60: roundMoney(row?.days_31_60),
 
-    days_61_90: Number(Number(row?.days_61_90 || 0).toFixed(2)),
+    days_61_90: roundMoney(row?.days_61_90),
 
-    days_90_plus: Number(Number(row?.days_90_plus || 0).toFixed(2)),
+    days_90_plus: roundMoney(row?.days_90_plus),
 
-    total: Number(Number(row?.total || 0).toFixed(2)),
+    total: roundMoney(row?.total),
   };
 }
 
@@ -274,13 +274,13 @@ export function getCustomerDueSummary(
     `,
 
     `
-    ROUND(
-      IFNULL(
-        s.remaining_amount,
+      ROUND(
+        IFNULL(
+          s.remaining_amount,
+          0
+        ),
         0
-      ),
-      2
-    ) > 0
+      ) > 0
     `,
   ];
 
@@ -402,7 +402,7 @@ export function getCustomerDueSummary(
               s.remaining_amount,
               0
             ),
-            2
+            0
           ) AS remaining_amount,
 
           date(
@@ -431,15 +431,15 @@ export function getCustomerDueSummary(
     .get(...params) as any;
 
   return {
-    overdue: Number(Number(row?.overdue || 0).toFixed(2)),
+    overdue: roundMoney(row?.overdue),
 
-    due_today: Number(Number(row?.due_today || 0).toFixed(2)),
+    due_today: roundMoney(row?.due_today),
 
-    due_soon: Number(Number(row?.due_soon || 0).toFixed(2)),
+    due_soon: roundMoney(row?.due_soon),
 
-    without_due_date: Number(Number(row?.without_due_date || 0).toFixed(2)),
+    without_due_date: roundMoney(row?.without_due_date),
 
-    total_open: Number(Number(row?.total_open || 0).toFixed(2)),
+    total_open: roundMoney(row?.total_open),
   };
 }
 
@@ -666,7 +666,7 @@ export function listCustomers(input?: {
     offset,
 
     summary: {
-      total_debt: Number(debtSummaryRow?.total_debt || 0),
+      total_debt: roundMoney(debtSummaryRow?.total_debt),
 
       debtors_count: Number(debtSummaryRow?.debtors_count || 0),
 
@@ -674,7 +674,7 @@ export function listCustomers(input?: {
         ? {
             id: Number(topDebtor.id),
             name: String(topDebtor.name || ''),
-            balance: Number(topDebtor.balance || 0),
+            balance: roundMoney(topDebtor.balance),
           }
         : null,
 
@@ -846,14 +846,17 @@ export function deleteCustomer(id: number) {
       }
     | undefined;
 
-  const outstandingAmount = Math.max(
-    Number(customer.balance || 0),
-    Number(openDebtRow?.open_debt || 0),
+  const outstandingAmount = roundMoney(
+    Math.max(
+      Number(customer.balance || 0),
+
+      Number(openDebtRow?.open_debt || 0),
+    ),
   );
 
-  if (Number(outstandingAmount.toFixed(2)) > 0) {
+  if (outstandingAmount > 0) {
     throw new Error(
-      `لا يمكن حذف العميل لأن عليه مديونية بقيمة ${outstandingAmount.toFixed(2)} ج.م`,
+      `لا يمكن حذف العميل لأن عليه مديونية بقيمة ${outstandingAmount} ج.م`,
     );
   }
 
@@ -1193,12 +1196,15 @@ export function recordCustomerPayment(input: {
 
         const payNow = roundMoney(Math.min(remainingPayment, saleRemaining));
 
-        const newPaid = Math.min(
-          Number(sale.grand_total || 0),
-          Number(sale.paid || 0) + payNow,
+        const newPaid = roundMoney(
+          Math.min(
+            roundMoney(sale.grand_total),
+
+            roundMoney(sale.paid) + payNow,
+          ),
         );
 
-        const newRemaining = Math.max(0, saleRemaining - payNow);
+        const newRemaining = roundMoney(Math.max(0, saleRemaining - payNow));
 
         const newStatus =
           newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
@@ -1488,7 +1494,9 @@ export function cancelCustomerPaymentBatch(input: {
 
   if (currentCashBalance + 0.0001 < allocationTotal) {
     throw new Error(
-      `لا يمكن إلغاء الدفعة لأن رصيد حساب الدفع الحالي لا يكفي لعكس مبلغ ${allocationTotal.toFixed(2)} ج.م`,
+      `لا يمكن إلغاء الدفعة لأن رصيد حساب الدفع الحالي لا يكفي لعكس مبلغ ${roundMoney(
+        allocationTotal,
+      )} ج.م`,
     );
   }
 
@@ -1782,7 +1790,9 @@ export function updateCustomerPaymentBatch(input: {
 
   if (amountInput > availableForNewPayment + 0.0001) {
     throw new Error(
-      `مبلغ الدفعة المعدل أكبر من المديونية المتاحة وهي ${availableForNewPayment.toFixed(2)} ج.م`,
+      `مبلغ الدفعة المعدل أكبر من المديونية المتاحة وهي ${roundMoney(
+        availableForNewPayment,
+      )} ج.م`,
     );
   }
 
@@ -2377,7 +2387,7 @@ export function getCustomerStatement(
       const allocations = rows.map((row) => ({
         sale_id: Number(row.sale_id),
 
-        amount: Number(row.amount || 0),
+        amount: roundMoney(row.amount),
       }));
 
       const totalAmount =
@@ -2385,7 +2395,7 @@ export function getCustomerStatement(
         allocations.reduce((sum, item) => sum + item.amount, 0);
 
       const invoicesText = allocations
-        .map((item) => `#${item.sale_id}: ${item.amount.toFixed(2)} ج.م`)
+        .map((item) => `#${item.sale_id}: ${item.amount} ج.م`)
         .join('، ');
 
       return {
@@ -2602,7 +2612,7 @@ export function getCustomerStatement(
         : Math.max(
             0,
 
-            Number((creditLimit - balance).toFixed(2)),
+            roundMoney(creditLimit - balance),
           ),
 
     over_limit: creditLimit !== null && balance > creditLimit + 0.0001,
@@ -2614,9 +2624,9 @@ export function getCustomerStatement(
     payments,
     entries,
     summary: {
-      total_sales: Number(totalSales.toFixed(2)),
-      total_paid: Number(totalPaid.toFixed(2)),
-      balance: Number(customer.balance || 0),
+      total_sales: roundMoney(totalSales),
+      total_paid: roundMoney(totalPaid),
+      balance: roundMoney(customer.balance),
       open_sales: openSales.length,
       aging,
       due,

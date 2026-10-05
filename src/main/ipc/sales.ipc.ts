@@ -54,6 +54,7 @@ import {
   optionalNonNegativeMoney,
   requireNonNegativeMoney,
   requirePositiveMoney,
+  optionalDateOnly,
 } from './input-validation';
 import { getSaleCurrentState } from '../database/repositories/sales-current-state.repo';
 import {
@@ -161,7 +162,9 @@ const SALE_PAYMENT_ENTRY_METHOD_VALUES = [
 ] as const;
 
 const SALE_PAYMENT_STATUS_VALUES = ['paid', 'partial', 'unpaid'] as const;
+const SALE_LIST_PAYMENT_FILTER_VALUES = ['all', 'paid', 'unpaid'] as const;
 
+const SALE_EXCHANGE_STATUS_VALUES = ['all', 'active', 'cancelled'] as const;
 const HELD_SALE_DISCOUNT_TYPES = ['amount', 'percent'] as const;
 
 const HELD_SALE_DELETE_MODES = ['resumed', 'discarded'] as const;
@@ -1121,7 +1124,50 @@ export function registerSalesIpc(): void {
 
   ipcMain.handle('sales:list-exchanges', (event, input) => {
     const actor = requirePermission(event, 'sales.history');
-    const result = listSaleExchanges(input);
+
+    const payload = requireObjectInput(input ?? {}, 'فلتر عمليات الاستبدال');
+
+    const rawPaymentMethod = payload.payment_method;
+
+    const paymentMethod =
+      rawPaymentMethod === undefined ||
+      rawPaymentMethod === null ||
+      rawPaymentMethod === '' ||
+      rawPaymentMethod === 'all'
+        ? null
+        : requireEnumValue(
+            rawPaymentMethod,
+            SALE_PAYMENT_ENTRY_METHOD_VALUES,
+            'طريقة دفع الاستبدال',
+          );
+
+    const result = listSaleExchanges({
+      search:
+        optionalTrimmedString(payload.search, 'بحث عمليات الاستبدال', 500) ??
+        '',
+
+      date_from:
+        optionalDateOnly(payload.date_from, 'تاريخ البداية') ?? undefined,
+
+      date_to: optionalDateOnly(payload.date_to, 'تاريخ النهاية') ?? undefined,
+
+      status:
+        optionalEnumValue(
+          payload.status,
+          SALE_EXCHANGE_STATUS_VALUES,
+          'حالة عملية الاستبدال',
+        ) ?? 'all',
+
+      payment_method: paymentMethod,
+
+      actor_id: actor.id,
+
+      limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
+
+      offset:
+        optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ??
+        undefined,
+    });
 
     return protectSalesCostData(actor, result);
   });
@@ -1212,15 +1258,77 @@ export function registerSalesIpc(): void {
   });
 
   ipcMain.handle('sales:list', (event, input) => {
-    requirePermission(event, 'sales.history');
+    const actor = requirePermission(event, 'sales.history');
 
-    return listSales(input);
+    const payload = requireObjectInput(input ?? {}, 'فلتر فواتير البيع');
+
+    const rawPaymentMethod = payload.payment_method;
+
+    const paymentMethod =
+      rawPaymentMethod === undefined ||
+      rawPaymentMethod === null ||
+      rawPaymentMethod === '' ||
+      rawPaymentMethod === 'all'
+        ? null
+        : requireEnumValue(
+            rawPaymentMethod,
+            SALE_PAYMENT_METHOD_VALUES,
+            'طريقة دفع فاتورة البيع',
+          );
+
+    return listSales({
+      search:
+        optionalTrimmedString(payload.search, 'بحث فواتير البيع', 500) ?? '',
+
+      payment_filter:
+        optionalEnumValue(
+          payload.payment_filter,
+          SALE_LIST_PAYMENT_FILTER_VALUES,
+          'حالة دفع فاتورة البيع',
+        ) ?? 'all',
+
+      payment_method: paymentMethod,
+
+      date_from:
+        optionalDateOnly(payload.date_from, 'تاريخ البداية') ?? undefined,
+
+      date_to: optionalDateOnly(payload.date_to, 'تاريخ النهاية') ?? undefined,
+
+      limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
+
+      offset:
+        optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ??
+        undefined,
+
+      /*
+       * Actor ID لا نثق به من Renderer.
+       */
+      actor_id: actor.id,
+    });
   });
 
   ipcMain.handle('sales:list-returns', (event, input) => {
-    requirePermission(event, 'sales.history');
+    const actor = requirePermission(event, 'sales.history');
 
-    return listSaleReturns(input);
+    const payload = requireObjectInput(input ?? {}, 'فلتر مرتجعات البيع');
+
+    return listSaleReturns({
+      search:
+        optionalTrimmedString(payload.search, 'بحث مرتجعات البيع', 500) ?? '',
+
+      date_from:
+        optionalDateOnly(payload.date_from, 'تاريخ البداية') ?? undefined,
+
+      date_to: optionalDateOnly(payload.date_to, 'تاريخ النهاية') ?? undefined,
+
+      limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
+
+      offset:
+        optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ??
+        undefined,
+
+      actor_id: actor.id,
+    });
   });
 
   ipcMain.handle('sales:return', (event, input) => {

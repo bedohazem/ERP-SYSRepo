@@ -212,7 +212,14 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
   const db = getDb();
 
   const supplierId = Number(input.supplier_id);
-  const paidAmountInput = Number(input.paid_amount || 0);
+
+  const rawPaidAmountInput = Number(input.paid_amount ?? 0);
+
+  if (!Number.isFinite(rawPaidAmountInput) || rawPaidAmountInput < 0) {
+    throw new Error('المبلغ المدفوع غير صحيح');
+  }
+
+  const paidAmountInput = roundMoney(rawPaidAmountInput);
 
   const actorId = Number(input.actor_id || 0);
 
@@ -280,13 +287,20 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       }
 
       const quantity = Number(item.quantity || 0);
-      const unitCost = Number(item.unit_cost || 0);
+
+      const rawUnitCost = Number(item.unit_cost);
 
       if (!Number.isFinite(quantity) || quantity <= 0) {
         throw new Error(`كمية غير صحيحة للصنف ${variant.product_name}`);
       }
 
-      if (!Number.isFinite(unitCost) || unitCost <= 0) {
+      if (!Number.isFinite(rawUnitCost) || rawUnitCost <= 0) {
+        throw new Error(`سعر شراء غير صحيح للصنف ${variant.product_name}`);
+      }
+
+      const unitCost = roundMoney(rawUnitCost);
+
+      if (unitCost <= 0) {
         throw new Error(`سعر شراء غير صحيح للصنف ${variant.product_name}`);
       }
 
@@ -302,10 +316,13 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       preparedItems.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0),
     );
 
+    const discountType =
+      input.discount_type === 'percent' ? 'percent' : 'amount';
+
     const discountValueInput = Number(input.discount_value || 0);
 
     const rawDiscountValue = Number.isFinite(discountValueInput)
-      ? Math.max(0, discountValueInput)
+      ? Math.max(0, roundMoney(discountValueInput))
       : 0;
 
     const subTotalInput = Number(input.sub_total || 0);
@@ -319,10 +336,13 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
 
     const totalAmount = roundMoney(Math.max(0, subTotal - discountValue));
 
-    const discountInput = Number(input.discount_input || 0);
+    const discountInputRaw = Number(input.discount_input || 0);
 
-    const discountType =
-      input.discount_type === 'percent' ? 'percent' : 'amount';
+    const discountInput = Number.isFinite(discountInputRaw)
+      ? discountType === 'percent'
+        ? Math.max(0, discountInputRaw)
+        : Math.max(0, roundMoney(discountInputRaw))
+      : 0;
 
     const paidAmount = roundMoney(
       Math.min(Math.max(paidAmountInput, 0), totalAmount),
@@ -449,8 +469,8 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       `
       UPDATE suppliers
       SET
-        total_purchased = ROUND(IFNULL(total_purchased, 0) + ?, 2),
-        balance = ROUND(IFNULL(balance, 0) + ?, 2),
+        total_purchased = ROUND(IFNULL(total_purchased, 0) + ?, 0),
+        balance = ROUND(IFNULL(balance, 0) + ?, 0),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `,
@@ -1007,13 +1027,19 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       const quantity = Number(rawItem.quantity || 0);
 
-      const unitCost = Number(rawItem.unit_cost || 0);
+      const rawUnitCost = Number(rawItem.unit_cost);
 
       if (!Number.isFinite(quantity) || quantity <= 0) {
         throw new Error(`كمية غير صحيحة للصنف ${variant.product_name}`);
       }
 
-      if (!Number.isFinite(unitCost) || unitCost <= 0) {
+      if (!Number.isFinite(rawUnitCost) || rawUnitCost <= 0) {
+        throw new Error(`سعر شراء غير صحيح للصنف ${variant.product_name}`);
+      }
+
+      const unitCost = roundMoney(rawUnitCost);
+
+      if (unitCost <= 0) {
         throw new Error(`سعر شراء غير صحيح للصنف ${variant.product_name}`);
       }
 
@@ -1039,10 +1065,13 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       preparedItems.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0),
     );
 
+    const discountType =
+      input.discount_type === 'percent' ? 'percent' : 'amount';
+
     const discountValueInput = Number(input.discount_value || 0);
 
     const rawDiscountValue = Number.isFinite(discountValueInput)
-      ? Math.max(0, discountValueInput)
+      ? Math.max(0, roundMoney(discountValueInput))
       : 0;
 
     const subTotalInput = Number(input.sub_total || 0);
@@ -1075,11 +1104,10 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
     const discountInputRaw = Number(input.discount_input || 0);
 
     const discountInput = Number.isFinite(discountInputRaw)
-      ? Math.max(0, discountInputRaw)
+      ? discountType === 'percent'
+        ? Math.max(0, discountInputRaw)
+        : Math.max(0, roundMoney(discountInputRaw))
       : 0;
-
-    const discountType =
-      input.discount_type === 'percent' ? 'percent' : 'amount';
 
     const oldPaidAmount = roundMoney(Number(purchase.paid_amount || 0));
 
@@ -1334,7 +1362,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
                 total_purchased,
                 0
               ) - ?,
-              2
+              0
             ),
             0
           ),
@@ -1343,7 +1371,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
           ROUND(
             IFNULL(balance, 0)
             - ?,
-            2
+            0
           ),
 
         updated_at =
@@ -1496,14 +1524,14 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
               total_purchased,
               0
             ) + ?,
-            2
+            0
           ),
 
         balance =
           ROUND(
             IFNULL(balance, 0)
             + ?,
-            2
+            0
           ),
 
         updated_at =
@@ -2096,12 +2124,12 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       UPDATE suppliers
       SET
         total_purchased = MAX(
-          ROUND(IFNULL(total_purchased, 0) - ?, 2),
+          ROUND(IFNULL(total_purchased, 0) - ?, 0),
           0
         ),
         balance = ROUND(
           IFNULL(balance, 0) - ?,
-          2
+          0
         ),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
@@ -2438,14 +2466,14 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
               total_purchased,
               0
             ) + ?,
-            2
+            0
           ),
 
         balance =
           ROUND(
             IFNULL(balance, 0)
             + ?,
-            2
+            0
           ),
 
         updated_at =
@@ -2631,7 +2659,7 @@ export function listPurchaseInvoices(input?: {
       IFNULL(pi.status, 'active') <> 'cancelled'
       AND ROUND(
         IFNULL(pi.remaining_amount, 0),
-        2
+        0
       ) <= 0
     )
   `);
@@ -2641,7 +2669,7 @@ export function listPurchaseInvoices(input?: {
       IFNULL(pi.status, 'active') <> 'cancelled'
       AND ROUND(
         IFNULL(pi.remaining_amount, 0),
-        2
+        0
       ) > 0
     )
   `);
@@ -3187,7 +3215,7 @@ export function recordSupplierPayment(input: {
       UPDATE suppliers
       SET
         balance = MAX(
-          ROUND(IFNULL(balance, 0) - ?, 2),
+          ROUND(IFNULL(balance, 0) - ?, 0),
           0
         ),
         updated_at = CURRENT_TIMESTAMP
@@ -3565,7 +3593,7 @@ export function cancelSupplierPaymentBatch(input: {
       SET
         balance = ROUND(
           IFNULL(balance, 0) + ?,
-          2
+          0
         ),
 
         updated_at =
@@ -3720,7 +3748,9 @@ export function updateSupplierPaymentBatch(input: {
 
   if (amountInput > availableForNewPayment + 0.0001) {
     throw new Error(
-      `مبلغ الدفعة المعدل أكبر من المديونية المتاحة وهي ${availableForNewPayment.toFixed(2)} ج.م`,
+      `مبلغ الدفعة المعدل أكبر من المديونية المتاحة وهي ${roundMoney(
+        availableForNewPayment,
+      )} ج.م`,
     );
   }
 
@@ -3801,7 +3831,7 @@ export function updateSupplierPaymentBatch(input: {
       SET
         balance = ROUND(
           IFNULL(balance, 0) + ?,
-          2
+          0
         ),
 
         updated_at =
@@ -4104,7 +4134,7 @@ export function updateSupplierPaymentBatch(input: {
         balance = MAX(
           ROUND(
             IFNULL(balance, 0) - ?,
-            2
+            0
           ),
           0
         ),
@@ -4414,8 +4444,7 @@ export function getSupplierStatement(
 
       const allocations = rows.map((row) => ({
         purchase_id: Number(row.purchase_id),
-
-        amount: Number(row.amount || 0),
+        amount: roundMoney(row.amount),
       }));
 
       const totalAmount =
@@ -4423,7 +4452,7 @@ export function getSupplierStatement(
         allocations.reduce((sum, item) => sum + item.amount, 0);
 
       const allocationsText = allocations
-        .map((item) => `#${item.purchase_id}: ${item.amount.toFixed(2)} ج.م`)
+        .map((item) => `#${item.purchase_id}: ${item.amount} ج.م`)
         .join('، ');
 
       return {

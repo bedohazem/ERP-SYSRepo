@@ -10,6 +10,14 @@ import {
   scanStockCountBarcode,
   updateStockCountItem,
 } from '../database/repositories/stock-count.repo';
+import {
+  optionalTrimmedString,
+  requireNonNegativeNumber,
+  requireObjectInput,
+  requirePositiveInteger,
+  requirePositiveNumber,
+  requireTrimmedString,
+} from './input-validation';
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -77,10 +85,12 @@ export function registerStockCountIpc(): void {
     return sessions.map(getCashierSessionView);
   });
 
-  ipcMain.handle('stock-count:get', (event, sessionId: number) => {
+  ipcMain.handle('stock-count:get', (event, sessionId: unknown) => {
     const actor = requirePermission(event, 'stock_count.view');
 
-    const details = getStockCountSession(Number(sessionId));
+    const safeSessionId = requirePositiveInteger(sessionId, 'رقم جلسة الجرد');
+
+    const details = getStockCountSession(safeSessionId);
 
     if (actor.role === 'admin') {
       return details;
@@ -93,11 +103,31 @@ export function registerStockCountIpc(): void {
     try {
       const actorId = requireAuthenticatedAdmin(event);
 
+      const payload = requireObjectInput(input, 'بيانات جلسة الجرد');
+
+      const rawCategoryId = payload.categoryId;
+
+      const categoryId =
+        rawCategoryId === undefined ||
+        rawCategoryId === null ||
+        rawCategoryId === '' ||
+        rawCategoryId === 'all'
+          ? null
+          : requirePositiveInteger(rawCategoryId, 'رقم التصنيف');
+
+      const title = requireTrimmedString(payload.title, 'اسم جلسة الجرد', 300);
+
+      const notes = optionalTrimmedString(
+        payload.notes,
+        'ملاحظات جلسة الجرد',
+        2000,
+      );
+
       const result = createStockCountSession({
-        title: input.title,
-        notes: input.notes,
+        title,
+        notes,
         actor_id: actorId,
-        categoryId: input.categoryId ?? null,
+        categoryId,
       });
 
       logAction({
@@ -106,9 +136,9 @@ export function registerStockCountIpc(): void {
         entity: 'stock_counts',
         entity_id: result.id,
         details: {
-          title: input.title,
+          title,
           items_count: result.items_count,
-          categoryId: input.categoryId ?? null,
+          categoryId,
         },
       });
 
@@ -125,17 +155,42 @@ export function registerStockCountIpc(): void {
     try {
       const actorId = requirePermission(event, 'stock_count.count').id;
 
-      const result = updateStockCountItem(input);
+      const payload = requireObjectInput(input, 'بيانات بند الجرد');
+
+      const sessionId = requirePositiveInteger(
+        payload.session_id,
+        'رقم جلسة الجرد',
+      );
+
+      const itemId = requirePositiveInteger(payload.item_id, 'رقم بند الجرد');
+
+      const actualStock = requireNonNegativeNumber(
+        payload.actual_stock,
+        'الكمية الفعلية',
+      );
+
+      const notes = optionalTrimmedString(
+        payload.notes,
+        'ملاحظات بند الجرد',
+        1000,
+      );
+
+      const result = updateStockCountItem({
+        session_id: sessionId,
+        item_id: itemId,
+        actual_stock: actualStock,
+        notes,
+      });
 
       logAction({
         actor_id: actorId,
         action: 'stock_count_item_updated',
         entity: 'stock_counts',
-        entity_id: Number(input.session_id),
+        entity_id: sessionId,
         details: {
-          item_id: Number(input.item_id),
-          actual_stock: Number(input.actual_stock),
-          notes: input.notes || '',
+          item_id: itemId,
+          actual_stock: actualStock,
+          notes: notes ?? '',
         },
       });
 
@@ -152,19 +207,39 @@ export function registerStockCountIpc(): void {
     try {
       const actorId = requirePermission(event, 'stock_count.count').id;
 
-      const result = scanStockCountBarcode(input);
+      const payload = requireObjectInput(input, 'بيانات مسح الباركود');
+
+      const sessionId = requirePositiveInteger(
+        payload.session_id,
+        'رقم جلسة الجرد',
+      );
+
+      const barcode = requireTrimmedString(payload.barcode, 'الباركود', 200);
+
+      const quantity =
+        payload.quantity === undefined ||
+        payload.quantity === null ||
+        payload.quantity === ''
+          ? 1
+          : requirePositiveNumber(payload.quantity, 'كمية المسح');
+
+      const result = scanStockCountBarcode({
+        session_id: sessionId,
+        barcode,
+        quantity,
+      });
 
       logAction({
         actor_id: actorId,
         action: 'stock_count_barcode_scanned',
         entity: 'stock_counts',
-        entity_id: Number(input.session_id),
+        entity_id: sessionId,
         details: {
           item_id: result.item_id,
           barcode: result.barcode,
           product_name: result.product_name,
           actual_stock: result.actual_stock,
-          quantity: Number(input.quantity || 1),
+          quantity,
         },
       });
 
@@ -181,11 +256,17 @@ export function registerStockCountIpc(): void {
     try {
       const actorId = requireAuthenticatedAdmin(event);
 
+      const payload = requireObjectInput(input, 'بيانات اعتماد جلسة الجرد');
+
+      const sessionId = requirePositiveInteger(
+        payload.session_id,
+        'رقم جلسة الجرد',
+      );
+
       const result = runCriticalActionWithAudit(
         () =>
           approveStockCountSession({
-            session_id: input.session_id,
-
+            session_id: sessionId,
             actor_id: actorId,
           }),
 
@@ -196,7 +277,7 @@ export function registerStockCountIpc(): void {
 
           entity: 'stock_counts',
 
-          entity_id: input.session_id,
+          entity_id: sessionId,
 
           details: result,
         }),
@@ -214,11 +295,16 @@ export function registerStockCountIpc(): void {
   ipcMain.handle('stock-count:cancel', (event, input) => {
     try {
       const actorId = requireAuthenticatedAdmin(event);
+      const payload = requireObjectInput(input, 'بيانات إلغاء جلسة الجرد');
 
+      const sessionId = requirePositiveInteger(
+        payload.session_id,
+        'رقم جلسة الجرد',
+      );
       const result = runCriticalActionWithAudit(
         () =>
           cancelStockCountSession({
-            session_id: input.session_id,
+            session_id: sessionId,
 
             actor_id: actorId,
           }),
@@ -230,10 +316,10 @@ export function registerStockCountIpc(): void {
 
           entity: 'stock_counts',
 
-          entity_id: input.session_id,
+          entity_id: sessionId,
 
           details: {
-            session_id: input.session_id,
+            session_id: sessionId,
           },
         }),
       );

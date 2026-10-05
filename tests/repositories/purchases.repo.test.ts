@@ -377,6 +377,48 @@ describe('purchases repository', () => {
     expect(invoice.payments[0].amount).toBe(500);
   });
 
+  it('stores purchase money as whole Egyptian pounds at repository boundary', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const result = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 2100.69,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 2100.69,
+        },
+      ],
+    });
+
+    expect(result.total_amount).toBe(2101);
+
+    expect(result.paid_amount).toBe(2101);
+
+    expect(result.remaining_amount).toBe(0);
+
+    const invoice = getPurchaseInvoice(result.purchaseId) as any;
+
+    expect(invoice.items[0].unit_cost).toBe(2101);
+
+    expect(invoice.items[0].line_total).toBe(2101);
+
+    expect(getSupplierTotalPurchased(supplierId)).toBe(2101);
+
+    expect(getCashMovementTotal('out')).toBe(2101);
+  });
+
   it('creates a partial purchase and increases supplier balance', () => {
     const supplierId = createTestSupplier();
     const variant = seedPurchaseProduct();

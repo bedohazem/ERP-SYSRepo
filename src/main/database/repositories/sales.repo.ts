@@ -104,10 +104,23 @@ function getSetting(key: string, fallback: string) {
 function getLoyaltySettingsForSale() {
   return {
     enabled: getSetting('loyalty_enabled', 'true') === 'true',
-    earnAmount: Number(getSetting('loyalty_earn_amount', '100')),
-    earnPoints: Number(getSetting('loyalty_earn_points', '1')),
-    pointValue: Number(getSetting('loyalty_point_value', '1')),
-    minRedeemPoints: Number(getSetting('loyalty_min_redeem_points', '1')),
+
+    earnAmount: Math.max(
+      1,
+      roundMoney(getSetting('loyalty_earn_amount', '100')),
+    ),
+
+    earnPoints: Math.max(
+      1,
+      Math.trunc(Number(getSetting('loyalty_earn_points', '1'))),
+    ),
+
+    pointValue: Math.max(1, roundMoney(getSetting('loyalty_point_value', '1'))),
+
+    minRedeemPoints: Math.max(
+      1,
+      Math.trunc(Number(getSetting('loyalty_min_redeem_points', '1'))),
+    ),
   };
 }
 
@@ -175,10 +188,10 @@ export class CreditLimitExceededError extends Error {
 
   constructor(details: CreditLimitExceededDetails) {
     super(
-      `المديونية الجديدة ${details.projected_debt.toFixed(
-        2,
-      )} ج.م ستتجاوز الحد الائتماني للعميل وهو ${details.credit_limit.toFixed(
-        2,
+      `المديونية الجديدة ${roundMoney(
+        details.projected_debt,
+      )} ج.م ستتجاوز الحد الائتماني للعميل وهو ${roundMoney(
+        details.credit_limit,
       )} ج.م`,
     );
 
@@ -363,9 +376,12 @@ function createSaleInternal(
       }, 0),
     );
 
-    const promotionDiscount = Math.min(
-      subTotal,
-      Math.max(0, Number(promotionResult.promotion_discount_value || 0)),
+    const promotionDiscount = roundMoney(
+      Math.min(
+        subTotal,
+
+        Math.max(0, roundMoney(promotionResult.promotion_discount_value)),
+      ),
     );
 
     const appliedPromotions = promotionResult.applied_promotions;
@@ -381,17 +397,20 @@ function createSaleInternal(
             .join(' + ')
         : null;
 
-    const totalAfterPromotion = Math.max(0, subTotal - promotionDiscount);
-
-    const normalDiscount = Math.min(
-      totalAfterPromotion,
-
-      Math.max(0, Number(input.discount_value || 0)),
+    const totalAfterPromotion = roundMoney(
+      Math.max(0, subTotal - promotionDiscount),
     );
 
-    const totalAfterNormalDiscount = Math.max(
-      0,
-      totalAfterPromotion - normalDiscount,
+    const normalDiscount = roundMoney(
+      Math.min(
+        totalAfterPromotion,
+
+        Math.max(0, roundMoney(input.discount_value)),
+      ),
+    );
+
+    const totalAfterNormalDiscount = roundMoney(
+      Math.max(0, totalAfterPromotion - normalDiscount),
     );
 
     let redeemPoints = 0;
@@ -444,12 +463,11 @@ function createSaleInternal(
 
       redeemPoints = cappedRedeemPoints;
 
-      loyaltyDiscountValue = redeemPoints * loyalty.pointValue;
+      loyaltyDiscountValue = roundMoney(redeemPoints * loyalty.pointValue);
     }
 
-    const grandTotal = Math.max(
-      0,
-      totalAfterNormalDiscount - loyaltyDiscountValue,
+    const grandTotal = roundMoney(
+      Math.max(0, totalAfterNormalDiscount - loyaltyDiscountValue),
     );
 
     const paymentTotals = new Map<string, number>();
@@ -489,7 +507,13 @@ function createSaleInternal(
     const paidAmount =
       requestedPayments.length > 0
         ? splitPaidAmount
-        : Math.min(Math.max(Number(input.paid ?? grandTotal), 0), grandTotal);
+        : roundMoney(
+            Math.min(
+              Math.max(roundMoney(input.paid ?? grandTotal), 0),
+
+              grandTotal,
+            ),
+          );
 
     const effectivePayments =
       requestedPayments.length > 0
@@ -780,7 +804,7 @@ function createSaleInternal(
 
         paymentStatus,
 
-        requestedPayments.length > 0 ? 0 : Number(input.change_amount || 0),
+        requestedPayments.length > 0 ? 0 : roundMoney(input.change_amount),
 
         invoicePaymentMethod,
 
@@ -1215,8 +1239,15 @@ function createSaleInternal(
       if (!Number.isFinite(qty) || qty <= 0) {
         throw new Error(`كمية غير صحيحة للصنف ${item.product_name}`);
       }
-      const price = Number(item.unit_price || 0);
-      const lineTotal = qty * price;
+      const rawPrice = Number(item.unit_price);
+
+      if (!Number.isFinite(rawPrice) || rawPrice < 0) {
+        throw new Error(`سعر بيع غير صحيح للصنف ${item.product_name}`);
+      }
+
+      const price = roundMoney(rawPrice);
+
+      const lineTotal = roundMoney(qty * price);
 
       const variant = getVariantCost.get(item.variant_id) as
         | {
@@ -1240,9 +1271,8 @@ function createSaleInternal(
         );
       }
 
-      const itemPromotionDiscount = Math.max(
-        0,
-        Number(promotionResult.item_discounts[itemIndex] || 0),
+      const itemPromotionDiscount = roundMoney(
+        Math.max(0, Number(promotionResult.item_discounts[itemIndex] || 0)),
       );
 
       if (buyXItemIndexes.has(itemIndex)) {
@@ -1675,7 +1705,7 @@ export function listSales(input?: {
           s.remaining_amount,
           0
         ),
-        2
+        0
       ) <= 0
     )
   `);
@@ -1688,7 +1718,7 @@ export function listSales(input?: {
           s.remaining_amount,
           0
         ),
-        2
+        0
       ) > 0
     )
   `);

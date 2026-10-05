@@ -33,6 +33,7 @@ import {
   requirePositiveInteger,
   requirePositiveMoney,
   requireTrimmedString,
+  optionalBooleanValue,
 } from './input-validation';
 
 const CUSTOMER_PAYMENT_METHODS = [
@@ -93,13 +94,31 @@ export function registerCustomersIpc(): void {
   ipcMain.handle('customers:list-page', (event, input) => {
     requirePermission(event, 'customers.view');
 
-    return listCustomers(input);
+    const payload = requireObjectInput(input ?? {}, 'فلتر العملاء');
+
+    return listCustomers({
+      search: optionalTrimmedString(payload.search, 'بحث العملاء', 500) ?? '',
+
+      debtors_only:
+        optionalBooleanValue(
+          payload.debtors_only,
+          'عرض العملاء المدينين فقط',
+        ) ?? false,
+
+      limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
+
+      offset:
+        optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ??
+        undefined,
+    });
   });
 
-  ipcMain.handle('customers:search', (event, query: string) => {
+  ipcMain.handle('customers:search', (event, query: unknown) => {
     requirePermission(event, 'customers.view');
 
-    return searchCustomers(query ?? '');
+    return searchCustomers(
+      optionalTrimmedString(query, 'بحث العملاء', 500) ?? '',
+    );
   });
 
   ipcMain.handle('customers:get-by-id', (event, id: unknown) => {

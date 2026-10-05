@@ -1,6 +1,7 @@
 import { getDb } from '../db';
 import { getCustomerDueSummary } from './customers.repo';
 import { getSupplierDueSummary } from './suppliers.repo';
+import { roundMoney } from '../../../shared/money';
 
 type ReportFilter = {
   date_from?: string;
@@ -13,7 +14,7 @@ export type CashierDashboardInput = {
 };
 
 function reportMoney(value: unknown) {
-  return Number(Number(value || 0).toFixed(2));
+  return roundMoney(value);
 }
 
 function buildWhere(
@@ -2257,7 +2258,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
                       s.remaining_amount,
                       0
                     ),
-                    2
+                    0
                   ) > 0
                 THEN 1
                 ELSE 0

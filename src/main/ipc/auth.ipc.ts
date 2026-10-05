@@ -41,6 +41,13 @@ import {
   getPasswordPolicyError,
 } from '../../shared/password-policy';
 
+import {
+  requireArrayInput,
+  requireObjectInput,
+  requirePositiveInteger,
+  requireTrimmedString,
+} from './input-validation';
+
 type AuthPayload = {
   name?: string;
   username: string;
@@ -703,17 +710,25 @@ export function registerAuthIpc(): void {
       try {
         const actorId = requireAuthenticatedAdmin(event);
 
-        const userId = Number(input?.user_id || 0);
+        const payload = requireObjectInput(input, 'بيانات صلاحيات المستخدم');
+
+        const userId = requirePositiveInteger(payload.user_id, 'رقم المستخدم');
+
+        const permissions =
+          payload.permissions === undefined || payload.permissions === null
+            ? []
+            : requireArrayInput(
+                payload.permissions,
+                'صلاحيات المستخدم',
+                200,
+              ).map((permission) =>
+                requireTrimmedString(permission, 'اسم الصلاحية', 200),
+              );
 
         const before = getUserPermissionSettings(userId);
 
         const after = runCriticalActionWithAudit(
-          () =>
-            setUserPermissions(
-              userId,
-
-              Array.isArray(input?.permissions) ? input.permissions : [],
-            ),
+          () => setUserPermissions(userId, permissions),
 
           (after) => ({
             actor_id: actorId,

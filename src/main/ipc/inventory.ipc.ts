@@ -1,7 +1,12 @@
 import { ipcMain } from 'electron';
 import { runCriticalActionWithAudit } from './activity-helper';
 import { requireAnyPermission, requirePermission } from '../auth-session';
-
+import {
+  optionalTrimmedString,
+  requireNonNegativeNumber,
+  requireObjectInput,
+  requirePositiveInteger,
+} from './input-validation';
 import { userHasPermission } from '../database/repositories/user.repo';
 
 import {
@@ -90,11 +95,27 @@ export function registerInventoryIpc(): void {
   ipcMain.handle('inventory:adjust-stock', (event, input) => {
     const actorId = requirePermission(event, 'inventory.adjust').id;
 
+    const payload = requireObjectInput(input, 'بيانات تسوية المخزون');
+
+    const variantId = requirePositiveInteger(payload.variant_id, 'رقم الصنف');
+
+    const targetStock = requireNonNegativeNumber(
+      payload.target_stock,
+      'المخزون الجديد',
+    );
+
+    const notes = optionalTrimmedString(
+      payload.notes,
+      'ملاحظات تسوية المخزون',
+      1000,
+    );
+
     const result = runCriticalActionWithAudit(
       () =>
         adjustVariantStock({
-          ...input,
-
+          variant_id: variantId,
+          target_stock: targetStock,
+          notes,
           actor_id: actorId,
         }),
 
@@ -109,14 +130,10 @@ export function registerInventoryIpc(): void {
 
         details: {
           variant_id: Number(result.variant_id),
-
           old_stock: Number(result.old_stock),
-
           new_stock: Number(result.new_stock),
-
           diff: Number(result.diff),
-
-          notes: input?.notes || '',
+          notes: notes ?? '',
         },
       }),
     );

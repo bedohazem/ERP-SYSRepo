@@ -229,4 +229,44 @@ describe('stock count cashier privacy', () => {
 
     expect(Number(sessions[0].shortage_count)).toBe(1);
   });
+
+  it('rejects malformed stock count payloads before repository coercion', async () => {
+    const admin = findUserByUsername('admin')!;
+
+    const { event } = makeClient();
+
+    startAuthSession(event, admin.id);
+
+    await expect(invoke(event, 'stock-count:get', true)).rejects.toThrow(
+      'رقم جلسة الجرد غير صحيح',
+    );
+
+    const badCreate = await invoke(event, 'stock-count:create', {
+      title: true,
+    });
+
+    expect(badCreate).toMatchObject({
+      success: false,
+    });
+
+    const badUpdate = await invoke(event, 'stock-count:update-item', {
+      session_id: true,
+      item_id: 1,
+      actual_stock: 1,
+    });
+
+    expect(badUpdate).toMatchObject({
+      success: false,
+    });
+
+    const badScan = await invoke(event, 'stock-count:scan', {
+      session_id: 1,
+      barcode: 'BLIND001',
+      quantity: true,
+    });
+
+    expect(badScan).toMatchObject({
+      success: false,
+    });
+  });
 });

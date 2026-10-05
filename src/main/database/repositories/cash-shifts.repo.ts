@@ -1641,9 +1641,9 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
 
           reference_type: 'cash_shift_opening_count_correction',
 
-          notes: `تصحيح جرد افتتاح الشفت #${current.shift_id} من ${previousOpeningCounted.toFixed(
-            2,
-          )} إلى ${correctedOpeningAmount.toFixed(2)}`,
+          notes: `تصحيح جرد افتتاح الشفت #${current.shift_id} من ${roundMoney(
+            previousOpeningCounted,
+          )} إلى ${roundMoney(correctedOpeningAmount)}`,
 
           created_by: resolvedBy,
 

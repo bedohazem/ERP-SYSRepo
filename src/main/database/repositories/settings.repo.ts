@@ -4,6 +4,7 @@ import {
   activateDevice,
   deactivateDevice,
 } from '../../security/device-license';
+import { roundMoney } from '../../../shared/money';
 
 export type BarcodeItemPosition =
   | 'top'
@@ -540,9 +541,13 @@ function saveSetting(key: string, value: string) {
 export function getLoyaltySettings(): LoyaltySettings {
   return {
     loyalty_enabled: getSetting('loyalty_enabled', 'true') === 'true',
-    loyalty_earn_amount: Number(getSetting('loyalty_earn_amount', '100')),
+
+    loyalty_earn_amount: roundMoney(getSetting('loyalty_earn_amount', '100')),
+
     loyalty_earn_points: Number(getSetting('loyalty_earn_points', '1')),
-    loyalty_point_value: Number(getSetting('loyalty_point_value', '1')),
+
+    loyalty_point_value: roundMoney(getSetting('loyalty_point_value', '1')),
+
     loyalty_min_redeem_points: Number(
       getSetting('loyalty_min_redeem_points', '1'),
     ),
@@ -550,16 +555,21 @@ export function getLoyaltySettings(): LoyaltySettings {
 }
 
 export function saveLoyaltySettings(input: LoyaltySettings) {
-  const loyaltyEarnAmount = Number(input.loyalty_earn_amount || 100);
+  const loyaltyEarnAmount = roundMoney(
+    Number(input.loyalty_earn_amount || 100),
+  );
+
   const loyaltyEarnPoints = Number(input.loyalty_earn_points || 1);
-  const loyaltyPointValue = Number(input.loyalty_point_value || 1);
+
+  const loyaltyPointValue = roundMoney(Number(input.loyalty_point_value || 1));
+
   const loyaltyMinRedeemPoints = Number(input.loyalty_min_redeem_points || 1);
 
   if (!Number.isFinite(loyaltyEarnAmount) || loyaltyEarnAmount <= 0) {
     throw new Error('قيمة كسب النقاط غير صحيحة');
   }
 
-  if (!Number.isFinite(loyaltyEarnPoints) || loyaltyEarnPoints <= 0) {
+  if (!Number.isInteger(loyaltyEarnPoints) || loyaltyEarnPoints <= 0) {
     throw new Error('عدد النقاط المكتسبة غير صحيح');
   }
 
@@ -567,14 +577,21 @@ export function saveLoyaltySettings(input: LoyaltySettings) {
     throw new Error('قيمة النقطة غير صحيحة');
   }
 
-  if (!Number.isFinite(loyaltyMinRedeemPoints) || loyaltyMinRedeemPoints <= 0) {
+  if (
+    !Number.isInteger(loyaltyMinRedeemPoints) ||
+    loyaltyMinRedeemPoints <= 0
+  ) {
     throw new Error('الحد الأدنى لاستخدام النقاط غير صحيح');
   }
 
   saveSetting('loyalty_enabled', String(Boolean(input.loyalty_enabled)));
+
   saveSetting('loyalty_earn_amount', String(loyaltyEarnAmount));
+
   saveSetting('loyalty_earn_points', String(loyaltyEarnPoints));
+
   saveSetting('loyalty_point_value', String(loyaltyPointValue));
+
   saveSetting('loyalty_min_redeem_points', String(loyaltyMinRedeemPoints));
 
   return getLoyaltySettings();

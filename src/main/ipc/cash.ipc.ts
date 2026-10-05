@@ -39,6 +39,10 @@ import {
   optionalNonNegativeMoney,
   requireNonNegativeMoney,
   requirePositiveMoney,
+  optionalDateOnly,
+  optionalNonNegativeInteger,
+  optionalPositiveInteger,
+  requireArrayInput,
 } from './input-validation';
 import {
   requireAuthenticatedAdmin,
@@ -79,6 +83,115 @@ const SHIFT_VARIANCE_RESOLUTION_TYPES = [
   'other',
 ] as const;
 
+const CASH_FILTER_TYPES = [
+  'all',
+
+  'sale',
+  'sale_return',
+  'sale_exchange',
+  'purchase_return',
+
+  'customer_payment',
+  'supplier_payment',
+  'liability_payment',
+
+  'expense',
+
+  'withdraw',
+  'deposit',
+  'transfer',
+
+  'shift_adjustment',
+] as const;
+
+const CASH_FILTER_DIRECTIONS = ['all', 'in', 'out'] as const;
+
+const CASH_FILTER_ACCOUNTS = ['all', ...CASH_ACCOUNT_INPUT_VALUES] as const;
+
+const CASH_SHIFT_STATUSES = ['all', 'open', 'closed'] as const;
+
+const CASH_SHIFT_VARIANCE_STATUSES = ['all', 'pending', 'resolved'] as const;
+
+function optionalEnumArray<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  label: string,
+): T[] | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  return requireArrayInput(value, label, 50).map((item) =>
+    requireEnumValue(item, allowed, label),
+  );
+}
+
+function normalizeCashFilterInput(input: unknown) {
+  const payload = requireObjectInput(input ?? {}, 'فلتر حركات الخزنة');
+
+  return {
+    date_from:
+      optionalDateOnly(payload.date_from, 'تاريخ البداية') ?? undefined,
+
+    date_to: optionalDateOnly(payload.date_to, 'تاريخ النهاية') ?? undefined,
+
+    type: optionalEnumValue(payload.type, CASH_FILTER_TYPES, 'نوع حركة الخزنة'),
+
+    types: optionalEnumArray(
+      payload.types,
+      CASH_FILTER_TYPES,
+      'أنواع حركات الخزنة',
+    ),
+
+    direction: optionalEnumValue(
+      payload.direction,
+      CASH_FILTER_DIRECTIONS,
+      'اتجاه حركة الخزنة',
+    ),
+
+    directions: optionalEnumArray(
+      payload.directions,
+      CASH_FILTER_DIRECTIONS,
+      'اتجاهات حركات الخزنة',
+    ),
+
+    payment_method: optionalEnumValue(
+      payload.payment_method,
+      CASH_FILTER_ACCOUNTS,
+      'حساب حركة الخزنة',
+    ),
+
+    payment_methods: optionalEnumArray(
+      payload.payment_methods,
+      CASH_FILTER_ACCOUNTS,
+      'حسابات حركات الخزنة',
+    ),
+
+    exclude_payment_methods: optionalEnumArray(
+      payload.exclude_payment_methods,
+      CASH_ACCOUNT_INPUT_VALUES,
+      'الحسابات المستبعدة',
+    ),
+
+    search:
+      optionalTrimmedString(payload.search, 'بحث حركات الخزنة', 500) ??
+      undefined,
+
+    reference_type:
+      optionalTrimmedString(payload.reference_type, 'نوع المرجع', 200) ??
+      undefined,
+
+    created_by: optionalPositiveInteger(payload.created_by, 'رقم المستخدم'),
+
+    shift_id: optionalPositiveInteger(payload.shift_id, 'رقم الشفت'),
+
+    limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
+
+    offset:
+      optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ?? undefined,
+  };
+}
+
 function getCashierShiftView(shift: any) {
   if (!shift) {
     return null;
@@ -103,20 +216,18 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash:summary', (event, input) => {
     const user = requireAuthenticatedUser(event);
 
+    const filter = normalizeCashFilterInput(input);
+
     const canManageCash =
       user.role === 'admin' || userHasPermission(user.id, 'cash.manage');
 
     return getCashSummary({
-      ...(input || {}),
+      ...filter,
 
-      /*
-       * store_safe تظل True Admin Only
-       * حتى لو المستخدم لديه cash.manage.
-       */
       exclude_payment_methods:
-        user.role === 'admin' ? input?.exclude_payment_methods : ['store_safe'],
+        user.role === 'admin' ? filter.exclude_payment_methods : ['store_safe'],
 
-      created_by: canManageCash ? input?.created_by : user.id,
+      created_by: canManageCash ? filter.created_by : user.id,
     });
   });
 
@@ -160,16 +271,17 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash:list', (event, input) => {
     const actor = requirePermission(event, 'cash.manage');
 
+    const filter = normalizeCashFilterInput(input);
+
     return listCashMovements({
-      ...(input || {}),
+      ...filter,
 
       exclude_payment_methods:
         actor.role === 'admin'
-          ? input?.exclude_payment_methods
+          ? filter.exclude_payment_methods
           : ['store_safe'],
     });
   });
-
   ipcMain.handle('cash:create-movement', (event, input) => {
     const actorId = requirePermission(event, 'cash.manage').id;
 
@@ -372,28 +484,43 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash-shifts:day-summary', (event, input) => {
     requirePermission(event, 'shifts.manage');
 
-    return getCashShiftDaySummary({
-      business_date: String(input?.business_date || ''),
+    const payload = requireObjectInput(input, 'فلتر ملخص الشفتات');
 
-      user_id: input?.user_id ?? null,
+    const businessDate = optionalDateOnly(
+      payload.business_date,
+      'تاريخ ملخص الشفتات',
+    );
+
+    if (!businessDate) {
+      throw new Error('تاريخ ملخص الشفتات غير صحيح');
+    }
+
+    return getCashShiftDaySummary({
+      business_date: businessDate,
+
+      user_id: optionalPositiveInteger(payload.user_id, 'رقم المستخدم') ?? null,
     });
   });
 
   ipcMain.handle('cash-shifts:list', (event, input) => {
     requirePermission(event, 'shifts.manage');
 
+    const payload = requireObjectInput(input ?? {}, 'فلتر الشفتات');
+
     return listCashShifts({
-      status: input?.status || 'all',
+      status:
+        optionalEnumValue(payload.status, CASH_SHIFT_STATUSES, 'حالة الشفت') ??
+        'all',
 
-      user_id: input?.user_id ?? null,
+      user_id: optionalPositiveInteger(payload.user_id, 'رقم المستخدم') ?? null,
 
-      date_from: input?.date_from,
+      date_from: optionalDateOnly(payload.date_from, 'تاريخ البداية') ?? null,
 
-      date_to: input?.date_to,
+      date_to: optionalDateOnly(payload.date_to, 'تاريخ النهاية') ?? null,
 
-      limit: Number(input?.limit || 50),
+      limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? 50,
 
-      offset: Number(input?.offset || 0),
+      offset: optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ?? 0,
     });
   });
 
@@ -412,24 +539,31 @@ export function registerCashIpc(): void {
   ipcMain.handle('cash-shifts:details', (event, shiftId) => {
     requirePermission(event, 'shifts.manage');
 
-    return getCashShiftDetails(Number(shiftId));
+    return getCashShiftDetails(requirePositiveInteger(shiftId, 'رقم الشفت'));
   });
 
   ipcMain.handle('cash-shifts:list-variances', (event, input) => {
     requirePermission(event, 'shifts.manage');
 
+    const payload = requireObjectInput(input ?? {}, 'فلتر فروق الشفتات');
+
     return listCashShiftVariances({
-      status: input?.status || 'pending',
+      status:
+        optionalEnumValue(
+          payload.status,
+          CASH_SHIFT_VARIANCE_STATUSES,
+          'حالة فرق الشفت',
+        ) ?? 'pending',
 
-      user_id: input?.user_id ?? null,
+      user_id: optionalPositiveInteger(payload.user_id, 'رقم المستخدم') ?? null,
 
-      date_from: input?.date_from,
+      date_from: optionalDateOnly(payload.date_from, 'تاريخ البداية') ?? null,
 
-      date_to: input?.date_to,
+      date_to: optionalDateOnly(payload.date_to, 'تاريخ النهاية') ?? null,
 
-      limit: Number(input?.limit || 50),
+      limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? 50,
 
-      offset: Number(input?.offset || 0),
+      offset: optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ?? 0,
     });
   });
 

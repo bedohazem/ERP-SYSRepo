@@ -128,6 +128,32 @@ describe('settings repository', () => {
     expect(getSettingValue('loyalty_min_redeem_points')).toBe('10');
   });
 
+  it('stores loyalty money as whole pounds', () => {
+    const saved = saveLoyaltySettings({
+      loyalty_enabled: true,
+
+      loyalty_earn_amount: 100.5,
+
+      loyalty_earn_points: 5,
+
+      loyalty_point_value: 2.5,
+
+      loyalty_min_redeem_points: 10,
+    });
+
+    expect(saved.loyalty_earn_amount).toBe(101);
+
+    expect(saved.loyalty_point_value).toBe(3);
+
+    expect(saved.loyalty_earn_points).toBe(5);
+
+    expect(saved.loyalty_min_redeem_points).toBe(10);
+
+    expect(getSettingValue('loyalty_earn_amount')).toBe('101');
+
+    expect(getSettingValue('loyalty_point_value')).toBe('3');
+  });
+
   it('falls back loyalty values when zero values are saved', () => {
     const saved = saveLoyaltySettings({
       loyalty_enabled: true,

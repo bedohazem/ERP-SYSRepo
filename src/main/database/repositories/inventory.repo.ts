@@ -5,6 +5,7 @@ import {
   issueStockAtAverageCost,
   receiveStockAtCost,
 } from '../inventory-cost';
+import { roundMoney } from '../../../shared/money';
 
 const STOCK_SUM_SQL = `
   IFNULL(SUM(
@@ -386,8 +387,9 @@ export function listInventoryPage(input?: InventoryPageInput) {
       available: Number(summaryRow?.available || 0),
       low: Number(summaryRow?.low || 0),
       out: Number(summaryRow?.out || 0),
-      totalBuyValue: Number(summaryRow?.total_buy_value || 0),
-      totalSellValue: Number(summaryRow?.total_sell_value || 0),
+      totalBuyValue: roundMoney(summaryRow?.total_buy_value),
+
+      totalSellValue: roundMoney(summaryRow?.total_sell_value),
       inactive: Number(summaryRow?.inactive || 0),
     },
   };
@@ -950,9 +952,9 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
 
     dead_stock_units_90d: Number(summaryRow?.dead_stock_units_90d || 0),
 
-    dead_stock_value_90d: Number(summaryRow?.dead_stock_value_90d || 0),
+    dead_stock_value_90d: roundMoney(summaryRow?.dead_stock_value_90d),
 
-    potential_gross_profit: Number(summaryRow?.potential_gross_profit || 0),
+    potential_gross_profit: roundMoney(summaryRow?.potential_gross_profit),
 
     top_mover: topMover
       ? {

@@ -26,6 +26,8 @@ import {
   setUserPermissions,
 } from '../../src/main/database/repositories/user.repo';
 import { registerActivityIpc } from '../../src/main/ipc/activity.ipc';
+import { registerCashIpc } from '../../src/main/ipc/cash.ipc';
+import { registerReportsIpc } from '../../src/main/ipc/reports.ipc';
 import { startAuthSession } from '../../src/main/auth-session';
 
 import { registerCustomersIpc } from '../../src/main/ipc/customers.ipc';
@@ -36,6 +38,10 @@ import { registerPurchasesIpc } from '../../src/main/ipc/purchases.ipc';
 
 import { registerLiabilitiesIpc } from '../../src/main/ipc/liabilities.ipc';
 import { registerSalesIpc } from '../../src/main/ipc/sales.ipc';
+import { registerExpenseIpc } from '../../src/main/ipc/expense.ipc';
+import { registerPromotionsIpc } from '../../src/main/ipc/promotions.ipc';
+import { registerSettingsIpc } from '../../src/main/ipc/settings.ipc';
+
 type Handler = (event: IpcMainInvokeEvent, ...args: any[]) => any;
 
 const handlers = new Map<string, Handler>();
@@ -84,7 +90,12 @@ describe('domain IPC session scope', () => {
     registerLiabilitiesIpc();
     registerInventoryIpc();
     registerActivityIpc();
+    registerCashIpc();
+    registerReportsIpc();
     registerSalesIpc();
+    registerExpenseIpc();
+    registerPromotionsIpc();
+    registerSettingsIpc();
   });
 
   beforeEach(() => {
@@ -654,6 +665,160 @@ describe('domain IPC session scope', () => {
         status: 'fake-status',
       }),
     ).rejects.toThrow('حالة أمر الشراء غير صحيح');
+  });
+
+  it('rejects malformed expense supplier promotion and loyalty payloads before coercion', async () => {
+    const admin = findUserByUsername('admin')!;
+
+    const { event } = makeClient();
+
+    startAuthSession(event, admin.id);
+
+    await expect(
+      invoke(event, 'expenses:create', {
+        title: 'Invalid Expense',
+
+        amount: true,
+
+        payment_method: 'cash',
+      }),
+    ).rejects.toThrow('قيمة المصروف غير صحيح');
+
+    await expect(
+      invoke(event, 'suppliers:create', {
+        name: 'Invalid Supplier',
+
+        credit_days: true,
+      }),
+    ).rejects.toThrow('مدة ائتمان المورد غير صحيح');
+
+    await expect(invoke(event, 'suppliers:get-by-id', true)).rejects.toThrow(
+      'رقم المورد غير صحيح',
+    );
+
+    const badPromotion = await invoke(event, 'promotions:create', {
+      name: 'Invalid Promotion',
+
+      type: 'fixed_invoice',
+
+      value: true,
+
+      scope_type: 'all',
+    });
+
+    expect(badPromotion).toMatchObject({
+      success: false,
+
+      message: 'قيمة العرض غير صحيح',
+    });
+
+    const badToggle = await invoke(event, 'promotions:toggle', {
+      id: true,
+
+      is_active: 1,
+    });
+
+    expect(badToggle).toMatchObject({
+      success: false,
+
+      message: 'رقم العرض غير صحيح',
+    });
+
+    await expect(
+      invoke(event, 'settings:save-loyalty', {
+        loyalty_enabled: true,
+
+        loyalty_earn_amount: 100,
+
+        loyalty_earn_points: 1,
+
+        loyalty_point_value: true,
+
+        loyalty_min_redeem_points: 1,
+      }),
+    ).rejects.toThrow('قيمة النقطة غير صحيح');
+
+    const loyalty = await invoke(event, 'settings:save-loyalty', {
+      loyalty_enabled: true,
+
+      loyalty_earn_amount: 100.5,
+
+      loyalty_earn_points: 5,
+
+      loyalty_point_value: 2.5,
+
+      loyalty_min_redeem_points: 10,
+    });
+
+    expect(loyalty).toMatchObject({
+      loyalty_enabled: true,
+
+      loyalty_earn_amount: 101,
+
+      loyalty_earn_points: 5,
+
+      loyalty_point_value: 3,
+
+      loyalty_min_redeem_points: 10,
+    });
+  });
+
+  it('rejects malformed inventory adjustment payloads before repository coercion', async () => {
+    const admin = findUserByUsername('admin')!;
+
+    const { event } = makeClient();
+
+    startAuthSession(event, admin.id);
+
+    await expect(
+      invoke(event, 'inventory:adjust-stock', {
+        variant_id: true,
+        target_stock: 10,
+      }),
+    ).rejects.toThrow('رقم الصنف غير صحيح');
+
+    await expect(
+      invoke(event, 'inventory:adjust-stock', {
+        variant_id: 1,
+        target_stock: true,
+      }),
+    ).rejects.toThrow('المخزون الجديد غير صحيح');
+  });
+
+  it('rejects malformed read filters instead of coercing renderer values', async () => {
+    const admin = findUserByUsername('admin')!;
+
+    const { event } = makeClient();
+
+    startAuthSession(event, admin.id);
+
+    await expect(
+      invoke(event, 'customers:list-page', {
+        debtors_only: 'yes',
+      }),
+    ).rejects.toThrow('عرض العملاء المدينين فقط غير صحيحة');
+
+    await expect(invoke(event, 'cash-shifts:details', true)).rejects.toThrow(
+      'رقم الشفت غير صحيح',
+    );
+
+    await expect(
+      invoke(event, 'sales:list', {
+        payment_filter: 'fake-status',
+      }),
+    ).rejects.toThrow('حالة دفع فاتورة البيع غير صحيح');
+
+    await expect(
+      invoke(event, 'reports:summary', {
+        user_id: true,
+      }),
+    ).rejects.toThrow('رقم المستخدم غير صحيح');
+
+    await expect(
+      invoke(event, 'activity:list', {
+        offset: true,
+      }),
+    ).rejects.toThrow('بداية النتائج غير صحيح');
   });
 
   it('hides product cost from cashier sales reads but keeps it for admins', async () => {

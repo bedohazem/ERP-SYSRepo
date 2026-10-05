@@ -445,10 +445,17 @@ export function getCashSummary(input?: CashFilterInput) {
     movements_count: number;
   };
 
+  const totalIn = roundMoney(row.total_in);
+
+  const totalOut = roundMoney(row.total_out);
+
   return {
-    total_in: Number(row.total_in || 0),
-    total_out: Number(row.total_out || 0),
-    balance: Number(row.total_in || 0) - Number(row.total_out || 0),
+    total_in: totalIn,
+
+    total_out: totalOut,
+
+    balance: roundMoney(totalIn - totalOut),
+
     movements_count: Number(row.movements_count || 0),
   };
 }
@@ -851,11 +858,11 @@ export function closeCashDay(input: CashDayCloseInput) {
 
     if (Math.abs(difference) > 0.01) {
       throw new Error(
-        `يوجد فرق في جرد الدرج. رصيد النظام ${systemClosingBalance.toFixed(
-          2,
-        )} ج.م والجرد الفعلي ${countedAmount.toFixed(
-          2,
-        )} ج.م والفرق ${difference.toFixed(2)} ج.م`,
+        `يوجد فرق في جرد الدرج. رصيد النظام ${roundMoney(
+          systemClosingBalance,
+        )} ج.م والجرد الفعلي ${roundMoney(
+          countedAmount,
+        )} ج.م والفرق ${roundMoney(difference)} ج.م`,
       );
     }
 
@@ -903,8 +910,8 @@ export function closeCashDay(input: CashDayCloseInput) {
     if (transferAmount > 0) {
       const note =
         `تقفيل يوم ${businessDate} - ` +
-        `تحويل ${transferAmount.toFixed(2)} ج.م - ` +
-        `المتبقي في الدرج ${carryOverAmount.toFixed(2)} ج.م`;
+        `تحويل ${roundMoney(transferAmount)} ج.م - ` +
+        `المتبقي في الدرج ${roundMoney(carryOverAmount)} ج.م`;
 
       createCashMovement({
         type: 'transfer',
@@ -1272,8 +1279,8 @@ export function updateCashDayClosing(input: {
     if (newTransferAmount > 0) {
       const note =
         `تقفيل يوم ${businessDate} - ` +
-        `تحويل ${newTransferAmount.toFixed(2)} ج.م - ` +
-        `المتبقي في الدرج ${carryOverAmount.toFixed(2)} ج.م`;
+        `تحويل ${roundMoney(newTransferAmount)} ج.م - ` +
+        `المتبقي في الدرج ${roundMoney(carryOverAmount)} ج.م`;
 
       createCashMovement({
         type: 'transfer',
