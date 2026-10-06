@@ -2035,9 +2035,21 @@ export function listSales(input?: {
 
       original_sub_total: originalSubTotal,
 
+      original_list_sub_total: Number(row.list_sub_total ?? row.sub_total ?? 0),
+
+      original_product_discount_value: Number(row.product_discount_value || 0),
+
       original_grand_total: originalGrandTotal,
 
+      /*
+       * سجل الفواتير يعرض الحالة الحالية
+       * بعد آخر استبدال.
+       */
       sub_total: financials.current_sub_total,
+
+      list_sub_total: financials.current_list_sub_total,
+
+      product_discount_value: financials.current_product_discount_value,
 
       discount_value: financials.current_normal_discount_value,
 

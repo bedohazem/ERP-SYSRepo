@@ -229,7 +229,7 @@ export function buildSaleReceiptHtml(
   );
 
   const paymentText =
-    validPayments.length > 0
+    validPayments.length > 1
       ? validPayments
           .map(
             (payment) =>
@@ -238,7 +238,9 @@ export function buildSaleReceiptHtml(
               )} ${money(payment.amount)}`,
           )
           .join(' + ')
-      : getPaymentMethodShortLabel(sale.payment_method) || '—';
+      : validPayments.length === 1
+        ? getPaymentMethodShortLabel(validPayments[0].payment_method)
+        : getPaymentMethodShortLabel(sale.payment_method) || '—';
   const finance = getReceiptFinance(receipt, returnHistory);
 
   const {
@@ -303,12 +305,28 @@ export function buildSaleReceiptHtml(
           ${
             listUnitPrice > unitPrice
               ? `
-                <div style="font-size:9px;text-decoration:line-through;color:#777;">
-                  ${money(listUnitPrice)}
+                <div
+                  style="
+                    font-size:10px;
+                    color:#666;
+                    white-space:nowrap;
+                  "
+                >
+                  <span>قبل </span>
+                  <span style="text-decoration:line-through;font-weight:700;">
+                    ${money(listUnitPrice)}
+                  </span>
                 </div>
-                <strong>
+
+                <div
+                  style="
+                    font-size:12px;
+                    font-weight:900;
+                    white-space:nowrap;
+                  "
+                >
                   ${money(unitPrice)}
-                </strong>
+                </div>
               `
               : money(unitPrice)
           }

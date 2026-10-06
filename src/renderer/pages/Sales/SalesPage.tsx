@@ -4885,8 +4885,10 @@ export default function SalesPage() {
 
               <div style={receiptInfoCardStyle}>
                 <span>طريقة الدفع</span>
+
                 <strong>
-                  {receiptData.payments?.length
+                  {receiptData.payments?.length &&
+                  receiptData.payments.length > 1
                     ? receiptData.payments
                         .map(
                           (payment) =>
@@ -4895,7 +4897,10 @@ export default function SalesPage() {
                             )}: ${money(payment.amount)} ج.م`,
                         )
                         .join(' + ')
-                    : getPaymentMethodLabel(receiptData.sale.payment_method)}
+                    : getPaymentMethodLabel(
+                        receiptData.payments?.[0]?.payment_method ??
+                          receiptData.sale.payment_method,
+                      )}
                 </strong>
               </div>
             </div>
@@ -4998,10 +5003,13 @@ export default function SalesPage() {
                 </div>
               )}
 
-              <div style={receiptInfoCardStyle}>
-                <span>خصم عادي</span>
-                <strong>{money(receiptData.sale.discount_value)} ج.م</strong>
-              </div>
+              {Number(receiptData.sale.discount_value || 0) > 0 && (
+                <div style={receiptInfoCardStyle}>
+                  <span>خصم عادي</span>
+
+                  <strong>{money(receiptData.sale.discount_value)} ج.م</strong>
+                </div>
+              )}
 
               {Number(receiptData.sale.promotion_discount_value || 0) > 0 && (
                 <div style={receiptInfoCardStyle}>
@@ -5013,12 +5021,15 @@ export default function SalesPage() {
                 </div>
               )}
 
-              <div style={receiptInfoCardStyle}>
-                <span>خصم النقاط</span>
-                <strong>
-                  {money(receiptData.sale.loyalty_discount_value)} ج.م
-                </strong>
-              </div>
+              {Number(receiptData.sale.loyalty_discount_value || 0) > 0 && (
+                <div style={receiptInfoCardStyle}>
+                  <span>خصم النقاط</span>
+
+                  <strong>
+                    {money(receiptData.sale.loyalty_discount_value)} ج.م
+                  </strong>
+                </div>
+              )}
 
               <div
                 style={{
@@ -5030,13 +5041,17 @@ export default function SalesPage() {
                 <strong>{money(receiptData.sale.grand_total)} ج.م</strong>
               </div>
 
-              <div style={receiptInfoCardStyle}>
-                <span>النقاط</span>
-                <strong>
-                  +{receiptData.sale.loyalty_points_earned || 0} / -
-                  {receiptData.sale.loyalty_points_redeemed || 0}
-                </strong>
-              </div>
+              {(Number(receiptData.sale.loyalty_points_earned || 0) > 0 ||
+                Number(receiptData.sale.loyalty_points_redeemed || 0) > 0) && (
+                <div style={receiptInfoCardStyle}>
+                  <span>النقاط</span>
+
+                  <strong>
+                    +{receiptData.sale.loyalty_points_earned || 0} / -
+                    {receiptData.sale.loyalty_points_redeemed || 0}
+                  </strong>
+                </div>
+              )}
             </div>
 
             <div

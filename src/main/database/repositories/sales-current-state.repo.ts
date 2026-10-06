@@ -1031,9 +1031,17 @@ export function getSaleCurrentState(saleIdInput: number) {
 
     original_sub_total: Number(sale.sub_total || 0),
 
-    list_sub_total: Number(sale.list_sub_total ?? sale.sub_total ?? 0),
+    original_list_sub_total: Number(sale.list_sub_total ?? sale.sub_total ?? 0),
 
-    product_discount_value: originalProductDiscount,
+    original_product_discount_value: originalProductDiscount,
+
+    /*
+     * currentSale لازم يمثل الحالة الحالية
+     * بعد الاستبدالات، وليس Snapshot البيع الأصلي.
+     */
+    list_sub_total: currentListSubTotal,
+
+    product_discount_value: currentProductDiscount,
 
     original_discount_value: Number(sale.discount_value || 0),
 

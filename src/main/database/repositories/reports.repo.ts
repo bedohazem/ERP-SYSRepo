@@ -848,12 +848,6 @@ export function getReportsSummary(input?: ReportFilter) {
       Number(exchangeSummary.loyalty_discount_adjustment || 0),
   );
 
-  const returnedDiscounts =
-    Number(returnsSummary.returned_product_discounts || 0) +
-    Number(returnsSummary.returned_normal_discounts || 0) +
-    Number(returnsSummary.returned_promotion_discounts || 0) +
-    Number(returnsSummary.returned_loyalty_discounts || 0);
-
   const totalDiscounts = Math.max(
     0,
 
@@ -2202,6 +2196,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
       },
 
       discounts: {
+        product: 0,
         normal: 0,
         promotion: 0,
         loyalty: 0,
