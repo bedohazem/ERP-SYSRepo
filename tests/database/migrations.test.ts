@@ -289,6 +289,16 @@ describe('database migrations', () => {
 
         name: 'purchase-orders',
       },
+      {
+        version: 12,
+
+        name: 'sale-product-price-discount-snapshot',
+      },
+      {
+        version: 13,
+
+        name: 'sale-product-discount-return-exchange-snapshots',
+      },
     ]);
 
     const userPermissionColumns = database

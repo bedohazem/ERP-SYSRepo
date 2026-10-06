@@ -89,6 +89,10 @@ export function registerExpenseIpc(): void {
       date_to:
         optionalDateOnly(payload.date_to, 'تاريخ نهاية المصروفات') ?? undefined,
 
+      search:
+        optionalTrimmedString(payload.search, 'بحث المصروفات', 500) ??
+        undefined,
+
       created_by: user.role === 'admin' ? undefined : user.id,
     });
   });
@@ -105,6 +109,10 @@ export function registerExpenseIpc(): void {
 
       date_to:
         optionalDateOnly(payload.date_to, 'تاريخ نهاية المصروفات') ?? undefined,
+
+      search:
+        optionalTrimmedString(payload.search, 'بحث المصروفات', 500) ??
+        undefined,
 
       created_by: user.role === 'admin' ? undefined : user.id,
 

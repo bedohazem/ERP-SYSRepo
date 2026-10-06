@@ -572,6 +572,10 @@ declare global {
 
           sell_price: number;
 
+          original_sell_price: number;
+
+          discount_price?: number | null;
+
           buy_price: number;
 
           min_stock: number;
@@ -1644,6 +1648,7 @@ declare global {
         };
 
         discounts: {
+          product: number;
           normal: number;
           promotion: number;
           loyalty: number;
@@ -1677,6 +1682,7 @@ declare global {
           returns_count: number;
           gross_sales: number;
           total_returns: number;
+          product_discounts: number;
           normal_discounts: number;
           promotion_discounts: number;
           loyalty_discounts: number;
@@ -2608,6 +2614,7 @@ declare global {
         search?: string;
         reference_type?: string;
         created_by?: number | null;
+        include_corrected?: boolean;
       }) => Promise<{
         total_in: number;
         total_out: number;
@@ -2629,6 +2636,7 @@ declare global {
         created_by?: number | null;
         limit?: number;
         offset?: number;
+        include_corrected?: boolean;
       }) => Promise<{
         rows: any[];
         total: number;
@@ -2929,11 +2937,13 @@ declare global {
       getExpenses: (input?: {
         date_from?: string;
         date_to?: string;
+        search?: string;
       }) => Promise<any[]>;
 
       getExpensesPage: (input?: {
         date_from?: string;
         date_to?: string;
+        search?: string;
         limit?: number;
         offset?: number;
       }) => Promise<{

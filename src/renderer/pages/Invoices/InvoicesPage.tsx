@@ -29,6 +29,8 @@ type SaleRow = {
   customer_phone?: string | null;
   cashier_name?: string | null;
   sub_total: number;
+  list_sub_total?: number;
+  product_discount_value?: number;
   discount_value: number;
   promotion_id?: number | null;
   promotion_name?: string | null;
@@ -263,6 +265,9 @@ type ReturnDraftItem = {
   return_quantity: number;
 
   unit_price: number;
+  list_unit_price: number;
+
+  product_discount_value: number;
   promotion_discount_value: number;
 
   is_promotion_bundle?: boolean;
@@ -316,7 +321,21 @@ function mapReceiptItemToReturnDraft(item: any): ReturnDraftItem {
     return_quantity: 0,
 
     unit_price: Number(item.unit_price || 0),
+    list_unit_price: Math.max(
+      Number(item.unit_price || 0),
 
+      Number(item.list_unit_price ?? item.unit_price ?? 0),
+    ),
+
+    product_discount_value: roundMoney(
+      Math.max(
+        0,
+
+        soldQty *
+          (Number(item.list_unit_price ?? item.unit_price ?? 0) -
+            Number(item.unit_price || 0)),
+      ),
+    ),
     promotion_discount_value: Number(item.promotion_discount_value || 0),
 
     is_promotion_bundle: false,
@@ -393,6 +412,19 @@ function buildReturnDraftItems(
       ),
     );
 
+    const listGrossTotal = roundMoney(
+      units.reduce(
+        (total: number, unit: any) =>
+          total +
+          Number(unit.current_list_unit_price ?? unit.current_unit_price ?? 0),
+        0,
+      ),
+    );
+
+    const productDiscount = roundMoney(
+      Math.max(0, listGrossTotal - grossTotal),
+    );
+
     const promotionDiscount = roundMoney(
       units.reduce(
         (total: number, unit: any) =>
@@ -442,7 +474,9 @@ function buildReturnDraftItems(
        * مطابقًا لمنطق الـBackend.
        */
       unit_price: grossTotal,
+      list_unit_price: listGrossTotal,
 
+      product_discount_value: productDiscount,
       promotion_discount_value: promotionDiscount,
 
       is_promotion_bundle: true,
@@ -1173,6 +1207,20 @@ export default function InvoicesPage() {
     ),
   );
 
+  const returnListGrossTotal = roundMoney(
+    returnItems.reduce(
+      (sum, item) =>
+        sum +
+        Number(item.return_quantity || 0) *
+          Number(item.list_unit_price ?? item.unit_price ?? 0),
+      0,
+    ),
+  );
+
+  const returnProductDiscountShare = roundMoney(
+    Math.max(0, returnListGrossTotal - returnGrossTotal),
+  );
+
   const previousReturnGrossTotal = roundMoney(
     Number(returnReceipt?.financials?.returned_sub_total || 0),
   );
@@ -1691,7 +1739,15 @@ export default function InvoicesPage() {
                 <th style={thStyle}>الإجمالي</th>
                 <th style={thStyle}>الدفع / النقاط</th>
                 <th style={thStyle}>الحالة</th>
-                <th style={thStyle}>إجراءات</th>
+                <th
+                  style={{
+                    ...thStyle,
+                    textAlign: 'center',
+                    minWidth: '240px',
+                  }}
+                >
+                  إجراءات
+                </th>
               </tr>
             </thead>
 
@@ -1811,37 +1867,70 @@ export default function InvoicesPage() {
                       <span style={{ color: '#64748b' }}>—</span>
                     )}
                   </td>
-                  <td style={tdStyle}>{money(sale.sub_total)}</td>
                   <td style={tdStyle}>
-                    <div style={{ display: 'grid', gap: '3px' }}>
-                      <strong>
-                        {money(
-                          sale.total_discount_value ??
-                            Number(sale.discount_value || 0) +
-                              Number(sale.promotion_discount_value || 0) +
-                              Number(sale.loyalty_discount_value || 0),
-                        )}
-                      </strong>
-
-                      {Number(
-                        sale.total_discount_value ??
+                    {money(
+                      Number(sale.product_discount_value || 0) > 0
+                        ? (sale.list_sub_total ?? sale.sub_total)
+                        : sale.sub_total,
+                    )}
+                  </td>
+                  <td style={tdStyle}>
+                    {Number(
+                      sale.total_discount_value ??
+                        Number(sale.product_discount_value || 0) +
                           Number(sale.discount_value || 0) +
-                            Number(sale.promotion_discount_value || 0) +
-                            Number(sale.loyalty_discount_value || 0),
-                      ) > 0 && (
-                        <span style={{ color: '#94a3b8', fontSize: '11px' }}>
-                          عادي: {money(sale.discount_value || 0)}
-                          {' / '}
-                          عرض
-                          {sale.promotion_name
-                            ? ` (${sale.promotion_name})`
-                            : ''}
-                          : {money(sale.promotion_discount_value || 0)}
-                          {' / '}
-                          نقاط: {money(sale.loyalty_discount_value || 0)}
-                        </span>
-                      )}
-                    </div>
+                          Number(sale.promotion_discount_value || 0) +
+                          Number(sale.loyalty_discount_value || 0),
+                    ) > 0 ? (
+                      <div style={{ display: 'grid', gap: '3px' }}>
+                        <strong>
+                          {money(
+                            sale.total_discount_value ??
+                              Number(sale.product_discount_value || 0) +
+                                Number(sale.discount_value || 0) +
+                                Number(sale.promotion_discount_value || 0) +
+                                Number(sale.loyalty_discount_value || 0),
+                          )}
+                        </strong>
+
+                        <div
+                          style={{
+                            display: 'grid',
+                            gap: '2px',
+                            color: '#94a3b8',
+                            fontSize: '11px',
+                          }}
+                        >
+                          {Number(sale.product_discount_value || 0) > 0 && (
+                            <span>
+                              منتج: {money(sale.product_discount_value || 0)}
+                            </span>
+                          )}
+
+                          {Number(sale.discount_value || 0) > 0 && (
+                            <span>عادي: {money(sale.discount_value || 0)}</span>
+                          )}
+
+                          {Number(sale.promotion_discount_value || 0) > 0 && (
+                            <span>
+                              عرض
+                              {sale.promotion_name
+                                ? ` (${sale.promotion_name})`
+                                : ''}
+                              : {money(sale.promotion_discount_value || 0)}
+                            </span>
+                          )}
+
+                          {Number(sale.loyalty_discount_value || 0) > 0 && (
+                            <span>
+                              نقاط: {money(sale.loyalty_discount_value || 0)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <span style={{ color: '#64748b' }}>—</span>
+                    )}
                   </td>
                   <td style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}>
                     <div
@@ -1952,9 +2041,21 @@ export default function InvoicesPage() {
                       <strong style={{ color: '#34d399' }}>فعالة</strong>
                     )}
                   </td>
-                  <td style={tdStyle}>
+                  <td
+                    style={{
+                      ...tdStyle,
+                      textAlign: 'center',
+                      minWidth: '240px',
+                    }}
+                  >
                     <div
-                      style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(68px, 1fr))',
+                        gap: '7px',
+                        width: '100%',
+                        alignItems: 'stretch',
+                      }}
                     >
                       <button
                         type="button"
@@ -2148,7 +2249,15 @@ export default function InvoicesPage() {
                 <th style={thStyle}>الأصناف / الكمية</th>
                 <th style={thStyle}>القيمة / السبب</th>
                 <th style={thStyle}>الحالة</th>
-                <th style={thStyle}>إجراءات</th>
+                <th
+                  style={{
+                    ...thStyle,
+                    textAlign: 'center',
+                    minWidth: '280px',
+                  }}
+                >
+                  إجراءات
+                </th>
               </tr>
             </thead>
 
@@ -2232,9 +2341,21 @@ export default function InvoicesPage() {
                       <strong style={{ color: '#34d399' }}>فعال</strong>
                     )}
                   </td>
-                  <td style={tdStyle}>
+                  <td
+                    style={{
+                      ...tdStyle,
+                      textAlign: 'center',
+                      minWidth: '280px',
+                    }}
+                  >
                     <div
-                      style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(82px, 1fr))',
+                        gap: '7px',
+                        width: '100%',
+                        alignItems: 'stretch',
+                      }}
                     >
                       <button
                         type="button"
@@ -2385,7 +2506,15 @@ export default function InvoicesPage() {
 
                 <th style={thStyle}>الحالة</th>
 
-                <th style={thStyle}>إجراءات</th>
+                <th
+                  style={{
+                    ...thStyle,
+                    textAlign: 'center',
+                    minWidth: '280px',
+                  }}
+                >
+                  إجراءات
+                </th>
               </tr>
             </thead>
 
@@ -2694,14 +2823,20 @@ export default function InvoicesPage() {
                     )}
                   </td>
 
-                  <td style={tdStyle}>
+                  <td
+                    style={{
+                      ...tdStyle,
+                      textAlign: 'center',
+                      minWidth: '280px',
+                    }}
+                  >
                     <div
                       style={{
-                        display: 'flex',
-
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(82px, 1fr))',
                         gap: '7px',
-
-                        flexWrap: 'wrap',
+                        width: '100%',
+                        alignItems: 'stretch',
                       }}
                     >
                       <button
@@ -2758,6 +2893,8 @@ export default function InvoicesPage() {
                             }}
                             style={{
                               ...smallButtonStyle,
+
+                              gridColumn: '2',
 
                               borderColor: '#ef4444',
 
@@ -3416,7 +3553,36 @@ export default function InvoicesPage() {
                       )}
                     </td>
                     <td style={invoiceModalTdStyle}>
-                      {money(item.unit_price)}
+                      {Number(item.list_unit_price ?? item.unit_price ?? 0) >
+                      Number(item.unit_price || 0) ? (
+                        <div
+                          style={{
+                            display: 'grid',
+                            gap: '3px',
+                          }}
+                        >
+                          <span
+                            style={{
+                              color: '#94a3b8',
+                              fontSize: '11px',
+                              textDecoration: 'line-through',
+                            }}
+                          >
+                            قبل:{' '}
+                            {money(item.list_unit_price ?? item.unit_price)}
+                          </span>
+
+                          <strong
+                            style={{
+                              color: '#86efac',
+                            }}
+                          >
+                            بعد الخصم: {money(item.unit_price)}
+                          </strong>
+                        </div>
+                      ) : (
+                        money(item.unit_price)
+                      )}
                     </td>
                     <td style={invoiceModalTdStyle}>
                       {money(item.line_total)}
@@ -3654,39 +3820,69 @@ export default function InvoicesPage() {
                       }}
                     >
                       <SummaryLine
-                        label="الإجمالي قبل الخصم"
+                        label="الإجمالي قبل الخصومات"
                         value={money(
-                          selectedReceipt.original_receipt.sale.sub_total,
+                          selectedReceipt.original_receipt.sale
+                            .list_sub_total ??
+                            selectedReceipt.original_receipt.sale.sub_total,
                         )}
                       />
 
-                      <SummaryLine
-                        label="خصم عادي"
-                        value={money(
-                          selectedReceipt.original_receipt.sale
-                            .discount_value || 0,
-                        )}
-                      />
+                      {Number(
+                        selectedReceipt.original_receipt.sale
+                          .product_discount_value || 0,
+                      ) > 0 && (
+                        <SummaryLine
+                          label="خصم المنتج"
+                          value={money(
+                            selectedReceipt.original_receipt.sale
+                              .product_discount_value || 0,
+                          )}
+                        />
+                      )}
 
-                      <SummaryLine
-                        label={
-                          selectedReceipt.original_receipt.sale.promotion_name
-                            ? `خصم العرض — ${selectedReceipt.original_receipt.sale.promotion_name}`
-                            : 'خصم العرض'
-                        }
-                        value={money(
-                          selectedReceipt.original_receipt.sale
-                            .promotion_discount_value || 0,
-                        )}
-                      />
+                      {Number(
+                        selectedReceipt.original_receipt.sale.discount_value ||
+                          0,
+                      ) > 0 && (
+                        <SummaryLine
+                          label="خصم عادي"
+                          value={money(
+                            selectedReceipt.original_receipt.sale
+                              .discount_value || 0,
+                          )}
+                        />
+                      )}
 
-                      <SummaryLine
-                        label="خصم النقاط"
-                        value={money(
-                          selectedReceipt.original_receipt.sale
-                            .loyalty_discount_value || 0,
-                        )}
-                      />
+                      {Number(
+                        selectedReceipt.original_receipt.sale
+                          .promotion_discount_value || 0,
+                      ) > 0 && (
+                        <SummaryLine
+                          label={
+                            selectedReceipt.original_receipt.sale.promotion_name
+                              ? `خصم العرض — ${selectedReceipt.original_receipt.sale.promotion_name}`
+                              : 'خصم العرض'
+                          }
+                          value={money(
+                            selectedReceipt.original_receipt.sale
+                              .promotion_discount_value || 0,
+                          )}
+                        />
+                      )}
+
+                      {Number(
+                        selectedReceipt.original_receipt.sale
+                          .loyalty_discount_value || 0,
+                      ) > 0 && (
+                        <SummaryLine
+                          label="خصم النقاط"
+                          value={money(
+                            selectedReceipt.original_receipt.sale
+                              .loyalty_discount_value || 0,
+                          )}
+                        />
+                      )}
 
                       <SummaryLine
                         label="الإجمالي الأصلي"
@@ -3789,44 +3985,88 @@ export default function InvoicesPage() {
               }}
             >
               <SummaryLine
-                label="الإجمالي قبل الخصم الحالي"
-                value={money(
-                  selectedReceipt.financials?.current_sub_total ??
-                    selectedReceipt.sale.sub_total,
-                )}
-              />
-
-              <SummaryLine
-                label="خصم عادي مطبق"
-                value={money(
-                  selectedReceipt.financials?.current_normal_discount_value ??
-                    selectedReceipt.sale.discount_value ??
-                    0,
-                )}
-              />
-
-              <SummaryLine
                 label={
-                  selectedReceipt.sale.promotion_name
-                    ? `خصم العرض — ${selectedReceipt.sale.promotion_name}`
-                    : 'خصم العرض الحالي'
+                  Number(selectedReceipt.sale.product_discount_value || 0) > 0
+                    ? 'الإجمالي قبل خصم المنتج'
+                    : 'الإجمالي قبل الخصم الحالي'
                 }
                 value={money(
-                  selectedReceipt.financials
-                    ?.current_promotion_discount_value ??
-                    selectedReceipt.sale.promotion_discount_value ??
-                    0,
+                  Number(selectedReceipt.sale.product_discount_value || 0) > 0
+                    ? (selectedReceipt.sale.list_sub_total ??
+                        selectedReceipt.financials?.original_list_sub_total ??
+                        selectedReceipt.sale.sub_total)
+                    : (selectedReceipt.financials?.current_sub_total ??
+                        selectedReceipt.sale.sub_total),
                 )}
               />
 
-              <SummaryLine
-                label="خصم النقاط المطبق"
-                value={money(
-                  selectedReceipt.financials?.current_loyalty_discount_value ??
-                    selectedReceipt.sale.loyalty_discount_value ??
-                    0,
-                )}
-              />
+              {Number(selectedReceipt.sale.product_discount_value || 0) > 0 && (
+                <>
+                  <SummaryLine
+                    label="خصم المنتج"
+                    value={money(selectedReceipt.sale.product_discount_value)}
+                  />
+
+                  <SummaryLine
+                    label="بعد خصم المنتج"
+                    value={money(
+                      selectedReceipt.financials?.current_sub_total ??
+                        selectedReceipt.sale.sub_total,
+                    )}
+                  />
+                </>
+              )}
+
+              {Number(
+                selectedReceipt.financials?.current_normal_discount_value ??
+                  selectedReceipt.sale.discount_value ??
+                  0,
+              ) > 0 && (
+                <SummaryLine
+                  label="خصم عادي"
+                  value={money(
+                    selectedReceipt.financials?.current_normal_discount_value ??
+                      selectedReceipt.sale.discount_value ??
+                      0,
+                  )}
+                />
+              )}
+
+              {Number(
+                selectedReceipt.financials?.current_promotion_discount_value ??
+                  selectedReceipt.sale.promotion_discount_value ??
+                  0,
+              ) > 0 && (
+                <SummaryLine
+                  label={
+                    selectedReceipt.sale.promotion_name
+                      ? `خصم العرض — ${selectedReceipt.sale.promotion_name}`
+                      : 'خصم العرض'
+                  }
+                  value={money(
+                    selectedReceipt.financials
+                      ?.current_promotion_discount_value ??
+                      selectedReceipt.sale.promotion_discount_value ??
+                      0,
+                  )}
+                />
+              )}
+
+              {Number(
+                selectedReceipt.financials?.current_loyalty_discount_value ??
+                  selectedReceipt.sale.loyalty_discount_value ??
+                  0,
+              ) > 0 && (
+                <SummaryLine
+                  label="خصم النقاط"
+                  value={money(
+                    selectedReceipt.financials
+                      ?.current_loyalty_discount_value ??
+                      selectedReceipt.sale.loyalty_discount_value ??
+                      0,
+                  )}
+                />
+              )}
 
               <SummaryLine
                 label="الإجمالي الحالي قبل المرتجعات"
@@ -3855,14 +4095,20 @@ export default function InvoicesPage() {
                 )}
                 strong
               />
-              <SummaryLine
-                label="النقاط المكتسبة"
-                value={`${selectedReceipt.sale.loyalty_points_earned || 0}`}
-              />
-              <SummaryLine
-                label="النقاط المستخدمة"
-                value={`${selectedReceipt.sale.loyalty_points_redeemed || 0}`}
-              />
+              {Number(selectedReceipt.sale.loyalty_points_earned || 0) > 0 && (
+                <SummaryLine
+                  label="النقاط المكتسبة"
+                  value={`${selectedReceipt.sale.loyalty_points_earned}`}
+                />
+              )}
+
+              {Number(selectedReceipt.sale.loyalty_points_redeemed || 0) >
+                0 && (
+                <SummaryLine
+                  label="النقاط المستخدمة"
+                  value={`${selectedReceipt.sale.loyalty_points_redeemed}`}
+                />
+              )}
             </div>
 
             <div
@@ -4253,8 +4499,14 @@ export default function InvoicesPage() {
             >
               <div style={{ display: 'grid', gap: '6px' }}>
                 <div>
-                  إجمالي الأصناف قبل الخصومات: {money(returnGrossTotal)}
+                  إجمالي الأصناف قبل الخصومات: {money(returnListGrossTotal)}
                 </div>
+
+                {returnProductDiscountShare > 0 && (
+                  <div style={{ color: '#86efac' }}>
+                    خصم المنتج: {money(returnProductDiscountShare)}
+                  </div>
+                )}
 
                 {(returnPromotionDiscountShare > 0 ||
                   returnDiscountShare > 0 ||

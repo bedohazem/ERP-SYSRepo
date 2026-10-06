@@ -50,6 +50,7 @@ export type CashFilterInput = {
   reference_type?: string;
   created_by?: number | null;
   shift_id?: number | null;
+  include_corrected?: boolean;
   limit?: number;
   offset?: number;
 };
@@ -78,6 +79,20 @@ export type CashDayCloseInput = {
   target_account?: string;
   closed_by?: number | null;
 };
+
+const LEGACY_UPDATED_MOVEMENT_EXISTS_SQL = `
+  EXISTS (
+    SELECT 1
+    FROM cash_movements correction_reverse
+    WHERE correction_reverse.id > cm.id
+      AND correction_reverse.type = cm.type
+      AND correction_reverse.reference_id = cm.reference_id
+      AND cm.reference_id IS NOT NULL
+      AND correction_reverse.payment_method = cm.payment_method
+      AND IFNULL(correction_reverse.reference_type, '')
+        LIKE '%_update_reverse'
+  )
+`;
 
 export function resolveCashAccount(value?: string | null): CashAccountKey {
   switch (value) {
@@ -172,6 +187,7 @@ function buildCashWhere(
   input?: CashFilterInput,
   options?: {
     activeOnly?: boolean;
+    hideCorrectedHistory?: boolean;
   },
 ) {
   const where: string[] = options?.activeOnly
@@ -311,6 +327,42 @@ function buildCashWhere(
     params.push(search, search, search, search, search);
   }
 
+  if (
+    options?.hideCorrectedHistory === true &&
+    input?.include_corrected !== true
+  ) {
+    where.push(`
+      (
+        /*
+         * الحركة الأصلية الملغاة
+         * تظل ظاهرة في السجل.
+         */
+        cm.cancelled_at IS NOT NULL
+
+        OR
+
+        (
+          /*
+           * الحركة التي تم استبدالها بتعديل
+           * لا تظهر في العرض الطبيعي.
+           */
+          IFNULL(cm.replacement_movement_id, 0) = 0
+
+          /*
+           * نخفي حركة العكس الفنية.
+           */
+          AND IFNULL(cm.reference_type, '') NOT LIKE '%_reverse'
+
+          /*
+           * دعم الحركات القديمة التي تم تعديلها
+           * قبل إضافة replacement_movement_id.
+           */
+          AND NOT ${LEGACY_UPDATED_MOVEMENT_EXISTS_SQL}
+        )
+      )
+    `);
+  }
+
   return {
     whereSql: where.length ? `WHERE ${where.join(' AND ')}` : '',
     params,
@@ -445,16 +497,20 @@ export function getCashSummary(input?: CashFilterInput) {
     movements_count: number;
   };
 
-  const totalIn = roundMoney(row.total_in);
+  const rawTotalIn = Number(row.total_in || 0);
 
-  const totalOut = roundMoney(row.total_out);
+  const rawTotalOut = Number(row.total_out || 0);
+
+  const totalIn = roundMoney(rawTotalIn);
+
+  const totalOut = roundMoney(rawTotalOut);
 
   return {
     total_in: totalIn,
 
     total_out: totalOut,
 
-    balance: roundMoney(totalIn - totalOut),
+    balance: roundMoney(rawTotalIn - rawTotalOut),
 
     movements_count: Number(row.movements_count || 0),
   };
@@ -465,7 +521,9 @@ export function listCashMovements(input?: CashFilterInput) {
 
   normalizeLegacyCashMovementAccounts();
 
-  const { whereSql, params } = buildCashWhere(input);
+  const { whereSql, params } = buildCashWhere(input, {
+    hideCorrectedHistory: true,
+  });
 
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
 
@@ -478,6 +536,22 @@ export function listCashMovements(input?: CashFilterInput) {
         cm.*,
 
         u.name AS created_by_name,
+
+        CASE
+          WHEN cm.cancelled_at IS NOT NULL
+            THEN 1
+
+          WHEN IFNULL(cm.replacement_movement_id, 0) > 0
+            THEN 1
+
+          WHEN IFNULL(cm.reference_type, '') LIKE '%_reverse'
+            THEN 1
+
+          WHEN ${LEGACY_UPDATED_MOVEMENT_EXISTS_SQL}
+            THEN 1
+
+          ELSE 0
+        END AS is_corrected_history,
 
         CASE
           WHEN cm.type = 'transfer'

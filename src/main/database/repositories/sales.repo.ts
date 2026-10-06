@@ -27,6 +27,7 @@ export type CreateSaleLineInput = {
   color: string;
   quantity: number;
   unit_price: number;
+  list_unit_price?: number;
   is_gift?: boolean;
   promotion_group_id?: string | null;
 };
@@ -62,6 +63,7 @@ type CreateSaleInput = {
     color?: string | null;
     quantity: number;
     unit_price: number;
+    list_unit_price?: number;
   }>;
 };
 
@@ -366,6 +368,10 @@ function createSaleInternal(
       throw new Error('العروض الفعالة اتغيرت، افتح شاشة الدفع مرة أخرى');
     }
 
+    /*
+     * subTotal = القيمة الفعلية بعد
+     * Product Price Discount.
+     */
     const subTotal = roundMoney(
       input.items.reduce((total, item) => {
         const qty = Math.max(0, Number(item.quantity || 0));
@@ -374,6 +380,29 @@ function createSaleInternal(
 
         return total + qty * price;
       }, 0),
+    );
+
+    /*
+     * listSubTotal = إجمالي أسعار الكتالوج
+     * قبل خانة "السعر بعد الخصم".
+     */
+    const listSubTotal = roundMoney(
+      input.items.reduce((total, item) => {
+        const qty = Math.max(0, Number(item.quantity || 0));
+
+        const unitPrice = Math.max(0, Number(item.unit_price || 0));
+
+        const listUnitPrice = Math.max(
+          unitPrice,
+          Number(item.list_unit_price ?? item.unit_price ?? 0),
+        );
+
+        return total + qty * listUnitPrice;
+      }, 0),
+    );
+
+    const productDiscountValue = roundMoney(
+      Math.max(0, listSubTotal - subTotal),
     );
 
     const promotionDiscount = roundMoney(
@@ -714,6 +743,8 @@ function createSaleInternal(
           shift_id,
 
           sub_total,
+          list_sub_total,
+          product_discount_value,
           discount_value,
 
           promotion_id,
@@ -751,7 +782,7 @@ function createSaleInternal(
 
           ?, ?,
 
-          ?, ?,
+          ?, ?, ?, ?,
 
           ?, ?, ?,
 
@@ -787,6 +818,10 @@ function createSaleInternal(
         openShift?.id ?? null,
 
         subTotal,
+
+        listSubTotal,
+
+        productDiscountValue,
 
         normalDiscount,
 
@@ -1011,12 +1046,13 @@ function createSaleInternal(
         quantity,
         unit_cost,
         unit_price,
+        list_unit_price,
         promotion_discount_value,
         line_total,
         is_gift,
         promotion_group_id
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const insertPromotionUnit = db.prepare(`
@@ -1031,6 +1067,9 @@ function createSaleInternal(
         original_unit_price,
         current_unit_price,
 
+        original_list_unit_price,
+        current_list_unit_price,
+
         original_unit_cost,
         current_unit_cost,
 
@@ -1041,6 +1080,7 @@ function createSaleInternal(
       )
       VALUES (
         ?, ?, ?,
+        ?, ?,
         ?, ?,
         ?, ?,
         ?, ?,
@@ -1247,6 +1287,14 @@ function createSaleInternal(
 
       const price = roundMoney(rawPrice);
 
+      const rawListUnitPrice = Number(item.list_unit_price ?? item.unit_price);
+
+      if (!Number.isFinite(rawListUnitPrice) || rawListUnitPrice < rawPrice) {
+        throw new Error(`سعر ما قبل الخصم غير صحيح للصنف ${item.product_name}`);
+      }
+
+      const listUnitPrice = roundMoney(rawListUnitPrice);
+
       const lineTotal = roundMoney(qty * price);
 
       const variant = getVariantCost.get(item.variant_id) as
@@ -1293,6 +1341,7 @@ function createSaleInternal(
             fragment.quantity,
             saleUnitCost,
             price,
+            listUnitPrice,
             fragment.is_gift ? fragmentLineTotal : 0,
             fragmentLineTotal,
             fragment.is_gift ? 1 : 0,
@@ -1316,6 +1365,9 @@ function createSaleInternal(
                 price,
                 price,
 
+                listUnitPrice,
+                listUnitPrice,
+
                 saleUnitCost,
 
                 saleUnitCost,
@@ -1338,6 +1390,7 @@ function createSaleInternal(
           qty,
           saleUnitCost,
           price,
+          listUnitPrice,
           itemPromotionDiscount,
           lineTotal,
           0,
@@ -1502,6 +1555,12 @@ export function getSaleReceipt(saleId: number) {
         si.color,
         si.quantity,
         si.unit_price,
+
+        COALESCE(
+          si.list_unit_price,
+          si.unit_price
+        ) AS list_unit_price,
+
         si.unit_cost,
 
         IFNULL(si.is_gift, 0)
@@ -1787,6 +1846,17 @@ export function listSales(input?: {
         s.user_id,
         s.business_date,
         s.sub_total,
+
+        COALESCE(
+          s.list_sub_total,
+          s.sub_total
+        ) AS list_sub_total,
+
+        IFNULL(
+          s.product_discount_value,
+          0
+        ) AS product_discount_value,
+
         s.discount_value,
 
         s.promotion_id,
@@ -1942,7 +2012,8 @@ export function listSales(input?: {
         original_grand_total: originalGrandTotal,
 
         total_discount_value: roundMoney(
-          Number(row.discount_value || 0) +
+          Number(row.product_discount_value || 0) +
+            Number(row.discount_value || 0) +
             Number(row.promotion_discount_value || 0) +
             Number(row.loyalty_discount_value || 0),
         ),
@@ -2207,11 +2278,15 @@ export function createSaleReturn(input: {
 
       quantity: number;
       unitPrice: number;
+      listUnitPrice: number;
       lineTotal: number;
+      productDiscount: number;
       promotionDiscount: number;
     };
 
     let returnSubTotal = 0;
+    let returnListSubTotal = 0;
+    let returnProductDiscount = 0;
     let returnPromotionDiscount = 0;
 
     const preparedItems: PreparedReturnItem[] = [];
@@ -2271,7 +2346,21 @@ export function createSaleReturn(input: {
 
           const lineTotal = roundMoney(unitPrice);
 
+          const listUnitPrice = Math.max(
+            unitPrice,
+            Number(
+              unit.current_list_unit_price ??
+                unit.current_unit_price ??
+                unitPrice,
+            ),
+          );
+
+          const productDiscount = roundMoney(
+            Math.max(0, listUnitPrice - unitPrice),
+          );
           returnSubTotal += lineTotal;
+          returnListSubTotal += listUnitPrice;
+          returnProductDiscount += productDiscount;
 
           preparedItems.push({
             originalItem,
@@ -2296,8 +2385,11 @@ export function createSaleReturn(input: {
 
             unitPrice,
 
+            listUnitPrice,
+
             lineTotal,
 
+            productDiscount,
             promotionDiscount: 0,
           });
         }
@@ -2376,10 +2468,25 @@ export function createSaleReturn(input: {
 
             const lineTotal = roundMoney(unitPrice);
 
+            const listUnitPrice = Math.max(
+              unitPrice,
+              Number(
+                unit.current_list_unit_price ??
+                  unit.current_unit_price ??
+                  unitPrice,
+              ),
+            );
+
+            const productDiscount = roundMoney(
+              Math.max(0, listUnitPrice - unitPrice),
+            );
+
             const promotionDiscount =
               Number(unit.current_is_gift || 0) === 1 ? lineTotal : 0;
 
             returnSubTotal += lineTotal;
+            returnListSubTotal += listUnitPrice;
+            returnProductDiscount += productDiscount;
             returnPromotionDiscount += promotionDiscount;
 
             preparedItems.push({
@@ -2403,7 +2510,13 @@ export function createSaleReturn(input: {
 
               quantity: 1,
               unitPrice,
+
+              listUnitPrice,
+
               lineTotal,
+
+              productDiscount,
+
               promotionDiscount,
             });
           }
@@ -2436,9 +2549,26 @@ export function createSaleReturn(input: {
 
       const unitPrice = Number(originalItem.unit_price || 0);
 
-      const lineTotal = requestedQty * unitPrice;
+      const listUnitPrice = Math.max(
+        unitPrice,
+        Number(
+          originalItem.list_unit_price ?? originalItem.unit_price ?? unitPrice,
+        ),
+      );
+
+      const lineTotal = roundMoney(requestedQty * unitPrice);
+
+      const listLineTotal = roundMoney(requestedQty * listUnitPrice);
+
+      const productDiscount = roundMoney(
+        Math.max(0, listLineTotal - lineTotal),
+      );
 
       returnSubTotal += lineTotal;
+
+      returnListSubTotal += listLineTotal;
+
+      returnProductDiscount += productDiscount;
 
       const originalQty = Number(originalItem.quantity || 0);
 
@@ -2487,12 +2617,21 @@ export function createSaleReturn(input: {
 
         quantity: requestedQty,
         unitPrice,
+
+        listUnitPrice,
+
         lineTotal,
+
+        productDiscount,
         promotionDiscount: itemPromotionDiscount,
       });
     }
 
     returnSubTotal = roundMoney(returnSubTotal);
+
+    returnListSubTotal = roundMoney(returnListSubTotal);
+
+    returnProductDiscount = roundMoney(returnProductDiscount);
 
     returnPromotionDiscount = roundMoney(returnPromotionDiscount);
 
@@ -2851,7 +2990,11 @@ export function createSaleReturn(input: {
           customer_id,
           user_id,
           shift_id,
+
           sub_total,
+          list_sub_total,
+          product_discount_value,
+
           promotion_discount_value,
           normal_discount_value,
           loyalty_discount_value,
@@ -2863,7 +3006,7 @@ export function createSaleReturn(input: {
           notes,
           loyalty_points_reversed
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -2872,6 +3015,8 @@ export function createSaleReturn(input: {
         userId,
         openShift.id,
         returnSubTotal,
+        returnListSubTotal,
+        returnProductDiscount,
         returnPromotionDiscount,
         saleDiscountPart,
         loyaltyDiscountPart,
@@ -2965,13 +3110,18 @@ export function createSaleReturn(input: {
         color,
         quantity,
         unit_cost,
+
         unit_price,
+        list_unit_price,
+
+        product_discount_value,
         promotion_discount_value,
+
         line_total
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-
+    ``;
     const markPromotionUnitReturned = db.prepare(`
         UPDATE sale_promotion_units
         SET
@@ -2995,6 +3145,8 @@ export function createSaleReturn(input: {
         item.quantity,
         item.unitCost,
         item.unitPrice,
+        item.listUnitPrice,
+        item.productDiscount,
         item.promotionDiscount,
         item.lineTotal,
       );
@@ -3091,6 +3243,8 @@ export function getSaleReturnHistory(originalSaleId: number) {
         sr.user_id,
         sr.shift_id,
         sr.sub_total,
+        sr.list_sub_total,
+        sr.product_discount_value,
         sr.loyalty_discount_value,
         sr.refund_amount,
         sr.payment_method,
@@ -3130,6 +3284,8 @@ export function getSaleReturnHistory(originalSaleId: number) {
       color,
       quantity,
       unit_price,
+      list_unit_price,
+      product_discount_value,
       line_total
     FROM sale_return_items
     WHERE return_id = ?
@@ -4479,6 +4635,8 @@ export function listSaleReturns(input?: {
         sr.user_id,
         sr.shift_id,
         sr.sub_total,
+        sr.list_sub_total,
+        sr.product_discount_value,
         sr.loyalty_discount_value,
         sr.refund_amount,
         sr.debt_reduction_amount,

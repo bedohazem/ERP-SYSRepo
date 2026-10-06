@@ -383,7 +383,14 @@ export function listHeldSales(input: {
             IFNULL(
               SUM(
                 hsi.quantity *
-                pv.sell_price
+                CASE
+                  WHEN pv.discount_price IS NOT NULL
+                    AND pv.discount_price > 0
+                    AND pv.discount_price < pv.sell_price
+                  THEN pv.discount_price
+
+                  ELSE pv.sell_price
+                END
               ),
               0
             )
@@ -469,7 +476,19 @@ export function getHeldSale(input: HeldSaleAccessInput) {
           ''
         ) AS color,
 
-        pv.sell_price,
+        pv.sell_price
+          AS original_sell_price,
+
+        CASE
+          WHEN pv.discount_price IS NOT NULL
+            AND pv.discount_price > 0
+            AND pv.discount_price < pv.sell_price
+          THEN pv.discount_price
+
+          ELSE pv.sell_price
+        END AS sell_price,
+
+        pv.discount_price,
 
         pv.buy_price,
 

@@ -295,6 +295,7 @@ export function getSaleCurrentState(saleIdInput: number) {
           Number(unit.current_variant_id),
 
           Number(unit.current_unit_price),
+          Number(unit.current_list_unit_price ?? unit.current_unit_price ?? 0),
         ].join(':')
       : [
           groupId,
@@ -331,7 +332,11 @@ export function getSaleCurrentState(saleIdInput: number) {
         unit_cost: Number(unit.current_unit_cost || 0),
 
         unit_price: Number(unit.current_unit_price || 0),
+        list_unit_price: Math.max(
+          Number(unit.current_unit_price || 0),
 
+          Number(unit.current_list_unit_price ?? unit.current_unit_price ?? 0),
+        ),
         promotion_discount_value: 0,
 
         line_total: 0,
@@ -384,6 +389,15 @@ export function getSaleCurrentState(saleIdInput: number) {
         Number(item.quantity) * Number(item.unit_price),
       );
 
+      const listLineTotal = roundMoney(
+        Number(item.quantity) *
+          Number(item.list_unit_price ?? item.unit_price ?? 0),
+      );
+
+      const productDiscountValue = roundMoney(
+        Math.max(0, listLineTotal - lineTotal),
+      );
+
       return {
         ...item,
 
@@ -394,6 +408,10 @@ export function getSaleCurrentState(saleIdInput: number) {
           : Number(item.is_gift) === 1
             ? lineTotal
             : 0,
+
+        list_line_total: listLineTotal,
+
+        product_discount_value: productDiscountValue,
       };
     },
   );
@@ -429,7 +447,21 @@ export function getSaleCurrentState(saleIdInput: number) {
       quantity: Number(item.quantity || 0),
 
       unit_price: Number(item.unit_price || 0),
+      list_unit_price: Math.max(
+        Number(item.unit_price || 0),
 
+        Number(item.list_unit_price ?? item.unit_price ?? 0),
+      ),
+
+      product_discount_value: roundMoney(
+        Math.max(
+          0,
+
+          Number(item.quantity || 0) *
+            (Number(item.list_unit_price ?? item.unit_price ?? 0) -
+              Number(item.unit_price || 0)),
+        ),
+      ),
       unit_cost: Number(item.unit_cost || 0),
 
       line_total: Number(item.line_total || 0),
@@ -454,6 +486,20 @@ export function getSaleCurrentState(saleIdInput: number) {
       (total, item) => total + Number(item.line_total || 0),
       0,
     ),
+  );
+
+  const currentListSubTotal = roundMoney(
+    currentItems.reduce(
+      (total, item) =>
+        total +
+        Number(item.quantity || 0) *
+          Number(item.list_unit_price ?? item.unit_price ?? 0),
+      0,
+    ),
+  );
+
+  const currentProductDiscount = roundMoney(
+    Math.max(0, currentListSubTotal - currentSubTotal),
   );
 
   const currentPromotionDiscount = roundMoney(
@@ -542,6 +588,17 @@ export function getSaleCurrentState(saleIdInput: number) {
           SUM(sr.sub_total),
           0
         ) AS returned_sub_total,
+
+        IFNULL(
+          SUM(
+            IFNULL(
+              sr.product_discount_value,
+              0
+            )
+          ),
+          0
+        )
+          AS returned_product_discount,
 
         IFNULL(
           SUM(
@@ -836,8 +893,13 @@ export function getSaleCurrentState(saleIdInput: number) {
     items: getExchangeItems.all(exchange.id),
   }));
 
+  const originalProductDiscount = positive(sale.product_discount_value);
+
   const currentTotalDiscount = roundMoney(
-    currentPromotionDiscount + currentNormalDiscount + currentLoyaltyDiscount,
+    currentProductDiscount +
+      currentPromotionDiscount +
+      currentNormalDiscount +
+      currentLoyaltyDiscount,
   );
 
   const exchangeDifferenceTotal = roundMoney(
@@ -863,6 +925,12 @@ export function getSaleCurrentState(saleIdInput: number) {
   const financials = {
     original_sub_total: roundMoney(Number(sale.sub_total || 0)),
 
+    original_list_sub_total: roundMoney(
+      Number(sale.list_sub_total ?? sale.sub_total ?? 0),
+    ),
+
+    original_product_discount_value: originalProductDiscount,
+
     original_promotion_discount_value: roundMoney(
       Number(sale.promotion_discount_value || 0),
     ),
@@ -874,6 +942,10 @@ export function getSaleCurrentState(saleIdInput: number) {
     original_grand_total: roundMoney(Number(sale.grand_total || 0)),
 
     current_sub_total: currentSubTotal,
+
+    current_list_sub_total: currentListSubTotal,
+
+    current_product_discount_value: currentProductDiscount,
 
     current_promotion_discount_value: currentPromotionDiscount,
 
@@ -897,6 +969,10 @@ export function getSaleCurrentState(saleIdInput: number) {
 
     returned_sub_total: roundMoney(
       Number(returnSummary?.returned_sub_total || 0),
+    ),
+
+    returned_product_discount: roundMoney(
+      Number(returnSummary?.returned_product_discount || 0),
     ),
 
     returned_promotion_discount: roundMoney(
@@ -954,6 +1030,10 @@ export function getSaleCurrentState(saleIdInput: number) {
     ...sale,
 
     original_sub_total: Number(sale.sub_total || 0),
+
+    list_sub_total: Number(sale.list_sub_total ?? sale.sub_total ?? 0),
+
+    product_discount_value: originalProductDiscount,
 
     original_discount_value: Number(sale.discount_value || 0),
 

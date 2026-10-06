@@ -203,6 +203,16 @@ function normalizeSaleWriteInput(input: unknown) {
   const items = rawItems.map((rawItem) => {
     const item = requireObjectInput(rawItem, 'بيانات صنف البيع');
 
+    const unitPrice = requireNonNegativeMoney(item.unit_price, 'سعر صنف البيع');
+
+    const listUnitPrice =
+      optionalNonNegativeMoney(item.list_unit_price, 'سعر الصنف قبل الخصم') ??
+      unitPrice;
+
+    if (listUnitPrice < unitPrice) {
+      throw new Error('سعر الصنف قبل الخصم لا يمكن أن يكون أقل من سعر البيع');
+    }
+
     return {
       variant_id: requirePositiveInteger(item.variant_id, 'رقم صنف البيع'),
 
@@ -220,7 +230,9 @@ function normalizeSaleWriteInput(input: unknown) {
 
       quantity: requirePositiveNumber(item.quantity, 'كمية صنف البيع'),
 
-      unit_price: requireNonNegativeMoney(item.unit_price, 'سعر صنف البيع'),
+      unit_price: unitPrice,
+
+      list_unit_price: listUnitPrice,
     };
   });
 

@@ -385,7 +385,9 @@ export default function StockCountPage() {
   }
 
   async function saveItem(item: StockCountItem) {
-    if (!selected) return;
+    if (!selected) {
+      return false;
+    }
 
     const rawActual = Object.prototype.hasOwnProperty.call(
       actualDrafts,
@@ -404,7 +406,8 @@ export default function StockCountPage() {
       actualStock < 0
     ) {
       showMessage('اكتب كمية فعلية صحيحة');
-      return;
+
+      return false;
     }
 
     setSavingItemId(item.id);
@@ -412,30 +415,96 @@ export default function StockCountPage() {
     try {
       const result = await window.api.updateStockCountItem({
         session_id: selected.session.id,
+
         item_id: item.id,
+
         actual_stock: actualStock,
+
         notes: item.notes || null,
       });
 
       if (result?.success === false) {
         showMessage(result.message || 'فشل حفظ الكمية');
-        return;
+
+        return false;
       }
 
       setActualDrafts((prev) => {
         const next = { ...prev };
+
         delete next[item.id];
+
         return next;
       });
 
       showMessage('تم حفظ الكمية');
+
       await openSession(selected.session.id, false);
+
+      return true;
     } catch (error) {
       console.error('Failed to save stock count item:', error);
+
       showMessage('حدث خطأ أثناء حفظ الكمية');
+
+      return false;
     } finally {
       setSavingItemId(null);
     }
+  }
+
+  function focusStockCountInput(itemId: number) {
+    const focus = () => {
+      const input = document.querySelector<HTMLInputElement>(
+        `input[data-stock-count-item-id="${itemId}"]`,
+      );
+
+      if (!input) {
+        return;
+      }
+
+      input.focus();
+      input.select();
+    };
+
+    requestAnimationFrame(focus);
+
+    setTimeout(focus, 0);
+    setTimeout(focus, 80);
+  }
+
+  async function saveItemAndMoveToNext(item: StockCountItem) {
+    if (savingItemId !== null || savingAll) {
+      return;
+    }
+
+    const currentIndex = visibleItems.findIndex(
+      (row) => Number(row.id) === Number(item.id),
+    );
+
+    const nextItem =
+      currentIndex >= 0 ? visibleItems[currentIndex + 1] : undefined;
+
+    const saved = await saveItem(item);
+
+    if (!saved || !nextItem) {
+      return;
+    }
+
+    /*
+     * في فلتر غير المجرود:
+     * السطر الحالي سيختفي بعد الحفظ،
+     * لذلك الصنف التالي يأخذ مكانه.
+     */
+    const nextVisibleIndex =
+      filter === 'uncounted' ? currentIndex : currentIndex + 1;
+
+    const nextPage =
+      Math.floor(Math.max(0, nextVisibleIndex) / SYSTEM_PAGE_SIZE) + 1;
+
+    setCountItemsPage(nextPage);
+
+    focusStockCountInput(nextItem.id);
   }
 
   async function saveAllItems() {
@@ -1176,16 +1245,34 @@ export default function StockCountPage() {
                           {isOpen && canCountStock ? (
                             <input
                               type="number"
+
                               min={0}
+
+                              data-stock-count-item-id={item.id}
+
                               value={
                                 actualDrafts[item.id] ?? item.actual_stock ?? ''
                               }
+
                               onChange={(e) =>
                                 updateLocalActual(item.id, e.target.value)
                               }
+
+                              onKeyDown={(e) => {
+                                if (e.key !== 'Enter') {
+                                  return;
+                                }
+
+                                e.preventDefault();
+
+                                void saveItemAndMoveToNext(item);
+                              }}
+
                               style={{
                                 ...inputStyle,
+
                                 width: '120px',
+
                                 padding: '8px 10px',
                               }}
                             />

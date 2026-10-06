@@ -55,7 +55,7 @@ type ExchangeUnitState = {
   current_variant_id: number;
 
   current_unit_price: number;
-
+  current_list_unit_price: number;
   current_unit_cost: number | null;
 
   current_is_gift: number;
@@ -85,6 +85,8 @@ type PromotionUnitRow = {
 
   original_unit_price: number;
   current_unit_price: number;
+  original_list_unit_price: number | null;
+  current_list_unit_price: number | null;
   original_unit_cost: number | null;
   current_unit_cost: number | null;
   original_is_gift: number;
@@ -106,6 +108,7 @@ type ExchangeVariantRow = {
   buy_price: number;
   average_cost: number;
   sell_price: number;
+  list_unit_price: number;
 };
 
 function parseProductIds(value: string) {
@@ -167,6 +170,12 @@ function parseExchangeStateJson(
 
     const unitPrice = Number(raw?.current_unit_price);
 
+    const listUnitPrice = Math.max(
+      unitPrice,
+
+      Number(raw?.current_list_unit_price ?? raw?.current_unit_price ?? 0),
+    );
+
     const rawCost = raw?.current_unit_cost;
 
     const unitCost =
@@ -189,7 +198,7 @@ function parseExchangeStateJson(
       current_variant_id: variantId,
 
       current_unit_price: unitPrice,
-
+      current_list_unit_price: listUnitPrice,
       current_unit_cost: unitCost,
 
       current_is_gift: isGift,
@@ -243,6 +252,9 @@ function getExchangeVariant(db: ReturnType<typeof getDb>, variantId: number) {
         v.color,
         v.buy_price,
         v.average_cost,
+
+        v.sell_price
+          AS list_unit_price,
 
         CASE
           WHEN v.discount_price IS NOT NULL
@@ -355,7 +367,8 @@ function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
 
           original_unit_price,
           current_unit_price,
-
+          original_list_unit_price,
+          current_list_unit_price,
           original_unit_cost,
           current_unit_cost,
 
@@ -367,6 +380,7 @@ function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
 
         VALUES (
           ?, ?, ?,
+          ?, ?,
           ?, ?,
           ?, ?,
           ?, ?,
@@ -421,7 +435,15 @@ function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
           Number(item.unit_price || 0),
 
           Number(item.unit_price || 0),
+          Math.max(
+            Number(item.unit_price || 0),
+            Number(item.list_unit_price ?? item.unit_price ?? 0),
+          ),
 
+          Math.max(
+            Number(item.unit_price || 0),
+            Number(item.list_unit_price ?? item.unit_price ?? 0),
+          ),
           Number(item.unit_cost || 0),
 
           Number(item.unit_cost || 0),
@@ -863,7 +885,11 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       current_variant_id: Number(unit.current_variant_id),
 
       current_unit_price: Number(unit.current_unit_price),
+      current_list_unit_price: Math.max(
+        Number(unit.current_unit_price || 0),
 
+        Number(unit.current_list_unit_price ?? unit.current_unit_price ?? 0),
+      ),
       current_unit_cost: Number(unit.current_unit_cost || 0),
 
       current_is_gift: Number(unit.current_is_gift),
@@ -892,7 +918,11 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         current_variant_id: replacement.variant_id,
 
         current_unit_price: Number(replacement.sell_price),
+        current_list_unit_price: Math.max(
+          Number(replacement.sell_price),
 
+          Number(replacement.list_unit_price ?? replacement.sell_price),
+        ),
         current_unit_cost: Number(
           replacement.average_cost ?? replacement.buy_price ?? 0,
         ),
@@ -990,6 +1020,24 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       ),
     );
 
+    const beforeGroupListGross = roundMoney(
+      beforeState.reduce(
+        (total, unit) =>
+          total +
+          Number(unit.current_list_unit_price ?? unit.current_unit_price ?? 0),
+        0,
+      ),
+    );
+
+    const afterGroupListGross = roundMoney(
+      afterState.reduce(
+        (total, unit) =>
+          total +
+          Number(unit.current_list_unit_price ?? unit.current_unit_price ?? 0),
+        0,
+      ),
+    );
+
     const afterGroupPromotionDiscount = roundMoney(
       afterState.reduce(
         (total, unit) =>
@@ -1005,6 +1053,16 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       currentStateBefore.financials.current_sub_total -
         beforeGroupGross +
         afterGroupGross,
+    );
+
+    const nextListSubTotal = roundMoney(
+      currentStateBefore.financials.current_list_sub_total -
+        beforeGroupListGross +
+        afterGroupListGross,
+    );
+
+    const nextProductDiscount = roundMoney(
+      Math.max(0, nextListSubTotal - nextSubTotal),
     );
 
     const nextPromotionDiscount = Math.max(
@@ -1187,6 +1245,9 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           old_invoice_sub_total,
           new_invoice_sub_total,
 
+          old_product_discount_value,
+          new_product_discount_value,
+
           old_promotion_discount_value,
           new_promotion_discount_value,
 
@@ -1227,6 +1288,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           ?, ?,
           ?, ?,
           ?, ?,
+          ?, ?,
           ?, ?, ?,
           ?, ?,
           ?, ?,
@@ -1247,7 +1309,9 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         currentStateBefore.financials.current_sub_total,
 
         nextSubTotal,
+        currentStateBefore.financials.current_product_discount_value,
 
+        nextProductDiscount,
         currentStateBefore.financials.current_promotion_discount_value,
 
         nextPromotionDiscount,
@@ -1446,7 +1510,8 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
           old_unit_price,
           new_unit_price,
-
+          old_list_unit_price,
+          new_list_unit_price,
           old_unit_cost,
           new_unit_cost,
 
@@ -1456,6 +1521,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           quantity
         )
         VALUES (
+          ?, ?,
           ?, ?,
           ?, ?,
           ?, ?,
@@ -1471,7 +1537,10 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         UPDATE sale_promotion_units
         SET
           current_variant_id = ?,
+
           current_unit_price = ?,
+
+          current_list_unit_price = ?,
           current_unit_cost = ?,
 
           updated_at =
@@ -1514,7 +1583,19 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
         oldUnit.current_unit_price,
         replacement.sell_price,
+        Math.max(
+          Number(oldUnit.current_unit_price || 0),
 
+          Number(
+            oldUnit.current_list_unit_price ?? oldUnit.current_unit_price ?? 0,
+          ),
+        ),
+
+        Math.max(
+          Number(replacement.sell_price || 0),
+
+          Number(replacement.list_unit_price ?? replacement.sell_price ?? 0),
+        ),
         Number(oldUnit.current_unit_cost || 0),
 
         replacementUnitCost,
@@ -1527,7 +1608,11 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         replacement.variant_id,
 
         replacement.sell_price,
+        Math.max(
+          Number(replacement.sell_price || 0),
 
+          Number(replacement.list_unit_price ?? replacement.sell_price ?? 0),
+        ),
         replacementUnitCost,
 
         oldUnit.id,
@@ -2328,11 +2413,23 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
             Number(expected.current_unit_price || 0),
         ) < 0.01;
 
+      const sameListPrice =
+        Math.abs(
+          Number(
+            current.current_list_unit_price ?? current.current_unit_price ?? 0,
+          ) -
+            Number(
+              expected.current_list_unit_price ??
+                expected.current_unit_price ??
+                0,
+            ),
+        ) < 0.01;
+
       const sameGift =
         Number(current.current_is_gift || 0) ===
         Number(expected.current_is_gift || 0);
 
-      if (!sameVariant || !samePrice || !sameGift) {
+      if (!sameVariant || !samePrice || !sameListPrice || !sameGift) {
         throw new Error(
           'حالة العرض تغيرت بعد هذه العملية ولا يمكن إلغاؤها مباشرة',
         );
@@ -2525,7 +2622,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
             current_variant_id = ?,
 
             current_unit_price = ?,
-
+            current_list_unit_price = ?,
             current_unit_cost = ?,
 
             current_is_gift = ?,
@@ -2556,7 +2653,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         before.current_variant_id,
 
         before.current_unit_price,
-
+        before.current_list_unit_price ?? before.current_unit_price,
         restoredCost,
 
         before.current_is_gift,

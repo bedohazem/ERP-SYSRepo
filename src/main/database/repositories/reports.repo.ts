@@ -344,6 +344,15 @@ export function getReportsSummary(input?: ReportFilter) {
       `
       SELECT
         COUNT(*) AS sales_count,
+        IFNULL(
+          SUM(
+            IFNULL(
+              s.product_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS product_discounts,
         IFNULL(SUM(s.grand_total), 0) AS gross_sales,
         IFNULL(
           SUM(s.discount_value),
@@ -366,6 +375,7 @@ export function getReportsSummary(input?: ReportFilter) {
 
         IFNULL(
           SUM(
+          IFNULL(s.product_discount_value, 0) +
             s.discount_value
             + IFNULL(
                 s.promotion_discount_value,
@@ -418,6 +428,16 @@ export function getReportsSummary(input?: ReportFilter) {
         ),
         0
       ) AS returned_normal_discounts,
+
+      IFNULL(
+        SUM(
+          IFNULL(
+            sr.product_discount_value,
+            0
+          )
+        ),
+        0
+      ) AS returned_product_discounts,
 
       IFNULL(
         SUM(
@@ -497,6 +517,22 @@ export function getReportsSummary(input?: ReportFilter) {
         IFNULL(
           SUM(
             COALESCE(
+              se.new_product_discount_value,
+              se.old_product_discount_value,
+              0
+            )
+            -
+            COALESCE(
+              se.old_product_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS product_discount_adjustment,
+
+        IFNULL(
+          SUM(
+            COALESCE(
               se.new_promotion_discount_value,
               se.old_promotion_discount_value,
               0
@@ -565,6 +601,7 @@ export function getReportsSummary(input?: ReportFilter) {
         IFNULL(SUM(x.items_profit_before_discount), 0) AS gross_profit_before_discounts,
         IFNULL(SUM(
           x.items_profit_before_discount
+          - x.product_discount
           - x.normal_discount
           - x.promotion_discount
           - x.loyalty_discount
@@ -572,6 +609,10 @@ export function getReportsSummary(input?: ReportFilter) {
       FROM (
         SELECT
           s.id,
+          IFNULL(
+            s.product_discount_value,
+            0
+          ) AS product_discount,
           IFNULL(s.discount_value, 0) AS normal_discount,
           IFNULL(
             s.promotion_discount_value,
@@ -579,7 +620,21 @@ export function getReportsSummary(input?: ReportFilter) {
           ) AS promotion_discount,
           IFNULL(s.loyalty_discount_value, 0) AS loyalty_discount,
           IFNULL(SUM(si.unit_cost * si.quantity), 0) AS total_cost,
-          IFNULL(SUM((si.unit_price - si.unit_cost) * si.quantity), 0) AS items_profit_before_discount
+          IFNULL(
+            SUM(
+              (
+                COALESCE(
+                  si.list_unit_price,
+                  si.unit_price
+                )
+                -
+                si.unit_cost
+              )
+              *
+              si.quantity
+            ),
+            0
+          ) AS items_profit_before_discount
         FROM sales s
         JOIN sale_items si ON si.sale_id = s.id
         ${salesWhere.whereSql}
@@ -615,7 +670,16 @@ export function getReportsSummary(input?: ReportFilter) {
 
         IFNULL(
           SUM(
-            (sri.unit_price - sri.unit_cost) * sri.quantity
+            (
+              COALESCE(
+                sri.list_unit_price,
+                sri.unit_price
+              )
+              -
+              sri.unit_cost
+            )
+            *
+            sri.quantity
           ),
           0
         ) AS items_profit_before_discount
@@ -691,9 +755,15 @@ export function getReportsSummary(input?: ReportFilter) {
           IFNULL(
             SUM(
               (
+              COALESCE(
+                sei.new_list_unit_price,
                 sei.new_unit_price
-                -
+              )
+              -
+              COALESCE(
+                sei.old_list_unit_price,
                 sei.old_unit_price
+              )
               )
               *
               sei.quantity
@@ -746,6 +816,14 @@ export function getReportsSummary(input?: ReportFilter) {
 
   const totalReturns = Number(returnsSummary.total_returns || 0);
 
+  const productDiscounts = Math.max(
+    0,
+
+    Number(salesSummary.product_discounts || 0) -
+      Number(returnsSummary.returned_product_discounts || 0) +
+      Number(exchangeSummary.product_discount_adjustment || 0),
+  );
+
   const normalDiscounts = Math.max(
     0,
 
@@ -771,6 +849,7 @@ export function getReportsSummary(input?: ReportFilter) {
   );
 
   const returnedDiscounts =
+    Number(returnsSummary.returned_product_discounts || 0) +
     Number(returnsSummary.returned_normal_discounts || 0) +
     Number(returnsSummary.returned_promotion_discounts || 0) +
     Number(returnsSummary.returned_loyalty_discounts || 0);
@@ -778,9 +857,7 @@ export function getReportsSummary(input?: ReportFilter) {
   const totalDiscounts = Math.max(
     0,
 
-    Number(salesSummary.total_discounts || 0) -
-      returnedDiscounts +
-      exchangeDiscountAdjustment,
+    productDiscounts + normalDiscounts + promotionDiscounts + loyaltyDiscounts,
   );
 
   const grossProfitBeforeDiscounts =
@@ -2005,6 +2082,7 @@ export function getReportsSummary(input?: ReportFilter) {
       ),
       gross_sales: grossSales,
       total_returns: totalReturns,
+      product_discounts: productDiscounts,
       normal_discounts: normalDiscounts,
       promotion_discounts: promotionDiscounts,
       loyalty_discounts: loyaltyDiscounts,
@@ -2270,6 +2348,16 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
         IFNULL(
           SUM(
             IFNULL(
+              s.product_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS product_discounts,
+
+        IFNULL(
+          SUM(
+            IFNULL(
               s.discount_value,
               0
             )
@@ -2355,6 +2443,16 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           ),
           0
         ) AS returns_total,
+
+        IFNULL(
+          SUM(
+            IFNULL(
+              sr.product_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS returned_product_discount,
 
         IFNULL(
           SUM(
@@ -2485,6 +2583,22 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           ),
           0
         ) AS exchange_debt_reduction,
+
+        IFNULL(
+          SUM(
+            COALESCE(
+              se.new_product_discount_value,
+              se.old_product_discount_value,
+              0
+            )
+            -
+            COALESCE(
+              se.old_product_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS product_discount_adjustment,
 
         IFNULL(
           SUM(
@@ -2720,6 +2834,16 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
 
   const exchangeDebtReduction = reportMoney(exchanges?.exchange_debt_reduction);
 
+  const productDiscount = Math.max(
+    0,
+
+    reportMoney(
+      Number(sales?.product_discounts || 0) -
+        Number(returns?.returned_product_discount || 0) +
+        Number(exchanges?.product_discount_adjustment || 0),
+    ),
+  );
+
   const normalDiscount = Math.max(
     0,
 
@@ -2751,7 +2875,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
   );
 
   const totalDiscount = reportMoney(
-    normalDiscount + promotionDiscount + loyaltyDiscount,
+    productDiscount + normalDiscount + promotionDiscount + loyaltyDiscount,
   );
 
   const netSales = reportMoney(
@@ -2814,6 +2938,8 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
     },
 
     discounts: {
+      product: productDiscount,
+
       normal: normalDiscount,
 
       promotion: promotionDiscount,

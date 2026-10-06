@@ -26,6 +26,8 @@ type SaleVariant = {
   size: string;
   color: string;
   sell_price: number;
+  original_sell_price: number;
+  discount_price?: number | null;
   buy_price: number;
   stock: number;
   min_stock: number;
@@ -105,6 +107,8 @@ type SaleReceipt = {
     customer_phone?: string | null;
     cashier_name?: string | null;
     sub_total: number;
+    list_sub_total?: number;
+    product_discount_value?: number;
     discount_value?: number;
     promotion_id?: number | null;
     promotion_name?: string | null;
@@ -130,6 +134,7 @@ type SaleReceipt = {
     color?: string | null;
     quantity: number;
     unit_price: number;
+    list_unit_price?: number;
     line_total: number;
   }>;
   payments?: Array<{
@@ -383,9 +388,11 @@ function getPromotionsDiscountForCart(
 }
 
 type DropdownRect = {
-  top: number;
+  top?: number;
+  bottom?: number;
   left: number;
   width: number;
+  maxHeight: number;
 };
 
 const defaultLoyaltySettings: LoyaltySettings = {
@@ -465,7 +472,18 @@ function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
           barcode: String(item.barcode || ''),
           size: String(item.size || ''),
           color: String(item.color || ''),
+
           sell_price: Number(item.sell_price || 0),
+
+          original_sell_price: Number(
+            item.original_sell_price ?? item.sell_price ?? 0,
+          ),
+
+          discount_price:
+            item.discount_price === null || item.discount_price === undefined
+              ? null
+              : Number(item.discount_price),
+
           buy_price: Number(item.buy_price || 0),
           stock: Number(item.stock || 0),
           min_stock: Number(item.min_stock || 0),
@@ -801,8 +819,22 @@ export default function SalesPage() {
              */
             sell_price: Number(item.unit_price || 0),
 
-            buy_price: Number(item.buy_price || item.unit_cost || 0),
+            /*
+             * الفواتير القديمة لم تكن تحفظ
+             * سعر الكتالوج قبل خصم المنتج،
+             * لذلك أثناء تعديل فاتورة قديمة
+             * نعتبر السعر التاريخي هو الأصل.
+             */
+            original_sell_price: Number(
+              item.list_unit_price ?? item.unit_price ?? 0,
+            ),
 
+            discount_price:
+              Number(item.list_unit_price || 0) > Number(item.unit_price || 0)
+                ? Number(item.unit_price || 0)
+                : null,
+
+            buy_price: Number(item.buy_price || item.unit_cost || 0),
             /*
              * بعد تعديل الفاتورة
              * الـbackend يرجع كمية
@@ -1004,13 +1036,47 @@ export default function SalesPage() {
 
   const effectivePromotions = editingSaleId ? [] : activePromotions;
 
+  /*
+   * subTotal = السعر الفعلي الذي سيتم البيع به
+   * بعد Product Price Discount.
+   */
   const subTotal = useMemo(
     () =>
-      activeInvoice.cart.reduce(
-        (sum, item) => sum + item.quantity * Number(item.sell_price),
-        0,
+      roundMoney(
+        activeInvoice.cart.reduce(
+          (sum, item) => sum + item.quantity * Number(item.sell_price || 0),
+          0,
+        ),
       ),
     [activeInvoice.cart],
+  );
+
+  /*
+   * إجمالي أسعار الكتالوج قبل
+   * تطبيق خانة "السعر بعد الخصم".
+   */
+  const originalSubTotal = useMemo(
+    () =>
+      roundMoney(
+        activeInvoice.cart.reduce((sum, item) => {
+          const originalPrice = Math.max(
+            Number(item.sell_price || 0),
+            Number(item.original_sell_price ?? item.sell_price ?? 0),
+          );
+
+          return sum + item.quantity * originalPrice;
+        }, 0),
+      ),
+    [activeInvoice.cart],
+  );
+
+  /*
+   * خصم المنتجات الناتج فقط عن
+   * خانة "السعر بعد الخصم".
+   */
+  const productDiscountValue = useMemo(
+    () => roundMoney(Math.max(0, originalSubTotal - subTotal)),
+    [originalSubTotal, subTotal],
   );
 
   const promotionDiscountValue = useMemo(
@@ -1072,6 +1138,14 @@ export default function SalesPage() {
 
   const redeemPoints = Math.min(requestedRedeemPoints, maxRedeemPoints);
   const loyaltyDiscountValue = redeemPoints * pointValue;
+
+  const totalDiscountValue = roundMoney(
+    productDiscountValue +
+      promotionDiscountValue +
+      normalDiscountValue +
+      loyaltyDiscountValue,
+  );
+
   const grandTotal = Math.max(
     0,
     totalAfterNormalDiscount - loyaltyDiscountValue,
@@ -1442,14 +1516,51 @@ export default function SalesPage() {
 
   function updateDropdownPosition() {
     const el = productInputRef.current;
+
     if (!el) return;
 
     const rect = el.getBoundingClientRect();
 
+    const gap = 6;
+    const viewportPadding = 12;
+    const desiredMaxHeight = 260;
+
+    const availableViewportWidth = Math.max(
+      0,
+      window.innerWidth - viewportPadding * 2,
+    );
+
+    const width = Math.min(rect.width, availableViewportWidth);
+
+    const left = Math.min(
+      Math.max(viewportPadding, rect.left),
+      Math.max(viewportPadding, window.innerWidth - viewportPadding - width),
+    );
+
+    const spaceBelow = Math.max(
+      0,
+      window.innerHeight - rect.bottom - gap - viewportPadding,
+    );
+
+    const spaceAbove = Math.max(0, rect.top - gap - viewportPadding);
+
+    /*
+     * لو المساحة تحت صغيرة
+     * وفوق أكبر، نفتح القائمة لفوق.
+     */
+    const openAbove = spaceBelow < 180 && spaceAbove > spaceBelow;
+
+    const availableHeight = openAbove ? spaceAbove : spaceBelow;
+
     setDropdownRect({
-      top: rect.bottom + 6,
-      left: rect.left,
-      width: rect.width,
+      top: openAbove ? undefined : rect.bottom + gap,
+
+      bottom: openAbove ? window.innerHeight - rect.top + gap : undefined,
+
+      left,
+      width,
+
+      maxHeight: Math.min(desiredMaxHeight, availableHeight),
     });
   }
 
@@ -1705,6 +1816,15 @@ export default function SalesPage() {
           color: String(item.color || ''),
 
           sell_price: Number(item.sell_price || 0),
+
+          original_sell_price: Number(
+            item.original_sell_price ?? item.sell_price ?? 0,
+          ),
+
+          discount_price:
+            item.discount_price === null || item.discount_price === undefined
+              ? null
+              : Number(item.discount_price),
 
           buy_price: Number(item.buy_price || 0),
 
@@ -2248,7 +2368,18 @@ export default function SalesPage() {
 
           quantity: item.quantity,
 
+          /*
+           * السعر الفعلي الذي سيدفعه العميل.
+           */
           unit_price: Number(item.sell_price),
+
+          /*
+           * Snapshot سعر الكتالوج قبل
+           * خانة "السعر بعد الخصم".
+           */
+          list_unit_price: Number(
+            item.original_sell_price ?? item.sell_price ?? 0,
+          ),
         })),
       };
 
@@ -3732,8 +3863,9 @@ export default function SalesPage() {
               textOverflow: 'ellipsis',
             }}
           >
-            الإجمالي قبل الخصم | <span>{money(subTotal)} ج.م</span>
+            الإجمالي قبل الخصم | <span>{money(originalSubTotal)} ج.م</span>
           </div>
+
           <div
             style={{
               minWidth: 0,
@@ -3741,7 +3873,7 @@ export default function SalesPage() {
               textOverflow: 'ellipsis',
             }}
           >
-            خصم النقاط | <span>{money(loyaltyDiscountValue)} ج.م</span>
+            إجمالي الخصومات | <span>{money(totalDiscountValue)} ج.م</span>
           </div>
           <div
             style={{
@@ -3884,7 +4016,16 @@ export default function SalesPage() {
                 )}
 
                 <input
-                  value={`${item.product_name} | ${item.size || '—'} | ${item.color || '—'} | سعر: ${money(item.sell_price)} ج.م`}
+                  value={`${item.product_name} | ${item.size || '—'} | ${
+                    item.color || '—'
+                  } | ${
+                    Number(item.original_sell_price || 0) >
+                    Number(item.sell_price || 0)
+                      ? `قبل: ${money(
+                          item.original_sell_price,
+                        )} | بعد الخصم: ${money(item.sell_price)} ج.م`
+                      : `سعر: ${money(item.sell_price)} ج.م`
+                  }`}
                   readOnly
                   style={{
                     ...tableInputStyle,
@@ -4581,15 +4722,25 @@ export default function SalesPage() {
           className="theme-popover theme-dropdown"
           style={{
             position: 'fixed',
+
             top: dropdownRect.top,
+            bottom: dropdownRect.bottom,
+
             left: dropdownRect.left,
             width: dropdownRect.width,
+
             background: '#111827',
+
             border: '1px solid rgba(255,255,255,0.10)',
+
             borderRadius: '12px',
+
             zIndex: 99998,
-            maxHeight: '260px',
+
+            maxHeight: dropdownRect.maxHeight,
+
             overflowY: 'auto',
+
             boxShadow: '0 22px 50px rgba(0,0,0,0.45)',
           }}
         >
@@ -4614,7 +4765,27 @@ export default function SalesPage() {
               <div style={{ display: 'grid', gap: '4px' }}>
                 <strong>
                   {item.product_name} | {item.size || '—'} | {item.color || '—'}{' '}
-                  | {item.sell_price} ج
+                  |{' '}
+                  {Number(item.original_sell_price || 0) >
+                  Number(item.sell_price || 0) ? (
+                    <>
+                      <span
+                        style={{
+                          color: '#94a3b8',
+                          textDecoration: 'line-through',
+                          marginLeft: '6px',
+                        }}
+                      >
+                        {money(item.original_sell_price)} ج
+                      </span>
+
+                      <span style={{ color: '#86efac' }}>
+                        {money(item.sell_price)} ج
+                      </span>
+                    </>
+                  ) : (
+                    <>{money(item.sell_price)} ج</>
+                  )}
                 </strong>
 
                 <span style={{ color: '#94a3b8', fontSize: '12px' }}>
@@ -4806,9 +4977,26 @@ export default function SalesPage() {
               }}
             >
               <div style={receiptInfoCardStyle}>
-                <span>الإجمالي قبل الخصم</span>
-                <strong>{money(receiptData.sale.sub_total)} ج.م</strong>
+                <span>الإجمالي قبل الخصومات</span>
+
+                <strong>
+                  {money(
+                    receiptData.sale.list_sub_total ??
+                      receiptData.sale.sub_total,
+                  )}{' '}
+                  ج.م
+                </strong>
               </div>
+
+              {Number(receiptData.sale.product_discount_value || 0) > 0 && (
+                <div style={receiptInfoCardStyle}>
+                  <span>خصم المنتج</span>
+
+                  <strong>
+                    {money(receiptData.sale.product_discount_value)} ج.م
+                  </strong>
+                </div>
+              )}
 
               <div style={receiptInfoCardStyle}>
                 <span>خصم عادي</span>
@@ -5699,10 +5887,22 @@ export default function SalesPage() {
                     {
                       label: 'الإجمالي قبل الخصومات',
 
-                      value: money(subTotal),
+                      value: money(originalSubTotal),
 
                       color: '#f8fafc',
                     },
+
+                    ...(productDiscountValue > 0
+                      ? [
+                          {
+                            label: 'خصم المنتج',
+
+                            value: money(productDiscountValue),
+
+                            color: '#86efac',
+                          },
+                        ]
+                      : []),
 
                     ...(normalDiscountValue > 0
                       ? [

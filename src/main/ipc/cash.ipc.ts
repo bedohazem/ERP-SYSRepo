@@ -27,6 +27,7 @@ import {
 import { requireAdminPassword } from './permission-helper';
 import {
   optionalEnumValue,
+  optionalBooleanValue,
   optionalNonNegativeNumber,
   optionalStringValue,
   optionalTrimmedString,
@@ -176,6 +177,12 @@ function normalizeCashFilterInput(input: unknown) {
     search:
       optionalTrimmedString(payload.search, 'بحث حركات الخزنة', 500) ??
       undefined,
+
+    include_corrected:
+      optionalBooleanValue(
+        payload.include_corrected,
+        'إظهار الحركات المصححة',
+      ) ?? false,
 
     reference_type:
       optionalTrimmedString(payload.reference_type, 'نوع المرجع', 200) ??

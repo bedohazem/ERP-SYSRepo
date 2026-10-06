@@ -32,6 +32,7 @@ type ReportsData = {
     approved_closing_shortage: number;
     approved_opening_surplus: number;
     approved_opening_shortage: number;
+    product_discounts: number;
   };
   cashAccounts: Array<{
     payment_method: string;
@@ -94,6 +95,7 @@ const emptyReports: ReportsData = {
     approved_closing_shortage: 0,
     approved_opening_surplus: 0,
     approved_opening_shortage: 0,
+    product_discounts: 0,
   },
   cashAccounts: [],
   cashAccountsTotalBalance: 0,
@@ -592,6 +594,10 @@ export default function ReportsPage() {
         <StatCard
           title="خصومات النقاط"
           value={money(data.summary.loyalty_discounts)}
+        />
+        <StatCard
+          title="خصومات المنتجات"
+          value={money(data.summary.product_discounts)}
         />
         <StatCard
           title="خصومات عادية"

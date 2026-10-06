@@ -83,6 +83,8 @@ function buildSections(data: ReportsExportData): ExportSection[] {
 
         ['إجمالي الخصومات', numberValue(summary.total_discounts)],
 
+        ['خصومات المنتجات', numberValue(summary.product_discounts)],
+
         ['خصومات النقاط', numberValue(summary.loyalty_discounts)],
 
         ['خصومات عادية', numberValue(summary.normal_discounts)],

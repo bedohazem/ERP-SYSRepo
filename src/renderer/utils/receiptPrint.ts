@@ -266,6 +266,11 @@ export function buildSaleReceiptHtml(
       const returnedQty = Number(item.returned_quantity || 0);
       const netQty = Math.max(0, originalQty - returnedQty);
       const unitPrice = Number(item.unit_price || 0);
+      const listUnitPrice = Math.max(
+        unitPrice,
+
+        Number(item.list_unit_price ?? item.unit_price ?? 0),
+      );
       const netLineTotal = netQty * unitPrice;
 
       const details = [
@@ -294,7 +299,20 @@ export function buildSaleReceiptHtml(
         </td>
 
         <td>${netQty}</td>
-        <td>${money(unitPrice)}</td>
+                <td>
+          ${
+            listUnitPrice > unitPrice
+              ? `
+                <div style="font-size:9px;text-decoration:line-through;color:#777;">
+                  ${money(listUnitPrice)}
+                </div>
+                <strong>
+                  ${money(unitPrice)}
+                </strong>
+              `
+              : money(unitPrice)
+          }
+        </td>
         <td class="line-total">${money(netLineTotal)}</td>
       </tr>
     `;
@@ -876,11 +894,24 @@ export function buildSaleReceiptHtml(
           <div class="summary-box">
 
             <div class="summary-row">
-              <span>قبل الخصم</span>
+              <span>قبل الخصومات</span>
               <strong>
-                ${money(sale.sub_total)}
+                ${money(sale.list_sub_total ?? sale.sub_total)}
               </strong>
             </div>
+
+            ${
+              Number(sale.product_discount_value || 0) > 0
+                ? `
+                  <div class="summary-row discount">
+                    <span>خصم المنتج</span>
+                    <strong>
+                      -${money(sale.product_discount_value)}
+                    </strong>
+                  </div>
+                `
+                : ''
+            }
 
             ${
               Number(sale.discount_value || 0) > 0

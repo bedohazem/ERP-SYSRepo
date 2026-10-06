@@ -2560,6 +2560,181 @@ export function getDb(): Database.Database {
           `);
         },
       },
+
+      {
+        version: 12,
+
+        name: 'sale-product-price-discount-snapshot',
+
+        up: () => {
+          /*
+           * Snapshot تاريخي لسعر الكتالوج
+           * وخصم "السعر بعد الخصم".
+           *
+           * الفواتير القديمة لا يمكن معرفة
+           * سعر الكتالوج الأصلي لها بأمان،
+           * لذلك نعتبر سعرها المحفوظ هو
+           * سعر الكتالوج ولا نخترع خصمًا قديمًا.
+           */
+          safeAddColumn(db, 'sales', 'list_sub_total', 'REAL');
+
+          safeAddColumn(
+            db,
+            'sales',
+            'product_discount_value',
+            'REAL NOT NULL DEFAULT 0',
+          );
+
+          safeAddColumn(db, 'sale_items', 'list_unit_price', 'REAL');
+
+          db.prepare(
+            `
+            UPDATE sales
+            SET list_sub_total = sub_total
+            WHERE list_sub_total IS NULL
+            `,
+          ).run();
+
+          db.prepare(
+            `
+            UPDATE sale_items
+            SET list_unit_price = unit_price
+            WHERE list_unit_price IS NULL
+            `,
+          ).run();
+        },
+      },
+
+      {
+        version: 13,
+
+        name: 'sale-product-discount-return-exchange-snapshots',
+
+        up: () => {
+          safeAddColumn(db, 'sale_returns', 'list_sub_total', 'REAL');
+
+          safeAddColumn(
+            db,
+            'sale_returns',
+            'product_discount_value',
+            'REAL NOT NULL DEFAULT 0',
+          );
+
+          safeAddColumn(db, 'sale_return_items', 'list_unit_price', 'REAL');
+
+          safeAddColumn(
+            db,
+            'sale_return_items',
+            'product_discount_value',
+            'REAL NOT NULL DEFAULT 0',
+          );
+
+          safeAddColumn(
+            db,
+            'sale_promotion_units',
+            'original_list_unit_price',
+            'REAL',
+          );
+
+          safeAddColumn(
+            db,
+            'sale_promotion_units',
+            'current_list_unit_price',
+            'REAL',
+          );
+
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'old_product_discount_value',
+            'REAL',
+          );
+
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'new_product_discount_value',
+            'REAL',
+          );
+
+          safeAddColumn(
+            db,
+            'sale_exchange_items',
+            'old_list_unit_price',
+            'REAL',
+          );
+
+          safeAddColumn(
+            db,
+            'sale_exchange_items',
+            'new_list_unit_price',
+            'REAL',
+          );
+
+          /*
+           * Legacy fallback:
+           * لا نخترع خصم منتج تاريخي غير محفوظ.
+           */
+          db.exec(`
+            UPDATE sale_returns
+            SET list_sub_total = sub_total
+            WHERE list_sub_total IS NULL;
+
+            UPDATE sale_return_items
+            SET list_unit_price = unit_price
+            WHERE list_unit_price IS NULL;
+
+            UPDATE sale_promotion_units
+            SET original_list_unit_price =
+              COALESCE(
+                (
+                  SELECT
+                    COALESCE(
+                      si.list_unit_price,
+                      si.unit_price
+                    )
+
+                  FROM sale_items si
+
+                  WHERE
+                    si.id =
+                      sale_promotion_units.original_sale_item_id
+
+                  LIMIT 1
+                ),
+
+                original_unit_price
+              )
+            WHERE original_list_unit_price IS NULL;
+
+            UPDATE sale_promotion_units
+            SET current_list_unit_price =
+              CASE
+                WHEN
+                  current_variant_id =
+                  original_variant_id
+
+                THEN
+                  COALESCE(
+                    original_list_unit_price,
+                    current_unit_price
+                  )
+
+                ELSE
+                  current_unit_price
+              END
+            WHERE current_list_unit_price IS NULL;
+
+            UPDATE sale_exchange_items
+            SET old_list_unit_price = old_unit_price
+            WHERE old_list_unit_price IS NULL;
+
+            UPDATE sale_exchange_items
+            SET new_list_unit_price = new_unit_price
+            WHERE new_list_unit_price IS NULL;
+          `);
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

@@ -110,6 +110,7 @@ type CashierDashboardSummary = {
   };
 
   discounts: {
+    product: number;
     normal: number;
     promotion: number;
     loyalty: number;
@@ -157,6 +158,7 @@ const emptyCashierDashboard: CashierDashboardSummary = {
   },
 
   discounts: {
+    product: 0,
     normal: 0,
     promotion: 0,
     loyalty: 0,
@@ -1703,7 +1705,8 @@ function CashierRevenueView({
             title="الخصومات الفعلية"
             value={money(summary.discounts.total)}
             subtitle={
-              `عادي: ${money(summary.discounts.normal)}` +
+              `منتجات: ${money(summary.discounts.product)}` +
+              ` • عادي: ${money(summary.discounts.normal)}` +
               ` • عروض: ${money(summary.discounts.promotion)}` +
               ` • نقاط: ${money(summary.discounts.loyalty)}`
             }

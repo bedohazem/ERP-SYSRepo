@@ -40,6 +40,8 @@ type CashMovement = {
   cancel_reason?: string | null;
   replacement_movement_id?: number | null;
 
+  is_corrected_history?: number | null;
+
   transfer_to_account?: string | null;
 };
 
@@ -174,6 +176,9 @@ export default function CashPage() {
     [],
   );
   const [search, setSearch] = useState('');
+
+  const [showCorrectedMovements, setShowCorrectedMovements] = useState(false);
+
   const [manualModalOpen, setManualModalOpen] = useState(false);
 
   const [transferModalOpen, setTransferModalOpen] = useState(false);
@@ -210,7 +215,10 @@ export default function CashPage() {
     return false;
   }
 
-  async function loadData(page = movementsPage) {
+  async function loadData(
+    page = movementsPage,
+    includeCorrected = showCorrectedMovements,
+  ) {
     setLoading(true);
     const safePage = Math.max(1, Number(page || 1));
     const filters = {
@@ -227,10 +235,13 @@ export default function CashPage() {
 
     const movementFilters = {
       ...filters,
+
+      include_corrected: includeCorrected,
+
       limit: SYSTEM_PAGE_SIZE,
+
       offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
     };
-
     try {
       const summaryData = await window.api.getCashSummary(filters);
       const movementsData = await window.api.getCashMovements(movementFilters);
@@ -649,7 +660,7 @@ export default function CashPage() {
     const baseFilters = {
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
-
+      include_corrected: showCorrectedMovements,
       types: filterTypes.length > 0 ? filterTypes : undefined,
 
       directions: filterDirections.length > 0 ? filterDirections : undefined,
@@ -684,7 +695,9 @@ export default function CashPage() {
       }
     }
 
-    return allMovements.filter((item) => !item.cancelled_at);
+    return showCorrectedMovements
+      ? allMovements
+      : allMovements.filter((item) => !item.cancelled_at);
   }
 
   async function printCashReport() {
@@ -1017,6 +1030,13 @@ export default function CashPage() {
             height: 0;
             display: none;
           }
+
+          .cash-reversed-row td {
+            opacity: 0.62;
+            text-decoration-line: line-through;
+            text-decoration-thickness: 1px;
+            text-decoration-color: rgba(203, 213, 225, 0.55);
+          }
         `}
       </style>
 
@@ -1237,6 +1257,48 @@ export default function CashPage() {
           />
         </Field>
 
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            height: '36px',
+            padding: '0 10px',
+            borderRadius: '10px',
+            border: '1px solid rgba(148,163,184,0.24)',
+            background: showCorrectedMovements
+              ? 'rgba(96,165,250,0.12)'
+              : 'rgba(255,255,255,0.03)',
+            color: '#cbd5e1',
+            fontSize: '12px',
+            fontWeight: 800,
+            cursor: 'pointer',
+            userSelect: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={showCorrectedMovements}
+            onChange={(e) => {
+              const checked = e.target.checked;
+
+              setShowCorrectedMovements(checked);
+
+              setMovementsPage(1);
+
+              void loadData(1, checked);
+            }}
+            style={{
+              width: '16px',
+              height: '16px',
+              cursor: 'pointer',
+            }}
+          />
+
+          <span>إظهار الحركات المصححة</span>
+        </label>
+
         <div style={{ display: 'flex', gap: '6px' }}>
           <button
             type="button"
@@ -1258,8 +1320,9 @@ export default function CashPage() {
               setFilterDirections([]);
               setFilterPaymentMethods([]);
               setSearch('');
+              setShowCorrectedMovements(false);
               setMovementsPage(1);
-              setTimeout(() => void loadData(1), 0);
+              setTimeout(() => void loadData(1, false), 0);
             }}
             style={{
               ...secondaryButtonStyle,
@@ -1367,16 +1430,17 @@ export default function CashPage() {
                 movements.map((item) => (
                   <tr
                     key={item.id}
+                    className={
+                      Number(item.is_corrected_history || 0) === 1
+                        ? 'cash-reversed-row'
+                        : undefined
+                    }
                     style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                   >
                     <td
                       style={{
                         ...tdStyle,
                         fontWeight: 800,
-                        opacity: item.cancelled_at ? 0.55 : 1,
-                        textDecoration: item.cancelled_at
-                          ? 'line-through'
-                          : 'none',
                       }}
                     >
                       {getTypeLabel(item.type)}

@@ -33,6 +33,8 @@ export default function ExpensesPage() {
   const [expensesPage, setExpensesPage] = useState(1);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
@@ -93,6 +95,7 @@ export default function ExpensesPage() {
       const result = await window.api.getExpensesPage({
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
+        search: search || undefined,
         limit: SYSTEM_PAGE_SIZE,
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
       });
@@ -120,7 +123,7 @@ export default function ExpensesPage() {
   useEffect(() => {
     setExpensesPage(1);
     void loadExpenses(1);
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, search]);
 
   async function handleSubmit() {
     if (!title.trim()) {
@@ -346,6 +349,7 @@ export default function ExpensesPage() {
       const data = await window.api.getExpenses({
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
+        search: search || undefined,
       });
 
       printExpenses = Array.isArray(data) ? data : [];
@@ -851,6 +855,55 @@ export default function ExpensesPage() {
                 fontWeight: 800,
               }}
             >
+              <span>بحث</span>
+
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '6px',
+                  alignItems: 'center',
+                }}
+              >
+                <input
+                  value={searchDraft}
+                  onChange={(e) => setSearchDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+
+                      setSearch(searchDraft.trim());
+                    }
+                  }}
+                  placeholder="اسم / تصنيف / ملاحظات"
+                  style={{
+                    ...inputStyle,
+                    width: '240px',
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setSearch(searchDraft.trim())}
+                  style={{
+                    ...primaryButtonStyle,
+                    height: '42px',
+                    padding: '0 14px',
+                  }}
+                >
+                  بحث
+                </button>
+              </div>
+            </label>
+
+            <label
+              style={{
+                display: 'grid',
+                gap: '5px',
+                color: '#94a3b8',
+                fontSize: '12px',
+                fontWeight: 800,
+              }}
+            >
               <span>من تاريخ</span>
 
               <input
@@ -892,12 +945,14 @@ export default function ExpensesPage() {
               />
             </label>
 
-            {(dateFrom || dateTo) && (
+            {(dateFrom || dateTo || search || searchDraft) && (
               <button
                 type="button"
                 onClick={() => {
                   setDateFrom('');
                   setDateTo('');
+                  setSearchDraft('');
+                  setSearch('');
                 }}
                 style={{
                   ...primaryButtonStyle,
@@ -941,7 +996,7 @@ export default function ExpensesPage() {
             <thead>
               <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                 <th style={thStyle}>المصروف</th>
-                {/* <th style={thStyle}>التصنيف</th> */}
+                <th style={thStyle}>التصنيف</th>
                 <th style={thStyle}>المبلغ</th>
                 <th style={thStyle}>الحساب المالي</th>
                 <th style={thStyle}>المستخدم</th>
@@ -954,7 +1009,7 @@ export default function ExpensesPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={8} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
@@ -969,7 +1024,7 @@ export default function ExpensesPage() {
                     <td style={{ ...tdStyle, fontWeight: 700 }}>
                       {expense.title}
                     </td>
-                    {/* <td style={tdStyle}>{expense.category || '—'}</td> */}
+                    <td style={tdStyle}>{expense.category || '—'}</td>
                     <td
                       style={{ ...tdStyle, color: '#f87171', fontWeight: 900 }}
                     >
@@ -1083,7 +1138,7 @@ export default function ExpensesPage() {
               {!loading && expenses.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',

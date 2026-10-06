@@ -189,6 +189,7 @@ export function createExpense(input: CreateExpenseInput) {
 export function listExpenses(input?: {
   date_from?: string;
   date_to?: string;
+  search?: string;
   created_by?: number | null;
 }) {
   const db = getDb();
@@ -204,6 +205,20 @@ export function listExpenses(input?: {
   if (input?.date_to) {
     where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`);
     params.push(`${input.date_to} 23:59:59`);
+  }
+
+  if (input?.search?.trim()) {
+    where.push(`
+      (
+        e.title LIKE ?
+        OR IFNULL(e.category, '') LIKE ?
+        OR IFNULL(e.notes, '') LIKE ?
+      )
+    `);
+
+    const search = `%${input.search.trim()}%`;
+
+    params.push(search, search, search);
   }
 
   appendCreatedByFilter(where, params, input?.created_by);
@@ -230,6 +245,7 @@ export function listExpenses(input?: {
 export function listExpensesPage(input?: {
   date_from?: string;
   date_to?: string;
+  search?: string;
   created_by?: number | null;
   limit?: number;
   offset?: number;
@@ -250,6 +266,20 @@ export function listExpensesPage(input?: {
   if (input?.date_to) {
     where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`);
     params.push(`${input.date_to} 23:59:59`);
+  }
+
+  if (input?.search?.trim()) {
+    where.push(`
+      (
+        e.title LIKE ?
+        OR IFNULL(e.category, '') LIKE ?
+        OR IFNULL(e.notes, '') LIKE ?
+      )
+    `);
+
+    const search = `%${input.search.trim()}%`;
+
+    params.push(search, search, search);
   }
 
   appendCreatedByFilter(where, params, input?.created_by);
@@ -512,6 +542,19 @@ export function updateExpense(input: UpdateExpenseInput) {
     });
 
     const newCashMovementId = Number(replacement.lastInsertRowid || 0);
+
+    /*
+     * نعلّم حركة المصروف القديمة
+     * بأنها تم استبدالها بحركة جديدة،
+     * مع الاحتفاظ بها في التاريخ المحاسبي.
+     */
+    db.prepare(
+      `
+      UPDATE cash_movements
+      SET replacement_movement_id = ?
+      WHERE id = ?
+      `,
+    ).run(newCashMovementId, cashMovement.id);
 
     createCriticalActivityLog({
       user_id: actorId,
