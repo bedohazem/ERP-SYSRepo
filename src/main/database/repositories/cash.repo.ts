@@ -69,6 +69,7 @@ export type CashTransferInput = {
   amount: number;
   notes?: string | null;
   created_by?: number | null;
+  business_date?: string | null;
   shift_id?: number | null;
 };
 
@@ -650,6 +651,7 @@ export function createCashTransfer(input: CashTransferInput) {
       reference_type: 'cash_transfer',
       notes: input.notes || `تحويل من ${fromAccount} إلى ${toAccount}`,
       created_by: input.created_by ?? null,
+      business_date: input.business_date ?? null,
       shift_id: input.shift_id ?? null,
     });
 
@@ -662,6 +664,7 @@ export function createCashTransfer(input: CashTransferInput) {
       reference_type: 'cash_transfer',
       notes: input.notes || `تحويل من ${fromAccount} إلى ${toAccount}`,
       created_by: input.created_by ?? null,
+      business_date: input.business_date ?? null,
       shift_id: input.shift_id ?? null,
     });
 
@@ -1585,6 +1588,7 @@ export function updateCashMovement(input: {
   notes?: string | null;
 
   actor_id?: number | null;
+  business_date?: string | null;
   shift_id?: number | null;
 }) {
   const db = getDb();
@@ -1612,7 +1616,12 @@ export function updateCashMovement(input: {
       ? null
       : Number(input.shift_id);
 
-  const correctionBusinessDate = getCurrentBusinessDate(db);
+  const correctionBusinessDate =
+    correctionShiftId !== null && correctionShiftId > 0
+      ? getShiftBusinessDate(correctionShiftId)
+      : input.business_date
+        ? normalizeBusinessDate(input.business_date)
+        : getCurrentBusinessDate(db);
 
   if (context.kind === 'manual') {
     const movement = context.movement;
@@ -2013,6 +2022,7 @@ export function cancelCashMovement(input: {
   reason?: string | null;
   approved_by?: number | null;
   actor_id?: number | null;
+  business_date?: string | null;
   shift_id?: number | null;
 }) {
   const db = getDb();
@@ -2034,7 +2044,12 @@ export function cancelCashMovement(input: {
       ? null
       : Number(input.shift_id);
 
-  const correctionBusinessDate = getCurrentBusinessDate(db);
+  const correctionBusinessDate =
+    correctionShiftId !== null && correctionShiftId > 0
+      ? getShiftBusinessDate(correctionShiftId)
+      : input.business_date
+        ? normalizeBusinessDate(input.business_date)
+        : getCurrentBusinessDate(db);
 
   const reason = String(input.reason || '').trim() || 'إلغاء حركة خزنة';
 

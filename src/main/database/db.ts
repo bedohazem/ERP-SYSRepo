@@ -2759,6 +2759,120 @@ export function getDb(): Database.Database {
           safeAddColumn(db, 'held_sale_items', 'list_unit_price', 'REAL');
         },
       },
+
+      {
+        version: 15,
+
+        name: 'cash-shift-business-date-snapshot',
+
+        up: () => {
+          safeAddColumn(db, 'cash_shifts', 'business_date', 'TEXT');
+
+          /*
+           * الشفتات التاريخية تأخذ يوم
+           * فتحها القديم مرة واحدة.
+           */
+          db.prepare(
+            `
+            UPDATE cash_shifts
+
+            SET business_date =
+              date(
+                opened_at,
+                'localtime'
+              )
+
+            WHERE
+              business_date IS NULL
+
+              OR TRIM(
+                business_date
+              ) = ''
+            `,
+          ).run();
+
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_cash_shifts_business_date
+
+            ON cash_shifts(
+              business_date
+            );
+          `);
+        },
+      },
+
+      {
+        version: 16,
+
+        name: 'expense-business-date-snapshot',
+
+        up: () => {
+          safeAddColumn(db, 'expenses', 'business_date', 'TEXT');
+
+          /*
+           * المصروفات القديمة:
+           *
+           * لو مرتبطة بشفت نأخذ Snapshot
+           * تاريخ الشفت.
+           *
+           * لو بدون شفت نحتفظ بتاريخها
+           * التاريخي القديم من created_at.
+           */
+          db.prepare(
+            `
+            UPDATE expenses
+
+            SET business_date =
+              COALESCE(
+                (
+                  SELECT
+                    COALESCE(
+                      NULLIF(
+                        cs.business_date,
+                        ''
+                      ),
+
+                      date(
+                        cs.opened_at,
+                        'localtime'
+                      )
+                    )
+
+                  FROM cash_shifts cs
+
+                  WHERE
+                    cs.id =
+                      expenses.shift_id
+
+                  LIMIT 1
+                ),
+
+                date(
+                  expenses.created_at,
+                  'localtime'
+                )
+              )
+
+            WHERE
+              business_date IS NULL
+
+              OR TRIM(
+                business_date
+              ) = ''
+            `,
+          ).run();
+
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_expenses_business_date
+
+            ON expenses(
+              business_date
+            );
+          `);
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

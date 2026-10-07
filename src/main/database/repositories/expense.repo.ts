@@ -2,8 +2,8 @@ import { getDb } from '../db';
 import { createCashMovement, resolveCashAccount } from './cash.repo';
 import { createCriticalActivityLog } from './activity.repo';
 import { resolveFinancialOperationShift } from './cash-shifts.repo';
-import { getShiftBusinessDate } from '../shift-business-date';
 import { roundMoney } from '../../../shared/money';
+import { resolveFinancialBusinessDate } from '../financial-business-date';
 
 export type CreateExpenseInput = {
   title: string;
@@ -33,22 +33,6 @@ export type UpdateExpenseInput = {
   can_manage_all?: boolean;
   approved_by?: number | null;
 };
-
-function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
-  const row = db
-    .prepare(
-      `
-      SELECT
-        date('now', 'localtime')
-          AS business_date
-      `,
-    )
-    .get() as {
-    business_date: string;
-  };
-
-  return String(row?.business_date || '');
-}
 
 function appendCreatedByFilter(
   where: string[],
@@ -95,9 +79,7 @@ export function createExpense(input: CreateExpenseInput) {
     'لا يمكن تسجيل مصروف من درج المحل بدون شفت مفتوح',
   );
 
-  const businessDate = openShift
-    ? getShiftBusinessDate(openShift.id)
-    : getCurrentBusinessDate(db);
+  const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
 
   const tx = db.transaction(() => {
     const result = db
@@ -110,10 +92,11 @@ export function createExpense(input: CreateExpenseInput) {
           payment_method,
           notes,
           created_by,
+          business_date,
           shift_id
         )
 
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
       )
       .run(
@@ -123,6 +106,7 @@ export function createExpense(input: CreateExpenseInput) {
         paymentMethod,
         input.notes?.trim() || null,
         actorId,
+        businessDate,
         openShift?.id ?? null,
       );
 
@@ -149,6 +133,7 @@ export function createExpense(input: CreateExpenseInput) {
         notes: input.notes?.trim() || null,
 
         shift_id: openShift?.id ?? null,
+        business_date: businessDate,
       }),
     });
 
@@ -198,15 +183,40 @@ export function listExpenses(input?: {
   const params: any[] = [];
 
   if (input?.date_from) {
-    where.push(`datetime(e.created_at, 'localtime') >= datetime(?)`);
-    params.push(`${input.date_from} 00:00:00`);
+    where.push(`
+      COALESCE(
+        NULLIF(
+          e.business_date,
+          ''
+        ),
+
+        date(
+          e.created_at,
+          'localtime'
+        )
+      ) >= ?
+    `);
+
+    params.push(input.date_from);
   }
 
   if (input?.date_to) {
-    where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`);
-    params.push(`${input.date_to} 23:59:59`);
-  }
+    where.push(`
+      COALESCE(
+        NULLIF(
+          e.business_date,
+          ''
+        ),
 
+        date(
+          e.created_at,
+          'localtime'
+        )
+      ) <= ?
+    `);
+
+    params.push(input.date_to);
+  }
   if (input?.search?.trim()) {
     where.push(`
       (
@@ -259,13 +269,39 @@ export function listExpensesPage(input?: {
   const params: any[] = [];
 
   if (input?.date_from) {
-    where.push(`datetime(e.created_at, 'localtime') >= datetime(?)`);
-    params.push(`${input.date_from} 00:00:00`);
+    where.push(`
+    COALESCE(
+      NULLIF(
+        e.business_date,
+        ''
+      ),
+
+      date(
+        e.created_at,
+        'localtime'
+      )
+    ) >= ?
+  `);
+
+    params.push(input.date_from);
   }
 
   if (input?.date_to) {
-    where.push(`datetime(e.created_at, 'localtime') <= datetime(?)`);
-    params.push(`${input.date_to} 23:59:59`);
+    where.push(`
+    COALESCE(
+      NULLIF(
+        e.business_date,
+        ''
+      ),
+
+      date(
+        e.created_at,
+        'localtime'
+      )
+    ) <= ?
+  `);
+
+    params.push(input.date_to);
   }
 
   if (input?.search?.trim()) {
@@ -458,9 +494,9 @@ export function updateExpense(input: UpdateExpenseInput) {
     'لا يمكن تعديل مصروف يؤثر على درج المحل بدون شفت مفتوح',
   );
 
-  const correctionBusinessDate = openShift
-    ? getShiftBusinessDate(openShift.id)
-    : getCurrentBusinessDate(db);
+  const correctionBusinessDate = resolveFinancialBusinessDate(
+    openShift?.id ?? null,
+  );
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -697,9 +733,9 @@ export function cancelExpense(input: CancelExpenseInput) {
     'لا يمكن إلغاء مصروف يؤثر على درج المحل بدون شفت مفتوح',
   );
 
-  const cancellationBusinessDate = openShift
-    ? getShiftBusinessDate(openShift.id)
-    : getCurrentBusinessDate(db);
+  const cancellationBusinessDate = resolveFinancialBusinessDate(
+    openShift?.id ?? null,
+  );
 
   const reason = String(input.reason || '').trim() || 'إلغاء مصروف';
 

@@ -190,17 +190,31 @@ export function getReportsSummary(input?: ReportFilter) {
 
   const expenseBusinessDate: string = `
     COALESCE(
+      NULLIF(
+        e.business_date,
+        ''
+      ),
+
       (
         SELECT
-          date(
-            cs.opened_at,
-            'localtime'
+          COALESCE(
+            NULLIF(
+              cs.business_date,
+              ''
+            ),
+
+            date(
+              cs.opened_at,
+              'localtime'
+            )
           )
 
         FROM cash_shifts cs
 
         WHERE
           cs.id = e.shift_id
+
+        LIMIT 1
       ),
 
       date(

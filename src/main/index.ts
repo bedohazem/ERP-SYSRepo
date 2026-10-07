@@ -5,6 +5,7 @@ import {
   Menu,
   session,
   shell,
+  powerMonitor,
 } from 'electron';
 import path from 'node:path';
 import { getDb } from './database/db';
@@ -32,6 +33,11 @@ import {
   configureSessionPermissions,
   getSecureWebPreferences,
 } from './electron-security';
+
+import {
+  handleSystemResume,
+  markSystemSuspended,
+} from './database/system-clock-guard';
 
 let mainWindow: BrowserWindow | null = null;
 let hourlyBackupTimer: NodeJS.Timeout | null = null;
@@ -247,6 +253,14 @@ if (!hasSingleInstanceLock) {
     configureSessionPermissions(session.defaultSession, runtimeSecurityOptions);
 
     getDb();
+
+    powerMonitor.on('suspend', () => {
+      markSystemSuspended();
+    });
+
+    powerMonitor.on('resume', () => {
+      handleSystemResume();
+    });
 
     registerAuthIpc();
     registerProductsIpc();

@@ -43,10 +43,24 @@ type ClosingPreview = {
 
 type OpeningPreview = {
   can_open: boolean;
+
   open_shift: CashShift | null;
+
   previous_shift_id: number | null;
+
   expected_opening_amount: number | null;
+
   previous_closed_at?: string | null;
+
+  previous_business_date?: string | null;
+
+  suggested_business_date: string;
+
+  business_date_gap_days: number;
+
+  clock_moved_backward: boolean;
+
+  requires_date_confirmation: boolean;
 };
 
 type Props = {
@@ -102,7 +116,9 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
   const [closeReason, setCloseReason] = useState('');
 
   const [adminPassword, setAdminPassword] = useState('');
+  const [openingAdminUsername, setOpeningAdminUsername] = useState('');
 
+  const [openingAdminPassword, setOpeningAdminPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{
     id: number;
@@ -194,8 +210,30 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
         return;
       }
 
+      if (preview.clock_moved_backward) {
+        showToast(
+          'error',
+
+          `تاريخ الجهاز أقدم من آخر شفت${
+            preview.previous_business_date
+              ? ` بتاريخ ${preview.previous_business_date}`
+              : ''
+          }. صحح تاريخ Windows أولًا.`,
+
+          6500,
+        );
+
+        return;
+      }
+
       setOpeningPreview(preview);
+
       setOpeningAmount('');
+
+      setOpeningAdminUsername('');
+
+      setOpeningAdminPassword('');
+
       setModal('open');
     } catch (err) {
       showToast('error', 'تعذر تحميل بيانات فتح الشفت');
@@ -253,11 +291,34 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
       return;
     }
 
+    if (openingPreview?.requires_date_confirmation) {
+      if (user?.role !== 'admin' && !openingAdminUsername.trim()) {
+        showToast('error', 'اكتب اسم مستخدم المدير لتأكيد تاريخ الشفت');
+
+        return;
+      }
+
+      if (!openingAdminPassword.trim()) {
+        showToast('error', 'اكتب كلمة مرور المدير لتأكيد تاريخ الشفت');
+
+        return;
+      }
+    }
+
     setBusy(true);
 
     try {
       const shift = await window.api.openCashShift({
         opening_counted_amount: amount,
+
+        admin_username:
+          openingPreview?.requires_date_confirmation && user?.role !== 'admin'
+            ? openingAdminUsername.trim()
+            : undefined,
+
+        admin_password: openingPreview?.requires_date_confirmation
+          ? openingAdminPassword
+          : undefined,
       });
 
       setOpenShift(shift);
@@ -691,6 +752,140 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                 ✕
               </button>
             </div>
+            <div
+              style={{
+                marginTop: '18px',
+                padding: '14px',
+                borderRadius: '14px',
+                background: isLight ? '#eff6ff' : '#172554',
+                border: isLight ? '1px solid #bfdbfe' : '1px solid #1e40af',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '13px',
+                  color: mutedColor,
+                }}
+              >
+                تاريخ الشفت
+              </div>
+
+              <strong
+                style={{
+                  display: 'block',
+                  marginTop: '5px',
+                  fontSize: '20px',
+                }}
+              >
+                {openingPreview?.suggested_business_date || '—'}
+              </strong>
+            </div>
+
+            {openingPreview?.previous_shift_id === null && (
+              <div
+                style={{
+                  marginTop: '12px',
+                  padding: '13px',
+                  borderRadius: '12px',
+                  background: isLight ? '#fff7ed' : '#431407',
+                  border: isLight ? '1px solid #fdba74' : '1px solid #9a3412',
+                  fontWeight: 800,
+                  lineHeight: 1.7,
+                }}
+              >
+                ⚠️ هذا أول شفت بالنظام. تأكد أن تاريخ ووقت Windows صحيحان قبل
+                الفتح، لأن هذا التاريخ سيكون نقطة بداية تسلسل الشفتات.
+              </div>
+            )}
+
+            {openingPreview?.requires_date_confirmation && (
+              <div
+                style={{
+                  marginTop: '12px',
+                  padding: '14px',
+                  borderRadius: '14px',
+                  background: isLight ? '#fff7ed' : '#431407',
+                  border: isLight ? '1px solid #fb923c' : '1px solid #c2410c',
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 900,
+                    lineHeight: 1.7,
+                  }}
+                >
+                  يوجد فرق {openingPreview.business_date_gap_days} أيام عن آخر
+                  شفت
+                  {openingPreview.previous_business_date
+                    ? ` بتاريخ ${openingPreview.previous_business_date}`
+                    : ''}
+                  .
+                </div>
+
+                <div
+                  style={{
+                    marginTop: '5px',
+                    fontSize: '13px',
+                    color: mutedColor,
+                    lineHeight: 1.7,
+                  }}
+                >
+                  إذا كان المحل مغلقًا خلال هذه المدة، أكّد التاريخ ببيانات
+                  المدير.
+                </div>
+
+                {user?.role !== 'admin' && (
+                  <>
+                    <label
+                      style={{
+                        display: 'block',
+                        marginTop: '14px',
+                        fontWeight: 800,
+                      }}
+                    >
+                      اسم مستخدم المدير
+                    </label>
+
+                    <input
+                      type="text"
+                      value={openingAdminUsername}
+                      onChange={(event) =>
+                        setOpeningAdminUsername(event.target.value)
+                      }
+                      autoComplete="username"
+                      style={{
+                        ...inputStyle,
+                        marginTop: '7px',
+                      }}
+                    />
+                  </>
+                )}
+
+                <label
+                  style={{
+                    display: 'block',
+                    marginTop: '14px',
+                    fontWeight: 800,
+                  }}
+                >
+                  كلمة مرور المدير
+                </label>
+
+                <input
+                  type="password"
+                  value={openingAdminPassword}
+                  onChange={(event) =>
+                    setOpeningAdminPassword(event.target.value)
+                  }
+                  autoComplete="current-password"
+                  style={{
+                    ...inputStyle,
+                    marginTop: '7px',
+                  }}
+                />
+              </div>
+            )}
+
             {user?.role === 'admin' && (
               <div
                 style={{

@@ -2669,15 +2669,33 @@ declare global {
       createCashTransfer: (input: any) => Promise<any>;
       getCashShiftOpeningPreview: () => Promise<{
         can_open: boolean;
+
         open_shift: any | null;
+
         previous_shift_id: number | null;
+
         expected_opening_amount: number | null;
+
         previous_closed_at?: string | null;
+
+        previous_business_date?: string | null;
+
+        suggested_business_date: string;
+
+        business_date_gap_days: number;
+
+        clock_moved_backward: boolean;
+
+        requires_date_confirmation: boolean;
       }>;
       getOpenCashShift: () => Promise<any | null>;
 
       openCashShift: (input: {
         opening_counted_amount: number;
+
+        admin_username?: string;
+
+        admin_password?: string;
       }) => Promise<any>;
 
       getCashShiftExpectedBalance: (shiftId: number) => Promise<{
@@ -2738,7 +2756,7 @@ declare global {
           opened_by: number;
           opened_by_name?: string | null;
           opened_at: string;
-
+          business_date: string;
           previous_shift_id: number | null;
 
           expected_opening_amount: number | null;

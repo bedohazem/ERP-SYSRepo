@@ -305,6 +305,18 @@ describe('database migrations', () => {
 
         name: 'held-sale-price-snapshots',
       },
+
+      {
+        version: 15,
+
+        name: 'cash-shift-business-date-snapshot',
+      },
+
+      {
+        version: 16,
+
+        name: 'expense-business-date-snapshot',
+      },
     ]);
 
     const userPermissionColumns = database

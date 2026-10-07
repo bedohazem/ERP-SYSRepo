@@ -4,6 +4,7 @@ import path from 'node:path';
 import { vi } from 'vitest';
 
 process.env.ERP_TEST_ADMIN_PASSWORD = 'Admin1234';
+process.env.ERP_SYSTEM_CLOCK_TEST_BYPASS = '1';
 const testUserDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'erp-test-'));
 
 vi.mock('electron', () => {

@@ -24,7 +24,10 @@ import {
   resolveCashShiftVariance,
   forceCloseCashShift,
 } from '../database/repositories/cash-shifts.repo';
-import { requireAdminPassword } from './permission-helper';
+import {
+  requireAdminApprovalForActor,
+  requireAdminPassword,
+} from './permission-helper';
 import {
   optionalEnumValue,
   optionalBooleanValue,
@@ -54,6 +57,7 @@ import {
   listUsers,
   userHasPermission,
 } from '../database/repositories/user.repo';
+import { resolveFinancialBusinessDate } from '../database/financial-business-date';
 
 const CASH_ACCOUNT_INPUT_VALUES = [
   'store_cash',
@@ -265,12 +269,15 @@ export function registerCashIpc(): void {
       'لا يمكن تنفيذ تحويل يؤثر على درج المحل بدون شفت مفتوح',
     );
 
+    const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
+
     return createCashTransfer({
       from_account: fromAccount,
       to_account: toAccount,
       amount,
       notes,
       created_by: actorId,
+      business_date: businessDate,
       shift_id: openShift?.id ?? null,
     });
   });
@@ -325,6 +332,8 @@ export function registerCashIpc(): void {
       'لا يمكن تسجيل حركة على درج المحل بدون شفت مفتوح',
     );
 
+    const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
+
     return createCashMovement({
       type,
       direction,
@@ -334,6 +343,7 @@ export function registerCashIpc(): void {
       reference_type: 'manual',
       notes,
       created_by: actorId,
+      business_date: businessDate,
       shift_id: openShift?.id ?? null,
     });
   });
@@ -406,6 +416,7 @@ export function registerCashIpc(): void {
         'لا يمكن تعديل حركة تؤثر على درج المحل بدون شفت مفتوح',
       );
 
+      const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
       return updateCashMovement({
         id: movementId,
 
@@ -424,7 +435,7 @@ export function registerCashIpc(): void {
         notes,
 
         actor_id: actorId,
-
+        business_date: businessDate,
         shift_id: openShift?.id ?? null,
       });
     } catch (error) {
@@ -467,6 +478,8 @@ export function registerCashIpc(): void {
         'لا يمكن إلغاء حركة تؤثر على درج المحل بدون شفت مفتوح',
       );
 
+      const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
+
       return cancelCashMovement({
         id: movementId,
 
@@ -475,7 +488,7 @@ export function registerCashIpc(): void {
         approved_by: approval.id,
 
         actor_id: actorId,
-
+        business_date: businessDate,
         shift_id: openShift?.id ?? null,
       });
     } catch (error) {
@@ -680,14 +693,31 @@ export function registerCashIpc(): void {
 
       /*
        * Blind count:
-       * الكاشير لا يعرف تسليم
-       * الشفت السابق قبل العد.
+       * الكاشير لا يرى تسليم
+       * الشفت السابق.
        */
-      previous_shift_id: null,
+      previous_shift_id: preview.previous_shift_id,
 
       expected_opening_amount: null,
 
       previous_closed_at: null,
+
+      /*
+       * بيانات التاريخ ليست
+       * بيانات مالية سرية.
+       *
+       * نحتاجها حتى يظهر تحذير
+       * تغيير التاريخ للكاشير.
+       */
+      previous_business_date: preview.previous_business_date,
+
+      suggested_business_date: preview.suggested_business_date,
+
+      business_date_gap_days: preview.business_date_gap_days,
+
+      clock_moved_backward: preview.clock_moved_backward,
+
+      requires_date_confirmation: preview.requires_date_confirmation,
     };
   });
 
@@ -701,10 +731,48 @@ export function registerCashIpc(): void {
       'رصيد افتتاح الشفت',
     );
 
+    const preview = getCashShiftOpeningPreview();
+
+    if (preview.clock_moved_backward) {
+      throw new Error(
+        `تاريخ الجهاز أقدم من آخر شفت. صحح تاريخ ووقت Windows أولًا.`,
+      );
+    }
+
+    const adminUsername = optionalStringValue(
+      payload.admin_username,
+      'اسم مستخدم المدير',
+      200,
+    );
+
+    const adminPassword = optionalStringValue(
+      payload.admin_password,
+      'كلمة مرور المدير',
+      256,
+    );
+
+    let approvedBy: number | null = null;
+
+    if (preview.requires_date_confirmation) {
+      const approval = requireAdminApprovalForActor(
+        actor,
+
+        adminUsername,
+
+        adminPassword,
+      );
+
+      approvedBy = approval.id;
+    }
+
     const shift = openCashShift({
       opening_counted_amount: openingCountedAmount,
 
       opened_by: actor.id,
+
+      business_date: preview.suggested_business_date,
+
+      approved_by: approvedBy,
     });
 
     const canManageShifts =

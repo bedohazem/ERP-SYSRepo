@@ -38,6 +38,8 @@ describe('cash shifts repository', () => {
 
     expect(shift.status).toBe('open');
 
+    expect(shift.business_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
     expect(shift.expected_opening_amount).toBeNull();
 
     expect(shift.opening_counted_amount).toBe(500);

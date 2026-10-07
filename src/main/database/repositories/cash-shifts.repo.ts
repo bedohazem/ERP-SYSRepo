@@ -1,4 +1,9 @@
 import { getDb } from '../db';
+import {
+  assertSystemClockStable,
+  confirmSystemClockReference,
+  getLocalBusinessDate,
+} from '../system-clock-guard';
 import { createCriticalActivityLog } from './activity.repo';
 import { roundMoney } from '../../../shared/money';
 import {
@@ -15,7 +20,7 @@ export type CashShiftRow = {
   opened_by: number;
   opened_by_name?: string | null;
   opened_at: string;
-
+  business_date: string;
   previous_shift_id: number | null;
 
   expected_opening_amount: number | null;
@@ -38,7 +43,12 @@ export type CashShiftRow = {
 
 export type OpenCashShiftInput = {
   opening_counted_amount: number;
+
   opened_by: number;
+
+  business_date?: string | null;
+
+  approved_by?: number | null;
 };
 
 export type CloseCashShiftInput = {
@@ -272,7 +282,7 @@ export function requireOperationalCashShift(
   noShiftMessage = 'لا يوجد شفت مفتوح',
 ): CashShiftRow {
   const db = getDb();
-
+  assertSystemClockStable();
   const actorId = Number(actorIdInput || 0);
 
   if (!Number.isInteger(actorId) || actorId <= 0) {
@@ -331,7 +341,7 @@ export function resolveFinancialOperationShift(
   noShiftMessage = 'لا يوجد شفت مفتوح',
 ): CashShiftRow | null {
   const db = getDb();
-
+  assertSystemClockStable();
   const actorId = Number(actorIdInput || 0);
 
   if (!Number.isInteger(actorId) || actorId <= 0) {
@@ -391,6 +401,18 @@ export function resolveFinancialOperationShift(
   return requireOperationalCashShift(actorId, noShiftMessage);
 }
 
+function getBusinessDateGapDays(previousDate: string, nextDate: string) {
+  const previousMs = Date.parse(`${previousDate}T00:00:00Z`);
+
+  const nextMs = Date.parse(`${nextDate}T00:00:00Z`);
+
+  if (!Number.isFinite(previousMs) || !Number.isFinite(nextMs)) {
+    throw new Error('تاريخ الشفت غير صحيح');
+  }
+
+  return Math.round((nextMs - previousMs) / 86_400_000);
+}
+
 export function getCashShiftOpeningPreview() {
   const db = getDb();
 
@@ -399,9 +421,25 @@ export function getCashShiftOpeningPreview() {
   if (currentOpenShift) {
     return {
       can_open: false,
+
       open_shift: currentOpenShift,
-      previous_shift_id: null,
+
+      previous_shift_id: currentOpenShift.previous_shift_id ?? null,
+
       expected_opening_amount: null,
+
+      previous_closed_at: null,
+
+      previous_business_date: currentOpenShift.business_date || null,
+
+      suggested_business_date:
+        currentOpenShift.business_date || getLocalBusinessDate(),
+
+      business_date_gap_days: 0,
+
+      clock_moved_backward: false,
+
+      requires_date_confirmation: false,
     };
   }
 
@@ -411,7 +449,19 @@ export function getCashShiftOpeningPreview() {
       SELECT
         id,
         left_for_next_shift,
-        closed_at
+        closed_at,
+
+        COALESCE(
+          NULLIF(
+            business_date,
+            ''
+          ),
+
+          date(
+            opened_at,
+            'localtime'
+          )
+        ) AS business_date
 
       FROM cash_shifts
 
@@ -427,6 +477,7 @@ export function getCashShiftOpeningPreview() {
         id: number;
         left_for_next_shift: number | null;
         closed_at: string | null;
+        business_date: string | null;
       }
     | undefined;
 
@@ -435,6 +486,24 @@ export function getCashShiftOpeningPreview() {
     previousShift?.left_for_next_shift === undefined
       ? null
       : roundMoney(Number(previousShift.left_for_next_shift));
+
+  const suggestedBusinessDate = getLocalBusinessDate();
+
+  const previousBusinessDate = previousShift?.business_date
+    ? String(previousShift.business_date)
+    : null;
+
+  const businessDateGapDays = previousBusinessDate
+    ? getBusinessDateGapDays(previousBusinessDate, suggestedBusinessDate)
+    : 0;
+
+  const clockMovedBackward = Boolean(
+    previousBusinessDate && businessDateGapDays < 0,
+  );
+
+  const requiresDateConfirmation = Boolean(
+    previousBusinessDate && businessDateGapDays > 1,
+  );
 
   return {
     can_open: true,
@@ -446,12 +515,22 @@ export function getCashShiftOpeningPreview() {
     expected_opening_amount: expectedOpeningAmount,
 
     previous_closed_at: previousShift?.closed_at ?? null,
+    previous_business_date: previousBusinessDate,
+
+    suggested_business_date: suggestedBusinessDate,
+
+    business_date_gap_days: businessDateGapDays,
+
+    clock_moved_backward: clockMovedBackward,
+
+    requires_date_confirmation: requiresDateConfirmation,
   };
 }
 
 export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
-  const db = getDb();
+  assertSystemClockStable();
 
+  const db = getDb();
   const openedBy = Number(input.opened_by || 0);
 
   const rawOpeningCountedAmount = Number(input.opening_counted_amount);
@@ -468,6 +547,27 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
   }
 
   const openingCountedAmount = roundMoney(rawOpeningCountedAmount);
+
+  const currentBusinessDate = getLocalBusinessDate();
+
+  const requestedBusinessDate = String(
+    input.business_date || currentBusinessDate,
+  ).trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedBusinessDate)) {
+    throw new Error('تاريخ الشفت غير صحيح');
+  }
+
+  /*
+   * Renderer لا يقدر يرسل تاريخ
+   * مختلف عن التاريخ الذي يراه
+   * الـMain Process.
+   */
+  if (requestedBusinessDate !== currentBusinessDate) {
+    throw new Error(
+      'تاريخ الجهاز تغير أثناء فتح الشفت. أعد فتح شاشة الشفت وحاول مرة أخرى.',
+    );
+  }
 
   const tx = db.transaction(() => {
     const currentOpenShift = db
@@ -502,7 +602,19 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
         `
         SELECT
           id,
-          left_for_next_shift
+          left_for_next_shift,
+
+          COALESCE(
+            NULLIF(
+              business_date,
+              ''
+            ),
+
+            date(
+              opened_at,
+              'localtime'
+            )
+          ) AS business_date
 
         FROM cash_shifts
 
@@ -517,6 +629,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
       | {
           id: number;
           left_for_next_shift: number | null;
+          business_date: string | null;
         }
       | undefined;
 
@@ -531,6 +644,79 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
         ? 0
         : roundMoney(openingCountedAmount - expectedOpeningAmount);
 
+    const previousBusinessDate = previousShift?.business_date
+      ? String(previousShift.business_date)
+      : null;
+
+    const businessDateGapDays = previousBusinessDate
+      ? getBusinessDateGapDays(previousBusinessDate, requestedBusinessDate)
+      : 0;
+
+    /*
+     * ممنوع السلسلة ترجع للخلف.
+     */
+    if (previousBusinessDate && businessDateGapDays < 0) {
+      throw new Error(
+        `تاريخ الجهاز ${requestedBusinessDate} أقدم من آخر شفت بتاريخ ${previousBusinessDate}. صحح تاريخ Windows قبل فتح شفت جديد.`,
+      );
+    }
+
+    /*
+     * أكثر من يوم قد يكون:
+     *
+     * - المحل كان مغلقًا عدة أيام.
+     * - أو ساعة الجهاز تم تقديمها.
+     *
+     * لذلك نحتاج تأكيد مدير.
+     */
+    if (previousBusinessDate && businessDateGapDays > 1) {
+      const approvedBy = Number(input.approved_by || 0);
+
+      if (!approvedBy) {
+        throw new Error(
+          `يوجد فرق ${businessDateGapDays} أيام عن آخر شفت. يلزم تأكيد المدير قبل فتح الشفت.`,
+        );
+      }
+
+      const approvingAdmin = db
+        .prepare(
+          `
+          SELECT id
+
+          FROM users
+
+          WHERE
+            id = ?
+
+            AND role =
+              'admin'
+
+            AND is_active = 1
+
+          LIMIT 1
+          `,
+        )
+        .get(approvedBy);
+
+      if (!approvingAdmin) {
+        throw new Error('تأكيد المدير لتاريخ الشفت غير صالح');
+      }
+    }
+
+    const businessDate = requestedBusinessDate;
+
+    /*
+     * وصلنا هنا يعني:
+     *
+     * - أول شفت، أو
+     * - التاريخ طبيعي، أو
+     * - القفزة الكبيرة وافق عليها المدير.
+     *
+     * دلوقتي فقط نعتبر ساعة الجهاز
+     * Reference صالحًا.
+     */
+    confirmSystemClockReference();
+
     const result = db
       .prepare(
         `
@@ -538,6 +724,8 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
           status,
 
           opened_by,
+
+          business_date,
 
           previous_shift_id,
 
@@ -552,12 +740,15 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
           ?,
           ?,
           ?,
+          ?,
           ?
         )
         `,
       )
       .run(
         openedBy,
+
+        businessDate,
 
         previousShift?.id ?? null,
 
@@ -738,6 +929,13 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
         opening_difference: openingDifference,
         account_reconciliation_amount: accountReconciliationAmount,
         opening_safe_transfer_amount: openingSafeTransferAmount,
+        business_date: businessDate,
+
+        previous_business_date: previousBusinessDate,
+
+        business_date_gap_days: businessDateGapDays,
+
+        business_date_approved_by: Number(input.approved_by || 0) || null,
       }),
     });
 
@@ -1856,6 +2054,8 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
 }
 
 export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
+  assertSystemClockStable();
+
   const db = getDb();
 
   const shiftId = Number(input.shift_id || 0);
@@ -2127,6 +2327,7 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
 export function forceCloseCashShift(
   input: ForceCloseCashShiftInput,
 ): CashShiftRow {
+  assertSystemClockStable();
   const db = getDb();
 
   const shiftId = Number(input.shift_id || 0);

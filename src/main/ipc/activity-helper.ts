@@ -1,4 +1,5 @@
 import { getDb } from '../database/db';
+import { assertSystemClockStable } from '../database/system-clock-guard';
 import {
   CRITICAL_AUDIT_ERROR_MESSAGE,
   createCriticalActivityLog,
@@ -85,6 +86,8 @@ export function runCriticalActionWithAudit<T>(
   buildAudit:
     ((result: T) => ActionLogInput) | ((result: T) => ActionLogInput[]),
 ): T {
+  assertSystemClockStable();
+
   const db = getDb();
 
   const tx = db.transaction(() => {

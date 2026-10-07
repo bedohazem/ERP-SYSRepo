@@ -13,9 +13,16 @@ export function getShiftBusinessDate(shiftIdInput: number): string {
     .prepare(
       `
       SELECT
-        date(
-          opened_at,
-          'localtime'
+        COALESCE(
+          NULLIF(
+            business_date,
+            ''
+          ),
+
+          date(
+            opened_at,
+            'localtime'
+          )
         ) AS business_date
 
       FROM cash_shifts

@@ -22,6 +22,7 @@ type ExpenseTestRow = {
   payment_method: string;
   notes: string | null;
   created_by: number | null;
+  business_date: string | null;
   created_at: string;
   created_by_name?: string | null;
 };
@@ -722,5 +723,143 @@ describe('expense repository', () => {
     expect(Number(cancelReverse.amount)).toBe(150);
 
     expect(Number(cancelReverse.shift_id)).toBe(shift2.id);
+  });
+
+  it('uses protected business date for an admin expense without a shift', () => {
+    const db = getDb();
+
+    const shift = getOpenCashShift();
+
+    expect(shift).toBeTruthy();
+
+    const shiftId = Number(shift!.id);
+
+    closeCashShift({
+      shift_id: shiftId,
+
+      closing_counted_amount: 1000000,
+
+      left_for_next_shift: 1000000,
+
+      closed_by: 1,
+    });
+
+    const currentBusinessDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Cairo',
+
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
+    const previousDate = new Date(`${currentBusinessDate}T00:00:00Z`);
+
+    previousDate.setUTCDate(previousDate.getUTCDate() - 1);
+
+    const previousBusinessDate = previousDate.toISOString().slice(0, 10);
+
+    db.prepare(
+      `
+      UPDATE cash_shifts
+
+      SET business_date = ?
+
+      WHERE id = ?
+      `,
+    ).run(previousBusinessDate, shiftId);
+
+    /*
+     * رصيد لحساب المالك حتى
+     * نقدر نسجل المصروف منه.
+     */
+    db.prepare(
+      `
+      INSERT INTO cash_movements (
+        type,
+        amount,
+        direction,
+        payment_method,
+        reference_type,
+        notes,
+        created_by,
+        business_date
+      )
+
+      VALUES (
+        'deposit',
+        1000,
+        'in',
+        'owner_bank',
+        'test_seed',
+        'Admin bank test balance',
+        1,
+        ?
+      )
+      `,
+    ).run(previousBusinessDate);
+
+    const result = createExpense({
+      title: 'Admin bank expense',
+
+      amount: 100,
+
+      payment_method: 'owner_bank',
+
+      created_by: 1,
+    });
+
+    expect(result.shift_id).toBeNull();
+
+    const expense = db
+      .prepare(
+        `
+        SELECT
+          business_date,
+          shift_id
+
+        FROM expenses
+
+        WHERE id = ?
+        `,
+      )
+      .get(result.id) as {
+      business_date: string | null;
+
+      shift_id: number | null;
+    };
+
+    expect(expense.business_date).toBe(currentBusinessDate);
+
+    expect(expense.shift_id).toBeNull();
+
+    const movement = db
+      .prepare(
+        `
+        SELECT
+          business_date,
+          shift_id
+
+        FROM cash_movements
+
+        WHERE
+          reference_type =
+            'expense'
+
+          AND reference_id = ?
+
+        ORDER BY id DESC
+
+        LIMIT 1
+        `,
+      )
+      .get(result.id) as {
+      business_date: string | null;
+
+      shift_id: number | null;
+    };
+
+    expect(movement.business_date).toBe(currentBusinessDate);
+
+    expect(movement.shift_id).toBeNull();
   });
 });
