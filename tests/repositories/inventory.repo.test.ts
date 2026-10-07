@@ -15,6 +15,7 @@ import {
   getInventoryAnalytics,
 } from '../../src/main/database/repositories/inventory.repo';
 import { createSale } from '../../src/main/database/repositories/sales.repo';
+import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo';
 
 type InventoryVariantTestRow = {
   variant_id: number;
@@ -144,6 +145,15 @@ describe('inventory repository', () => {
   });
 
   it('builds 30-day movement and 90-day dead-stock analytics', () => {
+    /*
+     * أول شفت هو نقطة مرجع
+     * التاريخ المالي للنظام.
+     */
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    });
+
     const oldMover = seedInventoryProduct({
       name: 'Old Inventory Mover',
 

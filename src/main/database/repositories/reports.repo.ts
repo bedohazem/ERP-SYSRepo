@@ -116,9 +116,16 @@ export function getReportsSummary(input?: ReportFilter) {
     COALESCE(
       (
         SELECT
-          date(
-            cs.opened_at,
-            'localtime'
+          COALESCE(
+            NULLIF(
+              cs.business_date,
+              ''
+            ),
+
+            date(
+              cs.opened_at,
+              'localtime'
+            )
           )
 
         FROM cash_shifts cs
@@ -143,10 +150,17 @@ export function getReportsSummary(input?: ReportFilter) {
     COALESCE(
       (
         SELECT
+        COALESCE(
+          NULLIF(
+            cs.business_date,
+            ''
+          ),
+
           date(
             cs.opened_at,
             'localtime'
           )
+        )
 
         FROM cash_shifts cs
 
@@ -165,10 +179,17 @@ export function getReportsSummary(input?: ReportFilter) {
     COALESCE(
       (
         SELECT
+        COALESCE(
+          NULLIF(
+            cs.business_date,
+            ''
+          ),
+
           date(
             cs.opened_at,
             'localtime'
           )
+        )
 
         FROM cash_shifts cs
 
@@ -203,10 +224,17 @@ export function getReportsSummary(input?: ReportFilter) {
               ''
             ),
 
+          COALESCE(
+            NULLIF(
+              cs.business_date,
+              ''
+            ),
+
             date(
               cs.opened_at,
               'localtime'
             )
+          )
           )
 
         FROM cash_shifts cs
@@ -228,10 +256,17 @@ export function getReportsSummary(input?: ReportFilter) {
   COALESCE(
     (
       SELECT
-        date(
-          cs.opened_at,
-          'localtime'
-        )
+COALESCE(
+  NULLIF(
+    cs.business_date,
+    ''
+  ),
+
+  date(
+    cs.opened_at,
+    'localtime'
+  )
+)
 
       FROM cash_shifts cs
 
@@ -255,10 +290,17 @@ export function getReportsSummary(input?: ReportFilter) {
     COALESCE(
       (
         SELECT
-          date(
-            cs.opened_at,
-            'localtime'
-          )
+COALESCE(
+  NULLIF(
+    cs.business_date,
+    ''
+  ),
+
+  date(
+    cs.opened_at,
+    'localtime'
+  )
+)
 
         FROM cash_shifts cs
 
@@ -278,10 +320,17 @@ export function getReportsSummary(input?: ReportFilter) {
     COALESCE(
       (
         SELECT
-          date(
-            cs.opened_at,
-            'localtime'
-          )
+COALESCE(
+  NULLIF(
+    cs.business_date,
+    ''
+  ),
+
+  date(
+    cs.opened_at,
+    'localtime'
+  )
+)
 
         FROM cash_shifts cs
 
@@ -886,16 +935,43 @@ export function getReportsSummary(input?: ReportFilter) {
     expenseBusinessDate,
   );
 
-  const liabilityPaymentsWhere = buildWhere('p', input, [
-    `p.cancelled_at IS NULL`,
-  ]);
+  const liabilityPaymentsWhere = buildWhere(
+    'p',
+    input,
+    [`p.cancelled_at IS NULL`],
+    undefined,
+    `
+  COALESCE(
+    NULLIF(
+      p.business_date,
+      ''
+    ),
 
+    date(
+      p.created_at,
+      'localtime'
+    )
+  )
+  `,
+  );
   const purchasesWhere = buildWhere(
     'pi',
     input,
     [`pi.cancelled_at IS NULL`, `IFNULL(pi.status, 'active') <> 'cancelled'`],
     undefined,
-    `date(pi.created_at, 'localtime')`,
+    `
+    COALESCE(
+      NULLIF(
+        pi.business_date,
+        ''
+      ),
+
+      date(
+        pi.created_at,
+        'localtime'
+      )
+    )
+    `,
   );
 
   const manualCashWhere = buildWhere(
@@ -922,7 +998,10 @@ export function getReportsSummary(input?: ReportFilter) {
       `csv.resolution_type = 'approved'`,
     ],
     'cs.opened_by',
-    `date(cs.opened_at, 'localtime')`,
+    `COALESCE(
+    NULLIF(cs.business_date, ''),
+    date(cs.opened_at, 'localtime')
+  )`,
   );
 
   const openingVarianceWhere = buildWhere(
@@ -934,7 +1013,10 @@ export function getReportsSummary(input?: ReportFilter) {
       `csv.resolution_type = 'approved'`,
     ],
     'cs.opened_by',
-    `date(cs.opened_at, 'localtime')`,
+    `COALESCE(
+    NULLIF(cs.business_date, ''),
+    date(cs.opened_at, 'localtime')
+  )`,
   );
 
   const expensesRow = db
@@ -2142,9 +2224,16 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
         cs.opened_at,
         cs.closed_at,
 
-        date(
-          cs.opened_at,
-          'localtime'
+        COALESCE(
+          NULLIF(
+            cs.business_date,
+            ''
+          ),
+
+          date(
+            cs.opened_at,
+            'localtime'
+          )
         ) AS business_date
 
       FROM cash_shifts cs

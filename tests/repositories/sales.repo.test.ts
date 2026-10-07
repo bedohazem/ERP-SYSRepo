@@ -446,7 +446,26 @@ describe('sales repository', () => {
   it('allows admin sale to store safe without an open shift', () => {
     const db = getDb();
 
-    db.prepare(`DELETE FROM cash_shifts`).run();
+    /*
+     * نحافظ على آخر شفت كمرجع
+     * للتاريخ، لكن لا يوجد شفت
+     * مفتوح وقت عملية الأدمن.
+     */
+    const currentShift = getOpenCashShift();
+
+    expect(currentShift).toBeTruthy();
+
+    closeCashShift({
+      shift_id: Number(currentShift!.id),
+
+      closing_counted_amount: 0,
+
+      left_for_next_shift: 0,
+
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
 
     const variant = seedProduct();
 

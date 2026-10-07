@@ -18,6 +18,7 @@ import {
   receiveStockAtCost,
 } from '../inventory-cost';
 import { roundMoney } from '../../../shared/money';
+import { resolveFinancialBusinessDate } from '../financial-business-date';
 
 export type CreateSaleLineInput = {
   variant_id: number;
@@ -332,12 +333,17 @@ function createSaleInternal(
 
   const requestedBusinessDate = String(input.business_date || '').trim();
 
-  const businessDate = openShift
-    ? getShiftBusinessDate(openShift.id)
-    : /^\d{4}-\d{2}-\d{2}$/.test(requestedBusinessDate)
+  /*
+   * أثناء تعديل نفس الفاتورة:
+   * نحافظ على Business Date التاريخي.
+   *
+   * أما فاتورة جديدة:
+   * لازم تمر على Clock/Shift resolver.
+   */
+  const businessDate =
+    options.forced_sale_id && /^\d{4}-\d{2}-\d{2}$/.test(requestedBusinessDate)
       ? requestedBusinessDate
-      : getCurrentBusinessDate(db);
-
+      : resolveFinancialBusinessDate(openShift?.id ?? null);
   const customerId = input.customer_id ? Number(input.customer_id) : null;
   const invoiceUserId = Number(options.invoice_user_id || input.user_id);
   const requestedRedeemPoints = Number(input.loyalty_points_redeemed || 0);

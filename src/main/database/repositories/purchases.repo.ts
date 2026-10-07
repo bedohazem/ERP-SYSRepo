@@ -9,7 +9,7 @@ import {
   getOpenCashShift,
   resolveFinancialOperationShift,
 } from './cash-shifts.repo';
-
+import { resolveFinancialBusinessDate } from '../financial-business-date';
 import { getShiftBusinessDate } from '../shift-business-date';
 import { issueStockAtCost, receiveStockAtCost } from '../inventory-cost';
 
@@ -234,9 +234,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         )
       : null;
 
-  const businessDate = openShift
-    ? getShiftBusinessDate(openShift.id)
-    : getCurrentBusinessDate(db);
+  const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
 
   if (!supplierId) {
     throw new Error('اختار المورد');
@@ -510,7 +508,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         notes: `دفع فاتورة شراء رقم ${purchaseId}`,
 
         created_by: actorId,
-
+        business_date: businessDate,
         shift_id: openShift?.id ?? null,
       });
     }
@@ -1779,6 +1777,10 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
           )
         : null;
 
+    const cancellationBusinessDate = resolveFinancialBusinessDate(
+      openShift?.id ?? null,
+    );
+
     const remainingAmount = Number(purchase.remaining_amount || 0);
 
     db.prepare(
@@ -1836,7 +1838,7 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
 
         created_by: actorId,
 
-        business_date: getCurrentBusinessDate(db),
+        business_date: cancellationBusinessDate,
 
         shift_id: openShift?.id ?? null,
       });
@@ -2010,6 +2012,8 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
           )
         : null;
 
+    const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
+
     const supplierBalanceReduction = roundMoney(
       debtReductionAmount + (refundMode === 'credit' ? cashRefundAmount : 0),
     );
@@ -2027,9 +2031,10 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
           refund_mode,
           notes,
           created_by,
+          business_date,
           shift_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
       .run(
@@ -2042,6 +2047,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         refundMode,
         input.notes?.trim() || null,
         input.actor_id ?? null,
+        businessDate,
         openShift?.id ?? null,
       );
 
@@ -2153,7 +2159,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
 
         created_by: actorId,
 
-        business_date: getCurrentBusinessDate(db),
+        business_date: businessDate,
 
         shift_id: openShift?.id ?? null,
       });
@@ -2340,8 +2346,9 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
         )
       : null;
 
-  const cancellationBusinessDate = getCurrentBusinessDate(db);
-
+  const cancellationBusinessDate = resolveFinancialBusinessDate(
+    openShift?.id ?? null,
+  );
   const reason = String(input.reason || '').trim() || 'إلغاء مرتجع شراء';
 
   const tx = db.transaction(() => {
@@ -3017,17 +3024,7 @@ export function recordSupplierPayment(input: {
       throw new Error('قيمة الدفع أكبر من رصيد المورد');
     }
 
-    const businessDateRow = db
-      .prepare(
-        `
-    SELECT date('now', 'localtime') AS business_date
-    `,
-      )
-      .get() as {
-      business_date: string;
-    };
-
-    const businessDate = String(businessDateRow?.business_date || '');
+    const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
 
     const batchResult = db
       .prepare(
@@ -3541,7 +3538,9 @@ export function cancelSupplierPaymentBatch(input: {
     'لا يمكن إلغاء دفعة مورد تؤثر على درج المحل بدون شفت مفتوح',
   );
 
-  const cancellationBusinessDate = getCurrentBusinessDate(db);
+  const cancellationBusinessDate = resolveFinancialBusinessDate(
+    openShift?.id ?? null,
+  );
 
   const reason = String(input.reason || '').trim() || 'إلغاء دفعة مورد';
 
@@ -3766,7 +3765,9 @@ export function updateSupplierPaymentBatch(input: {
     'لا يمكن تعديل دفعة مورد تؤثر على درج المحل بدون شفت مفتوح',
   );
 
-  const correctionBusinessDate = getCurrentBusinessDate(db);
+  const correctionBusinessDate = resolveFinancialBusinessDate(
+    openShift?.id ?? null,
+  );
 
   const newNotes =
     input.notes === undefined

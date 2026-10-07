@@ -3,6 +3,7 @@ import { createCashMovement, resolveCashAccount } from './cash.repo';
 import { createCriticalActivityLog } from './activity.repo';
 import { resolveFinancialOperationShift } from './cash-shifts.repo';
 import { roundMoney } from '../../../shared/money';
+import { resolveFinancialBusinessDate } from '../financial-business-date';
 
 export type CreateLiabilityInput = {
   party_name: string;
@@ -67,22 +68,6 @@ function getStatus(remaining: number) {
   return remaining <= 0 ? 'paid' : 'open';
 }
 
-function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
-  const row = db
-    .prepare(
-      `
-      SELECT
-        date('now', 'localtime')
-          AS business_date
-      `,
-    )
-    .get() as {
-    business_date: string;
-  };
-
-  return String(row?.business_date || '');
-}
-
 export function createLiability(input: CreateLiabilityInput) {
   const db = getDb();
 
@@ -107,6 +92,8 @@ export function createLiability(input: CreateLiabilityInput) {
     throw new Error('قيمة الالتزام غير صحيحة');
   }
 
+  const businessDate = resolveFinancialBusinessDate(null);
+
   const tx = db.transaction(() => {
     const result = db
       .prepare(
@@ -122,9 +109,10 @@ export function createLiability(input: CreateLiabilityInput) {
           due_date,
           notes,
           created_by,
+          business_date,
           updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       `,
       )
       .run(
@@ -138,6 +126,7 @@ export function createLiability(input: CreateLiabilityInput) {
         input.due_date || null,
         cleanText(input.notes) || null,
         input.actor_id ?? null,
+        businessDate,
       );
 
     const liabilityId = Number(result.lastInsertRowid);
@@ -209,7 +198,7 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
     'لا يمكن تسجيل دفعة التزام من درج المحل بدون شفت مفتوح',
   );
 
-  const businessDate = getCurrentBusinessDate(db);
+  const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
 
   const tx = db.transaction(() => {
     const paymentResult = db
@@ -222,10 +211,11 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
             payment_method,
             notes,
             created_by,
+            business_date,
             shift_id
           )
 
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         `,
       )
       .run(
@@ -234,6 +224,7 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
         paymentMethod,
         cleanText(input.notes) || null,
         actorId,
+        businessDate,
         openShift?.id ?? null,
       );
 
@@ -978,7 +969,9 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
     'لا يمكن تعديل دفعة التزام تؤثر على درج المحل بدون شفت مفتوح',
   );
 
-  const correctionBusinessDate = getCurrentBusinessDate(db);
+  const correctionBusinessDate = resolveFinancialBusinessDate(
+    openShift?.id ?? null,
+  );
 
   const notes =
     input.notes === undefined
@@ -996,10 +989,11 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
               payment_method,
               notes,
               created_by,
+              business_date,
               shift_id
             )
 
-          VALUES (?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
           `,
       )
       .run(
@@ -1008,6 +1002,7 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
         paymentMethod,
         notes,
         actorId,
+        correctionBusinessDate,
         openShift?.id ?? null,
       );
 
@@ -1225,7 +1220,9 @@ export function cancelLiabilityPayment(input: {
     'لا يمكن إلغاء دفعة التزام تؤثر على درج المحل بدون شفت مفتوح',
   );
 
-  const cancellationBusinessDate = getCurrentBusinessDate(db);
+  const cancellationBusinessDate = resolveFinancialBusinessDate(
+    openShift?.id ?? null,
+  );
 
   const reason = String(input.reason || '').trim() || 'إلغاء دفعة التزام';
 

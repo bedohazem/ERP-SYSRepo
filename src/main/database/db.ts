@@ -2873,6 +2873,155 @@ export function getDb(): Database.Database {
           `);
         },
       },
+
+      {
+        version: 17,
+
+        name: 'financial-operation-business-date-snapshots',
+
+        up: () => {
+          safeAddColumn(db, 'purchase_returns', 'business_date', 'TEXT');
+
+          safeAddColumn(db, 'store_liabilities', 'business_date', 'TEXT');
+
+          safeAddColumn(
+            db,
+            'store_liability_payments',
+            'business_date',
+            'TEXT',
+          );
+
+          db.prepare(
+            `
+            UPDATE purchase_returns
+
+            SET business_date =
+              COALESCE(
+                (
+                  SELECT
+                    COALESCE(
+                      NULLIF(
+                        cs.business_date,
+                        ''
+                      ),
+
+                      date(
+                        cs.opened_at,
+                        'localtime'
+                      )
+                    )
+
+                  FROM cash_shifts cs
+
+                  WHERE
+                    cs.id =
+                      purchase_returns.shift_id
+
+                  LIMIT 1
+                ),
+
+                date(
+                  purchase_returns.created_at,
+                  'localtime'
+                )
+              )
+
+            WHERE
+              business_date IS NULL
+
+              OR TRIM(
+                business_date
+              ) = ''
+            `,
+          ).run();
+
+          db.prepare(
+            `
+            UPDATE store_liabilities
+
+            SET business_date =
+              date(
+                created_at,
+                'localtime'
+              )
+
+            WHERE
+              business_date IS NULL
+
+              OR TRIM(
+                business_date
+              ) = ''
+            `,
+          ).run();
+
+          db.prepare(
+            `
+            UPDATE store_liability_payments
+
+            SET business_date =
+              COALESCE(
+                (
+                  SELECT
+                    COALESCE(
+                      NULLIF(
+                        cs.business_date,
+                        ''
+                      ),
+
+                      date(
+                        cs.opened_at,
+                        'localtime'
+                      )
+                    )
+
+                  FROM cash_shifts cs
+
+                  WHERE
+                    cs.id =
+                      store_liability_payments.shift_id
+
+                  LIMIT 1
+                ),
+
+                date(
+                  store_liability_payments.created_at,
+                  'localtime'
+                )
+              )
+
+            WHERE
+              business_date IS NULL
+
+              OR TRIM(
+                business_date
+              ) = ''
+            `,
+          ).run();
+
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_returns_business_date
+
+            ON purchase_returns(
+              business_date
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_store_liabilities_business_date
+
+            ON store_liabilities(
+              business_date
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_store_liability_payments_business_date
+
+            ON store_liability_payments(
+              business_date
+            );
+          `);
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

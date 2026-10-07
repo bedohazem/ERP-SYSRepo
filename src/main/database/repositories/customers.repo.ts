@@ -7,6 +7,7 @@ import {
 
 import { getShiftBusinessDate } from '../shift-business-date';
 import { roundMoney } from '../../../shared/money';
+import { resolveFinancialBusinessDate } from '../financial-business-date';
 
 function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
   const row = db
@@ -1045,9 +1046,7 @@ export function recordCustomerPayment(input: {
       throw new Error('العميل غير موجود');
     }
 
-    const businessDate = openShift
-      ? getShiftBusinessDate(openShift.id)
-      : getCurrentBusinessDate(db);
+    const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
 
     const batchResult = db
       .prepare(

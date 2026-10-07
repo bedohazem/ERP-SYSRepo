@@ -696,7 +696,7 @@ export function registerCashIpc(): void {
        * الكاشير لا يرى تسليم
        * الشفت السابق.
        */
-      previous_shift_id: preview.previous_shift_id,
+      previous_shift_id: null,
 
       expected_opening_amount: null,
 

@@ -365,7 +365,10 @@ describe('reports with sale exchanges', () => {
 
         SET
           opened_at =
-            '2026-08-10 20:00:00'
+            '2026-08-10 20:00:00',
+
+          business_date =
+            '2026-08-10'
 
         WHERE id = ?
         `,

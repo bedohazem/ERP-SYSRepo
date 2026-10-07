@@ -317,6 +317,12 @@ describe('database migrations', () => {
 
         name: 'expense-business-date-snapshot',
       },
+
+      {
+        version: 17,
+
+        name: 'financial-operation-business-date-snapshots',
+      },
     ]);
 
     const userPermissionColumns = database

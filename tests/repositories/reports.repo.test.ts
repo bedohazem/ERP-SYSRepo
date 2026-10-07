@@ -973,15 +973,25 @@ describe('reports repository', () => {
       `
       UPDATE cash_shifts
 
-      SET opened_at = ?
+      SET
+        opened_at = ?,
+
+        business_date = ?
 
       WHERE id IN (
         SELECT shift_id
+
         FROM sales
+
         WHERE id IN (?, ?)
       )
       `,
-    ).run('2026-09-05 09:00:00', firstSale.saleId, secondSale.saleId);
+    ).run(
+      '2026-09-05 09:00:00',
+      '2026-09-05',
+      firstSale.saleId,
+      secondSale.saleId,
+    );
 
     const report = getReportsSummary({
       date_from: '2026-09-01',
@@ -1662,7 +1672,10 @@ describe('reports repository', () => {
 
       SET
         opened_at =
-          '2020-01-15 20:00:00'
+          '2020-01-15 20:00:00',
+
+        business_date =
+          '2020-01-15'
 
       WHERE id = ?
       `,
@@ -1672,9 +1685,16 @@ describe('reports repository', () => {
       .prepare(
         `
         SELECT
-          date(
-            opened_at,
-            'localtime'
+          COALESCE(
+            NULLIF(
+              business_date,
+              ''
+            ),
+
+            date(
+              opened_at,
+              'localtime'
+            )
           ) AS day
 
         FROM cash_shifts
