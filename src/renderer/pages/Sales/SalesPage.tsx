@@ -1044,7 +1044,8 @@ export default function SalesPage() {
     () =>
       roundMoney(
         activeInvoice.cart.reduce(
-          (sum, item) => sum + item.quantity * Number(item.sell_price || 0),
+          (sum, item) =>
+            sum + roundMoney(item.quantity * Number(item.sell_price || 0)),
           0,
         ),
       ),
@@ -1064,7 +1065,7 @@ export default function SalesPage() {
             Number(item.original_sell_price ?? item.sell_price ?? 0),
           );
 
-          return sum + item.quantity * originalPrice;
+          return sum + roundMoney(item.quantity * originalPrice);
         }, 0),
       ),
     [activeInvoice.cart],

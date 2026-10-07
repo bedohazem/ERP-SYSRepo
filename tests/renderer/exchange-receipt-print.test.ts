@@ -22,7 +22,9 @@ describe('sale exchange receipt', () => {
       new_group_total: 150,
 
       difference_amount: 50,
+      old_product_discount_value: 40,
 
+      new_product_discount_value: 50,
       cash_collection_amount: 50,
 
       cash_refund_amount: 0,
@@ -39,13 +41,14 @@ describe('sale exchange receipt', () => {
           old_color: 'Black',
 
           old_unit_price: 100,
-
+          old_list_unit_price: 140,
           new_product_name: 'قميص',
 
           new_size: 'L',
           new_color: 'Blue',
 
           new_unit_price: 150,
+          new_list_unit_price: 200,
         },
       ],
     });
@@ -59,5 +62,18 @@ describe('sale exchange receipt', () => {
     expect(html).not.toContain('قيمة العرض قبل');
 
     expect(html).not.toContain('قيمة العرض بعد');
+    expect(html).toContain('خصم المنتج');
+
+    expect(html).toContain('140');
+
+    expect(html).toContain('100');
+
+    expect(html).toContain('200');
+
+    expect(html).toContain('150');
+
+    expect(html).toContain('40');
+
+    expect(html).toContain('50');
   });
 });

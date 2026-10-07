@@ -299,6 +299,12 @@ describe('database migrations', () => {
 
         name: 'sale-product-discount-return-exchange-snapshots',
       },
+
+      {
+        version: 14,
+
+        name: 'held-sale-price-snapshots',
+      },
     ]);
 
     const userPermissionColumns = database
@@ -466,6 +472,8 @@ describe('database migrations', () => {
         'held_sale_id',
         'variant_id',
         'quantity',
+        'unit_price',
+        'list_unit_price',
         'position',
       ]),
     );

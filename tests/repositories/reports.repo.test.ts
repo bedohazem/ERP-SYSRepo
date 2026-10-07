@@ -2103,4 +2103,160 @@ describe('reports repository', () => {
 
     expect(Number(saleItem.unit_cost)).toBe(100);
   });
+
+  it('keeps product discounts reconciled in reports and cashier dashboard', () => {
+    createProduct({
+      name: 'Report Product Discount',
+
+      category_id: null,
+
+      image_path: null,
+
+      description: null,
+
+      variants: [
+        {
+          barcode: 'REPORT-PD',
+
+          size: 'M',
+          color: 'Black',
+
+          buy_price: 100,
+
+          sell_price: 190,
+          discount_price: 150,
+
+          min_stock: 1,
+
+          opening_qty: 10,
+        },
+      ],
+    });
+
+    const variant = getVariantByBarcode('REPORT-PD') as any;
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 300,
+
+      discount_value: 0,
+
+      grand_total: 300,
+
+      change_amount: 0,
+
+      payment_method: 'store_cash',
+
+      paid: 300,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 2,
+
+          unit_price: 150,
+
+          list_unit_price: 190,
+        },
+      ],
+    });
+
+    let report = getReportsSummary() as any;
+
+    expect(Number(report.summary.gross_sales)).toBe(300);
+
+    expect(Number(report.summary.product_discounts)).toBe(80);
+
+    expect(Number(report.summary.total_discounts)).toBe(80);
+
+    /*
+     * List margin:
+     * (190 - 100) × 2 = 180
+     */
+    expect(Number(report.summary.gross_profit_before_discounts)).toBe(180);
+
+    /*
+     * Actual margin:
+     * (150 - 100) × 2 = 100
+     */
+    expect(Number(report.summary.net_profit_after_discounts)).toBe(100);
+
+    let cashier = getCashierDashboardSummary({
+      user_id: 1,
+    });
+
+    expect(cashier.sales.invoice_sales).toBe(300);
+
+    expect(cashier.sales.net_sales).toBe(300);
+
+    expect(cashier.discounts.product).toBe(80);
+
+    expect(cashier.discounts.normal).toBe(0);
+
+    expect(cashier.discounts.promotion).toBe(0);
+
+    expect(cashier.discounts.loyalty).toBe(0);
+
+    expect(cashier.discounts.total).toBe(80);
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      refund_payment_method: 'store_cash',
+
+      items: [
+        {
+          sale_item_id: Number(receipt.items[0].id),
+
+          variant_id: Number(variant.variant_id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    report = getReportsSummary() as any;
+
+    expect(Number(report.summary.gross_sales)).toBe(300);
+
+    expect(Number(report.summary.total_returns)).toBe(150);
+
+    expect(Number(report.summary.net_sales)).toBe(150);
+
+    expect(Number(report.summary.product_discounts)).toBe(40);
+
+    expect(Number(report.summary.total_discounts)).toBe(40);
+
+    expect(Number(report.summary.gross_profit_before_discounts)).toBe(90);
+
+    expect(Number(report.summary.net_profit_after_discounts)).toBe(50);
+
+    cashier = getCashierDashboardSummary({
+      user_id: 1,
+    });
+
+    expect(cashier.sales.returns_total).toBe(150);
+
+    expect(cashier.sales.net_sales).toBe(150);
+
+    expect(cashier.discounts.product).toBe(40);
+
+    expect(cashier.discounts.total).toBe(40);
+  });
 });

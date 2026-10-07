@@ -4558,4 +4558,352 @@ describe('sales repository', () => {
 
     expect(afterEdit.due_date).toBe(expected.due_date);
   });
+
+  it('keeps product discount as metadata and never subtracts it twice', () => {
+    createProduct({
+      name: 'Product Discount Regression',
+      category_id: null,
+      image_path: null,
+      description: null,
+
+      variants: [
+        {
+          barcode: 'PD-190-150',
+          size: 'M',
+          color: 'Black',
+          buy_price: 100,
+
+          sell_price: 190,
+          discount_price: 150,
+
+          min_stock: 1,
+          opening_qty: 10,
+        },
+      ],
+    });
+
+    const variant = getVariantByBarcode('PD-190-150') as any;
+
+    expect(Number(variant.original_sell_price)).toBe(190);
+    expect(Number(variant.sell_price)).toBe(150);
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 300,
+
+      discount_value: 0,
+
+      grand_total: 300,
+
+      change_amount: 0,
+
+      payment_method: 'store_cash',
+
+      paid: 300,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 2,
+
+          unit_price: 150,
+
+          list_unit_price: 190,
+        },
+      ],
+    });
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    expect(Number(receipt.sale.sub_total)).toBe(300);
+
+    expect(Number(receipt.sale.list_sub_total)).toBe(380);
+
+    expect(Number(receipt.sale.product_discount_value)).toBe(80);
+
+    /*
+     * أهم Assertion:
+     * خصم المنتج لا يتخصم مرة ثانية.
+     */
+    expect(Number(receipt.sale.grand_total)).toBe(300);
+
+    expect(Number(receipt.items[0].unit_price)).toBe(150);
+
+    expect(Number(receipt.items[0].list_unit_price)).toBe(190);
+
+    expect(Number(receipt.items[0].line_total)).toBe(300);
+
+    const listed = listSales({
+      search: `#${sale.saleId}`,
+
+      limit: 50,
+      offset: 0,
+    }) as any;
+
+    expect(listed.rows).toHaveLength(1);
+
+    expect(Number(listed.rows[0].list_sub_total)).toBe(380);
+
+    expect(Number(listed.rows[0].product_discount_value)).toBe(80);
+
+    expect(Number(listed.rows[0].grand_total)).toBe(300);
+  });
+
+  it('returns the correct product discount share on a partial return', () => {
+    createProduct({
+      name: 'Product Discount Return Regression',
+      category_id: null,
+      image_path: null,
+      description: null,
+
+      variants: [
+        {
+          barcode: 'PD-RETURN',
+
+          size: 'L',
+          color: 'Blue',
+
+          buy_price: 100,
+
+          sell_price: 190,
+          discount_price: 150,
+
+          min_stock: 1,
+          opening_qty: 10,
+        },
+      ],
+    });
+
+    const variant = getVariantByBarcode('PD-RETURN') as any;
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 300,
+
+      discount_value: 0,
+
+      grand_total: 300,
+
+      change_amount: 0,
+
+      payment_method: 'store_cash',
+
+      paid: 300,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 2,
+
+          unit_price: 150,
+
+          list_unit_price: 190,
+        },
+      ],
+    });
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      refund_payment_method: 'store_cash',
+
+      items: [
+        {
+          sale_item_id: Number(receipt.items[0].id),
+
+          variant_id: Number(variant.variant_id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(Number(saleReturn.return_value)).toBe(150);
+
+    const db = getDb();
+
+    const returnRow = db
+      .prepare(
+        `
+        SELECT
+          sub_total,
+          list_sub_total,
+          product_discount_value,
+          refund_amount
+
+        FROM sale_returns
+
+        WHERE id = ?
+        `,
+      )
+      .get(saleReturn.returnId) as any;
+
+    expect(Number(returnRow.sub_total)).toBe(150);
+
+    expect(Number(returnRow.list_sub_total)).toBe(190);
+
+    expect(Number(returnRow.product_discount_value)).toBe(40);
+
+    expect(Number(returnRow.refund_amount)).toBe(150);
+
+    const returnItem = db
+      .prepare(
+        `
+        SELECT
+          unit_price,
+          list_unit_price,
+          product_discount_value,
+          line_total
+
+        FROM sale_return_items
+
+        WHERE return_id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(saleReturn.returnId) as any;
+
+    expect(Number(returnItem.unit_price)).toBe(150);
+
+    expect(Number(returnItem.list_unit_price)).toBe(190);
+
+    expect(Number(returnItem.product_discount_value)).toBe(40);
+
+    expect(Number(returnItem.line_total)).toBe(150);
+  });
+
+  it('filters returns by the shift opening business date across midnight', () => {
+    const variant = seedProduct();
+
+    const db = getDb();
+
+    const shift = getOpenCashShift();
+
+    expect(shift).toBeTruthy();
+
+    db.prepare(
+      `
+      UPDATE cash_shifts
+
+      SET opened_at = '2026-10-06 20:00:00'
+
+      WHERE id = ?
+      `,
+    ).run(shift!.id);
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 150,
+
+      discount_value: 0,
+
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'store_cash',
+
+      paid: 150,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    });
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      refund_payment_method: 'store_cash',
+
+      items: [
+        {
+          sale_item_id: Number(receipt.items[0].id),
+
+          variant_id: Number(variant.variant_id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    /*
+     * المرتجع حصل بعد منتصف الليل،
+     * لكن تابع لشفت بدأ يوم 6.
+     */
+    db.prepare(
+      `
+      UPDATE sale_returns
+
+      SET created_at = '2026-10-07 01:00:00'
+
+      WHERE id = ?
+      `,
+    ).run(saleReturn.returnId);
+
+    const shiftDay = listSaleReturns({
+      date_from: '2026-10-06',
+      date_to: '2026-10-06',
+    });
+
+    expect(shiftDay.total).toBe(1);
+
+    expect(Number(shiftDay.rows[0].id)).toBe(saleReturn.returnId);
+
+    const calendarDay = listSaleReturns({
+      date_from: '2026-10-07',
+      date_to: '2026-10-07',
+    });
+
+    expect(calendarDay.total).toBe(0);
+  });
 });

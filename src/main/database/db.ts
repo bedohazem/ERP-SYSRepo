@@ -2735,6 +2735,30 @@ export function getDb(): Database.Database {
           `);
         },
       },
+
+      {
+        version: 14,
+
+        name: 'held-sale-price-snapshots',
+
+        up: () => {
+          /*
+           * الأعمدة دي اتضافت في Migration 14
+           * أثناء تطوير دعم Held Sale.
+           *
+           * نحتفظ بها للتوافق مع قواعد البيانات
+           * التي طُبقت عليها الـMigration بالفعل.
+           *
+           * قاعدة العمل الحالية:
+           * الفاتورة المعلقة لا تحجز السعر.
+           * عند الاستكمال يتم استخدام السعر
+           * وخصم المنتج الحاليين.
+           */
+          safeAddColumn(db, 'held_sale_items', 'unit_price', 'REAL');
+
+          safeAddColumn(db, 'held_sale_items', 'list_unit_price', 'REAL');
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

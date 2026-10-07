@@ -623,7 +623,10 @@ export function getSaleExchangeState(saleIdInput: number) {
     snapshots: normalizedSnapshots,
     groups: Array.from(groupMap.values()),
     payments: currentState.current_receipt.payments || [],
+
     financials: currentState.financials,
+
+    loyalty_snapshot: currentState.loyalty_snapshot,
   };
 }
 

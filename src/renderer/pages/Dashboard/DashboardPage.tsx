@@ -11,7 +11,9 @@ type ReportsData = {
     returns_count: number;
     gross_sales: number;
     total_returns: number;
+    product_discounts: number;
     normal_discounts: number;
+    promotion_discounts: number;
     loyalty_discounts: number;
     total_discounts: number;
     net_sales: number;
@@ -184,7 +186,9 @@ const emptyReports: ReportsData = {
     returns_count: 0,
     gross_sales: 0,
     total_returns: 0,
+    product_discounts: 0,
     normal_discounts: 0,
+    promotion_discounts: 0,
     loyalty_discounts: 0,
     total_discounts: 0,
     net_sales: 0,
@@ -517,10 +521,16 @@ export default function DashboardPage() {
         />
 
         <StatCard
-          icon="🎁"
-          title="خصومات النقاط"
-          value={money(data.month.summary.loyalty_discounts)}
-          subtitle="إجمالي خصومات الولاء هذا الشهر"
+          icon="🏷️"
+          title="إجمالي الخصومات"
+          value={money(data.month.summary.total_discounts)}
+          subtitle={`منتج: ${money(
+            data.month.summary.product_discounts,
+          )} • عادي: ${money(
+            data.month.summary.normal_discounts,
+          )} • عروض: ${money(
+            data.month.summary.promotion_discounts,
+          )} • نقاط: ${money(data.month.summary.loyalty_discounts)}`}
           tone="slate"
         />
       </section>

@@ -880,6 +880,8 @@ declare global {
           customer_phone?: string | null;
           cashier_name?: string | null;
           sub_total: number;
+          list_sub_total?: number;
+          product_discount_value?: number;
           loyalty_discount_value: number;
           refund_amount: number;
           payment_method: string;
@@ -976,6 +978,22 @@ declare global {
 
           product_ids: number[];
         }>;
+
+        loyalty_snapshot: {
+          enabled: boolean;
+
+          earn_amount: number;
+
+          earn_points: number;
+
+          point_value: number;
+
+          min_redeem_points: number;
+
+          source: string;
+
+          is_exact: boolean;
+        } | null;
 
         groups: Array<{
           promotion_group_id: string;
@@ -1111,7 +1129,8 @@ declare global {
 
           old_group_total: number;
           new_group_total: number;
-
+          old_product_discount_value?: number;
+          new_product_discount_value?: number;
           difference_amount: number;
 
           cash_collection_amount: number;
@@ -1178,7 +1197,9 @@ declare global {
             old_unit_price: number;
 
             new_unit_price: number;
+            old_list_unit_price?: number | null;
 
+            new_list_unit_price?: number | null;
             old_unit_cost?: number | null;
 
             new_unit_cost?: number | null;

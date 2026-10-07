@@ -244,12 +244,14 @@ describe('held sales repository', () => {
 
     db.prepare(
       `
-          UPDATE product_variants
+        UPDATE product_variants
 
-          SET sell_price = 120
+        SET
+          sell_price = 190,
+          discount_price = 150
 
-          WHERE id = ?
-          `,
+        WHERE id = ?
+      `,
     ).run(variantId);
 
     const refreshed = getHeldSale({
@@ -260,7 +262,16 @@ describe('held sales repository', () => {
       is_admin: false,
     });
 
-    expect(Number(refreshed.items[0].sell_price)).toBe(120);
+    /*
+     * Hold لا يحجز السعر القديم.
+     * الاستكمال يعيد التسعير
+     * طبقًا للسعر والخصم الحاليين.
+     */
+    expect(Number(refreshed.items[0].original_sell_price)).toBe(190);
+
+    expect(Number(refreshed.items[0].sell_price)).toBe(150);
+
+    expect(Number(refreshed.items[0].discount_price)).toBe(150);
   });
 
   it('keeps cashier holds private while admin can access them', () => {

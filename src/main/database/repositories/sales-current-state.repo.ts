@@ -304,6 +304,8 @@ export function getSaleCurrentState(saleIdInput: number) {
 
           Number(unit.current_unit_price),
 
+          Number(unit.current_list_unit_price ?? unit.current_unit_price ?? 0),
+
           Number(unit.current_is_gift),
         ].join(':');
 
@@ -492,8 +494,10 @@ export function getSaleCurrentState(saleIdInput: number) {
     currentItems.reduce(
       (total, item) =>
         total +
-        Number(item.quantity || 0) *
-          Number(item.list_unit_price ?? item.unit_price ?? 0),
+        roundMoney(
+          Number(item.quantity || 0) *
+            Number(item.list_unit_price ?? item.unit_price ?? 0),
+        ),
       0,
     ),
   );
@@ -1051,6 +1055,10 @@ export function getSaleCurrentState(saleIdInput: number) {
 
     original_loyalty_discount_value: Number(sale.loyalty_discount_value || 0),
 
+    original_loyalty_points_earned: Number(sale.loyalty_points_earned || 0),
+
+    original_loyalty_points_redeemed: Number(sale.loyalty_points_redeemed || 0),
+
     original_grand_total: Number(sale.grand_total || 0),
 
     sub_total: currentSubTotal,
@@ -1070,6 +1078,10 @@ export function getSaleCurrentState(saleIdInput: number) {
     current_net_total: netGrandTotal,
 
     current_paid_amount: netPaidAmount,
+
+    loyalty_points_earned: currentLoyaltyPointsEarned,
+
+    loyalty_points_redeemed: currentLoyaltyPointsRedeemed,
 
     exchange_count: Number(exchangeSummary?.exchange_count || 0),
 

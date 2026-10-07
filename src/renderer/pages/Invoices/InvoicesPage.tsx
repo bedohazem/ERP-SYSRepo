@@ -84,7 +84,8 @@ type ExchangeItemRow = {
 
   old_unit_price: number;
   new_unit_price: number;
-
+  old_list_unit_price?: number | null;
+  new_list_unit_price?: number | null;
   old_is_gift: number;
   new_is_gift: number;
 
@@ -114,7 +115,8 @@ type ExchangeRow = {
 
   old_group_total: number;
   new_group_total: number;
-
+  old_product_discount_value?: number;
+  new_product_discount_value?: number;
   difference_amount: number;
 
   cash_collection_amount: number;
@@ -172,6 +174,8 @@ type ReturnRow = {
   customer_phone?: string | null;
   cashier_name?: string | null;
   sub_total: number;
+  list_sub_total?: number;
+  product_discount_value?: number;
   loyalty_discount_value: number;
   refund_amount: number;
   debt_reduction_amount?: number;
@@ -345,10 +349,17 @@ function mapReceiptItemToReturnDraft(item: any): ReturnDraftItem {
 }
 
 function buildReturnDraftItems(
-  receipt: ReceiptData,
+  currentReceipt: ReceiptData,
+  originalReceipt: ReceiptData,
   exchangeState: any | null,
 ): ReturnDraftItem[] {
-  const receiptItems = Array.isArray(receipt.items) ? receipt.items : [];
+  const receiptItems = Array.isArray(currentReceipt.items)
+    ? currentReceipt.items
+    : [];
+
+  const originalReceiptItems = Array.isArray(originalReceipt.items)
+    ? originalReceipt.items
+    : [];
 
   if (!exchangeState) {
     return receiptItems.map(mapReceiptItemToReturnDraft);
@@ -381,7 +392,7 @@ function buildReturnDraftItems(
       throw new Error('بيانات إحدى مجموعات العرض غير مكتملة');
     }
 
-    const sourceItems = receiptItems.filter(
+    const sourceItems = originalReceiptItems.filter(
       (item: any) => String(item.promotion_group_id || '') === groupId,
     );
 
@@ -831,10 +842,9 @@ export default function InvoicesPage() {
 
   async function openReturnPopup(saleId: number) {
     try {
-      const [receipt, currentState] = await Promise.all([
-        window.api.getSaleReceipt(saleId),
-        window.api.getSaleCurrentState(saleId),
-      ]);
+      const currentState = await window.api.getSaleCurrentState(saleId);
+      const receipt = currentState.current_receipt as ReceiptData;
+      const originalReceipt = currentState.original_receipt as ReceiptData;
 
       let exchangeState: any | null = null;
 
@@ -874,7 +884,11 @@ export default function InvoicesPage() {
         }
       }
 
-      const draftItems = buildReturnDraftItems(receipt, exchangeState);
+      const draftItems = buildReturnDraftItems(
+        receipt,
+        originalReceipt,
+        exchangeState,
+      );
 
       setReturnReceipt({
         ...receipt,
@@ -911,10 +925,10 @@ export default function InvoicesPage() {
     }
   }
 
-  function updateReturnQty(saleItemId: number, qty: number) {
+  function updateReturnQty(saleItemId: number, variantId: number, qty: number) {
     setReturnItems((prev) =>
       prev.map((item) =>
-        item.sale_item_id === saleItemId
+        item.sale_item_id === saleItemId && item.variant_id === variantId
           ? {
               ...item,
               return_quantity: Math.max(
@@ -965,9 +979,35 @@ export default function InvoicesPage() {
       });
 
     const selectedItems = Array.from(
-      new Map(
-        rawSelectedItems.map((item) => [item.sale_item_id, item]),
-      ).values(),
+      rawSelectedItems
+        .reduce(
+          (map, item) => {
+            const key = `${item.sale_item_id}:${item.variant_id}`;
+
+            const existing = map.get(key);
+
+            if (existing) {
+              existing.quantity += Number(item.quantity || 0);
+            } else {
+              map.set(key, {
+                ...item,
+
+                quantity: Number(item.quantity || 0),
+              });
+            }
+
+            return map;
+          },
+          new Map<
+            string,
+            {
+              sale_item_id: number;
+              variant_id: number;
+              quantity: number;
+            }
+          >(),
+        )
+        .values(),
     );
 
     if (returnCashRefund > 0 && !returnRefundAccount) {
@@ -1202,7 +1242,10 @@ export default function InvoicesPage() {
   const returnGrossTotal = roundMoney(
     returnItems.reduce(
       (sum, item) =>
-        sum + Number(item.return_quantity || 0) * Number(item.unit_price || 0),
+        sum +
+        roundMoney(
+          Number(item.return_quantity || 0) * Number(item.unit_price || 0),
+        ),
       0,
     ),
   );
@@ -1211,8 +1254,10 @@ export default function InvoicesPage() {
     returnItems.reduce(
       (sum, item) =>
         sum +
-        Number(item.return_quantity || 0) *
-          Number(item.list_unit_price ?? item.unit_price ?? 0),
+        roundMoney(
+          Number(item.return_quantity || 0) *
+            Number(item.list_unit_price ?? item.unit_price ?? 0),
+        ),
       0,
     ),
   );
@@ -2147,6 +2192,7 @@ export default function InvoicesPage() {
                       )}
                       {!sale.cancelled_at &&
                         Number(sale.return_count || 0) === 0 &&
+                        Number(sale.exchange_count || 0) === 0 &&
                         (isAdmin ||
                           Number(sale.user_id || 0) ===
                             Number(user?.id || 0)) && (
@@ -2300,8 +2346,41 @@ export default function InvoicesPage() {
                   </td>
                   <td style={tdStyle}>
                     <div style={{ display: 'grid', gap: '3px' }}>
+                      {Number(ret.product_discount_value || 0) > 0 && (
+                        <>
+                          <span
+                            style={{
+                              color: '#94a3b8',
+                              fontSize: '11px',
+                            }}
+                          >
+                            قبل خصم المنتج:{' '}
+                            {money(ret.list_sub_total ?? ret.sub_total)}
+                          </span>
+
+                          <span
+                            style={{
+                              color: '#86efac',
+                              fontSize: '11px',
+                              fontWeight: 800,
+                            }}
+                          >
+                            خصم المنتج: {money(ret.product_discount_value)}
+                          </span>
+
+                          <span
+                            style={{
+                              color: '#cbd5e1',
+                              fontSize: '11px',
+                            }}
+                          >
+                            بعد خصم المنتج: {money(ret.sub_total)}
+                          </span>
+                        </>
+                      )}
+
                       <strong style={{ color: '#fca5a5' }}>
-                        {money(ret.refund_amount)}
+                        قيمة المرتجع النهائية: {money(ret.refund_amount)}
                       </strong>
                       {Number(ret.cash_refund_amount || 0) > 0 && (
                         <span
@@ -2627,7 +2706,13 @@ export default function InvoicesPage() {
 
                             {' — '}
 
-                            {money(item.old_unit_price)}
+                            {Number(
+                              item.old_list_unit_price ?? item.old_unit_price,
+                            ) > Number(item.old_unit_price)
+                              ? `قبل ${money(
+                                  item.old_list_unit_price,
+                                )} / بعد الخصم ${money(item.old_unit_price)}`
+                              : money(item.old_unit_price)}
                           </span>
 
                           <strong>←</strong>
@@ -2637,7 +2722,13 @@ export default function InvoicesPage() {
 
                             {' — '}
 
-                            {money(item.new_unit_price)}
+                            {Number(
+                              item.new_list_unit_price ?? item.new_unit_price,
+                            ) > Number(item.new_unit_price)
+                              ? `قبل ${money(
+                                  item.new_list_unit_price,
+                                )} / بعد الخصم ${money(item.new_unit_price)}`
+                              : money(item.new_unit_price)}
                           </span>
                         </div>
                       ))}
@@ -2665,6 +2756,22 @@ export default function InvoicesPage() {
                         {Number(exchange.difference_amount || 0) > 0 ? '+' : ''}
                         {money(exchange.difference_amount)}
                       </strong>
+
+                      {(Number(exchange.old_product_discount_value || 0) > 0 ||
+                        Number(exchange.new_product_discount_value || 0) >
+                          0) && (
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            color: '#86efac',
+                          }}
+                        >
+                          خصم المنتج بالفاتورة:{' '}
+                          {money(exchange.old_product_discount_value || 0)}
+                          {' → '}
+                          {money(exchange.new_product_discount_value || 0)}
+                        </span>
+                      )}
 
                       {Number(exchange.cash_collection_amount || 0) > 0 && (
                         <span
@@ -4239,7 +4346,7 @@ export default function InvoicesPage() {
               <tbody>
                 {returnItems.map((item) => (
                   <tr
-                    key={item.sale_item_id}
+                    key={`${item.sale_item_id}:${item.variant_id}`}
                     style={{
                       borderTop: '1px solid rgba(255,255,255,0.06)',
                     }}
@@ -4356,6 +4463,7 @@ export default function InvoicesPage() {
                           onClick={() =>
                             updateReturnQty(
                               item.sale_item_id,
+                              item.variant_id,
                               item.return_quantity > 0 ? 0 : 1,
                             )
                           }
@@ -4395,6 +4503,7 @@ export default function InvoicesPage() {
                           onChange={(e) =>
                             updateReturnQty(
                               item.sale_item_id,
+                              item.variant_id,
                               Number(e.target.value),
                             )
                           }

@@ -49,10 +49,29 @@ export function buildSaleExchangeReceiptHtml(
 
                 ${oldDetails ? `<small>${escapeHtml(oldDetails)}</small>` : ''}
 
-                <div>
-                  ${money(item.old_unit_price)}
-                  ج.م
-                </div>
+                ${
+                  Number(item.old_list_unit_price ?? item.old_unit_price) >
+                  Number(item.old_unit_price)
+                    ? `
+                      <div style="font-size:9px;color:#666;">
+                        قبل
+                        <span style="text-decoration:line-through;font-weight:700;">
+                          ${money(item.old_list_unit_price)}
+                        </span>
+                      </div>
+
+                      <div style="font-weight:900;">
+                        ${money(item.old_unit_price)}
+                        ج.م
+                      </div>
+                    `
+                    : `
+                      <div>
+                        ${money(item.old_unit_price)}
+                        ج.م
+                      </div>
+                    `
+                }
               </td>
 
               <td class="arrow">
@@ -66,10 +85,29 @@ export function buildSaleExchangeReceiptHtml(
 
                 ${newDetails ? `<small>${escapeHtml(newDetails)}</small>` : ''}
 
-                <div>
-                  ${money(item.new_unit_price)}
-                  ج.م
-                </div>
+                ${
+                  Number(item.new_list_unit_price ?? item.new_unit_price) >
+                  Number(item.new_unit_price)
+                    ? `
+                      <div style="font-size:9px;color:#666;">
+                        قبل
+                        <span style="text-decoration:line-through;font-weight:700;">
+                          ${money(item.new_list_unit_price)}
+                        </span>
+                      </div>
+
+                      <div style="font-weight:900;">
+                        ${money(item.new_unit_price)}
+                        ج.م
+                      </div>
+                    `
+                    : `
+                      <div>
+                        ${money(item.new_unit_price)}
+                        ج.م
+                      </div>
+                    `
+                }
               </td>
             </tr>
           `;
@@ -394,6 +432,26 @@ export function buildSaleExchangeReceiptHtml(
                 ج.م
               </strong>
             </div>
+
+            ${
+              Number(exchange.old_product_discount_value || 0) > 0 ||
+              Number(exchange.new_product_discount_value || 0) > 0
+                ? `
+                  <div class="summary-row">
+                    <span>
+                      خصم المنتج
+                    </span>
+
+                    <strong>
+                      ${money(exchange.old_product_discount_value || 0)}
+                      →
+                      ${money(exchange.new_product_discount_value || 0)}
+                      ج.م
+                    </strong>
+                  </div>
+                `
+                : ''
+            }
 
             <div class="summary-row difference">
               <span>

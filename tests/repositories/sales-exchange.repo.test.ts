@@ -1057,4 +1057,436 @@ describe('sale promotion exchanges', () => {
     expect(state.groups).toHaveLength(1);
     expect(state.groups[0].units).toHaveLength(3);
   });
+
+  it('returns both current variants correctly after partially exchanging a quantity-two discounted item', () => {
+    createProduct({
+      name: 'Partial Product Discount Exchange',
+
+      category_id: null,
+
+      image_path: null,
+
+      description: null,
+
+      variants: [
+        {
+          barcode: 'PD-OLD',
+
+          size: 'Old',
+          color: 'Black',
+
+          buy_price: 100,
+
+          sell_price: 190,
+          discount_price: 150,
+
+          min_stock: 1,
+
+          opening_qty: 20,
+        },
+
+        {
+          barcode: 'PD-NEW',
+
+          size: 'New',
+          color: 'Blue',
+
+          buy_price: 120,
+
+          sell_price: 250,
+          discount_price: 180,
+
+          min_stock: 1,
+
+          opening_qty: 20,
+        },
+      ],
+    });
+
+    const oldVariant = getVariantByBarcode('PD-OLD') as any;
+
+    const newVariant = getVariantByBarcode('PD-NEW') as any;
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 300,
+
+      discount_value: 0,
+
+      grand_total: 300,
+
+      change_amount: 0,
+
+      payment_method: 'store_cash',
+
+      paid: 300,
+
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+
+          product_name: oldVariant.product_name,
+
+          barcode: oldVariant.barcode,
+
+          size: oldVariant.size,
+
+          color: oldVariant.color,
+
+          quantity: 2,
+
+          unit_price: 150,
+
+          list_unit_price: 190,
+        },
+      ],
+    });
+
+    const receipt = getDb()
+      .prepare(
+        `
+        SELECT *
+        FROM sale_items
+        WHERE sale_id = ?
+        LIMIT 1
+        `,
+      )
+      .get(sale.saleId) as any;
+
+    const exchangeState = getSaleExchangeState(sale.saleId);
+
+    const regularUnits = exchangeState.groups
+      .filter((group: any) => group.group_kind === 'regular')
+      .flatMap((group: any) => group.units)
+      .filter(
+        (unit: any) =>
+          Number(unit.original_sale_item_id) === Number(receipt.id),
+      );
+
+    expect(regularUnits).toHaveLength(2);
+
+    const unitToExchange = regularUnits[0];
+
+    if (!unitToExchange) {
+      throw new Error('Regular exchange unit was not created');
+    }
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          promotion_unit_id: Number(unitToExchange.id),
+
+          new_variant_id: Number(newVariant.variant_id),
+        },
+      ],
+    });
+
+    /*
+     * Actual price:
+     * 150 -> 180
+     */
+    expect(Number(exchange.difference_amount)).toBe(30);
+
+    const current = getSaleCurrentState(sale.saleId);
+
+    expect(Number(current.sale.list_sub_total)).toBe(440);
+
+    expect(Number(current.sale.sub_total)).toBe(330);
+
+    expect(Number(current.sale.product_discount_value)).toBe(110);
+
+    expect(Number(current.sale.grand_total)).toBe(330);
+
+    const oldCurrent = current.current_receipt.items.find(
+      (item: any) => Number(item.variant_id) === Number(oldVariant.variant_id),
+    );
+
+    const newCurrent = current.current_receipt.items.find(
+      (item: any) => Number(item.variant_id) === Number(newVariant.variant_id),
+    );
+
+    expect(oldCurrent).toBeTruthy();
+
+    expect(newCurrent).toBeTruthy();
+
+    expect(Number(oldCurrent.quantity)).toBe(1);
+
+    expect(Number(newCurrent.quantity)).toBe(1);
+
+    /*
+     * الاتنين مربوطين بنفس Sale Item الأصلي،
+     * لكن Variant مختلف.
+     *
+     * ده السيناريو اللي كان ممكن الـUI
+     * يدمج واحد منهم بالغلط.
+     */
+    expect(Number(oldCurrent.id)).toBe(Number(receipt.id));
+
+    expect(Number(newCurrent.id)).toBe(Number(receipt.id));
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      refund_payment_method: 'store_cash',
+
+      items: [
+        {
+          sale_item_id: Number(receipt.id),
+
+          variant_id: Number(oldVariant.variant_id),
+
+          quantity: 1,
+        },
+
+        {
+          sale_item_id: Number(receipt.id),
+
+          variant_id: Number(newVariant.variant_id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(Number(saleReturn.return_value)).toBe(330);
+
+    const returnRow = getDb()
+      .prepare(
+        `
+        SELECT
+          sub_total,
+          list_sub_total,
+          product_discount_value,
+          refund_amount
+
+        FROM sale_returns
+
+        WHERE id = ?
+        `,
+      )
+      .get(saleReturn.returnId) as any;
+
+    expect(Number(returnRow.sub_total)).toBe(330);
+
+    expect(Number(returnRow.list_sub_total)).toBe(440);
+
+    expect(Number(returnRow.product_discount_value)).toBe(110);
+
+    expect(Number(returnRow.refund_amount)).toBe(330);
+
+    const returnItems = getDb()
+      .prepare(
+        `
+        SELECT
+          variant_id,
+          unit_price,
+          list_unit_price,
+          product_discount_value
+
+        FROM sale_return_items
+
+        WHERE return_id = ?
+
+        ORDER BY unit_price ASC
+        `,
+      )
+      .all(saleReturn.returnId) as any[];
+
+    expect(returnItems).toHaveLength(2);
+
+    expect(
+      returnItems.map((item) => ({
+        variant_id: Number(item.variant_id),
+
+        unit_price: Number(item.unit_price),
+
+        list_unit_price: Number(item.list_unit_price),
+
+        product_discount: Number(item.product_discount_value),
+      })),
+    ).toEqual([
+      {
+        variant_id: Number(oldVariant.variant_id),
+
+        unit_price: 150,
+
+        list_unit_price: 190,
+
+        product_discount: 40,
+      },
+
+      {
+        variant_id: Number(newVariant.variant_id),
+
+        unit_price: 180,
+
+        list_unit_price: 250,
+
+        product_discount: 70,
+      },
+    ]);
+  });
+
+  it('restores original product discount snapshots when a discounted exchange is cancelled', () => {
+    createProduct({
+      name: 'Cancel Product Discount Exchange',
+
+      category_id: null,
+
+      image_path: null,
+
+      description: null,
+
+      variants: [
+        {
+          barcode: 'PD-CANCEL-OLD',
+
+          size: 'Old',
+          color: 'Black',
+
+          buy_price: 100,
+
+          sell_price: 190,
+          discount_price: 150,
+
+          min_stock: 1,
+
+          opening_qty: 10,
+        },
+
+        {
+          barcode: 'PD-CANCEL-NEW',
+
+          size: 'New',
+          color: 'Blue',
+
+          buy_price: 120,
+
+          sell_price: 250,
+          discount_price: 180,
+
+          min_stock: 1,
+
+          opening_qty: 10,
+        },
+      ],
+    });
+
+    const oldVariant = getVariantByBarcode('PD-CANCEL-OLD') as any;
+
+    const newVariant = getVariantByBarcode('PD-CANCEL-NEW') as any;
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 150,
+
+      discount_value: 0,
+
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'store_cash',
+
+      paid: 150,
+
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+
+          product_name: oldVariant.product_name,
+
+          barcode: oldVariant.barcode,
+
+          size: oldVariant.size,
+
+          color: oldVariant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+
+          list_unit_price: 190,
+        },
+      ],
+    });
+
+    const exchangeState = getSaleExchangeState(sale.saleId);
+
+    const regularGroup = exchangeState.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    );
+
+    if (!regularGroup) {
+      throw new Error('Regular group missing');
+    }
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          promotion_unit_id: Number(regularGroup.units[0].id),
+
+          new_variant_id: Number(newVariant.variant_id),
+        },
+      ],
+    });
+
+    let current = getSaleCurrentState(sale.saleId);
+
+    expect(Number(current.sale.list_sub_total)).toBe(250);
+
+    expect(Number(current.sale.sub_total)).toBe(180);
+
+    expect(Number(current.sale.product_discount_value)).toBe(70);
+
+    const exchangeRow = listSaleExchanges({
+      search: String(exchange.exchangeId),
+    }).rows[0] as any;
+
+    expect(Number(exchangeRow.old_product_discount_value)).toBe(40);
+
+    expect(Number(exchangeRow.new_product_discount_value)).toBe(70);
+
+    expect(Number(exchangeRow.items[0].old_list_unit_price)).toBe(190);
+
+    expect(Number(exchangeRow.items[0].new_list_unit_price)).toBe(250);
+
+    cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+
+      actor_id: 1,
+
+      reason: 'Regression cancel',
+    });
+
+    current = getSaleCurrentState(sale.saleId);
+
+    expect(Number(current.sale.list_sub_total)).toBe(190);
+
+    expect(Number(current.sale.sub_total)).toBe(150);
+
+    expect(Number(current.sale.product_discount_value)).toBe(40);
+
+    expect(Number(current.sale.grand_total)).toBe(150);
+  });
 });

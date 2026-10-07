@@ -69,6 +69,21 @@ type ExchangeState = {
 
   snapshots: PromotionSnapshot[];
 
+  loyalty_snapshot?: {
+    enabled: boolean;
+
+    earn_amount: number;
+    earn_points: number;
+
+    point_value: number;
+
+    min_redeem_points: number;
+
+    source: string;
+
+    is_exact: boolean;
+  } | null;
+
   groups: ExchangeGroup[];
   financials: {
     original_normal_discount_value: number;
@@ -228,6 +243,8 @@ export default function SaleExchangeModal({
           payments: result.payments || [],
           snapshot: result.snapshot || null,
           snapshots: Array.isArray(result.snapshots) ? result.snapshots : [],
+
+          loyalty_snapshot: result.loyalty_snapshot || null,
 
           groups: activeGroups,
 
@@ -429,13 +446,53 @@ export default function SaleExchangeModal({
       roundMoney(afterPromotion - normalDiscount),
     );
 
-    const loyaltyDiscount = roundMoney(
-      Math.min(
-        Number(state.financials.original_loyalty_discount_value || 0),
+    const loyaltySnapshot = state.loyalty_snapshot;
 
-        afterNormal,
+    const loyaltySnapshotIsExact = Boolean(loyaltySnapshot?.is_exact);
+
+    const pointValue = Math.max(0, Number(loyaltySnapshot?.point_value || 0));
+
+    const minRedeemPoints = Math.max(
+      0,
+      Math.floor(Number(loyaltySnapshot?.min_redeem_points || 0)),
+    );
+
+    const originalRedeemedPoints = Math.max(
+      0,
+      Math.floor(
+        Number(
+          state.sale?.original_loyalty_points_redeemed ??
+            state.sale?.loyalty_points_redeemed ??
+            0,
+        ),
       ),
     );
+
+    const maxNextRedeemedPoints =
+      loyaltySnapshotIsExact &&
+      Boolean(loyaltySnapshot?.enabled) &&
+      pointValue > 0
+        ? Math.min(
+            originalRedeemedPoints,
+
+            Math.floor((afterNormal + 0.0000001) / pointValue),
+          )
+        : 0;
+
+    const nextRedeemedPoints =
+      maxNextRedeemedPoints > 0 && maxNextRedeemedPoints < minRedeemPoints
+        ? 0
+        : maxNextRedeemedPoints;
+
+    const loyaltyDiscount = loyaltySnapshotIsExact
+      ? roundMoney(nextRedeemedPoints * pointValue)
+      : roundMoney(
+          Math.min(
+            Number(state.financials.original_loyalty_discount_value || 0),
+
+            afterNormal,
+          ),
+        );
 
     const nextGrandTotal = Math.max(
       0,

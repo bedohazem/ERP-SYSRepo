@@ -378,7 +378,7 @@ function createSaleInternal(
 
         const price = Math.max(0, Number(item.unit_price || 0));
 
-        return total + qty * price;
+        return total + roundMoney(qty * price);
       }, 0),
     );
 
@@ -397,7 +397,7 @@ function createSaleInternal(
           Number(item.list_unit_price ?? item.unit_price ?? 0),
         );
 
-        return total + qty * listUnitPrice;
+        return total + roundMoney(qty * listUnitPrice);
       }, 0),
     );
 
@@ -1988,10 +1988,14 @@ export function listSales(input?: {
     const originalGrandTotal = Number(row.grand_total || 0);
 
     /*
-     * Sales with no exchange do not need
-     * the heavier current-state resolver.
+     * Sales with no active return or exchange
+     * do not need the heavier current-state
+     * resolver.
      */
-    if (Number(row.exchange_count || 0) <= 0) {
+    if (
+      Number(row.exchange_count || 0) <= 0 &&
+      Number(row.return_count || 0) <= 0
+    ) {
       const totalReturnValue = Number(row.total_return_amount || 0);
 
       const currentNetTotal = Math.max(
@@ -2056,6 +2060,12 @@ export function listSales(input?: {
       promotion_discount_value: financials.current_promotion_discount_value,
 
       loyalty_discount_value: financials.current_loyalty_discount_value,
+
+      loyalty_points_earned: Number(current.sale.loyalty_points_earned || 0),
+
+      loyalty_points_redeemed: Number(
+        current.sale.loyalty_points_redeemed || 0,
+      ),
 
       grand_total: financials.current_grand_total,
 
@@ -3133,7 +3143,7 @@ export function createSaleReturn(input: {
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    ``;
+
     const markPromotionUnitReturned = db.prepare(`
         UPDATE sale_promotion_units
         SET
@@ -4626,13 +4636,57 @@ export function listSaleReturns(input?: {
   }
 
   if (input?.date_from) {
-    where.push(`datetime(sr.created_at, 'localtime') >= datetime(?)`);
-    params.push(`${input.date_from} 00:00:00`);
+    where.push(`
+      COALESCE(
+        (
+          SELECT
+            date(
+              cs.opened_at,
+              'localtime'
+            )
+
+          FROM cash_shifts cs
+
+          WHERE cs.id = sr.shift_id
+
+          LIMIT 1
+        ),
+
+        date(
+          sr.created_at,
+          'localtime'
+        )
+      ) >= ?
+    `);
+
+    params.push(input.date_from);
   }
 
   if (input?.date_to) {
-    where.push(`datetime(sr.created_at, 'localtime') <= datetime(?)`);
-    params.push(`${input.date_to} 23:59:59`);
+    where.push(`
+      COALESCE(
+        (
+          SELECT
+            date(
+              cs.opened_at,
+              'localtime'
+            )
+
+          FROM cash_shifts cs
+
+          WHERE cs.id = sr.shift_id
+
+          LIMIT 1
+        ),
+
+        date(
+          sr.created_at,
+          'localtime'
+        )
+      ) <= ?
+    `);
+
+    params.push(input.date_to);
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
