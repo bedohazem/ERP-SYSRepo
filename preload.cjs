@@ -269,7 +269,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('cash-shifts:details', shiftId),
   listCashShiftVariances: (input) =>
     ipcRenderer.invoke('cash-shifts:list-variances', input),
-
+  checkCashShiftClock: () => ipcRenderer.invoke('cash-shifts:clock-check'),
   resolveCashShiftVariance: (input) =>
     ipcRenderer.invoke('cash-shifts:resolve-variance', input),
   getCashMovements: (input) => ipcRenderer.invoke('cash:list', input),

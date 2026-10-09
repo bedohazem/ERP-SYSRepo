@@ -24,7 +24,7 @@ type CashShift = {
   opened_by_name?: string | null;
 
   opened_at: string;
-
+  business_date: string;
   opening_counted_amount: number;
   opening_difference: number;
 
@@ -516,6 +516,11 @@ export default function ShiftManagementPage() {
             <InfoItem
               label="وقت الفتح"
               value={formatDate(openShift.opened_at)}
+            />
+
+            <InfoItem
+              label="اليوم المالي"
+              value={openShift.business_date || '—'}
             />
 
             <InfoItem

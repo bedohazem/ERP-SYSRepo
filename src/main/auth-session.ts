@@ -9,8 +9,15 @@ export const AUTH_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 
 type Session = {
   userId: number;
+
   passwordHash: string;
-  lastActivityAt: number;
+
+  /*
+   * Session timeout لازم يعتمد
+   * على وقت Monotonic وليس
+   * ساعة Windows.
+   */
+  lastActivityMonotonicMs: number;
 };
 
 type AuthUser = {
@@ -94,8 +101,10 @@ export function startAuthSession(
 
   sessions.set(sender, {
     userId: user.id,
+
     passwordHash: user.password,
-    lastActivityAt: Date.now(),
+
+    lastActivityMonotonicMs: performance.now(),
   });
 }
 
@@ -115,9 +124,12 @@ function validateSession(
     throw new Error('سجل الدخول أولًا');
   }
 
-  const now = Date.now();
+  const nowMonotonicMs = performance.now();
 
-  if (now - session.lastActivityAt >= AUTH_IDLE_TIMEOUT_MS) {
+  if (
+    nowMonotonicMs - session.lastActivityMonotonicMs >=
+    AUTH_IDLE_TIMEOUT_MS
+  ) {
     sessions.delete(sender);
 
     throw new Error('انتهت الجلسة بسبب عدم الاستخدام، سجل الدخول مرة أخرى');
@@ -139,7 +151,7 @@ function validateSession(
    * أي IPC Authenticated حقيقية
    * تعتبر نشاطًا للمستخدم.
    */
-  session.lastActivityAt = now;
+  session.lastActivityMonotonicMs = nowMonotonicMs;
 
   return {
     id: user.id,

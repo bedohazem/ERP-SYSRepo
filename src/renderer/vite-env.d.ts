@@ -2688,6 +2688,9 @@ declare global {
 
         requires_date_confirmation: boolean;
       }>;
+      checkCashShiftClock: () => Promise<{
+        ok: boolean;
+      }>;
       getOpenCashShift: () => Promise<any | null>;
 
       openCashShift: (input: {

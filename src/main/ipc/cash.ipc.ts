@@ -58,6 +58,7 @@ import {
   userHasPermission,
 } from '../database/repositories/user.repo';
 import { resolveFinancialBusinessDate } from '../database/financial-business-date';
+import { assertSystemClockStable } from '../database/system-clock-guard';
 
 const CASH_ACCOUNT_INPUT_VALUES = [
   'store_cash',
@@ -673,6 +674,20 @@ export function registerCashIpc(): void {
 
     return getCashierShiftView(shift);
   });
+
+  ipcMain.handle(
+    'cash-shifts:clock-check',
+
+    (event) => {
+      requirePermission(event, 'shifts.operate_own');
+
+      assertSystemClockStable();
+
+      return {
+        ok: true,
+      };
+    },
+  );
 
   ipcMain.handle('cash-shifts:opening-preview', (event) => {
     const actor = requirePermission(event, 'shifts.operate_own');

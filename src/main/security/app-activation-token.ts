@@ -120,14 +120,24 @@ export function validateAppActivationForDevice(
   const now = Number(options?.nowSeconds ?? Math.floor(Date.now() / 1000));
 
   /*
-   * سماحية 5 دقائق لفروق الساعة.
+   * التفعيل الدائم الموقع رقميًا
+   * والمربوط بالجهاز لا يعتمد
+   * على ساعة Windows.
+   *
+   * فحص الوقت مطلوب فقط لو
+   * الكود نفسه له تاريخ انتهاء.
    */
-  if (payload.issued_at > now + 5 * 60) {
-    throw new Error('تاريخ كود التفعيل غير صحيح');
-  }
+  if (payload.expires_at !== null) {
+    /*
+     * سماحية 5 دقائق لفروق الساعة.
+     */
+    if (payload.issued_at > now + 5 * 60) {
+      throw new Error('تاريخ كود التفعيل غير صحيح');
+    }
 
-  if (payload.expires_at !== null && payload.expires_at <= now) {
-    throw new Error('انتهت صلاحية كود التفعيل');
+    if (payload.expires_at <= now) {
+      throw new Error('انتهت صلاحية كود التفعيل');
+    }
   }
 
   return payload;

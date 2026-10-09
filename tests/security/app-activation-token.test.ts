@@ -130,4 +130,48 @@ describe('signed app activation', () => {
       }),
     ).toThrow();
   });
+
+  it('keeps permanent paid activation valid when the local clock moves backward', () => {
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
+
+    const publicPem = publicKey
+      .export({
+        type: 'spki',
+        format: 'pem',
+      })
+      .toString();
+
+    const issuedAt = Math.floor(Date.parse('2026-10-07T12:00:00.000Z') / 1000);
+
+    const token = signActivation({
+      privateKey,
+
+      deviceCode: 'AAAA-BBBB-CCCC-DDDD',
+
+      issuedAt,
+    });
+
+    /*
+     * نحاكي إن Windows رجع
+     * شهر للخلف.
+     *
+     * التفعيل الدائم لا يجب
+     * إلغاؤه بسبب ساعة الجهاز.
+     */
+    const payload = validateAppActivationForDevice(
+      token,
+
+      'AAAA-BBBB-CCCC-DDDD',
+
+      {
+        publicKeyPem: publicPem,
+
+        nowSeconds: issuedAt - 30 * 24 * 60 * 60,
+      },
+    );
+
+    expect(payload.expires_at).toBeNull();
+
+    expect(payload.device_code).toBe('AAAABBBBCCCCDDDD');
+  });
 });

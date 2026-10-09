@@ -236,7 +236,15 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
 
       setModal('open');
     } catch (err) {
-      showToast('error', 'تعذر تحميل بيانات فتح الشفت');
+      showToast(
+        'error',
+
+        err instanceof Error && err.message
+          ? err.message
+          : 'تعذر تحميل بيانات فتح الشفت',
+
+        6500,
+      );
     } finally {
       setBusy(false);
     }
@@ -250,6 +258,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
     setBusy(true);
 
     try {
+      await window.api.checkCashShiftClock();
       /*
        * الأدمن فقط يرى preview المالي.
        *

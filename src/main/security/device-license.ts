@@ -569,17 +569,35 @@ export function getDeviceLicenseStatus(): LicenseStatus {
     writeAllStores(record);
   }
 
-  if (record.invalidated) {
+  /*
+   * invalidated تخص حماية التجربة.
+   *
+   * لو عندنا Paid Activation
+   * صالح وموقع للجهاز، لا نلغي
+   * التفعيل بسبب مشكلة ساعة.
+   */
+  if (record.invalidated && !activated) {
     return blockedStatus('تم إلغاء صلاحية التجربة على هذا الجهاز');
   }
 
   const lastSeen = new Date(record.last_seen_at);
   const clockRollbackDetected = now.getTime() + 60_000 < lastSeen.getTime();
 
-  if (clockRollbackDetected) {
+  /*
+   * رجوع الساعة يمنع التحايل
+   * على فترة التجربة فقط.
+   *
+   * البرنامج المدفوع يظل مفعّلًا،
+   * وClock Guard المالي هو المسؤول
+   * عن منع العمليات المالية حتى
+   * يتم تصحيح الوقت.
+   */
+  if (clockRollbackDetected && !activated) {
     const invalidRecord = buildRecord({
       ...record,
+
       invalidated: true,
+
       last_seen_at: record.last_seen_at,
     });
 
@@ -614,6 +632,13 @@ export function getDeviceLicenseStatus(): LicenseStatus {
       record.license_state_changed_at ||
       record.activated_at ||
       record.trial_started_at,
+
+    /*
+     * لو النسخة مدفوعة وصحيحة
+     * نشيل أي invalidated قديم
+     * نتج عن Clock Rollback سابق.
+     */
+    invalidated: activated ? false : record.invalidated,
     last_seen_at: now.toISOString(),
   });
 

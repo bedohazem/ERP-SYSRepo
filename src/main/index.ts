@@ -33,9 +33,9 @@ import {
   configureSessionPermissions,
   getSecureWebPreferences,
 } from './electron-security';
-
 import {
   handleSystemResume,
+  markSystemClockChangedByWindows,
   markSystemSuspended,
 } from './database/system-clock-guard';
 
@@ -82,6 +82,15 @@ if (process.platform === 'win32') {
 
 Menu.setApplicationMenu(null);
 
+/*
+ * Windows native message:
+ * WM_TIMECHANGE
+ *
+ * النظام يرسلها لأي Top-Level Window
+ * بمجرد تغيير تاريخ أو وقت الجهاز.
+ */
+const WM_TIMECHANGE = 0x001e;
+
 function createWindow(): void {
   const preloadPath = path.join(appRoot, 'preload.cjs');
   const appStatus = getAppLicenseStatus();
@@ -102,6 +111,20 @@ function createWindow(): void {
       preload: preloadPath,
     },
   });
+
+  if (process.platform === 'win32') {
+    mainWindow.hookWindowMessage(
+      WM_TIMECHANGE,
+
+      () => {
+        markSystemClockChangedByWindows();
+
+        console.error(
+          'Windows system time change detected. Financial operations locked until restart.',
+        );
+      },
+    );
+  }
 
   configureMainWindowSecurity(mainWindow, runtimeSecurityOptions);
 

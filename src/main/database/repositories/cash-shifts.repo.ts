@@ -414,6 +414,8 @@ function getBusinessDateGapDays(previousDate: string, nextDate: string) {
 }
 
 export function getCashShiftOpeningPreview() {
+  assertSystemClockStable();
+
   const db = getDb();
 
   const currentOpenShift = getOpenCashShift();
@@ -952,8 +954,9 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
 }
 
 export function getCashShiftExpectedBalance(shiftId: number) {
-  const db = getDb();
+  assertSystemClockStable();
 
+  const db = getDb();
   const shift = getCashShiftById(shiftId);
 
   if (!shift) {

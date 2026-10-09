@@ -659,4 +659,53 @@ describe('auth IPC authorization', () => {
       vi.useRealTimers();
     }
   });
+
+  it('does not expire the login session when Windows clock jumps forward', async () => {
+    vi.useFakeTimers();
+
+    try {
+      vi.setSystemTime(new Date('2026-10-07T10:00:00Z'));
+
+      const client = makeClient();
+
+      await login(client.event);
+
+      /*
+       * Windows + شهر،
+       * بدون مرور وقت Monotonic.
+       */
+      vi.setSystemTime(new Date('2026-11-07T10:00:00Z'));
+
+      const result = await invoke(client.event, 'users:list');
+
+      expect(result.success).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not expire the session because Windows clock changes', async () => {
+    vi.useFakeTimers();
+
+    try {
+      vi.setSystemTime(new Date('2026-10-08T01:00:00Z'));
+
+      const client = makeClient();
+
+      await login(client.event);
+
+      /*
+       * Windows + شهر.
+       * لم تمر 15 دقيقة
+       * Monotonic.
+       */
+      vi.setSystemTime(new Date('2026-11-08T01:00:00Z'));
+
+      const result = await invoke(client.event, 'users:list');
+
+      expect(result.success).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

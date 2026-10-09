@@ -1,6 +1,6 @@
 import { getDb } from './db';
 
-const MAX_RUNTIME_DRIFT_MS = 2 * 60 * 1000;
+const MAX_RUNTIME_DRIFT_MS = 10 * 1000;
 
 const MAX_BACKWARD_MS = 2 * 60 * 1000;
 
@@ -22,7 +22,10 @@ let suspendedAtWallMs: number | null = null;
 let clockLockedMessage: string | null = null;
 
 function isClockGuardBypassed() {
-  return process.env.ERP_SYSTEM_CLOCK_TEST_BYPASS === '1';
+  return (
+    process.env.VITEST === 'true' &&
+    process.env.ERP_SYSTEM_CLOCK_TEST_BYPASS === '1'
+  );
 }
 
 function elapsedRuntimeMs() {
@@ -33,6 +36,16 @@ function lockClock(message: string) {
   clockLockedMessage =
     String(message || '').trim() ||
     'تم إيقاف العمليات المالية بسبب مشكلة في ساعة الجهاز';
+}
+
+export function markSystemClockChangedByWindows() {
+  if (isClockGuardBypassed()) {
+    return;
+  }
+
+  lockClock(
+    'تم اكتشاف تغيير في تاريخ أو وقت Windows أثناء تشغيل البرنامج. صحح الوقت ثم أعد تشغيل البرنامج.',
+  );
 }
 
 function formatBusinessDate(epochMs: number) {
@@ -133,7 +146,7 @@ export function confirmSystemClockReference() {
   saveSystemClockReference(Date.now());
 }
 
-export function assertSystemClockStable() {
+export function assertRuntimeSystemClockStable() {
   if (isClockGuardBypassed()) {
     return;
   }
@@ -146,10 +159,6 @@ export function assertSystemClockStable() {
 
   const runtimeDriftMs = Date.now() - expectedWallMs;
 
-  /*
-   * لو المستخدم غيّر الساعة
-   * أثناء تشغيل البرنامج.
-   */
   if (Math.abs(runtimeDriftMs) > MAX_RUNTIME_DRIFT_MS) {
     lockClock(
       'تم اكتشاف تغيير غير طبيعي في ساعة أو تاريخ الجهاز أثناء تشغيل البرنامج. صحح وقت Windows ثم أعد تشغيل البرنامج.',
@@ -157,6 +166,14 @@ export function assertSystemClockStable() {
 
     throw new Error(clockLockedMessage!);
   }
+}
+
+export function assertSystemClockStable() {
+  if (isClockGuardBypassed()) {
+    return;
+  }
+
+  assertRuntimeSystemClockStable();
 
   const nowMs = Date.now();
 

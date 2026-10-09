@@ -23,7 +23,7 @@ type ShiftRow = {
 
   opened_by_name?: string | null;
   opened_at: string;
-
+  business_date: string;
   opening_counted_amount: number;
 
   opening_difference: number;
@@ -412,6 +412,18 @@ export default function ShiftHistorySection({ users }: Props) {
                     <td style={tdStyle}>
                       <div style={stackStyle}>
                         <span>{formatDate(row.opened_at)}</span>
+
+                        <span
+                          style={{
+                            ...secondaryTextStyle,
+
+                            color: '#60a5fa',
+
+                            fontWeight: 900,
+                          }}
+                        >
+                          اليوم المالي: {row.business_date || '—'}
+                        </span>
 
                         <span style={secondaryTextStyle}>
                           {formatCashShiftDuration(row.duration_minutes)}
@@ -1144,6 +1156,7 @@ function ShiftDetailsModal({
             title="رصيد الافتتاح"
             value={money(shift.opening_counted_amount)}
           />
+          <InfoCard title="اليوم المالي" value={shift.business_date || '—'} />
 
           <InfoCard title="داخل الدرج" value={money(details.preview.cash_in)} />
 
