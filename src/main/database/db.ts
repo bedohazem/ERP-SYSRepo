@@ -1616,7 +1616,6 @@ export function getDb(): Database.Database {
             `,
           ).run();
 
-          normalizePurchaseMoney(db);
           normalizeStockMovementTypes(db);
 
           db.prepare(
@@ -3128,103 +3127,6 @@ function safeAddColumn(
       .prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
       .run();
   }
-}
-
-function normalizePurchaseMoney(database: Database.Database): void {
-  database.transaction(() => {
-    database
-      .prepare(
-        `
-      UPDATE purchase_invoices
-      SET
-        total_amount = ROUND(
-          IFNULL(total_amount, 0),
-          2
-        ),
-        sub_total = ROUND(
-          IFNULL(sub_total, 0),
-          2
-        ),
-        discount_value = ROUND(
-          IFNULL(discount_value, 0),
-          2
-        ),
-        paid_amount = ROUND(
-          IFNULL(paid_amount, 0),
-          2
-        ),
-        remaining_amount = ROUND(
-          IFNULL(remaining_amount, 0),
-          2
-        )
-    `,
-      )
-      .run();
-
-    database
-      .prepare(
-        `
-      UPDATE purchase_invoices
-      SET
-        remaining_amount = 0,
-        payment_status = 'paid'
-      WHERE ROUND(
-        IFNULL(remaining_amount, 0),
-        2
-      ) = 0
-        AND IFNULL(payment_status, '') != 'cancelled'
-    `,
-      )
-      .run();
-
-    database
-      .prepare(
-        `
-      UPDATE purchase_items
-      SET line_total = ROUND(
-        IFNULL(line_total, 0),
-        2
-      )
-    `,
-      )
-      .run();
-
-    database
-      .prepare(
-        `
-      UPDATE supplier_payments
-      SET amount = ROUND(
-        IFNULL(amount, 0),
-        2
-      )
-    `,
-      )
-      .run();
-
-    database
-      .prepare(
-        `
-      UPDATE suppliers
-      SET
-        total_purchased = ROUND(
-          IFNULL(total_purchased, 0),
-          2
-        ),
-        balance = CASE
-          WHEN ROUND(
-            IFNULL(balance, 0),
-            2
-          ) = 0
-          THEN 0
-          ELSE ROUND(
-            IFNULL(balance, 0),
-            2
-          )
-        END
-    `,
-      )
-      .run();
-  })();
 }
 
 function normalizeStockMovementTypes(database: Database.Database): void {
