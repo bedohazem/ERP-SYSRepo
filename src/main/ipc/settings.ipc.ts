@@ -42,6 +42,7 @@ import {
 import { validateErpDatabaseFile } from '../database/backup-integrity';
 import {
   optionalBooleanValue,
+  requireEnumValue,
   requireObjectInput,
   requirePositiveInteger,
   requirePositiveMoney,
@@ -110,6 +111,285 @@ function getOptionalActorId(event: IpcMainInvokeEvent): number | null {
   }
 }
 
+const BARCODE_ITEM_POSITIONS = [
+  'top',
+  'top-left',
+  'top-right',
+  'above_barcode',
+  'below_barcode',
+  'bottom',
+  'bottom-left',
+  'bottom-right',
+  'hidden',
+] as const;
+
+const BARCODE_ITEM_ALIGNS = ['left', 'center', 'right'] as const;
+
+const RECEIPT_PAPER_SIZES = ['80mm', '58mm', 'custom'] as const;
+
+function requirePrintBoolean(value: unknown, label: string) {
+  const result = optionalBooleanValue(value, label);
+
+  if (result === undefined) {
+    throw new Error(`${label} مطلوبة`);
+  }
+
+  return result;
+}
+
+function requirePrintNumber(
+  value: unknown,
+  label: string,
+  options?: {
+    min?: number;
+    max?: number;
+    integer?: boolean;
+  },
+) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${label} غير صحيح`);
+  }
+
+  if (options?.integer && !Number.isInteger(value)) {
+    throw new Error(`${label} غير صحيح`);
+  }
+
+  if (options?.min !== undefined && value < options.min) {
+    throw new Error(`${label} أقل من الحد المسموح`);
+  }
+
+  if (options?.max !== undefined && value > options.max) {
+    throw new Error(`${label} أكبر من الحد المسموح`);
+  }
+
+  return value;
+}
+
+function normalizeBarcodePrintSettings(input: unknown) {
+  const payload = requireObjectInput(input, 'إعدادات طباعة الباركود');
+
+  return {
+    barcode_label_width_mm: requirePrintNumber(
+      payload.barcode_label_width_mm,
+      'عرض ملصق الباركود',
+      {
+        min: Number.EPSILON,
+      },
+    ),
+
+    barcode_label_height_mm: requirePrintNumber(
+      payload.barcode_label_height_mm,
+      'ارتفاع ملصق الباركود',
+      {
+        min: Number.EPSILON,
+      },
+    ),
+
+    barcode_copies: requirePrintNumber(
+      payload.barcode_copies,
+      'عدد نسخ الباركود',
+      {
+        min: 1,
+        integer: true,
+      },
+    ),
+
+    barcode_auto_print_after_save: requirePrintBoolean(
+      payload.barcode_auto_print_after_save,
+      'الطباعة التلقائية للباركود',
+    ),
+
+    barcode_content_offset_x_mm: requirePrintNumber(
+      payload.barcode_content_offset_x_mm,
+      'إزاحة الباركود الأفقية',
+    ),
+
+    barcode_content_offset_y_mm: requirePrintNumber(
+      payload.barcode_content_offset_y_mm,
+      'إزاحة الباركود الرأسية',
+    ),
+
+    barcode_name_font_size: requirePrintNumber(
+      payload.barcode_name_font_size,
+      'حجم خط اسم المنتج',
+      {
+        min: Number.EPSILON,
+      },
+    ),
+
+    barcode_name_position: requireEnumValue(
+      payload.barcode_name_position,
+      BARCODE_ITEM_POSITIONS,
+      'مكان اسم المنتج',
+    ),
+
+    barcode_name_align: requireEnumValue(
+      payload.barcode_name_align,
+      BARCODE_ITEM_ALIGNS,
+      'محاذاة اسم المنتج',
+    ),
+
+    barcode_price_font_size: requirePrintNumber(
+      payload.barcode_price_font_size,
+      'حجم خط السعر',
+      {
+        min: Number.EPSILON,
+      },
+    ),
+
+    barcode_price_position: requireEnumValue(
+      payload.barcode_price_position,
+      BARCODE_ITEM_POSITIONS,
+      'مكان السعر',
+    ),
+
+    barcode_price_align: requireEnumValue(
+      payload.barcode_price_align,
+      BARCODE_ITEM_ALIGNS,
+      'محاذاة السعر',
+    ),
+
+    barcode_size_font_size: requirePrintNumber(
+      payload.barcode_size_font_size,
+      'حجم خط المقاس',
+      {
+        min: Number.EPSILON,
+      },
+    ),
+
+    barcode_size_position: requireEnumValue(
+      payload.barcode_size_position,
+      BARCODE_ITEM_POSITIONS,
+      'مكان المقاس',
+    ),
+
+    barcode_size_align: requireEnumValue(
+      payload.barcode_size_align,
+      BARCODE_ITEM_ALIGNS,
+      'محاذاة المقاس',
+    ),
+
+    barcode_color_font_size: requirePrintNumber(
+      payload.barcode_color_font_size,
+      'حجم خط اللون',
+      {
+        min: Number.EPSILON,
+      },
+    ),
+
+    barcode_color_position: requireEnumValue(
+      payload.barcode_color_position,
+      BARCODE_ITEM_POSITIONS,
+      'مكان اللون',
+    ),
+
+    barcode_color_align: requireEnumValue(
+      payload.barcode_color_align,
+      BARCODE_ITEM_ALIGNS,
+      'محاذاة اللون',
+    ),
+
+    barcode_value_font_size: requirePrintNumber(
+      payload.barcode_value_font_size,
+      'حجم خط قيمة الباركود',
+      {
+        min: Number.EPSILON,
+      },
+    ),
+
+    barcode_value_position: requireEnumValue(
+      payload.barcode_value_position,
+      BARCODE_ITEM_POSITIONS,
+      'مكان قيمة الباركود',
+    ),
+
+    barcode_value_align: requireEnumValue(
+      payload.barcode_value_align,
+      BARCODE_ITEM_ALIGNS,
+      'محاذاة قيمة الباركود',
+    ),
+
+    barcode_svg_height: requirePrintNumber(
+      payload.barcode_svg_height,
+      'ارتفاع صورة الباركود',
+      {
+        min: Number.EPSILON,
+      },
+    ),
+  };
+}
+
+function normalizeReceiptPrintSettings(input: unknown) {
+  const payload = requireObjectInput(input, 'إعدادات طباعة الفاتورة');
+
+  return {
+    receipt_silent_print: requirePrintBoolean(
+      payload.receipt_silent_print,
+      'الطباعة الصامتة',
+    ),
+
+    receipt_paper_size: requireEnumValue(
+      payload.receipt_paper_size,
+      RECEIPT_PAPER_SIZES,
+      'مقاس ورق الفاتورة',
+    ),
+
+    receipt_width_px: requirePrintNumber(
+      payload.receipt_width_px,
+      'عرض الفاتورة',
+      {
+        min: 150,
+        max: 320,
+      },
+    ),
+
+    receipt_padding_top_px: requirePrintNumber(
+      payload.receipt_padding_top_px,
+      'الهامش العلوي',
+      {
+        min: 0,
+        max: 60,
+      },
+    ),
+
+    receipt_padding_right_px: requirePrintNumber(
+      payload.receipt_padding_right_px,
+      'الهامش الأيمن',
+      {
+        min: 0,
+        max: 60,
+      },
+    ),
+
+    receipt_padding_bottom_px: requirePrintNumber(
+      payload.receipt_padding_bottom_px,
+      'الهامش السفلي',
+      {
+        min: 0,
+        max: 60,
+      },
+    ),
+
+    receipt_padding_left_px: requirePrintNumber(
+      payload.receipt_padding_left_px,
+      'الهامش الأيسر',
+      {
+        min: 0,
+        max: 60,
+      },
+    ),
+
+    receipt_font_size_px: requirePrintNumber(
+      payload.receipt_font_size_px,
+      'حجم خط الفاتورة',
+      {
+        min: 9,
+        max: 16,
+      },
+    ),
+  };
+}
+
 export function registerSettingsIpc(): void {
   ipcMain.handle('settings:get-barcode-print', (event) => {
     requireAuthenticatedAdmin(event);
@@ -117,10 +397,12 @@ export function registerSettingsIpc(): void {
     return getBarcodePrintSettings();
   });
 
-  ipcMain.handle('settings:save-barcode-print', (event, input) => {
+  ipcMain.handle('settings:save-barcode-print', (event, input: unknown) => {
     const actorId = requireAuthenticatedAdmin(event);
 
-    const result = saveBarcodePrintSettings(input);
+    const settings = normalizeBarcodePrintSettings(input);
+
+    const result = saveBarcodePrintSettings(settings);
 
     logAction({
       actor_id: actorId,
@@ -144,10 +426,12 @@ export function registerSettingsIpc(): void {
     return getReceiptPrintSettings();
   });
 
-  ipcMain.handle('settings:save-receipt-print', (event, input) => {
+  ipcMain.handle('settings:save-receipt-print', (event, input: unknown) => {
     const actorId = requireAuthenticatedAdmin(event);
 
-    const result = saveReceiptPrintSettings(input);
+    const settings = normalizeReceiptPrintSettings(input);
+
+    const result = saveReceiptPrintSettings(settings);
 
     logAction({
       actor_id: actorId,

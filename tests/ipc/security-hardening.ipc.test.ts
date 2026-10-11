@@ -286,6 +286,150 @@ describe('IPC security hardening', () => {
     ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط');
   });
 
+  it('strictly validates print settings before saving', async () => {
+    const admin = findUserByUsername('admin')!;
+
+    const { event } = makeClient();
+
+    startAuthSession(event, admin.id);
+
+    const barcodeSettings = await invoke(event, 'settings:get-barcode-print');
+
+    const receiptSettings = await invoke(event, 'settings:get-receipt-print');
+
+    getDb().prepare('DELETE FROM activity_logs').run();
+
+    const beforeSettings = getDb()
+      .prepare(
+        `
+      SELECT key, value
+      FROM app_settings
+      ORDER BY key ASC
+      `,
+      )
+      .all();
+
+    const invalidAttempts: Array<[string, any]> = [
+      [
+        'settings:save-barcode-print',
+        {
+          ...barcodeSettings,
+          barcode_auto_print_after_save: 'false',
+        },
+      ],
+
+      [
+        'settings:save-barcode-print',
+        {
+          ...barcodeSettings,
+          barcode_copies: 1.5,
+        },
+      ],
+
+      [
+        'settings:save-barcode-print',
+        {
+          ...barcodeSettings,
+          barcode_name_position: 'sideways',
+        },
+      ],
+
+      [
+        'settings:save-barcode-print',
+        {
+          ...barcodeSettings,
+          barcode_price_align: 'middle',
+        },
+      ],
+
+      [
+        'settings:save-barcode-print',
+        {
+          ...barcodeSettings,
+          barcode_content_offset_x_mm: '2',
+        },
+      ],
+
+      [
+        'settings:save-receipt-print',
+        {
+          ...receiptSettings,
+          receipt_silent_print: 'false',
+        },
+      ],
+
+      [
+        'settings:save-receipt-print',
+        {
+          ...receiptSettings,
+          receipt_paper_size: 'A4',
+        },
+      ],
+
+      [
+        'settings:save-receipt-print',
+        {
+          ...receiptSettings,
+          receipt_width_px: 149,
+        },
+      ],
+
+      [
+        'settings:save-receipt-print',
+        {
+          ...receiptSettings,
+          receipt_padding_top_px: -1,
+        },
+      ],
+
+      [
+        'settings:save-receipt-print',
+        {
+          ...receiptSettings,
+          receipt_font_size_px: 17,
+        },
+      ],
+    ];
+
+    for (const [channel, input] of invalidAttempts) {
+      await expect(invoke(event, channel, input)).rejects.toThrow();
+    }
+
+    expect(
+      getDb()
+        .prepare(
+          `
+        SELECT key, value
+        FROM app_settings
+        ORDER BY key ASC
+        `,
+        )
+        .all(),
+    ).toEqual(beforeSettings);
+
+    expect(getDb().prepare('SELECT * FROM activity_logs').all()).toHaveLength(
+      0,
+    );
+
+    const validBarcode = await invoke(
+      event,
+      'settings:save-barcode-print',
+      barcodeSettings,
+    );
+
+    expect(validBarcode.success).toBe(true);
+
+    const validReceipt = await invoke(
+      event,
+      'settings:save-receipt-print',
+      receiptSettings,
+    );
+
+    expect(validReceipt.receipt_paper_size).toBe(
+      receiptSettings.receipt_paper_size,
+    );
+  });
+
   it('keeps admin cash-flow alerts true admin only', async () => {
     const cashier = createUser(
       'Cash Flow Cashier',
