@@ -42,7 +42,12 @@ import {
 } from '../../shared/password-policy';
 
 import {
+  optionalNonNegativeInteger,
+  optionalPositiveInteger,
+  optionalTrimmedString,
   requireArrayInput,
+  requireBinaryFlag,
+  requireEnumValue,
   requireObjectInput,
   requirePositiveInteger,
   requireTrimmedString,
@@ -64,6 +69,16 @@ const MAX_LOGIN_FAILURES = 5;
 const LOGIN_LOCK_MS = 30 * 1000;
 
 const loginAttempts = new WeakMap<object, LoginAttemptState>();
+
+const USER_ROLES = ['admin', 'cashier'] as const;
+
+function requireStrongPassword(value: unknown) {
+  if (typeof value !== 'string') {
+    throw new Error('كلمة المرور غير صحيحة');
+  }
+
+  return assertPasswordPolicy(value);
+}
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -608,86 +623,86 @@ export function registerAuthIpc(): void {
     }
   });
 
-  ipcMain.handle(
-    'users:list',
-    (
-      event,
-      input?: {
-        search?: string;
-        actor_id?: number;
-      },
-    ) => {
-      try {
-        requireAuthenticatedAdmin(event);
-
-        return {
-          success: true,
-
-          users: listUsers(input?.search || ''),
-        };
-      } catch (error) {
-        return {
-          success: false,
-
-          message: getErrorMessage(error),
-
-          users: [],
-        };
-      }
-    },
-  );
-
-  ipcMain.handle(
-    'users:list-page',
-    (
-      event,
-      input?: {
-        search?: string;
-        limit?: number;
-        offset?: number;
-        actor_id?: number;
-      },
-    ) => {
-      try {
-        requireAuthenticatedAdmin(event);
-
-        const result = listUsersPage(input);
-
-        return {
-          success: true,
-
-          users: result.rows,
-
-          total: result.total,
-
-          limit: result.limit,
-
-          offset: result.offset,
-        };
-      } catch (error) {
-        return {
-          success: false,
-
-          message: getErrorMessage(error),
-
-          users: [],
-
-          total: 0,
-          limit: 50,
-          offset: 0,
-        };
-      }
-    },
-  );
-
-  ipcMain.handle('users:get-permissions', (event, userId: number) => {
+  ipcMain.handle('users:list', (event, input?: unknown) => {
     try {
       requireAuthenticatedAdmin(event);
+
+      const payload = requireObjectInput(input ?? {}, 'فلتر المستخدمين');
+
+      const search =
+        optionalTrimmedString(payload.search, 'بحث المستخدمين', 500) ?? '';
 
       return {
         success: true,
 
-        settings: getUserPermissionSettings(Number(userId)),
+        users: listUsers(search),
+      };
+    } catch (error) {
+      return {
+        success: false,
+
+        message: getErrorMessage(error),
+
+        users: [],
+      };
+    }
+  });
+
+  ipcMain.handle('users:list-page', (event, input?: unknown) => {
+    try {
+      requireAuthenticatedAdmin(event);
+
+      const payload = requireObjectInput(input ?? {}, 'فلتر المستخدمين');
+
+      const result = listUsersPage({
+        search:
+          optionalTrimmedString(payload.search, 'بحث المستخدمين', 500) ??
+          undefined,
+
+        limit:
+          optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
+
+        offset:
+          optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ??
+          undefined,
+      });
+
+      return {
+        success: true,
+
+        users: result.rows,
+
+        total: result.total,
+
+        limit: result.limit,
+
+        offset: result.offset,
+      };
+    } catch (error) {
+      return {
+        success: false,
+
+        message: getErrorMessage(error),
+
+        users: [],
+
+        total: 0,
+        limit: 50,
+        offset: 0,
+      };
+    }
+  });
+
+  ipcMain.handle('users:get-permissions', (event, userId: unknown) => {
+    try {
+      requireAuthenticatedAdmin(event);
+
+      const targetUserId = requirePositiveInteger(userId, 'رقم المستخدم');
+
+      return {
+        success: true,
+
+        settings: getUserPermissionSettings(targetUserId),
       };
     } catch (error) {
       return {
@@ -761,72 +776,92 @@ export function registerAuthIpc(): void {
     },
   );
 
-  ipcMain.handle(
-    'users:create',
-    (
-      event,
-      data: AuthPayload & {
-        actor_id?: number;
-      },
-    ) => {
-      try {
-        const actorId = requireAuthenticatedAdmin(event);
-
-        const password = assertPasswordPolicy(data.password);
-
-        const user = runCriticalActionWithAudit(
-          () =>
-            createUser(
-              data.name ?? '',
-              data.username,
-              password,
-              data.role ?? 'cashier',
-              {
-                mustChangePassword: false,
-              },
-            ),
-
-          (user) => ({
-            actor_id: actorId,
-
-            action: 'user_created',
-
-            entity: 'users',
-
-            entity_id: user.id,
-
-            details: {
-              name: user.name,
-
-              username: user.username,
-
-              role: user.role,
-
-              must_change_password: false,
-            },
-          }),
-        );
-
-        return {
-          success: true,
-          user,
-        };
-      } catch (error) {
-        return {
-          success: false,
-
-          message: getErrorMessage(error),
-        };
-      }
-    },
-  );
-
-  ipcMain.handle('users:update', (event, input) => {
+  ipcMain.handle('users:create', (event, input: unknown) => {
     try {
       const actorId = requireAuthenticatedAdmin(event);
 
+      const payload = requireObjectInput(input, 'بيانات المستخدم');
+
+      const name = requireTrimmedString(payload.name, 'اسم المستخدم', 200);
+
+      const username = requireTrimmedString(
+        payload.username,
+        'اسم الدخول',
+        100,
+      );
+
+      const password = requireStrongPassword(payload.password);
+
+      const role = requireEnumValue(
+        payload.role ?? 'cashier',
+        USER_ROLES,
+        'نوع المستخدم',
+      );
+
       const user = runCriticalActionWithAudit(
-        () => updateUser(input),
+        () =>
+          createUser(name, username, password, role, {
+            mustChangePassword: false,
+          }),
+
+        (user) => ({
+          actor_id: actorId,
+
+          action: 'user_created',
+
+          entity: 'users',
+
+          entity_id: user.id,
+
+          details: {
+            name: user.name,
+
+            username: user.username,
+
+            role: user.role,
+
+            must_change_password: false,
+          },
+        }),
+      );
+
+      return {
+        success: true,
+        user,
+      };
+    } catch (error) {
+      return {
+        success: false,
+
+        message: getErrorMessage(error),
+      };
+    }
+  });
+
+  ipcMain.handle('users:update', (event, input: unknown) => {
+    try {
+      const actorId = requireAuthenticatedAdmin(event);
+
+      const payload = requireObjectInput(input, 'بيانات تعديل المستخدم');
+
+      const userInput = {
+        id: requirePositiveInteger(payload.id, 'رقم المستخدم'),
+
+        name: requireTrimmedString(payload.name, 'اسم المستخدم', 200),
+
+        username: requireTrimmedString(payload.username, 'اسم الدخول', 100),
+
+        role: requireEnumValue(payload.role, USER_ROLES, 'نوع المستخدم'),
+
+        ...(payload.is_active === undefined
+          ? {}
+          : {
+              is_active: requireBinaryFlag(payload.is_active, 'حالة المستخدم'),
+            }),
+      };
+
+      const user = runCriticalActionWithAudit(
+        () => updateUser(userInput),
 
         (user) => ({
           actor_id: actorId,
@@ -864,21 +899,25 @@ export function registerAuthIpc(): void {
 
   ipcMain.handle(
     'users:set-active',
-    (event, userId: number, isActive: number) => {
+    (event, userId: unknown, isActive: unknown) => {
       try {
         const actorId = requireAuthenticatedAdmin(event);
 
+        const targetUserId = requirePositiveInteger(userId, 'رقم المستخدم');
+
+        const activeFlag = requireBinaryFlag(isActive, 'حالة المستخدم');
+
         const user = runCriticalActionWithAudit(
-          () => setUserActive(userId, isActive),
+          () => setUserActive(targetUserId, activeFlag),
 
           (user) => ({
             actor_id: actorId,
 
-            action: isActive ? 'user_activated' : 'user_deactivated',
+            action: activeFlag ? 'user_activated' : 'user_deactivated',
 
             entity: 'users',
 
-            entity_id: userId,
+            entity_id: targetUserId,
 
             details: {
               username: user.username,
@@ -904,23 +943,18 @@ export function registerAuthIpc(): void {
 
   ipcMain.handle(
     'users:reset-password',
-    (event, userId: number, password: string) => {
+    (event, userId: unknown, password: unknown) => {
       try {
         const actorId = requireAuthenticatedAdmin(event);
 
-        const strongPassword = assertPasswordPolicy(password);
+        const targetUserId = requirePositiveInteger(userId, 'رقم المستخدم');
 
-        const isSelf = Number(userId) === Number(actorId);
+        const strongPassword = requireStrongPassword(password);
+
+        const isSelf = targetUserId === actorId;
 
         const user = runCriticalActionWithAudit(
-          () =>
-            resetUserPassword(
-              userId,
-
-              strongPassword,
-
-              !isSelf,
-            ),
+          () => resetUserPassword(targetUserId, strongPassword, !isSelf),
 
           (user) => ({
             actor_id: actorId,
@@ -929,7 +963,7 @@ export function registerAuthIpc(): void {
 
             entity: 'users',
 
-            entity_id: userId,
+            entity_id: targetUserId,
 
             details: {
               username: user.username,

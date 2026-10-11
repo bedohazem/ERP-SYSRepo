@@ -284,6 +284,103 @@ describe('auth IPC authorization', () => {
     }
   });
 
+  it('strictly validates users IPC inputs without changing user data', async () => {
+    const { event } = makeClient();
+
+    await login(event);
+
+    const managed = createUser(
+      'Validation User',
+      'validation_user',
+      'Validation123',
+      'cashier',
+    );
+
+    getDb().prepare('DELETE FROM activity_logs').run();
+
+    const before = getDb().prepare('SELECT * FROM users ORDER BY id').all();
+
+    const attempts: Array<[string, ...any[]]> = [
+      ['users:list', { search: 123 }],
+
+      ['users:list-page', { limit: 0 }],
+
+      ['users:list-page', { offset: -1 }],
+
+      ['users:get-permissions', 0],
+
+      [
+        'users:set-permissions',
+        {
+          user_id: managed.id,
+          permissions: [123],
+        },
+      ],
+
+      [
+        'users:create',
+        {
+          name: 'Invalid Role',
+          username: 'invalid_role',
+          password: 'Invalid123',
+          role: 'superadmin',
+        },
+      ],
+
+      [
+        'users:create',
+        {
+          name: 'Invalid Password',
+          username: 'invalid_password',
+          password: ['Invalid123'],
+          role: 'cashier',
+        },
+      ],
+
+      [
+        'users:update',
+        {
+          id: managed.id,
+          name: managed.name,
+          username: managed.username,
+          role: 'superadmin',
+          is_active: 1,
+        },
+      ],
+
+      [
+        'users:update',
+        {
+          id: managed.id,
+          name: managed.name,
+          username: managed.username,
+          role: 'cashier',
+          is_active: 2,
+        },
+      ],
+
+      ['users:set-active', managed.id, 2],
+
+      ['users:reset-password', 0, 'Reset9012'],
+
+      ['users:reset-password', managed.id, ['Reset9012']],
+    ];
+
+    for (const [channel, ...args] of attempts) {
+      const result = await invoke(event, channel, ...args);
+
+      expect(result.success).toBe(false);
+    }
+
+    expect(getDb().prepare('SELECT * FROM users ORDER BY id').all()).toEqual(
+      before,
+    );
+
+    expect(getDb().prepare('SELECT * FROM activity_logs').all()).toHaveLength(
+      0,
+    );
+  });
+
   it.each(['logout', 'failed login'])(
     'clears the session after %s',
     async (action) => {
