@@ -269,6 +269,78 @@ describe('domain IPC session scope', () => {
     ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط');
   });
 
+  it('strictly validates purchase and liability read filters', async () => {
+    const admin = findUserByUsername('admin')!;
+
+    const { event } = makeClient();
+
+    startAuthSession(event, admin.id);
+
+    const invalidReads: Array<[string, ...any[]]> = [
+      ['liabilities:list', { search: 123 }],
+
+      ['liabilities:list', { status: 'unknown' }],
+
+      ['liabilities:list-page', { limit: 0 }],
+
+      ['liabilities:list-page', { offset: -1 }],
+
+      [
+        'liabilities:summary',
+        {
+          date_from: '2026-02-30',
+        },
+      ],
+
+      [
+        'liabilities:summary',
+        {
+          date_from: '2026-10-10',
+          date_to: '2026-10-09',
+        },
+      ],
+
+      ['purchases:list', { search: 123 }],
+
+      ['purchases:list', { payment_filter: 'partial' }],
+
+      ['purchases:list', { limit: 0 }],
+
+      ['purchases:list', { offset: -1 }],
+
+      ['purchases:returns:list', { search: 123 }],
+
+      ['purchases:returns:list', { limit: 0 }],
+
+      ['purchases:returns:list', { offset: -1 }],
+
+      [
+        'purchases:reorder-suggestions',
+        {
+          categoryId: 0,
+        },
+      ],
+
+      [
+        'purchases:reorder-suggestions',
+        {
+          targetDays: 6,
+        },
+      ],
+
+      [
+        'purchases:reorder-suggestions',
+        {
+          targetDays: 91,
+        },
+      ],
+    ];
+
+    for (const [channel, ...args] of invalidReads) {
+      await expect(invoke(event, channel, ...args)).rejects.toThrow();
+    }
+  });
+
   it('requires login for sales reads', async () => {
     const { event } = makeClient();
 

@@ -30,6 +30,7 @@ import {
   requireObjectInput,
   requirePositiveInteger,
   requirePositiveMoney,
+  optionalNonNegativeInteger,
   requirePositiveNumber,
 } from './input-validation';
 import { requireAdminPassword } from './permission-helper';
@@ -64,6 +65,7 @@ const PURCHASE_PAYMENT_METHODS = [
 const PURCHASE_DISCOUNT_TYPES = ['amount', 'percent'] as const;
 
 const PURCHASE_RETURN_MODES = ['cash', 'credit'] as const;
+const PURCHASE_PAYMENT_FILTERS = ['all', 'paid', 'unpaid'] as const;
 
 const PURCHASE_ORDER_STATUSES = [
   'all',
@@ -240,6 +242,33 @@ function normalizePurchaseOrderItems(value: unknown) {
   });
 }
 
+function normalizeReorderCategory(value: unknown) {
+  if (
+    value === undefined ||
+    value === null ||
+    value === '' ||
+    value === 'all'
+  ) {
+    return 'all';
+  }
+
+  return requirePositiveInteger(value, 'رقم التصنيف');
+}
+
+function normalizeReorderTargetDays(value: unknown) {
+  if (value === undefined || value === null || value === '') {
+    return 30;
+  }
+
+  const targetDays = requirePositiveInteger(value, 'عدد أيام تغطية الطلب');
+
+  if (targetDays < 7 || targetDays > 90) {
+    throw new Error('عدد أيام تغطية الطلب يجب أن يكون بين 7 و90 يومًا');
+  }
+
+  return targetDays;
+}
+
 export function registerPurchasesIpc(): void {
   ipcMain.handle('purchases:create', (event, input) => {
     const actor = requirePermission(event, 'purchases.manage');
@@ -375,10 +404,29 @@ export function registerPurchasesIpc(): void {
     return criticalResult.result;
   });
 
-  ipcMain.handle('purchases:list', (event, input) => {
+  ipcMain.handle('purchases:list', (event, input?: unknown) => {
     requirePermission(event, 'purchases.manage');
 
-    return listPurchaseInvoices(input);
+    const payload = requireObjectInput(input ?? {}, 'فلتر فواتير الشراء');
+
+    return listPurchaseInvoices({
+      search:
+        optionalTrimmedString(payload.search, 'بحث فواتير الشراء', 500) ??
+        undefined,
+
+      payment_filter:
+        optionalEnumValue(
+          payload.payment_filter,
+          PURCHASE_PAYMENT_FILTERS,
+          'حالة سداد فاتورة الشراء',
+        ) ?? 'all',
+
+      limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
+
+      offset:
+        optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ??
+        undefined,
+    });
   });
 
   ipcMain.handle('purchases:get-by-id', (event, purchaseId: number) => {
@@ -707,10 +755,22 @@ export function registerPurchasesIpc(): void {
     return criticalResult.result;
   });
 
-  ipcMain.handle('purchases:returns:list', (event, input) => {
+  ipcMain.handle('purchases:returns:list', (event, input?: unknown) => {
     requirePermission(event, 'purchases.manage');
 
-    return listPurchaseReturns(input);
+    const payload = requireObjectInput(input ?? {}, 'فلتر مرتجعات الشراء');
+
+    return listPurchaseReturns({
+      search:
+        optionalTrimmedString(payload.search, 'بحث مرتجعات الشراء', 500) ??
+        undefined,
+
+      limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
+
+      offset:
+        optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ??
+        undefined,
+    });
   });
 
   ipcMain.handle('purchases:returns:get-by-id', (event, returnId: number) => {
@@ -962,10 +1022,19 @@ export function registerPurchasesIpc(): void {
     );
   });
 
-  ipcMain.handle('purchases:reorder-suggestions', (event, input) => {
+  ipcMain.handle('purchases:reorder-suggestions', (event, input?: unknown) => {
     requirePermission(event, 'purchases.manage');
 
-    return getSmartReorderSuggestions(input);
+    const payload = requireObjectInput(
+      input ?? {},
+      'فلتر اقتراحات إعادة الطلب',
+    );
+
+    return getSmartReorderSuggestions({
+      categoryId: normalizeReorderCategory(payload.categoryId),
+
+      targetDays: normalizeReorderTargetDays(payload.targetDays),
+    });
   });
 
   ipcMain.handle('purchases:orders:list', (event, input?: unknown) => {

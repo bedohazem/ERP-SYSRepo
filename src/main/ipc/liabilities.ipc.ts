@@ -23,6 +23,9 @@ import {
   requirePositiveInteger,
   requirePositiveMoney,
   requireTrimmedString,
+  optionalEnumValue,
+  optionalNonNegativeInteger,
+  optionalPositiveInteger,
 } from './input-validation';
 
 function getErrorMessage(error: unknown) {
@@ -45,17 +48,51 @@ const LIABILITY_PAYMENT_METHODS = [
   'fawry_machine',
 ] as const;
 
+const LIABILITY_STATUSES = ['all', 'open', 'paid', 'cancelled'] as const;
+
 export function registerLiabilitiesIpc(): void {
-  ipcMain.handle('liabilities:list', (event, input) => {
+  ipcMain.handle('liabilities:list', (event, input?: unknown) => {
     requirePermission(event, 'liabilities.manage');
 
-    return listLiabilities(input);
+    const payload = requireObjectInput(input ?? {}, 'فلتر الالتزامات');
+
+    return listLiabilities({
+      search:
+        optionalTrimmedString(payload.search, 'بحث الالتزامات', 500) ??
+        undefined,
+
+      status:
+        optionalEnumValue(
+          payload.status,
+          LIABILITY_STATUSES,
+          'حالة الالتزام',
+        ) ?? 'all',
+    });
   });
 
-  ipcMain.handle('liabilities:list-page', (event, input) => {
+  ipcMain.handle('liabilities:list-page', (event, input?: unknown) => {
     requirePermission(event, 'liabilities.manage');
 
-    return listLiabilitiesPage(input);
+    const payload = requireObjectInput(input ?? {}, 'فلتر الالتزامات');
+
+    return listLiabilitiesPage({
+      search:
+        optionalTrimmedString(payload.search, 'بحث الالتزامات', 500) ??
+        undefined,
+
+      status:
+        optionalEnumValue(
+          payload.status,
+          LIABILITY_STATUSES,
+          'حالة الالتزام',
+        ) ?? 'all',
+
+      limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
+
+      offset:
+        optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ??
+        undefined,
+    });
   });
 
   ipcMain.handle('liabilities:create', (event, input) => {
@@ -249,10 +286,25 @@ export function registerLiabilitiesIpc(): void {
     }
   });
 
-  ipcMain.handle('liabilities:summary', (event, input) => {
+  ipcMain.handle('liabilities:summary', (event, input?: unknown) => {
     requirePermission(event, 'liabilities.manage');
 
-    return getLiabilitiesSummary(input);
+    const payload = requireObjectInput(input ?? {}, 'فلتر ملخص الالتزامات');
+
+    const dateFrom =
+      optionalDateOnly(payload.date_from, 'تاريخ البداية') ?? undefined;
+
+    const dateTo =
+      optionalDateOnly(payload.date_to, 'تاريخ النهاية') ?? undefined;
+
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      throw new Error('تاريخ البداية يجب ألا يكون بعد تاريخ النهاية');
+    }
+
+    return getLiabilitiesSummary({
+      date_from: dateFrom,
+      date_to: dateTo,
+    });
   });
 
   ipcMain.handle('liabilities:cancel-payment', (event, input) => {
