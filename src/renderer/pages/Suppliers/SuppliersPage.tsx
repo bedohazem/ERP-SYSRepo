@@ -331,7 +331,7 @@ export default function SuppliersPage() {
     setDeletingSupplier(true);
 
     try {
-      await window.api.deleteSupplier(deletedId, currentUser?.id);
+      await window.api.deleteSupplier(deletedId);
 
       if (statementData?.supplier?.id === deletedId) {
         setStatementData(null);

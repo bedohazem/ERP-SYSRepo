@@ -276,13 +276,11 @@ declare global {
       setUserActive: (
         userId: number,
         isActive: number,
-        actorId?: number,
       ) => Promise<MutationResult<SystemUser>>;
 
       resetUserPassword: (
         userId: number,
         password: string,
-        actorId?: number,
       ) => Promise<MutationResult<SystemUser>>;
 
       // =========================
@@ -306,7 +304,6 @@ declare global {
       toggleCategoryActive: (
         categoryId: number,
         isActive: boolean | number,
-        actorId?: number,
       ) => Promise<any>;
 
       getProducts: (payload?: any) => Promise<any[]>;
@@ -329,7 +326,6 @@ declare global {
       toggleVariantActive: (
         variantId: number,
         isActive: boolean | number,
-        actorId?: number,
       ) => Promise<any>;
 
       createProduct: (input: any) => Promise<any>;
@@ -341,7 +337,6 @@ declare global {
       toggleProductActive: (
         productId: number,
         isActive: boolean | number,
-        actorId?: number,
       ) => Promise<any>;
 
       addProductVariant: (input: {
@@ -1320,10 +1315,7 @@ declare global {
 
       updateCustomer: (input: CustomerUpdateInput) => Promise<Customer>;
 
-      deleteCustomer: (
-        id: number,
-        actorId?: number,
-      ) => Promise<{ ok: boolean }>;
+      deleteCustomer: (id: number) => Promise<{ ok: boolean }>;
 
       getCustomerHistory: (customerId: number) => Promise<CustomerHistory>;
 
@@ -2149,10 +2141,7 @@ declare global {
         credit_days?: number | null;
       }) => Promise<any>;
 
-      deleteSupplier: (
-        id: number,
-        actorId?: number,
-      ) => Promise<{ ok: boolean }>;
+      deleteSupplier: (id: number) => Promise<{ ok: boolean }>;
 
       // =========================
       // Purchases

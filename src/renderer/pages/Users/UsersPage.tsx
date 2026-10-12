@@ -209,7 +209,6 @@ export default function UsersPage() {
       const result = await window.api.setUserActive(
         activeConfirmUser.id,
         nextActive,
-        currentUser?.id,
       );
 
       if (!result.success) {
@@ -269,7 +268,6 @@ export default function UsersPage() {
       const result = await window.api.resetUserPassword(
         passwordUser.id,
         password,
-        currentUser?.id,
       );
 
       if (!result.success) {

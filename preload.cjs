@@ -30,10 +30,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('users:set-permissions', input),
   createSystemUser: (input) => ipcRenderer.invoke('users:create', input),
   updateSystemUser: (input) => ipcRenderer.invoke('users:update', input),
-  setUserActive: (userId, isActive, actorId) =>
-    ipcRenderer.invoke('users:set-active', userId, isActive, actorId),
-  resetUserPassword: (userId, password, actorId) =>
-    ipcRenderer.invoke('users:reset-password', userId, password, actorId),
+  setUserActive: (userId, isActive) =>
+    ipcRenderer.invoke('users:set-active', userId, isActive),
+  resetUserPassword: (userId, password) =>
+    ipcRenderer.invoke('users:reset-password', userId, password),
 
   getCategories: (input) =>
     ipcRenderer.invoke('products:get-categories', input),
@@ -41,30 +41,20 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('products:create-category', input),
   updateCategory: (input) =>
     ipcRenderer.invoke('products:update-category', input),
-  toggleCategoryActive: (categoryId, isActive, actorId) =>
-    ipcRenderer.invoke(
-      'products:toggle-category',
-      categoryId,
-      isActive,
-      actorId,
-    ),
+  toggleCategoryActive: (categoryId, isActive) =>
+    ipcRenderer.invoke('products:toggle-category', categoryId, isActive),
   getProducts: (payload) => ipcRenderer.invoke('products:list', payload),
   getProductsPage: (input) => ipcRenderer.invoke('products:list-page', input),
   getProductVariants: (payload) =>
     ipcRenderer.invoke('products:get-variants', payload),
-  toggleVariantActive: (variantId, isActive, actorId) =>
-    ipcRenderer.invoke(
-      'products:toggle-variant-active',
-      variantId,
-      isActive,
-      actorId,
-    ),
+  toggleVariantActive: (variantId, isActive) =>
+    ipcRenderer.invoke('products:toggle-variant-active', variantId, isActive),
   createProduct: (input) => ipcRenderer.invoke('products:create', input),
   updateProduct: (input) => ipcRenderer.invoke('products:update', input),
   updateVariant: (input) =>
     ipcRenderer.invoke('products:update-variant', input),
-  toggleProductActive: (productId, isActive, actorId) =>
-    ipcRenderer.invoke('products:toggle-active', productId, isActive, actorId),
+  toggleProductActive: (productId, isActive) =>
+    ipcRenderer.invoke('products:toggle-active', productId, isActive),
   addProductVariant: (input) =>
     ipcRenderer.invoke('products:add-variant', input),
 
@@ -130,8 +120,7 @@ contextBridge.exposeInMainWorld('api', {
   getCustomerById: (id) => ipcRenderer.invoke('customers:get-by-id', id),
   createCustomer: (input) => ipcRenderer.invoke('customers:create', input),
   updateCustomer: (input) => ipcRenderer.invoke('customers:update', input),
-  deleteCustomer: (id, actorId) =>
-    ipcRenderer.invoke('customers:delete', id, actorId),
+  deleteCustomer: (id) => ipcRenderer.invoke('customers:delete', id),
   getCustomerHistory: (customerId) =>
     ipcRenderer.invoke('customers:history', customerId),
   adjustCustomerPoints: (input) =>
@@ -196,8 +185,7 @@ contextBridge.exposeInMainWorld('api', {
   getSupplierById: (id) => ipcRenderer.invoke('suppliers:get-by-id', id),
   createSupplier: (input) => ipcRenderer.invoke('suppliers:create', input),
   updateSupplier: (input) => ipcRenderer.invoke('suppliers:update', input),
-  deleteSupplier: (id, actorId) =>
-    ipcRenderer.invoke('suppliers:delete', id, actorId),
+  deleteSupplier: (id) => ipcRenderer.invoke('suppliers:delete', id),
 
   createPurchaseInvoice: (input) =>
     ipcRenderer.invoke('purchases:create', input),

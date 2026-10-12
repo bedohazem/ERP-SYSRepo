@@ -335,7 +335,6 @@ export default function ProductsPage() {
       const result = await window.api.toggleCategoryActive(
         category.id,
         nextActive,
-        currentUser?.id,
       );
 
       if (!result?.success) {
@@ -1251,7 +1250,6 @@ export default function ProductsPage() {
       const result = await window.api.toggleProductActive(
         productId,
         nextActive,
-        currentUser?.id,
       );
 
       if (result?.success === false) {
@@ -1298,7 +1296,6 @@ export default function ProductsPage() {
       const result = await window.api.toggleVariantActive(
         variantId,
         nextActive,
-        currentUser?.id,
       );
 
       if (result?.success === false) {

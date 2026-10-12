@@ -467,7 +467,7 @@ export default function CustomersPage() {
     setDeletingCustomer(true);
 
     try {
-      await window.api.deleteCustomer(deletedId, currentUser?.id);
+      await window.api.deleteCustomer(deletedId);
 
       if (selectedCustomer?.customer?.id === deletedId) {
         setSelectedCustomer(null);
