@@ -1,31 +1,74 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import RouterGuard from './router-guard';
 import { createHashRouter } from 'react-router-dom';
 import AppShell from './components/layout/AppShell';
 import LoginPage from './pages/Auth/LoginPage';
-import DashboardPage from './pages/Dashboard/DashboardPage';
-import ProductsPage from './pages/Products/ProductsPage';
-import PromotionsPage from './pages/Promotions/PromotionsPage';
-import SettingsPage from './pages/Settings/SettingsPage';
-import SalesPage from './pages/Sales/SalesPage';
-import CustomersPage from './pages/Customers/CustomersPage';
-import InvoicesPage from './pages/Invoices/InvoicesPage';
-import ReportsPage from './pages/Reports/ReportsPage';
-import InventoryPage from './pages/Inventory/InventoryPage';
-import SuppliersPage from './pages/Suppliers/SuppliersPage';
-import PurchasesPage from './pages/Purchases/PurchasesPage';
-import PurchaseHistoryPage from './pages/Purchases/PurchaseHistoryPage';
-import CashPage from './pages/Cash/CashPage';
-import ShiftManagementPage from './pages/Shifts/ShiftManagementPage';
-import ExpensesPage from './pages/Expenses/ExpensesPage';
-import UsersPage from './pages/Users/UsersPage';
-import ActivityLogPage from './pages/Activity/ActivityLogPage';
-import StockCountPage from './pages/StockCount/StockCountPage';
-import LiabilitiesPage from './pages/Liabilities/LiabilitiesPage';
-import AboutPage from './pages/About/AboutPage';
 import type { PermissionKey } from '../shared/permissions';
 
+const DashboardPage = lazy(() => import('./pages/Dashboard/DashboardPage'));
+
+const ProductsPage = lazy(() => import('./pages/Products/ProductsPage'));
+
+const PromotionsPage = lazy(() => import('./pages/Promotions/PromotionsPage'));
+
+const SettingsPage = lazy(() => import('./pages/Settings/SettingsPage'));
+
+const SalesPage = lazy(() => import('./pages/Sales/SalesPage'));
+
+const CustomersPage = lazy(() => import('./pages/Customers/CustomersPage'));
+
+const InvoicesPage = lazy(() => import('./pages/Invoices/InvoicesPage'));
+
+const ReportsPage = lazy(() => import('./pages/Reports/ReportsPage'));
+
+const InventoryPage = lazy(() => import('./pages/Inventory/InventoryPage'));
+
+const SuppliersPage = lazy(() => import('./pages/Suppliers/SuppliersPage'));
+
+const PurchasesPage = lazy(() => import('./pages/Purchases/PurchasesPage'));
+
+const PurchaseHistoryPage = lazy(
+  () => import('./pages/Purchases/PurchaseHistoryPage'),
+);
+
+const CashPage = lazy(() => import('./pages/Cash/CashPage'));
+
+const ShiftManagementPage = lazy(
+  () => import('./pages/Shifts/ShiftManagementPage'),
+);
+
+const ExpensesPage = lazy(() => import('./pages/Expenses/ExpensesPage'));
+
+const UsersPage = lazy(() => import('./pages/Users/UsersPage'));
+
+const ActivityLogPage = lazy(() => import('./pages/Activity/ActivityLogPage'));
+
+const StockCountPage = lazy(() => import('./pages/StockCount/StockCountPage'));
+
+const LiabilitiesPage = lazy(
+  () => import('./pages/Liabilities/LiabilitiesPage'),
+);
+
+const AboutPage = lazy(() => import('./pages/About/AboutPage'));
+
 type Role = 'admin' | 'cashier';
+
+function RouteLoading() {
+  return (
+    <div
+      style={{
+        minHeight: '240px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 800,
+        color: '#94a3b8',
+      }}
+    >
+      جاري تحميل الشاشة...
+    </div>
+  );
+}
 
 function withShell(
   title: string,
@@ -43,7 +86,9 @@ function withShell(
       allowedRoles={options?.allowedRoles}
       requiredPermission={options?.permission}
     >
-      <AppShell title={title}>{element}</AppShell>
+      <AppShell title={title}>
+        <Suspense fallback={<RouteLoading />}>{element}</Suspense>
+      </AppShell>
     </RouterGuard>
   );
 }
