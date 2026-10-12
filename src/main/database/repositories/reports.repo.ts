@@ -50,6 +50,54 @@ function buildWhere(
   };
 }
 
+function buildShiftBusinessDateExpression(
+  shiftIdExpression: string,
+  createdAtExpression: string,
+  businessDateExpression?: string,
+) {
+  const storedBusinessDate = businessDateExpression
+    ? `
+      NULLIF(
+        ${businessDateExpression},
+        ''
+      ),
+    `
+    : '';
+
+  return `
+    COALESCE(
+      (
+        SELECT
+          COALESCE(
+            NULLIF(
+              cs.business_date,
+              ''
+            ),
+
+            date(
+              cs.opened_at,
+              'localtime'
+            )
+          )
+
+        FROM cash_shifts cs
+
+        WHERE
+          cs.id = ${shiftIdExpression}
+
+        LIMIT 1
+      ),
+
+      ${storedBusinessDate}
+
+      date(
+        ${createdAtExpression},
+        'localtime'
+      )
+    )
+  `;
+}
+
 const CASH_ACCOUNT_ORDER = `
   CASE account
     WHEN 'store_cash' THEN 1
@@ -112,239 +160,56 @@ export function getAdminCashFlowAlerts() {
 export function getReportsSummary(input?: ReportFilter) {
   const db = getDb();
 
-  const saleBusinessDate: string = `
-    COALESCE(
-      (
-        SELECT
-          COALESCE(
-            NULLIF(
-              cs.business_date,
-              ''
-            ),
+  const saleBusinessDate = buildShiftBusinessDateExpression(
+    's.shift_id',
+    's.created_at',
+    's.business_date',
+  );
 
-            date(
-              cs.opened_at,
-              'localtime'
-            )
-          )
+  const returnBusinessDate = buildShiftBusinessDateExpression(
+    'sr.shift_id',
+    'sr.created_at',
+  );
 
-        FROM cash_shifts cs
+  const exchangeBusinessDate = buildShiftBusinessDateExpression(
+    'se.shift_id',
+    'se.created_at',
+    'se.business_date',
+  );
 
-        WHERE
-          cs.id = s.shift_id
-      ),
+  const expenseBusinessDate = buildShiftBusinessDateExpression(
+    'e.shift_id',
+    'e.created_at',
+    'e.business_date',
+  );
 
-      NULLIF(
-        s.business_date,
-        ''
-      ),
+  const cashMovementBusinessDate = buildShiftBusinessDateExpression(
+    'cm.shift_id',
+    'cm.created_at',
+    'cm.business_date',
+  );
 
-      date(
-        s.created_at,
-        'localtime'
-      )
-    )
-  `;
+  const cancelledSaleBusinessDate = buildShiftBusinessDateExpression(
+    's.cancelled_shift_id',
+    's.cancelled_at',
+  );
 
-  const returnBusinessDate: string = `
-    COALESCE(
-      (
-        SELECT
-        COALESCE(
-          NULLIF(
-            cs.business_date,
-            ''
-          ),
+  const cancelledReturnBusinessDate = buildShiftBusinessDateExpression(
+    'sr.cancelled_shift_id',
+    'sr.cancelled_at',
+  );
 
-          date(
-            cs.opened_at,
-            'localtime'
-          )
-        )
+  const liabilityPaymentBusinessDate = buildShiftBusinessDateExpression(
+    'p.shift_id',
+    'p.created_at',
+    'p.business_date',
+  );
 
-        FROM cash_shifts cs
-
-        WHERE
-          cs.id = sr.shift_id
-      ),
-
-      date(
-        sr.created_at,
-        'localtime'
-      )
-    )
-  `;
-
-  const exchangeBusinessDate: string = `
-    COALESCE(
-      (
-        SELECT
-        COALESCE(
-          NULLIF(
-            cs.business_date,
-            ''
-          ),
-
-          date(
-            cs.opened_at,
-            'localtime'
-          )
-        )
-
-        FROM cash_shifts cs
-
-        WHERE
-          cs.id = se.shift_id
-      ),
-
-      NULLIF(
-        se.business_date,
-        ''
-      ),
-
-      date(
-        se.created_at,
-        'localtime'
-      )
-    )
-  `;
-
-  const expenseBusinessDate: string = `
-    COALESCE(
-      NULLIF(
-        e.business_date,
-        ''
-      ),
-
-      (
-        SELECT
-          COALESCE(
-            NULLIF(
-              cs.business_date,
-              ''
-            ),
-
-          COALESCE(
-            NULLIF(
-              cs.business_date,
-              ''
-            ),
-
-            date(
-              cs.opened_at,
-              'localtime'
-            )
-          )
-          )
-
-        FROM cash_shifts cs
-
-        WHERE
-          cs.id = e.shift_id
-
-        LIMIT 1
-      ),
-
-      date(
-        e.created_at,
-        'localtime'
-      )
-    )
-  `;
-
-  const cashMovementBusinessDate: string = `
-  COALESCE(
-    (
-      SELECT
-COALESCE(
-  NULLIF(
-    cs.business_date,
-    ''
-  ),
-
-  date(
-    cs.opened_at,
-    'localtime'
-  )
-)
-
-      FROM cash_shifts cs
-
-      WHERE
-        cs.id = cm.shift_id
-    ),
-
-    NULLIF(
-      cm.business_date,
-      ''
-    ),
-
-    date(
-      cm.created_at,
-      'localtime'
-    )
-  )
-`;
-
-  const cancelledSaleBusinessDate: string = `
-    COALESCE(
-      (
-        SELECT
-COALESCE(
-  NULLIF(
-    cs.business_date,
-    ''
-  ),
-
-  date(
-    cs.opened_at,
-    'localtime'
-  )
-)
-
-        FROM cash_shifts cs
-
-        WHERE
-          cs.id =
-            s.cancelled_shift_id
-      ),
-
-      date(
-        s.cancelled_at,
-        'localtime'
-      )
-    )
-  `;
-
-  const cancelledReturnBusinessDate: string = `
-    COALESCE(
-      (
-        SELECT
-COALESCE(
-  NULLIF(
-    cs.business_date,
-    ''
-  ),
-
-  date(
-    cs.opened_at,
-    'localtime'
-  )
-)
-
-        FROM cash_shifts cs
-
-        WHERE
-          cs.id =
-            sr.cancelled_shift_id
-      ),
-
-      date(
-        sr.cancelled_at,
-        'localtime'
-      )
-    )
-  `;
+  const purchaseBusinessDate = buildShiftBusinessDateExpression(
+    'pi.shift_id',
+    'pi.created_at',
+    'pi.business_date',
+  );
 
   const salesWhere = buildWhere(
     's',
@@ -940,38 +805,15 @@ COALESCE(
     input,
     [`p.cancelled_at IS NULL`],
     undefined,
-    `
-  COALESCE(
-    NULLIF(
-      p.business_date,
-      ''
-    ),
-
-    date(
-      p.created_at,
-      'localtime'
-    )
-  )
-  `,
+    liabilityPaymentBusinessDate,
   );
+
   const purchasesWhere = buildWhere(
     'pi',
     input,
     [`pi.cancelled_at IS NULL`, `IFNULL(pi.status, 'active') <> 'cancelled'`],
     undefined,
-    `
-    COALESCE(
-      NULLIF(
-        pi.business_date,
-        ''
-      ),
-
-      date(
-        pi.created_at,
-        'localtime'
-      )
-    )
-    `,
+    purchaseBusinessDate,
   );
 
   const manualCashWhere = buildWhere(
@@ -983,10 +825,7 @@ COALESCE(
       `cm.type IN ('deposit', 'withdraw')`,
     ],
     'cm.created_by',
-    `COALESCE(
-    NULLIF(cm.business_date, ''),
-    date(cm.created_at, 'localtime')
-  )`,
+    cashMovementBusinessDate,
   );
 
   const closingVarianceWhere = buildWhere(

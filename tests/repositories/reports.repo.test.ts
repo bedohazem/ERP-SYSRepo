@@ -1661,6 +1661,20 @@ describe('reports repository', () => {
 
     const shift = getOpenCashShift()!;
 
+    const liability = createLiability({
+      party_name: 'Shift Date Party',
+
+      title: 'Shift Date Liability',
+
+      total_amount: 100,
+
+      paid_amount: 0,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    });
+
     /*
      * نحاكي شفت بدأ في
      * تاريخ قديم واستمر بعد
@@ -1812,6 +1826,76 @@ describe('reports repository', () => {
       created_by: 1,
     });
 
+    const supplier = createSupplier({
+      name: 'Shift Date Supplier',
+    }) as any;
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplier.id,
+
+      actor_id: 1,
+
+      paid_amount: 50,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 80,
+        },
+      ],
+    });
+
+    expect(purchase.shift_id).toBe(shift.id);
+
+
+    const liabilityPayment = recordLiabilityPayment({
+      liability_id: liability.liability_id,
+
+      amount: 40,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    });
+
+    expect(liabilityPayment.shift_id).toBe(shift.id);
+
+    /*
+     * نحاكي عمليات تمت بعد منتصف الليل
+     * مع فقدان business_date المخزن.
+     *
+     * التقرير لازم يرجع لتاريخ الشفت
+     * وليس تاريخ الساعة الفعلي.
+     */
+    db.prepare(
+      `
+      UPDATE purchase_invoices
+
+      SET
+        business_date = '',
+        created_at = '2020-01-16 00:30:00'
+
+      WHERE id = ?
+      `,
+    ).run(purchase.purchaseId);
+
+    db.prepare(
+      `
+      UPDATE store_liability_payments
+
+      SET
+        business_date = '',
+        created_at = '2020-01-16 00:45:00'
+
+      WHERE id = ?
+      `,
+    ).run(liabilityPayment.payment_id);
+
     const report = getReportsSummary({
       date_from: shiftDate.day,
 
@@ -1827,6 +1911,10 @@ describe('reports repository', () => {
     expect(report.summary.total_returns).toBe(100);
 
     expect(report.summary.total_expenses).toBe(10);
+
+    expect(report.summary.total_purchase_invoices).toBe(80);
+
+    expect(report.summary.total_liability_payments).toBe(40);
 
     const movements = db
       .prepare(
