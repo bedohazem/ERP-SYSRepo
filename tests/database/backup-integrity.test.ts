@@ -54,6 +54,68 @@ describe('database backup integrity', () => {
     }
   });
 
+  it('rejects an ERP backup with foreign key violations', async () => {
+    const backupPath = tempPath(`broken-fk-${Date.now()}.db`);
+
+    try {
+      await createVerifiedDatabaseBackup(backupPath);
+
+      const brokenDb = new Database(backupPath);
+
+      try {
+        brokenDb.pragma('foreign_keys = OFF');
+
+        brokenDb
+          .prepare(
+            `
+          INSERT INTO sale_items (
+            sale_id,
+            variant_id,
+            product_name,
+            barcode,
+            size,
+            color,
+            quantity,
+            unit_cost,
+            unit_price,
+            promotion_discount_value,
+            line_total,
+            is_gift,
+            promotion_group_id
+          )
+
+          VALUES (
+            999999999,
+            NULL,
+            'Broken FK Item',
+            NULL,
+            NULL,
+            NULL,
+            1,
+            0,
+            10,
+            0,
+            10,
+            0,
+            NULL
+          )
+          `,
+          )
+          .run();
+      } finally {
+        brokenDb.close();
+      }
+
+      expect(() => validateErpDatabaseFile(backupPath)).toThrow(
+        'علاقات مكسورة',
+      );
+    } finally {
+      fs.rmSync(backupPath, {
+        force: true,
+      });
+    }
+  });
+
   it('rejects a non database file', () => {
     const badPath = tempPath(`bad-${Date.now()}.db`);
 

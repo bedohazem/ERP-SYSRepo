@@ -79,6 +79,35 @@ export function validateErpDatabaseFile(
       throw new Error('قاعدة البيانات تالفة أو فشل فحص سلامتها');
     }
 
+    /*
+     * integrity_check لا يكتشف
+     * الصفوف اليتيمة الناتجة عن
+     * كسر Foreign Keys.
+     */
+    const foreignKeyRows = db
+      .prepare('PRAGMA foreign_key_check')
+      .all() as Array<{
+      table?: string;
+      rowid?: number | null;
+      parent?: string;
+      fkid?: number;
+    }>;
+
+    if (foreignKeyRows.length > 0) {
+      const firstViolation = foreignKeyRows[0];
+
+      const tableName = String(firstViolation?.table || 'unknown');
+
+      const rowId =
+        firstViolation?.rowid === null || firstViolation?.rowid === undefined
+          ? 'unknown'
+          : String(firstViolation.rowid);
+
+      throw new Error(
+        `قاعدة البيانات تحتوي على علاقات مكسورة بين الجداول. الجدول: ${tableName}، الصف: ${rowId}`,
+      );
+    }
+
     const tableRows = db
       .prepare(
         `
