@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  ipcMain,
   nativeImage,
   Menu,
   session,
@@ -276,6 +277,10 @@ if (!hasSingleInstanceLock) {
     configureSessionPermissions(session.defaultSession, runtimeSecurityOptions);
 
     getDb();
+
+    ipcMain.handle('app:get-version', () => {
+      return app.getVersion();
+    });
 
     powerMonitor.on('suspend', () => {
       markSystemSuspended();

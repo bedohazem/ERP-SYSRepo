@@ -1,4 +1,30 @@
+import { useEffect, useState } from 'react';
+``;
+
 export default function AboutPage() {
+  const [appVersion, setAppVersion] = useState('...');
+
+  useEffect(() => {
+    let active = true;
+
+    window.api
+      .getAppVersion()
+      .then((version) => {
+        if (active) {
+          setAppVersion(String(version || 'غير متاح'));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setAppVersion('غير متاح');
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <div style={{ display: 'grid', gap: '18px' }}>
       <section
@@ -23,7 +49,7 @@ export default function AboutPage() {
           gap: '14px',
         }}
       >
-        <InfoCard title="الإصدار" value="1.0.0" />
+        <InfoCard title="الإصدار" value={appVersion} />
         <InfoCard title="الدعم الفني" value="01155559287" />
         <InfoCard title="المطور" value="بشمهندس عبدالرحمن حازم" />
         <InfoCard title="نوع البرنامج" value="Desktop ERP System" />

@@ -96,6 +96,7 @@ declare global {
     };
 
     api: {
+      getAppVersion: () => Promise<string>;
       // =========================
       // Auth
       // =========================
