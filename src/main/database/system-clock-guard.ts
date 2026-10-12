@@ -32,6 +32,12 @@ function elapsedRuntimeMs() {
   return Number(process.hrtime.bigint() - runtimeMonotonicAnchorNs) / 1_000_000;
 }
 
+function getRuntimeClockDriftMs() {
+  const expectedWallMs = runtimeWallAnchorMs + elapsedRuntimeMs();
+
+  return Date.now() - expectedWallMs;
+}
+
 function lockClock(message: string) {
   clockLockedMessage =
     String(message || '').trim() ||
@@ -40,6 +46,33 @@ function lockClock(message: string) {
 
 export function markSystemClockChangedByWindows() {
   if (isClockGuardBypassed()) {
+    return;
+  }
+
+  /*
+   * أثناء Sleep / Resume نسيب
+   * handleSystemResume هو المسؤول
+   * عن مراجعة الساعة وإعادة ضبط الـAnchor.
+   *
+   * Windows قد يرسل WM_TIMECHANGE
+   * أثناء الاستيقاظ أو المزامنة التلقائية.
+   */
+  if (suspendedAtWallMs !== null) {
+    return;
+  }
+
+  const runtimeDriftMs = getRuntimeClockDriftMs();
+
+  /*
+   * مجرد وصول WM_TIMECHANGE لا يعني
+   * أن المستخدم غيّر الساعة فعليًا.
+   *
+   * Windows قد يرسل الرسالة عند
+   * Time Sync أو تغيير Time Zone.
+   */
+  if (Math.abs(runtimeDriftMs) <= MAX_RUNTIME_DRIFT_MS) {
+    resetSystemClockRuntimeAnchor();
+
     return;
   }
 
@@ -155,9 +188,7 @@ export function assertRuntimeSystemClockStable() {
     throw new Error(clockLockedMessage);
   }
 
-  const expectedWallMs = runtimeWallAnchorMs + elapsedRuntimeMs();
-
-  const runtimeDriftMs = Date.now() - expectedWallMs;
+  const runtimeDriftMs = getRuntimeClockDriftMs();
 
   if (Math.abs(runtimeDriftMs) > MAX_RUNTIME_DRIFT_MS) {
     lockClock(

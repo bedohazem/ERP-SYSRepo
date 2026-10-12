@@ -267,8 +267,12 @@ describe('system clock guard', () => {
     },
   );
 
-  it('blocks shift opening after Windows reports a system time change', async () => {
+  it('ignores a benign Windows time-change notification when the clock did not materially move', async () => {
     delete process.env.ERP_SYSTEM_CLOCK_TEST_BYPASS;
+
+    const firstTime = Date.parse('2026-10-08T12:00:00.000Z');
+
+    vi.spyOn(Date, 'now').mockReturnValue(firstTime);
 
     vi.resetModules();
 
@@ -280,7 +284,7 @@ describe('system clock guard', () => {
     const cashShifts =
       await import('../../src/main/database/repositories/cash-shifts.repo');
 
-    const db = dbModule.getDb();
+    dbModule.getDb();
 
     dbModule.resetDatabaseData();
 
@@ -300,55 +304,34 @@ describe('system clock guard', () => {
       closed_by: 1,
     });
 
-    const before = db
-      .prepare(
-        `
-        SELECT
-          COUNT(*) AS count
-
-        FROM cash_shifts
-        `,
-      )
-      .get() as {
-      count: number;
-    };
-
     /*
-     * نحاكي WM_TIMECHANGE
-     * الذي استقبله Main Process.
+     * نحاكي WM_TIMECHANGE من Windows
+     * بدون تغيير فعلي مهم في الساعة.
+     *
+     * مثال:
+     * Time Sync أو تغيير Time Zone.
      */
     clockGuard.markSystemClockChangedByWindows();
 
-    expect(() => cashShifts.getCashShiftOpeningPreview()).toThrow(
-      'تم اكتشاف تغيير في تاريخ أو وقت Windows أثناء تشغيل البرنامج',
-    );
+    expect(() => cashShifts.getCashShiftOpeningPreview()).not.toThrow();
 
-    expect(() =>
-      cashShifts.openCashShift({
-        opening_counted_amount: 0,
+    const secondShift = cashShifts.openCashShift({
+      opening_counted_amount: 0,
 
-        opened_by: 1,
-      }),
-    ).toThrow('تم اكتشاف تغيير في تاريخ أو وقت Windows أثناء تشغيل البرنامج');
+      opened_by: 1,
+    });
 
-    const after = db
-      .prepare(
-        `
-        SELECT
-          COUNT(*) AS count
+    expect(secondShift.status).toBe('open');
 
-        FROM cash_shifts
-        `,
-      )
-      .get() as {
-      count: number;
-    };
-
-    expect(after.count).toBe(before.count);
+    expect(secondShift.id).toBeGreaterThan(firstShift.id);
   });
 
-  it('keeps an open shift unchanged and blocks closing it after Windows time changes', async () => {
+  it('keeps an open shift unchanged and blocks closing it after a real Windows clock jump', async () => {
     delete process.env.ERP_SYSTEM_CLOCK_TEST_BYPASS;
+
+    const firstTime = Date.parse('2026-10-08T12:00:00.000Z');
+
+    const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(firstTime);
 
     vi.resetModules();
 
@@ -372,6 +355,13 @@ describe('system clock guard', () => {
 
     const originalBusinessDate = shift.business_date;
 
+    /*
+     * تغيير حقيقي وخطر:
+     * Windows اتقدم 10 دقائق
+     * بينما البرنامج ما زال مفتوحًا.
+     */
+    dateNowSpy.mockReturnValue(firstTime + 10 * 60 * 1000);
+
     clockGuard.markSystemClockChangedByWindows();
 
     expect(() => cashShifts.getCashShiftExpectedBalance(shift.id)).toThrow(
@@ -393,15 +383,15 @@ describe('system clock guard', () => {
     const storedShift = db
       .prepare(
         `
-        SELECT
-          status,
-          business_date,
-          closed_at
+      SELECT
+        status,
+        business_date,
+        closed_at
 
-        FROM cash_shifts
+      FROM cash_shifts
 
-        WHERE id = ?
-        `,
+      WHERE id = ?
+      `,
       )
       .get(shift.id) as {
       status: string;
