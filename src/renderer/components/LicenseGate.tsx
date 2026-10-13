@@ -21,11 +21,14 @@ const SUPPORT_PHONE_DISPLAY2 = '01068377869';
 const SUPPORT_WHATSAPP_RAW = '201155559287'; // رقم واتساب بدون +
 
 export default function LicenseGate({ children }: { children: ReactNode }) {
-  const isPopupWindow = Boolean(window.opener);
-
-  if (isPopupWindow) {
+  if (window.opener) {
     return <>{children}</>;
   }
+
+  return <LicenseGateContent>{children}</LicenseGateContent>;
+}
+
+function LicenseGateContent({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<LicenseStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [activationCode, setActivationCode] = useState('');
@@ -168,7 +171,7 @@ export default function LicenseGate({ children }: { children: ReactNode }) {
     );
   }
 
-  const locked = Boolean(status?.expired) && !Boolean(status?.activated);
+  const locked = Boolean(status?.expired && !status?.activated);
 
   if (!locked) {
     return <>{children}</>;

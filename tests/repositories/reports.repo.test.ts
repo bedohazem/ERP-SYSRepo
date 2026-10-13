@@ -1852,7 +1852,6 @@ describe('reports repository', () => {
 
     expect(purchase.shift_id).toBe(shift.id);
 
-
     const liabilityPayment = recordLiabilityPayment({
       liability_id: liability.liability_id,
 
