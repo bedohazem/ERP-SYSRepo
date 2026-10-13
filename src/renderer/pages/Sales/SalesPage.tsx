@@ -1086,32 +1086,34 @@ export default function SalesPage() {
     [effectivePromotions, activeInvoice.cart],
   );
 
-  const totalAfterPromotion = Math.max(0, subTotal - promotionDiscountValue);
+  const totalAfterPromotion = roundMoney(
+    Math.max(0, subTotal - promotionDiscountValue),
+  );
 
   const normalDiscountValue = useMemo(() => {
     const discountNumber = Number(activeInvoice.discountDraft || 0);
+
     const value = Number.isFinite(discountNumber)
       ? Math.max(0, discountNumber)
       : 0;
 
     if (activeInvoice.discountType === 'percent') {
       const percent = Math.min(value, 100);
-      return Math.min(
-        totalAfterPromotion,
-        (totalAfterPromotion * percent) / 100,
+
+      return roundMoney(
+        Math.min(totalAfterPromotion, (totalAfterPromotion * percent) / 100),
       );
     }
 
-    return Math.min(totalAfterPromotion, value);
+    return roundMoney(Math.min(totalAfterPromotion, value));
   }, [
     activeInvoice.discountDraft,
     activeInvoice.discountType,
     totalAfterPromotion,
   ]);
 
-  const totalAfterNormalDiscount = Math.max(
-    0,
-    totalAfterPromotion - normalDiscountValue,
+  const totalAfterNormalDiscount = roundMoney(
+    Math.max(0, totalAfterPromotion - normalDiscountValue),
   );
 
   const selectedCustomerPoints = Number(
@@ -1138,7 +1140,7 @@ export default function SalesPage() {
     : 0;
 
   const redeemPoints = Math.min(requestedRedeemPoints, maxRedeemPoints);
-  const loyaltyDiscountValue = redeemPoints * pointValue;
+  const loyaltyDiscountValue = roundMoney(redeemPoints * pointValue);
 
   const totalDiscountValue = roundMoney(
     productDiscountValue +
@@ -1147,9 +1149,8 @@ export default function SalesPage() {
       loyaltyDiscountValue,
   );
 
-  const grandTotal = Math.max(
-    0,
-    totalAfterNormalDiscount - loyaltyDiscountValue,
+  const grandTotal = roundMoney(
+    Math.max(0, totalAfterNormalDiscount - loyaltyDiscountValue),
   );
 
   const paymentOptions =
@@ -1179,11 +1180,13 @@ export default function SalesPage() {
     ? Math.max(0, paidReceivedRaw)
     : 0;
 
-  const paidAmount = Math.min(paidReceived, grandTotal);
+  const paidAmount = roundMoney(Math.min(paidReceived, grandTotal));
+
   const changeAmount = splitPaymentEnabled
     ? 0
-    : Math.max(0, paidReceived - grandTotal);
-  const remainingAmount = Math.max(0, grandTotal - paidReceived);
+    : roundMoney(Math.max(0, paidReceived - grandTotal));
+
+  const remainingAmount = roundMoney(Math.max(0, grandTotal - paidReceived));
 
   const paymentStatus =
     remainingAmount === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
@@ -1220,7 +1223,9 @@ export default function SalesPage() {
       activeInvoice.cart,
     );
 
-    const nextAfterPromotion = Math.max(0, subTotal - nextPromotionDiscount);
+    const nextAfterPromotion = roundMoney(
+      Math.max(0, subTotal - nextPromotionDiscount),
+    );
 
     const discountNumber = Math.max(
       0,
@@ -1229,15 +1234,16 @@ export default function SalesPage() {
 
     const nextNormalDiscount =
       activeInvoice.discountType === 'percent'
-        ? Math.min(
-            nextAfterPromotion,
-            nextAfterPromotion * (Math.min(discountNumber, 100) / 100),
+        ? roundMoney(
+            Math.min(
+              nextAfterPromotion,
+              nextAfterPromotion * (Math.min(discountNumber, 100) / 100),
+            ),
           )
-        : Math.min(nextAfterPromotion, discountNumber);
+        : roundMoney(Math.min(nextAfterPromotion, discountNumber));
 
-    const nextAfterNormal = Math.max(
-      0,
-      nextAfterPromotion - nextNormalDiscount,
+    const nextAfterNormal = roundMoney(
+      Math.max(0, nextAfterPromotion - nextNormalDiscount),
     );
 
     const nextMaxRedeemByTotal =
@@ -1252,9 +1258,8 @@ export default function SalesPage() {
       nextMaxRedeemPoints,
     );
 
-    const nextGrandTotal = Math.max(
-      0,
-      nextAfterNormal - nextRedeemPoints * pointValue,
+    const nextGrandTotal = roundMoney(
+      Math.max(0, nextAfterNormal - roundMoney(nextRedeemPoints * pointValue)),
     );
 
     /*

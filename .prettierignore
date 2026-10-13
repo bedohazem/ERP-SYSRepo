@@ -8,3 +8,6 @@ tools/release
 *.db
 *.sqlite
 *.sqlite3
+
+.matrix-data
+matrix-main.cjs
