@@ -681,6 +681,32 @@ describe('customers repository', () => {
     expect(history.loyalty[0].points).toBe(10);
   });
 
+  it('rejects points adjustment that would make the balance negative', () => {
+    const customer = createTestCustomer();
+
+    adjustCustomerPoints({
+      customer_id: customer.id,
+      points: 10,
+      notes: 'Initial points',
+    });
+
+    expect(() =>
+      adjustCustomerPoints({
+        customer_id: customer.id,
+        points: -11,
+        notes: 'Invalid negative adjustment',
+      }),
+    ).toThrow('لا يمكن أن يصبح رصيد نقاط العميل سالبًا');
+
+    const updated = getCustomerById(customer.id) as CustomerTestRow;
+
+    expect(updated.points_balance).toBe(10);
+
+    const history = getCustomerHistory(customer.id) as any;
+
+    expect(history.loyalty).toHaveLength(1);
+  });
+
   it('rejects points adjustment with zero points', () => {
     const customer = createTestCustomer();
 

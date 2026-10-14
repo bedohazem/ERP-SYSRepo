@@ -976,14 +976,41 @@ export function adjustCustomerPoints(input: {
   }
 
   const tx = db.transaction(() => {
+    const customer = db
+      .prepare(
+        `
+        SELECT points_balance
+        FROM customers
+        WHERE id = ?
+          AND is_active = 1
+        LIMIT 1
+        `,
+      )
+      .get(customerId) as
+      | {
+          points_balance: number;
+        }
+      | undefined;
+
+    if (!customer) {
+      throw new Error('العميل غير موجود');
+    }
+
+    const nextPoints = Number(customer.points_balance || 0) + points;
+
+    if (nextPoints < 0) {
+      throw new Error('لا يمكن أن يصبح رصيد نقاط العميل سالبًا');
+    }
+
     db.prepare(
       `
       UPDATE customers
-      SET points_balance = points_balance + ?,
-          updated_at = CURRENT_TIMESTAMP
+      SET
+        points_balance = ?,
+        updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `,
-    ).run(points, customerId);
+      `,
+    ).run(nextPoints, customerId);
 
     db.prepare(
       `
