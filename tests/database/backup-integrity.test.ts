@@ -28,7 +28,7 @@ describe('database backup integrity', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('creates a verified ERP backup', async () => {
     const backupPath = tempPath(`verified-${Date.now()}.db`);

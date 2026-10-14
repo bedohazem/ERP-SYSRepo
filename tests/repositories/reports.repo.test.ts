@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
+import { getLocalBusinessDate } from '../../src/main/database/system-clock-guard';
 import {
   createProduct,
   getVariantByBarcode,
@@ -748,12 +749,7 @@ describe('reports repository', () => {
       sellPrice: 150,
     });
 
-    const now = new Date();
-    const reportDate = [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, '0'),
-      String(now.getDate()).padStart(2, '0'),
-    ].join('-');
+    const reportDate = getLocalBusinessDate();
 
     createSale({
       user_id: 1,
