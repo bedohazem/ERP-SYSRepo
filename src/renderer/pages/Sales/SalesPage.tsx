@@ -1132,6 +1132,11 @@ export default function SalesPage() {
     activeInvoice.loyaltyPointsDraft,
   );
 
+  const minRedeemPoints = Math.max(
+    1,
+    normalizePositiveInt(loyaltySettings.loyalty_min_redeem_points),
+  );
+
   const maxRedeemByTotal =
     pointValue > 0 ? Math.floor(totalAfterNormalDiscount / pointValue) : 0;
 
@@ -1139,7 +1144,12 @@ export default function SalesPage() {
     ? Math.max(0, Math.min(selectedCustomerPoints, maxRedeemByTotal))
     : 0;
 
-  const redeemPoints = Math.min(requestedRedeemPoints, maxRedeemPoints);
+  const redeemPoints =
+    requestedRedeemPoints === 0 ||
+    (requestedRedeemPoints >= minRedeemPoints &&
+      requestedRedeemPoints <= maxRedeemPoints)
+      ? requestedRedeemPoints
+      : 0;
   const loyaltyDiscountValue = roundMoney(redeemPoints * pointValue);
 
   const totalDiscountValue = roundMoney(
@@ -1202,6 +1212,12 @@ export default function SalesPage() {
       return;
     }
 
+    if (requestedRedeemPoints > 0 && requestedRedeemPoints < minRedeemPoints) {
+      showMessage('error', `أقل عدد نقاط للاستخدام هو ${minRedeemPoints}`);
+
+      return;
+    }
+
     let latestPromotions: ActivePromotion[] = editingSaleId
       ? []
       : activePromotions;
@@ -1252,6 +1268,22 @@ export default function SalesPage() {
     const nextMaxRedeemPoints = loyaltyEnabled
       ? Math.min(selectedCustomerPoints, nextMaxRedeemByTotal)
       : 0;
+
+    if (requestedRedeemPoints > nextMaxRedeemPoints) {
+      if (requestedRedeemPoints > selectedCustomerPoints) {
+        showMessage(
+          'error',
+          `رصيد نقاط العميل غير كافي. المتاح ${selectedCustomerPoints} نقطة`,
+        );
+      } else {
+        showMessage(
+          'error',
+          `قيمة الفاتورة تسمح باستخدام ${nextMaxRedeemPoints} نقطة كحد أقصى`,
+        );
+      }
+
+      return;
+    }
 
     const nextRedeemPoints = Math.min(
       requestedRedeemPoints,
@@ -2279,8 +2311,26 @@ export default function SalesPage() {
       return;
     }
 
-    if (requestedRedeemPoints > maxRedeemPoints && maxRedeemPoints > 0) {
-      updateActiveInvoice({ loyaltyPointsDraft: String(maxRedeemPoints) });
+    if (requestedRedeemPoints > 0 && requestedRedeemPoints < minRedeemPoints) {
+      showMessage('error', `أقل عدد نقاط للاستخدام هو ${minRedeemPoints}`);
+
+      return;
+    }
+
+    if (requestedRedeemPoints > maxRedeemPoints) {
+      if (requestedRedeemPoints > selectedCustomerPoints) {
+        showMessage(
+          'error',
+          `رصيد نقاط العميل غير كافي. المتاح ${selectedCustomerPoints} نقطة`,
+        );
+      } else {
+        showMessage(
+          'error',
+          `قيمة الفاتورة تسمح باستخدام ${maxRedeemPoints} نقطة كحد أقصى`,
+        );
+      }
+
+      return;
     }
 
     if (remainingAmount > 0 && !activeInvoice.customer) {
