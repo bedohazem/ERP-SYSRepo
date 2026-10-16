@@ -305,6 +305,30 @@ describe('system clock guard', () => {
     });
 
     /*
+     * Date.now في الاختبار ثابت على firstTime،
+     * بينما SQLite CURRENT_TIMESTAMP لا يتأثر
+     * بالـJavaScript mock.
+     *
+     * نخلي closed_at مطابقًا لنفس الساعة
+     * التي يحاكيها الاختبار.
+     */
+    const mockedClosedAt = new Date(firstTime)
+      .toISOString()
+      .replace('T', ' ')
+      .slice(0, 19);
+
+    dbModule
+      .getDb()
+      .prepare(
+        `
+        UPDATE cash_shifts
+        SET closed_at = ?
+        WHERE id = ?
+        `,
+      )
+      .run(mockedClosedAt, firstShift.id);
+
+    /*
      * نحاكي WM_TIMECHANGE من Windows
      * بدون تغيير فعلي مهم في الساعة.
      *
