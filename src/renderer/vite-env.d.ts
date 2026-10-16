@@ -2670,6 +2670,8 @@ declare global {
 
         previous_business_date?: string | null;
 
+        previous_continuity_date?: string | null;
+
         suggested_business_date: string;
 
         business_date_gap_days: number;

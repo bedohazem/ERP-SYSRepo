@@ -53,7 +53,7 @@ type OpeningPreview = {
   previous_closed_at?: string | null;
 
   previous_business_date?: string | null;
-
+  previous_continuity_date?: string | null;
   suggested_business_date: string;
 
   business_date_gap_days: number;
@@ -215,8 +215,11 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
           'error',
 
           `تاريخ الجهاز أقدم من آخر شفت${
-            preview.previous_business_date
-              ? ` بتاريخ ${preview.previous_business_date}`
+            preview.previous_continuity_date || preview.previous_business_date
+              ? ` بتاريخ ${
+                  preview.previous_continuity_date ||
+                  preview.previous_business_date
+                }`
               : ''
           }. صحح تاريخ Windows أولًا.`,
 
@@ -825,8 +828,12 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                 >
                   يوجد فرق {openingPreview.business_date_gap_days} أيام عن آخر
                   شفت
-                  {openingPreview.previous_business_date
-                    ? ` بتاريخ ${openingPreview.previous_business_date}`
+                  {openingPreview.previous_continuity_date ||
+                  openingPreview.previous_business_date
+                    ? ` بتاريخ ${
+                        openingPreview.previous_continuity_date ||
+                        openingPreview.previous_business_date
+                      }`
                     : ''}
                   .
                 </div>

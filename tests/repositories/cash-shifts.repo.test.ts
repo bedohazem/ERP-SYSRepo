@@ -17,7 +17,7 @@ import {
   resolveCashShiftVariance,
   forceCloseCashShift,
 } from '../../src/main/database/repositories/cash-shifts.repo';
-
+import { getLocalBusinessDate } from '../../src/main/database/system-clock-guard';
 import {
   createCashMovement,
   getCashSummary,
@@ -75,6 +75,116 @@ describe('cash shifts repository', () => {
     expect(preview.previous_shift_id).toBe(firstShift.id);
 
     expect(preview.expected_opening_amount).toBe(300);
+  });
+
+  it('uses the previous shift closing day for continuity when a shift spans multiple days', () => {
+    const db = getDb();
+
+    const currentBusinessDate = getLocalBusinessDate();
+
+    const previousDate = new Date(`${currentBusinessDate}T00:00:00Z`);
+
+    previousDate.setUTCDate(previousDate.getUTCDate() - 3);
+
+    const oldBusinessDate = previousDate.toISOString().slice(0, 10);
+
+    const firstShift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    });
+
+    closeCashShift({
+      shift_id: firstShift.id,
+      closing_counted_amount: 500,
+      left_for_next_shift: 500,
+      closed_by: 1,
+    });
+
+    /*
+     * نحاكي شفت بدأ من 3 أيام
+     * لكنه استمر مفتوحًا حتى اليوم.
+     */
+    db.prepare(
+      `
+    UPDATE cash_shifts
+    SET
+      business_date = ?,
+      closed_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+    `,
+    ).run(oldBusinessDate, firstShift.id);
+
+    const preview = getCashShiftOpeningPreview();
+
+    expect(preview.previous_business_date).toBe(oldBusinessDate);
+
+    expect(preview.previous_continuity_date).toBe(currentBusinessDate);
+
+    expect(preview.business_date_gap_days).toBe(0);
+
+    expect(preview.requires_date_confirmation).toBe(false);
+
+    expect(preview.clock_moved_backward).toBe(false);
+
+    const secondShift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    });
+
+    expect(secondShift.business_date).toBe(currentBusinessDate);
+  });
+
+  it('still requires confirmation when the store was actually closed for multiple days', () => {
+    const db = getDb();
+
+    const currentBusinessDate = getLocalBusinessDate();
+
+    const previousDate = new Date(`${currentBusinessDate}T00:00:00Z`);
+
+    previousDate.setUTCDate(previousDate.getUTCDate() - 3);
+
+    const oldBusinessDate = previousDate.toISOString().slice(0, 10);
+
+    const firstShift = openCashShift({
+      opening_counted_amount: 500,
+      opened_by: 1,
+    });
+
+    closeCashShift({
+      shift_id: firstShift.id,
+      closing_counted_amount: 500,
+      left_for_next_shift: 500,
+      closed_by: 1,
+    });
+
+    /*
+     * هنا نحاكي أن الشفت نفسه
+     * انتهى فعلًا من 3 أيام.
+     */
+    db.prepare(
+      `
+    UPDATE cash_shifts
+    SET
+      business_date = ?,
+      closed_at = ?
+    WHERE id = ?
+    `,
+    ).run(oldBusinessDate, `${oldBusinessDate} 12:00:00`, firstShift.id);
+
+    const preview = getCashShiftOpeningPreview();
+
+    expect(preview.previous_continuity_date).toBe(oldBusinessDate);
+
+    expect(preview.business_date_gap_days).toBe(3);
+
+    expect(preview.requires_date_confirmation).toBe(true);
+
+    expect(() =>
+      openCashShift({
+        opening_counted_amount: 500,
+        opened_by: 1,
+      }),
+    ).toThrow('يلزم تأكيد المدير');
   });
 
   it('prevents opening more than one shift at the same time', () => {

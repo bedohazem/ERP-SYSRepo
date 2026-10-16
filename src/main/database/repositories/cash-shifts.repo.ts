@@ -1,6 +1,7 @@
 import { getDb } from '../db';
 import {
   assertSystemClockStable,
+  BUSINESS_TIME_ZONE,
   confirmSystemClockReference,
   getLocalBusinessDate,
 } from '../system-clock-guard';
@@ -413,6 +414,78 @@ function getBusinessDateGapDays(previousDate: string, nextDate: string) {
   return Math.round((nextMs - previousMs) / 86_400_000);
 }
 
+function getStoredTimestampBusinessDate(value?: string | null): string | null {
+  const rawValue = String(value || '').trim();
+
+  if (!rawValue) {
+    return null;
+  }
+
+  const normalizedValue = rawValue.includes('T')
+    ? rawValue
+    : rawValue.replace(' ', 'T');
+
+  const timestampValue = /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalizedValue)
+    ? normalizedValue
+    : `${normalizedValue}Z`;
+
+  const timestamp = new Date(timestampValue);
+
+  if (Number.isNaN(timestamp.getTime())) {
+    return null;
+  }
+
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: BUSINESS_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(timestamp);
+
+  const values = new Map(parts.map((part) => [part.type, part.value]));
+
+  const businessDate =
+    `${values.get('year') || ''}-` +
+    `${values.get('month') || ''}-` +
+    `${values.get('day') || ''}`;
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(businessDate) ? businessDate : null;
+}
+
+function getShiftContinuityDate(
+  businessDate?: string | null,
+  closedAt?: string | null,
+): string | null {
+  const normalizedBusinessDate = String(businessDate || '').trim();
+
+  const validBusinessDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedBusinessDate)
+    ? normalizedBusinessDate
+    : null;
+
+  const closedBusinessDate = getStoredTimestampBusinessDate(closedAt);
+
+  if (!validBusinessDate) {
+    return closedBusinessDate;
+  }
+
+  if (!closedBusinessDate) {
+    return validBusinessDate;
+  }
+
+  /*
+   * المرجع هو آخر يوم فعلي وصل له الشفت.
+   *
+   * لو الشفت بدأ يوم 14 واستمر حتى 17،
+   * يبقى 17 هو مرجع فتح الشفت التالي.
+   *
+   * ونستخدم الأحدث دائمًا حتى لا نسمح
+   * لوقت إغلاق غير طبيعي بإرجاع التسلسل للخلف.
+   */
+  return closedBusinessDate > validBusinessDate
+    ? closedBusinessDate
+    : validBusinessDate;
+}
+
 export function getCashShiftOpeningPreview() {
   assertSystemClockStable();
 
@@ -433,7 +506,7 @@ export function getCashShiftOpeningPreview() {
       previous_closed_at: null,
 
       previous_business_date: currentOpenShift.business_date || null,
-
+      previous_continuity_date: currentOpenShift.business_date || null,
       suggested_business_date:
         currentOpenShift.business_date || getLocalBusinessDate(),
 
@@ -495,16 +568,21 @@ export function getCashShiftOpeningPreview() {
     ? String(previousShift.business_date)
     : null;
 
-  const businessDateGapDays = previousBusinessDate
-    ? getBusinessDateGapDays(previousBusinessDate, suggestedBusinessDate)
+  const previousContinuityDate = getShiftContinuityDate(
+    previousBusinessDate,
+    previousShift?.closed_at,
+  );
+
+  const businessDateGapDays = previousContinuityDate
+    ? getBusinessDateGapDays(previousContinuityDate, suggestedBusinessDate)
     : 0;
 
   const clockMovedBackward = Boolean(
-    previousBusinessDate && businessDateGapDays < 0,
+    previousContinuityDate && businessDateGapDays < 0,
   );
 
   const requiresDateConfirmation = Boolean(
-    previousBusinessDate && businessDateGapDays > 1,
+    previousContinuityDate && businessDateGapDays > 1,
   );
 
   return {
@@ -518,7 +596,7 @@ export function getCashShiftOpeningPreview() {
 
     previous_closed_at: previousShift?.closed_at ?? null,
     previous_business_date: previousBusinessDate,
-
+    previous_continuity_date: previousContinuityDate,
     suggested_business_date: suggestedBusinessDate,
 
     business_date_gap_days: businessDateGapDays,
@@ -605,6 +683,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
         SELECT
           id,
           left_for_next_shift,
+          closed_at,
 
           COALESCE(
             NULLIF(
@@ -631,6 +710,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
       | {
           id: number;
           left_for_next_shift: number | null;
+          closed_at: string | null;
           business_date: string | null;
         }
       | undefined;
@@ -650,16 +730,21 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
       ? String(previousShift.business_date)
       : null;
 
-    const businessDateGapDays = previousBusinessDate
-      ? getBusinessDateGapDays(previousBusinessDate, requestedBusinessDate)
+    const previousContinuityDate = getShiftContinuityDate(
+      previousBusinessDate,
+      previousShift?.closed_at,
+    );
+
+    const businessDateGapDays = previousContinuityDate
+      ? getBusinessDateGapDays(previousContinuityDate, requestedBusinessDate)
       : 0;
 
     /*
      * ممنوع السلسلة ترجع للخلف.
      */
-    if (previousBusinessDate && businessDateGapDays < 0) {
+    if (previousContinuityDate && businessDateGapDays < 0) {
       throw new Error(
-        `تاريخ الجهاز ${requestedBusinessDate} أقدم من آخر شفت بتاريخ ${previousBusinessDate}. صحح تاريخ Windows قبل فتح شفت جديد.`,
+        `تاريخ الجهاز ${requestedBusinessDate} أقدم من آخر يوم فعلي للشفت السابق بتاريخ ${previousContinuityDate}. صحح تاريخ Windows قبل فتح شفت جديد.`,
       );
     }
 
@@ -671,12 +756,12 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
      *
      * لذلك نحتاج تأكيد مدير.
      */
-    if (previousBusinessDate && businessDateGapDays > 1) {
+    if (previousContinuityDate && businessDateGapDays > 1) {
       const approvedBy = Number(input.approved_by || 0);
 
       if (!approvedBy) {
         throw new Error(
-          `يوجد فرق ${businessDateGapDays} أيام عن آخر شفت. يلزم تأكيد المدير قبل فتح الشفت.`,
+          `يوجد فرق ${businessDateGapDays} أيام عن آخر يوم فعلي للشفت السابق بتاريخ ${previousContinuityDate}. يلزم تأكيد المدير قبل فتح الشفت.`,
         );
       }
 
