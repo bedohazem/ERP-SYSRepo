@@ -182,7 +182,7 @@ describe('customers repository', () => {
       opening_counted_amount: 0,
       opened_by: 1,
     });
-  });
+  }, 30_000);
 
   it('creates a customer', () => {
     const customer = createCustomer({

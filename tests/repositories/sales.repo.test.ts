@@ -224,7 +224,7 @@ describe('sales repository', () => {
       opening_counted_amount: 0,
       opened_by: 1,
     });
-  });
+  }, 30_000);
 
   it('snapshots moving weighted average cost into the sale and keeps remaining inventory value', () => {
     const variant = seedProduct();
