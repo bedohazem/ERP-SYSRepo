@@ -647,9 +647,6 @@ export default function InvoicesPage() {
         date_from: dateFrom || undefined,
 
         date_to: dateTo || undefined,
-
-        actor_id: user?.id ?? null,
-
         limit: INVOICE_PAGE_SIZE,
 
         offset: (safePage - 1) * INVOICE_PAGE_SIZE,
@@ -681,7 +678,6 @@ export default function InvoicesPage() {
             : returnPaymentMethodFilter,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
-        actor_id: user?.id ?? null,
         limit: INVOICE_PAGE_SIZE,
         offset: (safePage - 1) * INVOICE_PAGE_SIZE,
       });
@@ -715,9 +711,6 @@ export default function InvoicesPage() {
         date_to: dateTo || undefined,
 
         status: exchangeStatusFilter,
-
-        actor_id: user?.id ?? null,
-
         limit: INVOICE_PAGE_SIZE,
 
         offset: (safePage - 1) * INVOICE_PAGE_SIZE,
@@ -1076,8 +1069,6 @@ export default function InvoicesPage() {
         sale_id: cancelSaleTarget.id,
         reason:
           cancelSaleReason.trim() || `إلغاء فاتورة بيع #${cancelSaleTarget.id}`,
-        actor_id: user?.id ?? null,
-
         admin_username: cancelSaleAdminUsername || undefined,
 
         admin_password: cancelSalePassword,
@@ -1127,8 +1118,6 @@ export default function InvoicesPage() {
         reason:
           cancelReturnReason.trim() ||
           `إلغاء المرتجع ${cancelReturnTarget.code}`,
-        actor_id: user?.id ?? null,
-
         admin_username: cancelReturnAdminUsername || undefined,
 
         admin_password: cancelReturnPassword,
@@ -1181,9 +1170,6 @@ export default function InvoicesPage() {
         reason:
           cancelExchangeReason.trim() ||
           `إلغاء الاستبدال ${cancelExchangeTarget.code}`,
-
-        actor_id: user?.id ?? null,
-
         admin_username: cancelExchangeAdminUsername || undefined,
 
         admin_password: cancelExchangePassword,

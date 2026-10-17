@@ -334,7 +334,6 @@ export default function StockCountPage() {
         title: newTitle.trim(),
         notes: newNotes.trim() || null,
         categoryId: newSessionCategoryId,
-        actor_id: currentUser?.id,
       });
 
       if (result?.success === false) {
@@ -643,7 +642,6 @@ export default function StockCountPage() {
     try {
       const result = await window.api.approveStockCountSession({
         session_id: selected.session.id,
-        actor_id: currentUser?.id,
       });
 
       if (result?.success === false) {
@@ -676,7 +674,6 @@ export default function StockCountPage() {
     try {
       const result = await window.api.cancelStockCountSession({
         session_id: selected.session.id,
-        actor_id: currentUser?.id,
       });
 
       if (result?.success === false) {

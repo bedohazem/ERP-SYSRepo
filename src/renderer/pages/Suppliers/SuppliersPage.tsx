@@ -278,8 +278,6 @@ export default function SuppliersPage() {
           notes: form.notes,
 
           credit_days: creditDays,
-
-          actor_id: currentUser?.id,
         });
 
         showMessage('تم تعديل المورد');
@@ -296,8 +294,6 @@ export default function SuppliersPage() {
           notes: form.notes,
 
           credit_days: creditDays,
-
-          actor_id: currentUser?.id,
         });
         showMessage('تم إضافة المورد');
       }
@@ -746,7 +742,6 @@ export default function SuppliersPage() {
         amount,
         payment_method: paymentMethod,
         notes: paymentNotes.trim() || null,
-        actor_id: currentUser?.id,
       });
 
       showMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`);
@@ -893,9 +888,6 @@ export default function SuppliersPage() {
               payment_method: paymentActionMethod,
 
               notes: paymentActionNotes.trim() || null,
-
-              actor_id: currentUser?.id,
-
               admin_password: paymentActionRequirePassword
                 ? paymentActionPassword
                 : undefined,
@@ -904,9 +896,6 @@ export default function SuppliersPage() {
               batch_id: batchId,
 
               reason: paymentActionReason.trim(),
-
-              actor_id: currentUser?.id,
-
               admin_password: paymentActionRequirePassword
                 ? paymentActionPassword
                 : undefined,

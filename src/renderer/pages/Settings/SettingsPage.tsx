@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
+import { clearAllErpDrafts } from '../../utils/draft-storage';
 
 type BarcodeItemPosition =
   | 'top'
@@ -178,7 +179,6 @@ export default function SettingsPage() {
   const [storeQrPrimaryUrl, setStoreQrPrimaryUrl] = useState('');
   const [savingStoreQr, setSavingStoreQr] = useState(false);
   const [savingStoreContact, setSavingStoreContact] = useState(false);
-  const currentUser = useAuthStore((s) => s.user);
 
   const clearLocalSession = useAuthStore((s) => s.clearLocalSession);
 
@@ -297,7 +297,6 @@ export default function SettingsPage() {
         store_qr_enabled: storeQrEnabled,
         store_qr_title: storeQrTitle,
         store_qr_primary_url: storeQrPrimaryUrl,
-        actor_id: currentUser?.id,
       });
 
       if (!result?.success) {
@@ -335,9 +334,7 @@ export default function SettingsPage() {
     setChoosingBackupDir(true);
 
     try {
-      const result = await window.api.chooseAutoBackupDir({
-        actor_id: currentUser?.id,
-      });
+      const result = await window.api.chooseAutoBackupDir();
 
       if (result.canceled) return;
 
@@ -370,9 +367,7 @@ export default function SettingsPage() {
     setRunningAutoBackup(true);
 
     try {
-      const result = await window.api.runAutoBackupNow({
-        actor_id: currentUser?.id,
-      });
+      const result = await window.api.runAutoBackupNow();
 
       if (!result.success) {
         showMessage('error', result.message || 'فشل إنشاء النسخة التلقائية');
@@ -425,7 +420,6 @@ export default function SettingsPage() {
       const result = await window.api.saveCashDrawerSettings({
         printer_name: cashDrawerSettings.printer_name,
         auto_open_cash_sale: cashDrawerSettings.auto_open_cash_sale,
-        actor_id: currentUser?.id,
       });
 
       if (!result.success) {
@@ -455,7 +449,6 @@ export default function SettingsPage() {
 
     try {
       const result = await window.api.openCashDrawer({
-        actor_id: currentUser?.id,
         reason: 'test',
       });
 
@@ -618,9 +611,7 @@ export default function SettingsPage() {
     setBackupLoading(true);
 
     try {
-      const result = await window.api.backupDatabase({
-        actor_id: currentUser?.id,
-      });
+      const result = await window.api.backupDatabase();
 
       if (result.canceled) {
         return;
@@ -646,9 +637,7 @@ export default function SettingsPage() {
     setRestoreLoading(true);
 
     try {
-      const result = await window.api.restoreDatabase({
-        actor_id: currentUser?.id,
-      });
+      const result = await window.api.restoreDatabase();
 
       if (result.canceled) {
         return;
@@ -659,6 +648,7 @@ export default function SettingsPage() {
         return;
       }
 
+      clearAllErpDrafts(window.localStorage);
       clearLocalSession();
 
       navigate('/', {
@@ -680,9 +670,7 @@ export default function SettingsPage() {
     setResetLoading(true);
 
     try {
-      const result = await window.api.resetDatabase({
-        actor_id: currentUser?.id,
-      });
+      const result = await window.api.resetDatabase();
 
       if (result.canceled) {
         return;
@@ -692,7 +680,7 @@ export default function SettingsPage() {
         showMessage('error', result.message || 'فشل تصفير البرنامج');
         return;
       }
-
+      clearAllErpDrafts(window.localStorage);
       clearLocalSession();
 
       navigate('/', {
@@ -764,9 +752,7 @@ export default function SettingsPage() {
     setSavingLogo(true);
 
     try {
-      const result = await window.api.saveAppLogoUrl(appLogoUrl.trim(), {
-        actor_id: currentUser?.id,
-      });
+      const result = await window.api.saveAppLogoUrl(appLogoUrl.trim());
       setLicenseStatus(result.status);
       showMessage('success', 'تم حفظ رابط صورة التطبيق');
     } catch (error) {
@@ -783,9 +769,7 @@ export default function SettingsPage() {
     setSavingLogo(true);
 
     try {
-      const result = await window.api.chooseAppLogo({
-        actor_id: currentUser?.id,
-      });
+      const result = await window.api.chooseAppLogo();
 
       if (result.canceled) {
         return;
@@ -877,9 +861,7 @@ export default function SettingsPage() {
     setSavingAppName(true);
 
     try {
-      const result = await window.api.saveAppName(cleanName, {
-        actor_id: currentUser?.id,
-      });
+      const result = await window.api.saveAppName(cleanName);
 
       setLicenseStatus(result.status);
       setAppName(result.status.app_name || cleanName);
@@ -909,7 +891,6 @@ export default function SettingsPage() {
       const result = await window.api.saveStoreContactInfo(
         storePhone.trim(),
         storeAddress.trim(),
-        { actor_id: currentUser?.id },
       );
 
       console.log('SAVE STORE CONTACT RESULT:', result);

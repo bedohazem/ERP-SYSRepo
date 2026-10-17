@@ -83,6 +83,24 @@ const DEFAULT_SETTINGS: BarcodePrintSettings = {
   barcode_svg_height: 22,
 };
 
+const BARCODE_ITEM_POSITIONS: readonly BarcodeItemPosition[] = [
+  'top',
+  'top-left',
+  'top-right',
+  'above_barcode',
+  'below_barcode',
+  'bottom',
+  'bottom-left',
+  'bottom-right',
+  'hidden',
+];
+
+const BARCODE_ITEM_ALIGNS: readonly BarcodeItemAlign[] = [
+  'left',
+  'center',
+  'right',
+];
+
 function toBool(value: string | undefined, fallback: boolean): boolean {
   if (value == null) return fallback;
   return value === 'true';
@@ -93,8 +111,16 @@ function toNumber(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function toText<T extends string>(value: string | undefined, fallback: T): T {
-  return (value ?? fallback) as T;
+function toEnumText<T extends string>(
+  value: string | undefined,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  if (value && allowed.includes(value as T)) {
+    return value as T;
+  }
+
+  return fallback;
 }
 
 export function getBarcodePrintSettings(): BarcodePrintSettings {
@@ -137,12 +163,14 @@ export function getBarcodePrintSettings(): BarcodePrintSettings {
       map.get('barcode_name_font_size'),
       DEFAULT_SETTINGS.barcode_name_font_size,
     ),
-    barcode_name_position: toText(
+    barcode_name_position: toEnumText(
       map.get('barcode_name_position'),
+      BARCODE_ITEM_POSITIONS,
       DEFAULT_SETTINGS.barcode_name_position,
     ),
-    barcode_name_align: toText(
+    barcode_name_align: toEnumText(
       map.get('barcode_name_align'),
+      BARCODE_ITEM_ALIGNS,
       DEFAULT_SETTINGS.barcode_name_align,
     ),
 
@@ -150,12 +178,14 @@ export function getBarcodePrintSettings(): BarcodePrintSettings {
       map.get('barcode_price_font_size'),
       DEFAULT_SETTINGS.barcode_price_font_size,
     ),
-    barcode_price_position: toText(
+    barcode_price_position: toEnumText(
       map.get('barcode_price_position'),
+      BARCODE_ITEM_POSITIONS,
       DEFAULT_SETTINGS.barcode_price_position,
     ),
-    barcode_price_align: toText(
+    barcode_price_align: toEnumText(
       map.get('barcode_price_align'),
+      BARCODE_ITEM_ALIGNS,
       DEFAULT_SETTINGS.barcode_price_align,
     ),
 
@@ -163,12 +193,14 @@ export function getBarcodePrintSettings(): BarcodePrintSettings {
       map.get('barcode_size_font_size'),
       DEFAULT_SETTINGS.barcode_size_font_size,
     ),
-    barcode_size_position: toText(
+    barcode_size_position: toEnumText(
       map.get('barcode_size_position'),
+      BARCODE_ITEM_POSITIONS,
       DEFAULT_SETTINGS.barcode_size_position,
     ),
-    barcode_size_align: toText(
+    barcode_size_align: toEnumText(
       map.get('barcode_size_align'),
+      BARCODE_ITEM_ALIGNS,
       DEFAULT_SETTINGS.barcode_size_align,
     ),
 
@@ -176,12 +208,14 @@ export function getBarcodePrintSettings(): BarcodePrintSettings {
       map.get('barcode_color_font_size'),
       DEFAULT_SETTINGS.barcode_color_font_size,
     ),
-    barcode_color_position: toText(
+    barcode_color_position: toEnumText(
       map.get('barcode_color_position'),
+      BARCODE_ITEM_POSITIONS,
       DEFAULT_SETTINGS.barcode_color_position,
     ),
-    barcode_color_align: toText(
+    barcode_color_align: toEnumText(
       map.get('barcode_color_align'),
+      BARCODE_ITEM_ALIGNS,
       DEFAULT_SETTINGS.barcode_color_align,
     ),
 
@@ -189,12 +223,14 @@ export function getBarcodePrintSettings(): BarcodePrintSettings {
       map.get('barcode_value_font_size'),
       DEFAULT_SETTINGS.barcode_value_font_size,
     ),
-    barcode_value_position: toText(
+    barcode_value_position: toEnumText(
       map.get('barcode_value_position'),
+      BARCODE_ITEM_POSITIONS,
       DEFAULT_SETTINGS.barcode_value_position,
     ),
-    barcode_value_align: toText(
+    barcode_value_align: toEnumText(
       map.get('barcode_value_align'),
+      BARCODE_ITEM_ALIGNS,
       DEFAULT_SETTINGS.barcode_value_align,
     ),
 

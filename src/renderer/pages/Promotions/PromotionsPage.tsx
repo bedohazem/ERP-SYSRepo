@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { useAuthStore } from '../../store/auth.store';
-
 type PromotionType =
   'percent' | 'fixed_per_item' | 'fixed_invoice' | 'buy_x_get_y';
 
@@ -58,8 +56,6 @@ const emptyForm = {
 };
 
 export default function PromotionsPage() {
-  const user = useAuthStore((state) => state.user);
-
   const [promotions, setPromotions] = useState<PromotionRow[]>([]);
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -289,8 +285,6 @@ export default function PromotionsPage() {
           form.scope_type === 'category' ? Number(form.category_id) : null,
 
         product_ids: form.scope_type === 'products' ? form.product_ids : [],
-
-        actor_id: user?.id,
         duration_hours: durationHours,
       };
 
@@ -327,8 +321,6 @@ export default function PromotionsPage() {
         id: promotion.id,
 
         is_active: nextActive,
-
-        actor_id: user?.id,
       });
 
       if (result?.success === false) {

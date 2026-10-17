@@ -263,7 +263,6 @@ export default function LiabilitiesPage() {
         payment_method: form.payment_method,
         due_date: form.due_date || null,
         notes: form.notes.trim() || null,
-        actor_id: currentUser?.id ?? null,
       });
 
       if (result?.success === false) {
@@ -362,9 +361,6 @@ export default function LiabilitiesPage() {
         due_date: editForm.due_date || null,
 
         notes: editForm.notes.trim() || null,
-
-        actor_id: currentUser?.id ?? null,
-
         admin_password: editPassword,
       });
 
@@ -410,7 +406,6 @@ export default function LiabilitiesPage() {
         amount,
         payment_method: paymentMethod,
         notes: paymentNotes.trim() || null,
-        actor_id: currentUser?.id ?? null,
       });
 
       if (result?.success === false) {
@@ -451,7 +446,6 @@ export default function LiabilitiesPage() {
       const result = await window.api.cancelLiability({
         id: cancelTarget.id,
         reason: 'إلغاء الالتزام من شاشة الالتزامات',
-        actor_id: currentUser?.id ?? null,
       });
 
       if (result?.success === false) {
@@ -476,7 +470,6 @@ export default function LiabilitiesPage() {
       const result = await window.api.cancelLiabilityPayment({
         payment_id: cancelPaymentTarget.id,
         reason: cancelPaymentReason.trim() || 'إلغاء دفعة التزام',
-        actor_id: currentUser?.id ?? null,
         admin_password: cancelPaymentPassword,
       });
 
@@ -562,9 +555,6 @@ export default function LiabilitiesPage() {
         payment_method: editPaymentMethod,
 
         notes: editPaymentNotes.trim() || null,
-
-        actor_id: currentUser?.id ?? null,
-
         admin_password: editPaymentPassword,
       });
 

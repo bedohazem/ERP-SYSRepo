@@ -94,7 +94,6 @@ export default function UsersPage() {
 
       const result = await window.api.getUsersPage({
         search,
-        actor_id: currentUser?.id,
         limit: SYSTEM_PAGE_SIZE,
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
       });
@@ -152,14 +151,12 @@ export default function UsersPage() {
             username: form.username,
             role: form.role,
             is_active: form.is_active,
-            actor_id: currentUser?.id,
           })
         : await window.api.createSystemUser({
             name: form.name,
             username: form.username,
             password: form.password,
             role: form.role,
-            actor_id: currentUser?.id,
           });
 
       if (!result.success) {

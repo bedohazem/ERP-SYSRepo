@@ -19,6 +19,8 @@ import {
   optionalEnumValue,
   optionalNonNegativeInteger,
   optionalPositiveInteger,
+  optionalBooleanValue,
+  optionalTrimmedString,
   requireObjectInput,
 } from './input-validation';
 
@@ -32,7 +34,6 @@ type CashDrawerSettings = {
 type SaveCashDrawerSettingsInput = {
   printer_name?: string | null;
   auto_open_cash_sale?: boolean;
-  actor_id?: number;
 };
 
 type OpenCashDrawerInput = {
@@ -278,28 +279,45 @@ export function registerCashDrawerIpc(): void {
     };
   });
 
-  ipcMain.handle(
-    'cash-drawer:save-settings',
-    (event, input: SaveCashDrawerSettingsInput) => {
-      const actorId = requireAuthenticatedAdmin(event);
+  ipcMain.handle('cash-drawer:save-settings', (event, input: unknown) => {
+    const actorId = requireAuthenticatedAdmin(event);
 
-      const settings = saveCashDrawerSettings(input);
+    const payload = requireObjectInput(input, 'إعدادات درج الكاشير');
 
-      logAction({
-        actor_id: actorId,
-        action: 'cash_drawer_settings_saved',
-        entity: 'settings',
-        entity_id: null,
-        details: settings,
-      });
+    const autoOpenCashSale = optionalBooleanValue(
+      payload.auto_open_cash_sale,
+      'حالة الفتح التلقائي لدرج الكاشير',
+    );
 
-      return {
-        success: true,
-        settings,
-        message: 'تم حفظ إعدادات درج الكاشير',
-      };
-    },
-  );
+    if (autoOpenCashSale === undefined) {
+      throw new Error('حالة الفتح التلقائي لدرج الكاشير مطلوبة');
+    }
+
+    const settings = saveCashDrawerSettings({
+      printer_name:
+        optionalTrimmedString(
+          payload.printer_name,
+          'اسم طابعة درج الكاشير',
+          500,
+        ) ?? '',
+
+      auto_open_cash_sale: autoOpenCashSale,
+    });
+
+    logAction({
+      actor_id: actorId,
+      action: 'cash_drawer_settings_saved',
+      entity: 'settings',
+      entity_id: null,
+      details: settings,
+    });
+
+    return {
+      success: true,
+      settings,
+      message: 'تم حفظ إعدادات درج الكاشير',
+    };
+  });
 
   ipcMain.handle('cash-drawer:list-printers', async (event) => {
     requireAuthenticatedAdmin(event);

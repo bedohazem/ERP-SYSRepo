@@ -891,6 +891,42 @@ describe('domain IPC session scope', () => {
         offset: true,
       }),
     ).rejects.toThrow('بداية النتائج غير صحيح');
+
+    await expect(
+      invoke(event, 'inventory:list', {
+        status: 'not-a-status',
+      }),
+    ).rejects.toThrow('حالة المخزون غير صحيح');
+
+    await expect(
+      invoke(event, 'inventory:list-page', {
+        statuses: ['low', 'not-a-status'],
+      }),
+    ).rejects.toThrow('حالة المخزون غير صحيح');
+
+    await expect(
+      invoke(event, 'inventory:list-page', {
+        limit: 0,
+      }),
+    ).rejects.toThrow('عدد النتائج غير صحيح');
+
+    await expect(
+      invoke(event, 'inventory:list-page', {
+        offset: -1,
+      }),
+    ).rejects.toThrow('بداية النتائج غير صحيح');
+
+    await expect(
+      invoke(event, 'inventory:analytics', {
+        categoryId: -1,
+      }),
+    ).rejects.toThrow('رقم التصنيف غير صحيح');
+
+    await expect(
+      invoke(event, 'inventory:movements', {
+        variant_id: true,
+      }),
+    ).rejects.toThrow('رقم الصنف غير صحيح');
   });
 
   it('hides product cost from cashier sales reads but keeps it for admins', async () => {

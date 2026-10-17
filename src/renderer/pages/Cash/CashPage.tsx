@@ -326,7 +326,6 @@ export default function CashPage() {
         notes:
           notes.trim() ||
           (movementType === 'deposit' ? 'إيداع يدوي' : 'سحب يدوي'),
-        created_by: currentUser?.id ?? null,
       });
 
       setManualModalOpen(false);
@@ -388,7 +387,6 @@ export default function CashPage() {
         notes:
           transferNotes.trim() ||
           `تحويل من ${getPaymentMethodLabel(transferFromAccount)} إلى ${getPaymentMethodLabel(transferToAccount)}`,
-        created_by: currentUser?.id ?? null,
       });
       setTransferModalOpen(false);
       setTransferFromAccount('store_cash');
@@ -423,7 +421,6 @@ export default function CashPage() {
       const result = await window.api.cancelCashMovement({
         id: cancelMovementTarget.id,
         reason: cancelMovementReason.trim() || 'إلغاء حركة خزنة',
-        actor_id: currentUser?.id ?? null,
         admin_password: cancelMovementPassword,
       });
 
@@ -540,9 +537,6 @@ export default function CashPage() {
             }),
 
         notes: editMovementNotes.trim() || null,
-
-        actor_id: currentUser?.id ?? null,
-
         admin_password: editMovementPassword,
       });
 

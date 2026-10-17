@@ -192,7 +192,7 @@ declare global {
         message?: string;
       }>;
 
-      getUsers: (input?: { search?: string; actor_id?: number }) => Promise<{
+      getUsers: (input?: { search?: string }) => Promise<{
         success: boolean;
         message?: string;
         users: SystemUser[];
@@ -200,7 +200,6 @@ declare global {
 
       getUsersPage: (input?: {
         search?: string;
-        actor_id?: number;
         limit?: number;
         offset?: number;
       }) => Promise<{
@@ -262,7 +261,6 @@ declare global {
         username: string;
         password: string;
         role: 'admin' | 'cashier';
-        actor_id?: number;
       }) => Promise<MutationResult<SystemUser>>;
 
       updateSystemUser: (input: {
@@ -271,7 +269,6 @@ declare global {
         username: string;
         role: 'admin' | 'cashier';
         is_active: number;
-        actor_id?: number;
       }) => Promise<MutationResult<SystemUser>>;
 
       setUserActive: (
@@ -292,14 +289,12 @@ declare global {
       createCategory: (input: {
         name: string;
         description?: string | null;
-        actor_id?: number;
       }) => Promise<any>;
 
       updateCategory: (input: {
         id: number;
         name: string;
         description?: string | null;
-        actor_id?: number;
       }) => Promise<any>;
 
       toggleCategoryActive: (
@@ -350,7 +345,6 @@ declare global {
         discount_price?: number | null;
         min_stock: number;
         opening_qty?: number;
-        actor_id?: number;
       }) => Promise<{
         success: boolean;
         variantId?: number;
@@ -399,7 +393,6 @@ declare global {
       togglePromotion: (input: {
         id: number;
         is_active: number;
-        actor_id?: number;
       }) => Promise<any>;
 
       createSale: (input: any) => Promise<{
@@ -781,7 +774,6 @@ declare global {
         date_to?: string;
         limit?: number;
         offset?: number;
-        actor_id?: number | null;
       }) => Promise<{
         rows: Array<{
           id: number;
@@ -865,7 +857,6 @@ declare global {
         date_to?: string;
         limit?: number;
         offset?: number;
-        actor_id?: number | null;
       }) => Promise<{
         rows: Array<{
           id: number;
@@ -903,7 +894,6 @@ declare global {
       cancelSaleInvoice: (input: {
         sale_id: number;
         reason: string;
-        actor_id?: number | null;
         admin_username?: string;
         admin_password?: string;
       }) => Promise<{
@@ -918,7 +908,6 @@ declare global {
       cancelSaleReturn: (input: {
         return_id: number;
         reason: string;
-        actor_id?: number | null;
         admin_username?: string;
         admin_password?: string;
       }) => Promise<{
@@ -1106,8 +1095,6 @@ declare global {
 
         status?: 'all' | 'active' | 'cancelled';
 
-        actor_id?: number | null;
-
         limit?: number;
         offset?: number;
       }) => Promise<{
@@ -1233,7 +1220,6 @@ declare global {
       cancelSaleExchange: (input: {
         exchange_id: number;
         reason: string;
-        actor_id?: number | null;
         admin_username?: string;
         admin_password?: string;
       }) => Promise<{
@@ -1324,7 +1310,6 @@ declare global {
         customer_id: number;
         points: number;
         notes?: string | null;
-        actor_id?: number;
       }) => Promise<Customer>;
 
       recordCustomerPayment: (input: {
@@ -1333,7 +1318,6 @@ declare global {
         amount: number;
         payment_method?: string;
         notes?: string | null;
-        actor_id?: number;
       }) => Promise<{
         ok: boolean;
         customer_id: number;
@@ -1349,7 +1333,6 @@ declare global {
       cancelCustomerPayment: (input: {
         batch_id: number;
         reason: string;
-        actor_id?: number | null;
         admin_username?: string;
         admin_password?: string;
       }) => Promise<{
@@ -1372,7 +1355,6 @@ declare global {
         amount: number;
         payment_method?: string;
         notes?: string | null;
-        actor_id?: number | null;
         admin_username?: string;
         admin_password?: string;
       }) => Promise<{
@@ -1476,7 +1458,7 @@ declare global {
       //==========================
       //Backups
       //==========================
-      backupDatabase: (input?: { actor_id?: number }) => Promise<{
+      backupDatabase: () => Promise<{
         success: boolean;
         canceled?: boolean;
         path?: string;
@@ -1488,7 +1470,7 @@ declare global {
         };
       }>;
 
-      restoreDatabase: (input?: { actor_id?: number }) => Promise<{
+      restoreDatabase: () => Promise<{
         success: boolean;
         canceled?: boolean;
         path?: string;
@@ -1503,7 +1485,7 @@ declare global {
         };
       }>;
 
-      resetDatabase: (input?: { actor_id?: number }) => Promise<{
+      resetDatabase: () => Promise<{
         success: boolean;
         canceled?: boolean;
         message?: string;
@@ -1533,7 +1515,7 @@ declare global {
         }>;
       }>;
 
-      chooseAutoBackupDir: (input?: { actor_id?: number }) => Promise<{
+      chooseAutoBackupDir: () => Promise<{
         success: boolean;
         canceled?: boolean;
         message?: string;
@@ -1556,7 +1538,7 @@ declare global {
         };
       }>;
 
-      runAutoBackupNow: (input?: { actor_id?: number }) => Promise<{
+      runAutoBackupNow: () => Promise<{
         success: boolean;
         skipped?: boolean;
         reason?: 'startup' | 'hourly' | 'shutdown' | 'manual';
@@ -1842,7 +1824,6 @@ declare global {
         variant_id: number;
         target_stock: number;
         notes?: string | null;
-        actor_id?: number;
       }) => Promise<{
         success: boolean;
         variant_id: number;
@@ -1888,7 +1869,6 @@ declare global {
         title: string;
         notes?: string | null;
         categoryId?: number | string | null;
-        actor_id?: number;
       }) => Promise<any>;
 
       updateStockCountItem: (input: {
@@ -1904,15 +1884,9 @@ declare global {
         quantity?: number;
       }) => Promise<any>;
 
-      approveStockCountSession: (input: {
-        session_id: number;
-        actor_id?: number;
-      }) => Promise<any>;
+      approveStockCountSession: (input: { session_id: number }) => Promise<any>;
 
-      cancelStockCountSession: (input: {
-        session_id: number;
-        actor_id?: number;
-      }) => Promise<any>;
+      cancelStockCountSession: (input: { session_id: number }) => Promise<any>;
 
       savePdfFromHtml: (input: {
         html: string;
@@ -1974,7 +1948,6 @@ declare global {
       saveCashDrawerSettings: (input: {
         printer_name?: string | null;
         auto_open_cash_sale?: boolean;
-        actor_id?: number;
       }) => Promise<{
         success: boolean;
         message?: string;
@@ -2049,7 +2022,6 @@ declare global {
       }>;
 
       openCashDrawer: (input?: {
-        actor_id?: number;
         reason?: 'manual' | 'sale' | 'test' | string;
         sale_id?: number | null;
       }) => Promise<{
@@ -2127,7 +2099,6 @@ declare global {
         email?: string | null;
         address?: string | null;
         notes?: string | null;
-        actor_id?: number;
         credit_days?: number | null;
       }) => Promise<any>;
 
@@ -2138,7 +2109,6 @@ declare global {
         email?: string | null;
         address?: string | null;
         notes?: string | null;
-        actor_id?: number;
         credit_days?: number | null;
       }) => Promise<any>;
 
@@ -2156,7 +2126,6 @@ declare global {
         paid_amount?: number;
         payment_method?: string;
         notes?: string | null;
-        actor_id?: number;
         items: Array<{
           variant_id: number;
           quantity: number;
@@ -2363,7 +2332,6 @@ declare global {
       cancelPurchaseInvoice: (input: {
         purchase_id: number;
         reason?: string;
-        actor_id?: number;
         admin_password: string;
       }) => Promise<{
         ok: boolean;
@@ -2379,7 +2347,6 @@ declare global {
       createPurchaseReturn: (input: {
         purchase_id: number;
         notes?: string | null;
-        actor_id?: number;
         refund_payment_method?: string | null;
         refund_mode?: 'cash' | 'credit' | string;
         items: Array<{
@@ -2477,7 +2444,6 @@ declare global {
         amount: number;
         payment_method?: string;
         notes?: string | null;
-        actor_id?: number | null;
       }) => Promise<{
         ok: boolean;
         supplier_id: number;
@@ -2493,7 +2459,6 @@ declare global {
       cancelSupplierPayment: (input: {
         batch_id: number;
         reason: string;
-        actor_id?: number | null;
         admin_password?: string;
       }) => Promise<{
         success: boolean;
@@ -2515,7 +2480,6 @@ declare global {
         amount: number;
         payment_method?: string;
         notes?: string | null;
-        actor_id?: number | null;
         admin_password?: string;
       }) => Promise<{
         success: boolean;
@@ -2928,8 +2892,6 @@ declare global {
 
         notes?: string | null;
 
-        actor_id?: number | null;
-
         admin_password: string;
       }) => Promise<{
         success: boolean;
@@ -2957,7 +2919,6 @@ declare global {
       cancelCashMovement: (input: {
         id: number;
         reason?: string | null;
-        actor_id?: number | null;
         admin_password: string;
       }) => Promise<{
         success: boolean;
@@ -2995,7 +2956,6 @@ declare global {
         amount: number;
         payment_method?: string;
         notes?: string | null;
-        actor_id?: number | null;
         admin_password?: string;
       }) => Promise<{
         success: boolean;
@@ -3011,7 +2971,6 @@ declare global {
       cancelExpense: (input: {
         id: number;
         reason?: string | null;
-        actor_id?: number | null;
         admin_password?: string;
       }) => Promise<{
         success: boolean;
@@ -3060,10 +3019,7 @@ declare global {
         };
       }>;
 
-      saveAppLogoUrl: (
-        url: string,
-        input?: { actor_id?: number },
-      ) => Promise<{
+      saveAppLogoUrl: (url: string) => Promise<{
         success: boolean;
         status: {
           activated: boolean;
@@ -3081,7 +3037,7 @@ declare global {
         };
       }>;
 
-      chooseAppLogo: (input?: { actor_id?: number }) => Promise<{
+      chooseAppLogo: () => Promise<{
         success: boolean;
         canceled?: boolean;
         logoUrl?: string;
@@ -3121,10 +3077,7 @@ declare global {
         };
       }>;
 
-      saveAppName: (
-        name: string,
-        input?: { actor_id?: number },
-      ) => Promise<{
+      saveAppName: (name: string) => Promise<{
         success: boolean;
         status: {
           activated: boolean;
@@ -3142,10 +3095,7 @@ declare global {
         };
       }>;
 
-      saveAppTheme: (
-        theme: 'dark' | 'light',
-        input?: { actor_id?: number },
-      ) => Promise<{
+      saveAppTheme: (theme: 'dark' | 'light') => Promise<{
         success: boolean;
         message?: string;
         status: {
@@ -3164,17 +3114,12 @@ declare global {
         };
       }>;
 
-      saveStoreContactInfo: (
-        phone: string,
-        address: string,
-        input: any,
-      ) => Promise<any>;
+      saveStoreContactInfo: (phone: string, address: string) => Promise<any>;
 
       saveStoreQrSettings: (input: {
         store_qr_enabled: boolean;
         store_qr_title?: string;
         store_qr_primary_url?: string;
-        actor_id?: number;
       }) => Promise<{
         success: boolean;
         message?: string;
@@ -3228,7 +3173,6 @@ declare global {
         total_amount: number;
         due_date?: string | null;
         notes?: string | null;
-        actor_id?: number | null;
         admin_password: string;
       }) => Promise<{
         success: boolean;
@@ -3248,7 +3192,6 @@ declare global {
         amount: number;
         payment_method?: string;
         notes?: string | null;
-        actor_id?: number | null;
         admin_password: string;
       }) => Promise<{
         success: boolean;
@@ -3279,7 +3222,6 @@ declare global {
       cancelLiabilityPayment: (input: {
         payment_id: number;
         reason?: string | null;
-        actor_id?: number | null;
         admin_password: string;
       }) => Promise<{
         success: boolean;

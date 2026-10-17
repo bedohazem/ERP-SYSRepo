@@ -426,9 +426,7 @@ export default function AppShell({
     applyTheme(theme);
 
     try {
-      const result = await window.api.saveAppTheme(theme, {
-        actor_id: user?.id,
-      });
+      const result = await window.api.saveAppTheme(theme);
 
       if (result?.success === false) {
         return;

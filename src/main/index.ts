@@ -39,14 +39,17 @@ import {
   markSystemClockChangedByWindows,
   markSystemSuspended,
 } from './database/system-clock-guard';
+import { isE2eSmokeAllowed } from './test-runtime';
 
 let mainWindow: BrowserWindow | null = null;
 let hourlyBackupTimer: NodeJS.Timeout | null = null;
 let shutdownBackupDone = false;
 
-const e2eSmokeEnabled = process.env.ERP_E2E_SMOKE === '1';
+const e2eSmokeEnabled = isE2eSmokeAllowed(app.isPackaged);
 
-const e2eUserDataDir = String(process.env.ERP_E2E_USER_DATA_DIR || '').trim();
+const e2eUserDataDir = e2eSmokeEnabled
+  ? String(process.env.ERP_E2E_USER_DATA_DIR || '').trim()
+  : '';
 
 if (e2eSmokeEnabled && e2eUserDataDir) {
   /*

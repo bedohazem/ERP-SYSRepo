@@ -42,7 +42,29 @@ function escapeHtml(value: unknown) {
 }
 
 function csvCell(value: unknown) {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`;
+  let text = String(value ?? '');
+
+  /*
+   * بعض الأرقام المالية تصل هنا
+   * كنص بعد numberValue()، مثل -25.
+   *
+   * الرقم السالب البسيط آمن ويجب
+   * أن يظل رقمًا في Excel.
+   *
+   * أما النصوص التي تبدأ بـ
+   * = + - @ فتحمى من Formula Injection.
+   */
+  const isSafeNegativeNumber = /^-\d+(?:\.\d+)?$/.test(text);
+
+  if (
+    typeof value === 'string' &&
+    /^[=+\-@]/.test(text) &&
+    !isSafeNegativeNumber
+  ) {
+    text = `'${text}`;
+  }
+
+  return `"${text.replace(/"/g, '""')}"`;
 }
 
 function buildSections(data: ReportsExportData): ExportSection[] {

@@ -118,6 +118,8 @@ type ReportsSummaryTestResult = {
     final_net_profit: number;
     approved_opening_surplus: number;
     approved_opening_shortage: number;
+    exchange_count: number;
+    exchange_adjustment: number;
   };
   cashAccounts: Array<{
     payment_method: string;
@@ -1728,6 +1730,14 @@ describe('reports repository', () => {
       sellPrice: 100,
     });
 
+    const exchangeVariant = seedReportProduct({
+      name: 'Shift Date Exchange Target',
+      barcode: 'SHIFT-DATE-EXCHANGE',
+      openingQty: 10,
+      buyPrice: 60,
+      sellPrice: 130,
+    });
+
     const sale = createSale({
       user_id: 1,
 
@@ -1812,6 +1822,52 @@ describe('reports repository', () => {
       ],
     });
 
+    const exchangeState = getSaleExchangeState(sale.saleId);
+
+    const regularGroup = exchangeState.groups.find(
+      (group: any) =>
+        group.group_kind === 'regular' &&
+        group.units.some((unit: any) => Number(unit.is_returned || 0) === 0),
+    );
+
+    expect(regularGroup).toBeTruthy();
+
+    const exchangeUnit = regularGroup!.units.find(
+      (unit: any) => Number(unit.is_returned || 0) === 0,
+    );
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          promotion_unit_id: Number(exchangeUnit.id),
+          new_variant_id: exchangeVariant.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.shift_id).toBe(shift.id);
+
+    const manualMovement = createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 25,
+
+      payment_method: 'owner_cash',
+
+      reference_id: null,
+      reference_type: 'manual',
+
+      notes: 'Shift date manual movement',
+
+      created_by: 1,
+      shift_id: shift.id,
+    });
+
     createExpense({
       title: 'Shift date expense',
 
@@ -1825,6 +1881,29 @@ describe('reports repository', () => {
     const supplier = createSupplier({
       name: 'Shift Date Supplier',
     }) as any;
+
+    db.prepare(
+      `
+      UPDATE sale_exchanges
+
+      SET
+        business_date = '',
+        created_at = '2020-01-16 00:40:00'
+
+      WHERE id = ?
+      `,
+    ).run(exchange.exchangeId);
+
+    db.prepare(
+      `
+      UPDATE cash_movements
+
+      SET
+        created_at = '2020-01-16 00:50:00'
+
+      WHERE id = ?
+      `,
+    ).run(Number(manualMovement.lastInsertRowid));
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplier.id,
@@ -1896,10 +1975,14 @@ describe('reports repository', () => {
 
       date_to: shiftDate.day,
     }) as ReportsSummaryTestResult;
+    expect(report.summary.exchange_count).toBe(1);
 
+    expect(report.summary.exchange_adjustment).toBe(30);
+
+    expect(report.summary.total_manual_deposits).toBe(25);
     expect(report.summary.sales_count).toBe(1);
 
-    expect(report.summary.gross_sales).toBe(200);
+    expect(report.summary.gross_sales).toBe(230);
 
     expect(report.summary.returns_count).toBe(1);
 
@@ -1927,7 +2010,9 @@ describe('reports repository', () => {
             IN (
               'sale',
               'sale_return',
-              'expense'
+              'sale_exchange',
+              'expense',
+              'manual'
             )
         `,
       )

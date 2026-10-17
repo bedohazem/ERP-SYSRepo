@@ -125,4 +125,40 @@ describe('report export builders', () => {
 
     expect(html).toContain('منتج &quot;اختبار&quot;, خاص');
   });
+
+  it('neutralizes spreadsheet formulas in text cells without changing numeric negatives', () => {
+    const riskyData = {
+      ...data,
+
+      topProducts: [
+        {
+          ...data.topProducts[0],
+
+          product_name: '=HYPERLINK("https://example.com")',
+
+          net_total: -25,
+        },
+      ],
+
+      topCustomers: [
+        {
+          ...data.topCustomers[0],
+
+          name: '@SUM(1+1)',
+        },
+      ],
+    };
+
+    const csv = buildReportsCsv(riskyData, 'اختبار');
+
+    expect(csv).toContain(`"'=HYPERLINK(""https://example.com"")"`);
+
+    expect(csv).toContain(`"'@SUM(1+1)"`);
+
+    expect(csv).not.toContain(`"=HYPERLINK(`);
+
+    expect(csv).not.toContain(`"@SUM(`);
+
+    expect(csv).toContain('"-25"');
+  });
 });

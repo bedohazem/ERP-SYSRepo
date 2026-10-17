@@ -546,7 +546,6 @@ export default function CustomersPage() {
         customer_id: selectedCustomer.customer.id,
         points,
         notes: pointsNotes.trim() || null,
-        actor_id: currentUser?.id,
       });
 
       await openHistory(selectedCustomer.customer.id);
@@ -601,7 +600,6 @@ export default function CustomersPage() {
         amount,
         payment_method: paymentMethod,
         notes: paymentNotes.trim() || null,
-        actor_id: currentUser?.id,
       });
 
       setMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`);
@@ -756,9 +754,6 @@ export default function CustomersPage() {
               payment_method: paymentActionMethod,
 
               notes: paymentActionNotes.trim() || null,
-
-              actor_id: currentUser?.id,
-
               admin_username:
                 paymentActionRequirePassword && !isAdmin
                   ? paymentActionAdminUsername
@@ -772,9 +767,6 @@ export default function CustomersPage() {
               batch_id: batchId,
 
               reason: paymentActionReason.trim(),
-
-              actor_id: currentUser?.id,
-
               admin_username:
                 paymentActionRequirePassword && !isAdmin
                   ? paymentActionAdminUsername

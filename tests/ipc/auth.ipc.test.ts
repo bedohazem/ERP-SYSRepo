@@ -470,13 +470,7 @@ describe('auth IPC authorization', () => {
         resetUserPassword(user.id, '9012');
       }
 
-      expect(
-        (
-          await invoke(event, 'users:list', {
-            actor_id: user.id,
-          })
-        ).success,
-      ).toBe(false);
+      expect((await invoke(event, 'users:list', {})).success).toBe(false);
     },
   );
 

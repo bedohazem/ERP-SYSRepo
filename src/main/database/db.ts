@@ -3,6 +3,8 @@ import path from 'node:path';
 import { app } from 'electron';
 import { hashPassword } from '../security/password';
 import { runDatabaseMigrations } from './migrations/migrations';
+import { isTestAdminSeedAllowed } from '../test-runtime';
+
 let db: Database.Database;
 
 export function getDbPath(): string {
@@ -3172,6 +3174,11 @@ function seedTestAdminUser(database: Database.Database): void {
    * Production لا يحتوي
    * على أي Default Admin.
    */
+
+  if (!isTestAdminSeedAllowed(app.isPackaged)) {
+    return;
+  }
+
   const testPassword = String(process.env.ERP_TEST_ADMIN_PASSWORD || '');
 
   if (!testPassword) {

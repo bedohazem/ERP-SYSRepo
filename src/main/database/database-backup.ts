@@ -2,8 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { closeDb, getDb, getDbPath } from './db';
-
+import { runDatabaseMaintenanceExclusive } from './database-maintenance-lock';
 import { validateErpDatabaseFile } from './backup-integrity';
+
+const RESTORE_SAFETY_BACKUPS_TO_KEEP = 5;
 
 function removeIfExists(filePath: string) {
   try {
@@ -17,7 +19,79 @@ function removeIfExists(filePath: string) {
   }
 }
 
-export async function createVerifiedDatabaseBackup(destinationPath: string) {
+export function cleanupRestoreSafetyBackups(
+  targetPath = getDbPath(),
+  keep = RESTORE_SAFETY_BACKUPS_TO_KEEP,
+) {
+  const dir = path.dirname(targetPath);
+
+  const prefix = `${path.basename(targetPath)}.before-restore-`;
+
+  if (!fs.existsSync(dir)) {
+    return {
+      kept: 0,
+      deleted: 0,
+    };
+  }
+
+  const files = fs
+    .readdirSync(dir)
+    .filter((file) => file.startsWith(prefix) && file.endsWith('.bak'))
+    .map((file) => {
+      const fullPath = path.join(dir, file);
+
+      try {
+        const stat = fs.statSync(fullPath);
+
+        if (!stat.isFile()) {
+          return null;
+        }
+
+        return {
+          fullPath,
+          time: stat.mtimeMs,
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(
+      (
+        item,
+      ): item is {
+        fullPath: string;
+        time: number;
+      } => Boolean(item),
+    )
+    .sort((a, b) => b.time - a.time);
+
+  const keepCount = Math.max(1, Math.floor(keep));
+
+  let deleted = 0;
+
+  for (const file of files.slice(keepCount)) {
+    try {
+      fs.rmSync(file.fullPath, {
+        force: true,
+      });
+
+      deleted += 1;
+    } catch (error) {
+      console.error(
+        'Failed to remove old restore safety backup:',
+        file.fullPath,
+        error,
+      );
+    }
+  }
+
+  return {
+    kept: files.length - deleted,
+    deleted,
+  };
+}
+
+async function createVerifiedDatabaseBackupUnlocked(destinationPath: string) {
   const cleanPath = String(destinationPath || '').trim();
 
   if (!cleanPath) {
@@ -57,7 +131,13 @@ export async function createVerifiedDatabaseBackup(destinationPath: string) {
   }
 }
 
-export async function restoreVerifiedDatabase(sourcePathInput: string) {
+export function createVerifiedDatabaseBackup(destinationPath: string) {
+  return runDatabaseMaintenanceExclusive(() =>
+    createVerifiedDatabaseBackupUnlocked(destinationPath),
+  );
+}
+
+async function restoreVerifiedDatabaseUnlocked(sourcePathInput: string) {
   const sourcePath = String(sourcePathInput || '').trim();
 
   /*
@@ -105,7 +185,7 @@ export async function restoreVerifiedDatabase(sourcePathInput: string) {
      * وليس copyFile على DB مفتوحة.
      */
     if (fs.existsSync(targetPath)) {
-      await createVerifiedDatabaseBackup(safetyBackupPath);
+      await createVerifiedDatabaseBackupUnlocked(safetyBackupPath);
 
       safetyBackupCreated = true;
     }
@@ -206,5 +286,15 @@ export async function restoreVerifiedDatabase(sourcePathInput: string) {
     throw restoreError;
   } finally {
     removeIfExists(stagingPath);
+
+    if (safetyBackupCreated) {
+      cleanupRestoreSafetyBackups(targetPath);
+    }
   }
+}
+
+export function restoreVerifiedDatabase(sourcePathInput: string) {
+  return runDatabaseMaintenanceExclusive(() =>
+    restoreVerifiedDatabaseUnlocked(sourcePathInput),
+  );
 }

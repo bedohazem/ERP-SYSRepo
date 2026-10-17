@@ -139,17 +139,18 @@ contextBridge.exposeInMainWorld('api', {
   saveLoyaltySettings: (input) =>
     ipcRenderer.invoke('settings:save-loyalty', input),
 
-  backupDatabase: (input) =>
-    ipcRenderer.invoke('settings:backup-database', input),
-  restoreDatabase: (input) =>
-    ipcRenderer.invoke('settings:restore-database', input),
-  resetDatabase: (input) =>
-    ipcRenderer.invoke('settings:reset-database', input),
+  backupDatabase: () => ipcRenderer.invoke('settings:backup-database'),
+
+  restoreDatabase: () => ipcRenderer.invoke('settings:restore-database'),
+
+  resetDatabase: () => ipcRenderer.invoke('settings:reset-database'),
+
   getAutoBackupInfo: () => ipcRenderer.invoke('settings:get-auto-backup-info'),
-  chooseAutoBackupDir: (input) =>
-    ipcRenderer.invoke('settings:choose-auto-backup-dir', input),
-  runAutoBackupNow: (input) =>
-    ipcRenderer.invoke('settings:run-auto-backup-now', input),
+
+  chooseAutoBackupDir: () =>
+    ipcRenderer.invoke('settings:choose-auto-backup-dir'),
+
+  runAutoBackupNow: () => ipcRenderer.invoke('settings:run-auto-backup-now'),
 
   getReportsSummary: (input) => ipcRenderer.invoke('reports:summary', input),
 
@@ -292,23 +293,21 @@ contextBridge.exposeInMainWorld('api', {
   getLicenseStatus: () => ipcRenderer.invoke('settings:get-license-status'),
   activateApp: (code) => ipcRenderer.invoke('settings:activate-app', code),
   deactivateApp: () => ipcRenderer.invoke('settings:deactivate-app'),
-  saveAppLogoUrl: (url, input) =>
-    ipcRenderer.invoke('settings:save-app-logo-url', url, input),
-  chooseAppLogo: (input) =>
-    ipcRenderer.invoke('settings:choose-app-logo', input),
-  saveAppName: (name, input) =>
-    ipcRenderer.invoke('settings:save-app-name', name, input),
-  saveStoreContactInfo: (phone, address, input) =>
-    ipcRenderer.invoke(
-      'settings:save-store-contact-info',
-      phone,
-      address,
-      input,
-    ),
+
+  saveAppLogoUrl: (url) =>
+    ipcRenderer.invoke('settings:save-app-logo-url', url),
+
+  chooseAppLogo: () => ipcRenderer.invoke('settings:choose-app-logo'),
+
+  saveAppName: (name) => ipcRenderer.invoke('settings:save-app-name', name),
+
+  saveStoreContactInfo: (phone, address) =>
+    ipcRenderer.invoke('settings:save-store-contact-info', phone, address),
+
   saveStoreQrSettings: (input) =>
     ipcRenderer.invoke('settings:save-store-qr-settings', input),
-  saveAppTheme: (theme, input) =>
-    ipcRenderer.invoke('settings:save-app-theme', theme, input),
+
+  saveAppTheme: (theme) => ipcRenderer.invoke('settings:save-app-theme', theme),
 
   getLiabilities: (input) => ipcRenderer.invoke('liabilities:list', input),
 

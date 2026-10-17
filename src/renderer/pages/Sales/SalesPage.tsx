@@ -15,6 +15,10 @@ import {
 } from '../../utils/payment-method';
 import { printSaleReceiptHtml } from '../../utils/receiptPrint';
 import { roundMoney } from '../../../shared/money';
+import {
+  getUserScopedDraftKey,
+  SALES_DRAFT_STORAGE_BASE,
+} from '../../utils/draft-storage';
 
 type SaleVariant = {
   variant_id: number;
@@ -403,8 +407,6 @@ const defaultLoyaltySettings: LoyaltySettings = {
   loyalty_min_redeem_points: 2,
 };
 
-const SALES_DRAFT_STORAGE_KEY = 'fony_sales_invoice_draft_v1';
-
 const createInvoice = (id: number): InvoiceTab => ({
   id,
   title: `فاتورة ${id}`,
@@ -616,6 +618,10 @@ function getEditablePaymentMethod(value?: string | null) {
 
 export default function SalesPage() {
   const user = useAuthStore((s) => s.user);
+  const salesDraftStorageKey = getUserScopedDraftKey(
+    SALES_DRAFT_STORAGE_BASE,
+    user?.id,
+  );
   const navigate = useNavigate();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -631,6 +637,17 @@ export default function SalesPage() {
   const [editAdminPassword, setEditAdminPassword] = useState('');
   const [editAdminUsername, setEditAdminUsername] = useState('');
   const [receiptWasEdit, setReceiptWasEdit] = useState(false);
+
+  function clearSalesDraftStorage() {
+    /*
+     * نمسح Legacy global key دائمًا.
+     */
+    localStorage.removeItem(SALES_DRAFT_STORAGE_BASE);
+
+    if (salesDraftStorageKey) {
+      localStorage.removeItem(salesDraftStorageKey);
+    }
+  }
 
   function clearInvoiceEditState() {
     setEditingSaleId(null);
@@ -962,7 +979,7 @@ export default function SalesPage() {
           notesDraft: String(receipt.sale?.notes || ''),
         };
 
-        localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
+        clearSalesDraftStorage();
 
         setInvoices([editInvoice]);
 
@@ -2248,7 +2265,6 @@ export default function SalesPage() {
 
     try {
       const result = await window.api.openCashDrawer({
-        actor_id: user?.id,
         reason,
         sale_id: saleId,
       });
@@ -2446,9 +2462,6 @@ export default function SalesPage() {
             ...salePayload,
 
             sale_id: editingSaleId,
-
-            actor_id: user.id,
-
             reason: editReason.trim(),
             credit_limit_override_requested: creditOverrideRequested
               ? true
@@ -2571,7 +2584,7 @@ export default function SalesPage() {
           notesDraft: '',
         });
 
-        localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
+        clearSalesDraftStorage();
       } else {
         const remainingInvoices = invoices.filter(
           (invoice) => invoice.id !== activeInvoiceId,
@@ -2594,7 +2607,7 @@ export default function SalesPage() {
 
         setSplitPaymentDrafts({});
 
-        localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
+        clearSalesDraftStorage();
       }
 
       const licenseData = await window.api.getLicenseStatus();
@@ -2862,14 +2875,25 @@ export default function SalesPage() {
 
   useEffect(() => {
     if (requestedEditSaleId > 0) {
-      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
+      clearSalesDraftStorage();
 
       setSalesDraftHydrated(true);
 
       return;
     }
     try {
-      const raw = localStorage.getItem(SALES_DRAFT_STORAGE_KEY);
+      /*
+       * Global draft القديم ممنوع
+       * ينتقل بين المستخدمين.
+       */
+      localStorage.removeItem(SALES_DRAFT_STORAGE_BASE);
+
+      if (!salesDraftStorageKey) {
+        setSalesDraftHydrated(true);
+        return;
+      }
+
+      const raw = localStorage.getItem(salesDraftStorageKey);
 
       if (!raw) {
         setSalesDraftHydrated(true);
@@ -2906,17 +2930,17 @@ export default function SalesPage() {
       }
     } catch (error) {
       console.error('Failed to restore sales draft:', error);
-      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
+      clearSalesDraftStorage();
     } finally {
       setSalesDraftHydrated(true);
     }
-  }, [requestedEditSaleId]);
+  }, [requestedEditSaleId, salesDraftStorageKey]);
 
   useEffect(() => {
     if (!salesDraftHydrated) return;
 
     if (editingSaleId) {
-      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
+      clearSalesDraftStorage();
 
       return;
     }
@@ -2932,12 +2956,16 @@ export default function SalesPage() {
       );
 
     if (!hasDraft) {
-      localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
+      clearSalesDraftStorage();
+      return;
+    }
+
+    if (!salesDraftStorageKey) {
       return;
     }
 
     localStorage.setItem(
-      SALES_DRAFT_STORAGE_KEY,
+      salesDraftStorageKey,
       JSON.stringify({
         version: 2,
         invoices: invoices.map(serializeInvoiceDraft),
@@ -2954,6 +2982,7 @@ export default function SalesPage() {
     nextInvoiceId,
     barcodeMode,
     editingSaleId,
+    salesDraftStorageKey,
   ]);
 
   useEffect(() => {
@@ -3366,7 +3395,7 @@ export default function SalesPage() {
 
               clearInvoiceEditState();
 
-              localStorage.removeItem(SALES_DRAFT_STORAGE_KEY);
+              clearSalesDraftStorage();
 
               navigate('/invoices');
             }}

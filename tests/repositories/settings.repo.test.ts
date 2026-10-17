@@ -309,4 +309,34 @@ describe('settings repository', () => {
       }),
     ).toThrow();
   });
+
+  it('sanitizes invalid legacy barcode enum settings on read', () => {
+    const db = getDb();
+
+    const write = db.prepare(`
+    INSERT INTO app_settings (
+      key,
+      value
+    )
+
+    VALUES (?, ?)
+
+    ON CONFLICT(key)
+    DO UPDATE SET
+      value = excluded.value
+  `);
+
+    write.run('barcode_name_position', 'sideways');
+    write.run('barcode_name_align', 'middle');
+    write.run('barcode_price_position', 'invalid-position');
+    write.run('barcode_price_align', 'stretch');
+
+    const settings = getBarcodePrintSettings();
+
+    expect(settings.barcode_name_position).toBe('top');
+    expect(settings.barcode_name_align).toBe('center');
+
+    expect(settings.barcode_price_position).toBe('bottom');
+    expect(settings.barcode_price_align).toBe('center');
+  });
 });

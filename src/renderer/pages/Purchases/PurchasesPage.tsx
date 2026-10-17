@@ -6,8 +6,10 @@ import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PurchaseOrdersPanel from './PurchaseOrdersPanel';
 import { formatMoney, roundMoney } from '../../../shared/money';
-
-const PURCHASE_DRAFT_KEY = 'fony_purchase_invoice_draft_v1';
+import {
+  getUserScopedDraftKey,
+  PURCHASE_DRAFT_STORAGE_BASE,
+} from '../../utils/draft-storage';
 
 type Supplier = {
   id: number;
@@ -60,6 +62,18 @@ function generateBarcodeValue() {
 
 export default function PurchasesPage() {
   const currentUser = useAuthStore((s) => s.user);
+  const purchaseDraftStorageKey = getUserScopedDraftKey(
+    PURCHASE_DRAFT_STORAGE_BASE,
+    currentUser?.id,
+  );
+
+  function clearPurchaseDraftStorage() {
+    localStorage.removeItem(PURCHASE_DRAFT_STORAGE_BASE);
+
+    if (purchaseDraftStorageKey) {
+      localStorage.removeItem(purchaseDraftStorageKey);
+    }
+  }
   const navigate = useNavigate();
   const isAdmin = currentUser?.role === 'admin';
 
@@ -184,7 +198,19 @@ export default function PurchasesPage() {
       return;
     }
 
-    const rawDraft = localStorage.getItem(PURCHASE_DRAFT_KEY);
+    /*
+     * الـDraft القديم كان Global.
+     * نمسحه حتى لا ينتقل
+     * من مستخدم لمستخدم آخر.
+     */
+    localStorage.removeItem(PURCHASE_DRAFT_STORAGE_BASE);
+
+    if (!purchaseDraftStorageKey) {
+      setDraftHydrated(true);
+      return;
+    }
+
+    const rawDraft = localStorage.getItem(purchaseDraftStorageKey);
 
     if (!rawDraft) {
       setDraftHydrated(true);
@@ -241,15 +267,21 @@ export default function PurchasesPage() {
       }
     } catch (error) {
       console.error('Failed to load purchase draft:', error);
-      localStorage.removeItem(PURCHASE_DRAFT_KEY);
+
+      localStorage.removeItem(purchaseDraftStorageKey);
     } finally {
       setDraftHydrated(true);
     }
-  }, [isEditing]);
+  }, [isEditing, purchaseDraftStorageKey]);
 
   useEffect(() => {
     if (!draftHydrated) return;
+
     if (isEditing) return;
+
+    if (!purchaseDraftStorageKey) {
+      return;
+    }
 
     const hasDraftData = Boolean(
       supplierId ||
@@ -264,12 +296,13 @@ export default function PurchasesPage() {
     );
 
     if (!hasDraftData) {
-      localStorage.removeItem(PURCHASE_DRAFT_KEY);
+      localStorage.removeItem(purchaseDraftStorageKey);
+
       return;
     }
 
     localStorage.setItem(
-      PURCHASE_DRAFT_KEY,
+      purchaseDraftStorageKey,
       JSON.stringify({
         supplierId,
         supplierSearch,
@@ -294,6 +327,7 @@ export default function PurchasesPage() {
     discountType,
     discountDraft,
     isEditing,
+    purchaseDraftStorageKey,
   ]);
 
   useEffect(() => {
@@ -669,14 +703,12 @@ export default function PurchasesPage() {
 
               // مهم: فاتورة الشراء هي اللي هتزود المخزون
               opening_qty: 0,
-              actor_id: currentUser?.id,
             })
           : await window.api.createProduct({
               name,
               category_id: null,
               image_path: null,
               description: null,
-              actor_id: currentUser?.id,
               variants: [
                 {
                   barcode,
@@ -857,8 +889,6 @@ export default function PurchasesPage() {
           })
         : await window.api.createPurchaseInvoice({
             ...purchaseInput,
-
-            actor_id: currentUser?.id,
           });
 
       if (isEditing) {
@@ -875,7 +905,7 @@ export default function PurchasesPage() {
           : 'تم حفظ فاتورة الشراء مدفوعة بالكامل',
       );
 
-      localStorage.removeItem(PURCHASE_DRAFT_KEY);
+      clearPurchaseDraftStorage();
 
       setSupplierId('');
       setSupplierSearch('');

@@ -342,7 +342,6 @@ export default function PurchaseHistoryPage() {
         amount,
         payment_method: paymentMethod,
         notes: paymentNotes.trim() || null,
-        actor_id: currentUser?.id,
       });
 
       showMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`);
@@ -395,7 +394,6 @@ export default function PurchaseHistoryPage() {
       const result = await window.api.cancelPurchaseInvoice({
         purchase_id: cancelPurchaseTarget.id,
         reason: cancelReason.trim() || 'إلغاء فاتورة شراء',
-        actor_id: currentUser?.id,
         admin_password: cancelAdminPassword,
       });
 
@@ -558,8 +556,6 @@ export default function PurchaseHistoryPage() {
           })
         : await window.api.createPurchaseReturn({
             ...returnInput,
-
-            actor_id: currentUser?.id,
           });
 
       showMessage(

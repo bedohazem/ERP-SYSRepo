@@ -460,6 +460,18 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
    * صنف خرج باستبدال -
    * صنف دخل مكانه +
    */
+  /*
+   * Inventory analytics intentionally uses
+   * the real operation timestamp (created_at),
+   * not the accounting Business Date.
+   *
+   * "Last 30 days", "last sale" and
+   * "dead stock after 90 days" measure
+   * real elapsed operational time.
+   *
+   * Financial reports use Business Date;
+   * inventory recency does not.
+   */
   const activitySql = `
     SELECT
       si.variant_id,

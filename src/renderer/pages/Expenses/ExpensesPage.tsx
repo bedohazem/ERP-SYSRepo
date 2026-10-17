@@ -145,7 +145,6 @@ export default function ExpensesPage() {
         amount: parsedAmount,
         payment_method: paymentMethod,
         notes: notes.trim() || null,
-        created_by: currentUser?.id ?? null,
       });
 
       setTitle('');
@@ -180,7 +179,6 @@ export default function ExpensesPage() {
         reason:
           cancelExpenseReason.trim() ||
           `إلغاء مصروف: ${cancelExpenseTarget.title}`,
-        actor_id: currentUser?.id ?? null,
         admin_password: isAdmin ? cancelExpensePassword : undefined,
       });
 
@@ -283,9 +281,6 @@ export default function ExpensesPage() {
         payment_method: editExpensePaymentMethod,
 
         notes: editExpenseNotes.trim() || null,
-
-        actor_id: currentUser?.id ?? null,
-
         admin_password: isAdmin ? editExpensePassword : undefined,
       });
 

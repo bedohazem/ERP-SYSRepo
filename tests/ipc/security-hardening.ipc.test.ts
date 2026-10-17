@@ -430,6 +430,70 @@ describe('IPC security hardening', () => {
     );
   });
 
+  it('rejects malformed cash drawer settings branding and print payloads', async () => {
+    const admin = findUserByUsername('admin')!;
+
+    const { event } = makeClient();
+
+    startAuthSession(event, admin.id);
+
+    await expect(
+      invoke(event, 'cash-drawer:save-settings', {
+        printer_name: 'Test Printer',
+
+        auto_open_cash_sale: 'false',
+      }),
+    ).rejects.toThrow();
+
+    const invalidQr = await invoke(event, 'settings:save-store-qr-settings', {
+      store_qr_enabled: 'false',
+
+      store_qr_title: 'Invalid QR',
+
+      store_qr_primary_url: 'https://example.com',
+    });
+
+    expect(invalidQr.success).toBe(false);
+
+    const invalidTheme = await invoke(
+      event,
+      'settings:save-app-theme',
+      'sepia',
+    );
+
+    expect(invalidTheme.success).toBe(false);
+
+    await expect(
+      invoke(event, 'print:save-pdf', {
+        html: '<html><body>test</body></html>',
+
+        landscape: 'false',
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      invoke(event, 'print:save-report-pdf', {
+        html: '<html><body>test</body></html>',
+
+        landscape: 'false',
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      invoke(event, 'print:silent-html', {
+        html: 12345,
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      invoke(event, 'print:dialog-html', {
+        html: '<html><body>test</body></html>',
+
+        previewWidth: '1000',
+      }),
+    ).rejects.toThrow();
+  });
+
   it('keeps admin cash-flow alerts true admin only', async () => {
     const cashier = createUser(
       'Cash Flow Cashier',

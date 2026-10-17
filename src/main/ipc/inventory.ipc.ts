@@ -2,7 +2,12 @@ import { ipcMain } from 'electron';
 import { runCriticalActionWithAudit } from './activity-helper';
 import { requireAnyPermission, requirePermission } from '../auth-session';
 import {
+  optionalEnumValue,
+  optionalNonNegativeInteger,
+  optionalPositiveInteger,
   optionalTrimmedString,
+  requireArrayInput,
+  requireEnumValue,
   requireNonNegativeNumber,
   requireObjectInput,
   requirePositiveInteger,
@@ -70,11 +75,115 @@ function protectInventoryCosts<T>(
   return redactInventoryCosts(value);
 }
 
+const INVENTORY_STATUSES = [
+  'all',
+  'available',
+  'low',
+  'out',
+  'inactive',
+] as const;
+
+const INVENTORY_PAGE_STATUSES = [
+  'available',
+  'low',
+  'out',
+  'inactive',
+] as const;
+
+function normalizeInventoryCategoryId(value: unknown) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null || value === '' || value === 'all') {
+    return null;
+  }
+
+  return requirePositiveInteger(value, 'رقم التصنيف');
+}
+
+function normalizeInventoryListInput(input: unknown) {
+  const payload = requireObjectInput(input ?? {}, 'فلتر المخزون');
+
+  return {
+    search:
+      optionalTrimmedString(payload.search, 'بحث المخزون', 500) ?? undefined,
+
+    status:
+      optionalEnumValue(payload.status, INVENTORY_STATUSES, 'حالة المخزون') ??
+      'all',
+
+    categoryId: normalizeInventoryCategoryId(payload.categoryId),
+  };
+}
+
+function normalizeInventoryPageInput(input: unknown) {
+  const payload = requireObjectInput(input ?? {}, 'فلتر صفحة المخزون');
+
+  const statuses =
+    payload.statuses === undefined || payload.statuses === null
+      ? undefined
+      : requireArrayInput(
+          payload.statuses,
+          'حالات المخزون',
+          INVENTORY_PAGE_STATUSES.length,
+        ).map((status) =>
+          requireEnumValue(status, INVENTORY_PAGE_STATUSES, 'حالة المخزون'),
+        );
+
+  return {
+    search:
+      optionalTrimmedString(payload.search, 'بحث المخزون', 500) ?? undefined,
+
+    status:
+      optionalEnumValue(payload.status, INVENTORY_STATUSES, 'حالة المخزون') ??
+      'all',
+
+    statuses,
+
+    categoryId: normalizeInventoryCategoryId(payload.categoryId),
+
+    limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
+
+    offset:
+      optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ?? undefined,
+  };
+}
+
+function normalizeInventoryAnalyticsInput(input: unknown) {
+  const payload = requireObjectInput(input ?? {}, 'فلتر تحليلات المخزون');
+
+  return {
+    categoryId: normalizeInventoryCategoryId(payload.categoryId),
+  };
+}
+
+function normalizeInventoryMovementsInput(input: unknown) {
+  const payload = requireObjectInput(input ?? {}, 'فلتر حركات المخزون');
+
+  return {
+    variant_id:
+      optionalPositiveInteger(payload.variant_id, 'رقم الصنف') ?? undefined,
+
+    search:
+      optionalTrimmedString(payload.search, 'بحث حركات المخزون', 500) ??
+      undefined,
+
+    limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
+
+    offset:
+      optionalNonNegativeInteger(payload.offset, 'بداية النتائج') ?? undefined,
+  };
+}
+
 export function registerInventoryIpc(): void {
   ipcMain.handle('inventory:list', (event, input) => {
     const actor = requirePermission(event, 'inventory.view');
 
-    return protectInventoryCosts(actor, getInventoryList(input));
+    return protectInventoryCosts(
+      actor,
+      getInventoryList(normalizeInventoryListInput(input)),
+    );
   });
 
   ipcMain.handle('inventory:list-page', (event, input) => {
@@ -83,13 +192,19 @@ export function registerInventoryIpc(): void {
       'purchases.manage',
     ]);
 
-    return protectInventoryCosts(actor, listInventoryPage(input));
+    return protectInventoryCosts(
+      actor,
+      listInventoryPage(normalizeInventoryPageInput(input)),
+    );
   });
 
   ipcMain.handle('inventory:analytics', (event, input) => {
     const actor = requirePermission(event, 'inventory.view');
 
-    return protectInventoryCosts(actor, getInventoryAnalytics(input));
+    return protectInventoryCosts(
+      actor,
+      getInventoryAnalytics(normalizeInventoryAnalyticsInput(input)),
+    );
   });
 
   ipcMain.handle('inventory:adjust-stock', (event, input) => {
@@ -144,6 +259,9 @@ export function registerInventoryIpc(): void {
   ipcMain.handle('inventory:movements', (event, input) => {
     const actor = requirePermission(event, 'inventory.view');
 
-    return protectInventoryCosts(actor, getStockMovements(input));
+    return protectInventoryCosts(
+      actor,
+      getStockMovements(normalizeInventoryMovementsInput(input)),
+    );
   });
 }

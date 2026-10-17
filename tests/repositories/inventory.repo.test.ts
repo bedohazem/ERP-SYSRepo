@@ -752,4 +752,63 @@ describe('inventory repository', () => {
     expect(firstPage.rows).toHaveLength(2);
     expect(secondPage.rows).toHaveLength(2);
   });
+
+  it('uses real activity time instead of financial business date for inventory recency', () => {
+    openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    });
+
+    const variant = seedInventoryProduct({
+      name: 'Calendar Analytics Product',
+      barcode: 'ANALYTICS-CALENDAR',
+      openingQty: 10,
+      minStock: 2,
+    });
+
+    const sale = createSale({
+      user_id: 1,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'owner_bank',
+      paid: 150,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    });
+
+    getDb()
+      .prepare(
+        `
+      UPDATE sales
+
+      SET
+        business_date = '2000-01-01',
+        created_at = CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+      )
+      .run(sale.saleId);
+
+    const analytics = getInventoryAnalytics();
+
+    expect(analytics.sold_units_30d).toBe(1);
+
+    expect(analytics.top_mover?.variant_id).toBe(variant.variant_id);
+  });
 });

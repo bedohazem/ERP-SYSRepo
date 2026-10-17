@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import BarcodePreview from '../../components/products/BarcodePreview';
-import { useAuthStore } from '../../store/auth.store';
 import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
@@ -125,7 +124,6 @@ type ProductsTab = 'list' | 'create' | 'edit';
 type ProductEditMode = 'edit' | 'addVariant';
 
 export default function ProductsPage() {
-  const currentUser = useAuthStore((s) => s.user);
   const pageRef = useRef<HTMLDivElement | null>(null);
   const [isCompact, setIsCompact] = useState(false);
   const [pageWidth, setPageWidth] = useState(
@@ -270,7 +268,6 @@ export default function ProductsPage() {
       const result = await window.api.createCategory({
         name,
         description: null,
-        actor_id: currentUser?.id,
       });
 
       if (!result?.success) {
@@ -305,7 +302,6 @@ export default function ProductsPage() {
         id: categoryId,
         name,
         description: null,
-        actor_id: currentUser?.id,
       });
 
       if (!result?.success) {
@@ -458,7 +454,6 @@ export default function ProductsPage() {
           : null,
         min_stock: minStock,
         opening_qty: openingQty,
-        actor_id: currentUser?.id,
       });
 
       if (!result.success) {
@@ -595,7 +590,6 @@ export default function ProductsPage() {
         category_id: categoryId ? Number(categoryId) : null,
         description: null,
         image_path: null,
-        actor_id: currentUser?.id,
         variants: variants.map((v) => ({
           barcode: v.barcode.trim(),
           size: v.size.trim(),
@@ -1197,8 +1191,6 @@ export default function ProductsPage() {
         category_id: editCategoryId ? Number(editCategoryId) : null,
         description: null,
         image_path: null,
-        actor_id: currentUser?.id,
-
         variants: editVariants.map((variant) => ({
           id: variant.id,
           barcode: variant.barcode.trim(),
