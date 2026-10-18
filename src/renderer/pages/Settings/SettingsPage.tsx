@@ -1403,21 +1403,17 @@ export default function SettingsPage() {
               </div>
             </div>
 
-                        <div
+            <div
               style={{
                 padding: '16px',
 
-                borderRadius:
-                  '16px',
+                borderRadius: '16px',
 
-                background:
-                  'rgba(59,130,246,0.08)',
+                background: 'rgba(59,130,246,0.08)',
 
-                border:
-                  '1px solid rgba(96,165,250,0.22)',
+                border: '1px solid rgba(96,165,250,0.22)',
 
-                display:
-                  'grid',
+                display: 'grid',
 
                 gap: '14px',
               }}
@@ -1425,8 +1421,7 @@ export default function SettingsPage() {
               <div>
                 <h3
                   style={{
-                    margin:
-                      '0 0 6px',
+                    margin: '0 0 6px',
                   }}
                 >
                   النسخة الانتقائية
@@ -1436,11 +1431,9 @@ export default function SettingsPage() {
                   style={{
                     margin: 0,
 
-                    color:
-                      '#94a3b8',
+                    color: '#94a3b8',
 
-                    lineHeight:
-                      1.8,
+                    lineHeight: 1.8,
                   }}
                 >
                   اختار البيانات التي تريد الاحتفاظ بها فقط. الاسترجاع للبيانات
@@ -1451,131 +1444,87 @@ export default function SettingsPage() {
 
               <div
                 style={{
-                  display:
-                    'grid',
+                  display: 'grid',
 
-                  gridTemplateColumns:
-                    'repeat(auto-fit, minmax(220px, 1fr))',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
 
                   gap: '10px',
                 }}
               >
-                {SELECTIVE_BACKUP_SECTIONS.map(
-                  (
-                    section,
-                  ) => (
-                    <label
-                      key={
-                        section
+                {SELECTIVE_BACKUP_SECTIONS.map((section) => (
+                  <label
+                    key={section}
+                    style={{
+                      display: 'flex',
+
+                      alignItems: 'center',
+
+                      gap: '10px',
+
+                      padding: '12px',
+
+                      borderRadius: '12px',
+
+                      background: selectiveSections.includes(section)
+                        ? 'rgba(59,130,246,0.12)'
+                        : 'rgba(255,255,255,0.03)',
+
+                      border: '1px solid rgba(148,163,184,0.15)',
+
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+
+                      checked={selectiveSections.includes(section)}
+
+                      onChange={() =>
+                        setSelectiveSections((current) =>
+                          toggleSelectiveSection(current, section),
+                        )
                       }
-                      style={{
-                        display:
-                          'flex',
+                    />
 
-                        alignItems:
-                          'center',
-
-                        gap:
-                          '10px',
-
-                        padding:
-                          '12px',
-
-                        borderRadius:
-                          '12px',
-
-                        background:
-                          selectiveSections.includes(
-                            section,
-                          )
-                            ? 'rgba(59,130,246,0.12)'
-                            : 'rgba(255,255,255,0.03)',
-
-                        border:
-                          '1px solid rgba(148,163,184,0.15)',
-
-                        cursor:
-                          'pointer',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-
-                        checked={selectiveSections.includes(
-                          section,
-                        )}
-
-                        onChange={() =>
-                          setSelectiveSections(
-                            (
-                              current,
-                            ) =>
-                              toggleSelectiveSection(
-                                current,
-                                section,
-                              ),
-                          )
-                        }
-                      />
-
-                      <span>
-                        {
-                          SELECTIVE_BACKUP_SECTION_LABELS[
-                            section
-                          ]
-                        }
-                      </span>
-                    </label>
-                  ),
-                )}
+                    <span>{SELECTIVE_BACKUP_SECTION_LABELS[section]}</span>
+                  </label>
+                ))}
               </div>
 
               <div
                 style={{
-                  color:
-                    '#94a3b8',
+                  color: '#94a3b8',
 
-                  fontSize:
-                    '13px',
+                  fontSize: '13px',
 
-                  lineHeight:
-                    1.8,
+                  lineHeight: 1.8,
                 }}
               >
-                ملاحظة: اختيار العروض يضيف المنتجات والمخزون تلقائيًا. المستخدمون
-                يتم حفظ أسمائهم وأدوارهم وصلاحياتهم فقط بدون كلمات المرور.
+                ملاحظة: اختيار العروض يضيف المنتجات والمخزون تلقائيًا.
+                المستخدمون يتم حفظ أسمائهم وأدوارهم وصلاحياتهم فقط بدون كلمات
+                المرور.
               </div>
 
               <div
                 style={{
-                  display:
-                    'flex',
+                  display: 'flex',
 
-                  gap:
-                    '10px',
+                  gap: '10px',
 
-                  flexWrap:
-                    'wrap',
+                  flexWrap: 'wrap',
                 }}
               >
                 <button
                   type="button"
 
-                  onClick={() =>
-                    void backupSelectiveData()
-                  }
+                  onClick={() => void backupSelectiveData()}
 
-                  disabled={
-                    selectiveBackupLoading
-                  }
+                  disabled={selectiveBackupLoading}
 
                   style={{
                     ...primaryButtonStyle,
 
-                    opacity:
-                      selectiveBackupLoading
-                        ? 0.6
-                        : 1,
+                    opacity: selectiveBackupLoading ? 0.6 : 1,
                   }}
                 >
                   {selectiveBackupLoading
@@ -1586,17 +1535,11 @@ export default function SettingsPage() {
                 <button
                   type="button"
 
-                  onClick={() =>
-                    void chooseSelectiveRestoreFile()
-                  }
+                  onClick={() => void chooseSelectiveRestoreFile()}
 
-                  disabled={
-                    selectiveChooseLoading
-                  }
+                  disabled={selectiveChooseLoading}
 
-                  style={
-                    primaryButtonStyle
-                  }
+                  style={primaryButtonStyle}
                 >
                   {selectiveChooseLoading
                     ? 'جاري قراءة الملف...'
@@ -1607,133 +1550,87 @@ export default function SettingsPage() {
               {selectiveRestorePreview && (
                 <div
                   style={{
-                    padding:
-                      '14px',
+                    padding: '14px',
 
-                    borderRadius:
-                      '14px',
+                    borderRadius: '14px',
 
-                    background:
-                      'rgba(15,23,42,0.55)',
+                    background: 'rgba(15,23,42,0.55)',
 
-                    border:
-                      '1px solid rgba(148,163,184,0.16)',
+                    border: '1px solid rgba(148,163,184,0.16)',
 
-                    display:
-                      'grid',
+                    display: 'grid',
 
-                    gap:
-                      '12px',
+                    gap: '12px',
                   }}
                 >
                   <div>
-                    <strong>
-                      {
-                        selectiveRestorePreview.file_name
-                      }
-                    </strong>
+                    <strong>{selectiveRestorePreview.file_name}</strong>
 
                     <div
                       style={{
-                        marginTop:
-                          '4px',
+                        marginTop: '4px',
 
-                        color:
-                          '#64748b',
+                        color: '#64748b',
 
-                        fontSize:
-                          '12px',
+                        fontSize: '12px',
                       }}
                     >
-                      الإصدار:{' '}
-                      {
-                        selectiveRestorePreview.manifest.app_version
-                      }
+                      الإصدار: {selectiveRestorePreview.manifest.app_version}
                       {' • '}
                       {new Date(
                         selectiveRestorePreview.manifest.created_at,
-                      ).toLocaleString(
-                        'ar-EG',
-                      )}
+                      ).toLocaleString('ar-EG')}
                     </div>
                   </div>
 
-                  <strong>
-                    اختار ما تريد استرجاعه:
-                  </strong>
+                  <strong>اختار ما تريد استرجاعه:</strong>
 
                   <div
                     style={{
-                      display:
-                        'grid',
+                      display: 'grid',
 
                       gridTemplateColumns:
                         'repeat(auto-fit, minmax(220px, 1fr))',
 
-                      gap:
-                        '8px',
+                      gap: '8px',
                     }}
                   >
                     {selectiveRestorePreview.manifest.sections.map(
-                      (
-                        section,
-                      ) => (
+                      (section) => (
                         <label
-                          key={
-                            section
-                          }
+                          key={section}
                           style={{
-                            display:
-                              'flex',
+                            display: 'flex',
 
-                            gap:
-                              '10px',
+                            gap: '10px',
 
-                            alignItems:
-                              'center',
+                            alignItems: 'center',
 
-                            padding:
-                              '10px',
+                            padding: '10px',
 
-                            borderRadius:
-                              '10px',
+                            borderRadius: '10px',
 
-                            background:
-                              'rgba(255,255,255,0.03)',
+                            background: 'rgba(255,255,255,0.03)',
                           }}
                         >
                           <input
                             type="checkbox"
 
-                            checked={selectiveRestoreSections.includes(
-                              section,
-                            )}
+                            checked={selectiveRestoreSections.includes(section)}
 
                             onChange={() =>
-                              setSelectiveRestoreSections(
-                                (
-                                  current,
-                                ) =>
-                                  toggleSelectiveSection(
-                                    current,
-                                    section,
-                                  ),
+                              setSelectiveRestoreSections((current) =>
+                                toggleSelectiveSection(current, section),
                               )
                             }
                           />
 
                           <span>
-                            {
-                              SELECTIVE_BACKUP_SECTION_LABELS[
-                                section
-                              ]
-                            }
+                            {SELECTIVE_BACKUP_SECTION_LABELS[section]}
 
                             {' — '}
 
-                            {selectiveRestorePreview.manifest.counts[
-                              section
-                            ] ??
+                            {selectiveRestorePreview.manifest.counts[section] ??
                               0}
                           </span>
                         </label>
@@ -1743,14 +1640,11 @@ export default function SettingsPage() {
 
                   <div
                     style={{
-                      color:
-                        '#fde68a',
+                      color: '#fde68a',
 
-                      fontSize:
-                        '13px',
+                      fontSize: '13px',
 
-                      lineHeight:
-                        1.8,
+                      lineHeight: 1.8,
                     }}
                   >
                     لو النسخة تحتوي مستخدمين، الحسابات المسترجعة ستكون غير مفعلة
@@ -1761,24 +1655,16 @@ export default function SettingsPage() {
                   <button
                     type="button"
 
-                    onClick={() =>
-                      void restoreSelectiveData()
-                    }
+                    onClick={() => void restoreSelectiveData()}
 
-                    disabled={
-                      selectiveRestoreLoading
-                    }
+                    disabled={selectiveRestoreLoading}
 
                     style={{
                       ...dangerButtonStyle,
 
-                      width:
-                        'fit-content',
+                      width: 'fit-content',
 
-                      opacity:
-                        selectiveRestoreLoading
-                          ? 0.6
-                          : 1,
+                      opacity: selectiveRestoreLoading ? 0.6 : 1,
                     }}
                   >
                     {selectiveRestoreLoading
