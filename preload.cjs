@@ -141,6 +141,19 @@ contextBridge.exposeInMainWorld('api', {
 
   backupDatabase: () => ipcRenderer.invoke('settings:backup-database'),
 
+  backupSelectiveData: (sections) =>
+    ipcRenderer.invoke('settings:backup-selective', {
+      sections,
+    }),
+
+  chooseSelectiveRestoreFile: () =>
+    ipcRenderer.invoke('settings:choose-selective-restore'),
+
+  restoreSelectiveData: (sections) =>
+    ipcRenderer.invoke('settings:restore-selective', {
+      sections,
+    }),
+
   restoreDatabase: () => ipcRenderer.invoke('settings:restore-database'),
 
   resetDatabase: () => ipcRenderer.invoke('settings:reset-database'),

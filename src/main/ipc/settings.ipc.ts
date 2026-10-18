@@ -51,6 +51,19 @@ import {
   requireTrimmedString,
 } from './input-validation';
 
+import {
+  buildSelectiveBackupPackage,
+  validateSelectiveBackupPackageV1,
+  type SelectiveBackupPackageV1,
+} from '../database/selective-backup';
+
+import { restoreSelectiveBackupPackage } from '../database/selective-restore';
+
+import {
+  SELECTIVE_BACKUP_SECTION_LABELS,
+  normalizeSelectiveBackupSections,
+} from '../../shared/selective-backup';
+
 const APP_THEMES = ['dark', 'light'] as const;
 
 function getErrorMessage(error: unknown) {
@@ -73,6 +86,65 @@ function getDefaultBackupName() {
 
   return `erp-backup-${stamp}.db`;
 }
+
+function getDefaultSelectiveBackupName() {
+  const now = new Date();
+
+  const stamp = [
+    now.getFullYear(),
+
+    String(now.getMonth() + 1).padStart(2, '0'),
+
+    String(now.getDate()).padStart(2, '0'),
+
+    String(now.getHours()).padStart(2, '0'),
+
+    String(now.getMinutes()).padStart(2, '0'),
+  ].join('-');
+
+  return `erp-selective-${stamp}.erpbackup`;
+}
+
+const MAX_SELECTIVE_BACKUP_BYTES = 100 * 1024 * 1024;
+
+function readSelectiveBackupFile(filePath: string): SelectiveBackupPackageV1 {
+  const stat = fs.statSync(filePath);
+
+  if (!stat.isFile()) {
+    throw new Error('ملف النسخة الانتقائية غير صالح');
+  }
+
+  if (stat.size > MAX_SELECTIVE_BACKUP_BYTES) {
+    throw new Error('ملف النسخة الانتقائية أكبر من الحد المسموح');
+  }
+
+  const text = fs.readFileSync(filePath, 'utf8');
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error('تعذر قراءة ملف النسخة الانتقائية');
+  }
+
+  validateSelectiveBackupPackageV1(parsed);
+
+  return parsed;
+}
+
+const pendingSelectiveRestore = new Map<
+  number,
+  {
+    path: string;
+
+    backup: SelectiveBackupPackageV1;
+
+    selected_at: number;
+  }
+>();
+
+const SELECTIVE_RESTORE_SELECTION_TTL_MS = 15 * 60 * 1000;
 
 function getImageMimeType(filePath: string) {
   const ext = path.extname(filePath).toLowerCase();
@@ -577,6 +649,310 @@ export function registerSettingsIpc(): void {
       };
     }
   });
+
+  ipcMain.handle('settings:backup-selective', async (event, input: unknown) => {
+    try {
+      const actorId = requireAuthenticatedAdmin(event);
+
+      const payload = requireObjectInput(input, 'بيانات النسخة الانتقائية');
+
+      if (!Array.isArray(payload.sections)) {
+        throw new Error('اختيارات النسخة الانتقائية غير صحيحة');
+      }
+
+      const sections = normalizeSelectiveBackupSections(payload.sections);
+
+      const parentWindow = BrowserWindow.fromWebContents(event.sender);
+
+      const options: SaveDialogOptions = {
+        title: 'حفظ نسخة انتقائية',
+
+        defaultPath: path.join(
+          app.getPath('documents'),
+
+          getDefaultSelectiveBackupName(),
+        ),
+
+        filters: [
+          {
+            name: 'ERP Selective Backup',
+
+            extensions: ['erpbackup'],
+          },
+
+          {
+            name: 'All Files',
+
+            extensions: ['*'],
+          },
+        ],
+      };
+
+      const result = parentWindow
+        ? await dialog.showSaveDialog(parentWindow, options)
+        : await dialog.showSaveDialog(options);
+
+      if (result.canceled || !result.filePath) {
+        return {
+          success: false,
+
+          canceled: true,
+
+          message: 'تم إلغاء حفظ النسخة الانتقائية',
+        };
+      }
+
+      recheckAdmin(event, actorId);
+
+      const appVersion =
+        typeof app.getVersion === 'function'
+          ? app.getVersion()
+          : String(process.env.npm_package_version || 'unknown');
+
+      const backup = buildSelectiveBackupPackage({
+        sections,
+
+        appVersion,
+      });
+
+      const serialized = JSON.stringify(backup, null, 2);
+
+      const targetPath = result.filePath.toLowerCase().endsWith('.erpbackup')
+        ? result.filePath
+        : `${result.filePath}.erpbackup`;
+
+      fs.writeFileSync(targetPath, serialized, 'utf8');
+
+      const size = Buffer.byteLength(serialized, 'utf8');
+
+      logAction({
+        actor_id: actorId,
+
+        action: 'selective_backup_created',
+
+        entity: 'settings',
+
+        entity_id: null,
+
+        details: {
+          path: targetPath,
+
+          sections: backup.manifest.sections,
+
+          counts: backup.manifest.counts,
+
+          size,
+        },
+      });
+
+      return {
+        success: true,
+
+        path: targetPath,
+
+        size,
+
+        manifest: backup.manifest,
+
+        message: 'تم حفظ النسخة الانتقائية بنجاح',
+      };
+    } catch (error) {
+      return {
+        success: false,
+
+        message: getErrorMessage(error),
+      };
+    }
+  });
+
+  ipcMain.handle('settings:choose-selective-restore', async (event) => {
+    try {
+      requireAuthenticatedAdmin(event);
+
+      const parentWindow = BrowserWindow.fromWebContents(event.sender);
+
+      const options: OpenDialogOptions = {
+        title: 'اختيار نسخة انتقائية',
+
+        properties: ['openFile'],
+
+        filters: [
+          {
+            name: 'ERP Selective Backup',
+
+            extensions: ['erpbackup'],
+          },
+
+          {
+            name: 'JSON Backup',
+
+            extensions: ['json'],
+          },
+        ],
+      };
+
+      const result = parentWindow
+        ? await dialog.showOpenDialog(parentWindow, options)
+        : await dialog.showOpenDialog(options);
+
+      if (result.canceled || !result.filePaths[0]) {
+        return {
+          success: false,
+
+          canceled: true,
+        };
+      }
+
+      const selectedFile = result.filePaths[0];
+
+      const backup = readSelectiveBackupFile(selectedFile);
+
+      pendingSelectiveRestore.set(event.sender.id, {
+        path: selectedFile,
+
+        backup,
+
+        selected_at: Date.now(),
+      });
+
+      return {
+        success: true,
+
+        file_name: path.basename(selectedFile),
+
+        manifest: backup.manifest,
+      };
+    } catch (error) {
+      return {
+        success: false,
+
+        message: getErrorMessage(error),
+      };
+    }
+  });
+
+  ipcMain.handle(
+    'settings:restore-selective',
+    async (event, input: unknown) => {
+      try {
+        const actorId = requireAuthenticatedAdmin(event);
+
+        const pending = pendingSelectiveRestore.get(event.sender.id);
+
+        if (!pending) {
+          throw new Error('اختار ملف النسخة الانتقائية أولًا');
+        }
+
+        if (
+          Date.now() - pending.selected_at >
+          SELECTIVE_RESTORE_SELECTION_TTL_MS
+        ) {
+          pendingSelectiveRestore.delete(event.sender.id);
+
+          throw new Error('انتهت صلاحية اختيار الملف. اختار النسخة مرة أخرى');
+        }
+
+        const payload = requireObjectInput(input, 'بيانات الاسترجاع الانتقائي');
+
+        if (!Array.isArray(payload.sections)) {
+          throw new Error('اختيارات الاسترجاع غير صحيحة');
+        }
+
+        const sections = normalizeSelectiveBackupSections(payload.sections);
+
+        const labels = sections.map(
+          (section) => SELECTIVE_BACKUP_SECTION_LABELS[section],
+        );
+
+        const parentWindow = BrowserWindow.fromWebContents(event.sender);
+
+        const confirmationOptions = {
+          type: 'warning' as const,
+
+          buttons: ['إلغاء', 'استرجاع المحدد'],
+
+          defaultId: 0,
+
+          cancelId: 0,
+
+          title: 'تأكيد الاسترجاع الانتقائي',
+
+          message: 'هل أنت متأكد من استرجاع البيانات المحددة؟',
+
+          detail: `سيتم استرجاع:\n\n${labels
+            .map((label) => `• ${label}`)
+            .join(
+              '\n',
+            )}\n\nاسترجاع البيانات الأساسية مصمم للعمل بعد تصفير البرنامج. المستخدمون المسترجعون سيظلون غير مفعلين حتى تعيين كلمة مرور جديدة لهم.`,
+        };
+
+        const confirmation = parentWindow
+          ? await dialog.showMessageBox(
+              parentWindow,
+
+              confirmationOptions,
+            )
+          : await dialog.showMessageBox(confirmationOptions);
+
+        if (confirmation.response !== 1) {
+          return {
+            success: false,
+
+            canceled: true,
+          };
+        }
+
+        recheckAdmin(event, actorId);
+
+        const result = restoreSelectiveBackupPackage(
+          pending.backup,
+          sections,
+          actorId,
+        );
+
+        pendingSelectiveRestore.delete(event.sender.id);
+
+        logAction({
+          actor_id: actorId,
+
+          action: 'selective_backup_restored',
+
+          entity: 'settings',
+
+          entity_id: null,
+
+          details: {
+            source: pending.path,
+
+            sections: result.sections,
+
+            counts: result.counts,
+
+            users_require_password_reset: result.users_require_password_reset,
+
+            stock_units_restored: result.stock_units_restored,
+          },
+        });
+
+        return {
+          success: true,
+
+          result,
+
+          message:
+            result.users_require_password_reset > 0
+              ? `تم الاسترجاع بنجاح. يوجد ${result.users_require_password_reset} مستخدم مسترجع يحتاج تعيين كلمة مرور وتفعيل من شاشة المستخدمين.`
+              : 'تم الاسترجاع الانتقائي بنجاح',
+        };
+      } catch (error) {
+        return {
+          success: false,
+
+          message: getErrorMessage(error),
+        };
+      }
+    },
+  );
 
   ipcMain.handle('settings:restore-database', async (event) => {
     try {

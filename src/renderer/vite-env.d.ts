@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 
 type PermissionKey = import('../shared/permissions').PermissionKey;
+type SelectiveBackupSection =
+  import('../shared/selective-backup').SelectiveBackupSection;
 
 type BarcodeItemPosition =
   | 'top'
@@ -1467,6 +1469,82 @@ declare global {
           path: string;
           size: number;
           tables: string[];
+        };
+      }>;
+
+      backupSelectiveData: (sections: SelectiveBackupSection[]) => Promise<{
+        success: boolean;
+
+        canceled?: boolean;
+
+        path?: string;
+
+        size?: number;
+
+        message?: string;
+
+        manifest?: {
+          format: string;
+
+          schema_version: number;
+
+          created_at: string;
+
+          app_version: string;
+
+          sections: SelectiveBackupSection[];
+
+          encrypted: boolean;
+
+          counts: Partial<Record<SelectiveBackupSection, number>>;
+        };
+      }>;
+
+      chooseSelectiveRestoreFile: () => Promise<{
+        success: boolean;
+
+        canceled?: boolean;
+
+        message?: string;
+
+        file_name?: string;
+
+        manifest?: {
+          format: string;
+
+          schema_version: number;
+
+          created_at: string;
+
+          app_version: string;
+
+          sections: SelectiveBackupSection[];
+
+          encrypted: boolean;
+
+          counts: Partial<Record<SelectiveBackupSection, number>>;
+        };
+      }>;
+
+      restoreSelectiveData: (sections: SelectiveBackupSection[]) => Promise<{
+        success: boolean;
+
+        canceled?: boolean;
+
+        message?: string;
+
+        result?: {
+          sections: SelectiveBackupSection[];
+
+          counts: Partial<Record<SelectiveBackupSection, number>>;
+
+          users_restored: number;
+
+          users_skipped_current_admin: number;
+
+          users_require_password_reset: number;
+
+          stock_units_restored: number;
         };
       }>;
 

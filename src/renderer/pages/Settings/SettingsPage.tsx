@@ -3,6 +3,11 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import { clearAllErpDrafts } from '../../utils/draft-storage';
+import {
+  SELECTIVE_BACKUP_SECTIONS,
+  SELECTIVE_BACKUP_SECTION_LABELS,
+  type SelectiveBackupSection,
+} from '../../../shared/selective-backup';
 
 type BarcodeItemPosition =
   | 'top'
@@ -141,6 +146,34 @@ type CashDrawerSettings = {
 type SettingsTab =
   'store' | 'backup' | 'loyalty' | 'barcode' | 'receiptPrint' | 'cashDrawer';
 
+function toggleSelectiveSection(
+  current: SelectiveBackupSection[],
+
+  section: SelectiveBackupSection,
+) {
+  const next = new Set(current);
+
+  if (next.has(section)) {
+    next.delete(section);
+
+    /*
+     * العروض تعتمد
+     * على المنتجات.
+     */
+    if (section === 'catalog_stock') {
+      next.delete('promotions');
+    }
+  } else {
+    next.add(section);
+
+    if (section === 'promotions') {
+      next.add('catalog_stock');
+    }
+  }
+
+  return SELECTIVE_BACKUP_SECTIONS.filter((item) => next.has(item));
+}
+
 export default function SettingsPage() {
   const [settings, setSettings] =
     useState<BarcodePrintSettings>(defaultSettings);
@@ -154,6 +187,33 @@ export default function SettingsPage() {
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [selectiveSections, setSelectiveSections] = useState<
+    SelectiveBackupSection[]
+  >(['catalog_stock']);
+
+  const [selectiveBackupLoading, setSelectiveBackupLoading] = useState(false);
+
+  const [selectiveChooseLoading, setSelectiveChooseLoading] = useState(false);
+
+  const [selectiveRestoreLoading, setSelectiveRestoreLoading] = useState(false);
+
+  const [selectiveRestoreSections, setSelectiveRestoreSections] = useState<
+    SelectiveBackupSection[]
+  >([]);
+
+  const [selectiveRestorePreview, setSelectiveRestorePreview] = useState<{
+    file_name: string;
+
+    manifest: {
+      created_at: string;
+
+      app_version: string;
+
+      sections: SelectiveBackupSection[];
+
+      counts: Partial<Record<SelectiveBackupSection, number>>;
+    };
+  } | null>(null);
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
 
   const [licenseStatus, setLicenseStatus] = useState<AppLicenseStatus | null>(
@@ -602,6 +662,128 @@ export default function SettingsPage() {
       showMessage('error', 'حدث خطأ أثناء حفظ إعدادات النقاط');
     } finally {
       setSavingLoyalty(false);
+    }
+  }
+
+  async function backupSelectiveData() {
+    if (selectiveBackupLoading) {
+      return;
+    }
+
+    if (selectiveSections.length === 0) {
+      showMessage('error', 'اختار نوع بيانات واحد على الأقل');
+
+      return;
+    }
+
+    setSelectiveBackupLoading(true);
+
+    try {
+      const result = await window.api.backupSelectiveData(selectiveSections);
+
+      if (result.canceled) {
+        return;
+      }
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل حفظ النسخة الانتقائية');
+
+        return;
+      }
+
+      showMessage('success', 'تم حفظ النسخة الانتقائية بنجاح');
+    } catch (error) {
+      console.error('Failed to create selective backup:', error);
+
+      showMessage('error', 'حدث خطأ أثناء حفظ النسخة الانتقائية');
+    } finally {
+      setSelectiveBackupLoading(false);
+    }
+  }
+
+  async function chooseSelectiveRestoreFile() {
+    if (selectiveChooseLoading) {
+      return;
+    }
+
+    setSelectiveChooseLoading(true);
+
+    try {
+      const result = await window.api.chooseSelectiveRestoreFile();
+
+      if (result.canceled) {
+        return;
+      }
+
+      if (!result.success || !result.manifest || !result.file_name) {
+        showMessage('error', result.message || 'تعذر قراءة النسخة الانتقائية');
+
+        return;
+      }
+
+      setSelectiveRestorePreview({
+        file_name: result.file_name,
+
+        manifest: result.manifest,
+      });
+
+      setSelectiveRestoreSections(result.manifest.sections);
+    } catch (error) {
+      console.error('Failed to choose selective restore file:', error);
+
+      showMessage('error', 'حدث خطأ أثناء قراءة النسخة الانتقائية');
+    } finally {
+      setSelectiveChooseLoading(false);
+    }
+  }
+
+  async function restoreSelectiveData() {
+    if (selectiveRestoreLoading) {
+      return;
+    }
+
+    if (selectiveRestoreSections.length === 0) {
+      showMessage('error', 'اختار البيانات التي تريد استرجاعها');
+
+      return;
+    }
+
+    setSelectiveRestoreLoading(true);
+
+    try {
+      const result = await window.api.restoreSelectiveData(
+        selectiveRestoreSections,
+      );
+
+      if (result.canceled) {
+        return;
+      }
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل الاسترجاع الانتقائي');
+
+        return;
+      }
+
+      showMessage('success', result.message || 'تم الاسترجاع الانتقائي بنجاح');
+
+      setSelectiveRestorePreview(null);
+
+      setSelectiveRestoreSections([]);
+
+      /*
+       * عشان App Name / Theme /
+       * QR / Settings تتحدث فورًا.
+       */
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 700);
+    } catch (error) {
+      console.error('Failed to restore selective backup:', error);
+
+      showMessage('error', 'حدث خطأ أثناء الاسترجاع الانتقائي');
+    } finally {
+      setSelectiveRestoreLoading(false);
     }
   }
 
@@ -1219,6 +1401,392 @@ export default function SettingsPage() {
                   ))
                 )}
               </div>
+            </div>
+
+                        <div
+              style={{
+                padding: '16px',
+
+                borderRadius:
+                  '16px',
+
+                background:
+                  'rgba(59,130,246,0.08)',
+
+                border:
+                  '1px solid rgba(96,165,250,0.22)',
+
+                display:
+                  'grid',
+
+                gap: '14px',
+              }}
+            >
+              <div>
+                <h3
+                  style={{
+                    margin:
+                      '0 0 6px',
+                  }}
+                >
+                  النسخة الانتقائية
+                </h3>
+
+                <p
+                  style={{
+                    margin: 0,
+
+                    color:
+                      '#94a3b8',
+
+                    lineHeight:
+                      1.8,
+                  }}
+                >
+                  اختار البيانات التي تريد الاحتفاظ بها فقط. الاسترجاع للبيانات
+                  الأساسية مصمم بعد تصفير البرنامج حتى لا يتم دمج بيانات مالية
+                  قديمة مع بيانات جديدة.
+                </p>
+              </div>
+
+              <div
+                style={{
+                  display:
+                    'grid',
+
+                  gridTemplateColumns:
+                    'repeat(auto-fit, minmax(220px, 1fr))',
+
+                  gap: '10px',
+                }}
+              >
+                {SELECTIVE_BACKUP_SECTIONS.map(
+                  (
+                    section,
+                  ) => (
+                    <label
+                      key={
+                        section
+                      }
+                      style={{
+                        display:
+                          'flex',
+
+                        alignItems:
+                          'center',
+
+                        gap:
+                          '10px',
+
+                        padding:
+                          '12px',
+
+                        borderRadius:
+                          '12px',
+
+                        background:
+                          selectiveSections.includes(
+                            section,
+                          )
+                            ? 'rgba(59,130,246,0.12)'
+                            : 'rgba(255,255,255,0.03)',
+
+                        border:
+                          '1px solid rgba(148,163,184,0.15)',
+
+                        cursor:
+                          'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+
+                        checked={selectiveSections.includes(
+                          section,
+                        )}
+
+                        onChange={() =>
+                          setSelectiveSections(
+                            (
+                              current,
+                            ) =>
+                              toggleSelectiveSection(
+                                current,
+                                section,
+                              ),
+                          )
+                        }
+                      />
+
+                      <span>
+                        {
+                          SELECTIVE_BACKUP_SECTION_LABELS[
+                            section
+                          ]
+                        }
+                      </span>
+                    </label>
+                  ),
+                )}
+              </div>
+
+              <div
+                style={{
+                  color:
+                    '#94a3b8',
+
+                  fontSize:
+                    '13px',
+
+                  lineHeight:
+                    1.8,
+                }}
+              >
+                ملاحظة: اختيار العروض يضيف المنتجات والمخزون تلقائيًا. المستخدمون
+                يتم حفظ أسمائهم وأدوارهم وصلاحياتهم فقط بدون كلمات المرور.
+              </div>
+
+              <div
+                style={{
+                  display:
+                    'flex',
+
+                  gap:
+                    '10px',
+
+                  flexWrap:
+                    'wrap',
+                }}
+              >
+                <button
+                  type="button"
+
+                  onClick={() =>
+                    void backupSelectiveData()
+                  }
+
+                  disabled={
+                    selectiveBackupLoading
+                  }
+
+                  style={{
+                    ...primaryButtonStyle,
+
+                    opacity:
+                      selectiveBackupLoading
+                        ? 0.6
+                        : 1,
+                  }}
+                >
+                  {selectiveBackupLoading
+                    ? 'جاري إنشاء النسخة...'
+                    : 'حفظ نسخة انتقائية'}
+                </button>
+
+                <button
+                  type="button"
+
+                  onClick={() =>
+                    void chooseSelectiveRestoreFile()
+                  }
+
+                  disabled={
+                    selectiveChooseLoading
+                  }
+
+                  style={
+                    primaryButtonStyle
+                  }
+                >
+                  {selectiveChooseLoading
+                    ? 'جاري قراءة الملف...'
+                    : 'اختيار نسخة انتقائية للاسترجاع'}
+                </button>
+              </div>
+
+              {selectiveRestorePreview && (
+                <div
+                  style={{
+                    padding:
+                      '14px',
+
+                    borderRadius:
+                      '14px',
+
+                    background:
+                      'rgba(15,23,42,0.55)',
+
+                    border:
+                      '1px solid rgba(148,163,184,0.16)',
+
+                    display:
+                      'grid',
+
+                    gap:
+                      '12px',
+                  }}
+                >
+                  <div>
+                    <strong>
+                      {
+                        selectiveRestorePreview.file_name
+                      }
+                    </strong>
+
+                    <div
+                      style={{
+                        marginTop:
+                          '4px',
+
+                        color:
+                          '#64748b',
+
+                        fontSize:
+                          '12px',
+                      }}
+                    >
+                      الإصدار:{' '}
+                      {
+                        selectiveRestorePreview.manifest.app_version
+                      }
+                      {' • '}
+                      {new Date(
+                        selectiveRestorePreview.manifest.created_at,
+                      ).toLocaleString(
+                        'ar-EG',
+                      )}
+                    </div>
+                  </div>
+
+                  <strong>
+                    اختار ما تريد استرجاعه:
+                  </strong>
+
+                  <div
+                    style={{
+                      display:
+                        'grid',
+
+                      gridTemplateColumns:
+                        'repeat(auto-fit, minmax(220px, 1fr))',
+
+                      gap:
+                        '8px',
+                    }}
+                  >
+                    {selectiveRestorePreview.manifest.sections.map(
+                      (
+                        section,
+                      ) => (
+                        <label
+                          key={
+                            section
+                          }
+                          style={{
+                            display:
+                              'flex',
+
+                            gap:
+                              '10px',
+
+                            alignItems:
+                              'center',
+
+                            padding:
+                              '10px',
+
+                            borderRadius:
+                              '10px',
+
+                            background:
+                              'rgba(255,255,255,0.03)',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+
+                            checked={selectiveRestoreSections.includes(
+                              section,
+                            )}
+
+                            onChange={() =>
+                              setSelectiveRestoreSections(
+                                (
+                                  current,
+                                ) =>
+                                  toggleSelectiveSection(
+                                    current,
+                                    section,
+                                  ),
+                              )
+                            }
+                          />
+
+                          <span>
+                            {
+                              SELECTIVE_BACKUP_SECTION_LABELS[
+                                section
+                              ]
+                            }
+
+                            {' — '}
+
+                            {selectiveRestorePreview.manifest.counts[
+                              section
+                            ] ??
+                              0}
+                          </span>
+                        </label>
+                      ),
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      color:
+                        '#fde68a',
+
+                      fontSize:
+                        '13px',
+
+                      lineHeight:
+                        1.8,
+                    }}
+                  >
+                    لو النسخة تحتوي مستخدمين، الحسابات المسترجعة ستكون غير مفعلة
+                    لحين تحديد كلمة مرور جديدة لها من إدارة المستخدمين. المدير
+                    الحالي لن يتم استبداله.
+                  </div>
+
+                  <button
+                    type="button"
+
+                    onClick={() =>
+                      void restoreSelectiveData()
+                    }
+
+                    disabled={
+                      selectiveRestoreLoading
+                    }
+
+                    style={{
+                      ...dangerButtonStyle,
+
+                      width:
+                        'fit-content',
+
+                      opacity:
+                        selectiveRestoreLoading
+                          ? 0.6
+                          : 1,
+                    }}
+                  >
+                    {selectiveRestoreLoading
+                      ? 'جاري الاسترجاع...'
+                      : 'استرجاع البيانات المحددة'}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
