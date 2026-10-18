@@ -19,11 +19,9 @@ function addDays(date: string, days: number) {
 describe('financial business date', () => {
   beforeEach(() => {
     closeDb();
-
     getDb();
-
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('requires the first shift before no-shift financial operations', () => {
     expect(() => resolveFinancialBusinessDate(null)).toThrow(

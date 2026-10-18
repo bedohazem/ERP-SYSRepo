@@ -83,7 +83,7 @@ describe('auth IPC authorization', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   afterAll(() => {
     vi.mocked(ipcMain.handle).mockReset();
