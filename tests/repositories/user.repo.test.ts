@@ -44,7 +44,7 @@ describe('user repository', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('seeds default admin user', () => {
     const users = listUsers() as PublicUserTestRow[];

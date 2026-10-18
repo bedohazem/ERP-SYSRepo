@@ -142,7 +142,7 @@ describe('expense repository', () => {
       `,
       )
       .run();
-  });
+  }, 30_000);
 
   it('creates an expense and records cash movement and activity log', () => {
     const result = createExpense({

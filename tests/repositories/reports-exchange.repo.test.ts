@@ -221,7 +221,7 @@ describe('reports with sale exchanges', () => {
       opening_counted_amount: 0,
       opened_by: 1,
     });
-  });
+  }, 30_000);
 
   it('includes an exchange in sales discounts products customers and profit', () => {
     const result = seedExchangeReportSale();

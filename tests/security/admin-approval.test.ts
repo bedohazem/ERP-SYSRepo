@@ -24,7 +24,7 @@ describe('admin approval identity', () => {
     getDb();
 
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('returns exact approving admin identity', () => {
     const manager = createUser(

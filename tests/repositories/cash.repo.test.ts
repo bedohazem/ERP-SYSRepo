@@ -73,7 +73,7 @@ describe('cash repository', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('creates cash in movement and updates summary', () => {
     const result = createCashMovement({

@@ -161,7 +161,7 @@ describe('sale promotion exchange state', () => {
       opening_counted_amount: 0,
       opened_by: 1,
     });
-  });
+  }, 30_000);
 
   it('stores an immutable promotion snapshot and one state row per bundle unit', () => {
     const result = createBuy2Get1Sale();

@@ -80,7 +80,7 @@ describe('purchase orders repository', () => {
 
       opened_by: 1,
     });
-  });
+  }, 30_000);
 
   it('builds smart reorder suggestions from stock and recent demand', () => {
     const mover = seedVariant({

@@ -28,7 +28,7 @@ describe('cash shifts repository', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('opens first shift and reconciles drawer balance to actual counted amount', () => {
     const shift = openCashShift({

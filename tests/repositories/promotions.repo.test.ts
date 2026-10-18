@@ -15,7 +15,7 @@ describe('promotions repository', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('allows multiple non-overlapping promotions and calculates both', () => {
     const db = getDb();

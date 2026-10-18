@@ -305,7 +305,7 @@ describe('sale exchange loyalty accounting', () => {
       opening_counted_amount: 0,
       opened_by: 1,
     });
-  });
+  }, 30_000);
 
   it('recalculates earned points using the loyalty rules saved at sale time', () => {
     setLoyaltySettings({

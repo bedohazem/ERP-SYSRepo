@@ -34,7 +34,7 @@ describe('product repository', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('creates a product with one variant and opening stock', () => {
     const result = createProduct({

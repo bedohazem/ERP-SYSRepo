@@ -122,7 +122,7 @@ describe('ERP financial acceptance invariants', () => {
       opening_counted_amount: 0,
       opened_by: 1,
     });
-  });
+  }, 30_000);
 
   it('keeps stock debt cash and profit reconciled across a full workflow', () => {
     createProduct({

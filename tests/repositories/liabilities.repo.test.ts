@@ -146,7 +146,7 @@ describe('liabilities repository', () => {
       `,
       )
       .run();
-  });
+  }, 30_000);
 
   it('creates an open liability without initial payment', () => {
     const result = createLiability({

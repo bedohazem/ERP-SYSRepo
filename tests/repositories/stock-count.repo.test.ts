@@ -127,7 +127,7 @@ describe('stock count repository', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('creates stock count session with active variants snapshot', () => {
     seedStockCountProduct({

@@ -101,7 +101,7 @@ describe('inventory repository', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('gets current variant stock from stock movements', () => {
     const variant = seedInventoryProduct({

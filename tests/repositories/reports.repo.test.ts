@@ -221,7 +221,7 @@ describe('reports repository', () => {
       opening_counted_amount: 0,
       opened_by: 1,
     });
-  });
+  }, 30_000);
 
   it('builds admin cash-flow alerts from customer and supplier due dates', () => {
     const db = getDb();

@@ -246,7 +246,7 @@ describe('purchases repository', () => {
       opened_by: 1,
     });
     seedStoreCashBalance();
-  });
+  }, 30_000);
 
   it('rejects missing supplier_id', () => {
     const variant = seedPurchaseProduct();

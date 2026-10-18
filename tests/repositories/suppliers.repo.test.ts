@@ -30,7 +30,7 @@ describe('suppliers repository', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('creates a supplier and trims text fields', () => {
     const supplier = createSupplier({

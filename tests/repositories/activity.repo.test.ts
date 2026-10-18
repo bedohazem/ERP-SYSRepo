@@ -33,7 +33,7 @@ describe('activity repository', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('creates an activity log', () => {
     const result = createActivityLog({

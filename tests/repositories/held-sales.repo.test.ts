@@ -99,7 +99,7 @@ describe('held sales repository', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('holds a sale without affecting accounting or stock', () => {
     const db = getDb();

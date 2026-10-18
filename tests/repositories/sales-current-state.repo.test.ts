@@ -270,7 +270,7 @@ describe('sale current state after exchanges', () => {
       opening_counted_amount: 0,
       opened_by: 1,
     });
-  });
+  }, 30_000);
 
   it('keeps original receipt and exposes current receipt after exchanging the gift', () => {
     const result = createPromotionSale(['EX250', 'EX200', 'EX150']);

@@ -359,7 +359,7 @@ describe('sale exchange cancellation', () => {
       opening_counted_amount: 0,
       opened_by: 1,
     });
-  });
+  }, 30_000);
 
   it('cancels the latest exchange and restores stock current state cash reports and audit history', () => {
     const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);

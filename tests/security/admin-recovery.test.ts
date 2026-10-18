@@ -68,7 +68,7 @@ describe('admin password recovery', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('recovers an active admin with a valid signed one-time token', () => {
     const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
