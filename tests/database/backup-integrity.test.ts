@@ -30,6 +30,10 @@ import { createSale } from '../../src/main/database/repositories/sales.repo';
 import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo';
 
 import { getVariantStock } from '../../src/main/database/repositories/inventory.repo';
+import {
+  createHistoricalPreVersionedErpFixture,
+  HISTORICAL_PRE_VERSIONED_COMMIT,
+} from '../fixtures/historical-pre-versioned-erp';
 
 function tempPath(name: string) {
   return path.join(path.dirname(getDbPath()), name);
@@ -720,4 +724,486 @@ describe('database backup integrity', () => {
       }
     }
   });
+
+  it('restores a real pre-versioned historical ERP fixture through every current migration', async () => {
+    const historicalPath = tempPath(
+      `historical-${HISTORICAL_PRE_VERSIONED_COMMIT.slice(0, 7)}-${Date.now()}.db`,
+    );
+
+    const expectedLatestVersion = Number(
+      (
+        getDb()
+          .prepare(
+            `
+              SELECT MAX(version) AS version
+              FROM schema_migrations
+              `,
+          )
+          .get() as {
+          version: number;
+        }
+      ).version,
+    );
+
+    createHistoricalPreVersionedErpFixture(historicalPath);
+
+    /*
+     * دي أهم نقطة:
+     * الملف نفسه جاي من عصر ما قبل
+     * versioned schema migrations.
+     */
+    const sourceDb = new Database(historicalPath, {
+      readonly: true,
+    });
+
+    try {
+      const migrationTable = sourceDb
+        .prepare(
+          `
+            SELECT name
+            FROM sqlite_master
+            WHERE
+              type = 'table'
+              AND name = 'schema_migrations'
+            `,
+        )
+        .get();
+
+      expect(migrationTable).toBeUndefined();
+
+      const sourceForeignKeyErrors = sourceDb.pragma(
+        'foreign_key_check',
+      ) as unknown[];
+
+      expect(sourceForeignKeyErrors).toEqual([]);
+    } finally {
+      sourceDb.close();
+    }
+
+    /*
+     * الـrestore validator لازم يقبل
+     * قاعدة ERP تاريخية حقيقية قبل
+     * تشغيل migrations الحديثة عليها.
+     */
+    expect(() => validateErpDatabaseFile(historicalPath)).not.toThrow();
+
+    const restored = await restoreVerifiedDatabase(historicalPath);
+
+    try {
+      const liveDb = getDb();
+
+      /*
+       * كل الـmigrations من البداية
+       * حتى أحدث نسخة لازم تكون اتطبقت.
+       */
+      const versionRow = liveDb
+        .prepare(
+          `
+            SELECT MAX(version) AS version
+            FROM schema_migrations
+            `,
+        )
+        .get() as {
+        version: number;
+      };
+
+      expect(Number(versionRow.version)).toBe(expectedLatestVersion);
+
+      /*
+       * لازم marker التاريخية نفسها
+       * تفضل موجودة بعد الاسترجاع والترقية.
+       */
+      const marker = liveDb
+        .prepare(
+          `
+            SELECT value
+            FROM app_settings
+            WHERE key = 'historical_fixture_marker'
+            `,
+        )
+        .get() as
+        | {
+            value: string;
+          }
+        | undefined;
+
+      expect(marker?.value).toBe('pre-versioned');
+
+      /*
+       * Historical stock:
+       *
+       * +5 opening
+       * -2 sale
+       * +3 purchase
+       * = 6
+       *
+       * Migration 1 لازم كمان تحول
+       * legacy "opening" إلى "in".
+       */
+      expect(getVariantStock(1)).toBe(6);
+
+      const openingMovement = liveDb
+        .prepare(
+          `
+            SELECT type
+            FROM stock_movements
+            WHERE id = 1
+            `,
+        )
+        .get() as {
+        type: string;
+      };
+
+      expect(openingMovement.type).toBe('in');
+
+      /*
+       * Migration 4:
+       *
+       * النسخة القديمة ماكانتش بتخزن
+       * moving weighted average history.
+       *
+       * نقطة البداية المتعمدة:
+       * current stock × legacy buy_price.
+       *
+       * 6 × 40 = 240.
+       */
+      const variant = liveDb
+        .prepare(
+          `
+            SELECT
+              buy_price,
+              average_cost,
+              inventory_value
+
+            FROM product_variants
+
+            WHERE id = 1
+            `,
+        )
+        .get() as {
+        buy_price: number;
+        average_cost: number;
+        inventory_value: number;
+      };
+
+      expect(Number(variant.buy_price)).toBe(40);
+
+      expect(Number(variant.average_cost)).toBe(40);
+
+      expect(Number(variant.inventory_value)).toBe(240);
+
+      /*
+       * Sale history لازم تفضل كما هي،
+       * والـsnapshot columns الحديثة
+       * تتعمل لها backfill بدون اختراع
+       * خصومات تاريخية.
+       */
+      const sale = liveDb
+        .prepare(
+          `
+            SELECT
+              grand_total,
+              list_sub_total,
+              product_discount_value,
+              business_date
+
+            FROM sales
+
+            WHERE id = 1
+            `,
+        )
+        .get() as {
+        grand_total: number;
+        list_sub_total: number | null;
+        product_discount_value: number;
+        business_date: string | null;
+      };
+
+      expect(Number(sale.grand_total)).toBe(200);
+
+      expect(Number(sale.list_sub_total)).toBe(200);
+
+      expect(Number(sale.product_discount_value)).toBe(0);
+
+      expect(sale.business_date).toBe('2026-09-22');
+
+      const saleItem = liveDb
+        .prepare(
+          `
+            SELECT
+              quantity,
+              unit_cost,
+              unit_price,
+              list_unit_price
+
+            FROM sale_items
+
+            WHERE id = 1
+            `,
+        )
+        .get() as {
+        quantity: number;
+        unit_cost: number;
+        unit_price: number;
+        list_unit_price: number | null;
+      };
+
+      expect(Number(saleItem.quantity)).toBe(2);
+
+      expect(Number(saleItem.unit_cost)).toBe(40);
+
+      expect(Number(saleItem.unit_price)).toBe(100);
+
+      expect(Number(saleItem.list_unit_price)).toBe(100);
+
+      /*
+       * Customer / supplier accounting
+       * لازم مايتغيرش أثناء الترقية.
+       */
+      const customer = liveDb
+        .prepare(
+          `
+            SELECT balance
+            FROM customers
+            WHERE id = 1
+            `,
+        )
+        .get() as {
+        balance: number;
+      };
+
+      expect(Number(customer.balance)).toBe(0);
+
+      const supplier = liveDb
+        .prepare(
+          `
+            SELECT
+              total_purchased,
+              balance
+
+            FROM suppliers
+
+            WHERE id = 1
+            `,
+        )
+        .get() as {
+        total_purchased: number;
+        balance: number;
+      };
+
+      expect(Number(supplier.total_purchased)).toBe(150);
+
+      expect(Number(supplier.balance)).toBe(150);
+
+      /*
+       * Purchase history + Migration 3
+       * business-date backfill.
+       */
+      const purchase = liveDb
+        .prepare(
+          `
+            SELECT
+              total_amount,
+              paid_amount,
+              remaining_amount,
+              business_date
+
+            FROM purchase_invoices
+
+            WHERE id = 1
+            `,
+        )
+        .get() as {
+        total_amount: number;
+        paid_amount: number;
+        remaining_amount: number;
+        business_date: string | null;
+      };
+
+      expect(Number(purchase.total_amount)).toBe(150);
+
+      expect(Number(purchase.paid_amount)).toBe(0);
+
+      expect(Number(purchase.remaining_amount)).toBe(150);
+
+      expect(purchase.business_date).toBe('2026-09-22');
+
+      /*
+       * Liability accounting must survive.
+       */
+      const liability = liveDb
+        .prepare(
+          `
+            SELECT
+              total_amount,
+              paid_amount,
+              remaining_amount,
+              business_date
+
+            FROM store_liabilities
+
+            WHERE id = 1
+            `,
+        )
+        .get() as {
+        total_amount: number;
+        paid_amount: number;
+        remaining_amount: number;
+        business_date: string | null;
+      };
+
+      expect(Number(liability.total_amount)).toBe(100);
+
+      expect(Number(liability.paid_amount)).toBe(30);
+
+      expect(Number(liability.remaining_amount)).toBe(70);
+
+      expect(liability.business_date).toBe('2026-09-22');
+
+      const liabilityPayment = liveDb
+        .prepare(
+          `
+            SELECT
+              amount,
+              business_date
+
+            FROM store_liability_payments
+
+            WHERE id = 1
+            `,
+        )
+        .get() as {
+        amount: number;
+        business_date: string | null;
+      };
+
+      expect(Number(liabilityPayment.amount)).toBe(30);
+
+      expect(liabilityPayment.business_date).toBe('2026-09-22');
+
+      /*
+       * Migration 15 / 16:
+       * historical shift and expense dates.
+       */
+      const shift = liveDb
+        .prepare(
+          `
+            SELECT business_date
+            FROM cash_shifts
+            WHERE id = 1
+            `,
+        )
+        .get() as {
+        business_date: string | null;
+      };
+
+      expect(shift.business_date).toBe('2026-09-22');
+
+      const expense = liveDb
+        .prepare(
+          `
+            SELECT
+              amount,
+              business_date
+
+            FROM expenses
+
+            WHERE id = 1
+            `,
+        )
+        .get() as {
+        amount: number;
+        business_date: string | null;
+      };
+
+      expect(Number(expense.amount)).toBe(20);
+
+      expect(expense.business_date).toBe('2026-09-22');
+
+      /*
+       * Raw historical cash accounting:
+       *
+       * +200 sale
+       * -20 expense
+       * -30 liability payment
+       * = 150
+       *
+       * الحساب هنا متعمد يكون بدون
+       * الاعتماد على اسم account الحديث،
+       * لأن النسخة التاريخية كانت تستخدم
+       * legacy payment_method = cash.
+       */
+      const cash = liveDb
+        .prepare(
+          `
+            SELECT
+              COUNT(*) AS movements_count,
+
+              IFNULL(
+                SUM(
+                  CASE
+                    WHEN direction = 'in'
+                    THEN amount
+                    ELSE -amount
+                  END
+                ),
+                0
+              ) AS balance
+
+            FROM cash_movements
+
+            WHERE cancelled_at IS NULL
+            `,
+        )
+        .get() as {
+        movements_count: number;
+        balance: number;
+      };
+
+      expect(Number(cash.movements_count)).toBe(3);
+
+      expect(Number(cash.balance)).toBe(150);
+
+      /*
+       * Migration 11 schema must now exist
+       * even though the historical source
+       * predates Purchase Orders.
+       */
+      const purchaseOrdersTable = liveDb
+        .prepare(
+          `
+            SELECT name
+
+            FROM sqlite_master
+
+            WHERE
+              type = 'table'
+              AND name = 'purchase_orders'
+            `,
+        )
+        .get();
+
+      expect(purchaseOrdersTable).toBeTruthy();
+
+      /*
+       * أهم invariant بعد كل الترقية:
+       * مفيش أي FK مكسورة.
+       */
+      const foreignKeyErrors = liveDb.pragma('foreign_key_check') as unknown[];
+
+      expect(foreignKeyErrors).toEqual([]);
+
+      expect(() => validateErpDatabaseFile(getDbPath())).not.toThrow();
+    } finally {
+      fs.rmSync(historicalPath, {
+        force: true,
+      });
+
+      if (restored.safetyBackupPath) {
+        fs.rmSync(restored.safetyBackupPath, {
+          force: true,
+        });
+      }
+    }
+  }, 30_000);
 });

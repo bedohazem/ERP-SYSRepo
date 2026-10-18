@@ -15,9 +15,44 @@ export function getUserScopedDraftKey(
   return `${baseKey}:user:${id}`;
 }
 
-type DraftStorage = Pick<Storage, 'length' | 'key' | 'removeItem'>;
+type DraftReadStorage = Pick<Storage, 'getItem'>;
 
-export function clearAllErpDrafts(storage: DraftStorage) {
+type DraftWriteStorage = Pick<Storage, 'setItem'>;
+
+type DraftCleanupStorage = Pick<Storage, 'length' | 'key' | 'removeItem'>;
+
+export function readUserScopedDraft(
+  storage: DraftReadStorage,
+  baseKey: string,
+  userId: unknown,
+): string | null {
+  const key = getUserScopedDraftKey(baseKey, userId);
+
+  if (!key) {
+    return null;
+  }
+
+  return storage.getItem(key);
+}
+
+export function writeUserScopedDraft(
+  storage: DraftWriteStorage,
+  baseKey: string,
+  userId: unknown,
+  value: string,
+): boolean {
+  const key = getUserScopedDraftKey(baseKey, userId);
+
+  if (!key) {
+    return false;
+  }
+
+  storage.setItem(key, value);
+
+  return true;
+}
+
+export function clearAllErpDrafts(storage: DraftCleanupStorage) {
   const bases = [SALES_DRAFT_STORAGE_BASE, PURCHASE_DRAFT_STORAGE_BASE];
 
   const keys: string[] = [];

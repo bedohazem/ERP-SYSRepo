@@ -17,6 +17,8 @@ import { printSaleReceiptHtml } from '../../utils/receiptPrint';
 import { roundMoney } from '../../../shared/money';
 import {
   getUserScopedDraftKey,
+  readUserScopedDraft,
+  writeUserScopedDraft,
   SALES_DRAFT_STORAGE_BASE,
 } from '../../utils/draft-storage';
 
@@ -2893,7 +2895,11 @@ export default function SalesPage() {
         return;
       }
 
-      const raw = localStorage.getItem(salesDraftStorageKey);
+      const raw = readUserScopedDraft(
+        localStorage,
+        SALES_DRAFT_STORAGE_BASE,
+        user?.id,
+      );
 
       if (!raw) {
         setSalesDraftHydrated(true);
@@ -2934,7 +2940,7 @@ export default function SalesPage() {
     } finally {
       setSalesDraftHydrated(true);
     }
-  }, [requestedEditSaleId, salesDraftStorageKey]);
+  }, [requestedEditSaleId, salesDraftStorageKey, user?.id]);
 
   useEffect(() => {
     if (!salesDraftHydrated) return;
@@ -2964,8 +2970,10 @@ export default function SalesPage() {
       return;
     }
 
-    localStorage.setItem(
-      salesDraftStorageKey,
+    writeUserScopedDraft(
+      localStorage,
+      SALES_DRAFT_STORAGE_BASE,
+      user?.id,
       JSON.stringify({
         version: 2,
         invoices: invoices.map(serializeInvoiceDraft),
@@ -2983,6 +2991,7 @@ export default function SalesPage() {
     barcodeMode,
     editingSaleId,
     salesDraftStorageKey,
+    user?.id,
   ]);
 
   useEffect(() => {

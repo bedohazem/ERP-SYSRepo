@@ -8,6 +8,8 @@ import PurchaseOrdersPanel from './PurchaseOrdersPanel';
 import { formatMoney, roundMoney } from '../../../shared/money';
 import {
   getUserScopedDraftKey,
+  readUserScopedDraft,
+  writeUserScopedDraft,
   PURCHASE_DRAFT_STORAGE_BASE,
 } from '../../utils/draft-storage';
 
@@ -210,7 +212,11 @@ export default function PurchasesPage() {
       return;
     }
 
-    const rawDraft = localStorage.getItem(purchaseDraftStorageKey);
+    const rawDraft = readUserScopedDraft(
+      localStorage,
+      PURCHASE_DRAFT_STORAGE_BASE,
+      currentUser?.id,
+    );
 
     if (!rawDraft) {
       setDraftHydrated(true);
@@ -272,7 +278,7 @@ export default function PurchasesPage() {
     } finally {
       setDraftHydrated(true);
     }
-  }, [isEditing, purchaseDraftStorageKey]);
+  }, [isEditing, purchaseDraftStorageKey, currentUser?.id]);
 
   useEffect(() => {
     if (!draftHydrated) return;
@@ -301,8 +307,10 @@ export default function PurchasesPage() {
       return;
     }
 
-    localStorage.setItem(
-      purchaseDraftStorageKey,
+    writeUserScopedDraft(
+      localStorage,
+      PURCHASE_DRAFT_STORAGE_BASE,
+      currentUser?.id,
       JSON.stringify({
         supplierId,
         supplierSearch,
@@ -328,6 +336,7 @@ export default function PurchasesPage() {
     discountDraft,
     isEditing,
     purchaseDraftStorageKey,
+    currentUser?.id,
   ]);
 
   useEffect(() => {

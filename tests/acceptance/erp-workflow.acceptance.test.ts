@@ -34,6 +34,84 @@ import { openCashShift } from '../../src/main/database/repositories/cash-shifts.
 
 import { getReportsSummary } from '../../src/main/database/repositories/reports.repo';
 
+function getStoreCashBalance() {
+  const row = getDb()
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(
+            CASE
+              WHEN direction = 'in'
+              THEN amount
+              ELSE -amount
+            END
+          ),
+          0
+        ) AS balance
+
+      FROM cash_movements
+
+      WHERE
+        payment_method = 'store_cash'
+        AND cancelled_at IS NULL
+      `,
+    )
+    .get() as {
+    balance: number;
+  };
+
+  return Number(row.balance);
+}
+
+function getCustomerBalance(customerId: number) {
+  const row = getDb()
+    .prepare(
+      `
+      SELECT balance
+      FROM customers
+      WHERE id = ?
+      `,
+    )
+    .get(customerId) as {
+    balance: number;
+  };
+
+  return Number(row.balance);
+}
+
+function getSupplierBalance(supplierId: number) {
+  const row = getDb()
+    .prepare(
+      `
+      SELECT balance
+      FROM suppliers
+      WHERE id = ?
+      `,
+    )
+    .get(supplierId) as {
+    balance: number;
+  };
+
+  return Number(row.balance);
+}
+
+function getLiabilityRemaining(liabilityId: number) {
+  const row = getDb()
+    .prepare(
+      `
+      SELECT remaining_amount
+      FROM store_liabilities
+      WHERE id = ?
+      `,
+    )
+    .get(liabilityId) as {
+    remaining_amount: number;
+  };
+
+  return Number(row.remaining_amount);
+}
+
 describe('ERP financial acceptance invariants', () => {
   beforeEach(() => {
     closeDb();
@@ -110,6 +188,18 @@ describe('ERP financial acceptance invariants', () => {
 
     const receipt = getSaleReceipt(sale.saleId) as any;
 
+    /*
+     * Immediately after the sale:
+     * stock 10 - 2 = 8
+     * customer is fully paid
+     * store cash +200
+     */
+    expect(getVariantStock(variant.variant_id)).toBe(8);
+
+    expect(getCustomerBalance(Number(customer.id))).toBe(0);
+
+    expect(getStoreCashBalance()).toBe(200);
+
     createSaleReturn({
       original_sale_id: sale.saleId,
 
@@ -129,6 +219,18 @@ describe('ERP financial acceptance invariants', () => {
         },
       ],
     });
+
+    /*
+     * Immediately after returning one unit:
+     * stock 8 + 1 = 9
+     * customer still owes nothing
+     * store cash 200 - 100 refund = 100
+     */
+    expect(getVariantStock(variant.variant_id)).toBe(9);
+
+    expect(getCustomerBalance(Number(customer.id))).toBe(0);
+
+    expect(getStoreCashBalance()).toBe(100);
 
     const supplier = createSupplier({
       name: 'Acceptance Supplier',
@@ -154,6 +256,18 @@ describe('ERP financial acceptance invariants', () => {
       ],
     });
 
+    /*
+     * Purchase is completely unpaid:
+     * stock 9 + 3 = 12
+     * supplier debt = 3 * 50 = 150
+     * store cash must not change
+     */
+    expect(getVariantStock(variant.variant_id)).toBe(12);
+
+    expect(getSupplierBalance(Number(supplier.id))).toBe(150);
+
+    expect(getStoreCashBalance()).toBe(100);
+
     createExpense({
       title: 'Acceptance Expense',
 
@@ -163,6 +277,11 @@ describe('ERP financial acceptance invariants', () => {
 
       created_by: 1,
     });
+
+    /*
+     * Expense immediately leaves store cash.
+     */
+    expect(getStoreCashBalance()).toBe(80);
 
     const liability = createLiability({
       party_name: 'Acceptance Party',
@@ -178,6 +297,14 @@ describe('ERP financial acceptance invariants', () => {
       actor_id: 1,
     });
 
+    /*
+     * Creating an unpaid liability records the debt,
+     * but must not move cash.
+     */
+    expect(getLiabilityRemaining(liability.liability_id)).toBe(100);
+
+    expect(getStoreCashBalance()).toBe(80);
+
     recordLiabilityPayment({
       liability_id: liability.liability_id,
 
@@ -187,6 +314,14 @@ describe('ERP financial acceptance invariants', () => {
 
       actor_id: 1,
     });
+
+    /*
+     * Paying 30 reduces both the liability
+     * and store cash immediately.
+     */
+    expect(getLiabilityRemaining(liability.liability_id)).toBe(70);
+
+    expect(getStoreCashBalance()).toBe(50);
 
     const shift = getDb()
       .prepare(
@@ -223,6 +358,11 @@ describe('ERP financial acceptance invariants', () => {
     });
 
     /*
+     * Manual deposit is reflected immediately.
+     */
+    expect(getStoreCashBalance()).toBe(75);
+
+    /*
      * Stock:
      * 10 opening
      * -2 sale
@@ -232,94 +372,13 @@ describe('ERP financial acceptance invariants', () => {
      */
     expect(getVariantStock(variant.variant_id)).toBe(12);
 
-    const customerRow = getDb()
-      .prepare(
-        `
-        SELECT balance
+    expect(getCustomerBalance(Number(customer.id))).toBe(0);
 
-        FROM customers
+    expect(getSupplierBalance(Number(supplier.id))).toBe(150);
 
-        WHERE id = ?
-        `,
-      )
-      .get(customer.id) as {
-      balance: number;
-    };
+    expect(getLiabilityRemaining(liability.liability_id)).toBe(70);
 
-    expect(Number(customerRow.balance)).toBe(0);
-
-    const supplierRow = getDb()
-      .prepare(
-        `
-        SELECT balance
-
-        FROM suppliers
-
-        WHERE id = ?
-        `,
-      )
-      .get(supplier.id) as {
-      balance: number;
-    };
-
-    expect(Number(supplierRow.balance)).toBe(150);
-
-    const liabilityRow = getDb()
-      .prepare(
-        `
-        SELECT
-          remaining_amount
-
-        FROM store_liabilities
-
-        WHERE id = ?
-        `,
-      )
-      .get(liability.liability_id) as {
-      remaining_amount: number;
-    };
-
-    expect(Number(liabilityRow.remaining_amount)).toBe(70);
-
-    /*
-     * Cash:
-     * +200 sale
-     * -100 return
-     * -20 expense
-     * -30 liability payment
-     * +25 manual deposit
-     * = 75
-     */
-    const cashRow = getDb()
-      .prepare(
-        `
-        SELECT
-          IFNULL(
-            SUM(
-              CASE
-                WHEN direction = 'in'
-                THEN amount
-                ELSE -amount
-              END
-            ),
-            0
-          ) AS balance
-
-        FROM cash_movements
-
-        WHERE
-          payment_method =
-            'store_cash'
-
-          AND cancelled_at
-            IS NULL
-        `,
-      )
-      .get() as {
-      balance: number;
-    };
-
-    expect(Number(cashRow.balance)).toBe(75);
+    expect(getStoreCashBalance()).toBe(75);
 
     const report = getReportsSummary();
 
