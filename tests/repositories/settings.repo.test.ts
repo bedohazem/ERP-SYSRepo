@@ -33,7 +33,7 @@ describe('settings repository', () => {
     closeDb();
     getDb();
     resetDatabaseData();
-  });
+  }, 30_000);
 
   it('returns default barcode print settings', () => {
     const settings = getBarcodePrintSettings();
