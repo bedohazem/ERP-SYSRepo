@@ -3,7 +3,12 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { cleanupAutoBackups } from '../../src/main/database/auto-backup';
+import { getDb } from '../../src/main/database/db';
+
+import {
+  cleanupAutoBackups,
+  getAutoBackupInfo,
+} from '../../src/main/database/auto-backup';
 
 function createBackupFile(dir: string, name: string, time: number) {
   const filePath = path.join(dir, name);
@@ -88,6 +93,93 @@ describe('auto backup retention', () => {
         recursive: true,
         force: true,
       });
+    }
+  });
+
+  it('self-heals a restored auto backup path that is not usable on this device', () => {
+    const invalidPath = path.join(
+      process.cwd(),
+      `.test-invalid-auto-backup-${Date.now()}`,
+    );
+
+    /*
+     * نعمل File بدل Folder.
+     *
+     * ده يحاكي إعدادًا مسترجعًا
+     * من جهاز آخر لكنه غير صالح
+     * على الجهاز الحالي.
+     */
+    fs.writeFileSync(invalidPath, 'not-a-directory', 'utf8');
+
+    const db = getDb();
+
+    db.prepare(
+      `
+      INSERT INTO app_settings (
+        key,
+        value
+      )
+
+      VALUES (
+        'auto_backup_dir',
+        ?
+      )
+
+      ON CONFLICT(key)
+      DO UPDATE SET
+        value = excluded.value
+      `,
+    ).run(invalidPath);
+
+    let resolvedDir = '';
+
+    try {
+      const info = getAutoBackupInfo();
+
+      resolvedDir = info.dir;
+
+      expect(resolvedDir).not.toBe(invalidPath);
+
+      expect(fs.existsSync(resolvedDir)).toBe(true);
+
+      expect(fs.statSync(resolvedDir).isDirectory()).toBe(true);
+
+      const stored = db
+        .prepare(
+          `
+          SELECT value
+          FROM app_settings
+          WHERE key = 'auto_backup_dir'
+          `,
+        )
+        .get() as {
+        value: string;
+      };
+
+      /*
+       * مش مجرد fallback مؤقت:
+       * نصحح الإعداد نفسه حتى لا
+       * تتكرر المشكلة في كل تشغيل.
+       */
+      expect(stored.value).toBe(resolvedDir);
+    } finally {
+      db.prepare(
+        `
+        DELETE FROM app_settings
+        WHERE key = 'auto_backup_dir'
+        `,
+      ).run();
+
+      fs.rmSync(invalidPath, {
+        force: true,
+      });
+
+      if (resolvedDir) {
+        fs.rmSync(resolvedDir, {
+          recursive: true,
+          force: true,
+        });
+      }
     }
   });
 });

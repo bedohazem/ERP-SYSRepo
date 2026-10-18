@@ -96,15 +96,11 @@ function saveConfiguredBackupDir(dirPath: string) {
   ).run(BACKUP_SETTING_KEY, dirPath);
 }
 
-export function getAutoBackupDir() {
-  return readConfiguredBackupDir();
-}
-
-export function setAutoBackupDir(dirPath: string) {
+function ensureBackupDirectory(dirPath: string) {
   const cleanPath = String(dirPath || '').trim();
 
   if (!cleanPath) {
-    throw new Error('اختار مكان صحيح للنسخ التلقائي');
+    throw new Error('مسار النسخ التلقائي غير صحيح');
   }
 
   if (!fs.existsSync(cleanPath)) {
@@ -116,8 +112,58 @@ export function setAutoBackupDir(dirPath: string) {
   const stat = fs.statSync(cleanPath);
 
   if (!stat.isDirectory()) {
-    throw new Error('المسار المختار ليس فولدر');
+    throw new Error('مسار النسخ التلقائي ليس فولدر');
   }
+
+  return cleanPath;
+}
+
+export function getAutoBackupDir() {
+  const configuredDir = readConfiguredBackupDir();
+
+  try {
+    return ensureBackupDirectory(configuredDir);
+  } catch (error) {
+    /*
+     * Backup قديمة ممكن تكون محفوظة
+     * على جهاز آخر بمسار غير موجود
+     * مثل Drive مختلف.
+     *
+     * لا نوقع شاشة الإعدادات كلها
+     * بسبب إعداد محلي خاص بالجهاز القديم.
+     */
+    const fallbackDir = ensureBackupDirectory(getDefaultBackupDir());
+
+    try {
+      saveConfiguredBackupDir(fallbackDir);
+    } catch (saveError) {
+      console.error(
+        'Failed to persist fallback auto backup directory:',
+        saveError,
+      );
+    }
+
+    console.warn(
+      'Configured auto backup directory is unavailable. Falling back to default.',
+      {
+        configuredDir,
+        fallbackDir,
+        error,
+      },
+    );
+
+    return fallbackDir;
+  }
+}
+
+export function setAutoBackupDir(dirPath: string) {
+  const cleanPath = String(dirPath || '').trim();
+
+  if (!cleanPath) {
+    throw new Error('اختار مكان صحيح للنسخ التلقائي');
+  }
+
+  ensureBackupDirectory(cleanPath);
 
   /*
    * نتأكد إن المكان قابل للكتابة.

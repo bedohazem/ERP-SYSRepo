@@ -380,6 +380,113 @@ describe('database backup integrity', () => {
     }
   });
 
+  it('clears legacy activation and device-local settings after restore', async () => {
+    const sourcePath = tempPath(`device-local-settings-${Date.now()}.db`);
+
+    const db = getDb();
+
+    const sourceSettings = [
+      ['auto_backup_dir', 'Z:\\Old-PC\\ERP-Backups'],
+      ['cash_drawer_printer_name', 'OLD-PC-PRINTER'],
+
+      /*
+       * Legacy database-based activation.
+       */
+      ['app_activated', 'true'],
+      ['app_trial_days', '999'],
+      ['app_trial_started_at', '2020-01-01T00:00:00.000Z'],
+      ['app_deactivated_at', '2020-01-02T00:00:00.000Z'],
+
+      /*
+       * Store setting لازم يفضل موجود
+       * لإثبات إننا مش بنمسح app_settings كلها.
+       */
+      ['app_name', 'Restored Store'],
+    ] as const;
+
+    const upsert = db.prepare(
+      `
+        INSERT INTO app_settings (
+          key,
+          value
+        )
+
+        VALUES (?, ?)
+
+        ON CONFLICT(key)
+        DO UPDATE SET
+          value = excluded.value
+        `,
+    );
+
+    const seedSourceSettings = db.transaction(() => {
+      for (const [key, value] of sourceSettings) {
+        upsert.run(key, value);
+      }
+    });
+
+    seedSourceSettings();
+
+    await createVerifiedDatabaseBackup(sourcePath);
+
+    const restored = await restoreVerifiedDatabase(sourcePath);
+
+    try {
+      const liveDb = getDb();
+
+      const removedKeys = [
+        'auto_backup_dir',
+        'cash_drawer_printer_name',
+        'app_activated',
+        'app_trial_days',
+        'app_trial_started_at',
+        'app_deactivated_at',
+      ];
+
+      for (const key of removedKeys) {
+        const row = liveDb
+          .prepare(
+            `
+              SELECT value
+              FROM app_settings
+              WHERE key = ?
+              `,
+          )
+          .get(key);
+
+        expect(row).toBeUndefined();
+      }
+
+      const preservedSetting = liveDb
+        .prepare(
+          `
+            SELECT value
+            FROM app_settings
+            WHERE key = 'app_name'
+            `,
+        )
+        .get() as
+        | {
+            value: string;
+          }
+        | undefined;
+
+      expect(preservedSetting?.value).toBe('Restored Store');
+
+      expect(() => validateErpDatabaseFile(getDbPath())).not.toThrow();
+    } finally {
+      fs.rmSync(sourcePath, {
+        force: true,
+      });
+
+      if (restored.safetyBackupPath) {
+        fs.rmSync(restored.safetyBackupPath, {
+          force: true,
+        });
+      }
+    }
+  }, 30_000);
+
   it('keeps only the newest restore safety backups', () => {
     const stamp = Date.now();
 

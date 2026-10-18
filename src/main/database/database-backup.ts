@@ -7,6 +7,47 @@ import { validateErpDatabaseFile } from './backup-integrity';
 
 const RESTORE_SAFETY_BACKUPS_TO_KEEP = 5;
 
+const RESTORE_DEVICE_LOCAL_SETTING_KEYS = [
+  /*
+   * مسار خاص بالجهاز الذي أُخذت منه النسخة.
+   */
+  'auto_backup_dir',
+
+  /*
+   * اسم الطابعة المحلية لا يجب نقله
+   * بين أجهزة مختلفة.
+   */
+  'cash_drawer_printer_name',
+
+  /*
+   * مفاتيح نظام التفعيل القديم.
+   *
+   * التفعيل الحالي لا يعتمد عليها؛
+   * Paid activation الحالي عبارة عن
+   * Signed Token مربوط بالجهاز ومخزن
+   * خارج قاعدة ERP.
+   */
+  'app_activated',
+  'app_trial_days',
+  'app_trial_started_at',
+  'app_deactivated_at',
+] as const;
+
+function clearRestoredDeviceLocalSettings() {
+  const db = getDb();
+
+  const placeholders = RESTORE_DEVICE_LOCAL_SETTING_KEYS.map(() => '?').join(
+    ', ',
+  );
+
+  db.prepare(
+    `
+    DELETE FROM app_settings
+    WHERE key IN (${placeholders})
+    `,
+  ).run(...RESTORE_DEVICE_LOCAL_SETTING_KEYS);
+}
+
 function removeIfExists(filePath: string) {
   try {
     if (fs.existsSync(filePath)) {
@@ -223,8 +264,18 @@ async function restoreVerifiedDatabaseUnlocked(sourcePathInput: string) {
     getDb();
 
     /*
-     * وبعد فتحه نتأكد إن الملف
-     * مازال سليمًا.
+     * Full Restore ينقل بيانات المتجر،
+     * لكنه لا يجب أن ينقل حالة أو إعدادات
+     * مرتبطة بالجهاز القديم.
+     *
+     * خصوصًا مفاتيح نظام التفعيل القديم
+     * ومسار النسخ والطابعة المحلية.
+     */
+    clearRestoredDeviceLocalSettings();
+
+    /*
+     * وبعد فتحه وتنظيف الإعدادات المحلية
+     * نتأكد إن الملف مازال سليمًا.
      */
     validateErpDatabaseFile(targetPath);
 
