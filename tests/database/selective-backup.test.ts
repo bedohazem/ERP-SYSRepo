@@ -337,28 +337,42 @@ describe('selective backup exporter', () => {
     );
 
     expect(customer).toMatchObject({
-      opening_balance: 150,
-
-      opening_points_balance: 12,
-
-      lifetime_total_spent: 900,
+      points_balance: 12,
 
       credit_limit: 500,
 
       credit_days: 30,
     });
 
+    expect(
+      Object.prototype.hasOwnProperty.call(customer || {}, 'opening_balance'),
+    ).toBe(false);
+
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        customer || {},
+        'lifetime_total_spent',
+      ),
+    ).toBe(false);
+
     const supplier = backup.data.suppliers?.suppliers.find(
       (item) => item.name === 'Backup Supplier',
     );
 
     expect(supplier).toMatchObject({
-      opening_balance: 300,
-
-      lifetime_total_purchased: 1200,
-
       credit_days: 45,
     });
+
+    expect(
+      Object.prototype.hasOwnProperty.call(supplier || {}, 'opening_balance'),
+    ).toBe(false);
+
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        supplier || {},
+        'lifetime_total_purchased',
+      ),
+    ).toBe(false);
 
     const user = backup.data.users_permissions?.users.find(
       (item) => item.username === 'backup-cashier',
@@ -760,11 +774,11 @@ describe('selective backup exporter', () => {
     };
 
     expect(restoredCustomer).toMatchObject({
-      balance: 200,
+      balance: 0,
 
       points_balance: 15,
 
-      total_spent: 1000,
+      total_spent: 0,
     });
 
     const restoredSupplier = cleanDb
@@ -787,10 +801,73 @@ describe('selective backup exporter', () => {
     };
 
     expect(restoredSupplier).toMatchObject({
-      balance: 350,
+      balance: 0,
 
-      total_purchased: 1800,
+      total_purchased: 0,
     });
+
+    const restoredOpenCustomerDebt = cleanDb
+      .prepare(
+        `
+        SELECT IFNULL(
+          SUM(
+            remaining_amount
+          ),
+          0
+        ) AS total
+
+        FROM sales
+
+        WHERE customer_id = (
+          SELECT id
+          FROM customers
+          WHERE name =
+            'Restore Customer'
+          LIMIT 1
+        )
+
+          AND cancelled_at IS NULL
+
+          AND IFNULL(
+            type,
+            'sale'
+          ) = 'sale'
+        `,
+      )
+      .get() as {
+      total: number;
+    };
+
+    expect(Number(restoredOpenCustomerDebt.total)).toBe(0);
+
+    const restoredOpenSupplierDebt = cleanDb
+      .prepare(
+        `
+        SELECT IFNULL(
+          SUM(
+            remaining_amount
+          ),
+          0
+        ) AS total
+
+        FROM purchase_invoices
+
+        WHERE supplier_id = (
+          SELECT id
+          FROM suppliers
+          WHERE name =
+            'Restore Supplier'
+          LIMIT 1
+        )
+
+          AND cancelled_at IS NULL
+        `,
+      )
+      .get() as {
+      total: number;
+    };
+
+    expect(Number(restoredOpenSupplierDebt.total)).toBe(0);
 
     const restoredUser = cleanDb
       .prepare(

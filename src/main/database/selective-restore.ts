@@ -467,25 +467,49 @@ function restoreCustomers(backup: SelectiveBackupPackageV1) {
   for (const customer of section.customers) {
     const id = requirePositiveId(customer.source_id, 'رقم العميل');
 
-    const openingBalance = finiteNumber(
-      customer.opening_balance,
-      `رصيد العميل ${customer.name}`,
-    );
-
     const points = finiteNumber(
-      customer.opening_points_balance,
+      customer.points_balance,
       `نقاط العميل ${customer.name}`,
     );
 
-    const totalSpent = finiteNumber(
-      customer.lifetime_total_spent,
-      `إجمالي مشتريات العميل ${customer.name}`,
-    );
-
-    if (!Number.isInteger(points) || points < 0 || totalSpent < 0) {
-      throw new Error(`بيانات العميل ${customer.name} غير صحيحة`);
+    if (!Number.isInteger(points) || points < 0) {
+      throw new Error(`نقاط العميل ${customer.name} غير صحيحة`);
     }
 
+    const creditLimit =
+      customer.credit_limit == null
+        ? null
+        : finiteNumber(
+            customer.credit_limit,
+            `الحد الائتماني للعميل ${customer.name}`,
+          );
+
+    if (creditLimit != null && creditLimit < 0) {
+      throw new Error(`الحد الائتماني للعميل ${customer.name} غير صحيح`);
+    }
+
+    const creditDays =
+      customer.credit_days == null
+        ? null
+        : finiteNumber(
+            customer.credit_days,
+            `مدة ائتمان العميل ${customer.name}`,
+          );
+
+    if (
+      creditDays != null &&
+      (!Number.isInteger(creditDays) || creditDays < 0)
+    ) {
+      throw new Error(`مدة ائتمان العميل ${customer.name} غير صحيحة`);
+    }
+
+    /*
+     * balance و total_spent
+     * يفضلوا Default = 0.
+     *
+     * لا ننقلهم بدون تاريخ مالي
+     * متكامل يفسرهم.
+     */
     db.prepare(
       `
       INSERT INTO customers (
@@ -497,8 +521,6 @@ function restoreCustomers(backup: SelectiveBackupPackageV1) {
         notes,
 
         points_balance,
-        total_spent,
-        balance,
 
         credit_limit,
         credit_days,
@@ -511,7 +533,7 @@ function restoreCustomers(backup: SelectiveBackupPackageV1) {
 
       VALUES (
         ?, ?, ?, ?, ?, ?,
-        ?, ?, ?,
+        ?,
         ?, ?,
         ?,
         ?, ?
@@ -532,23 +554,9 @@ function restoreCustomers(backup: SelectiveBackupPackageV1) {
 
       points,
 
-      totalSpent,
+      creditLimit,
 
-      openingBalance,
-
-      customer.credit_limit == null
-        ? null
-        : finiteNumber(
-            customer.credit_limit,
-            `الحد الائتماني للعميل ${customer.name}`,
-          ),
-
-      customer.credit_days == null
-        ? null
-        : finiteNumber(
-            customer.credit_days,
-            `مدة ائتمان العميل ${customer.name}`,
-          ),
+      creditDays,
 
       Number(customer.is_active) === 1 ? 1 : 0,
 
@@ -573,7 +581,13 @@ function restoreCustomers(backup: SelectiveBackupPackageV1) {
           ?, NULL, 'adjust', ?, 0, ?
         )
         `,
-      ).run(id, points, 'رصيد نقاط افتتاحي من نسخة انتقائية');
+      ).run(
+        id,
+
+        points,
+
+        'رصيد نقاط افتتاحي من نسخة انتقائية',
+      );
     }
 
     restored += 1;
@@ -596,20 +610,28 @@ function restoreSuppliers(backup: SelectiveBackupPackageV1) {
   for (const supplier of section.suppliers) {
     const id = requirePositiveId(supplier.source_id, 'رقم المورد');
 
-    const openingBalance = finiteNumber(
-      supplier.opening_balance,
-      `رصيد المورد ${supplier.name}`,
-    );
+    const creditDays =
+      supplier.credit_days == null
+        ? null
+        : finiteNumber(
+            supplier.credit_days,
+            `مدة ائتمان المورد ${supplier.name}`,
+          );
 
-    const totalPurchased = finiteNumber(
-      supplier.lifetime_total_purchased,
-      `إجمالي مشتريات المورد ${supplier.name}`,
-    );
-
-    if (totalPurchased < 0) {
-      throw new Error(`بيانات المورد ${supplier.name} غير صحيحة`);
+    if (
+      creditDays != null &&
+      (!Number.isInteger(creditDays) || creditDays < 0)
+    ) {
+      throw new Error(`مدة ائتمان المورد ${supplier.name} غير صحيحة`);
     }
 
+    /*
+     * balance و total_purchased
+     * Default = 0.
+     *
+     * مستحقات المورد تدخل لاحقًا
+     * من Section محاسبي مستقل.
+     */
     db.prepare(
       `
       INSERT INTO suppliers (
@@ -619,9 +641,6 @@ function restoreSuppliers(backup: SelectiveBackupPackageV1) {
         email,
         address,
         notes,
-
-        total_purchased,
-        balance,
 
         credit_days,
 
@@ -633,7 +652,6 @@ function restoreSuppliers(backup: SelectiveBackupPackageV1) {
 
       VALUES (
         ?, ?, ?, ?, ?, ?,
-        ?, ?,
         ?,
         ?,
         ?, ?
@@ -652,16 +670,7 @@ function restoreSuppliers(backup: SelectiveBackupPackageV1) {
 
       supplier.notes ?? null,
 
-      totalPurchased,
-
-      openingBalance,
-
-      supplier.credit_days == null
-        ? null
-        : finiteNumber(
-            supplier.credit_days,
-            `مدة ائتمان المورد ${supplier.name}`,
-          ),
+      creditDays,
 
       Number(supplier.is_active) === 1 ? 1 : 0,
 

@@ -396,14 +396,11 @@ export type CustomersBackupRowV1 = {
   credit_days: number | null;
 
   /*
-   * وقت الـRestore هنعتبره
-   * Opening State، مش تاريخ بيع.
+   * نقاط الولاء مستقلة عن تاريخ
+   * الفواتير ونقدر ننقلها بأمان
+   * مع Adjustment افتتاحي.
    */
-  opening_balance: number;
-
-  opening_points_balance: number;
-
-  lifetime_total_spent: number;
+  points_balance: number;
 
   is_active: number;
 
@@ -419,8 +416,6 @@ export type CustomersBackupSectionV1 = {
 
   counts: {
     customers: number;
-
-    debtors: number;
   };
 };
 
@@ -440,19 +435,9 @@ export function buildCustomersBackupSection(): CustomersBackupSectionV1 {
         credit_days,
 
         IFNULL(
-          balance,
-          0
-        ) AS balance,
-
-        IFNULL(
           points_balance,
           0
         ) AS points_balance,
-
-        IFNULL(
-          total_spent,
-          0
-        ) AS total_spent,
 
         is_active,
         created_at,
@@ -482,11 +467,7 @@ export function buildCustomersBackupSection(): CustomersBackupSectionV1 {
 
     credit_days: row.credit_days == null ? null : Number(row.credit_days),
 
-    opening_balance: Number(row.balance || 0),
-
-    opening_points_balance: Number(row.points_balance || 0),
-
-    lifetime_total_spent: Number(row.total_spent || 0),
+    points_balance: Number(row.points_balance || 0),
 
     is_active: Number(row.is_active) === 1 ? 1 : 0,
 
@@ -502,8 +483,6 @@ export function buildCustomersBackupSection(): CustomersBackupSectionV1 {
 
     counts: {
       customers: customers.length,
-
-      debtors: customers.filter((row) => row.opening_balance > 0).length,
     },
   };
 }
@@ -527,10 +506,6 @@ export type SuppliersBackupRowV1 = {
 
   credit_days: number | null;
 
-  opening_balance: number;
-
-  lifetime_total_purchased: number;
-
   is_active: number;
 
   created_at: string | null;
@@ -545,8 +520,6 @@ export type SuppliersBackupSectionV1 = {
 
   counts: {
     suppliers: number;
-
-    creditors: number;
   };
 };
 
@@ -563,16 +536,6 @@ export function buildSuppliersBackupSection(): SuppliersBackupSectionV1 {
         notes,
 
         credit_days,
-
-        IFNULL(
-          balance,
-          0
-        ) AS balance,
-
-        IFNULL(
-          total_purchased,
-          0
-        ) AS total_purchased,
 
         is_active,
         created_at,
@@ -600,10 +563,6 @@ export function buildSuppliersBackupSection(): SuppliersBackupSectionV1 {
 
     credit_days: row.credit_days == null ? null : Number(row.credit_days),
 
-    opening_balance: Number(row.balance || 0),
-
-    lifetime_total_purchased: Number(row.total_purchased || 0),
-
     is_active: Number(row.is_active) === 1 ? 1 : 0,
 
     created_at: row.created_at ?? null,
@@ -618,8 +577,6 @@ export function buildSuppliersBackupSection(): SuppliersBackupSectionV1 {
 
     counts: {
       suppliers: suppliers.length,
-
-      creditors: suppliers.filter((row) => row.opening_balance > 0).length,
     },
   };
 }

@@ -18,8 +18,8 @@ export const SELECTIVE_BACKUP_SECTION_LABELS: Record<
   string
 > = {
   catalog_stock: 'المنتجات والمخزون',
-  customers: 'العملاء',
-  suppliers: 'الموردين',
+  customers: 'العملاء ونقاط الولاء',
+  suppliers: 'بيانات الموردين',
   users_permissions: 'المستخدمين والصلاحيات',
   promotions: 'العروض',
   store_settings: 'إعدادات المتجر',
