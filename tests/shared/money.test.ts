@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatMoney, roundMoney } from '../src/shared/money';
+import { formatMoney, roundMoney } from '../../src/shared/money';
 
 describe('whole-pound money policy', () => {
   it('rounds .5 and above up and values below .5 down', () => {
