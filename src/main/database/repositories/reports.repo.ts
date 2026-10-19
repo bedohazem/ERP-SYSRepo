@@ -811,7 +811,19 @@ export function getReportsSummary(input?: ReportFilter) {
   const purchasesWhere = buildWhere(
     'pi',
     input,
-    [`pi.cancelled_at IS NULL`, `IFNULL(pi.status, 'active') <> 'cancelled'`],
+    [
+      `pi.cancelled_at IS NULL`,
+
+      `IFNULL(
+        pi.status,
+        'active'
+      ) <> 'cancelled'`,
+
+      `IFNULL(
+        pi.status,
+        'active'
+      ) <> 'opening_balance'`,
+    ],
     undefined,
     purchaseBusinessDate,
   );

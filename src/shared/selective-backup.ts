@@ -4,10 +4,23 @@ export const SELECTIVE_BACKUP_SCHEMA_VERSION = 1;
 
 export const SELECTIVE_BACKUP_SECTIONS = [
   'catalog_stock',
+
   'customers',
+  'customer_open_debts',
+
   'suppliers',
+  'supplier_open_dues',
+
   'users_permissions',
+
   'promotions',
+
+  'open_liabilities',
+
+  'account_opening_balances',
+
+  'open_purchase_orders',
+
   'store_settings',
 ] as const;
 
@@ -18,10 +31,25 @@ export const SELECTIVE_BACKUP_SECTION_LABELS: Record<
   string
 > = {
   catalog_stock: 'المنتجات والمخزون',
+
   customers: 'العملاء ونقاط الولاء',
+
+  customer_open_debts: 'مديونيات العملاء الحالية',
+
   suppliers: 'بيانات الموردين',
+
+  supplier_open_dues: 'مستحقات الموردين الحالية',
+
   users_permissions: 'المستخدمين والصلاحيات',
+
   promotions: 'العروض',
+
+  open_liabilities: 'الالتزامات المفتوحة',
+
+  account_opening_balances: 'أرصدة الحسابات الحالية',
+
+  open_purchase_orders: 'أوامر الشراء المفتوحة',
+
   store_settings: 'إعدادات المتجر',
 };
 
@@ -33,15 +61,21 @@ export const SELECTIVE_BACKUP_SECTION_DEPENDENCIES: Record<
 
   customers: [],
 
+  customer_open_debts: ['customers'],
+
   suppliers: [],
+
+  supplier_open_dues: ['suppliers'],
 
   users_permissions: [],
 
-  /*
-   * العرض ممكن يكون مربوط
-   * بتصنيف أو منتج.
-   */
   promotions: ['catalog_stock'],
+
+  open_liabilities: [],
+
+  account_opening_balances: [],
+
+  open_purchase_orders: ['catalog_stock', 'suppliers'],
 
   store_settings: [],
 };
@@ -53,12 +87,33 @@ export const SELECTIVE_BACKUP_PRESETS = {
 
   business_master: ['catalog_stock', 'customers', 'suppliers'],
 
+  financial_state: [
+    'customer_open_debts',
+    'supplier_open_dues',
+    'open_liabilities',
+    'account_opening_balances',
+    'open_purchase_orders',
+  ],
+
   complete_setup: [
     'catalog_stock',
+
     'customers',
+    'customer_open_debts',
+
     'suppliers',
+    'supplier_open_dues',
+
     'users_permissions',
+
     'promotions',
+
+    'open_liabilities',
+
+    'account_opening_balances',
+
+    'open_purchase_orders',
+
     'store_settings',
   ],
 } as const satisfies Record<string, readonly SelectiveBackupSection[]>;
@@ -122,15 +177,8 @@ export function getSelectiveBackupPresetSections(
 }
 
 /*
- * حاليًا لا نصدر كلمات المرور
- * أو Password Hashes.
- *
- * لذلك لا يوجد Secret Credential
- * داخل الملف.
- *
- * نقدر نضيف Optional encryption
- * للملف كله لاحقًا بدون تغيير
- * الـschema.
+ * Password hashes لا يتم
+ * تصديرها أصلًا.
  */
 export function selectiveBackupRequiresEncryption(
   _sections: readonly SelectiveBackupSection[],

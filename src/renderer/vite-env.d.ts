@@ -1548,6 +1548,62 @@ declare global {
         };
       }>;
 
+      resetKeepingSelectiveData: (
+        sections: SelectiveBackupSection[],
+      ) => Promise<{
+        success: boolean;
+
+        canceled?: boolean;
+
+        message?: string;
+
+        requires_relogin?: boolean;
+
+        requires_setup?: boolean;
+
+        safetyBackupPath?: string;
+
+        result?: {
+          sections: SelectiveBackupSection[];
+
+          preserved_admin: {
+            id: number;
+
+            username: string;
+          };
+
+          manifest: {
+            format: string;
+
+            schema_version: number;
+
+            created_at: string;
+
+            app_version: string;
+
+            sections: SelectiveBackupSection[];
+
+            encrypted: boolean;
+
+            counts: Partial<Record<SelectiveBackupSection, number>>;
+          };
+
+          restore: {
+            sections: SelectiveBackupSection[];
+
+            counts: Partial<Record<SelectiveBackupSection, number>>;
+
+            users_restored: number;
+
+            users_skipped_current_admin: number;
+
+            users_require_password_reset: number;
+
+            stock_units_restored: number;
+          };
+        };
+      }>;
+
       restoreDatabase: () => Promise<{
         success: boolean;
         canceled?: boolean;

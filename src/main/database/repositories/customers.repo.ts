@@ -66,7 +66,10 @@ function getAgingSummaryForCustomer(
     IFNULL(
       s.type,
       'sale'
-    ) = 'sale'
+    ) IN (
+      'sale',
+      'opening_balance'
+    )
     `,
 
     `
@@ -266,7 +269,10 @@ export function getCustomerDueSummary(
     IFNULL(
       s.type,
       'sale'
-    ) = 'sale'
+    ) IN (
+      'sale',
+      'opening_balance'
+    )
     `,
 
     `
@@ -836,7 +842,13 @@ export function deleteCustomer(id: number) {
         ) AS open_debt
       FROM sales
       WHERE customer_id = ?
-        AND IFNULL(type, 'sale') = 'sale'
+        AND IFNULL(
+          type,
+          'sale'
+        ) IN (
+          'sale',
+          'opening_balance'
+        )
         AND cancelled_at IS NULL
         AND remaining_amount > 0
       `,
@@ -1139,7 +1151,13 @@ export function recordCustomerPayment(input: {
           FROM sales
           WHERE id = ?
             AND customer_id = ?
-            AND IFNULL(type, 'sale') = 'sale'
+            AND IFNULL(
+              type,
+              'sale'
+            ) IN (
+              'sale',
+              'opening_balance'
+            )
             AND cancelled_at IS NULL
           LIMIT 1
         `,
@@ -1203,7 +1221,13 @@ export function recordCustomerPayment(input: {
           SELECT *
           FROM sales
           WHERE customer_id = ?
-            AND IFNULL(type, 'sale') = 'sale'
+            AND IFNULL(
+              type,
+              'sale'
+            ) IN (
+              'sale',
+              'opening_balance'
+            )
             AND cancelled_at IS NULL
             AND remaining_amount > 0
           ORDER BY id ASC
@@ -2014,7 +2038,13 @@ export function updateCustomerPaymentBatch(input: {
           FROM sales
           WHERE id = ?
             AND customer_id = ?
-            AND IFNULL(type, 'sale') = 'sale'
+            AND IFNULL(
+              type,
+              'sale'
+            ) IN (
+              'sale',
+              'opening_balance'
+            )
             AND cancelled_at IS NULL
           LIMIT 1
           `,
@@ -2067,7 +2097,13 @@ export function updateCustomerPaymentBatch(input: {
           SELECT *
           FROM sales
           WHERE customer_id = ?
-            AND IFNULL(type, 'sale') = 'sale'
+          AND IFNULL(
+            type,
+            'sale'
+          ) IN (
+            'sale',
+            'opening_balance'
+          )
             AND cancelled_at IS NULL
             AND remaining_amount > 0
           ORDER BY id ASC
@@ -2258,7 +2294,13 @@ export function getCustomerStatement(
       SELECT *
       FROM sales
       WHERE customer_id = ?
-        AND IFNULL(type, 'sale') = 'sale'
+        AND IFNULL(
+          type,
+          'sale'
+        ) IN (
+          'sale',
+          'opening_balance'
+        )
       ORDER BY created_at DESC, id DESC
     `,
     )
@@ -2337,22 +2379,37 @@ export function getCustomerStatement(
     );
   }
 
-  const saleEntries = sales.map((sale) => ({
-    id: `sale-${sale.id}`,
-    type: 'sale',
-    title: sale.cancelled_at
-      ? `فاتورة بيع #${sale.id} - ملغاة`
-      : `فاتورة بيع #${sale.id}`,
-    debit: sale.cancelled_at ? 0 : Number(sale.grand_total || 0),
-    credit: 0,
-    sale_id: sale.id,
-    payment_status: sale.payment_status,
-    due_date: sale.due_date ?? null,
-    notes: sale.cancelled_at
-      ? sale.cancel_reason || 'فاتورة ملغاة'
-      : sale.notes,
-    created_at: sale.created_at,
-  }));
+  const saleEntries = sales.map((sale) => {
+    const isOpeningBalance = String(sale.type || 'sale') === 'opening_balance';
+
+    return {
+      id: `sale-${sale.id}`,
+
+      type: 'sale',
+
+      title: isOpeningBalance
+        ? `رصيد افتتاحي مستحق #${sale.id}`
+        : sale.cancelled_at
+          ? `فاتورة بيع #${sale.id} - ملغاة`
+          : `فاتورة بيع #${sale.id}`,
+
+      debit: sale.cancelled_at ? 0 : Number(sale.grand_total || 0),
+
+      credit: 0,
+
+      sale_id: sale.id,
+
+      payment_status: sale.payment_status,
+
+      due_date: sale.due_date ?? null,
+
+      notes: sale.cancelled_at
+        ? sale.cancel_reason || 'فاتورة ملغاة'
+        : sale.notes,
+
+      created_at: sale.created_at,
+    };
+  });
 
   const initialPaymentEntries = sales
     .filter((sale) => !sale.cancelled_at)

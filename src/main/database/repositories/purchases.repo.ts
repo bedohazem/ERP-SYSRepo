@@ -805,6 +805,10 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       throw new Error('لا يمكن تعديل فاتورة شراء ملغاة');
     }
 
+    if (purchase.safe_status === 'opening_balance') {
+      throw new Error('الرصيد الافتتاحي لا يتم تعديله كفاتورة شراء');
+    }
+
     /*
      * أي تاريخ مرتجعات يمنع تعديل
      * أصل الفاتورة، حتى لو المرتجع
@@ -1666,6 +1670,10 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       throw new Error('فاتورة الشراء ملغاة بالفعل');
     }
 
+    if (purchase.safe_status === 'opening_balance') {
+      throw new Error('الرصيد الافتتاحي لا يتم إلغاؤه كفاتورة شراء');
+    }
+
     const returnsCountRow = db
       .prepare(
         `
@@ -1891,6 +1899,10 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
 
     if (purchase.safe_status === 'cancelled') {
       throw new Error('لا يمكن عمل مرتجع على فاتورة ملغاة');
+    }
+
+    if (purchase.safe_status === 'opening_balance') {
+      throw new Error('لا يمكن عمل مرتجع على رصيد افتتاحي');
     }
 
     const seenPurchaseItemIds = new Set<number>();
@@ -2638,7 +2650,14 @@ export function listPurchaseInvoices(input?: {
   const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 300);
   const offset = Math.max(Number(input?.offset || 0), 0);
 
-  const where: string[] = [];
+  const where: string[] = [
+    `
+    IFNULL(
+      pi.status,
+      'active'
+    ) <> 'opening_balance'
+    `,
+  ];
   const params: any[] = [];
 
   const invoiceNumberMatch = search.match(/^#\s*(\d+)$/);
@@ -4549,7 +4568,10 @@ export function getSupplierStatement(
 
       type: 'purchase',
 
-      title: `فاتورة شراء #${purchase.id}`,
+      title:
+        purchase.status === 'opening_balance'
+          ? `رصيد افتتاحي مستحق #${purchase.id}`
+          : `فاتورة شراء #${purchase.id}`,
 
       debit: Number(purchase.total_amount || 0),
 

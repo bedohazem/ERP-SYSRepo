@@ -154,6 +154,11 @@ contextBridge.exposeInMainWorld('api', {
       sections,
     }),
 
+  resetKeepingSelectiveData: (sections) =>
+    ipcRenderer.invoke('settings:reset-keeping-selective', {
+      sections,
+    }),
+
   restoreDatabase: () => ipcRenderer.invoke('settings:restore-database'),
 
   resetDatabase: () => ipcRenderer.invoke('settings:reset-database'),

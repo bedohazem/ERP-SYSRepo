@@ -23,10 +23,8 @@ describe('financial business date', () => {
     resetDatabaseData();
   }, 30_000);
 
-  it('requires the first shift before no-shift financial operations', () => {
-    expect(() => resolveFinancialBusinessDate(null)).toThrow(
-      'يجب فتح أول شفت في النظام',
-    );
+  it('uses the current date for an allowed no-shift operation before the first shift', () => {
+    expect(resolveFinancialBusinessDate(null)).toBe(getLocalBusinessDate());
   });
 
   it('uses the current date when it matches the latest shift date', () => {

@@ -63,6 +63,7 @@ import {
   SELECTIVE_BACKUP_SECTION_LABELS,
   normalizeSelectiveBackupSections,
 } from '../../shared/selective-backup';
+import { resetDatabaseKeepingSelectiveData } from '../database/selective-reset';
 
 const APP_THEMES = ['dark', 'light'] as const;
 
@@ -943,6 +944,232 @@ export function registerSettingsIpc(): void {
             result.users_require_password_reset > 0
               ? `تم الاسترجاع بنجاح. يوجد ${result.users_require_password_reset} مستخدم مسترجع يحتاج تعيين كلمة مرور وتفعيل من شاشة المستخدمين.`
               : 'تم الاسترجاع الانتقائي بنجاح',
+        };
+      } catch (error) {
+        return {
+          success: false,
+
+          message: getErrorMessage(error),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    'settings:reset-keeping-selective',
+    async (event, input: unknown) => {
+      try {
+        const actorId = requireAuthenticatedAdmin(event);
+
+        const payload = requireObjectInput(input, 'بيانات التصفير الانتقائي');
+
+        if (!Array.isArray(payload.sections)) {
+          throw new Error('اختيارات البيانات المطلوب الاحتفاظ بها غير صحيحة');
+        }
+
+        const sections = normalizeSelectiveBackupSections(payload.sections);
+
+        const labels = sections.map(
+          (section) => SELECTIVE_BACKUP_SECTION_LABELS[section],
+        );
+
+        const actorSnapshot = getDb()
+          .prepare(
+            `
+              SELECT
+                name,
+                username
+
+              FROM users
+
+              WHERE id = ?
+
+              LIMIT 1
+              `,
+          )
+          .get(actorId) as
+          | {
+              name: string;
+
+              username: string;
+            }
+          | undefined;
+
+        const parentWindow = BrowserWindow.fromWebContents(event.sender);
+
+        /*
+         * Full Safety Backup إجباري.
+         *
+         * لو المستخدم غير رأيه
+         * بعدين يقدر يرجع كل حاجة.
+         */
+        const saveOptions: SaveDialogOptions = {
+          title: 'حفظ نسخة الأمان الكاملة قبل التصفير الانتقائي',
+
+          defaultPath: path.join(
+            app.getPath('documents'),
+
+            getDefaultBackupName(),
+          ),
+
+          filters: [
+            {
+              name: 'SQLite Database',
+
+              extensions: ['db'],
+            },
+
+            {
+              name: 'Backup Files',
+
+              extensions: ['bak'],
+            },
+
+            {
+              name: 'All Files',
+
+              extensions: ['*'],
+            },
+          ],
+        };
+
+        const saveResult = parentWindow
+          ? await dialog.showSaveDialog(parentWindow, saveOptions)
+          : await dialog.showSaveDialog(saveOptions);
+
+        if (saveResult.canceled || !saveResult.filePath) {
+          return {
+            success: false,
+
+            canceled: true,
+
+            message:
+              'تم إلغاء العملية لأن نسخة الأمان الكاملة إلزامية قبل التصفير',
+          };
+        }
+
+        recheckAdmin(event, actorId);
+
+        const confirmationOptions = {
+          type: 'warning' as const,
+
+          buttons: ['إلغاء', 'تصفير مع الاحتفاظ بالمحدد'],
+
+          defaultId: 0,
+
+          cancelId: 0,
+
+          title: 'تصفير انتقائي',
+
+          message: 'سيتم تصفير النظام مع الاحتفاظ بالبيانات التي اخترتها',
+
+          detail: `سيتم الاحتفاظ بـ:\n\n${labels
+            .map((label) => `✓ ${label}`)
+            .join(
+              '\n',
+            )}\n\n✓ حساب المدير الحالي سيظل محفوظًا تلقائيًا.\n\nسيتم حذف باقي بيانات التشغيل والتاريخ غير المحدد.\n\nسيتم إنشاء Full Safety Backup قبل التنفيذ، ولو حدث خطأ أثناء التصفير أو الاسترجاع سيتم عمل Rollback تلقائي للعملية.`,
+        };
+
+        const confirmation = parentWindow
+          ? await dialog.showMessageBox(
+              parentWindow,
+
+              confirmationOptions,
+            )
+          : await dialog.showMessageBox(confirmationOptions);
+
+        if (confirmation.response !== 1) {
+          return {
+            success: false,
+
+            canceled: true,
+
+            message: 'تم إلغاء التصفير الانتقائي',
+          };
+        }
+
+        recheckAdmin(event, actorId);
+
+        const safetyBackupPath = saveResult.filePath;
+
+        /*
+         * نسخة كاملة مستقلة أولًا.
+         */
+        const safetyValidation =
+          await createVerifiedDatabaseBackup(safetyBackupPath);
+
+        recheckAdmin(event, actorId);
+
+        const appVersion =
+          typeof app.getVersion === 'function'
+            ? app.getVersion()
+            : String(process.env.npm_package_version || 'unknown');
+
+        const result = resetDatabaseKeepingSelectiveData({
+          sections,
+
+          actorId,
+
+          appVersion,
+        });
+
+        /*
+         * Admin الحالي موجود بعد
+         * العملية بنفس ID، لذلك
+         * الـAudit FK صالح.
+         */
+        logAction({
+          actor_id: actorId,
+
+          action: 'database_selective_reset',
+
+          entity: 'settings',
+
+          entity_id: null,
+
+          details: {
+            sections: result.sections,
+
+            counts: result.manifest.counts,
+
+            safety_backup: safetyBackupPath,
+
+            safety_backup_size: safetyValidation.size,
+
+            safety_backup_integrity: 'ok',
+
+            preserved_admin: result.preserved_admin.username,
+
+            previous_actor_name: actorSnapshot?.name ?? null,
+
+            stock_units_restored: result.restore.stock_units_restored,
+
+            users_require_password_reset:
+              result.restore.users_require_password_reset,
+          },
+        });
+
+        /*
+         * المدير محفوظ لكن نجبر
+         * Login جديد بعد العملية.
+         */
+        clearAuthSession(event);
+
+        return {
+          success: true,
+
+          requires_relogin: true,
+
+          requires_setup: false,
+
+          safetyBackupPath,
+
+          result,
+
+          message:
+            result.restore.users_require_password_reset > 0
+              ? `تم التصفير مع الاحتفاظ بالبيانات المحددة بنجاح. يوجد ${result.restore.users_require_password_reset} مستخدم مسترجع يحتاج تعيين كلمة مرور وتفعيل.`
+              : 'تم تصفير النظام والاحتفاظ بالبيانات المحددة بنجاح',
         };
       } catch (error) {
         return {

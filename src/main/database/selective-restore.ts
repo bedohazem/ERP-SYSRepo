@@ -49,6 +49,22 @@ function finiteNumber(value: unknown, label: string) {
   return numberValue;
 }
 
+function moneyValue(value: unknown, label: string) {
+  const amount = finiteNumber(value, label);
+
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
+function nonNegativeMoney(value: unknown, label: string) {
+  const amount = moneyValue(value, label);
+
+  if (amount < 0) {
+    throw new Error(`${label} لا يمكن أن يكون سالبًا`);
+  }
+
+  return amount;
+}
+
 function tableRowCount(tableName: string) {
   const db = getDb();
 
@@ -114,11 +130,14 @@ function assertRestoreTargetIsClean(
     'purchase_invoices',
     'purchase_returns',
 
+    'purchase_orders',
+
     'cash_movements',
     'cash_shifts',
 
     'expenses',
-    'liabilities',
+
+    'store_liabilities',
 
     'stock_count_sessions',
   ];
@@ -1031,6 +1050,763 @@ function restorePromotions(
   return restored;
 }
 
+function restoreCustomerOpenDebts(
+  backup: SelectiveBackupPackageV1,
+
+  actorId: number,
+) {
+  const section = backup.data.customer_open_debts;
+
+  if (!section) {
+    throw new Error('قسم مديونيات العملاء غير موجود داخل النسخة');
+  }
+
+  const db = getDb();
+
+  const totals = new Map<number, number>();
+
+  let restored = 0;
+
+  for (const debt of section.debts) {
+    const customerId = requirePositiveId(debt.customer_source_id, 'رقم العميل');
+
+    const customer = db
+      .prepare(
+        `
+        SELECT id
+
+        FROM customers
+
+        WHERE id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(customerId);
+
+    if (!customer) {
+      throw new Error(
+        `العميل رقم ${customerId} غير موجود أثناء استرجاع المديونية`,
+      );
+    }
+
+    const amount = nonNegativeMoney(
+      debt.remaining_amount,
+      'قيمة مديونية العميل',
+    );
+
+    if (amount <= 0) {
+      continue;
+    }
+
+    const createdAt =
+      String(debt.created_at || '').trim() || new Date().toISOString();
+
+    db.prepare(
+      `
+      INSERT INTO sales (
+        type,
+
+        customer_id,
+        user_id,
+
+        business_date,
+
+        sub_total,
+        discount_value,
+
+        grand_total,
+
+        paid,
+        change_amount,
+
+        payment_method,
+
+        notes,
+
+        created_at,
+
+        remaining_amount,
+        payment_status,
+
+        due_date
+      )
+
+      VALUES (
+        'opening_balance',
+
+        ?, ?,
+
+        ?,
+
+        ?, 0,
+
+        ?,
+
+        0, 0,
+
+        'opening_balance',
+
+        ?,
+
+        ?,
+
+        ?, 'unpaid',
+
+        ?
+      )
+      `,
+    ).run(
+      customerId,
+
+      actorId,
+
+      debt.business_date ?? null,
+
+      amount,
+
+      amount,
+
+      'رصيد افتتاحي من نسخة انتقائية',
+
+      createdAt,
+
+      amount,
+
+      debt.due_date ?? null,
+    );
+
+    totals.set(
+      customerId,
+
+      moneyValue(
+        (totals.get(customerId) ?? 0) + amount,
+
+        'إجمالي مديونية العميل',
+      ),
+    );
+
+    restored += 1;
+  }
+
+  for (const [customerId, balance] of totals) {
+    db.prepare(
+      `
+      UPDATE customers
+
+      SET
+        balance = ?,
+
+        total_spent = 0,
+
+        updated_at =
+          CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+    ).run(balance, customerId);
+  }
+
+  return restored;
+}
+
+function restoreSupplierOpenDues(backup: SelectiveBackupPackageV1) {
+  const section = backup.data.supplier_open_dues;
+
+  if (!section) {
+    throw new Error('قسم مستحقات الموردين غير موجود داخل النسخة');
+  }
+
+  const db = getDb();
+
+  const totals = new Map<number, number>();
+
+  let restored = 0;
+
+  for (const due of section.dues) {
+    const supplierId = requirePositiveId(due.supplier_source_id, 'رقم المورد');
+
+    const supplier = db
+      .prepare(
+        `
+        SELECT id
+
+        FROM suppliers
+
+        WHERE id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(supplierId);
+
+    if (!supplier) {
+      throw new Error(
+        `المورد رقم ${supplierId} غير موجود أثناء استرجاع المستحقات`,
+      );
+    }
+
+    const amount = nonNegativeMoney(
+      due.remaining_amount,
+
+      'قيمة مستحق المورد',
+    );
+
+    if (amount <= 0) {
+      continue;
+    }
+
+    const createdAt =
+      String(due.created_at || '').trim() || new Date().toISOString();
+
+    db.prepare(
+      `
+      INSERT INTO purchase_invoices (
+        supplier_id,
+
+        total_amount,
+        sub_total,
+
+        discount_type,
+        discount_input,
+        discount_value,
+
+        paid_amount,
+        remaining_amount,
+
+        payment_status,
+        payment_method,
+
+        notes,
+
+        status,
+
+        business_date,
+        due_date,
+
+        created_at
+      )
+
+      VALUES (
+        ?,
+
+        ?, ?,
+
+        'amount',
+        0,
+        0,
+
+        0,
+        ?,
+
+        'unpaid',
+        'opening_balance',
+
+        ?,
+
+        'opening_balance',
+
+        ?,
+        ?,
+
+        ?
+      )
+      `,
+    ).run(
+      supplierId,
+
+      amount,
+      amount,
+
+      amount,
+
+      'رصيد افتتاحي من نسخة انتقائية',
+
+      due.business_date ?? null,
+
+      due.due_date ?? null,
+
+      createdAt,
+    );
+
+    totals.set(
+      supplierId,
+
+      moneyValue(
+        (totals.get(supplierId) ?? 0) + amount,
+
+        'إجمالي مستحق المورد',
+      ),
+    );
+
+    restored += 1;
+  }
+
+  for (const [supplierId, balance] of totals) {
+    db.prepare(
+      `
+      UPDATE suppliers
+
+      SET
+        balance = ?,
+
+        total_purchased = 0,
+
+        updated_at =
+          CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+    ).run(balance, supplierId);
+  }
+
+  return restored;
+}
+
+function restoreOpenLiabilities(
+  backup: SelectiveBackupPackageV1,
+
+  userIdMap: ReadonlyMap<number, number>,
+
+  actorId: number,
+) {
+  const section = backup.data.open_liabilities;
+
+  if (!section) {
+    throw new Error('قسم الالتزامات المفتوحة غير موجود داخل النسخة');
+  }
+
+  const db = getDb();
+
+  let restored = 0;
+
+  for (const liability of section.liabilities) {
+    const amount = nonNegativeMoney(
+      liability.remaining_amount,
+
+      `قيمة الالتزام ${liability.title}`,
+    );
+
+    if (amount <= 0) {
+      continue;
+    }
+
+    const createdBy =
+      liability.created_by_source_id == null
+        ? actorId
+        : (userIdMap.get(Number(liability.created_by_source_id)) ?? actorId);
+
+    db.prepare(
+      `
+      INSERT INTO store_liabilities (
+        party_name,
+        title,
+        category,
+
+        total_amount,
+        paid_amount,
+        remaining_amount,
+
+        status,
+
+        due_date,
+
+        notes,
+
+        created_by,
+
+        business_date,
+
+        created_at,
+        updated_at
+      )
+
+      VALUES (
+        ?, ?, ?,
+
+        ?, 0, ?,
+
+        'open',
+
+        ?,
+
+        ?,
+
+        ?,
+
+        ?,
+
+        ?,
+        ?
+      )
+      `,
+    ).run(
+      requireText(liability.party_name, 'اسم جهة الالتزام'),
+
+      requireText(liability.title, 'عنوان الالتزام'),
+
+      liability.category ?? null,
+
+      amount,
+
+      amount,
+
+      liability.due_date ?? null,
+
+      liability.notes ?? null,
+
+      createdBy,
+
+      liability.business_date ?? null,
+
+      liability.created_at ?? new Date().toISOString(),
+
+      liability.created_at ?? new Date().toISOString(),
+    );
+
+    restored += 1;
+  }
+
+  return restored;
+}
+
+function restoreAccountOpeningBalances(
+  backup: SelectiveBackupPackageV1,
+
+  actorId: number,
+) {
+  const section = backup.data.account_opening_balances;
+
+  if (!section) {
+    throw new Error('قسم أرصدة الحسابات غير موجود داخل النسخة');
+  }
+
+  const allowed = new Set([
+    'store_cash',
+    'store_safe',
+    'owner_cash',
+    'owner_bank',
+    'owner_vodafone',
+    'fawry_machine',
+  ]);
+
+  const db = getDb();
+
+  let restored = 0;
+
+  for (const account of section.accounts) {
+    const key = String(account.account || '');
+
+    if (!allowed.has(key)) {
+      throw new Error(`حساب مالي غير مدعوم داخل النسخة: ${key}`);
+    }
+
+    const balance = moneyValue(account.balance, `رصيد الحساب ${key}`);
+
+    if (Math.abs(balance) <= 0.0001) {
+      continue;
+    }
+
+    db.prepare(
+      `
+      INSERT INTO cash_movements (
+        type,
+
+        amount,
+
+        direction,
+
+        payment_method,
+
+        reference_id,
+        reference_type,
+
+        notes,
+
+        created_by,
+
+        business_date
+      )
+
+      VALUES (
+        'opening_balance',
+
+        ?,
+
+        ?,
+
+        ?,
+
+        NULL,
+        'selective_opening_balance',
+
+        ?,
+
+        ?,
+
+        date(
+          'now',
+          'localtime'
+        )
+      )
+      `,
+    ).run(
+      Math.abs(balance),
+
+      balance >= 0 ? 'in' : 'out',
+
+      key,
+
+      'رصيد افتتاحي من نسخة انتقائية',
+
+      actorId,
+    );
+
+    restored += 1;
+  }
+
+  return restored;
+}
+
+function restoreOpenPurchaseOrders(
+  backup: SelectiveBackupPackageV1,
+
+  userIdMap: ReadonlyMap<number, number>,
+
+  actorId: number,
+) {
+  const section = backup.data.open_purchase_orders;
+
+  if (!section) {
+    throw new Error('قسم أوامر الشراء المفتوحة غير موجود داخل النسخة');
+  }
+
+  const db = getDb();
+
+  let restoredOrders = 0;
+
+  let restoredItems = 0;
+
+  for (const order of section.orders) {
+    const orderId = requirePositiveId(
+      order.source_id,
+
+      'رقم أمر الشراء',
+    );
+
+    const supplierId = requirePositiveId(
+      order.supplier_source_id,
+
+      'رقم مورد أمر الشراء',
+    );
+
+    const supplier = db
+      .prepare(
+        `
+        SELECT id
+
+        FROM suppliers
+
+        WHERE id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(supplierId);
+
+    if (!supplier) {
+      throw new Error(`مورد أمر الشراء رقم ${orderId} غير موجود`);
+    }
+
+    const status = order.status === 'ordered' ? 'ordered' : 'draft';
+
+    const createdBy =
+      order.created_by_source_id == null
+        ? actorId
+        : (userIdMap.get(Number(order.created_by_source_id)) ?? actorId);
+
+    const orderedBy =
+      status === 'ordered'
+        ? order.ordered_by_source_id == null
+          ? actorId
+          : (userIdMap.get(Number(order.ordered_by_source_id)) ?? actorId)
+        : null;
+
+    db.prepare(
+      `
+      INSERT INTO purchase_orders (
+        id,
+
+        supplier_id,
+
+        status,
+
+        notes,
+
+        created_by,
+
+        ordered_by,
+
+        created_at,
+        updated_at,
+
+        ordered_at
+      )
+
+      VALUES (
+        ?,
+
+        ?,
+
+        ?,
+
+        ?,
+
+        ?,
+
+        ?,
+
+        ?,
+        ?,
+
+        ?
+      )
+      `,
+    ).run(
+      orderId,
+
+      supplierId,
+
+      status,
+
+      order.notes ?? null,
+
+      createdBy,
+
+      orderedBy,
+
+      order.created_at ?? new Date().toISOString(),
+
+      order.updated_at ?? order.created_at ?? new Date().toISOString(),
+
+      status === 'ordered'
+        ? (order.ordered_at ?? new Date().toISOString())
+        : null,
+    );
+
+    if (!Array.isArray(order.items)) {
+      throw new Error(`أصناف أمر الشراء رقم ${orderId} غير صالحة`);
+    }
+
+    for (const item of order.items) {
+      const variantId = requirePositiveId(
+        item.variant_source_id,
+
+        `صنف أمر الشراء رقم ${orderId}`,
+      );
+
+      const variant = db
+        .prepare(
+          `
+          SELECT id
+
+          FROM product_variants
+
+          WHERE id = ?
+
+          LIMIT 1
+          `,
+        )
+        .get(variantId);
+
+      if (!variant) {
+        throw new Error(
+          `الصنف رقم ${variantId} غير موجود أثناء استرجاع أمر الشراء رقم ${orderId}`,
+        );
+      }
+
+      const quantity = finiteNumber(
+        item.quantity,
+
+        `كمية أمر الشراء رقم ${orderId}`,
+      );
+
+      const unitCost = nonNegativeMoney(
+        item.unit_cost,
+
+        `تكلفة أمر الشراء رقم ${orderId}`,
+      );
+
+      if (quantity <= 0) {
+        throw new Error(`كمية غير صحيحة داخل أمر الشراء رقم ${orderId}`);
+      }
+
+      db.prepare(
+        `
+        INSERT INTO purchase_order_items (
+          purchase_order_id,
+
+          variant_id,
+
+          product_name,
+
+          barcode,
+          size,
+          color,
+
+          quantity,
+
+          unit_cost,
+
+          line_total
+        )
+
+        VALUES (
+          ?, ?,
+          ?,
+          ?, ?, ?,
+          ?,
+          ?,
+          ?
+        )
+        `,
+      ).run(
+        orderId,
+
+        variantId,
+
+        requireText(item.product_name, 'اسم منتج أمر الشراء'),
+
+        item.barcode ?? null,
+
+        item.size ?? null,
+
+        item.color ?? null,
+
+        quantity,
+
+        unitCost,
+
+        moneyValue(
+          quantity * unitCost,
+
+          'إجمالي سطر أمر الشراء',
+        ),
+      );
+
+      restoredItems += 1;
+    }
+
+    restoredOrders += 1;
+  }
+
+  return {
+    orders: restoredOrders,
+
+    items: restoredItems,
+  };
+}
+
 function restoreStoreSettings(backup: SelectiveBackupPackageV1) {
   const section = backup.data.store_settings;
 
@@ -1137,8 +1913,16 @@ export function restoreSelectiveBackupPackage(
       counts.customers = restoreCustomers(backup);
     }
 
+    if (sections.includes('customer_open_debts')) {
+      counts.customer_open_debts = restoreCustomerOpenDebts(backup, actorId);
+    }
+
     if (sections.includes('suppliers')) {
       counts.suppliers = restoreSuppliers(backup);
+    }
+
+    if (sections.includes('supplier_open_dues')) {
+      counts.supplier_open_dues = restoreSupplierOpenDues(backup);
     }
 
     if (sections.includes('users_permissions')) {
@@ -1157,6 +1941,27 @@ export function restoreSelectiveBackupPackage(
 
     if (sections.includes('promotions')) {
       counts.promotions = restorePromotions(backup, userIdMap);
+    }
+
+    if (sections.includes('open_liabilities')) {
+      counts.open_liabilities = restoreOpenLiabilities(
+        backup,
+        userIdMap,
+        actorId,
+      );
+    }
+
+    if (sections.includes('account_opening_balances')) {
+      counts.account_opening_balances = restoreAccountOpeningBalances(
+        backup,
+        actorId,
+      );
+    }
+
+    if (sections.includes('open_purchase_orders')) {
+      const result = restoreOpenPurchaseOrders(backup, userIdMap, actorId);
+
+      counts.open_purchase_orders = result.orders;
     }
 
     if (sections.includes('store_settings')) {

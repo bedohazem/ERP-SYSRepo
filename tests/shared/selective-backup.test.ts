@@ -40,11 +40,42 @@ describe('selective backup contract', () => {
   it('builds complete setup preset', () => {
     expect(getSelectiveBackupPresetSections('complete_setup')).toEqual([
       'catalog_stock',
+
       'customers',
+      'customer_open_debts',
+
       'suppliers',
+      'supplier_open_dues',
+
       'users_permissions',
+
       'promotions',
+
+      'open_liabilities',
+
+      'account_opening_balances',
+
+      'open_purchase_orders',
+
       'store_settings',
+    ]);
+  });
+
+  it('automatically includes financial dependencies', () => {
+    expect(normalizeSelectiveBackupSections(['customer_open_debts'])).toEqual([
+      'customers',
+      'customer_open_debts',
+    ]);
+
+    expect(normalizeSelectiveBackupSections(['supplier_open_dues'])).toEqual([
+      'suppliers',
+      'supplier_open_dues',
+    ]);
+
+    expect(normalizeSelectiveBackupSections(['open_purchase_orders'])).toEqual([
+      'catalog_stock',
+      'suppliers',
+      'open_purchase_orders',
     ]);
   });
 

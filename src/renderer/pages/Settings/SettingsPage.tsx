@@ -156,18 +156,40 @@ function toggleSelectiveSection(
   if (next.has(section)) {
     next.delete(section);
 
-    /*
-     * العروض تعتمد
-     * على المنتجات.
-     */
     if (section === 'catalog_stock') {
       next.delete('promotions');
+
+      next.delete('open_purchase_orders');
+    }
+
+    if (section === 'customers') {
+      next.delete('customer_open_debts');
+    }
+
+    if (section === 'suppliers') {
+      next.delete('supplier_open_dues');
+
+      next.delete('open_purchase_orders');
     }
   } else {
     next.add(section);
 
     if (section === 'promotions') {
       next.add('catalog_stock');
+    }
+
+    if (section === 'customer_open_debts') {
+      next.add('customers');
+    }
+
+    if (section === 'supplier_open_dues') {
+      next.add('suppliers');
+    }
+
+    if (section === 'open_purchase_orders') {
+      next.add('catalog_stock');
+
+      next.add('suppliers');
     }
   }
 
@@ -192,7 +214,7 @@ export default function SettingsPage() {
   >(['catalog_stock']);
 
   const [selectiveBackupLoading, setSelectiveBackupLoading] = useState(false);
-
+  const [selectiveResetLoading, setSelectiveResetLoading] = useState(false);
   const [selectiveChooseLoading, setSelectiveChooseLoading] = useState(false);
 
   const [selectiveRestoreLoading, setSelectiveRestoreLoading] = useState(false);
@@ -698,6 +720,53 @@ export default function SettingsPage() {
       showMessage('error', 'حدث خطأ أثناء حفظ النسخة الانتقائية');
     } finally {
       setSelectiveBackupLoading(false);
+    }
+  }
+
+  async function resetKeepingSelectiveData() {
+    if (selectiveResetLoading) {
+      return;
+    }
+
+    if (selectiveSections.length === 0) {
+      showMessage('error', 'اختار البيانات التي تريد الاحتفاظ بها بعد التصفير');
+
+      return;
+    }
+
+    setSelectiveResetLoading(true);
+
+    try {
+      const result =
+        await window.api.resetKeepingSelectiveData(selectiveSections);
+
+      if (result.canceled) {
+        return;
+      }
+
+      if (!result.success) {
+        showMessage('error', result.message || 'فشل التصفير الانتقائي');
+
+        return;
+      }
+
+      /*
+       * أي Draft قديم ممكن يشير
+       * إلى IDs تم حذفها.
+       */
+      clearAllErpDrafts(window.localStorage);
+
+      clearLocalSession();
+
+      navigate('/', {
+        replace: true,
+      });
+    } catch (error) {
+      console.error('Failed to reset while keeping selected data:', error);
+
+      showMessage('error', 'حدث خطأ أثناء التصفير الانتقائي');
+    } finally {
+      setSelectiveResetLoading(false);
     }
   }
 
@@ -1436,9 +1505,10 @@ export default function SettingsPage() {
                     lineHeight: 1.8,
                   }}
                 >
-                  اختار البيانات التي تريد الاحتفاظ بها فقط. الاسترجاع للبيانات
-                  الأساسية مصمم بعد تصفير البرنامج حتى لا يتم دمج بيانات مالية
-                  قديمة مع بيانات جديدة.
+                  اختار البيانات التي تريد الاحتفاظ بها. تقدر تحفظها كنسخة
+                  انتقائية عادية، أو تستخدم زر "تصفير مع الاحتفاظ بالمحدد" فيعمل
+                  البرنامج Full Safety Backup ثم يصفر بيانات التشغيل ويرجع
+                  الاختيارات تلقائيًا.
                 </p>
               </div>
 
@@ -1500,11 +1570,13 @@ export default function SettingsPage() {
                   lineHeight: 1.8,
                 }}
               >
-                ملاحظة: اختيار العروض يضيف المنتجات والمخزون تلقائيًا.
-                المستخدمون يتم حفظ أسمائهم وأدوارهم وصلاحياتهم فقط بدون كلمات
-                المرور. قسم العملاء يحفظ البيانات ونقاط الولاء فقط، وقسم
-                الموردين يحفظ البيانات الأساسية فقط. المديونيات والمستحقات
-                المالية سيتم نقلها من قسم محاسبي مستقل حتى تظل التقارير متطابقة.
+                ملاحظة: المديونيات والمستحقات يتم استرجاعها كأرصدة افتتاحية
+                قابلة للسداد، ولا يتم احتسابها كمبيعات أو مشتريات جديدة. اختيار
+                مديونيات العملاء يضيف العملاء تلقائيًا، واختيار مستحقات الموردين
+                يضيف الموردين، وأوامر الشراء المفتوحة تضيف المنتجات والموردين.
+                أرصدة الخزنة والبنك والمحافظ ترجع كأرصدة افتتاحية فقط بدون نقل
+                تاريخ الحركات القديمة. المستخدمون الآخرون يرجعون بدون كلمات
+                المرور ويحتاجون تعيين كلمة مرور جديدة.
               </div>
 
               <div
@@ -1546,6 +1618,32 @@ export default function SettingsPage() {
                   {selectiveChooseLoading
                     ? 'جاري قراءة الملف...'
                     : 'اختيار نسخة انتقائية للاسترجاع'}
+                </button>
+
+                <button
+                  type="button"
+
+                  onClick={() => void resetKeepingSelectiveData()}
+
+                  disabled={selectiveResetLoading}
+
+                  style={{
+                    ...dangerButtonStyle,
+
+                    opacity: selectiveResetLoading ? 0.6 : 1,
+
+                    cursor: selectiveResetLoading ? 'not-allowed' : 'pointer',
+
+                    background: 'rgba(180,83,9,0.28)',
+
+                    border: '1px solid rgba(251,146,60,0.50)',
+
+                    color: '#fed7aa',
+                  }}
+                >
+                  {selectiveResetLoading
+                    ? 'جاري التصفير والاسترجاع...'
+                    : 'تصفير مع الاحتفاظ بالمحدد'}
                 </button>
               </div>
 

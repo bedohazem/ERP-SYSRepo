@@ -1011,6 +1011,629 @@ export function buildStoreSettingsBackupSection(): StoreSettingsBackupSectionV1 
 }
 
 /* =========================
+ * Customer open debts
+ * ========================= */
+
+export type CustomerOpenDebtBackupRowV1 = {
+  customer_source_id: number;
+
+  remaining_amount: number;
+
+  due_date: string | null;
+
+  business_date: string | null;
+
+  created_at: string | null;
+};
+
+export type CustomerOpenDebtsBackupSectionV1 = {
+  section: 'customer_open_debts';
+
+  debts: CustomerOpenDebtBackupRowV1[];
+
+  counts: {
+    entries: number;
+
+    customers: number;
+
+    total_amount: number;
+  };
+};
+
+export function buildCustomerOpenDebtsBackupSection(): CustomerOpenDebtsBackupSectionV1 {
+  const rows = getDb()
+    .prepare(
+      `
+        SELECT
+          customer_id,
+          remaining_amount,
+          due_date,
+          business_date,
+          created_at
+
+        FROM sales
+
+        WHERE
+          customer_id
+            IS NOT NULL
+
+          AND cancelled_at
+            IS NULL
+
+          AND IFNULL(
+            type,
+            'sale'
+          ) IN (
+            'sale',
+            'opening_balance'
+          )
+
+          AND remaining_amount > 0
+
+        ORDER BY
+          customer_id ASC,
+          id ASC
+        `,
+    )
+    .all() as Array<any>;
+
+  const debts = rows.map((row): CustomerOpenDebtBackupRowV1 => ({
+    customer_source_id: Number(row.customer_id),
+
+    remaining_amount: Number(row.remaining_amount || 0),
+
+    due_date: row.due_date ?? null,
+
+    business_date: row.business_date ?? null,
+
+    created_at: row.created_at ?? null,
+  }));
+
+  const customers = new Set(debts.map((row) => row.customer_source_id));
+
+  return {
+    section: 'customer_open_debts',
+
+    debts,
+
+    counts: {
+      entries: debts.length,
+
+      customers: customers.size,
+
+      total_amount: debts.reduce(
+        (sum, row) => sum + Number(row.remaining_amount || 0),
+        0,
+      ),
+    },
+  };
+}
+
+/* =========================
+ * Supplier open dues
+ * ========================= */
+
+export type SupplierOpenDueBackupRowV1 = {
+  supplier_source_id: number;
+
+  remaining_amount: number;
+
+  due_date: string | null;
+
+  business_date: string | null;
+
+  created_at: string | null;
+};
+
+export type SupplierOpenDuesBackupSectionV1 = {
+  section: 'supplier_open_dues';
+
+  dues: SupplierOpenDueBackupRowV1[];
+
+  counts: {
+    entries: number;
+
+    suppliers: number;
+
+    total_amount: number;
+  };
+};
+
+export function buildSupplierOpenDuesBackupSection(): SupplierOpenDuesBackupSectionV1 {
+  const rows = getDb()
+    .prepare(
+      `
+        SELECT
+          supplier_id,
+          remaining_amount,
+          due_date,
+          business_date,
+          created_at
+
+        FROM purchase_invoices
+
+        WHERE
+          cancelled_at
+            IS NULL
+
+          AND IFNULL(
+            status,
+            'active'
+          ) != 'cancelled'
+
+          AND remaining_amount > 0
+
+        ORDER BY
+          supplier_id ASC,
+          id ASC
+        `,
+    )
+    .all() as Array<any>;
+
+  const dues = rows.map((row): SupplierOpenDueBackupRowV1 => ({
+    supplier_source_id: Number(row.supplier_id),
+
+    remaining_amount: Number(row.remaining_amount || 0),
+
+    due_date: row.due_date ?? null,
+
+    business_date: row.business_date ?? null,
+
+    created_at: row.created_at ?? null,
+  }));
+
+  const suppliers = new Set(dues.map((row) => row.supplier_source_id));
+
+  return {
+    section: 'supplier_open_dues',
+
+    dues,
+
+    counts: {
+      entries: dues.length,
+
+      suppliers: suppliers.size,
+
+      total_amount: dues.reduce(
+        (sum, row) => sum + Number(row.remaining_amount || 0),
+        0,
+      ),
+    },
+  };
+}
+
+/* =========================
+ * Open liabilities
+ * ========================= */
+
+export type OpenLiabilityBackupRowV1 = {
+  source_id: number;
+
+  party_name: string;
+
+  title: string;
+
+  category: string | null;
+
+  remaining_amount: number;
+
+  due_date: string | null;
+
+  notes: string | null;
+
+  created_by_source_id: number | null;
+
+  business_date: string | null;
+
+  created_at: string | null;
+};
+
+export type OpenLiabilitiesBackupSectionV1 = {
+  section: 'open_liabilities';
+
+  liabilities: OpenLiabilityBackupRowV1[];
+
+  counts: {
+    liabilities: number;
+
+    total_amount: number;
+  };
+};
+
+export function buildOpenLiabilitiesBackupSection(): OpenLiabilitiesBackupSectionV1 {
+  const rows = getDb()
+    .prepare(
+      `
+        SELECT
+          id,
+          party_name,
+          title,
+          category,
+          remaining_amount,
+          due_date,
+          notes,
+          created_by,
+          business_date,
+          created_at
+
+        FROM store_liabilities
+
+        WHERE
+          status = 'open'
+
+          AND remaining_amount > 0
+
+        ORDER BY id ASC
+        `,
+    )
+    .all() as Array<any>;
+
+  const liabilities = rows.map((row): OpenLiabilityBackupRowV1 => ({
+    source_id: Number(row.id),
+
+    party_name: String(row.party_name || ''),
+
+    title: String(row.title || ''),
+
+    category: row.category ?? null,
+
+    remaining_amount: Number(row.remaining_amount || 0),
+
+    due_date: row.due_date ?? null,
+
+    notes: row.notes ?? null,
+
+    created_by_source_id:
+      row.created_by == null ? null : Number(row.created_by),
+
+    business_date: row.business_date ?? null,
+
+    created_at: row.created_at ?? null,
+  }));
+
+  return {
+    section: 'open_liabilities',
+
+    liabilities,
+
+    counts: {
+      liabilities: liabilities.length,
+
+      total_amount: liabilities.reduce(
+        (sum, row) => sum + Number(row.remaining_amount || 0),
+        0,
+      ),
+    },
+  };
+}
+
+/* =========================
+ * Account opening balances
+ * ========================= */
+
+export const SELECTIVE_CASH_ACCOUNT_KEYS = [
+  'store_cash',
+  'store_safe',
+  'owner_cash',
+  'owner_bank',
+  'owner_vodafone',
+  'fawry_machine',
+] as const;
+
+export type SelectiveCashAccountKey =
+  (typeof SELECTIVE_CASH_ACCOUNT_KEYS)[number];
+
+export type AccountOpeningBalanceBackupRowV1 = {
+  account: SelectiveCashAccountKey;
+
+  balance: number;
+};
+
+export type AccountOpeningBalancesBackupSectionV1 = {
+  section: 'account_opening_balances';
+
+  accounts: AccountOpeningBalanceBackupRowV1[];
+
+  counts: {
+    accounts: number;
+
+    non_zero_accounts: number;
+  };
+};
+
+export function buildAccountOpeningBalancesBackupSection(): AccountOpeningBalancesBackupSectionV1 {
+  const db = getDb();
+
+  const accounts = SELECTIVE_CASH_ACCOUNT_KEYS.map(
+    (account): AccountOpeningBalanceBackupRowV1 => {
+      const row = db
+        .prepare(
+          `
+            SELECT
+              IFNULL(
+                SUM(
+                  CASE
+                    WHEN direction =
+                      'in'
+                    THEN amount
+
+                    WHEN direction =
+                      'out'
+                    THEN -amount
+
+                    ELSE 0
+                  END
+                ),
+                0
+              ) AS balance
+
+            FROM cash_movements
+
+            WHERE
+              cancelled_at
+                IS NULL
+
+              AND (
+                CASE
+                  WHEN
+                    payment_method
+                      IS NULL
+
+                    OR TRIM(
+                      payment_method
+                    ) = ''
+
+                    OR payment_method =
+                      'cash'
+
+                  THEN
+                    'store_cash'
+
+                  WHEN payment_method =
+                    'card'
+
+                  THEN
+                    'fawry_machine'
+
+                  WHEN payment_method =
+                    'wallet'
+
+                  THEN
+                    'owner_vodafone'
+
+                  WHEN payment_method IN (
+                    'bank',
+                    'bank_transfer'
+                  )
+
+                  THEN
+                    'owner_bank'
+
+                  WHEN payment_method IN (
+                    'store_cash',
+                    'store_safe',
+                    'owner_cash',
+                    'owner_bank',
+                    'owner_vodafone',
+                    'fawry_machine'
+                  )
+
+                  THEN
+                    payment_method
+
+                  ELSE
+                    'store_cash'
+                END
+              ) = ?
+            `,
+        )
+        .get(account) as {
+        balance: number;
+      };
+
+      return {
+        account,
+
+        balance: Number(row?.balance || 0),
+      };
+    },
+  );
+
+  return {
+    section: 'account_opening_balances',
+
+    accounts,
+
+    counts: {
+      accounts: accounts.length,
+
+      non_zero_accounts: accounts.filter(
+        (row) => Math.abs(Number(row.balance || 0)) > 0.0001,
+      ).length,
+    },
+  };
+}
+
+/* =========================
+ * Open purchase orders
+ * ========================= */
+
+export type OpenPurchaseOrderItemBackupV1 = {
+  variant_source_id: number;
+
+  product_name: string;
+
+  barcode: string | null;
+
+  size: string | null;
+
+  color: string | null;
+
+  quantity: number;
+
+  unit_cost: number;
+};
+
+export type OpenPurchaseOrderBackupRowV1 = {
+  source_id: number;
+
+  supplier_source_id: number;
+
+  status: 'draft' | 'ordered';
+
+  notes: string | null;
+
+  created_by_source_id: number | null;
+
+  ordered_by_source_id: number | null;
+
+  created_at: string | null;
+
+  updated_at: string | null;
+
+  ordered_at: string | null;
+
+  items: OpenPurchaseOrderItemBackupV1[];
+};
+
+export type OpenPurchaseOrdersBackupSectionV1 = {
+  section: 'open_purchase_orders';
+
+  orders: OpenPurchaseOrderBackupRowV1[];
+
+  counts: {
+    orders: number;
+
+    items: number;
+  };
+};
+
+export function buildOpenPurchaseOrdersBackupSection(): OpenPurchaseOrdersBackupSectionV1 {
+  const db = getDb();
+
+  const orders = db
+    .prepare(
+      `
+      SELECT
+        id,
+        supplier_id,
+        status,
+        notes,
+        created_by,
+        ordered_by,
+        created_at,
+        updated_at,
+        ordered_at
+
+      FROM purchase_orders
+
+      WHERE status IN (
+        'draft',
+        'ordered'
+      )
+
+      ORDER BY id ASC
+      `,
+    )
+    .all() as Array<any>;
+
+  const itemRows = db
+    .prepare(
+      `
+      SELECT
+        purchase_order_id,
+        variant_id,
+        product_name,
+        barcode,
+        size,
+        color,
+        quantity,
+        unit_cost
+
+      FROM purchase_order_items
+
+      WHERE purchase_order_id IN (
+        SELECT id
+
+        FROM purchase_orders
+
+        WHERE status IN (
+          'draft',
+          'ordered'
+        )
+      )
+
+      ORDER BY
+        purchase_order_id ASC,
+        id ASC
+      `,
+    )
+    .all() as Array<any>;
+
+  const itemsByOrder = new Map<number, OpenPurchaseOrderItemBackupV1[]>();
+
+  for (const row of itemRows) {
+    const orderId = Number(row.purchase_order_id);
+
+    const list = itemsByOrder.get(orderId) ?? [];
+
+    list.push({
+      variant_source_id: Number(row.variant_id),
+
+      product_name: String(row.product_name || ''),
+
+      barcode: row.barcode ?? null,
+
+      size: row.size ?? null,
+
+      color: row.color ?? null,
+
+      quantity: Number(row.quantity || 0),
+
+      unit_cost: Number(row.unit_cost || 0),
+    });
+
+    itemsByOrder.set(orderId, list);
+  }
+
+  const exported = orders.map((order): OpenPurchaseOrderBackupRowV1 => ({
+    source_id: Number(order.id),
+
+    supplier_source_id: Number(order.supplier_id),
+
+    status: order.status === 'ordered' ? 'ordered' : 'draft',
+
+    notes: order.notes ?? null,
+
+    created_by_source_id:
+      order.created_by == null ? null : Number(order.created_by),
+
+    ordered_by_source_id:
+      order.ordered_by == null ? null : Number(order.ordered_by),
+
+    created_at: order.created_at ?? null,
+
+    updated_at: order.updated_at ?? null,
+
+    ordered_at: order.ordered_at ?? null,
+
+    items: itemsByOrder.get(Number(order.id)) ?? [],
+  }));
+
+  return {
+    section: 'open_purchase_orders',
+
+    orders: exported,
+
+    counts: {
+      orders: exported.length,
+
+      items: itemRows.length,
+    },
+  };
+}
+
+/* =========================
  * Package
  * ========================= */
 
@@ -1022,11 +1645,21 @@ export type SelectiveBackupPackageV1 = {
 
     customers?: CustomersBackupSectionV1;
 
+    customer_open_debts?: CustomerOpenDebtsBackupSectionV1;
+
     suppliers?: SuppliersBackupSectionV1;
+
+    supplier_open_dues?: SupplierOpenDuesBackupSectionV1;
 
     users_permissions?: UsersPermissionsBackupSectionV1;
 
     promotions?: PromotionsBackupSectionV1;
+
+    open_liabilities?: OpenLiabilitiesBackupSectionV1;
+
+    account_opening_balances?: AccountOpeningBalancesBackupSectionV1;
+
+    open_purchase_orders?: OpenPurchaseOrdersBackupSectionV1;
 
     store_settings?: StoreSettingsBackupSectionV1;
   };
@@ -1075,12 +1708,32 @@ export function buildSelectiveBackupPackage(
         break;
       }
 
+      case 'customer_open_debts': {
+        const value = buildCustomerOpenDebtsBackupSection();
+
+        data.customer_open_debts = value;
+
+        counts.customer_open_debts = value.counts.entries;
+
+        break;
+      }
+
       case 'suppliers': {
         const value = buildSuppliersBackupSection();
 
         data.suppliers = value;
 
         counts.suppliers = value.counts.suppliers;
+
+        break;
+      }
+
+      case 'supplier_open_dues': {
+        const value = buildSupplierOpenDuesBackupSection();
+
+        data.supplier_open_dues = value;
+
+        counts.supplier_open_dues = value.counts.entries;
 
         break;
       }
@@ -1101,6 +1754,36 @@ export function buildSelectiveBackupPackage(
         data.promotions = value;
 
         counts.promotions = value.counts.promotions;
+
+        break;
+      }
+
+      case 'open_liabilities': {
+        const value = buildOpenLiabilitiesBackupSection();
+
+        data.open_liabilities = value;
+
+        counts.open_liabilities = value.counts.liabilities;
+
+        break;
+      }
+
+      case 'account_opening_balances': {
+        const value = buildAccountOpeningBalancesBackupSection();
+
+        data.account_opening_balances = value;
+
+        counts.account_opening_balances = value.counts.non_zero_accounts;
+
+        break;
+      }
+
+      case 'open_purchase_orders': {
+        const value = buildOpenPurchaseOrdersBackupSection();
+
+        data.open_purchase_orders = value;
+
+        counts.open_purchase_orders = value.counts.orders;
 
         break;
       }
@@ -1213,11 +1896,13 @@ export function validateSelectiveBackupPackageV1(
 
         assertArray(
           backup.data.catalog_stock.categories,
+
           'بيانات التصنيفات غير صالحة',
         );
 
         assertArray(
           backup.data.catalog_stock.products,
+
           'بيانات المنتجات غير صالحة',
         );
 
@@ -1231,7 +1916,27 @@ export function validateSelectiveBackupPackageV1(
           throw new Error('بيانات العملاء غير صالحة');
         }
 
-        assertArray(backup.data.customers.customers, 'قائمة العملاء غير صالحة');
+        assertArray(
+          backup.data.customers.customers,
+
+          'قائمة العملاء غير صالحة',
+        );
+
+        break;
+
+      case 'customer_open_debts':
+        if (
+          !backup.data.customer_open_debts ||
+          backup.data.customer_open_debts.section !== 'customer_open_debts'
+        ) {
+          throw new Error('مديونيات العملاء داخل النسخة غير صالحة');
+        }
+
+        assertArray(
+          backup.data.customer_open_debts.debts,
+
+          'قائمة مديونيات العملاء غير صالحة',
+        );
 
         break;
 
@@ -1245,7 +1950,24 @@ export function validateSelectiveBackupPackageV1(
 
         assertArray(
           backup.data.suppliers.suppliers,
+
           'قائمة الموردين غير صالحة',
+        );
+
+        break;
+
+      case 'supplier_open_dues':
+        if (
+          !backup.data.supplier_open_dues ||
+          backup.data.supplier_open_dues.section !== 'supplier_open_dues'
+        ) {
+          throw new Error('مستحقات الموردين داخل النسخة غير صالحة');
+        }
+
+        assertArray(
+          backup.data.supplier_open_dues.dues,
+
+          'قائمة مستحقات الموردين غير صالحة',
         );
 
         break;
@@ -1260,6 +1982,7 @@ export function validateSelectiveBackupPackageV1(
 
         assertArray(
           backup.data.users_permissions.users,
+
           'قائمة المستخدمين غير صالحة',
         );
 
@@ -1275,7 +1998,57 @@ export function validateSelectiveBackupPackageV1(
 
         assertArray(
           backup.data.promotions.promotions,
+
           'قائمة العروض غير صالحة',
+        );
+
+        break;
+
+      case 'open_liabilities':
+        if (
+          !backup.data.open_liabilities ||
+          backup.data.open_liabilities.section !== 'open_liabilities'
+        ) {
+          throw new Error('بيانات الالتزامات المفتوحة غير صالحة');
+        }
+
+        assertArray(
+          backup.data.open_liabilities.liabilities,
+
+          'قائمة الالتزامات المفتوحة غير صالحة',
+        );
+
+        break;
+
+      case 'account_opening_balances':
+        if (
+          !backup.data.account_opening_balances ||
+          backup.data.account_opening_balances.section !==
+            'account_opening_balances'
+        ) {
+          throw new Error('أرصدة الحسابات داخل النسخة غير صالحة');
+        }
+
+        assertArray(
+          backup.data.account_opening_balances.accounts,
+
+          'قائمة أرصدة الحسابات غير صالحة',
+        );
+
+        break;
+
+      case 'open_purchase_orders':
+        if (
+          !backup.data.open_purchase_orders ||
+          backup.data.open_purchase_orders.section !== 'open_purchase_orders'
+        ) {
+          throw new Error('أوامر الشراء المفتوحة داخل النسخة غير صالحة');
+        }
+
+        assertArray(
+          backup.data.open_purchase_orders.orders,
+
+          'قائمة أوامر الشراء المفتوحة غير صالحة',
         );
 
         break;

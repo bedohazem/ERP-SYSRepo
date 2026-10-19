@@ -79,15 +79,33 @@ export function resolveFinancialBusinessDate(
       }
     | undefined;
 
-  const previousBusinessDate = String(previousShift?.business_date || '');
+  const currentBusinessDate = getLocalBusinessDate();
 
-  if (!previousShift || !/^\d{4}-\d{2}-\d{2}$/.test(previousBusinessDate)) {
-    throw new Error(
-      'يجب فتح أول شفت في النظام قبل تنفيذ أي عملية مالية بدون شفت. تأكد من تاريخ ووقت الجهاز ثم افتح أول شفت.',
-    );
+  /*
+   * قاعدة جديدة / بعد Factory Reset:
+   *
+   * لو مفيش أي شفت سابق، مفيش
+   * Business Date تاريخي نقارن به.
+   *
+   * assertSystemClockStable() اتنفذت
+   * بالفعل فوق، لذلك العمليات التي
+   * يسمح لها أصلًا بالعمل بدون شفت
+   * مثل حسابات البنك/المالك تقدر تبدأ
+   * بتاريخ الجهاز الحالي.
+   *
+   * ده لا يسمح باستخدام store_cash
+   * بدون شفت؛ المنع ده موجود في
+   * resolveFinancialOperationShift().
+   */
+  if (!previousShift) {
+    return currentBusinessDate;
   }
 
-  const currentBusinessDate = getLocalBusinessDate();
+  const previousBusinessDate = String(previousShift.business_date || '');
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(previousBusinessDate)) {
+    throw new Error('تعذر التحقق من تاريخ آخر شفت مسجل في النظام');
+  }
 
   const gapDays = getBusinessDateGapDays(
     previousBusinessDate,
