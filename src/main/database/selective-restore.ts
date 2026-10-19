@@ -19,6 +19,8 @@ import {
   type SelectiveBackupPackageV1,
 } from './selective-backup';
 
+import { isCashAccountKey } from '../../shared/cash-accounts';
+
 function requirePositiveId(value: unknown, label: string) {
   const numberValue = Number(value);
 
@@ -1481,15 +1483,6 @@ function restoreAccountOpeningBalances(
     throw new Error('قسم أرصدة الحسابات غير موجود داخل النسخة');
   }
 
-  const allowed = new Set([
-    'store_cash',
-    'store_safe',
-    'owner_cash',
-    'owner_bank',
-    'owner_vodafone',
-    'fawry_machine',
-  ]);
-
   const db = getDb();
 
   let restored = 0;
@@ -1497,7 +1490,7 @@ function restoreAccountOpeningBalances(
   for (const account of section.accounts) {
     const key = String(account.account || '');
 
-    if (!allowed.has(key)) {
+    if (!isCashAccountKey(key)) {
       throw new Error(`حساب مالي غير مدعوم داخل النسخة: ${key}`);
     }
 

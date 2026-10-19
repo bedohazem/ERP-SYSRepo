@@ -8,6 +8,11 @@ import {
 
 import { getDb } from './db';
 import { validateSelectiveBackupPackageDataV1 } from './selective-backup-validation';
+import {
+  CASH_ACCOUNT_KEYS,
+  resolveCashAccountKey,
+  type CashAccountKey,
+} from '../../shared/cash-accounts';
 
 /* =========================
  * Catalog + Stock
@@ -1312,17 +1317,9 @@ export function buildOpenLiabilitiesBackupSection(): OpenLiabilitiesBackupSectio
  * Account opening balances
  * ========================= */
 
-export const SELECTIVE_CASH_ACCOUNT_KEYS = [
-  'store_cash',
-  'store_safe',
-  'owner_cash',
-  'owner_bank',
-  'owner_vodafone',
-  'fawry_machine',
-] as const;
+export const SELECTIVE_CASH_ACCOUNT_KEYS = CASH_ACCOUNT_KEYS;
 
-export type SelectiveCashAccountKey =
-  (typeof SELECTIVE_CASH_ACCOUNT_KEYS)[number];
+export type SelectiveCashAccountKey = CashAccountKey;
 
 export type AccountOpeningBalanceBackupRowV1 = {
   account: SelectiveCashAccountKey;
@@ -1345,99 +1342,82 @@ export type AccountOpeningBalancesBackupSectionV1 = {
 export function buildAccountOpeningBalancesBackupSection(): AccountOpeningBalancesBackupSectionV1 {
   const db = getDb();
 
-  const accounts = SELECTIVE_CASH_ACCOUNT_KEYS.map(
-    (account): AccountOpeningBalanceBackupRowV1 => {
-      const row = db
-        .prepare(
-          `
-            SELECT
-              IFNULL(
-                SUM(
-                  CASE
-                    WHEN direction =
-                      'in'
-                    THEN amount
+  /*
+   * نجمع حسب القيمة الخام أولًا
+   * بدل تكرار Mapping الحسابات
+   * داخل SQL.
+   *
+   * بعدها كل الـlegacy aliases
+   * تمر من نفس Resolver المستخدم
+   * في Cash Repository.
+   */
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        payment_method,
+        direction,
 
-                    WHEN direction =
-                      'out'
-                    THEN -amount
+        IFNULL(
+          SUM(amount),
+          0
+        ) AS amount
 
-                    ELSE 0
-                  END
-                ),
-                0
-              ) AS balance
+      FROM cash_movements
 
-            FROM cash_movements
+      WHERE
+        cancelled_at
+          IS NULL
 
-            WHERE
-              cancelled_at
-                IS NULL
+      GROUP BY
+        payment_method,
+        direction
+      `,
+    )
+    .all() as Array<{
+    payment_method: string | null;
 
-              AND (
-                CASE
-                  WHEN
-                    payment_method
-                      IS NULL
+    direction: string;
 
-                    OR TRIM(
-                      payment_method
-                    ) = ''
+    amount: number;
+  }>;
 
-                    OR payment_method =
-                      'cash'
+  const balances = new Map<CashAccountKey, number>(
+    CASH_ACCOUNT_KEYS.map((account) => [account, 0] as const),
+  );
 
-                  THEN
-                    'store_cash'
+  for (const row of rows) {
+    if (row.direction !== 'in' && row.direction !== 'out') {
+      throw new Error(
+        'يوجد اتجاه حركة نقدية غير صحيح أثناء إنشاء النسخة الانتقائية',
+      );
+    }
 
-                  WHEN payment_method =
-                    'card'
+    const amount = Number(row.amount || 0);
 
-                  THEN
-                    'fawry_machine'
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new Error(
+        'يوجد مبلغ حركة نقدية غير صحيح أثناء إنشاء النسخة الانتقائية',
+      );
+    }
 
-                  WHEN payment_method =
-                    'wallet'
+    const account = resolveCashAccountKey(row.payment_method);
 
-                  THEN
-                    'owner_vodafone'
+    const current = balances.get(account) ?? 0;
 
-                  WHEN payment_method IN (
-                    'bank',
-                    'bank_transfer'
-                  )
+    balances.set(
+      account,
 
-                  THEN
-                    'owner_bank'
+      current + (row.direction === 'in' ? amount : -amount),
+    );
+  }
 
-                  WHEN payment_method IN (
-                    'store_cash',
-                    'store_safe',
-                    'owner_cash',
-                    'owner_bank',
-                    'owner_vodafone',
-                    'fawry_machine'
-                  )
+  const accounts = CASH_ACCOUNT_KEYS.map(
+    (account): AccountOpeningBalanceBackupRowV1 => ({
+      account,
 
-                  THEN
-                    payment_method
-
-                  ELSE
-                    'store_cash'
-                END
-              ) = ?
-            `,
-        )
-        .get(account) as {
-        balance: number;
-      };
-
-      return {
-        account,
-
-        balance: Number(row?.balance || 0),
-      };
-    },
+      balance: Number(balances.get(account) ?? 0),
+    }),
   );
 
   return {

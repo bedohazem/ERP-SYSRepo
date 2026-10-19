@@ -38,7 +38,9 @@ import {
 import {
   createVerifiedDatabaseBackup,
   restoreVerifiedDatabase,
+  runDatabaseMaintenanceWithVerifiedSafetyBackup,
 } from '../database/database-backup';
+import { runDatabaseMaintenanceExclusive } from '../database/database-maintenance-lock';
 import { validateErpDatabaseFile } from '../database/backup-integrity';
 import {
   optionalBooleanValue,
@@ -703,60 +705,68 @@ export function registerSettingsIpc(): void {
         };
       }
 
-      recheckAdmin(event, actorId);
-
-      const appVersion =
-        typeof app.getVersion === 'function'
-          ? app.getVersion()
-          : String(process.env.npm_package_version || 'unknown');
-
-      const backup = buildSelectiveBackupPackage({
-        sections,
-
-        appVersion,
-      });
-
-      const serialized = JSON.stringify(backup, null, 2);
-
       const targetPath = result.filePath.toLowerCase().endsWith('.erpbackup')
         ? result.filePath
         : `${result.filePath}.erpbackup`;
 
-      fs.writeFileSync(targetPath, serialized, 'utf8');
+      return await runDatabaseMaintenanceExclusive(async () => {
+        /*
+         * ممكن نكون استنينا Restore
+         * أو Maintenance أخرى،
+         * لذلك نعيد التحقق داخل
+         * الـcritical section.
+         */
+        recheckAdmin(event, actorId);
 
-      const size = Buffer.byteLength(serialized, 'utf8');
+        const appVersion =
+          typeof app.getVersion === 'function'
+            ? app.getVersion()
+            : String(process.env.npm_package_version || 'unknown');
 
-      logAction({
-        actor_id: actorId,
+        const backup = buildSelectiveBackupPackage({
+          sections,
 
-        action: 'selective_backup_created',
+          appVersion,
+        });
 
-        entity: 'settings',
+        const serialized = JSON.stringify(backup, null, 2);
 
-        entity_id: null,
+        fs.writeFileSync(targetPath, serialized, 'utf8');
 
-        details: {
+        const size = Buffer.byteLength(serialized, 'utf8');
+
+        logAction({
+          actor_id: actorId,
+
+          action: 'selective_backup_created',
+
+          entity: 'settings',
+
+          entity_id: null,
+
+          details: {
+            path: targetPath,
+
+            sections: backup.manifest.sections,
+
+            counts: backup.manifest.counts,
+
+            size,
+          },
+        });
+
+        return {
+          success: true,
+
           path: targetPath,
 
-          sections: backup.manifest.sections,
-
-          counts: backup.manifest.counts,
-
           size,
-        },
+
+          manifest: backup.manifest,
+
+          message: 'تم حفظ النسخة الانتقائية بنجاح',
+        };
       });
-
-      return {
-        success: true,
-
-        path: targetPath,
-
-        size,
-
-        manifest: backup.manifest,
-
-        message: 'تم حفظ النسخة الانتقائية بنجاح',
-      };
     } catch (error) {
       return {
         success: false,
@@ -903,36 +913,47 @@ export function registerSettingsIpc(): void {
           };
         }
 
-        recheckAdmin(event, actorId);
+        const result = await runDatabaseMaintenanceExclusive(async () => {
+          /*
+           * لو Full Backup / Restore
+           * كانت شغالة قبلنا،
+           * نتأكد من صلاحية المدير
+           * بعد انتظار الـLock.
+           */
+          recheckAdmin(event, actorId);
 
-        const result = restoreSelectiveBackupPackage(
-          pending.backup,
-          sections,
-          actorId,
-        );
+          const restoreResult = restoreSelectiveBackupPackage(
+            pending.backup,
+            sections,
+            actorId,
+          );
 
-        pendingSelectiveRestore.delete(event.sender.id);
+          pendingSelectiveRestore.delete(event.sender.id);
 
-        logAction({
-          actor_id: actorId,
+          logAction({
+            actor_id: actorId,
 
-          action: 'selective_backup_restored',
+            action: 'selective_backup_restored',
 
-          entity: 'settings',
+            entity: 'settings',
 
-          entity_id: null,
+            entity_id: null,
 
-          details: {
-            source: pending.path,
+            details: {
+              source: pending.path,
 
-            sections: result.sections,
+              sections: restoreResult.sections,
 
-            counts: result.counts,
+              counts: restoreResult.counts,
 
-            users_require_password_reset: result.users_require_password_reset,
+              users_require_password_reset:
+                restoreResult.users_require_password_reset,
 
-            stock_units_restored: result.stock_units_restored,
-          },
+              stock_units_restored: restoreResult.stock_units_restored,
+            },
+          });
+
+          return restoreResult;
         });
 
         return {
@@ -1092,62 +1113,70 @@ export function registerSettingsIpc(): void {
 
         const safetyBackupPath = saveResult.filePath;
 
-        /*
-         * نسخة كاملة مستقلة أولًا.
-         */
-        const safetyValidation =
-          await createVerifiedDatabaseBackup(safetyBackupPath);
-
-        recheckAdmin(event, actorId);
-
         const appVersion =
           typeof app.getVersion === 'function'
             ? app.getVersion()
             : String(process.env.npm_package_version || 'unknown');
 
-        const result = resetDatabaseKeepingSelectiveData({
-          sections,
+        const { result } = await runDatabaseMaintenanceWithVerifiedSafetyBackup(
+          safetyBackupPath,
 
-          actorId,
+          (safetyValidation) => {
+            /*
+             * الـLock ممكن يكون استنى
+             * Maintenance سابقة،
+             * لذلك نعيد التحقق من
+             * جلسة المدير داخل
+             * الـcritical section.
+             */
+            recheckAdmin(event, actorId);
 
-          appVersion,
-        });
+            const resetResult = resetDatabaseKeepingSelectiveData({
+              sections,
 
-        /*
-         * Admin الحالي موجود بعد
-         * العملية بنفس ID، لذلك
-         * الـAudit FK صالح.
-         */
-        logAction({
-          actor_id: actorId,
+              actorId,
 
-          action: 'database_selective_reset',
+              appVersion,
+            });
 
-          entity: 'settings',
+            /*
+             * الـAudit جزء من نفس
+             * نافذة الـMaintenance.
+             */
+            logAction({
+              actor_id: actorId,
 
-          entity_id: null,
+              action: 'database_selective_reset',
 
-          details: {
-            sections: result.sections,
+              entity: 'settings',
 
-            counts: result.manifest.counts,
+              entity_id: null,
 
-            safety_backup: safetyBackupPath,
+              details: {
+                sections: resetResult.sections,
 
-            safety_backup_size: safetyValidation.size,
+                counts: resetResult.manifest.counts,
 
-            safety_backup_integrity: 'ok',
+                safety_backup: safetyBackupPath,
 
-            preserved_admin: result.preserved_admin.username,
+                safety_backup_size: safetyValidation.size,
 
-            previous_actor_name: actorSnapshot?.name ?? null,
+                safety_backup_integrity: 'ok',
 
-            stock_units_restored: result.restore.stock_units_restored,
+                preserved_admin: resetResult.preserved_admin.username,
 
-            users_require_password_reset:
-              result.restore.users_require_password_reset,
+                previous_actor_name: actorSnapshot?.name ?? null,
+
+                stock_units_restored: resetResult.restore.stock_units_restored,
+
+                users_require_password_reset:
+                  resetResult.restore.users_require_password_reset,
+              },
+            });
+
+            return resetResult;
           },
-        });
+        );
 
         /*
          * المدير محفوظ لكن نجبر
@@ -1435,40 +1464,49 @@ export function registerSettingsIpc(): void {
 
       recheckAdmin(event, actorId);
 
-      const safetyValidation =
-        await createVerifiedDatabaseBackup(safetyBackupPath);
+      await runDatabaseMaintenanceWithVerifiedSafetyBackup(
+        safetyBackupPath,
 
-      recheckAdmin(event, actorId);
+        (safetyValidation) => {
+          /*
+           * لو الـLock انتظر عملية
+           * أخرى نعيد فحص المدير
+           * قبل المسح مباشرة.
+           */
+          recheckAdmin(event, actorId);
 
-      resetDatabaseData();
+          resetDatabaseData();
 
-      logAction({
-        /*
-         * الحساب القديم تم مسحه
-         * أثناء Factory Reset،
-         * لذلك الـFK لازم يكون NULL.
-         */
-        actor_id: null,
+          logAction({
+            /*
+             * الحساب القديم تم مسحه
+             * أثناء Factory Reset،
+             * لذلك الـFK لازم يكون NULL.
+             */
+            actor_id: null,
 
-        action: 'database_reset',
+            action: 'database_reset',
 
-        entity: 'settings',
+            entity: 'settings',
 
-        entity_id: null,
+            entity_id: null,
 
-        details: {
-          safety_backup: safetyBackupPath,
+            details: {
+              safety_backup: safetyBackupPath,
 
-          previous_actor_id: actorId,
+              previous_actor_id: actorId,
 
-          previous_actor_name: actorSnapshot?.name || null,
-          safety_backup_size: safetyValidation.size,
+              previous_actor_name: actorSnapshot?.name || null,
 
-          safety_backup_integrity: 'ok',
+              safety_backup_size: safetyValidation.size,
 
-          previous_actor_username: actorSnapshot?.username || null,
+              safety_backup_integrity: 'ok',
+
+              previous_actor_username: actorSnapshot?.username || null,
+            },
+          });
         },
-      });
+      );
 
       clearAuthSession(event);
 

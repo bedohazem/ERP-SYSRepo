@@ -178,6 +178,42 @@ export function createVerifiedDatabaseBackup(destinationPath: string) {
   );
 }
 
+export function runDatabaseMaintenanceWithVerifiedSafetyBackup<T>(
+  destinationPath: string,
+
+  work: (
+    safetyValidation: Awaited<
+      ReturnType<typeof createVerifiedDatabaseBackupUnlocked>
+    >,
+  ) => T | Promise<T>,
+) {
+  /*
+   * مهم:
+   *
+   * لا نستدعي
+   * createVerifiedDatabaseBackup()
+   * هنا لأنها تمسك نفس الـLock
+   * وستعمل Nested Lock / Deadlock.
+   *
+   * لذلك نمسك الـLock مرة واحدة،
+   * ونستخدم النسخة Unlocked داخليًا،
+   * ثم نظل ماسكين الـLock حتى انتهاء
+   * العملية التدميرية بالكامل.
+   */
+  return runDatabaseMaintenanceExclusive(async () => {
+    const safetyValidation =
+      await createVerifiedDatabaseBackupUnlocked(destinationPath);
+
+    const result = await work(safetyValidation);
+
+    return {
+      safetyValidation,
+
+      result,
+    };
+  });
+}
+
 async function restoreVerifiedDatabaseUnlocked(sourcePathInput: string) {
   const sourcePath = String(sourcePathInput || '').trim();
 

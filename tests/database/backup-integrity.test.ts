@@ -17,9 +17,10 @@ import { validateErpDatabaseFile } from '../../src/main/database/backup-integrit
 import {
   createVerifiedDatabaseBackup,
   restoreVerifiedDatabase,
+  runDatabaseMaintenanceWithVerifiedSafetyBackup,
   cleanupRestoreSafetyBackups,
 } from '../../src/main/database/database-backup';
-
+import { runDatabaseMaintenanceExclusive } from '../../src/main/database/database-maintenance-lock';
 import {
   createProduct,
   getVariantByBarcode,
@@ -69,6 +70,72 @@ describe('database backup integrity', () => {
       }
     }
   });
+
+  it('keeps the maintenance lock held through the safety backup and protected work', async () => {
+    const backupPath = tempPath(`maintenance-window-${Date.now()}.db`);
+
+    let releaseProtectedWork!: () => void;
+
+    let signalProtectedWorkStarted!: () => void;
+
+    const protectedWorkStarted = new Promise<void>((resolve) => {
+      signalProtectedWorkStarted = resolve;
+    });
+
+    const holdProtectedWork = new Promise<void>((resolve) => {
+      releaseProtectedWork = resolve;
+    });
+
+    let competingMaintenanceEntered = false;
+
+    try {
+      const protectedOperation = runDatabaseMaintenanceWithVerifiedSafetyBackup(
+        backupPath,
+
+        async () => {
+          signalProtectedWorkStarted();
+
+          await holdProtectedWork;
+        },
+      );
+
+      await protectedWorkStarted;
+
+      /*
+       * العملية الثانية لازم تستنى
+       * لحد ما Callback العملية
+       * المحمية يخلص، مش مجرد
+       * انتهاء إنشاء الـbackup.
+       */
+      const competingOperation = runDatabaseMaintenanceExclusive(async () => {
+        competingMaintenanceEntered = true;
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      expect(competingMaintenanceEntered).toBe(false);
+
+      releaseProtectedWork();
+
+      await protectedOperation;
+
+      await competingOperation;
+
+      expect(competingMaintenanceEntered).toBe(true);
+
+      expect(() => validateErpDatabaseFile(backupPath)).not.toThrow();
+    } finally {
+      releaseProtectedWork();
+
+      try {
+        fs.rmSync(backupPath, {
+          force: true,
+        });
+      } catch {
+        // ignore cleanup errors
+      }
+    }
+  }, 30_000);
 
   it('rejects an ERP backup with foreign key violations', async () => {
     const backupPath = tempPath(`broken-fk-${Date.now()}.db`);

@@ -2,6 +2,11 @@ import { getDb } from '../db';
 import { createCriticalActivityLog } from './activity.repo';
 import { getShiftBusinessDate } from '../shift-business-date';
 import { roundMoney } from '../../../shared/money';
+import {
+  CASH_ACCOUNT_LABELS,
+  resolveCashAccountKey,
+  type CashAccountKey as SharedCashAccountKey,
+} from '../../../shared/cash-accounts';
 export type CashMovementInput = {
   type:
     | 'sale'
@@ -55,13 +60,7 @@ export type CashFilterInput = {
   offset?: number;
 };
 
-export type CashAccountKey =
-  | 'store_cash'
-  | 'store_safe'
-  | 'owner_cash'
-  | 'owner_bank'
-  | 'owner_vodafone'
-  | 'fawry_machine';
+export type CashAccountKey = SharedCashAccountKey;
 
 export type CashTransferInput = {
   from_account: string;
@@ -96,31 +95,7 @@ const LEGACY_UPDATED_MOVEMENT_EXISTS_SQL = `
 `;
 
 export function resolveCashAccount(value?: string | null): CashAccountKey {
-  switch (value) {
-    case 'store_cash':
-    case 'store_safe':
-    case 'owner_cash':
-    case 'owner_bank':
-    case 'owner_vodafone':
-    case 'fawry_machine':
-      return value;
-
-    case 'cash':
-      return 'store_cash';
-
-    case 'card':
-      return 'fawry_machine';
-
-    case 'wallet':
-      return 'owner_vodafone';
-
-    case 'bank':
-    case 'bank_transfer':
-      return 'owner_bank';
-
-    default:
-      return 'store_cash';
-  }
+  return resolveCashAccountKey(value);
 }
 
 function normalizeLegacyCashMovementAccounts() {
@@ -166,22 +141,7 @@ function getAccountBalance(account: string) {
 }
 
 function getAccountLabel(account: CashAccountKey) {
-  switch (account) {
-    case 'store_cash':
-      return 'كاش درج المحل';
-    case 'store_safe':
-      return 'الخزنة الآمنة';
-    case 'owner_cash':
-      return 'كاش مع المالك';
-    case 'owner_bank':
-      return 'حساب بنك / فيزا المالك';
-    case 'owner_vodafone':
-      return 'فودافون كاش المالك';
-    case 'fawry_machine':
-      return 'ماكينة فوري';
-    default:
-      return account;
-  }
+  return CASH_ACCOUNT_LABELS[account];
 }
 
 function buildCashWhere(

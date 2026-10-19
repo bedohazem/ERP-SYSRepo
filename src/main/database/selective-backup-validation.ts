@@ -8,6 +8,11 @@ import {
   type SelectiveBackupSection,
 } from '../../shared/selective-backup';
 
+import {
+  CASH_ACCOUNT_KEYS,
+  isCashAccountKey,
+} from '../../shared/cash-accounts';
+
 type UnknownRecord = Record<string, unknown>;
 
 const MAX_CATEGORIES = 25_000;
@@ -33,17 +38,6 @@ const MAX_IMAGE_TEXT = 10 * 1024 * 1024;
 const MAX_MONEY = 1_000_000_000_000_000;
 const MAX_QUANTITY = 1_000_000_000_000;
 const MAX_POINTS = 1_000_000_000_000;
-
-const CASH_ACCOUNT_KEYS = [
-  'store_cash',
-  'store_safe',
-  'owner_cash',
-  'owner_bank',
-  'owner_vodafone',
-  'fawry_machine',
-] as const;
-
-const CASH_ACCOUNT_KEY_SET = new Set<string>(CASH_ACCOUNT_KEYS);
 
 const PROMOTION_TYPES = new Set([
   'percent',
@@ -1400,7 +1394,7 @@ function validateAccountBalances(data: UnknownRecord) {
       required: true,
     });
 
-    if (!CASH_ACCOUNT_KEY_SET.has(account)) {
+    if (!isCashAccountKey(account)) {
       throw new Error(`حساب مالي غير مدعوم داخل النسخة: ${account}`);
     }
 
