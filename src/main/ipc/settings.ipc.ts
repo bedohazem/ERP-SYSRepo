@@ -285,6 +285,26 @@ function normalizeBarcodePrintSettings(input: unknown) {
       'إزاحة الباركود الرأسية',
     ),
 
+    barcode_store_name_font_size: requirePrintNumber(
+      payload.barcode_store_name_font_size,
+      'حجم خط اسم المحل',
+      {
+        min: Number.EPSILON,
+      },
+    ),
+
+    barcode_store_name_position: requireEnumValue(
+      payload.barcode_store_name_position,
+      BARCODE_ITEM_POSITIONS,
+      'مكان اسم المحل',
+    ),
+
+    barcode_store_name_align: requireEnumValue(
+      payload.barcode_store_name_align,
+      BARCODE_ITEM_ALIGNS,
+      'محاذاة اسم المحل',
+    ),
+
     barcode_name_font_size: requirePrintNumber(
       payload.barcode_name_font_size,
       'حجم خط اسم المنتج',

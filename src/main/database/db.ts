@@ -3265,7 +3265,9 @@ export function seedDefaultAppSettings(database: Database.Database): void {
 
     { key: 'barcode_content_offset_x_mm', value: '0' },
     { key: 'barcode_content_offset_y_mm', value: '0' },
-
+    { key: 'barcode_store_name_font_size', value: '7' },
+    { key: 'barcode_store_name_position', value: 'top' },
+    { key: 'barcode_store_name_align', value: 'center' },
     { key: 'barcode_name_font_size', value: '8' },
     { key: 'barcode_name_position', value: 'top' },
     { key: 'barcode_name_align', value: 'center' },

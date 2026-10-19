@@ -25,7 +25,9 @@ type BarcodePrintSettings = {
 
   barcode_content_offset_x_mm: number;
   barcode_content_offset_y_mm: number;
-
+  barcode_store_name_font_size: number;
+  barcode_store_name_position: BarcodeItemPosition;
+  barcode_store_name_align: BarcodeItemAlign;
   barcode_name_font_size: number;
   barcode_name_position: BarcodeItemPosition;
   barcode_name_align: BarcodeItemAlign;

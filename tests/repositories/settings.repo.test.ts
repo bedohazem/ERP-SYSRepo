@@ -42,6 +42,9 @@ describe('settings repository', () => {
     expect(settings.barcode_label_height_mm).toBe(25);
     expect(settings.barcode_copies).toBe(1);
     expect(settings.barcode_auto_print_after_save).toBe(false);
+    expect(settings.barcode_store_name_font_size).toBe(7);
+    expect(settings.barcode_store_name_position).toBe('top');
+    expect(settings.barcode_store_name_align).toBe('center');
     expect(settings.barcode_name_font_size).toBe(8);
     expect(settings.barcode_name_position).toBe('top');
     expect(settings.barcode_name_align).toBe('center');
@@ -62,6 +65,9 @@ describe('settings repository', () => {
       barcode_auto_print_after_save: true,
       barcode_content_offset_x_mm: 2,
       barcode_content_offset_y_mm: 4,
+      barcode_store_name_font_size: 11,
+      barcode_store_name_position: 'top-right',
+      barcode_store_name_align: 'right',
       barcode_name_font_size: 10,
       barcode_name_position: 'bottom',
       barcode_name_align: 'left',
@@ -75,6 +81,10 @@ describe('settings repository', () => {
 
     const saved = getBarcodePrintSettings();
 
+    expect(saved.barcode_store_name_font_size).toBe(11);
+    expect(saved.barcode_store_name_position).toBe('top-right');
+    expect(saved.barcode_store_name_align).toBe('right');
+    expect(getSettingValue('barcode_store_name_font_size')).toBe('11');
     expect(saved.barcode_label_width_mm).toBe(50);
     expect(saved.barcode_label_height_mm).toBe(30);
     expect(saved.barcode_copies).toBe(3);
@@ -249,6 +259,14 @@ describe('settings repository', () => {
     expect(() =>
       saveBarcodePrintSettings({
         ...current,
+
+        barcode_store_name_font_size: 0,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      saveBarcodePrintSettings({
+        ...current,
         barcode_name_font_size: 0,
       }),
     ).toThrow();
@@ -330,9 +348,13 @@ describe('settings repository', () => {
     write.run('barcode_name_align', 'middle');
     write.run('barcode_price_position', 'invalid-position');
     write.run('barcode_price_align', 'stretch');
+    write.run('barcode_store_name_position', 'invalid-store-position');
+    write.run('barcode_store_name_align', 'invalid-store-align');
 
     const settings = getBarcodePrintSettings();
 
+    expect(settings.barcode_store_name_position).toBe('top');
+    expect(settings.barcode_store_name_align).toBe('center');
     expect(settings.barcode_name_position).toBe('top');
     expect(settings.barcode_name_align).toBe('center');
 

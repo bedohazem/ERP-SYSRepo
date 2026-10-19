@@ -27,7 +27,9 @@ export type BarcodePrintSettings = {
 
   barcode_content_offset_x_mm: number;
   barcode_content_offset_y_mm: number;
-
+  barcode_store_name_font_size: number;
+  barcode_store_name_position: BarcodeItemPosition;
+  barcode_store_name_align: BarcodeItemAlign;
   barcode_name_font_size: number;
   barcode_name_position: BarcodeItemPosition;
   barcode_name_align: BarcodeItemAlign;
@@ -59,7 +61,9 @@ const DEFAULT_SETTINGS: BarcodePrintSettings = {
 
   barcode_content_offset_x_mm: 0,
   barcode_content_offset_y_mm: 0,
-
+  barcode_store_name_font_size: 7,
+  barcode_store_name_position: 'top',
+  barcode_store_name_align: 'center',
   barcode_name_font_size: 8,
   barcode_name_position: 'top',
   barcode_name_align: 'center',
@@ -157,6 +161,20 @@ export function getBarcodePrintSettings(): BarcodePrintSettings {
     barcode_content_offset_y_mm: toNumber(
       map.get('barcode_content_offset_y_mm'),
       DEFAULT_SETTINGS.barcode_content_offset_y_mm,
+    ),
+    barcode_store_name_font_size: toNumber(
+      map.get('barcode_store_name_font_size'),
+      DEFAULT_SETTINGS.barcode_store_name_font_size,
+    ),
+    barcode_store_name_position: toEnumText(
+      map.get('barcode_store_name_position'),
+      BARCODE_ITEM_POSITIONS,
+      DEFAULT_SETTINGS.barcode_store_name_position,
+    ),
+    barcode_store_name_align: toEnumText(
+      map.get('barcode_store_name_align'),
+      BARCODE_ITEM_ALIGNS,
+      DEFAULT_SETTINGS.barcode_store_name_align,
     ),
 
     barcode_name_font_size: toNumber(
@@ -280,6 +298,10 @@ function validateBarcodePrintSettings(input: BarcodePrintSettings) {
     input.barcode_content_offset_y_mm,
     'إزاحة الباركود الرأسية غير صحيحة',
   );
+  assertPositiveNumber(
+    input.barcode_store_name_font_size,
+    'حجم خط اسم المحل غير صحيح',
+  );
 
   assertPositiveNumber(
     input.barcode_name_font_size,
@@ -324,7 +346,18 @@ export function saveBarcodePrintSettings(input: BarcodePrintSettings) {
       'barcode_content_offset_y_mm',
       String(input.barcode_content_offset_y_mm),
     );
-
+    stmt.run(
+      'barcode_store_name_font_size',
+      String(input.barcode_store_name_font_size),
+    );
+    stmt.run(
+      'barcode_store_name_position',
+      String(input.barcode_store_name_position),
+    );
+    stmt.run(
+      'barcode_store_name_align',
+      String(input.barcode_store_name_align),
+    );
     stmt.run('barcode_name_font_size', String(input.barcode_name_font_size));
     stmt.run('barcode_name_position', String(input.barcode_name_position));
     stmt.run('barcode_name_align', String(input.barcode_name_align));

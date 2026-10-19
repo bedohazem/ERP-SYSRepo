@@ -927,7 +927,9 @@ export const SELECTIVE_STORE_SETTING_KEYS = [
 
   'barcode_content_offset_x_mm',
   'barcode_content_offset_y_mm',
-
+  'barcode_store_name_font_size',
+  'barcode_store_name_position',
+  'barcode_store_name_align',
   'barcode_name_font_size',
   'barcode_name_position',
   'barcode_name_align',

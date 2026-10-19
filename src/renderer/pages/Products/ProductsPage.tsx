@@ -83,7 +83,9 @@ type BarcodePrintSettings = {
 
   barcode_content_offset_x_mm: number;
   barcode_content_offset_y_mm: number;
-
+  barcode_store_name_font_size: number;
+  barcode_store_name_position: BarcodeItemPosition;
+  barcode_store_name_align: BarcodeItemAlign;
   barcode_name_font_size: number;
   barcode_name_position: BarcodeItemPosition;
   barcode_name_align: BarcodeItemAlign;
@@ -171,7 +173,7 @@ export default function ProductsPage() {
 
   const [printSettings, setPrintSettings] =
     useState<BarcodePrintSettings | null>(null);
-
+  const [barcodeStoreName, setBarcodeStoreName] = useState('ERP Store');
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editCategoryId, setEditCategoryId] = useState('');
@@ -362,19 +364,21 @@ export default function ProductsPage() {
     try {
       const safePage = Math.max(1, Number(page || 1));
 
-      const [cats, productResult, barcodeSettings] = await Promise.all([
-        window.api.getCategories(),
+      const [cats, productResult, barcodeSettings, storeStatus] =
+        await Promise.all([
+          window.api.getCategories(),
 
-        window.api.getProductsPage({
-          search,
-          includeInactive,
-          categoryId: categoryFilter,
-          limit: SYSTEM_PAGE_SIZE,
-          offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
-        }),
+          window.api.getProductsPage({
+            search,
+            includeInactive,
+            categoryId: categoryFilter,
+            limit: SYSTEM_PAGE_SIZE,
+            offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
+          }),
 
-        window.api.getBarcodePrintSettings(),
-      ]);
+          window.api.getBarcodePrintSettings(),
+          window.api.getLicenseStatus(),
+        ]);
 
       setCategories(Array.isArray(cats) ? cats : []);
 
@@ -384,6 +388,9 @@ export default function ProductsPage() {
 
       setProductPage(safePage);
       setPrintSettings(barcodeSettings);
+      setBarcodeStoreName(
+        String(storeStatus?.app_name || 'ERP Store').trim() || 'ERP Store',
+      );
     } catch (error) {
       console.error('Failed to load products page data:', error);
 
@@ -771,6 +778,14 @@ export default function ProductsPage() {
       className: string;
     }> = [
       {
+        key: 'store-name',
+        value: barcodeStoreName,
+        fontSize: printSettings.barcode_store_name_font_size,
+        position: printSettings.barcode_store_name_position,
+        align: printSettings.barcode_store_name_align,
+        className: 'store-name-item',
+      },
+      {
         key: 'name',
         value: input.productName,
         fontSize: printSettings.barcode_name_font_size,
@@ -1009,9 +1024,14 @@ export default function ProductsPage() {
               text-overflow: ellipsis;
             }
 
+            .store-name-item,
             .price-item,
             .name-item {
               font-weight: bold;
+            }
+
+            .store-name-item {
+              direction: rtl;
             }
 
             .price-pair {

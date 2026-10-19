@@ -30,7 +30,9 @@ type BarcodePrintSettings = {
 
   barcode_content_offset_x_mm: number;
   barcode_content_offset_y_mm: number;
-
+  barcode_store_name_font_size: number;
+  barcode_store_name_position: BarcodeItemPosition;
+  barcode_store_name_align: BarcodeItemAlign;
   barcode_name_font_size: number;
   barcode_name_position: BarcodeItemPosition;
   barcode_name_align: BarcodeItemAlign;
@@ -86,7 +88,9 @@ const defaultSettings: BarcodePrintSettings = {
 
   barcode_content_offset_x_mm: 0,
   barcode_content_offset_y_mm: 0,
-
+  barcode_store_name_font_size: 7,
+  barcode_store_name_position: 'top',
+  barcode_store_name_align: 'center',
   barcode_name_font_size: 8,
   barcode_name_position: 'top',
   barcode_name_align: 'center',
@@ -2462,6 +2466,21 @@ export default function SettingsPage() {
             </div>
 
             <div style={{ marginTop: '24px', display: 'grid', gap: '16px' }}>
+              <BarcodeItemEditor
+                title="اسم المحل"
+                fontSize={settings.barcode_store_name_font_size}
+                position={settings.barcode_store_name_position}
+                align={settings.barcode_store_name_align}
+                onFontSizeChange={(value) =>
+                  setField('barcode_store_name_font_size', value)
+                }
+                onPositionChange={(value) =>
+                  setField('barcode_store_name_position', value)
+                }
+                onAlignChange={(value) =>
+                  setField('barcode_store_name_align', value)
+                }
+              />
               <BarcodeItemEditor
                 title="اسم المنتج"
                 fontSize={settings.barcode_name_font_size}
