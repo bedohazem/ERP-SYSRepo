@@ -1031,7 +1031,11 @@ export default function ProductsPage() {
             }
 
             .store-name-item {
-              direction: rtl;
+              unicode-bidi: plaintext;
+              overflow: visible;
+              text-overflow: clip;
+              position: relative;
+              z-index: 2;
             }
 
             .price-pair {
