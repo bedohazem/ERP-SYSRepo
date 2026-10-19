@@ -389,7 +389,7 @@ describe('system clock guard', () => {
     clockGuard.markSystemClockChangedByWindows();
 
     expect(() => cashShifts.getCashShiftExpectedBalance(shift.id)).toThrow(
-      'تم اكتشاف تغيير في تاريخ أو وقت Windows أثناء تشغيل البرنامج',
+      'تم اكتشاف تغيير في تاريخ أو وقت الجهاز أثناء تشغيل البرنامج',
     );
 
     expect(() =>
@@ -402,7 +402,7 @@ describe('system clock guard', () => {
 
         closed_by: 1,
       }),
-    ).toThrow('تم اكتشاف تغيير في تاريخ أو وقت Windows أثناء تشغيل البرنامج');
+    ).toThrow('تم اكتشاف تغيير في تاريخ أو وقت الجهاز أثناء تشغيل البرنامج');
 
     const storedShift = db
       .prepare(

@@ -77,7 +77,7 @@ export function markSystemClockChangedByWindows() {
   }
 
   lockClock(
-    'تم اكتشاف تغيير في تاريخ أو وقت Windows أثناء تشغيل البرنامج. صحح الوقت ثم أعد تشغيل البرنامج.',
+    'تم اكتشاف تغيير في تاريخ أو وقت الجهاز أثناء تشغيل البرنامج. اضبط التاريخ والوقت الصحيحين ثم أعد تشغيل البرنامج.',
   );
 }
 
@@ -136,7 +136,7 @@ export function handleSystemResume() {
    */
   if (suspendedAtWallMs !== null && now + MAX_BACKWARD_MS < suspendedAtWallMs) {
     lockClock(
-      'تم اكتشاف رجوع ساعة الجهاز للخلف أثناء تعليق الجهاز. صحح وقت Windows ثم أعد تشغيل البرنامج.',
+      'تم اكتشاف رجوع ساعة الجهاز للخلف أثناء تعليق الجهاز. اضبط وقت الجهاز الصحيح ثم أعد تشغيل البرنامج.',
     );
 
     suspendedAtWallMs = null;
@@ -192,7 +192,7 @@ export function assertRuntimeSystemClockStable() {
 
   if (Math.abs(runtimeDriftMs) > MAX_RUNTIME_DRIFT_MS) {
     lockClock(
-      'تم اكتشاف تغيير غير طبيعي في ساعة أو تاريخ الجهاز أثناء تشغيل البرنامج. صحح وقت Windows ثم أعد تشغيل البرنامج.',
+      'تم اكتشاف تغيير غير طبيعي في ساعة أو تاريخ الجهاز أثناء تشغيل البرنامج. اضبط تاريخ ووقت الجهاز الصحيحين ثم أعد تشغيل البرنامج.',
     );
 
     throw new Error(clockLockedMessage!);
@@ -244,7 +244,7 @@ export function assertSystemClockStable() {
 
   if (nowMs + MAX_BACKWARD_MS < previousMs) {
     lockClock(
-      'ساعة الجهاز أقدم من آخر وقت مسجل في النظام. صحح تاريخ ووقت Windows ثم أعد تشغيل البرنامج.',
+      'ساعة الجهاز أقدم من آخر وقت مسجل في النظام. اضبط تاريخ ووقت الجهاز الصحيحين ثم أعد تشغيل البرنامج.',
     );
 
     throw new Error(clockLockedMessage!);

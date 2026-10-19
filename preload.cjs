@@ -1,368 +1,401 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+function cleanUserErrorMessage(value) {
+  const raw =
+    value instanceof Error
+      ? value.message
+      : value && typeof value === 'object' && typeof value.message === 'string'
+        ? value.message
+        : String(value ?? '');
+
+  let message = raw.trim();
+
+  /*
+   * Electron بيضيف Prefix تقني
+   * للـIPC errors. ممنوع يظهر
+   * للمستخدم في الواجهة.
+   */
+  message = message.replace(/^Error invoking remote method '[^']+':\s*/i, '');
+
+  message = message.replace(/^Unhandled error in IPC handler:\s*/i, '');
+
+  /*
+   * ممكن Electron / Node يكرر
+   * Error: أكثر من مرة.
+   */
+  while (/^(?:Error|TypeError|RangeError|ReferenceError):\s*/i.test(message)) {
+    message = message.replace(
+      /^(?:Error|TypeError|RangeError|ReferenceError):\s*/i,
+      '',
+    );
+  }
+
+  message = message.trim();
+
+  if (!message) {
+    return 'حدث خطأ غير متوقع أثناء تنفيذ العملية. حاول مرة أخرى.';
+  }
+
+  /*
+   * لو الخطأ تقني إنجليزي بالكامل
+   * مثل SQLite / Node / Electron،
+   * ما نعرضوش للمستخدم.
+   *
+   * التفاصيل الأصلية تظل موجودة
+   * في console للمراجعة.
+   */
+  if (!/[\u0600-\u06ff]/.test(message)) {
+    return 'حدث خطأ غير متوقع أثناء تنفيذ العملية. حاول مرة أخرى.';
+  }
+
+  return message;
+}
+
+function sanitizeFailedResult(result) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    return result;
+  }
+
+  const failed = result.success === false || result.ok === false;
+
+  if (failed && typeof result.message === 'string') {
+    return {
+      ...result,
+      message: cleanUserErrorMessage(result.message),
+    };
+  }
+
+  return result;
+}
+
+async function invokeMain(channel, ...args) {
+  try {
+    const result = await ipcRenderer.invoke(channel, ...args);
+
+    return sanitizeFailedResult(result);
+  } catch (error) {
+    /*
+     * نحتفظ بالخطأ الأصلي كاملًا
+     * للمطور فقط.
+     */
+    console.error(`IPC failed: ${channel}`, error);
+
+    /*
+     * الـRenderer يستلم رسالة
+     * نظيفة للمستخدم فقط.
+     */
+    throw new Error(cleanUserErrorMessage(error));
+  }
+}
+
 contextBridge.exposeInMainWorld('api', {
-  getAppVersion: () => ipcRenderer.invoke('app:get-version'),
-  login: (data) => ipcRenderer.invoke('auth:login', data),
-  getAuthBootstrapStatus: () => ipcRenderer.invoke('auth:bootstrap-status'),
+  getAppVersion: () => invokeMain('app:get-version'),
+  login: (data) => invokeMain('auth:login', data),
+  getAuthBootstrapStatus: () => invokeMain('auth:bootstrap-status'),
 
-  bootstrapInitialAdmin: (data) =>
-    ipcRenderer.invoke('auth:bootstrap-admin', data),
+  bootstrapInitialAdmin: (data) => invokeMain('auth:bootstrap-admin', data),
 
-  requestAdminPasswordRecovery: () =>
-    ipcRenderer.invoke('auth:recovery-request'),
+  requestAdminPasswordRecovery: () => invokeMain('auth:recovery-request'),
 
-  recoverAdminPassword: (input) =>
-    ipcRenderer.invoke('auth:recover-admin', input),
+  recoverAdminPassword: (input) => invokeMain('auth:recover-admin', input),
 
-  changeOwnPassword: (input) =>
-    ipcRenderer.invoke('auth:change-password', input),
+  changeOwnPassword: (input) => invokeMain('auth:change-password', input),
 
-  touchAuthSession: () => ipcRenderer.invoke('auth:touch'),
+  touchAuthSession: () => invokeMain('auth:touch'),
 
-  lockAuthSession: () => ipcRenderer.invoke('auth:lock'),
-  logout: () => ipcRenderer.invoke('auth:logout'),
+  lockAuthSession: () => invokeMain('auth:lock'),
+  logout: () => invokeMain('auth:logout'),
 
-  getUsers: (input) => ipcRenderer.invoke('users:list', input),
-  getUsersPage: (input) => ipcRenderer.invoke('users:list-page', input),
-  getUserPermissions: (userId) =>
-    ipcRenderer.invoke('users:get-permissions', userId),
+  getUsers: (input) => invokeMain('users:list', input),
+  getUsersPage: (input) => invokeMain('users:list-page', input),
+  getUserPermissions: (userId) => invokeMain('users:get-permissions', userId),
 
-  setUserPermissions: (input) =>
-    ipcRenderer.invoke('users:set-permissions', input),
-  createSystemUser: (input) => ipcRenderer.invoke('users:create', input),
-  updateSystemUser: (input) => ipcRenderer.invoke('users:update', input),
+  setUserPermissions: (input) => invokeMain('users:set-permissions', input),
+  createSystemUser: (input) => invokeMain('users:create', input),
+  updateSystemUser: (input) => invokeMain('users:update', input),
   setUserActive: (userId, isActive) =>
-    ipcRenderer.invoke('users:set-active', userId, isActive),
+    invokeMain('users:set-active', userId, isActive),
   resetUserPassword: (userId, password) =>
-    ipcRenderer.invoke('users:reset-password', userId, password),
+    invokeMain('users:reset-password', userId, password),
 
-  getCategories: (input) =>
-    ipcRenderer.invoke('products:get-categories', input),
-  createCategory: (input) =>
-    ipcRenderer.invoke('products:create-category', input),
-  updateCategory: (input) =>
-    ipcRenderer.invoke('products:update-category', input),
+  getCategories: (input) => invokeMain('products:get-categories', input),
+  createCategory: (input) => invokeMain('products:create-category', input),
+  updateCategory: (input) => invokeMain('products:update-category', input),
   toggleCategoryActive: (categoryId, isActive) =>
-    ipcRenderer.invoke('products:toggle-category', categoryId, isActive),
-  getProducts: (payload) => ipcRenderer.invoke('products:list', payload),
-  getProductsPage: (input) => ipcRenderer.invoke('products:list-page', input),
-  getProductVariants: (payload) =>
-    ipcRenderer.invoke('products:get-variants', payload),
+    invokeMain('products:toggle-category', categoryId, isActive),
+  getProducts: (payload) => invokeMain('products:list', payload),
+  getProductsPage: (input) => invokeMain('products:list-page', input),
+  getProductVariants: (payload) => invokeMain('products:get-variants', payload),
   toggleVariantActive: (variantId, isActive) =>
-    ipcRenderer.invoke('products:toggle-variant-active', variantId, isActive),
-  createProduct: (input) => ipcRenderer.invoke('products:create', input),
-  updateProduct: (input) => ipcRenderer.invoke('products:update', input),
-  updateVariant: (input) =>
-    ipcRenderer.invoke('products:update-variant', input),
+    invokeMain('products:toggle-variant-active', variantId, isActive),
+  createProduct: (input) => invokeMain('products:create', input),
+  updateProduct: (input) => invokeMain('products:update', input),
+  updateVariant: (input) => invokeMain('products:update-variant', input),
   toggleProductActive: (productId, isActive) =>
-    ipcRenderer.invoke('products:toggle-active', productId, isActive),
-  addProductVariant: (input) =>
-    ipcRenderer.invoke('products:add-variant', input),
+    invokeMain('products:toggle-active', productId, isActive),
+  addProductVariant: (input) => invokeMain('products:add-variant', input),
 
-  getBarcodePrintSettings: () =>
-    ipcRenderer.invoke('settings:get-barcode-print'),
+  getBarcodePrintSettings: () => invokeMain('settings:get-barcode-print'),
   saveBarcodePrintSettings: (input) =>
-    ipcRenderer.invoke('settings:save-barcode-print', input),
-  getReceiptPrintSettings: () =>
-    ipcRenderer.invoke('settings:get-receipt-print'),
+    invokeMain('settings:save-barcode-print', input),
+  getReceiptPrintSettings: () => invokeMain('settings:get-receipt-print'),
   saveReceiptPrintSettings: (input) =>
-    ipcRenderer.invoke('settings:save-receipt-print', input),
+    invokeMain('settings:save-receipt-print', input),
 
-  searchSaleVariants: (query) =>
-    ipcRenderer.invoke('sales:search-variants', query),
+  searchSaleVariants: (query) => invokeMain('sales:search-variants', query),
   getVariantByBarcode: (barcode) =>
-    ipcRenderer.invoke('sales:get-variant-by-barcode', barcode),
-  getPromotions: () => ipcRenderer.invoke('promotions:list'),
+    invokeMain('sales:get-variant-by-barcode', barcode),
+  getPromotions: () => invokeMain('promotions:list'),
 
-  getPromotion: (promotionId) =>
-    ipcRenderer.invoke('promotions:get', promotionId),
+  getPromotion: (promotionId) => invokeMain('promotions:get', promotionId),
 
-  getActivePromotions: () => ipcRenderer.invoke('promotions:get-active'),
+  getActivePromotions: () => invokeMain('promotions:get-active'),
 
-  createPromotion: (input) => ipcRenderer.invoke('promotions:create', input),
+  createPromotion: (input) => invokeMain('promotions:create', input),
 
-  updatePromotion: (input) => ipcRenderer.invoke('promotions:update', input),
+  updatePromotion: (input) => invokeMain('promotions:update', input),
 
-  togglePromotion: (input) => ipcRenderer.invoke('promotions:toggle', input),
-  createSale: (input) => ipcRenderer.invoke('sales:create', input),
-  holdSale: (input) => ipcRenderer.invoke('sales:hold', input),
+  togglePromotion: (input) => invokeMain('promotions:toggle', input),
+  createSale: (input) => invokeMain('sales:create', input),
+  holdSale: (input) => invokeMain('sales:hold', input),
 
-  listHeldSales: () => ipcRenderer.invoke('sales:list-held'),
+  listHeldSales: () => invokeMain('sales:list-held'),
 
-  getHeldSale: (heldSaleId) => ipcRenderer.invoke('sales:get-held', heldSaleId),
+  getHeldSale: (heldSaleId) => invokeMain('sales:get-held', heldSaleId),
 
-  deleteHeldSale: (input) => ipcRenderer.invoke('sales:delete-held', input),
-  updateSaleInvoice: (input) => ipcRenderer.invoke('sales:update', input),
-  cancelSaleInvoice: (input) => ipcRenderer.invoke('sales:cancel', input),
-  getSaleReceipt: (saleId) => ipcRenderer.invoke('sales:get-receipt', saleId),
+  deleteHeldSale: (input) => invokeMain('sales:delete-held', input),
+  updateSaleInvoice: (input) => invokeMain('sales:update', input),
+  cancelSaleInvoice: (input) => invokeMain('sales:cancel', input),
+  getSaleReceipt: (saleId) => invokeMain('sales:get-receipt', saleId),
 
-  getSaleCurrentState: (saleId) =>
-    ipcRenderer.invoke('sales:current-state', saleId),
-  listSales: (input) => ipcRenderer.invoke('sales:list', input),
-  createSaleReturn: (input) => ipcRenderer.invoke('sales:return', input),
-  cancelSaleReturn: (input) => ipcRenderer.invoke('sales:cancel-return', input),
-  listSaleReturns: (input) => ipcRenderer.invoke('sales:list-returns', input),
-  getSaleReturnHistory: (saleId) =>
-    ipcRenderer.invoke('sales:return-history', saleId),
+  getSaleCurrentState: (saleId) => invokeMain('sales:current-state', saleId),
+  listSales: (input) => invokeMain('sales:list', input),
+  createSaleReturn: (input) => invokeMain('sales:return', input),
+  cancelSaleReturn: (input) => invokeMain('sales:cancel-return', input),
+  listSaleReturns: (input) => invokeMain('sales:list-returns', input),
+  getSaleReturnHistory: (saleId) => invokeMain('sales:return-history', saleId),
 
-  getSaleExchangeState: (saleId) =>
-    ipcRenderer.invoke('sales:exchange-state', saleId),
+  getSaleExchangeState: (saleId) => invokeMain('sales:exchange-state', saleId),
 
-  createSaleExchange: (input) => ipcRenderer.invoke('sales:exchange', input),
+  createSaleExchange: (input) => invokeMain('sales:exchange', input),
 
-  listSaleExchanges: (input) =>
-    ipcRenderer.invoke('sales:list-exchanges', input),
+  listSaleExchanges: (input) => invokeMain('sales:list-exchanges', input),
 
-  cancelSaleExchange: (input) =>
-    ipcRenderer.invoke('sales:cancel-exchange', input),
-  getCustomers: () => ipcRenderer.invoke('customers:list'),
-  listCustomers: (input) => ipcRenderer.invoke('customers:list-page', input),
-  searchCustomers: (query) => ipcRenderer.invoke('customers:search', query),
-  getCustomerById: (id) => ipcRenderer.invoke('customers:get-by-id', id),
-  createCustomer: (input) => ipcRenderer.invoke('customers:create', input),
-  updateCustomer: (input) => ipcRenderer.invoke('customers:update', input),
-  deleteCustomer: (id) => ipcRenderer.invoke('customers:delete', id),
+  cancelSaleExchange: (input) => invokeMain('sales:cancel-exchange', input),
+  getCustomers: () => invokeMain('customers:list'),
+  listCustomers: (input) => invokeMain('customers:list-page', input),
+  searchCustomers: (query) => invokeMain('customers:search', query),
+  getCustomerById: (id) => invokeMain('customers:get-by-id', id),
+  createCustomer: (input) => invokeMain('customers:create', input),
+  updateCustomer: (input) => invokeMain('customers:update', input),
+  deleteCustomer: (id) => invokeMain('customers:delete', id),
   getCustomerHistory: (customerId) =>
-    ipcRenderer.invoke('customers:history', customerId),
-  adjustCustomerPoints: (input) =>
-    ipcRenderer.invoke('customers:adjust-points', input),
+    invokeMain('customers:history', customerId),
+  adjustCustomerPoints: (input) => invokeMain('customers:adjust-points', input),
   recordCustomerPayment: (input) =>
-    ipcRenderer.invoke('customers:record-payment', input),
+    invokeMain('customers:record-payment', input),
   cancelCustomerPayment: (input) =>
-    ipcRenderer.invoke('customers:cancel-payment', input),
+    invokeMain('customers:cancel-payment', input),
   updateCustomerPayment: (input) =>
-    ipcRenderer.invoke('customers:update-payment', input),
+    invokeMain('customers:update-payment', input),
   getCustomerStatement: (customerId) =>
-    ipcRenderer.invoke('customers:statement', customerId),
+    invokeMain('customers:statement', customerId),
 
-  getLoyaltySettings: () => ipcRenderer.invoke('settings:get-loyalty'),
-  saveLoyaltySettings: (input) =>
-    ipcRenderer.invoke('settings:save-loyalty', input),
+  getLoyaltySettings: () => invokeMain('settings:get-loyalty'),
+  saveLoyaltySettings: (input) => invokeMain('settings:save-loyalty', input),
 
-  backupDatabase: () => ipcRenderer.invoke('settings:backup-database'),
+  backupDatabase: () => invokeMain('settings:backup-database'),
 
   backupSelectiveData: (sections) =>
-    ipcRenderer.invoke('settings:backup-selective', {
+    invokeMain('settings:backup-selective', {
       sections,
     }),
 
   chooseSelectiveRestoreFile: () =>
-    ipcRenderer.invoke('settings:choose-selective-restore'),
+    invokeMain('settings:choose-selective-restore'),
 
   restoreSelectiveData: (sections) =>
-    ipcRenderer.invoke('settings:restore-selective', {
+    invokeMain('settings:restore-selective', {
       sections,
     }),
 
   resetKeepingSelectiveData: (sections) =>
-    ipcRenderer.invoke('settings:reset-keeping-selective', {
+    invokeMain('settings:reset-keeping-selective', {
       sections,
     }),
 
-  restoreDatabase: () => ipcRenderer.invoke('settings:restore-database'),
+  restoreDatabase: () => invokeMain('settings:restore-database'),
 
-  resetDatabase: () => ipcRenderer.invoke('settings:reset-database'),
+  resetDatabase: () => invokeMain('settings:reset-database'),
 
-  getAutoBackupInfo: () => ipcRenderer.invoke('settings:get-auto-backup-info'),
+  getAutoBackupInfo: () => invokeMain('settings:get-auto-backup-info'),
 
-  chooseAutoBackupDir: () =>
-    ipcRenderer.invoke('settings:choose-auto-backup-dir'),
+  chooseAutoBackupDir: () => invokeMain('settings:choose-auto-backup-dir'),
 
-  runAutoBackupNow: () => ipcRenderer.invoke('settings:run-auto-backup-now'),
+  runAutoBackupNow: () => invokeMain('settings:run-auto-backup-now'),
 
-  getReportsSummary: (input) => ipcRenderer.invoke('reports:summary', input),
+  getReportsSummary: (input) => invokeMain('reports:summary', input),
 
-  getAdminCashFlowAlerts: () =>
-    ipcRenderer.invoke('reports:admin-cash-flow-alerts'),
+  getAdminCashFlowAlerts: () => invokeMain('reports:admin-cash-flow-alerts'),
 
-  getCashierDashboardSummary: () =>
-    ipcRenderer.invoke('reports:cashier-dashboard'),
-  getInventoryList: (input) => ipcRenderer.invoke('inventory:list', input),
-  getInventoryPage: (input) => ipcRenderer.invoke('inventory:list-page', input),
-  getInventoryAnalytics: (input) =>
-    ipcRenderer.invoke('inventory:analytics', input),
-  adjustVariantStock: (input) =>
-    ipcRenderer.invoke('inventory:adjust-stock', input),
-  getStockMovements: (input) =>
-    ipcRenderer.invoke('inventory:movements', input),
+  getCashierDashboardSummary: () => invokeMain('reports:cashier-dashboard'),
+  getInventoryList: (input) => invokeMain('inventory:list', input),
+  getInventoryPage: (input) => invokeMain('inventory:list-page', input),
+  getInventoryAnalytics: (input) => invokeMain('inventory:analytics', input),
+  adjustVariantStock: (input) => invokeMain('inventory:adjust-stock', input),
+  getStockMovements: (input) => invokeMain('inventory:movements', input),
 
-  getStockCountSessions: () => ipcRenderer.invoke('stock-count:list'),
-  getStockCountSession: (sessionId) =>
-    ipcRenderer.invoke('stock-count:get', sessionId),
-  createStockCountSession: (input) =>
-    ipcRenderer.invoke('stock-count:create', input),
-  updateStockCountItem: (input) =>
-    ipcRenderer.invoke('stock-count:update-item', input),
-  scanStockCountBarcode: (input) =>
-    ipcRenderer.invoke('stock-count:scan', input),
-  approveStockCountSession: (input) =>
-    ipcRenderer.invoke('stock-count:approve', input),
-  cancelStockCountSession: (input) =>
-    ipcRenderer.invoke('stock-count:cancel', input),
+  getStockCountSessions: () => invokeMain('stock-count:list'),
+  getStockCountSession: (sessionId) => invokeMain('stock-count:get', sessionId),
+  createStockCountSession: (input) => invokeMain('stock-count:create', input),
+  updateStockCountItem: (input) => invokeMain('stock-count:update-item', input),
+  scanStockCountBarcode: (input) => invokeMain('stock-count:scan', input),
+  approveStockCountSession: (input) => invokeMain('stock-count:approve', input),
+  cancelStockCountSession: (input) => invokeMain('stock-count:cancel', input),
 
-  getSuppliers: (search) => ipcRenderer.invoke('suppliers:list', search),
-  listSuppliers: (input) => ipcRenderer.invoke('suppliers:list-page', input),
-  getSupplierById: (id) => ipcRenderer.invoke('suppliers:get-by-id', id),
-  createSupplier: (input) => ipcRenderer.invoke('suppliers:create', input),
-  updateSupplier: (input) => ipcRenderer.invoke('suppliers:update', input),
-  deleteSupplier: (id) => ipcRenderer.invoke('suppliers:delete', id),
+  getSuppliers: (search) => invokeMain('suppliers:list', search),
+  listSuppliers: (input) => invokeMain('suppliers:list-page', input),
+  getSupplierById: (id) => invokeMain('suppliers:get-by-id', id),
+  createSupplier: (input) => invokeMain('suppliers:create', input),
+  updateSupplier: (input) => invokeMain('suppliers:update', input),
+  deleteSupplier: (id) => invokeMain('suppliers:delete', id),
 
-  createPurchaseInvoice: (input) =>
-    ipcRenderer.invoke('purchases:create', input),
+  createPurchaseInvoice: (input) => invokeMain('purchases:create', input),
   getPurchaseReorderSuggestions: (input) =>
-    ipcRenderer.invoke('purchases:reorder-suggestions', input),
+    invokeMain('purchases:reorder-suggestions', input),
 
-  listPurchaseOrders: (input) =>
-    ipcRenderer.invoke('purchases:orders:list', input),
+  listPurchaseOrders: (input) => invokeMain('purchases:orders:list', input),
 
   getPurchaseOrder: (purchaseOrderId) =>
-    ipcRenderer.invoke('purchases:orders:get', purchaseOrderId),
+    invokeMain('purchases:orders:get', purchaseOrderId),
 
-  createPurchaseOrder: (input) =>
-    ipcRenderer.invoke('purchases:orders:create', input),
+  createPurchaseOrder: (input) => invokeMain('purchases:orders:create', input),
 
-  updatePurchaseOrder: (input) =>
-    ipcRenderer.invoke('purchases:orders:update', input),
+  updatePurchaseOrder: (input) => invokeMain('purchases:orders:update', input),
 
   markPurchaseOrderOrdered: (input) =>
-    ipcRenderer.invoke('purchases:orders:mark-ordered', input),
+    invokeMain('purchases:orders:mark-ordered', input),
 
-  cancelPurchaseOrder: (input) =>
-    ipcRenderer.invoke('purchases:orders:cancel', input),
+  cancelPurchaseOrder: (input) => invokeMain('purchases:orders:cancel', input),
 
   receivePurchaseOrder: (input) =>
-    ipcRenderer.invoke('purchases:orders:receive', input),
+    invokeMain('purchases:orders:receive', input),
 
-  updatePurchaseInvoice: (input) =>
-    ipcRenderer.invoke('purchases:update', input),
+  updatePurchaseInvoice: (input) => invokeMain('purchases:update', input),
 
-  listPurchaseInvoices: (input) => ipcRenderer.invoke('purchases:list', input),
+  listPurchaseInvoices: (input) => invokeMain('purchases:list', input),
 
   getPurchaseInvoice: (purchaseId) =>
-    ipcRenderer.invoke('purchases:get-by-id', purchaseId),
+    invokeMain('purchases:get-by-id', purchaseId),
 
-  cancelPurchaseInvoice: (input) =>
-    ipcRenderer.invoke('purchases:cancel', input),
+  cancelPurchaseInvoice: (input) => invokeMain('purchases:cancel', input),
 
   createPurchaseReturn: (input) =>
-    ipcRenderer.invoke('purchases:returns:create', input),
+    invokeMain('purchases:returns:create', input),
 
   updatePurchaseReturn: (input) =>
-    ipcRenderer.invoke('purchases:returns:update', input),
+    invokeMain('purchases:returns:update', input),
 
   cancelPurchaseReturn: (input) =>
-    ipcRenderer.invoke('purchases:returns:cancel', input),
+    invokeMain('purchases:returns:cancel', input),
 
-  listPurchaseReturns: (input) =>
-    ipcRenderer.invoke('purchases:returns:list', input),
+  listPurchaseReturns: (input) => invokeMain('purchases:returns:list', input),
 
   getPurchaseReturn: (returnId) =>
-    ipcRenderer.invoke('purchases:returns:get-by-id', returnId),
+    invokeMain('purchases:returns:get-by-id', returnId),
 
   recordSupplierPayment: (input) =>
-    ipcRenderer.invoke('suppliers:record-payment', input),
+    invokeMain('suppliers:record-payment', input),
   cancelSupplierPayment: (input) =>
-    ipcRenderer.invoke('suppliers:cancel-payment', input),
+    invokeMain('suppliers:cancel-payment', input),
   updateSupplierPayment: (input) =>
-    ipcRenderer.invoke('suppliers:update-payment', input),
+    invokeMain('suppliers:update-payment', input),
   getSupplierStatement: (supplierId) =>
-    ipcRenderer.invoke('suppliers:statement', supplierId),
+    invokeMain('suppliers:statement', supplierId),
 
-  getCashSummary: (input) => ipcRenderer.invoke('cash:summary', input),
+  getCashSummary: (input) => invokeMain('cash:summary', input),
   getCashShiftDaySummary: (input) =>
-    ipcRenderer.invoke('cash-shifts:day-summary', input),
-  getCashShifts: (input) => ipcRenderer.invoke('cash-shifts:list', input),
-  getCashShiftUsers: () => ipcRenderer.invoke('cash-shifts:users'),
-  getCashShiftDetails: (shiftId) =>
-    ipcRenderer.invoke('cash-shifts:details', shiftId),
+    invokeMain('cash-shifts:day-summary', input),
+  getCashShifts: (input) => invokeMain('cash-shifts:list', input),
+  getCashShiftUsers: () => invokeMain('cash-shifts:users'),
+  getCashShiftDetails: (shiftId) => invokeMain('cash-shifts:details', shiftId),
   listCashShiftVariances: (input) =>
-    ipcRenderer.invoke('cash-shifts:list-variances', input),
-  checkCashShiftClock: () => ipcRenderer.invoke('cash-shifts:clock-check'),
+    invokeMain('cash-shifts:list-variances', input),
+  checkCashShiftClock: () => invokeMain('cash-shifts:clock-check'),
   resolveCashShiftVariance: (input) =>
-    ipcRenderer.invoke('cash-shifts:resolve-variance', input),
-  getCashMovements: (input) => ipcRenderer.invoke('cash:list', input),
-  createCashMovement: (input) =>
-    ipcRenderer.invoke('cash:create-movement', input),
-  updateCashMovement: (input) =>
-    ipcRenderer.invoke('cash:update-movement', input),
-  cancelCashMovement: (input) =>
-    ipcRenderer.invoke('cash:cancel-movement', input),
-  createCashTransfer: (input) => ipcRenderer.invoke('cash:transfer', input),
-  getCashShiftOpeningPreview: () =>
-    ipcRenderer.invoke('cash-shifts:opening-preview'),
-  getOpenCashShift: () => ipcRenderer.invoke('cash-shifts:get-open'),
+    invokeMain('cash-shifts:resolve-variance', input),
+  getCashMovements: (input) => invokeMain('cash:list', input),
+  createCashMovement: (input) => invokeMain('cash:create-movement', input),
+  updateCashMovement: (input) => invokeMain('cash:update-movement', input),
+  cancelCashMovement: (input) => invokeMain('cash:cancel-movement', input),
+  createCashTransfer: (input) => invokeMain('cash:transfer', input),
+  getCashShiftOpeningPreview: () => invokeMain('cash-shifts:opening-preview'),
+  getOpenCashShift: () => invokeMain('cash-shifts:get-open'),
 
-  openCashShift: (input) => ipcRenderer.invoke('cash-shifts:open', input),
+  openCashShift: (input) => invokeMain('cash-shifts:open', input),
 
   getCashShiftExpectedBalance: (shiftId) =>
-    ipcRenderer.invoke('cash-shifts:preview', shiftId),
+    invokeMain('cash-shifts:preview', shiftId),
 
-  closeCashShift: (input) => ipcRenderer.invoke('cash-shifts:close', input),
-  forceCloseCashShift: (input) =>
-    ipcRenderer.invoke('cash-shifts:force-close', input),
-  createExpense: (input) => ipcRenderer.invoke('expenses:create', input),
-  updateExpense: (input) => ipcRenderer.invoke('expenses:update', input),
-  cancelExpense: (input) => ipcRenderer.invoke('expenses:cancel', input),
-  getExpenses: (input) => ipcRenderer.invoke('expenses:list', input),
-  getExpensesPage: (input) => ipcRenderer.invoke('expenses:list-page', input),
+  closeCashShift: (input) => invokeMain('cash-shifts:close', input),
+  forceCloseCashShift: (input) => invokeMain('cash-shifts:force-close', input),
+  createExpense: (input) => invokeMain('expenses:create', input),
+  updateExpense: (input) => invokeMain('expenses:update', input),
+  cancelExpense: (input) => invokeMain('expenses:cancel', input),
+  getExpenses: (input) => invokeMain('expenses:list', input),
+  getExpensesPage: (input) => invokeMain('expenses:list-page', input),
 
-  getActivityLogs: (input) => ipcRenderer.invoke('activity:list', input),
+  getActivityLogs: (input) => invokeMain('activity:list', input),
 
-  getLicenseStatus: () => ipcRenderer.invoke('settings:get-license-status'),
-  activateApp: (code) => ipcRenderer.invoke('settings:activate-app', code),
-  deactivateApp: () => ipcRenderer.invoke('settings:deactivate-app'),
+  getLicenseStatus: () => invokeMain('settings:get-license-status'),
+  activateApp: (code) => invokeMain('settings:activate-app', code),
+  deactivateApp: () => invokeMain('settings:deactivate-app'),
 
-  saveAppLogoUrl: (url) =>
-    ipcRenderer.invoke('settings:save-app-logo-url', url),
+  saveAppLogoUrl: (url) => invokeMain('settings:save-app-logo-url', url),
 
-  chooseAppLogo: () => ipcRenderer.invoke('settings:choose-app-logo'),
+  chooseAppLogo: () => invokeMain('settings:choose-app-logo'),
 
-  saveAppName: (name) => ipcRenderer.invoke('settings:save-app-name', name),
+  saveAppName: (name) => invokeMain('settings:save-app-name', name),
 
   saveStoreContactInfo: (phone, address) =>
-    ipcRenderer.invoke('settings:save-store-contact-info', phone, address),
+    invokeMain('settings:save-store-contact-info', phone, address),
 
   saveStoreQrSettings: (input) =>
-    ipcRenderer.invoke('settings:save-store-qr-settings', input),
+    invokeMain('settings:save-store-qr-settings', input),
 
-  saveAppTheme: (theme) => ipcRenderer.invoke('settings:save-app-theme', theme),
+  saveAppTheme: (theme) => invokeMain('settings:save-app-theme', theme),
 
-  getLiabilities: (input) => ipcRenderer.invoke('liabilities:list', input),
+  getLiabilities: (input) => invokeMain('liabilities:list', input),
 
-  getLiabilitiesPage: (input) =>
-    ipcRenderer.invoke('liabilities:list-page', input),
-  createLiability: (input) => ipcRenderer.invoke('liabilities:create', input),
-  updateLiability: (input) => ipcRenderer.invoke('liabilities:update', input),
+  getLiabilitiesPage: (input) => invokeMain('liabilities:list-page', input),
+  createLiability: (input) => invokeMain('liabilities:create', input),
+  updateLiability: (input) => invokeMain('liabilities:update', input),
   recordLiabilityPayment: (input) =>
-    ipcRenderer.invoke('liabilities:record-payment', input),
+    invokeMain('liabilities:record-payment', input),
   updateLiabilityPayment: (input) =>
-    ipcRenderer.invoke('liabilities:update-payment', input),
+    invokeMain('liabilities:update-payment', input),
   getLiabilityStatement: (liabilityId) =>
-    ipcRenderer.invoke('liabilities:statement', liabilityId),
-  cancelLiability: (input) => ipcRenderer.invoke('liabilities:cancel', input),
+    invokeMain('liabilities:statement', liabilityId),
+  cancelLiability: (input) => invokeMain('liabilities:cancel', input),
   cancelLiabilityPayment: (input) =>
-    ipcRenderer.invoke('liabilities:cancel-payment', input),
-  getLiabilitiesSummary: (input) =>
-    ipcRenderer.invoke('liabilities:summary', input),
+    invokeMain('liabilities:cancel-payment', input),
+  getLiabilitiesSummary: (input) => invokeMain('liabilities:summary', input),
 
-  savePdfFromHtml: (input) => ipcRenderer.invoke('print:save-pdf', input),
-  saveReportPdfFromHtml: (input) =>
-    ipcRenderer.invoke('print:save-report-pdf', input),
+  savePdfFromHtml: (input) => invokeMain('print:save-pdf', input),
+  saveReportPdfFromHtml: (input) => invokeMain('print:save-report-pdf', input),
 
-  saveReportCsvText: (input) =>
-    ipcRenderer.invoke('print:save-report-csv', input),
-  printHtmlSilent: (input) => ipcRenderer.invoke('print:silent-html', input),
+  saveReportCsvText: (input) => invokeMain('print:save-report-csv', input),
+  printHtmlSilent: (input) => invokeMain('print:silent-html', input),
 
-  printHtmlWithDialog: (input) =>
-    ipcRenderer.invoke('print:dialog-html', input),
+  printHtmlWithDialog: (input) => invokeMain('print:dialog-html', input),
 
-  getCashDrawerSettings: () => ipcRenderer.invoke('cash-drawer:get-settings'),
+  getCashDrawerSettings: () => invokeMain('cash-drawer:get-settings'),
   saveCashDrawerSettings: (input) =>
-    ipcRenderer.invoke('cash-drawer:save-settings', input),
-  getCashDrawerPrinters: () => ipcRenderer.invoke('cash-drawer:list-printers'),
+    invokeMain('cash-drawer:save-settings', input),
+  getCashDrawerPrinters: () => invokeMain('cash-drawer:list-printers'),
 
   getCashDrawerNoSaleEvents: (input) =>
-    ipcRenderer.invoke('cash-drawer:list-no-sale-events', input),
+    invokeMain('cash-drawer:list-no-sale-events', input),
 
-  openCashDrawer: (input) => ipcRenderer.invoke('cash-drawer:open', input),
+  openCashDrawer: (input) => invokeMain('cash-drawer:open', input),
 });

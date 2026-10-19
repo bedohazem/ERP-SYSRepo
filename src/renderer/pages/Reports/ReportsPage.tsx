@@ -365,7 +365,7 @@ export default function ReportsPage() {
             top: '24px',
             left: '50%',
             transform: 'translateX(-50%)',
-            zIndex: 99999,
+            zIndex: 2147483647,
             padding: '12px 18px',
             borderRadius: '14px',
             background:
