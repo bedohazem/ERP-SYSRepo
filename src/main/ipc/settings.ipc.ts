@@ -35,11 +35,7 @@ import {
   setAutoBackupDir,
 } from '../database/auto-backup';
 
-import {
-  createVerifiedDatabaseBackup,
-  restoreVerifiedDatabase,
-  runDatabaseMaintenanceWithVerifiedSafetyBackup,
-} from '../database/database-backup';
+import { runVerifiedDatabaseMaintenance } from '../database/database-backup';
 import { runDatabaseMaintenanceExclusive } from '../database/database-maintenance-lock';
 import { validateErpDatabaseFile } from '../database/backup-integrity';
 import {
@@ -621,23 +617,37 @@ export function registerSettingsIpc(): void {
         };
       }
 
-      recheckAdmin(event, actorId);
+      const validation = await runVerifiedDatabaseMaintenance(
+        async ({ createBackup }) => {
+          /*
+           * نراجع الجلسة بعد
+           * انتظار الـMaintenance Lock.
+           */
+          recheckAdmin(event, actorId);
 
-      const validation = await createVerifiedDatabaseBackup(result.filePath);
+          const backupValidation = await createBackup(result.filePath);
 
-      logAction({
-        actor_id: actorId,
-        action: 'database_backup_created',
-        entity: 'settings',
-        entity_id: null,
-        details: {
-          path: result.filePath,
+          logAction({
+            actor_id: actorId,
 
-          size: validation.size,
+            action: 'database_backup_created',
 
-          integrity: 'ok',
+            entity: 'settings',
+
+            entity_id: null,
+
+            details: {
+              path: result.filePath,
+
+              size: backupValidation.size,
+
+              integrity: 'ok',
+            },
+          });
+
+          return backupValidation;
         },
-      });
+      );
 
       return {
         success: true,
@@ -1118,16 +1128,16 @@ export function registerSettingsIpc(): void {
             ? app.getVersion()
             : String(process.env.npm_package_version || 'unknown');
 
-        const { result } = await runDatabaseMaintenanceWithVerifiedSafetyBackup(
-          safetyBackupPath,
+        const result = await runVerifiedDatabaseMaintenance(
+          async ({ createBackup }) => {
+            recheckAdmin(event, actorId);
 
-          (safetyValidation) => {
+            const safetyValidation = await createBackup(safetyBackupPath);
+
             /*
-             * الـLock ممكن يكون استنى
-             * Maintenance سابقة،
-             * لذلك نعيد التحقق من
-             * جلسة المدير داخل
-             * الـcritical section.
+             * الـBackup ممكن تاخد وقت،
+             * فنراجع المدير مرة أخرى
+             * قبل المسح الفعلي.
              */
             recheckAdmin(event, actorId);
 
@@ -1139,10 +1149,6 @@ export function registerSettingsIpc(): void {
               appVersion,
             });
 
-            /*
-             * الـAudit جزء من نفس
-             * نافذة الـMaintenance.
-             */
             logAction({
               actor_id: actorId,
 
@@ -1308,40 +1314,49 @@ export function registerSettingsIpc(): void {
         };
       }
 
-      recheckAdmin(event, actorId);
+      const restored = await runVerifiedDatabaseMaintenance(
+        async ({ restoreDatabase }) => {
+          /*
+           * مهم: الفحص بعد انتظار
+           * الـLock وقبل تبديل DB.
+           */
+          recheckAdmin(event, actorId);
 
-      const restored = await restoreVerifiedDatabase(selectedFile);
+          const restoreResult = await restoreDatabase(selectedFile);
 
-      /*
-       * القاعدة نفسها اتغيرت.
-       * لا نستخدم actor_id القديم
-       * داخل القاعدة المسترجعة.
-       */
-      logAction({
-        actor_id: null,
+          /*
+           * الـAudit يتم قبل فك
+           * Maintenance Lock.
+           */
+          logAction({
+            actor_id: null,
 
-        action: 'database_restored',
+            action: 'database_restored',
 
-        entity: 'settings',
+            entity: 'settings',
 
-        entity_id: null,
+            entity_id: null,
 
-        details: {
-          restored_from: selectedFile,
+            details: {
+              restored_from: selectedFile,
 
-          safety_backup: restored.safetyBackupPath,
+              safety_backup: restoreResult.safetyBackupPath,
 
-          previous_actor_id: actorId,
+              previous_actor_id: actorId,
 
-          previous_actor_name: actorSnapshot?.name || null,
+              previous_actor_name: actorSnapshot?.name || null,
 
-          previous_actor_username: actorSnapshot?.username || null,
+              previous_actor_username: actorSnapshot?.username || null,
 
-          source_size: validation.size,
+              source_size: validation.size,
 
-          integrity: 'ok',
+              integrity: 'ok',
+            },
+          });
+
+          return restoreResult;
         },
-      });
+      );
 
       /*
        * User table قد تكون تغيرت.
@@ -1464,49 +1479,39 @@ export function registerSettingsIpc(): void {
 
       recheckAdmin(event, actorId);
 
-      await runDatabaseMaintenanceWithVerifiedSafetyBackup(
-        safetyBackupPath,
+      await runVerifiedDatabaseMaintenance(async ({ createBackup }) => {
+        recheckAdmin(event, actorId);
 
-        (safetyValidation) => {
-          /*
-           * لو الـLock انتظر عملية
-           * أخرى نعيد فحص المدير
-           * قبل المسح مباشرة.
-           */
-          recheckAdmin(event, actorId);
+        const safetyValidation = await createBackup(safetyBackupPath);
 
-          resetDatabaseData();
+        recheckAdmin(event, actorId);
 
-          logAction({
-            /*
-             * الحساب القديم تم مسحه
-             * أثناء Factory Reset،
-             * لذلك الـFK لازم يكون NULL.
-             */
-            actor_id: null,
+        resetDatabaseData();
 
-            action: 'database_reset',
+        logAction({
+          actor_id: null,
 
-            entity: 'settings',
+          action: 'database_reset',
 
-            entity_id: null,
+          entity: 'settings',
 
-            details: {
-              safety_backup: safetyBackupPath,
+          entity_id: null,
 
-              previous_actor_id: actorId,
+          details: {
+            safety_backup: safetyBackupPath,
 
-              previous_actor_name: actorSnapshot?.name || null,
+            previous_actor_id: actorId,
 
-              safety_backup_size: safetyValidation.size,
+            previous_actor_name: actorSnapshot?.name || null,
 
-              safety_backup_integrity: 'ok',
+            safety_backup_size: safetyValidation.size,
 
-              previous_actor_username: actorSnapshot?.username || null,
-            },
-          });
-        },
-      );
+            safety_backup_integrity: 'ok',
+
+            previous_actor_username: actorSnapshot?.username || null,
+          },
+        });
+      });
 
       clearAuthSession(event);
 

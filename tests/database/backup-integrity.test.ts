@@ -17,7 +17,7 @@ import { validateErpDatabaseFile } from '../../src/main/database/backup-integrit
 import {
   createVerifiedDatabaseBackup,
   restoreVerifiedDatabase,
-  runDatabaseMaintenanceWithVerifiedSafetyBackup,
+  runVerifiedDatabaseMaintenance,
   cleanupRestoreSafetyBackups,
 } from '../../src/main/database/database-backup';
 import { runDatabaseMaintenanceExclusive } from '../../src/main/database/database-maintenance-lock';
@@ -89,10 +89,10 @@ describe('database backup integrity', () => {
     let competingMaintenanceEntered = false;
 
     try {
-      const protectedOperation = runDatabaseMaintenanceWithVerifiedSafetyBackup(
-        backupPath,
+      const protectedOperation = runVerifiedDatabaseMaintenance(
+        async ({ createBackup }) => {
+          await createBackup(backupPath);
 
-        async () => {
           signalProtectedWorkStarted();
 
           await holdProtectedWork;

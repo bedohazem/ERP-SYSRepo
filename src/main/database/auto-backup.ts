@@ -7,7 +7,7 @@ import { getDb } from './db';
 
 import { safeCreateActivityLog } from './repositories/activity.repo';
 
-import { createVerifiedDatabaseBackup } from './database-backup';
+import { runVerifiedDatabaseMaintenance } from './database-backup';
 
 const BACKUP_SETTING_KEY = 'auto_backup_dir';
 
@@ -432,41 +432,99 @@ export function getAutoBackupInfo() {
 
 export async function createAutoBackup(reason: AutoBackupReason = 'manual') {
   try {
-    const backupDir = getAutoBackupDir();
+    const result = await runVerifiedDatabaseMaintenance(
+      async ({ createBackup }) => {
+        try {
+          /*
+           * حتى اختيار اسم الملف
+           * يتم تحت الـLock،
+           * فلا يمكن لطلبين متزامنين
+           * اختيار نفس الاسم.
+           */
+          const backupDir = getAutoBackupDir();
 
-    if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, {
-        recursive: true,
-      });
-    }
+          if (!fs.existsSync(backupDir)) {
+            fs.mkdirSync(backupDir, {
+              recursive: true,
+            });
+          }
 
-    const backupPath = makeUniqueBackupPath(backupDir, reason);
+          const backupPath = makeUniqueBackupPath(backupDir, reason);
 
-    const validation = await createVerifiedDatabaseBackup(backupPath);
+          const validation = await createBackup(backupPath);
 
-    const cleanup = cleanupAutoBackups(backupDir);
+          /*
+           * Retention تحت نفس
+           * الـMaintenance Window،
+           * فلا نحذف ملف Backup
+           * بينما Backup أخرى
+           * مازالت تُكتب.
+           */
+          const cleanup = cleanupAutoBackups(backupDir);
 
-    if (reason !== 'manual') {
-      safeCreateActivityLog({
-        user_id: null,
+          if (reason !== 'manual') {
+            safeCreateActivityLog({
+              user_id: null,
 
-        action: 'auto_backup_created',
+              action: 'auto_backup_created',
 
-        entity: 'settings',
+              entity: 'settings',
 
-        entity_id: null,
+              entity_id: null,
 
-        details: JSON.stringify({
-          reason,
+              details: JSON.stringify({
+                reason,
 
-          path: backupPath,
+                path: backupPath,
 
-          size: validation.size,
+                size: validation.size,
 
-          cleanup,
-        }),
-      });
-    }
+                cleanup,
+              }),
+            });
+          }
+
+          return {
+            backupPath,
+
+            validation,
+
+            cleanup,
+
+            info: getAutoBackupInfo(),
+          };
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'فشل إنشاء النسخة الاحتياطية';
+
+          /*
+           * حتى Failure Audit
+           * يكتب قبل فك الـLock.
+           */
+          if (reason !== 'manual') {
+            safeCreateActivityLog({
+              user_id: null,
+
+              action: 'auto_backup_failed',
+
+              entity: 'settings',
+
+              entity_id: null,
+
+              details: JSON.stringify({
+                reason,
+
+                error: message,
+              }),
+            });
+          }
+
+          throw error;
+        }
+      },
+    );
 
     return {
       success: true,
@@ -474,34 +532,17 @@ export async function createAutoBackup(reason: AutoBackupReason = 'manual') {
 
       reason,
 
-      path: backupPath,
+      path: result.backupPath,
 
-      validation,
+      validation: result.validation,
 
-      cleanup,
+      cleanup: result.cleanup,
 
-      info: getAutoBackupInfo(),
+      info: result.info,
     };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'فشل إنشاء النسخة الاحتياطية';
-
-    if (reason !== 'manual') {
-      safeCreateActivityLog({
-        user_id: null,
-
-        action: 'auto_backup_failed',
-
-        entity: 'settings',
-
-        entity_id: null,
-
-        details: JSON.stringify({
-          reason,
-          error: message,
-        }),
-      });
-    }
 
     console.error('Auto backup failed:', error);
 
