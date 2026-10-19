@@ -8,13 +8,16 @@ concurrency:
   group: erp-ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: 22.22.0
+
 jobs:
-  verify:
-    name: Tests and Electron E2E
+  quality:
+    name: Code Quality
 
     runs-on: windows-latest
 
-    timeout-minutes: 30
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -23,11 +26,11 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22.22.0
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit
 
       - name: Lint
         run: npm run lint
@@ -35,14 +38,63 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      - name: Prepare SQLite for Node tests
-        run: npm run test:prepare
-
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Repository and IPC tests
-        run: npm test -- --run
+  tests:
+    name: Repository and IPC tests (${{ matrix.shard }}/3)
+
+    runs-on: windows-latest
+
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        shard:
+          - 1
+          - 2
+          - 3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Prepare SQLite for Node tests
+        run: npm run test:prepare
+
+      - name: Run test shard
+        run: npm test -- --run --shard=${{ matrix.shard }}/3
+
+  electron-e2e:
+    name: Electron E2E
+
+    runs-on: windows-latest
+
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
 
       - name: Build renderer
         run: npm run build:renderer
@@ -55,3 +107,42 @@ jobs:
 
       - name: Electron E2E smoke
         run: npm run test:e2e
+
+  verify:
+    name: Tests and Electron E2E
+
+    if: ${{ always() }}
+
+    needs:
+      - quality
+      - tests
+      - electron-e2e
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 5
+
+    steps:
+      - name: Verify all CI jobs passed
+        shell: bash
+        run: |
+          echo "Quality: ${{ needs.quality.result }}"
+          echo "Tests: ${{ needs.tests.result }}"
+          echo "Electron E2E: ${{ needs.electron-e2e.result }}"
+
+          if [ "${{ needs.quality.result }}" != "success" ]; then
+            echo "Code quality failed."
+            exit 1
+          fi
+
+          if [ "${{ needs.tests.result }}" != "success" ]; then
+            echo "Repository or IPC tests failed."
+            exit 1
+          fi
+
+          if [ "${{ needs.electron-e2e.result }}" != "success" ]; then
+            echo "Electron E2E failed."
+            exit 1
+          fi
+
+          echo "All ERP CI checks passed."
