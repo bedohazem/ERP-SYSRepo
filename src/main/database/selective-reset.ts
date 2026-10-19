@@ -1,6 +1,9 @@
-import { getDb, resetDatabaseData } from './db';
+import { getDb, resetDatabaseData, seedDefaultAppSettings } from './db';
 
-import { buildSelectiveBackupPackage } from './selective-backup';
+import {
+  SELECTIVE_STORE_SETTING_KEYS,
+  buildSelectiveBackupPackage,
+} from './selective-backup';
 
 import {
   restoreSelectiveBackupPackage,
@@ -158,6 +161,42 @@ function restorePreservedAdmin(snapshot: PreservedAdminSnapshot) {
   );
 }
 
+function resetPortableStoreSettingsToDefaults() {
+  const db = getDb();
+
+  const placeholders = SELECTIVE_STORE_SETTING_KEYS.map(() => '?').join(', ');
+
+  /*
+   * نمسح فقط الإعدادات المحمولة
+   * التي تدخل في Selective Backup.
+   *
+   * إعدادات الجهاز المحلي مثل:
+   * - auto_backup_dir
+   * - cash_drawer_printer_name
+   * - مفاتيح التفعيل القديمة
+   *
+   * لا يتم لمسها.
+   */
+  db.prepare(
+    `
+    DELETE FROM app_settings
+
+    WHERE key IN (
+      ${placeholders}
+    )
+    `,
+  ).run(...SELECTIVE_STORE_SETTING_KEYS);
+
+  /*
+   * نرجع Defaults البرنامج.
+   *
+   * لو store_settings مختارة،
+   * الـRestore اللي بعد كده
+   * هيكتب قيم النسخة فوقها.
+   */
+  seedDefaultAppSettings(db);
+}
+
 export function resetDatabaseKeepingSelectiveData(input: {
   sections: readonly unknown[];
 
@@ -203,6 +242,8 @@ export function resetDatabaseKeepingSelectiveData(input: {
    */
   const transaction = db.transaction(() => {
     resetDatabaseData();
+
+    resetPortableStoreSettingsToDefaults();
 
     restorePreservedAdmin(adminSnapshot);
 

@@ -3254,7 +3254,7 @@ function seedDefaultCategories(database: Database.Database): void {
   console.log('Seeded default categories');
 }
 
-function seedDefaultAppSettings(database: Database.Database): void {
+export function seedDefaultAppSettings(database: Database.Database): void {
   const defaults: Array<{ key: string; value: string }> = [
     { key: 'app_theme', value: 'dark' },
 

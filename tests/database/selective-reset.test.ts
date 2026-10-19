@@ -450,4 +450,204 @@ describe('selective reset', () => {
 
     expect(restoredCashier.must_change_password).toBe(1);
   }, 30_000);
+
+  it('resets portable store settings when they are not selected and keeps device-local settings', () => {
+    const db = getDb();
+
+    const admin = ensureAdmin();
+
+    db.prepare(
+      `
+        INSERT INTO app_settings (
+          key,
+          value
+        )
+
+        VALUES
+          (
+            'app_name',
+            'Old Custom Store'
+          ),
+
+          (
+            'app_theme',
+            'light'
+          ),
+
+          (
+            'auto_backup_dir',
+            'D:\\ERP-LOCAL-BACKUPS'
+          )
+
+        ON CONFLICT(key)
+        DO UPDATE SET
+          value =
+            excluded.value
+        `,
+    ).run();
+
+    resetDatabaseKeepingSelectiveData({
+      sections: ['customers'],
+
+      actorId: admin.id,
+
+      appVersion: 'selective-reset-test',
+    });
+
+    const appName = db
+      .prepare(
+        `
+          SELECT value
+
+          FROM app_settings
+
+          WHERE key =
+            'app_name'
+
+          LIMIT 1
+          `,
+      )
+      .get();
+
+    expect(appName).toBeUndefined();
+
+    const theme = db
+      .prepare(
+        `
+          SELECT value
+
+          FROM app_settings
+
+          WHERE key =
+            'app_theme'
+
+          LIMIT 1
+          `,
+      )
+      .get() as {
+      value: string;
+    };
+
+    expect(theme.value).toBe('dark');
+
+    const backupDir = db
+      .prepare(
+        `
+          SELECT value
+
+          FROM app_settings
+
+          WHERE key =
+            'auto_backup_dir'
+
+          LIMIT 1
+          `,
+      )
+      .get() as {
+      value: string;
+    };
+
+    expect(backupDir.value).toBe('D:\\ERP-LOCAL-BACKUPS');
+  }, 30_000);
+
+  it('restores selected portable store settings while still keeping device-local settings', () => {
+    const db = getDb();
+
+    const admin = ensureAdmin();
+
+    db.prepare(
+      `
+        INSERT INTO app_settings (
+          key,
+          value
+        )
+
+        VALUES
+          (
+            'app_name',
+            'Keep My Store'
+          ),
+
+          (
+            'app_theme',
+            'light'
+          ),
+
+          (
+            'auto_backup_dir',
+            'E:\\LOCAL-BACKUPS'
+          )
+
+        ON CONFLICT(key)
+        DO UPDATE SET
+          value =
+            excluded.value
+        `,
+    ).run();
+
+    resetDatabaseKeepingSelectiveData({
+      sections: ['store_settings'],
+
+      actorId: admin.id,
+
+      appVersion: 'selective-reset-test',
+    });
+
+    const appName = db
+      .prepare(
+        `
+          SELECT value
+
+          FROM app_settings
+
+          WHERE key =
+            'app_name'
+
+          LIMIT 1
+          `,
+      )
+      .get() as {
+      value: string;
+    };
+
+    expect(appName.value).toBe('Keep My Store');
+
+    const theme = db
+      .prepare(
+        `
+          SELECT value
+
+          FROM app_settings
+
+          WHERE key =
+            'app_theme'
+
+          LIMIT 1
+          `,
+      )
+      .get() as {
+      value: string;
+    };
+
+    expect(theme.value).toBe('light');
+
+    const backupDir = db
+      .prepare(
+        `
+          SELECT value
+
+          FROM app_settings
+
+          WHERE key =
+            'auto_backup_dir'
+
+          LIMIT 1
+          `,
+      )
+      .get() as {
+      value: string;
+    };
+
+    expect(backupDir.value).toBe('E:\\LOCAL-BACKUPS');
+  }, 30_000);
 });
