@@ -2762,6 +2762,8 @@ declare global {
 
         open_shift: any | null;
 
+        has_previous_shift: boolean;
+
         previous_shift_id: number | null;
 
         expected_opening_amount: number | null;

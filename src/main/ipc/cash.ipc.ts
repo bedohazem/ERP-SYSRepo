@@ -694,11 +694,16 @@ export function registerCashIpc(): void {
 
     const preview = getCashShiftOpeningPreview();
 
+    const hasPreviousShift = preview.previous_shift_id !== null;
+
     const canManageShifts =
       actor.role === 'admin' || userHasPermission(actor.id, 'shifts.manage');
 
     if (canManageShifts) {
-      return preview;
+      return {
+        ...preview,
+        has_previous_shift: hasPreviousShift,
+      };
     }
 
     return {
@@ -711,6 +716,7 @@ export function registerCashIpc(): void {
        * الكاشير لا يرى تسليم
        * الشفت السابق.
        */
+      has_previous_shift: hasPreviousShift,
       previous_shift_id: null,
 
       expected_opening_amount: null,
@@ -750,7 +756,7 @@ export function registerCashIpc(): void {
 
     if (preview.clock_moved_backward) {
       throw new Error(
-        `تاريخ الجهاز أقدم من آخر شفت. صحح تاريخ ووقت Windows أولًا.`,
+        `تاريخ الجهاز أقدم من آخر شفت. اضبط تاريخ ووقت الجهاز الصحيحين أولًا.`,
       );
     }
 

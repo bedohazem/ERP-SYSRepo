@@ -45,7 +45,7 @@ type OpeningPreview = {
   can_open: boolean;
 
   open_shift: CashShift | null;
-
+  has_previous_shift: boolean;
   previous_shift_id: number | null;
 
   expected_opening_amount: number | null;
@@ -221,7 +221,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                   preview.previous_business_date
                 }`
               : ''
-          }. صحح تاريخ Windows أولًا.`,
+          }. اضبط تاريخ الجهاز الصحيح أولًا.`,
 
           6500,
         );
@@ -793,7 +793,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
               </strong>
             </div>
 
-            {openingPreview?.previous_shift_id === null && (
+            {openingPreview?.has_previous_shift === false && (
               <div
                 style={{
                   marginTop: '12px',
@@ -805,7 +805,7 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                   lineHeight: 1.7,
                 }}
               >
-                ⚠️ هذا أول شفت بالنظام. تأكد أن تاريخ ووقت Windows صحيحان قبل
+                ⚠️ هذا أول شفت بالنظام. تأكد أن تاريخ ووقت الجهاز صحيحان قبل
                 الفتح، لأن هذا التاريخ سيكون نقطة بداية تسلسل الشفتات.
               </div>
             )}
@@ -917,7 +917,9 @@ export default function ShiftHeaderControl({ user, isLight, isMobile }: Props) {
                       color: mutedColor,
                     }}
                   >
-                    أول شفت بالنظام — لا يوجد مبلغ تسليم سابق
+                    {openingPreview?.has_previous_shift === false
+                      ? 'أول شفت بالنظام — لا يوجد مبلغ تسليم سابق'
+                      : 'يوجد شفت سابق — لا يوجد مبلغ تسليم مسجل'}
                   </div>
                 ) : (
                   <>

@@ -373,6 +373,8 @@ describe('financial IPC session scope', () => {
       'cash-shifts:opening-preview',
     );
 
+    expect(preview.has_previous_shift).toBe(true);
+
     expect(preview.expected_opening_amount).toBeNull();
 
     expect(preview.previous_shift_id).toBeNull();
