@@ -84,7 +84,7 @@ async function invokeMain(channel, ...args) {
      * الـRenderer يستلم رسالة
      * نظيفة للمستخدم فقط.
      */
-    throw new Error(cleanUserErrorMessage(error));
+    throw new Error(cleanUserErrorMessage(error), { cause: error });
   }
 }
 
