@@ -28,6 +28,9 @@ type SaleRow = {
   customer_name?: string | null;
   customer_phone?: string | null;
   cashier_name?: string | null;
+  salesperson_id?: number | null;
+  salesperson_name?: string | null;
+  salesperson_user_id?: number | null;
   sub_total: number;
   list_sub_total?: number;
   product_discount_value?: number;
@@ -1549,7 +1552,7 @@ export default function InvoicesPage() {
                 ? 'بحث برقم الاستبدال / الفاتورة / العميل / الكاشير'
                 : activeTab === 'returns'
                   ? 'بحث برقم المرتجع / الفاتورة / العميل / الكاشير'
-                  : 'بحث برقم الفاتورة مثل #405 / العميل / الهاتف / الكاشير'
+                  : 'بحث برقم الفاتورة مثل #405 / العميل / الهاتف / الكاشير / البائع'
             }
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -1763,7 +1766,7 @@ export default function InvoicesPage() {
               <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                 <th style={thStyle}>رقم</th>
                 <th style={thStyle}>العميل</th>
-                <th style={thStyle}>الكاشير</th>
+                <th style={thStyle}>الكاشير/البائع</th>
                 <th style={thStyle}>مرتجع / استبدال</th>
                 <th style={thStyle}>قبل الخصم</th>
                 <th style={thStyle}>الخصم</th>
@@ -1807,7 +1810,63 @@ export default function InvoicesPage() {
                       )}
                     </div>
                   </td>
-                  <td style={tdStyle}>{sale.cashier_name || '—'}</td>
+                  <td style={tdStyle}>
+                    {sale.salesperson_name ? (
+                      sale.salesperson_user_id != null &&
+                      sale.user_id != null &&
+                      Number(sale.salesperson_user_id) ===
+                        Number(sale.user_id) ? (
+                        <div style={{ display: 'grid', gap: '3px' }}>
+                          <strong>{sale.salesperson_name}</strong>
+
+                          <span
+                            style={{
+                              color: '#94a3b8',
+                              fontSize: '11px',
+                            }}
+                          >
+                            كاشير / بائع
+                          </span>
+                        </div>
+                      ) : (
+                        <div
+                          style={{
+                            display: 'grid',
+                            gap: '4px',
+                            minWidth: '140px',
+                          }}
+                        >
+                          <div>
+                            <span
+                              style={{
+                                color: '#94a3b8',
+                                fontSize: '11px',
+                              }}
+                            >
+                              البائع:{' '}
+                            </span>
+
+                            <strong>{sale.salesperson_name}</strong>
+                          </div>
+
+                          <div>
+                            <span
+                              style={{
+                                color: '#94a3b8',
+                                fontSize: '11px',
+                              }}
+                            >
+                              الكاشير:{' '}
+                            </span>
+
+                            <span>{sale.cashier_name || '—'}</span>
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      sale.cashier_name || '—'
+                    )}
+                  </td>
                   <td style={tdStyle}>
                     {Number(sale.return_count || 0) > 0 ||
                     Number(sale.exchange_count || 0) > 0 ||
@@ -3385,8 +3444,37 @@ export default function InvoicesPage() {
                 </strong>
               </div>
               <div style={statCardStyle}>
-                الكاشير
-                <strong>{selectedReceipt.sale.cashier_name || '—'}</strong>
+                {selectedReceipt.sale.salesperson_name &&
+                !(
+                  selectedReceipt.sale.salesperson_user_id != null &&
+                  selectedReceipt.sale.user_id != null &&
+                  Number(selectedReceipt.sale.salesperson_user_id) ===
+                    Number(selectedReceipt.sale.user_id)
+                )
+                  ? 'البائع / الكاشير'
+                  : selectedReceipt.sale.salesperson_name
+                    ? 'الكاشير/البائع'
+                    : 'الكاشير'}
+
+                <strong>
+                  {selectedReceipt.sale.salesperson_name &&
+                  !(
+                    selectedReceipt.sale.salesperson_user_id != null &&
+                    selectedReceipt.sale.user_id != null &&
+                    Number(selectedReceipt.sale.salesperson_user_id) ===
+                      Number(selectedReceipt.sale.user_id)
+                  ) ? (
+                    <>
+                      {selectedReceipt.sale.salesperson_name}
+                      {' / '}
+                      {selectedReceipt.sale.cashier_name || '—'}
+                    </>
+                  ) : (
+                    selectedReceipt.sale.salesperson_name ||
+                    selectedReceipt.sale.cashier_name ||
+                    '—'
+                  )}
+                </strong>
               </div>
               <div style={statCardStyle}>
                 دفع الفاتورة الأصلية

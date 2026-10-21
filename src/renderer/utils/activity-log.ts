@@ -13,6 +13,16 @@ export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   user_deactivated: 'تعطيل مستخدم',
   user_password_reset: 'تغيير كلمة مرور',
 
+  salesperson_created: 'إضافة بائع',
+
+  salesperson_updated: 'تعديل بائع',
+
+  salesperson_activated: 'تفعيل بائع',
+
+  salesperson_deactivated: 'تعطيل بائع',
+
+  salesperson_target_updated: 'تعديل تارجت بائع',
+
   sale_created: 'إنشاء فاتورة بيع',
   sale_credit_limit_overridden: 'تجاوز الحد الائتماني للعميل بموافقة المدير',
   sale_held: 'تعليق فاتورة بيع',
@@ -154,7 +164,7 @@ export const ACTIVITY_ENTITY_LABELS: Record<string, string> = {
   auth: 'الدخول والأمان',
 
   users: 'المستخدمون',
-
+  salespeople: 'البائعون',
   sales: 'المبيعات',
   held_sales: 'الفواتير المعلقة',
   // Logs قديمة

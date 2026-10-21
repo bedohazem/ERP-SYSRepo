@@ -399,6 +399,126 @@ declare global {
         is_active: number;
       }) => Promise<any>;
 
+      getActiveSalespeople: () => Promise<
+        Array<{
+          id: number;
+
+          name: string;
+
+          is_active: number;
+
+          created_at: string;
+
+          updated_at: string;
+        }>
+      >;
+
+      getSalespeople: () => Promise<
+        Array<{
+          id: number;
+
+          name: string;
+
+          is_active: number;
+
+          created_at: string;
+
+          updated_at: string;
+        }>
+      >;
+
+      createSalesperson: (input: { name: string }) => Promise<{
+        id: number;
+
+        name: string;
+
+        is_active: number;
+
+        created_at: string;
+
+        updated_at: string;
+      }>;
+
+      updateSalesperson: (input: {
+        id: number;
+
+        name: string;
+      }) => Promise<{
+        id: number;
+
+        name: string;
+
+        is_active: number;
+
+        created_at: string;
+
+        updated_at: string;
+      }>;
+
+      setSalespersonActive: (input: {
+        id: number;
+
+        is_active: boolean;
+      }) => Promise<{
+        id: number;
+
+        name: string;
+
+        is_active: number;
+
+        created_at: string;
+
+        updated_at: string;
+      }>;
+
+      getSalespeoplePerformance: (input: { month: string }) => Promise<
+        Array<{
+          id: number;
+
+          name: string;
+
+          is_active: number;
+
+          month: string;
+
+          target_amount: number;
+
+          sales_count: number;
+
+          sales_total: number;
+
+          returns_count: number;
+
+          returns_total: number;
+
+          exchange_count: number;
+
+          exchange_adjustment: number;
+
+          net_sales: number;
+
+          achievement_percent: number;
+
+          remaining_target: number;
+
+          exceeded_target: number;
+        }>
+      >;
+
+      setSalespersonMonthlyTarget: (input: {
+        salesperson_id: number;
+
+        month: string;
+
+        target_amount: number;
+      }) => Promise<{
+        salesperson_id: number;
+
+        month: string;
+
+        target_amount: number;
+      }>;
+
       createSale: (input: any) => Promise<{
         success: boolean;
 
@@ -454,7 +574,7 @@ declare global {
 
       holdSale: (input: {
         customer_id?: number | null;
-
+        salesperson_id?: number | null;
         title?: string | null;
 
         discount_type?: 'amount' | 'percent';
@@ -482,7 +602,9 @@ declare global {
           cashier_name: string;
 
           customer_id: number | null;
+          salesperson_id?: number | null;
 
+          salesperson_name?: string | null;
           customer_name?: string | null;
 
           customer_phone?: string | null;
@@ -515,7 +637,11 @@ declare global {
         cashier_name: string;
 
         customer_id: number | null;
+        salesperson_id?: number | null;
 
+        salesperson_name?: string | null;
+
+        salesperson_is_active?: number | null;
         customer_name?: string | null;
 
         customer_phone?: string | null;
@@ -771,9 +897,9 @@ declare global {
 
       listSales: (input?: {
         search?: string;
-
         payment_filter?: 'all' | 'paid' | 'unpaid';
         payment_method?: string | null;
+        salesperson_id?: number | null;
         date_from?: string;
         date_to?: string;
         limit?: number;
@@ -783,6 +909,9 @@ declare global {
           id: number;
           customer_id: number | null;
           user_id: number | null;
+          salesperson_id?: number | null;
+          salesperson_name?: string | null;
+          salesperson_user_id?: number | null;
           sub_total: number;
           discount_value: number;
           promotion_id?: number | null;

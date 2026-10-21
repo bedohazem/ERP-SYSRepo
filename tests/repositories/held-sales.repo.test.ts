@@ -8,6 +8,7 @@ import {
   getHeldSale,
   listHeldSales,
 } from '../../src/main/database/repositories/held-sales.repo';
+import { createSalesperson } from '../../src/main/database/repositories/salespeople.repo';
 
 function createCashier(username: string) {
   const db = getDb();
@@ -356,5 +357,41 @@ describe('held sales repository', () => {
         is_admin: true,
       }),
     ).toHaveLength(0);
+  });
+
+  it('preserves salesperson when a sale is held and resumed', () => {
+    const cashierId = createCashier('seller_hold_cashier');
+
+    const { variantId } = createVariant();
+
+    const salesperson = createSalesperson('Held Sale Seller');
+
+    const held = createHeldSale({
+      user_id: cashierId,
+
+      salesperson_id: salesperson.id,
+
+      items: [
+        {
+          variant_id: variantId,
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    const saved = getHeldSale({
+      held_sale_id: held.heldSaleId,
+
+      actor_id: cashierId,
+
+      is_admin: false,
+    });
+
+    expect(Number(saved.salesperson_id)).toBe(salesperson.id);
+
+    expect(saved.salesperson_name).toBe('Held Sale Seller');
+
+    expect(Number(saved.salesperson_is_active)).toBe(1);
   });
 });

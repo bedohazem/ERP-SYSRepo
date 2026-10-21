@@ -126,6 +126,89 @@ describe('domain IPC session scope', () => {
     );
   });
 
+  it('allows sales users to read active salespeople but only admins can manage them', async () => {
+    const admin = findUserByUsername('admin')!;
+
+    const cashier = createUser(
+      'Sales Cashier',
+      'sales_cashier',
+      '5678',
+      'cashier',
+    );
+
+    const adminClient = makeClient();
+
+    startAuthSession(adminClient.event, admin.id);
+
+    const cashierClient = makeClient();
+
+    startAuthSession(cashierClient.event, cashier.id);
+
+    const created = await invoke(
+      adminClient.event,
+
+      'salespeople:create',
+
+      {
+        name: 'Seller One',
+      },
+    );
+
+    expect(created.name).toBe('Seller One');
+
+    const active = await invoke(
+      cashierClient.event,
+
+      'salespeople:list-active',
+    );
+
+    expect(active.some((row: any) => row.id === created.id)).toBe(true);
+
+    await expect(
+      invoke(
+        cashierClient.event,
+
+        'salespeople:create',
+
+        {
+          name: 'Blocked Seller',
+        },
+      ),
+    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط');
+
+    await invoke(
+      adminClient.event,
+
+      'salespeople:set-active',
+
+      {
+        id: created.id,
+
+        is_active: false,
+      },
+    );
+
+    const activeAfter = await invoke(
+      cashierClient.event,
+
+      'salespeople:list-active',
+    );
+
+    expect(activeAfter.some((row: any) => row.id === created.id)).toBe(false);
+
+    const all = await invoke(
+      adminClient.event,
+
+      'salespeople:list',
+    );
+
+    expect(
+      all.some(
+        (row: any) => row.id === created.id && Number(row.is_active) === 0,
+      ),
+    ).toBe(true);
+  });
+
   it('allows cashiers to read customers', async () => {
     const cashier = createUser(
       'Customer Cashier',

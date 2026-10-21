@@ -323,6 +323,30 @@ describe('database migrations', () => {
 
         name: 'financial-operation-business-date-snapshots',
       },
+
+      {
+        version: 18,
+
+        name: 'salespeople-and-sale-snapshots',
+      },
+
+      {
+        version: 19,
+
+        name: 'salesperson-monthly-targets',
+      },
+
+      {
+        version: 20,
+
+        name: 'held-sale-salesperson',
+      },
+
+      {
+        version: 21,
+
+        name: 'link-salespeople-to-users',
+      },
     ]);
 
     const userPermissionColumns = database

@@ -80,8 +80,13 @@ type CustomerOption = {
   sales_count?: number;
   last_sale_at?: string | null;
   balance?: number;
-
   credit_limit?: number | null;
+};
+
+type SalespersonOption = {
+  id: number;
+  name: string;
+  is_active: number;
 };
 
 type CreditLimitExceededDetails = {
@@ -109,9 +114,13 @@ type LoyaltySettings = {
 type SaleReceipt = {
   sale: {
     id: number;
+    user_id?: number | null;
     customer_name?: string | null;
     customer_phone?: string | null;
     cashier_name?: string | null;
+    salesperson_id?: number | null;
+    salesperson_name?: string | null;
+    salesperson_user_id?: number | null;
     sub_total: number;
     list_sub_total?: number;
     product_discount_value?: number;
@@ -202,6 +211,7 @@ type InvoiceTab = {
   barcodeDraft: string;
   productDraft: string;
   customer: CustomerOption | null;
+  salesperson: SalespersonOption | null;
   loyaltyPointsDraft: string;
   paidDraft: string;
   paymentMethod: string;
@@ -416,6 +426,7 @@ const createInvoice = (id: number): InvoiceTab => ({
   barcodeDraft: '',
   productDraft: '',
   customer: null,
+  salesperson: null,
   loyaltyPointsDraft: '',
   paidDraft: '',
   paymentMethod: 'cash',
@@ -502,6 +513,16 @@ function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
 
   const customer = raw?.customer?.id ? normalizeCustomer(raw.customer) : null;
 
+  const salesperson: SalespersonOption | null = raw?.salesperson?.id
+    ? {
+        id: Number(raw.salesperson.id),
+
+        name: String(raw.salesperson.name || ''),
+
+        is_active: Number(raw.salesperson.is_active ?? 1),
+      }
+    : null;
+
   return {
     ...base,
     id,
@@ -510,6 +531,7 @@ function normalizeInvoiceDraft(raw: any, fallbackId: number): InvoiceTab {
     barcodeDraft: String(raw?.barcodeDraft || ''),
     productDraft: String(raw?.productDraft || ''),
     customer,
+    salesperson,
     loyaltyPointsDraft: '',
     paidDraft: '',
     paymentMethod: 'cash',
@@ -704,6 +726,12 @@ export default function SalesPage() {
     [],
   );
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [salespeople, setSalespeople] = useState<SalespersonOption[]>([]);
+
+  const [loadingSalespeople, setLoadingSalespeople] = useState(false);
+  const [salespersonDropdownOpen, setSalespersonDropdownOpen] = useState(false);
+
+  const [salespersonSearch, setSalespersonSearch] = useState('');
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState('');
@@ -763,6 +791,7 @@ export default function SalesPage() {
   const productInputRef = useRef<HTMLInputElement | null>(null);
   const firstQtyInputRef = useRef<HTMLInputElement | null>(null);
   const customerWrapperRef = useRef<HTMLDivElement | null>(null);
+  const salespersonWrapperRef = useRef<HTMLDivElement | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
 
   const pendingDeleteHeldSale = pendingDeleteHeldSaleId
@@ -959,7 +988,16 @@ export default function SalesPage() {
           cart,
 
           customer,
+          salesperson:
+            Number(receipt.sale?.salesperson_id || 0) > 0
+              ? {
+                  id: Number(receipt.sale.salesperson_id),
 
+                  name: String(receipt.sale.salesperson_name || 'بائع'),
+
+                  is_active: 1,
+                }
+              : null,
           loyaltyPointsDraft:
             Number(receipt.sale?.loyalty_points_redeemed || 0) > 0
               ? String(receipt.sale.loyalty_points_redeemed)
@@ -1638,6 +1676,34 @@ export default function SalesPage() {
     }
   }
 
+  async function loadSalespeople() {
+    setLoadingSalespeople(true);
+
+    try {
+      const data = await window.api.getActiveSalespeople();
+
+      setSalespeople(
+        Array.isArray(data)
+          ? data.map((row) => ({
+              id: Number(row.id),
+
+              name: String(row.name || ''),
+
+              is_active: Number(row.is_active || 0),
+            }))
+          : [],
+      );
+    } catch (error) {
+      console.error('Failed to load salespeople:', error);
+
+      setSalespeople([]);
+
+      showMessage('error', 'تعذر تحميل قائمة البائعين', false);
+    } finally {
+      setLoadingSalespeople(false);
+    }
+  }
+
   async function loadLoyaltySettings() {
     try {
       const settings = await window.api.getLoyaltySettings();
@@ -1721,6 +1787,8 @@ export default function SalesPage() {
     try {
       await window.api.holdSale({
         customer_id: activeInvoice.customer?.id ?? null,
+
+        salesperson_id: activeInvoice.salesperson?.id ?? null,
 
         title: holdTitleDraft.trim() || activeInvoice.title || 'فاتورة معلقة',
 
@@ -1919,6 +1987,17 @@ export default function SalesPage() {
           }
         : null;
 
+      const heldSalesperson: SalespersonOption | null =
+        held.salesperson_id && Number(held.salesperson_is_active) === 1
+          ? {
+              id: Number(held.salesperson_id),
+
+              name: String(held.salesperson_name || ''),
+
+              is_active: 1,
+            }
+          : null;
+
       const invoiceId = nextInvoiceId;
 
       const resumedInvoice: InvoiceTab = {
@@ -1931,7 +2010,7 @@ export default function SalesPage() {
         cart,
 
         customer,
-
+        salesperson: heldSalesperson,
         discountType: held.discount_type === 'percent' ? 'percent' : 'amount',
 
         discountDraft:
@@ -1969,6 +2048,18 @@ export default function SalesPage() {
       setShowHeldSalesModal(false);
 
       await loadHeldSales();
+
+      if (held.salesperson_id && !heldSalesperson) {
+        showMessage(
+          'error',
+          'البائع المحفوظ على الفاتورة تم تعطيله. اختر بائعًا مفعلًا قبل الدفع',
+          false,
+        );
+
+        setTimeout(forceBarcodeFocus, 0);
+
+        return;
+      }
 
       showMessage(
         'success',
@@ -2394,7 +2485,7 @@ export default function SalesPage() {
     try {
       const salePayload = {
         customer_id: activeInvoice.customer?.id ?? null,
-
+        salesperson_id: activeInvoice.salesperson?.id ?? null,
         promotion_id: null,
 
         promotion_ids: editingSaleId
@@ -2562,6 +2653,7 @@ export default function SalesPage() {
         barcodeDraft: '',
         productDraft: '',
         customer: null,
+        salesperson: null,
         loyaltyPointsDraft: '',
         paidDraft: '',
         paymentMethod: 'cash',
@@ -2577,6 +2669,7 @@ export default function SalesPage() {
           barcodeDraft: '',
           productDraft: '',
           customer: null,
+          salesperson: null,
           loyaltyPointsDraft: '',
           paidDraft: '',
           paymentMethod: 'cash',
@@ -3046,6 +3139,7 @@ export default function SalesPage() {
   useEffect(() => {
     window.focus();
     void loadCustomers('');
+    void loadSalespeople();
     void loadLoyaltySettings();
     void loadHeldSales();
 
@@ -3106,11 +3200,20 @@ export default function SalesPage() {
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+
       if (
         customerWrapperRef.current &&
-        !customerWrapperRef.current.contains(e.target as Node)
+        !customerWrapperRef.current.contains(target)
       ) {
         setCustomerDropdownOpen(false);
+      }
+
+      if (
+        salespersonWrapperRef.current &&
+        !salespersonWrapperRef.current.contains(target)
+      ) {
+        setSalespersonDropdownOpen(false);
       }
     }
 
@@ -3658,7 +3761,9 @@ export default function SalesPage() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: isCompact ? '1fr' : 'minmax(280px, 1fr) auto',
+            gridTemplateColumns: isCompact
+              ? '1fr'
+              : 'minmax(280px, 1fr) minmax(220px, 300px) auto',
             alignItems: 'center',
             gap: '16px',
             marginBottom: '20px',
@@ -3875,6 +3980,270 @@ export default function SalesPage() {
                 >
                   + إضافة عميل جديد
                 </button>
+              </div>
+            )}
+          </div>
+
+          <div
+            ref={salespersonWrapperRef}
+            style={{
+              position: 'relative',
+              width: '100%',
+              minWidth: 0,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                direction: 'ltr',
+                width: '100%',
+                minWidth: 0,
+                height: '46px',
+                borderRadius: '12px',
+
+                border: salespersonDropdownOpen
+                  ? '1px solid rgba(124,58,237,0.65)'
+                  : '1px solid rgba(255,255,255,0.08)',
+
+                background: 'rgba(255,255,255,0.04)',
+
+                boxShadow: salespersonDropdownOpen
+                  ? '0 0 0 3px rgba(124,58,237,0.16)'
+                  : 'inset 0 1px 0 rgba(255,255,255,0.03)',
+
+                overflow: 'hidden',
+                transition: 'all 0.18s ease',
+              }}
+            >
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setSalespersonDropdownOpen((prev) => !prev);
+
+                  setCustomerDropdownOpen(false);
+                }}
+                style={{
+                  width: '38px',
+                  height: '100%',
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#94a3b8',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  style={{
+                    transform: salespersonDropdownOpen
+                      ? 'rotate(180deg)'
+                      : 'rotate(0deg)',
+
+                    transition: 'transform 0.18s ease',
+                  }}
+                >
+                  <path
+                    d="M5 7.5L10 12.5L15 7.5"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+
+              <div
+                style={{
+                  width: '1px',
+                  alignSelf: 'stretch',
+                  background: 'rgba(255,255,255,0.06)',
+                }}
+              />
+
+              <input
+                type="text"
+                placeholder="اختر البائع"
+                value={
+                  salespersonSearch || activeInvoice.salesperson?.name || ''
+                }
+                onFocus={() => {
+                  setSalespersonDropdownOpen(true);
+
+                  setCustomerDropdownOpen(false);
+                }}
+                onChange={(e) => {
+                  setSalespersonSearch(e.target.value);
+
+                  setSalespersonDropdownOpen(true);
+                }}
+                style={{
+                  flex: 1,
+                  height: '100%',
+                  border: 'none',
+                  outline: 'none',
+                  background: 'transparent',
+                  padding: '0 12px',
+                  textAlign: 'right',
+                  direction: 'rtl',
+                  color: '#e5e7eb',
+                  fontSize: '14px',
+                  minWidth: 0,
+                }}
+              />
+
+              {activeInvoice.salesperson && !salespersonSearch && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    updateActiveInvoice({
+                      salesperson: null,
+                    });
+
+                    setSalespersonSearch('');
+
+                    setSalespersonDropdownOpen(false);
+                  }}
+                  title="إزالة البائع"
+                  style={clearButtonStyle}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+
+            {salespersonDropdownOpen && (
+              <div
+                className="theme-popover theme-dropdown"
+                style={{
+                  position: 'absolute',
+                  top: '54px',
+                  left: 0,
+                  width: '100%',
+                  minWidth: '220px',
+                  maxHeight: '260px',
+                  overflowY: 'auto',
+                  borderRadius: '14px',
+
+                  border: '1px solid rgba(255,255,255,0.10)',
+
+                  background: '#111827',
+
+                  zIndex: 99999,
+
+                  boxShadow: '0 22px 50px rgba(0,0,0,0.45)',
+
+                  padding: '6px',
+                }}
+              >
+                {loadingSalespeople ? (
+                  <div style={emptyDropdownStyle}>جاري تحميل البائعين...</div>
+                ) : (
+                  <>
+                    {salespeople
+                      .filter((salesperson) => {
+                        const q = salespersonSearch.trim().toLowerCase();
+
+                        if (!q) {
+                          return true;
+                        }
+
+                        return salesperson.name.toLowerCase().includes(q);
+                      })
+                      .map((salesperson) => (
+                        <button
+                          key={salesperson.id}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            updateActiveInvoice({
+                              salesperson,
+                            });
+
+                            setSalespersonSearch('');
+
+                            setSalespersonDropdownOpen(false);
+
+                            setTimeout(focusMainInput, 0);
+                          }}
+                          style={{
+                            width: '100%',
+                            border: 'none',
+                            borderRadius: '10px',
+
+                            background:
+                              activeInvoice.salesperson?.id === salesperson.id
+                                ? 'rgba(124,58,237,0.20)'
+                                : 'transparent',
+
+                            color: '#fff',
+                            padding: '12px',
+                            cursor: 'pointer',
+                            textAlign: 'right',
+                            direction: 'rtl',
+
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '10px',
+                          }}
+                        >
+                          <strong>{salesperson.name}</strong>
+
+                          {activeInvoice.salesperson?.id === salesperson.id && (
+                            <span
+                              style={{
+                                color: '#a78bfa',
+                                fontSize: '12px',
+                                fontWeight: 900,
+                              }}
+                            >
+                              ✓
+                            </span>
+                          )}
+                        </button>
+                      ))}
+
+                    {salespeople.filter((salesperson) => {
+                      const q = salespersonSearch.trim().toLowerCase();
+
+                      if (!q) {
+                        return true;
+                      }
+
+                      return salesperson.name.toLowerCase().includes(q);
+                    }).length === 0 && (
+                      <div style={emptyDropdownStyle}>
+                        لا يوجد بائع بهذا الاسم
+                      </div>
+                    )}
+
+                    {!salespersonSearch && !activeInvoice.salesperson && (
+                      <div
+                        style={{
+                          marginTop: '6px',
+                          padding: '9px 10px',
+                          borderTop: '1px solid rgba(255,255,255,0.07)',
+
+                          color: '#94a3b8',
+                          fontSize: '11px',
+                          textAlign: 'right',
+                          direction: 'rtl',
+                        }}
+                      >
+                        بدون اختيار = البيع يُسجل على الكاشير تلقائيًا
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -4973,8 +5342,39 @@ export default function SalesPage() {
               </div>
 
               <div style={receiptInfoCardStyle}>
-                <span>الكاشير</span>
-                <strong>{receiptData.sale.cashier_name || '—'}</strong>
+                <span>
+                  {receiptData.sale.salesperson_name &&
+                  !(
+                    receiptData.sale.salesperson_user_id != null &&
+                    receiptData.sale.user_id != null &&
+                    Number(receiptData.sale.salesperson_user_id) ===
+                      Number(receiptData.sale.user_id)
+                  )
+                    ? 'البائع / الكاشير'
+                    : receiptData.sale.salesperson_name
+                      ? 'الكاشير/البائع'
+                      : 'الكاشير'}
+                </span>
+
+                <strong>
+                  {receiptData.sale.salesperson_name &&
+                  !(
+                    receiptData.sale.salesperson_user_id != null &&
+                    receiptData.sale.user_id != null &&
+                    Number(receiptData.sale.salesperson_user_id) ===
+                      Number(receiptData.sale.user_id)
+                  ) ? (
+                    <>
+                      {receiptData.sale.salesperson_name}
+                      {' / '}
+                      {receiptData.sale.cashier_name || '—'}
+                    </>
+                  ) : (
+                    receiptData.sale.salesperson_name ||
+                    receiptData.sale.cashier_name ||
+                    '—'
+                  )}
+                </strong>
               </div>
 
               <div style={receiptInfoCardStyle}>

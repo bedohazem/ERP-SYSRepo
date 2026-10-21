@@ -19,6 +19,7 @@ import {
 } from '../inventory-cost';
 import { roundMoney } from '../../../shared/money';
 import { resolveFinancialBusinessDate } from '../financial-business-date';
+import { getOrCreateSalespersonForUser } from './salespeople.repo';
 
 export type CreateSaleLineInput = {
   variant_id: number;
@@ -35,6 +36,7 @@ export type CreateSaleLineInput = {
 
 type CreateSaleInput = {
   user_id: number;
+  salesperson_id?: number | null;
   customer_id?: number | null;
   business_date?: string | null;
   promotion_id?: number | null;
@@ -68,13 +70,18 @@ type CreateSaleInput = {
   }>;
 };
 
+type SalespersonSnapshot = {
+  id: number;
+  name: string;
+};
+
 type CreateSaleInternalOptions = {
   forced_sale_id?: number | null;
 
   created_at?: string | null;
 
   invoice_user_id?: number | null;
-
+  salesperson_snapshot?: SalespersonSnapshot | null;
   /*
    * يستخدم فقط أثناء تعديل
    * نفس الفاتورة حتى لا تتغير
@@ -290,6 +297,71 @@ export function syncCustomerTotalSpent(customerIdInput: number) {
   ).run(totalSpent, customerId);
 }
 
+function resolveSaleSellerSnapshot(
+  db: ReturnType<typeof getDb>,
+  salespersonIdInput: number | null | undefined,
+  fallbackUserIdInput: number,
+): SalespersonSnapshot {
+  /*
+   * لو الكاشير اختار بائع
+   * يدويًا نستخدم البائع المختار.
+   */
+  if (salespersonIdInput !== undefined && salespersonIdInput !== null) {
+    const salespersonId = Number(salespersonIdInput);
+
+    if (!Number.isInteger(salespersonId) || salespersonId <= 0) {
+      throw new Error('البائع غير صحيح');
+    }
+
+    const salesperson = db
+      .prepare(
+        `
+        SELECT
+          id,
+          name
+
+        FROM salespeople
+
+        WHERE
+          id = ?
+
+          AND is_active = 1
+
+        LIMIT 1
+        `,
+      )
+      .get(salespersonId) as
+      | {
+          id: number;
+          name: string;
+        }
+      | undefined;
+
+    if (!salesperson) {
+      throw new Error('البائع غير موجود أو غير مفعل');
+    }
+
+    return {
+      id: Number(salesperson.id),
+
+      name: String(salesperson.name),
+    };
+  }
+
+  /*
+   * مفيش بائع مختار:
+   * نربط الكاشير تلقائيًا
+   * كسجل بائع.
+   */
+  const cashierSeller = getOrCreateSalespersonForUser(fallbackUserIdInput);
+
+  return {
+    id: Number(cashierSeller.id),
+
+    name: String(cashierSeller.name),
+  };
+}
+
 function createSaleInternal(
   input: CreateSaleInput,
   options: CreateSaleInternalOptions = {},
@@ -349,6 +421,16 @@ function createSaleInternal(
   const requestedRedeemPoints = Number(input.loyalty_points_redeemed || 0);
 
   const tx = db.transaction(() => {
+    const salespersonSnapshot =
+      options.salesperson_snapshot !== undefined
+        ? options.salesperson_snapshot
+        : resolveSaleSellerSnapshot(
+            db,
+
+            input.salesperson_id,
+
+            Number(options.invoice_user_id ?? input.user_id),
+          );
     const promotionResult = calculateActivePromotionsForSale(input.items);
 
     const expectedPromotionIds = Array.isArray(input.promotion_ids)
@@ -745,6 +827,9 @@ function createSaleInternal(
           customer_id,
           user_id,
 
+          salesperson_id,
+          salesperson_name,
+
           business_date,
           shift_id,
 
@@ -784,7 +869,7 @@ function createSaleInternal(
         VALUES (
           'sale',
 
-          ?, ?,
+          ?, ?, ?, ?,
 
           ?, ?,
 
@@ -818,6 +903,10 @@ function createSaleInternal(
         customerId,
 
         input.user_id,
+
+        salespersonSnapshot?.id ?? null,
+
+        salespersonSnapshot?.name ?? null,
 
         businessDate,
 
@@ -1532,12 +1621,26 @@ export function getSaleReceipt(saleId: number) {
       `
       SELECT
         s.*,
+
         c.name AS customer_name,
         c.phone AS customer_phone,
-        u.name AS cashier_name
+
+        u.name AS cashier_name,
+
+        sp.user_id AS salesperson_user_id,
+
+        COALESCE(
+          NULLIF(
+            TRIM(s.salesperson_name),
+            ''
+          ),
+          sp.name
+        ) AS salesperson_name
       FROM sales s
       LEFT JOIN customers c ON c.id = s.customer_id
       LEFT JOIN users u ON u.id = s.user_id
+      LEFT JOIN salespeople sp
+       ON sp.id = s.salesperson_id
       WHERE s.id = ?
       LIMIT 1
     `,
@@ -1721,7 +1824,7 @@ export function listSales(input?: {
   payment_filter?: 'all' | 'paid' | 'unpaid';
 
   payment_method?: string | null;
-
+  salesperson_id?: number | null;
   date_from?: string;
   date_to?: string;
 
@@ -1738,8 +1841,23 @@ export function listSales(input?: {
   const limit = Math.min(Math.max(Number(input?.limit || 50), 1), 200);
   const offset = Math.max(Number(input?.offset || 0), 0);
   const actorId = Number(input?.actor_id || 0);
+  const salespersonId =
+    input?.salesperson_id == null ? null : Number(input.salesperson_id);
+
+  if (
+    salespersonId !== null &&
+    (!Number.isInteger(salespersonId) || salespersonId <= 0)
+  ) {
+    throw new Error('البائع غير صحيح');
+  }
   const where: string[] = [`s.type = 'sale'`];
   const params: any[] = [];
+
+  if (salespersonId !== null) {
+    where.push(`s.salesperson_id = ?`);
+
+    params.push(salespersonId);
+  }
 
   const invoiceNumberMatch = search.match(/^#\s*(\d+)$/);
 
@@ -1754,11 +1872,18 @@ export function listSales(input?: {
       OR c.name LIKE ?
       OR c.phone LIKE ?
       OR u.name LIKE ?
+      OR COALESCE(
+        NULLIF(
+          TRIM(s.salesperson_name),
+          ''
+        ),
+        sp.name
+      ) LIKE ?
     )
   `);
 
     const q = `%${search}%`;
-    params.push(q, q, q, q);
+    params.push(q, q, q, q, q);
   }
 
   if (paymentFilter === 'paid') {
@@ -1850,6 +1975,7 @@ export function listSales(input?: {
         s.id,
         s.customer_id,
         s.user_id,
+        s.salesperson_id,
         s.business_date,
         s.sub_total,
 
@@ -1895,6 +2021,17 @@ export function listSales(input?: {
         c.name AS customer_name,
         c.phone AS customer_phone,
         u.name AS cashier_name,
+
+        sp.user_id AS salesperson_user_id,
+
+        COALESCE(
+          NULLIF(
+            TRIM(s.salesperson_name),
+            ''
+          ),
+          sp.name
+        ) AS salesperson_name,
+
         COUNT(si.id) AS items_count,
 
         IFNULL(SUM(si.quantity), 0) AS total_quantity,
@@ -1978,6 +2115,8 @@ export function listSales(input?: {
       FROM sales s
       LEFT JOIN customers c ON c.id = s.customer_id
       LEFT JOIN users u ON u.id = s.user_id
+      LEFT JOIN salespeople sp
+        ON sp.id = s.salesperson_id
       LEFT JOIN sale_items si ON si.sale_id = s.id
       ${whereSql}
       GROUP BY s.id
@@ -2096,6 +2235,10 @@ export function listSales(input?: {
       FROM sales s
       LEFT JOIN customers c ON c.id = s.customer_id
       LEFT JOIN users u ON u.id = s.user_id
+
+      LEFT JOIN salespeople sp
+        ON sp.id = s.salesperson_id
+
       ${whereSql}
     `,
     )
@@ -3598,7 +3741,54 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
     }
 
     const oldCustomerId = Number(sale.customer_id || 0);
+    const requestedSalespersonId =
+      input.salesperson_id === undefined
+        ? sale.salesperson_id == null
+          ? null
+          : Number(sale.salesperson_id)
+        : input.salesperson_id;
 
+    let preservedSalespersonSnapshot: SalespersonSnapshot | undefined;
+
+    if (
+      requestedSalespersonId !== null &&
+      Number(requestedSalespersonId) === Number(sale.salesperson_id || 0)
+    ) {
+      const storedName = String(sale.salesperson_name || '').trim();
+
+      const currentSalesperson = storedName
+        ? null
+        : (db
+            .prepare(
+              `
+            SELECT name
+
+            FROM salespeople
+
+            WHERE id = ?
+
+            LIMIT 1
+            `,
+            )
+            .get(requestedSalespersonId) as
+            | {
+                name: string;
+              }
+            | undefined);
+
+      const resolvedName =
+        storedName || String(currentSalesperson?.name || '').trim();
+
+      if (!resolvedName) {
+        throw new Error('تعذر تحديد البائع التاريخي للفاتورة');
+      }
+
+      preservedSalespersonSnapshot = {
+        id: Number(requestedSalespersonId),
+
+        name: resolvedName,
+      };
+    }
     const oldRemainingAmount = Math.max(0, Number(sale.remaining_amount || 0));
 
     const oldEarnedPoints = Math.max(
@@ -3817,7 +4007,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
 
     const nextSaleInput: CreateSaleInput = {
       user_id: actorId,
-
+      salesperson_id: requestedSalespersonId,
       customer_id: input.customer_id ?? null,
 
       business_date: businessDate,
@@ -3860,7 +4050,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       forced_sale_id: saleId,
 
       invoice_user_id: Number(sale.user_id || 0) || actorId,
-
+      salesperson_snapshot: preservedSalespersonSnapshot,
       created_at: sale.created_at ?? null,
 
       preserve_due_date: preserveDueDate,

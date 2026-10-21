@@ -145,6 +145,21 @@ contextBridge.exposeInMainWorld('api', {
   searchSaleVariants: (query) => invokeMain('sales:search-variants', query),
   getVariantByBarcode: (barcode) =>
     invokeMain('sales:get-variant-by-barcode', barcode),
+
+  getActiveSalespeople: () => invokeMain('salespeople:list-active'),
+
+  getSalespeople: () => invokeMain('salespeople:list'),
+
+  createSalesperson: (input) => invokeMain('salespeople:create', input),
+
+  updateSalesperson: (input) => invokeMain('salespeople:update', input),
+
+  setSalespersonActive: (input) => invokeMain('salespeople:set-active', input),
+  getSalespeoplePerformance: (input) =>
+    invokeMain('salespeople:performance', input),
+
+  setSalespersonMonthlyTarget: (input) =>
+    invokeMain('salespeople:set-target', input),
   getPromotions: () => invokeMain('promotions:list'),
 
   getPromotion: (promotionId) => invokeMain('promotions:get', promotionId),

@@ -40,7 +40,9 @@ const ShiftManagementPage = lazy(
 const ExpensesPage = lazy(() => import('./pages/Expenses/ExpensesPage'));
 
 const UsersPage = lazy(() => import('./pages/Users/UsersPage'));
-
+const SalespeoplePage = lazy(
+  () => import('./pages/Salespeople/SalespeoplePage'),
+);
 const ActivityLogPage = lazy(() => import('./pages/Activity/ActivityLogPage'));
 
 const StockCountPage = lazy(() => import('./pages/StockCount/StockCountPage'));
@@ -193,6 +195,19 @@ export const router = createHashRouter([
     element: withShell('المستخدمين', <UsersPage />, {
       allowedRoles: ['admin'],
     }),
+  },
+  {
+    path: '/salespeople',
+
+    element: withShell(
+      'البائعين',
+
+      <SalespeoplePage />,
+
+      {
+        allowedRoles: ['admin'],
+      },
+    ),
   },
   {
     path: '/activity',

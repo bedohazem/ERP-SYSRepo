@@ -1,9 +1,12 @@
 import { getDb } from '../db';
 import { roundMoney } from '../../../shared/money';
+
 export type CreateHeldSaleInput = {
   user_id: number;
 
   customer_id?: number | null;
+
+  salesperson_id?: number | null;
 
   title?: string | null;
 
@@ -49,6 +52,12 @@ function getHeldSaleHeaderForAccess(input: HeldSaleAccessInput) {
 
         hs.customer_id,
 
+        hs.salesperson_id,
+
+        sp.name AS salesperson_name,
+
+        sp.is_active AS salesperson_is_active,
+
         c.name AS customer_name,
         c.phone AS customer_phone,
 
@@ -79,6 +88,9 @@ function getHeldSaleHeaderForAccess(input: HeldSaleAccessInput) {
 
       LEFT JOIN customers c
         ON c.id = hs.customer_id
+
+      LEFT JOIN salespeople sp
+        ON sp.id = hs.salesperson_id
 
       WHERE
         hs.id = ?
@@ -150,6 +162,35 @@ export function createHeldSale(input: CreateHeldSaleInput) {
 
     if (!customer) {
       throw new Error('العميل غير موجود');
+    }
+  }
+
+  const salespersonId =
+    input.salesperson_id == null ? null : Number(input.salesperson_id);
+
+  if (salespersonId !== null) {
+    if (!Number.isInteger(salespersonId) || salespersonId <= 0) {
+      throw new Error('البائع غير صحيح');
+    }
+
+    const salesperson = db
+      .prepare(
+        `
+      SELECT id
+
+      FROM salespeople
+
+      WHERE
+        id = ?
+        AND is_active = 1
+
+      LIMIT 1
+      `,
+      )
+      .get(salespersonId);
+
+    if (!salesperson) {
+      throw new Error('البائع غير موجود أو غير مفعل');
     }
   }
 
@@ -233,6 +274,8 @@ export function createHeldSale(input: CreateHeldSaleInput) {
 
             customer_id,
 
+            salesperson_id,
+
             title,
 
             discount_type,
@@ -243,7 +286,7 @@ export function createHeldSale(input: CreateHeldSaleInput) {
           )
 
           VALUES (
-            ?, ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?, ?
           )
           `,
       )
@@ -251,7 +294,7 @@ export function createHeldSale(input: CreateHeldSaleInput) {
         userId,
 
         customerId,
-
+        salespersonId,
         title,
 
         discountType,
@@ -334,6 +377,11 @@ export function listHeldSales(input: {
 
         hs.customer_id,
 
+        hs.salesperson_id,
+
+        sp.name
+          AS salesperson_name,
+
         c.name
           AS customer_name,
 
@@ -415,6 +463,10 @@ export function listHeldSales(input: {
       LEFT JOIN customers c
         ON c.id =
           hs.customer_id
+
+      LEFT JOIN salespeople sp
+        ON sp.id =
+          hs.salesperson_id
 
       WHERE (
         ? = 1

@@ -338,11 +338,69 @@ export function getDb(): Database.Database {
         UNIQUE(session_id, variant_id)
       );
 
+      CREATE TABLE IF NOT EXISTS salespeople (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        user_id INTEGER
+          REFERENCES users(id),
+
+        name TEXT NOT NULL
+          COLLATE NOCASE
+          UNIQUE,
+
+        is_active INTEGER NOT NULL DEFAULT 1,
+
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS
+        idx_salespeople_active_name
+
+      ON salespeople(
+        is_active,
+        name
+      );
+
+      CREATE TABLE IF NOT EXISTS salesperson_targets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+        salesperson_id INTEGER NOT NULL,
+
+        month TEXT NOT NULL,
+
+        target_amount REAL NOT NULL DEFAULT 0,
+
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+        FOREIGN KEY (salesperson_id)
+          REFERENCES salespeople(id)
+          ON DELETE CASCADE,
+
+        UNIQUE (
+          salesperson_id,
+          month
+        )
+      );
+
+      CREATE INDEX IF NOT EXISTS
+        idx_salesperson_targets_month
+
+      ON salesperson_targets(
+        month,
+        salesperson_id
+      );
+
+
       CREATE TABLE IF NOT EXISTS sales (
         id INTEGER PRIMARY KEY,
         type TEXT NOT NULL DEFAULT 'sale',
         customer_id INTEGER,
         user_id INTEGER REFERENCES users(id),
+        salesperson_id INTEGER
+          REFERENCES salespeople(id),
+        salesperson_name TEXT,
         business_date TEXT,
         sub_total REAL NOT NULL DEFAULT 0,
         discount_value REAL NOT NULL DEFAULT 0,
@@ -3023,6 +3081,285 @@ export function getDb(): Database.Database {
           `);
         },
       },
+
+      {
+        version: 18,
+
+        name: 'salespeople-and-sale-snapshots',
+
+        up: () => {
+          db.exec(`
+            CREATE TABLE IF NOT EXISTS salespeople (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+              name TEXT NOT NULL
+                COLLATE NOCASE
+                UNIQUE,
+
+              is_active INTEGER NOT NULL DEFAULT 1,
+
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_salespeople_active_name
+
+            ON salespeople(
+              is_active,
+              name
+            );
+          `);
+
+          safeAddColumn(
+            db,
+            'sales',
+            'salesperson_id',
+            'INTEGER REFERENCES salespeople(id)',
+          );
+
+          safeAddColumn(db, 'sales', 'salesperson_name', 'TEXT');
+
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_sales_salesperson_id
+
+            ON sales(
+              salesperson_id
+            );
+          `);
+        },
+      },
+
+      {
+        version: 19,
+
+        name: 'salesperson-monthly-targets',
+
+        up: () => {
+          db.exec(`
+            CREATE TABLE IF NOT EXISTS salesperson_targets (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+              salesperson_id INTEGER NOT NULL,
+
+              month TEXT NOT NULL,
+
+              target_amount REAL NOT NULL DEFAULT 0,
+
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+              FOREIGN KEY (salesperson_id)
+                REFERENCES salespeople(id)
+                ON DELETE CASCADE,
+
+              UNIQUE (
+                salesperson_id,
+                month
+              )
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_salesperson_targets_month
+
+            ON salesperson_targets(
+              month,
+              salesperson_id
+            );
+          `);
+        },
+      },
+
+      {
+        version: 20,
+
+        name: 'held-sale-salesperson',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'held_sales',
+            'salesperson_id',
+            'INTEGER REFERENCES salespeople(id)',
+          );
+
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_held_sales_salesperson_id
+
+            ON held_sales(
+              salesperson_id
+            );
+          `);
+        },
+      },
+
+      {
+        version: 21,
+
+        name: 'link-salespeople-to-users',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'salespeople',
+            'user_id',
+            'INTEGER REFERENCES users(id)',
+          );
+
+          db.exec(`
+            CREATE UNIQUE INDEX IF NOT EXISTS
+              idx_salespeople_user_id
+
+            ON salespeople(
+              user_id
+            )
+
+            WHERE user_id IS NOT NULL;
+          `);
+
+          /*
+           * Backfill لأي فاتورة اتعملت
+           * بالكاشير كبائع قبل Migration 21.
+           */
+          const cashierSales = db
+            .prepare(
+              `
+        SELECT DISTINCT
+          u.id AS user_id,
+          u.name AS user_name
+
+        FROM sales s
+
+        JOIN users u
+          ON u.id = s.user_id
+
+        WHERE
+          s.salesperson_id IS NULL
+
+          AND NULLIF(
+            TRIM(
+              s.salesperson_name
+            ),
+            ''
+          ) IS NOT NULL
+        `,
+            )
+            .all() as Array<{
+            user_id: number;
+            user_name: string;
+          }>;
+
+          for (const cashier of cashierSales) {
+            let linked = db
+              .prepare(
+                `
+          SELECT id
+
+          FROM salespeople
+
+          WHERE user_id = ?
+
+          LIMIT 1
+          `,
+              )
+              .get(cashier.user_id) as
+              | {
+                  id: number;
+                }
+              | undefined;
+
+            if (!linked) {
+              const sameName = db
+                .prepare(
+                  `
+            SELECT
+              id,
+              user_id
+
+            FROM salespeople
+
+            WHERE name = ?
+              COLLATE NOCASE
+
+            LIMIT 1
+            `,
+                )
+                .get(cashier.user_name) as
+                | {
+                    id: number;
+                    user_id: number | null;
+                  }
+                | undefined;
+
+              if (
+                sameName &&
+                (sameName.user_id === null ||
+                  Number(sameName.user_id) === Number(cashier.user_id))
+              ) {
+                db.prepare(
+                  `
+            UPDATE salespeople
+
+            SET
+              user_id = ?,
+              updated_at =
+                CURRENT_TIMESTAMP
+
+            WHERE id = ?
+            `,
+                ).run(cashier.user_id, sameName.id);
+
+                linked = {
+                  id: sameName.id,
+                };
+              } else if (!sameName) {
+                const result = db
+                  .prepare(
+                    `
+              INSERT INTO salespeople (
+                user_id,
+                name,
+                is_active
+              )
+
+              VALUES (?, ?, 1)
+              `,
+                  )
+                  .run(cashier.user_id, cashier.user_name);
+
+                linked = {
+                  id: Number(result.lastInsertRowid),
+                };
+              }
+            }
+
+            if (linked) {
+              db.prepare(
+                `
+          UPDATE sales
+
+          SET salesperson_id = ?
+
+          WHERE
+            salesperson_id
+              IS NULL
+
+            AND user_id = ?
+
+            AND NULLIF(
+              TRIM(
+                salesperson_name
+              ),
+              ''
+            ) IS NOT NULL
+          `,
+              ).run(linked.id, cashier.user_id);
+            }
+          }
+        },
+      },
     ]);
 
     seedTestAdminUser(db);
@@ -3086,6 +3423,8 @@ export function resetDatabaseData(): void {
       DELETE FROM sale_items;
       DELETE FROM sale_payments;
       DELETE FROM sales;
+      DELETE FROM salesperson_targets;
+      DELETE FROM salespeople;
       DELETE FROM customers;
 
       DELETE FROM stock_count_items;

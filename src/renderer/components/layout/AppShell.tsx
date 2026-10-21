@@ -124,6 +124,18 @@ const menuItems: MenuItem[] = [
   },
 
   {
+    to: '/salespeople',
+
+    label: 'البائعين',
+
+    icon: '🎯',
+
+    title: 'البائعين والتارجت',
+
+    roles: ['admin'],
+  },
+
+  {
     to: '/reports',
     label: 'التقارير',
     icon: '📊',

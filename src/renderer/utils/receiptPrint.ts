@@ -858,12 +858,43 @@ export function buildSaleReceiptHtml(
               </strong>
             </div>
 
-            <div class="sale-info-item">
-              <span>الكاشير</span>
-              <strong>
-                ${escapeHtml(sale.cashier_name || '—')}
-              </strong>
-            </div>
+            ${
+              !sale.salesperson_name
+                ? `
+                  <div class="sale-info-item">
+                    <span>الكاشير</span>
+                    <strong>
+                      ${escapeHtml(sale.cashier_name || '—')}
+                    </strong>
+                  </div>
+                `
+                : sale.salesperson_user_id != null &&
+                    sale.user_id != null &&
+                    Number(sale.salesperson_user_id) === Number(sale.user_id)
+                  ? `
+                    <div class="sale-info-item">
+                      <span>الكاشير/البائع</span>
+                      <strong>
+                        ${escapeHtml(sale.salesperson_name || sale.cashier_name || '—')}
+                      </strong>
+                    </div>
+                  `
+                  : `
+                    <div class="sale-info-item">
+                      <span>البائع</span>
+                      <strong>
+                        ${escapeHtml(sale.salesperson_name)}
+                      </strong>
+                    </div>
+
+                    <div class="sale-info-item">
+                      <span>الكاشير</span>
+                      <strong>
+                        ${escapeHtml(sale.cashier_name || '—')}
+                      </strong>
+                    </div>
+                  `
+            }
 
             <div class="sale-info-item">
               <span>طريقة الدفع</span>

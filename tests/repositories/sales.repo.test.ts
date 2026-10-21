@@ -35,6 +35,12 @@ import {
   getInventoryCostState,
   receiveStockAtCost,
 } from '../../src/main/database/inventory-cost';
+import {
+  createSalesperson,
+  setSalespersonActive,
+  updateSalesperson,
+  getSalespeoplePerformance,
+} from '../../src/main/database/repositories/salespeople.repo';
 
 type SaleVariantTestRow = {
   variant_id: number;
@@ -225,6 +231,345 @@ describe('sales repository', () => {
       opened_by: 1,
     });
   }, 30_000);
+
+  it('stores salesperson separately from cashier and keeps historical salesperson name', () => {
+    const variant = seedProduct();
+
+    const salesperson = createSalesperson('Sales Person One');
+
+    const result = createSale({
+      user_id: 1,
+
+      salesperson_id: salesperson.id,
+
+      customer_id: null,
+
+      sub_total: 150,
+
+      discount_value: 0,
+
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 150,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    });
+
+    updateSalesperson(salesperson.id, 'Sales Person Renamed');
+
+    const receipt = getSaleReceipt(result.saleId) as any;
+
+    expect(Number(receipt.sale.user_id)).toBe(1);
+
+    expect(Number(receipt.sale.salesperson_id)).toBe(salesperson.id);
+
+    expect(receipt.sale.salesperson_name).toBe('Sales Person One');
+
+    const rows = listSales({
+      search: 'Sales Person One',
+    });
+
+    expect(rows.rows.some((row: any) => Number(row.id) === result.saleId)).toBe(
+      true,
+    );
+  });
+
+  it('rejects inactive salesperson on a new sale', () => {
+    const variant = seedProduct();
+
+    const salesperson = createSalesperson('Inactive Seller');
+
+    setSalespersonActive(salesperson.id, false);
+
+    expect(() =>
+      createSale({
+        user_id: 1,
+
+        salesperson_id: salesperson.id,
+
+        customer_id: null,
+
+        sub_total: 150,
+
+        discount_value: 0,
+
+        grand_total: 150,
+
+        change_amount: 0,
+
+        payment_method: 'cash',
+
+        paid: 150,
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            product_name: variant.product_name,
+
+            barcode: variant.barcode,
+
+            size: variant.size,
+
+            color: variant.color,
+
+            quantity: 1,
+
+            unit_price: 150,
+          },
+        ],
+      }),
+    ).toThrow('البائع غير موجود أو غير مفعل');
+  });
+
+  it('uses cashier as linked salesperson when no salesperson is selected', () => {
+    const db = getDb();
+
+    const variant = seedProduct();
+
+    const cashier = db
+      .prepare(
+        `
+        SELECT
+          id,
+          name
+
+        FROM users
+
+        WHERE id = 1
+        `,
+      )
+      .get() as {
+      id: number;
+      name: string;
+    };
+
+    const result = createSale({
+      user_id: cashier.id,
+
+      customer_id: null,
+
+      sub_total: 150,
+
+      discount_value: 0,
+
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 150,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    });
+
+    const receipt = getSaleReceipt(result.saleId) as any;
+
+    const salespersonId = Number(receipt.sale.salesperson_id);
+
+    expect(salespersonId).toBeGreaterThan(0);
+
+    expect(receipt.sale.salesperson_name).toBe(cashier.name);
+
+    expect(Number(receipt.sale.user_id)).toBe(cashier.id);
+
+    const linkedSeller = db
+      .prepare(
+        `
+        SELECT
+          id,
+          user_id,
+          name
+
+        FROM salespeople
+
+        WHERE id = ?
+        `,
+      )
+      .get(salespersonId) as {
+      id: number;
+      user_id: number;
+      name: string;
+    };
+
+    expect(Number(linkedSeller.user_id)).toBe(cashier.id);
+
+    expect(linkedSeller.name).toBe(cashier.name);
+
+    const shift = db
+      .prepare(
+        `
+        SELECT business_date
+
+        FROM cash_shifts
+
+        WHERE opened_by = ?
+
+        ORDER BY id DESC
+
+        LIMIT 1
+        `,
+      )
+      .get(cashier.id) as {
+      business_date: string;
+    };
+
+    const month = String(shift.business_date).slice(0, 7);
+
+    const performance = getSalespeoplePerformance(month);
+
+    const performanceRow = performance.find(
+      (row) => Number(row.id) === salespersonId,
+    );
+
+    expect(performanceRow).toBeTruthy();
+
+    expect(performanceRow?.sales_count).toBe(1);
+
+    expect(performanceRow?.net_sales).toBe(150);
+  });
+
+  it('keeps legacy sales without salesperson compatible in receipt and invoice list', () => {
+    const db = getDb();
+
+    const variant = seedProduct();
+
+    const cashier = db
+      .prepare(
+        `
+      SELECT
+        id,
+        name
+
+      FROM users
+
+      WHERE id = 1
+
+      LIMIT 1
+      `,
+      )
+      .get() as {
+      id: number;
+      name: string;
+    };
+
+    const result = createSale({
+      user_id: cashier.id,
+
+      customer_id: null,
+
+      sub_total: 150,
+
+      discount_value: 0,
+
+      grand_total: 150,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 150,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    });
+
+    /*
+     * نحاكي فاتورة قديمة تم إنشاؤها
+     * قبل إضافة نظام البائعين.
+     */
+    db.prepare(
+      `
+    UPDATE sales
+
+    SET
+      salesperson_id = NULL,
+      salesperson_name = NULL
+
+    WHERE id = ?
+    `,
+    ).run(result.saleId);
+
+    const receipt = getSaleReceipt(result.saleId) as any;
+
+    expect(receipt.sale.cashier_name).toBe(cashier.name);
+
+    expect(receipt.sale.salesperson_id).toBeNull();
+
+    expect(receipt.sale.salesperson_name).toBeNull();
+
+    expect(receipt.sale.salesperson_user_id).toBeNull();
+
+    const listed = listSales({
+      search: `#${result.saleId}`,
+    });
+
+    const row = listed.rows.find(
+      (item: any) => Number(item.id) === Number(result.saleId),
+    );
+
+    expect(row).toBeTruthy();
+
+    expect(row?.cashier_name).toBe(cashier.name);
+
+    expect(row?.salesperson_id).toBeNull();
+
+    expect(row?.salesperson_name).toBeNull();
+
+    expect(row?.salesperson_user_id).toBeNull();
+  });
 
   it('snapshots moving weighted average cost into the sale and keeps remaining inventory value', () => {
     const variant = seedProduct();

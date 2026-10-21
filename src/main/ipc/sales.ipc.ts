@@ -63,6 +63,14 @@ import {
   getHeldSale,
   listHeldSales,
 } from '../database/repositories/held-sales.repo';
+import {
+  createSalesperson,
+  listSalespeople,
+  setSalespersonActive,
+  updateSalesperson,
+  getSalespeoplePerformance,
+  setSalespersonMonthlyTarget,
+} from '../database/repositories/salespeople.repo';
 
 const SALES_COST_FIELDS = new Set([
   'buy_price',
@@ -283,7 +291,10 @@ function normalizeSaleWriteInput(input: unknown) {
 
   return {
     customer_id: optionalPositiveInteger(payload.customer_id, 'رقم العميل'),
-
+    salesperson_id: optionalPositiveInteger(
+      payload.salesperson_id,
+      'رقم البائع',
+    ),
     business_date: optionalSaleDate(payload.business_date),
 
     promotion_id: optionalPositiveInteger(payload.promotion_id, 'رقم العرض'),
@@ -408,6 +419,11 @@ function normalizeHeldSaleInput(input: unknown) {
 
   return {
     customer_id: optionalPositiveInteger(payload.customer_id, 'رقم العميل'),
+
+    salesperson_id: optionalPositiveInteger(
+      payload.salesperson_id,
+      'رقم البائع',
+    ),
 
     title: optionalTrimmedString(payload.title, 'اسم الفاتورة المعلقة', 200),
 
@@ -643,6 +659,170 @@ export function registerSalesIpc(): void {
     return protectSalesCostData(actor, result);
   });
 
+  ipcMain.handle('salespeople:list-active', (event) => {
+    requirePermission(event, 'sales.use');
+
+    return listSalespeople({
+      active_only: true,
+    });
+  });
+
+  ipcMain.handle('salespeople:list', (event) => {
+    const actor = requireAuthenticatedUser(event);
+
+    requireAdmin(actor.id);
+
+    return listSalespeople();
+  });
+
+  ipcMain.handle('salespeople:create', (event, input) => {
+    const actor = requireAuthenticatedUser(event);
+
+    requireAdmin(actor.id);
+
+    const payload = requireObjectInput(input, 'بيانات البائع');
+
+    const salesperson = createSalesperson(
+      requireTrimmedString(payload.name, 'اسم البائع', 120),
+    );
+
+    logAction({
+      actor_id: actor.id,
+
+      action: 'salesperson_created',
+
+      entity: 'salespeople',
+
+      entity_id: salesperson.id,
+
+      details: {
+        name: salesperson.name,
+      },
+    });
+
+    return salesperson;
+  });
+
+  ipcMain.handle('salespeople:update', (event, input) => {
+    const actor = requireAuthenticatedUser(event);
+
+    requireAdmin(actor.id);
+
+    const payload = requireObjectInput(input, 'بيانات البائع');
+
+    const salespersonId = requirePositiveInteger(payload.id, 'رقم البائع');
+
+    const salesperson = updateSalesperson(
+      salespersonId,
+
+      requireTrimmedString(payload.name, 'اسم البائع', 120),
+    );
+
+    logAction({
+      actor_id: actor.id,
+
+      action: 'salesperson_updated',
+
+      entity: 'salespeople',
+
+      entity_id: salesperson.id,
+
+      details: {
+        name: salesperson.name,
+      },
+    });
+
+    return salesperson;
+  });
+
+  ipcMain.handle('salespeople:set-active', (event, input) => {
+    const actor = requireAuthenticatedUser(event);
+
+    requireAdmin(actor.id);
+
+    const payload = requireObjectInput(input, 'بيانات حالة البائع');
+
+    const salespersonId = requirePositiveInteger(payload.id, 'رقم البائع');
+
+    const isActive = optionalBooleanValue(payload.is_active, 'حالة البائع');
+
+    if (isActive === undefined) {
+      throw new Error('حالة البائع مطلوبة');
+    }
+
+    const salesperson = setSalespersonActive(salespersonId, isActive);
+
+    logAction({
+      actor_id: actor.id,
+
+      action: isActive ? 'salesperson_activated' : 'salesperson_deactivated',
+
+      entity: 'salespeople',
+
+      entity_id: salesperson.id,
+
+      details: {
+        name: salesperson.name,
+
+        is_active: salesperson.is_active,
+      },
+    });
+
+    return salesperson;
+  });
+
+  ipcMain.handle('salespeople:performance', (event, input) => {
+    const actor = requireAuthenticatedUser(event);
+
+    requireAdmin(actor.id);
+
+    const payload = requireObjectInput(input, 'فلتر أداء البائعين');
+
+    const month = requireTrimmedString(payload.month, 'الشهر', 7);
+
+    return getSalespeoplePerformance(month);
+  });
+
+  ipcMain.handle('salespeople:set-target', (event, input) => {
+    const actor = requireAuthenticatedUser(event);
+
+    requireAdmin(actor.id);
+
+    const payload = requireObjectInput(input, 'بيانات تارجت البائع');
+
+    const result = setSalespersonMonthlyTarget({
+      salesperson_id: requirePositiveInteger(
+        payload.salesperson_id,
+        'رقم البائع',
+      ),
+
+      month: requireTrimmedString(payload.month, 'الشهر', 7),
+
+      target_amount: requireNonNegativeMoney(
+        payload.target_amount,
+        'قيمة التارجت',
+      ),
+    });
+
+    logAction({
+      actor_id: actor.id,
+
+      action: 'salesperson_target_updated',
+
+      entity: 'salespeople',
+
+      entity_id: result.salesperson_id,
+
+      details: {
+        month: result.month,
+
+        target_amount: result.target_amount,
+      },
+    });
+
+    return result;
+  });
+
   ipcMain.handle('sales:create', (event, input) => {
     const actor = requirePermission(event, 'sales.use');
 
@@ -707,7 +887,7 @@ export function registerSalesIpc(): void {
 
         details: {
           customer_id: input?.customer_id ?? null,
-
+          salesperson_id: input?.salesperson_id ?? null,
           grand_total: result.grand_total ?? input?.grand_total,
 
           paid: input?.paid,
@@ -1300,7 +1480,9 @@ export function registerSalesIpc(): void {
         ) ?? 'all',
 
       payment_method: paymentMethod,
-
+      salesperson_id:
+        optionalPositiveInteger(payload.salesperson_id, 'رقم البائع') ??
+        undefined,
       date_from:
         optionalDateOnly(payload.date_from, 'تاريخ البداية') ?? undefined,
 
