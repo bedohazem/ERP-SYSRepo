@@ -275,7 +275,7 @@ export default function SalespeoplePage() {
     setTogglingId(row.id);
 
     try {
-      const nextActive = !Boolean(row.is_active);
+      const nextActive = !row.is_active;
 
       await window.api.setSalespersonActive({
         id: row.id,
