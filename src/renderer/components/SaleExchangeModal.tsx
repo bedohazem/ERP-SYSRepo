@@ -1215,6 +1215,24 @@ export default function SaleExchangeModal({
                             {'  •  '}
                             اللون: {unit.current_color || '—'}
                           </span>
+
+                          {unit.current_barcode && (
+                            <span
+                              style={{
+                                width: 'fit-content',
+                                padding: '4px 9px',
+                                borderRadius: '8px',
+                                background: 'rgba(124,58,237,0.10)',
+                                border: '1px solid rgba(124,58,237,0.35)',
+                                color: '#c4b5fd',
+                                fontSize: '11px',
+                                fontWeight: 900,
+                                direction: 'ltr',
+                              }}
+                            >
+                              باركود: {unit.current_barcode}
+                            </span>
+                          )}
                         </div>
 
                         <strong

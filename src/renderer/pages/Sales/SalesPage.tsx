@@ -4452,11 +4452,13 @@ export default function SalesPage() {
           >
             <div style={tableHeaderStyle}>
               <div></div>
-              {barcodeMode && <div>باركود (F6)</div>}
-              <div>المنتج</div>
-              <div>الكمية (F5)</div>
-              <div>السعر</div>
-              <div>الإجمالي</div>
+              {barcodeMode && (
+                <div style={{ textAlign: 'center' }}>باركود (F6)</div>
+              )}
+              <div style={{ textAlign: 'center' }}>المنتج</div>
+              <div style={{ textAlign: 'center' }}>الكمية (F5)</div>
+              <div style={{ textAlign: 'center' }}>السعر</div>
+              <div style={{ textAlign: 'center' }}>الإجمالي</div>
             </div>
 
             {activeInvoice.cart.map((item, index) => (
@@ -4517,10 +4519,18 @@ export default function SalesPage() {
                 <input
                   value={item.sell_price}
                   readOnly
-                  style={tableInputStyle}
+                  style={{
+                    ...tableInputStyle,
+                    textAlign: 'center',
+                  }}
                 />
 
-                <strong style={{ textAlign: 'left' }}>
+                <strong
+                  style={{
+                    textAlign: 'center',
+                    display: 'block',
+                  }}
+                >
                   {money(item.quantity * Number(item.sell_price))}
                 </strong>
               </div>
@@ -4581,8 +4591,8 @@ export default function SalesPage() {
               />
 
               <strong style={{ textAlign: 'center' }}>1</strong>
-              <strong>0.0</strong>
-              <strong>0.0</strong>
+              <strong style={{ textAlign: 'center' }}>0.0</strong>
+              <strong style={{ textAlign: 'center' }}>0.0</strong>
             </div>
           </div>
         </div>

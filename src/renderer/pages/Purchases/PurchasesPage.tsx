@@ -133,6 +133,9 @@ export default function PurchasesPage() {
   const [quickColor, setQuickColor] = useState('');
   const [quickBuyPrice, setQuickBuyPrice] = useState('');
   const [quickSellPrice, setQuickSellPrice] = useState('');
+  const [quickDiscountPrice, setQuickDiscountPrice] = useState('');
+  const [quickMinStock, setQuickMinStock] = useState('5');
+  const [quickCategoryId, setQuickCategoryId] = useState<number | ''>('');
   const [quickQuantity, setQuickQuantity] = useState('1');
 
   const subTotal = useMemo(
@@ -658,6 +661,9 @@ export default function PurchasesPage() {
     setQuickColor('');
     setQuickBuyPrice('');
     setQuickSellPrice('');
+    setQuickDiscountPrice('');
+    setQuickMinStock('5');
+    setQuickCategoryId('');
     setQuickQuantity('1');
     setQuickProductOpen(true);
   }
@@ -669,6 +675,12 @@ export default function PurchasesPage() {
     const color = quickColor.trim();
     const buyPrice = Number(quickBuyPrice || 0);
     const sellPrice = Number(quickSellPrice || 0);
+    const discountPrice =
+      quickDiscountPrice.trim() === '' ? null : Number(quickDiscountPrice);
+
+    const minStock = Number(quickMinStock || 0);
+
+    const categoryId = quickCategoryId === '' ? null : Number(quickCategoryId);
     const quantity = Math.max(1, Number(quickQuantity || 1));
 
     if (quickMode === 'newProduct' && !name) {
@@ -696,6 +708,24 @@ export default function PurchasesPage() {
       return;
     }
 
+    if (
+      discountPrice !== null &&
+      (!Number.isFinite(discountPrice) || discountPrice <= 0)
+    ) {
+      showMessage('السعر بعد الخصم غير صحيح');
+      return;
+    }
+
+    if (discountPrice !== null && discountPrice >= sellPrice) {
+      showMessage('السعر بعد الخصم يجب أن يكون أقل من سعر البيع');
+      return;
+    }
+
+    if (!Number.isFinite(minStock) || minStock < 0) {
+      showMessage('حد المخزون غير صحيح');
+      return;
+    }
+
     setQuickProductSaving(true);
 
     try {
@@ -708,14 +738,15 @@ export default function PurchasesPage() {
               color,
               buy_price: buyPrice,
               sell_price: sellPrice,
-              min_stock: 5,
+              discount_price: discountPrice,
+              min_stock: minStock,
 
               // مهم: فاتورة الشراء هي اللي هتزود المخزون
               opening_qty: 0,
             })
           : await window.api.createProduct({
               name,
-              category_id: null,
+              category_id: categoryId,
               image_path: null,
               description: null,
               variants: [
@@ -725,7 +756,8 @@ export default function PurchasesPage() {
                   color,
                   buy_price: buyPrice,
                   sell_price: sellPrice,
-                  min_stock: 5,
+                  discount_price: discountPrice,
+                  min_stock: minStock,
 
                   // مهم: فاتورة الشراء هي اللي هتزود المخزون
                   opening_qty: 0,
@@ -1688,6 +1720,30 @@ export default function PurchasesPage() {
                 </div>
               )}
 
+              {quickMode === 'newProduct' && (
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>التصنيف</label>
+
+                  <select
+                    value={quickCategoryId}
+                    onChange={(e) =>
+                      setQuickCategoryId(
+                        e.target.value ? Number(e.target.value) : '',
+                      )
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="">بدون تصنيف</option>
+
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div style={fieldStyle}>
                 <label style={labelStyle}>الباركود</label>
 
@@ -1750,6 +1806,29 @@ export default function PurchasesPage() {
                   min={0}
                   value={quickSellPrice}
                   onChange={(e) => setQuickSellPrice(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={fieldStyle}>
+                <label style={labelStyle}>السعر بعد الخصم</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={quickDiscountPrice}
+                  onChange={(e) => setQuickDiscountPrice(e.target.value)}
+                  placeholder="اختياري"
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={fieldStyle}>
+                <label style={labelStyle}>حد المخزون</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={quickMinStock}
+                  onChange={(e) => setQuickMinStock(e.target.value)}
                   style={inputStyle}
                 />
               </div>
