@@ -208,7 +208,6 @@ export default function SettingsPage() {
     useState<ReceiptPrintSettings>(defaultReceiptPrintSettings);
 
   const [savingReceiptPrint, setSavingReceiptPrint] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
@@ -255,7 +254,7 @@ export default function SettingsPage() {
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('store');
 
-  const [appName, setAppName] = useState('');
+  const [appName, setAppName] = useState('ERP Store');
   const [savingAppName, setSavingAppName] = useState(false);
   const [storePhone, setStorePhone] = useState('');
   const [storeAddress, setStoreAddress] = useState('');
@@ -331,7 +330,31 @@ export default function SettingsPage() {
   }
 
   async function loadSettings() {
+    void window.api
+      .getAutoBackupInfo()
+      .then((data) => {
+        setAutoBackupInfo(data);
+      })
+      .catch((error) => {
+        console.error('Failed to load auto backup info:', error);
+      });
+
+    void window.api
+      .getCashDrawerPrinters()
+      .then((printers) => {
+        setCashDrawerPrinters(Array.isArray(printers) ? printers : []);
+      })
+      .catch((error) => {
+        console.error('Failed to load cash drawer printers:', error);
+        setCashDrawerPrinters([]);
+      });
     try {
+      const cachedLicenseStatus = window.__APP_LICENSE_STATUS__;
+
+      const licenseStatusPromise = cachedLicenseStatus
+        ? Promise.resolve(cachedLicenseStatus)
+        : window.api.getLicenseStatus();
+
       const [
         barcodeData,
         receiptPrintData,
@@ -342,7 +365,7 @@ export default function SettingsPage() {
         window.api.getBarcodePrintSettings(),
         window.api.getReceiptPrintSettings(),
         window.api.getLoyaltySettings(),
-        window.api.getLicenseStatus(),
+        licenseStatusPromise,
         window.api.getCashDrawerSettings(),
       ]);
 
@@ -364,33 +387,9 @@ export default function SettingsPage() {
       const loadedTheme = licenseData.app_theme === 'light' ? 'light' : 'dark';
 
       document.documentElement.setAttribute('data-theme', loadedTheme);
-
-      /*
-       * الحاجات الأبطأ لا نعطل فتح صفحة الإعدادات بسببها.
-       */
-      void window.api
-        .getAutoBackupInfo()
-        .then((data) => {
-          setAutoBackupInfo(data);
-        })
-        .catch((error) => {
-          console.error('Failed to load auto backup info:', error);
-        });
-
-      void window.api
-        .getCashDrawerPrinters()
-        .then((printers) => {
-          setCashDrawerPrinters(Array.isArray(printers) ? printers : []);
-        })
-        .catch((error) => {
-          console.error('Failed to load cash drawer printers:', error);
-          setCashDrawerPrinters([]);
-        });
     } catch (error) {
       console.error('Failed to load settings:', error);
       showMessage('error', 'حدث خطأ أثناء تحميل الإعدادات');
-    } finally {
-      setLoading(false);
     }
   }
   async function handleSaveStoreQrSettings() {
@@ -969,16 +968,6 @@ export default function SettingsPage() {
     } finally {
       setResetLoading(false);
     }
-  }
-  if (loading) {
-    return (
-      <div
-        className="glass-card"
-        style={{ borderRadius: '24px', padding: '24px' }}
-      >
-        جاري تحميل الإعدادات...
-      </div>
-    );
   }
 
   async function handleActivateApp() {

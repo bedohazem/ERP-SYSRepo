@@ -1251,7 +1251,33 @@ export default function CustomersPage() {
                 key={customer.id}
                 style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
               >
-                <td style={tdStyle}>{customer.name}</td>
+                <td style={tdStyle}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: '5px',
+                      minWidth: '150px',
+                    }}
+                  >
+                    <strong>{customer.name}</strong>
+
+                    {customer.notes?.trim() && (
+                      <span
+                        title={customer.notes}
+                        style={{
+                          color: '#94a3b8',
+                          fontSize: '11px',
+                          lineHeight: 1.5,
+                          maxWidth: '220px',
+                          whiteSpace: 'normal',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        ملاحظة: {customer.notes}
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td style={tdStyle}>{customer.phone || '—'}</td>
                 <td style={tdStyle}>{customer.points_balance || 0}</td>
                 <td style={tdStyle}>{money(customer.total_spent)}</td>

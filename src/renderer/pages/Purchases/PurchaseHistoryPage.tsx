@@ -1361,6 +1361,41 @@ export default function PurchaseHistoryPage() {
               />
             </div>
 
+            {String(selectedPurchase.purchase.notes || '').trim() && (
+              <div
+                style={{
+                  marginBottom: '18px',
+                  padding: '12px 14px',
+                  borderRadius: '12px',
+                  background: 'rgba(59,130,246,0.08)',
+                  border: '1px solid rgba(59,130,246,0.22)',
+                  display: 'grid',
+                  gap: '6px',
+                }}
+              >
+                <span
+                  style={{
+                    color: '#93c5fd',
+                    fontSize: '12px',
+                    fontWeight: 900,
+                  }}
+                >
+                  ملاحظات الفاتورة
+                </span>
+
+                <div
+                  style={{
+                    color: '#e2e8f0',
+                    lineHeight: 1.7,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {selectedPurchase.purchase.notes}
+                </div>
+              </div>
+            )}
+
             <h4 style={{ margin: '0 0 12px' }}>الأصناف</h4>
 
             <div style={{ overflowX: 'auto' }}>

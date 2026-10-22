@@ -1207,6 +1207,41 @@ function ShiftDetailsModal({
           />
         </div>
 
+        {shift.close_reason?.trim() && (
+          <div
+            style={{
+              marginBottom: '18px',
+              padding: '12px 14px',
+              borderRadius: '12px',
+              background: 'rgba(245,158,11,0.08)',
+              border: '1px solid rgba(245,158,11,0.24)',
+              display: 'grid',
+              gap: '6px',
+            }}
+          >
+            <span
+              style={{
+                color: '#fbbf24',
+                fontSize: '12px',
+                fontWeight: 900,
+              }}
+            >
+              سبب إغلاق الشفت
+            </span>
+
+            <div
+              style={{
+                color: '#e2e8f0',
+                lineHeight: 1.7,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              {shift.close_reason}
+            </div>
+          </div>
+        )}
+
         <h4>حركات الشفت</h4>
 
         <div
