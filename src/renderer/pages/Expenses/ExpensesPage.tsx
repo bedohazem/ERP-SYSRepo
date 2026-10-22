@@ -983,7 +983,7 @@ export default function ExpensesPage() {
           <table
             style={{
               width: '100%',
-              minWidth: '1050px',
+              minWidth: '1200px',
               borderCollapse: 'collapse',
               direction: 'rtl',
             }}
@@ -996,6 +996,7 @@ export default function ExpensesPage() {
                 <th style={thStyle}>الحساب المالي</th>
                 <th style={thStyle}>المستخدم</th>
                 <th style={thStyle}>التاريخ</th>
+                <th style={thStyle}>ملاحظات</th>
                 <th style={thStyle}>الحالة</th>
                 <th style={thStyle}>إجراءات</th>
               </tr>
@@ -1004,7 +1005,7 @@ export default function ExpensesPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={8} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={9} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
@@ -1031,6 +1032,17 @@ export default function ExpensesPage() {
                     <td style={tdStyle}>{expense.created_by_name || '—'}</td>
                     <td style={{ ...tdStyle, color: '#94a3b8' }}>
                       {formatDate(expense.created_at)}
+                    </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        maxWidth: '280px',
+                        whiteSpace: 'normal',
+                        lineHeight: 1.6,
+                        color: expense.notes?.trim() ? '#cbd5e1' : '#64748b',
+                      }}
+                    >
+                      {expense.notes?.trim() || '—'}
                     </td>
                     <td style={tdStyle}>
                       {expense.cancelled_at ? (

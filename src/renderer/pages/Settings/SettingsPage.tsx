@@ -337,22 +337,20 @@ export default function SettingsPage() {
         receiptPrintData,
         loyaltyData,
         licenseData,
-        autoBackupData,
         cashDrawerData,
-        cashDrawerPrintersData,
       ] = await Promise.all([
         window.api.getBarcodePrintSettings(),
         window.api.getReceiptPrintSettings(),
         window.api.getLoyaltySettings(),
         window.api.getLicenseStatus(),
-        window.api.getAutoBackupInfo(),
         window.api.getCashDrawerSettings(),
-        window.api.getCashDrawerPrinters().catch(() => []),
       ]);
+
       setSettings(barcodeData);
       setReceiptPrintSettings(receiptPrintData);
       setLoyaltySettings(loyaltyData);
       setLicenseStatus(licenseData);
+
       setAppLogoUrl(licenseData.app_logo_url || '');
       setAppName(licenseData.app_name || 'ERP Store');
       setStorePhone(licenseData.store_phone || '');
@@ -360,11 +358,34 @@ export default function SettingsPage() {
       setStoreQrEnabled(Boolean(licenseData.store_qr_enabled));
       setStoreQrTitle(licenseData.store_qr_title || 'امسح الكود للتواصل معنا');
       setStoreQrPrimaryUrl(licenseData.store_qr_primary_url || '');
-      setAutoBackupInfo(autoBackupData);
+
       setCashDrawerSettings(cashDrawerData);
-      setCashDrawerPrinters(cashDrawerPrintersData);
+
       const loadedTheme = licenseData.app_theme === 'light' ? 'light' : 'dark';
+
       document.documentElement.setAttribute('data-theme', loadedTheme);
+
+      /*
+       * الحاجات الأبطأ لا نعطل فتح صفحة الإعدادات بسببها.
+       */
+      void window.api
+        .getAutoBackupInfo()
+        .then((data) => {
+          setAutoBackupInfo(data);
+        })
+        .catch((error) => {
+          console.error('Failed to load auto backup info:', error);
+        });
+
+      void window.api
+        .getCashDrawerPrinters()
+        .then((printers) => {
+          setCashDrawerPrinters(Array.isArray(printers) ? printers : []);
+        })
+        .catch((error) => {
+          console.error('Failed to load cash drawer printers:', error);
+          setCashDrawerPrinters([]);
+        });
     } catch (error) {
       console.error('Failed to load settings:', error);
       showMessage('error', 'حدث خطأ أثناء تحميل الإعدادات');
@@ -372,7 +393,6 @@ export default function SettingsPage() {
       setLoading(false);
     }
   }
-
   async function handleSaveStoreQrSettings() {
     if (savingStoreQr) return;
 

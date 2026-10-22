@@ -243,13 +243,7 @@ export default function CashPage() {
       offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
     };
     try {
-      const summaryData = await window.api.getCashSummary(filters);
-      const movementsData = await window.api.getCashMovements(movementFilters);
-      const drawerSummary = await window.api.getCashSummary({
-        payment_method: 'store_cash',
-      });
-
-      const accountSummaryRows = await Promise.all(
+      const accountSummariesPromise = Promise.all(
         cashSummaryAccountOptions.map(async (option) => {
           const accountSummary = await window.api.getCashSummary({
             payment_method: option.value,
@@ -263,21 +257,28 @@ export default function CashPage() {
         }),
       );
 
+      const [summaryData, movementsData, accountSummaryRows] =
+        await Promise.all([
+          window.api.getCashSummary(filters),
+          window.api.getCashMovements(movementFilters),
+          accountSummariesPromise,
+        ]);
+
       const totalBalance = accountSummaryRows.reduce(
         (sum, account) => sum + Number(account.balance || 0),
-
         0,
       );
 
-      setDrawerBalance(Number(drawerSummary?.balance || 0));
+      const drawerAccount = accountSummaryRows.find(
+        (account) => account.value === 'store_cash',
+      );
 
+      setDrawerBalance(Number(drawerAccount?.balance || 0));
       setAccountBalances(accountSummaryRows);
-
       setTotalAccountBalance(totalBalance);
 
       setSummary(summaryData);
       setMovements(Array.isArray(movementsData.rows) ? movementsData.rows : []);
-
       setMovementsTotal(Number(movementsData.total || 0));
       setMovementsPage(safePage);
     } catch (error) {
@@ -582,6 +583,27 @@ export default function CashPage() {
   useEffect(() => {
     void loadData(1);
   }, []);
+
+  useEffect(() => {
+    function handleCashShiftChanged() {
+      void loadData(movementsPage, showCorrectedMovements);
+    }
+
+    window.addEventListener('cash-shift-changed', handleCashShiftChanged);
+
+    return () => {
+      window.removeEventListener('cash-shift-changed', handleCashShiftChanged);
+    };
+  }, [
+    movementsPage,
+    showCorrectedMovements,
+    dateFrom,
+    dateTo,
+    filterTypes,
+    filterDirections,
+    filterPaymentMethods,
+    search,
+  ]);
 
   function getTypeLabel(type: string) {
     switch (type) {
