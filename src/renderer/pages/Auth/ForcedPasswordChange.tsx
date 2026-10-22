@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { useNavigate } from 'react-router-dom';
 
@@ -31,7 +31,7 @@ export default function ForcedPasswordChange({ user, appTheme }: Props) {
   const [error, setError] = useState('');
 
   const [loading, setLoading] = useState(false);
-
+  const confirmPasswordRef = useRef<HTMLInputElement>(null);
   const isLight = appTheme === 'light';
 
   async function submit() {
@@ -146,14 +146,30 @@ export default function ForcedPasswordChange({ user, appTheme }: Props) {
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                confirmPasswordRef.current?.focus();
+              }
+            }}
             placeholder="كلمة المرور الجديدة"
             style={inputStyle}
           />
 
           <input
+            ref={confirmPasswordRef}
             type="password"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+
+                if (!loading) {
+                  void submit();
+                }
+              }
+            }}
             placeholder="تأكيد كلمة المرور"
             style={inputStyle}
           />

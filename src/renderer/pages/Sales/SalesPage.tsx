@@ -5252,8 +5252,7 @@ export default function SalesPage() {
                 </strong>
 
                 <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-                  التصنيف: {item.category_name || 'بدون تصنيف'} | المخزون:{' '}
-                  {item.stock}
+                  التصنيف: {item.category_name || 'بدون تصنيف'}
                 </span>
               </div>
             </button>
@@ -6686,28 +6685,6 @@ export default function SalesPage() {
             >
               <button
                 type="button"
-                onClick={() => setShowPaymentModal(false)}
-                style={{
-                  height: '48px',
-
-                  borderRadius: '12px',
-
-                  border: '1px solid rgba(124,58,237,0.55)',
-
-                  background: 'rgba(255,255,255,0.035)',
-
-                  color: '#c4b5fd',
-
-                  fontWeight: 900,
-
-                  cursor: 'pointer',
-                }}
-              >
-                ESC / إلغاء
-              </button>
-
-              <button
-                type="button"
                 onClick={() => void saveSale()}
                 disabled={
                   saving || (remainingAmount > 0 && !activeInvoice.customer)
@@ -6745,6 +6722,28 @@ export default function SalesPage() {
                   : editingSaleId
                     ? 'F12 / حفظ التعديل'
                     : 'F12 / دفع الفاتورة'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowPaymentModal(false)}
+                style={{
+                  height: '48px',
+
+                  borderRadius: '12px',
+
+                  border: '1px solid rgba(124,58,237,0.55)',
+
+                  background: 'rgba(255,255,255,0.035)',
+
+                  color: '#c4b5fd',
+
+                  fontWeight: 900,
+
+                  cursor: 'pointer',
+                }}
+              >
+                ESC / إلغاء
               </button>
             </div>
           </div>
