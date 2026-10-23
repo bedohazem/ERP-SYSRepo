@@ -256,45 +256,20 @@ export default function CustomersPage() {
       setCustomersTotal(total);
       setCustomerPage(safePage);
     } catch (error) {
+      if (requestId !== customersRequestIdRef.current) {
+        return;
+      }
+
       console.error('Failed to load customers:', error);
 
       setMessage('حدث خطأ أثناء تحميل العملاء');
 
       setCustomers([]);
       setCustomersTotal(0);
-
-      setDebtSummary({
-        totalDebt: 0,
-
-        debtorsCount: 0,
-
-        topDebtor: null,
-
-        aging: {
-          days_0_30: 0,
-
-          days_31_60: 0,
-
-          days_61_90: 0,
-
-          days_90_plus: 0,
-
-          total: 0,
-        },
-      });
-      setDueSummary({
-        overdue: 0,
-
-        due_today: 0,
-
-        due_soon: 0,
-
-        without_due_date: 0,
-
-        total_open: 0,
-      });
     } finally {
-      setLoadingCustomers(false);
+      if (requestId === customersRequestIdRef.current) {
+        setLoadingCustomers(false);
+      }
     }
   }
 

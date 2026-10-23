@@ -361,6 +361,10 @@ describe('customers repository', () => {
       debtors_only: true,
     });
 
+    if (!list.summary) {
+      throw new Error('Expected customer summary');
+    }
+
     expect(list.summary.aging).toEqual({
       days_0_30: 100,
       days_31_60: 200,
@@ -1484,6 +1488,16 @@ describe('customers repository', () => {
       offset: 2,
     });
 
+    if (!firstPage.summary) {
+      throw new Error('Expected customer summary');
+    }
+
+    const lightPage = listCustomers({
+      limit: 2,
+      offset: 0,
+      include_summary: false,
+    });
+
     expect(firstPage.total).toBe(5);
     expect(firstPage.rows).toHaveLength(2);
     expect(secondPage.rows).toHaveLength(2);
@@ -1493,6 +1507,7 @@ describe('customers repository', () => {
     expect(firstPage.summary.debtors_count).toBe(1);
 
     expect(firstPage.summary.top_debtor?.id).toBe(created[0].id);
+    expect(lightPage.summary).toBeNull();
   });
 
   it('does not hide customer history after 100 records', () => {
@@ -1907,6 +1922,10 @@ describe('customers repository', () => {
     const page = listCustomers({
       search: 'Due Customer',
     });
+
+    if (!page.summary) {
+      throw new Error('Expected customer summary');
+    }
 
     expect(page.summary.due).toEqual({
       overdue: 100,

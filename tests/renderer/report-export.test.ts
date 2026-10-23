@@ -50,6 +50,28 @@ const data = {
     },
   ],
 
+  salespersonSales: [
+    {
+      salesperson_id: 1,
+
+      salesperson_name: 'أحمد',
+
+      sales_count: 2,
+
+      sales_total: 100,
+
+      returns_count: 1,
+
+      returns_total: 10,
+
+      exchange_count: 0,
+
+      exchange_adjustment: 0,
+
+      net_sales: 90,
+    },
+  ],
+
   topProducts: [
     {
       product_name: 'منتج "اختبار", خاص',

@@ -1425,7 +1425,7 @@ declare global {
 
             total_open: number;
           };
-        };
+        } | null;
       }>;
 
       searchCustomers: (query: string) => Promise<Customer[]>;

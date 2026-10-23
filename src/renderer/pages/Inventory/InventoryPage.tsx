@@ -234,6 +234,9 @@ export default function InventoryPage() {
         inactive: Number(result.summary?.inactive || 0),
       });
     } catch (error) {
+      if (requestId !== inventoryRequestIdRef.current) {
+        return;
+      }
       console.error('Failed to load inventory:', error);
 
       showMessage('حدث خطأ أثناء تحميل المخزون');

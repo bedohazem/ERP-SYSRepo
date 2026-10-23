@@ -147,6 +147,23 @@ type ReportsSummaryTestResult = {
 
     net_sales: number;
   }>;
+
+  salespersonSales: Array<{
+    salesperson_id: number | null;
+
+    salesperson_name: string;
+
+    sales_count: number;
+    sales_total: number;
+
+    returns_count: number;
+    returns_total: number;
+
+    exchange_count: number;
+    exchange_adjustment: number;
+
+    net_sales: number;
+  }>;
   topProducts: ReportTopProductRow[];
   dailySales: ReportDailySaleRow[];
   paymentMethods: ReportPaymentMethodRow[];
@@ -1019,6 +1036,94 @@ describe('reports repository', () => {
     expect(second?.sales_total).toBe(200);
 
     expect(second?.net_sales).toBe(200);
+  });
+
+  it('merges legacy cashier sales with the linked salesperson row', () => {
+    const variant = seedReportProduct({
+      name: 'Legacy Seller Merge Product',
+      barcode: 'LEGACY-SELLER-MERGE',
+      openingQty: 20,
+      buyPrice: 50,
+      sellPrice: 100,
+    });
+
+    const legacySale = createSale({
+      user_id: 1,
+      customer_id: null,
+
+      sub_total: 100,
+      discount_value: 0,
+      grand_total: 100,
+
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 100,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 100,
+        },
+      ],
+    });
+
+    createSale({
+      user_id: 1,
+      customer_id: null,
+
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 200,
+
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 200,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 2,
+          unit_price: 100,
+        },
+      ],
+    });
+
+    const db = getDb();
+
+    /*
+     * نحول أول فاتورة لشكل البيانات القديمة
+     * قبل إضافة نظام البائعين.
+     */
+    db.prepare(
+      `
+    UPDATE sales
+
+    SET
+      salesperson_id = NULL,
+      salesperson_name = NULL
+
+    WHERE id = ?
+    `,
+    ).run(legacySale.saleId);
+
+    const report = getReportsSummary() as ReportsSummaryTestResult;
+
+    expect(report.salespersonSales).toHaveLength(1);
+
+    const seller = report.salespersonSales[0];
+
+    expect(seller.sales_count).toBe(2);
+    expect(seller.sales_total).toBe(300);
+    expect(seller.net_sales).toBe(300);
   });
 
   it('removes returned invoice discounts from the active shift dashboard even when another admin creates the return', () => {
