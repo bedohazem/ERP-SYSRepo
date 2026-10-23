@@ -2472,7 +2472,19 @@ declare global {
         status?: string;
 
         supplier_id?: number;
-      }) => Promise<any[]>;
+
+        limit?: number;
+
+        offset?: number;
+      }) => Promise<{
+        rows: any[];
+
+        total: number;
+
+        limit: number;
+
+        offset: number;
+      }>;
 
       getPurchaseOrder: (purchaseOrderId: number) => Promise<{
         order: any;

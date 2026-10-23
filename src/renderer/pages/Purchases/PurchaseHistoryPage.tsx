@@ -637,7 +637,7 @@ export default function PurchaseHistoryPage() {
     Boolean(search.trim()) ||
     Boolean(dateFrom) ||
     Boolean(dateTo) ||
-    paymentFilter !== 'all';
+    (activeTab === 'purchases' && paymentFilter !== 'all');
 
   return (
     <div

@@ -229,6 +229,7 @@ export default function PurchaseOrdersPanel({
   const [orderNotes, setOrderNotes] = useState('');
 
   const [orders, setOrders] = useState<PurchaseOrderRow[]>([]);
+  const [ordersTotal, setOrdersTotal] = useState(0);
   const [orderPage, setOrderPage] = useState(1);
   const [orderStatus, setOrderStatus] = useState('all');
 
@@ -319,27 +320,32 @@ export default function PurchaseOrdersPanel({
     }
   }
 
-  async function loadOrders() {
+  async function loadOrders(page = orderPage, status = orderStatus) {
     setLoading(true);
 
     try {
+      const safePage = Math.max(1, Number(page || 1));
+
       const result = await window.api.listPurchaseOrders({
-        status: orderStatus,
+        status,
+
+        limit: SYSTEM_PAGE_SIZE,
+
+        offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
       });
 
-      setOrders(Array.isArray(result) ? result : []);
+      setOrders(Array.isArray(result?.rows) ? result.rows : []);
+
+      setOrdersTotal(Number(result?.total || 0));
+
+      setOrderPage(safePage);
     } catch (error) {
       console.error(error);
 
-      showMessage(
-        getErrorMessage(
-          error,
-
-          'تعذر تحميل أوامر الشراء',
-        ),
-      );
+      showMessage(getErrorMessage(error, 'تعذر تحميل أوامر الشراء'));
 
       setOrders([]);
+      setOrdersTotal(0);
     } finally {
       setLoading(false);
     }
@@ -442,8 +448,7 @@ export default function PurchaseOrdersPanel({
     }
 
     if (tab === 'orders') {
-      setOrderPage(1);
-      void loadOrders();
+      void loadOrders(1, orderStatus);
     }
   }, [open, tab, orderStatus]);
 
@@ -471,20 +476,6 @@ export default function PurchaseOrdersPanel({
       document.removeEventListener('keydown', handleEscape);
     };
   }, [open, detail, onClose]);
-
-  const pagedOrders = useMemo(() => {
-    const start = (orderPage - 1) * SYSTEM_PAGE_SIZE;
-
-    return orders.slice(start, start + SYSTEM_PAGE_SIZE);
-  }, [orders, orderPage]);
-
-  useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(orders.length / SYSTEM_PAGE_SIZE));
-
-    if (orderPage > totalPages) {
-      setOrderPage(totalPages);
-    }
-  }, [orders.length, orderPage]);
 
   const selectedSuggestions = useMemo(
     () => suggestions.filter((row) => Boolean(selected[row.variant_id])),
@@ -579,7 +570,7 @@ export default function PurchaseOrdersPanel({
 
       setOrderStatus('all');
 
-      await loadOrders();
+      await loadOrders(1, 'all');
 
       await openOrder(Number(result.purchase_order_id));
     } catch (error) {
@@ -668,7 +659,7 @@ export default function PurchaseOrdersPanel({
 
       showMessage('تم حفظ تعديل أمر الشراء');
 
-      await loadOrders();
+      await loadOrders(1, orderStatus);
 
       return true;
     } catch (error) {
@@ -706,7 +697,7 @@ export default function PurchaseOrdersPanel({
 
       showMessage('تم اعتماد أمر الشراء وإرساله للمورد');
 
-      await loadOrders();
+      await loadOrders(1, orderStatus);
     } catch (error) {
       console.error(error);
 
@@ -740,7 +731,7 @@ export default function PurchaseOrdersPanel({
 
       await openOrder(detail.order.id);
 
-      await loadOrders();
+      await loadOrders(1, orderStatus);
     } catch (error) {
       console.error(error);
 
@@ -809,7 +800,7 @@ export default function PurchaseOrdersPanel({
 
       await openOrder(detail.order.id);
 
-      await loadOrders();
+      await loadOrders(1, orderStatus);
     } catch (error) {
       console.error(error);
 
@@ -1257,10 +1248,10 @@ export default function PurchaseOrdersPanel({
 
             <PaginationBar
               page={orderPage}
-              totalItems={orders.length}
+              totalItems={ordersTotal}
               loading={loading}
               onPageChange={(page) => {
-                setOrderPage(page);
+                void loadOrders(page, orderStatus);
               }}
             />
 
@@ -1287,7 +1278,7 @@ export default function PurchaseOrdersPanel({
                 </thead>
 
                 <tbody>
-                  {pagedOrders.map((order) => (
+                  {orders.map((order) => (
                     <tr key={order.id}>
                       <td style={tdStyle}>#{order.id}</td>
 

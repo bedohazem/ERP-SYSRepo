@@ -1365,7 +1365,7 @@ export default function CashPage() {
                 padding: '0 12px',
               }}
             >
-              مسح
+              مسح الفلتر
             </button>
           )}
           <button

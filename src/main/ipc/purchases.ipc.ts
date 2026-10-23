@@ -1075,6 +1075,13 @@ export function registerPurchasesIpc(): void {
       status,
 
       supplier_id: supplierId ?? undefined,
+
+      limit:
+        optionalPositiveInteger(payload.limit, 'عدد أوامر الشراء') ?? undefined,
+
+      offset:
+        optionalNonNegativeInteger(payload.offset, 'بداية أوامر الشراء') ??
+        undefined,
     });
   });
 

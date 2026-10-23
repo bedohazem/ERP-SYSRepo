@@ -688,18 +688,22 @@ export function getPurchaseOrder(orderIdInput: number) {
 export function listPurchaseOrders(input?: {
   status?: string;
   supplier_id?: number;
+  limit?: number;
+  offset?: number;
 }) {
   const db = getDb();
 
   const where: string[] = [];
-
   const params: any[] = [];
 
   const status = String(input?.status || '').trim();
 
+  const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 300);
+
+  const offset = Math.max(Number(input?.offset || 0), 0);
+
   if (status && status !== 'all') {
     where.push('po.status = ?');
-
     params.push(status);
   }
 
@@ -707,58 +711,78 @@ export function listPurchaseOrders(input?: {
 
   if (supplierId > 0) {
     where.push('po.supplier_id = ?');
-
     params.push(supplierId);
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  return db
+  const rows = db
     .prepare(
       `
       SELECT
         po.*,
 
-        s.name
-          AS supplier_name,
+        s.name AS supplier_name,
 
-        u.name
-          AS created_by_name,
+        u.name AS created_by_name,
 
-        COUNT(poi.id)
-          AS items_count,
+        COUNT(poi.id) AS items_count,
 
         IFNULL(
-          SUM(
-            poi.line_total
-          ),
+          SUM(poi.line_total),
           0
         ) AS total_amount
 
       FROM purchase_orders po
 
       JOIN suppliers s
-        ON s.id =
-          po.supplier_id
+        ON s.id = po.supplier_id
 
       LEFT JOIN users u
-        ON u.id =
-          po.created_by
+        ON u.id = po.created_by
 
-      LEFT JOIN
-        purchase_order_items poi
-        ON
-          poi.purchase_order_id =
-            po.id
+      LEFT JOIN purchase_order_items poi
+        ON poi.purchase_order_id = po.id
 
       ${whereSql}
 
       GROUP BY po.id
 
       ORDER BY po.id DESC
+
+      LIMIT ?
+      OFFSET ?
       `,
     )
-    .all(...params);
+    .all(...params, limit, offset);
+
+  const totalRow = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS total
+
+      FROM purchase_orders po
+
+      JOIN suppliers s
+        ON s.id = po.supplier_id
+
+      ${whereSql}
+      `,
+    )
+    .get(...params) as {
+    total: number;
+  };
+
+  return {
+    rows,
+
+    total: Number(totalRow?.total || 0),
+
+    limit,
+
+    offset,
+  };
 }
 
 export function updatePurchaseOrder(input: {

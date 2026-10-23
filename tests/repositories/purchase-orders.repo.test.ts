@@ -20,6 +20,7 @@ import {
   getPurchaseOrder,
   getSmartReorderSuggestions,
   receivePurchaseOrder,
+  listPurchaseOrders,
 } from '../../src/main/database/repositories/purchase-orders.repo';
 
 function seedVariant(input: {
@@ -281,5 +282,65 @@ describe('purchase orders repository', () => {
     expect(snapshot.items[0].unit_cost).toBe(91);
 
     expect(snapshot.items[0].line_total).toBe(182);
+  });
+
+  it('paginates purchase orders', () => {
+    const supplier = createSupplier({
+      name: 'Paged PO Supplier',
+    }) as any;
+
+    const variant = seedVariant({
+      name: 'Paged PO Product',
+      barcode: 'PO-PAGED',
+      openingQty: 0,
+      minStock: 1,
+      buyPrice: 50,
+    });
+
+    for (let index = 1; index <= 5; index += 1) {
+      createPurchaseOrder({
+        supplier_id: supplier.id,
+
+        actor_id: 1,
+
+        notes: `Order ${index}`,
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            quantity: 1,
+
+            unit_cost: 50,
+          },
+        ],
+      });
+    }
+
+    const firstPage = listPurchaseOrders({
+      limit: 2,
+      offset: 0,
+    });
+
+    const secondPage = listPurchaseOrders({
+      limit: 2,
+      offset: 2,
+    });
+
+    const firstRows = firstPage.rows as Array<{
+      id: number;
+    }>;
+
+    const secondRows = secondPage.rows as Array<{
+      id: number;
+    }>;
+
+    expect(firstPage.total).toBe(5);
+
+    expect(firstRows).toHaveLength(2);
+
+    expect(secondRows).toHaveLength(2);
+
+    expect(firstRows[0].id).toBeGreaterThan(firstRows[1].id);
   });
 });
