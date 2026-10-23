@@ -124,6 +124,13 @@ export default function CashDrawerHistorySection({ users }: Props) {
     };
   }, [shiftId, userId, status, dateFrom, dateTo]);
 
+  const hasDrawerFilters =
+    Boolean(shiftId) ||
+    Boolean(userId) ||
+    status !== 'all' ||
+    Boolean(dateFrom) ||
+    Boolean(dateTo);
+
   return (
     <section
       className="glass-card"
@@ -246,6 +253,31 @@ export default function CashDrawerHistorySection({ users }: Props) {
             style={inputStyle}
           />
         </Field>
+
+        {hasDrawerFilters && (
+          <button
+            type="button"
+            onClick={() => {
+              setShiftId('');
+              setUserId('');
+              setStatus('all');
+              setDateFrom('');
+              setDateTo('');
+              setPage(1);
+            }}
+            style={{
+              ...inputStyle,
+              width: 'auto',
+              minWidth: '110px',
+              cursor: 'pointer',
+              background: 'rgba(148,163,184,0.12)',
+              color: '#cbd5e1',
+              fontWeight: 900,
+            }}
+          >
+            مسح الفلتر
+          </button>
+        )}
       </div>
 
       <PaginationBar

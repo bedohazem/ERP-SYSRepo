@@ -457,6 +457,11 @@ export default function SalespeoplePage() {
     };
   }, [filteredRows]);
 
+  const hasSalespeopleFilters =
+    Boolean(salespersonSearch.trim()) ||
+    targetFilter !== 'all' ||
+    month !== getCurrentMonth();
+
   return (
     <div
       className="fade-slide-in"
@@ -606,6 +611,20 @@ export default function SalespeoplePage() {
               }}
             />
           </label>
+          {hasSalespeopleFilters && (
+            <button
+              type="button"
+              onClick={() => {
+                setSalespersonSearch('');
+                setTargetFilter('all');
+                setMonth(getCurrentMonth());
+                setSalespeoplePage(1);
+              }}
+              style={secondaryButtonStyle}
+            >
+              مسح الفلتر
+            </button>
+          )}
         </div>
       </section>
 

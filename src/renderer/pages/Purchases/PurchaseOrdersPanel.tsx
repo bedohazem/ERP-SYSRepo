@@ -4,6 +4,9 @@ import type { CSSProperties } from 'react';
 
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 import { formatMoney } from '../../../shared/money';
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
 
 type Supplier = {
   id: number;
@@ -226,7 +229,7 @@ export default function PurchaseOrdersPanel({
   const [orderNotes, setOrderNotes] = useState('');
 
   const [orders, setOrders] = useState<PurchaseOrderRow[]>([]);
-
+  const [orderPage, setOrderPage] = useState(1);
   const [orderStatus, setOrderStatus] = useState('all');
 
   const [detail, setDetail] = useState<PurchaseOrderSnapshot | null>(null);
@@ -439,6 +442,7 @@ export default function PurchaseOrdersPanel({
     }
 
     if (tab === 'orders') {
+      setOrderPage(1);
       void loadOrders();
     }
   }, [open, tab, orderStatus]);
@@ -467,6 +471,20 @@ export default function PurchaseOrdersPanel({
       document.removeEventListener('keydown', handleEscape);
     };
   }, [open, detail, onClose]);
+
+  const pagedOrders = useMemo(() => {
+    const start = (orderPage - 1) * SYSTEM_PAGE_SIZE;
+
+    return orders.slice(start, start + SYSTEM_PAGE_SIZE);
+  }, [orders, orderPage]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(orders.length / SYSTEM_PAGE_SIZE));
+
+    if (orderPage > totalPages) {
+      setOrderPage(totalPages);
+    }
+  }, [orders.length, orderPage]);
 
   const selectedSuggestions = useMemo(
     () => suggestions.filter((row) => Boolean(selected[row.variant_id])),
@@ -1223,7 +1241,28 @@ export default function PurchaseOrdersPanel({
                   <option value="cancelled">ملغى</option>
                 </select>
               </div>
+              {orderStatus !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOrderStatus('all');
+                    setOrderPage(1);
+                  }}
+                  style={secondaryButtonStyle}
+                >
+                  مسح الفلتر
+                </button>
+              )}
             </div>
+
+            <PaginationBar
+              page={orderPage}
+              totalItems={orders.length}
+              loading={loading}
+              onPageChange={(page) => {
+                setOrderPage(page);
+              }}
+            />
 
             <div style={tableWrapStyle}>
               <table style={tableStyle}>
@@ -1238,7 +1277,7 @@ export default function PurchaseOrdersPanel({
                     <th style={thStyle}>الأصناف</th>
 
                     <th style={thStyle}>الإجمالي</th>
-
+                    <th style={thStyle}>ملاحظات</th>
                     <th style={thStyle}>فاتورة الشراء</th>
 
                     <th style={thStyle}>التاريخ</th>
@@ -1248,7 +1287,7 @@ export default function PurchaseOrdersPanel({
                 </thead>
 
                 <tbody>
-                  {orders.map((order) => (
+                  {pagedOrders.map((order) => (
                     <tr key={order.id}>
                       <td style={tdStyle}>#{order.id}</td>
 
@@ -1267,7 +1306,17 @@ export default function PurchaseOrdersPanel({
                       <td style={tdStyle}>{order.items_count}</td>
 
                       <td style={tdStyle}>{money(order.total_amount)}</td>
-
+                      <td
+                        style={{
+                          ...tdStyle,
+                          maxWidth: '260px',
+                          whiteSpace: 'normal',
+                          lineHeight: 1.6,
+                          color: order.notes?.trim() ? '#cbd5e1' : '#64748b',
+                        }}
+                      >
+                        {order.notes?.trim() || '—'}
+                      </td>
                       <td style={tdStyle}>
                         {order.purchase_id ? `#${order.purchase_id}` : '—'}
                       </td>
@@ -1289,7 +1338,7 @@ export default function PurchaseOrdersPanel({
                   {!loading && orders.length === 0 && (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={9}
                         style={{
                           ...tdStyle,
 
@@ -1511,6 +1560,40 @@ export default function PurchaseOrdersPanel({
                 >
                   اعتماد وإرسال للمورد
                 </button>
+              </div>
+            )}
+
+            {detail.order.status !== 'draft' && (
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: '12px',
+                  background: 'rgba(59,130,246,0.08)',
+                  border: '1px solid rgba(59,130,246,0.22)',
+                  display: 'grid',
+                  gap: '6px',
+                }}
+              >
+                <span
+                  style={{
+                    color: '#93c5fd',
+                    fontSize: '12px',
+                    fontWeight: 900,
+                  }}
+                >
+                  ملاحظات أمر الشراء
+                </span>
+
+                <div
+                  style={{
+                    color: '#e2e8f0',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    lineHeight: 1.7,
+                  }}
+                >
+                  {detail.order.notes?.trim() || '—'}
+                </div>
               </div>
             )}
 

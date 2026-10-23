@@ -197,6 +197,9 @@ export default function ShiftHistorySection({ users }: Props) {
     };
   }, [status, userId, dateFrom, dateTo]);
 
+  const hasShiftHistoryFilters =
+    status !== 'all' || Boolean(userId) || Boolean(dateFrom) || Boolean(dateTo);
+
   return (
     <>
       <section
@@ -296,6 +299,22 @@ export default function ShiftHistorySection({ users }: Props) {
                 style={inputStyle}
               />
             </Field>
+
+            {hasShiftHistoryFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus('all');
+                  setUserId('');
+                  setDateFrom('');
+                  setDateTo('');
+                  setPage(1);
+                }}
+                style={secondaryButtonStyle}
+              >
+                مسح الفلتر
+              </button>
+            )}
           </div>
         </div>
 

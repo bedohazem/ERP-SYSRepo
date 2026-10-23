@@ -412,6 +412,13 @@ export default function ActivityLogPage() {
     };
   }, [dateFrom, dateTo, actions, entities, search]);
 
+  const hasActivityFilters =
+    Boolean(dateFrom) ||
+    Boolean(dateTo) ||
+    actions.length > 0 ||
+    entities.length > 0 ||
+    Boolean(search.trim());
+
   return (
     <div
       style={{
@@ -564,13 +571,15 @@ export default function ActivityLogPage() {
             />
           </Field>
 
-          <button
-            type="button"
-            onClick={clearFilters}
-            style={secondaryButtonStyle}
-          >
-            مسح الفلتر
-          </button>
+          {hasActivityFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              style={secondaryButtonStyle}
+            >
+              مسح الفلتر
+            </button>
+          )}
 
           <button
             type="button"

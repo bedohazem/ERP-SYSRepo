@@ -68,7 +68,6 @@ export default function StockCountPage() {
   const [selected, setSelected] = useState<StockCountDetails | null>(null);
   const [countItemsPage, setCountItemsPage] = useState(1);
 
-  const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
   const [newTitle, setNewTitle] = useState('');
@@ -278,16 +277,12 @@ export default function StockCountPage() {
   }
 
   async function loadSessions() {
-    setLoadingSessions(true);
-
     try {
       const data = await window.api.getStockCountSessions();
       setSessions(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to load stock count sessions:', error);
       showMessage('حدث خطأ أثناء تحميل جلسات الجرد');
-    } finally {
-      setLoadingSessions(false);
     }
   }
 
@@ -700,6 +695,9 @@ export default function StockCountPage() {
 
   const isOpen = selected?.session?.status === 'open';
 
+  const hasCountFilters =
+    Boolean(search.trim()) || filter !== 'all' || countCategoryFilter !== 'all';
+
   return (
     <div style={{ display: 'grid', gap: '18px' }}>
       {message && <div style={toastStyle}>{message}</div>}
@@ -721,14 +719,6 @@ export default function StockCountPage() {
               المخزون.
             </p>
           </div>
-
-          <button
-            type="button"
-            onClick={loadSessions}
-            style={primaryButtonStyle}
-          >
-            {loadingSessions ? 'جاري التحميل...' : 'تحديث'}
-          </button>
         </div>
 
         {isAdmin && (
@@ -1057,7 +1047,7 @@ export default function StockCountPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'minmax(240px, 1fr) 180px 220px',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
               gap: '10px',
             }}
           >
@@ -1100,6 +1090,21 @@ export default function StockCountPage() {
                 </option>
               ))}
             </select>
+
+            {hasCountFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch('');
+                  setFilter('all');
+                  setCountCategoryFilter('all');
+                  setCountItemsPage(1);
+                }}
+                style={secondaryButtonStyle}
+              >
+                مسح الفلتر
+              </button>
+            )}
           </div>
 
           <PaginationBar

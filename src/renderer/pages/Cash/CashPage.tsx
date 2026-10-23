@@ -1050,6 +1050,15 @@ export default function CashPage() {
     }
   }
 
+  const hasCashFilters =
+    Boolean(dateFrom) ||
+    Boolean(dateTo) ||
+    filterTypes.length > 0 ||
+    filterDirections.length > 0 ||
+    filterPaymentMethods.length > 0 ||
+    Boolean(search.trim()) ||
+    showCorrectedMovements;
+
   return (
     <div
       style={{
@@ -1337,26 +1346,28 @@ export default function CashPage() {
         </label>
 
         <div style={{ display: 'flex', gap: '6px' }}>
-          <button
-            type="button"
-            onClick={() => {
-              setDateFrom('');
-              setDateTo('');
-              setFilterTypes([]);
-              setFilterDirections([]);
-              setFilterPaymentMethods([]);
-              setSearch('');
-              setShowCorrectedMovements(false);
-              setMovementsPage(1);
-            }}
-            style={{
-              ...secondaryButtonStyle,
-              height: '36px',
-              padding: '0 12px',
-            }}
-          >
-            مسح
-          </button>
+          {hasCashFilters && (
+            <button
+              type="button"
+              onClick={() => {
+                setDateFrom('');
+                setDateTo('');
+                setFilterTypes([]);
+                setFilterDirections([]);
+                setFilterPaymentMethods([]);
+                setSearch('');
+                setShowCorrectedMovements(false);
+                setMovementsPage(1);
+              }}
+              style={{
+                ...secondaryButtonStyle,
+                height: '36px',
+                padding: '0 12px',
+              }}
+            >
+              مسح
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void printCashReport()}

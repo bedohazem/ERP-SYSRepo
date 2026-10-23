@@ -235,6 +235,24 @@ export default function ShiftManagementPage() {
     };
   }, [statusFilter, varianceUserId, varianceDateFrom, varianceDateTo]);
 
+  useEffect(() => {
+    function handleCashShiftChanged() {
+      void loadData(statusFilter, variancePage);
+    }
+
+    window.addEventListener('cash-shift-changed', handleCashShiftChanged);
+
+    return () => {
+      window.removeEventListener('cash-shift-changed', handleCashShiftChanged);
+    };
+  }, [
+    statusFilter,
+    variancePage,
+    varianceUserId,
+    varianceDateFrom,
+    varianceDateTo,
+  ]);
+
   function openVarianceReview(variance: CashShiftVariance) {
     if (!isAdmin) {
       return;
@@ -365,6 +383,12 @@ export default function ShiftManagementPage() {
     }
   }
 
+  const hasVarianceFilters =
+    statusFilter !== 'pending' ||
+    Boolean(varianceUserId) ||
+    Boolean(varianceDateFrom) ||
+    Boolean(varianceDateTo);
+
   return (
     <div
       style={{
@@ -442,19 +466,6 @@ export default function ShiftManagementPage() {
             متابعة الشفت الحالي ومراجعة فروق الجرد
           </p>
         </div>
-
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() => void loadData(statusFilter)}
-          style={{
-            ...primaryButtonStyle,
-
-            opacity: loading ? 0.6 : 1,
-          }}
-        >
-          {loading ? 'جاري التحديث...' : 'تحديث البيانات'}
-        </button>
       </section>
 
       <section
@@ -670,6 +681,22 @@ export default function ShiftManagementPage() {
                 style={inputStyle}
               />
             </Field>
+
+            {hasVarianceFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilter('pending');
+                  setVarianceUserId('');
+                  setVarianceDateFrom('');
+                  setVarianceDateTo('');
+                  setVariancePage(1);
+                }}
+                style={secondaryButtonStyle}
+              >
+                مسح الفلتر
+              </button>
+            )}
           </div>
         </div>
 

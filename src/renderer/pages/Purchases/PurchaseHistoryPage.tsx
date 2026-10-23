@@ -633,6 +633,12 @@ export default function PurchaseHistoryPage() {
     Math.max(0, purchaseReturnTotal - purchaseReturnDebtReduction),
   );
 
+  const hasPurchaseHistoryFilters =
+    Boolean(search.trim()) ||
+    Boolean(dateFrom) ||
+    Boolean(dateTo) ||
+    paymentFilter !== 'all';
+
   return (
     <div
       style={{
@@ -717,8 +723,8 @@ export default function PurchaseHistoryPage() {
             display: 'grid',
             gridTemplateColumns:
               activeTab === 'purchases'
-                ? 'auto 180px minmax(260px, 1fr) 150px 150px'
-                : 'auto minmax(260px, 1fr) 150px 150px',
+                ? 'auto 180px minmax(260px, 1fr) 150px 150px auto'
+                : 'auto minmax(260px, 1fr) 150px 150px auto',
             gap: '10px',
             alignItems: 'center',
             direction: 'rtl',
@@ -808,6 +814,23 @@ export default function PurchaseHistoryPage() {
               height: '38px',
             }}
           />
+
+          {hasPurchaseHistoryFilters && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setPaymentFilter('all');
+                setDateFrom('');
+                setDateTo('');
+                setPurchasePage(1);
+                setReturnPage(1);
+              }}
+              style={secondaryButtonStyle}
+            >
+              مسح الفلتر
+            </button>
+          )}
         </div>
       </div>
 

@@ -426,6 +426,11 @@ export default function InventoryPage() {
     }
   }
 
+  const hasInventoryFilters =
+    Boolean(search.trim()) ||
+    statusFilters.length > 0 ||
+    categoryFilter !== 'all';
+
   return (
     <div
       style={{
@@ -494,19 +499,21 @@ export default function InventoryPage() {
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={() => {
-                void Promise.all([
-                  loadInventory(inventoryPage),
-
-                  loadAnalytics(),
-                ]);
-              }}
-              style={primaryButtonStyle}
-            >
-              {loading ? 'جاري التحميل...' : 'تحديث'}
-            </button>
+            {hasInventoryFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch('');
+                  setStatusFilters([]);
+                  setCategoryFilter('all');
+                  setInventoryPage(1);
+                  setStatusFilterOpen(false);
+                }}
+                style={secondaryButtonStyle}
+              >
+                مسح الفلتر
+              </button>
+            )}
           </div>
         </div>
 

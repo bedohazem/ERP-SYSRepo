@@ -349,6 +349,9 @@ export default function ReportsPage() {
     void loadReports();
   }, [dateFrom, dateTo]);
 
+  const hasReportFilters =
+    Boolean(monthFilter) || Boolean(dateFrom) || Boolean(dateTo);
+
   return (
     <div
       style={{
@@ -518,6 +521,27 @@ export default function ReportsPage() {
               }}
               style={inputStyle}
             />
+            {hasReportFilters && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMonthFilter('');
+                  setDateFrom('');
+                  setDateTo('');
+                }}
+                style={{
+                  border: '1px solid rgba(148,163,184,0.25)',
+                  borderRadius: '10px',
+                  padding: '9px 14px',
+                  background: 'rgba(148,163,184,0.12)',
+                  color: '#cbd5e1',
+                  fontWeight: 900,
+                  cursor: 'pointer',
+                }}
+              >
+                مسح الفلتر
+              </button>
+            )}
           </div>
         </div>
       </div>

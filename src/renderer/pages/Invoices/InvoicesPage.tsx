@@ -1442,6 +1442,40 @@ export default function InvoicesPage() {
     Math.ceil(exchangesTotal / INVOICE_PAGE_SIZE),
   );
 
+  const hasInvoiceFilters =
+    Boolean(search.trim()) ||
+    Boolean(dateFrom) ||
+    Boolean(dateTo) ||
+    (activeTab === 'sales' &&
+      (paymentFilter !== 'all' || paymentMethodFilter !== 'all')) ||
+    (activeTab === 'returns' && returnPaymentMethodFilter !== 'all') ||
+    (activeTab === 'exchanges' &&
+      (exchangeStatusFilter !== 'all' ||
+        exchangePaymentMethodFilter !== 'all'));
+
+  function clearInvoiceFilters() {
+    setSearch('');
+    setDateFrom('');
+    setDateTo('');
+
+    if (activeTab === 'sales') {
+      setPaymentFilter('all');
+      setPaymentMethodFilter('all');
+      setSalesPage(1);
+    }
+
+    if (activeTab === 'returns') {
+      setReturnPaymentMethodFilter('all');
+      setReturnsPage(1);
+    }
+
+    if (activeTab === 'exchanges') {
+      setExchangeStatusFilter('all');
+      setExchangePaymentMethodFilter('all');
+      setExchangesPage(1);
+    }
+  }
+
   return (
     <div
       style={{
@@ -1675,21 +1709,15 @@ export default function InvoicesPage() {
             style={inputStyle}
           />
 
-          <button
-            type="button"
-            onClick={() => {
-              void Promise.all([
-                loadInvoices(salesPage),
-
-                loadReturns(returnsPage),
-
-                loadExchanges(exchangesPage),
-              ]);
-            }}
-            style={primaryButtonStyle}
-          >
-            تحديث
-          </button>
+          {hasInvoiceFilters && (
+            <button
+              type="button"
+              onClick={clearInvoiceFilters}
+              style={secondaryButtonStyle}
+            >
+              مسح الفلتر
+            </button>
+          )}
         </div>
       </div>
 
