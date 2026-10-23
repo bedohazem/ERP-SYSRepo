@@ -62,6 +62,22 @@ type ReportsData = {
 
     net_sales: number;
   }>;
+  salespersonSales: Array<{
+    salesperson_id: number | null;
+
+    salesperson_name: string;
+
+    sales_count: number;
+    sales_total: number;
+
+    returns_count: number;
+    returns_total: number;
+
+    exchange_count: number;
+    exchange_adjustment: number;
+
+    net_sales: number;
+  }>;
   lowStock: any[];
   topCustomers: any[];
 };
@@ -103,6 +119,7 @@ const emptyReports: ReportsData = {
   dailySales: [],
   paymentMethods: [],
   cashierSales: [],
+  salespersonSales: [],
   lowStock: [],
   topCustomers: [],
 };
@@ -651,20 +668,20 @@ export default function ReportsPage() {
           <ReportTable
             title={
               monthFilter
-                ? `مبيعات الكاشير — ${formatMonthLabel(monthFilter)}`
-                : 'مبيعات الكاشير حسب الفترة المحددة'
+                ? `مبيعات الكاشير / البائع — ${formatMonthLabel(monthFilter)}`
+                : 'مبيعات الكاشير / البائع حسب الفترة المحددة'
             }
-            emptyText="لا توجد مبيعات للكاشير في الفترة المحددة"
+            emptyText="لا توجد مبيعات للكاشير / البائع في الفترة المحددة"
             columns={[
-              'الكاشير',
+              'الكاشير / البائع',
               'عدد الفواتير',
               'مبيعات الفواتير',
               'المرتجعات',
               'فروق الاستبدال',
               'صافي المبيعات',
             ]}
-            rows={data.cashierSales.map((x) => [
-              x.cashier_name,
+            rows={data.salespersonSales.map((x) => [
+              x.salesperson_name,
 
               x.sales_count,
 

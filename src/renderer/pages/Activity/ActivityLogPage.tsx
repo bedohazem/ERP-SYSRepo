@@ -95,19 +95,12 @@ export default function ActivityLogPage() {
   }
 
   function clearFilters() {
-    const emptyFilters: ActivityFilters = {
-      limit: SYSTEM_PAGE_SIZE,
-      offset: 0,
-    };
-
     setDateFrom('');
     setDateTo('');
     setActions([]);
     setEntities([]);
     setSearch('');
-
     setPage(1);
-    void loadLogs(1, emptyFilters);
   }
 
   async function getAllActivityLogsForPrint() {
@@ -409,11 +402,15 @@ export default function ActivityLogPage() {
   }
 
   useEffect(() => {
-    void loadLogs(1, {
-      limit: SYSTEM_PAGE_SIZE,
-      offset: 0,
-    });
-  }, []);
+    const handle = window.setTimeout(() => {
+      setPage(1);
+      void loadLogs(1);
+    }, 150);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [dateFrom, dateTo, actions, entities, search]);
 
   return (
     <div
@@ -566,17 +563,6 @@ export default function ActivityLogPage() {
               style={inputStyle}
             />
           </Field>
-
-          <button
-            type="button"
-            onClick={() => {
-              setPage(1);
-              void loadLogs(1);
-            }}
-            style={primaryButtonStyle}
-          >
-            {loading ? 'جاري التحميل...' : 'تطبيق الفلتر'}
-          </button>
 
           <button
             type="button"

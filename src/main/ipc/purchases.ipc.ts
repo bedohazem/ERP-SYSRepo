@@ -32,6 +32,7 @@ import {
   requirePositiveMoney,
   optionalNonNegativeInteger,
   requirePositiveNumber,
+  optionalDateOnly,
 } from './input-validation';
 import { requireAdminPassword } from './permission-helper';
 
@@ -421,6 +422,14 @@ export function registerPurchasesIpc(): void {
           'حالة سداد فاتورة الشراء',
         ) ?? 'all',
 
+      date_from:
+        optionalDateOnly(payload.date_from, 'تاريخ بداية فواتير الشراء') ??
+        undefined,
+
+      date_to:
+        optionalDateOnly(payload.date_to, 'تاريخ نهاية فواتير الشراء') ??
+        undefined,
+
       limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
 
       offset:
@@ -763,6 +772,14 @@ export function registerPurchasesIpc(): void {
     return listPurchaseReturns({
       search:
         optionalTrimmedString(payload.search, 'بحث مرتجعات الشراء', 500) ??
+        undefined,
+
+      date_from:
+        optionalDateOnly(payload.date_from, 'تاريخ بداية مرتجعات الشراء') ??
+        undefined,
+
+      date_to:
+        optionalDateOnly(payload.date_to, 'تاريخ نهاية مرتجعات الشراء') ??
         undefined,
 
       limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,

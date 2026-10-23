@@ -187,8 +187,15 @@ export default function ShiftHistorySection({ users }: Props) {
   }
 
   useEffect(() => {
-    void loadHistory(1);
-  }, []);
+    const handle = window.setTimeout(() => {
+      setPage(1);
+      void loadHistory(1);
+    }, 150);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [status, userId, dateFrom, dateTo]);
 
   return (
     <>
@@ -289,18 +296,6 @@ export default function ShiftHistorySection({ users }: Props) {
                 style={inputStyle}
               />
             </Field>
-
-            <button
-              type="button"
-              onClick={() => {
-                setPage(1);
-                void loadHistory(1);
-              }}
-              disabled={loading}
-              style={primaryButtonStyle}
-            >
-              {loading ? 'جاري التحميل...' : 'تطبيق'}
-            </button>
           </div>
         </div>
 

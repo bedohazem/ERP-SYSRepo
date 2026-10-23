@@ -536,6 +536,7 @@ export function searchCustomers(query: string) {
 export function listCustomers(input?: {
   search?: string;
   debtors_only?: boolean;
+  include_summary?: boolean;
   limit?: number;
   offset?: number;
 }) {
@@ -619,6 +620,16 @@ export function listCustomers(input?: {
     .get(...baseParams) as {
     total: number;
   };
+
+  if (input?.include_summary === false) {
+    return {
+      rows,
+      total: Number(totalRow?.total || 0),
+      limit,
+      offset,
+      summary: null,
+    };
+  }
 
   const debtWhere = [...baseWhere, `IFNULL(c.balance, 0) > 0`];
 

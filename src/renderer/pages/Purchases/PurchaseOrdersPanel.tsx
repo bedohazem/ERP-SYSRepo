@@ -403,12 +403,6 @@ export default function PurchaseOrdersPanel({
 
         setCategories([]);
       });
-
-    if (tab === 'reorder') {
-      void loadSuggestions();
-    } else {
-      void loadOrders();
-    }
   }, [open]);
 
   useEffect(() => {
@@ -424,6 +418,20 @@ export default function PurchaseOrdersPanel({
       window.clearTimeout(handle);
     };
   }, [open, supplierSearch]);
+
+  useEffect(() => {
+    if (!open || tab !== 'reorder') {
+      return;
+    }
+
+    const handle = window.setTimeout(() => {
+      void loadSuggestions();
+    }, 150);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [open, tab, categoryFilter, targetDays]);
 
   useEffect(() => {
     if (!open) {
@@ -926,15 +934,6 @@ export default function PurchaseOrdersPanel({
                   <option value="90">90 يوم</option>
                 </select>
               </div>
-
-              <button
-                type="button"
-                onClick={() => void loadSuggestions()}
-                disabled={loading}
-                style={primaryButtonStyle}
-              >
-                تحديث الاقتراحات
-              </button>
             </div>
 
             <div style={filtersStyle}>
@@ -1224,14 +1223,6 @@ export default function PurchaseOrdersPanel({
                   <option value="cancelled">ملغى</option>
                 </select>
               </div>
-
-              <button
-                type="button"
-                onClick={() => void loadOrders()}
-                style={secondaryButtonStyle}
-              >
-                تحديث
-              </button>
             </div>
 
             <div style={tableWrapStyle}>

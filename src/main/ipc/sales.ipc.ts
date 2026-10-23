@@ -1506,9 +1506,25 @@ export function registerSalesIpc(): void {
 
     const payload = requireObjectInput(input ?? {}, 'فلتر مرتجعات البيع');
 
+    const rawPaymentMethod = payload.payment_method;
+
+    const paymentMethod =
+      rawPaymentMethod === undefined ||
+      rawPaymentMethod === null ||
+      rawPaymentMethod === '' ||
+      rawPaymentMethod === 'all'
+        ? null
+        : requireEnumValue(
+            rawPaymentMethod,
+            SALE_PAYMENT_ENTRY_METHOD_VALUES,
+            'حساب رد المرتجع',
+          );
+
     return listSaleReturns({
       search:
         optionalTrimmedString(payload.search, 'بحث مرتجعات البيع', 500) ?? '',
+
+      payment_method: paymentMethod,
 
       date_from:
         optionalDateOnly(payload.date_from, 'تاريخ البداية') ?? undefined,

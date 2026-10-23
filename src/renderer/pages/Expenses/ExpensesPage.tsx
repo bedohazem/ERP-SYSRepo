@@ -125,6 +125,16 @@ export default function ExpensesPage() {
     void loadExpenses(1);
   }, [dateFrom, dateTo, search]);
 
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setSearch(searchDraft.trim());
+    }, 250);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [searchDraft]);
+
   async function handleSubmit() {
     if (!title.trim()) {
       showMessage('error', 'اسم المصروف مطلوب');
@@ -852,42 +862,15 @@ export default function ExpensesPage() {
             >
               <span>بحث</span>
 
-              <div
+              <input
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
+                placeholder="اسم / تصنيف / ملاحظات"
                 style={{
-                  display: 'flex',
-                  gap: '6px',
-                  alignItems: 'center',
+                  ...inputStyle,
+                  width: '240px',
                 }}
-              >
-                <input
-                  value={searchDraft}
-                  onChange={(e) => setSearchDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-
-                      setSearch(searchDraft.trim());
-                    }
-                  }}
-                  placeholder="اسم / تصنيف / ملاحظات"
-                  style={{
-                    ...inputStyle,
-                    width: '240px',
-                  }}
-                />
-
-                <button
-                  type="button"
-                  onClick={() => setSearch(searchDraft.trim())}
-                  style={{
-                    ...primaryButtonStyle,
-                    height: '42px',
-                    padding: '0 14px',
-                  }}
-                >
-                  بحث
-                </button>
-              </div>
+              />
             </label>
 
             <label

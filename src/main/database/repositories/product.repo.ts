@@ -587,21 +587,8 @@ export function listProductsPage(input?: {
       ? `AND p.category_id = ?`
       : '';
 
-  const params: any[] = [
-    ...(hasSelectedCategory ? [selectedCategoryId] : []),
-
-    query,
-    query,
-    term,
-    query,
-    query,
-  ];
-
-  const whereSql = `
-    WHERE
-      (${includeInactive ? '1=1' : 'p.is_active = 1'})
-      ${categorySql}
-
+  const searchSql = term
+    ? `
       AND (
         p.name LIKE ?
         OR IFNULL(c.name, '') LIKE ?
@@ -617,6 +604,20 @@ export function listProductsPage(input?: {
             )
         )
       )
+    `
+    : '';
+
+  const params: any[] = [
+    ...(hasSelectedCategory ? [selectedCategoryId] : []),
+
+    ...(term ? [query, query, term, query, query] : []),
+  ];
+
+  const whereSql = `
+    WHERE
+      (${includeInactive ? '1=1' : 'p.is_active = 1'})
+      ${categorySql}
+      ${searchSql}
   `;
 
   const rows = db

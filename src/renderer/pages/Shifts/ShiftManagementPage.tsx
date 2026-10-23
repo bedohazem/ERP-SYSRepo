@@ -222,8 +222,18 @@ export default function ShiftManagementPage() {
 
   useEffect(() => {
     void loadShiftUsers();
-    void loadData('pending', 1);
   }, []);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setVariancePage(1);
+      void loadData(statusFilter, 1);
+    }, 150);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [statusFilter, varianceUserId, varianceDateFrom, varianceDateTo]);
 
   function openVarianceReview(variance: CashShiftVariance) {
     if (!isAdmin) {
@@ -614,12 +624,7 @@ export default function ShiftManagementPage() {
               <select
                 value={statusFilter}
                 onChange={(e) => {
-                  const next = e.target.value as VarianceStatusFilter;
-
-                  setStatusFilter(next);
-                  setVariancePage(1);
-
-                  void loadData(next, 1);
+                  setStatusFilter(e.target.value as VarianceStatusFilter);
                 }}
                 style={inputStyle}
               >
@@ -665,22 +670,6 @@ export default function ShiftManagementPage() {
                 style={inputStyle}
               />
             </Field>
-
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => {
-                setVariancePage(1);
-
-                void loadData(statusFilter, 1);
-              }}
-              style={{
-                ...primaryButtonStyle,
-                minHeight: '42px',
-              }}
-            >
-              تطبيق
-            </button>
           </div>
         </div>
 

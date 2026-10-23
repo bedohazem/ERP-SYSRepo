@@ -376,10 +376,19 @@ export default function UsersPage() {
   }
 
   useEffect(() => {
-    if (isAdmin) {
-      void loadUsers(1);
+    if (!isAdmin) {
+      return;
     }
-  }, [isAdmin]);
+
+    const handle = window.setTimeout(() => {
+      setUsersPage(1);
+      void loadUsers(1);
+    }, 150);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [isAdmin, search]);
 
   if (!isAdmin) {
     return (
@@ -418,7 +427,15 @@ export default function UsersPage() {
           {pageMessage.text}
         </div>
       )}
-      <section className="glass-card" style={headerStyle}>
+      <section
+        className="glass-card"
+        style={{
+          ...headerStyle,
+          display: 'grid',
+          gap: '12px',
+          direction: 'rtl',
+        }}
+      >
         <div>
           <h2 style={{ margin: '0 0 8px' }}>إدارة المستخدمين</h2>
           <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700 }}>
@@ -426,24 +443,21 @@ export default function UsersPage() {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <div
+          style={{
+            width: '100%',
+            maxWidth: '420px',
+          }}
+        >
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="بحث بالاسم أو username"
-            style={inputStyle}
-          />
-
-          <button
-            type="button"
-            onClick={() => {
-              setUsersPage(1);
-              void loadUsers(1);
+            placeholder="بحث بالاسم أو Username"
+            style={{
+              ...inputStyle,
+              width: '100%',
             }}
-            style={secondaryButtonStyle}
-          >
-            {loading ? 'جاري التحميل...' : 'بحث'}
-          </button>
+          />
         </div>
       </section>
 

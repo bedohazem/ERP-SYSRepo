@@ -114,8 +114,15 @@ export default function CashDrawerHistorySection({ users }: Props) {
   }
 
   useEffect(() => {
-    void loadData(1);
-  }, []);
+    const handle = window.setTimeout(() => {
+      setPage(1);
+      void loadData(1);
+    }, 150);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [shiftId, userId, status, dateFrom, dateTo]);
 
   return (
     <section
@@ -239,23 +246,6 @@ export default function CashDrawerHistorySection({ users }: Props) {
             style={inputStyle}
           />
         </Field>
-
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() => {
-            setPage(1);
-
-            void loadData(1);
-          }}
-          style={{
-            ...buttonStyle,
-
-            opacity: loading ? 0.6 : 1,
-          }}
-        >
-          {loading ? 'جاري التحميل...' : 'تطبيق'}
-        </button>
       </div>
 
       <PaginationBar

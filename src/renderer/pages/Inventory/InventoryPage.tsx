@@ -107,6 +107,7 @@ export default function InventoryPage() {
   const [movementsTotal, setMovementsTotal] = useState(0);
   const [movementsPage, setMovementsPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [statusFilters, setStatusFilters] = useState<InventoryStatusFilter[]>(
@@ -116,6 +117,7 @@ export default function InventoryPage() {
   const [statusFilterOpen, setStatusFilterOpen] = useState(false);
 
   const statusFilterRef = useRef<HTMLDivElement | null>(null);
+  const inventoryRequestIdRef = useRef(0);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -189,18 +191,23 @@ export default function InventoryPage() {
   }
 
   async function loadInventory(page = inventoryPage) {
+    const requestId = ++inventoryRequestIdRef.current;
     setLoading(true);
 
     try {
       const safePage = Math.max(1, Number(page || 1));
 
       const result = await window.api.getInventoryPage({
-        search,
+        search: debouncedSearch,
         statuses: statusFilters,
         categoryId: categoryFilter,
         limit: SYSTEM_PAGE_SIZE,
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
       });
+
+      if (requestId !== inventoryRequestIdRef.current) {
+        return;
+      }
 
       const total = Number(result.total || 0);
 
@@ -244,21 +251,35 @@ export default function InventoryPage() {
         inactive: 0,
       });
     } finally {
-      setLoading(false);
+      if (requestId === inventoryRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }
 
   useEffect(() => {
-    const handle = setTimeout(() => {
-      setInventoryPage(1);
-      void loadInventory(1);
-    }, 250);
+    const handle = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 150);
 
-    return () => clearTimeout(handle);
-  }, [search, statusFilters, categoryFilter]);
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [search]);
 
   useEffect(() => {
-    void loadAnalytics();
+    setInventoryPage(1);
+    void loadInventory(1);
+  }, [debouncedSearch, statusFilters, categoryFilter]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void loadAnalytics();
+    }, 300);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
   }, [categoryFilter]);
 
   function toggleStatusFilter(filter: InventoryStatusFilter) {
@@ -844,7 +865,7 @@ export default function InventoryPage() {
           </thead>
 
           <tbody>
-            {loading && (
+            {loading && rows.length === 0 && (
               <tr>
                 <td colSpan={5} style={{ ...tdStyle, textAlign: 'center' }}>
                   جاري التحميل...
@@ -852,106 +873,103 @@ export default function InventoryPage() {
               </tr>
             )}
 
-            {!loading &&
-              rows.map((item) => (
-                <tr
-                  key={item.variant_id}
-                  style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
-                >
-                  <td style={tdStyle} title={item.product_name}>
-                    <div
-                      style={{ display: 'grid', gap: '4px', minWidth: '180px' }}
-                    >
-                      <strong>{item.product_name}</strong>
-
-                      <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-                        {item.barcode || '—'}
-                      </span>
-
-                      <span style={{ color: '#64748b', fontSize: '12px' }}>
-                        {item.size || '—'} / {item.color || '—'}
-                      </span>
-
-                      <span
-                        style={{
-                          color: '#38bdf8',
-                          fontSize: '12px',
-                          fontWeight: 800,
-                        }}
-                      >
-                        التصنيف: {item.category_name || 'بدون تصنيف'}
-                      </span>
-                    </div>
-                  </td>
-
-                  <td
-                    style={{
-                      ...tdStyle,
-                      fontWeight: 900,
-                      color: stockColor(item),
-                    }}
+            {rows.map((item) => (
+              <tr
+                key={item.variant_id}
+                style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+              >
+                <td style={tdStyle} title={item.product_name}>
+                  <div
+                    style={{ display: 'grid', gap: '4px', minWidth: '180px' }}
                   >
-                    <div style={{ display: 'grid', gap: '3px' }}>
-                      <strong>{Number(item.stock || 0)}</strong>
+                    <strong>{item.product_name}</strong>
 
-                      <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-                        حد أدنى: {item.min_stock}
-                      </span>
-                    </div>
-                  </td>
+                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                      {item.barcode || '—'}
+                    </span>
 
-                  <td style={tdStyle}>
-                    <StatusBadge item={item} />
-                  </td>
+                    <span style={{ color: '#64748b', fontSize: '12px' }}>
+                      {item.size || '—'} / {item.color || '—'}
+                    </span>
 
-                  <td style={tdStyle}>
-                    <div
-                      style={{ display: 'grid', gap: '4px', minWidth: '120px' }}
-                    >
-                      {canViewCosts && (
-                        <span>شراء: {money(item.buy_price)}</span>
-                      )}
-
-                      <span
-                        style={{
-                          color: '#6ee7b7',
-                        }}
-                      >
-                        بيع: {money(item.sell_price)}
-                      </span>
-                    </div>
-                  </td>
-
-                  <td style={tdStyle}>
-                    <div
+                    <span
                       style={{
-                        display: 'flex',
-                        gap: '8px',
-                        flexWrap: 'nowrap',
-                        alignItems: 'center',
+                        color: '#38bdf8',
+                        fontSize: '12px',
+                        fontWeight: 800,
                       }}
                     >
-                      {canAdjustInventory && (
-                        <button
-                          type="button"
-                          onClick={() => openAdjust(item)}
-                          style={smallButtonStyle}
-                        >
-                          تسوية
-                        </button>
-                      )}
+                      التصنيف: {item.category_name || 'بدون تصنيف'}
+                    </span>
+                  </div>
+                </td>
 
+                <td
+                  style={{
+                    ...tdStyle,
+                    fontWeight: 900,
+                    color: stockColor(item),
+                  }}
+                >
+                  <div style={{ display: 'grid', gap: '3px' }}>
+                    <strong>{Number(item.stock || 0)}</strong>
+
+                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                      حد أدنى: {item.min_stock}
+                    </span>
+                  </div>
+                </td>
+
+                <td style={tdStyle}>
+                  <StatusBadge item={item} />
+                </td>
+
+                <td style={tdStyle}>
+                  <div
+                    style={{ display: 'grid', gap: '4px', minWidth: '120px' }}
+                  >
+                    {canViewCosts && <span>شراء: {money(item.buy_price)}</span>}
+
+                    <span
+                      style={{
+                        color: '#6ee7b7',
+                      }}
+                    >
+                      بيع: {money(item.sell_price)}
+                    </span>
+                  </div>
+                </td>
+
+                <td style={tdStyle}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: '8px',
+                      flexWrap: 'nowrap',
+                      alignItems: 'center',
+                    }}
+                  >
+                    {canAdjustInventory && (
                       <button
                         type="button"
-                        onClick={() => openHistory(item)}
+                        onClick={() => openAdjust(item)}
                         style={smallButtonStyle}
                       >
-                        الحركات
+                        تسوية
                       </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => openHistory(item)}
+                      style={smallButtonStyle}
+                    >
+                      الحركات
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
 
             {!loading && rows.length === 0 && (
               <tr>

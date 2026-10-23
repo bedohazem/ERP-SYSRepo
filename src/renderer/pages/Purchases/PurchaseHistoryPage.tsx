@@ -68,7 +68,8 @@ export default function PurchaseHistoryPage() {
   const [returnPage, setReturnPage] = useState(1);
 
   const [search, setSearch] = useState('');
-
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>(
     'all',
   );
@@ -161,7 +162,8 @@ export default function PurchaseHistoryPage() {
         search,
 
         payment_filter: paymentFilter,
-
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
         limit: SYSTEM_PAGE_SIZE,
 
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
@@ -188,6 +190,8 @@ export default function PurchaseHistoryPage() {
 
       const result = await window.api.listPurchaseReturns({
         search,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
         limit: SYSTEM_PAGE_SIZE,
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
       });
@@ -217,7 +221,7 @@ export default function PurchaseHistoryPage() {
     }, 250);
 
     return () => clearTimeout(handle);
-  }, [search, activeTab, paymentFilter]);
+  }, [search, activeTab, paymentFilter, dateFrom, dateTo]);
 
   async function openDetails(purchaseId: number) {
     try {
@@ -713,8 +717,8 @@ export default function PurchaseHistoryPage() {
             display: 'grid',
             gridTemplateColumns:
               activeTab === 'purchases'
-                ? 'auto 180px minmax(260px, 1fr)'
-                : 'auto minmax(260px, 1fr)',
+                ? 'auto 180px minmax(260px, 1fr) 150px 150px'
+                : 'auto minmax(260px, 1fr) 150px 150px',
             gap: '10px',
             alignItems: 'center',
             direction: 'rtl',
@@ -777,6 +781,28 @@ export default function PurchaseHistoryPage() {
             }
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            style={{
+              ...inputStyle,
+              height: '38px',
+            }}
+          />
+
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            title="من تاريخ"
+            style={{
+              ...inputStyle,
+              height: '38px',
+            }}
+          />
+
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            title="إلى تاريخ"
             style={{
               ...inputStyle,
               height: '38px',

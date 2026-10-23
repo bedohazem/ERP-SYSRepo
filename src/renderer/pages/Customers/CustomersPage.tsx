@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuthStore } from '../../store/auth.store';
 import {
   CUSTOMER_PAYMENT_METHOD_OPTIONS,
@@ -130,6 +130,8 @@ export default function CustomersPage() {
     total_open: 0,
   });
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const customersRequestIdRef = useRef(0);
   const [showDebtorsOnly, setShowDebtorsOnly] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -187,9 +189,10 @@ export default function CustomersPage() {
 
   async function loadCustomers(
     page = customerPage,
-    searchValue = query,
+    searchValue = debouncedQuery,
     debtorsOnly = showDebtorsOnly,
   ) {
+    const requestId = ++customersRequestIdRef.current;
     setLoadingCustomers(true);
 
     try {
@@ -199,11 +202,15 @@ export default function CustomersPage() {
         search: searchValue.trim() || undefined,
 
         debtors_only: debtorsOnly,
-
+        include_summary: false,
         limit: SYSTEM_PAGE_SIZE,
 
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
       });
+
+      if (requestId !== customersRequestIdRef.current) {
+        return;
+      }
 
       const total = Number(result.total || 0);
 
@@ -248,38 +255,6 @@ export default function CustomersPage() {
       setCustomers(normalizedRows);
       setCustomersTotal(total);
       setCustomerPage(safePage);
-
-      setDebtSummary({
-        totalDebt: Number(result.summary?.total_debt || 0),
-
-        debtorsCount: Number(result.summary?.debtors_count || 0),
-
-        topDebtor: result.summary?.top_debtor || null,
-
-        aging: {
-          days_0_30: Number(result.summary?.aging?.days_0_30 || 0),
-
-          days_31_60: Number(result.summary?.aging?.days_31_60 || 0),
-
-          days_61_90: Number(result.summary?.aging?.days_61_90 || 0),
-
-          days_90_plus: Number(result.summary?.aging?.days_90_plus || 0),
-
-          total: Number(result.summary?.aging?.total || 0),
-        },
-      });
-
-      setDueSummary({
-        overdue: Number(result.summary?.due?.overdue || 0),
-
-        due_today: Number(result.summary?.due?.due_today || 0),
-
-        due_soon: Number(result.summary?.due?.due_soon || 0),
-
-        without_due_date: Number(result.summary?.due?.without_due_date || 0),
-
-        total_open: Number(result.summary?.due?.total_open || 0),
-      });
     } catch (error) {
       console.error('Failed to load customers:', error);
 
@@ -323,15 +298,64 @@ export default function CustomersPage() {
     }
   }
 
+  async function loadCustomerSummary() {
+    try {
+      const result = await window.api.listCustomers({
+        limit: 1,
+        offset: 0,
+        include_summary: true,
+      });
+
+      if (!result.summary) {
+        return;
+      }
+
+      setDebtSummary({
+        totalDebt: Number(result.summary.total_debt || 0),
+
+        debtorsCount: Number(result.summary.debtors_count || 0),
+
+        topDebtor: result.summary.top_debtor || null,
+
+        aging: {
+          days_0_30: Number(result.summary.aging?.days_0_30 || 0),
+          days_31_60: Number(result.summary.aging?.days_31_60 || 0),
+          days_61_90: Number(result.summary.aging?.days_61_90 || 0),
+          days_90_plus: Number(result.summary.aging?.days_90_plus || 0),
+          total: Number(result.summary.aging?.total || 0),
+        },
+      });
+
+      setDueSummary({
+        overdue: Number(result.summary.due?.overdue || 0),
+        due_today: Number(result.summary.due?.due_today || 0),
+        due_soon: Number(result.summary.due?.due_soon || 0),
+        without_due_date: Number(result.summary.due?.without_due_date || 0),
+        total_open: Number(result.summary.due?.total_open || 0),
+      });
+    } catch (error) {
+      console.error('Failed to load customer summary:', error);
+    }
+  }
+
   useEffect(() => {
-    const handle = setTimeout(() => {
-      setCustomerPage(1);
+    const handle = window.setTimeout(() => {
+      setDebouncedQuery(query.trim());
+    }, 150);
 
-      void loadCustomers(1, query, showDebtorsOnly);
-    }, 250);
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [query]);
 
-    return () => clearTimeout(handle);
-  }, [query, showDebtorsOnly]);
+  useEffect(() => {
+    setCustomerPage(1);
+    void loadCustomers(1, debouncedQuery, showDebtorsOnly);
+  }, [debouncedQuery, showDebtorsOnly]);
+
+  useEffect(() => {
+    void loadCustomerSummary();
+  }, []);
 
   useEffect(() => {
     if (!message) return;
@@ -445,7 +469,7 @@ export default function CustomersPage() {
 
       setForm(emptyForm);
       setEditingId(null);
-      await loadCustomers(customerPage);
+      await Promise.all([loadCustomers(customerPage), loadCustomerSummary()]);
     } catch (error) {
       console.error('Failed to save customer:', error);
 
@@ -492,7 +516,7 @@ export default function CustomersPage() {
 
       setDeleteTarget(null);
       setMessage('تم حذف العميل');
-      await loadCustomers(customerPage);
+      await Promise.all([loadCustomers(customerPage), loadCustomerSummary()]);
     } catch (error: any) {
       console.error('Failed to delete customer:', error);
 
@@ -549,7 +573,7 @@ export default function CustomersPage() {
       });
 
       await openHistory(selectedCustomer.customer.id);
-      await loadCustomers(customerPage);
+      await Promise.all([loadCustomers(customerPage), loadCustomerSummary()]);
       setMessage('تم تعديل النقاط');
     } catch (error) {
       console.error('Failed to adjust points:', error);
@@ -608,7 +632,7 @@ export default function CustomersPage() {
       setPaymentAmount('');
       setPaymentNotes('');
 
-      await loadCustomers(customerPage);
+      await Promise.all([loadCustomers(customerPage), loadCustomerSummary()]);
 
       if (statementData?.customer?.id === paymentCustomer.id) {
         const data = await window.api.getCustomerStatement(paymentCustomer.id);
@@ -802,7 +826,7 @@ export default function CustomersPage() {
       setPaymentActionAdminUsername('');
       setPaymentActionRequirePassword(false);
 
-      await loadCustomers(customerPage);
+      await Promise.all([loadCustomers(customerPage), loadCustomerSummary()]);
 
       if (customerId) {
         const data = await window.api.getCustomerStatement(customerId);

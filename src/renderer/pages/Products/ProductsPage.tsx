@@ -127,6 +127,7 @@ type ProductEditMode = 'edit' | 'addVariant';
 
 export default function ProductsPage() {
   const pageRef = useRef<HTMLDivElement | null>(null);
+  const productsRequestIdRef = useRef(0);
   const [isCompact, setIsCompact] = useState(false);
   const [pageWidth, setPageWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1200,
@@ -147,6 +148,7 @@ export default function ProductsPage() {
   const [productsTotal, setProductsTotal] = useState(0);
   const [productPage, setProductPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [showCreate, setShowCreate] = useState(false);
   const [activeTab, setActiveTab] = useState<ProductsTab>('list');
@@ -358,45 +360,78 @@ export default function ProductsPage() {
     }
   }
 
+  async function loadStaticData() {
+    try {
+      const cachedLicenseStatus = window.__APP_LICENSE_STATUS__;
+
+      const [cats, barcodeSettings, storeStatus] = await Promise.all([
+        window.api.getCategories(),
+
+        window.api.getBarcodePrintSettings(),
+
+        cachedLicenseStatus
+          ? Promise.resolve(cachedLicenseStatus)
+          : window.api.getLicenseStatus(),
+      ]);
+
+      setCategories(Array.isArray(cats) ? cats : []);
+
+      setPrintSettings(barcodeSettings);
+
+      setBarcodeStoreName(
+        String(storeStatus?.app_name || 'ERP Store').trim() || 'ERP Store',
+      );
+    } catch (error) {
+      console.error('Failed to load products static data:', error);
+    }
+  }
+
   async function loadData(page = productPage) {
+    const requestId = ++productsRequestIdRef.current;
+
     setLoading(true);
 
     try {
       const safePage = Math.max(1, Number(page || 1));
 
-      const [cats, productResult, barcodeSettings, storeStatus] =
-        await Promise.all([
-          window.api.getCategories(),
+      const productResult = await window.api.getProductsPage({
+        search: debouncedSearch,
 
-          window.api.getProductsPage({
-            search,
-            includeInactive,
-            categoryId: categoryFilter,
-            limit: SYSTEM_PAGE_SIZE,
-            offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
-          }),
+        includeInactive,
 
-          window.api.getBarcodePrintSettings(),
-          window.api.getLicenseStatus(),
-        ]);
+        categoryId: categoryFilter,
 
-      setCategories(Array.isArray(cats) ? cats : []);
+        limit: SYSTEM_PAGE_SIZE,
+
+        offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
+      });
+
+      /*
+       * لو المستخدم غيّر الفلتر بسرعة
+       * لا نسمح لنتيجة طلب أقدم
+       * إنها تغطي نتيجة الطلب الأحدث.
+       */
+      if (requestId !== productsRequestIdRef.current) {
+        return;
+      }
 
       setProducts(Array.isArray(productResult.rows) ? productResult.rows : []);
 
       setProductsTotal(Number(productResult.total || 0));
 
       setProductPage(safePage);
-      setPrintSettings(barcodeSettings);
-      setBarcodeStoreName(
-        String(storeStatus?.app_name || 'ERP Store').trim() || 'ERP Store',
-      );
     } catch (error) {
+      if (requestId !== productsRequestIdRef.current) {
+        return;
+      }
+
       console.error('Failed to load products page data:', error);
 
       showMessage('error', 'حدث خطأ أثناء تحميل المنتجات');
     } finally {
-      setLoading(false);
+      if (requestId === productsRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }
 
@@ -537,17 +572,23 @@ export default function ProductsPage() {
   }, []);
 
   useEffect(() => {
-    void loadData(1);
+    void loadStaticData();
   }, []);
 
   useEffect(() => {
-    const handle = setTimeout(() => {
-      setProductPage(1);
-      void loadData(1);
-    }, 250);
+    const handle = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 150);
 
-    return () => clearTimeout(handle);
-  }, [search, includeInactive, categoryFilter]);
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [search]);
+
+  useEffect(() => {
+    setProductPage(1);
+    void loadData(1);
+  }, [debouncedSearch, includeInactive, categoryFilter]);
 
   useEffect(() => {
     setVariantsMap({});

@@ -581,8 +581,35 @@ export default function CashPage() {
   }
 
   useEffect(() => {
-    void loadData(1);
-  }, []);
+    setMovementsPage(1);
+  }, [
+    dateFrom,
+    dateTo,
+    filterTypes,
+    filterDirections,
+    filterPaymentMethods,
+    search,
+    showCorrectedMovements,
+  ]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      void loadData(movementsPage, showCorrectedMovements);
+    }, 200);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [
+    movementsPage,
+    dateFrom,
+    dateTo,
+    filterTypes,
+    filterDirections,
+    filterPaymentMethods,
+    search,
+    showCorrectedMovements,
+  ]);
 
   useEffect(() => {
     function handleCashShiftChanged() {
@@ -1297,13 +1324,7 @@ export default function CashPage() {
             type="checkbox"
             checked={showCorrectedMovements}
             onChange={(e) => {
-              const checked = e.target.checked;
-
-              setShowCorrectedMovements(checked);
-
-              setMovementsPage(1);
-
-              void loadData(1, checked);
+              setShowCorrectedMovements(e.target.checked);
             }}
             style={{
               width: '16px',
@@ -1319,17 +1340,6 @@ export default function CashPage() {
           <button
             type="button"
             onClick={() => {
-              setMovementsPage(1);
-              void loadData(1);
-            }}
-            style={{ ...primaryButtonStyle, height: '36px', padding: '0 12px' }}
-          >
-            فلتر
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
               setDateFrom('');
               setDateTo('');
               setFilterTypes([]);
@@ -1338,7 +1348,6 @@ export default function CashPage() {
               setSearch('');
               setShowCorrectedMovements(false);
               setMovementsPage(1);
-              setTimeout(() => void loadData(1, false), 0);
             }}
             style={{
               ...secondaryButtonStyle,
@@ -1399,7 +1408,7 @@ export default function CashPage() {
           totalItems={movementsTotal}
           loading={loading}
           onPageChange={(page) => {
-            void loadData(page);
+            setMovementsPage(page);
           }}
         />
 

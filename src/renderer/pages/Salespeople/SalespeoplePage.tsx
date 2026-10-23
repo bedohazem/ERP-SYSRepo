@@ -69,13 +69,17 @@ export default function SalespeoplePage() {
   const [month, setMonth] = useState(getCurrentMonth());
 
   const [rows, setRows] = useState<SalespersonPerformance[]>([]);
-
+  const [salespeoplePage, setSalespeoplePage] = useState(1);
   const [loading, setLoading] = useState(false);
 
   const [saving, setSaving] = useState(false);
 
   const [formName, setFormName] = useState('');
+  const [salespersonSearch, setSalespersonSearch] = useState('');
 
+  const [targetFilter, setTargetFilter] = useState<
+    'all' | 'with_target' | 'without_target' | 'achieved' | 'pending'
+  >('all');
   const [editingId, setEditingId] = useState<number | null>(null);
 
   const [targetDrafts, setTargetDrafts] = useState<Record<number, string>>({});
@@ -370,18 +374,74 @@ export default function SalespeoplePage() {
     }
   }, [selectedSalesperson?.id, month]);
 
+  const filteredRows = useMemo(() => {
+    const term = salespersonSearch.trim().toLowerCase();
+
+    return rows.filter((row) => {
+      const matchesSearch =
+        !term ||
+        row.name.toLowerCase().includes(term) ||
+        String(Number(row.target_amount || 0)).includes(term);
+
+      if (!matchesSearch) {
+        return false;
+      }
+
+      const target = Number(row.target_amount || 0);
+      const achievement = Number(row.achievement_percent || 0);
+
+      switch (targetFilter) {
+        case 'with_target':
+          return target > 0;
+
+        case 'without_target':
+          return target <= 0;
+
+        case 'achieved':
+          return target > 0 && achievement >= 100;
+
+        case 'pending':
+          return target > 0 && achievement < 100;
+
+        default:
+          return true;
+      }
+    });
+  }, [rows, salespersonSearch, targetFilter]);
+
+  const pagedSalespeopleRows = useMemo(() => {
+    const start = (salespeoplePage - 1) * SYSTEM_PAGE_SIZE;
+
+    return filteredRows.slice(start, start + SYSTEM_PAGE_SIZE);
+  }, [filteredRows, salespeoplePage]);
+
+  useEffect(() => {
+    setSalespeoplePage(1);
+  }, [salespersonSearch, targetFilter, month]);
+
+  useEffect(() => {
+    const totalPages = Math.max(
+      1,
+      Math.ceil(filteredRows.length / SYSTEM_PAGE_SIZE),
+    );
+
+    if (salespeoplePage > totalPages) {
+      setSalespeoplePage(totalPages);
+    }
+  }, [filteredRows.length, salespeoplePage]);
+
   const summary = useMemo(() => {
-    const target = rows.reduce(
+    const target = filteredRows.reduce(
       (total, row) => total + Number(row.target_amount || 0),
       0,
     );
 
-    const netSales = rows.reduce(
+    const netSales = filteredRows.reduce(
       (total, row) => total + Number(row.net_sales || 0),
       0,
     );
 
-    const salesCount = rows.reduce(
+    const salesCount = filteredRows.reduce(
       (total, row) => total + Number(row.sales_count || 0),
       0,
     );
@@ -395,7 +455,7 @@ export default function SalespeoplePage() {
       salesCount,
       achievement,
     };
-  }, [rows]);
+  }, [filteredRows]);
 
   return (
     <div
@@ -464,29 +524,89 @@ export default function SalespeoplePage() {
           </p>
         </div>
 
-        <label
+        <div
           style={{
-            display: 'grid',
-
-            gap: '6px',
-
-            fontWeight: 800,
-
-            color: '#cbd5e1',
+            display: 'flex',
+            gap: '10px',
+            flexWrap: 'wrap',
+            alignItems: 'end',
+            direction: 'rtl',
           }}
         >
-          شهر المتابعة
-          <input
-            type="month"
-            value={month}
-            onChange={(event) => setMonth(event.target.value)}
+          <label
             style={{
-              ...inputStyle,
-
-              width: '190px',
+              display: 'grid',
+              gap: '6px',
+              fontWeight: 800,
+              color: '#cbd5e1',
             }}
-          />
-        </label>
+          >
+            بحث
+            <input
+              value={salespersonSearch}
+              onChange={(event) => setSalespersonSearch(event.target.value)}
+              placeholder="اسم البائع أو قيمة التارجت"
+              style={{
+                ...inputStyle,
+                width: '220px',
+              }}
+            />
+          </label>
+
+          <label
+            style={{
+              display: 'grid',
+              gap: '6px',
+              fontWeight: 800,
+              color: '#cbd5e1',
+            }}
+          >
+            التارجت
+            <select
+              value={targetFilter}
+              onChange={(event) =>
+                setTargetFilter(
+                  event.target.value as
+                    | 'all'
+                    | 'with_target'
+                    | 'without_target'
+                    | 'achieved'
+                    | 'pending',
+                )
+              }
+              style={{
+                ...inputStyle,
+                width: '170px',
+              }}
+            >
+              <option value="all">كل البائعين</option>
+              <option value="with_target">عليه تارجت</option>
+              <option value="without_target">بدون تارجت</option>
+              <option value="achieved">حقق التارجت</option>
+              <option value="pending">لم يحقق التارجت</option>
+            </select>
+          </label>
+
+          <label
+            style={{
+              display: 'grid',
+              gap: '6px',
+              fontWeight: 800,
+              color: '#cbd5e1',
+            }}
+          >
+            شهر المتابعة
+            <input
+              type="month"
+              value={month}
+              onChange={(event) => setMonth(event.target.value)}
+              style={{
+                ...inputStyle,
+                width: '190px',
+              }}
+            />
+          </label>
+        </div>
       </section>
 
       <section style={summaryGridStyle}>
@@ -611,6 +731,15 @@ export default function SalespeoplePage() {
             paddingRight: '18px',
           }}
         >
+          <PaginationBar
+            page={salespeoplePage}
+            totalItems={filteredRows.length}
+            loading={loading}
+            onPageChange={(page) => {
+              setSalespeoplePage(page);
+            }}
+          />
+
           <table style={tableStyle}>
             <thead>
               <tr>
@@ -635,20 +764,20 @@ export default function SalespeoplePage() {
             </thead>
 
             <tbody>
-              {loading && rows.length === 0 ? (
+              {loading && filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={9} style={emptyCellStyle}>
                     جاري تحميل البائعين...
                   </td>
                 </tr>
-              ) : rows.length === 0 ? (
+              ) : filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={9} style={emptyCellStyle}>
                     لا يوجد بائعين
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => (
+                pagedSalespeopleRows.map((row) => (
                   <tr
                     key={row.id}
                     style={{

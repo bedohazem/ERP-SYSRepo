@@ -2640,6 +2640,8 @@ export function updatePurchaseReturn(input: UpdatePurchaseReturnInput) {
 export function listPurchaseInvoices(input?: {
   search?: string;
   payment_filter?: 'all' | 'paid' | 'unpaid';
+  date_from?: string;
+  date_to?: string;
   limit?: number;
   offset?: number;
 }) {
@@ -2647,6 +2649,8 @@ export function listPurchaseInvoices(input?: {
 
   const search = input?.search?.trim() || '';
   const paymentFilter = input?.payment_filter ?? 'all';
+  const dateFrom = input?.date_from?.trim() || '';
+  const dateTo = input?.date_to?.trim() || '';
   const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 300);
   const offset = Math.max(Number(input?.offset || 0), 0);
 
@@ -2660,6 +2664,27 @@ export function listPurchaseInvoices(input?: {
   ];
   const params: any[] = [];
 
+  if (dateFrom) {
+    where.push(`
+    COALESCE(
+      NULLIF(pi.business_date, ''),
+      date(pi.created_at, 'localtime')
+    ) >= ?
+  `);
+
+    params.push(dateFrom);
+  }
+
+  if (dateTo) {
+    where.push(`
+    COALESCE(
+      NULLIF(pi.business_date, ''),
+      date(pi.created_at, 'localtime')
+    ) <= ?
+  `);
+
+    params.push(dateTo);
+  }
   const invoiceNumberMatch = search.match(/^#\s*(\d+)$/);
 
   if (invoiceNumberMatch) {
@@ -2751,17 +2776,43 @@ export function listPurchaseInvoices(input?: {
 
 export function listPurchaseReturns(input?: {
   search?: string;
+  date_from?: string;
+  date_to?: string;
   limit?: number;
   offset?: number;
 }) {
   const db = getDb();
 
   const search = input?.search?.trim() || '';
+  const dateFrom = input?.date_from?.trim() || '';
+  const dateTo = input?.date_to?.trim() || '';
   const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 300);
   const offset = Math.max(Number(input?.offset || 0), 0);
 
   const where: string[] = [];
   const params: any[] = [];
+
+  if (dateFrom) {
+    where.push(`
+      COALESCE(
+        NULLIF(pr.business_date, ''),
+        date(pr.created_at, 'localtime')
+      ) >= ?
+    `);
+
+    params.push(dateFrom);
+  }
+
+  if (dateTo) {
+    where.push(`
+      COALESCE(
+        NULLIF(pr.business_date, ''),
+        date(pr.created_at, 'localtime')
+      ) <= ?
+    `);
+
+    params.push(dateTo);
+  }
 
   if (search) {
     where.push(`

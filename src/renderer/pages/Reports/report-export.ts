@@ -18,6 +18,7 @@ export type ReportsExportData = {
   dailySales: any[];
   paymentMethods: any[];
   cashierSales: any[];
+  salespersonSales: any[];
   lowStock: any[];
   topCustomers: any[];
 };
@@ -144,10 +145,10 @@ function buildSections(data: ReportsExportData): ExportSection[] {
     },
 
     {
-      title: 'مبيعات الكاشير',
+      title: 'مبيعات الكاشير / البائع',
 
       columns: [
-        'الكاشير',
+        'الكاشير / البائع',
         'عدد الفواتير',
         'مبيعات الفواتير',
         'عدد المرتجعات',
@@ -157,8 +158,8 @@ function buildSections(data: ReportsExportData): ExportSection[] {
         'صافي المبيعات',
       ],
 
-      rows: data.cashierSales.map((row) => [
-        row.cashier_name,
+      rows: data.salespersonSales.map((row) => [
+        row.salesperson_name,
 
         Number(row.sales_count || 0),
 

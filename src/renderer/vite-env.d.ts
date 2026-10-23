@@ -1386,6 +1386,7 @@ declare global {
       listCustomers: (input?: {
         search?: string;
         debtors_only?: boolean;
+        include_summary?: boolean;
         limit?: number;
         offset?: number;
       }) => Promise<{
@@ -1999,6 +2000,23 @@ declare global {
 
           net_sales: number;
         }>;
+
+        salespersonSales: Array<{
+          salesperson_id: number | null;
+
+          salesperson_name: string;
+
+          sales_count: number;
+          sales_total: number;
+
+          returns_count: number;
+          returns_total: number;
+
+          exchange_count: number;
+          exchange_adjustment: number;
+
+          net_sales: number;
+        }>;
         lowStock: Array<any>;
         topCustomers: Array<any>;
       }>;
@@ -2561,7 +2579,8 @@ declare global {
         search?: string;
 
         payment_filter?: 'all' | 'paid' | 'unpaid';
-
+        date_from?: string;
+        date_to?: string;
         limit?: number;
         offset?: number;
       }) => Promise<{
@@ -2689,6 +2708,8 @@ declare global {
 
       listPurchaseReturns: (input?: {
         search?: string;
+        date_from?: string;
+        date_to?: string;
         limit?: number;
         offset?: number;
       }) => Promise<{

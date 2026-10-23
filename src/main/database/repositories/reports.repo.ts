@@ -267,6 +267,14 @@ export function getReportsSummary(input?: ReportFilter) {
     'x.business_date',
   );
 
+  const salespersonCombinedWhere = buildWhere(
+    'x',
+    input,
+    [],
+    'x.user_id',
+    'x.business_date',
+  );
+
   const salesSummary = db
     .prepare(
       `
@@ -1758,6 +1766,207 @@ export function getReportsSummary(input?: ReportFilter) {
       net_sales: Number(row.net_sales || 0),
     }));
 
+  const salespersonSales = db
+    .prepare(
+      `
+      SELECT
+        COALESCE(
+          MAX(x.salesperson_id),
+          MAX(cashier_sp.id)
+        ) AS salesperson_id,
+
+        COALESCE(
+          MAX(
+            NULLIF(
+              TRIM(x.salesperson_name),
+              ''
+            )
+          ),
+          MAX(sp.name),
+          MAX(cashier_sp.name),
+          MAX(u.name),
+          'بائع غير معروف'
+        ) AS salesperson_name,
+
+        IFNULL(
+          SUM(x.sales_count),
+          0
+        ) AS sales_count,
+
+        IFNULL(
+          SUM(x.sale_amount),
+          0
+        ) AS sales_total,
+
+        IFNULL(
+          SUM(x.returns_count),
+          0
+        ) AS returns_count,
+
+        IFNULL(
+          SUM(x.return_amount),
+          0
+        ) AS returns_total,
+
+        IFNULL(
+          SUM(x.exchange_count),
+          0
+        ) AS exchange_count,
+
+        IFNULL(
+          SUM(x.exchange_adjustment),
+          0
+        ) AS exchange_adjustment,
+
+        IFNULL(
+          SUM(
+            x.sale_amount
+            - x.return_amount
+            + x.exchange_adjustment
+          ),
+          0
+        ) AS net_sales
+
+      FROM (
+        SELECT
+          s.salesperson_id,
+          s.salesperson_name,
+          s.user_id,
+
+          ${saleBusinessDate}
+            AS business_date,
+
+          1 AS sales_count,
+          s.grand_total AS sale_amount,
+
+          0 AS returns_count,
+          0 AS return_amount,
+
+          0 AS exchange_count,
+          0 AS exchange_adjustment
+
+        FROM sales s
+
+        WHERE
+          IFNULL(s.type, 'sale') = 'sale'
+          AND s.cancelled_at IS NULL
+
+        UNION ALL
+
+        SELECT
+          os.salesperson_id,
+          os.salesperson_name,
+          os.user_id,
+
+          ${returnBusinessDate}
+            AS business_date,
+
+          0 AS sales_count,
+          0 AS sale_amount,
+
+          1 AS returns_count,
+          sr.refund_amount AS return_amount,
+
+          0 AS exchange_count,
+          0 AS exchange_adjustment
+
+        FROM sale_returns sr
+
+        JOIN sales os
+          ON os.id = sr.original_sale_id
+
+        WHERE
+          sr.cancelled_at IS NULL
+          AND os.cancelled_at IS NULL
+          AND IFNULL(os.type, 'sale') = 'sale'
+
+        UNION ALL
+
+        SELECT
+          os.salesperson_id,
+          os.salesperson_name,
+          os.user_id,
+
+          ${exchangeBusinessDate}
+            AS business_date,
+
+          0 AS sales_count,
+          0 AS sale_amount,
+
+          0 AS returns_count,
+          0 AS return_amount,
+
+          1 AS exchange_count,
+          se.difference_amount AS exchange_adjustment
+
+        FROM sale_exchanges se
+
+        JOIN sales os
+          ON os.id = se.original_sale_id
+
+        WHERE
+          se.cancelled_at IS NULL
+          AND os.cancelled_at IS NULL
+          AND IFNULL(os.type, 'sale') = 'sale'
+      ) x
+
+        LEFT JOIN salespeople sp
+          ON sp.id = x.salesperson_id
+
+        LEFT JOIN salespeople cashier_sp
+          ON
+            x.salesperson_id IS NULL
+            AND cashier_sp.user_id = x.user_id
+
+        LEFT JOIN users u
+          ON u.id = x.user_id
+
+      ${salespersonCombinedWhere.whereSql}
+
+      GROUP BY
+        CASE
+          WHEN COALESCE(
+            x.salesperson_id,
+            cashier_sp.id
+          ) IS NOT NULL
+            THEN
+              'salesperson:' ||
+              COALESCE(
+                x.salesperson_id,
+                cashier_sp.id
+              )
+
+          ELSE
+            'user:' || x.user_id
+        END
+
+      ORDER BY
+        net_sales DESC,
+        salesperson_name ASC
+      `,
+    )
+    .all(...salespersonCombinedWhere.params)
+    .map((row: any) => ({
+      salesperson_id:
+        row.salesperson_id === null ? null : Number(row.salesperson_id),
+
+      salesperson_name: String(row.salesperson_name || 'بائع غير معروف'),
+
+      sales_count: Number(row.sales_count || 0),
+
+      sales_total: Number(row.sales_total || 0),
+
+      returns_count: Number(row.returns_count || 0),
+
+      returns_total: Number(row.returns_total || 0),
+
+      exchange_count: Number(row.exchange_count || 0),
+
+      exchange_adjustment: Number(row.exchange_adjustment || 0),
+
+      net_sales: Number(row.net_sales || 0),
+    }));
+
   const lowStock = db
     .prepare(
       `
@@ -2046,6 +2255,7 @@ export function getReportsSummary(input?: ReportFilter) {
     dailySales,
     paymentMethods,
     cashierSales,
+    salespersonSales,
     lowStock,
     topCustomers,
   };

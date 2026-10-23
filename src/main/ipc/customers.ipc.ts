@@ -105,6 +105,10 @@ export function registerCustomersIpc(): void {
           'عرض العملاء المدينين فقط',
         ) ?? false,
 
+      include_summary:
+        optionalBooleanValue(payload.include_summary, 'تحميل ملخص العملاء') ??
+        true,
+
       limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
 
       offset:
