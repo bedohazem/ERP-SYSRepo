@@ -248,6 +248,126 @@ describe('purchases repository', () => {
     seedStoreCashBalance();
   }, 30_000);
 
+  it('rounds only the final purchase payable while preserving exact inventory cost', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 45.5,
+        },
+      ],
+    });
+
+    expect(purchase.exact_total_amount).toBe(45.5);
+
+    expect(purchase.total_amount).toBe(46);
+
+    expect(purchase.rounding_adjustment).toBe(0.5);
+
+    expect(purchase.remaining_amount).toBe(46);
+
+    expect(getSupplierBalance(supplierId)).toBe(46);
+
+    const state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.buy_price)).toBe(45.5);
+
+    expect(Number(state.average_cost)).toBe(45.5);
+
+    expect(Number(state.inventory_value)).toBe(45.5);
+  });
+
+  it('rounds purchase payable down below half a pound', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 45.49,
+        },
+      ],
+    });
+
+    expect(purchase.exact_total_amount).toBe(45.49);
+
+    expect(purchase.total_amount).toBe(45);
+
+    expect(purchase.rounding_adjustment).toBe(-0.49);
+
+    expect(purchase.remaining_amount).toBe(45);
+
+    expect(getSupplierBalance(supplierId)).toBe(45);
+
+    const state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.inventory_value)).toBe(45.49);
+  });
+
+  it('preserves fractional purchase cost in inventory valuation', () => {
+    createProduct({
+      name: 'Fractional Cost Product',
+
+      category_id: null,
+
+      image_path: null,
+
+      description: null,
+
+      variants: [
+        {
+          barcode: 'PURCHASE-FRACTIONAL-COST',
+
+          size: 'M',
+
+          color: 'Black',
+
+          buy_price: 20.5,
+
+          sell_price: 100,
+
+          min_stock: 1,
+
+          opening_qty: 3,
+        },
+      ],
+    });
+
+    const state = getVariantCostState('PURCHASE-FRACTIONAL-COST');
+
+    expect(Number(state.buy_price)).toBe(20.5);
+
+    expect(Number(state.average_cost)).toBe(20.5);
+
+    expect(Number(state.inventory_value)).toBe(61.5);
+
+    expect(Number(state.stock)).toBe(3);
+  });
+
   it('rejects missing supplier_id', () => {
     const variant = seedPurchaseProduct();
 
@@ -377,7 +497,7 @@ describe('purchases repository', () => {
     expect(invoice.payments[0].amount).toBe(500);
   });
 
-  it('stores purchase money as whole Egyptian pounds at repository boundary', () => {
+  it('preserves exact purchase cost while settling supplier money in whole pounds', () => {
     const supplierId = createTestSupplier();
 
     const variant = seedPurchaseProduct();
@@ -402,7 +522,11 @@ describe('purchases repository', () => {
       ],
     });
 
+    expect(result.exact_total_amount).toBe(2100.69);
+
     expect(result.total_amount).toBe(2101);
+
+    expect(result.rounding_adjustment).toBe(0.31);
 
     expect(result.paid_amount).toBe(2101);
 
@@ -410,13 +534,469 @@ describe('purchases repository', () => {
 
     const invoice = getPurchaseInvoice(result.purchaseId) as any;
 
-    expect(invoice.items[0].unit_cost).toBe(2101);
+    expect(invoice.items[0].unit_cost).toBe(2100.69);
 
-    expect(invoice.items[0].line_total).toBe(2101);
+    expect(invoice.items[0].line_total).toBe(2100.69);
+
+    expect(Number(invoice.purchase.exact_total_amount)).toBe(2100.69);
+
+    expect(Number(invoice.purchase.rounding_adjustment)).toBe(0.31);
 
     expect(getSupplierTotalPurchased(supplierId)).toBe(2101);
 
     expect(getCashMovementTotal('out')).toBe(2101);
+  });
+
+  it('recalculates rounded supplier settlement from remaining exact value across partial purchase returns', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 2,
+
+          unit_cost: 22.75,
+        },
+      ],
+    });
+
+    expect(purchase.exact_total_amount).toBe(45.5);
+
+    expect(purchase.total_amount).toBe(46);
+
+    expect(purchase.rounding_adjustment).toBe(0.5);
+
+    expect(getSupplierBalance(supplierId)).toBe(46);
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    const purchaseItemId = Number(invoice.items[0].id);
+
+    const firstReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(firstReturn.exact_total_amount).toBe(22.75);
+
+    expect(firstReturn.total_amount).toBe(23);
+
+    expect(firstReturn.rounding_adjustment).toBe(0.25);
+
+    expect(firstReturn.debt_reduction_amount).toBe(23);
+
+    expect(getSupplierBalance(supplierId)).toBe(23);
+
+    let currentInvoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(currentInvoice.purchase.remaining_amount)).toBe(23);
+
+    const secondReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(secondReturn.exact_total_amount).toBe(22.75);
+
+    expect(secondReturn.total_amount).toBe(23);
+
+    expect(secondReturn.rounding_adjustment).toBe(0.25);
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+
+    currentInvoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(currentInvoice.purchase.remaining_amount)).toBe(0);
+
+    const state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.stock)).toBe(0);
+
+    expect(Number(state.inventory_value)).toBe(0);
+  });
+
+  it('rounds supplier payment to whole pounds against rounded purchase balance', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 45.5,
+        },
+      ],
+    });
+
+    expect(purchase.total_amount).toBe(46);
+
+    expect(getSupplierBalance(supplierId)).toBe(46);
+
+    const payment = recordSupplierPayment({
+      supplier_id: supplierId,
+
+      purchase_id: purchase.purchaseId,
+
+      amount: 45.5,
+
+      payment_method: 'store_cash',
+
+      actor_id: 1,
+    });
+
+    expect(payment.paid_amount).toBe(46);
+
+    expect(payment.allocations[0].amount).toBe(46);
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(invoice.purchase.paid_amount)).toBe(46);
+
+    expect(Number(invoice.purchase.remaining_amount)).toBe(0);
+
+    expect(invoice.purchase.payment_status).toBe('paid');
+  });
+
+  it('restores fractional purchase rounding correctly when cancelling a purchase return', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 2,
+
+          unit_cost: 22.75,
+        },
+      ],
+    });
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    const purchaseReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(invoice.items[0].id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(purchaseReturn.exact_total_amount).toBe(22.75);
+
+    expect(purchaseReturn.total_amount).toBe(23);
+
+    expect(getSupplierBalance(supplierId)).toBe(23);
+
+    cancelPurchaseReturn({
+      return_id: purchaseReturn.return_id,
+
+      reason: 'Undo fractional return',
+
+      actor_id: 1,
+    });
+
+    expect(getSupplierBalance(supplierId)).toBe(46);
+
+    expect(getSupplierTotalPurchased(supplierId)).toBe(46);
+
+    const restoredInvoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(restoredInvoice.purchase.remaining_amount)).toBe(46);
+
+    expect(Number(restoredInvoice.items[0].returned_quantity)).toBe(0);
+
+    const state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.stock)).toBe(2);
+
+    expect(Number(state.inventory_value)).toBe(45.5);
+  });
+
+  it('recalculates settlement safely when updating a fractional purchase return', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 3,
+
+          unit_cost: 15.5,
+        },
+      ],
+    });
+
+    /*
+     * 3 × 15.5 = 46.5
+     * المستحق = 47
+     */
+    expect(purchase.total_amount).toBe(47);
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    const purchaseItemId = Number(invoice.items[0].id);
+
+    const firstReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    /*
+     * قبل المرتجع = 47
+     * المتبقي الدقيق = 31
+     * المستحق الجديد = 31
+     *
+     * إذن تسوية المرتجع = 16
+     */
+    expect(firstReturn.exact_total_amount).toBe(15.5);
+
+    expect(firstReturn.total_amount).toBe(16);
+
+    const updated = updatePurchaseReturn({
+      return_id: firstReturn.return_id,
+
+      actor_id: 1,
+
+      reason: 'Correct fractional return quantity',
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+
+          quantity: 2,
+        },
+      ],
+    });
+
+    expect(updated.edited).toBe(true);
+
+    /*
+     * المرتجع الجديد:
+     * 2 × 15.5 = 31
+     *
+     * المتبقي:
+     * 15.5 → مستحق 16
+     *
+     * 47 - 16 = 31
+     */
+    expect(updated.exact_total_amount).toBe(31);
+
+    expect(updated.total_amount).toBe(31);
+
+    expect(getSupplierBalance(supplierId)).toBe(16);
+
+    const currentInvoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(currentInvoice.purchase.remaining_amount)).toBe(16);
+
+    expect(Number(currentInvoice.items[0].returned_quantity)).toBe(2);
+
+    const state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.stock)).toBe(1);
+
+    expect(Number(state.inventory_value)).toBe(15.5);
+  });
+
+  it('preserves fractional previous buy price through purchase edit and cancellation', () => {
+    const supplierId = createTestSupplier();
+
+    createProduct({
+      name: 'Fractional Previous Cost',
+
+      category_id: null,
+
+      image_path: null,
+
+      description: null,
+
+      variants: [
+        {
+          barcode: 'FRACTIONAL-PREVIOUS-COST',
+
+          size: 'M',
+
+          color: 'Black',
+
+          buy_price: 20.5,
+
+          sell_price: 100,
+
+          min_stock: 1,
+
+          opening_qty: 0,
+        },
+      ],
+    });
+
+    const variant = getVariantByBarcode(
+      'FRACTIONAL-PREVIOUS-COST',
+    ) as PurchaseVariantTestRow;
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 30.25,
+        },
+      ],
+    });
+
+    expect(
+      (
+        getVariantByBarcode(
+          'FRACTIONAL-PREVIOUS-COST',
+        ) as PurchaseVariantTestRow
+      ).buy_price,
+    ).toBe(30.25);
+
+    updatePurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      reason: 'Correct fractional cost',
+
+      supplier_id: supplierId,
+
+      sub_total: 31.75,
+
+      discount_type: 'amount',
+
+      discount_input: 0,
+
+      discount_value: 0,
+
+      paid_amount: 0,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 31.75,
+        },
+      ],
+    });
+
+    expect(
+      (
+        getVariantByBarcode(
+          'FRACTIONAL-PREVIOUS-COST',
+        ) as PurchaseVariantTestRow
+      ).buy_price,
+    ).toBe(31.75);
+
+    cancelPurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+
+      reason: 'Cancel corrected purchase',
+
+      actor_id: 1,
+    });
+
+    expect(
+      (
+        getVariantByBarcode(
+          'FRACTIONAL-PREVIOUS-COST',
+        ) as PurchaseVariantTestRow
+      ).buy_price,
+    ).toBe(20.5);
   });
 
   it('creates a partial purchase and increases supplier balance', () => {

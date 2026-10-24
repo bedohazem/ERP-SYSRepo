@@ -1963,6 +1963,10 @@ declare global {
           total_expenses: number;
           total_liability_payments: number;
           total_purchase_invoices: number;
+          total_purchase_exact_amount: number;
+          purchase_rounding_increase: number;
+          purchase_rounding_decrease: number;
+          purchase_rounding_net: number;
           total_manual_deposits: number;
           total_manual_withdrawals: number;
           final_net_profit: number;
@@ -2425,6 +2429,8 @@ declare global {
       }) => Promise<{
         purchaseId: number;
         total_amount: number;
+        exact_total_amount: number;
+        rounding_adjustment: number;
         paid_amount: number;
         remaining_amount: number;
         payment_status: string;
@@ -2586,6 +2592,8 @@ declare global {
         previous_supplier_id: number;
 
         total_amount: number;
+        exact_total_amount: number;
+        rounding_adjustment: number;
         paid_amount: number;
         remaining_amount: number;
         payment_status: string;
@@ -2664,6 +2672,8 @@ declare global {
         purchase_id: number;
         supplier_id: number;
         total_amount: number;
+        exact_total_amount: number;
+        rounding_adjustment: number;
         items_count: number;
         debt_reduction_amount?: number;
         cash_refund_amount?: number;
@@ -2698,6 +2708,8 @@ declare global {
         supplier_id: number;
 
         total_amount: number;
+        exact_total_amount: number;
+        rounding_adjustment: number;
         debt_reduction_amount?: number;
         cash_refund_amount?: number;
 

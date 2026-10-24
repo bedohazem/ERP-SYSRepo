@@ -22,7 +22,11 @@ import {
   getAdminDashboardTodaySummary,
 } from '../../src/main/database/repositories/reports.repo';
 
-import { createPurchaseInvoice } from '../../src/main/database/repositories/purchases.repo';
+import {
+  createPurchaseInvoice,
+  createPurchaseReturn,
+  getPurchaseInvoice,
+} from '../../src/main/database/repositories/purchases.repo';
 
 import { createSupplier } from '../../src/main/database/repositories/suppliers.repo';
 
@@ -114,6 +118,10 @@ type ReportsSummaryTestResult = {
     total_expenses: number;
     total_liability_payments: number;
     total_purchase_invoices: number;
+    total_purchase_exact_amount: number;
+    purchase_rounding_increase: number;
+    purchase_rounding_decrease: number;
+    purchase_rounding_net: number;
     total_manual_deposits: number;
     total_manual_withdrawals: number;
     final_net_profit: number;
@@ -2396,6 +2404,245 @@ describe('reports repository', () => {
     };
 
     expect(Number(saleItem.unit_cost)).toBe(100);
+  });
+
+  it('subtracts positive purchase rounding from final net profit', () => {
+    const variant = seedReportProduct({
+      name: 'Purchase Rounding Profit Product',
+
+      barcode: 'PURCHASE-ROUNDING-PROFIT',
+
+      openingQty: 0,
+
+      buyPrice: 45.5,
+
+      sellPrice: 100,
+    });
+
+    const supplier = createSupplier({
+      name: 'Purchase Rounding Supplier',
+    }) as any;
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplier.id,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 45.5,
+        },
+      ],
+    });
+
+    expect(purchase.rounding_adjustment).toBe(0.5);
+
+    createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 100,
+
+      discount_value: 0,
+
+      grand_total: 100,
+
+      paid: 100,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 100,
+        },
+      ],
+    });
+
+    const report = getReportsSummary() as ReportsSummaryTestResult;
+
+    expect(report.summary.total_purchase_exact_amount).toBe(45.5);
+
+    expect(report.summary.total_purchase_invoices).toBe(46);
+
+    expect(report.summary.purchase_rounding_increase).toBe(0.5);
+
+    expect(report.summary.purchase_rounding_decrease).toBe(0);
+
+    expect(report.summary.purchase_rounding_net).toBe(0.5);
+
+    expect(report.summary.net_profit_after_discounts).toBe(54.5);
+
+    expect(report.summary.final_net_profit).toBe(54);
+  });
+
+  it('adds negative purchase rounding to final net profit', () => {
+    const variant = seedReportProduct({
+      name: 'Purchase Rounding Gain Product',
+
+      barcode: 'PURCHASE-ROUNDING-GAIN',
+
+      openingQty: 0,
+
+      buyPrice: 45.49,
+
+      sellPrice: 100,
+    });
+
+    const supplier = createSupplier({
+      name: 'Purchase Rounding Gain Supplier',
+    }) as any;
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplier.id,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 45.49,
+        },
+      ],
+    });
+
+    expect(purchase.rounding_adjustment).toBe(-0.49);
+
+    const report = getReportsSummary() as ReportsSummaryTestResult;
+
+    expect(report.summary.purchase_rounding_increase).toBe(0);
+
+    expect(report.summary.purchase_rounding_decrease).toBe(0.49);
+
+    expect(report.summary.purchase_rounding_net).toBe(-0.49);
+
+    expect(report.summary.final_net_profit).toBe(0.49);
+  });
+
+  it('reverses purchase rounding progressively when purchase items are returned', () => {
+    const variant = seedReportProduct({
+      name: 'Purchase Return Rounding Product',
+
+      barcode: 'PURCHASE-RETURN-ROUNDING',
+
+      openingQty: 0,
+
+      buyPrice: 22.75,
+
+      sellPrice: 100,
+    });
+
+    const supplier = createSupplier({
+      name: 'Purchase Return Rounding Supplier',
+    }) as any;
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplier.id,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 2,
+
+          unit_cost: 22.75,
+        },
+      ],
+    });
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(invoice.items[0].id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    let report = getReportsSummary() as ReportsSummaryTestResult;
+
+    /*
+     * فاتورة الشراء:
+     * +0.50
+     *
+     * المرتجع:
+     * يعكس +0.25
+     *
+     * المتبقي:
+     * +0.25
+     */
+    expect(report.summary.purchase_rounding_increase).toBe(0.5);
+
+    expect(report.summary.purchase_rounding_decrease).toBe(0.25);
+
+    expect(report.summary.purchase_rounding_net).toBe(0.25);
+
+    expect(report.summary.final_net_profit).toBe(-0.25);
+
+    createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(invoice.items[0].id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    report = getReportsSummary() as ReportsSummaryTestResult;
+
+    /*
+     * رجعنا الفاتورة بالكامل،
+     * لذلك لا يبقى أي أثر
+     * لتقريب الشراء.
+     */
+    expect(report.summary.purchase_rounding_net).toBe(0);
+
+    expect(report.summary.final_net_profit).toBe(0);
   });
 
   it('keeps product discounts reconciled in reports and cashier dashboard', () => {

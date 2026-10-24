@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getPaymentMethodLabel } from '../../utils/payment-method';
 import { useAuthStore } from '../../store/auth.store';
-import { formatMoney, roundMoney } from '../../../shared/money';
+import { formatMoney, roundCost, roundMoney } from '../../../shared/money';
 
 type ReportsData = {
   summary: {
@@ -499,7 +499,7 @@ export default function DashboardPage() {
         <StatCard
           icon="💰"
           title="صافي الربح النهائي"
-          value={money(data.month.summary.final_net_profit)}
+          value={preciseMoney(data.month.summary.final_net_profit)}
           subtitle="بعد الخصومات والمرتجعات والاستبدالات والمصروفات"
           tone="green"
         />
@@ -1121,6 +1121,10 @@ function EmptyState({ text }: { text: string }) {
 
 function money(value: unknown) {
   return formatMoney(value);
+}
+
+function preciseMoney(value: unknown) {
+  return `${roundCost(value)} ج.م`;
 }
 
 function formatShiftTime(value?: string | null) {

@@ -3480,6 +3480,89 @@ export function getDb(): Database.Database {
           `);
         },
       },
+
+      {
+        version: 23,
+
+        name: 'purchase-invoice-rounding-adjustments',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'purchase_invoices',
+            'exact_total_amount',
+            'REAL NOT NULL DEFAULT 0',
+          );
+
+          safeAddColumn(
+            db,
+            'purchase_invoices',
+            'rounding_adjustment',
+            'REAL NOT NULL DEFAULT 0',
+          );
+
+          /*
+           * الفواتير التاريخية:
+           * لا نخترع لها فرق تقريب قديم.
+           *
+           * نعتبر الرقم المحفوظ هو
+           * الإجمالي الفعلي والتسوية معًا.
+           */
+          db.exec(`
+            UPDATE purchase_invoices
+
+            SET
+              exact_total_amount =
+                IFNULL(
+                  total_amount,
+                  0
+                ),
+
+              rounding_adjustment = 0;
+          `);
+        },
+      },
+
+      {
+        version: 24,
+
+        name: 'purchase-return-rounding-adjustments',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'purchase_returns',
+            'exact_total_amount',
+            'REAL NOT NULL DEFAULT 0',
+          );
+
+          safeAddColumn(
+            db,
+            'purchase_returns',
+            'rounding_adjustment',
+            'REAL NOT NULL DEFAULT 0',
+          );
+
+          /*
+           * المرتجعات القديمة:
+           * نعتبر القيمة المحفوظة
+           * هي القيمة الدقيقة والتسوية
+           * لأننا لا نملك تاريخ الكسور القديم.
+           */
+          db.exec(`
+            UPDATE purchase_returns
+
+            SET
+              exact_total_amount =
+                IFNULL(
+                  total_amount,
+                  0
+                ),
+
+              rounding_adjustment = 0;
+          `);
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

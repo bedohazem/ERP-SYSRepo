@@ -72,7 +72,7 @@ describe('product repository', () => {
     expect(variants[0].stock).toBe(10);
   });
 
-  it('stores product prices as whole pounds', () => {
+  it('preserves purchase cost precision while rounding sale prices to whole pounds', () => {
     const result = createProduct({
       name: 'Rounded Prices',
 
@@ -103,7 +103,7 @@ describe('product repository', () => {
       result.productId,
     ) as ProductVariantTestRow[];
 
-    expect(variants[0].buy_price).toBe(100);
+    expect(variants[0].buy_price).toBe(100.49);
 
     expect(variants[0].sell_price).toBe(151);
 
@@ -129,7 +129,7 @@ describe('product repository', () => {
 
     variants = getProductVariants(result.productId) as ProductVariantTestRow[];
 
-    expect(variants[0].buy_price).toBe(111);
+    expect(variants[0].buy_price).toBe(110.5);
 
     expect(variants[0].sell_price).toBe(160);
 

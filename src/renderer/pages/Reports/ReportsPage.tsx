@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getPaymentMethodLabel } from '../../utils/payment-method';
 import { buildReportsCsv, buildReportsPdfHtml } from './report-export';
-import { formatMoney } from '../../../shared/money';
+import { formatMoney, roundCost } from '../../../shared/money';
 
 type ReportsData = {
   summary: {
@@ -16,6 +16,10 @@ type ReportsData = {
     total_expenses: number;
     total_liability_payments: number;
     total_purchase_invoices: number;
+    total_purchase_exact_amount: number;
+    purchase_rounding_increase: number;
+    purchase_rounding_decrease: number;
+    purchase_rounding_net: number;
     total_manual_deposits: number;
     total_manual_withdrawals: number;
     final_net_profit: number;
@@ -95,6 +99,10 @@ const emptyReports: ReportsData = {
     total_expenses: 0,
     total_liability_payments: 0,
     total_purchase_invoices: 0,
+    total_purchase_exact_amount: 0,
+    purchase_rounding_increase: 0,
+    purchase_rounding_decrease: 0,
+    purchase_rounding_net: 0,
     total_manual_deposits: 0,
     total_manual_withdrawals: 0,
     final_net_profit: 0,
@@ -568,7 +576,7 @@ export default function ReportsPage() {
 
         <StatCard
           title="صافي الربح النهائي"
-          value={money(data.summary.final_net_profit)}
+          value={preciseMoney(data.summary.final_net_profit)}
           success
         />
 
@@ -653,8 +661,32 @@ export default function ReportsPage() {
           value={money(data.summary.total_discounts)}
         />
         <StatCard
-          title="إجمالي فواتير الشراء"
+          title="إجمالي فواتير الشراء المستحقة"
           value={money(data.summary.total_purchase_invoices)}
+        />
+
+        <StatCard
+          title="تكلفة المشتريات الدقيقة"
+          value={preciseMoney(data.summary.total_purchase_exact_amount)}
+        />
+
+        <StatCard
+          title="زيادات تقريب المشتريات"
+          value={preciseMoney(data.summary.purchase_rounding_increase)}
+          danger={Number(data.summary.purchase_rounding_increase) > 0}
+        />
+
+        <StatCard
+          title="تخفيضات تقريب المشتريات"
+          value={preciseMoney(data.summary.purchase_rounding_decrease)}
+          success={Number(data.summary.purchase_rounding_decrease) > 0}
+        />
+
+        <StatCard
+          title="صافي فرق تقريب المشتريات"
+          value={signedPreciseMoney(data.summary.purchase_rounding_net)}
+          danger={Number(data.summary.purchase_rounding_net) > 0}
+          success={Number(data.summary.purchase_rounding_net) < 0}
         />
 
         <StatCard
@@ -1143,6 +1175,16 @@ function ReportTable({
 
 function money(value: unknown) {
   return formatMoney(value);
+}
+
+function preciseMoney(value: unknown) {
+  return `${roundCost(value)} ج.م`;
+}
+
+function signedPreciseMoney(value: unknown) {
+  const amount = roundCost(value);
+
+  return `${amount > 0 ? '+' : ''}${amount} ج.م`;
 }
 
 function formatDateOnly(value?: string) {

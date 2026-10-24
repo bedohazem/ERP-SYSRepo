@@ -4,7 +4,7 @@ import {
   getSupplierDueSummary,
 } from './suppliers.repo';
 import { createCashMovement, resolveCashAccount } from './cash.repo';
-import { roundMoney } from '../../../shared/money';
+import { roundCost, roundMoney } from '../../../shared/money';
 import {
   getOpenCashShift,
   resolveFinancialOperationShift,
@@ -296,7 +296,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         throw new Error(`سعر شراء غير صحيح للصنف ${variant.product_name}`);
       }
 
-      const unitCost = roundMoney(rawUnitCost);
+      const unitCost = roundCost(rawUnitCost);
 
       if (unitCost <= 0) {
         throw new Error(`سعر شراء غير صحيح للصنف ${variant.product_name}`);
@@ -306,12 +306,16 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         variant,
         quantity,
         unitCost,
-        lineTotal: roundMoney(quantity * unitCost),
+        lineTotal: roundCost(quantity * unitCost),
       };
     });
 
-    const itemsTotal = roundMoney(
-      preparedItems.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0),
+    const itemsTotal = roundCost(
+      preparedItems.reduce(
+        (sum, item) => sum + Number(item.lineTotal || 0),
+
+        0,
+      ),
     );
 
     const discountType =
@@ -320,26 +324,40 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
     const discountValueInput = Number(input.discount_value || 0);
 
     const rawDiscountValue = Number.isFinite(discountValueInput)
-      ? Math.max(0, roundMoney(discountValueInput))
+      ? Math.max(0, roundCost(discountValueInput))
       : 0;
 
     const subTotalInput = Number(input.sub_total || 0);
 
     const subTotal =
       Number.isFinite(subTotalInput) && subTotalInput > 0
-        ? roundMoney(subTotalInput)
-        : roundMoney(itemsTotal + rawDiscountValue);
+        ? roundCost(subTotalInput)
+        : roundCost(itemsTotal + rawDiscountValue);
 
-    const discountValue = roundMoney(Math.min(subTotal, rawDiscountValue));
+    const discountValue = roundCost(Math.min(subTotal, rawDiscountValue));
 
-    const totalAmount = roundMoney(Math.max(0, subTotal - discountValue));
+    /*
+     * تكلفة الأصناف الفعلية بعد الخصم
+     * هي أساس تكلفة المخزون.
+     */
+    const exactTotalAmount = roundCost(Math.max(0, itemsTotal));
+
+    /*
+     * التسوية الفعلية مع المورد:
+     *
+     * أقل من .50 لأسفل
+     * .50 فأكثر لأعلى
+     */
+    const totalAmount = roundMoney(exactTotalAmount);
+
+    const roundingAdjustment = roundCost(totalAmount - exactTotalAmount);
 
     const discountInputRaw = Number(input.discount_input || 0);
 
     const discountInput = Number.isFinite(discountInputRaw)
       ? discountType === 'percent'
         ? Math.max(0, discountInputRaw)
-        : Math.max(0, roundMoney(discountInputRaw))
+        : Math.max(0, roundCost(discountInputRaw))
       : 0;
 
     const paidAmount = roundMoney(
@@ -366,6 +384,8 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         INSERT INTO purchase_invoices (
           supplier_id,
           total_amount,
+          exact_total_amount,
+          rounding_adjustment,
           sub_total,
           discount_type,
           discount_input,
@@ -379,12 +399,20 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
           business_date,
           shift_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+        VALUES (
+          ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          'active',
+          ?, ?
+        )
       `,
       )
       .run(
         supplierId,
         totalAmount,
+        exactTotalAmount,
+        roundingAdjustment,
         subTotal,
         discountType,
         discountInput,
@@ -516,6 +544,8 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
     return {
       purchaseId,
       total_amount: totalAmount,
+      exact_total_amount: exactTotalAmount,
+      rounding_adjustment: roundingAdjustment,
       paid_amount: paidAmount,
       remaining_amount: remainingAmount,
       payment_status: paymentStatus,
@@ -540,7 +570,7 @@ function getPreviousBuyPriceForPurchaseEdit(
     const oldValue = Number(oldPreviousBuyPrice);
 
     if (Number.isFinite(oldValue) && oldValue >= 0) {
-      return roundMoney(oldValue);
+      return roundCost(oldValue);
     }
   }
 
@@ -578,7 +608,7 @@ function getPreviousBuyPriceForPurchaseEdit(
     | undefined;
 
   if (previousActivePurchase) {
-    return roundMoney(Number(previousActivePurchase.unit_cost));
+    return roundCost(Number(previousActivePurchase.unit_cost));
   }
 
   /*
@@ -617,7 +647,7 @@ function getPreviousBuyPriceForPurchaseEdit(
     const value = Number(nextPurchaseSnapshot.previous_buy_price);
 
     if (Number.isFinite(value) && value >= 0) {
-      return roundMoney(value);
+      return roundCost(value);
     }
   }
 
@@ -645,7 +675,7 @@ function getPreviousBuyPriceForPurchaseEdit(
     throw new Error('تعذر تحديد سعر الشراء السابق للصنف');
   }
 
-  return roundMoney(value);
+  return roundCost(value);
 }
 
 function recalculateVariantBuyPrice(
@@ -748,7 +778,7 @@ function recalculateVariantBuyPrice(
 
     WHERE id = ?
     `,
-  ).run(roundMoney(Number(nextBuyPrice)), variantId);
+  ).run(roundCost(Number(nextBuyPrice)), variantId);
 }
 
 export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
@@ -1039,7 +1069,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         throw new Error(`سعر شراء غير صحيح للصنف ${variant.product_name}`);
       }
 
-      const unitCost = roundMoney(rawUnitCost);
+      const unitCost = roundCost(rawUnitCost);
 
       if (unitCost <= 0) {
         throw new Error(`سعر شراء غير صحيح للصنف ${variant.product_name}`);
@@ -1052,7 +1082,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         quantity,
         unitCost,
 
-        lineTotal: roundMoney(quantity * unitCost),
+        lineTotal: roundCost(quantity * unitCost),
 
         previousBuyPrice: getPreviousBuyPriceForPurchaseEdit(
           db,
@@ -1063,8 +1093,12 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       };
     });
 
-    const itemsTotal = roundMoney(
-      preparedItems.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0),
+    const itemsTotal = roundCost(
+      preparedItems.reduce(
+        (sum, item) => sum + Number(item.lineTotal || 0),
+
+        0,
+      ),
     );
 
     const discountType =
@@ -1073,19 +1107,23 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
     const discountValueInput = Number(input.discount_value || 0);
 
     const rawDiscountValue = Number.isFinite(discountValueInput)
-      ? Math.max(0, roundMoney(discountValueInput))
+      ? Math.max(0, roundCost(discountValueInput))
       : 0;
 
     const subTotalInput = Number(input.sub_total || 0);
 
     const subTotal =
       Number.isFinite(subTotalInput) && subTotalInput > 0
-        ? roundMoney(subTotalInput)
-        : roundMoney(itemsTotal + rawDiscountValue);
+        ? roundCost(subTotalInput)
+        : roundCost(itemsTotal + rawDiscountValue);
 
-    const discountValue = roundMoney(Math.min(subTotal, rawDiscountValue));
+    const discountValue = roundCost(Math.min(subTotal, rawDiscountValue));
 
-    const totalAmount = roundMoney(Math.max(0, subTotal - discountValue));
+    const exactTotalAmount = roundCost(Math.max(0, itemsTotal));
+
+    const totalAmount = roundMoney(exactTotalAmount);
+
+    const roundingAdjustment = roundCost(totalAmount - exactTotalAmount);
 
     const rawPaidAmount = Number(input.paid_amount || 0);
 
@@ -1108,7 +1146,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
     const discountInput = Number.isFinite(discountInputRaw)
       ? discountType === 'percent'
         ? Math.max(0, discountInputRaw)
-        : Math.max(0, roundMoney(discountInputRaw))
+        : Math.max(0, roundCost(discountInputRaw))
       : 0;
 
     const oldPaidAmount = roundMoney(Number(purchase.paid_amount || 0));
@@ -1414,6 +1452,11 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         supplier_id = ?,
 
         total_amount = ?,
+
+        exact_total_amount = ?,
+
+        rounding_adjustment = ?,
+
         sub_total = ?,
 
         discount_type = ?,
@@ -1436,6 +1479,8 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       nextSupplierId,
 
       totalAmount,
+      exactTotalAmount,
+      roundingAdjustment,
       subTotal,
 
       discountType,
@@ -1622,7 +1667,9 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       previous_supplier_id: oldSupplierId,
 
       total_amount: totalAmount,
+      exact_total_amount: exactTotalAmount,
 
+      rounding_adjustment: roundingAdjustment,
       paid_amount: paidAmount,
 
       remaining_amount: remainingAmount,
@@ -1980,23 +2027,123 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         );
       }
 
-      const unitCost = Number(purchaseItem.unit_cost || 0);
+      const unitCost = roundCost(Number(purchaseItem.unit_cost || 0));
 
       return {
         purchaseItem,
+
         quantity,
+
         unitCost,
-        lineTotal: roundMoney(quantity * unitCost),
+
+        lineTotal: roundCost(quantity * unitCost),
       };
     });
 
-    const totalAmount = roundMoney(
-      preparedItems.reduce((sum, item) => sum + item.lineTotal, 0),
+    const exactReturnAmount = roundCost(
+      preparedItems.reduce(
+        (sum, item) => sum + Number(item.lineTotal || 0),
+
+        0,
+      ),
     );
 
-    if (totalAmount <= 0) {
+    if (exactReturnAmount <= 0) {
       throw new Error('قيمة المرتجع غير صحيحة');
     }
+
+    /*
+     * القيمة الدقيقة الأصلية
+     * للفاتورة قبل التقريب.
+     */
+    const originalExactTotal = roundCost(
+      Number(purchase.exact_total_amount ?? purchase.total_amount ?? 0),
+    );
+
+    /*
+     * نحسب قيمة المرتجعات
+     * الفعالة السابقة بدقتها،
+     * وليس بقيمة التسوية المقربة.
+     */
+    const previousReturnsRow = db
+      .prepare(
+        `
+    SELECT
+      IFNULL(
+        SUM(
+          COALESCE(
+            exact_total_amount,
+            total_amount,
+            0
+          )
+        ),
+        0
+      ) AS exact_returned
+
+    FROM purchase_returns
+
+    WHERE
+      purchase_id = ?
+
+      AND cancelled_at
+        IS NULL
+    `,
+      )
+      .get(purchaseId) as
+      | {
+          exact_returned: number;
+        }
+      | undefined;
+
+    const previousExactReturned = roundCost(
+      previousReturnsRow?.exact_returned || 0,
+    );
+
+    const exactBeforeReturn = roundCost(
+      Math.max(
+        0,
+
+        originalExactTotal - previousExactReturned,
+      ),
+    );
+
+    if (exactReturnAmount > exactBeforeReturn + 0.0001) {
+      throw new Error('قيمة المرتجع أكبر من القيمة المتبقية في فاتورة الشراء');
+    }
+
+    const exactAfterReturn = roundCost(
+      Math.max(
+        0,
+
+        exactBeforeReturn - exactReturnAmount,
+      ),
+    );
+
+    /*
+     * لا نقرب المرتجع وحده.
+     *
+     * قيمة التسوية =
+     * المستحق قبل المرتجع
+     * -
+     * المستحق بعد المرتجع.
+     *
+     * وده يخلي سلسلة المرتجعات
+     * تقفل على نفس إجمالي
+     * الفاتورة بدون فروق.
+     */
+    const payableBeforeReturn = roundMoney(exactBeforeReturn);
+
+    const payableAfterReturn = roundMoney(exactAfterReturn);
+
+    const totalAmount = roundMoney(
+      Math.max(
+        0,
+
+        payableBeforeReturn - payableAfterReturn,
+      ),
+    );
+
+    const roundingAdjustment = roundCost(totalAmount - exactReturnAmount);
 
     const oldRemaining = roundMoney(Number(purchase.remaining_amount || 0));
 
@@ -2036,7 +2183,11 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         INSERT INTO purchase_returns (
           purchase_id,
           supplier_id,
+
           total_amount,
+          exact_total_amount,
+          rounding_adjustment,
+
           debt_reduction_amount,
           cash_refund_amount,
           refund_payment_method,
@@ -2046,13 +2197,18 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
           business_date,
           shift_id
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?
+        )
       `,
       )
       .run(
         purchaseId,
         Number(purchase.supplier_id),
         totalAmount,
+        exactReturnAmount,
+        roundingAdjustment,
         debtReductionAmount,
         refundMode === 'cash' ? cashRefundAmount : 0,
         refundMode === 'cash' ? refundPaymentMethod : null,
@@ -2183,6 +2339,8 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       purchase_id: purchaseId,
       supplier_id: Number(purchase.supplier_id),
       total_amount: totalAmount,
+      exact_total_amount: exactReturnAmount,
+      rounding_adjustment: roundingAdjustment,
       debt_reduction_amount: debtReductionAmount,
       cash_refund_amount: refundMode === 'cash' ? cashRefundAmount : 0,
       refund_mode: refundMode,

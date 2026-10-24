@@ -1,7 +1,7 @@
 import { getDb } from '../db';
 import { getCustomerDueSummary } from './customers.repo';
 import { getSupplierDueSummary } from './suppliers.repo';
-import { roundMoney } from '../../../shared/money';
+import { roundCost, roundMoney } from '../../../shared/money';
 
 type ReportFilter = {
   date_from?: string;
@@ -327,6 +327,12 @@ export function getReportsSummary(input?: ReportFilter) {
     'pi.shift_id',
     'pi.created_at',
     'pi.business_date',
+  );
+
+  const purchaseReturnBusinessDate = buildShiftBusinessDateExpression(
+    'pr.shift_id',
+    'pr.created_at',
+    'pr.business_date',
   );
 
   const salesWhere = buildWhere(
@@ -954,6 +960,18 @@ export function getReportsSummary(input?: ReportFilter) {
     purchaseBusinessDate,
   );
 
+  const purchaseReturnsWhere = buildWhere(
+    'pr',
+
+    input,
+
+    [`pr.cancelled_at IS NULL`],
+
+    undefined,
+
+    purchaseReturnBusinessDate,
+  );
+
   const manualCashWhere = buildWhere(
     'cm',
     input,
@@ -1021,9 +1039,22 @@ export function getReportsSummary(input?: ReportFilter) {
       `
     SELECT
       IFNULL(
-        SUM(pi.total_amount),
+        SUM(
+          pi.total_amount
+        ),
         0
-      ) AS total_purchase_invoices
+      ) AS total_purchase_invoices,
+
+      IFNULL(
+        SUM(
+          COALESCE(
+            pi.exact_total_amount,
+            pi.total_amount,
+            0
+          )
+        ),
+        0
+      ) AS total_purchase_exact_amount
 
     FROM purchase_invoices pi
 
@@ -1032,6 +1063,85 @@ export function getReportsSummary(input?: ReportFilter) {
     )
     .get(...purchasesWhere.params) as {
     total_purchase_invoices: number;
+
+    total_purchase_exact_amount: number;
+  };
+
+  const purchaseRoundingRow = db
+    .prepare(
+      `
+    SELECT
+      IFNULL(
+        SUM(
+          CASE
+            WHEN x.adjustment > 0
+            THEN x.adjustment
+            ELSE 0
+          END
+        ),
+        0
+      ) AS purchase_rounding_increase,
+
+      IFNULL(
+        SUM(
+          CASE
+            WHEN x.adjustment < 0
+            THEN ABS(
+              x.adjustment
+            )
+            ELSE 0
+          END
+        ),
+        0
+      ) AS purchase_rounding_decrease,
+
+      IFNULL(
+        SUM(
+          x.adjustment
+        ),
+        0
+      ) AS purchase_rounding_net
+
+    FROM (
+      /*
+       * إنشاء فاتورة شراء:
+       * فرق التقريب يدخل كما هو.
+       */
+      SELECT
+        IFNULL(
+          pi.rounding_adjustment,
+          0
+        ) AS adjustment
+
+      FROM purchase_invoices pi
+
+      ${purchasesWhere.whereSql}
+
+      UNION ALL
+
+      /*
+       * المرتجع يعكس جزءًا
+       * من فرق تقريب الشراء،
+       * لذلك العلامة هنا سالبة.
+       */
+      SELECT
+        -IFNULL(
+          pr.rounding_adjustment,
+          0
+        ) AS adjustment
+
+      FROM purchase_returns pr
+
+      ${purchaseReturnsWhere.whereSql}
+    ) x
+    `,
+    )
+    .get(...purchasesWhere.params, ...purchaseReturnsWhere.params) as {
+    purchase_rounding_increase: number;
+
+    purchase_rounding_decrease: number;
+
+    purchase_rounding_net: number;
   };
 
   const manualCashRow = db
@@ -1159,6 +1269,22 @@ export function getReportsSummary(input?: ReportFilter) {
     purchasesRow.total_purchase_invoices || 0,
   );
 
+  const totalPurchaseExactAmount = roundCost(
+    purchasesRow.total_purchase_exact_amount,
+  );
+
+  const purchaseRoundingIncrease = roundCost(
+    purchaseRoundingRow.purchase_rounding_increase,
+  );
+
+  const purchaseRoundingDecrease = roundCost(
+    purchaseRoundingRow.purchase_rounding_decrease,
+  );
+
+  const purchaseRoundingNet = roundCost(
+    purchaseRoundingRow.purchase_rounding_net,
+  );
+
   const totalManualDeposits = Number(manualCashRow.total_manual_deposits || 0);
 
   const totalManualWithdrawals = Number(
@@ -1181,13 +1307,24 @@ export function getReportsSummary(input?: ReportFilter) {
     openingVarianceRow.approved_opening_shortage || 0,
   );
 
-  const finalNetProfit =
+  const finalNetProfit = roundCost(
     netProfitAfterDiscounts -
-    totalExpenses +
-    approvedClosingSurplus -
-    approvedClosingShortage +
-    approvedOpeningSurplus -
-    approvedOpeningShortage;
+      totalExpenses -
+      /*
+       * موجب:
+       * دفعنا للمورد زيادة
+       * فينقص الربح.
+       *
+       * سالب:
+       * دفعنا أقل،
+       * وطرح السالب يزيد الربح.
+       */
+      purchaseRoundingNet +
+      approvedClosingSurplus -
+      approvedClosingShortage +
+      approvedOpeningSurplus -
+      approvedOpeningShortage,
+  );
 
   const topProducts = db
     .prepare(
@@ -2361,6 +2498,10 @@ export function getReportsSummary(input?: ReportFilter) {
       total_expenses: totalExpenses,
       total_liability_payments: totalLiabilityPayments,
       total_purchase_invoices: totalPurchaseInvoices,
+      total_purchase_exact_amount: totalPurchaseExactAmount,
+      purchase_rounding_increase: purchaseRoundingIncrease,
+      purchase_rounding_decrease: purchaseRoundingDecrease,
+      purchase_rounding_net: purchaseRoundingNet,
       total_manual_deposits: totalManualDeposits,
       total_manual_withdrawals: totalManualWithdrawals,
       final_net_profit: finalNetProfit,

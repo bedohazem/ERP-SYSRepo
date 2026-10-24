@@ -1,5 +1,5 @@
 import { getPaymentMethodLabel } from '../../utils/payment-method';
-import { roundMoney } from '../../../shared/money';
+import { roundCost, roundMoney } from '../../../shared/money';
 
 export type ReportsExportData = {
   summary: Record<string, number>;
@@ -31,6 +31,10 @@ type ExportSection = {
 
 function numberValue(value: unknown) {
   return String(roundMoney(value));
+}
+
+function preciseNumberValue(value: unknown) {
+  return String(roundCost(value));
 }
 
 function escapeHtml(value: unknown) {
@@ -91,18 +95,41 @@ function buildSections(data: ReportsExportData): ExportSection[] {
 
         [
           'الربح قبل الخصومات',
-          numberValue(summary.gross_profit_before_discounts),
+          preciseNumberValue(summary.gross_profit_before_discounts),
         ],
 
-        ['الربح بعد الخصومات', numberValue(summary.net_profit_after_discounts)],
+        [
+          'الربح بعد الخصومات',
+          preciseNumberValue(summary.net_profit_after_discounts),
+        ],
 
-        ['صافي الربح النهائي', numberValue(summary.final_net_profit)],
+        ['صافي الربح النهائي', preciseNumberValue(summary.final_net_profit)],
 
         ['المصروفات', numberValue(summary.total_expenses)],
 
         ['مدفوعات الالتزامات', numberValue(summary.total_liability_payments)],
 
         ['إجمالي فواتير الشراء', numberValue(summary.total_purchase_invoices)],
+
+        [
+          'تكلفة المشتريات الدقيقة',
+          preciseNumberValue(summary.total_purchase_exact_amount),
+        ],
+
+        [
+          'زيادات تقريب المشتريات',
+          preciseNumberValue(summary.purchase_rounding_increase),
+        ],
+
+        [
+          'تخفيضات تقريب المشتريات',
+          preciseNumberValue(summary.purchase_rounding_decrease),
+        ],
+
+        [
+          'صافي فرق تقريب المشتريات',
+          preciseNumberValue(summary.purchase_rounding_net),
+        ],
 
         ['إجمالي الخصومات', numberValue(summary.total_discounts)],
 

@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
-import { formatMoney, roundMoney } from '../../../shared/money';
+import { formatMoney, roundCost, roundMoney } from '../../../shared/money';
 
 function hasRemainingAmount(value: number) {
   return roundMoney(value) > 0;
@@ -599,15 +599,96 @@ export default function PurchaseHistoryPage() {
     }
   }
 
-  const purchaseReturnTotal = returnPurchase
-    ? roundMoney(
-        (returnPurchase.items ?? []).reduce((sum: number, item: any) => {
-          const quantity = Number(returnQuantities[item.id] || 0);
+  const purchaseReturnExactTotal = returnPurchase
+    ? roundCost(
+        (returnPurchase.items ?? []).reduce(
+          (sum: number, item: any) => {
+            const quantity = Number(returnQuantities[item.id] || 0);
 
-          return sum + roundMoney(quantity * Number(item.unit_cost || 0));
-        }, 0),
+            return sum + roundCost(quantity * Number(item.unit_cost || 0));
+          },
+
+          0,
+        ),
       )
     : 0;
+
+  const purchaseReturnOriginalExact = returnPurchase
+    ? roundCost(
+        Number(
+          returnPurchase.purchase?.exact_total_amount ??
+            returnPurchase.purchase?.total_amount ??
+            0,
+        ),
+      )
+    : 0;
+
+  const purchaseReturnPreviousExact = returnPurchase
+    ? roundCost(
+        (returnPurchase.returns ?? []).reduce(
+          (sum: number, purchaseReturn: any) => {
+            if (purchaseReturn.cancelled_at) {
+              return sum;
+            }
+
+            /*
+             * أثناء تعديل آخر مرتجع
+             * السيرفر بيلغيه الأول،
+             * لذلك لا نحسبه ضمن
+             * المرتجعات السابقة هنا.
+             */
+            if (
+              editingReturnId &&
+              Number(purchaseReturn.id) === Number(editingReturnId)
+            ) {
+              return sum;
+            }
+
+            return (
+              sum +
+              Number(
+                purchaseReturn.exact_total_amount ??
+                  purchaseReturn.total_amount ??
+                  0,
+              )
+            );
+          },
+
+          0,
+        ),
+      )
+    : 0;
+
+  const purchaseReturnExactBefore = roundCost(
+    Math.max(
+      0,
+
+      purchaseReturnOriginalExact - purchaseReturnPreviousExact,
+    ),
+  );
+
+  const purchaseReturnExactAfter = roundCost(
+    Math.max(
+      0,
+
+      purchaseReturnExactBefore - purchaseReturnExactTotal,
+    ),
+  );
+
+  const purchaseReturnTotal = returnPurchase
+    ? roundMoney(
+        Math.max(
+          0,
+
+          roundMoney(purchaseReturnExactBefore) -
+            roundMoney(purchaseReturnExactAfter),
+        ),
+      )
+    : 0;
+
+  const purchaseReturnRoundingAdjustment = roundCost(
+    purchaseReturnTotal - purchaseReturnExactTotal,
+  );
 
   const purchaseReturnDebtBase = returnPurchase
     ? roundMoney(
@@ -626,11 +707,21 @@ export default function PurchaseHistoryPage() {
     : 0;
 
   const purchaseReturnDebtReduction = returnPurchase
-    ? roundMoney(Math.min(purchaseReturnTotal, purchaseReturnDebtBase))
+    ? roundMoney(
+        Math.min(
+          purchaseReturnTotal,
+
+          purchaseReturnDebtBase,
+        ),
+      )
     : 0;
 
   const purchaseReturnCashRefund = roundMoney(
-    Math.max(0, purchaseReturnTotal - purchaseReturnDebtReduction),
+    Math.max(
+      0,
+
+      purchaseReturnTotal - purchaseReturnDebtReduction,
+    ),
   );
 
   const hasPurchaseHistoryFilters =
@@ -957,7 +1048,7 @@ export default function PurchaseHistoryPage() {
 
                           <span style={{ color: '#94a3b8', fontSize: '12px' }}>
                             قبل الخصم:{' '}
-                            {money(
+                            {costMoney(
                               Number(row.sub_total || 0) > 0
                                 ? row.sub_total
                                 : Number(row.total_amount || 0) +
@@ -969,7 +1060,7 @@ export default function PurchaseHistoryPage() {
                             <span
                               style={{ color: '#fbbf24', fontSize: '12px' }}
                             >
-                              خصم: {money(row.discount_value || 0)}
+                              خصم: {costMoney(row.discount_value || 0)}
                               {row.discount_type === 'percent' &&
                               Number(row.discount_input || 0) > 0
                                 ? ` (${Number(row.discount_input || 0)}%)`
@@ -1364,11 +1455,14 @@ export default function PurchaseHistoryPage() {
             >
               <InfoCard
                 title="قبل الخصم"
-                value={money(
+                value={costMoney(
                   Number(selectedPurchase.purchase.sub_total || 0) > 0
                     ? selectedPurchase.purchase.sub_total
-                    : Number(selectedPurchase.purchase.total_amount || 0) +
-                        Number(selectedPurchase.purchase.discount_value || 0),
+                    : Number(
+                        selectedPurchase.purchase.exact_total_amount ??
+                          selectedPurchase.purchase.total_amount ??
+                          0,
+                      ) + Number(selectedPurchase.purchase.discount_value || 0),
                 )}
               />
 
@@ -1376,12 +1470,27 @@ export default function PurchaseHistoryPage() {
                 title="الخصم"
                 value={
                   selectedPurchase.purchase.discount_type === 'percent'
-                    ? `${money(selectedPurchase.purchase.discount_value || 0)} (${Number(selectedPurchase.purchase.discount_input || 0)}%)`
-                    : money(selectedPurchase.purchase.discount_value || 0)
+                    ? `${costMoney(selectedPurchase.purchase.discount_value || 0)} (${Number(selectedPurchase.purchase.discount_input || 0)}%)`
+                    : costMoney(selectedPurchase.purchase.discount_value || 0)
                 }
               />
               <InfoCard
-                title="بعد الخصم"
+                title="الإجمالي الفعلي بعد الخصم"
+                value={costMoney(
+                  selectedPurchase.purchase.exact_total_amount ??
+                    selectedPurchase.purchase.total_amount,
+                )}
+              />
+
+              <InfoCard
+                title="فرق التقريب"
+                value={signedCostMoney(
+                  selectedPurchase.purchase.rounding_adjustment || 0,
+                )}
+              />
+
+              <InfoCard
+                title="المستحق بعد التقريب"
                 value={money(selectedPurchase.purchase.total_amount)}
               />
               <InfoCard
@@ -1485,8 +1594,8 @@ export default function PurchaseHistoryPage() {
                       <td style={tdStyle}>
                         {item.returnable_quantity ?? item.quantity}
                       </td>
-                      <td style={tdStyle}>{money(item.unit_cost)}</td>
-                      <td style={tdStyle}>{money(item.line_total)}</td>
+                      <td style={tdStyle}>{costMoney(item.unit_cost)}</td>
+                      <td style={tdStyle}>{costMoney(item.line_total)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1723,7 +1832,22 @@ export default function PurchaseHistoryPage() {
               }}
             >
               <InfoCard
-                title="قيمة المرتجع"
+                title="قيمة المرتجع الفعلية"
+                value={costMoney(
+                  selectedReturn.return.exact_total_amount ??
+                    selectedReturn.return.total_amount,
+                )}
+              />
+
+              <InfoCard
+                title="فرق التقريب"
+                value={signedCostMoney(
+                  selectedReturn.return.rounding_adjustment || 0,
+                )}
+              />
+
+              <InfoCard
+                title="تسوية المورد"
                 value={money(selectedReturn.return.total_amount)}
               />
               <InfoCard
@@ -1770,8 +1894,8 @@ export default function PurchaseHistoryPage() {
                       <td style={tdStyle}>{item.size || '—'}</td>
                       <td style={tdStyle}>{item.color || '—'}</td>
                       <td style={tdStyle}>{item.quantity}</td>
-                      <td style={tdStyle}>{money(item.unit_cost)}</td>
-                      <td style={tdStyle}>{money(item.line_total)}</td>
+                      <td style={tdStyle}>{costMoney(item.unit_cost)}</td>
+                      <td style={tdStyle}>{costMoney(item.line_total)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1982,7 +2106,17 @@ export default function PurchaseHistoryPage() {
                 }}
               >
                 <InfoCard
-                  title="قيمة المرتجع"
+                  title="قيمة المرتجع الفعلية"
+                  value={costMoney(purchaseReturnExactTotal)}
+                />
+
+                <InfoCard
+                  title="فرق التقريب"
+                  value={signedCostMoney(purchaseReturnRoundingAdjustment)}
+                />
+
+                <InfoCard
+                  title="تسوية المورد بعد التقريب"
                   value={money(purchaseReturnTotal)}
                 />
                 <InfoCard
@@ -2112,7 +2246,7 @@ export default function PurchaseHistoryPage() {
                               }}
                             />
                           </td>
-                          <td style={tdStyle}>{money(item.unit_cost)}</td>
+                          <td style={tdStyle}>{costMoney(item.unit_cost)}</td>
                         </tr>
                       );
                     })}
@@ -2451,6 +2585,16 @@ function paymentMethodName(value?: string | null) {
 
 function money(value: unknown) {
   return formatMoney(value);
+}
+
+function costMoney(value: unknown) {
+  return `${roundCost(value)} ج.م`;
+}
+
+function signedCostMoney(value: unknown) {
+  const amount = roundCost(value);
+
+  return `${amount > 0 ? '+' : ''}${amount} ج.م`;
 }
 
 function formatDate(value?: string) {

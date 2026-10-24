@@ -5,7 +5,7 @@ import { hasUserPermission } from '../../utils/permissions';
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PurchaseOrdersPanel from './PurchaseOrdersPanel';
-import { formatMoney, roundMoney } from '../../../shared/money';
+import { formatMoney, roundCost, roundMoney } from '../../../shared/money';
 import {
   getUserScopedDraftKey,
   readUserScopedDraft,
@@ -140,13 +140,15 @@ export default function PurchasesPage() {
 
   const subTotal = useMemo(
     () =>
-      roundMoney(
+      roundCost(
         lines.reduce(
           (sum, line) =>
             sum + Number(line.quantity || 0) * Number(line.unit_cost || 0),
+
           0,
         ),
       ),
+
     [lines],
   );
 
@@ -156,15 +158,19 @@ export default function PurchasesPage() {
     const value = Number.isFinite(raw) ? Math.max(0, raw) : 0;
 
     if (discountType === 'percent') {
-      return roundMoney(
+      return roundCost(
         Math.min(subTotal, (subTotal * Math.min(value, 100)) / 100),
       );
     }
 
-    return roundMoney(Math.min(subTotal, value));
+    return roundCost(Math.min(subTotal, value));
   }, [discountDraft, discountType, subTotal]);
 
-  const totalAmount = roundMoney(Math.max(0, subTotal - discountValue));
+  const exactTotalAmount = roundCost(Math.max(0, subTotal - discountValue));
+
+  const totalAmount = roundMoney(exactTotalAmount);
+
+  const roundingAdjustment = roundCost(totalAmount - exactTotalAmount);
 
   function getDiscountedUnitCost(line: PurchaseLine) {
     const qty = Number(line.quantity || 0);
@@ -390,11 +396,13 @@ export default function PurchasesPage() {
               Number(purchase.discount_value || 0),
         );
 
-        const storedTotal = Number(purchase.total_amount || 0);
+        const storedExactTotal = Number(
+          purchase.exact_total_amount ?? purchase.total_amount ?? 0,
+        );
 
         const discountFactor =
-          storedSubTotal > 0 && storedTotal > 0
-            ? storedTotal / storedSubTotal
+          storedSubTotal > 0 && storedExactTotal > 0
+            ? storedExactTotal / storedSubTotal
             : 1;
 
         const nextLines: PurchaseLine[] = (data.items ?? []).map((item) => {
@@ -914,7 +922,7 @@ export default function PurchasesPage() {
 
           quantity: Number(line.quantity || 0),
 
-          unit_cost: Number(getDiscountedUnitCost(line).toFixed(4)),
+          unit_cost: roundCost(getDiscountedUnitCost(line)),
         })),
       };
 
@@ -1364,11 +1372,11 @@ export default function PurchasesPage() {
                     <td
                       style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}
                     >
-                      {money(getDiscountedUnitCost(line))}
+                      {costMoney(getDiscountedUnitCost(line))}
                     </td>
 
                     <td style={{ ...tdStyle, fontWeight: 900 }}>
-                      {money(
+                      {costMoney(
                         Number(line.quantity || 0) *
                           getDiscountedUnitCost(line),
                       )}
@@ -1420,7 +1428,7 @@ export default function PurchasesPage() {
             <div style={fieldStyle}>
               <label style={labelStyle}>الإجمالي قبل الخصم</label>
               <input
-                value={money(subTotal)}
+                value={costMoney(subTotal)}
                 readOnly
                 style={{ ...inputStyle, opacity: 0.7 }}
               />
@@ -1457,18 +1465,44 @@ export default function PurchasesPage() {
             <div style={fieldStyle}>
               <label style={labelStyle}>قيمة الخصم</label>
               <input
-                value={money(discountValue)}
+                value={costMoney(discountValue)}
                 readOnly
                 style={{ ...inputStyle, opacity: 0.7 }}
               />
             </div>
 
             <div style={fieldStyle}>
-              <label style={labelStyle}>الإجمالي بعد الخصم</label>
+              <label style={labelStyle}>الإجمالي الفعلي بعد الخصم</label>
+              <input
+                value={costMoney(exactTotalAmount)}
+                readOnly
+                style={{ ...inputStyle, opacity: 0.7 }}
+              />
+            </div>
+
+            <div style={fieldStyle}>
+              <label style={labelStyle}>فرق التقريب</label>
+
+              <input
+                value={signedCostMoney(roundingAdjustment)}
+                readOnly
+                style={{
+                  ...inputStyle,
+                  opacity: 0.7,
+                }}
+              />
+            </div>
+
+            <div style={fieldStyle}>
+              <label style={labelStyle}>المستحق للمورد بعد التقريب</label>
+
               <input
                 value={money(totalAmount)}
                 readOnly
-                style={{ ...inputStyle, opacity: 0.7 }}
+                style={{
+                  ...inputStyle,
+                  opacity: 0.7,
+                }}
               />
             </div>
 
@@ -1476,6 +1510,7 @@ export default function PurchasesPage() {
               <label style={labelStyle}>المدفوع الآن</label>
               <input
                 type="number"
+                step={1}
                 min={0}
                 value={paidAmount}
                 onChange={(e) => setPaidAmount(e.target.value)}
@@ -1882,6 +1917,16 @@ export default function PurchasesPage() {
 
 function money(value: unknown) {
   return formatMoney(value);
+}
+
+function costMoney(value: unknown) {
+  return `${roundCost(value)} ج.م`;
+}
+
+function signedCostMoney(value: unknown) {
+  const amount = roundCost(value);
+
+  return `${amount > 0 ? '+' : ''}${amount} ج.م`;
 }
 
 const cardStyle: CSSProperties = {

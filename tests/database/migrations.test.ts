@@ -353,6 +353,18 @@ describe('database migrations', () => {
 
         name: 'performance-query-indexes',
       },
+
+      {
+        version: 23,
+
+        name: 'purchase-invoice-rounding-adjustments',
+      },
+
+      {
+        version: 24,
+
+        name: 'purchase-return-rounding-adjustments',
+      },
     ]);
 
     const performanceIndexes = database
@@ -443,6 +455,14 @@ describe('database migrations', () => {
       .all() as Array<{
       name: string;
     }>;
+
+    expect(purchaseReturnColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(['exact_total_amount', 'rounding_adjustment']),
+    );
+
+    expect(purchaseInvoiceColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(['exact_total_amount', 'rounding_adjustment']),
+    );
 
     expect(purchaseInvoiceColumns.map((column) => column.name)).toContain(
       'business_date',

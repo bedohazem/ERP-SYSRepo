@@ -10,8 +10,21 @@ const data = {
     gross_sales: 100,
     net_sales: 90,
     total_returns: 10,
-    final_net_profit: 25,
+    gross_profit_before_discounts: 30.75,
+
+    net_profit_after_discounts: 27.25,
+
+    final_net_profit: 25.31,
     sales_count: 2,
+    total_purchase_invoices: 46,
+
+    total_purchase_exact_amount: 45.69,
+
+    purchase_rounding_increase: 0.31,
+
+    purchase_rounding_decrease: 0,
+
+    purchase_rounding_net: 0.31,
   },
 
   cashAccounts: [
@@ -132,6 +145,14 @@ describe('report export builders', () => {
     expect(csv).toContain('"منتج ""اختبار"", خاص"');
 
     expect(csv).toContain('"الفترة: أكتوبر 2026"');
+    expect(csv).toContain('"زيادات تقريب المشتريات"');
+
+    expect(csv).toContain('"0.31"');
+
+    expect(csv).toContain('"صافي فرق تقريب المشتريات"');
+    expect(csv).toContain('"صافي الربح النهائي"');
+
+    expect(csv).toContain('"25.31"');
   });
 
   it('escapes HTML values in PDF export', () => {
