@@ -252,7 +252,8 @@ contextBridge.exposeInMainWorld('api', {
   getReportsSummary: (input) => invokeMain('reports:summary', input),
 
   getAdminCashFlowAlerts: () => invokeMain('reports:admin-cash-flow-alerts'),
-
+  getAdminDashboardTodaySummary: (input) =>
+    invokeMain('reports:admin-dashboard-today', input),
   getCashierDashboardSummary: () => invokeMain('reports:cashier-dashboard'),
   getInventoryList: (input) => invokeMain('inventory:list', input),
   getInventoryPage: (input) => invokeMain('inventory:list-page', input),

@@ -789,6 +789,43 @@ export default function SalesPage() {
 
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
   const productInputRef = useRef<HTMLInputElement | null>(null);
+  const productSearchRequestIdRef = useRef(0);
+  const customerSearchRequestIdRef = useRef(0);
+  const latestSalesDraftRef = useRef<{
+    invoices: InvoiceTab[];
+
+    activeInvoiceId: number;
+
+    nextInvoiceId: number;
+
+    barcodeMode: boolean;
+
+    editingSaleId: number | null;
+
+    hydrated: boolean;
+
+    storageKey: string | null;
+
+    userId: unknown;
+  } | null>(null);
+
+  latestSalesDraftRef.current = {
+    invoices,
+
+    activeInvoiceId,
+
+    nextInvoiceId,
+
+    barcodeMode,
+
+    editingSaleId,
+
+    hydrated: salesDraftHydrated,
+
+    storageKey: salesDraftStorageKey,
+
+    userId: user?.id,
+  };
   const firstQtyInputRef = useRef<HTMLInputElement | null>(null);
   const customerWrapperRef = useRef<HTMLDivElement | null>(null);
   const salespersonWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -1660,19 +1697,34 @@ export default function SalesPage() {
   }
 
   async function loadCustomers(searchValue = customerSearch) {
+    const requestId = ++customerSearchRequestIdRef.current;
+
     setLoadingCustomers(true);
 
     try {
       const q = searchValue.trim();
+
       const data = await window.api.searchCustomers(q);
+
+      if (requestId !== customerSearchRequestIdRef.current) {
+        return;
+      }
 
       setCustomers(Array.isArray(data) ? data.map(normalizeCustomer) : []);
     } catch (error) {
+      if (requestId !== customerSearchRequestIdRef.current) {
+        return;
+      }
+
       console.error('Failed to load customers:', error);
+
       setCustomers([]);
+
       showMessage('error', 'حدث خطأ أثناء تحميل العملاء', false);
     } finally {
-      setLoadingCustomers(false);
+      if (requestId === customerSearchRequestIdRef.current) {
+        setLoadingCustomers(false);
+      }
     }
   }
 
@@ -2731,34 +2783,52 @@ export default function SalesPage() {
   }
 
   useEffect(() => {
+    const requestId = ++productSearchRequestIdRef.current;
+
     const q = activeInvoice.productDraft.trim();
 
     if (!q) {
       setProductResults([]);
       setDropdownRect(null);
+
       return;
     }
 
     updateDropdownPosition();
 
-    const handle = setTimeout(() => {
+    const handle = window.setTimeout(() => {
       void window.api
         .searchSaleVariants({
           query: q,
+
           categoryId: saleCategoryFilter,
+
+          limit: 30,
         })
         .then((results) => {
-          setProductResults(results);
+          if (requestId !== productSearchRequestIdRef.current) {
+            return;
+          }
+
+          setProductResults(Array.isArray(results) ? results : []);
+
           updateDropdownPosition();
         })
         .catch((error) => {
+          if (requestId !== productSearchRequestIdRef.current) {
+            return;
+          }
+
           console.error('Search failed:', error);
+
           setProductResults([]);
           setDropdownRect(null);
         });
-    }, 200);
+    }, 140);
 
-    return () => clearTimeout(handle);
+    return () => {
+      window.clearTimeout(handle);
+    };
   }, [activeInvoice.productDraft, activeInvoiceId, saleCategoryFilter]);
 
   useEffect(() => {
@@ -3063,19 +3133,30 @@ export default function SalesPage() {
       return;
     }
 
-    writeUserScopedDraft(
-      localStorage,
-      SALES_DRAFT_STORAGE_BASE,
-      user?.id,
-      JSON.stringify({
-        version: 2,
-        invoices: invoices.map(serializeInvoiceDraft),
-        activeInvoiceId,
-        nextInvoiceId,
-        barcodeMode,
-        savedAt: new Date().toISOString(),
-      }),
-    );
+    const handle = window.setTimeout(() => {
+      writeUserScopedDraft(
+        localStorage,
+        SALES_DRAFT_STORAGE_BASE,
+        user?.id,
+        JSON.stringify({
+          version: 2,
+
+          invoices: invoices.map(serializeInvoiceDraft),
+
+          activeInvoiceId,
+
+          nextInvoiceId,
+
+          barcodeMode,
+
+          savedAt: new Date().toISOString(),
+        }),
+      );
+    }, 250);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
   }, [
     salesDraftHydrated,
     invoices,
@@ -3086,6 +3167,74 @@ export default function SalesPage() {
     salesDraftStorageKey,
     user?.id,
   ]);
+
+  useEffect(() => {
+    function flushLatestSalesDraft() {
+      const snapshot = latestSalesDraftRef.current;
+
+      if (!snapshot?.hydrated) {
+        return;
+      }
+
+      localStorage.removeItem(SALES_DRAFT_STORAGE_BASE);
+
+      if (!snapshot.storageKey) {
+        return;
+      }
+
+      if (snapshot.editingSaleId) {
+        localStorage.removeItem(snapshot.storageKey);
+
+        return;
+      }
+
+      const hasDraft =
+        snapshot.invoices.length > 1 ||
+        snapshot.invoices.some(
+          (invoice) =>
+            invoice.cart.length > 0 ||
+            invoice.customer ||
+            invoice.barcodeDraft.trim() ||
+            invoice.productDraft.trim(),
+        );
+
+      if (!hasDraft) {
+        localStorage.removeItem(snapshot.storageKey);
+
+        return;
+      }
+
+      writeUserScopedDraft(
+        localStorage,
+
+        SALES_DRAFT_STORAGE_BASE,
+
+        snapshot.userId,
+
+        JSON.stringify({
+          version: 2,
+
+          invoices: snapshot.invoices.map(serializeInvoiceDraft),
+
+          activeInvoiceId: snapshot.activeInvoiceId,
+
+          nextInvoiceId: snapshot.nextInvoiceId,
+
+          barcodeMode: snapshot.barcodeMode,
+
+          savedAt: new Date().toISOString(),
+        }),
+      );
+    }
+
+    window.addEventListener('pagehide', flushLatestSalesDraft);
+
+    return () => {
+      window.removeEventListener('pagehide', flushLatestSalesDraft);
+
+      flushLatestSalesDraft();
+    };
+  }, []);
 
   useEffect(() => {
     const timedPromotions = activePromotions.filter(
@@ -3189,13 +3338,17 @@ export default function SalesPage() {
   }, []);
 
   useEffect(() => {
-    if (!customerDropdownOpen) return;
+    if (!customerDropdownOpen) {
+      return;
+    }
 
-    const handle = setTimeout(() => {
+    const handle = window.setTimeout(() => {
       void loadCustomers(customerSearch);
-    }, 220);
+    }, 160);
 
-    return () => clearTimeout(handle);
+    return () => {
+      window.clearTimeout(handle);
+    };
   }, [customerSearch, customerDropdownOpen]);
 
   useEffect(() => {

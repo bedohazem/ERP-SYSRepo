@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getPaymentMethodLabel } from '../../utils/payment-method';
@@ -255,6 +255,7 @@ export default function DashboardPage() {
     emptyAdminCashFlowAlerts,
   );
   const [loading, setLoading] = useState(false);
+  const dashboardLoadInFlightRef = useRef(false);
   const [message, setMessage] = useState('');
   const [lastUpdated, setLastUpdated] = useState('');
 
@@ -269,6 +270,11 @@ export default function DashboardPage() {
   );
 
   async function loadDashboard(silent = false) {
+    if (dashboardLoadInFlightRef.current) {
+      return;
+    }
+
+    dashboardLoadInFlightRef.current = true;
     if (!silent) {
       setLoading(true);
     }
@@ -280,11 +286,9 @@ export default function DashboardPage() {
 
         setCashierSummary(result);
       } else {
-        const [today, month, overview, alerts] = await Promise.all([
-          window.api.getReportsSummary({
-            date_from: todayKey,
-
-            date_to: todayKey,
+        const [todaySummary, month, alerts] = await Promise.all([
+          window.api.getAdminDashboardTodaySummary({
+            business_date: todayKey,
           }),
 
           window.api.getReportsSummary({
@@ -293,15 +297,31 @@ export default function DashboardPage() {
             date_to: todayKey,
           }),
 
-          window.api.getReportsSummary(),
-
           window.api.getAdminCashFlowAlerts(),
         ]);
 
         setData({
-          today,
+          today: {
+            ...emptyReports,
+
+            summary: {
+              ...emptyReports.summary,
+
+              sales_count: Number(todaySummary.sales_count || 0),
+
+              net_sales: Number(todaySummary.net_sales || 0),
+            },
+          },
+
           month,
-          overview,
+
+          /*
+           * cashAccounts و lowStock
+           * مستقلان عن فلتر التاريخ
+           * داخل getReportsSummary،
+           * لذلك لا نحتاج تقريرًا ثالثًا.
+           */
+          overview: month,
         });
 
         setCashFlowAlerts(alerts);
@@ -327,6 +347,8 @@ export default function DashboardPage() {
 
       setMessage('حدث خطأ أثناء تحميل لوحة التحكم');
     } finally {
+      dashboardLoadInFlightRef.current = false;
+
       if (!silent) {
         setLoading(false);
       }
@@ -353,18 +375,22 @@ export default function DashboardPage() {
 
     void loadDashboard();
 
-    /*
-     * لو تم قفل الشفت وفتح
-     * شفت جديد، الشاشة تتغير
-     * تلقائيًا حتى لو المستخدم
-     * فضل واقف على الـDashboard.
-     */
-    const timer = window.setInterval(() => {
+    function refreshDashboard() {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+
       void loadDashboard(true);
-    }, 15_000);
+    }
+
+    const timer = window.setInterval(refreshDashboard, 15_000);
+
+    window.addEventListener('focus', refreshDashboard);
 
     return () => {
       window.clearInterval(timer);
+
+      window.removeEventListener('focus', refreshDashboard);
     };
   }, [user?.id, isCashier]);
 

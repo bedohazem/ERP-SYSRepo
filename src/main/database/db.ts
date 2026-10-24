@@ -3360,6 +3360,126 @@ export function getDb(): Database.Database {
           }
         },
       },
+
+      {
+        version: 22,
+
+        name: 'performance-query-indexes',
+
+        up: () => {
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_product_variants_product_active
+
+            ON product_variants(
+              product_id,
+              is_active
+            );
+
+
+            CREATE INDEX IF NOT EXISTS
+              idx_sale_items_sale_id
+
+            ON sale_items(
+              sale_id
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_sales_customer_active_created
+
+            ON sales(
+              customer_id,
+              cancelled_at,
+              created_at DESC
+            );
+
+
+            CREATE INDEX IF NOT EXISTS
+              idx_sale_returns_original_active
+
+            ON sale_returns(
+              original_sale_id,
+              cancelled_at
+            );
+
+
+            CREATE INDEX IF NOT EXISTS
+              idx_sale_return_items_return_id
+
+            ON sale_return_items(
+              return_id
+            );
+
+
+            CREATE INDEX IF NOT EXISTS
+              idx_sale_exchanges_original_active
+
+            ON sale_exchanges(
+              original_sale_id,
+              cancelled_at
+            );
+
+
+            CREATE INDEX IF NOT EXISTS
+              idx_customer_payments_sale_id
+
+            ON customer_payments(
+              sale_id
+            );
+
+
+            CREATE INDEX IF NOT EXISTS
+              idx_customer_payment_batches_sale_id
+
+            ON customer_payment_batches(
+              sale_id
+            );
+
+
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_items_purchase_id
+
+            ON purchase_items(
+              purchase_id
+            );
+
+
+            CREATE INDEX IF NOT EXISTS
+              idx_purchase_items_variant_id
+
+            ON purchase_items(
+              variant_id
+            );
+
+
+            CREATE INDEX IF NOT EXISTS
+              idx_activity_logs_action_id
+
+            ON activity_logs(
+              action,
+              id
+            );
+
+
+            CREATE INDEX IF NOT EXISTS
+              idx_activity_logs_entity_id
+
+            ON activity_logs(
+              entity,
+              id
+            );
+
+
+            CREATE INDEX IF NOT EXISTS
+              idx_activity_logs_user_id
+
+            ON activity_logs(
+              user_id,
+              id
+            );
+          `);
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

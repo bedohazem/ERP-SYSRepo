@@ -1854,6 +1854,14 @@ declare global {
       // Reports
       // =========================
 
+      getAdminDashboardTodaySummary: (input: {
+        business_date: string;
+      }) => Promise<{
+        sales_count: number;
+
+        net_sales: number;
+      }>;
+
       getAdminCashFlowAlerts: () => Promise<{
         customers: AdminCashFlowDueSummary;
 

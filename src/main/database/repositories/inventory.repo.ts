@@ -149,6 +149,7 @@ export function listInventoryPage(input?: InventoryPageInput) {
   const db = getDb();
 
   const search = input?.search?.trim() || '';
+
   const selectedStatuses: InventoryPageStatus[] = Array.isArray(input?.statuses)
     ? Array.from(new Set(input.statuses))
     : input?.status && input.status !== 'all'
@@ -161,15 +162,18 @@ export function listInventoryPage(input?: InventoryPageInput) {
 
   const params: any[] = [];
 
-  let categorySql = '';
-
   const rawCategoryId = input?.categoryId;
 
   const categoryId =
     rawCategoryId && rawCategoryId !== 'all' ? Number(rawCategoryId) : null;
 
+  let categorySql = '';
+
   if (categoryId && Number.isFinite(categoryId) && categoryId > 0) {
-    categorySql = `AND p.category_id = ?`;
+    categorySql = `
+      AND p.category_id = ?
+    `;
+
     params.push(categoryId);
   }
 
@@ -186,211 +190,348 @@ export function listInventoryPage(input?: InventoryPageInput) {
     `;
 
     const q = `%${search}%`;
+
     params.push(q, q, q, q);
   }
 
-  const havingConditions: string[] = [];
+  const statusConditions: string[] = [];
 
   if (selectedStatuses.includes('available')) {
-    havingConditions.push(`
+    statusConditions.push(`
       (
-        p.is_active = 1
-        AND v.is_active = 1
-        AND stock > v.min_stock
+        product_is_active = 1
+        AND is_active = 1
+        AND stock > min_stock
       )
     `);
   }
 
   if (selectedStatuses.includes('low')) {
-    havingConditions.push(`
+    statusConditions.push(`
       (
-        p.is_active = 1
-        AND v.is_active = 1
+        product_is_active = 1
+        AND is_active = 1
         AND stock > 0
-        AND stock <= v.min_stock
+        AND stock <= min_stock
       )
     `);
   }
 
   if (selectedStatuses.includes('out')) {
-    havingConditions.push(`
+    statusConditions.push(`
       (
-        p.is_active = 1
-        AND v.is_active = 1
+        product_is_active = 1
+        AND is_active = 1
         AND stock = 0
       )
     `);
   }
 
   if (selectedStatuses.includes('inactive')) {
-    havingConditions.push(`
+    statusConditions.push(`
       (
-        p.is_active != 1
-        OR v.is_active != 1
+        product_is_active != 1
+        OR is_active != 1
       )
     `);
   }
 
-  const havingSql =
-    havingConditions.length > 0
-      ? `HAVING ${havingConditions.join(' OR ')}`
-      : '';
+  const statusSql =
+    statusConditions.length > 0 ? `WHERE ${statusConditions.join(' OR ')}` : '';
 
-  const baseSql = `
-    SELECT
-      v.id AS variant_id,
-      p.id AS product_id,
-      p.name AS product_name,
-      p.category_id AS category_id,
-      c.name AS category_name,
-      v.barcode,
-      v.size,
-      v.color,
-      v.buy_price,
-      v.average_cost,
-      v.inventory_value,
-      v.sell_price,
-      v.min_stock,
-      v.is_active,
-      p.is_active AS product_is_active,
-      ${STOCK_SUM_SQL} AS stock
-    FROM product_variants v
-    JOIN products p ON p.id = v.product_id
-    LEFT JOIN categories c ON c.id = p.category_id
-    LEFT JOIN stock_movements sm ON sm.variant_id = v.id
-    WHERE 1 = 1
-      ${categorySql}
-      ${searchSql}
-    GROUP BY v.id
-    ${havingSql}
-  `;
-
-  const rows = db
+  const queryRows = db
     .prepare(
       `
-      SELECT *
-      FROM (
-        ${baseSql}
-      ) inventory
+      WITH
+      candidates AS (
+        SELECT
+          v.id AS variant_id,
+          p.id AS product_id,
+          p.name AS product_name,
+          p.category_id AS category_id,
+          c.name AS category_name,
+
+          v.barcode,
+          v.size,
+          v.color,
+
+          v.buy_price,
+          v.average_cost,
+          v.inventory_value,
+          v.sell_price,
+          v.min_stock,
+
+          v.is_active,
+
+          p.is_active
+            AS product_is_active
+
+        FROM product_variants v
+
+        JOIN products p
+          ON p.id = v.product_id
+
+        LEFT JOIN categories c
+          ON c.id = p.category_id
+
+        WHERE 1 = 1
+          ${categorySql}
+          ${searchSql}
+      ),
+
+      stock_totals AS (
+        SELECT
+          sm.variant_id,
+
+          IFNULL(
+            SUM(
+              CASE
+                WHEN sm.type = 'in'
+                  THEN sm.quantity
+
+                WHEN sm.type = 'out'
+                  THEN -sm.quantity
+
+                ELSE 0
+              END
+            ),
+            0
+          ) AS stock
+
+        FROM stock_movements sm
+
+        JOIN candidates candidate
+          ON candidate.variant_id =
+            sm.variant_id
+
+        GROUP BY
+          sm.variant_id
+      ),
+
+      inventory_base AS (
+        SELECT
+          candidate.*,
+
+          IFNULL(
+            stock_totals.stock,
+            0
+          ) AS stock
+
+        FROM candidates candidate
+
+        LEFT JOIN stock_totals
+          ON stock_totals.variant_id =
+            candidate.variant_id
+      ),
+
+      filtered_inventory AS (
+        SELECT *
+
+        FROM inventory_base
+
+        ${statusSql}
+      ),
+
+      summary AS (
+        SELECT
+          COUNT(*) AS total,
+
+          IFNULL(
+            SUM(
+              CASE
+                WHEN
+                  product_is_active = 1
+                  AND is_active = 1
+                  AND stock > min_stock
+
+                THEN 1
+                ELSE 0
+              END
+            ),
+            0
+          ) AS available,
+
+          IFNULL(
+            SUM(
+              CASE
+                WHEN
+                  product_is_active = 1
+                  AND is_active = 1
+                  AND stock > 0
+                  AND stock <= min_stock
+
+                THEN 1
+                ELSE 0
+              END
+            ),
+            0
+          ) AS low,
+
+          IFNULL(
+            SUM(
+              CASE
+                WHEN
+                  product_is_active = 1
+                  AND is_active = 1
+                  AND stock = 0
+
+                THEN 1
+                ELSE 0
+              END
+            ),
+            0
+          ) AS out,
+
+          IFNULL(
+            SUM(
+              CASE
+                WHEN
+                  product_is_active != 1
+                  OR is_active != 1
+
+                THEN 1
+                ELSE 0
+              END
+            ),
+            0
+          ) AS inactive,
+
+          IFNULL(
+            SUM(
+              CASE
+                WHEN stock > 0
+                  THEN inventory_value
+
+                ELSE 0
+              END
+            ),
+            0
+          ) AS total_buy_value,
+
+          IFNULL(
+            SUM(
+              CASE
+                WHEN stock > 0
+                  THEN stock * sell_price
+
+                ELSE 0
+              END
+            ),
+            0
+          ) AS total_sell_value
+
+        FROM filtered_inventory
+      ),
+
+      paged AS (
+        SELECT *
+
+        FROM filtered_inventory
+
+        ORDER BY
+          CASE
+            WHEN stock < 0 THEN 0
+            WHEN stock = 0 THEN 1
+            WHEN stock <= min_stock THEN 2
+            ELSE 3
+          END,
+
+          product_name ASC,
+
+          variant_id ASC
+
+        LIMIT ?
+        OFFSET ?
+      )
+
+      SELECT
+        paged.*,
+
+        summary.total
+          AS summary_total,
+
+        summary.available
+          AS summary_available,
+
+        summary.low
+          AS summary_low,
+
+        summary.out
+          AS summary_out,
+
+        summary.inactive
+          AS summary_inactive,
+
+        summary.total_buy_value
+          AS summary_total_buy_value,
+
+        summary.total_sell_value
+          AS summary_total_sell_value
+
+      FROM summary
+
+      LEFT JOIN paged
+        ON 1 = 1
+
       ORDER BY
         CASE
-          WHEN stock < 0 THEN 0
-          WHEN stock = 0 THEN 1
-          WHEN stock <= min_stock THEN 2
+          WHEN paged.stock < 0 THEN 0
+          WHEN paged.stock = 0 THEN 1
+          WHEN paged.stock <= paged.min_stock THEN 2
           ELSE 3
         END,
-        product_name ASC,
-        variant_id ASC
-      LIMIT ?
-      OFFSET ?
-    `,
+
+        paged.product_name ASC,
+
+        paged.variant_id ASC
+      `,
     )
-    .all(...params, limit, offset);
+    .all(...params, limit, offset) as any[];
 
-  const summaryRow = db
-    .prepare(
-      `
-      SELECT
-        COUNT(*) AS total,
+  const summaryRow = queryRows[0] || {};
 
-        IFNULL(
-          SUM(
-            CASE
-              WHEN product_is_active = 1
-               AND is_active = 1
-               AND stock > min_stock
-              THEN 1
-              ELSE 0
-            END
-          ),
-          0
-        ) AS available,
+  const rows = queryRows
+    .filter((row) => row.variant_id !== null && row.variant_id !== undefined)
+    .map((row) => {
+      const {
+        summary_total: _summaryTotal,
+        summary_available: _summaryAvailable,
+        summary_low: _summaryLow,
+        summary_out: _summaryOut,
+        summary_inactive: _summaryInactive,
+        summary_total_buy_value: _summaryTotalBuyValue,
+        summary_total_sell_value: _summaryTotalSellValue,
+        ...inventoryRow
+      } = row;
 
-        IFNULL(
-          SUM(
-            CASE
-              WHEN product_is_active = 1
-               AND is_active = 1
-               AND stock > 0
-               AND stock <= min_stock
-              THEN 1
-              ELSE 0
-            END
-          ),
-          0
-        ) AS low,
+      return inventoryRow;
+    });
 
-        IFNULL(
-          SUM(
-            CASE
-              WHEN product_is_active = 1
-               AND is_active = 1
-               AND stock = 0
-              THEN 1
-              ELSE 0
-            END
-          ),
-          0
-        ) AS out,
-
-        IFNULL(
-          SUM(
-            CASE
-              WHEN product_is_active != 1
-                OR is_active != 1
-              THEN 1
-              ELSE 0
-            END
-          ),
-          0
-        ) AS inactive,
-
-        IFNULL(
-          SUM(
-            CASE
-              WHEN stock > 0
-              THEN inventory_value
-              ELSE 0
-            END
-          ),
-          0
-        ) AS total_buy_value,
-
-        IFNULL(
-          SUM(
-            CASE
-              WHEN stock > 0
-              THEN stock * sell_price
-              ELSE 0
-            END
-          ),
-          0
-        ) AS total_sell_value
-
-      FROM (
-        ${baseSql}
-      ) inventory
-    `,
-    )
-    .get(...params) as any;
-
-  const total = Number(summaryRow?.total || 0);
+  const total = Number(summaryRow.summary_total || 0);
 
   return {
     rows,
+
     total,
+
     limit,
+
     offset,
 
     summary: {
       total,
-      available: Number(summaryRow?.available || 0),
-      low: Number(summaryRow?.low || 0),
-      out: Number(summaryRow?.out || 0),
-      totalBuyValue: roundMoney(summaryRow?.total_buy_value),
 
-      totalSellValue: roundMoney(summaryRow?.total_sell_value),
-      inactive: Number(summaryRow?.inactive || 0),
+      available: Number(summaryRow.summary_available || 0),
+
+      low: Number(summaryRow.summary_low || 0),
+
+      out: Number(summaryRow.summary_out || 0),
+
+      inactive: Number(summaryRow.summary_inactive || 0),
+
+      totalBuyValue: roundMoney(summaryRow.summary_total_buy_value),
+
+      totalSellValue: roundMoney(summaryRow.summary_total_sell_value),
     },
   };
 }
@@ -675,7 +816,7 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
     GROUP BY variant_id
   `;
 
-  const summaryRow = db
+  const analyticsRow = db
     .prepare(
       `
       WITH
@@ -689,31 +830,119 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
 
       recent_activity AS (
         SELECT
-          variant_id,
+          a.variant_id,
 
           IFNULL(
             SUM(
               CASE
-                WHEN activity_date >=
+                WHEN a.activity_date >=
                   date(
                     'now',
                     'localtime',
                     '-29 days'
                   )
-                THEN quantity_delta
+
+                THEN a.quantity_delta
+
                 ELSE 0
               END
             ),
             0
           ) AS net_sold_units_30d
 
-        FROM activity
+        FROM activity a
 
-        GROUP BY variant_id
+        JOIN inventory i
+          ON i.variant_id =
+            a.variant_id
+
+        GROUP BY
+          a.variant_id
+      ),
+
+      last_outbound_all AS (
+        ${lastOutboundSql}
       ),
 
       last_outbound AS (
-        ${lastOutboundSql}
+        SELECT
+          l.variant_id,
+          l.last_sale_date
+
+        FROM last_outbound_all l
+
+        JOIN inventory i
+          ON i.variant_id =
+            l.variant_id
+      ),
+
+      metrics AS (
+        SELECT
+          i.variant_id,
+          i.product_name,
+
+          i.barcode,
+          i.size,
+          i.color,
+
+          i.sell_price,
+          i.inventory_value,
+
+          i.is_active,
+          i.product_is_active,
+
+          i.stock,
+
+          IFNULL(
+            r.net_sold_units_30d,
+            0
+          ) AS net_sold_units_30d,
+
+          l.last_sale_date
+
+        FROM inventory i
+
+        LEFT JOIN recent_activity r
+          ON r.variant_id =
+            i.variant_id
+
+        LEFT JOIN last_outbound l
+          ON l.variant_id =
+            i.variant_id
+      ),
+
+      top_mover AS (
+        SELECT
+          variant_id,
+          product_name,
+
+          barcode,
+          size,
+          color,
+
+          stock
+            AS current_stock,
+
+          net_sold_units_30d
+            AS sold_units_30d
+
+        FROM metrics
+
+        WHERE
+          product_is_active = 1
+
+          AND is_active = 1
+
+          AND net_sold_units_30d > 0
+
+        ORDER BY
+          net_sold_units_30d DESC,
+
+          product_name ASC,
+
+          variant_id ASC
+
+        LIMIT 1
       )
 
       SELECT
@@ -721,13 +950,13 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
           SUM(
             CASE
               WHEN
-                i.product_is_active = 1
+                m.product_is_active = 1
 
-                AND i.is_active = 1
+                AND m.is_active = 1
 
-                AND i.stock > 0
+                AND m.stock > 0
 
-              THEN i.stock
+              THEN m.stock
 
               ELSE 0
             END
@@ -739,14 +968,12 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
           SUM(
             CASE
               WHEN
-                i.product_is_active = 1
+                m.product_is_active = 1
 
-                AND i.is_active = 1
+                AND m.is_active = 1
 
-              THEN IFNULL(
-                r.net_sold_units_30d,
-                0
-              )
+              THEN
+                m.net_sold_units_30d
 
               ELSE 0
             END
@@ -758,16 +985,16 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
           SUM(
             CASE
               WHEN
-                i.product_is_active = 1
+                m.product_is_active = 1
 
-                AND i.is_active = 1
+                AND m.is_active = 1
 
-                AND i.stock > 0
+                AND m.stock > 0
 
                 AND (
-                  l.last_sale_date IS NULL
+                  m.last_sale_date IS NULL
 
-                  OR l.last_sale_date <
+                  OR m.last_sale_date <
                     date(
                       'now',
                       'localtime',
@@ -787,16 +1014,16 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
           SUM(
             CASE
               WHEN
-                i.product_is_active = 1
+                m.product_is_active = 1
 
-                AND i.is_active = 1
+                AND m.is_active = 1
 
-                AND i.stock > 0
+                AND m.stock > 0
 
                 AND (
-                  l.last_sale_date IS NULL
+                  m.last_sale_date IS NULL
 
-                  OR l.last_sale_date <
+                  OR m.last_sale_date <
                     date(
                       'now',
                       'localtime',
@@ -804,7 +1031,7 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
                     )
                 )
 
-              THEN i.stock
+              THEN m.stock
 
               ELSE 0
             END
@@ -816,16 +1043,16 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
           SUM(
             CASE
               WHEN
-                i.product_is_active = 1
+                m.product_is_active = 1
 
-                AND i.is_active = 1
+                AND m.is_active = 1
 
-                AND i.stock > 0
+                AND m.stock > 0
 
                 AND (
-                  l.last_sale_date IS NULL
+                  m.last_sale_date IS NULL
 
-                  OR l.last_sale_date <
+                  OR m.last_sale_date <
                     date(
                       'now',
                       'localtime',
@@ -833,7 +1060,7 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
                     )
                 )
 
-              THEN i.inventory_value
+              THEN m.inventory_value
 
               ELSE 0
             END
@@ -845,146 +1072,97 @@ export function getInventoryAnalytics(input?: InventoryAnalyticsInput) {
           SUM(
             CASE
               WHEN
-                i.product_is_active = 1
+                m.product_is_active = 1
 
-                AND i.is_active = 1
+                AND m.is_active = 1
 
-                AND i.stock > 0
+                AND m.stock > 0
 
               THEN
                 (
-                  i.stock *
-                  i.sell_price
+                  m.stock *
+                  m.sell_price
                 )
                 -
-                i.inventory_value
+                m.inventory_value
 
               ELSE 0
             END
           ),
           0
-        ) AS potential_gross_profit
+        ) AS potential_gross_profit,
 
-      FROM inventory i
+        (
+          SELECT variant_id
+          FROM top_mover
+        ) AS top_mover_variant_id,
 
-      LEFT JOIN recent_activity r
-        ON r.variant_id =
-          i.variant_id
+        (
+          SELECT product_name
+          FROM top_mover
+        ) AS top_mover_product_name,
 
-      LEFT JOIN last_outbound l
-        ON l.variant_id =
-          i.variant_id
-      `,
-    )
-    .get(...params) as any;
+        (
+          SELECT barcode
+          FROM top_mover
+        ) AS top_mover_barcode,
 
-  const topMover = db
-    .prepare(
-      `
-      WITH
-      inventory AS (
-        ${inventorySql}
-      ),
+        (
+          SELECT size
+          FROM top_mover
+        ) AS top_mover_size,
 
-      activity AS (
-        ${activitySql}
-      ),
+        (
+          SELECT color
+          FROM top_mover
+        ) AS top_mover_color,
 
-      recent_activity AS (
-        SELECT
-          variant_id,
+        (
+          SELECT current_stock
+          FROM top_mover
+        ) AS top_mover_current_stock,
 
-          IFNULL(
-            SUM(
-              CASE
-                WHEN activity_date >=
-                  date(
-                    'now',
-                    'localtime',
-                    '-29 days'
-                  )
+        (
+          SELECT sold_units_30d
+          FROM top_mover
+        ) AS top_mover_sold_units_30d
 
-                THEN quantity_delta
-
-                ELSE 0
-              END
-            ),
-            0
-          ) AS net_sold_units_30d
-
-        FROM activity
-
-        GROUP BY variant_id
-      )
-
-      SELECT
-        i.variant_id,
-
-        i.product_name,
-
-        i.barcode,
-        i.size,
-        i.color,
-
-        i.stock
-          AS current_stock,
-
-        r.net_sold_units_30d
-          AS sold_units_30d
-
-      FROM inventory i
-
-      JOIN recent_activity r
-        ON r.variant_id =
-          i.variant_id
-
-      WHERE
-        i.product_is_active = 1
-
-        AND i.is_active = 1
-
-        AND r.net_sold_units_30d > 0
-
-      ORDER BY
-        r.net_sold_units_30d DESC,
-
-        i.product_name ASC
-
-      LIMIT 1
+      FROM metrics m
       `,
     )
     .get(...params) as any;
 
   return {
-    stock_units: Number(summaryRow?.stock_units || 0),
+    stock_units: Number(analyticsRow?.stock_units || 0),
 
-    sold_units_30d: Number(summaryRow?.sold_units_30d || 0),
+    sold_units_30d: Number(analyticsRow?.sold_units_30d || 0),
 
-    dead_stock_variants_90d: Number(summaryRow?.dead_stock_variants_90d || 0),
+    dead_stock_variants_90d: Number(analyticsRow?.dead_stock_variants_90d || 0),
 
-    dead_stock_units_90d: Number(summaryRow?.dead_stock_units_90d || 0),
+    dead_stock_units_90d: Number(analyticsRow?.dead_stock_units_90d || 0),
 
-    dead_stock_value_90d: roundMoney(summaryRow?.dead_stock_value_90d),
+    dead_stock_value_90d: roundMoney(analyticsRow?.dead_stock_value_90d),
 
-    potential_gross_profit: roundMoney(summaryRow?.potential_gross_profit),
+    potential_gross_profit: roundMoney(analyticsRow?.potential_gross_profit),
 
-    top_mover: topMover
-      ? {
-          variant_id: Number(topMover.variant_id),
+    top_mover:
+      analyticsRow?.top_mover_variant_id != null
+        ? {
+            variant_id: Number(analyticsRow.top_mover_variant_id),
 
-          product_name: String(topMover.product_name || ''),
+            product_name: String(analyticsRow.top_mover_product_name || ''),
 
-          barcode: topMover.barcode ?? null,
+            barcode: analyticsRow.top_mover_barcode ?? null,
 
-          size: topMover.size ?? null,
+            size: analyticsRow.top_mover_size ?? null,
 
-          color: topMover.color ?? null,
+            color: analyticsRow.top_mover_color ?? null,
 
-          current_stock: Number(topMover.current_stock || 0),
+            current_stock: Number(analyticsRow.top_mover_current_stock || 0),
 
-          sold_units_30d: Number(topMover.sold_units_30d || 0),
-        }
-      : null,
+            sold_units_30d: Number(analyticsRow.top_mover_sold_units_30d || 0),
+          }
+        : null,
   };
 }
 

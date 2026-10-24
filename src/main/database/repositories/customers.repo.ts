@@ -502,33 +502,78 @@ export function getCustomers() {
 
 export function searchCustomers(query: string) {
   const db = getDb();
+
   const q = `%${query.trim()}%`;
 
   return db
     .prepare(
       `
+      WITH
+      matched_customers AS (
+        SELECT
+          c.*
+
+        FROM customers c
+
+        WHERE
+          c.is_active = 1
+
+          AND (
+            c.name LIKE ?
+            OR IFNULL(c.phone, '') LIKE ?
+            OR IFNULL(c.email, '') LIKE ?
+          )
+
+        ORDER BY
+          c.id DESC
+
+        LIMIT 30
+      ),
+
+      sale_stats AS (
+        SELECT
+          s.customer_id,
+
+          COUNT(*) AS sales_count,
+
+          MAX(s.created_at)
+            AS last_sale_at
+
+        FROM sales s
+
+        JOIN matched_customers mc
+          ON mc.id = s.customer_id
+
+        WHERE
+          IFNULL(
+            s.type,
+            'sale'
+          ) = 'sale'
+
+          AND s.cancelled_at IS NULL
+
+        GROUP BY
+          s.customer_id
+      )
+
       SELECT
-        c.*,
-        COUNT(s.id) AS sales_count,
-        MAX(s.created_at) AS last_sale_at
-      FROM customers c
-      LEFT JOIN sales s
-        ON s.customer_id = c.id
-        AND IFNULL(
-          s.type,
-          'sale'
-        ) = 'sale'
-        AND s.cancelled_at IS NULL
-      WHERE c.is_active = 1
-        AND (
-          c.name LIKE ?
-          OR c.phone LIKE ?
-          OR c.email LIKE ?
-        )
-      GROUP BY c.id
-      ORDER BY c.id DESC
-      LIMIT 30
-    `,
+        mc.*,
+
+        IFNULL(
+          ss.sales_count,
+          0
+        ) AS sales_count,
+
+        ss.last_sale_at
+
+      FROM matched_customers mc
+
+      LEFT JOIN sale_stats ss
+        ON ss.customer_id = mc.id
+
+      ORDER BY
+        mc.id DESC
+      `,
     )
     .all(q, q, q);
 }
@@ -578,24 +623,14 @@ export function listCustomers(input?: {
   const rows = db
     .prepare(
       `
+    WITH
+    paged_customers AS (
       SELECT
-        c.*,
-        COUNT(s.id) AS sales_count,
-        MAX(s.created_at) AS last_sale_at
+        c.*
 
       FROM customers c
 
-      LEFT JOIN sales s
-        ON s.customer_id = c.id
-        AND IFNULL(
-          s.type,
-          'sale'
-        ) = 'sale'
-        AND s.cancelled_at IS NULL
-
       ${rowsWhereSql}
-
-      GROUP BY c.id
 
       ORDER BY
         IFNULL(c.balance, 0) DESC,
@@ -603,6 +638,52 @@ export function listCustomers(input?: {
 
       LIMIT ?
       OFFSET ?
+    ),
+
+    sale_stats AS (
+      SELECT
+        s.customer_id,
+
+        COUNT(*) AS sales_count,
+
+        MAX(s.created_at)
+          AS last_sale_at
+
+      FROM sales s
+
+      JOIN paged_customers pc
+        ON pc.id = s.customer_id
+
+      WHERE
+        IFNULL(
+          s.type,
+          'sale'
+        ) = 'sale'
+
+        AND s.cancelled_at IS NULL
+
+      GROUP BY
+        s.customer_id
+    )
+
+    SELECT
+      pc.*,
+
+      IFNULL(
+        ss.sales_count,
+        0
+      ) AS sales_count,
+
+      ss.last_sale_at
+
+    FROM paged_customers pc
+
+    LEFT JOIN sale_stats ss
+      ON ss.customer_id = pc.id
+
+    ORDER BY
+      IFNULL(pc.balance, 0) DESC,
+      pc.id DESC
     `,
     )
     .all(...baseParams, limit, offset);

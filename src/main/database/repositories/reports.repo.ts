@@ -157,6 +157,124 @@ export function getAdminCashFlowAlerts() {
   };
 }
 
+export function getAdminDashboardTodaySummary(businessDate: string) {
+  const db = getDb();
+
+  const saleBusinessDate = buildShiftBusinessDateExpression(
+    's.shift_id',
+    's.created_at',
+    's.business_date',
+  );
+
+  const returnBusinessDate = buildShiftBusinessDateExpression(
+    'sr.shift_id',
+    'sr.created_at',
+  );
+
+  const exchangeBusinessDate = buildShiftBusinessDateExpression(
+    'se.shift_id',
+    'se.created_at',
+    'se.business_date',
+  );
+
+  const row = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(x.sales_count),
+          0
+        ) AS sales_count,
+
+        IFNULL(
+          SUM(x.amount),
+          0
+        ) AS net_sales
+
+      FROM (
+        SELECT
+          ${saleBusinessDate} AS business_date,
+
+          1 AS sales_count,
+
+          s.grand_total AS amount
+
+        FROM sales s
+
+        WHERE
+          IFNULL(
+            s.type,
+            'sale'
+          ) = 'sale'
+
+          AND s.cancelled_at IS NULL
+
+        UNION ALL
+
+        SELECT
+          ${returnBusinessDate} AS business_date,
+
+          0 AS sales_count,
+
+          -sr.refund_amount AS amount
+
+        FROM sale_returns sr
+
+        JOIN sales os
+          ON os.id = sr.original_sale_id
+
+        WHERE
+          sr.cancelled_at IS NULL
+
+          AND os.cancelled_at IS NULL
+
+          AND IFNULL(
+            os.type,
+            'sale'
+          ) = 'sale'
+
+        UNION ALL
+
+        SELECT
+          ${exchangeBusinessDate} AS business_date,
+
+          0 AS sales_count,
+
+          se.difference_amount AS amount
+
+        FROM sale_exchanges se
+
+        JOIN sales os
+          ON os.id = se.original_sale_id
+
+        WHERE
+          se.cancelled_at IS NULL
+
+          AND os.cancelled_at IS NULL
+
+          AND IFNULL(
+            os.type,
+            'sale'
+          ) = 'sale'
+      ) x
+
+      WHERE x.business_date = ?
+      `,
+    )
+    .get(businessDate) as
+    | {
+        sales_count: number;
+        net_sales: number;
+      }
+    | undefined;
+
+  return {
+    sales_count: Number(row?.sales_count || 0),
+
+    net_sales: reportMoney(row?.net_sales || 0),
+  };
+}
+
 export function getReportsSummary(input?: ReportFilter) {
   const db = getDb();
 

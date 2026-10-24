@@ -19,6 +19,7 @@ import {
   getAdminCashFlowAlerts,
   getCashierDashboardSummary,
   getReportsSummary,
+  getAdminDashboardTodaySummary,
 } from '../../src/main/database/repositories/reports.repo';
 
 import { createPurchaseInvoice } from '../../src/main/database/repositories/purchases.repo';
@@ -2551,5 +2552,107 @@ describe('reports repository', () => {
     expect(cashier.discounts.product).toBe(40);
 
     expect(cashier.discounts.total).toBe(40);
+  });
+
+  it('builds lightweight admin dashboard today summary', () => {
+    const variant = seedReportProduct({
+      name: 'Dashboard Today Product',
+      barcode: 'DASHBOARD-TODAY',
+      openingQty: 10,
+      buyPrice: 50,
+      sellPrice: 100,
+    });
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 100,
+      discount_value: 0,
+      grand_total: 100,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 100,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 100,
+        },
+      ],
+    });
+
+    const db = getDb();
+
+    db.prepare(
+      `
+    UPDATE cash_shifts
+
+    SET business_date = ?
+
+    WHERE id = (
+      SELECT shift_id
+      FROM sales
+      WHERE id = ?
+    )
+    `,
+    ).run('2026-10-10', sale.saleId);
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      reason: 'Dashboard today summary return',
+
+      items: [
+        {
+          sale_item_id: Number(receipt.items[0].id),
+
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    const summary = getAdminDashboardTodaySummary('2026-10-10');
+
+    const fullReport = getReportsSummary({
+      date_from: '2026-10-10',
+
+      date_to: '2026-10-10',
+    });
+
+    expect(summary.sales_count).toBe(fullReport.summary.sales_count);
+
+    expect(summary.net_sales).toBe(fullReport.summary.net_sales);
+
+    expect(summary.sales_count).toBe(1);
+
+    expect(summary.net_sales).toBe(0);
+
+    const empty = getAdminDashboardTodaySummary('2026-10-11');
+
+    expect(empty.sales_count).toBe(0);
+
+    expect(empty.net_sales).toBe(0);
   });
 });

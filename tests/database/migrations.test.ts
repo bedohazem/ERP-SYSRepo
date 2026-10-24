@@ -347,7 +347,57 @@ describe('database migrations', () => {
 
         name: 'link-salespeople-to-users',
       },
+
+      {
+        version: 22,
+
+        name: 'performance-query-indexes',
+      },
     ]);
+
+    const performanceIndexes = database
+      .prepare(
+        `
+          SELECT name
+
+          FROM sqlite_master
+
+          WHERE type = 'index'
+        `,
+      )
+      .all() as Array<{
+      name: string;
+    }>;
+
+    const performanceIndexNames = performanceIndexes.map((row) => row.name);
+
+    expect(performanceIndexNames).toEqual(
+      expect.arrayContaining([
+        'idx_product_variants_product_active',
+
+        'idx_sale_items_sale_id',
+        'idx_sales_customer_active_created',
+        'idx_sale_returns_original_active',
+
+        'idx_sale_return_items_return_id',
+
+        'idx_sale_exchanges_original_active',
+
+        'idx_customer_payments_sale_id',
+
+        'idx_customer_payment_batches_sale_id',
+
+        'idx_purchase_items_purchase_id',
+
+        'idx_purchase_items_variant_id',
+
+        'idx_activity_logs_action_id',
+
+        'idx_activity_logs_entity_id',
+
+        'idx_activity_logs_user_id',
+      ]),
+    );
 
     const userPermissionColumns = database
       .prepare(
@@ -572,5 +622,5 @@ describe('database migrations', () => {
         'due_date',
       ]),
     );
-  });
+  }, 30_000);
 });

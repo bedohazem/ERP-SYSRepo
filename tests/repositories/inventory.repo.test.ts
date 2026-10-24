@@ -710,6 +710,34 @@ describe('inventory repository', () => {
     expect(firstPage.summary.total).toBe(5);
   });
 
+  it('keeps inventory summary when requested page has no rows', () => {
+    for (let index = 1; index <= 3; index += 1) {
+      seedInventoryProduct({
+        name: `Summary Product ${index}`,
+
+        barcode: `SUMMARY-INV-${index}`,
+
+        openingQty: 10,
+
+        minStock: 2,
+      });
+    }
+
+    const result = listInventoryPage({
+      limit: 2,
+
+      offset: 100,
+    });
+
+    expect(result.rows).toHaveLength(0);
+
+    expect(result.total).toBe(3);
+
+    expect(result.summary.total).toBe(3);
+
+    expect(result.summary.available).toBe(3);
+  });
+
   it('paginates stock movement history', () => {
     const variant = seedInventoryProduct({
       barcode: 'MOVEPAGE001',

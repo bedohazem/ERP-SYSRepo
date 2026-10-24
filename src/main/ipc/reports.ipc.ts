@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 
 import {
   getAdminCashFlowAlerts,
+  getAdminDashboardTodaySummary,
   getCashierDashboardSummary,
   getReportsSummary,
 } from '../database/repositories/reports.repo';
@@ -34,6 +35,23 @@ export function registerReportsIpc(): void {
     requireAuthenticatedAdmin(event);
 
     return getAdminCashFlowAlerts();
+  });
+
+  ipcMain.handle('reports:admin-dashboard-today', (event, input) => {
+    requireAuthenticatedAdmin(event);
+
+    const payload = requireObjectInput(input ?? {}, 'بيانات لوحة التحكم');
+
+    const businessDate = optionalDateOnly(
+      payload.business_date,
+      'تاريخ لوحة التحكم',
+    );
+
+    if (!businessDate) {
+      throw new Error('تاريخ لوحة التحكم مطلوب');
+    }
+
+    return getAdminDashboardTodaySummary(businessDate);
   });
 
   ipcMain.handle('reports:cashier-dashboard', (event) => {
