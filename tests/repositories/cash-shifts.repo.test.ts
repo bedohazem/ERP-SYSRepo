@@ -1899,4 +1899,44 @@ describe('cash shifts repository', () => {
 
     expect(pageTwo.rows).toHaveLength(1);
   });
+
+  it('preserves cent precision through shift opening and closing', () => {
+    const shift = openCashShift({
+      opening_counted_amount: 500.25,
+
+      opened_by: 1,
+    });
+
+    createCashMovement({
+      type: 'expense',
+
+      direction: 'out',
+
+      amount: 100.05,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+
+      shift_id: shift.id,
+    });
+
+    const preview = getCashShiftExpectedBalance(shift.id);
+
+    expect(preview.expected_closing_amount).toBe(400.2);
+
+    const closed = closeCashShift({
+      shift_id: shift.id,
+
+      closing_counted_amount: 400.2,
+
+      left_for_next_shift: 400.2,
+
+      closed_by: 1,
+    });
+
+    expect(closed.closing_counted_amount).toBe(400.2);
+
+    expect(closed.left_for_next_shift).toBe(400.2);
+  });
 });

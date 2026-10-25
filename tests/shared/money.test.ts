@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatMoney, roundMoney } from '../../src/shared/money';
+import {
+  formatMoney,
+  roundFinancial,
+  roundMoney,
+} from '../../src/shared/money';
 
 describe('whole-pound money policy', () => {
   it('rounds .5 and above up and values below .5 down', () => {
@@ -31,13 +35,23 @@ describe('whole-pound money policy', () => {
     }
   });
 
-  it('formats money without decimal fractions', () => {
-    expect(formatMoney(12)).toBe('12 ج.م');
+  it('formats financial values without unnecessary trailing zeros', () => {
+    expect(formatMoney(100)).toBe('100 ج.م');
 
-    expect(formatMoney(12.49)).toBe('12 ج.م');
+    expect(formatMoney(100.5)).toBe('100.5 ج.م');
 
-    expect(formatMoney(12.5)).toBe('13 ج.م');
+    expect(formatMoney(100.05)).toBe('100.05 ج.م');
 
-    expect(formatMoney(100)).not.toContain('.00');
+    expect(formatMoney(100.055)).toBe('100.06 ج.م');
+  });
+
+  it('keeps financial amounts at two decimal places', () => {
+    expect(roundFinancial(100)).toBe(100);
+
+    expect(roundFinancial(100.05)).toBe(100.05);
+
+    expect(roundFinancial(100.055)).toBe(100.06);
+
+    expect(roundFinancial(-10.555)).toBe(-10.55);
   });
 });

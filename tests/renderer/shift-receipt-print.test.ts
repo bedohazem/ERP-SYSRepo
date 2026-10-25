@@ -16,9 +16,9 @@ describe('shift close thermal receipt', () => {
 
         closed_at: '2026-09-16 17:00:00',
 
-        closing_counted_amount: 500,
+        closing_counted_amount: 500.25,
 
-        left_for_next_shift: 100,
+        left_for_next_shift: 100.05,
       },
 
       {
@@ -42,17 +42,20 @@ describe('shift close thermal receipt', () => {
 
     expect(html).toContain('Test Cashier');
 
-    expect(html).toContain('500');
-    expect(html).toContain('100');
+    expect(html).toContain('500.25');
+
+    expect(html).toContain('100.05');
 
     /*
-     * 500 - 100
+     * 500.25 - 100.05
      */
-    expect(html).toContain('400');
+    expect(html).toContain('400.2');
 
-    expect(html).not.toContain('500.00');
-    expect(html).not.toContain('100.00');
-    expect(html).not.toContain('400.00');
+    expect(html).not.toContain('500.250');
+
+    expect(html).not.toContain('100.050');
+
+    expect(html).not.toContain('400.20');
 
     expect(html).toContain('width:\n              245px');
 

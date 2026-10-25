@@ -179,11 +179,11 @@ describe('expense repository', () => {
     expect(lastLog.entity).toBe('cash_movements');
   });
 
-  it('rounds expense money to whole pounds before storing it and moving cash', () => {
+  it('stores expense money to two decimal places and moves the exact financial amount', () => {
     const result = createExpense({
-      title: 'Rounded Expense',
+      title: 'Fractional Expense',
 
-      amount: 10.5,
+      amount: 10.55,
 
       payment_method: 'cash',
 
@@ -194,9 +194,9 @@ describe('expense repository', () => {
 
     const expenses = listExpenses() as ExpenseTestRow[];
 
-    expect(expenses[0].amount).toBe(11);
+    expect(expenses[0].amount).toBe(10.55);
 
-    expect(getCashMovementTotal('out')).toBe(11);
+    expect(getCashMovementTotal('out')).toBe(10.55);
   });
 
   it('uses cash as default payment method', () => {

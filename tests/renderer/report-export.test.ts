@@ -13,7 +13,9 @@ const data = {
     gross_profit_before_discounts: 30.75,
 
     net_profit_after_discounts: 27.25,
+    total_expenses: 12.05,
 
+    total_liability_payments: 7.25,
     final_net_profit: 25.31,
     sales_count: 2,
     total_purchase_invoices: 46,
@@ -33,15 +35,15 @@ const data = {
 
       label: 'كاش درج المحل',
 
-      total_in: 100,
+      total_in: 100.05,
 
-      total_out: 20,
+      total_out: 20.03,
 
-      balance: 80,
+      balance: 80.02,
     },
   ],
 
-  cashAccountsTotalBalance: 80,
+  cashAccountsTotalBalance: 80.02,
 
   cashierSales: [
     {
@@ -153,6 +155,11 @@ describe('report export builders', () => {
     expect(csv).toContain('"صافي الربح النهائي"');
 
     expect(csv).toContain('"25.31"');
+    expect(csv).toContain('"80.02"');
+
+    expect(csv).toContain('"12.05"');
+
+    expect(csv).toContain('"7.25"');
   });
 
   it('escapes HTML values in PDF export', () => {

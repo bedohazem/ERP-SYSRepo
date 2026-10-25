@@ -20,6 +20,15 @@ type PurchaseRow = {
   supplier_name: string;
   supplier_phone?: string | null;
   total_amount: number;
+  exact_total_amount?: number;
+
+  effective_exact_total_amount?: number;
+
+  rounding_adjustment?: number;
+
+  effective_rounding_adjustment?: number;
+
+  settlement_total_amount?: number;
   sub_total?: number;
   discount_type?: 'amount' | 'percent' | string;
   discount_input?: number;
@@ -1043,7 +1052,10 @@ export default function PurchaseHistoryPage() {
                               color: isCancelled ? '#94a3b8' : '#6ee7b7',
                             }}
                           >
-                            الإجمالي: {money(row.total_amount)}
+                            الإجمالي:{' '}
+                            {money(
+                              row.settlement_total_amount ?? row.total_amount,
+                            )}
                           </strong>
 
                           <span style={{ color: '#94a3b8', fontSize: '12px' }}>
@@ -1051,8 +1063,12 @@ export default function PurchaseHistoryPage() {
                             {costMoney(
                               Number(row.sub_total || 0) > 0
                                 ? row.sub_total
-                                : Number(row.total_amount || 0) +
-                                    Number(row.discount_value || 0),
+                                : Number(
+                                    row.effective_exact_total_amount ??
+                                      row.exact_total_amount ??
+                                      row.total_amount ??
+                                      0,
+                                  ) + Number(row.discount_value || 0),
                             )}
                           </span>
 
@@ -1477,7 +1493,8 @@ export default function PurchaseHistoryPage() {
               <InfoCard
                 title="الإجمالي الفعلي بعد الخصم"
                 value={costMoney(
-                  selectedPurchase.purchase.exact_total_amount ??
+                  selectedPurchase.purchase.effective_exact_total_amount ??
+                    selectedPurchase.purchase.exact_total_amount ??
                     selectedPurchase.purchase.total_amount,
                 )}
               />
@@ -1485,13 +1502,18 @@ export default function PurchaseHistoryPage() {
               <InfoCard
                 title="فرق التقريب"
                 value={signedCostMoney(
-                  selectedPurchase.purchase.rounding_adjustment || 0,
+                  selectedPurchase.purchase.effective_rounding_adjustment ??
+                    selectedPurchase.purchase.rounding_adjustment ??
+                    0,
                 )}
               />
 
               <InfoCard
                 title="المستحق بعد التقريب"
-                value={money(selectedPurchase.purchase.total_amount)}
+                value={money(
+                  selectedPurchase.purchase.settlement_total_amount ??
+                    selectedPurchase.purchase.total_amount,
+                )}
               />
               <InfoCard
                 title="المرتجع"

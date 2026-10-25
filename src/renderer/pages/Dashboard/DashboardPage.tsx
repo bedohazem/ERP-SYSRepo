@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getPaymentMethodLabel } from '../../utils/payment-method';
 import { useAuthStore } from '../../store/auth.store';
-import { formatMoney, roundCost, roundMoney } from '../../../shared/money';
+import { formatMoney, roundCost, roundFinancial } from '../../../shared/money';
 
 type ReportsData = {
   summary: {
@@ -1892,7 +1892,7 @@ function ReconciliationCard({
 }
 
 function signedMoney(value: unknown) {
-  const amount = roundMoney(value);
+  const amount = roundFinancial(value);
 
   return `${amount > 0 ? '+' : ''}${amount} ج.م`;
 }

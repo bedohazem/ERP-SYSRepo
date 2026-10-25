@@ -1174,4 +1174,40 @@ describe('cash repository', () => {
       1000,
     );
   });
+
+  it('preserves cents in cash movements and balances', () => {
+    createCashMovement({
+      type: 'deposit',
+
+      direction: 'in',
+
+      amount: 100.05,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+    });
+
+    createCashMovement({
+      type: 'withdraw',
+
+      direction: 'out',
+
+      amount: 20.03,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+    });
+
+    const summary = getCashSummary({
+      payment_method: 'store_cash',
+    });
+
+    expect(summary.total_in).toBe(100.05);
+
+    expect(summary.total_out).toBe(20.03);
+
+    expect(summary.balance).toBe(80.02);
+  });
 });

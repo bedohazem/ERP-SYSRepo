@@ -3,7 +3,7 @@ import {
   getPaymentMethodLabel,
   getPaymentMethodShortLabel,
 } from './payment-method';
-import { roundMoney } from '../../shared/money';
+import { roundFinancial } from '../../shared/money';
 
 export type SaleReceiptData = {
   sale: any;
@@ -50,10 +50,10 @@ export const DEFAULT_RECEIPT_PRINT_SETTINGS: ReceiptPrintSettings = {
 };
 
 export const ENGINEER_FOOTER =
-  'برمجة وتصميم: بشمهندس عبدالرحمن حازم   01155559287-01068377869';
+  'برمجة وتصميم: م/عبدالرحمن حازم   01155559287-01068377869';
 
 export function money(value: number | string | null | undefined): string {
-  return String(roundMoney(value));
+  return String(roundFinancial(value));
 }
 
 export function escapeHtml(value: unknown) {

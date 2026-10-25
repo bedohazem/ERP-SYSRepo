@@ -2645,6 +2645,79 @@ describe('reports repository', () => {
     expect(report.summary.final_net_profit).toBe(0);
   });
 
+  it('reconstructs rounding for legacy fractional purchase invoices', () => {
+    const variant = seedReportProduct({
+      name: 'Legacy Fractional Purchase',
+
+      barcode: 'LEGACY-PURCHASE-ROUNDING',
+
+      openingQty: 0,
+
+      buyPrice: 443.75,
+
+      sellPrice: 600,
+    });
+
+    const supplier = createSupplier({
+      name: 'Legacy Purchase Supplier',
+    }) as any;
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplier.id,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 443.75,
+        },
+      ],
+    });
+
+    /*
+     * نحولها يدويًا لشكل الداتا
+     * القديمة قبل وجود Tracking
+     * فرق التقريب.
+     */
+    getDb()
+      .prepare(
+        `
+      UPDATE purchase_invoices
+
+      SET
+        total_amount = 443.75,
+
+        exact_total_amount =
+          443.75,
+
+        rounding_adjustment = 0
+
+      WHERE id = ?
+      `,
+      )
+      .run(purchase.purchaseId);
+
+    const report = getReportsSummary() as ReportsSummaryTestResult;
+
+    expect(report.summary.total_purchase_exact_amount).toBe(443.75);
+
+    expect(report.summary.total_purchase_invoices).toBe(444);
+
+    expect(report.summary.purchase_rounding_increase).toBe(0.25);
+
+    expect(report.summary.purchase_rounding_decrease).toBe(0);
+
+    expect(report.summary.purchase_rounding_net).toBe(0.25);
+
+    expect(report.summary.final_net_profit).toBe(-0.25);
+  });
+
   it('keeps product discounts reconciled in reports and cashier dashboard', () => {
     createProduct({
       name: 'Report Product Discount',
@@ -2901,5 +2974,122 @@ describe('reports repository', () => {
     expect(empty.sales_count).toBe(0);
 
     expect(empty.net_sales).toBe(0);
+  });
+
+  it('reconstructs legacy purchase return rounding without leaving stale purchase rounding', () => {
+    const variant = seedReportProduct({
+      name: 'Legacy Purchase Return Rounding',
+
+      barcode: 'LEGACY-PURCHASE-RETURN',
+
+      openingQty: 0,
+
+      buyPrice: 22.75,
+
+      sellPrice: 100,
+    });
+
+    const supplier = createSupplier({
+      name: 'Legacy Return Supplier',
+    }) as any;
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplier.id,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 2,
+
+          unit_cost: 22.75,
+        },
+      ],
+    });
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    const purchaseReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(invoice.items[0].id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    /*
+     * محاكاة الداتا القديمة:
+     *
+     * الفاتورة والمرتجع عندهم
+     * القيم الدقيقة لكن بدون
+     * Tracking لفرق التقريب.
+     */
+    getDb()
+      .prepare(
+        `
+      UPDATE purchase_invoices
+
+      SET
+        total_amount = 45.5,
+
+        exact_total_amount = 45.5,
+
+        rounding_adjustment = 0
+
+      WHERE id = ?
+      `,
+      )
+      .run(purchase.purchaseId);
+
+    getDb()
+      .prepare(
+        `
+      UPDATE purchase_returns
+
+      SET
+        total_amount = 22.75,
+
+        exact_total_amount = 22.75,
+
+        rounding_adjustment = 0
+
+      WHERE id = ?
+      `,
+      )
+      .run(purchaseReturn.return_id);
+
+    const report = getReportsSummary() as ReportsSummaryTestResult;
+
+    /*
+     * الفاتورة:
+     * 45.5 -> 46 = +0.50
+     *
+     * المرتجع:
+     * 22.75 -> تسوية 23
+     * يعكس +0.25
+     *
+     * المتبقي النهائي:
+     * 22.75 -> 23
+     * صافي فرق التقريب = +0.25
+     */
+    expect(report.summary.purchase_rounding_increase).toBe(0.5);
+
+    expect(report.summary.purchase_rounding_decrease).toBe(0.25);
+
+    expect(report.summary.purchase_rounding_net).toBe(0.25);
+
+    expect(report.summary.final_net_profit).toBe(-0.25);
   });
 });

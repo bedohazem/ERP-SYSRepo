@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { formatMoney, roundMoney } from '../../../shared/money';
+import { formatMoney, roundFinancial } from '../../../shared/money';
 import {
   formatCashShiftDuration,
   getCashShiftStatusLabel,
@@ -1408,7 +1408,7 @@ function money(value: unknown) {
 }
 
 function tableMoney(value?: number | null) {
-  return String(roundMoney(value));
+  return String(roundFinancial(value));
 }
 
 function formatDate(value?: string | null) {

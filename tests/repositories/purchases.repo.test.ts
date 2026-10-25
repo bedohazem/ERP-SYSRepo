@@ -999,6 +999,56 @@ describe('purchases repository', () => {
     ).toBe(20.5);
   });
 
+  it('derives settlement and rounding for legacy fractional purchase details', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 443.75,
+        },
+      ],
+    });
+
+    getDb()
+      .prepare(
+        `
+      UPDATE purchase_invoices
+
+      SET
+        total_amount = 443.75,
+
+        exact_total_amount =
+          443.75,
+
+        rounding_adjustment = 0
+
+      WHERE id = ?
+      `,
+      )
+      .run(purchase.purchaseId);
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(invoice.purchase.effective_exact_total_amount)).toBe(443.75);
+
+    expect(Number(invoice.purchase.effective_rounding_adjustment)).toBe(0.25);
+
+    expect(Number(invoice.purchase.settlement_total_amount)).toBe(444);
+  });
+
   it('creates a partial purchase and increases supplier balance', () => {
     const supplierId = createTestSupplier();
     const variant = seedPurchaseProduct();

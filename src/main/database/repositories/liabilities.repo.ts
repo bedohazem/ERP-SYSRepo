@@ -2,7 +2,7 @@ import { getDb } from '../db';
 import { createCashMovement, resolveCashAccount } from './cash.repo';
 import { createCriticalActivityLog } from './activity.repo';
 import { resolveFinancialOperationShift } from './cash-shifts.repo';
-import { roundMoney } from '../../../shared/money';
+import { roundFinancial } from '../../../shared/money';
 import { resolveFinancialBusinessDate } from '../financial-business-date';
 
 export type CreateLiabilityInput = {
@@ -73,10 +73,10 @@ export function createLiability(input: CreateLiabilityInput) {
 
   const partyName = cleanText(input.party_name);
   const title = cleanText(input.title);
-  const totalAmount = roundMoney(input.total_amount);
+  const totalAmount = roundFinancial(input.total_amount);
 
   const initialPaid = Math.min(
-    Math.max(roundMoney(input.paid_amount ?? 0), 0),
+    Math.max(roundFinancial(input.paid_amount ?? 0), 0),
     totalAmount,
   );
 
@@ -172,7 +172,7 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
 
   const liability = getLiabilityByIdOrThrow(Number(input.liability_id));
 
-  const amount = roundMoney(input.amount);
+  const amount = roundFinancial(input.amount);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error('مبلغ الدفعة غير صحيح');
@@ -182,7 +182,7 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
     throw new Error('لا يمكن تسجيل دفعة على التزام ملغي');
   }
 
-  const remainingBefore = roundMoney(liability.remaining_amount);
+  const remainingBefore = roundFinancial(liability.remaining_amount);
 
   if (amount > remainingBefore) {
     throw new Error('مبلغ الدفعة أكبر من المتبقي');
@@ -230,9 +230,11 @@ export function recordLiabilityPayment(input: RecordLiabilityPaymentInput) {
 
     const paymentId = Number(paymentResult.lastInsertRowid);
 
-    const nextPaid = roundMoney(Number(liability.paid_amount || 0) + amount);
+    const nextPaid = roundFinancial(
+      Number(liability.paid_amount || 0) + amount,
+    );
 
-    const nextRemaining = roundMoney(
+    const nextRemaining = roundFinancial(
       Math.max(0, Number(liability.total_amount || 0) - nextPaid),
     );
 
@@ -494,7 +496,7 @@ export function updateLiability(input: UpdateLiabilityInput) {
 
   const title = cleanText(input.title);
 
-  const totalAmount = roundMoney(Number(input.total_amount || 0));
+  const totalAmount = roundFinancial(Number(input.total_amount || 0));
 
   if (!partyName) {
     throw new Error('اسم الشخص أو الجهة مطلوب');
@@ -527,7 +529,7 @@ export function updateLiability(input: UpdateLiabilityInput) {
     paid: number;
   };
 
-  const activePaid = roundMoney(Number(paidRow?.paid || 0));
+  const activePaid = roundFinancial(Number(paidRow?.paid || 0));
 
   if (totalAmount + 0.0001 < activePaid) {
     throw new Error(
@@ -535,7 +537,7 @@ export function updateLiability(input: UpdateLiabilityInput) {
     );
   }
 
-  const remaining = roundMoney(Math.max(0, totalAmount - activePaid));
+  const remaining = roundFinancial(Math.max(0, totalAmount - activePaid));
 
   const status = getStatus(remaining);
 
@@ -782,13 +784,13 @@ export function getLiabilitiesSummary(input?: {
     .get() as any;
 
   return {
-    paid_in_period: roundMoney(paidRow.paid_total),
+    paid_in_period: roundFinancial(paidRow.paid_total),
 
-    total_liabilities: roundMoney(totalsRow.total_liabilities),
+    total_liabilities: roundFinancial(totalsRow.total_liabilities),
 
-    total_paid: roundMoney(totalsRow.total_paid),
+    total_paid: roundFinancial(totalsRow.total_paid),
 
-    total_remaining: roundMoney(totalsRow.total_remaining),
+    total_remaining: roundFinancial(totalsRow.total_remaining),
     count: Number(totalsRow.count || 0),
     open_count: Number(totalsRow.open_count || 0),
     paid_count: Number(totalsRow.paid_count || 0),
@@ -882,8 +884,8 @@ function getLiabilityPaymentMutationContext(paymentIdInput: number) {
 
   if (
     Math.abs(
-      roundMoney(Number(cashMovement.amount || 0)) -
-        roundMoney(Number(payment.amount || 0)),
+      roundFinancial(Number(cashMovement.amount || 0)) -
+        roundFinancial(Number(payment.amount || 0)),
     ) > 0.01
   ) {
     throw new Error('قيمة دفعة الالتزام لا تطابق حركة الخزنة');
@@ -908,7 +910,7 @@ function getLiabilityPaymentMutationContext(paymentIdInput: number) {
 }
 
 export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
-  const amount = roundMoney(Number(input.amount || 0));
+  const amount = roundFinancial(Number(input.amount || 0));
 
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error('مبلغ الدفعة المعدل غير صحيح');
@@ -941,9 +943,9 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
     paid: number;
   };
 
-  const otherPaid = roundMoney(Number(otherPaidRow?.paid || 0));
+  const otherPaid = roundFinancial(Number(otherPaidRow?.paid || 0));
 
-  const maximumAmount = roundMoney(
+  const maximumAmount = roundFinancial(
     Math.max(
       0,
 
@@ -1104,9 +1106,9 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
       paid: number;
     };
 
-    const nextPaid = roundMoney(Number(totals?.paid || 0));
+    const nextPaid = roundFinancial(Number(totals?.paid || 0));
 
-    const nextRemaining = roundMoney(
+    const nextRemaining = roundFinancial(
       Math.max(
         0,
 
@@ -1182,7 +1184,7 @@ export function updateLiabilityPayment(input: UpdateLiabilityPaymentInput) {
 
       payment_id: newPaymentId,
 
-      old_amount: roundMoney(Number(payment.amount || 0)),
+      old_amount: roundFinancial(Number(payment.amount || 0)),
 
       new_amount: amount,
 
@@ -1290,9 +1292,9 @@ export function cancelLiabilityPayment(input: {
       )
       .get(payment.liability_id) as any;
 
-    const nextPaid = roundMoney(Number(totals?.paid || 0));
+    const nextPaid = roundFinancial(Number(totals?.paid || 0));
 
-    const nextRemaining = roundMoney(
+    const nextRemaining = roundFinancial(
       Math.max(
         0,
 

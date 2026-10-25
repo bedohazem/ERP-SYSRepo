@@ -1,7 +1,7 @@
 import { getDb } from '../db';
 import { createCriticalActivityLog } from './activity.repo';
 import { getShiftBusinessDate } from '../shift-business-date';
-import { roundMoney } from '../../../shared/money';
+import { roundFinancial } from '../../../shared/money';
 import {
   CASH_ACCOUNT_LABELS,
   resolveCashAccountKey,
@@ -137,7 +137,9 @@ function getAccountBalance(account: string) {
     )
     .get(safeAccount) as { total_in: number; total_out: number } | undefined;
 
-  return roundMoney(Number(row?.total_in || 0) - Number(row?.total_out || 0));
+  return roundFinancial(
+    Number(row?.total_in || 0) - Number(row?.total_out || 0),
+  );
 }
 
 function getAccountLabel(account: CashAccountKey) {
@@ -333,7 +335,7 @@ function buildCashWhere(
 export function createCashMovement(input: CashMovementInput) {
   const db = getDb();
 
-  const amount = roundMoney(input.amount);
+  const amount = roundFinancial(input.amount);
   const type = String(input.type || '').trim();
   const direction = input.direction;
   const account = resolveCashAccount(input.payment_method || 'store_cash');
@@ -364,7 +366,7 @@ export function createCashMovement(input: CashMovementInput) {
 
     if (amount > currentBalance) {
       throw new Error(
-        `لا يمكن إتمام العملية: رصيد ${getAccountLabel(account)} غير كافٍ. الرصيد الحالي ${roundMoney(currentBalance)} ج.م والمطلوب ${amount} ج.م`,
+        `لا يمكن إتمام العملية: رصيد ${getAccountLabel(account)} غير كافٍ. الرصيد الحالي ${roundFinancial(currentBalance)} ج.م والمطلوب ${amount} ج.م`,
       );
     }
   }
@@ -462,16 +464,16 @@ export function getCashSummary(input?: CashFilterInput) {
 
   const rawTotalOut = Number(row.total_out || 0);
 
-  const totalIn = roundMoney(rawTotalIn);
+  const totalIn = roundFinancial(rawTotalIn);
 
-  const totalOut = roundMoney(rawTotalOut);
+  const totalOut = roundFinancial(rawTotalOut);
 
   return {
     total_in: totalIn,
 
     total_out: totalOut,
 
-    balance: roundMoney(rawTotalIn - rawTotalOut),
+    balance: roundFinancial(rawTotalIn - rawTotalOut),
 
     movements_count: Number(row.movements_count || 0),
   };
@@ -583,7 +585,7 @@ export function createCashTransfer(input: CashTransferInput) {
   const db = getDb();
   normalizeLegacyCashMovementAccounts();
 
-  const amount = roundMoney(input.amount);
+  const amount = roundFinancial(input.amount);
   const fromAccount = resolveCashAccount(input.from_account);
   const toAccount = resolveCashAccount(input.to_account);
 
@@ -830,13 +832,13 @@ export function getCashDayClosePreview(businessDateInput: string) {
       total: Number(row.total || 0),
     }));
 
-  const openingDrawerBalance = roundMoney(Number(openingRow?.balance || 0));
+  const openingDrawerBalance = roundFinancial(Number(openingRow?.balance || 0));
 
-  const dayCashIn = roundMoney(Number(todayRow?.total_in || 0));
+  const dayCashIn = roundFinancial(Number(todayRow?.total_in || 0));
 
-  const dayCashOut = roundMoney(Number(todayRow?.total_out || 0));
+  const dayCashOut = roundFinancial(Number(todayRow?.total_out || 0));
 
-  const systemClosingBalance = roundMoney(
+  const systemClosingBalance = roundFinancial(
     openingDrawerBalance + dayCashIn - dayCashOut,
   );
 
@@ -860,9 +862,9 @@ export function closeCashDay(input: CashDayCloseInput) {
 
   const businessDate = normalizeBusinessDate(input.business_date);
 
-  const countedAmount = roundMoney(Number(input.counted_amount || 0));
+  const countedAmount = roundFinancial(Number(input.counted_amount || 0));
 
-  const carryOverAmount = roundMoney(Number(input.carry_over_amount || 0));
+  const carryOverAmount = roundFinancial(Number(input.carry_over_amount || 0));
 
   if (!Number.isFinite(countedAmount) || countedAmount < 0) {
     throw new Error('قيمة الجرد الفعلي غير صحيحة');
@@ -887,19 +889,19 @@ export function closeCashDay(input: CashDayCloseInput) {
       throw new Error(`تم تقفيل يوم ${businessDate} بالفعل`);
     }
 
-    const systemClosingBalance = roundMoney(
+    const systemClosingBalance = roundFinancial(
       Number(preview.system_closing_balance || 0),
     );
 
-    const difference = roundMoney(countedAmount - systemClosingBalance);
+    const difference = roundFinancial(countedAmount - systemClosingBalance);
 
     if (Math.abs(difference) > 0.01) {
       throw new Error(
-        `يوجد فرق في جرد الدرج. رصيد النظام ${roundMoney(
+        `يوجد فرق في جرد الدرج. رصيد النظام ${roundFinancial(
           systemClosingBalance,
-        )} ج.م والجرد الفعلي ${roundMoney(
+        )} ج.م والجرد الفعلي ${roundFinancial(
           countedAmount,
-        )} ج.م والفرق ${roundMoney(difference)} ج.م`,
+        )} ج.م والفرق ${roundFinancial(difference)} ج.م`,
       );
     }
 
@@ -907,7 +909,7 @@ export function closeCashDay(input: CashDayCloseInput) {
       throw new Error('المبلغ المتبقي لليوم التالي أكبر من رصيد الدرج');
     }
 
-    const transferAmount = roundMoney(countedAmount - carryOverAmount);
+    const transferAmount = roundFinancial(countedAmount - carryOverAmount);
 
     const closingResult = db
       .prepare(
@@ -947,8 +949,8 @@ export function closeCashDay(input: CashDayCloseInput) {
     if (transferAmount > 0) {
       const note =
         `تقفيل يوم ${businessDate} - ` +
-        `تحويل ${roundMoney(transferAmount)} ج.م - ` +
-        `المتبقي في الدرج ${roundMoney(carryOverAmount)} ج.م`;
+        `تحويل ${roundFinancial(transferAmount)} ج.م - ` +
+        `المتبقي في الدرج ${roundFinancial(carryOverAmount)} ج.م`;
 
       createCashMovement({
         type: 'transfer',
@@ -1088,7 +1090,7 @@ function getCashDayClosingMutationContext(closingId: number) {
     )
     .all(closingId) as any[];
 
-  const transferAmount = roundMoney(Number(closing.transfer_amount || 0));
+  const transferAmount = roundFinancial(Number(closing.transfer_amount || 0));
 
   if (transferAmount > 0) {
     const outMovement = movements.find(
@@ -1249,7 +1251,7 @@ export function updateCashDayClosing(input: {
 
   const closingId = Number(input.closing_id || 0);
 
-  const carryOverAmount = roundMoney(Number(input.carry_over_amount || 0));
+  const carryOverAmount = roundFinancial(Number(input.carry_over_amount || 0));
 
   if (!Number.isFinite(carryOverAmount) || carryOverAmount < 0) {
     throw new Error('المبلغ المتبقي في الدرج غير صحيح');
@@ -1266,7 +1268,7 @@ export function updateCashDayClosing(input: {
   const tx = db.transaction(() => {
     const { closing, movements } = getCashDayClosingMutationContext(closingId);
 
-    const countedAmount = roundMoney(
+    const countedAmount = roundFinancial(
       Number(closing.counted_closing_balance || 0),
     );
 
@@ -1274,7 +1276,7 @@ export function updateCashDayClosing(input: {
       throw new Error('المبلغ المتبقي لليوم التالي أكبر من رصيد الدرج');
     }
 
-    const newTransferAmount = roundMoney(countedAmount - carryOverAmount);
+    const newTransferAmount = roundFinancial(countedAmount - carryOverAmount);
 
     const businessDate = String(closing.business_date || '');
 
@@ -1316,8 +1318,8 @@ export function updateCashDayClosing(input: {
     if (newTransferAmount > 0) {
       const note =
         `تقفيل يوم ${businessDate} - ` +
-        `تحويل ${roundMoney(newTransferAmount)} ج.م - ` +
-        `المتبقي في الدرج ${roundMoney(carryOverAmount)} ج.م`;
+        `تحويل ${roundFinancial(newTransferAmount)} ج.م - ` +
+        `المتبقي في الدرج ${roundFinancial(carryOverAmount)} ج.م`;
 
       createCashMovement({
         type: 'transfer',
@@ -1557,7 +1559,7 @@ export function updateCashMovement(input: {
 
   const movementId = Number(input.id || 0);
 
-  const amount = roundMoney(Number(input.amount || 0));
+  const amount = roundFinancial(Number(input.amount || 0));
 
   if (!movementId) {
     throw new Error('رقم حركة الخزنة غير صحيح');
@@ -1753,7 +1755,7 @@ export function updateCashMovement(input: {
 
   const { outMovement, inMovement } = context;
 
-  const oldAmount = roundMoney(Number(outMovement.amount || 0));
+  const oldAmount = roundFinancial(Number(outMovement.amount || 0));
 
   const fromAccount = resolveCashAccount(
     input.from_account || outMovement.payment_method,
@@ -2096,7 +2098,7 @@ export function cancelCashMovement(input: {
 
   const { outMovement, inMovement } = context;
 
-  const oldAmount = roundMoney(Number(outMovement.amount || 0));
+  const oldAmount = roundFinancial(Number(outMovement.amount || 0));
 
   const tx = db.transaction(() => {
     /*

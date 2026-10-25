@@ -6,7 +6,7 @@ import {
   getLocalBusinessDate,
 } from '../system-clock-guard';
 import { createCriticalActivityLog } from './activity.repo';
-import { roundMoney } from '../../../shared/money';
+import { roundFinancial } from '../../../shared/money';
 import {
   createCashMovement,
   getCashSummary,
@@ -560,7 +560,7 @@ export function getCashShiftOpeningPreview() {
     previousShift?.left_for_next_shift === null ||
     previousShift?.left_for_next_shift === undefined
       ? null
-      : roundMoney(Number(previousShift.left_for_next_shift));
+      : roundFinancial(Number(previousShift.left_for_next_shift));
 
   const suggestedBusinessDate = getLocalBusinessDate();
 
@@ -626,7 +626,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
     throw new Error('رصيد افتتاح الشفت غير صحيح');
   }
 
-  const openingCountedAmount = roundMoney(rawOpeningCountedAmount);
+  const openingCountedAmount = roundFinancial(rawOpeningCountedAmount);
 
   const currentBusinessDate = getLocalBusinessDate();
 
@@ -719,12 +719,12 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
       previousShift?.left_for_next_shift === null ||
       previousShift?.left_for_next_shift === undefined
         ? null
-        : roundMoney(Number(previousShift.left_for_next_shift));
+        : roundFinancial(Number(previousShift.left_for_next_shift));
 
     const openingDifference =
       expectedOpeningAmount === null
         ? 0
-        : roundMoney(openingCountedAmount - expectedOpeningAmount);
+        : roundFinancial(openingCountedAmount - expectedOpeningAmount);
 
     const previousBusinessDate = previousShift?.business_date
       ? String(previousShift.business_date)
@@ -876,7 +876,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
       );
     }
 
-    const currentDrawerBalance = roundMoney(
+    const currentDrawerBalance = roundFinancial(
       Number(
         getCashSummary({
           payment_method: 'store_cash',
@@ -896,7 +896,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
      * بل ينتقل للخزنة الآمنة.
      */
     if (!previousShift) {
-      const legacyDrawerExcess = roundMoney(
+      const legacyDrawerExcess = roundFinancial(
         currentDrawerBalance - openingCountedAmount,
       );
 
@@ -941,7 +941,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
           shift_id: shiftId,
         });
       } else if (legacyDrawerExcess < -0.01) {
-        accountReconciliationAmount = roundMoney(
+        accountReconciliationAmount = roundFinancial(
           openingCountedAmount - currentDrawerBalance,
         );
 
@@ -971,7 +971,7 @@ export function openCashShift(input: OpenCashShiftInput): CashShiftRow {
        * السابق، وأي اختلاف فعلي يعتبر
        * عجز/زيادة افتتاح.
        */
-      accountReconciliationAmount = roundMoney(
+      accountReconciliationAmount = roundFinancial(
         openingCountedAmount - currentDrawerBalance,
       );
 
@@ -1095,11 +1095,11 @@ export function getCashShiftExpectedBalance(shiftId: number) {
       }
     | undefined;
 
-  const cashIn = roundMoney(Number(totals?.total_in || 0));
+  const cashIn = roundFinancial(Number(totals?.total_in || 0));
 
-  const cashOut = roundMoney(Number(totals?.total_out || 0));
+  const cashOut = roundFinancial(Number(totals?.total_out || 0));
 
-  const expectedClosingAmount = roundMoney(
+  const expectedClosingAmount = roundFinancial(
     Number(shift.opening_counted_amount || 0) + cashIn - cashOut,
   );
 
@@ -1137,13 +1137,13 @@ export function getCashShiftExpectedBalance(shiftId: number) {
     .map((row: any) => ({
       type: String(row.type || ''),
       direction: row.direction as 'in' | 'out',
-      total: roundMoney(Number(row.total || 0)),
+      total: roundFinancial(Number(row.total || 0)),
     }));
 
   return {
     shift_id: shift.id,
 
-    opening_counted_amount: roundMoney(
+    opening_counted_amount: roundFinancial(
       Number(shift.opening_counted_amount || 0),
     ),
 
@@ -1279,15 +1279,15 @@ export function getCashShiftDaySummary(input: CashShiftDaySummaryInput) {
 
   const lastShift = shifts[shifts.length - 1];
 
-  const cashIn = roundMoney(Number(totals?.total_in || 0));
+  const cashIn = roundFinancial(Number(totals?.total_in || 0));
 
-  const cashOut = roundMoney(Number(totals?.total_out || 0));
+  const cashOut = roundFinancial(Number(totals?.total_out || 0));
 
   let balanceBeforeHandover = 0;
   let endingDrawerBalance = 0;
 
   if (lastShift.status === 'closed') {
-    balanceBeforeHandover = roundMoney(
+    balanceBeforeHandover = roundFinancial(
       Number(
         lastShift.closing_counted_amount ??
           lastShift.expected_closing_amount ??
@@ -1296,13 +1296,13 @@ export function getCashShiftDaySummary(input: CashShiftDaySummaryInput) {
       ),
     );
 
-    endingDrawerBalance = roundMoney(
+    endingDrawerBalance = roundFinancial(
       Number(lastShift.left_for_next_shift ?? balanceBeforeHandover),
     );
   } else {
     const preview = getCashShiftExpectedBalance(lastShift.id);
 
-    balanceBeforeHandover = roundMoney(
+    balanceBeforeHandover = roundFinancial(
       Number(preview.expected_closing_amount || 0),
     );
 
@@ -1332,7 +1332,7 @@ export function getCashShiftDaySummary(input: CashShiftDaySummaryInput) {
 
     last_shift_status: lastShift.status,
 
-    opening_drawer_balance: roundMoney(
+    opening_drawer_balance: roundFinancial(
       Number(firstShift.opening_counted_amount || 0),
     ),
 
@@ -1528,9 +1528,9 @@ export function listCashShifts(input?: CashShiftHistoryFilterInput) {
 
       duration_minutes: Number(row.duration_minutes || 0),
 
-      cash_in: roundMoney(Number(row.cash_in || 0)),
+      cash_in: roundFinancial(Number(row.cash_in || 0)),
 
-      cash_out: roundMoney(Number(row.cash_out || 0)),
+      cash_out: roundFinancial(Number(row.cash_out || 0)),
 
       variance_count: Number(row.variance_count || 0),
 
@@ -1845,7 +1845,7 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
       throw new Error('الجرد الصحيح عند افتتاح الشفت غير صحيح');
     }
 
-    correctedOpeningAmount = roundMoney(rawCorrectedOpeningAmount);
+    correctedOpeningAmount = roundFinancial(rawCorrectedOpeningAmount);
 
     openingShift = getCashShiftById(current.shift_id);
 
@@ -1866,7 +1866,7 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
     if (
       Math.abs(
         correctedOpeningAmount -
-          roundMoney(Number(openingShift.opening_counted_amount || 0)),
+          roundFinancial(Number(openingShift.opening_counted_amount || 0)),
       ) <= 0.01
     ) {
       throw new Error('الجرد الصحيح يساوي الجرد المسجل بالفعل');
@@ -1894,22 +1894,22 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
   }
 
   const tx = db.transaction(() => {
-    const varianceAmount = roundMoney(Number(current.amount || 0));
+    const varianceAmount = roundFinancial(Number(current.amount || 0));
 
     if (
       resolutionType === 'corrected' &&
       openingShift &&
       correctedOpeningAmount !== null
     ) {
-      const previousOpeningCounted = roundMoney(
+      const previousOpeningCounted = roundFinancial(
         Number(openingShift.opening_counted_amount || 0),
       );
 
-      const expectedOpeningAmount = roundMoney(
+      const expectedOpeningAmount = roundFinancial(
         Number(openingShift.expected_opening_amount || 0),
       );
 
-      const correctionAmount = roundMoney(
+      const correctionAmount = roundFinancial(
         correctedOpeningAmount - previousOpeningCounted,
       );
 
@@ -1927,9 +1927,9 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
 
           reference_type: 'cash_shift_opening_count_correction',
 
-          notes: `تصحيح جرد افتتاح الشفت #${current.shift_id} من ${roundMoney(
+          notes: `تصحيح جرد افتتاح الشفت #${current.shift_id} من ${roundFinancial(
             previousOpeningCounted,
-          )} إلى ${roundMoney(correctedOpeningAmount)}`,
+          )} إلى ${roundFinancial(correctedOpeningAmount)}`,
 
           created_by: resolvedBy,
 
@@ -1937,7 +1937,7 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
         });
       }
 
-      const newOpeningDifference = roundMoney(
+      const newOpeningDifference = roundFinancial(
         correctedOpeningAmount - expectedOpeningAmount,
       );
 
@@ -2041,7 +2041,7 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
 
     if (resolutionType === 'rejected' && reversalAccount) {
       if (current.kind === 'surplus') {
-        const accountBalance = roundMoney(
+        const accountBalance = roundFinancial(
           Number(
             getCashSummary({
               payment_method: reversalAccount,
@@ -2172,9 +2172,9 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
     throw new Error('المبلغ المتروك للشفت التالي غير صحيح');
   }
 
-  const closingCountedAmount = roundMoney(rawClosingCountedAmount);
+  const closingCountedAmount = roundFinancial(rawClosingCountedAmount);
 
-  const leftForNextShift = roundMoney(rawLeftForNextShift);
+  const leftForNextShift = roundFinancial(rawLeftForNextShift);
 
   if (leftForNextShift > closingCountedAmount) {
     throw new Error(
@@ -2234,9 +2234,11 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
 
     const preview = getCashShiftExpectedBalance(shift.id);
 
-    const expectedClosingAmount = roundMoney(preview.expected_closing_amount);
+    const expectedClosingAmount = roundFinancial(
+      preview.expected_closing_amount,
+    );
 
-    const closingDifference = roundMoney(
+    const closingDifference = roundFinancial(
       closingCountedAmount - expectedClosingAmount,
     );
 
@@ -2296,7 +2298,7 @@ export function closeCashShift(input: CloseCashShiftInput): CashShiftRow {
       });
     }
 
-    const safeTransferAmount = roundMoney(
+    const safeTransferAmount = roundFinancial(
       closingCountedAmount - leftForNextShift,
     );
 
@@ -2476,7 +2478,7 @@ export function forceCloseCashShift(
 
     const preview = getCashShiftExpectedBalance(shift.id);
 
-    const expectedClosingAmount = roundMoney(
+    const expectedClosingAmount = roundFinancial(
       Number(preview.expected_closing_amount || 0),
     );
 

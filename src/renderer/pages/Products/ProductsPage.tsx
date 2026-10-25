@@ -4,7 +4,7 @@ import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
 import JsBarcode from 'jsbarcode';
-import { roundMoney } from '../../../shared/money';
+import { roundCost } from '../../../shared/money';
 
 type Category = {
   id: number;
@@ -119,7 +119,7 @@ function escapeHtml(value: string) {
 }
 
 function money(value: unknown) {
-  return String(roundMoney(value));
+  return String(roundCost(value));
 }
 
 type ProductsTab = 'list' | 'create' | 'edit';

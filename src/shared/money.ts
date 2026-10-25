@@ -27,6 +27,28 @@ export function roundMoney(value: unknown): number {
   return amount < 0 ? -roundedAbsolute : roundedAbsolute;
 }
 
+export function roundFinancial(value: unknown): number {
+  const amount = Number(value ?? 0);
+
+  if (!Number.isFinite(amount)) {
+    return 0;
+  }
+
+  /*
+   * الأموال الفعلية التي تسمح
+   * بالقروش مثل:
+   *
+   * - الخزنة
+   * - المصاريف
+   * - الالتزامات
+   *
+   * تحتفظ بمنزلتين عشريتين.
+   */
+  const rounded = Number(amount.toFixed(2));
+
+  return Object.is(rounded, -0) ? 0 : rounded;
+}
+
 export function roundCost(value: unknown): number {
   const amount = Number(value ?? 0);
 
@@ -49,5 +71,5 @@ export function roundCost(value: unknown): number {
 }
 
 export function formatMoney(value: unknown): string {
-  return `${roundMoney(value)} ج.م`;
+  return `${roundFinancial(value)} ج.م`;
 }

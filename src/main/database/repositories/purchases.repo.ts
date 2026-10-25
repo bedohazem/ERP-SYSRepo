@@ -2891,7 +2891,67 @@ export function listPurchaseInvoices(input?: {
       `
       SELECT
         pi.*,
-        IFNULL(pi.status, 'active') AS status,
+
+        COALESCE(
+          NULLIF(
+            pi.exact_total_amount,
+            0
+          ),
+          pi.total_amount,
+          0
+        ) AS effective_exact_total_amount,
+
+        CASE
+          WHEN ABS(
+            IFNULL(
+              pi.rounding_adjustment,
+              0
+            )
+          ) > 0.0001
+          THEN pi.rounding_adjustment
+
+          ELSE ROUND(
+            ROUND(
+              COALESCE(
+                NULLIF(
+                  pi.exact_total_amount,
+                  0
+                ),
+                pi.total_amount,
+                0
+              ),
+              0
+            )
+            -
+            COALESCE(
+              NULLIF(
+                pi.exact_total_amount,
+                0
+              ),
+              pi.total_amount,
+              0
+            ),
+            4
+          )
+        END AS effective_rounding_adjustment,
+
+        ROUND(
+          COALESCE(
+            NULLIF(
+              pi.exact_total_amount,
+              0
+            ),
+            pi.total_amount,
+            0
+          ),
+          0
+        ) AS settlement_total_amount,
+
+        IFNULL(
+          pi.status,
+          'active'
+        ) AS status,
+
         s.name AS supplier_name,
         s.phone AS supplier_phone,
         COUNT(pii.id) AS items_count,
@@ -3057,7 +3117,66 @@ export function getPurchaseInvoice(purchaseId: number) {
       `
       SELECT
         pi.*,
-        IFNULL(pi.status, 'active') AS status,
+
+        COALESCE(
+          NULLIF(
+            pi.exact_total_amount,
+            0
+          ),
+          pi.total_amount,
+          0
+        ) AS effective_exact_total_amount,
+
+        CASE
+          WHEN ABS(
+            IFNULL(
+              pi.rounding_adjustment,
+              0
+            )
+          ) > 0.0001
+          THEN pi.rounding_adjustment
+
+          ELSE ROUND(
+            ROUND(
+              COALESCE(
+                NULLIF(
+                  pi.exact_total_amount,
+                  0
+                ),
+                pi.total_amount,
+                0
+              ),
+              0
+            )
+            -
+            COALESCE(
+              NULLIF(
+                pi.exact_total_amount,
+                0
+              ),
+              pi.total_amount,
+              0
+            ),
+            4
+          )
+        END AS effective_rounding_adjustment,
+
+        ROUND(
+          COALESCE(
+            NULLIF(
+              pi.exact_total_amount,
+              0
+            ),
+            pi.total_amount,
+            0
+          ),
+          0
+        ) AS settlement_total_amount,
+
+        IFNULL(
+          pi.status,
+          'active'
+        ) AS status,
         s.name AS supplier_name,
         s.phone AS supplier_phone,
         IFNULL((

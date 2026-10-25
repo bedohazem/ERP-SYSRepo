@@ -1,7 +1,7 @@
 import { getDb } from '../db';
 import { getCustomerDueSummary } from './customers.repo';
 import { getSupplierDueSummary } from './suppliers.repo';
-import { roundCost, roundMoney } from '../../../shared/money';
+import { roundCost, roundFinancial } from '../../../shared/money';
 
 type ReportFilter = {
   date_from?: string;
@@ -14,7 +14,7 @@ export type CashierDashboardInput = {
 };
 
 function reportMoney(value: unknown) {
-  return roundMoney(value);
+  return roundFinancial(value);
 }
 
 function buildWhere(
@@ -1040,7 +1040,17 @@ export function getReportsSummary(input?: ReportFilter) {
     SELECT
       IFNULL(
         SUM(
-          pi.total_amount
+          ROUND(
+            COALESCE(
+              NULLIF(
+                pi.exact_total_amount,
+                0
+              ),
+              pi.total_amount,
+              0
+            ),
+            0
+          )
         ),
         0
       ) AS total_purchase_invoices,
@@ -1048,7 +1058,10 @@ export function getReportsSummary(input?: ReportFilter) {
       IFNULL(
         SUM(
           COALESCE(
-            pi.exact_total_amount,
+            NULLIF(
+              pi.exact_total_amount,
+              0
+            ),
             pi.total_amount,
             0
           )
@@ -1108,10 +1121,49 @@ export function getReportsSummary(input?: ReportFilter) {
        * فرق التقريب يدخل كما هو.
        */
       SELECT
-        IFNULL(
-          pi.rounding_adjustment,
-          0
-        ) AS adjustment
+        CASE
+          /*
+          * الفواتير الجديدة:
+          * نستخدم الفرق المسجل.
+          */
+          WHEN ABS(
+            IFNULL(
+              pi.rounding_adjustment,
+              0
+            )
+          ) > 0.0001
+          THEN pi.rounding_adjustment
+
+          /*
+          * الفواتير التاريخية:
+          * لو الفرق لم يكن مسجلاً،
+          * نعيد اشتقاقه من الإجمالي
+          * الدقيق القديم.
+          */
+          ELSE ROUND(
+            ROUND(
+              COALESCE(
+                NULLIF(
+                  pi.exact_total_amount,
+                  0
+                ),
+                pi.total_amount,
+                0
+              ),
+              0
+            )
+            -
+            COALESCE(
+              NULLIF(
+                pi.exact_total_amount,
+                0
+              ),
+              pi.total_amount,
+              0
+            ),
+            4
+          )
+        END AS adjustment
 
       FROM purchase_invoices pi
 
@@ -1125,12 +1177,195 @@ export function getReportsSummary(input?: ReportFilter) {
        * لذلك العلامة هنا سالبة.
        */
       SELECT
-        -IFNULL(
-          pr.rounding_adjustment,
-          0
+        -(
+          CASE
+            /*
+            * المرتجعات الجديدة:
+            * نستخدم فرق التقريب
+            * المسجل بالفعل.
+            */
+            WHEN ABS(
+              IFNULL(
+                pr.rounding_adjustment,
+                0
+              )
+            ) > 0.0001
+            THEN pr.rounding_adjustment
+
+            /*
+            * المرتجعات التاريخية:
+            * نعيد بناء أثر التقريب
+            * حسب المتبقي قبل وبعد
+            * هذا المرتجع.
+            */
+            ELSE ROUND(
+              (
+                ROUND(
+                  MAX(
+                    0,
+
+                    COALESCE(
+                      NULLIF(
+                        pi.exact_total_amount,
+                        0
+                      ),
+                      pi.total_amount,
+                      0
+                    )
+                    -
+                    IFNULL(
+                      (
+                        SELECT
+                          SUM(
+                            COALESCE(
+                              NULLIF(
+                                previous_return
+                                  .exact_total_amount,
+                                0
+                              ),
+
+                              previous_return
+                                .total_amount,
+
+                              0
+                            )
+                          )
+
+                        FROM purchase_returns
+                          previous_return
+
+                        WHERE
+                          previous_return
+                            .purchase_id =
+                            pr.purchase_id
+
+                          AND
+                          previous_return
+                            .cancelled_at
+                            IS NULL
+
+                          AND (
+                            previous_return
+                              .created_at <
+                              pr.created_at
+
+                            OR (
+                              previous_return
+                                .created_at =
+                                pr.created_at
+
+                              AND
+                              previous_return.id <
+                                pr.id
+                            )
+                          )
+                      ),
+                      0
+                    )
+                  ),
+                  0
+                )
+
+                -
+
+                ROUND(
+                  MAX(
+                    0,
+
+                    COALESCE(
+                      NULLIF(
+                        pi.exact_total_amount,
+                        0
+                      ),
+                      pi.total_amount,
+                      0
+                    )
+                    -
+                    IFNULL(
+                      (
+                        SELECT
+                          SUM(
+                            COALESCE(
+                              NULLIF(
+                                previous_return
+                                  .exact_total_amount,
+                                0
+                              ),
+
+                              previous_return
+                                .total_amount,
+
+                              0
+                            )
+                          )
+
+                        FROM purchase_returns
+                          previous_return
+
+                        WHERE
+                          previous_return
+                            .purchase_id =
+                            pr.purchase_id
+
+                          AND
+                          previous_return
+                            .cancelled_at
+                            IS NULL
+
+                          AND (
+                            previous_return
+                              .created_at <
+                              pr.created_at
+
+                            OR (
+                              previous_return
+                                .created_at =
+                                pr.created_at
+
+                              AND
+                              previous_return.id <
+                                pr.id
+                            )
+                          )
+                      ),
+                      0
+                    )
+
+                    -
+
+                    COALESCE(
+                      NULLIF(
+                        pr.exact_total_amount,
+                        0
+                      ),
+                      pr.total_amount,
+                      0
+                    )
+                  ),
+                  0
+                )
+              )
+
+              -
+
+              COALESCE(
+                NULLIF(
+                  pr.exact_total_amount,
+                  0
+                ),
+                pr.total_amount,
+                0
+              ),
+
+              4
+            )
+          END
         ) AS adjustment
 
       FROM purchase_returns pr
+
+      JOIN purchase_invoices pi
+        ON pi.id = pr.purchase_id
 
       ${purchaseReturnsWhere.whereSql}
     ) x

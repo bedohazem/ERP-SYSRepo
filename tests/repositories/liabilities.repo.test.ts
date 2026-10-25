@@ -179,13 +179,13 @@ describe('liabilities repository', () => {
     expect(getActivityLogsCount()).toBe(1);
   });
 
-  it('stores liability money as whole pounds', () => {
+  it('stores liability money with two-decimal financial precision', () => {
     const result = createLiability({
-      party_name: 'Rounded Party',
+      party_name: 'Fractional Party',
 
-      title: 'Rounded Liability',
+      title: 'Fractional Liability',
 
-      total_amount: 1000.5,
+      total_amount: 1000.55,
 
       paid_amount: 100.49,
 
@@ -196,16 +196,16 @@ describe('liabilities repository', () => {
 
     let liability = getLiabilityById(result.liability_id);
 
-    expect(liability.total_amount).toBe(1001);
+    expect(liability.total_amount).toBe(1000.55);
 
-    expect(liability.paid_amount).toBe(100);
+    expect(liability.paid_amount).toBe(100.49);
 
-    expect(liability.remaining_amount).toBe(901);
+    expect(liability.remaining_amount).toBe(900.06);
 
     const payment = recordLiabilityPayment({
       liability_id: result.liability_id,
 
-      amount: 200.5,
+      amount: 200.51,
 
       payment_method: 'cash',
 
@@ -214,13 +214,13 @@ describe('liabilities repository', () => {
 
     expect(payment.paid_amount).toBe(301);
 
-    expect(payment.remaining_amount).toBe(700);
+    expect(payment.remaining_amount).toBe(699.55);
 
     liability = getLiabilityById(result.liability_id);
 
     expect(liability.paid_amount).toBe(301);
 
-    expect(liability.remaining_amount).toBe(700);
+    expect(liability.remaining_amount).toBe(699.55);
 
     expect(getCashMovementTotal('out')).toBe(301);
   });

@@ -1,5 +1,5 @@
 import { getPaymentMethodLabel } from '../../utils/payment-method';
-import { roundCost, roundMoney } from '../../../shared/money';
+import { roundCost, roundFinancial } from '../../../shared/money';
 
 export type ReportsExportData = {
   summary: Record<string, number>;
@@ -30,7 +30,7 @@ type ExportSection = {
 };
 
 function numberValue(value: unknown) {
-  return String(roundMoney(value));
+  return String(roundFinancial(value));
 }
 
 function preciseNumberValue(value: unknown) {
