@@ -91,7 +91,22 @@ function normalizePurchaseItems(value: unknown) {
 
       quantity: requirePositiveNumber(item.quantity, 'كمية صنف الشراء'),
 
-      unit_cost: requirePositiveMoney(item.unit_cost, 'سعر شراء الصنف'),
+      /*
+       * سعر الشراء الخام لا يتم تقريبه هنا.
+       * الـrepository هو المسؤول عن حساب
+       * إجمالي البند ثم تقريب التكلفة للقرش.
+       */
+      unit_cost: requirePositiveNumber(item.unit_cost, 'سعر شراء الصنف'),
+
+      pricing_base_quantity: optionalPositiveInteger(
+        item.pricing_base_quantity,
+        'عدد قطع مجموعة الشراء',
+      ),
+
+      pricing_base_amount: optionalNonNegativeNumber(
+        item.pricing_base_amount,
+        'قيمة مجموعة الشراء',
+      ),
     };
   });
 }
@@ -104,16 +119,12 @@ function normalizePurchaseDiscount(payload: Record<string, unknown>) {
       'نوع خصم فاتورة الشراء',
     ) ?? 'amount';
 
-  const discountInput =
+  const discountInput = optionalNonNegativeNumber(
+    payload.discount_input,
     discountType === 'percent'
-      ? optionalNonNegativeNumber(
-          payload.discount_input,
-          'نسبة خصم فاتورة الشراء',
-        )
-      : optionalNonNegativeMoney(
-          payload.discount_input,
-          'قيمة خصم فاتورة الشراء',
-        );
+      ? 'نسبة خصم فاتورة الشراء'
+      : 'قيمة خصم فاتورة الشراء',
+  );
 
   if (discountType === 'percent' && Number(discountInput ?? 0) > 100) {
     throw new Error('نسبة الخصم لا يمكن أن تتجاوز 100%');
@@ -124,12 +135,12 @@ function normalizePurchaseDiscount(payload: Record<string, unknown>) {
 
     discount_input: discountInput,
 
-    discount_value: optionalNonNegativeMoney(
+    discount_value: optionalNonNegativeNumber(
       payload.discount_value,
       'قيمة خصم فاتورة الشراء',
     ),
 
-    sub_total: optionalNonNegativeMoney(
+    sub_total: optionalNonNegativeNumber(
       payload.sub_total,
       'إجمالي فاتورة الشراء قبل الخصم',
     ),
@@ -237,7 +248,7 @@ function normalizePurchaseOrderItems(value: unknown) {
       quantity: requirePositiveNumber(item.quantity, 'كمية أمر الشراء'),
 
       unit_cost:
-        optionalNonNegativeMoney(item.unit_cost, 'تكلفة صنف أمر الشراء') ??
+        optionalNonNegativeNumber(item.unit_cost, 'تكلفة صنف أمر الشراء') ??
         undefined,
     };
   });

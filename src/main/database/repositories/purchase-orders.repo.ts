@@ -796,7 +796,9 @@ export function updatePurchaseOrder(input: {
 
   const orderId = Number(input.purchase_order_id);
 
-  const current = getPurchaseOrder(orderId).order;
+  const currentSnapshot = getPurchaseOrder(orderId);
+
+  const current = currentSnapshot.order;
 
   if (current.status !== 'draft') {
     throw new Error('لا يمكن تعديل أمر شراء بعد اعتماده');
@@ -825,7 +827,60 @@ export function updatePurchaseOrder(input: {
     throw new Error('المورد غير موجود أو متعطل');
   }
 
-  const items = preparePurchaseOrderItems(input.items);
+  const existingByVariant = new Map(
+    (currentSnapshot.items as any[]).map((item) => [
+      Number(item.variant_id),
+      item,
+    ]),
+  );
+
+  const normalizedItems = input.items.map((item) => {
+    const existing = existingByVariant.get(Number(item.variant_id));
+
+    if (!existing) {
+      return item;
+    }
+
+    const incomingQuantity = Number(item.quantity);
+
+    const incomingUnitCost = Number(item.unit_cost ?? existing.unit_cost ?? 0);
+
+    const sameQuantity =
+      Math.abs(incomingQuantity - Number(existing.quantity || 0)) <= 0.000001;
+
+    const sameDisplayedUnitCost =
+      roundCost(incomingUnitCost) ===
+      roundCost(Number(existing.unit_cost || 0));
+
+    /*
+     * لو المستخدم لم يغير الكمية
+     * أو سعر الوحدة، نعيد بناء السعر الخام
+     * من إجمالي البند التاريخي.
+     *
+     * مثال:
+     * line_total = 1870
+     * quantity = 12
+     * raw unit cost = 155.833333...
+     *
+     * وبذلك حفظ المسودة لا يحولها
+     * إلى 1869.96.
+     */
+    if (sameQuantity && sameDisplayedUnitCost) {
+      const historicalLineTotal = roundCost(Number(existing.line_total || 0));
+
+      if (incomingQuantity > 0 && historicalLineTotal > 0) {
+        return {
+          ...item,
+
+          unit_cost: historicalLineTotal / incomingQuantity,
+        };
+      }
+    }
+
+    return item;
+  });
+
+  const items = preparePurchaseOrderItems(normalizedItems);
 
   const tx = db.transaction(() => {
     db.prepare(

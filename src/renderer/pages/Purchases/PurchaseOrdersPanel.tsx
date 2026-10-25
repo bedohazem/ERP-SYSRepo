@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
-import { formatMoney } from '../../../shared/money';
+import { formatMoney, roundCost } from '../../../shared/money';
 import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
@@ -594,14 +594,47 @@ export default function PurchaseOrdersPanel({
     patch: Partial<PurchaseOrderItem>,
   ) {
     setDetailItems((prev) =>
-      prev.map((item) =>
-        item.variant_id === variantId
-          ? {
-              ...item,
-              ...patch,
-            }
-          : item,
-      ),
+      prev.map((item) => {
+        if (item.variant_id !== variantId) {
+          return item;
+        }
+
+        const nextItem = {
+          ...item,
+          ...patch,
+        };
+
+        const quantity = Math.max(0, Number(nextItem.quantity || 0));
+
+        const unitCost = Math.max(0, Number(nextItem.unit_cost || 0));
+
+        const originalItem = (detail?.items || []).find(
+          (candidate) => Number(candidate.variant_id) === variantId,
+        );
+
+        const matchesOriginal =
+          originalItem &&
+          Math.abs(quantity - Number(originalItem.quantity || 0)) <= 0.000001 &&
+          roundCost(unitCost) ===
+            roundCost(Number(originalItem.unit_cost || 0));
+
+        return {
+          ...nextItem,
+
+          /*
+           * لو المستخدم رجع لنفس الكمية
+           * ونفس السعر الظاهر، نظهر إجمالي
+           * البند التاريخي الحقيقي مرة أخرى.
+           *
+           * مثال:
+           * 12 × 155.83 ظاهريًا
+           * لكن الإجمالي الحقيقي = 1870.
+           */
+          line_total: matchesOriginal
+            ? roundCost(Number(originalItem.line_total || 0))
+            : roundCost(quantity * unitCost),
+        };
+      }),
     );
   }
 
@@ -1511,10 +1544,7 @@ export default function PurchaseOrdersPanel({
                           fontWeight: 900,
                         }}
                       >
-                        {money(
-                          Number(item.quantity || 0) *
-                            Number(item.unit_cost || 0),
-                        )}
+                        {money(item.line_total)}
                       </td>
                     </tr>
                   ))}

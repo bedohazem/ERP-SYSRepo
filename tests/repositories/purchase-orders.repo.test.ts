@@ -21,6 +21,7 @@ import {
   getSmartReorderSuggestions,
   receivePurchaseOrder,
   listPurchaseOrders,
+  updatePurchaseOrder,
 } from '../../src/main/database/repositories/purchase-orders.repo';
 
 function seedVariant(input: {
@@ -384,6 +385,30 @@ describe('purchase orders repository', () => {
     expect(Number(snapshot.items[0].unit_cost)).toBe(155.83);
 
     expect(Number(snapshot.items[0].line_total)).toBe(1870);
+
+    /*
+     * فتح المسودة وحفظها بدون تغيير
+     * لازم لا يحول 1870 إلى 1869.96.
+     */
+    const updated = updatePurchaseOrder({
+      purchase_order_id: order.purchase_order_id,
+
+      supplier_id: supplier.id,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: Number(snapshot.items[0].quantity),
+
+          unit_cost: Number(snapshot.items[0].unit_cost),
+        },
+      ],
+    }) as any;
+
+    expect(Number(updated.items[0].unit_cost)).toBe(155.83);
+
+    expect(Number(updated.items[0].line_total)).toBe(1870);
 
     const received = receivePurchaseOrder({
       purchase_order_id: order.purchase_order_id,

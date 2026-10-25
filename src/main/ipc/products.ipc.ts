@@ -74,7 +74,7 @@ function normalizeVariantInput(
 
     color: optionalTrimmedString(payload.color, 'اللون', 100) ?? '',
 
-    buy_price: requireNonNegativeMoney(payload.buy_price, 'سعر الشراء'),
+    buy_price: requireNonNegativeNumber(payload.buy_price, 'سعر الشراء'),
 
     sell_price: requireNonNegativeMoney(payload.sell_price, 'سعر البيع'),
 
