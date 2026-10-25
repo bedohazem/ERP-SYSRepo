@@ -244,7 +244,7 @@ describe('purchase orders repository', () => {
     expect(Number(supplierRow.balance)).toBe(450);
   });
 
-  it('stores purchase order costs as whole pounds', () => {
+  it('stores purchase order costs at cent precision', () => {
     const supplier = createSupplier({
       name: 'Rounded PO Supplier',
     }) as any;
@@ -279,9 +279,9 @@ describe('purchase orders repository', () => {
 
     const snapshot = getPurchaseOrder(order.purchase_order_id) as any;
 
-    expect(snapshot.items[0].unit_cost).toBe(91);
+    expect(snapshot.items[0].unit_cost).toBe(90.5);
 
-    expect(snapshot.items[0].line_total).toBe(182);
+    expect(snapshot.items[0].line_total).toBe(181);
   });
 
   it('paginates purchase orders', () => {
@@ -342,5 +342,61 @@ describe('purchase orders repository', () => {
     expect(secondRows).toHaveLength(2);
 
     expect(firstRows[0].id).toBeGreaterThan(firstRows[1].id);
+  });
+
+  it('preserves cent-accurate purchase order totals when unit cost has extra decimals', () => {
+    const supplier = createSupplier({
+      name: 'Cent Accurate PO Supplier',
+    }) as any;
+
+    const variant = seedVariant({
+      name: 'Cent Accurate PO Product',
+
+      barcode: 'PO-CENT-PRECISION',
+
+      openingQty: 0,
+
+      minStock: 1,
+
+      buyPrice: 80,
+    });
+
+    const order = createPurchaseOrder({
+      supplier_id: supplier.id,
+
+      actor_id: 1,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 12,
+
+          unit_cost: 155.8333333333,
+        },
+      ],
+    });
+
+    expect(order.total_amount).toBe(1870);
+
+    const snapshot = getPurchaseOrder(order.purchase_order_id) as any;
+
+    expect(Number(snapshot.items[0].unit_cost)).toBe(155.83);
+
+    expect(Number(snapshot.items[0].line_total)).toBe(1870);
+
+    const received = receivePurchaseOrder({
+      purchase_order_id: order.purchase_order_id,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+    });
+
+    expect(received.exact_total_amount).toBe(1870);
+
+    expect(received.total_amount).toBe(1870);
+
+    expect(getVariantStock(variant.variant_id)).toBe(12);
   });
 });

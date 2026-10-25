@@ -438,15 +438,6 @@ function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
         continue;
       }
 
-      /*
-       * الاستبدال هنا Piece-based.
-       * أي كمية كسرية تفضل على مسار
-       * المرتجع التقليدي ولا ننشئ لها Units.
-       */
-      if (quantity <= 0 || !Number.isInteger(quantity)) {
-        continue;
-      }
-
       const itemCostValue = roundCost(
         Number(item.cost_value ?? Number(item.unit_cost || 0) * quantity),
       );

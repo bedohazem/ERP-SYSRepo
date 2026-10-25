@@ -1,7 +1,7 @@
 import { getDb } from '../db';
 
 import { createPurchaseInvoice } from './purchases.repo';
-import { roundMoney } from '../../../shared/money';
+import { roundCost } from '../../../shared/money';
 
 export type SmartReorderInput = {
   categoryId?: number | string | null;
@@ -332,7 +332,7 @@ export function getSmartReorderSuggestions(input?: SmartReorderInput) {
 
         unit_cost: unitCost,
 
-        estimated_cost: roundMoney(suggestedQuantity * unitCost),
+        estimated_cost: roundCost(suggestedQuantity * unitCost),
 
         reason,
       };
@@ -440,7 +440,9 @@ function preparePurchaseOrderItems(input: PurchaseOrderItemInput[]) {
       throw new Error(`تكلفة غير صحيحة للصنف ${variant.product_name}`);
     }
 
-    const unitCost = roundMoney(inputCost);
+    const lineTotal = roundCost(quantity * inputCost);
+
+    const unitCost = roundCost(lineTotal / quantity);
 
     return {
       variant_id: variantId,
@@ -457,7 +459,7 @@ function preparePurchaseOrderItems(input: PurchaseOrderItemInput[]) {
 
       unit_cost: unitCost,
 
-      line_total: roundMoney(quantity * unitCost),
+      line_total: lineTotal,
     };
   });
 }
@@ -576,12 +578,8 @@ export function createPurchaseOrder(input: CreatePurchaseOrderInput) {
 
       status: 'draft',
 
-      total_amount: roundMoney(
-        items.reduce(
-          (sum, item) => sum + item.line_total,
-
-          0,
-        ),
+      total_amount: roundCost(
+        items.reduce((sum, item) => sum + item.line_total, 0),
       ),
 
       items_count: items.length,
@@ -1049,18 +1047,29 @@ export function receivePurchaseOrder(input: {
   }
 
   const items = snapshot.items.map((item: any) => {
-    const unitCost = Number(item.unit_cost || 0);
+    const quantity = Number(item.quantity || 0);
 
-    if (!Number.isFinite(unitCost) || unitCost <= 0) {
+    const lineTotal = roundCost(Number(item.line_total || 0));
+
+    if (!Number.isFinite(quantity) || quantity <= 0 || lineTotal <= 0) {
       throw new Error(`حدد تكلفة شراء صحيحة للصنف ${item.product_name}`);
     }
+
+    /*
+     * نعيد بناء السعر الخام من إجمالي أمر الشراء
+     * حتى لا نفقد القروش عند تحويله لفاتورة.
+     *
+     * مثال:
+     * 1870 / 12 = 155.833333...
+     */
+    const rawUnitCost = lineTotal / quantity;
 
     return {
       variant_id: Number(item.variant_id),
 
-      quantity: Number(item.quantity),
+      quantity,
 
-      unit_cost: unitCost,
+      unit_cost: rawUnitCost,
     };
   });
 
