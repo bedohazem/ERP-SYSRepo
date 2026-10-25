@@ -17,9 +17,34 @@ import {
   issueStockAtCost,
   receiveStockAtCost,
 } from '../inventory-cost';
-import { roundMoney } from '../../../shared/money';
+import { roundCost, roundMoney } from '../../../shared/money';
 import { resolveFinancialBusinessDate } from '../financial-business-date';
 import { getOrCreateSalespersonForUser } from './salespeople.repo';
+
+function splitCostValueAcrossWholeUnits(
+  totalCostInput: number,
+  quantityInput: number,
+) {
+  const totalCost = roundCost(totalCostInput);
+  const quantity = Number(quantityInput);
+
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throw new Error('عدد وحدات التكلفة غير صحيح');
+  }
+
+  const totalCents = Math.round(totalCost * 100);
+
+  const baseCents = Math.floor(totalCents / quantity);
+
+  const remainderCents = totalCents - baseCents * quantity;
+
+  return Array.from(
+    {
+      length: quantity,
+    },
+    (_, index) => (baseCents + (index < remainderCents ? 1 : 0)) / 100,
+  );
+}
 
 export type CreateSaleLineInput = {
   variant_id: number;
@@ -1140,6 +1165,7 @@ function createSaleInternal(
         color,
         quantity,
         unit_cost,
+        cost_value,
         unit_price,
         list_unit_price,
         promotion_discount_value,
@@ -1147,7 +1173,10 @@ function createSaleInternal(
         is_gift,
         promotion_group_id
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?
+      )
     `);
 
     const insertPromotionUnit = db.prepare(`
@@ -1168,6 +1197,9 @@ function createSaleInternal(
         original_unit_cost,
         current_unit_cost,
 
+        original_cost_value,
+        current_cost_value,
+
         original_is_gift,
         current_is_gift,
 
@@ -1180,21 +1212,10 @@ function createSaleInternal(
         ?, ?,
         ?, ?,
         ?, ?,
+        ?, ?,
         0
       )
     `);
-
-    const getVariantCost = db.prepare(`
-  SELECT
-    average_cost,
-    buy_price
-
-  FROM product_variants
-
-  WHERE id = ?
-
-  LIMIT 1
-`);
 
     const getCurrentStock = db.prepare(`
       SELECT IFNULL(SUM(
@@ -1392,17 +1413,6 @@ function createSaleInternal(
 
       const lineTotal = roundMoney(qty * price);
 
-      const variant = getVariantCost.get(item.variant_id) as
-        | {
-            average_cost: number;
-            buy_price: number;
-          }
-        | undefined;
-
-      const saleUnitCost = Number(
-        variant?.average_cost ?? variant?.buy_price ?? 0,
-      );
-
       const stockRow = getCurrentStock.get(item.variant_id) as {
         stock: number;
       };
@@ -1414,6 +1424,24 @@ function createSaleInternal(
         );
       }
 
+      const issuedCost = issueStockAtAverageCost(db, {
+        variant_id: Number(item.variant_id),
+
+        quantity: qty,
+
+        reference_id: saleId,
+
+        reference_type: 'sale',
+
+        created_by: input.user_id,
+
+        notes: `بيع فاتورة رقم ${saleId}`,
+      });
+
+      const saleUnitCost = roundCost(Number(issuedCost.unit_cost || 0));
+
+      const saleCostValue = roundCost(Number(issuedCost.cost_value || 0));
+
       const itemPromotionDiscount = roundMoney(
         Math.max(0, Number(promotionResult.item_discounts[itemIndex] || 0)),
       );
@@ -1421,7 +1449,34 @@ function createSaleInternal(
       if (buyXItemIndexes.has(itemIndex)) {
         const fragments = buyXGetYFragments.get(itemIndex) || [];
 
-        for (const fragment of fragments) {
+        let allocatedCostQuantity = 0;
+
+        let allocatedCostValue = 0;
+        for (
+          let fragmentIndex = 0;
+          fragmentIndex < fragments.length;
+          fragmentIndex += 1
+        ) {
+          const fragment = fragments[fragmentIndex];
+
+          const fragmentQuantity = Number(fragment.quantity || 0);
+
+          const nextAllocatedQuantity =
+            allocatedCostQuantity + fragmentQuantity;
+
+          const targetAllocatedCost =
+            fragmentIndex === fragments.length - 1
+              ? saleCostValue
+              : roundCost((saleCostValue * nextAllocatedQuantity) / qty);
+
+          const fragmentCostValue = roundCost(
+            targetAllocatedCost - allocatedCostValue,
+          );
+
+          allocatedCostQuantity = nextAllocatedQuantity;
+
+          allocatedCostValue = targetAllocatedCost;
+
           const fragmentLineTotal = roundMoney(
             Number(fragment.quantity) * price,
           );
@@ -1435,6 +1490,7 @@ function createSaleInternal(
             item.color ?? null,
             fragment.quantity,
             saleUnitCost,
+            fragmentCostValue,
             price,
             listUnitPrice,
             fragment.is_gift ? fragmentLineTotal : 0,
@@ -1448,7 +1504,16 @@ function createSaleInternal(
           if (fragment.promotion_group_id) {
             const unitCount = Math.floor(Number(fragment.quantity || 0));
 
+            const unitCostValues = splitCostValueAcrossWholeUnits(
+              fragmentCostValue,
+              unitCount,
+            );
+
             for (let unitIndex = 0; unitIndex < unitCount; unitIndex += 1) {
+              const unitCostValue = roundCost(
+                Number(unitCostValues[unitIndex] || 0),
+              );
+
               insertPromotionUnit.run(
                 saleId,
                 saleItemId,
@@ -1467,6 +1532,9 @@ function createSaleInternal(
 
                 saleUnitCost,
 
+                unitCostValue,
+
+                unitCostValue,
                 fragment.is_gift ? 1 : 0,
 
                 fragment.is_gift ? 1 : 0,
@@ -1482,28 +1550,26 @@ function createSaleInternal(
           item.barcode ?? null,
           item.size ?? null,
           item.color ?? null,
+
           qty,
+
           saleUnitCost,
+
+          saleCostValue,
+
           price,
+
           listUnitPrice,
+
           itemPromotionDiscount,
+
           lineTotal,
+
           0,
+
           null,
         );
       }
-
-      issueStockAtAverageCost(db, {
-        variant_id: Number(item.variant_id),
-
-        quantity: qty,
-
-        reference_id: saleId,
-
-        reference_type: 'sale',
-        created_by: input.user_id,
-        notes: `بيع فاتورة رقم ${saleId}`,
-      });
     }
 
     if (customerId) {
@@ -2340,6 +2406,14 @@ export function createSaleReturn(input: {
             0
           ) AS current_unit_cost,
 
+          COALESCE(
+            spu.current_cost_value,
+            spu.original_cost_value,
+            spu.current_unit_cost,
+            spu.original_unit_cost,
+            0
+          ) AS current_cost_value,
+
           p.name AS current_product_name
 
         FROM sale_promotion_units spu
@@ -2377,6 +2451,14 @@ export function createSaleReturn(input: {
           spu.original_unit_cost,
           0
         ) AS current_unit_cost,
+
+        COALESCE(
+          spu.current_cost_value,
+          spu.original_cost_value,
+          spu.current_unit_cost,
+          spu.original_unit_cost,
+          0
+        ) AS current_cost_value,
 
         p.name
           AS current_product_name
@@ -2419,6 +2501,19 @@ export function createSaleReturn(input: {
           0
         ) AS returned_promotion_discount
 
+        ,
+
+        IFNULL(
+          SUM(
+            COALESCE(
+              sri.cost_value,
+              sri.unit_cost * sri.quantity,
+              0
+            )
+          ),
+          0
+        ) AS returned_cost_value
+
       FROM sale_returns sr
 
       JOIN sale_return_items sri
@@ -2446,7 +2541,7 @@ export function createSaleReturn(input: {
       size: string | null;
       color: string | null;
       unitCost: number;
-
+      costValue: number;
       quantity: number;
       unitPrice: number;
       listUnitPrice: number;
@@ -2551,7 +2646,9 @@ export function createSaleReturn(input: {
             color: unit.current_color ?? null,
 
             unitCost: Number(unit.current_unit_cost || 0),
-
+            costValue: roundCost(
+              Number(unit.current_cost_value ?? unit.current_unit_cost ?? 0),
+            ),
             quantity: 1,
 
             unitPrice,
@@ -2678,7 +2775,9 @@ export function createSaleReturn(input: {
               color: unit.current_color ?? null,
 
               unitCost: Number(unit.current_unit_cost || 0),
-
+              costValue: roundCost(
+                Number(unit.current_cost_value ?? unit.current_unit_cost ?? 0),
+              ),
               quantity: 1,
               unitPrice,
 
@@ -2706,6 +2805,7 @@ export function createSaleReturn(input: {
       ) as {
         returned_qty: number;
         returned_promotion_discount: number;
+        returned_cost_value: number;
       };
 
       const maxReturnable =
@@ -2769,6 +2869,29 @@ export function createSaleReturn(input: {
 
       returnPromotionDiscount += itemPromotionDiscount;
 
+      const originalCostValue = roundCost(
+        Number(
+          originalItem.cost_value ??
+            Number(originalItem.unit_cost || 0) *
+              Number(originalItem.quantity || 0),
+        ),
+      );
+
+      const alreadyReturnedCostValue = roundCost(
+        Number(alreadyReturned?.returned_cost_value || 0),
+      );
+
+      const cumulativeCostValue =
+        cumulativeReturnedQty >= originalQty - 0.000001
+          ? originalCostValue
+          : roundCost(
+              (originalCostValue * cumulativeReturnedQty) / originalQty,
+            );
+
+      const returnedCostValue = roundCost(
+        Math.max(0, cumulativeCostValue - alreadyReturnedCostValue),
+      );
+
       preparedItems.push({
         originalItem,
 
@@ -2788,7 +2911,7 @@ export function createSaleReturn(input: {
 
         quantity: requestedQty,
         unitPrice,
-
+        costValue: returnedCostValue,
         listUnitPrice,
 
         lineTotal,
@@ -3281,7 +3404,7 @@ export function createSaleReturn(input: {
         color,
         quantity,
         unit_cost,
-
+        cost_value,
         unit_price,
         list_unit_price,
 
@@ -3290,7 +3413,7 @@ export function createSaleReturn(input: {
 
         line_total
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const markPromotionUnitReturned = db.prepare(`
@@ -3315,6 +3438,7 @@ export function createSaleReturn(input: {
         item.color,
         item.quantity,
         item.unitCost,
+        item.costValue,
         item.unitPrice,
         item.listUnitPrice,
         item.productDiscount,
@@ -3333,7 +3457,7 @@ export function createSaleReturn(input: {
          * اللي خرج وقت البيع.
          */
         unit_cost: Number(item.unitCost || 0),
-
+        cost_value: roundCost(Number(item.costValue || 0)),
         reference_id: returnId,
 
         reference_type: 'sale_return',
@@ -4622,7 +4746,12 @@ export function cancelSaleReturn(input: {
          * القيمة التي دخل بها المرتجع.
          */
         unit_cost: Number(item.unit_cost || 0),
-
+        cost_value: roundCost(
+          Number(
+            item.cost_value ??
+              Number(item.unit_cost || 0) * Number(item.quantity || 0),
+          ),
+        ),
         reference_id: returnId,
 
         reference_type: 'sale_return_cancel',

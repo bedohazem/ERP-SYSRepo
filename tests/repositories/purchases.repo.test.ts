@@ -2335,7 +2335,7 @@ describe('purchases repository', () => {
 
     expect(Number(state.inventory_value)).toBe(2600);
 
-    expect(Number(state.average_cost)).toBeCloseTo(144.4444, 4);
+    expect(Number(state.average_cost)).toBe(144.44);
 
     cancelPurchaseReturn({
       return_id: purchaseReturn.return_id,
@@ -3308,5 +3308,384 @@ describe('purchases repository', () => {
     expect(statement.summary.due.overdue).toBe(250);
 
     expect(statement.summary.due.total_open).toBe(250);
+  });
+
+  it('uses group pricing as the source of truth and keeps invoice discount at cent precision', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      sub_total: 1090.83,
+
+      discount_type: 'percent',
+
+      discount_input: 10,
+
+      discount_value: 109.08,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 7,
+
+          /*
+           * للعرض فقط.
+           */
+          unit_cost: 155.83,
+
+          /*
+           * الحقيقة:
+           * 12 قطعة = 1870
+           */
+          pricing_base_quantity: 12,
+
+          pricing_base_amount: 1870,
+        },
+      ],
+    });
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(invoice.purchase.sub_total)).toBe(1090.83);
+
+    expect(Number(invoice.purchase.exact_total_amount)).toBe(981.75);
+
+    expect(Number(invoice.purchase.total_amount)).toBe(982);
+
+    expect(Number(invoice.purchase.rounding_adjustment)).toBe(0.25);
+
+    expect(Number(invoice.items[0].pricing_base_quantity)).toBe(12);
+
+    expect(Number(invoice.items[0].pricing_base_amount)).toBe(1870);
+
+    /*
+     * قيمة البند الحقيقية
+     * بعد خصم الفاتورة.
+     */
+    expect(Number(invoice.items[0].line_total)).toBe(981.75);
+
+    /*
+     * متوسط الوحدة المعروض.
+     */
+    expect(Number(invoice.items[0].unit_cost)).toBe(140.25);
+
+    const state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.stock)).toBe(7);
+
+    expect(Number(state.inventory_value)).toBe(981.75);
+
+    expect(Number(state.average_cost)).toBe(140.25);
+
+    expect(Number(state.buy_price)).toBe(140.25);
+
+    /*
+     * الرصيد على المورد
+     * هو قيمة التسوية الفعلية.
+     */
+    expect(getSupplierBalance(supplierId)).toBe(982);
+  });
+
+  it('allocates group-priced purchase returns cumulatively without losing cents', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 12,
+
+          unit_cost: 155.83,
+
+          pricing_base_quantity: 12,
+
+          pricing_base_amount: 1870,
+        },
+      ],
+    });
+
+    expect(purchase.exact_total_amount).toBe(1870);
+
+    expect(purchase.total_amount).toBe(1870);
+
+    let invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    const purchaseItemId = Number(invoice.items[0].id);
+
+    expect(Number(invoice.items[0].line_total)).toBe(1870);
+
+    let state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.stock)).toBe(12);
+
+    expect(Number(state.inventory_value)).toBe(1870);
+
+    const firstReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+
+          quantity: 7,
+        },
+      ],
+    });
+
+    expect(firstReturn.exact_total_amount).toBe(1090.83);
+
+    expect(firstReturn.total_amount).toBe(1091);
+
+    expect(firstReturn.rounding_adjustment).toBe(0.17);
+
+    state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.stock)).toBe(5);
+
+    expect(Number(state.inventory_value)).toBe(779.17);
+
+    const secondReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+
+          quantity: 4,
+        },
+      ],
+    });
+
+    expect(secondReturn.exact_total_amount).toBe(623.34);
+
+    expect(secondReturn.total_amount).toBe(623);
+
+    expect(secondReturn.rounding_adjustment).toBe(-0.34);
+
+    state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.stock)).toBe(1);
+
+    expect(Number(state.inventory_value)).toBe(155.83);
+
+    const finalReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(finalReturn.exact_total_amount).toBe(155.83);
+
+    expect(finalReturn.total_amount).toBe(156);
+
+    expect(finalReturn.rounding_adjustment).toBe(0.17);
+
+    expect(
+      Number(
+        (
+          firstReturn.exact_total_amount +
+          secondReturn.exact_total_amount +
+          finalReturn.exact_total_amount
+        ).toFixed(2),
+      ),
+    ).toBe(1870);
+
+    state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.stock)).toBe(0);
+
+    expect(Number(state.inventory_value)).toBe(0);
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+
+    expect(getSupplierTotalPurchased(supplierId)).toBe(0);
+
+    invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(invoice.purchase.remaining_amount)).toBe(0);
+
+    expect(Number(invoice.items[0].returned_quantity)).toBe(12);
+  });
+
+  it('rounds supplier cash refund independently and restores exact inventory value on cancellation', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 1870,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 12,
+
+          unit_cost: 155.83,
+
+          pricing_base_quantity: 12,
+
+          pricing_base_amount: 1870,
+        },
+      ],
+    });
+
+    expect(purchase.exact_total_amount).toBe(1870);
+
+    expect(purchase.total_amount).toBe(1870);
+
+    expect(purchase.remaining_amount).toBe(0);
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    const purchaseItemId = Number(invoice.items[0].id);
+
+    const purchaseReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'cash',
+
+      refund_payment_method: 'store_cash',
+
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    /*
+     * القيمة الحقيقية للمخزون = 155.83
+     *
+     * لكن المورد سيرد فعليًا = 156
+     */
+    expect(purchaseReturn.exact_total_amount).toBe(155.83);
+
+    expect(purchaseReturn.total_amount).toBe(156);
+
+    expect(purchaseReturn.rounding_adjustment).toBe(0.17);
+
+    expect(purchaseReturn.debt_reduction_amount).toBe(0);
+
+    expect(purchaseReturn.cash_refund_amount).toBe(156);
+
+    let state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.stock)).toBe(11);
+
+    expect(Number(state.inventory_value)).toBe(1714.17);
+
+    cancelPurchaseReturn({
+      return_id: purchaseReturn.return_id,
+
+      reason: 'Restore exact group-priced return cost',
+
+      actor_id: 1,
+    });
+
+    state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.stock)).toBe(12);
+
+    expect(Number(state.inventory_value)).toBe(1870);
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+
+    const restoredInvoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(restoredInvoice.items[0].returned_quantity)).toBe(0);
+
+    expect(Number(restoredInvoice.purchase.remaining_amount)).toBe(0);
+  });
+
+  it('preserves the exact purchase total when raw unit cost has more than two decimals', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 12,
+
+          unit_cost: 155.8333333333,
+        },
+      ],
+    });
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(invoice.purchase.sub_total)).toBe(1870);
+
+    expect(Number(invoice.purchase.exact_total_amount)).toBe(1870);
+
+    expect(Number(invoice.purchase.total_amount)).toBe(1870);
+
+    expect(Number(invoice.items[0].unit_cost)).toBe(155.83);
+
+    expect(Number(invoice.items[0].line_total)).toBe(1870);
+
+    const state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.stock)).toBe(12);
+
+    expect(Number(state.inventory_value)).toBe(1870);
+
+    expect(Number(state.average_cost)).toBe(155.83);
   });
 });

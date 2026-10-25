@@ -57,17 +57,78 @@ export function roundCost(value: unknown): number {
   }
 
   /*
-   * Cost policy:
+   * كل قيم التكلفة في النظام
+   * أقصى دقة لها قرشين.
    *
-   * تكلفة الشراء والمخزون
-   * تحتفظ بدقة 4 منازل.
-   *
-   * لا تستخدم هذه الدالة
-   * لتحصيل أو دفع الأموال الفعلية.
+   * 100      -> 100
+   * 100.5    -> 100.5
+   * 100.25   -> 100.25
+   * 100.256  -> 100.26
    */
-  const rounded = Number(amount.toFixed(4));
+  const rounded = Number(amount.toFixed(2));
 
   return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+export function allocateProportionalAmount(
+  totalValue: unknown,
+  quantityInput: unknown,
+  totalQuantityInput: unknown,
+): number {
+  const total = roundCost(totalValue);
+
+  const quantity = Number(quantityInput);
+
+  const totalQuantity = Number(totalQuantityInput);
+
+  if (
+    !Number.isFinite(quantity) ||
+    !Number.isFinite(totalQuantity) ||
+    quantity <= 0 ||
+    totalQuantity <= 0
+  ) {
+    return 0;
+  }
+
+  /*
+   * لو بناخد كل الكمية،
+   * نرجع القيمة المتبقية بالكامل
+   * حتى لا يضيع أي قرش.
+   */
+  if (Math.abs(quantity - totalQuantity) <= 0.000001) {
+    return total;
+  }
+
+  return roundCost((total * quantity) / totalQuantity);
+}
+
+export function splitAmountAcrossUnits(
+  totalValue: unknown,
+  unitCountInput: unknown,
+): number[] {
+  const total = roundCost(totalValue);
+
+  const unitCount = Math.trunc(Number(unitCountInput));
+
+  if (!Number.isFinite(unitCount) || unitCount <= 0) {
+    return [];
+  }
+
+  const sign = total < 0 ? -1 : 1;
+
+  const totalCents = Math.round(Math.abs(total) * 100);
+
+  const baseCents = Math.floor(totalCents / unitCount);
+
+  const remainderCents = totalCents % unitCount;
+
+  return Array.from(
+    {
+      length: unitCount,
+    },
+
+    (_, index) => (sign * (baseCents + (index < remainderCents ? 1 : 0))) / 100,
+  );
 }
 
 export function formatMoney(value: unknown): string {

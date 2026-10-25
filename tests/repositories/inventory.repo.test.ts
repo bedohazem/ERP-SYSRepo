@@ -16,6 +16,12 @@ import {
 } from '../../src/main/database/repositories/inventory.repo';
 import { createSale } from '../../src/main/database/repositories/sales.repo';
 import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo';
+import {
+  getInventoryCostState,
+  issueStockAtAverageCost,
+  receiveStockAtCost,
+} from '../../src/main/database/inventory-cost';
+import { roundCost } from '../../src/shared/money';
 
 type InventoryVariantTestRow = {
   variant_id: number;
@@ -838,5 +844,157 @@ describe('inventory repository', () => {
     expect(analytics.sold_units_30d).toBe(1);
 
     expect(analytics.top_mover?.variant_id).toBe(variant.variant_id);
+  });
+
+  it('allocates inventory value by cents without losing the supplier total', () => {
+    createProduct({
+      name: 'Proportional Cost Product',
+
+      category_id: null,
+
+      image_path: null,
+
+      description: null,
+
+      variants: [
+        {
+          barcode: 'INV-PROPORTIONAL-COST',
+
+          size: 'M',
+
+          color: 'Black',
+
+          buy_price: 155.83,
+
+          sell_price: 200,
+
+          min_stock: 1,
+
+          opening_qty: 0,
+        },
+      ],
+    });
+
+    const variant = getVariantByBarcode('INV-PROPORTIONAL-COST') as any;
+
+    receiveStockAtCost(getDb(), {
+      variant_id: variant.variant_id,
+
+      quantity: 12,
+
+      unit_cost: 155.83,
+
+      cost_value: 1870,
+
+      reference_type: 'test_purchase',
+
+      created_by: 1,
+    });
+
+    const before = getInventoryCostState(getDb(), variant.variant_id);
+
+    expect(before.stock).toBe(12);
+
+    expect(before.inventory_value).toBe(1870);
+
+    expect(before.average_cost).toBe(155.83);
+
+    const issued = issueStockAtAverageCost(getDb(), {
+      variant_id: variant.variant_id,
+
+      quantity: 7,
+
+      reference_type: 'test_sale',
+
+      created_by: 1,
+    });
+
+    expect(issued.cost_value).toBe(1090.83);
+
+    expect(issued.unit_cost).toBe(155.83);
+
+    expect(issued.stock).toBe(5);
+
+    expect(issued.inventory_value).toBe(779.17);
+
+    const after = getInventoryCostState(getDb(), variant.variant_id);
+
+    expect(after.stock).toBe(5);
+
+    expect(after.inventory_value).toBe(779.17);
+
+    expect(after.average_cost).toBe(155.83);
+  });
+
+  it('preserves the full inventory value when pieces are sold one by one', () => {
+    createProduct({
+      name: 'Sequential Cost Product',
+
+      category_id: null,
+
+      image_path: null,
+
+      description: null,
+
+      variants: [
+        {
+          barcode: 'INV-SEQUENTIAL-COST',
+
+          size: 'L',
+
+          color: 'Blue',
+
+          buy_price: 155.83,
+
+          sell_price: 200,
+
+          min_stock: 1,
+
+          opening_qty: 0,
+        },
+      ],
+    });
+
+    const variant = getVariantByBarcode('INV-SEQUENTIAL-COST') as any;
+
+    receiveStockAtCost(getDb(), {
+      variant_id: variant.variant_id,
+
+      quantity: 12,
+
+      unit_cost: 155.83,
+
+      cost_value: 1870,
+
+      reference_type: 'test_purchase',
+
+      created_by: 1,
+    });
+
+    let totalIssued = 0;
+
+    for (let index = 0; index < 12; index += 1) {
+      const issued = issueStockAtAverageCost(getDb(), {
+        variant_id: variant.variant_id,
+
+        quantity: 1,
+
+        reference_type: 'test_sale',
+
+        created_by: 1,
+      });
+
+      totalIssued = roundCost(totalIssued + issued.cost_value);
+    }
+
+    expect(totalIssued).toBe(1870);
+
+    const finalState = getInventoryCostState(getDb(), variant.variant_id);
+
+    expect(finalState.stock).toBe(0);
+
+    expect(finalState.inventory_value).toBe(0);
+
+    expect(finalState.average_cost).toBe(0);
   });
 });

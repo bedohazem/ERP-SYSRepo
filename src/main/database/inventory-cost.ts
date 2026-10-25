@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { roundCost } from '../../shared/money';
+import { allocateProportionalAmount, roundCost } from '../../shared/money';
 
 type Db = Database.Database;
 
@@ -7,13 +7,7 @@ const STOCK_EPSILON = 0.000001;
 const VALUE_EPSILON = 0.0001;
 
 function roundAverageCost(value: unknown): number {
-  const amount = Number(value ?? 0);
-
-  if (!Number.isFinite(amount)) {
-    return 0;
-  }
-
-  return Number(amount.toFixed(4));
+  return roundCost(value);
 }
 
 export type InventoryCostState = {
@@ -42,10 +36,24 @@ type StockMovementInput = {
 
 type InboundStockMovementInput = StockMovementInput & {
   unit_cost: number;
+
+  /*
+   * القيمة الحقيقية الكاملة للحركة.
+   *
+   * تستخدم عندما يكون إجمالي البند
+   * هو مصدر الحقيقة، مثل تسعير المجموعة.
+   */
+  cost_value?: number;
 };
 
 type SpecificCostOutboundInput = StockMovementInput & {
   unit_cost: number;
+
+  /*
+   * تستخدم لعكس نفس القيمة المحاسبية
+   * الأصلية بالضبط.
+   */
+  cost_value?: number;
 };
 
 export function getInventoryCostState(
@@ -236,14 +244,23 @@ export function receiveStockAtCost(
 
   const quantity = Number(input.quantity);
 
-  const unitCost = Number(input.unit_cost);
+  const rawUnitCost = Number(input.unit_cost);
 
   if (!variantId || !Number.isFinite(quantity) || quantity <= 0) {
     throw new Error('كمية دخول المخزون غير صحيحة');
   }
 
-  if (!Number.isFinite(unitCost) || unitCost < 0) {
+  if (!Number.isFinite(rawUnitCost) || rawUnitCost < 0) {
     throw new Error('تكلفة دخول المخزون غير صحيحة');
+  }
+
+  const rawCostValue = input.cost_value;
+
+  if (
+    rawCostValue !== undefined &&
+    (!Number.isFinite(Number(rawCostValue)) || Number(rawCostValue) < 0)
+  ) {
+    throw new Error('قيمة دخول المخزون غير صحيحة');
   }
 
   const state = getInventoryCostState(database, variantId);
@@ -254,7 +271,27 @@ export function receiveStockAtCost(
     );
   }
 
-  const movementValue = roundCost(quantity * unitCost);
+  /*
+   * لو عندنا قيمة فعلية للبند،
+   * فهي مصدر الحقيقة.
+   *
+   * مثال:
+   * 12 قطعة = 1870
+   *
+   * لا نحولها إلى:
+   * 155.83 × 12
+   */
+  const movementValue =
+    rawCostValue !== undefined
+      ? roundCost(rawCostValue)
+      : roundCost(quantity * rawUnitCost);
+
+  /*
+   * سعر الوحدة هنا للعرض والمساعدة فقط.
+   * أقصى دقة قرشين.
+   */
+  const movementUnitCost =
+    quantity > 0 ? roundCost(movementValue / quantity) : roundCost(rawUnitCost);
 
   const nextStock = state.stock + quantity;
 
@@ -272,21 +309,23 @@ export function receiveStockAtCost(
 
     quantity,
 
-    unit_cost: unitCost,
+    unit_cost: movementUnitCost,
 
     cost_value: movementValue,
 
     reference_id: input.reference_id,
 
     reference_type: input.reference_type,
+
     created_by: input.created_by,
+
     notes: input.notes,
   });
 
   updateCostState(database, variantId, nextAverageCost, nextInventoryValue);
 
   return {
-    unit_cost: roundCost(unitCost),
+    unit_cost: movementUnitCost,
 
     cost_value: movementValue,
 
@@ -316,9 +355,21 @@ export function issueStockAtAverageCost(
     throw new Error(`المخزون غير كافي. المتاح: ${state.stock}`);
   }
 
-  const unitCost = state.average_cost;
+  /*
+   * قيمة المخزون هي مصدر الحقيقة.
+   *
+   * لا نستخدم:
+   * average_cost × quantity
+   *
+   * لأن متوسط الوحدة مقرب للقرش.
+   */
+  const movementValue = allocateProportionalAmount(
+    state.inventory_value,
+    quantity,
+    state.stock,
+  );
 
-  const movementValue = roundCost(quantity * unitCost);
+  const movementUnitCost = roundCost(movementValue / quantity);
 
   const nextStock = state.stock - quantity;
 
@@ -330,6 +381,14 @@ export function issueStockAtAverageCost(
 
   if (nextInventoryValue < -VALUE_EPSILON) {
     throw new Error('قيمة المخزون أصبحت سالبة ولا يمكن تنفيذ الحركة');
+  }
+
+  /*
+   * لو خرج آخر مخزون،
+   * لا نترك أي قرش معلق.
+   */
+  if (nextStock <= STOCK_EPSILON) {
+    nextInventoryValue = 0;
   }
 
   const nextAverageCost =
@@ -344,26 +403,23 @@ export function issueStockAtAverageCost(
 
     quantity,
 
-    unit_cost: unitCost,
+    unit_cost: movementUnitCost,
 
     cost_value: movementValue,
 
     reference_id: input.reference_id,
 
     reference_type: input.reference_type,
+
     created_by: input.created_by,
+
     notes: input.notes,
   });
 
-  updateCostState(
-    database,
-    variantId,
-    nextAverageCost,
-    nextStock > STOCK_EPSILON ? nextInventoryValue : 0,
-  );
+  updateCostState(database, variantId, nextAverageCost, nextInventoryValue);
 
   return {
-    unit_cost: unitCost,
+    unit_cost: movementUnitCost,
 
     cost_value: movementValue,
 
@@ -371,7 +427,7 @@ export function issueStockAtAverageCost(
 
     average_cost: nextAverageCost,
 
-    inventory_value: nextStock > STOCK_EPSILON ? nextInventoryValue : 0,
+    inventory_value: nextInventoryValue,
   };
 }
 
@@ -383,14 +439,23 @@ export function issueStockAtCost(
 
   const quantity = Number(input.quantity);
 
-  const unitCost = Number(input.unit_cost);
+  const rawUnitCost = Number(input.unit_cost);
 
   if (!variantId || !Number.isFinite(quantity) || quantity <= 0) {
     throw new Error('كمية خروج المخزون غير صحيحة');
   }
 
-  if (!Number.isFinite(unitCost) || unitCost < 0) {
+  if (!Number.isFinite(rawUnitCost) || rawUnitCost < 0) {
     throw new Error('تكلفة خروج المخزون غير صحيحة');
+  }
+
+  const rawCostValue = input.cost_value;
+
+  if (
+    rawCostValue !== undefined &&
+    (!Number.isFinite(Number(rawCostValue)) || Number(rawCostValue) < 0)
+  ) {
+    throw new Error('قيمة خروج المخزون غير صحيحة');
   }
 
   const state = getInventoryCostState(database, variantId);
@@ -399,7 +464,12 @@ export function issueStockAtCost(
     throw new Error(`المخزون غير كافي. المتاح: ${state.stock}`);
   }
 
-  const movementValue = roundCost(quantity * unitCost);
+  const movementValue =
+    rawCostValue !== undefined
+      ? roundCost(rawCostValue)
+      : roundCost(quantity * rawUnitCost);
+
+  const movementUnitCost = roundCost(movementValue / quantity);
 
   const nextStock = state.stock - quantity;
 
@@ -434,26 +504,23 @@ export function issueStockAtCost(
 
     quantity,
 
-    unit_cost: unitCost,
+    unit_cost: movementUnitCost,
 
     cost_value: movementValue,
 
     reference_id: input.reference_id,
 
     reference_type: input.reference_type,
+
     created_by: input.created_by,
+
     notes: input.notes,
   });
 
-  updateCostState(
-    database,
-    variantId,
-    nextAverageCost,
-    nextStock > STOCK_EPSILON ? nextInventoryValue : 0,
-  );
+  updateCostState(database, variantId, nextAverageCost, nextInventoryValue);
 
   return {
-    unit_cost: roundCost(unitCost),
+    unit_cost: movementUnitCost,
 
     cost_value: movementValue,
 
@@ -461,6 +528,6 @@ export function issueStockAtCost(
 
     average_cost: nextAverageCost,
 
-    inventory_value: nextStock > STOCK_EPSILON ? nextInventoryValue : 0,
+    inventory_value: nextInventoryValue,
   };
 }

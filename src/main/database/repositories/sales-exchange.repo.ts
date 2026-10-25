@@ -13,7 +13,31 @@ import {
   issueStockAtCost,
   receiveStockAtCost,
 } from '../inventory-cost';
-import { roundMoney } from '../../../shared/money';
+import { roundCost, roundMoney } from '../../../shared/money';
+
+function splitCostValueAcrossWholeUnits(
+  totalCostInput: number,
+  quantityInput: number,
+) {
+  const totalCost = roundCost(totalCostInput);
+
+  const quantity = Number(quantityInput);
+
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throw new Error('عدد وحدات التكلفة غير صحيح');
+  }
+
+  const totalCents = Math.round(totalCost * 100);
+
+  const baseCents = Math.floor(totalCents / quantity);
+
+  const remainderCents = totalCents - baseCents * quantity;
+
+  return Array.from(
+    { length: quantity },
+    (_, index) => (baseCents + (index < remainderCents ? 1 : 0)) / 100,
+  );
+}
 
 export type CreateSaleExchangeInput = {
   original_sale_id: number;
@@ -57,7 +81,7 @@ type ExchangeUnitState = {
   current_unit_price: number;
   current_list_unit_price: number;
   current_unit_cost: number | null;
-
+  current_cost_value: number | null;
   current_is_gift: number;
 };
 
@@ -89,6 +113,8 @@ type PromotionUnitRow = {
   current_list_unit_price: number | null;
   original_unit_cost: number | null;
   current_unit_cost: number | null;
+  original_cost_value: number | null;
+  current_cost_value: number | null;
   original_is_gift: number;
   current_is_gift: number;
 
@@ -181,13 +207,21 @@ function parseExchangeStateJson(
     const unitCost =
       rawCost === null || rawCost === undefined ? null : Number(rawCost);
 
+    const rawCostValue = raw?.current_cost_value;
+
+    const costValue =
+      rawCostValue === null || rawCostValue === undefined
+        ? unitCost
+        : Number(rawCostValue);
+
     const isGift = Number(raw?.current_is_gift || 0) === 1 ? 1 : 0;
 
     if (
       !id ||
       !variantId ||
       !Number.isFinite(unitPrice) ||
-      (unitCost !== null && !Number.isFinite(unitCost))
+      (unitCost !== null && !Number.isFinite(unitCost)) ||
+      (costValue !== null && !Number.isFinite(costValue))
     ) {
       throw new Error(`بيانات ${label} غير مكتملة`);
     }
@@ -200,7 +234,7 @@ function parseExchangeStateJson(
       current_unit_price: unitPrice,
       current_list_unit_price: listUnitPrice,
       current_unit_cost: unitCost,
-
+      current_cost_value: costValue === null ? null : roundCost(costValue),
       current_is_gift: isGift,
     };
   });
@@ -371,7 +405,8 @@ function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
           current_list_unit_price,
           original_unit_cost,
           current_unit_cost,
-
+          original_cost_value,
+          current_cost_value,
           original_is_gift,
           current_is_gift,
 
@@ -380,6 +415,7 @@ function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
 
         VALUES (
           ?, ?, ?,
+          ?, ?,
           ?, ?,
           ?, ?,
           ?, ?,
@@ -401,6 +437,24 @@ function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
       if (quantity <= 0 || !Number.isInteger(quantity)) {
         continue;
       }
+
+      /*
+       * الاستبدال هنا Piece-based.
+       * أي كمية كسرية تفضل على مسار
+       * المرتجع التقليدي ولا ننشئ لها Units.
+       */
+      if (quantity <= 0 || !Number.isInteger(quantity)) {
+        continue;
+      }
+
+      const itemCostValue = roundCost(
+        Number(item.cost_value ?? Number(item.unit_cost || 0) * quantity),
+      );
+
+      const unitCostValues = splitCostValueAcrossWholeUnits(
+        itemCostValue,
+        quantity,
+      );
 
       const existing = getExistingCount.get(saleId, Number(item.id)) as {
         count: number;
@@ -447,7 +501,9 @@ function ensureRegularSaleUnits(db: ReturnType<typeof getDb>, saleId: number) {
           Number(item.unit_cost || 0),
 
           Number(item.unit_cost || 0),
+          unitCostValues[index],
 
+          unitCostValues[index],
           index < returnedQuantity ? 1 : 0,
         );
       }
@@ -894,7 +950,9 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         Number(unit.current_list_unit_price ?? unit.current_unit_price ?? 0),
       ),
       current_unit_cost: Number(unit.current_unit_cost || 0),
-
+      current_cost_value: roundCost(
+        Number(unit.current_cost_value ?? unit.current_unit_cost ?? 0),
+      ),
       current_is_gift: Number(unit.current_is_gift),
     }));
 
@@ -928,6 +986,9 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         ),
         current_unit_cost: Number(
           replacement.average_cost ?? replacement.buy_price ?? 0,
+        ),
+        current_cost_value: roundCost(
+          Number(replacement.average_cost ?? replacement.buy_price ?? 0),
         ),
       };
     });
@@ -1458,13 +1519,21 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
               .average_cost
           : Number(rawOldUnitCost);
 
+      const oldCostValue = roundCost(
+        Number(
+          oldUnit.current_cost_value ??
+            oldUnit.current_unit_cost ??
+            oldUnitCost,
+        ),
+      );
+
       receiveStockAtCost(db, {
         variant_id: Number(oldUnit.current_variant_id),
 
         quantity: 1,
 
         unit_cost: oldUnitCost,
-
+        cost_value: oldCostValue,
         reference_id: exchangeId,
 
         reference_type: 'sale_exchange',
@@ -1478,7 +1547,13 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
      * البديل من متوسطه الحالي لحظة
      * خروجه فعلًا.
      */
-    const replacementCostByUnitId = new Map<number, number>();
+    const replacementCostByUnitId = new Map<
+      number,
+      {
+        unitCost: number;
+        costValue: number;
+      }
+    >();
 
     for (const oldUnit of selectedUnits) {
       const replacement = replacementMap.get(oldUnit.id);
@@ -1499,7 +1574,11 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         notes: `صرف صنف بديل بسبب استبدال ${exchangeCode}`,
       });
 
-      replacementCostByUnitId.set(oldUnit.id, Number(issued.unit_cost || 0));
+      replacementCostByUnitId.set(oldUnit.id, {
+        unitCost: roundCost(Number(issued.unit_cost || 0)),
+
+        costValue: roundCost(Number(issued.cost_value || 0)),
+      });
     }
 
     const insertExchangeItem = db.prepare(
@@ -1517,6 +1596,8 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           new_list_unit_price,
           old_unit_cost,
           new_unit_cost,
+          old_cost_value,
+          new_cost_value,
 
           old_is_gift,
           new_is_gift,
@@ -1524,6 +1605,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           quantity
         )
         VALUES (
+          ?, ?,
           ?, ?,
           ?, ?,
           ?, ?,
@@ -1545,7 +1627,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
           current_list_unit_price = ?,
           current_unit_cost = ?,
-
+          current_cost_value = ?,
           updated_at =
             CURRENT_TIMESTAMP
 
@@ -1571,11 +1653,18 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         throw new Error('تعذر إعادة حساب العرض');
       }
 
-      const replacementUnitCost = Number(
-        replacementCostByUnitId.get(oldUnit.id) || 0,
-      );
+      const replacementCost = replacementCostByUnitId.get(oldUnit.id);
+
+      if (!replacementCost) {
+        throw new Error('تعذر حفظ تكلفة الصنف البديل');
+      }
+
+      const replacementUnitCost = replacementCost.unitCost;
+
+      const replacementCostValue = replacementCost.costValue;
 
       newUnit.current_unit_cost = replacementUnitCost;
+      newUnit.current_cost_value = replacementCostValue;
 
       insertExchangeItem.run(
         exchangeId,
@@ -1602,7 +1691,11 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         Number(oldUnit.current_unit_cost || 0),
 
         replacementUnitCost,
+        roundCost(
+          Number(oldUnit.current_cost_value ?? oldUnit.current_unit_cost ?? 0),
+        ),
 
+        replacementCostValue,
         oldUnit.current_is_gift,
         newUnit.current_is_gift,
       );
@@ -1617,7 +1710,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           Number(replacement.list_unit_price ?? replacement.sell_price ?? 0),
         ),
         replacementUnitCost,
-
+        replacementCostValue,
         oldUnit.id,
         saleId,
       );
@@ -2580,7 +2673,11 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         quantity: Number(item.quantity || 0),
 
         unit_cost: newUnitCost,
-
+        cost_value: roundCost(
+          Number(
+            item.new_cost_value ?? newUnitCost * Number(item.quantity || 0),
+          ),
+        ),
         reference_id: exchangeId,
 
         reference_type: 'sale_exchange_cancel',
@@ -2603,7 +2700,11 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         quantity: Number(item.quantity || 0),
 
         unit_cost: oldUnitCost,
-
+        cost_value: roundCost(
+          Number(
+            item.old_cost_value ?? oldUnitCost * Number(item.quantity || 0),
+          ),
+        ),
         reference_id: exchangeId,
 
         reference_type: 'sale_exchange_cancel',
@@ -2627,7 +2728,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
             current_unit_price = ?,
             current_list_unit_price = ?,
             current_unit_cost = ?,
-
+            current_cost_value = ?,
             current_is_gift = ?,
 
             updated_at =
@@ -2652,13 +2753,21 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
               exchangeItem?.old_unit_cost ?? current?.current_unit_cost ?? 0,
             );
 
+      const restoredCostValue = roundCost(
+        Number(
+          before.current_cost_value ??
+            exchangeItem?.old_cost_value ??
+            restoredCost,
+        ),
+      );
+
       restoreUnit.run(
         before.current_variant_id,
 
         before.current_unit_price,
         before.current_list_unit_price ?? before.current_unit_price,
         restoredCost,
-
+        restoredCostValue,
         before.current_is_gift,
 
         before.id,

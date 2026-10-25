@@ -679,19 +679,33 @@ export function getReportsSummary(input?: ReportFilter) {
             0
           ) AS promotion_discount,
           IFNULL(s.loyalty_discount_value, 0) AS loyalty_discount,
-          IFNULL(SUM(si.unit_cost * si.quantity), 0) AS total_cost,
           IFNULL(
             SUM(
-              (
-                COALESCE(
-                  si.list_unit_price,
-                  si.unit_price
-                )
-                -
-                si.unit_cost
+              COALESCE(
+                si.cost_value,
+                si.unit_cost * si.quantity,
+                0
               )
-              *
-              si.quantity
+            ),
+            0
+          ) AS total_cost,
+          IFNULL(
+            SUM(
+              COALESCE(
+                si.list_unit_price,
+                si.unit_price
+              ) * si.quantity
+            ),
+            0
+          )
+          -
+          IFNULL(
+            SUM(
+              COALESCE(
+                si.cost_value,
+                si.unit_cost * si.quantity,
+                0
+              )
             ),
             0
           ) AS items_profit_before_discount
@@ -724,22 +738,28 @@ export function getReportsSummary(input?: ReportFilter) {
         sr.refund_amount,
 
         IFNULL(
-          SUM(sri.unit_cost * sri.quantity),
+          SUM(
+            COALESCE(
+              sri.cost_value,
+              sri.unit_cost * sri.quantity,
+              0
+            )
+          ),
           0
         ) AS total_cost,
 
         IFNULL(
           SUM(
-            (
-              COALESCE(
-                sri.list_unit_price,
-                sri.unit_price
-              )
-              -
-              sri.unit_cost
+            COALESCE(
+              sri.list_unit_price,
+              sri.unit_price
+            ) * sri.quantity
+            -
+            COALESCE(
+              sri.cost_value,
+              sri.unit_cost * sri.quantity,
+              0
             )
-            *
-            sri.quantity
           ),
           0
         ) AS items_profit_before_discount
@@ -833,19 +853,21 @@ export function getReportsSummary(input?: ReportFilter) {
 
           IFNULL(
             SUM(
-              (
+              COALESCE(
+                sei.new_cost_value,
                 COALESCE(
                   sei.new_unit_cost,
                   0
-                )
-                -
+                ) * sei.quantity
+              )
+              -
+              COALESCE(
+                sei.old_cost_value,
                 COALESCE(
                   sei.old_unit_cost,
                   0
-                )
+                ) * sei.quantity
               )
-              *
-              sei.quantity
             ),
             0
           ) AS cost_delta

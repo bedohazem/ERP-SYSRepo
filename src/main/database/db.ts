@@ -3563,6 +3563,114 @@ export function getDb(): Database.Database {
           `);
         },
       },
+
+      {
+        version: 25,
+
+        name: 'purchase-item-group-pricing',
+
+        up: () => {
+          /*
+           * null في العمودين =
+           * تسعير عادي بسعر القطعة.
+           *
+           * وجود القيمتين =
+           * تسعير مجموعة.
+           *
+           * مثال:
+           * 12 قطعة = 1870
+           */
+          safeAddColumn(db, 'purchase_items', 'pricing_base_quantity', 'REAL');
+
+          safeAddColumn(db, 'purchase_items', 'pricing_base_amount', 'REAL');
+        },
+      },
+
+      {
+        version: 26,
+        name: 'sales-cost-value-snapshots',
+        up: () => {
+          safeAddColumn(db, 'sale_items', 'cost_value', 'REAL');
+
+          safeAddColumn(db, 'sale_return_items', 'cost_value', 'REAL');
+
+          safeAddColumn(
+            db,
+            'sale_promotion_units',
+            'original_cost_value',
+            'REAL',
+          );
+
+          safeAddColumn(
+            db,
+            'sale_promotion_units',
+            'current_cost_value',
+            'REAL',
+          );
+
+          safeAddColumn(db, 'sale_exchange_items', 'old_cost_value', 'REAL');
+
+          safeAddColumn(db, 'sale_exchange_items', 'new_cost_value', 'REAL');
+
+          db.exec(`
+            UPDATE sale_items
+            SET cost_value =
+              ROUND(
+                IFNULL(unit_cost, 0) *
+                IFNULL(quantity, 0),
+                2
+              )
+            WHERE cost_value IS NULL;
+
+            UPDATE sale_return_items
+            SET cost_value =
+              ROUND(
+                IFNULL(unit_cost, 0) *
+                IFNULL(quantity, 0),
+                2
+              )
+            WHERE cost_value IS NULL;
+
+            UPDATE sale_promotion_units
+            SET original_cost_value =
+              ROUND(
+                IFNULL(original_unit_cost, 0),
+                2
+              )
+            WHERE original_cost_value IS NULL;
+
+            UPDATE sale_promotion_units
+            SET current_cost_value =
+              ROUND(
+                COALESCE(
+                  current_unit_cost,
+                  original_unit_cost,
+                  0
+                ),
+                2
+              )
+            WHERE current_cost_value IS NULL;
+
+            UPDATE sale_exchange_items
+            SET old_cost_value =
+              ROUND(
+                IFNULL(old_unit_cost, 0) *
+                IFNULL(quantity, 1),
+                2
+              )
+            WHERE old_cost_value IS NULL;
+
+            UPDATE sale_exchange_items
+            SET new_cost_value =
+              ROUND(
+                IFNULL(new_unit_cost, 0) *
+                IFNULL(quantity, 1),
+                2
+              )
+            WHERE new_cost_value IS NULL;
+          `);
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

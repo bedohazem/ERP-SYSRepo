@@ -922,7 +922,7 @@ export default function PurchasesPage() {
 
           quantity: Number(line.quantity || 0),
 
-          unit_cost: roundCost(getDiscountedUnitCost(line)),
+          unit_cost: Number(line.unit_cost || 0),
         })),
       };
 

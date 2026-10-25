@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  allocateProportionalAmount,
   formatMoney,
+  roundCost,
   roundFinancial,
   roundMoney,
+  splitAmountAcrossUnits,
 } from '../../src/shared/money';
 
 describe('whole-pound money policy', () => {
@@ -53,5 +56,34 @@ describe('whole-pound money policy', () => {
     expect(roundFinancial(100.055)).toBe(100.06);
 
     expect(roundFinancial(-10.555)).toBe(-10.55);
+  });
+
+  it('keeps all cost values at cent precision', () => {
+    expect(roundCost(100)).toBe(100);
+
+    expect(roundCost(100.5)).toBe(100.5);
+
+    expect(roundCost(100.25)).toBe(100.25);
+
+    expect(roundCost(100.256)).toBe(100.26);
+  });
+
+  it('allocates proportional values without losing cents', () => {
+    expect(allocateProportionalAmount(1870, 7, 12)).toBe(1090.83);
+
+    expect(allocateProportionalAmount(779.17, 5, 5)).toBe(779.17);
+    expect(allocateProportionalAmount(1870, 24, 12)).toBe(3740);
+  });
+
+  it('splits a value across units while preserving the exact total', () => {
+    const units = splitAmountAcrossUnits(1090.83, 7);
+
+    expect(units).toHaveLength(7);
+
+    expect(roundCost(units.reduce((sum, value) => sum + value, 0))).toBe(
+      1090.83,
+    );
+
+    expect(units.every((value) => roundCost(value) === value)).toBe(true);
   });
 });
