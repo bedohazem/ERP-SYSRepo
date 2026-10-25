@@ -365,6 +365,18 @@ describe('database migrations', () => {
 
         name: 'purchase-return-rounding-adjustments',
       },
+
+      {
+        version: 25,
+
+        name: 'purchase-item-group-pricing',
+      },
+
+      {
+        version: 26,
+
+        name: 'sales-cost-value-snapshots',
+      },
     ]);
 
     const performanceIndexes = database
