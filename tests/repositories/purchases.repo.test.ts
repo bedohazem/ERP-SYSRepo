@@ -1138,6 +1138,102 @@ describe('purchases repository', () => {
     expect(getSupplierTotalPurchased(supplierId)).toBe(0);
   });
 
+  it('does not double count legacy purchase rounding when cancelling an invoice', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    /*
+     * ننشئ فاتورة مدفوعة 444
+     * ثم نحول سجلها لشكل النظام القديم:
+     *
+     * exact = 443.75
+     * total = 444
+     * paid = 444
+     * adjustment = +0.25
+     *
+     * في النظام القديم paid نفسه
+     * كان يمثل الكاش الحقيقي.
+     */
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 444,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 444,
+        },
+      ],
+    });
+
+    getDb()
+      .prepare(
+        `
+      UPDATE purchase_invoices
+
+      SET
+        total_amount = 444,
+        exact_total_amount = 443.75,
+        rounding_adjustment = 0.25,
+        paid_amount = 444,
+        remaining_amount = 0,
+        payment_status = 'paid'
+
+      WHERE id = ?
+      `,
+      )
+      .run(purchase.purchaseId);
+
+    const cancelled = cancelPurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+
+      reason: 'Legacy rounding cancellation test',
+
+      actor_id: 1,
+    });
+
+    /*
+     * ممنوع:
+     * 444 + 0.25 = 444.25
+     *
+     * الصحيح:
+     * الكاش القديم كان 444 بالفعل.
+     */
+    expect(cancelled.reversed_paid).toBe(444);
+
+    expect(cancelled.reversed_cash).toBe(444);
+
+    const reverseMovement = getDb()
+      .prepare(
+        `
+      SELECT *
+      FROM cash_movements
+
+      WHERE
+        reference_type = 'purchase_cancel'
+        AND reference_id = ?
+
+      ORDER BY id DESC
+
+      LIMIT 1
+      `,
+      )
+      .get(purchase.purchaseId) as any;
+
+    expect(reverseMovement.direction).toBe('in');
+
+    expect(Number(reverseMovement.amount)).toBe(444);
+  });
+
   it('does not infer settlement rounding from legacy fractional purchase details', () => {
     const supplierId = createTestSupplier();
 

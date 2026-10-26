@@ -231,6 +231,57 @@ function normalizePaymentStatus(
   return 'unpaid';
 }
 
+function resolveStoredPurchaseInitialCashAmount(purchase: {
+  total_amount?: number | null;
+  exact_total_amount?: number | null;
+  paid_amount?: number | null;
+  rounding_adjustment?: number | null;
+}) {
+  const paidAmount = roundFinancial(Number(purchase.paid_amount || 0));
+
+  if (paidAmount <= 0) {
+    return 0;
+  }
+
+  const totalAmount = roundFinancial(Number(purchase.total_amount || 0));
+
+  const exactTotalAmount = roundFinancial(
+    Number(purchase.exact_total_amount ?? purchase.total_amount ?? 0),
+  );
+
+  const roundingAdjustment = roundFinancial(
+    Number(purchase.rounding_adjustment || 0),
+  );
+
+  /*
+   * الشكل القديم:
+   *
+   * exact = 443.75
+   * total = 444
+   * paid = 444
+   * adjustment = 0.25
+   *
+   * هنا paid نفسه هو الكاش الحقيقي،
+   * فلا نضيف adjustment مرة ثانية.
+   */
+  const legacyRoundedInvoice =
+    Math.abs(totalAmount - exactTotalAmount) > 0.0001;
+
+  if (legacyRoundedInvoice) {
+    return paidAmount;
+  }
+
+  /*
+   * الشكل الجديد:
+   *
+   * total = exact = 981.75
+   * paid accounting = 981.75
+   * adjustment = +0.25
+   * cash = 982
+   */
+  return roundFinancial(Math.max(0, paidAmount + roundingAdjustment));
+}
+
 function calculateSupplierNetBalance(
   db: ReturnType<typeof getDb>,
   supplierId: number,
@@ -1546,18 +1597,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       Number(purchase.remaining_amount || 0),
     );
 
-    const oldRoundingAdjustment = roundFinancial(
-      Number(purchase.rounding_adjustment || 0),
-    );
-
-    /*
-     * الكاش الحقيقي الذي خرج
-     * وقت الفاتورة القديمة.
-     */
-    const oldCashAmount =
-      oldPaidAmount > 0
-        ? roundFinancial(Math.max(0, oldPaidAmount + oldRoundingAdjustment))
-        : 0;
+    const oldCashAmount = resolveStoredPurchaseInitialCashAmount(purchase);
 
     const preserveDueDate =
       oldRemainingAmount > 0 && oldSupplierId === nextSupplierId;
@@ -2225,22 +2265,7 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
 
     const paidAmount = roundFinancial(Number(purchase.paid_amount || 0));
 
-    const roundingAdjustment = roundFinancial(
-      Number(purchase.rounding_adjustment || 0),
-    );
-
-    /*
-     * المبلغ الحقيقي الذي خرج وقت الدفع.
-     *
-     * مثال:
-     * المدفوع محاسبيًا = 981.75
-     * فرق التسوية = +0.25
-     * الكاش الحقيقي = 982
-     */
-    const cashPaidAmount =
-      paidAmount > 0
-        ? roundFinancial(Math.max(0, paidAmount + roundingAdjustment))
-        : 0;
+    const cashPaidAmount = resolveStoredPurchaseInitialCashAmount(purchase);
 
     const paymentMethod = resolveCashAccount(purchase.payment_method || 'cash');
 
