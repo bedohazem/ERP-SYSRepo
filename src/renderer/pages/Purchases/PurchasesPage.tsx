@@ -1485,6 +1485,25 @@ export default function PurchasesPage() {
                       />
                     </td>
 
+                    <td style={tdStyle}>
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={line.unit_cost}
+                        onChange={(e) =>
+                          updateLine(line.variant_id, {
+                            unit_cost: Math.max(0, Number(e.target.value || 0)),
+                          })
+                        }
+                        style={{
+                          ...inputStyle,
+                          width: '190px',
+                          textAlign: 'center',
+                        }}
+                      />
+                    </td>
+
                     <td
                       style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}
                     >
