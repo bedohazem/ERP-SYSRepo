@@ -6,11 +6,11 @@ import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PurchaseOrdersPanel from './PurchaseOrdersPanel';
 import {
-  allocateRoundedTotalAcrossWeights,
-  formatMoney,
-  roundCost,
+  allocatePreciseTotalAcrossWeights,
+  formatPreciseMoney,
+  preservePrecision,
   roundMoney,
-  roundFinancial,
+  truncateForDisplay,
 } from '../../../shared/money';
 import {
   getUserScopedDraftKey,
@@ -173,12 +173,12 @@ export default function PurchasesPage() {
      * لكن إجمالي البند قيمة مالية
      * فيقفل على منزلتين مثل فاتورة المورد.
      */
-    return roundCost(getPurchaseLineRawTotal(line));
+    return preservePrecision(getPurchaseLineRawTotal(line));
   }
 
   const subTotal = useMemo(
     () =>
-      roundCost(
+      preservePrecision(
         lines.reduce(
           (sum, line) => sum + getPurchaseLineTotal(line),
 
@@ -195,15 +195,17 @@ export default function PurchasesPage() {
     const value = Number.isFinite(raw) ? Math.max(0, raw) : 0;
 
     if (discountType === 'percent') {
-      return roundCost(
+      return preservePrecision(
         Math.min(subTotal, (subTotal * Math.min(value, 100)) / 100),
       );
     }
 
-    return roundCost(Math.min(subTotal, value));
+    return preservePrecision(Math.min(subTotal, value));
   }, [discountDraft, discountType, subTotal]);
 
-  const exactTotalAmount = roundCost(Math.max(0, subTotal - discountValue));
+  const exactTotalAmount = preservePrecision(
+    Math.max(0, subTotal - discountValue),
+  );
 
   /*
    * إجمالي الفاتورة نفسه
@@ -217,20 +219,20 @@ export default function PurchasesPage() {
 
   const paid = settleFullInvoice
     ? totalAmount
-    : roundFinancial(Math.min(cashPaidAmount, totalAmount));
+    : preservePrecision(Math.min(cashPaidAmount, totalAmount));
 
   const remaining = settleFullInvoice
     ? 0
-    : roundFinancial(Math.max(0, totalAmount - paid));
+    : preservePrecision(Math.max(0, totalAmount - paid));
 
   const roundingAdjustment = settleFullInvoice
-    ? roundFinancial(cashPaidAmount - totalAmount)
+    ? preservePrecision(cashPaidAmount - totalAmount)
     : 0;
 
   const purchaseLineFinancials = useMemo(() => {
     const grossTotals = lines.map(getPurchaseLineTotal);
 
-    const lineDiscounts = allocateRoundedTotalAcrossWeights(
+    const lineDiscounts = allocatePreciseTotalAcrossWeights(
       discountValue,
       grossTotals,
     );
@@ -251,11 +253,11 @@ export default function PurchasesPage() {
     lines.forEach((line, index) => {
       const quantity = Number(line.quantity || 0);
 
-      const grossTotal = roundCost(grossTotals[index] || 0);
+      const grossTotal = preservePrecision(grossTotals[index] || 0);
 
-      const lineDiscount = roundCost(lineDiscounts[index] || 0);
+      const lineDiscount = preservePrecision(lineDiscounts[index] || 0);
 
-      const netTotal = roundCost(
+      const netTotal = preservePrecision(
         Math.max(
           0,
 
@@ -273,7 +275,7 @@ export default function PurchasesPage() {
         /*
          * ده عرض فقط.
          */
-        unitCost: quantity > 0 ? roundCost(netTotal / quantity) : 0,
+        unitCost: quantity > 0 ? preservePrecision(netTotal / quantity) : 0,
       });
     });
 
@@ -529,9 +531,9 @@ export default function PurchasesPage() {
 
         setLines(nextLines);
 
-        const storedPaid = roundFinancial(Number(purchase.paid_amount || 0));
+        const storedPaid = preservePrecision(Number(purchase.paid_amount || 0));
 
-        const storedAdjustment = roundFinancial(
+        const storedAdjustment = preservePrecision(
           Number(purchase.rounding_adjustment || 0),
         );
 
@@ -544,7 +546,7 @@ export default function PurchasesPage() {
         setPaidAmount(
           String(
             hadSettlement
-              ? roundFinancial(storedPaid + storedAdjustment)
+              ? preservePrecision(storedPaid + storedAdjustment)
               : storedPaid,
           ),
         );
@@ -1661,11 +1663,11 @@ export default function PurchasesPage() {
                   lineHeight: 1.7,
                 }}
               >
-                سيتم إقفال {formatMoney(totalAmount)} ج.م
+                سيتم إقفال {formatPreciseMoney(totalAmount)}
                 {' — '}
-                الدفع الفعلي {formatMoney(cashPaidAmount)} ج.م
+                الدفع الفعلي {formatPreciseMoney(cashPaidAmount)}
                 {' — '}
-                فرق التسوية {formatMoney(roundingAdjustment)} ج.م
+                فرق التسوية {formatPreciseMoney(roundingAdjustment)}
               </div>
             )}
 
@@ -2067,17 +2069,19 @@ export default function PurchasesPage() {
 }
 
 function money(value: unknown) {
-  return formatMoney(value);
+  return formatPreciseMoney(value);
 }
 
 function costMoney(value: unknown) {
-  return `${roundCost(value).toFixed(2)} ج.م`;
+  return formatPreciseMoney(value);
 }
 
 function signedCostMoney(value: unknown) {
-  const amount = roundCost(value);
+  const amount = preservePrecision(value);
 
-  return `${amount > 0 ? '+' : ''}${amount} ج.م`;
+  const formatted = truncateForDisplay(amount);
+
+  return `${amount > 0 ? '+' : ''}${formatted} ج.م`;
 }
 
 const cardStyle: CSSProperties = {

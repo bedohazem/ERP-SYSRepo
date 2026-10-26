@@ -1,5 +1,9 @@
 import { getDb } from '../db';
-import { roundFinancial } from '../../../shared/money';
+import {
+  normalizePreciseZero,
+  PRECISE_MONEY_EPSILON,
+  preservePrecision,
+} from '../../../shared/money';
 
 export type SupplierInput = {
   name: string;
@@ -58,13 +62,10 @@ export function getSupplierAgingSummary(
     `,
 
     `
-    ROUND(
       IFNULL(
         pi.remaining_amount,
         0
-      ),
-      2
-    ) > 0
+      ) > ${PRECISE_MONEY_EPSILON}
     `,
   ];
 
@@ -171,12 +172,9 @@ export function getSupplierAgingSummary(
 
       FROM (
         SELECT
-          ROUND(
             IFNULL(
               pi.remaining_amount,
               0
-            ),
-            2
           ) AS remaining_amount,
 
           MAX(
@@ -222,15 +220,15 @@ export function getSupplierAgingSummary(
     .get(...params) as any;
 
   return {
-    days_0_30: roundFinancial(row?.days_0_30),
+    days_0_30: preservePrecision(row?.days_0_30),
 
-    days_31_60: roundFinancial(row?.days_31_60),
+    days_31_60: preservePrecision(row?.days_31_60),
 
-    days_61_90: roundFinancial(row?.days_61_90),
+    days_61_90: preservePrecision(row?.days_61_90),
 
-    days_90_plus: roundFinancial(row?.days_90_plus),
+    days_90_plus: preservePrecision(row?.days_90_plus),
 
-    total: roundFinancial(row?.total),
+    total: preservePrecision(row?.total),
   };
 }
 
@@ -258,13 +256,10 @@ export function getSupplierDueSummary(
     `,
 
     `
-    ROUND(
       IFNULL(
         pi.remaining_amount,
         0
-      ),
-      2
-    ) > 0
+      ) > ${PRECISE_MONEY_EPSILON}
     `,
   ];
 
@@ -379,12 +374,9 @@ export function getSupplierDueSummary(
 
       FROM (
         SELECT
-          ROUND(
             IFNULL(
               pi.remaining_amount,
               0
-            ),
-            2
           ) AS remaining_amount,
 
           date(
@@ -413,15 +405,15 @@ export function getSupplierDueSummary(
     .get(...params) as any;
 
   return {
-    overdue: roundFinancial(row?.overdue),
+    overdue: preservePrecision(row?.overdue),
 
-    due_today: roundFinancial(row?.due_today),
+    due_today: preservePrecision(row?.due_today),
 
-    due_soon: roundFinancial(row?.due_soon),
+    due_soon: preservePrecision(row?.due_soon),
 
-    without_due_date: roundFinancial(row?.without_due_date),
+    without_due_date: preservePrecision(row?.without_due_date),
 
-    total_open: roundFinancial(row?.total_open),
+    total_open: preservePrecision(row?.total_open),
   };
 }
 
@@ -734,7 +726,7 @@ export function deleteSupplier(id: number) {
       FROM purchase_invoices
       WHERE supplier_id = ?
         AND cancelled_at IS NULL
-        AND remaining_amount > 0
+        AND remaining_amount > ${PRECISE_MONEY_EPSILON}
       `,
     )
     .get(supplierId) as
@@ -743,7 +735,7 @@ export function deleteSupplier(id: number) {
       }
     | undefined;
 
-  const supplierBalance = roundFinancial(supplier.balance);
+  const supplierBalance = normalizePreciseZero(supplier.balance);
 
   if (supplierBalance < 0) {
     throw new Error(
@@ -751,12 +743,8 @@ export function deleteSupplier(id: number) {
     );
   }
 
-  const outstandingAmount = roundFinancial(
-    Math.max(
-      supplierBalance,
-
-      Number(openDebtRow?.open_debt || 0),
-    ),
+  const outstandingAmount = normalizePreciseZero(
+    Math.max(supplierBalance, Number(openDebtRow?.open_debt || 0)),
   );
 
   if (outstandingAmount > 0) {

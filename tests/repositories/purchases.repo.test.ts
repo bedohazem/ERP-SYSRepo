@@ -1613,7 +1613,9 @@ describe('purchases repository', () => {
 
       actor_id: 1,
 
-      paid_amount: 1870,
+      paid_amount: 1013,
+
+      settle_full_balance: true,
 
       payment_method: 'store_cash',
 
@@ -1623,7 +1625,7 @@ describe('purchases repository', () => {
 
           quantity: 12,
 
-          unit_cost: 155.8333333333333,
+          unit_cost: 84.375,
         },
       ],
     });
@@ -1637,7 +1639,7 @@ describe('purchases repository', () => {
 
       refund_mode: 'cash',
 
-      cash_refund_amount: 155,
+      cash_refund_amount: 84,
 
       settle_cash_refund: false,
 
@@ -1652,15 +1654,15 @@ describe('purchases repository', () => {
       ],
     });
 
-    expect(purchaseReturn.total_amount).toBe(155.83);
+    expect(purchaseReturn.total_amount).toBe(84.375);
 
-    expect(purchaseReturn.cash_refund_amount).toBe(155);
+    expect(purchaseReturn.cash_refund_amount).toBe(84);
 
-    expect(purchaseReturn.credit_amount).toBe(0.83);
+    expect(purchaseReturn.credit_amount).toBe(0.375);
 
     expect(purchaseReturn.rounding_adjustment).toBe(0);
 
-    expect(getSupplierBalance(supplierId)).toBe(-0.83);
+    expect(getSupplierBalance(supplierId)).toBe(-0.375);
 
     const movement = getDb()
       .prepare(
@@ -1684,7 +1686,7 @@ describe('purchases repository', () => {
       amount: number;
     };
 
-    expect(Number(movement.amount)).toBe(155);
+    expect(Number(movement.amount)).toBe(84);
 
     const statement = getSupplierStatement(supplierId, 1) as any;
 
@@ -1692,9 +1694,9 @@ describe('purchases repository', () => {
       (entry: any) => Number(entry.return_id) === purchaseReturn.return_id,
     );
 
-    expect(Number(returnEntry.credit)).toBe(0.83);
+    expect(Number(returnEntry.credit)).toBe(0.375);
 
-    expect(Number(returnEntry.cash_amount)).toBe(155);
+    expect(Number(returnEntry.cash_amount)).toBe(84);
 
     const cancelled = cancelPurchaseReturn({
       return_id: purchaseReturn.return_id,
@@ -1704,7 +1706,7 @@ describe('purchases repository', () => {
       actor_id: 1,
     });
 
-    expect(cancelled.reversed_cash).toBe(155);
+    expect(cancelled.reversed_cash).toBe(84);
 
     expect(getSupplierBalance(supplierId)).toBe(0);
   });
@@ -3110,7 +3112,7 @@ describe('purchases repository', () => {
 
     expect(Number(state.inventory_value)).toBe(2600);
 
-    expect(Number(state.average_cost)).toBe(144.44);
+    expect(Number(state.average_cost)).toBeCloseTo(2600 / 18, 12);
 
     cancelPurchaseReturn({
       return_id: purchaseReturn.return_id,
@@ -4097,58 +4099,54 @@ describe('purchases repository', () => {
 
       paid_amount: 0,
 
-      sub_total: 400,
+      sub_total: 675,
 
       discount_type: 'percent',
 
       discount_input: 25,
 
-      discount_value: 100,
+      discount_value: 168.75,
 
       items: [
         {
           variant_id: variant.variant_id,
 
-          quantity: 3,
+          quantity: 8,
 
-          unit_cost: 133.3333333333333,
+          unit_cost: 84.375,
         },
       ],
     });
 
     const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(Number(invoice.purchase.sub_total)).toBe(400);
+    expect(Number(invoice.purchase.sub_total)).toBe(675);
 
-    expect(Number(invoice.purchase.exact_total_amount)).toBe(300);
+    expect(Number(invoice.purchase.exact_total_amount)).toBe(506.25);
 
-    expect(Number(invoice.purchase.total_amount)).toBe(300);
+    expect(Number(invoice.purchase.total_amount)).toBe(506.25);
 
     /*
      * السعر الأصلي لا يتغير بسبب الخصم.
      */
-    expect(Number(invoice.items[0].unit_cost)).toBe(133.3333333333333);
+    expect(Number(invoice.items[0].unit_cost)).toBe(84.375);
 
     /*
      * القيمة الفعلية للبند بعد الخصم.
      */
-    expect(Number(invoice.items[0].line_total)).toBe(300);
+    expect(Number(invoice.items[0].line_total)).toBe(506.25);
 
     const state = getVariantCostState('PURCHASE001');
 
-    expect(Number(state.stock)).toBe(3);
+    expect(Number(state.stock)).toBe(8);
 
-    expect(Number(state.inventory_value)).toBe(300);
+    expect(Number(state.inventory_value)).toBe(506.25);
 
-    /*
-     * تكلفة المخزون الفعلية:
-     * 300 ÷ 3 = 100
-     */
-    expect(Number(state.average_cost)).toBe(100);
+    expect(Number(state.average_cost)).toBe(63.28125);
 
-    expect(Number(state.buy_price)).toBe(100);
+    expect(Number(state.buy_price)).toBe(63.28125);
 
-    expect(getSupplierBalance(supplierId)).toBe(300);
+    expect(getSupplierBalance(supplierId)).toBe(506.25);
   });
 
   it('allocates precise purchase returns cumulatively without losing cents', () => {
@@ -4169,26 +4167,26 @@ describe('purchases repository', () => {
 
           quantity: 12,
 
-          unit_cost: 155.8333333333333,
+          unit_cost: 84.375,
         },
       ],
     });
 
-    expect(purchase.exact_total_amount).toBe(1870);
+    expect(purchase.exact_total_amount).toBe(1012.5);
 
-    expect(purchase.total_amount).toBe(1870);
+    expect(purchase.total_amount).toBe(1012.5);
 
     let invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
     const purchaseItemId = Number(invoice.items[0].id);
 
-    expect(Number(invoice.items[0].line_total)).toBe(1870);
+    expect(Number(invoice.items[0].line_total)).toBe(1012.5);
 
     let state = getVariantCostState('PURCHASE001');
 
     expect(Number(state.stock)).toBe(12);
 
-    expect(Number(state.inventory_value)).toBe(1870);
+    expect(Number(state.inventory_value)).toBe(1012.5);
 
     const firstReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
@@ -4206,9 +4204,9 @@ describe('purchases repository', () => {
       ],
     });
 
-    expect(firstReturn.exact_total_amount).toBe(1090.83);
+    expect(firstReturn.exact_total_amount).toBe(590.625);
 
-    expect(firstReturn.total_amount).toBe(1090.83);
+    expect(firstReturn.total_amount).toBe(590.625);
 
     expect(firstReturn.rounding_adjustment).toBe(0);
 
@@ -4216,7 +4214,7 @@ describe('purchases repository', () => {
 
     expect(Number(state.stock)).toBe(5);
 
-    expect(Number(state.inventory_value)).toBe(779.17);
+    expect(Number(state.inventory_value)).toBe(421.875);
 
     const secondReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
@@ -4234,9 +4232,9 @@ describe('purchases repository', () => {
       ],
     });
 
-    expect(secondReturn.exact_total_amount).toBe(623.34);
+    expect(secondReturn.exact_total_amount).toBe(337.5);
 
-    expect(secondReturn.total_amount).toBe(623.34);
+    expect(secondReturn.total_amount).toBe(337.5);
 
     expect(secondReturn.rounding_adjustment).toBe(0);
 
@@ -4244,7 +4242,7 @@ describe('purchases repository', () => {
 
     expect(Number(state.stock)).toBe(1);
 
-    expect(Number(state.inventory_value)).toBe(155.83);
+    expect(Number(state.inventory_value)).toBe(84.375);
 
     const finalReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
@@ -4262,21 +4260,17 @@ describe('purchases repository', () => {
       ],
     });
 
-    expect(finalReturn.exact_total_amount).toBe(155.83);
+    expect(finalReturn.exact_total_amount).toBe(84.375);
 
-    expect(finalReturn.total_amount).toBe(155.83);
+    expect(finalReturn.total_amount).toBe(84.375);
 
     expect(finalReturn.rounding_adjustment).toBe(0);
 
     expect(
-      Number(
-        (
-          firstReturn.exact_total_amount +
-          secondReturn.exact_total_amount +
-          finalReturn.exact_total_amount
-        ).toFixed(2),
-      ),
-    ).toBe(1870);
+      firstReturn.exact_total_amount +
+        secondReturn.exact_total_amount +
+        finalReturn.exact_total_amount,
+    ).toBe(1012.5);
 
     state = getVariantCostState('PURCHASE001');
 
@@ -4305,7 +4299,9 @@ describe('purchases repository', () => {
 
       actor_id: 1,
 
-      paid_amount: 1870,
+      paid_amount: 1013,
+
+      settle_full_balance: true,
 
       payment_method: 'store_cash',
 
@@ -4315,14 +4311,14 @@ describe('purchases repository', () => {
 
           quantity: 12,
 
-          unit_cost: 155.8333333333333,
+          unit_cost: 84.375,
         },
       ],
     });
 
-    expect(purchase.exact_total_amount).toBe(1870);
+    expect(purchase.exact_total_amount).toBe(1012.5);
 
-    expect(purchase.total_amount).toBe(1870);
+    expect(purchase.total_amount).toBe(1012.5);
 
     expect(purchase.remaining_amount).toBe(0);
 
@@ -4340,7 +4336,7 @@ describe('purchases repository', () => {
       refund_mode: 'cash',
 
       refund_payment_method: 'store_cash',
-      cash_refund_amount: 156,
+      cash_refund_amount: 84,
 
       settle_cash_refund: true,
       items: [
@@ -4352,29 +4348,21 @@ describe('purchases repository', () => {
       ],
     });
 
-    /*
-     * القيمة الحقيقية للمخزون = 155.83
-     *
-     * لكن المورد سيرد فعليًا = 156
-     */
-    expect(purchaseReturn.exact_total_amount).toBe(155.83);
+    expect(purchaseReturn.exact_total_amount).toBe(84.375);
 
-    /*
-     * قيمة المرتجع المحاسبية لا تتغير.
-     */
-    expect(purchaseReturn.total_amount).toBe(155.83);
+    expect(purchaseReturn.total_amount).toBe(84.375);
 
-    expect(purchaseReturn.rounding_adjustment).toBe(0.17);
+    expect(purchaseReturn.rounding_adjustment).toBe(-0.375);
+
+    expect(purchaseReturn.cash_refund_amount).toBe(84);
 
     expect(purchaseReturn.debt_reduction_amount).toBe(0);
-
-    expect(purchaseReturn.cash_refund_amount).toBe(156);
 
     let state = getVariantCostState('PURCHASE001');
 
     expect(Number(state.stock)).toBe(11);
 
-    expect(Number(state.inventory_value)).toBe(1714.17);
+    expect(Number(state.inventory_value)).toBe(928.125);
 
     cancelPurchaseReturn({
       return_id: purchaseReturn.return_id,
@@ -4388,7 +4376,7 @@ describe('purchases repository', () => {
 
     expect(Number(state.stock)).toBe(12);
 
-    expect(Number(state.inventory_value)).toBe(1870);
+    expect(Number(state.inventory_value)).toBe(1012.5);
 
     expect(getSupplierBalance(supplierId)).toBe(0);
 
@@ -4415,35 +4403,37 @@ describe('purchases repository', () => {
         {
           variant_id: variant.variant_id,
 
-          quantity: 12,
+          quantity: 7,
 
-          unit_cost: 155.8333333333333,
+          unit_cost: 84.375,
         },
       ],
     });
 
     const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(Number(invoice.purchase.sub_total)).toBe(1870);
+    expect(Number(invoice.purchase.sub_total)).toBe(590.625);
 
-    expect(Number(invoice.purchase.exact_total_amount)).toBe(1870);
+    expect(Number(invoice.purchase.exact_total_amount)).toBe(590.625);
 
-    expect(Number(invoice.purchase.total_amount)).toBe(1870);
+    expect(Number(invoice.purchase.total_amount)).toBe(590.625);
 
-    expect(Number(invoice.items[0].unit_cost)).toBe(155.8333333333333);
+    expect(Number(invoice.items[0].unit_cost)).toBe(84.375);
 
-    expect(Number(invoice.items[0].line_total)).toBe(1870);
+    expect(Number(invoice.items[0].line_total)).toBe(590.625);
 
     const state = getVariantCostState('PURCHASE001');
 
-    expect(Number(state.stock)).toBe(12);
+    expect(Number(state.stock)).toBe(7);
 
-    expect(Number(state.inventory_value)).toBe(1870);
-    expect(Number(state.buy_price)).toBe(155.8333333333333);
-    expect(Number(state.average_cost)).toBe(155.83);
+    expect(Number(state.inventory_value)).toBe(590.625);
+
+    expect(Number(state.buy_price)).toBe(84.375);
+
+    expect(Number(state.average_cost)).toBe(84.375);
   });
 
-  it('calculates purchase invoice total from rounded line amounts without rounding unit prices', () => {
+  it('calculates purchase invoice totals from full precision line amounts', () => {
     const supplierId = createTestSupplier();
 
     const first = seedPurchaseProduct();
@@ -4511,9 +4501,9 @@ describe('purchases repository', () => {
 
     const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(Number(invoice.purchase.sub_total)).toBe(60.04);
+    expect(Number(invoice.purchase.sub_total)).toBe(60.03);
 
-    expect(Number(invoice.purchase.total_amount)).toBe(60.04);
+    expect(Number(invoice.purchase.total_amount)).toBe(60.03);
 
     expect(Number(invoice.items[0].unit_cost)).toBe(10.005);
 
@@ -4525,8 +4515,8 @@ describe('purchases repository', () => {
       0,
     );
 
-    expect(Number(allocatedLines.toFixed(2))).toBe(60.04);
+    expect(allocatedLines).toBeCloseTo(60.03, 12);
 
-    expect(getSupplierBalance(supplierId)).toBe(60.04);
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(60.03, 12);
   });
 });

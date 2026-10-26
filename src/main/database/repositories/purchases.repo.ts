@@ -5,12 +5,19 @@ import {
 } from './suppliers.repo';
 import { createCashMovement, resolveCashAccount } from './cash.repo';
 import {
-  allocateRoundedTotalAcrossWeights,
-  formatMoney,
+  allocatePreciseTotalAcrossWeights,
+  hasPositivePreciseAmount,
+  normalizePreciseZero,
+  PRECISE_MONEY_EPSILON,
+  preservePrecision,
   resolveWholeMoneySettlement,
-  roundCost,
-  roundFinancial,
   roundMoney,
+  truncateForDisplay,
+  preciseAdd,
+  preciseDivide,
+  preciseMultiply,
+  preciseSubtract,
+  preciseSum,
 } from '../../../shared/money';
 import {
   getOpenCashShift,
@@ -214,8 +221,20 @@ function normalizePaymentStatus(
   paidAmount: number,
   remainingAmount: number,
 ) {
-  if (remainingAmount <= 0) return 'paid';
-  if (paidAmount > 0 && paidAmount < totalAmount) return 'partial';
+  const total = normalizePreciseZero(totalAmount);
+
+  const paid = normalizePreciseZero(paidAmount);
+
+  const remaining = normalizePreciseZero(remainingAmount);
+
+  if (!hasPositivePreciseAmount(remaining)) {
+    return 'paid';
+  }
+
+  if (hasPositivePreciseAmount(paid) && paid < total) {
+    return 'partial';
+  }
+
   return 'unpaid';
 }
 
@@ -225,19 +244,19 @@ function resolveStoredPurchaseInitialCashAmount(purchase: {
   paid_amount?: number | null;
   rounding_adjustment?: number | null;
 }) {
-  const paidAmount = roundFinancial(Number(purchase.paid_amount || 0));
+  const paidAmount = preservePrecision(Number(purchase.paid_amount || 0));
 
-  if (paidAmount <= 0) {
+  if (!hasPositivePreciseAmount(paidAmount)) {
     return 0;
   }
 
-  const totalAmount = roundFinancial(Number(purchase.total_amount || 0));
+  const totalAmount = preservePrecision(Number(purchase.total_amount || 0));
 
-  const exactTotalAmount = roundFinancial(
+  const exactTotalAmount = preservePrecision(
     Number(purchase.exact_total_amount ?? purchase.total_amount ?? 0),
   );
 
-  const roundingAdjustment = roundFinancial(
+  const roundingAdjustment = preservePrecision(
     Number(purchase.rounding_adjustment || 0),
   );
 
@@ -259,15 +278,9 @@ function resolveStoredPurchaseInitialCashAmount(purchase: {
     return paidAmount;
   }
 
-  /*
-   * الشكل الجديد:
-   *
-   * total = exact = 981.75
-   * paid accounting = 981.75
-   * adjustment = +0.25
-   * cash = 982
-   */
-  return roundFinancial(Math.max(0, paidAmount + roundingAdjustment));
+  return normalizePreciseZero(
+    Math.max(0, preciseAdd(paidAmount, roundingAdjustment)),
+  );
 }
 
 function calculateSupplierNetBalance(
@@ -289,7 +302,7 @@ function calculateSupplierNetBalance(
                   ) != 'cancelled'
 
                   AND
-                  pi.remaining_amount > 0
+                  pi.remaining_amount > ${PRECISE_MONEY_EPSILON}
 
                 THEN pi.remaining_amount
 
@@ -335,8 +348,11 @@ function calculateSupplierNetBalance(
     supplier_credit: number;
   };
 
-  return roundFinancial(
-    Number(row?.open_debt || 0) - Number(row?.supplier_credit || 0),
+  return normalizePreciseZero(
+    preciseSubtract(
+      Number(row?.open_debt || 0),
+      Number(row?.supplier_credit || 0),
+    ),
   );
 }
 
@@ -384,13 +400,7 @@ function preparePurchaseItemInput(
     throw new Error(`سعر شراء غير صحيح للصنف ${productName}`);
   }
 
-  /*
-   * الحساب يتم بالسعر الكامل.
-   *
-   * مثال:
-   * 155.8333333333333 × 12
-   */
-  const rawLineTotal = quantity * unitCost;
+  const rawLineTotal = preciseMultiply(quantity, unitCost);
 
   if (!Number.isFinite(rawLineTotal) || rawLineTotal <= 0) {
     throw new Error(`إجمالي شراء غير صحيح للصنف ${productName}`);
@@ -439,7 +449,7 @@ function getEffectivePurchaseUnitCost(item: {
       throw new Error('تكلفة شراء الصنف غير صحيحة');
     }
 
-    return lineTotal / quantity;
+    return preciseDivide(lineTotal, quantity);
   }
 
   const unitCost = Number(item.unit_cost ?? 0);
@@ -489,17 +499,13 @@ function applyPurchaseInvoiceDiscount<
     rawLineTotal: number;
   },
 >(items: T[], discountValueInput: number) {
-  const grossLineTotals = items.map((item) => roundCost(item.rawLineTotal));
-
-  const subTotal = roundCost(
-    grossLineTotals.reduce(
-      (sum, value) => sum + value,
-
-      0,
-    ),
+  const grossLineTotals = items.map((item) =>
+    preservePrecision(item.rawLineTotal),
   );
 
-  const discountValue = roundCost(
+  const subTotal = preciseSum(grossLineTotals);
+
+  const discountValue = preservePrecision(
     Math.min(
       subTotal,
 
@@ -507,28 +513,25 @@ function applyPurchaseInvoiceDiscount<
     ),
   );
 
-  const lineDiscounts = allocateRoundedTotalAcrossWeights(
+  const lineDiscounts = allocatePreciseTotalAcrossWeights(
     discountValue,
 
     grossLineTotals,
   );
 
   return items.map((item, index) => {
-    const grossLineTotal = roundCost(grossLineTotals[index] || 0);
+    const grossLineTotal = preservePrecision(grossLineTotals[index] || 0);
 
-    const lineDiscount = roundCost(lineDiscounts[index] || 0);
+    const lineDiscount = preservePrecision(lineDiscounts[index] || 0);
 
-    const lineTotal = roundCost(
-      Math.max(
-        0,
-
-        grossLineTotal - lineDiscount,
-      ),
+    const lineTotal = Math.max(
+      0,
+      preciseSubtract(grossLineTotal, lineDiscount),
     );
 
     const effectiveUnitCost =
       discountValue > 0 && item.quantity > 0
-        ? lineTotal / item.quantity
+        ? preciseDivide(lineTotal, item.quantity)
         : item.unitCost;
 
     return {
@@ -630,12 +633,8 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       };
     });
 
-    const subTotal = roundCost(
-      basePreparedItems.reduce(
-        (sum, item) => sum + roundCost(item.rawLineTotal),
-
-        0,
-      ),
+    const subTotal = preciseSum(
+      basePreparedItems.map((item) => item.rawLineTotal),
     );
 
     const discountType =
@@ -644,7 +643,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
     const discountValueInput = Number(input.discount_value || 0);
 
     const discountValue = Number.isFinite(discountValueInput)
-      ? roundCost(Math.min(subTotal, Math.max(0, discountValueInput)))
+      ? preservePrecision(Math.min(subTotal, Math.max(0, discountValueInput)))
       : 0;
 
     const preparedItems = applyPurchaseInvoiceDiscount(
@@ -652,12 +651,8 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       discountValue,
     );
 
-    const exactTotalAmount = roundCost(
-      preparedItems.reduce(
-        (sum, item) => sum + Number(item.lineTotal || 0),
-
-        0,
-      ),
+    const exactTotalAmount = preciseSum(
+      preparedItems.map((item) => item.lineTotal),
     );
 
     /*
@@ -713,7 +708,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
 
       remainingAmount = 0;
 
-      roundingAdjustment = roundFinancial(cashPaidAmount - totalAmount);
+      roundingAdjustment = preciseSubtract(cashPaidAmount, totalAmount);
     } else {
       /*
        * بدون اختيار التسوية:
@@ -725,9 +720,11 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         );
       }
 
-      paidAmount = roundFinancial(Math.min(cashPaidAmount, totalAmount));
+      paidAmount = preservePrecision(Math.min(cashPaidAmount, totalAmount));
 
-      remainingAmount = roundFinancial(Math.max(0, totalAmount - paidAmount));
+      remainingAmount = normalizePreciseZero(
+        Math.max(0, preciseSubtract(totalAmount, paidAmount)),
+      );
 
       roundingAdjustment = 0;
     }
@@ -737,20 +734,22 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
     const discountInput = Number.isFinite(discountInputRaw)
       ? discountType === 'percent'
         ? Math.max(0, discountInputRaw)
-        : Math.max(0, roundCost(discountInputRaw))
+        : Math.max(0, preservePrecision(discountInputRaw))
       : 0;
 
-    const paymentStatus =
-      remainingAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
+    const paymentStatus = normalizePaymentStatus(
+      totalAmount,
+      paidAmount,
+      remainingAmount,
+    );
 
-    const dueDate =
-      remainingAmount > 0
-        ? calculatePurchaseDueDate(
-            db,
-            businessDate,
-            supplier.credit_days == null ? null : Number(supplier.credit_days),
-          )
-        : null;
+    const dueDate = hasPositivePreciseAmount(remainingAmount)
+      ? calculatePurchaseDueDate(
+          db,
+          businessDate,
+          supplier.credit_days == null ? null : Number(supplier.credit_days),
+        )
+      : null;
 
     const purchaseResult = db
       .prepare(
@@ -895,14 +894,11 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
 
       SET
         total_purchased =
-          ROUND(
             IFNULL(
               total_purchased,
               0
             ) + ?,
-            2
-          ),
-
+ 
         updated_at =
           CURRENT_TIMESTAMP
 
@@ -1522,12 +1518,8 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       };
     });
 
-    const subTotal = roundCost(
-      basePreparedItems.reduce(
-        (sum, item) => sum + roundCost(item.rawLineTotal),
-
-        0,
-      ),
+    const subTotal = preciseSum(
+      basePreparedItems.map((item) => item.rawLineTotal),
     );
 
     const discountType =
@@ -1536,7 +1528,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
     const discountValueInput = Number(input.discount_value || 0);
 
     const discountValue = Number.isFinite(discountValueInput)
-      ? roundCost(Math.min(subTotal, Math.max(0, discountValueInput)))
+      ? preservePrecision(Math.min(subTotal, Math.max(0, discountValueInput)))
       : 0;
 
     const preparedItems = applyPurchaseInvoiceDiscount(
@@ -1544,15 +1536,11 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       discountValue,
     );
 
-    const exactTotalAmount = roundCost(
-      preparedItems.reduce(
-        (sum, item) => sum + Number(item.lineTotal || 0),
-
-        0,
-      ),
+    const exactTotalAmount = preciseSum(
+      preparedItems.map((item) => item.lineTotal),
     );
 
-    const totalAmount = roundFinancial(exactTotalAmount);
+    const totalAmount = preservePrecision(exactTotalAmount);
 
     const rawPaidAmount = Number(input.paid_amount || 0);
 
@@ -1595,7 +1583,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       remainingAmount = 0;
 
-      roundingAdjustment = roundFinancial(cashPaidAmount - totalAmount);
+      roundingAdjustment = preciseSubtract(cashPaidAmount, totalAmount);
     } else {
       if (cashPaidAmount > totalAmount + 0.0001) {
         throw new Error(
@@ -1603,9 +1591,11 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         );
       }
 
-      paidAmount = roundFinancial(Math.min(cashPaidAmount, totalAmount));
+      paidAmount = preservePrecision(Math.min(cashPaidAmount, totalAmount));
 
-      remainingAmount = roundFinancial(Math.max(0, totalAmount - paidAmount));
+      remainingAmount = normalizePreciseZero(
+        Math.max(0, preciseSubtract(totalAmount, paidAmount)),
+      );
 
       roundingAdjustment = 0;
     }
@@ -1621,19 +1611,20 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
     const discountInput = Number.isFinite(discountInputRaw)
       ? discountType === 'percent'
         ? Math.max(0, discountInputRaw)
-        : Math.max(0, roundCost(discountInputRaw))
+        : Math.max(0, preservePrecision(discountInputRaw))
       : 0;
 
-    const oldPaidAmount = roundFinancial(Number(purchase.paid_amount || 0));
+    const oldPaidAmount = preservePrecision(Number(purchase.paid_amount || 0));
 
-    const oldRemainingAmount = roundFinancial(
+    const oldRemainingAmount = normalizePreciseZero(
       Number(purchase.remaining_amount || 0),
     );
 
     const oldCashAmount = resolveStoredPurchaseInitialCashAmount(purchase);
 
     const preserveDueDate =
-      oldRemainingAmount > 0 && oldSupplierId === nextSupplierId;
+      hasPositivePreciseAmount(oldRemainingAmount) &&
+      oldSupplierId === nextSupplierId;
 
     let dueDate: string | null = null;
 
@@ -1645,7 +1636,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       }
 
       dueDate = storedDueDate || null;
-    } else if (remainingAmount > 0) {
+    } else if (hasPositivePreciseAmount(remainingAmount)) {
       dueDate = calculatePurchaseDueDate(
         db,
         businessDate,
@@ -1655,7 +1646,9 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       );
     }
 
-    const oldTotalAmount = roundFinancial(Number(purchase.total_amount || 0));
+    const oldTotalAmount = preservePrecision(
+      Number(purchase.total_amount || 0),
+    );
 
     const oldPaymentMethod = resolveCashAccount(
       purchase.payment_method || 'cash',
@@ -1798,7 +1791,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         0,
       );
 
-      const oldCostValue = roundCost(
+      const oldCostValue = preservePrecision(
         oldVariantItems.reduce(
           (sum, item) => sum + Number(item.line_total || 0),
 
@@ -1810,7 +1803,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       const newUnitCost = Number(newItem?.effectiveUnitCost || 0);
 
-      const newCostValue = roundCost(Number(newItem?.lineTotal || 0));
+      const newCostValue = preservePrecision(Number(newItem?.lineTotal || 0));
 
       const sameQuantity = Math.abs(oldQuantity - newQuantity) <= 0.0001;
 
@@ -1878,13 +1871,10 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       SET
         total_purchased =
           MAX(
-            ROUND(
               IFNULL(
                 total_purchased,
                 0
               ) - ?,
-              2
-            ),
             0
           ),
 
@@ -2039,13 +2029,11 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       SET
         total_purchased =
-          ROUND(
+
             IFNULL(
               total_purchased,
               0
             ) + ?,
-            2
-          ),
 
         updated_at =
           CURRENT_TIMESTAMP
@@ -2291,9 +2279,9 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       });
     }
 
-    const totalAmount = roundFinancial(Number(purchase.total_amount || 0));
+    const totalAmount = preservePrecision(Number(purchase.total_amount || 0));
 
-    const paidAmount = roundFinancial(Number(purchase.paid_amount || 0));
+    const paidAmount = preservePrecision(Number(purchase.paid_amount || 0));
 
     const cashPaidAmount = resolveStoredPurchaseInitialCashAmount(purchase);
 
@@ -2312,7 +2300,7 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       openShift?.id ?? null,
     );
 
-    const remainingAmount = roundFinancial(
+    const remainingAmount = preservePrecision(
       Number(purchase.remaining_amount || 0),
     );
 
@@ -2351,13 +2339,10 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       SET
         total_purchased =
           MAX(
-            ROUND(
               IFNULL(
                 total_purchased,
                 0
               ) - ?,
-              2
-            ),
             0
           ),
 
@@ -2532,7 +2517,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         );
       }
 
-      const originalLineTotal = roundCost(
+      const originalLineTotal = preservePrecision(
         Number(
           purchaseItem.line_total ??
             originalQuantity * Number(purchaseItem.unit_cost || 0),
@@ -2567,7 +2552,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
           }
         | undefined;
 
-      const alreadyReturnedValue = roundCost(
+      const alreadyReturnedValue = preservePrecision(
         Number(previousReturnedValueRow?.returned_value || 0),
       );
 
@@ -2576,13 +2561,14 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       const cumulativeReturnedValue =
         cumulativeReturnedQuantity >= originalQuantity - 0.000001
           ? originalLineTotal
-          : roundCost(
-              (originalLineTotal * cumulativeReturnedQuantity) /
-                originalQuantity,
+          : preciseDivide(
+              preciseMultiply(originalLineTotal, cumulativeReturnedQuantity),
+              originalQuantity,
             );
 
-      const lineTotal = roundCost(
-        Math.max(0, cumulativeReturnedValue - alreadyReturnedValue),
+      const lineTotal = Math.max(
+        0,
+        preciseSubtract(cumulativeReturnedValue, alreadyReturnedValue),
       );
 
       return {
@@ -2596,12 +2582,8 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       };
     });
 
-    const exactReturnAmount = roundCost(
-      preparedItems.reduce(
-        (sum, item) => sum + Number(item.lineTotal || 0),
-
-        0,
-      ),
+    const exactReturnAmount = preciseSum(
+      preparedItems.map((item) => Number(item.lineTotal || 0)),
     );
 
     if (exactReturnAmount <= 0) {
@@ -2612,7 +2594,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
      * القيمة الدقيقة الأصلية
      * للفاتورة قبل التقريب.
      */
-    const originalExactTotal = roundCost(
+    const originalExactTotal = preservePrecision(
       Number(purchase.exact_total_amount ?? purchase.total_amount ?? 0),
     );
 
@@ -2651,11 +2633,11 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         }
       | undefined;
 
-    const previousExactReturned = roundCost(
+    const previousExactReturned = preservePrecision(
       previousReturnsRow?.exact_returned || 0,
     );
 
-    const exactBeforeReturn = roundCost(
+    const exactBeforeReturn = preservePrecision(
       Math.max(
         0,
 
@@ -2667,36 +2649,18 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       throw new Error('قيمة المرتجع أكبر من القيمة المتبقية في فاتورة الشراء');
     }
 
-    /*
-     * قيمة المرتجع المحاسبية نفسها
-     * تظل بالقروش.
-     */
     const totalAmount = exactReturnAmount;
 
-    const oldRemaining = roundFinancial(Number(purchase.remaining_amount || 0));
+    const oldRemaining = normalizePreciseZero(
+      Number(purchase.remaining_amount || 0),
+    );
 
-    /*
-     * أول جزء من المرتجع يخفض
-     * المديونية القائمة على الفاتورة.
-     */
-    const debtReductionAmount = roundFinancial(
+    const debtReductionAmount = normalizePreciseZero(
       Math.min(totalAmount, oldRemaining),
     );
 
-    /*
-     * أي جزء زائد عن المديونية
-     * هو حق لنا عند المورد.
-     *
-     * إما:
-     * - نستلمه فعليًا.
-     * - أو يظل رصيدًا دائنًا.
-     */
-    const refundableAmount = roundFinancial(
-      Math.max(
-        0,
-
-        totalAmount - debtReductionAmount,
-      ),
+    const refundableAmount = normalizePreciseZero(
+      Math.max(0, preciseSubtract(totalAmount, debtReductionAmount)),
     );
 
     const refundMode = input.refund_mode === 'credit' ? 'credit' : 'cash';
@@ -2758,8 +2722,9 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
          */
         creditAmount = 0;
 
-        roundingAdjustment = roundFinancial(
-          cashRefundAmount - refundableAmount,
+        roundingAdjustment = preciseSubtract(
+          cashRefundAmount,
+          refundableAmount,
         );
       } else {
         /*
@@ -2773,12 +2738,8 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
           );
         }
 
-        /*
-         * أي قروش لم نستلمها
-         * تظل حقًا لنا عند المورد.
-         */
-        creditAmount = roundFinancial(
-          Math.max(0, refundableAmount - cashRefundAmount),
+        creditAmount = normalizePreciseZero(
+          Math.max(0, preciseSubtract(refundableAmount, cashRefundAmount)),
         );
 
         roundingAdjustment = 0;
@@ -2935,11 +2896,11 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       });
     }
 
-    const oldPaid = roundFinancial(Number(purchase.paid_amount || 0));
+    const oldPaid = preservePrecision(Number(purchase.paid_amount || 0));
 
-    const oldTotal = roundFinancial(Number(purchase.total_amount || 0));
+    const oldTotal = preservePrecision(Number(purchase.total_amount || 0));
 
-    const newRemaining = roundFinancial(
+    const newRemaining = preservePrecision(
       Math.max(
         0,
 
@@ -2976,14 +2937,11 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       SET
         total_purchased =
           MAX(
-            ROUND(
+
               IFNULL(
                 total_purchased,
                 0
               ) - ?,
-              2
-            ),
-
             0
           ),
 
@@ -3216,25 +3174,25 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
    * القيمة المحاسبية للمرتجع
    * تظل بالقروش.
    */
-  const totalAmount = roundFinancial(
+  const totalAmount = preservePrecision(
     Number(
       purchaseReturn.exact_total_amount ?? purchaseReturn.total_amount ?? 0,
     ),
   );
 
-  const debtReductionAmount = roundFinancial(
+  const debtReductionAmount = preservePrecision(
     Number(purchaseReturn.debt_reduction_amount || 0),
   );
 
-  const cashRefundAmount = roundFinancial(
+  const cashRefundAmount = preservePrecision(
     Number(purchaseReturn.cash_refund_amount || 0),
   );
 
-  const creditAmount = roundFinancial(
+  const creditAmount = preservePrecision(
     Number(purchaseReturn.credit_amount || 0),
   );
 
-  const roundingAdjustment = roundFinancial(
+  const roundingAdjustment = preservePrecision(
     Number(purchaseReturn.rounding_adjustment || 0),
   );
 
@@ -3276,9 +3234,9 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
 
         quantity: Number(item.quantity || 0),
 
-        unit_cost: roundCost(Number(item.unit_cost || 0)),
+        unit_cost: preservePrecision(Number(item.unit_cost || 0)),
 
-        cost_value: roundCost(Number(item.line_total || 0)),
+        cost_value: preservePrecision(Number(item.line_total || 0)),
 
         created_by: actorId,
 
@@ -3323,19 +3281,19 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
      * نعيد الجزء الذي كان
      * قد خفّض مديونية الفاتورة.
      */
-    const purchaseTotal = roundFinancial(
+    const purchaseTotal = preservePrecision(
       Number(purchaseReturn.purchase_total_amount || 0),
     );
 
-    const purchasePaid = roundFinancial(
+    const purchasePaid = preservePrecision(
       Number(purchaseReturn.purchase_paid_amount || 0),
     );
 
-    const currentRemaining = roundFinancial(
+    const currentRemaining = preservePrecision(
       Number(purchaseReturn.purchase_remaining_amount || 0),
     );
 
-    const maxRemaining = roundFinancial(
+    const maxRemaining = preservePrecision(
       Math.max(
         0,
 
@@ -3343,7 +3301,7 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
       ),
     );
 
-    const newRemaining = roundFinancial(
+    const newRemaining = preservePrecision(
       Math.min(
         maxRemaining,
 
@@ -3422,13 +3380,10 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
 
         SET
           total_purchased =
-            ROUND(
               IFNULL(
                 total_purchased,
                 0
               ) + ?,
-              2
-            ),
 
           updated_at =
             CURRENT_TIMESTAMP
@@ -3652,26 +3607,22 @@ export function listPurchaseInvoices(input?: {
     where.push(`
     (
       IFNULL(pi.status, 'active') <> 'cancelled'
-      AND ROUND(
-        IFNULL(
-          pi.remaining_amount,
-          0
-        ),
-        2
-      ) <= 0
+
+      AND IFNULL(
+        pi.remaining_amount,
+        0
+      ) <= ${PRECISE_MONEY_EPSILON}
     )
   `);
   } else if (paymentFilter === 'unpaid') {
     where.push(`
     (
       IFNULL(pi.status, 'active') <> 'cancelled'
-      AND ROUND(
-        IFNULL(
-          pi.remaining_amount,
-          0
-        ),
-        2
-      ) > 0
+
+      AND IFNULL(
+        pi.remaining_amount,
+        0
+      ) > ${PRECISE_MONEY_EPSILON}
     )
   `);
   }
@@ -3693,15 +3644,11 @@ export function listPurchaseInvoices(input?: {
           0
         ) AS effective_exact_total_amount,
 
-          ROUND(
             IFNULL(
               pi.rounding_adjustment,
               0
-            ),
-            2
           ) AS effective_rounding_adjustment,
 
-        ROUND(
           COALESCE(
             NULLIF(
               pi.exact_total_amount,
@@ -3709,8 +3656,6 @@ export function listPurchaseInvoices(input?: {
             ),
             pi.total_amount,
             0
-          ),
-          2
         ) AS settlement_total_amount,
 
         IFNULL(
@@ -3893,15 +3838,11 @@ export function getPurchaseInvoice(purchaseId: number) {
           0
         ) AS effective_exact_total_amount,
 
-          ROUND(
             IFNULL(
               pi.rounding_adjustment,
               0
-            ),
-            2
           ) AS effective_rounding_adjustment,
 
-        ROUND(
           COALESCE(
             NULLIF(
               pi.exact_total_amount,
@@ -3909,8 +3850,6 @@ export function getPurchaseInvoice(purchaseId: number) {
             ),
             pi.total_amount,
             0
-          ),
-          2
         ) AS settlement_total_amount,
 
         IFNULL(
@@ -4175,7 +4114,7 @@ export function recordSupplierPayment(input: {
 
         WHERE supplier_id = ?
 
-          AND remaining_amount > 0
+          AND remaining_amount > ${PRECISE_MONEY_EPSILON}
 
           AND IFNULL(
             status,
@@ -4205,7 +4144,7 @@ export function recordSupplierPayment(input: {
       targetPurchases = [purchase];
     }
 
-    const targetInvoiceOutstanding = roundFinancial(
+    const targetInvoiceOutstanding = preservePrecision(
       targetPurchases.reduce(
         (sum, purchase) => sum + Number(purchase.remaining_amount || 0),
 
@@ -4213,7 +4152,7 @@ export function recordSupplierPayment(input: {
       ),
     );
 
-    const supplierNetPayable = roundFinancial(
+    const supplierNetPayable = preservePrecision(
       Math.max(
         0,
 
@@ -4221,11 +4160,11 @@ export function recordSupplierPayment(input: {
       ),
     );
 
-    const targetOutstanding = roundFinancial(
+    const targetOutstanding = normalizePreciseZero(
       Math.min(targetInvoiceOutstanding, supplierNetPayable),
     );
 
-    if (targetOutstanding <= 0) {
+    if (!hasPositivePreciseAmount(targetOutstanding)) {
       throw new Error('لا يوجد صافي مستحق للمورد بعد احتساب الرصيد الدائن');
     }
 
@@ -4257,16 +4196,16 @@ export function recordSupplierPayment(input: {
 
       accountingAmount = targetOutstanding;
 
-      roundingAdjustment = roundFinancial(cashAmount - accountingAmount);
+      roundingAdjustment = preservePrecision(cashAmount - accountingAmount);
     } else {
       if (cashAmount > targetOutstanding + 0.0001) {
         throw new Error('قيمة الدفع أكبر من المديونية المحددة');
       }
 
-      accountingAmount = roundFinancial(cashAmount);
+      accountingAmount = preservePrecision(cashAmount);
     }
 
-    if (accountingAmount <= 0) {
+    if (!hasPositivePreciseAmount(accountingAmount)) {
       throw new Error('قيمة التسوية المحاسبية غير صحيحة');
     }
 
@@ -4379,32 +4318,32 @@ export function recordSupplierPayment(input: {
     }> = [];
 
     for (const purchase of targetPurchases) {
-      if (remainingPayment <= 0.0001) {
+      if (!hasPositivePreciseAmount(remainingPayment)) {
         break;
       }
 
-      const purchaseRemaining = roundFinancial(
+      const purchaseRemaining = normalizePreciseZero(
         Number(purchase.remaining_amount || 0),
       );
 
-      if (purchaseRemaining <= 0) {
+      if (!hasPositivePreciseAmount(purchaseRemaining)) {
         continue;
       }
 
-      const payNow = roundFinancial(
+      const payNow = normalizePreciseZero(
         Math.min(remainingPayment, purchaseRemaining),
       );
 
-      if (payNow <= 0) {
+      if (!hasPositivePreciseAmount(payNow)) {
         continue;
       }
 
-      const newPaid = roundFinancial(
-        Number(purchase.paid_amount || 0) + payNow,
+      const newPaid = normalizePreciseZero(
+        preciseAdd(Number(purchase.paid_amount || 0), payNow),
       );
 
-      const newRemaining = roundFinancial(
-        Math.max(0, purchaseRemaining - payNow),
+      const newRemaining = normalizePreciseZero(
+        Math.max(0, preciseSubtract(purchaseRemaining, payNow)),
       );
 
       const newStatus = normalizePaymentStatus(
@@ -4442,9 +4381,11 @@ export function recordSupplierPayment(input: {
             : `دفعة عامة موزعة على فاتورة شراء رقم ${purchase.id}`),
       );
 
-      totalPaid = roundFinancial(totalPaid + payNow);
+      totalPaid = preciseAdd(totalPaid, payNow);
 
-      remainingPayment = roundFinancial(remainingPayment - payNow);
+      remainingPayment = normalizePreciseZero(
+        preciseSubtract(remainingPayment, payNow),
+      );
 
       allocations.push({
         purchase_id: Number(purchase.id),
@@ -4708,30 +4649,28 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
     );
   }
 
-  const allocationTotal = roundFinancial(
-    allocations.reduce(
-      (sum, allocation) => sum + Number(allocation.amount || 0),
-
-      0,
-    ),
+  const allocationTotal = preciseSum(
+    allocations.map((allocation) => Number(allocation.amount || 0)),
   );
 
-  const batchAmount = roundFinancial(Number(batch.amount || 0));
+  const batchAmount = preservePrecision(Number(batch.amount || 0));
 
   if (Math.abs(allocationTotal - batchAmount) > 0.001) {
     throw new Error('بيانات دفعة المورد غير متطابقة');
   }
 
-  const batchCashAmount = roundFinancial(
+  const batchCashAmount = preservePrecision(
     Number(batch.cash_amount ?? batch.amount ?? 0),
   );
 
-  const batchRoundingAdjustment = roundFinancial(
-    Number(batch.rounding_adjustment ?? batchCashAmount - batchAmount),
-  );
+  const batchRoundingAdjustment =
+    batch.rounding_adjustment == null
+      ? preciseSubtract(batchCashAmount, batchAmount)
+      : preservePrecision(Number(batch.rounding_adjustment));
 
-  const expectedRoundingAdjustment = roundFinancial(
-    batchCashAmount - batchAmount,
+  const expectedRoundingAdjustment = preciseSubtract(
+    batchCashAmount,
+    batchAmount,
   );
 
   if (Math.abs(batchRoundingAdjustment - expectedRoundingAdjustment) > 0.001) {
@@ -4773,7 +4712,10 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
 
     if (
       Math.abs(
-        roundFinancial(Number(cashMovement.amount || 0)) - batchCashAmount,
+        preciseSubtract(
+          preservePrecision(Number(cashMovement.amount || 0)),
+          batchCashAmount,
+        ),
       ) > 0.001
     ) {
       throw new Error(
@@ -4920,24 +4862,22 @@ export function cancelSupplierPaymentBatch(input: {
      * لكل فاتورة بالقرش.
      */
     for (const allocation of allocations) {
-      const amount = roundFinancial(Number(allocation.amount || 0));
+      const amount = preservePrecision(Number(allocation.amount || 0));
 
-      const nextPaid = roundFinancial(
+      const nextPaid = normalizePreciseZero(
         Math.max(
           0,
-
-          Number(allocation.paid_amount || 0) - amount,
+          preciseSubtract(Number(allocation.paid_amount || 0), amount),
         ),
       );
 
-      const nextRemaining = roundFinancial(
+      const nextRemaining = normalizePreciseZero(
         Math.min(
           Number(allocation.total_amount || 0),
 
           Math.max(
             0,
-
-            Number(allocation.remaining_amount || 0) + amount,
+            preciseAdd(Number(allocation.remaining_amount || 0), amount),
           ),
         ),
       );
@@ -5067,7 +5007,7 @@ export function cancelSupplierPaymentBatch(input: {
       allocations: allocations.map((allocation) => ({
         purchase_id: Number(allocation.purchase_id),
 
-        amount: roundFinancial(Number(allocation.amount || 0)),
+        amount: preservePrecision(Number(allocation.amount || 0)),
       })),
     };
   });
@@ -5167,30 +5107,23 @@ export function updateSupplierPaymentBatch(input: {
       : input.notes?.trim() || null;
 
   const tx = db.transaction(() => {
-    /*
-     * أولًا:
-     * عكس الأثر المحاسبي
-     * للدفعة القديمة.
-     */
     for (const allocation of allocations) {
-      const amount = roundFinancial(Number(allocation.amount || 0));
+      const amount = preservePrecision(Number(allocation.amount || 0));
 
-      const nextPaid = roundFinancial(
+      const nextPaid = normalizePreciseZero(
         Math.max(
           0,
-
-          Number(allocation.paid_amount || 0) - amount,
+          preciseSubtract(Number(allocation.paid_amount || 0), amount),
         ),
       );
 
-      const nextRemaining = roundFinancial(
+      const nextRemaining = normalizePreciseZero(
         Math.min(
           Number(allocation.total_amount || 0),
 
           Math.max(
             0,
-
-            Number(allocation.remaining_amount || 0) + amount,
+            preciseAdd(Number(allocation.remaining_amount || 0), amount),
           ),
         ),
       );
@@ -5241,7 +5174,7 @@ export function updateSupplierPaymentBatch(input: {
 
             WHERE supplier_id = ?
 
-              AND remaining_amount > 0
+              AND remaining_amount > ${PRECISE_MONEY_EPSILON}
 
               AND IFNULL(
                 status,
@@ -5265,15 +5198,11 @@ export function updateSupplierPaymentBatch(input: {
       targetPurchases = [targetPurchase];
     }
 
-    const targetInvoiceOutstanding = roundFinancial(
-      targetPurchases.reduce(
-        (sum, purchase) => sum + Number(purchase.remaining_amount || 0),
-
-        0,
-      ),
+    const targetInvoiceOutstanding = preciseSum(
+      targetPurchases.map((purchase) => Number(purchase.remaining_amount || 0)),
     );
 
-    const supplierNetPayable = roundFinancial(
+    const supplierNetPayable = preservePrecision(
       Math.max(
         0,
 
@@ -5281,11 +5210,11 @@ export function updateSupplierPaymentBatch(input: {
       ),
     );
 
-    const targetOutstanding = roundFinancial(
+    const targetOutstanding = normalizePreciseZero(
       Math.min(targetInvoiceOutstanding, supplierNetPayable),
     );
 
-    if (targetOutstanding <= 0) {
+    if (!hasPositivePreciseAmount(targetOutstanding)) {
       throw new Error('لا يوجد صافي مستحق للمورد بعد احتساب الرصيد الدائن');
     }
 
@@ -5312,20 +5241,20 @@ export function updateSupplierPaymentBatch(input: {
 
       accountingAmount = targetOutstanding;
 
-      roundingAdjustment = roundFinancial(cashAmount - accountingAmount);
+      roundingAdjustment = preciseSubtract(cashAmount, accountingAmount);
     } else {
       if (cashAmount > targetOutstanding + 0.0001) {
         throw new Error(
-          `مبلغ الدفعة المعدل أكبر من المديونية المتاحة وهي ${formatMoney(
+          `مبلغ الدفعة المعدل أكبر من المديونية المتاحة وهي ${truncateForDisplay(
             targetOutstanding,
           )} ج.م`,
         );
       }
 
-      accountingAmount = roundFinancial(cashAmount);
+      accountingAmount = preservePrecision(cashAmount);
     }
 
-    if (accountingAmount <= 0) {
+    if (!hasPositivePreciseAmount(accountingAmount)) {
       throw new Error('قيمة التسوية المحاسبية غير صحيحة');
     }
 
@@ -5505,40 +5434,32 @@ export function updateSupplierPaymentBatch(input: {
     }> = [];
 
     for (const purchase of targetPurchases) {
-      if (remainingPayment <= 0.0001) {
+      if (!hasPositivePreciseAmount(remainingPayment)) {
         break;
       }
 
-      const purchaseRemaining = roundFinancial(
+      const purchaseRemaining = normalizePreciseZero(
         Number(purchase.remaining_amount || 0),
       );
 
-      if (purchaseRemaining <= 0) {
+      if (!hasPositivePreciseAmount(purchaseRemaining)) {
         continue;
       }
 
-      const payNow = roundFinancial(
-        Math.min(
-          remainingPayment,
-
-          purchaseRemaining,
-        ),
+      const payNow = normalizePreciseZero(
+        Math.min(remainingPayment, purchaseRemaining),
       );
 
-      if (payNow <= 0) {
+      if (!hasPositivePreciseAmount(payNow)) {
         continue;
       }
 
-      const newPaid = roundFinancial(
-        Number(purchase.paid_amount || 0) + payNow,
+      const newPaid = normalizePreciseZero(
+        preciseAdd(Number(purchase.paid_amount || 0), payNow),
       );
 
-      const newRemaining = roundFinancial(
-        Math.max(
-          0,
-
-          purchaseRemaining - payNow,
-        ),
+      const newRemaining = normalizePreciseZero(
+        Math.max(0, preciseSubtract(purchaseRemaining, payNow)),
       );
 
       const newStatus = normalizePaymentStatus(
@@ -5576,9 +5497,11 @@ export function updateSupplierPaymentBatch(input: {
             : `دفعة مورد معدلة موزعة على فاتورة شراء رقم ${purchase.id}`),
       );
 
-      totalPaid = roundFinancial(totalPaid + payNow);
+      totalPaid = preciseAdd(totalPaid, payNow);
 
-      remainingPayment = roundFinancial(remainingPayment - payNow);
+      remainingPayment = normalizePreciseZero(
+        preciseSubtract(remainingPayment, payNow),
+      );
 
       newAllocations.push({
         purchase_id: Number(purchase.id),
@@ -5939,27 +5862,22 @@ export function getSupplierStatement(
       const allocations = rows.map((row) => ({
         purchase_id: Number(row.purchase_id),
 
-        amount: roundFinancial(row.amount),
+        amount: preservePrecision(row.amount),
       }));
 
-      const totalAmount = roundFinancial(
-        Number(
-          first.batch_amount ??
-            allocations.reduce(
-              (sum, item) => sum + item.amount,
+      const totalAmount =
+        first.batch_amount != null
+          ? preservePrecision(Number(first.batch_amount))
+          : preciseSum(allocations.map((item) => item.amount));
 
-              0,
-            ),
-        ),
-      );
-
-      const cashAmount = roundFinancial(
+      const cashAmount = preservePrecision(
         Number(first.batch_cash_amount ?? totalAmount),
       );
 
-      const roundingAdjustment = roundFinancial(
-        Number(first.batch_rounding_adjustment ?? cashAmount - totalAmount),
-      );
+      const roundingAdjustment =
+        first.batch_rounding_adjustment != null
+          ? preservePrecision(Number(first.batch_rounding_adjustment))
+          : preciseSubtract(cashAmount, totalAmount);
 
       const allocationsText = allocations
         .map((item) => `#${item.purchase_id}: ${item.amount} ج.م`)
@@ -6089,9 +6007,9 @@ export function getSupplierStatement(
 
       const replaced = Boolean(purchaseReturn.replacement_return_id);
 
-      const supplierAccountCredit = roundFinancial(
-        Number(purchaseReturn.debt_reduction_amount || 0) +
-          Number(purchaseReturn.credit_amount || 0),
+      const supplierAccountCredit = preciseAdd(
+        Number(purchaseReturn.debt_reduction_amount || 0),
+        Number(purchaseReturn.credit_amount || 0),
       );
 
       return {
@@ -6114,11 +6032,11 @@ export function getSupplierStatement(
         return_id: purchaseReturn.id,
         cash_amount: cancelled
           ? 0
-          : roundFinancial(Number(purchaseReturn.cash_refund_amount || 0)),
+          : preservePrecision(Number(purchaseReturn.cash_refund_amount || 0)),
 
         rounding_adjustment: cancelled
           ? 0
-          : roundFinancial(Number(purchaseReturn.rounding_adjustment || 0)),
+          : preservePrecision(Number(purchaseReturn.rounding_adjustment || 0)),
 
         settle_cash_refund: Boolean(purchaseReturn.settle_cash_refund),
 
@@ -6142,14 +6060,10 @@ export function getSupplierStatement(
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
-  const totalPaid = roundFinancial(
-    payments.reduce((sum, payment) => {
-      if (payment.batch_id && payment.batch_cancelled_at) {
-        return sum;
-      }
-
-      return sum + Number(payment.amount || 0);
-    }, 0),
+  const totalPaid = preciseSum(
+    payments
+      .filter((payment) => !(payment.batch_id && payment.batch_cancelled_at))
+      .map((payment) => Number(payment.amount || 0)),
   );
 
   const aging = getSupplierAgingSummary(id);
@@ -6168,14 +6082,10 @@ export function getSupplierStatement(
 
       total_paid: totalPaid,
 
-      total_returns: roundFinancial(
-        returns.reduce(
-          (sum, purchaseReturn) =>
-            purchaseReturn.cancelled_at
-              ? sum
-              : sum + Number(purchaseReturn.total_amount || 0),
-          0,
-        ),
+      total_returns: preciseSum(
+        returns
+          .filter((purchaseReturn) => !purchaseReturn.cancelled_at)
+          .map((purchaseReturn) => Number(purchaseReturn.total_amount || 0)),
       ),
 
       balance: Number(supplier.balance || 0),

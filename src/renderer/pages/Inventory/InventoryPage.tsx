@@ -4,7 +4,7 @@ import PaginationBar, {
 } from '../../components/PaginationBar';
 import { useAuthStore } from '../../store/auth.store';
 import { hasUserPermission } from '../../utils/permissions';
-import { formatMoney } from '../../../shared/money';
+import { formatPreciseMoney } from '../../../shared/money';
 
 type InventoryRow = {
   variant_id: number;
@@ -1635,9 +1635,8 @@ function movementTypeName(movement: MovementRow) {
 }
 
 function money(value: unknown) {
-  return formatMoney(value);
+  return formatPreciseMoney(value);
 }
-
 function formatDate(value?: string) {
   if (!value) return '—';
 

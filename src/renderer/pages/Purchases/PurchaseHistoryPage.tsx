@@ -9,14 +9,15 @@ import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
 import {
-  formatMoney,
-  roundCost,
-  roundFinancial,
+  formatPreciseMoney,
+  preservePrecision,
   roundMoney,
+  truncateForDisplay,
+  hasPositivePreciseAmount,
 } from '../../../shared/money';
 
 function hasRemainingAmount(value: number) {
-  return roundFinancial(value) > 0;
+  return hasPositivePreciseAmount(value);
 }
 
 type PurchaseRow = {
@@ -294,7 +295,7 @@ export default function PurchaseHistoryPage() {
         quantities[purchaseItemId] = String(quantity);
 
         originalQuantities[purchaseItemId] = quantity;
-        originalValues[purchaseItemId] = roundCost(
+        originalValues[purchaseItemId] = preservePrecision(
           Number(item.line_total || 0),
         );
       }
@@ -652,7 +653,7 @@ export default function PurchaseHistoryPage() {
 
     const originalQuantity = Number(item.quantity || 0);
 
-    const originalLineTotal = roundCost(Number(item.line_total || 0));
+    const originalLineTotal = preservePrecision(Number(item.line_total || 0));
 
     if (originalQuantity <= 0 || originalLineTotal <= 0) {
       return 0;
@@ -669,7 +670,7 @@ export default function PurchaseHistoryPage() {
       editingReturnOriginalQuantities[itemId] || 0,
     );
 
-    const editingValue = roundCost(
+    const editingValue = preservePrecision(
       Number(editingReturnOriginalValues[itemId] || 0),
     );
 
@@ -679,7 +680,7 @@ export default function PurchaseHistoryPage() {
       Number(item.returned_quantity || 0) - editingQuantity,
     );
 
-    const alreadyReturnedValue = roundCost(
+    const alreadyReturnedValue = preservePrecision(
       Math.max(
         0,
 
@@ -692,11 +693,11 @@ export default function PurchaseHistoryPage() {
     const cumulativeValue =
       cumulativeQuantity >= originalQuantity - 0.000001
         ? originalLineTotal
-        : roundCost(
+        : preservePrecision(
             (originalLineTotal * cumulativeQuantity) / originalQuantity,
           );
 
-    return roundCost(
+    return preservePrecision(
       Math.max(
         0,
 
@@ -706,7 +707,7 @@ export default function PurchaseHistoryPage() {
   }
 
   const purchaseReturnExactTotal = returnPurchase
-    ? roundCost(
+    ? preservePrecision(
         (returnPurchase.items ?? []).reduce(
           (sum: number, item: any) => sum + getPurchaseReturnLineTotal(item),
 
@@ -723,7 +724,7 @@ export default function PurchaseHistoryPage() {
    * المرتجع القديم مرة أخرى.
    */
   const purchaseReturnDebtBase = returnPurchase
-    ? roundFinancial(
+    ? preservePrecision(
         Math.min(
           Math.max(
             0,
@@ -742,7 +743,7 @@ export default function PurchaseHistoryPage() {
       )
     : 0;
 
-  const purchaseReturnDebtReduction = roundFinancial(
+  const purchaseReturnDebtReduction = preservePrecision(
     Math.min(purchaseReturnExactTotal, purchaseReturnDebtBase),
   );
 
@@ -750,7 +751,7 @@ export default function PurchaseHistoryPage() {
    * الجزء الذي أصبح حقًا لنا
    * بعد تصفير/تقليل المديونية.
    */
-  const purchaseReturnRefundable = roundFinancial(
+  const purchaseReturnRefundable = preservePrecision(
     Math.max(
       0,
 
@@ -770,13 +771,13 @@ export default function PurchaseHistoryPage() {
       ? purchaseReturnRefundable
       : returnSettleCashRefund
         ? 0
-        : roundFinancial(
+        : preservePrecision(
             Math.max(0, purchaseReturnRefundable - purchaseReturnCashRefund),
           );
 
   const purchaseReturnRoundingAdjustment =
     returnRefundMode === 'cash' && returnSettleCashRefund
-      ? roundFinancial(purchaseReturnCashRefund - purchaseReturnRefundable)
+      ? preservePrecision(purchaseReturnCashRefund - purchaseReturnRefundable)
       : 0;
 
   const hasPurchaseHistoryFilters =
@@ -2748,17 +2749,17 @@ function paymentMethodName(value?: string | null) {
 }
 
 function money(value: unknown) {
-  return formatMoney(value);
+  return formatPreciseMoney(value);
 }
 
 function costMoney(value: unknown) {
-  return `${roundCost(value)} ج.م`;
+  return formatPreciseMoney(value);
 }
 
 function signedCostMoney(value: unknown) {
-  const amount = roundCost(value);
+  const amount = preservePrecision(value);
 
-  return `${amount > 0 ? '+' : ''}${amount} ج.م`;
+  return `${amount > 0 ? '+' : ''}${truncateForDisplay(amount)} ج.م`;
 }
 
 function formatDate(value?: string) {

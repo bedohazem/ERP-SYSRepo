@@ -1,6 +1,6 @@
 import { getDb } from '../db';
 import { receiveStockAtCost } from '../inventory-cost';
-import { roundCost, roundMoney } from '../../../shared/money';
+import { preservePrecision, roundMoney } from '../../../shared/money';
 
 export type CategoryRow = {
   id: number;
@@ -803,7 +803,7 @@ export function createProduct(input: CreateProductInput) {
         variant.barcode.trim(),
         variant.size.trim(),
         variant.color.trim(),
-        roundCost(variant.buy_price),
+        preservePrecision(variant.buy_price),
         roundMoney(variant.sell_price),
         variant.discount_price == null
           ? null
@@ -824,7 +824,7 @@ export function createProduct(input: CreateProductInput) {
 
           quantity: openingQty,
 
-          unit_cost: roundCost(variant.buy_price),
+          unit_cost: preservePrecision(variant.buy_price),
           created_by: input.actor_id ?? null,
           reference_id: productId,
 
@@ -896,7 +896,7 @@ export function addProductVariant(input: AddProductVariantInput) {
         cleanBarcode,
         input.size.trim(),
         input.color.trim(),
-        roundCost(input.buy_price),
+        preservePrecision(input.buy_price),
 
         roundMoney(input.sell_price),
 
@@ -917,7 +917,7 @@ export function addProductVariant(input: AddProductVariantInput) {
 
         quantity: openingQty,
 
-        unit_cost: roundCost(input.buy_price),
+        unit_cost: preservePrecision(input.buy_price),
         created_by: input.actor_id ?? null,
         reference_id: input.product_id,
 
@@ -1028,7 +1028,7 @@ function updateVariantInsideTransaction(
     cleanBarcode,
     input.size.trim(),
     input.color.trim(),
-    roundCost(input.buy_price),
+    preservePrecision(input.buy_price),
 
     roundMoney(input.sell_price),
 

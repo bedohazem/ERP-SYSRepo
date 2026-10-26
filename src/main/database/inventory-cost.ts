@@ -1,13 +1,20 @@
 import type Database from 'better-sqlite3';
-import { allocateProportionalAmount, roundCost } from '../../shared/money';
+import {
+  allocateProportionalAmountPrecise,
+  preservePrecision,
+  preciseAdd,
+  preciseDivide,
+  preciseMultiply,
+  preciseSubtract,
+} from '../../shared/money';
 
 type Db = Database.Database;
 
 const STOCK_EPSILON = 0.000001;
 const VALUE_EPSILON = 0.0001;
 
-function roundAverageCost(value: unknown): number {
-  return roundCost(value);
+function preserveAverageCost(value: unknown): number {
+  return preservePrecision(value);
 }
 
 export type InventoryCostState = {
@@ -136,11 +143,11 @@ export function getInventoryCostState(
 
     stock: Number(row.stock || 0),
 
-    buy_price: roundCost(Number(row.buy_price || 0)),
+    buy_price: preservePrecision(Number(row.buy_price || 0)),
 
-    average_cost: roundAverageCost(row.average_cost),
+    average_cost: preserveAverageCost(row.average_cost),
 
-    inventory_value: roundCost(Number(row.inventory_value || 0)),
+    inventory_value: preservePrecision(Number(row.inventory_value || 0)),
   };
 }
 
@@ -163,9 +170,9 @@ function updateCostState(
       `,
     )
     .run(
-      roundAverageCost(averageCost),
+      preserveAverageCost(averageCost),
 
-      roundCost(inventoryValue),
+      preservePrecision(inventoryValue),
 
       variantId,
     );
@@ -224,9 +231,9 @@ function insertCostedMovement(
       input.type,
       input.quantity,
 
-      roundCost(input.unit_cost),
+      preservePrecision(input.unit_cost),
 
-      roundCost(input.cost_value),
+      preservePrecision(input.cost_value),
 
       input.reference_id ?? null,
 
@@ -283,23 +290,27 @@ export function receiveStockAtCost(
    */
   const movementValue =
     rawCostValue !== undefined
-      ? roundCost(rawCostValue)
-      : roundCost(quantity * rawUnitCost);
+      ? preservePrecision(rawCostValue)
+      : preciseMultiply(quantity, rawUnitCost);
 
   /*
    * سعر الوحدة هنا للعرض والمساعدة فقط.
    * أقصى دقة قرشين.
    */
   const movementUnitCost =
-    quantity > 0 ? roundCost(movementValue / quantity) : roundCost(rawUnitCost);
+    quantity > 0
+      ? preservePrecision(preciseDivide(movementValue, quantity))
+      : preservePrecision(rawUnitCost);
 
   const nextStock = state.stock + quantity;
 
-  const nextInventoryValue = roundCost(state.inventory_value + movementValue);
+  const nextInventoryValue = preservePrecision(
+    preciseAdd(state.inventory_value, movementValue),
+  );
 
   const nextAverageCost =
     nextStock > STOCK_EPSILON
-      ? roundAverageCost(nextInventoryValue / nextStock)
+      ? preserveAverageCost(preciseDivide(nextInventoryValue, nextStock))
       : 0;
 
   insertCostedMovement(database, {
@@ -363,17 +374,21 @@ export function issueStockAtAverageCost(
    *
    * لأن متوسط الوحدة مقرب للقرش.
    */
-  const movementValue = allocateProportionalAmount(
+  const movementValue = allocateProportionalAmountPrecise(
     state.inventory_value,
     quantity,
     state.stock,
   );
 
-  const movementUnitCost = roundCost(movementValue / quantity);
+  const movementUnitCost = preservePrecision(
+    preciseDivide(movementValue, quantity),
+  );
 
   const nextStock = state.stock - quantity;
 
-  let nextInventoryValue = roundCost(state.inventory_value - movementValue);
+  let nextInventoryValue = preservePrecision(
+    preciseSubtract(state.inventory_value, movementValue),
+  );
 
   if (Math.abs(nextInventoryValue) <= VALUE_EPSILON) {
     nextInventoryValue = 0;
@@ -393,7 +408,7 @@ export function issueStockAtAverageCost(
 
   const nextAverageCost =
     nextStock > STOCK_EPSILON
-      ? roundAverageCost(nextInventoryValue / nextStock)
+      ? preserveAverageCost(preciseDivide(nextInventoryValue, nextStock))
       : 0;
 
   insertCostedMovement(database, {
@@ -466,14 +481,18 @@ export function issueStockAtCost(
 
   const movementValue =
     rawCostValue !== undefined
-      ? roundCost(rawCostValue)
-      : roundCost(quantity * rawUnitCost);
+      ? preservePrecision(rawCostValue)
+      : preciseMultiply(quantity, rawUnitCost);
 
-  const movementUnitCost = roundCost(movementValue / quantity);
+  const movementUnitCost = preservePrecision(
+    preciseDivide(movementValue, quantity),
+  );
 
   const nextStock = state.stock - quantity;
 
-  let nextInventoryValue = roundCost(state.inventory_value - movementValue);
+  let nextInventoryValue = preservePrecision(
+    preciseSubtract(state.inventory_value, movementValue),
+  );
 
   if (Math.abs(nextInventoryValue) <= VALUE_EPSILON) {
     nextInventoryValue = 0;
@@ -494,7 +513,7 @@ export function issueStockAtCost(
 
   const nextAverageCost =
     nextStock > STOCK_EPSILON
-      ? roundAverageCost(nextInventoryValue / nextStock)
+      ? preserveAverageCost(preciseDivide(nextInventoryValue, nextStock))
       : 0;
 
   insertCostedMovement(database, {

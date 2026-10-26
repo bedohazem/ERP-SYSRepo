@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",
+    "decimal.js": "^10.6.0",
     "jsbarcode": "^3.12.3",
     "node-machine-id": "^1.1.12",
     "qrcode": "^1.5.4",

@@ -7,6 +7,12 @@ import {
   roundFinancial,
   roundMoney,
   splitAmountAcrossUnits,
+  preservePrecision,
+  truncateForDisplay,
+  allocateProportionalAmountPrecise,
+  hasPositivePreciseAmount,
+  isEffectivelyZero,
+  normalizePreciseZero,
 } from '../../src/shared/money';
 
 describe('whole-pound money policy', () => {
@@ -85,5 +91,48 @@ describe('whole-pound money policy', () => {
     );
 
     expect(units.every((value) => roundCost(value) === value)).toBe(true);
+  });
+
+  it('preserves full precision and truncates only for display', () => {
+    expect(preservePrecision(84.375)).toBe(84.375);
+
+    expect(truncateForDisplay(100)).toBe('100');
+
+    expect(truncateForDisplay(100.5)).toBe('100.5');
+
+    expect(truncateForDisplay(84.375)).toBe('84.37');
+
+    expect(truncateForDisplay(590.625)).toBe('590.62');
+
+    expect(truncateForDisplay(100.3587)).toBe('100.35');
+
+    expect(truncateForDisplay(15511.8675)).toBe('15511.86');
+
+    expect(truncateForDisplay(0.1325)).toBe('0.13');
+  });
+
+  it('allocates inventory value without cent rounding', () => {
+    expect(allocateProportionalAmountPrecise(590.625, 3, 7)).toBeCloseTo(
+      253.125,
+      12,
+    );
+  });
+
+  it('ignores floating point noise around zero', () => {
+    expect(isEffectivelyZero(0)).toBe(true);
+
+    expect(isEffectivelyZero(0.0000000002)).toBe(true);
+
+    expect(isEffectivelyZero(-0.0000000002)).toBe(true);
+
+    expect(hasPositivePreciseAmount(0.0000000002)).toBe(false);
+
+    expect(hasPositivePreciseAmount(0.000001)).toBe(true);
+
+    expect(normalizePreciseZero(0.0000000002)).toBe(0);
+
+    expect(normalizePreciseZero(-0.0000000002)).toBe(0);
+
+    expect(normalizePreciseZero(84.375)).toBe(84.375);
   });
 });

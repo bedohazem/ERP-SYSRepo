@@ -3,7 +3,12 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
-import { formatMoney, roundCost, roundMoney } from '../../../shared/money';
+import {
+  formatPreciseMoney,
+  preservePrecision,
+  preciseMultiply,
+  roundMoney,
+} from '../../../shared/money';
 import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
@@ -121,7 +126,7 @@ type Props = {
 };
 
 function money(value: unknown) {
-  return formatMoney(value);
+  return formatPreciseMoney(value);
 }
 
 function getErrorMessage(
@@ -497,7 +502,7 @@ export default function PurchaseOrdersPanel({
 
   const receiveInvoiceTotal = useMemo(
     () =>
-      roundCost(
+      preservePrecision(
         detailItems.reduce(
           (sum, item) => sum + Number(item.line_total || 0),
           0,
@@ -627,24 +632,15 @@ export default function PurchaseOrdersPanel({
         const matchesOriginal =
           originalItem &&
           Math.abs(quantity - Number(originalItem.quantity || 0)) <= 0.000001 &&
-          roundCost(unitCost) ===
-            roundCost(Number(originalItem.unit_cost || 0));
+          preservePrecision(unitCost) ===
+            preservePrecision(Number(originalItem.unit_cost || 0));
 
         return {
           ...nextItem,
 
-          /*
-           * لو المستخدم رجع لنفس الكمية
-           * ونفس السعر الظاهر، نظهر إجمالي
-           * البند التاريخي الحقيقي مرة أخرى.
-           *
-           * مثال:
-           * 12 × 155.83 ظاهريًا
-           * لكن الإجمالي الحقيقي = 1870.
-           */
           line_total: matchesOriginal
-            ? roundCost(Number(originalItem.line_total || 0))
-            : roundCost(quantity * unitCost),
+            ? preservePrecision(Number(originalItem.line_total || 0))
+            : preciseMultiply(quantity, unitCost),
         };
       }),
     );
@@ -1704,8 +1700,9 @@ export default function PurchaseOrdersPanel({
                           lineHeight: 1.7,
                         }}
                       >
-                        سيتم إقفال {formatMoney(receiveInvoiceTotal)} ج.م بكاش
-                        فعلي {formatMoney(roundMoney(receiveInvoiceTotal))} ج.م
+                        سيتم إقفال {formatPreciseMoney(receiveInvoiceTotal)}{' '}
+                        بكاش فعلي{' '}
+                        {formatPreciseMoney(roundMoney(receiveInvoiceTotal))}
                       </div>
                     )}
                   </div>

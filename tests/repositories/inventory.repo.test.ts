@@ -21,7 +21,7 @@ import {
   issueStockAtAverageCost,
   receiveStockAtCost,
 } from '../../src/main/database/inventory-cost';
-import { roundCost } from '../../src/shared/money';
+import { preciseAdd } from '../../src/shared/money';
 
 type InventoryVariantTestRow = {
   variant_id: number;
@@ -846,7 +846,7 @@ describe('inventory repository', () => {
     expect(analytics.top_mover?.variant_id).toBe(variant.variant_id);
   });
 
-  it('allocates inventory value by cents without losing the supplier total', () => {
+  it('allocates inventory value at full precision without losing the supplier total', () => {
     createProduct({
       name: 'Proportional Cost Product',
 
@@ -897,7 +897,7 @@ describe('inventory repository', () => {
 
     expect(before.inventory_value).toBe(1870);
 
-    expect(before.average_cost).toBe(155.83);
+    expect(before.average_cost).toBeCloseTo(1870 / 12, 12);
 
     const issued = issueStockAtAverageCost(getDb(), {
       variant_id: variant.variant_id,
@@ -909,21 +909,21 @@ describe('inventory repository', () => {
       created_by: 1,
     });
 
-    expect(issued.cost_value).toBe(1090.83);
+    expect(issued.cost_value).toBeCloseTo((1870 * 7) / 12, 12);
 
-    expect(issued.unit_cost).toBe(155.83);
+    expect(issued.unit_cost).toBeCloseTo(1870 / 12, 12);
 
     expect(issued.stock).toBe(5);
 
-    expect(issued.inventory_value).toBe(779.17);
+    expect(issued.inventory_value).toBeCloseTo((1870 * 5) / 12, 12);
 
     const after = getInventoryCostState(getDb(), variant.variant_id);
 
     expect(after.stock).toBe(5);
 
-    expect(after.inventory_value).toBe(779.17);
+    expect(after.inventory_value).toBeCloseTo((1870 * 5) / 12, 12);
 
-    expect(after.average_cost).toBe(155.83);
+    expect(after.average_cost).toBeCloseTo(1870 / 12, 12);
   });
 
   it('preserves the full inventory value when pieces are sold one by one', () => {
@@ -984,10 +984,10 @@ describe('inventory repository', () => {
         created_by: 1,
       });
 
-      totalIssued = roundCost(totalIssued + issued.cost_value);
+      totalIssued = preciseAdd(totalIssued, issued.cost_value);
     }
 
-    expect(totalIssued).toBe(1870);
+    expect(totalIssued).toBeCloseTo(1870, 10);
 
     const finalState = getInventoryCostState(getDb(), variant.variant_id);
 

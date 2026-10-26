@@ -371,20 +371,20 @@ describe('purchase orders repository', () => {
         {
           variant_id: variant.variant_id,
 
-          quantity: 12,
+          quantity: 7,
 
-          unit_cost: 155.8333333333,
+          unit_cost: 84.375,
         },
       ],
     });
 
-    expect(order.total_amount).toBe(1870);
+    expect(order.total_amount).toBe(590.625);
 
     const snapshot = getPurchaseOrder(order.purchase_order_id) as any;
 
-    expect(Number(snapshot.items[0].unit_cost)).toBe(155.83);
+    expect(Number(snapshot.items[0].unit_cost)).toBe(84.375);
 
-    expect(Number(snapshot.items[0].line_total)).toBe(1870);
+    expect(Number(snapshot.items[0].line_total)).toBe(590.625);
 
     /*
      * فتح المسودة وحفظها بدون تغيير
@@ -406,9 +406,9 @@ describe('purchase orders repository', () => {
       ],
     }) as any;
 
-    expect(Number(updated.items[0].unit_cost)).toBe(155.83);
+    expect(Number(updated.items[0].unit_cost)).toBe(84.375);
 
-    expect(Number(updated.items[0].line_total)).toBe(1870);
+    expect(Number(updated.items[0].line_total)).toBe(590.625);
 
     const received = receivePurchaseOrder({
       purchase_order_id: order.purchase_order_id,
@@ -418,11 +418,11 @@ describe('purchase orders repository', () => {
       paid_amount: 0,
     });
 
-    expect(received.exact_total_amount).toBe(1870);
+    expect(received.exact_total_amount).toBe(590.625);
 
-    expect(received.total_amount).toBe(1870);
+    expect(received.total_amount).toBe(590.625);
 
-    expect(getVariantStock(variant.variant_id)).toBe(12);
+    expect(getVariantStock(variant.variant_id)).toBe(7);
   });
 
   it('settles purchase order reception with whole cash and exact invoice value', () => {

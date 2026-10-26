@@ -1,7 +1,11 @@
 import { getDb } from '../db';
 import { getCustomerDueSummary } from './customers.repo';
 import { getSupplierDueSummary } from './suppliers.repo';
-import { roundCost, roundFinancial } from '../../../shared/money';
+import {
+  preservePrecision,
+  preciseAdd,
+  preciseSubtract,
+} from '../../../shared/money';
 
 type ReportFilter = {
   date_from?: string;
@@ -14,7 +18,7 @@ export type CashierDashboardInput = {
 };
 
 function reportMoney(value: unknown) {
-  return roundFinancial(value);
+  return preservePrecision(value);
 }
 
 function buildWhere(
@@ -1087,12 +1091,9 @@ export function getReportsSummary(input?: ReportFilter) {
     SELECT
       IFNULL(
         SUM(
-          ROUND(
             IFNULL(
               pi.total_amount,
               0
-            ),
-            2
           )
         ),
         0
@@ -1167,12 +1168,9 @@ export function getReportsSummary(input?: ReportFilter) {
        * سالب = دفعنا أقل.
        */
       SELECT
-        ROUND(
           IFNULL(
             pi.rounding_adjustment,
             0
-          ),
-          2
         ) AS adjustment
 
       FROM purchase_invoices pi
@@ -1190,12 +1188,9 @@ export function getReportsSummary(input?: ReportFilter) {
        * cash_amount = الخارج فعليًا.
        */
       SELECT
-        ROUND(
           IFNULL(
             spb.rounding_adjustment,
             0
-          ),
-          2
         ) AS adjustment
 
       FROM supplier_payment_batches spb
@@ -1222,12 +1217,9 @@ export function getReportsSummary(input?: ReportFilter) {
        * وبالتالي الربح ينقص 0.10.
        */
       SELECT
-        -ROUND(
           IFNULL(
             pr.rounding_adjustment,
             0
-          ),
-          2
         ) AS adjustment
 
       FROM purchase_returns pr
@@ -1379,19 +1371,19 @@ export function getReportsSummary(input?: ReportFilter) {
     purchasesRow.total_purchase_invoices || 0,
   );
 
-  const totalPurchaseExactAmount = roundCost(
+  const totalPurchaseExactAmount = preservePrecision(
     purchasesRow.total_purchase_exact_amount,
   );
 
-  const purchaseRoundingIncrease = roundCost(
+  const purchaseRoundingIncrease = preservePrecision(
     purchaseRoundingRow.purchase_rounding_increase,
   );
 
-  const purchaseRoundingDecrease = roundCost(
+  const purchaseRoundingDecrease = preservePrecision(
     purchaseRoundingRow.purchase_rounding_decrease,
   );
 
-  const purchaseRoundingNet = roundCost(
+  const purchaseRoundingNet = preservePrecision(
     purchaseRoundingRow.purchase_rounding_net,
   );
 
@@ -1417,23 +1409,16 @@ export function getReportsSummary(input?: ReportFilter) {
     openingVarianceRow.approved_opening_shortage || 0,
   );
 
-  const finalNetProfit = roundCost(
-    netProfitAfterDiscounts -
-      totalExpenses -
-      /*
-       * موجب:
-       * دفعنا للمورد زيادة
-       * فينقص الربح.
-       *
-       * سالب:
-       * دفعنا أقل،
-       * وطرح السالب يزيد الربح.
-       */
-      purchaseRoundingNet +
-      approvedClosingSurplus -
-      approvedClosingShortage +
-      approvedOpeningSurplus -
-      approvedOpeningShortage,
+  const finalNetProfit = preciseSubtract(
+    preciseAdd(
+      preciseSubtract(
+        preciseSubtract(netProfitAfterDiscounts, totalExpenses),
+        purchaseRoundingNet,
+      ),
+      approvedClosingSurplus,
+      approvedOpeningSurplus,
+    ),
+    preciseAdd(approvedClosingShortage, approvedOpeningShortage),
   );
 
   const topProducts = db

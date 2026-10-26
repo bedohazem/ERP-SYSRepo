@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { getPaymentMethodLabel } from '../../utils/payment-method';
 import { buildReportsCsv, buildReportsPdfHtml } from './report-export';
-import { formatMoney, roundCost } from '../../../shared/money';
+import {
+  formatPreciseMoney,
+  preservePrecision,
+  truncateForDisplay,
+} from '../../../shared/money';
 
 type ReportsData = {
   summary: {
@@ -1174,17 +1178,17 @@ function ReportTable({
 }
 
 function money(value: unknown) {
-  return formatMoney(value);
+  return formatPreciseMoney(value);
 }
 
 function preciseMoney(value: unknown) {
-  return `${roundCost(value)} ج.م`;
+  return formatPreciseMoney(value);
 }
 
 function signedPreciseMoney(value: unknown) {
-  const amount = roundCost(value);
+  const amount = preservePrecision(value);
 
-  return `${amount > 0 ? '+' : ''}${amount} ج.م`;
+  return `${amount > 0 ? '+' : ''}${truncateForDisplay(amount)} ج.م`;
 }
 
 function formatDateOnly(value?: string) {

@@ -5,10 +5,15 @@ import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
 import { hasUserPermission } from '../../utils/permissions';
-import { formatMoney, roundFinancial, roundMoney } from '../../../shared/money';
+import {
+  formatPreciseMoney,
+  preservePrecision,
+  roundMoney,
+  hasPositivePreciseAmount,
+} from '../../../shared/money';
 
 function hasRemainingAmount(value: number) {
-  return roundFinancial(value) > 0;
+  return hasPositivePreciseAmount(value);
 }
 
 type Supplier = {
@@ -817,7 +822,7 @@ export default function SuppliersPage() {
   }
 
   function getEditablePaymentOutstanding(entry: any) {
-    const oldAccountingAmount = roundFinancial(Number(entry?.credit || 0));
+    const oldAccountingAmount = preservePrecision(Number(entry?.credit || 0));
 
     const purchaseId = Number(entry?.purchase_id || 0);
 
@@ -826,12 +831,12 @@ export default function SuppliersPage() {
         (row: any) => Number(row.id) === purchaseId,
       );
 
-      return roundFinancial(
+      return preservePrecision(
         Number(purchase?.remaining_amount || 0) + oldAccountingAmount,
       );
     }
 
-    return roundFinancial(
+    return preservePrecision(
       Number(statementData?.supplier?.balance || 0) + oldAccountingAmount,
     );
   }
@@ -1361,10 +1366,9 @@ export default function SuppliersPage() {
                   <td
                     style={{
                       ...tdStyle,
-                      color:
-                        roundFinancial(supplier.balance) > 0
-                          ? '#fca5a5'
-                          : '#6ee7b7',
+                      color: hasPositivePreciseAmount(supplier.balance)
+                        ? '#fca5a5'
+                        : '#6ee7b7',
                       fontWeight: 900,
                     }}
                   >
@@ -1413,7 +1417,7 @@ export default function SuppliersPage() {
                       )}
 
                       {canManagePurchases &&
-                        roundFinancial(supplier.balance) > 0 && (
+                        hasPositivePreciseAmount(supplier.balance) && (
                           <button
                             type="button"
                             onClick={() => openSupplierPayment(supplier)}
@@ -1651,7 +1655,7 @@ export default function SuppliersPage() {
               </div>
             </div>
 
-            {roundFinancial(statementData.summary.balance) > 0 && (
+            {hasPositivePreciseAmount(statementData.summary.balance) && (
               <div
                 style={{
                   display: 'flex',
@@ -2000,13 +2004,12 @@ export default function SuppliersPage() {
                       }}
                     >
                       المديونية التي سيتم إقفالها:{' '}
-                      {formatMoney(
+                      {formatPreciseMoney(
                         getEditablePaymentOutstanding(paymentAction.entry),
-                      )}{' '}
-                      ج.م
+                      )}
                       {' — '}
                       الكاش الفعلي:{' '}
-                      {formatMoney(
+                      {formatPreciseMoney(
                         roundMoney(
                           getEditablePaymentOutstanding(paymentAction.entry),
                         ),
@@ -2236,9 +2239,9 @@ export default function SuppliersPage() {
                     }}
                   >
                     سيتم إقفال الرصيد المحاسبي بالكامل بقيمة{' '}
-                    {formatMoney(paymentSupplier.balance)} ج.م، والكاش الفعلي
-                    سيكون {formatMoney(roundMoney(paymentSupplier.balance))}{' '}
-                    ج.م.
+                    {formatPreciseMoney(paymentSupplier.balance)}، والكاش الفعلي
+                    سيكون{' '}
+                    {formatPreciseMoney(roundMoney(paymentSupplier.balance))}.
                   </div>
                 )}
               </div>
@@ -2392,7 +2395,7 @@ function Input({
 }
 
 function money(value: unknown) {
-  return formatMoney(value);
+  return formatPreciseMoney(value);
 }
 
 const cardStyle: React.CSSProperties = {

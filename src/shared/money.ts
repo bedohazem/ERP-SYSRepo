@@ -1,3 +1,31 @@
+import Decimal from 'decimal.js';
+Decimal.set({
+  precision: 40,
+  rounding: Decimal.ROUND_DOWN,
+});
+
+export const PRECISE_MONEY_EPSILON = 0.000000001;
+
+export function isEffectivelyZero(value: unknown): boolean {
+  const amount = Number(value ?? 0);
+
+  if (!Number.isFinite(amount)) {
+    return true;
+  }
+
+  return Math.abs(amount) <= PRECISE_MONEY_EPSILON;
+}
+
+export function hasPositivePreciseAmount(value: unknown): boolean {
+  const amount = Number(value ?? 0);
+
+  if (!Number.isFinite(amount)) {
+    return false;
+  }
+
+  return amount > PRECISE_MONEY_EPSILON;
+}
+
 export function roundMoney(value: unknown): number {
   const amount = Number(value ?? 0);
 
@@ -68,6 +96,202 @@ export function roundCost(value: unknown): number {
   const rounded = Number(amount.toFixed(2));
 
   return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+function toDecimal(value: unknown): Decimal {
+  try {
+    const raw =
+      value === null || value === undefined || value === ''
+        ? '0'
+        : String(value);
+
+    const result = new Decimal(raw);
+
+    return result.isFinite() ? result : new Decimal(0);
+  } catch {
+    return new Decimal(0);
+  }
+}
+
+/*
+ * يحافظ على الرقم بدون سياسة
+ * تقريب تجارية.
+ *
+ * مهم:
+ * العمليات الحسابية نفسها يجب
+ * أن تستخدم precise* helpers
+ * الموجودة تحت.
+ */
+export function preservePrecision(value: unknown): number {
+  const result = toDecimal(value).toNumber();
+
+  return Object.is(result, -0) ? 0 : result;
+}
+
+export function normalizePreciseZero(value: unknown): number {
+  const amount = preservePrecision(value);
+
+  return isEffectivelyZero(amount) ? 0 : amount;
+}
+
+export function preciseAdd(...values: unknown[]): number {
+  const result = values.reduce<Decimal>(
+    (sum, value) => sum.plus(toDecimal(value)),
+    new Decimal(0),
+  );
+
+  return preservePrecision(result.toString());
+}
+
+export function preciseSubtract(left: unknown, right: unknown): number {
+  return preservePrecision(toDecimal(left).minus(toDecimal(right)).toString());
+}
+
+export function preciseMultiply(left: unknown, right: unknown): number {
+  return preservePrecision(toDecimal(left).times(toDecimal(right)).toString());
+}
+
+export function preciseDivide(left: unknown, right: unknown): number {
+  const divisor = toDecimal(right);
+
+  if (divisor.isZero()) {
+    return 0;
+  }
+
+  return preservePrecision(toDecimal(left).div(divisor).toString());
+}
+
+export function preciseSum(values: unknown[]): number {
+  return preciseAdd(...values);
+}
+
+/*
+ * للعرض فقط.
+ *
+ * لا تستخدم ناتج هذه الدالة
+ * في الحساب أو التخزين.
+ *
+ * 100       -> 100
+ * 100.5     -> 100.5
+ * 84.375    -> 84.37
+ * 100.3587  -> 100.35
+ *
+ * يوجد فقط Noise Guard صغير جدًا
+ * لمنع أرقام Floating Point الوهمية
+ * مثل 399.9999999999999 من الظهور
+ * 399.99 للمستخدم.
+ */
+export function truncateForDisplay(value: unknown, maxDecimals = 2): string {
+  const decimals =
+    Number.isInteger(maxDecimals) && maxDecimals >= 0 ? maxDecimals : 2;
+
+  const scale = new Decimal(10).pow(decimals);
+
+  let scaled = toDecimal(value).times(scale);
+
+  /*
+   * ده مش تقريب مالي.
+   *
+   * فقط إزالة Noise أقل من
+   * 0.0000000001 عند حد العرض.
+   */
+  const nearestInteger = scaled.toNearest(1, Decimal.ROUND_HALF_UP);
+
+  if (scaled.minus(nearestInteger).abs().lte('0.0000000001')) {
+    scaled = nearestInteger;
+  }
+
+  const truncated = scaled.trunc().div(scale);
+
+  let text = truncated.toFixed(decimals);
+
+  if (text.includes('.')) {
+    text = text.replace(/0+$/, '').replace(/\.$/, '');
+  }
+
+  if (text === '-0' || text === '') {
+    return '0';
+  }
+
+  return text;
+}
+
+export function formatPreciseMoney(value: unknown): string {
+  return `${truncateForDisplay(value)} ج.م`;
+}
+
+export function allocateProportionalAmountPrecise(
+  totalValue: unknown,
+  quantityInput: unknown,
+  totalQuantityInput: unknown,
+): number {
+  const total = toDecimal(totalValue);
+
+  const quantity = toDecimal(quantityInput);
+
+  const totalQuantity = toDecimal(totalQuantityInput);
+
+  if (quantity.lte(0) || totalQuantity.lte(0)) {
+    return 0;
+  }
+
+  if (quantity.eq(totalQuantity)) {
+    return preservePrecision(total.toString());
+  }
+
+  return preservePrecision(total.times(quantity).div(totalQuantity).toString());
+}
+
+export function allocatePreciseTotalAcrossWeights(
+  totalValue: unknown,
+  weightInputs: unknown[],
+): number[] {
+  const total = toDecimal(totalValue);
+
+  const weights = weightInputs.map((value) => {
+    const weight = toDecimal(value);
+
+    return weight.gt(0) ? weight : new Decimal(0);
+  });
+
+  const totalWeight = weights.reduce(
+    (sum, weight) => sum.plus(weight),
+    new Decimal(0),
+  );
+
+  if (total.lte(0) || totalWeight.lte(0) || weights.length === 0) {
+    return weights.map(() => 0);
+  }
+
+  let lastPositiveIndex = -1;
+
+  for (let index = weights.length - 1; index >= 0; index -= 1) {
+    if (weights[index].gt(0)) {
+      lastPositiveIndex = index;
+      break;
+    }
+  }
+
+  let remainingTotal = new Decimal(total);
+
+  let remainingWeight = new Decimal(totalWeight);
+
+  return weights.map((weight, index) => {
+    if (weight.lte(0)) {
+      return 0;
+    }
+
+    const allocated =
+      index === lastPositiveIndex
+        ? remainingTotal
+        : remainingTotal.times(weight).div(remainingWeight);
+
+    remainingTotal = remainingTotal.minus(allocated);
+
+    remainingWeight = remainingWeight.minus(weight);
+
+    return preservePrecision(allocated.toString());
+  });
 }
 
 export function allocateProportionalAmount(
@@ -179,7 +403,7 @@ export function resolveWholeMoneySettlement(
   requestedCashValue: unknown,
   outstandingValue: unknown,
 ) {
-  const outstandingAmount = roundFinancial(
+  const outstandingAmount = normalizePreciseZero(
     Math.max(0, Number(outstandingValue ?? 0)),
   );
 
@@ -208,18 +432,18 @@ export function resolveWholeMoneySettlement(
   const overpayment = cashAmount > outstandingAmount && !isFullSettlement;
 
   const allocatedAmount =
-    cashAmount <= 0 || outstandingAmount <= 0
+    cashAmount <= 0 || !hasPositivePreciseAmount(outstandingAmount)
       ? 0
       : isFullSettlement
         ? outstandingAmount
-        : roundFinancial(Math.min(cashAmount, outstandingAmount));
+        : normalizePreciseZero(Math.min(cashAmount, outstandingAmount));
 
-  const remainingAmount = roundFinancial(
-    Math.max(0, outstandingAmount - allocatedAmount),
+  const remainingAmount = normalizePreciseZero(
+    Math.max(0, preciseSubtract(outstandingAmount, allocatedAmount)),
   );
 
   const roundingAdjustment = isFullSettlement
-    ? roundFinancial(cashAmount - allocatedAmount)
+    ? normalizePreciseZero(preciseSubtract(cashAmount, allocatedAmount))
     : 0;
 
   return {

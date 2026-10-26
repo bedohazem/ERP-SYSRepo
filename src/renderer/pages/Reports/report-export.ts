@@ -1,5 +1,5 @@
 import { getPaymentMethodLabel } from '../../utils/payment-method';
-import { roundCost, roundFinancial } from '../../../shared/money';
+import { truncateForDisplay } from '../../../shared/money';
 
 export type ReportsExportData = {
   summary: Record<string, number>;
@@ -30,11 +30,11 @@ type ExportSection = {
 };
 
 function numberValue(value: unknown) {
-  return String(roundFinancial(value));
+  return truncateForDisplay(value);
 }
 
 function preciseNumberValue(value: unknown) {
-  return String(roundCost(value));
+  return truncateForDisplay(value);
 }
 
 function escapeHtml(value: unknown) {

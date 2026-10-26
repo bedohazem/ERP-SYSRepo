@@ -1,7 +1,12 @@
 import { getDb } from '../db';
 
 import { createPurchaseInvoice } from './purchases.repo';
-import { roundCost } from '../../../shared/money';
+import {
+  preservePrecision,
+  preciseDivide,
+  preciseMultiply,
+  preciseSum,
+} from '../../../shared/money';
 
 export type SmartReorderInput = {
   categoryId?: number | string | null;
@@ -332,7 +337,7 @@ export function getSmartReorderSuggestions(input?: SmartReorderInput) {
 
         unit_cost: unitCost,
 
-        estimated_cost: roundCost(suggestedQuantity * unitCost),
+        estimated_cost: preciseMultiply(suggestedQuantity, unitCost),
 
         reason,
       };
@@ -440,9 +445,9 @@ function preparePurchaseOrderItems(input: PurchaseOrderItemInput[]) {
       throw new Error(`تكلفة غير صحيحة للصنف ${variant.product_name}`);
     }
 
-    const lineTotal = roundCost(quantity * inputCost);
+    const unitCost = preservePrecision(inputCost);
 
-    const unitCost = roundCost(lineTotal / quantity);
+    const lineTotal = preciseMultiply(quantity, unitCost);
 
     return {
       variant_id: variantId,
@@ -578,9 +583,7 @@ export function createPurchaseOrder(input: CreatePurchaseOrderInput) {
 
       status: 'draft',
 
-      total_amount: roundCost(
-        items.reduce((sum, item) => sum + item.line_total, 0),
-      ),
+      total_amount: preciseSum(items.map((item) => item.line_total)),
 
       items_count: items.length,
     };
@@ -849,8 +852,8 @@ export function updatePurchaseOrder(input: {
       Math.abs(incomingQuantity - Number(existing.quantity || 0)) <= 0.000001;
 
     const sameDisplayedUnitCost =
-      roundCost(incomingUnitCost) ===
-      roundCost(Number(existing.unit_cost || 0));
+      preservePrecision(incomingUnitCost) ===
+      preservePrecision(Number(existing.unit_cost || 0));
 
     /*
      * لو المستخدم لم يغير الكمية
@@ -866,7 +869,9 @@ export function updatePurchaseOrder(input: {
      * إلى 1869.96.
      */
     if (sameQuantity && sameDisplayedUnitCost) {
-      const historicalLineTotal = roundCost(Number(existing.line_total || 0));
+      const historicalLineTotal = preservePrecision(
+        Number(existing.line_total || 0),
+      );
 
       if (incomingQuantity > 0 && historicalLineTotal > 0) {
         return {
@@ -1104,7 +1109,7 @@ export function receivePurchaseOrder(input: {
   const items = snapshot.items.map((item: any) => {
     const quantity = Number(item.quantity || 0);
 
-    const lineTotal = roundCost(Number(item.line_total || 0));
+    const lineTotal = preservePrecision(Number(item.line_total || 0));
 
     if (!Number.isFinite(quantity) || quantity <= 0 || lineTotal <= 0) {
       throw new Error(`حدد تكلفة شراء صحيحة للصنف ${item.product_name}`);
@@ -1117,7 +1122,7 @@ export function receivePurchaseOrder(input: {
      * مثال:
      * 1870 / 12 = 155.833333...
      */
-    const rawUnitCost = lineTotal / quantity;
+    const rawUnitCost = preciseDivide(lineTotal, quantity);
 
     return {
       variant_id: Number(item.variant_id),
