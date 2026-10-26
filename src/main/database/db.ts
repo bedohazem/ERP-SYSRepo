@@ -3569,21 +3569,18 @@ export function getDb(): Database.Database {
 
         name: 'purchase-item-group-pricing',
 
-        up: () => {
-          /*
-           * null في العمودين =
-           * تسعير عادي بسعر القطعة.
-           *
-           * وجود القيمتين =
-           * تسعير مجموعة.
-           *
-           * مثال:
-           * 12 قطعة = 1870
-           */
-          safeAddColumn(db, 'purchase_items', 'pricing_base_quantity', 'REAL');
-
-          safeAddColumn(db, 'purchase_items', 'pricing_base_amount', 'REAL');
-        },
+        /*
+         * تم إلغاء التجربة قبل إصدارها للمستخدمين.
+         *
+         * نحتفظ برقم واسم الـMigration فقط
+         * حتى تظل قواعد بيانات التطوير التي
+         * نفذتها سابقًا قابلة للفتح.
+         *
+         * أي قاعدة بيانات جديدة أو ترقية
+         * من الإصدار المنشور 3.3.0 لن تضيف
+         * أي أعمدة خاصة بتسعير المجموعة.
+         */
+        up: () => {},
       },
 
       {
@@ -3854,9 +3851,18 @@ export function getDb(): Database.Database {
 
         name: 'purchase-item-entered-unit-cost',
 
-        up: () => {
-          safeAddColumn(db, 'purchase_items', 'entered_unit_cost', 'REAL');
-        },
+        /*
+         * تم إلغاء العمود قبل الإصدار العام.
+         *
+         * unit_cost أصبح هو Snapshot سعر
+         * الشراء الأصلي، لذلك لا نحتاج
+         * نسخة مكررة منه.
+         *
+         * نحتفظ بالـMigration كـslot فارغ
+         * لحماية قواعد بيانات التطوير
+         * التي نفذته بالفعل.
+         */
+        up: () => {},
       },
     ]);
 

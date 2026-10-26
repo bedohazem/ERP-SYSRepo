@@ -543,9 +543,15 @@ describe('database migrations', () => {
       ]),
     );
 
-    expect(purchaseItemColumns.map((column) => column.name)).toContain(
-      'entered_unit_cost',
+    const purchaseItemColumnNames = purchaseItemColumns.map(
+      (column) => column.name,
     );
+
+    expect(purchaseItemColumnNames).not.toContain('entered_unit_cost');
+
+    expect(purchaseItemColumnNames).not.toContain('pricing_base_quantity');
+
+    expect(purchaseItemColumnNames).not.toContain('pricing_base_amount');
 
     expect(purchaseInvoiceColumns.map((column) => column.name)).toContain(
       'business_date',

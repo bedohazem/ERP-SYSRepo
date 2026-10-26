@@ -5,7 +5,6 @@ import {
 } from './suppliers.repo';
 import { createCashMovement, resolveCashAccount } from './cash.repo';
 import {
-  allocateProportionalAmount,
   allocateRoundedTotalAcrossWeights,
   formatMoney,
   resolveWholeMoneySettlement,
@@ -83,19 +82,7 @@ function calculatePurchaseDueDate(
 type PurchaseItemInput = {
   variant_id: number;
   quantity: number;
-
-  /*
-   * في التسعير العادي:
-   * سعر شراء القطعة قبل خصم الفاتورة.
-   *
-   * في تسعير المجموعة:
-   * قيمة عرض فقط، لأن الحساب الحقيقي
-   * يعتمد على pricing_base_*.
-   */
   unit_cost: number;
-
-  pricing_base_quantity?: number | null;
-  pricing_base_amount?: number | null;
 };
 
 export type CreatePurchaseInput = {
@@ -376,7 +363,7 @@ function rebuildSupplierBalance(
   return balance;
 }
 
-function resolvePurchaseItemBasePricing(
+function preparePurchaseItemInput(
   item: PurchaseItemInput,
   productName: string,
 ) {
@@ -386,95 +373,24 @@ function resolvePurchaseItemBasePricing(
     throw new Error(`كمية غير صحيحة للصنف ${productName}`);
   }
 
-  const hasBaseQuantity =
-    item.pricing_base_quantity !== null &&
-    item.pricing_base_quantity !== undefined;
-
-  const hasBaseAmount =
-    item.pricing_base_amount !== null && item.pricing_base_amount !== undefined;
-
   /*
-   * دعم Legacy فقط لفواتير
-   * تسعير المجموعة القديمة.
+   * سعر الوحدة الخام كما أدخله المستخدم.
    *
-   * الفواتير الجديدة لن تستخدمه.
+   * ممنوع تقريب السعر هنا.
    */
-  if (hasBaseQuantity !== hasBaseAmount) {
-    throw new Error(`بيانات تسعير المجموعة غير مكتملة للصنف ${productName}`);
-  }
+  const unitCost = Number(item.unit_cost);
 
-  if (hasBaseQuantity && hasBaseAmount) {
-    const pricingBaseQuantity = Number(item.pricing_base_quantity);
-
-    const pricingBaseAmount = roundCost(item.pricing_base_amount);
-
-    if (!Number.isFinite(pricingBaseQuantity) || pricingBaseQuantity <= 0) {
-      throw new Error(`عدد قطع المجموعة غير صحيح للصنف ${productName}`);
-    }
-
-    if (pricingBaseAmount <= 0) {
-      throw new Error(`سعر المجموعة غير صحيح للصنف ${productName}`);
-    }
-
-    const rawLineTotal = allocateProportionalAmount(
-      pricingBaseAmount,
-      quantity,
-      pricingBaseQuantity,
-    );
-
-    const baseUnitCost = pricingBaseAmount / pricingBaseQuantity;
-
-    if (
-      !Number.isFinite(baseUnitCost) ||
-      baseUnitCost <= 0 ||
-      rawLineTotal <= 0
-    ) {
-      throw new Error(`سعر شراء غير صحيح للصنف ${productName}`);
-    }
-
-    return {
-      quantity,
-
-      /*
-       * Legacy compatibility only.
-       */
-      pricingBaseQuantity,
-      pricingBaseAmount,
-
-      /*
-       * السعر الكامل بدون تقريب
-       * لقرشين.
-       */
-      baseUnitCost,
-
-      enteredUnitCost: baseUnitCost,
-
-      rawLineTotal,
-    };
-  }
-
-  /*
-   * النظام الجديد:
-   *
-   * سعر الشراء كما كتبه
-   * المستخدم بالضبط.
-   */
-  const rawUnitCost = Number(item.unit_cost);
-
-  if (!Number.isFinite(rawUnitCost) || rawUnitCost <= 0) {
+  if (!Number.isFinite(unitCost) || unitCost <= 0) {
     throw new Error(`سعر شراء غير صحيح للصنف ${productName}`);
   }
 
   /*
-   * ممنوع roundCost هنا.
+   * الحساب يتم بالسعر الكامل.
    *
    * مثال:
-   *
    * 155.8333333333333 × 12
-   *
-   * يتم الحساب بالسعر الكامل.
    */
-  const rawLineTotal = quantity * rawUnitCost;
+  const rawLineTotal = quantity * unitCost;
 
   if (!Number.isFinite(rawLineTotal) || rawLineTotal <= 0) {
     throw new Error(`إجمالي شراء غير صحيح للصنف ${productName}`);
@@ -482,43 +398,99 @@ function resolvePurchaseItemBasePricing(
 
   return {
     quantity,
-
-    pricingBaseQuantity: null,
-    pricingBaseAmount: null,
-
-    baseUnitCost: rawUnitCost,
-
-    enteredUnitCost: rawUnitCost,
-
+    unitCost,
     rawLineTotal,
   };
+}
+
+/*
+ * التكلفة الفعلية للوحدة بعد أي خصم.
+ *
+ * purchase_items.unit_cost
+ * = السعر الأصلي الذي أدخله المستخدم.
+ *
+ * purchase_items.line_total
+ * = القيمة المحاسبية النهائية للبند.
+ *
+ * لذلك تكلفة المخزون الفعلية للوحدة
+ * تشتق من:
+ *
+ * line_total ÷ quantity
+ */
+function getEffectivePurchaseUnitCost(item: {
+  quantity?: number | null;
+  line_total?: number | null;
+  unit_cost?: number | null;
+}) {
+  const quantity = Number(item.quantity ?? 0);
+
+  const hasLineTotal =
+    item.line_total !== null && item.line_total !== undefined;
+
+  if (hasLineTotal) {
+    const lineTotal = Number(item.line_total);
+
+    if (
+      !Number.isFinite(quantity) ||
+      quantity <= 0 ||
+      !Number.isFinite(lineTotal) ||
+      lineTotal < 0
+    ) {
+      throw new Error('تكلفة شراء الصنف غير صحيحة');
+    }
+
+    return lineTotal / quantity;
+  }
+
+  const unitCost = Number(item.unit_cost ?? 0);
+
+  if (!Number.isFinite(unitCost) || unitCost < 0) {
+    throw new Error('تكلفة شراء الصنف غير صحيحة');
+  }
+
+  return unitCost;
+}
+
+function getPurchaseBuyPriceFromSnapshot(item: {
+  quantity?: number | null;
+  unit_cost?: number | null;
+  line_total?: number | null;
+  discount_value?: number | null;
+}) {
+  const unitCost = Number(item.unit_cost ?? 0);
+
+  if (!Number.isFinite(unitCost) || unitCost < 0) {
+    throw new Error('سعر شراء الصنف غير صحيح');
+  }
+
+  const discountValue = Number(item.discount_value ?? 0);
+
+  /*
+   * بدون خصم:
+   * آخر سعر شراء هو نفس السعر
+   * الذي أدخله المستخدم.
+   */
+  if (!Number.isFinite(discountValue) || discountValue <= 0) {
+    return unitCost;
+  }
+
+  /*
+   * مع خصم فاتورة:
+   * buy_price يعبر عن التكلفة
+   * الفعلية بعد الخصم.
+   */
+  return getEffectivePurchaseUnitCost(item);
 }
 
 function applyPurchaseInvoiceDiscount<
   T extends {
     quantity: number;
-
-    baseUnitCost: number;
-
-    enteredUnitCost: number;
-
+    unitCost: number;
     rawLineTotal: number;
   },
 >(items: T[], discountValueInput: number) {
-  /*
-   * كل بند يتحسب أولًا
-   * من سعر الشراء الكامل.
-   *
-   * بعدها إجمالي البند فقط
-   * يقفل على منزلتين.
-   */
   const grossLineTotals = items.map((item) => roundCost(item.rawLineTotal));
 
-  /*
-   * إجمالي الفاتورة =
-   * مجموع إجماليات البنود،
-   * تمامًا مثل فاتورة المورد.
-   */
   const subTotal = roundCost(
     grossLineTotals.reduce(
       (sum, value) => sum + value,
@@ -535,11 +507,6 @@ function applyPurchaseInvoiceDiscount<
     ),
   );
 
-  /*
-   * الخصم نفسه يتوزع
-   * بحيث مجموع خصم البنود
-   * = خصم الفاتورة بالضبط.
-   */
   const lineDiscounts = allocateRoundedTotalAcrossWeights(
     discountValue,
 
@@ -559,25 +526,10 @@ function applyPurchaseInvoiceDiscount<
       ),
     );
 
-    /*
-     * بدون خصم:
-     *
-     * unitCost يظل السعر
-     * الأصلي الكامل الذي
-     * أدخله المستخدم.
-     *
-     * مع الخصم:
-     *
-     * تكلفة الوحدة الفعلية
-     * = قيمة البند بعد الخصم
-     * ÷ الكمية.
-     *
-     * ولا نقربها لقرشين.
-     */
-    const unitCost =
+    const effectiveUnitCost =
       discountValue > 0 && item.quantity > 0
         ? lineTotal / item.quantity
-        : item.baseUnitCost;
+        : item.unitCost;
 
     return {
       ...item,
@@ -588,7 +540,7 @@ function applyPurchaseInvoiceDiscount<
 
       lineTotal,
 
-      unitCost,
+      effectiveUnitCost,
     };
   });
 }
@@ -669,10 +621,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         throw new Error('الصنف غير موجود');
       }
 
-      const pricing = resolvePurchaseItemBasePricing(
-        item,
-        variant.product_name,
-      );
+      const pricing = preparePurchaseItemInput(item, variant.product_name);
 
       return {
         variant,
@@ -888,19 +837,12 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         color,
         quantity,
         unit_cost,
-        entered_unit_cost,
-
-        pricing_base_quantity,
-        pricing_base_amount,
-
         previous_buy_price,
         line_total
       )
       VALUES (
         ?, ?, ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?,
-        ?, ?
+        ?, ?, ?, ?
       )
     `);
 
@@ -919,10 +861,12 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         item.variant.size ?? null,
         item.variant.color ?? null,
         item.quantity,
+
+        /*
+         * نحفظ السعر الأصلي كما أدخله المستخدم.
+         */
         item.unitCost,
-        item.enteredUnitCost,
-        item.pricingBaseQuantity,
-        item.pricingBaseAmount,
+
         Number(item.variant.buy_price || 0),
         item.lineTotal,
       );
@@ -932,7 +876,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
 
         quantity: item.quantity,
 
-        unit_cost: item.unitCost,
+        unit_cost: item.effectiveUnitCost,
         cost_value: item.lineTotal,
         created_by: actorId || null,
         reference_id: purchaseId,
@@ -942,7 +886,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         notes: `دخول مخزون من فاتورة شراء رقم ${purchaseId}`,
       });
 
-      updateVariantCost.run(item.unitCost, item.variant.id);
+      updateVariantCost.run(item.effectiveUnitCost, item.variant.id);
     }
 
     db.prepare(
@@ -1070,7 +1014,10 @@ function getPreviousBuyPriceForPurchaseEdit(
     .prepare(
       `
       SELECT
-        pii.unit_cost
+        pii.quantity,
+        pii.unit_cost,
+        pii.line_total,
+        pi.discount_value
 
       FROM purchase_items pii
 
@@ -1095,12 +1042,15 @@ function getPreviousBuyPriceForPurchaseEdit(
     )
     .get(variantId, purchaseId) as
     | {
+        quantity: number;
         unit_cost: number;
+        line_total: number;
+        discount_value: number;
       }
     | undefined;
 
   if (previousActivePurchase) {
-    return Number(previousActivePurchase.unit_cost);
+    return getPurchaseBuyPriceFromSnapshot(previousActivePurchase);
   }
 
   /*
@@ -1185,7 +1135,10 @@ function recalculateVariantBuyPrice(
     .prepare(
       `
       SELECT
-        pii.unit_cost
+        pii.quantity,
+        pii.unit_cost,
+        pii.line_total,
+        pi.discount_value
 
       FROM purchase_items pii
 
@@ -1208,14 +1161,17 @@ function recalculateVariantBuyPrice(
     )
     .get(variantId) as
     | {
+        quantity: number;
         unit_cost: number;
+        line_total: number;
+        discount_value: number;
       }
     | undefined;
 
   let nextBuyPrice: number | null = null;
 
   if (latestActivePurchase) {
-    nextBuyPrice = Number(latestActivePurchase.unit_cost);
+    nextBuyPrice = getPurchaseBuyPriceFromSnapshot(latestActivePurchase);
   } else if (
     fallbackPreviousBuyPrice !== null &&
     fallbackPreviousBuyPrice !== undefined &&
@@ -1549,11 +1505,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         throw new Error('الصنف غير موجود');
       }
 
-      const pricing = resolvePurchaseItemBasePricing(
-        rawItem,
-        variant.product_name,
-      );
-
+      const pricing = preparePurchaseItemInput(rawItem, variant.product_name);
       const oldItem = oldItemByVariant.get(variantId);
 
       return {
@@ -1856,7 +1808,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       const newQuantity = Number(newItem?.quantity || 0);
 
-      const newUnitCost = Number(newItem?.unitCost || 0);
+      const newUnitCost = Number(newItem?.effectiveUnitCost || 0);
 
       const newCostValue = roundCost(Number(newItem?.lineTotal || 0));
 
@@ -1904,7 +1856,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
           quantity: Number(oldItem.quantity || 0),
 
-          unit_cost: Number(oldItem.unit_cost || 0),
+          unit_cost: getEffectivePurchaseUnitCost(oldItem),
           cost_value: Number(oldItem.line_total || 0),
           created_by: actorId || null,
           reference_id: purchaseId,
@@ -2046,9 +1998,6 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
           quantity,
           unit_cost,
-          entered_unit_cost,
-          pricing_base_quantity,
-          pricing_base_amount,
           previous_buy_price,
 
           line_total
@@ -2056,7 +2005,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
         VALUES (
           ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?
+          ?, ?, ?
         )
         `,
     );
@@ -2074,9 +2023,6 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
         item.quantity,
         item.unitCost,
-        item.enteredUnitCost,
-        item.pricingBaseQuantity,
-        item.pricingBaseAmount,
         item.previousBuyPrice,
 
         item.lineTotal,
@@ -2334,11 +2280,7 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
 
         quantity: Number(item.quantity || 0),
 
-        /*
-         * إلغاء الشراء يعكس
-         * تكلفة الفاتورة نفسها.
-         */
-        unit_cost: Number(item.unit_cost || 0),
+        unit_cost: getEffectivePurchaseUnitCost(item),
         cost_value: Number(item.line_total || 0),
         created_by: actorId || null,
         reference_id: purchaseId,
@@ -2584,7 +2526,11 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         );
       }
 
-      const unitCost = roundCost(Number(purchaseItem.unit_cost || 0));
+      if (!Number.isFinite(originalQuantity) || originalQuantity <= 0) {
+        throw new Error(
+          `كمية الشراء الأصلية للصنف "${purchaseItem.product_name}" غير صحيحة`,
+        );
+      }
 
       const originalLineTotal = roundCost(
         Number(
@@ -2592,6 +2538,12 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
             originalQuantity * Number(purchaseItem.unit_cost || 0),
         ),
       );
+
+      const unitCost = getEffectivePurchaseUnitCost({
+        quantity: originalQuantity,
+        unit_cost: Number(purchaseItem.unit_cost || 0),
+        line_total: originalLineTotal,
+      });
 
       const previousReturnedValueRow = db
         .prepare(
@@ -2618,12 +2570,6 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       const alreadyReturnedValue = roundCost(
         Number(previousReturnedValueRow?.returned_value || 0),
       );
-
-      if (!Number.isFinite(originalQuantity) || originalQuantity <= 0) {
-        throw new Error(
-          `كمية الشراء الأصلية للصنف "${purchaseItem.product_name}" غير صحيحة`,
-        );
-      }
 
       const cumulativeReturnedQuantity = alreadyReturned + quantity;
 

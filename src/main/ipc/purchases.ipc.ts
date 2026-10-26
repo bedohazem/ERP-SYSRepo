@@ -92,22 +92,7 @@ function normalizePurchaseItems(value: unknown) {
 
       quantity: requirePositiveNumber(item.quantity, 'كمية صنف الشراء'),
 
-      /*
-       * سعر الشراء الخام لا يتم تقريبه هنا.
-       * الـrepository هو المسؤول عن حساب
-       * إجمالي البند ثم تقريب التكلفة للقرش.
-       */
       unit_cost: requirePositiveNumber(item.unit_cost, 'سعر شراء الصنف'),
-
-      pricing_base_quantity: optionalPositiveInteger(
-        item.pricing_base_quantity,
-        'عدد قطع مجموعة الشراء',
-      ),
-
-      pricing_base_amount: optionalNonNegativeNumber(
-        item.pricing_base_amount,
-        'قيمة مجموعة الشراء',
-      ),
     };
   });
 }

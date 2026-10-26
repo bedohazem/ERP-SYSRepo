@@ -488,46 +488,12 @@ export default function PurchasesPage() {
           throw new Error('لا يمكن تعديل فاتورة شراء ملغاة');
         }
 
-        const storedSubTotal = Number(
-          purchase.sub_total ||
-            Number(purchase.total_amount || 0) +
-              Number(purchase.discount_value || 0),
-        );
-
-        const storedExactTotal = Number(
-          purchase.exact_total_amount ?? purchase.total_amount ?? 0,
-        );
-
-        const discountFactor =
-          storedSubTotal > 0 && storedExactTotal > 0
-            ? storedExactTotal / storedSubTotal
-            : 1;
-
         const nextLines: PurchaseLine[] = (data.items ?? []).map((item) => {
-          const storedUnitCost = Number(item.unit_cost || 0);
-
-          const enteredUnitCost = Number(item.entered_unit_cost ?? 0);
-          const pricingBaseQuantity =
-            item.pricing_base_quantity == null
-              ? null
-              : Number(item.pricing_base_quantity);
-
-          const pricingBaseAmount =
-            item.pricing_base_amount == null
-              ? null
-              : Number(item.pricing_base_amount);
-
-          const hasGroupPricing =
-            Number(pricingBaseQuantity) > 0 && Number(pricingBaseAmount) > 0;
-
-          const originalUnitCost =
-            enteredUnitCost > 0
-              ? enteredUnitCost
-              : hasGroupPricing
-                ? Number(pricingBaseAmount) / Number(pricingBaseQuantity)
-                : discountFactor > 0
-                  ? storedUnitCost / discountFactor
-                  : storedUnitCost;
+          /*
+           * unit_cost الآن له معنى واحد فقط:
+           * سعر الشراء الأصلي الذي أدخله المستخدم.
+           */
+          const originalUnitCost = Number(item.unit_cost || 0);
 
           return {
             variant_id: Number(item.variant_id),
@@ -540,7 +506,7 @@ export default function PurchasesPage() {
 
             color: item.color ?? null,
 
-            buy_price: Number(item.current_buy_price ?? storedUnitCost),
+            buy_price: Number(item.current_buy_price ?? originalUnitCost),
 
             sell_price: Number(item.sell_price || 0),
 

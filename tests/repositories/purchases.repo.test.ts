@@ -1623,11 +1623,7 @@ describe('purchases repository', () => {
 
           quantity: 12,
 
-          unit_cost: 155.83,
-
-          pricing_base_quantity: 12,
-
-          pricing_base_amount: 1870,
+          unit_cost: 155.8333333333333,
         },
       ],
     });
@@ -4089,7 +4085,7 @@ describe('purchases repository', () => {
     expect(statement.summary.due.total_open).toBe(250);
   });
 
-  it('uses group pricing as the source of truth and keeps invoice discount at cent precision', () => {
+  it('keeps entered unit cost as the purchase snapshot while inventory uses the discounted cost', () => {
     const supplierId = createTestSupplier();
 
     const variant = seedPurchaseProduct();
@@ -4101,79 +4097,61 @@ describe('purchases repository', () => {
 
       paid_amount: 0,
 
-      sub_total: 1090.83,
+      sub_total: 400,
 
       discount_type: 'percent',
 
-      discount_input: 10,
+      discount_input: 25,
 
-      discount_value: 109.08,
+      discount_value: 100,
 
       items: [
         {
           variant_id: variant.variant_id,
 
-          quantity: 7,
+          quantity: 3,
 
-          /*
-           * للعرض فقط.
-           */
-          unit_cost: 155.83,
-
-          /*
-           * الحقيقة:
-           * 12 قطعة = 1870
-           */
-          pricing_base_quantity: 12,
-
-          pricing_base_amount: 1870,
+          unit_cost: 133.3333333333333,
         },
       ],
     });
 
     const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(Number(invoice.purchase.sub_total)).toBe(1090.83);
+    expect(Number(invoice.purchase.sub_total)).toBe(400);
 
-    expect(Number(invoice.purchase.exact_total_amount)).toBe(981.75);
+    expect(Number(invoice.purchase.exact_total_amount)).toBe(300);
 
-    expect(Number(invoice.purchase.total_amount)).toBe(981.75);
-
-    expect(Number(invoice.purchase.rounding_adjustment)).toBe(0);
-
-    expect(Number(invoice.items[0].pricing_base_quantity)).toBe(12);
-
-    expect(Number(invoice.items[0].pricing_base_amount)).toBe(1870);
+    expect(Number(invoice.purchase.total_amount)).toBe(300);
 
     /*
-     * قيمة البند الحقيقية
-     * بعد خصم الفاتورة.
+     * السعر الأصلي لا يتغير بسبب الخصم.
      */
-    expect(Number(invoice.items[0].line_total)).toBe(981.75);
+    expect(Number(invoice.items[0].unit_cost)).toBe(133.3333333333333);
 
     /*
-     * متوسط الوحدة المعروض.
+     * القيمة الفعلية للبند بعد الخصم.
      */
-    expect(Number(invoice.items[0].unit_cost)).toBe(140.25);
+    expect(Number(invoice.items[0].line_total)).toBe(300);
 
     const state = getVariantCostState('PURCHASE001');
 
-    expect(Number(state.stock)).toBe(7);
+    expect(Number(state.stock)).toBe(3);
 
-    expect(Number(state.inventory_value)).toBe(981.75);
-
-    expect(Number(state.average_cost)).toBe(140.25);
-
-    expect(Number(state.buy_price)).toBe(140.25);
+    expect(Number(state.inventory_value)).toBe(300);
 
     /*
-     * الرصيد على المورد
-     * يظل بالقيمة المحاسبية الدقيقة.
+     * تكلفة المخزون الفعلية:
+     * 300 ÷ 3 = 100
      */
-    expect(getSupplierBalance(supplierId)).toBe(981.75);
+    expect(Number(state.average_cost)).toBe(100);
+
+    expect(Number(state.buy_price)).toBe(100);
+
+    expect(getSupplierBalance(supplierId)).toBe(300);
   });
 
-  it('allocates group-priced purchase returns cumulatively without losing cents', () => {
+  it('allocates precise purchase returns cumulatively without losing cents', () => {
     const supplierId = createTestSupplier();
 
     const variant = seedPurchaseProduct();
@@ -4191,11 +4169,7 @@ describe('purchases repository', () => {
 
           quantity: 12,
 
-          unit_cost: 155.83,
-
-          pricing_base_quantity: 12,
-
-          pricing_base_amount: 1870,
+          unit_cost: 155.8333333333333,
         },
       ],
     });
@@ -4341,11 +4315,7 @@ describe('purchases repository', () => {
 
           quantity: 12,
 
-          unit_cost: 155.83,
-
-          pricing_base_quantity: 12,
-
-          pricing_base_amount: 1870,
+          unit_cost: 155.8333333333333,
         },
       ],
     });
@@ -4409,7 +4379,7 @@ describe('purchases repository', () => {
     cancelPurchaseReturn({
       return_id: purchaseReturn.return_id,
 
-      reason: 'Restore exact group-priced return cost',
+      reason: 'Restore exact purchase return cost',
 
       actor_id: 1,
     });
@@ -4460,8 +4430,6 @@ describe('purchases repository', () => {
 
     expect(Number(invoice.purchase.total_amount)).toBe(1870);
 
-    expect(Number(invoice.items[0].entered_unit_cost)).toBe(155.8333333333333);
-
     expect(Number(invoice.items[0].unit_cost)).toBe(155.8333333333333);
 
     expect(Number(invoice.items[0].line_total)).toBe(1870);
@@ -4475,7 +4443,7 @@ describe('purchases repository', () => {
     expect(Number(state.average_cost)).toBe(155.83);
   });
 
-  it('calculates purchase invoice total from full unit prices before line rounding', () => {
+  it('calculates purchase invoice total from rounded line amounts without rounding unit prices', () => {
     const supplierId = createTestSupplier();
 
     const first = seedPurchaseProduct();
@@ -4543,25 +4511,13 @@ describe('purchases repository', () => {
 
     const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    /*
-     * الحقيقة:
-     *
-     * 3 × 10.005 = 30.015
-     * 3 × 10.005 = 30.015
-     *
-     * المجموع الحقيقي = 60.03
-     *
-     * وليس:
-     *
-     * 30.02 + 30.02 = 60.04
-     */
     expect(Number(invoice.purchase.sub_total)).toBe(60.04);
 
     expect(Number(invoice.purchase.total_amount)).toBe(60.04);
 
-    expect(Number(invoice.items[0].entered_unit_cost)).toBe(10.005);
+    expect(Number(invoice.items[0].unit_cost)).toBe(10.005);
 
-    expect(Number(invoice.items[1].entered_unit_cost)).toBe(10.005);
+    expect(Number(invoice.items[1].unit_cost)).toBe(10.005);
 
     const allocatedLines = invoice.items.reduce(
       (sum: number, item: any) => sum + Number(item.line_total || 0),
