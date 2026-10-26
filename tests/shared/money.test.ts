@@ -13,6 +13,7 @@ import {
   hasPositivePreciseAmount,
   isEffectivelyZero,
   normalizePreciseZero,
+  formatSignedPreciseMoney,
 } from '../../src/shared/money';
 
 describe('whole-pound money policy', () => {
@@ -134,5 +135,15 @@ describe('whole-pound money policy', () => {
     expect(normalizePreciseZero(-0.0000000002)).toBe(0);
 
     expect(normalizePreciseZero(84.375)).toBe(84.375);
+  });
+
+  it('formats precise signed money without positive zero noise', () => {
+    expect(formatSignedPreciseMoney(84.375)).toBe('+84.37 ج.م');
+
+    expect(formatSignedPreciseMoney(-84.375)).toBe('-84.37 ج.م');
+
+    expect(formatSignedPreciseMoney(0.0000000002)).toBe('0 ج.م');
+
+    expect(formatSignedPreciseMoney(-0.0000000002)).toBe('0 ج.م');
   });
 });

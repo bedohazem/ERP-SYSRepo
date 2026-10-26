@@ -7,6 +7,7 @@ import {
   formatPreciseMoney,
   preservePrecision,
   preciseMultiply,
+  preciseSum,
   roundMoney,
 } from '../../../shared/money';
 import PaginationBar, {
@@ -501,13 +502,7 @@ export default function PurchaseOrdersPanel({
   );
 
   const receiveInvoiceTotal = useMemo(
-    () =>
-      preservePrecision(
-        detailItems.reduce(
-          (sum, item) => sum + Number(item.line_total || 0),
-          0,
-        ),
-      ),
+    () => preciseSum(detailItems.map((item) => Number(item.line_total || 0))),
     [detailItems],
   );
 

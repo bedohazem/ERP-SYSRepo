@@ -851,7 +851,7 @@ export function updatePurchaseOrder(input: {
     const sameQuantity =
       Math.abs(incomingQuantity - Number(existing.quantity || 0)) <= 0.000001;
 
-    const sameDisplayedUnitCost =
+    const sameUnitCost =
       preservePrecision(incomingUnitCost) ===
       preservePrecision(Number(existing.unit_cost || 0));
 
@@ -868,7 +868,7 @@ export function updatePurchaseOrder(input: {
      * وبذلك حفظ المسودة لا يحولها
      * إلى 1869.96.
      */
-    if (sameQuantity && sameDisplayedUnitCost) {
+    if (sameQuantity && sameUnitCost) {
       const historicalLineTotal = preservePrecision(
         Number(existing.line_total || 0),
       );

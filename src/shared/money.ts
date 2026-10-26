@@ -84,15 +84,6 @@ export function roundCost(value: unknown): number {
     return 0;
   }
 
-  /*
-   * كل قيم التكلفة في النظام
-   * أقصى دقة لها قرشين.
-   *
-   * 100      -> 100
-   * 100.5    -> 100.5
-   * 100.25   -> 100.25
-   * 100.256  -> 100.26
-   */
   const rounded = Number(amount.toFixed(2));
 
   return Object.is(rounded, -0) ? 0 : rounded;
@@ -218,6 +209,14 @@ export function truncateForDisplay(value: unknown, maxDecimals = 2): string {
 
 export function formatPreciseMoney(value: unknown): string {
   return `${truncateForDisplay(value)} ج.م`;
+}
+
+export function formatSignedPreciseMoney(value: unknown): string {
+  const amount = normalizePreciseZero(value);
+
+  const sign = hasPositivePreciseAmount(amount) ? '+' : '';
+
+  return `${sign}${truncateForDisplay(amount)} ج.م`;
 }
 
 export function allocateProportionalAmountPrecise(
@@ -411,21 +410,8 @@ export function resolveWholeMoneySettlement(
 
   const fullSettlementCash = roundMoney(outstandingAmount);
 
-  /*
-   * لو المبلغ المدفوع هو أقرب جنيه
-   * لكامل المديونية، نعتبر الدين
-   * مسددًا بالكامل.
-   *
-   * مثال:
-   * 981.75 دين
-   * 982 كاش
-   *
-   * accounting allocation = 981.75
-   * cash = 982
-   * rounding = +0.25
-   */
   const isFullSettlement =
-    outstandingAmount > 0 &&
+    hasPositivePreciseAmount(outstandingAmount) &&
     cashAmount > 0 &&
     cashAmount === fullSettlementCash;
 

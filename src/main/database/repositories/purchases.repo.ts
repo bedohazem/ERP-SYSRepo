@@ -18,6 +18,7 @@ import {
   preciseMultiply,
   preciseSubtract,
   preciseSum,
+  isEffectivelyZero,
 } from '../../../shared/money';
 import {
   getOpenCashShift,
@@ -238,6 +239,14 @@ function normalizePaymentStatus(
   return 'unpaid';
 }
 
+function samePreciseAmount(left: unknown, right: unknown): boolean {
+  return isEffectivelyZero(preciseSubtract(left, right));
+}
+
+function exceedsPreciseAmount(left: unknown, right: unknown): boolean {
+  return preciseSubtract(left, right) > PRECISE_MONEY_EPSILON;
+}
+
 function resolveStoredPurchaseInitialCashAmount(purchase: {
   total_amount?: number | null;
   exact_total_amount?: number | null;
@@ -260,19 +269,8 @@ function resolveStoredPurchaseInitialCashAmount(purchase: {
     Number(purchase.rounding_adjustment || 0),
   );
 
-  /*
-   * الشكل القديم:
-   *
-   * exact = 443.75
-   * total = 444
-   * paid = 444
-   * adjustment = 0.25
-   *
-   * هنا paid نفسه هو الكاش الحقيقي،
-   * فلا نضيف adjustment مرة ثانية.
-   */
   const legacyRoundedInvoice =
-    Math.abs(totalAmount - exactTotalAmount) > 0.0001;
+    Math.abs(preciseSubtract(totalAmount, exactTotalAmount)) > 0.0001;
 
   if (legacyRoundedInvoice) {
     return paidAmount;
@@ -710,11 +708,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
 
       roundingAdjustment = preciseSubtract(cashPaidAmount, totalAmount);
     } else {
-      /*
-       * بدون اختيار التسوية:
-       * ممنوع إغلاق القروش تلقائيًا.
-       */
-      if (cashPaidAmount > totalAmount + 0.0001) {
+      if (exceedsPreciseAmount(cashPaidAmount, totalAmount)) {
         throw new Error(
           'المبلغ المدفوع أكبر من المستحق؛ فعّل تسوية كامل الفاتورة إذا كنت تريد إقفال فرق القروش',
         );
@@ -1585,7 +1579,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       roundingAdjustment = preciseSubtract(cashPaidAmount, totalAmount);
     } else {
-      if (cashPaidAmount > totalAmount + 0.0001) {
+      if (exceedsPreciseAmount(cashPaidAmount, totalAmount)) {
         throw new Error(
           'المبلغ المدفوع أكبر من المستحق؛ فعّل تسوية كامل الفاتورة إذا كنت تريد إقفال فرق القروش',
         );
@@ -1791,12 +1785,8 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         0,
       );
 
-      const oldCostValue = preservePrecision(
-        oldVariantItems.reduce(
-          (sum, item) => sum + Number(item.line_total || 0),
-
-          0,
-        ),
+      const oldCostValue = preciseSum(
+        oldVariantItems.map((item) => Number(item.line_total || 0)),
       );
 
       const newQuantity = Number(newItem?.quantity || 0);
@@ -1807,7 +1797,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       const sameQuantity = Math.abs(oldQuantity - newQuantity) <= 0.0001;
 
-      const sameCostValue = Math.abs(oldCostValue - newCostValue) <= 0.0001;
+      const sameCostValue = samePreciseAmount(oldCostValue, newCostValue);
 
       if (
         oldVariantItems.length > 0 &&
@@ -2517,12 +2507,13 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         );
       }
 
-      const originalLineTotal = preservePrecision(
-        Number(
-          purchaseItem.line_total ??
-            originalQuantity * Number(purchaseItem.unit_cost || 0),
-        ),
-      );
+      const originalLineTotal =
+        purchaseItem.line_total == null
+          ? preciseMultiply(
+              originalQuantity,
+              Number(purchaseItem.unit_cost || 0),
+            )
+          : preservePrecision(purchaseItem.line_total);
 
       const unitCost = getEffectivePurchaseUnitCost({
         quantity: originalQuantity,
@@ -2637,15 +2628,11 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       previousReturnsRow?.exact_returned || 0,
     );
 
-    const exactBeforeReturn = preservePrecision(
-      Math.max(
-        0,
-
-        originalExactTotal - previousExactReturned,
-      ),
+    const exactBeforeReturn = normalizePreciseZero(
+      Math.max(0, preciseSubtract(originalExactTotal, previousExactReturned)),
     );
 
-    if (exactReturnAmount > exactBeforeReturn + 0.0001) {
+    if (exceedsPreciseAmount(exactReturnAmount, exactBeforeReturn)) {
       throw new Error('قيمة المرتجع أكبر من القيمة المتبقية في فاتورة الشراء');
     }
 
@@ -2732,7 +2719,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
          * ممنوع نستلم أكثر من
          * المستحق المحاسبي.
          */
-        if (cashRefundAmount > refundableAmount + 0.0001) {
+        if (exceedsPreciseAmount(cashRefundAmount, refundableAmount)) {
           throw new Error(
             'المبلغ المستلم أكبر من المستحق؛ فعّل تسوية كامل رد المورد إذا كنت تريد تقريب المبلغ',
           );
@@ -2900,12 +2887,8 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
 
     const oldTotal = preservePrecision(Number(purchase.total_amount || 0));
 
-    const newRemaining = preservePrecision(
-      Math.max(
-        0,
-
-        oldRemaining - debtReductionAmount,
-      ),
+    const newRemaining = normalizePreciseZero(
+      Math.max(0, preciseSubtract(oldRemaining, debtReductionAmount)),
     );
 
     const newPaymentStatus = normalizePaymentStatus(
@@ -3293,20 +3276,12 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
       Number(purchaseReturn.purchase_remaining_amount || 0),
     );
 
-    const maxRemaining = preservePrecision(
-      Math.max(
-        0,
-
-        purchaseTotal - purchasePaid,
-      ),
+    const maxRemaining = normalizePreciseZero(
+      Math.max(0, preciseSubtract(purchaseTotal, purchasePaid)),
     );
 
-    const newRemaining = preservePrecision(
-      Math.min(
-        maxRemaining,
-
-        currentRemaining + debtReductionAmount,
-      ),
+    const newRemaining = normalizePreciseZero(
+      Math.min(maxRemaining, preciseAdd(currentRemaining, debtReductionAmount)),
     );
 
     const newPaymentStatus = normalizePaymentStatus(
@@ -4144,20 +4119,12 @@ export function recordSupplierPayment(input: {
       targetPurchases = [purchase];
     }
 
-    const targetInvoiceOutstanding = preservePrecision(
-      targetPurchases.reduce(
-        (sum, purchase) => sum + Number(purchase.remaining_amount || 0),
-
-        0,
-      ),
+    const targetInvoiceOutstanding = preciseSum(
+      targetPurchases.map((purchase) => Number(purchase.remaining_amount || 0)),
     );
 
-    const supplierNetPayable = preservePrecision(
-      Math.max(
-        0,
-
-        calculateSupplierNetBalance(db, supplierId),
-      ),
+    const supplierNetPayable = normalizePreciseZero(
+      Math.max(0, calculateSupplierNetBalance(db, supplierId)),
     );
 
     const targetOutstanding = normalizePreciseZero(
@@ -4195,10 +4162,9 @@ export function recordSupplierPayment(input: {
       }
 
       accountingAmount = targetOutstanding;
-
-      roundingAdjustment = preservePrecision(cashAmount - accountingAmount);
+      roundingAdjustment = preciseSubtract(cashAmount, accountingAmount);
     } else {
-      if (cashAmount > targetOutstanding + 0.0001) {
+      if (exceedsPreciseAmount(cashAmount, targetOutstanding)) {
         throw new Error('قيمة الدفع أكبر من المديونية المحددة');
       }
 
@@ -4394,11 +4360,11 @@ export function recordSupplierPayment(input: {
       });
     }
 
-    if (remainingPayment > 0.0001) {
+    if (hasPositivePreciseAmount(remainingPayment)) {
       throw new Error('تعذر توزيع كامل قيمة الدفعة على فواتير المورد');
     }
 
-    if (Math.abs(totalPaid - accountingAmount) > 0.001) {
+    if (!samePreciseAmount(totalPaid, accountingAmount)) {
       throw new Error('قيمة توزيعات دفعة المورد غير متطابقة');
     }
 
@@ -5243,7 +5209,7 @@ export function updateSupplierPaymentBatch(input: {
 
       roundingAdjustment = preciseSubtract(cashAmount, accountingAmount);
     } else {
-      if (cashAmount > targetOutstanding + 0.0001) {
+      if (exceedsPreciseAmount(cashAmount, targetOutstanding)) {
         throw new Error(
           `مبلغ الدفعة المعدل أكبر من المديونية المتاحة وهي ${truncateForDisplay(
             targetOutstanding,
@@ -5510,11 +5476,11 @@ export function updateSupplierPaymentBatch(input: {
       });
     }
 
-    if (remainingPayment > 0.0001) {
+    if (hasPositivePreciseAmount(remainingPayment)) {
       throw new Error('تعذر توزيع كامل مبلغ الدفعة المعدلة');
     }
 
-    if (Math.abs(totalPaid - accountingAmount) > 0.001) {
+    if (!samePreciseAmount(totalPaid, accountingAmount)) {
       throw new Error('قيمة توزيعات دفعة المورد المعدلة غير متطابقة');
     }
 

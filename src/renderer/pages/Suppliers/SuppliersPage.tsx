@@ -10,6 +10,7 @@ import {
   preservePrecision,
   roundMoney,
   hasPositivePreciseAmount,
+  preciseAdd,
 } from '../../../shared/money';
 
 function hasRemainingAmount(value: number) {
@@ -831,13 +832,15 @@ export default function SuppliersPage() {
         (row: any) => Number(row.id) === purchaseId,
       );
 
-      return preservePrecision(
-        Number(purchase?.remaining_amount || 0) + oldAccountingAmount,
+      return preciseAdd(
+        Number(purchase?.remaining_amount || 0),
+        oldAccountingAmount,
       );
     }
 
-    return preservePrecision(
-      Number(statementData?.supplier?.balance || 0) + oldAccountingAmount,
+    return preciseAdd(
+      Number(statementData?.supplier?.balance || 0),
+      oldAccountingAmount,
     );
   }
 

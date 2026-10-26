@@ -12,8 +12,13 @@ import {
   formatPreciseMoney,
   preservePrecision,
   roundMoney,
-  truncateForDisplay,
   hasPositivePreciseAmount,
+  formatSignedPreciseMoney,
+  preciseAdd,
+  preciseDivide,
+  preciseMultiply,
+  preciseSubtract,
+  preciseSum,
 } from '../../../shared/money';
 
 function hasRemainingAmount(value: number) {
@@ -680,12 +685,9 @@ export default function PurchaseHistoryPage() {
       Number(item.returned_quantity || 0) - editingQuantity,
     );
 
-    const alreadyReturnedValue = preservePrecision(
-      Math.max(
-        0,
-
-        Number(item.returned_value || 0) - editingValue,
-      ),
+    const alreadyReturnedValue = Math.max(
+      0,
+      preciseSubtract(Number(item.returned_value || 0), editingValue),
     );
 
     const cumulativeQuantity = alreadyReturnedQuantity + requestedQuantity;
@@ -693,51 +695,41 @@ export default function PurchaseHistoryPage() {
     const cumulativeValue =
       cumulativeQuantity >= originalQuantity - 0.000001
         ? originalLineTotal
-        : preservePrecision(
-            (originalLineTotal * cumulativeQuantity) / originalQuantity,
+        : preciseDivide(
+            preciseMultiply(originalLineTotal, cumulativeQuantity),
+            originalQuantity,
           );
 
-    return preservePrecision(
-      Math.max(
-        0,
-
-        cumulativeValue - alreadyReturnedValue,
-      ),
-    );
+    return Math.max(0, preciseSubtract(cumulativeValue, alreadyReturnedValue));
   }
 
   const purchaseReturnExactTotal = returnPurchase
-    ? preservePrecision(
-        (returnPurchase.items ?? []).reduce(
-          (sum: number, item: any) => sum + getPurchaseReturnLineTotal(item),
-
-          0,
+    ? preciseSum(
+        (returnPurchase.items ?? []).map((item: any) =>
+          getPurchaseReturnLineTotal(item),
         ),
       )
     : 0;
 
-  /*
-   * المديونية التي كانت متاحة
-   * قبل المرتجع الحالي.
-   *
-   * أثناء التعديل نضيف أثر
-   * المرتجع القديم مرة أخرى.
-   */
   const purchaseReturnDebtBase = returnPurchase
     ? preservePrecision(
         Math.min(
           Math.max(
             0,
 
-            Number(returnPurchase.purchase?.total_amount || 0) -
+            preciseSubtract(
+              Number(returnPurchase.purchase?.total_amount || 0),
               Number(returnPurchase.purchase?.paid_amount || 0),
+            ),
           ),
 
           Math.max(
             0,
 
-            Number(returnPurchase.purchase?.remaining_amount || 0) +
-              (editingReturnId ? editingReturnOriginalDebtReduction : 0),
+            preciseAdd(
+              Number(returnPurchase.purchase?.remaining_amount || 0),
+              editingReturnId ? editingReturnOriginalDebtReduction : 0,
+            ),
           ),
         ),
       )
@@ -747,16 +739,9 @@ export default function PurchaseHistoryPage() {
     Math.min(purchaseReturnExactTotal, purchaseReturnDebtBase),
   );
 
-  /*
-   * الجزء الذي أصبح حقًا لنا
-   * بعد تصفير/تقليل المديونية.
-   */
-  const purchaseReturnRefundable = preservePrecision(
-    Math.max(
-      0,
-
-      purchaseReturnExactTotal - purchaseReturnDebtReduction,
-    ),
+  const purchaseReturnRefundable = Math.max(
+    0,
+    preciseSubtract(purchaseReturnExactTotal, purchaseReturnDebtReduction),
   );
 
   const purchaseReturnCashRefund =
@@ -771,13 +756,14 @@ export default function PurchaseHistoryPage() {
       ? purchaseReturnRefundable
       : returnSettleCashRefund
         ? 0
-        : preservePrecision(
-            Math.max(0, purchaseReturnRefundable - purchaseReturnCashRefund),
+        : Math.max(
+            0,
+            preciseSubtract(purchaseReturnRefundable, purchaseReturnCashRefund),
           );
 
   const purchaseReturnRoundingAdjustment =
     returnRefundMode === 'cash' && returnSettleCashRefund
-      ? preservePrecision(purchaseReturnCashRefund - purchaseReturnRefundable)
+      ? preciseSubtract(purchaseReturnCashRefund, purchaseReturnRefundable)
       : 0;
 
   const hasPurchaseHistoryFilters =
@@ -1107,7 +1093,7 @@ export default function PurchaseHistoryPage() {
 
                           <span style={{ color: '#94a3b8', fontSize: '12px' }}>
                             قبل الخصم:{' '}
-                            {costMoney(
+                            {money(
                               Number(row.sub_total || 0) > 0
                                 ? row.sub_total
                                 : Number(
@@ -1123,7 +1109,7 @@ export default function PurchaseHistoryPage() {
                             <span
                               style={{ color: '#fbbf24', fontSize: '12px' }}
                             >
-                              خصم: {costMoney(row.discount_value || 0)}
+                              خصم: {money(row.discount_value || 0)}
                               {row.discount_type === 'percent' &&
                               Number(row.discount_input || 0) > 0
                                 ? ` (${Number(row.discount_input || 0)}%)`
@@ -1518,7 +1504,7 @@ export default function PurchaseHistoryPage() {
             >
               <InfoCard
                 title="قبل الخصم"
-                value={costMoney(
+                value={money(
                   Number(selectedPurchase.purchase.sub_total || 0) > 0
                     ? selectedPurchase.purchase.sub_total
                     : Number(
@@ -1533,13 +1519,13 @@ export default function PurchaseHistoryPage() {
                 title="الخصم"
                 value={
                   selectedPurchase.purchase.discount_type === 'percent'
-                    ? `${costMoney(selectedPurchase.purchase.discount_value || 0)} (${Number(selectedPurchase.purchase.discount_input || 0)}%)`
-                    : costMoney(selectedPurchase.purchase.discount_value || 0)
+                    ? `${money(selectedPurchase.purchase.discount_value || 0)} (${Number(selectedPurchase.purchase.discount_input || 0)}%)`
+                    : money(selectedPurchase.purchase.discount_value || 0)
                 }
               />
               <InfoCard
                 title="الإجمالي الفعلي بعد الخصم"
-                value={costMoney(
+                value={money(
                   selectedPurchase.purchase.effective_exact_total_amount ??
                     selectedPurchase.purchase.exact_total_amount ??
                     selectedPurchase.purchase.total_amount,
@@ -1548,7 +1534,7 @@ export default function PurchaseHistoryPage() {
 
               <InfoCard
                 title="فرق التقريب"
-                value={signedCostMoney(
+                value={formatSignedPreciseMoney(
                   selectedPurchase.purchase.effective_rounding_adjustment ??
                     selectedPurchase.purchase.rounding_adjustment ??
                     0,
@@ -1663,8 +1649,8 @@ export default function PurchaseHistoryPage() {
                       <td style={tdStyle}>
                         {item.returnable_quantity ?? item.quantity}
                       </td>
-                      <td style={tdStyle}>{costMoney(item.unit_cost)}</td>
-                      <td style={tdStyle}>{costMoney(item.line_total)}</td>
+                      <td style={tdStyle}>{money(item.unit_cost)}</td>
+                      <td style={tdStyle}>{money(item.line_total)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1902,7 +1888,7 @@ export default function PurchaseHistoryPage() {
             >
               <InfoCard
                 title="قيمة المرتجع الفعلية"
-                value={costMoney(
+                value={money(
                   selectedReturn.return.exact_total_amount ??
                     selectedReturn.return.total_amount,
                 )}
@@ -1910,7 +1896,7 @@ export default function PurchaseHistoryPage() {
 
               <InfoCard
                 title="فرق التقريب"
-                value={signedCostMoney(
+                value={formatSignedPreciseMoney(
                   selectedReturn.return.rounding_adjustment || 0,
                 )}
               />
@@ -1963,8 +1949,8 @@ export default function PurchaseHistoryPage() {
                       <td style={tdStyle}>{item.size || '—'}</td>
                       <td style={tdStyle}>{item.color || '—'}</td>
                       <td style={tdStyle}>{item.quantity}</td>
-                      <td style={tdStyle}>{costMoney(item.unit_cost)}</td>
-                      <td style={tdStyle}>{costMoney(item.line_total)}</td>
+                      <td style={tdStyle}>{money(item.unit_cost)}</td>
+                      <td style={tdStyle}>{money(item.line_total)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2176,38 +2162,40 @@ export default function PurchaseHistoryPage() {
               >
                 <InfoCard
                   title="قيمة المرتجع"
-                  value={costMoney(purchaseReturnExactTotal)}
+                  value={money(purchaseReturnExactTotal)}
                 />
 
                 <InfoCard
                   title="يخصم من مديونية المورد"
-                  value={costMoney(purchaseReturnDebtReduction)}
+                  value={money(purchaseReturnDebtReduction)}
                 />
 
                 <InfoCard
                   title="المستحق من المورد"
-                  value={costMoney(purchaseReturnRefundable)}
+                  value={money(purchaseReturnRefundable)}
                 />
 
                 {purchaseReturnRefundable > 0 &&
                   returnRefundMode === 'cash' && (
                     <InfoCard
                       title="المبلغ المستلم فعليًا"
-                      value={costMoney(purchaseReturnCashRefund)}
+                      value={money(purchaseReturnCashRefund)}
                     />
                   )}
 
                 {purchaseReturnCreditAmount > 0 && (
                   <InfoCard
                     title="رصيد دائن عند المورد"
-                    value={costMoney(purchaseReturnCreditAmount)}
+                    value={money(purchaseReturnCreditAmount)}
                   />
                 )}
 
                 {purchaseReturnRoundingAdjustment !== 0 && (
                   <InfoCard
                     title="فرق التسوية"
-                    value={signedCostMoney(purchaseReturnRoundingAdjustment)}
+                    value={formatSignedPreciseMoney(
+                      purchaseReturnRoundingAdjustment,
+                    )}
                   />
                 )}
               </div>
@@ -2281,13 +2269,9 @@ export default function PurchaseHistoryPage() {
                           lineHeight: 1.7,
                         }}
                       >
-                        المستحق من المورد: {costMoney(purchaseReturnRefundable)}{' '}
-                        ج.م
+                        المستحق من المورد: {money(purchaseReturnRefundable)} ج.م
                         {' — '}
-                        سيُستلم فعليًا: {costMoney(
-                          purchaseReturnCashRefund,
-                        )}{' '}
-                        ج.م
+                        سيُستلم فعليًا: {money(purchaseReturnCashRefund)} ج.م
                       </div>
                     </div>
                   )}
@@ -2371,9 +2355,9 @@ export default function PurchaseHistoryPage() {
                               }}
                             />
                           </td>
-                          <td style={tdStyle}>{costMoney(item.unit_cost)}</td>
+                          <td style={tdStyle}>{money(item.unit_cost)}</td>
                           <td style={tdStyle}>
-                            {costMoney(getPurchaseReturnLineTotal(item))}
+                            {money(getPurchaseReturnLineTotal(item))}
                           </td>
                         </tr>
                       );
@@ -2750,16 +2734,6 @@ function paymentMethodName(value?: string | null) {
 
 function money(value: unknown) {
   return formatPreciseMoney(value);
-}
-
-function costMoney(value: unknown) {
-  return formatPreciseMoney(value);
-}
-
-function signedCostMoney(value: unknown) {
-  const amount = preservePrecision(value);
-
-  return `${amount > 0 ? '+' : ''}${truncateForDisplay(amount)} ج.م`;
 }
 
 function formatDate(value?: string) {

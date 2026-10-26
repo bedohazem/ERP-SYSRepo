@@ -3,8 +3,7 @@ import { getPaymentMethodLabel } from '../../utils/payment-method';
 import { buildReportsCsv, buildReportsPdfHtml } from './report-export';
 import {
   formatPreciseMoney,
-  preservePrecision,
-  truncateForDisplay,
+  formatSignedPreciseMoney,
 } from '../../../shared/money';
 
 type ReportsData = {
@@ -580,7 +579,7 @@ export default function ReportsPage() {
 
         <StatCard
           title="صافي الربح النهائي"
-          value={preciseMoney(data.summary.final_net_profit)}
+          value={money(data.summary.final_net_profit)}
           success
         />
 
@@ -671,24 +670,24 @@ export default function ReportsPage() {
 
         <StatCard
           title="تكلفة المشتريات الدقيقة"
-          value={preciseMoney(data.summary.total_purchase_exact_amount)}
+          value={money(data.summary.total_purchase_exact_amount)}
         />
 
         <StatCard
           title="زيادة تكلفة تسويات الموردين"
-          value={preciseMoney(data.summary.purchase_rounding_increase)}
+          value={money(data.summary.purchase_rounding_increase)}
           danger={Number(data.summary.purchase_rounding_increase) > 0}
         />
 
         <StatCard
           title="وفر تسويات الموردين"
-          value={preciseMoney(data.summary.purchase_rounding_decrease)}
+          value={money(data.summary.purchase_rounding_decrease)}
           success={Number(data.summary.purchase_rounding_decrease) > 0}
         />
 
         <StatCard
           title="صافي فرق تسويات الموردين"
-          value={signedPreciseMoney(data.summary.purchase_rounding_net)}
+          value={formatSignedPreciseMoney(data.summary.purchase_rounding_net)}
           danger={Number(data.summary.purchase_rounding_net) > 0}
           success={Number(data.summary.purchase_rounding_net) < 0}
         />
@@ -1179,16 +1178,6 @@ function ReportTable({
 
 function money(value: unknown) {
   return formatPreciseMoney(value);
-}
-
-function preciseMoney(value: unknown) {
-  return formatPreciseMoney(value);
-}
-
-function signedPreciseMoney(value: unknown) {
-  const amount = preservePrecision(value);
-
-  return `${amount > 0 ? '+' : ''}${truncateForDisplay(amount)} ج.م`;
 }
 
 function formatDateOnly(value?: string) {

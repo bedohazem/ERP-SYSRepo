@@ -10,7 +10,12 @@ import {
   formatPreciseMoney,
   preservePrecision,
   roundMoney,
-  truncateForDisplay,
+  formatSignedPreciseMoney,
+  preciseAdd,
+  preciseDivide,
+  preciseMultiply,
+  preciseSubtract,
+  preciseSum,
 } from '../../../shared/money';
 import {
   getUserScopedDraftKey,
@@ -145,7 +150,7 @@ export default function PurchasesPage() {
   const [quickCategoryId, setQuickCategoryId] = useState<number | ''>('');
   const [quickQuantity, setQuickQuantity] = useState('1');
 
-  function getPurchaseLineRawTotal(line: PurchaseLine) {
+  function getPurchaseLineTotal(line: PurchaseLine) {
     const quantity = Number(line.quantity || 0);
 
     const unitCost = Number(line.unit_cost || 0);
@@ -159,33 +164,11 @@ export default function PurchasesPage() {
       return 0;
     }
 
-    /*
-     * ممنوع تقريب سعر الوحدة
-     * قبل الضرب.
-     */
-    return quantity * unitCost;
-  }
-
-  function getPurchaseLineTotal(line: PurchaseLine) {
-    /*
-     * سعر الوحدة نفسه يظل كامل الدقة.
-     *
-     * لكن إجمالي البند قيمة مالية
-     * فيقفل على منزلتين مثل فاتورة المورد.
-     */
-    return preservePrecision(getPurchaseLineRawTotal(line));
+    return preciseMultiply(quantity, unitCost);
   }
 
   const subTotal = useMemo(
-    () =>
-      preservePrecision(
-        lines.reduce(
-          (sum, line) => sum + getPurchaseLineTotal(line),
-
-          0,
-        ),
-      ),
-
+    () => preciseSum(lines.map(getPurchaseLineTotal)),
     [lines],
   );
 
@@ -195,22 +178,22 @@ export default function PurchasesPage() {
     const value = Number.isFinite(raw) ? Math.max(0, raw) : 0;
 
     if (discountType === 'percent') {
-      return preservePrecision(
-        Math.min(subTotal, (subTotal * Math.min(value, 100)) / 100),
+      const percentage = Math.min(value, 100);
+
+      return Math.min(
+        subTotal,
+        preciseDivide(preciseMultiply(subTotal, percentage), 100),
       );
     }
 
-    return preservePrecision(Math.min(subTotal, value));
+    return Math.min(subTotal, value);
   }, [discountDraft, discountType, subTotal]);
 
-  const exactTotalAmount = preservePrecision(
-    Math.max(0, subTotal - discountValue),
+  const exactTotalAmount = Math.max(
+    0,
+    preciseSubtract(subTotal, discountValue),
   );
 
-  /*
-   * إجمالي الفاتورة نفسه
-   * لا يتم تقريبه للجنيه.
-   */
   const totalAmount = exactTotalAmount;
 
   const cashPaidAmount = settleFullInvoice
@@ -219,14 +202,14 @@ export default function PurchasesPage() {
 
   const paid = settleFullInvoice
     ? totalAmount
-    : preservePrecision(Math.min(cashPaidAmount, totalAmount));
+    : Math.min(cashPaidAmount, totalAmount);
 
   const remaining = settleFullInvoice
     ? 0
-    : preservePrecision(Math.max(0, totalAmount - paid));
+    : Math.max(0, preciseSubtract(totalAmount, paid));
 
   const roundingAdjustment = settleFullInvoice
-    ? preservePrecision(cashPaidAmount - totalAmount)
+    ? preciseSubtract(cashPaidAmount, totalAmount)
     : 0;
 
   const purchaseLineFinancials = useMemo(() => {
@@ -257,13 +240,7 @@ export default function PurchasesPage() {
 
       const lineDiscount = preservePrecision(lineDiscounts[index] || 0);
 
-      const netTotal = preservePrecision(
-        Math.max(
-          0,
-
-          grossTotal - lineDiscount,
-        ),
-      );
+      const netTotal = Math.max(0, preciseSubtract(grossTotal, lineDiscount));
 
       result.set(line.variant_id, {
         grossTotal,
@@ -272,10 +249,7 @@ export default function PurchasesPage() {
 
         netTotal,
 
-        /*
-         * ده عرض فقط.
-         */
-        unitCost: quantity > 0 ? preservePrecision(netTotal / quantity) : 0,
+        unitCost: quantity > 0 ? preciseDivide(netTotal, quantity) : 0,
       });
     });
 
@@ -546,7 +520,7 @@ export default function PurchasesPage() {
         setPaidAmount(
           String(
             hadSettlement
-              ? preservePrecision(storedPaid + storedAdjustment)
+              ? preciseAdd(storedPaid, storedAdjustment)
               : storedPaid,
           ),
         );
@@ -1484,11 +1458,11 @@ export default function PurchasesPage() {
                     <td
                       style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}
                     >
-                      {costMoney(getPurchaseLineFinancial(line).unitCost)}
+                      {money(getPurchaseLineFinancial(line).unitCost)}
                     </td>
 
                     <td style={{ ...tdStyle, fontWeight: 900 }}>
-                      {costMoney(getPurchaseLineFinancial(line).netTotal)}
+                      {money(getPurchaseLineFinancial(line).netTotal)}
                     </td>
 
                     <td style={tdStyle}>
@@ -1537,7 +1511,7 @@ export default function PurchasesPage() {
             <div style={fieldStyle}>
               <label style={labelStyle}>الإجمالي قبل الخصم</label>
               <input
-                value={costMoney(subTotal)}
+                value={money(subTotal)}
                 readOnly
                 style={{ ...inputStyle, opacity: 0.7 }}
               />
@@ -1574,7 +1548,7 @@ export default function PurchasesPage() {
             <div style={fieldStyle}>
               <label style={labelStyle}>قيمة الخصم</label>
               <input
-                value={costMoney(discountValue)}
+                value={money(discountValue)}
                 readOnly
                 style={{ ...inputStyle, opacity: 0.7 }}
               />
@@ -1583,7 +1557,7 @@ export default function PurchasesPage() {
             <div style={fieldStyle}>
               <label style={labelStyle}>الإجمالي الفعلي بعد الخصم</label>
               <input
-                value={costMoney(exactTotalAmount)}
+                value={money(exactTotalAmount)}
                 readOnly
                 style={{ ...inputStyle, opacity: 0.7 }}
               />
@@ -1593,7 +1567,7 @@ export default function PurchasesPage() {
               <label style={labelStyle}>فرق التقريب</label>
 
               <input
-                value={signedCostMoney(roundingAdjustment)}
+                value={formatSignedPreciseMoney(roundingAdjustment)}
                 readOnly
                 style={{
                   ...inputStyle,
@@ -1606,7 +1580,7 @@ export default function PurchasesPage() {
               <label style={labelStyle}>إجمالي الفاتورة</label>
 
               <input
-                value={costMoney(totalAmount)}
+                value={money(totalAmount)}
                 readOnly
                 style={{
                   ...inputStyle,
@@ -2070,18 +2044,6 @@ export default function PurchasesPage() {
 
 function money(value: unknown) {
   return formatPreciseMoney(value);
-}
-
-function costMoney(value: unknown) {
-  return formatPreciseMoney(value);
-}
-
-function signedCostMoney(value: unknown) {
-  const amount = preservePrecision(value);
-
-  const formatted = truncateForDisplay(amount);
-
-  return `${amount > 0 ? '+' : ''}${formatted} ج.م`;
 }
 
 const cardStyle: CSSProperties = {

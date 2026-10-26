@@ -6,16 +6,12 @@ import {
   preciseDivide,
   preciseMultiply,
   preciseSubtract,
+  PRECISE_MONEY_EPSILON,
 } from '../../shared/money';
 
 type Db = Database.Database;
 
 const STOCK_EPSILON = 0.000001;
-const VALUE_EPSILON = 0.0001;
-
-function preserveAverageCost(value: unknown): number {
-  return preservePrecision(value);
-}
 
 export type InventoryCostState = {
   variant_id: number;
@@ -145,7 +141,7 @@ export function getInventoryCostState(
 
     buy_price: preservePrecision(Number(row.buy_price || 0)),
 
-    average_cost: preserveAverageCost(row.average_cost),
+    average_cost: preservePrecision(row.average_cost),
 
     inventory_value: preservePrecision(Number(row.inventory_value || 0)),
   };
@@ -170,7 +166,7 @@ function updateCostState(
       `,
     )
     .run(
-      preserveAverageCost(averageCost),
+      preservePrecision(averageCost),
 
       preservePrecision(inventoryValue),
 
@@ -278,39 +274,23 @@ export function receiveStockAtCost(
     );
   }
 
-  /*
-   * لو عندنا قيمة فعلية للبند،
-   * فهي مصدر الحقيقة.
-   *
-   * مثال:
-   * 12 قطعة = 1870
-   *
-   * لا نحولها إلى:
-   * 155.83 × 12
-   */
   const movementValue =
     rawCostValue !== undefined
       ? preservePrecision(rawCostValue)
       : preciseMultiply(quantity, rawUnitCost);
 
-  /*
-   * سعر الوحدة هنا للعرض والمساعدة فقط.
-   * أقصى دقة قرشين.
-   */
   const movementUnitCost =
     quantity > 0
-      ? preservePrecision(preciseDivide(movementValue, quantity))
+      ? preciseDivide(movementValue, quantity)
       : preservePrecision(rawUnitCost);
 
   const nextStock = state.stock + quantity;
 
-  const nextInventoryValue = preservePrecision(
-    preciseAdd(state.inventory_value, movementValue),
-  );
+  const nextInventoryValue = preciseAdd(state.inventory_value, movementValue);
 
   const nextAverageCost =
     nextStock > STOCK_EPSILON
-      ? preserveAverageCost(preciseDivide(nextInventoryValue, nextStock))
+      ? preservePrecision(preciseDivide(nextInventoryValue, nextStock))
       : 0;
 
   insertCostedMovement(database, {
@@ -366,35 +346,26 @@ export function issueStockAtAverageCost(
     throw new Error(`المخزون غير كافي. المتاح: ${state.stock}`);
   }
 
-  /*
-   * قيمة المخزون هي مصدر الحقيقة.
-   *
-   * لا نستخدم:
-   * average_cost × quantity
-   *
-   * لأن متوسط الوحدة مقرب للقرش.
-   */
   const movementValue = allocateProportionalAmountPrecise(
     state.inventory_value,
     quantity,
     state.stock,
   );
 
-  const movementUnitCost = preservePrecision(
-    preciseDivide(movementValue, quantity),
-  );
+  const movementUnitCost = preciseDivide(movementValue, quantity);
 
   const nextStock = state.stock - quantity;
 
-  let nextInventoryValue = preservePrecision(
-    preciseSubtract(state.inventory_value, movementValue),
+  let nextInventoryValue = preciseSubtract(
+    state.inventory_value,
+    movementValue,
   );
 
-  if (Math.abs(nextInventoryValue) <= VALUE_EPSILON) {
+  if (Math.abs(nextInventoryValue) <= PRECISE_MONEY_EPSILON) {
     nextInventoryValue = 0;
   }
 
-  if (nextInventoryValue < -VALUE_EPSILON) {
+  if (nextInventoryValue < -PRECISE_MONEY_EPSILON) {
     throw new Error('قيمة المخزون أصبحت سالبة ولا يمكن تنفيذ الحركة');
   }
 
@@ -408,7 +379,7 @@ export function issueStockAtAverageCost(
 
   const nextAverageCost =
     nextStock > STOCK_EPSILON
-      ? preserveAverageCost(preciseDivide(nextInventoryValue, nextStock))
+      ? preservePrecision(preciseDivide(nextInventoryValue, nextStock))
       : 0;
 
   insertCostedMovement(database, {
@@ -484,21 +455,20 @@ export function issueStockAtCost(
       ? preservePrecision(rawCostValue)
       : preciseMultiply(quantity, rawUnitCost);
 
-  const movementUnitCost = preservePrecision(
-    preciseDivide(movementValue, quantity),
-  );
+  const movementUnitCost = preciseDivide(movementValue, quantity);
 
   const nextStock = state.stock - quantity;
 
-  let nextInventoryValue = preservePrecision(
-    preciseSubtract(state.inventory_value, movementValue),
+  let nextInventoryValue = preciseSubtract(
+    state.inventory_value,
+    movementValue,
   );
 
-  if (Math.abs(nextInventoryValue) <= VALUE_EPSILON) {
+  if (Math.abs(nextInventoryValue) <= PRECISE_MONEY_EPSILON) {
     nextInventoryValue = 0;
   }
 
-  if (nextInventoryValue < -VALUE_EPSILON) {
+  if (nextInventoryValue < -PRECISE_MONEY_EPSILON) {
     throw new Error(
       'لا يمكن تنفيذ الحركة لأن قيمتها أكبر من قيمة المخزون الحالية',
     );
@@ -506,14 +476,14 @@ export function issueStockAtCost(
 
   if (
     nextStock <= STOCK_EPSILON &&
-    Math.abs(nextInventoryValue) > VALUE_EPSILON
+    Math.abs(nextInventoryValue) > PRECISE_MONEY_EPSILON
   ) {
     throw new Error('لا يمكن تصفير كمية المخزون مع بقاء قيمة محاسبية للمخزون');
   }
 
   const nextAverageCost =
     nextStock > STOCK_EPSILON
-      ? preserveAverageCost(preciseDivide(nextInventoryValue, nextStock))
+      ? preservePrecision(preciseDivide(nextInventoryValue, nextStock))
       : 0;
 
   insertCostedMovement(database, {
