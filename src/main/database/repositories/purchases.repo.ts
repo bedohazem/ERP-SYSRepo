@@ -902,6 +902,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
     db.prepare(
       `
       UPDATE suppliers
+
       SET
         total_purchased =
           ROUND(
@@ -912,21 +913,23 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
             2
           ),
 
-        balance =
-          ROUND(
-            IFNULL(
-              balance,
-              0
-            ) + ?,
-            2
-          ),
-
         updated_at =
           CURRENT_TIMESTAMP
 
       WHERE id = ?
-    `,
-    ).run(totalAmount, remainingAmount, supplierId);
+      `,
+    ).run(totalAmount, supplierId);
+
+    /*
+     * الرصيد لا يعتمد على القيمة
+     * المخزنة القديمة في suppliers.balance.
+     *
+     * مصدر الحقيقة:
+     * الفواتير المفتوحة
+     * -
+     * الأرصدة الدائنة النشطة.
+     */
+    rebuildSupplierBalance(db, supplierId);
 
     if (paidAmount > 0) {
       /*

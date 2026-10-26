@@ -1493,6 +1493,116 @@ describe('purchases repository', () => {
     expect(invoice.purchase.payment_status).toBe('paid');
   });
 
+  it('rebuilds supplier balance from open debt and credits when creating a purchase', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    /*
+     * فاتورة مدفوعة بالكامل.
+     */
+    const paidPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 100,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    const invoice = getPurchaseInvoice(paidPurchase.purchaseId) as any;
+
+    /*
+     * رجعنا الـ100 كرَصيد دائن.
+     *
+     * المورد دلوقتي مديون لينا 100.
+     */
+    createPurchaseReturn({
+      purchase_id: paidPurchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(invoice.items[0].id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(getSupplierBalance(supplierId)).toBe(-100);
+
+    /*
+     * نحاكي balance قديم/فاسد
+     * متبقي من منطق سابق.
+     */
+    getDb()
+      .prepare(
+        `
+      UPDATE suppliers
+
+      SET balance = 999
+
+      WHERE id = ?
+      `,
+      )
+      .run(supplierId);
+
+    /*
+     * فاتورة جديدة آجل = 500.
+     *
+     * الصحيح:
+     * 500 مديونية
+     * - 100 رصيد دائن
+     * = 400 صافي مستحق.
+     */
+    const newPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 5,
+
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    expect(newPurchase.total_amount).toBe(500);
+
+    expect(newPurchase.remaining_amount).toBe(500);
+
+    /*
+     * ممنوع يبقى 1499
+     * بسبب الرصيد المخزن الفاسد.
+     */
+    expect(getSupplierBalance(supplierId)).toBe(400);
+
+    expect(getSupplierTotalPurchased(supplierId)).toBe(500);
+  });
+
   it('does not infer settlement rounding from legacy fractional purchase details', () => {
     const supplierId = createTestSupplier();
 
