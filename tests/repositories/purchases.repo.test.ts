@@ -1603,6 +1603,168 @@ describe('purchases repository', () => {
     expect(getSupplierTotalPurchased(supplierId)).toBe(500);
   });
 
+  it('keeps unpaid return cents as supplier credit when cash refund is not settled', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 1870,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 12,
+
+          unit_cost: 155.83,
+
+          pricing_base_quantity: 12,
+
+          pricing_base_amount: 1870,
+        },
+      ],
+    });
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    const purchaseReturn = createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'cash',
+
+      cash_refund_amount: 155,
+
+      settle_cash_refund: false,
+
+      refund_payment_method: 'store_cash',
+
+      items: [
+        {
+          purchase_item_id: Number(invoice.items[0].id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(purchaseReturn.total_amount).toBe(155.83);
+
+    expect(purchaseReturn.cash_refund_amount).toBe(155);
+
+    expect(purchaseReturn.credit_amount).toBe(0.83);
+
+    expect(purchaseReturn.rounding_adjustment).toBe(0);
+
+    expect(getSupplierBalance(supplierId)).toBe(-0.83);
+
+    const movement = getDb()
+      .prepare(
+        `
+      SELECT amount
+
+      FROM cash_movements
+
+      WHERE
+        reference_type =
+          'purchase_return'
+
+        AND reference_id = ?
+
+      ORDER BY id DESC
+
+      LIMIT 1
+      `,
+      )
+      .get(purchaseReturn.return_id) as {
+      amount: number;
+    };
+
+    expect(Number(movement.amount)).toBe(155);
+
+    const statement = getSupplierStatement(supplierId, 1) as any;
+
+    const returnEntry = statement.entries.find(
+      (entry: any) => Number(entry.return_id) === purchaseReturn.return_id,
+    );
+
+    expect(Number(returnEntry.credit)).toBe(0.83);
+
+    expect(Number(returnEntry.cash_amount)).toBe(155);
+
+    const cancelled = cancelPurchaseReturn({
+      return_id: purchaseReturn.return_id,
+
+      reason: 'Undo partial cash return',
+
+      actor_id: 1,
+    });
+
+    expect(cancelled.reversed_cash).toBe(155);
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+  });
+
+  it('keeps supplier statement payments and returns at cent precision', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 46,
+
+      settle_full_balance: true,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 45.5,
+        },
+      ],
+    });
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(invoice.items[0].id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    const statement = getSupplierStatement(supplierId, 1) as any;
+
+    expect(statement.summary.total_paid).toBe(45.5);
+
+    expect(statement.summary.total_returns).toBe(45.5);
+  });
+
   it('does not infer settlement rounding from legacy fractional purchase details', () => {
     const supplierId = createTestSupplier();
 

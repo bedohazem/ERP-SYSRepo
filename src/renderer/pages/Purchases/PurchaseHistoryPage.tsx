@@ -762,11 +762,17 @@ export default function PurchaseHistoryPage() {
     returnRefundMode === 'cash'
       ? returnSettleCashRefund
         ? roundMoney(purchaseReturnRefundable)
-        : purchaseReturnRefundable
+        : Math.floor(purchaseReturnRefundable + 0.000001)
       : 0;
 
   const purchaseReturnCreditAmount =
-    returnRefundMode === 'credit' ? purchaseReturnRefundable : 0;
+    returnRefundMode === 'credit'
+      ? purchaseReturnRefundable
+      : returnSettleCashRefund
+        ? 0
+        : roundFinancial(
+            Math.max(0, purchaseReturnRefundable - purchaseReturnCashRefund),
+          );
 
   const purchaseReturnRoundingAdjustment =
     returnRefundMode === 'cash' && returnSettleCashRefund
@@ -2190,13 +2196,12 @@ export default function PurchaseHistoryPage() {
                     />
                   )}
 
-                {purchaseReturnRefundable > 0 &&
-                  returnRefundMode === 'credit' && (
-                    <InfoCard
-                      title="رصيد دائن عند المورد"
-                      value={costMoney(purchaseReturnCreditAmount)}
-                    />
-                  )}
+                {purchaseReturnCreditAmount > 0 && (
+                  <InfoCard
+                    title="رصيد دائن عند المورد"
+                    value={costMoney(purchaseReturnCreditAmount)}
+                  />
+                )}
 
                 {purchaseReturnRoundingAdjustment !== 0 && (
                   <InfoCard
@@ -2206,7 +2211,7 @@ export default function PurchaseHistoryPage() {
                 )}
               </div>
 
-              {purchaseReturnCashRefund > 0 && (
+              {purchaseReturnRefundable > 0 && (
                 <div
                   style={{
                     display: 'grid',

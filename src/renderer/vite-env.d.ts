@@ -2433,6 +2433,8 @@ declare global {
         exact_total_amount: number;
         rounding_adjustment: number;
         paid_amount: number;
+        cash_amount: number;
+        settle_full_balance: boolean;
         remaining_amount: number;
         payment_status: string;
         shift_id?: number | null;
@@ -2550,7 +2552,7 @@ declare global {
         purchase_order_id: number;
 
         paid_amount?: number;
-
+        settle_full_balance?: boolean;
         payment_method?: string;
 
         discount_type?: 'amount' | 'percent';
@@ -2597,6 +2599,8 @@ declare global {
         exact_total_amount: number;
         rounding_adjustment: number;
         paid_amount: number;
+        cash_amount: number;
+        settle_full_balance: boolean;
         remaining_amount: number;
         payment_status: string;
 
@@ -2884,7 +2888,7 @@ declare global {
           cash_amount?: number;
 
           rounding_adjustment?: number;
-
+          settle_cash_refund?: boolean;
           settle_full_balance?: boolean;
           requires_admin_password?: boolean;
 

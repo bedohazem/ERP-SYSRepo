@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
-import { formatMoney, roundCost } from '../../../shared/money';
+import { formatMoney, roundCost, roundMoney } from '../../../shared/money';
 import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
@@ -242,7 +242,8 @@ export default function PurchaseOrdersPanel({
   const [cancelReason, setCancelReason] = useState('');
 
   const [receivePaid, setReceivePaid] = useState('0');
-
+  const [receiveSettleFullBalance, setReceiveSettleFullBalance] =
+    useState(false);
   const [receivePaymentMethod, setReceivePaymentMethod] =
     useState('store_cash');
 
@@ -376,7 +377,7 @@ export default function PurchaseOrdersPanel({
       setCancelReason('');
 
       setReceivePaid('0');
-
+      setReceiveSettleFullBalance(false);
       setReceivePaymentMethod('store_cash');
 
       setReceiveNotes('');
@@ -492,6 +493,17 @@ export default function PurchaseOrdersPanel({
         return sum + quantity * cost;
       }, 0),
     [selectedSuggestions, quantities, costs],
+  );
+
+  const receiveInvoiceTotal = useMemo(
+    () =>
+      roundCost(
+        detailItems.reduce(
+          (sum, item) => sum + Number(item.line_total || 0),
+          0,
+        ),
+      ),
+    [detailItems],
   );
 
   function toggleAllSuggestions() {
@@ -791,7 +803,9 @@ export default function PurchaseOrdersPanel({
       return;
     }
 
-    const paid = Number(receivePaid || 0);
+    const paid = receiveSettleFullBalance
+      ? roundMoney(receiveInvoiceTotal)
+      : Number(receivePaid || 0);
 
     if (!Number.isFinite(paid) || paid < 0) {
       showMessage('قيمة المدفوع غير صحيحة');
@@ -820,6 +834,7 @@ export default function PurchaseOrdersPanel({
 
         paid_amount: paid,
 
+        settle_full_balance: receiveSettleFullBalance,
         payment_method: receivePaymentMethod,
 
         notes: receiveNotes.trim() || `استلام أمر شراء #${detail.order.id}`,
@@ -1650,10 +1665,49 @@ export default function PurchaseOrdersPanel({
                     <input
                       type="number"
                       min={0}
-                      value={receivePaid}
+                      value={
+                        receiveSettleFullBalance
+                          ? String(roundMoney(receiveInvoiceTotal))
+                          : receivePaid
+                      }
+
+                      readOnly={receiveSettleFullBalance}
+
                       onChange={(event) => setReceivePaid(event.target.value)}
                       style={inputStyle}
                     />
+
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={receiveSettleFullBalance}
+                        onChange={(event) =>
+                          setReceiveSettleFullBalance(event.target.checked)
+                        }
+                      />
+                      تسوية كامل الفاتورة
+                    </label>
+
+                    {receiveSettleFullBalance && (
+                      <div
+                        style={{
+                          color: '#94a3b8',
+                          fontSize: '12px',
+                          lineHeight: 1.7,
+                        }}
+                      >
+                        سيتم إقفال {formatMoney(receiveInvoiceTotal)} ج.م بكاش
+                        فعلي {formatMoney(roundMoney(receiveInvoiceTotal))} ج.م
+                      </div>
+                    )}
                   </div>
 
                   <div style={fieldStyle}>

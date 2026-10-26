@@ -320,28 +320,12 @@ function calculateSupplierNetBalance(
           (
             SELECT SUM(
               CASE
-                WHEN
-                  pr.cancelled_at IS NULL
-
-                  AND
-                  pr.refund_mode = 'credit'
+                WHEN pr.cancelled_at IS NULL
 
                 THEN MAX(
                   0,
-
-                  COALESCE(
-                    NULLIF(
-                      pr.exact_total_amount,
-                      0
-                    ),
-
-                    pr.total_amount,
-
-                    0
-                  )
-                  -
                   IFNULL(
-                    pr.debt_reduction_amount,
+                    pr.credit_amount,
                     0
                   )
                 )
@@ -991,6 +975,8 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       exact_total_amount: exactTotalAmount,
       rounding_adjustment: roundingAdjustment,
       paid_amount: paidAmount,
+      cash_amount: cashPaidAmount,
+      settle_full_balance: settleFullBalance,
       remaining_amount: remainingAmount,
       payment_status: paymentStatus,
       due_date: dueDate,
@@ -2149,6 +2135,9 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       rounding_adjustment: roundingAdjustment,
       paid_amount: paidAmount,
 
+      cash_amount: cashPaidAmount,
+
+      settle_full_balance: settleFullBalance,
       remaining_amount: remainingAmount,
 
       payment_status: paymentStatus,
@@ -2714,21 +2703,35 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
     if (refundMode === 'credit') {
       /*
        * لا يوجد كاش.
-       *
-       * الجزء الزائد عن الدين
-       * يظل حقًا لنا عند المورد.
+       * كامل الجزء المستحق لنا
+       * يظل رصيدًا دائنًا.
        */
       creditAmount = refundableAmount;
     } else if (refundableAmount > 0) {
+      /*
+       * بدون تسوية صريحة:
+       * الافتراضي هو أكبر جنيه صحيح
+       * لا يتجاوز حقنا المحاسبي.
+       *
+       * مثال:
+       * 155.83 -> نستلم 155
+       * ويتبقى 0.83 رصيد دائن.
+       */
+      const defaultCashRefund = Math.floor(refundableAmount + 0.000001);
+
       const rawCashRefund = Number(
-        input.cash_refund_amount ?? refundableAmount,
+        input.cash_refund_amount ?? defaultCashRefund,
       );
 
       if (!Number.isFinite(rawCashRefund) || rawCashRefund < 0) {
         throw new Error('المبلغ المستلم من المورد غير صحيح');
       }
 
-      cashRefundAmount = roundFinancial(rawCashRefund);
+      /*
+       * أي حركة مالية فعلية مع المورد
+       * تكون بالجنيه الصحيح.
+       */
+      cashRefundAmount = roundMoney(rawCashRefund);
 
       if (settleCashRefund) {
         const expectedCash = roundMoney(refundableAmount);
@@ -2740,26 +2743,33 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         }
 
         /*
-         * موجب:
-         * استلمنا زيادة.
-         *
-         * سالب:
-         * استلمنا أقل.
+         * التسوية الصريحة:
+         * نقفل الحق المحاسبي بالكامل.
          */
+        creditAmount = 0;
+
         roundingAdjustment = roundFinancial(
           cashRefundAmount - refundableAmount,
         );
       } else {
         /*
-         * بدون اختيار التسوية:
-         * لازم نستلم القيمة المحاسبية
-         * بالقرش كما هي.
+         * بدون تسوية:
+         * ممنوع نستلم أكثر من
+         * المستحق المحاسبي.
          */
-        if (Math.abs(cashRefundAmount - refundableAmount) > 0.001) {
+        if (cashRefundAmount > refundableAmount + 0.0001) {
           throw new Error(
-            'المبلغ المستلم لا يساوي قيمة رد المورد؛ فعّل خيار تسوية كامل المبلغ إذا كنت تريد تقريب الكاش',
+            'المبلغ المستلم أكبر من المستحق؛ فعّل تسوية كامل رد المورد إذا كنت تريد تقريب المبلغ',
           );
         }
+
+        /*
+         * أي قروش لم نستلمها
+         * تظل حقًا لنا عند المورد.
+         */
+        creditAmount = roundFinancial(
+          Math.max(0, refundableAmount - cashRefundAmount),
+        );
 
         roundingAdjustment = 0;
       }
@@ -6069,6 +6079,11 @@ export function getSupplierStatement(
 
       const replaced = Boolean(purchaseReturn.replacement_return_id);
 
+      const supplierAccountCredit = roundFinancial(
+        Number(purchaseReturn.debt_reduction_amount || 0) +
+          Number(purchaseReturn.credit_amount || 0),
+      );
+
       return {
         id: `purchase-return-${purchaseReturn.id}`,
 
@@ -6082,12 +6097,22 @@ export function getSupplierStatement(
 
         debit: 0,
 
-        credit: cancelled ? 0 : Number(purchaseReturn.total_amount || 0),
+        credit: cancelled ? 0 : supplierAccountCredit,
 
         purchase_id: purchaseReturn.purchase_id,
 
         return_id: purchaseReturn.id,
+        cash_amount: cancelled
+          ? 0
+          : roundFinancial(Number(purchaseReturn.cash_refund_amount || 0)),
 
+        rounding_adjustment: cancelled
+          ? 0
+          : roundFinancial(Number(purchaseReturn.rounding_adjustment || 0)),
+
+        settle_cash_refund: Boolean(purchaseReturn.settle_cash_refund),
+
+        payment_method: purchaseReturn.refund_payment_method || null,
         replacement_return_id: purchaseReturn.replacement_return_id ?? null,
 
         cancelled_at: purchaseReturn.cancelled_at ?? null,
@@ -6107,7 +6132,7 @@ export function getSupplierStatement(
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
-  const totalPaid = roundMoney(
+  const totalPaid = roundFinancial(
     payments.reduce((sum, payment) => {
       if (payment.batch_id && payment.batch_cancelled_at) {
         return sum;
@@ -6133,7 +6158,7 @@ export function getSupplierStatement(
 
       total_paid: totalPaid,
 
-      total_returns: roundMoney(
+      total_returns: roundFinancial(
         returns.reduce(
           (sum, purchaseReturn) =>
             purchaseReturn.cancelled_at

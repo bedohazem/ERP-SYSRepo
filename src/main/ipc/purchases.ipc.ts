@@ -332,6 +332,14 @@ export function registerPurchasesIpc(): void {
 
           total_amount: result.total_amount,
 
+          exact_total_amount: result.exact_total_amount,
+
+          cash_amount: result.cash_amount,
+
+          rounding_adjustment: result.rounding_adjustment,
+
+          settle_full_balance: result.settle_full_balance,
+
           paid_amount: result.paid_amount,
 
           remaining_amount: result.remaining_amount,
@@ -588,6 +596,19 @@ export function registerPurchasesIpc(): void {
 
           total_amount: result.total_amount,
 
+          exact_total_amount: result.exact_total_amount,
+
+          debt_reduction_amount: result.debt_reduction_amount,
+
+          cash_refund_amount: result.cash_refund_amount,
+
+          credit_amount: result.credit_amount,
+
+          rounding_adjustment: result.rounding_adjustment,
+
+          settle_cash_refund: result.settle_cash_refund,
+
+          refund_mode: result.refund_mode,
           items_count: input?.items?.length || 0,
 
           notes: input?.notes || '',
@@ -1356,6 +1377,12 @@ export function registerPurchasesIpc(): void {
         'المبلغ المدفوع',
       ),
 
+      settle_full_balance:
+        optionalBooleanValue(
+          payload.settle_full_balance,
+          'تسوية كامل فاتورة الشراء',
+        ) ?? false,
+
       payment_method: paymentMethod,
 
       notes: optionalTrimmedString(
@@ -1394,6 +1421,13 @@ export function registerPurchasesIpc(): void {
 
             total_amount: result.total_amount,
 
+            exact_total_amount: result.exact_total_amount,
+
+            cash_amount: result.cash_amount,
+
+            rounding_adjustment: result.rounding_adjustment,
+
+            settle_full_balance: result.settle_full_balance,
             paid_amount: result.paid_amount,
 
             remaining_amount: result.remaining_amount,

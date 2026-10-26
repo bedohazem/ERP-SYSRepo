@@ -424,4 +424,126 @@ describe('purchase orders repository', () => {
 
     expect(getVariantStock(variant.variant_id)).toBe(12);
   });
+
+  it('settles purchase order reception with whole cash and exact invoice value', () => {
+    const db = getDb();
+
+    db.prepare(
+      `
+    INSERT INTO cash_movements (
+      type,
+      amount,
+      direction,
+      payment_method,
+      reference_type,
+      created_by
+    )
+
+    VALUES (
+      'deposit',
+      2000,
+      'in',
+      'store_cash',
+      'test_seed',
+      1
+    )
+    `,
+    ).run();
+
+    const supplier = createSupplier({
+      name: 'Purchase Order Settlement Supplier',
+    }) as any;
+
+    const variant = seedVariant({
+      name: 'Purchase Order Settlement Product',
+
+      barcode: 'PO-SETTLEMENT',
+
+      openingQty: 0,
+
+      minStock: 1,
+
+      buyPrice: 100,
+    });
+
+    const order = createPurchaseOrder({
+      supplier_id: supplier.id,
+
+      actor_id: 1,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 981.75,
+        },
+      ],
+    });
+
+    const received = receivePurchaseOrder({
+      purchase_order_id: order.purchase_order_id,
+
+      actor_id: 1,
+
+      paid_amount: 982,
+
+      settle_full_balance: true,
+
+      payment_method: 'store_cash',
+    });
+
+    expect(received.total_amount).toBe(981.75);
+
+    expect(received.paid_amount).toBe(981.75);
+
+    expect(received.cash_amount).toBe(982);
+
+    expect(received.rounding_adjustment).toBe(0.25);
+
+    expect(received.remaining_amount).toBe(0);
+
+    expect(received.settle_full_balance).toBe(true);
+
+    const invoice = db
+      .prepare(
+        `
+      SELECT
+        settle_full_balance,
+        remaining_amount
+
+      FROM purchase_invoices
+
+      WHERE id = ?
+      `,
+      )
+      .get(received.purchaseId) as any;
+
+    expect(Number(invoice.settle_full_balance)).toBe(1);
+
+    expect(Number(invoice.remaining_amount)).toBe(0);
+
+    const movement = db
+      .prepare(
+        `
+      SELECT amount
+
+      FROM cash_movements
+
+      WHERE
+        reference_type =
+          'purchase_invoice'
+
+        AND reference_id = ?
+
+      ORDER BY id DESC
+
+      LIMIT 1
+      `,
+      )
+      .get(received.purchaseId) as any;
+
+    expect(Number(movement.amount)).toBe(982);
+  });
 });

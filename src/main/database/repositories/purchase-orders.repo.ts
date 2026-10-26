@@ -1076,7 +1076,7 @@ export function receivePurchaseOrder(input: {
   actor_id: number;
 
   paid_amount?: number;
-
+  settle_full_balance?: boolean;
   payment_method?: string;
 
   discount_type?: 'amount' | 'percent';
@@ -1135,7 +1135,7 @@ export function receivePurchaseOrder(input: {
       supplier_id: Number(snapshot.order.supplier_id),
 
       paid_amount: input.paid_amount,
-
+      settle_full_balance: input.settle_full_balance,
       discount_type: input.discount_type,
 
       discount_input: input.discount_input,

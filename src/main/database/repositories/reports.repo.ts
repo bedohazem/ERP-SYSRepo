@@ -1088,15 +1088,11 @@ export function getReportsSummary(input?: ReportFilter) {
       IFNULL(
         SUM(
           ROUND(
-            COALESCE(
-              NULLIF(
-                pi.exact_total_amount,
-                0
-              ),
+            IFNULL(
               pi.total_amount,
               0
             ),
-            0
+            2
           )
         ),
         0
