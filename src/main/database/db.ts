@@ -3778,6 +3778,76 @@ export function getDb(): Database.Database {
           `);
         },
       },
+
+      {
+        version: 29,
+
+        name: 'purchase-invoice-settlement-intent',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'purchase_invoices',
+            'settle_full_balance',
+            'INTEGER NOT NULL DEFAULT 0',
+          );
+
+          /*
+           * الفواتير الموجودة بالفعل:
+           *
+           * الشكل الجديد للتسوية:
+           * total_amount = exact_total_amount
+           * مع rounding_adjustment غير صفر.
+           *
+           * الشكل القديم كان يغير total_amount
+           * نفسه إلى الرقم المقرب، لذلك لا نخلط
+           * بين النظامين.
+           *
+           * أما التسويات القديمة التي كان فرقها
+           * صفر فلا يمكن إثبات نيتها، ولذلك
+           * تظل false بدل التخمين.
+           */
+          db.exec(`
+            UPDATE purchase_invoices
+
+            SET settle_full_balance =
+              CASE
+                WHEN
+                  ABS(
+                    IFNULL(
+                      rounding_adjustment,
+                      0
+                    )
+                  ) > 0.0001
+
+                  AND ABS(
+                    IFNULL(
+                      total_amount,
+                      0
+                    )
+                    -
+                    COALESCE(
+                      NULLIF(
+                        exact_total_amount,
+                        0
+                      ),
+                      total_amount,
+                      0
+                    )
+                  ) <= 0.0001
+
+                  AND IFNULL(
+                    remaining_amount,
+                    0
+                  ) <= 0.0001
+
+                THEN 1
+
+                ELSE 0
+              END;
+          `);
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

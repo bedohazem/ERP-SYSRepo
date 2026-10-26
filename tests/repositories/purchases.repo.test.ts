@@ -1234,6 +1234,67 @@ describe('purchases repository', () => {
     expect(Number(reverseMovement.amount)).toBe(444);
   });
 
+  it('persists explicit full settlement intent even when rounding adjustment is zero', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    /*
+     * هنا مفيش فرق قروش:
+     *
+     * الفاتورة = 100
+     * الكاش = 100
+     * فرق التسوية = 0
+     *
+     * ومع ذلك المستخدم اختار
+     * "تسوية كامل الفاتورة" صراحة.
+     */
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 100,
+
+      settle_full_balance: true,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    expect(purchase.total_amount).toBe(100);
+
+    expect(purchase.paid_amount).toBe(100);
+
+    expect(purchase.remaining_amount).toBe(0);
+
+    expect(purchase.rounding_adjustment).toBe(0);
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    /*
+     * المهم:
+     * النية محفوظة صراحة،
+     * ومش بنستنتجها من فرق التقريب.
+     */
+    expect(Number(invoice.purchase.settle_full_balance)).toBe(1);
+
+    expect(Number(invoice.purchase.rounding_adjustment)).toBe(0);
+
+    expect(Number(invoice.purchase.remaining_amount)).toBe(0);
+
+    expect(invoice.purchase.payment_status).toBe('paid');
+  });
+
   it('does not infer settlement rounding from legacy fractional purchase details', () => {
     const supplierId = createTestSupplier();
 

@@ -764,45 +764,60 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         `
         INSERT INTO purchase_invoices (
           supplier_id,
+
           total_amount,
           exact_total_amount,
           rounding_adjustment,
+          settle_full_balance,
+
           sub_total,
           discount_type,
           discount_input,
           discount_value,
+
           paid_amount,
           remaining_amount,
           payment_status,
+
           payment_method,
           notes,
+
           status,
           business_date,
           shift_id
         )
+
         VALUES (
+          ?,
           ?, ?, ?, ?,
           ?, ?, ?, ?,
-          ?, ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, ?,
           'active',
           ?, ?
         )
-      `,
+        `,
       )
       .run(
         supplierId,
+
         totalAmount,
         exactTotalAmount,
         roundingAdjustment,
+        settleFullBalance ? 1 : 0,
+
         subTotal,
         discountType,
         discountInput,
         discountValue,
+
         paidAmount,
         remainingAmount,
         paymentStatus,
+
         paymentMethod,
         input.notes?.trim() || null,
+
         businessDate,
         openShift?.id ?? null,
       );
@@ -1897,7 +1912,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         exact_total_amount = ?,
 
         rounding_adjustment = ?,
-
+        settle_full_balance = ?,
         sub_total = ?,
 
         discount_type = ?,
@@ -1922,6 +1937,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       totalAmount,
       exactTotalAmount,
       roundingAdjustment,
+      settleFullBalance ? 1 : 0,
       subTotal,
 
       discountType,

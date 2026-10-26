@@ -389,6 +389,12 @@ describe('database migrations', () => {
 
         name: 'purchase-return-settlement-details',
       },
+
+      {
+        version: 29,
+
+        name: 'purchase-invoice-settlement-intent',
+      },
     ]);
 
     const performanceIndexes = database
@@ -512,7 +518,11 @@ describe('database migrations', () => {
     );
 
     expect(purchaseInvoiceColumns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(['exact_total_amount', 'rounding_adjustment']),
+      expect.arrayContaining([
+        'exact_total_amount',
+        'rounding_adjustment',
+        'settle_full_balance',
+      ]),
     );
 
     expect(purchaseInvoiceColumns.map((column) => column.name)).toContain(

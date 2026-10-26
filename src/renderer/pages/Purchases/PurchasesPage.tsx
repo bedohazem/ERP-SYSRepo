@@ -596,9 +596,9 @@ export default function PurchasesPage() {
           Number(purchase.rounding_adjustment || 0),
         );
 
-        const hadSettlement =
-          Number(purchase.remaining_amount || 0) <= 0 &&
-          Math.abs(storedAdjustment) > 0.0001;
+        const hadSettlement = Boolean(
+          Number(purchase.settle_full_balance || 0),
+        );
 
         setSettleFullInvoice(hadSettlement);
 
